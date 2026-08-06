@@ -1,0 +1,27 @@
+{
+  "request_understanding.classify": {
+    "item_count": 92,
+    "review_status": "REVIEWED",
+    "issues": 0
+  },
+  "acquisition.plan_sources": {
+    "item_count": 92,
+    "review_status": "REVIEWED",
+    "issues": 0
+  },
+  "context.select_evidence": {
+    "item_count": 92,
+    "review_status": "REVIEWED",
+    "issues": 0
+  },
+  "planning.draft_plan": {
+    "item_count": 48,
+    "review_status": "REVIEWED",
+    "issues": 0
+  },
+  "review.inspect": {
+    "item_count": 92,
+    "review_status": "REVIEWED",
+    "issues": 0
+  }
+}

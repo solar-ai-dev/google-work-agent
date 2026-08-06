@@ -1,0 +1,138 @@
+{
+  "dataset_version": "r4-v0.1",
+  "nodes": [
+    {
+      "node_id": "request_understanding.classify",
+      "agent_folder": "request_understanding",
+      "node_name": "classify",
+      "tier": "Tier A",
+      "status": "BASELINE"
+    },
+    {
+      "node_id": "request_understanding.clarify",
+      "agent_folder": "request_understanding",
+      "node_name": "clarify",
+      "tier": "Tier B",
+      "status": "RESERVED"
+    },
+    {
+      "node_id": "request_understanding.repair",
+      "agent_folder": "request_understanding",
+      "node_name": "repair",
+      "tier": "Tier C",
+      "status": "FAILURE_TRACE_REQUIRED"
+    },
+    {
+      "node_id": "acquisition.plan_sources",
+      "agent_folder": "api_discovery_acquisition",
+      "node_name": "plan_sources",
+      "tier": "Tier A",
+      "status": "BASELINE"
+    },
+    {
+      "node_id": "acquisition.revise_partial",
+      "agent_folder": "api_discovery_acquisition",
+      "node_name": "revise_partial",
+      "tier": "Tier C",
+      "status": "FAILURE_TRACE_REQUIRED"
+    },
+    {
+      "node_id": "acquisition.repair",
+      "agent_folder": "api_discovery_acquisition",
+      "node_name": "repair",
+      "tier": "Tier C",
+      "status": "FAILURE_TRACE_REQUIRED"
+    },
+    {
+      "node_id": "context.select_evidence",
+      "agent_folder": "context_retriever",
+      "node_name": "select_evidence",
+      "tier": "Tier A",
+      "status": "BASELINE"
+    },
+    {
+      "node_id": "context.assess_sufficiency",
+      "agent_folder": "context_retriever",
+      "node_name": "assess_sufficiency",
+      "tier": "Tier B",
+      "status": "RESERVED"
+    },
+    {
+      "node_id": "context.repair",
+      "agent_folder": "context_retriever",
+      "node_name": "repair",
+      "tier": "Tier C",
+      "status": "FAILURE_TRACE_REQUIRED"
+    },
+    {
+      "node_id": "analysis.analyze",
+      "agent_folder": "work_analysis",
+      "node_name": "analyze",
+      "tier": "Tier B",
+      "status": "RESERVED"
+    },
+    {
+      "node_id": "analysis.reassess",
+      "agent_folder": "work_analysis",
+      "node_name": "reassess",
+      "tier": "Tier C",
+      "status": "FAILURE_TRACE_REQUIRED"
+    },
+    {
+      "node_id": "analysis.repair",
+      "agent_folder": "work_analysis",
+      "node_name": "repair",
+      "tier": "Tier C",
+      "status": "FAILURE_TRACE_REQUIRED"
+    },
+    {
+      "node_id": "planning.answer_only",
+      "agent_folder": "solution_planning",
+      "node_name": "answer_only",
+      "tier": "Tier B",
+      "status": "RESERVED"
+    },
+    {
+      "node_id": "planning.draft_plan",
+      "agent_folder": "solution_planning",
+      "node_name": "draft_plan",
+      "tier": "Tier A",
+      "status": "BASELINE"
+    },
+    {
+      "node_id": "planning.revise_plan",
+      "agent_folder": "solution_planning",
+      "node_name": "revise_plan",
+      "tier": "Tier B",
+      "status": "RESERVED"
+    },
+    {
+      "node_id": "planning.repair",
+      "agent_folder": "solution_planning",
+      "node_name": "repair",
+      "tier": "Tier C",
+      "status": "FAILURE_TRACE_REQUIRED"
+    },
+    {
+      "node_id": "review.inspect",
+      "agent_folder": "plan_review",
+      "node_name": "inspect",
+      "tier": "Tier A",
+      "status": "BASELINE"
+    },
+    {
+      "node_id": "review.recheck",
+      "agent_folder": "plan_review",
+      "node_name": "recheck",
+      "tier": "Tier B",
+      "status": "RESERVED"
+    },
+    {
+      "node_id": "review.repair",
+      "agent_folder": "plan_review",
+      "node_name": "repair",
+      "tier": "Tier C",
+      "status": "FAILURE_TRACE_REQUIRED"
+    }
+  ]
+}

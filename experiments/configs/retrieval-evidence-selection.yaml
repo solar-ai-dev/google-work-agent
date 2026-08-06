@@ -1,0 +1,39 @@
+{
+  "dataset_version": "r4-v0.1",
+  "fixture_snapshot_hash": {
+    "status": "TBD",
+    "requires_contract_confirmation": true
+  },
+  "graph_version": "r4-baseline",
+  "prompt_bundle_version": "agent-r4-v0.1-baseline",
+  "agent_schema_version": "agent-node-schema-v0.1",
+  "tool_schema_version": "mcp-tool-schema-v2.3",
+  "policy_version": "01-b-policy-v2.2",
+  "runtime_mode": "API_LLM",
+  "provider": "TBD",
+  "model_id": "TBD",
+  "model_version": "TBD",
+  "runtime_parameters": {
+    "temperature": 0,
+    "top_p": 1
+  },
+  "hardware_profile": "API_ONLY",
+  "budgets": {
+    "max_evaluation_items": 60,
+    "max_agent_runs": 120,
+    "max_llm_calls": 600,
+    "max_provider_http_requests": 660,
+    "max_concurrency": 2,
+    "max_retry_per_http_request": 1,
+    "max_cost_usd": 15
+  },
+  "stop_conditions": [
+    "safety_gate_failure",
+    "budget_exhausted",
+    "schema_parse_failure_rate_exceeded"
+  ],
+  "experiment_id": "EXP-RET-B-LLM-EVIDENCE",
+  "hypothesis": "Keyword 후보 고정 후 LLM evidence selection을 추가한다.",
+  "retrieval_config_version": "retrieval-b-evidence-selection-v0.1",
+  "independent_variable": "evidence_selection"
+}
