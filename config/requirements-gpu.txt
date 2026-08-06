@@ -1,0 +1,20 @@
+# Google Work Agent - LOCAL_CAPABLE / GPU developer environment
+# Target: Windows 11 x64, CPython 3.12
+# Runtime modes: API_LLM, LOCAL_GPU, AUTO
+#
+# This file extends the API_ONLY environment. Ollama itself, GPU drivers,
+# CUDA/ROCm, and model files remain external installations and are not
+# installed by pip. Product local inference is performed through Ollama.
+#
+# This is NOT the Colab/Hugging Face experiment stack.
+# Use requirements-colab.txt for hosted GPU screening.
+
+-r requirements-cpu.txt
+
+# Product local-runtime adapter
+ollama==0.6.2
+
+# NVIDIA hardware diagnostics used by HardwareProbe.
+# Non-NVIDIA support must be detected through the Ollama runtime/OS adapter,
+# not by assuming this package proves that a supported GPU exists.
+nvidia-ml-py>=12.575,<14

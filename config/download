@@ -1,0 +1,161 @@
+# ------------------------------------------------------------
+# Python virtual environments
+# ------------------------------------------------------------
+.venv/
+.venv-*/
+venv/
+env/
+ENV/
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.pytype/
+.dmypy.json
+dmypy.json
+
+# Coverage / test reports
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+junit.xml
+.pytest-results/
+test-results/
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+.pyinstaller/
+*.spec
+
+# ------------------------------------------------------------
+# Secrets and local configuration
+# ------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+client_secret*.json
+credentials*.json
+token*.json
+oauth-client*.json
+service-account*.json
+
+# Local app settings that vary by machine
+app-settings.local.json
+settings.local.json
+config.local.*
+
+# ------------------------------------------------------------
+# Google Work Agent local runtime data
+# ------------------------------------------------------------
+data/
+backups/
+logs/
+diagnostics/
+runtime/
+cache/
+local-data/
+
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.log
+*.jsonl
+*.dmp
+*.dump
+crash-*.txt
+
+# Experiment outputs: keep curated fixtures/datasets, ignore generated results
+experiments/results/
+experiments/raw-results/
+experiments/cache/
+experiments/artifacts/
+experiments/reports/generated/
+artifacts/
+reports/generated/
+
+# Local model files must never enter Git
+models/
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+
+# ------------------------------------------------------------
+# Frontend / Node
+# ------------------------------------------------------------
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+.npm/
+.pnpm-store/
+.yarn/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ------------------------------------------------------------
+# IDE / OS
+# ------------------------------------------------------------
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+~$*
+
+# ------------------------------------------------------------
+# Notebook / hosted experiment environments
+# ------------------------------------------------------------
+.ipynb_checkpoints/
+colab_outputs/
+colab_tmp/
+wandb/
+mlruns/
+runs/
+lightning_logs/
+.cache/huggingface/
+hf_cache/
+transformers_cache/
+
+# Notebook secrets and generated runtime configuration
+secrets.json
+.colab-secrets/
+
+# Local environment lock/debug files
+.python-version.local
+pip-debug.log
