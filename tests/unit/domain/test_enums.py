@@ -72,6 +72,7 @@ def test_other_enum_values_match_contract() -> None:
         "TRANSITION_APPLIED",
         "STATE_CONFLICT",
         "VERSION_CONFLICT",
+        "DUPLICATE_COMMAND",
     )
 
 

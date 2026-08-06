@@ -9,13 +9,31 @@ from google_work_agent.adapters.persistence.migration import (
     discover_migrations,
     normalize_migration_bytes,
 )
+from google_work_agent.adapters.persistence.repositories import (
+    SQLiteAuditRepository,
+    SQLiteCommandReceiptRepository,
+    SQLiteConversationRepository,
+    SQLiteMessageRepository,
+    SQLiteRunRepository,
+)
+from google_work_agent.adapters.persistence.unit_of_work import (
+    SQLiteUnitOfWork,
+    sqlite_unit_of_work_factory,
+)
 
 __all__ = [
     "MigrationFile",
     "MigrationResult",
+    "SQLiteAuditRepository",
+    "SQLiteCommandReceiptRepository",
+    "SQLiteConversationRepository",
+    "SQLiteMessageRepository",
+    "SQLiteRunRepository",
+    "SQLiteUnitOfWork",
     "apply_migrations",
     "calculate_migration_checksum",
     "connect_sqlite",
     "discover_migrations",
     "normalize_migration_bytes",
+    "sqlite_unit_of_work_factory",
 ]
