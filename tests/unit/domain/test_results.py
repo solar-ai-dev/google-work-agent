@@ -8,20 +8,20 @@ from google_work_agent.domain import CommandResult, ResultCode, RunCommand, RunS
 def test_command_result_is_frozen() -> None:
     result: CommandResult[RunStatus, RunCommand] = CommandResult(
         applied=True,
-        result_code=ResultCode.APPLIED,
+        result_code=ResultCode.TRANSITION_APPLIED,
         current_status=RunStatus.ANALYZING,
         current_version=1,
         next_allowed_commands=(RunCommand.BEGIN_RETRIEVAL,),
     )
 
     with pytest.raises(FrozenInstanceError):
-        setattr(result, "applied", False)
+        result.applied = False  # type: ignore[misc]
 
 
 def test_command_result_uses_tuple_for_next_allowed_commands() -> None:
     result: CommandResult[RunStatus, RunCommand] = CommandResult(
         applied=False,
-        result_code=ResultCode.INVALID_TRANSITION,
+        result_code=ResultCode.STATE_CONFLICT,
         current_status=RunStatus.CREATED,
         current_version=0,
         next_allowed_commands=(RunCommand.START_ANALYSIS,),
@@ -35,7 +35,7 @@ def test_command_result_uses_tuple_for_next_allowed_commands() -> None:
 def test_success_and_failure_result_fields() -> None:
     success: CommandResult[RunStatus, RunCommand] = CommandResult(
         applied=True,
-        result_code=ResultCode.APPLIED,
+        result_code=ResultCode.TRANSITION_APPLIED,
         current_status=RunStatus.RETRIEVING,
         current_version=2,
         next_allowed_commands=(RunCommand.BEGIN_PLANNING,),
@@ -50,7 +50,7 @@ def test_success_and_failure_result_fields() -> None:
     )
 
     assert success.applied is True
-    assert success.result_code is ResultCode.APPLIED
+    assert success.result_code is ResultCode.TRANSITION_APPLIED
     assert success.conflict_detail is None
     assert failure.applied is False
     assert failure.current_status is RunStatus.RETRIEVING

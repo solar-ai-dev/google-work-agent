@@ -4,6 +4,7 @@ from google_work_agent.domain import (
     ActionCommand,
     ActionStatus,
     EffectType,
+    InvariantViolationError,
     ResultCode,
     VerificationStatus,
     next_allowed_action_commands,
@@ -146,19 +147,20 @@ def test_allowed_action_edges(
     )
 
     assert result.applied is True
-    assert result.result_code is ResultCode.APPLIED
+    assert result.result_code is ResultCode.TRANSITION_APPLIED
     assert result.current_status is next_status
     assert result.current_version == 5
 
 
 def test_resolve_as_failed_requires_confirmation_flag() -> None:
-    blocked = transition_action(
-        ActionStatus.UNKNOWN_RESULT,
-        ActionCommand.RESOLVE_AS_FAILED,
-        1,
-        1,
-        effect_type=EffectType.CREATE,
-    )
+    with pytest.raises(InvariantViolationError):
+        transition_action(
+            ActionStatus.UNKNOWN_RESULT,
+            ActionCommand.RESOLVE_AS_FAILED,
+            1,
+            1,
+            effect_type=EffectType.CREATE,
+        )
     allowed = transition_action(
         ActionStatus.UNKNOWN_RESULT,
         ActionCommand.RESOLVE_AS_FAILED,
@@ -168,9 +170,6 @@ def test_resolve_as_failed_requires_confirmation_flag() -> None:
         result_not_executed_confirmed=True,
     )
 
-    assert blocked.applied is False
-    assert blocked.result_code is ResultCode.INVARIANT_VIOLATION
-    assert blocked.current_status is ActionStatus.UNKNOWN_RESULT
     assert allowed.applied is True
     assert allowed.current_status is ActionStatus.FAILED
 
@@ -207,19 +206,15 @@ def test_store_verification_terminal_results(
 def test_store_verification_non_final_results_do_not_transition(
     verification_status: VerificationStatus | None,
 ) -> None:
-    result = transition_action(
-        ActionStatus.EXECUTED,
-        ActionCommand.STORE_VERIFICATION,
-        3,
-        3,
-        effect_type=EffectType.UPDATE,
-        verification_status=verification_status,
-    )
-
-    assert result.applied is False
-    assert result.result_code is ResultCode.INVARIANT_VIOLATION
-    assert result.current_status is ActionStatus.EXECUTED
-    assert result.current_version == 3
+    with pytest.raises(InvariantViolationError):
+        transition_action(
+            ActionStatus.EXECUTED,
+            ActionCommand.STORE_VERIFICATION,
+            3,
+            3,
+            effect_type=EffectType.UPDATE,
+            verification_status=verification_status,
+        )
 
 
 @pytest.mark.parametrize(
@@ -253,7 +248,7 @@ def test_explicitly_forbidden_action_edges(
     )
 
     assert result.applied is False
-    assert result.result_code is ResultCode.INVALID_TRANSITION
+    assert result.result_code is ResultCode.STATE_CONFLICT
     assert result.current_status is current_status
     assert result.current_version == 2
 
@@ -281,18 +276,14 @@ def test_action_negative_versions_are_blocked(
     current_version: int,
     expected_version: int,
 ) -> None:
-    result = transition_action(
-        ActionStatus.PROPOSED,
-        ActionCommand.APPROVE_ACTION,
-        current_version,
-        expected_version,
-        effect_type=EffectType.CREATE,
-    )
-
-    assert result.applied is False
-    assert result.result_code is ResultCode.INVARIANT_VIOLATION
-    assert result.current_status is ActionStatus.PROPOSED
-    assert result.current_version == current_version
+    with pytest.raises(InvariantViolationError):
+        transition_action(
+            ActionStatus.PROPOSED,
+            ActionCommand.APPROVE_ACTION,
+            current_version,
+            expected_version,
+            effect_type=EffectType.CREATE,
+        )
 
 
 @pytest.mark.parametrize(

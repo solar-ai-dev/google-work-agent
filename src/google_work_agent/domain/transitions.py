@@ -8,6 +8,7 @@ from google_work_agent.domain.enums import (
     RunStatus,
     VerificationStatus,
 )
+from google_work_agent.domain.errors import InvariantViolationError
 from google_work_agent.domain.results import CommandResult
 
 RUN_TERMINAL_STATUSES = frozenset(
@@ -125,28 +126,31 @@ def transition_run(
     plan_requires_approval: bool | None = None,
 ) -> CommandResult[RunStatus, RunCommand]:
     """Apply a pure Run status transition with optimistic version checking."""
-    version_error = _validate_versions(current_version, expected_version)
-    if version_error is not None:
-        return _run_failure(current_status, current_version, version_error[0], version_error[1])
+    if not _is_non_negative_version(current_version):
+        raise InvariantViolationError("current_version must be non-negative")
+    if not _is_non_negative_version(expected_version):
+        raise InvariantViolationError("expected_version must be non-negative")
+    if expected_version != current_version:
+        return _run_failure(
+            current_status,
+            current_version,
+            ResultCode.VERSION_CONFLICT,
+            "expected_version does not match current_version",
+        )
 
     if (
         current_status is RunStatus.PLANNING
         and command is RunCommand.PUBLISH_PLAN
         and plan_requires_approval is None
     ):
-        return _run_failure(
-            current_status,
-            current_version,
-            ResultCode.INVARIANT_VIOLATION,
-            "plan_requires_approval is required",
-        )
+        raise InvariantViolationError("plan_requires_approval is required")
 
     next_status = _resolve_run_next_status(current_status, command, plan_requires_approval)
     if next_status is None:
         return _run_failure(
             current_status,
             current_version,
-            ResultCode.INVALID_TRANSITION,
+            ResultCode.STATE_CONFLICT,
             f"{command.value} is not allowed from {current_status.value}",
         )
 
@@ -164,14 +168,17 @@ def transition_action(
     result_not_executed_confirmed: bool = False,
 ) -> CommandResult[ActionStatus, ActionCommand]:
     """Apply a pure Action status transition with effect and version checks."""
-    version_error = _validate_versions(current_version, expected_version)
-    if version_error is not None:
+    if not _is_non_negative_version(current_version):
+        raise InvariantViolationError("current_version must be non-negative")
+    if not _is_non_negative_version(expected_version):
+        raise InvariantViolationError("expected_version must be non-negative")
+    if expected_version != current_version:
         return _action_failure(
             current_status,
             current_version,
             effect_type,
-            version_error[0],
-            version_error[1],
+            ResultCode.VERSION_CONFLICT,
+            "expected_version does not match current_version",
         )
 
     invariant_error = _validate_action_invariants(
@@ -182,13 +189,7 @@ def transition_action(
         result_not_executed_confirmed,
     )
     if invariant_error is not None:
-        return _action_failure(
-            current_status,
-            current_version,
-            effect_type,
-            ResultCode.INVARIANT_VIOLATION,
-            invariant_error,
-        )
+        raise InvariantViolationError(invariant_error)
 
     next_status = _resolve_action_next_status(
         current_status,
@@ -201,24 +202,15 @@ def transition_action(
             current_status,
             current_version,
             effect_type,
-            ResultCode.INVALID_TRANSITION,
+            ResultCode.STATE_CONFLICT,
             f"{command.value} is not allowed from {current_status.value} for {effect_type.value}",
         )
 
     return _action_success(next_status, current_version + 1, effect_type=effect_type)
 
 
-def _validate_versions(
-    current_version: int,
-    expected_version: int,
-) -> tuple[ResultCode, str] | None:
-    if current_version < 0:
-        return ResultCode.INVARIANT_VIOLATION, "current_version must be non-negative"
-    if expected_version < 0:
-        return ResultCode.INVARIANT_VIOLATION, "expected_version must be non-negative"
-    if expected_version != current_version:
-        return ResultCode.VERSION_CONFLICT, "expected_version does not match current_version"
-    return None
+def _is_non_negative_version(version: int) -> bool:
+    return version >= 0
 
 
 def _resolve_run_next_status(
@@ -314,7 +306,7 @@ def _run_success(
 ) -> CommandResult[RunStatus, RunCommand]:
     return CommandResult(
         applied=True,
-        result_code=ResultCode.APPLIED,
+        result_code=ResultCode.TRANSITION_APPLIED,
         current_status=status,
         current_version=version,
         next_allowed_commands=next_allowed_run_commands(status),
@@ -345,7 +337,7 @@ def _action_success(
 ) -> CommandResult[ActionStatus, ActionCommand]:
     return CommandResult(
         applied=True,
-        result_code=ResultCode.APPLIED,
+        result_code=ResultCode.TRANSITION_APPLIED,
         current_status=status,
         current_version=version,
         next_allowed_commands=next_allowed_action_commands(status, effect_type=effect_type),

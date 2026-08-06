@@ -1,6 +1,7 @@
 import pytest
 
 from google_work_agent.domain import (
+    InvariantViolationError,
     ResultCode,
     RunCommand,
     RunStatus,
@@ -51,7 +52,7 @@ def test_allowed_run_edges(
     result = transition_run(current_status, command, 7, 7)
 
     assert result.applied is True
-    assert result.result_code is ResultCode.APPLIED
+    assert result.result_code is ResultCode.TRANSITION_APPLIED
     assert result.current_status is next_status
     assert result.current_version == 8
 
@@ -78,12 +79,8 @@ def test_publish_plan_branches(
 
 
 def test_publish_plan_requires_explicit_branch() -> None:
-    result = transition_run(RunStatus.PLANNING, RunCommand.PUBLISH_PLAN, 2, 2)
-
-    assert result.applied is False
-    assert result.result_code is ResultCode.INVARIANT_VIOLATION
-    assert result.current_status is RunStatus.PLANNING
-    assert result.current_version == 2
+    with pytest.raises(InvariantViolationError):
+        transition_run(RunStatus.PLANNING, RunCommand.PUBLISH_PLAN, 2, 2)
 
 
 def test_run_version_conflict_is_checked_before_transition() -> None:
@@ -104,17 +101,13 @@ def test_run_negative_versions_are_blocked(
     current_version: int,
     expected_version: int,
 ) -> None:
-    result = transition_run(
-        RunStatus.CREATED,
-        RunCommand.START_ANALYSIS,
-        current_version,
-        expected_version,
-    )
-
-    assert result.applied is False
-    assert result.result_code is ResultCode.INVARIANT_VIOLATION
-    assert result.current_status is RunStatus.CREATED
-    assert result.current_version == current_version
+    with pytest.raises(InvariantViolationError):
+        transition_run(
+            RunStatus.CREATED,
+            RunCommand.START_ANALYSIS,
+            current_version,
+            expected_version,
+        )
 
 
 @pytest.mark.parametrize("terminal_status", (RunStatus.COMPLETED, RunStatus.CANCELLED))
@@ -127,7 +120,7 @@ def test_terminal_run_status_blocks_commands(terminal_status: RunStatus) -> None
     result = transition_run(terminal_status, command, 1, 1)
 
     assert result.applied is False
-    assert result.result_code is ResultCode.INVALID_TRANSITION
+    assert result.result_code is ResultCode.STATE_CONFLICT
     assert result.next_allowed_commands == ()
 
 
@@ -135,7 +128,7 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
     result = transition_run(RunStatus.CANCEL_REQUESTED, RunCommand.REQUEST_CANCEL, 1, 1)
 
     assert result.applied is False
-    assert result.result_code is ResultCode.INVALID_TRANSITION
+    assert result.result_code is ResultCode.STATE_CONFLICT
     assert result.current_status is RunStatus.CANCEL_REQUESTED
 
 

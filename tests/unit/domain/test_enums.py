@@ -69,12 +69,9 @@ def test_other_enum_values_match_contract() -> None:
     )
     assert tuple(effect.value for effect in EffectType) == ("READ", "CREATE", "UPDATE")
     assert tuple(code.value for code in ResultCode) == (
-        "APPLIED",
-        "INVALID_TRANSITION",
+        "TRANSITION_APPLIED",
+        "STATE_CONFLICT",
         "VERSION_CONFLICT",
-        "INVARIANT_VIOLATION",
-        "DUPLICATE_COMMAND",
-        "COMMAND_HASH_MISMATCH",
     )
 
 
