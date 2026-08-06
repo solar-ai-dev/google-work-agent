@@ -450,7 +450,9 @@ def main() -> int:
     report = validate()
     out = EXP / "reports" / "validation-report.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    with out.open("w", encoding="utf-8", newline="\n") as file:
+        json.dump(report, file, ensure_ascii=False, indent=2)
+        file.write("\n")
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["status"] == "PASS" else 1
 
