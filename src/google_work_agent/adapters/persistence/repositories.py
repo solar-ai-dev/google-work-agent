@@ -267,6 +267,117 @@ class SQLiteRunRepository:
             raise sqlite3.IntegrityError("write-plan publish affected an unexpected row count")
         return result
 
+    def request_cancel(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = transition_run(
+            current.status,
+            command=RunCommand.REQUEST_CANCEL,
+            current_version=current.version,
+            expected_version=expected_version,
+        )
+        if not result.applied:
+            return result
+        cursor = self._connection.execute(
+            """
+            UPDATE runs
+            SET status = ?, version = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (result.current_status.value, result.current_version, run_id, current.version),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("run cancel request affected an unexpected row count")
+        return result
+
+    def finalize_cancel(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = transition_run(
+            current.status,
+            command=RunCommand.FINALIZE_CANCEL,
+            current_version=current.version,
+            expected_version=expected_version,
+        )
+        if not result.applied:
+            return result
+        cursor = self._connection.execute(
+            """
+            UPDATE runs
+            SET status = ?, version = ?, finished_at_ms = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (
+                result.current_status.value,
+                result.current_version,
+                finished_at_ms,
+                run_id,
+                current.version,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("run cancel finalize affected an unexpected row count")
+        return result
+
+    def set_recovery_required(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
+        return self._force_status(
+            run_id,
+            status=RunStatus.RECOVERY_REQUIRED,
+            finished_at_ms=finished_at_ms,
+        )
+
+    def set_reauth_required(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
+        return self._force_status(
+            run_id,
+            status=RunStatus.REAUTH_REQUIRED,
+            finished_at_ms=finished_at_ms,
+        )
+
+    def set_verifying(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
+        return self._force_status(
+            run_id,
+            status=RunStatus.VERIFYING,
+            finished_at_ms=finished_at_ms,
+        )
+
+    def _force_status(
+        self,
+        run_id: str,
+        *,
+        status: RunStatus,
+        finished_at_ms: int | None,
+    ) -> RunRecord:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        cursor = self._connection.execute(
+            """
+            UPDATE runs
+            SET status = ?, version = version + 1, finished_at_ms = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (status.value, finished_at_ms, run_id, current.version),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("run force-status affected an unexpected row count")
+        updated = self.get_by_id(run_id)
+        if updated is None:
+            raise LookupError(f"run not found after status update: {run_id}")
+        return updated
+
 
 class SQLiteMessageRepository:
     """SQLite message repository."""
@@ -514,6 +625,18 @@ class SQLitePlanRepository:
         if cursor.rowcount != 1:
             raise sqlite3.IntegrityError("plan completion affected an unexpected row count")
 
+    def cancel(self, plan_id: str) -> None:
+        cursor = self._connection.execute(
+            """
+            UPDATE plans
+            SET status = 'CANCELLED'
+            WHERE id = ? AND status IN ('WAITING_APPROVAL', 'ACTIVE');
+            """,
+            (plan_id,),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("plan cancellation affected an unexpected row count")
+
     def list_by_run(self, run_id: str) -> tuple[PlanRecord, ...]:
         rows = self._connection.execute(
             """
@@ -715,6 +838,88 @@ class SQLiteActionRepository:
         return self._transition_write_action(
             action_id,
             command=ActionCommand.MARK_FAILED,
+            expected_version=expected_version,
+            updated_at_ms=updated_at_ms,
+        )
+
+    def mark_unknown_result(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        return self._transition_write_action(
+            action_id,
+            command=ActionCommand.MARK_UNKNOWN_RESULT,
+            expected_version=expected_version,
+            updated_at_ms=updated_at_ms,
+        )
+
+    def recover_existing_result(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        return self._transition_write_action(
+            action_id,
+            command=ActionCommand.RECOVER_EXISTING_RESULT,
+            expected_version=expected_version,
+            updated_at_ms=updated_at_ms,
+        )
+
+    def resolve_unknown_as_failed(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        current = self.get_by_id(action_id)
+        if current is None:
+            raise LookupError(f"action not found: {action_id}")
+        result = transition_action(
+            ActionStatus(current.status),
+            command=ActionCommand.RESOLVE_AS_FAILED,
+            current_version=current.version,
+            expected_version=expected_version,
+            effect_type=EffectType(current.effect_type),
+            result_not_executed_confirmed=True,
+        )
+        if not result.applied:
+            return result
+        cursor = self._connection.execute(
+            """
+            UPDATE actions
+            SET status = ?, version = ?, updated_at_ms = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (
+                result.current_status.value,
+                result.current_version,
+                updated_at_ms,
+                action_id,
+                current.version,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError(
+                "write action resolve-as-failed affected an unexpected row count"
+            )
+        return result
+
+    def prepare_write_retry(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        return self._transition_write_action(
+            action_id,
+            command=ActionCommand.PREPARE_WRITE_RETRY,
             expected_version=expected_version,
             updated_at_ms=updated_at_ms,
         )
@@ -1052,6 +1257,18 @@ class SQLiteActionDependencyRepository:
         ).fetchall()
         return tuple(str(row["depends_on_action_id"]) for row in rows)
 
+    def list_dependents(self, action_id: str) -> tuple[str, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT action_id
+            FROM action_dependencies
+            WHERE depends_on_action_id = ?
+            ORDER BY action_id ASC;
+            """,
+            (action_id,),
+        ).fetchall()
+        return tuple(str(row["action_id"]) for row in rows)
+
 
 class SQLiteApprovalRepository:
     """SQLite approval repository."""
@@ -1135,6 +1352,31 @@ class SQLiteApprovalRepository:
         )
         if cursor.rowcount != 1:
             raise sqlite3.IntegrityError("approval consume affected an unexpected row count")
+
+    def revoke_active_by_action(self, action_id: str) -> tuple[str, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT id
+            FROM approvals
+            WHERE action_id = ? AND status = 'ACTIVE'
+            ORDER BY approval_no ASC;
+            """,
+            (action_id,),
+        ).fetchall()
+        approval_ids = tuple(str(row["id"]) for row in rows)
+        if not approval_ids:
+            return ()
+        cursor = self._connection.execute(
+            """
+            UPDATE approvals
+            SET status = 'REVOKED'
+            WHERE action_id = ? AND status = 'ACTIVE';
+            """,
+            (action_id,),
+        )
+        if cursor.rowcount != len(approval_ids):
+            raise sqlite3.IntegrityError("approval revoke affected an unexpected row count")
+        return approval_ids
 
     def list_by_action(self, action_id: str) -> tuple[ApprovalRecord, ...]:
         rows = self._connection.execute(
@@ -1292,6 +1534,75 @@ class SQLiteExecutionAttemptRepository:
         updated = self.get_by_id(attempt_id)
         if updated is None:
             raise LookupError(f"execution attempt not found after failure: {attempt_id}")
+        return updated
+
+    def mark_unknown_result(
+        self,
+        attempt_id: str,
+        *,
+        expected_version: int,
+        error_code: str,
+        error_detail_json: str,
+        finished_at_ms: int,
+    ) -> ExecutionAttemptRecord:
+        return self.update_status(
+            attempt_id,
+            expected_version=expected_version,
+            status=ExecutionAttemptStatus.UNKNOWN_RESULT,
+            error_code=error_code,
+            error_detail_json=error_detail_json,
+            result_resource_ref_id=None,
+            response_metadata_json=None,
+            finished_at_ms=finished_at_ms,
+        )
+
+    def update_status(
+        self,
+        attempt_id: str,
+        *,
+        expected_version: int,
+        status: ExecutionAttemptStatus,
+        error_code: str | None,
+        error_detail_json: str | None,
+        result_resource_ref_id: str | None,
+        response_metadata_json: str | None,
+        finished_at_ms: int | None,
+    ) -> ExecutionAttemptRecord:
+        current = self.get_by_id(attempt_id)
+        if current is None:
+            raise LookupError(f"execution attempt not found: {attempt_id}")
+        if current.version != expected_version:
+            raise sqlite3.IntegrityError("execution attempt version conflict")
+        cursor = self._connection.execute(
+            """
+            UPDATE execution_attempts
+            SET status = ?,
+                version = version + 1,
+                result_resource_ref_id = ?,
+                response_metadata_json = ?,
+                error_code = ?,
+                error_detail_json = ?,
+                finished_at_ms = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (
+                status.value,
+                result_resource_ref_id,
+                response_metadata_json,
+                error_code,
+                error_detail_json,
+                finished_at_ms,
+                attempt_id,
+                expected_version,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError(
+                "execution attempt update affected an unexpected row count"
+            )
+        updated = self.get_by_id(attempt_id)
+        if updated is None:
+            raise LookupError(f"execution attempt not found after update: {attempt_id}")
         return updated
 
     def list_by_approval(self, approval_id: str) -> tuple[ExecutionAttemptRecord, ...]:

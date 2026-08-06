@@ -7,6 +7,7 @@ from google_work_agent.domain import (
     ActionCommand,
     ActionStatus,
     CommandResult,
+    ExecutionAttemptStatus,
     ResultCode,
     RunCommand,
     RunStatus,
@@ -77,6 +78,32 @@ class RunRepository(Protocol):
         finished_at_ms: int | None = None,
     ) -> CommandResult[RunStatus, RunCommand]:
         """Publish a write plan by moving the run into WAITING_APPROVAL."""
+
+    def request_cancel(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        """Transition a run into CANCEL_REQUESTED."""
+
+    def finalize_cancel(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        """Transition a run into CANCELLED."""
+
+    def set_recovery_required(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
+        """Force one run into RECOVERY_REQUIRED and bump its version."""
+
+    def set_reauth_required(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
+        """Force one run into REAUTH_REQUIRED and bump its version."""
+
+    def set_verifying(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
+        """Force one run into VERIFYING and bump its version."""
 
 
 class MessageRepository(Protocol):
@@ -154,6 +181,9 @@ class PlanRepository(Protocol):
 
     def complete(self, plan_id: str) -> None:
         """Mark a plan as COMPLETED."""
+
+    def cancel(self, plan_id: str) -> None:
+        """Mark a waiting or active plan as CANCELLED."""
 
     def list_by_run(self, run_id: str) -> tuple[PlanRecord, ...]:
         """Return plans for one run."""
@@ -252,6 +282,42 @@ class ActionRepository(Protocol):
     ) -> CommandResult[ActionStatus, ActionCommand]:
         """Transition a write action into FAILED."""
 
+    def mark_unknown_result(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        """Transition a write action into UNKNOWN_RESULT."""
+
+    def recover_existing_result(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        """Transition a write action from UNKNOWN_RESULT into EXECUTED."""
+
+    def resolve_unknown_as_failed(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        """Transition a write action from UNKNOWN_RESULT into FAILED."""
+
+    def prepare_write_retry(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        """Transition a failed write action back into MODIFIED."""
+
     def store_verification(
         self,
         action_id: str,
@@ -317,6 +383,9 @@ class ActionDependencyRepository(Protocol):
     def list_dependencies(self, action_id: str) -> tuple[str, ...]:
         """Return action identifiers that the action depends on."""
 
+    def list_dependents(self, action_id: str) -> tuple[str, ...]:
+        """Return action identifiers that depend on the action."""
+
 
 class AuditRepository(Protocol):
     """Append-only audit persistence."""
@@ -346,6 +415,9 @@ class ApprovalRepository(Protocol):
 
     def mark_consumed(self, approval_id: str, *, consumed_at_ms: int) -> None:
         """Mark one approval as consumed."""
+
+    def revoke_active_by_action(self, action_id: str) -> tuple[str, ...]:
+        """Revoke active approvals for one action and return revoked ids."""
 
     def list_by_action(self, action_id: str) -> tuple[ApprovalRecord, ...]:
         """Return approvals for one action."""
@@ -384,6 +456,31 @@ class ExecutionAttemptRepository(Protocol):
         finished_at_ms: int,
     ) -> ExecutionAttemptRecord:
         """Mark one attempt as failed."""
+
+    def mark_unknown_result(
+        self,
+        attempt_id: str,
+        *,
+        expected_version: int,
+        error_code: str,
+        error_detail_json: str,
+        finished_at_ms: int,
+    ) -> ExecutionAttemptRecord:
+        """Mark one attempt as UNKNOWN_RESULT."""
+
+    def update_status(
+        self,
+        attempt_id: str,
+        *,
+        expected_version: int,
+        status: ExecutionAttemptStatus,
+        error_code: str | None,
+        error_detail_json: str | None,
+        result_resource_ref_id: str | None,
+        response_metadata_json: str | None,
+        finished_at_ms: int | None,
+    ) -> ExecutionAttemptRecord:
+        """Persist one arbitrary terminal attempt status transition."""
 
     def list_by_approval(self, approval_id: str) -> tuple[ExecutionAttemptRecord, ...]:
         """Return attempts for one approval."""

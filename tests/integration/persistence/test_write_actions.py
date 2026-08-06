@@ -14,8 +14,20 @@ from google_work_agent.application import (
     ClaimWriteActionCommand,
     ClaimWriteActionService,
     ExecuteWriteActionService,
+    MarkWriteActionUnknownResultCommand,
+    MarkWriteActionUnknownResultService,
+    PrepareWriteRetryCommand,
+    PrepareWriteRetryService,
     PublishWritePlanCommand,
     PublishWritePlanService,
+    RecoverUnknownCreateActionCommand,
+    RecoverUnknownCreateActionService,
+    RecoverUnknownUpdateActionCommand,
+    RecoverUnknownUpdateActionService,
+    RequestRunCancellationCommand,
+    RequestRunCancellationService,
+    RequireWriteReauthCommand,
+    RequireWriteReauthService,
     SaveWritePlanCommand,
     SaveWritePlanService,
     StoreWriteActionSuccessCommand,
@@ -26,8 +38,17 @@ from google_work_agent.application import (
     WriteActionResponse,
     WriteEvidenceDraft,
 )
+from google_work_agent.application.write_actions import (
+    DeliveryCertainty,
+    classify_write_delivery,
+    is_reauth_required_error,
+)
 from google_work_agent.domain import ResultCode
-from google_work_agent.ports import EvidenceOriginType
+from google_work_agent.ports import (
+    EvidenceOriginType,
+    GoogleWorkspaceErrorCode,
+    GoogleWorkspaceGatewayError,
+)
 from tests.support.fakes import (
     FakeClock,
     FakeGoogleGateway,
@@ -515,6 +536,254 @@ def test_verification_mismatch_is_persisted_without_auto_verifying_tool_response
         connection.close()
 
 
+def test_delivery_certainty_and_reauth_classification_are_pure() -> None:
+    not_sent = GoogleWorkspaceGatewayError(
+        code=GoogleWorkspaceErrorCode.TIMEOUT,
+        message="timeout before delivery",
+        delivered=False,
+        mutated=False,
+    )
+    uncertain = GoogleWorkspaceGatewayError(
+        code=GoogleWorkspaceErrorCode.TIMEOUT,
+        message="timeout after delivery",
+        delivered=True,
+        mutated=False,
+    )
+    response_lost = GoogleWorkspaceGatewayError(
+        code=GoogleWorkspaceErrorCode.AUTH_EXPIRED,
+        message="auth expired after mutation",
+        delivered=True,
+        mutated=True,
+    )
+
+    assert classify_write_delivery(not_sent) is DeliveryCertainty.NOT_SENT
+    assert classify_write_delivery(uncertain) is DeliveryCertainty.MAY_HAVE_BEEN_SENT
+    assert classify_write_delivery(response_lost) is DeliveryCertainty.SENT_RESPONSE_LOST
+    assert is_reauth_required_error(not_sent) is False
+    assert is_reauth_required_error(response_lost) is True
+
+
+def test_unknown_result_create_recovery_and_retry_flow(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    claimed = _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-create",
+    )
+    execute_service = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )
+    fixture_gateway.queue_fault(
+        operation="create_task",
+        fault=GoogleGatewayFault(GoogleGatewayFaultKind.TIMEOUT_AFTER_DELIVERY),
+    )
+
+    with pytest.raises(GoogleWorkspaceGatewayError) as error_info:
+        execute_service(
+            action_id="action-recover-create",
+            claim_token=claimed.claim_token or "",
+        )
+    assert classify_write_delivery(error_info.value) is DeliveryCertainty.SENT_RESPONSE_LOST
+
+    unknown_service = MarkWriteActionUnknownResultService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    unknown = unknown_service(
+        MarkWriteActionUnknownResultCommand(
+            command_id="unknown-create-1",
+            request_hash="u1" * 32,
+            action_id="action-recover-create",
+            attempt_id="attempt-recover-create",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            error_code=error_info.value.code.value,
+            error_detail=str(error_info.value),
+        )
+    )
+    assert unknown.applied is True
+    assert unknown.action_status == "UNKNOWN_RESULT"
+
+    recover_service = RecoverUnknownCreateActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )
+    recovered = recover_service(
+        RecoverUnknownCreateActionCommand(
+            command_id="recover-create-1",
+            request_hash="u2" * 32,
+            action_id="action-recover-create",
+            attempt_id="attempt-recover-create",
+            expected_action_version=3,
+            expected_attempt_version=1,
+        )
+    )
+    assert recovered.applied is True
+    assert recovered.action_status == "EXECUTED"
+
+    connection = connect_sqlite(write_database)
+    try:
+        rows = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1') AS run_status,
+                (SELECT status FROM actions WHERE id = 'action-recover-create') AS action_status,
+                (
+                    SELECT status
+                    FROM execution_attempts
+                    WHERE id = 'attempt-recover-create'
+                ) AS attempt_status;
+            """
+        ).fetchone()
+        assert tuple(rows) == ("VERIFYING", "EXECUTED", "SUCCEEDED")
+    finally:
+        connection.close()
+
+
+def test_update_recovery_can_resolve_unknown_as_failed_when_source_is_unchanged(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_update_claimed_action(write_database=write_database, clock=clock, suffix="update")
+
+    unknown_service = MarkWriteActionUnknownResultService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    unknown_service(
+        MarkWriteActionUnknownResultCommand(
+            command_id="unknown-update-1",
+            request_hash="v1" * 32,
+            action_id="action-update",
+            attempt_id="attempt-update",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            error_code=GoogleWorkspaceErrorCode.TIMEOUT.value,
+            error_detail="timeout after delivery",
+        )
+    )
+
+    recover_service = RecoverUnknownUpdateActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )
+    resolved = recover_service(
+        RecoverUnknownUpdateActionCommand(
+            command_id="recover-update-1",
+            request_hash="v2" * 32,
+            action_id="action-update",
+            attempt_id="attempt-update",
+            expected_action_version=3,
+            expected_attempt_version=1,
+        )
+    )
+    assert resolved.applied is True
+    assert resolved.action_status == "FAILED"
+
+    retry_service = PrepareWriteRetryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    retried = retry_service(
+        PrepareWriteRetryCommand(
+            command_id="retry-update-1",
+            request_hash="v3" * 32,
+            action_id="action-update",
+            expected_action_version=4,
+        )
+    )
+    assert retried.applied is True
+    assert retried.action_status == "MODIFIED"
+
+
+def test_waiting_approval_cancel_revokes_approval_and_finalizes_cancelled(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    del fixture_gateway
+    clock = FakeClock(1000)
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix="cancel")
+    approve_service = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    approve_service(
+        ApproveWriteActionCommand(
+            command_id="approve-cancel",
+            request_hash="w1" * 32,
+            action_id="action-cancel",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-cancel",
+            idempotency_key="w2" * 32,
+        )
+    )
+    request_cancel_service = RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    cancelled = request_cancel_service(
+        RequestRunCancellationCommand(
+            command_id="cancel-request-1",
+            request_hash="w3" * 32,
+            run_id="run-1",
+            expected_run_version=1,
+        )
+    )
+    assert cancelled.applied is True
+    assert cancelled.run_status == "CANCELLED"
+
+    connection = connect_sqlite(write_database)
+    try:
+        rows = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1') AS run_status,
+                (SELECT status FROM plans WHERE id = 'plan-cancel') AS plan_status,
+                (SELECT status FROM approvals WHERE id = 'approval-cancel') AS approval_status;
+            """
+        ).fetchone()
+        assert tuple(rows) == ("CANCELLED", "CANCELLED", "REVOKED")
+    finally:
+        connection.close()
+
+
+def test_reauth_core_command_marks_run_without_langgraph_dependency(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    del fixture_gateway
+    clock = FakeClock(1000)
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix="reauth")
+    request_service = RequireWriteReauthService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    response = request_service(
+        RequireWriteReauthCommand(
+            command_id="reauth-1",
+            request_hash="z1" * 32,
+            run_id="run-1",
+            action_id="action-reauth",
+            safe_error_code=GoogleWorkspaceErrorCode.AUTH_EXPIRED.value,
+        )
+    )
+    assert response.applied is True
+    assert response.run_status == "REAUTH_REQUIRED"
+
+
 def _prepare_write_plan(
     *, write_database: Path, clock: FakeClock, suffix: str, run_id: str = "run-1"
 ) -> None:
@@ -637,6 +906,140 @@ def _prepare_claimed_action(
             action_id=f"action-{suffix}",
             expected_version=1,
             source_snapshot={},
+            attempt_id=f"attempt-{suffix}",
+            nonce=f"nonce-{suffix}",
+        )
+    )
+
+
+def _prepare_update_claimed_action(
+    *,
+    write_database: Path,
+    clock: FakeClock,
+    suffix: str,
+) -> WriteActionResponse:
+    source_payload = {
+        "title": "Reply to project sync",
+        "notes": "Reference the Thursday summary.",
+        "due": "2026-08-07",
+        "status": "needsAction",
+    }
+    source_snapshot = _expected_task_projection(
+        resource_id="task-followup",
+        payload=source_payload,
+        version="4",
+    )
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute(
+            """
+            INSERT INTO resource_refs (
+                id, run_id, source, resource_type, resource_id, parent_resource_id,
+                canonical_url, title, event_time_ms, version_token, metadata_json, captured_at_ms
+            )
+            VALUES (
+                ?, 'run-1', 'TASKS', 'TASK', 'task-followup', 'task-list-default',
+                NULL, 'Reply to project sync', NULL, '4', ?, 1000
+            );
+            """,
+            (
+                "resource-ref-run-1-task-task-followup",
+                (
+                    '{"due":"2026-08-07","notes":"Reference the Thursday summary.",'
+                    '"status":"needsAction","title":"Reply to project sync"}'
+                ),
+            ),
+        )
+    finally:
+        connection.close()
+
+    save_service = SaveWritePlanService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    publish_service = PublishWritePlanService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    approve_service = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    claim_service = ClaimWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )
+    updated_payload = dict(source_payload)
+    updated_payload["title"] = "Updated from retry preparation"
+    save_service(
+        SaveWritePlanCommand(
+            command_id=f"save-{suffix}",
+            request_hash="y1" * 32,
+            plan_id=f"plan-{suffix}",
+            run_id="run-1",
+            revision_no=1,
+            summary_text="prepare update plan",
+            expected_run_version=0,
+            actions=(
+                WriteActionDraft(
+                    action_id=f"action-{suffix}",
+                    position=1,
+                    tool_name="tasks_update_task",
+                    arguments={
+                        "task_list_id": "task-list-default",
+                        "task_id": "task-followup",
+                        "payload": {"title": "Updated from retry preparation"},
+                    },
+                    expected=_expected_task_projection(
+                        resource_id="task-followup",
+                        payload=updated_payload,
+                        version="5",
+                    ),
+                    evidence_ids=(f"evidence-{suffix}",),
+                    target_resource_ref_id="resource-ref-run-1-task-task-followup",
+                ),
+            ),
+            evidence=(
+                WriteEvidenceDraft(
+                    evidence_id=f"evidence-{suffix}",
+                    origin_type=EvidenceOriginType.DERIVED,
+                    kind="USER_REQUEST",
+                    excerpt="prepare update plan",
+                ),
+            ),
+        )
+    )
+    publish_service(
+        PublishWritePlanCommand(
+            command_id=f"publish-{suffix}",
+            request_hash="y2" * 32,
+            plan_id=f"plan-{suffix}",
+            run_id="run-1",
+            expected_run_version=0,
+        )
+    )
+    approve_service(
+        ApproveWriteActionCommand(
+            command_id=f"approve-{suffix}",
+            request_hash="y3" * 32,
+            action_id=f"action-{suffix}",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot=source_snapshot,
+            approval_id=f"approval-{suffix}",
+            idempotency_key="y4" * 32,
+        )
+    )
+    return claim_service(
+        ClaimWriteActionCommand(
+            command_id=f"claim-{suffix}",
+            request_hash="y5" * 32,
+            action_id=f"action-{suffix}",
+            expected_version=1,
+            source_snapshot=source_snapshot,
             attempt_id=f"attempt-{suffix}",
             nonce=f"nonce-{suffix}",
         )

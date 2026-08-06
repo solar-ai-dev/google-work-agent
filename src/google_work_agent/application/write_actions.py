@@ -5,6 +5,7 @@ from __future__ import annotations
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from enum import StrEnum
 from hashlib import sha256
 from hmac import compare_digest
 from hmac import new as hmac_new
@@ -28,6 +29,7 @@ from google_work_agent.domain import (
     build_p0_tool_registry,
     calculate_canonical_json_hash,
     canonicalize_json_value,
+    next_allowed_action_commands,
     validate_approval_integrity,
     validate_evidence_policy,
 )
@@ -40,7 +42,9 @@ from google_work_agent.ports import (
     EvidenceOriginType,
     EvidenceRecord,
     ExecutionAttemptRecord,
+    GoogleWorkspaceErrorCode,
     GoogleWorkspaceGateway,
+    GoogleWorkspaceGatewayError,
     PlanRecord,
     PlanStatus,
     ResourceRefRecord,
@@ -57,6 +61,12 @@ from google_work_agent.ports import (
 CLAIM_TOKEN_VERSION = "v1"
 VERIFICATION_NORMALIZER_VERSION = "2026-08-06.p0"
 DEFAULT_APPROVAL_TTL_MS = 30_000
+
+
+class DeliveryCertainty(StrEnum):
+    NOT_SENT = "NOT_SENT"
+    MAY_HAVE_BEEN_SENT = "MAY_HAVE_BEEN_SENT"
+    SENT_RESPONSE_LOST = "SENT_RESPONSE_LOST"
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +179,95 @@ class VerifyWriteActionCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class MarkWriteActionUnknownResultCommand:
+    command_id: str
+    request_hash: str
+    action_id: str
+    attempt_id: str
+    expected_action_version: int
+    expected_attempt_version: int
+    error_code: str
+    error_detail: str
+
+
+@dataclass(frozen=True, slots=True)
+class RecoverExistingWriteResultCommand:
+    command_id: str
+    request_hash: str
+    action_id: str
+    attempt_id: str
+    expected_action_version: int
+    expected_attempt_version: int
+    snapshot: ResourceSnapshot
+    safe_error_code: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RecoverUnknownCreateActionCommand:
+    command_id: str
+    request_hash: str
+    action_id: str
+    attempt_id: str
+    expected_action_version: int
+    expected_attempt_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class RecoverUnknownUpdateActionCommand:
+    command_id: str
+    request_hash: str
+    action_id: str
+    attempt_id: str
+    expected_action_version: int
+    expected_attempt_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class ResolveUnknownWriteAsFailedCommand:
+    command_id: str
+    request_hash: str
+    action_id: str
+    attempt_id: str
+    expected_action_version: int
+    expected_attempt_version: int
+    error_code: str
+    error_detail: str
+
+
+@dataclass(frozen=True, slots=True)
+class PrepareWriteRetryCommand:
+    command_id: str
+    request_hash: str
+    action_id: str
+    expected_action_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class RequestRunCancellationCommand:
+    command_id: str
+    request_hash: str
+    run_id: str
+    expected_run_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class FinalizeRunCancellationCommand:
+    command_id: str
+    request_hash: str
+    run_id: str
+    expected_run_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class RequireWriteReauthCommand:
+    command_id: str
+    request_hash: str
+    run_id: str
+    action_id: str | None
+    safe_error_code: str
+
+
+@dataclass(frozen=True, slots=True)
 class SaveWritePlanResponse:
     applied: bool
     result_code: str
@@ -203,6 +302,19 @@ class WriteActionResponse:
     attempt_id: str | None = None
     claim_token: str | None = None
     safe_error_code: str | None = None
+    conflict_detail: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WriteRunResponse:
+    applied: bool
+    result_code: str
+    run_id: str
+    run_status: str
+    run_version: int
+    plan_id: str | None
+    plan_status: str | None
+    result_kind: str | None = None
     conflict_detail: str | None = None
 
 
@@ -895,6 +1007,7 @@ class ExecuteWriteActionService:
             self._gateway,
             action.tool_name,
             loads(action.arguments_json),
+            recovery_fingerprint=approval.recovery_fingerprint,
         )
         return ExecutedWriteActionResult(
             snapshot=snapshot,
@@ -1052,6 +1165,12 @@ class MarkWriteActionFailedService:
                 raise RuntimeError(
                     "write action mark_failed transition failed after attempt failure"
                 )
+            _propagate_dependency_blocked(
+                unit_of_work=unit_of_work,
+                action_id=action.id,
+                run_id=plan.run_id,
+                updated_at_ms=now_ms,
+            )
 
             unit_of_work.traces.add(
                 TraceEventRecord(
@@ -1072,6 +1191,105 @@ class MarkWriteActionFailedService:
                     run_id=plan.run_id,
                     action_id=action.id,
                     event_type="WRITE_FAILED",
+                    outcome=ResultCode.TRANSITION_APPLIED.value,
+                    metadata={"attempt_id": attempt.id, "error_code": command.error_code},
+                    created_at_ms=now_ms,
+                )
+            )
+            response = WriteActionResponse(
+                applied=True,
+                result_code=ResultCode.TRANSITION_APPLIED.value,
+                action_id=action.id,
+                action_status=result.current_status.value,
+                action_version=result.current_version,
+                next_allowed_commands=tuple(item.value for item in result.next_allowed_commands),
+                attempt_id=attempt.id,
+                safe_error_code=command.error_code,
+            )
+            _finish_json_receipt(
+                unit_of_work,
+                command.command_id,
+                response,
+                result.current_version,
+                now_ms,
+            )
+            unit_of_work.commit()
+            return response
+
+
+class MarkWriteActionUnknownResultService:
+    def __init__(
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+
+    def __call__(self, command: MarkWriteActionUnknownResultCommand) -> WriteActionResponse:
+        with self._unit_of_work_factory() as unit_of_work:
+            existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+            if existing is not None:
+                return _resolve_existing_action_receipt(
+                    unit_of_work=unit_of_work,
+                    receipt=existing,
+                    request_hash=command.request_hash,
+                    action_id=command.action_id,
+                )
+
+            now_ms = self._now_ms()
+            unit_of_work.command_receipts.add_received(
+                command_id=command.command_id,
+                command_type="MarkWriteActionUnknownResult",
+                request_hash=command.request_hash,
+                aggregate_type="Action",
+                aggregate_id=command.action_id,
+                created_at_ms=now_ms,
+            )
+            action = _require_action(unit_of_work, command.action_id)
+            attempt = _require_attempt(unit_of_work, command.attempt_id)
+            plan = _require_plan(unit_of_work, action.plan_id)
+            unit_of_work.execution_attempts.mark_unknown_result(
+                attempt.id,
+                expected_version=command.expected_attempt_version,
+                error_code=command.error_code,
+                error_detail_json=dumps({"detail": command.error_detail}, sort_keys=True),
+                finished_at_ms=now_ms,
+            )
+            result = unit_of_work.actions.mark_unknown_result(
+                action.id,
+                expected_version=command.expected_action_version,
+                updated_at_ms=now_ms,
+            )
+            if not result.applied:
+                raise RuntimeError(
+                    "write action mark_unknown_result transition failed after attempt update"
+                )
+            run = unit_of_work.runs.set_recovery_required(plan.run_id)
+            unit_of_work.traces.add(
+                TraceEventRecord(
+                    run_id=plan.run_id,
+                    action_id=action.id,
+                    event_type="WRITE_ACTION_UNKNOWN_RESULT",
+                    status=ActionStatus.UNKNOWN_RESULT.value,
+                    duration_ms=None,
+                    payload_json=dumps(
+                        {
+                            "attempt_id": attempt.id,
+                            "error_code": command.error_code,
+                            "run_status": run.status.value,
+                        },
+                        sort_keys=True,
+                    ),
+                    created_at_ms=now_ms,
+                )
+            )
+            unit_of_work.audits.add(
+                _audit_event(
+                    run_id=plan.run_id,
+                    action_id=action.id,
+                    event_type="WRITE_UNKNOWN_RESULT",
                     outcome=ResultCode.TRANSITION_APPLIED.value,
                     metadata={"attempt_id": attempt.id, "error_code": command.error_code},
                     created_at_ms=now_ms,
@@ -1186,6 +1404,13 @@ class VerifyWriteActionService:
             )
             if not result.applied:
                 raise RuntimeError("write action store_verification transition failed")
+            if verification_status is VerificationStatus.MISMATCH:
+                _propagate_dependency_blocked(
+                    unit_of_work=unit_of_work,
+                    action_id=action.id,
+                    run_id=plan.run_id,
+                    updated_at_ms=now_ms,
+                )
 
             unit_of_work.traces.add(
                 TraceEventRecord(
@@ -1235,6 +1460,724 @@ class VerifyWriteActionService:
             return response
 
 
+class RecoverExistingWriteResultService:
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+
+    def __call__(self, command: RecoverExistingWriteResultCommand) -> WriteActionResponse:
+        with self._unit_of_work_factory() as unit_of_work:
+            existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+            if existing is not None:
+                return _resolve_existing_action_receipt(
+                    unit_of_work=unit_of_work,
+                    receipt=existing,
+                    request_hash=command.request_hash,
+                    action_id=command.action_id,
+                )
+
+            now_ms = self._now_ms()
+            unit_of_work.command_receipts.add_received(
+                command_id=command.command_id,
+                command_type="RecoverExistingWriteResult",
+                request_hash=command.request_hash,
+                aggregate_type="Action",
+                aggregate_id=command.action_id,
+                created_at_ms=now_ms,
+            )
+            action = _require_action(unit_of_work, command.action_id)
+            attempt = _require_attempt(unit_of_work, command.attempt_id)
+            plan = _require_plan(unit_of_work, action.plan_id)
+            resource_ref = _resource_ref_from_snapshot(
+                run_id=plan.run_id,
+                snapshot=command.snapshot,
+                captured_at_ms=now_ms,
+            )
+            unit_of_work.resource_refs.upsert(resource_ref)
+            unit_of_work.execution_attempts.update_status(
+                attempt.id,
+                expected_version=command.expected_attempt_version,
+                status=ExecutionAttemptStatus.SUCCEEDED,
+                error_code=command.safe_error_code,
+                error_detail_json=None,
+                result_resource_ref_id=resource_ref.id,
+                response_metadata_json=dumps(
+                    {"operation": action.tool_name, "resource_id": command.snapshot.resource_id},
+                    sort_keys=True,
+                ),
+                finished_at_ms=now_ms,
+            )
+            result = unit_of_work.actions.recover_existing_result(
+                action.id,
+                expected_version=command.expected_action_version,
+                updated_at_ms=now_ms,
+            )
+            if not result.applied:
+                raise RuntimeError("recover_existing_result action transition failed")
+            unit_of_work.runs.set_verifying(plan.run_id)
+            unit_of_work.traces.add(
+                TraceEventRecord(
+                    run_id=plan.run_id,
+                    action_id=action.id,
+                    event_type="WRITE_ACTION_RECOVERED",
+                    status=ActionStatus.EXECUTED.value,
+                    duration_ms=None,
+                    payload_json=dumps(
+                        {"attempt_id": attempt.id, "resource_ref_id": resource_ref.id},
+                        sort_keys=True,
+                    ),
+                    created_at_ms=now_ms,
+                )
+            )
+            unit_of_work.audits.add(
+                _audit_event(
+                    run_id=plan.run_id,
+                    action_id=action.id,
+                    event_type="WRITE_RECOVERED",
+                    outcome=ResultCode.TRANSITION_APPLIED.value,
+                    metadata={"attempt_id": attempt.id, "resource_ref_id": resource_ref.id},
+                    created_at_ms=now_ms,
+                )
+            )
+            response = WriteActionResponse(
+                applied=True,
+                result_code=ResultCode.TRANSITION_APPLIED.value,
+                action_id=action.id,
+                action_status=result.current_status.value,
+                action_version=result.current_version,
+                next_allowed_commands=tuple(item.value for item in result.next_allowed_commands),
+                attempt_id=attempt.id,
+            )
+            _finish_json_receipt(
+                unit_of_work,
+                command.command_id,
+                response,
+                result.current_version,
+                now_ms,
+            )
+            unit_of_work.commit()
+            return response
+
+
+class ResolveUnknownWriteAsFailedService:
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+
+    def __call__(self, command: ResolveUnknownWriteAsFailedCommand) -> WriteActionResponse:
+        with self._unit_of_work_factory() as unit_of_work:
+            existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+            if existing is not None:
+                return _resolve_existing_action_receipt(
+                    unit_of_work=unit_of_work,
+                    receipt=existing,
+                    request_hash=command.request_hash,
+                    action_id=command.action_id,
+                )
+            now_ms = self._now_ms()
+            unit_of_work.command_receipts.add_received(
+                command_id=command.command_id,
+                command_type="ResolveUnknownWriteAsFailed",
+                request_hash=command.request_hash,
+                aggregate_type="Action",
+                aggregate_id=command.action_id,
+                created_at_ms=now_ms,
+            )
+            action = _require_action(unit_of_work, command.action_id)
+            attempt = _require_attempt(unit_of_work, command.attempt_id)
+            plan = _require_plan(unit_of_work, action.plan_id)
+            unit_of_work.execution_attempts.update_status(
+                attempt.id,
+                expected_version=command.expected_attempt_version,
+                status=ExecutionAttemptStatus.FAILED,
+                error_code=command.error_code,
+                error_detail_json=dumps({"detail": command.error_detail}, sort_keys=True),
+                result_resource_ref_id=None,
+                response_metadata_json=None,
+                finished_at_ms=now_ms,
+            )
+            result = unit_of_work.actions.resolve_unknown_as_failed(
+                action.id,
+                expected_version=command.expected_action_version,
+                updated_at_ms=now_ms,
+            )
+            if not result.applied:
+                raise RuntimeError("resolve_unknown_as_failed action transition failed")
+            _propagate_dependency_blocked(
+                unit_of_work=unit_of_work,
+                action_id=action.id,
+                run_id=plan.run_id,
+                updated_at_ms=now_ms,
+            )
+            unit_of_work.traces.add(
+                TraceEventRecord(
+                    run_id=plan.run_id,
+                    action_id=action.id,
+                    event_type="WRITE_UNKNOWN_RESOLVED_FAILED",
+                    status=ActionStatus.FAILED.value,
+                    duration_ms=None,
+                    payload_json=dumps(
+                        {"attempt_id": attempt.id, "error_code": command.error_code},
+                        sort_keys=True,
+                    ),
+                    created_at_ms=now_ms,
+                )
+            )
+            unit_of_work.audits.add(
+                _audit_event(
+                    run_id=plan.run_id,
+                    action_id=action.id,
+                    event_type="WRITE_RECOVERY_RESOLVED_FAILED",
+                    outcome=ResultCode.TRANSITION_APPLIED.value,
+                    metadata={"attempt_id": attempt.id, "error_code": command.error_code},
+                    created_at_ms=now_ms,
+                )
+            )
+            response = WriteActionResponse(
+                applied=True,
+                result_code=ResultCode.TRANSITION_APPLIED.value,
+                action_id=action.id,
+                action_status=result.current_status.value,
+                action_version=result.current_version,
+                next_allowed_commands=tuple(item.value for item in result.next_allowed_commands),
+                attempt_id=attempt.id,
+                safe_error_code=command.error_code,
+            )
+            _finish_json_receipt(
+                unit_of_work,
+                command.command_id,
+                response,
+                result.current_version,
+                now_ms,
+            )
+            unit_of_work.commit()
+            return response
+
+
+class RecoverUnknownCreateActionService:
+    def __init__(
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        gateway: GoogleWorkspaceGateway,
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+        self._gateway = gateway
+
+    def __call__(self, command: RecoverUnknownCreateActionCommand) -> WriteActionResponse:
+        with self._unit_of_work_factory() as unit_of_work:
+            action = _require_action(unit_of_work, command.action_id)
+            attempt = _require_attempt(unit_of_work, command.attempt_id)
+            approval = _require_approval(unit_of_work, attempt.approval_id)
+        candidates = self._gateway.search_by_recovery_fingerprint(
+            resource_type=_recovery_resource_type_for_tool(action.tool_name),
+            recovery_fingerprint=approval.recovery_fingerprint,
+        )
+        if len(candidates) != 1:
+            return WriteActionResponse(
+                applied=False,
+                result_code=ResultCode.RECOVERY_REQUIRED.value,
+                action_id=action.id,
+                action_status=action.status,
+                action_version=action.version,
+                next_allowed_commands=(),
+                attempt_id=attempt.id,
+                conflict_detail="recovery search did not resolve to exactly one candidate",
+            )
+        return RecoverExistingWriteResultService(
+            unit_of_work_factory=self._unit_of_work_factory,
+            now_ms=self._now_ms,
+        )(
+            RecoverExistingWriteResultCommand(
+                command_id=command.command_id,
+                request_hash=command.request_hash,
+                action_id=command.action_id,
+                attempt_id=command.attempt_id,
+                expected_action_version=command.expected_action_version,
+                expected_attempt_version=command.expected_attempt_version,
+                snapshot=candidates[0],
+            )
+        )
+
+
+class RecoverUnknownUpdateActionService:
+    def __init__(
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        gateway: GoogleWorkspaceGateway,
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+        self._gateway = gateway
+
+    def __call__(self, command: RecoverUnknownUpdateActionCommand) -> WriteActionResponse:
+        with self._unit_of_work_factory() as unit_of_work:
+            action = _require_action(unit_of_work, command.action_id)
+            attempt = _require_attempt(unit_of_work, command.attempt_id)
+            approval = _require_approval(unit_of_work, attempt.approval_id)
+            snapshot = _load_verification_snapshot(
+                gateway=self._gateway,
+                action=action,
+                result_resource_ref_id=action.target_resource_ref_id,
+                unit_of_work=unit_of_work,
+            )
+        normalized_actual = normalize_verification_projection(snapshot)
+        expected_projection = cast(dict[str, object], loads(action.expected_json))
+        if normalized_actual == expected_projection:
+            return RecoverExistingWriteResultService(
+                unit_of_work_factory=self._unit_of_work_factory,
+                now_ms=self._now_ms,
+            )(
+                RecoverExistingWriteResultCommand(
+                    command_id=command.command_id,
+                    request_hash=command.request_hash,
+                    action_id=command.action_id,
+                    attempt_id=command.attempt_id,
+                    expected_action_version=command.expected_action_version,
+                    expected_attempt_version=command.expected_attempt_version,
+                    snapshot=snapshot,
+                )
+            )
+        source_snapshot = cast(dict[str, object], loads(approval.source_snapshot_json))
+        if normalized_actual == source_snapshot:
+            return ResolveUnknownWriteAsFailedService(
+                unit_of_work_factory=self._unit_of_work_factory,
+                now_ms=self._now_ms,
+            )(
+                ResolveUnknownWriteAsFailedCommand(
+                    command_id=command.command_id,
+                    request_hash=command.request_hash,
+                    action_id=command.action_id,
+                    attempt_id=command.attempt_id,
+                    expected_action_version=command.expected_action_version,
+                    expected_attempt_version=command.expected_attempt_version,
+                    error_code=GoogleWorkspaceErrorCode.NO_RECOVERY_CANDIDATE.value,
+                    error_detail="target snapshot still matches source snapshot",
+                )
+            )
+        return WriteActionResponse(
+            applied=False,
+            result_code=ResultCode.RECOVERY_REQUIRED.value,
+            action_id=action.id,
+            action_status=action.status,
+            action_version=action.version,
+            next_allowed_commands=(),
+            attempt_id=attempt.id,
+            conflict_detail="update recovery requires manual resolution",
+        )
+
+
+class PrepareWriteRetryService:
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+
+    def __call__(self, command: PrepareWriteRetryCommand) -> WriteActionResponse:
+        with self._unit_of_work_factory() as unit_of_work:
+            existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+            if existing is not None:
+                return _resolve_existing_action_receipt(
+                    unit_of_work=unit_of_work,
+                    receipt=existing,
+                    request_hash=command.request_hash,
+                    action_id=command.action_id,
+                )
+            now_ms = self._now_ms()
+            unit_of_work.command_receipts.add_received(
+                command_id=command.command_id,
+                command_type="PrepareWriteRetry",
+                request_hash=command.request_hash,
+                aggregate_type="Action",
+                aggregate_id=command.action_id,
+                created_at_ms=now_ms,
+            )
+            action = _require_action(unit_of_work, command.action_id)
+            plan = _require_plan(unit_of_work, action.plan_id)
+            result = unit_of_work.actions.prepare_write_retry(
+                action.id,
+                expected_version=command.expected_action_version,
+                updated_at_ms=now_ms,
+            )
+            if not result.applied:
+                response = _action_response_from_result(action_id=action.id, result=result)
+                _finish_json_receipt(
+                    unit_of_work,
+                    command.command_id,
+                    response,
+                    result.current_version,
+                    now_ms,
+                )
+                unit_of_work.commit()
+                return response
+            unit_of_work.traces.add(
+                TraceEventRecord(
+                    run_id=plan.run_id,
+                    action_id=action.id,
+                    event_type="WRITE_RETRY_PREPARED",
+                    status=ActionStatus.MODIFIED.value,
+                    duration_ms=None,
+                    payload_json=dumps({"action_id": action.id}, sort_keys=True),
+                    created_at_ms=now_ms,
+                )
+            )
+            unit_of_work.audits.add(
+                _audit_event(
+                    run_id=plan.run_id,
+                    action_id=action.id,
+                    event_type="WRITE_RETRY_PREPARED",
+                    outcome=ResultCode.TRANSITION_APPLIED.value,
+                    metadata={"action_id": action.id},
+                    created_at_ms=now_ms,
+                )
+            )
+            response = WriteActionResponse(
+                applied=True,
+                result_code=ResultCode.TRANSITION_APPLIED.value,
+                action_id=action.id,
+                action_status=result.current_status.value,
+                action_version=result.current_version,
+                next_allowed_commands=tuple(item.value for item in result.next_allowed_commands),
+            )
+            _finish_json_receipt(
+                unit_of_work,
+                command.command_id,
+                response,
+                result.current_version,
+                now_ms,
+            )
+            unit_of_work.commit()
+            return response
+
+
+class RequestRunCancellationService:
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+
+    def __call__(self, command: RequestRunCancellationCommand) -> WriteRunResponse:
+        with self._unit_of_work_factory() as unit_of_work:
+            existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+            if existing is not None:
+                return _resolve_existing_run_receipt(
+                    unit_of_work=unit_of_work,
+                    receipt=existing,
+                    request_hash=command.request_hash,
+                    run_id=command.run_id,
+                )
+            now_ms = self._now_ms()
+            unit_of_work.command_receipts.add_received(
+                command_id=command.command_id,
+                command_type="RequestRunCancellation",
+                request_hash=command.request_hash,
+                aggregate_type="Run",
+                aggregate_id=command.run_id,
+                created_at_ms=now_ms,
+            )
+            run = _require_run(unit_of_work, command.run_id)
+            plan = _require_latest_plan_for_run(unit_of_work, run.id)
+            actions = unit_of_work.actions.list_by_plan(plan.id)
+            has_started_write = any(
+                action.status
+                in {
+                    ActionStatus.EXECUTING.value,
+                    ActionStatus.UNKNOWN_RESULT.value,
+                    ActionStatus.EXECUTED.value,
+                    ActionStatus.VERIFIED.value,
+                }
+                for action in actions
+            )
+            if not has_started_write and run.status is RunStatus.WAITING_APPROVAL:
+                for action in actions:
+                    unit_of_work.approvals.revoke_active_by_action(action.id)
+                unit_of_work.plans.cancel(plan.id)
+                cancel_result = unit_of_work.runs.request_cancel(
+                    run.id,
+                    expected_version=command.expected_run_version,
+                )
+                if not cancel_result.applied:
+                    response = WriteRunResponse(
+                        applied=False,
+                        result_code=cancel_result.result_code.value,
+                        run_id=run.id,
+                        run_status=cancel_result.current_status.value,
+                        run_version=cancel_result.current_version,
+                        plan_id=plan.id,
+                        plan_status=plan.status.value,
+                        conflict_detail=cancel_result.conflict_detail,
+                    )
+                    _finish_json_receipt(
+                        unit_of_work, command.command_id, response, run.version, now_ms
+                    )
+                    unit_of_work.commit()
+                    return response
+                final_result = unit_of_work.runs.finalize_cancel(
+                    run.id,
+                    expected_version=cancel_result.current_version,
+                    finished_at_ms=now_ms,
+                )
+                response = WriteRunResponse(
+                    applied=True,
+                    result_code=ResultCode.TRANSITION_APPLIED.value,
+                    run_id=run.id,
+                    run_status=final_result.current_status.value,
+                    run_version=final_result.current_version,
+                    plan_id=plan.id,
+                    plan_status=PlanStatus.CANCELLED.value,
+                    result_kind="CANCELLED",
+                )
+            else:
+                result = unit_of_work.runs.request_cancel(
+                    run.id,
+                    expected_version=command.expected_run_version,
+                )
+                if not result.applied:
+                    response = WriteRunResponse(
+                        applied=False,
+                        result_code=result.result_code.value,
+                        run_id=run.id,
+                        run_status=result.current_status.value,
+                        run_version=result.current_version,
+                        plan_id=plan.id,
+                        plan_status=plan.status.value,
+                        conflict_detail=result.conflict_detail,
+                    )
+                    _finish_json_receipt(
+                        unit_of_work, command.command_id, response, run.version, now_ms
+                    )
+                    unit_of_work.commit()
+                    return response
+                response = WriteRunResponse(
+                    applied=True,
+                    result_code=ResultCode.TRANSITION_APPLIED.value,
+                    run_id=run.id,
+                    run_status=result.current_status.value,
+                    run_version=result.current_version,
+                    plan_id=plan.id,
+                    plan_status=plan.status.value,
+                    result_kind="CANCEL_REQUESTED",
+                )
+            unit_of_work.traces.add(
+                TraceEventRecord(
+                    run_id=run.id,
+                    action_id=None,
+                    event_type="RUN_CANCELLATION_REQUESTED",
+                    status=response.run_status,
+                    duration_ms=None,
+                    payload_json=dumps({"plan_id": plan.id}, sort_keys=True),
+                    created_at_ms=now_ms,
+                )
+            )
+            unit_of_work.audits.add(
+                _audit_event(
+                    run_id=run.id,
+                    action_id=None,
+                    event_type="RUN_CANCELLATION_REQUESTED",
+                    outcome=ResultCode.TRANSITION_APPLIED.value,
+                    metadata={"plan_id": plan.id},
+                    created_at_ms=now_ms,
+                )
+            )
+            _finish_json_receipt(
+                unit_of_work,
+                command.command_id,
+                response,
+                response.run_version,
+                now_ms,
+            )
+            unit_of_work.commit()
+            return response
+
+
+class FinalizeRunCancellationService:
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+
+    def __call__(self, command: FinalizeRunCancellationCommand) -> WriteRunResponse:
+        with self._unit_of_work_factory() as unit_of_work:
+            existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+            if existing is not None:
+                return _resolve_existing_run_receipt(
+                    unit_of_work=unit_of_work,
+                    receipt=existing,
+                    request_hash=command.request_hash,
+                    run_id=command.run_id,
+                )
+            now_ms = self._now_ms()
+            unit_of_work.command_receipts.add_received(
+                command_id=command.command_id,
+                command_type="FinalizeRunCancellation",
+                request_hash=command.request_hash,
+                aggregate_type="Run",
+                aggregate_id=command.run_id,
+                created_at_ms=now_ms,
+            )
+            run = _require_run(unit_of_work, command.run_id)
+            plan = _require_latest_plan_for_run(unit_of_work, run.id)
+            actions = unit_of_work.actions.list_by_plan(plan.id)
+            if any(action.status == ActionStatus.UNKNOWN_RESULT.value for action in actions):
+                response = WriteRunResponse(
+                    applied=False,
+                    result_code=ResultCode.RECOVERY_REQUIRED.value,
+                    run_id=run.id,
+                    run_status=RunStatus.RECOVERY_REQUIRED.value,
+                    run_version=run.version,
+                    plan_id=plan.id,
+                    plan_status=plan.status.value,
+                    result_kind="RECOVERY_REQUIRED",
+                    conflict_detail="unknown write results must be resolved before cancellation",
+                )
+            elif any(action.status == ActionStatus.EXECUTING.value for action in actions):
+                response = WriteRunResponse(
+                    applied=False,
+                    result_code=ResultCode.STATE_CONFLICT.value,
+                    run_id=run.id,
+                    run_status=run.status.value,
+                    run_version=run.version,
+                    plan_id=plan.id,
+                    plan_status=plan.status.value,
+                    conflict_detail="cannot finalize cancellation while write is executing",
+                )
+            elif any(action.status == ActionStatus.EXECUTED.value for action in actions):
+                updated_run = unit_of_work.runs.set_verifying(run.id)
+                response = WriteRunResponse(
+                    applied=True,
+                    result_code=ResultCode.TRANSITION_APPLIED.value,
+                    run_id=run.id,
+                    run_status=updated_run.status.value,
+                    run_version=updated_run.version,
+                    plan_id=plan.id,
+                    plan_status=plan.status.value,
+                    result_kind="PARTIAL",
+                )
+            else:
+                unit_of_work.plans.cancel(plan.id)
+                final_result = unit_of_work.runs.finalize_cancel(
+                    run.id,
+                    expected_version=command.expected_run_version,
+                    finished_at_ms=now_ms,
+                )
+                response = WriteRunResponse(
+                    applied=True,
+                    result_code=ResultCode.TRANSITION_APPLIED.value,
+                    run_id=run.id,
+                    run_status=final_result.current_status.value,
+                    run_version=final_result.current_version,
+                    plan_id=plan.id,
+                    plan_status=PlanStatus.CANCELLED.value,
+                    result_kind="CANCELLED",
+                )
+            unit_of_work.traces.add(
+                TraceEventRecord(
+                    run_id=run.id,
+                    action_id=None,
+                    event_type="RUN_CANCELLATION_FINALIZED",
+                    status=response.run_status,
+                    duration_ms=None,
+                    payload_json=dumps({"result_kind": response.result_kind}, sort_keys=True),
+                    created_at_ms=now_ms,
+                )
+            )
+            unit_of_work.audits.add(
+                _audit_event(
+                    run_id=run.id,
+                    action_id=None,
+                    event_type="RUN_CANCELLATION_FINALIZED",
+                    outcome=response.result_code,
+                    metadata={"result_kind": response.result_kind},
+                    created_at_ms=now_ms,
+                )
+            )
+            _finish_json_receipt(
+                unit_of_work, command.command_id, response, response.run_version, now_ms
+            )
+            unit_of_work.commit()
+            return response
+
+
+class RequireWriteReauthService:
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+
+    def __call__(self, command: RequireWriteReauthCommand) -> WriteRunResponse:
+        with self._unit_of_work_factory() as unit_of_work:
+            existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+            if existing is not None:
+                return _resolve_existing_run_receipt(
+                    unit_of_work=unit_of_work,
+                    receipt=existing,
+                    request_hash=command.request_hash,
+                    run_id=command.run_id,
+                )
+            now_ms = self._now_ms()
+            unit_of_work.command_receipts.add_received(
+                command_id=command.command_id,
+                command_type="RequireWriteReauth",
+                request_hash=command.request_hash,
+                aggregate_type="Run",
+                aggregate_id=command.run_id,
+                created_at_ms=now_ms,
+            )
+            updated_run = unit_of_work.runs.set_reauth_required(command.run_id)
+            plan = _require_latest_plan_for_run(unit_of_work, command.run_id)
+            unit_of_work.traces.add(
+                TraceEventRecord(
+                    run_id=command.run_id,
+                    action_id=command.action_id,
+                    event_type="RUN_REAUTH_REQUIRED",
+                    status=updated_run.status.value,
+                    duration_ms=None,
+                    payload_json=dumps(
+                        {"safe_error_code": command.safe_error_code},
+                        sort_keys=True,
+                    ),
+                    created_at_ms=now_ms,
+                )
+            )
+            unit_of_work.audits.add(
+                _audit_event(
+                    run_id=command.run_id,
+                    action_id=command.action_id,
+                    event_type="RUN_REAUTH_REQUIRED",
+                    outcome=ResultCode.TRANSITION_APPLIED.value,
+                    metadata={"safe_error_code": command.safe_error_code},
+                    created_at_ms=now_ms,
+                )
+            )
+            response = WriteRunResponse(
+                applied=True,
+                result_code=ResultCode.TRANSITION_APPLIED.value,
+                run_id=command.run_id,
+                run_status=updated_run.status.value,
+                run_version=updated_run.version,
+                plan_id=plan.id,
+                plan_status=plan.status.value,
+                result_kind="REAUTH_REQUIRED",
+            )
+            _finish_json_receipt(
+                unit_of_work, command.command_id, response, response.run_version, now_ms
+            )
+            unit_of_work.commit()
+            return response
+
+
 def normalize_claim_token_payload(payload: dict[str, object]) -> bytes:
     return canonicalize_json_value(payload).encode("utf-8")
 
@@ -1277,12 +2220,14 @@ def calculate_recovery_fingerprint(
 
 
 def normalize_verification_projection(snapshot: ResourceSnapshot) -> dict[str, object]:
+    payload = dict(snapshot.payload)
+    payload.pop("recovery_fingerprint", None)
     return {
         "resource_type": snapshot.resource_type.value,
         "resource_id": snapshot.resource_id,
         "parent_id": snapshot.parent_id,
         "version": snapshot.version,
-        "payload": snapshot.payload,
+        "payload": payload,
     }
 
 
@@ -1357,14 +2302,26 @@ def _dispatch_write_action(
     gateway: GoogleWorkspaceGateway,
     tool_name: str,
     arguments: dict[str, object],
+    *,
+    recovery_fingerprint: str | None = None,
 ) -> ResourceSnapshot:
     payload = _dict_argument(arguments.get("payload"))
+    payload_with_recovery = dict(payload)
+    if recovery_fingerprint is not None and tool_name in {
+        "gmail_create_draft",
+        "tasks_create_task",
+        "calendar_create_event",
+    }:
+        payload_with_recovery["recovery_fingerprint"] = recovery_fingerprint
     if tool_name == "gmail_create_draft":
-        return gateway.create_gmail_draft(payload=payload)
+        return gateway.create_gmail_draft(payload=payload_with_recovery)
     if tool_name == "gmail_update_draft":
         return gateway.update_gmail_draft(draft_id=str(arguments["draft_id"]), payload=payload)
     if tool_name == "tasks_create_task":
-        return gateway.create_task(task_list_id=str(arguments["task_list_id"]), payload=payload)
+        return gateway.create_task(
+            task_list_id=str(arguments["task_list_id"]),
+            payload=payload_with_recovery,
+        )
     if tool_name == "tasks_update_task":
         return gateway.update_task(
             task_list_id=str(arguments["task_list_id"]),
@@ -1374,7 +2331,7 @@ def _dispatch_write_action(
     if tool_name == "calendar_create_event":
         return gateway.create_calendar_event(
             calendar_id=str(arguments["calendar_id"]),
-            payload=payload,
+            payload=payload_with_recovery,
         )
     if tool_name == "calendar_update_event":
         return gateway.update_calendar_event(
@@ -1513,7 +2470,43 @@ def _resolve_existing_action_receipt(
     request_hash: str,
     action_id: str,
 ) -> WriteActionResponse:
-    del unit_of_work, action_id
+    if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
+        if receipt.request_hash != request_hash:
+            return cast(
+                WriteActionResponse,
+                _resolve_json_receipt(
+                    receipt=receipt,
+                    request_hash=request_hash,
+                    response_type=WriteActionResponse,
+                ),
+            )
+        action = _require_action(unit_of_work, action_id)
+        applied_statuses = {
+            ActionStatus.FAILED.value,
+            ActionStatus.UNKNOWN_RESULT.value,
+            ActionStatus.EXECUTED.value,
+            ActionStatus.VERIFIED.value,
+            ActionStatus.MODIFIED.value,
+            ActionStatus.MISMATCH.value,
+            ActionStatus.DEPENDENCY_BLOCKED.value,
+        }
+        return WriteActionResponse(
+            applied=action.status in applied_statuses,
+            result_code=(
+                ResultCode.TRANSITION_APPLIED.value
+                if action.status in applied_statuses
+                else ResultCode.RECOVERY_REQUIRED.value
+            ),
+            action_id=action.id,
+            action_status=action.status,
+            action_version=action.version,
+            next_allowed_commands=tuple(
+                item.value for item in _next_allowed_write_commands_for_record(action)
+            ),
+            conflict_detail=None
+            if action.status in applied_statuses
+            else "receipt exists in RECEIVED state; aggregate recovery is inconclusive",
+        )
     return cast(
         WriteActionResponse,
         _resolve_json_receipt(
@@ -1530,8 +2523,9 @@ def _resolve_json_receipt(
     request_hash: str,
     response_type: type[SaveWritePlanResponse]
     | type[PublishWritePlanResponse]
-    | type[WriteActionResponse],
-) -> SaveWritePlanResponse | PublishWritePlanResponse | WriteActionResponse:
+    | type[WriteActionResponse]
+    | type[WriteRunResponse],
+) -> SaveWritePlanResponse | PublishWritePlanResponse | WriteActionResponse | WriteRunResponse:
     if receipt.request_hash != request_hash:
         if response_type is WriteActionResponse:
             return WriteActionResponse(
@@ -1554,6 +2548,17 @@ def _resolve_json_receipt(
                 action_ids=(),
                 conflict_detail="command_id already exists with a different request_hash",
             )
+        if response_type is WriteRunResponse:
+            return WriteRunResponse(
+                applied=False,
+                result_code=ResultCode.DUPLICATE_COMMAND.value,
+                run_id=receipt.aggregate_id or "",
+                run_status="UNKNOWN",
+                run_version=receipt.result_version or 0,
+                plan_id=None,
+                plan_status=None,
+                conflict_detail="command_id already exists with a different request_hash",
+            )
         return PublishWritePlanResponse(
             applied=False,
             result_code=ResultCode.DUPLICATE_COMMAND.value,
@@ -1564,7 +2569,7 @@ def _resolve_json_receipt(
             conflict_detail="command_id already exists with a different request_hash",
         )
     if receipt.response_json is None or receipt.status is CommandReceiptStatus.RECEIVED:
-        raise RuntimeError("RECEIVED receipt recovery is not implemented for write flow")
+        raise RuntimeError("RECEIVED receipt recovery requires aggregate-specific handling")
     payload = loads(receipt.response_json)
     if "next_allowed_commands" in payload:
         payload["next_allowed_commands"] = tuple(payload["next_allowed_commands"])
@@ -1576,7 +2581,12 @@ def _resolve_json_receipt(
 def _finish_json_receipt(
     unit_of_work: UnitOfWork,
     command_id: str,
-    response: SaveWritePlanResponse | PublishWritePlanResponse | WriteActionResponse,
+    response: (
+        SaveWritePlanResponse
+        | PublishWritePlanResponse
+        | WriteActionResponse
+        | WriteRunResponse
+    ),
     result_version: int,
     completed_at_ms: int,
 ) -> None:
@@ -1604,6 +2614,13 @@ def _require_plan(unit_of_work: UnitOfWork, plan_id: str) -> PlanRecord:
     return plan
 
 
+def _require_latest_plan_for_run(unit_of_work: UnitOfWork, run_id: str) -> PlanRecord:
+    plans = unit_of_work.plans.list_by_run(run_id)
+    if not plans:
+        raise LookupError(f"plan not found for run: {run_id}")
+    return plans[-1]
+
+
 def _require_action(unit_of_work: UnitOfWork, action_id: str) -> ActionRecord:
     action = unit_of_work.actions.get_by_id(action_id)
     if action is None:
@@ -1623,6 +2640,26 @@ def _require_attempt(unit_of_work: UnitOfWork, attempt_id: str) -> ExecutionAtte
     if attempt is None:
         raise LookupError(f"execution attempt not found: {attempt_id}")
     return attempt
+
+
+def classify_write_delivery(error: GoogleWorkspaceGatewayError) -> DeliveryCertainty:
+    if not error.delivered:
+        return DeliveryCertainty.NOT_SENT
+    if error.mutated:
+        return DeliveryCertainty.SENT_RESPONSE_LOST
+    return DeliveryCertainty.MAY_HAVE_BEEN_SENT
+
+
+def calculate_write_failure_result_code(error: GoogleWorkspaceGatewayError) -> ResultCode:
+    return (
+        ResultCode.RECOVERY_REQUIRED
+        if classify_write_delivery(error) is not DeliveryCertainty.NOT_SENT
+        else ResultCode.STATE_CONFLICT
+    )
+
+
+def is_reauth_required_error(error: GoogleWorkspaceGatewayError) -> bool:
+    return error.code is GoogleWorkspaceErrorCode.AUTH_EXPIRED
 
 
 def _dict_argument(value: object) -> dict[str, object]:
@@ -1661,4 +2698,112 @@ def _audit_event(
         outcome=outcome,
         metadata_json=dumps(metadata, sort_keys=True),
         created_at_ms=created_at_ms,
+    )
+
+
+def _propagate_dependency_blocked(
+    *,
+    unit_of_work: UnitOfWork,
+    action_id: str,
+    run_id: str,
+    updated_at_ms: int,
+) -> None:
+    blocked_action_ids: list[str] = []
+    for dependent_action_id in unit_of_work.action_dependencies.list_dependents(action_id):
+        if unit_of_work.actions.mark_dependency_blocked(
+            dependent_action_id,
+            updated_at_ms=updated_at_ms,
+        ):
+            blocked_action_ids.append(dependent_action_id)
+    for blocked_action_id in blocked_action_ids:
+        unit_of_work.traces.add(
+            TraceEventRecord(
+                run_id=run_id,
+                action_id=blocked_action_id,
+                event_type="WRITE_DEPENDENCY_BLOCKED",
+                status=ActionStatus.DEPENDENCY_BLOCKED.value,
+                duration_ms=None,
+                payload_json=dumps({"blocked_by_action_id": action_id}, sort_keys=True),
+                created_at_ms=updated_at_ms,
+            )
+        )
+        unit_of_work.audits.add(
+            _audit_event(
+                run_id=run_id,
+                action_id=blocked_action_id,
+                event_type="WRITE_DEPENDENCY_BLOCKED",
+                outcome=ResultCode.TRANSITION_APPLIED.value,
+                metadata={"blocked_by_action_id": action_id},
+                created_at_ms=updated_at_ms,
+            )
+        )
+
+
+def _recovery_resource_type_for_tool(tool_name: str) -> ResourceType:
+    if tool_name.startswith("gmail_"):
+        return ResourceType.GMAIL_DRAFT
+    if tool_name.startswith("tasks_"):
+        return ResourceType.TASK
+    if tool_name.startswith("calendar_"):
+        return ResourceType.CALENDAR_EVENT
+    raise LookupError(f"unsupported recovery tool: {tool_name}")
+
+
+def _resolve_existing_run_receipt(
+    *,
+    unit_of_work: UnitOfWork,
+    receipt: CommandReceiptRecord,
+    request_hash: str,
+    run_id: str,
+) -> WriteRunResponse:
+    if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
+        if receipt.request_hash != request_hash:
+            return cast(
+                WriteRunResponse,
+                _resolve_json_receipt(
+                    receipt=receipt,
+                    request_hash=request_hash,
+                    response_type=WriteRunResponse,
+                ),
+            )
+        run = _require_run(unit_of_work, run_id)
+        plan = _require_latest_plan_for_run(unit_of_work, run_id)
+        applied_statuses = {
+            RunStatus.CANCEL_REQUESTED.value,
+            RunStatus.CANCELLED.value,
+            RunStatus.REAUTH_REQUIRED.value,
+            RunStatus.RECOVERY_REQUIRED.value,
+            RunStatus.VERIFYING.value,
+        }
+        return WriteRunResponse(
+            applied=run.status.value in applied_statuses,
+            result_code=(
+                ResultCode.TRANSITION_APPLIED.value
+                if run.status.value in applied_statuses
+                else ResultCode.RECOVERY_REQUIRED.value
+            ),
+            run_id=run.id,
+            run_status=run.status.value,
+            run_version=run.version,
+            plan_id=plan.id,
+            plan_status=plan.status.value,
+            result_kind=run.status.value,
+            conflict_detail=None
+            if run.status.value in applied_statuses
+            else "receipt exists in RECEIVED state; aggregate recovery is inconclusive",
+        )
+    return cast(
+        WriteRunResponse,
+        _resolve_json_receipt(
+            receipt=receipt,
+            request_hash=request_hash,
+            response_type=WriteRunResponse,
+        ),
+    )
+
+
+def _next_allowed_write_commands_for_record(action: ActionRecord) -> tuple[ActionCommand, ...]:
+    return next_allowed_action_commands(
+        ActionStatus(action.status),
+        effect_type=EffectType(action.effect_type),
     )
