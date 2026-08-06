@@ -1,0 +1,126 @@
+## 핵심 제품 방향
+
+- 사용자 로컬 PC에서 실행하는 단일 사용자 Google 업무 Agent
+- 공식 환경: Windows 11 x64 · 최신 Chrome·Microsoft Edge
+- React + TypeScript + Vite Frontend
+- FastAPI Local Agent Service · `127.0.0.1` 동적 포트
+- 운영 빌드는 React 정적 UI와 `/api/v1`을 같은 Origin에서 제공
+- REST Command·Query + Server-Sent Events 진행 전달
+- Launcher가 Local Service 시작·Health Check·브라우저 열기·종료를 조정
+- 결정적 LangGraph Supervisor + 최대 6개 전문 LLM 역할 Node Baseline + 결정적 실행·검증 Engine
+- Google Work MCP Server (`stdio`)
+- SQLite Domain Store + LangGraph Checkpointer + OS Keyring
+- 원격 Backend·SaaS·외부 공개 API 없음
+- 사용자는 OAuth Client 파일 없이 `Google로 로그인`과 Scope 동의만 수행
+- 모든 Google 쓰기는 사용자 승인 후 실행하고 GET 재조회로 검증
+- P0에 API_LLM·LOCAL_GPU·AUTO 모두 포함
+- Local 제품 Runtime은 Ollama로 고정
+- `API_ONLY`·`LOCAL_CAPABLE` 배포 프로필 분리
+- CPU-only 또는 GPU 기준 미달은 API_LLM 고정
+- GPU 없는 팀원은 API_ONLY·Mock·Fixture로 공통 기능 개발
+- sLLM 실험·후보 모델은 제품 배포와 분리
+- API 실험은 요청·Token·비용·Quota·동시성 제한 필수
+- 모델·Graph·Retrieval 세부값은 실험 후 제품에 고정
+
+## 문서 원본·동기화 규칙
+
+- **공식 원본:** Notion 설계 문서
+- **Repository Markdown:** 구현·리뷰용 Export Snapshot
+- 설계 변경은 상위 권위 문서부터 Notion에 반영하고 Version을 증가시킨 뒤 Repository로 Export한다.
+- Notion Version과 Repository Snapshot Version이 다르면 해당 문서를 구현 기준으로 사용하지 않는다.
+- Repository가 더 최신인 경우 자동 승격하지 않고 변경점을 검토한 뒤 Notion에 반영한다.
+
+| 상태 | 의미 |
+|---|---|
+| `SYNCED` | Notion과 Repository Version·내용이 일치 |
+| `NOTION_NEWER` | Notion 변경 후 Export 대기 |
+| `REPOSITORY_NEWER` | Repository 변경 검토와 Notion 승격 대기 |
+
+## 문서 버전 Manifest
+
+| 문서 | 공식 버전 | 동기화 상태 |
+|---|---:|---|
+| 00 프로젝트 개요 | v1.1 | `SYNCED` |
+| 01 PRD | v2.3 | `SYNCED` |
+| 03 시스템 아키텍처 | v2.5 | `SYNCED` |
+| 06 Agent·Workflow | v5.4 | `SYNCED` |
+| 13 평가·실험 | v2.4 | `SYNCED` |
+| Domain 상태 전이 계약 | v1.3 | `SYNCED` |
+| 상태 전이 테스트 매트릭스 | v1.3 | `SYNCED` |
+
+## Agent Graph 결정 원칙
+
+- 최대 6개 전문 역할 구조는 **초기 Baseline**이며 제품 불변조건이 아니다.
+- `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE`을 같은 Dataset·Model·Policy·Retrieval 조건에서 비교한다.
+- Release Graph는 E2E 품질, Tool·Argument 정확도, 비용, LLM 호출 수와 p95 Latency를 기준으로 실험 후 고정한다.
+- 안전·승인·실행·검증 Engine은 Graph 후보와 무관하게 동일한 결정적 코드와 Domain 계약을 사용한다.
+
+## 핵심 프로세스
+
+```text
+실행 관리자(Launcher)
+→ FastAPI 로컬 에이전트 서비스
+→ React 화면 · REST · SSE
+→ 애플리케이션 · LangGraph · 도메인
+→ Versioned Prompt Registry · Node별 PromptRef
+→ MCP 표준 입출력 · Google 업무 API
+→ SQLite · 키 저장소 · API LLM 또는 Ollama
+```
+
+## Phase 1. 기획 및 전체 구조
+<page url="https://app.notion.com/p/3b2745b25d0b8151af20efa7b4b89715">01. 요구사항 정의서 · PRD</page>
+<page url="https://app.notion.com/p/3b2745b25d0b8123bacbe603b62e4eb9">01-A. 기능 정의서</page>
+<page url="https://app.notion.com/p/3b2745b25d0b817f9517cd993812b1ed">01-B. 정책 정의서</page>
+<page url="https://app.notion.com/p/3b2745b25d0b81b1acdcd16f6ac71dca">02. UI · UX 설계서</page>
+<page url="https://app.notion.com/p/3b2745b25d0b81c483f6e8d8ac947a02">03. 시스템 아키텍처 설계서</page>
+
+## Phase 2. 도메인 및 데이터
+<page url="https://app.notion.com/p/3b2745b25d0b81ec90d9ee2949597df0">04. 도메인 · 데이터베이스 설계서</page>
+<page url="https://app.notion.com/p/3b2745b25d0b81089eb9ffb77b4ff986">05. Context · Retrieval 설계서</page>
+
+## Phase 3. 핵심 Agent 및 인터페이스
+<page url="https://app.notion.com/p/3b2745b25d0b81f3ab3dff471cefbc81">06. Agent · Workflow 설계서</page>
+<page url="https://app.notion.com/p/3b2745b25d0b81debb0cff12e408c5e8">07. Tool · MCP · 내부 인터페이스 명세서</page>
+<page url="https://app.notion.com/p/3b2745b25d0b816f8426e43f8f0a5df6">08. 시퀀스 설계서</page>
+
+## Phase 4. 보안 · 환경 · 관측성
+<page url="https://app.notion.com/p/3b2745b25d0b81a4bcafca9843d77cae">09. 보안 · Auth 설계서</page>
+<page url="https://app.notion.com/p/3b2745b25d0b81a6b2aefaa069761a1b">10. 인프라 · 환경 설정 설계서</page>
+<page url="https://app.notion.com/p/3b2745b25d0b810cac60df3cc143cf0e">11. 관측성 · 로그 · 감사 설계서</page>
+
+## Phase 5. 검증 및 운영
+<page url="https://app.notion.com/p/3b2745b25d0b8179b36bca05aa3f86c2">12. 테스트 설계서</page>
+<page url="https://app.notion.com/p/3b2745b25d0b811d88e7f51cb1f4ff45">13. 평가 · 실험 설계서</page>
+<page url="https://app.notion.com/p/3b2745b25d0b813f812bd16e5d8ca8fe">14. 예외 처리 · 운영 · 트러블슈팅 가이드</page>
+
+
+---
+
+## 문서 권위 규칙
+
+```text
+00 → 01 → 01-A → 01-B → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12 → 13 → 14
+```
+
+- 하위 문서는 상위 문서를 변경하지 않고 구현값·절차·검증 방법만 구체화한다.
+- `01-A`와 `01-B`가 충돌하면 금지·승인·개인정보 정책을 가진 `01-B`가 우선한다.
+- 상위 결정을 바꿀 때는 상위 문서를 먼저 수정하고 하위 문서를 순차 갱신한다.
+
+## 후속 실험·Prompt 산출물 경계
+
+```text
+experiments/datasets/google_workspace/
+experiments/user_prompts/
+prompts/agent/
+```
+
+평가 연결 키는 `case_id`, `fixture_snapshot_id`, `user_prompt_id`, `prompt_id`다. Agent 하나에 Prompt 하나를 고정하지 않고 `agent_role + subgraph_name + node_name + node_state + purpose`로 Prompt를 선택한다.
+
+## r3 구현 기준 계약
+
+- 상태 변경 Command는 `command_receipts`에 영속 등록하며 Domain 변경과 같은 Transaction으로 완료한다.
+- Google OAuth Credential 원문은 MCP Credential Provider와 OS Keyring 경계를 벗어나지 않는다.
+- Google Write는 실행 Claim 후 발급되는 짧은 수명의 1회용 `claim_token`을 MCP가 재검증한다.
+- 인증 전 Endpoint는 `/health/live`, `/health/ready`, `/api/v1/session/bootstrap`, 일시적 OAuth Loopback Callback으로 제한한다.
+- 평가 연결 단위는 `case_id`, `user_prompt_id`, `evaluation_item_id`, `fixture_snapshot_id`, `prompt_id`다.
+- 현행 DB 기준은 `schema-v1.2.sql`, 상태 전이 기준은 v1.3이다.
