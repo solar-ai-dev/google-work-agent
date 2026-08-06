@@ -17,6 +17,9 @@ package-dir = {"" = "src"}
 where = ["src"]
 include = ["google_work_agent*"]
 
+[tool.setuptools.package-data]
+google_work_agent = ["adapters/persistence/migrations/*.sql"]
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
