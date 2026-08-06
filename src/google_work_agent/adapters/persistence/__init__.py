@@ -15,6 +15,7 @@ from google_work_agent.adapters.persistence.repositories import (
     SQLiteConversationRepository,
     SQLiteMessageRepository,
     SQLiteRunRepository,
+    SQLiteTraceRepository,
 )
 from google_work_agent.adapters.persistence.unit_of_work import (
     SQLiteUnitOfWork,
@@ -29,6 +30,7 @@ __all__ = [
     "SQLiteConversationRepository",
     "SQLiteMessageRepository",
     "SQLiteRunRepository",
+    "SQLiteTraceRepository",
     "SQLiteUnitOfWork",
     "apply_migrations",
     "calculate_migration_checksum",

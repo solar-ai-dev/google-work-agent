@@ -12,6 +12,7 @@ from google_work_agent.adapters.persistence.repositories import (
     SQLiteConversationRepository,
     SQLiteMessageRepository,
     SQLiteRunRepository,
+    SQLiteTraceRepository,
 )
 from google_work_agent.ports import UnitOfWork
 
@@ -33,6 +34,7 @@ class SQLiteUnitOfWork:
         self.messages = SQLiteMessageRepository(connection)
         self.command_receipts = SQLiteCommandReceiptRepository(connection)
         self.audits = SQLiteAuditRepository(connection)
+        self.traces = SQLiteTraceRepository(connection)
         return self
 
     def commit(self) -> None:

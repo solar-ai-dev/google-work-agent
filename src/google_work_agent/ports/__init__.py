@@ -8,6 +8,7 @@ from google_work_agent.ports.models import (
     ConversationRecord,
     MessageRecord,
     RunRecord,
+    TraceEventRecord,
 )
 from google_work_agent.ports.repositories import (
     AuditRepository,
@@ -15,6 +16,7 @@ from google_work_agent.ports.repositories import (
     ConversationRepository,
     MessageRepository,
     RunRepository,
+    TraceRepository,
     UnitOfWork,
 )
 
@@ -31,5 +33,7 @@ __all__ = [
     "MessageRepository",
     "RunRecord",
     "RunRepository",
+    "TraceEventRecord",
+    "TraceRepository",
     "UnitOfWork",
 ]

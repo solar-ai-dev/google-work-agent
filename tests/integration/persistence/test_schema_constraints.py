@@ -102,7 +102,7 @@ def test_json_hash_and_utf8_byte_constraints(
         INSERT INTO messages (id, conversation_id, role, content, created_at_ms)
         VALUES ('message-ok', 'conversation-1', 'USER', ?, 1);
         """,
-        ("한" * 21845,),
+        ("?" * 65536,),
     )
     with pytest.raises(sqlite3.IntegrityError):
         migrated_connection.execute(
@@ -110,7 +110,100 @@ def test_json_hash_and_utf8_byte_constraints(
             INSERT INTO messages (id, conversation_id, role, content, created_at_ms)
             VALUES ('message-too-large', 'conversation-1', 'USER', ?, 1);
             """,
-            ("한" * 21846,),
+            ("?" * 65537,),
+        )
+
+
+def test_only_one_active_approval_is_allowed_per_action(
+    migrated_connection: sqlite3.Connection,
+) -> None:
+    _insert_plan(migrated_connection)
+    _insert_action(
+        migrated_connection,
+        action_id="action-approval-1",
+        effect_type="CREATE",
+        approval_requirement="REQUIRED",
+        verification_policy="GET_COMPARE",
+        recovery_policy="RESOURCE_SEARCH",
+    )
+    migrated_connection.execute(
+        """
+        INSERT INTO approvals (
+            id, action_id, approval_no, action_version, status, approved_by_account_id,
+            arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json,
+            source_snapshot_hash, policy_version, tool_schema_version, idempotency_key,
+            recovery_fingerprint, approved_at_ms, expires_at_ms
+        )
+        VALUES (
+            'approval-1', 'action-approval-1', 1, 0, 'ACTIVE', 'account-1',
+            '{}', ?, '{}', ?, '2026-08-06.p0', 'v1', ?, ?, 100, 200
+        );
+        """,
+        (HASH, HASH, "b" * 64, "c" * 64),
+    )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated_connection.execute(
+            """
+            INSERT INTO approvals (
+                id, action_id, approval_no, action_version, status, approved_by_account_id,
+                arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json,
+                source_snapshot_hash, policy_version, tool_schema_version, idempotency_key,
+                recovery_fingerprint, approved_at_ms, expires_at_ms
+            )
+            VALUES (
+                'approval-2', 'action-approval-1', 2, 0, 'ACTIVE', 'account-1',
+                '{}', ?, '{}', ?, '2026-08-06.p0', 'v1', ?, ?, 101, 201
+            );
+            """,
+            (HASH, HASH, "d" * 64, "e" * 64),
+        )
+
+
+def test_only_one_active_execution_attempt_is_allowed_per_approval(
+    migrated_connection: sqlite3.Connection,
+) -> None:
+    _insert_plan(migrated_connection)
+    _insert_action(
+        migrated_connection,
+        action_id="action-attempt-1",
+        effect_type="UPDATE",
+        approval_requirement="REQUIRED",
+        verification_policy="GET_COMPARE",
+        recovery_policy="GET_TARGET",
+    )
+    migrated_connection.execute(
+        """
+        INSERT INTO approvals (
+            id, action_id, approval_no, action_version, status, approved_by_account_id,
+            arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json,
+            source_snapshot_hash, policy_version, tool_schema_version, idempotency_key,
+            recovery_fingerprint, approved_at_ms, expires_at_ms
+        )
+        VALUES (
+            'approval-attempt-1', 'action-attempt-1', 1, 0, 'ACTIVE', 'account-1',
+            '{}', ?, '{}', ?, '2026-08-06.p0', 'v1', ?, ?, 100, 200
+        );
+        """,
+        (HASH, HASH, "d" * 64, "e" * 64),
+    )
+    migrated_connection.execute(
+        """
+        INSERT INTO execution_attempts (
+            id, approval_id, attempt_no, status, started_at_ms
+        )
+        VALUES ('attempt-1', 'approval-attempt-1', 1, 'CLAIMED', 100);
+        """
+    )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated_connection.execute(
+            """
+            INSERT INTO execution_attempts (
+                id, approval_id, attempt_no, status, started_at_ms
+            )
+            VALUES ('attempt-2', 'approval-attempt-1', 2, 'EXECUTING', 101);
+            """
         )
 
 

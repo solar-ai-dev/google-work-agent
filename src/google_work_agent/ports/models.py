@@ -93,3 +93,16 @@ class AuditEventRecord:
     outcome: str
     metadata_json: str
     created_at_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class TraceEventRecord:
+    """Trace event payload accepted by persistence adapters."""
+
+    run_id: str
+    action_id: str | None
+    event_type: str
+    status: str | None
+    duration_ms: int | None
+    payload_json: str
+    created_at_ms: int

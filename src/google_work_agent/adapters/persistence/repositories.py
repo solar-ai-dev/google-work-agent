@@ -18,6 +18,7 @@ from google_work_agent.ports import (
     ConversationRecord,
     MessageRecord,
     RunRecord,
+    TraceEventRecord,
 )
 
 
@@ -272,6 +273,32 @@ class SQLiteAuditRepository:
                 event.event_type,
                 event.outcome,
                 event.metadata_json,
+                event.created_at_ms,
+            ),
+        )
+
+
+class SQLiteTraceRepository:
+    """Append-only SQLite trace repository."""
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    def add(self, event: TraceEventRecord) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO trace_events (
+                run_id, action_id, event_type, status, duration_ms, payload_json, created_at_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                event.run_id,
+                event.action_id,
+                event.event_type,
+                event.status,
+                event.duration_ms,
+                event.payload_json,
                 event.created_at_ms,
             ),
         )

@@ -21,5 +21,9 @@ class CommandHashMismatchError(DomainError):
     """Raised when command idempotency hash validation fails."""
 
 
+class PolicyViolationError(DomainError):
+    """Raised when a deterministic product policy blocks an operation."""
+
+
 class InvariantViolationError(DomainError):
     """Raised when an invariant cannot be represented as a normal result."""

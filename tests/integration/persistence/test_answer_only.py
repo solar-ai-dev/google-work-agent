@@ -93,6 +93,13 @@ def test_answer_only_completion_is_atomic(answer_only_database: Path) -> None:
             WHERE command_id = 'command-1';
             """
         ).fetchone()
+        trace = connection.execute(
+            """
+            SELECT event_type, status, payload_json
+            FROM trace_events
+            WHERE run_id = 'run-1';
+            """
+        ).fetchall()
         audit = connection.execute(
             """
             SELECT event_type, outcome
@@ -120,6 +127,11 @@ def test_answer_only_completion_is_atomic(answer_only_database: Path) -> None:
         assert receipt["status"] == "APPLIED"
         assert receipt["result_code"] == "TRANSITION_APPLIED"
         assert receipt["result_version"] == 1
+        assert [(row["event_type"], row["status"]) for row in trace] == [
+            ("COMMAND_APPLIED", "COMPLETED")
+        ]
+        assert '"mode": "ANSWER_ONLY"' in trace[0]["payload_json"]
+        assert '"message_id": "message-1"' in trace[0]["payload_json"]
         assert [(row["event_type"], row["outcome"]) for row in audit] == [
             ("RUN_COMPLETED", "TRANSITION_APPLIED")
         ]
@@ -239,7 +251,9 @@ def test_stale_version_is_rejected_and_recorded(answer_only_database: Path) -> N
         connection.close()
 
 
-def test_answer_only_failure_rolls_back_receipt_message_and_run(answer_only_database: Path) -> None:
+def test_answer_only_failure_rolls_back_receipt_message_run_trace_and_audit(
+    answer_only_database: Path,
+) -> None:
     service = CompleteAnswerOnlyRunService(
         unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
         now_ms=lambda: 1000,
@@ -273,6 +287,8 @@ def test_answer_only_failure_rolls_back_receipt_message_and_run(answer_only_data
             == 0
         )
         assert connection.execute("SELECT COUNT(*) FROM messages;").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM trace_events;").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM audit_events;").fetchone()[0] == 0
     finally:
         connection.close()
 

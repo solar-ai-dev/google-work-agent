@@ -11,6 +11,7 @@ from google_work_agent.ports.models import (
     ConversationRecord,
     MessageRecord,
     RunRecord,
+    TraceEventRecord,
 )
 
 
@@ -87,6 +88,13 @@ class AuditRepository(Protocol):
         """Append an audit event row."""
 
 
+class TraceRepository(Protocol):
+    """Append-only trace persistence."""
+
+    def add(self, event: TraceEventRecord) -> None:
+        """Append a trace event row."""
+
+
 class UnitOfWork(AbstractContextManager["UnitOfWork"], Protocol):
     """Transactional repository bundle."""
 
@@ -95,6 +103,7 @@ class UnitOfWork(AbstractContextManager["UnitOfWork"], Protocol):
     messages: MessageRepository
     command_receipts: CommandReceiptRepository
     audits: AuditRepository
+    traces: TraceRepository
 
     def commit(self) -> None:
         """Commit the current transaction."""

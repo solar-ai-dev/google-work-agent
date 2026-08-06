@@ -12,6 +12,7 @@ from google_work_agent.ports import (
     CommandReceiptRecord,
     CommandReceiptStatus,
     MessageRecord,
+    TraceEventRecord,
     UnitOfWork,
 )
 
@@ -97,6 +98,26 @@ class CompleteAnswerOnlyRunService:
                         run_id=command.run_id,
                         role="ASSISTANT",
                         content=command.assistant_message,
+                        created_at_ms=now_ms,
+                    )
+                )
+                unit_of_work.traces.add(
+                    TraceEventRecord(
+                        run_id=command.run_id,
+                        action_id=None,
+                        event_type="COMMAND_APPLIED",
+                        status=result.current_status.value,
+                        duration_ms=None,
+                        payload_json=dumps(
+                            {
+                                "command_id": command.command_id,
+                                "command_type": "CompleteAnswerOnlyRun",
+                                "message_id": assistant_message_id,
+                                "mode": "ANSWER_ONLY",
+                                "request_hash_prefix": command.request_hash[:12],
+                            },
+                            sort_keys=True,
+                        ),
                         created_at_ms=now_ms,
                     )
                 )
