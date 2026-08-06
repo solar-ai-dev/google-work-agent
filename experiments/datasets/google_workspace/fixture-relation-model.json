@@ -1,0 +1,124 @@
+{
+  "dataset_version": "r4-v0.1",
+  "fixture_count": 14,
+  "families": [
+    {
+      "fixture_snapshot_id": "FIX-001",
+      "fixture_relation_family": "CORE-RF-LONG-THREAD",
+      "fault_profiles": [
+        "long_gmail_thread",
+        "quoted_reply",
+        "signature"
+      ]
+    },
+    {
+      "fixture_snapshot_id": "FIX-002",
+      "fixture_relation_family": "CORE-RF-DRAFT-FOLLOWUP",
+      "fault_profiles": [
+        "external_thread",
+        "write_success"
+      ]
+    },
+    {
+      "fixture_snapshot_id": "FIX-003",
+      "fixture_relation_family": "CORE-RF-TASK-DUE",
+      "fault_profiles": [
+        "near_due_task",
+        "calendar_busy"
+      ]
+    },
+    {
+      "fixture_snapshot_id": "FIX-004",
+      "fixture_relation_family": "CORE-RF-CALENDAR-CONFLICT",
+      "fault_profiles": [
+        "calendar_busy",
+        "calendar_tentative",
+        "409"
+      ]
+    },
+    {
+      "fixture_snapshot_id": "FIX-005",
+      "fixture_relation_family": "CORE-RF-DUPLICATE-TASK",
+      "fault_profiles": [
+        "clear_duplicate_task",
+        "similar_task_candidate"
+      ]
+    },
+    {
+      "fixture_snapshot_id": "FIX-006",
+      "fixture_relation_family": "CORE-RF-INJECTION",
+      "fault_profiles": [
+        "prompt_injection_marker",
+        "external_thread"
+      ]
+    },
+    {
+      "fixture_snapshot_id": "FIX-007",
+      "fixture_relation_family": "CORE-RF-TIMEZONE-DST",
+      "fault_profiles": [
+        "dst_timezone_boundary",
+        "focus_time"
+      ]
+    },
+    {
+      "fixture_snapshot_id": "FIX-008",
+      "fixture_relation_family": "CORE-RF-RECOVERY",
+      "fault_profiles": [
+        "timeout",
+        "unknown_result_recovery",
+        "response_lost"
+      ]
+    },
+    {
+      "fixture_snapshot_id": "FIX-009",
+      "fixture_relation_family": "CORE-RF-NORMALIZATION",
+      "fault_profiles": [
+        "normalization_difference",
+        "verification_mismatch"
+      ]
+    },
+    {
+      "fixture_snapshot_id": "FIX-010",
+      "fixture_relation_family": "HOLDOUT-RF-CLIENT-REVIEW",
+      "fault_profiles": [
+        "external_thread",
+        "calendar_free"
+      ]
+    },
+    {
+      "fixture_snapshot_id": "FIX-011",
+      "fixture_relation_family": "HOLDOUT-RF-OOO-RESCHEDULE",
+      "fault_profiles": [
+        "out_of_office",
+        "403"
+      ]
+    },
+    {
+      "fixture_snapshot_id": "FIX-012",
+      "fixture_relation_family": "STRESS-RF-RATE-LIMIT",
+      "fault_profiles": [
+        "429",
+        "5xx",
+        "timeout"
+      ]
+    },
+    {
+      "fixture_snapshot_id": "FIX-013",
+      "fixture_relation_family": "STRESS-RF-AUTH-MISSING",
+      "fault_profiles": [
+        "401",
+        "404"
+      ]
+    },
+    {
+      "fixture_snapshot_id": "FIX-014",
+      "fixture_relation_family": "STRESS-RF-DENSE-COLLISION",
+      "fault_profiles": [
+        "calendar_busy",
+        "calendar_tentative",
+        "focus_time",
+        "409"
+      ]
+    }
+  ]
+}
