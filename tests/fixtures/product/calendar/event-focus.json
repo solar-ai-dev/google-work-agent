@@ -1,0 +1,16 @@
+{
+  "resource_type": "calendar_event",
+  "resource_id": "event-focus",
+  "parent_id": "calendar-primary",
+  "related_resource_ids": ["calendar-primary"],
+  "version": "7",
+  "recovery_fingerprint": "rf-calendar-event-focus",
+  "payload": {
+    "title": "Focus block",
+    "status": "confirmed",
+    "transparency": "busy",
+    "event_kind": "focusTime",
+    "start": "2026-11-01T08:00:00-07:00",
+    "end": "2026-11-01T09:00:00-07:00"
+  }
+}

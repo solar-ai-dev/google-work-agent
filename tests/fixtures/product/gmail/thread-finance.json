@@ -1,0 +1,14 @@
+{
+  "resource_type": "gmail_thread",
+  "resource_id": "thread-finance",
+  "parent_id": null,
+  "related_resource_ids": [],
+  "version": "1",
+  "recovery_fingerprint": "rf-gmail-thread-finance",
+  "payload": {
+    "subject": "Invoice reminder",
+    "participants": ["billing@example.com"],
+    "snippet": "Need a draft reply about payment timing.",
+    "message_ids": []
+  }
+}

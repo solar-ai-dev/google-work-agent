@@ -1,0 +1,14 @@
+{
+  "resource_type": "gmail_thread",
+  "resource_id": "thread-project",
+  "parent_id": null,
+  "related_resource_ids": ["message-project-1", "message-project-2"],
+  "version": "3",
+  "recovery_fingerprint": "rf-gmail-thread-project",
+  "payload": {
+    "subject": "Project sync follow-up",
+    "participants": ["pm@example.com", "designer@example.com"],
+    "snippet": "Need a draft for the Thursday recap.",
+    "message_ids": ["message-project-1", "message-project-2"]
+  }
+}
