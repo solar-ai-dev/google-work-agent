@@ -9,15 +9,18 @@ from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.repositories import (
     SQLiteActionDependencyRepository,
     SQLiteActionRepository,
+    SQLiteApprovalRepository,
     SQLiteAuditRepository,
     SQLiteCommandReceiptRepository,
     SQLiteConversationRepository,
     SQLiteEvidenceRepository,
+    SQLiteExecutionAttemptRepository,
     SQLiteMessageRepository,
     SQLitePlanRepository,
     SQLiteResourceRefRepository,
     SQLiteRunRepository,
     SQLiteTraceRepository,
+    SQLiteVerificationRepository,
 )
 from google_work_agent.ports import UnitOfWork
 
@@ -43,6 +46,9 @@ class SQLiteUnitOfWork:
         self.resource_refs = SQLiteResourceRefRepository(connection)
         self.evidence = SQLiteEvidenceRepository(connection)
         self.action_dependencies = SQLiteActionDependencyRepository(connection)
+        self.approvals = SQLiteApprovalRepository(connection)
+        self.execution_attempts = SQLiteExecutionAttemptRepository(connection)
+        self.verifications = SQLiteVerificationRepository(connection)
         self.audits = SQLiteAuditRepository(connection)
         self.traces = SQLiteTraceRepository(connection)
         return self

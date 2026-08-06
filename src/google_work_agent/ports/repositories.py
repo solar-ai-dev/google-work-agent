@@ -14,15 +14,18 @@ from google_work_agent.domain import (
 from google_work_agent.ports.models import (
     ActionRecord,
     AnswerOnlyResponse,
+    ApprovalRecord,
     AuditEventRecord,
     CommandReceiptRecord,
     ConversationRecord,
     EvidenceRecord,
+    ExecutionAttemptRecord,
     MessageRecord,
     PlanRecord,
     ResourceRefRecord,
     RunRecord,
     TraceEventRecord,
+    VerificationRecord,
 )
 
 
@@ -65,6 +68,15 @@ class RunRepository(Protocol):
         finished_at_ms: int,
     ) -> CommandResult[RunStatus, RunCommand]:
         """Complete a read-only run once all actions are terminal."""
+
+    def publish_write_plan(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        """Publish a write plan by moving the run into WAITING_APPROVAL."""
 
 
 class MessageRepository(Protocol):
@@ -134,6 +146,12 @@ class PlanRepository(Protocol):
     def activate(self, plan_id: str) -> None:
         """Promote a draft plan to ACTIVE."""
 
+    def wait_for_approval(self, plan_id: str) -> None:
+        """Promote a draft plan to WAITING_APPROVAL."""
+
+    def activate_waiting(self, plan_id: str) -> None:
+        """Promote a WAITING_APPROVAL plan to ACTIVE."""
+
     def complete(self, plan_id: str) -> None:
         """Mark a plan as COMPLETED."""
 
@@ -149,6 +167,9 @@ class ActionRepository(Protocol):
 
     def insert_read_action(self, action: ActionRecord) -> None:
         """Persist a new read action."""
+
+    def insert_write_action(self, action: ActionRecord) -> None:
+        """Persist a new write action."""
 
     def claim_read(
         self,
@@ -186,6 +207,61 @@ class ActionRepository(Protocol):
     ) -> CommandResult[ActionStatus, ActionCommand]:
         """Transition a read action into FAILED."""
 
+    def approve_write(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        """Transition a write action into APPROVED."""
+
+    def reject_write(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        """Transition a write action into REJECTED."""
+
+    def claim_execution(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        """Transition a write action into EXECUTING."""
+
+    def store_success(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        """Transition a write action into EXECUTED."""
+
+    def mark_failed(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        """Transition a write action into FAILED."""
+
+    def store_verification(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+        verification_status: str,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        """Transition a write action into VERIFIED or MISMATCH."""
+
     def mark_dependency_blocked(self, action_id: str, *, updated_at_ms: int) -> bool:
         """Mark one action as dependency blocked when still PROPOSED."""
 
@@ -198,6 +274,9 @@ class ActionRepository(Protocol):
 
 class ResourceRefRepository(Protocol):
     """Resource reference persistence."""
+
+    def get_by_id(self, resource_ref_id: str) -> ResourceRefRecord | None:
+        """Return one resource reference by identifier."""
 
     def get_by_unique_key(
         self,
@@ -253,6 +332,73 @@ class TraceRepository(Protocol):
         """Append a trace event row."""
 
 
+class ApprovalRepository(Protocol):
+    """Approval persistence."""
+
+    def get_by_id(self, approval_id: str) -> ApprovalRecord | None:
+        """Return an approval by identifier."""
+
+    def get_active_by_action(self, action_id: str) -> ApprovalRecord | None:
+        """Return the active approval for one action, if present."""
+
+    def insert(self, record: ApprovalRecord) -> None:
+        """Persist one approval row."""
+
+    def mark_consumed(self, approval_id: str, *, consumed_at_ms: int) -> None:
+        """Mark one approval as consumed."""
+
+    def list_by_action(self, action_id: str) -> tuple[ApprovalRecord, ...]:
+        """Return approvals for one action."""
+
+
+class ExecutionAttemptRepository(Protocol):
+    """Execution attempt persistence."""
+
+    def get_by_id(self, attempt_id: str) -> ExecutionAttemptRecord | None:
+        """Return an execution attempt by identifier."""
+
+    def get_active_by_approval(self, approval_id: str) -> ExecutionAttemptRecord | None:
+        """Return the active execution attempt for one approval, if present."""
+
+    def insert_claimed(self, record: ExecutionAttemptRecord) -> None:
+        """Persist one newly claimed execution attempt."""
+
+    def mark_succeeded(
+        self,
+        attempt_id: str,
+        *,
+        expected_version: int,
+        result_resource_ref_id: str | None,
+        response_metadata_json: str | None,
+        finished_at_ms: int,
+    ) -> ExecutionAttemptRecord:
+        """Mark one attempt as succeeded."""
+
+    def mark_failed(
+        self,
+        attempt_id: str,
+        *,
+        expected_version: int,
+        error_code: str,
+        error_detail_json: str,
+        finished_at_ms: int,
+    ) -> ExecutionAttemptRecord:
+        """Mark one attempt as failed."""
+
+    def list_by_approval(self, approval_id: str) -> tuple[ExecutionAttemptRecord, ...]:
+        """Return attempts for one approval."""
+
+
+class VerificationRepository(Protocol):
+    """Verification persistence."""
+
+    def insert(self, record: VerificationRecord) -> None:
+        """Persist one verification row."""
+
+    def list_by_attempt(self, execution_attempt_id: str) -> tuple[VerificationRecord, ...]:
+        """Return verifications for one attempt."""
+
+
 class UnitOfWork(AbstractContextManager["UnitOfWork"], Protocol):
     """Transactional repository bundle."""
 
@@ -265,6 +411,9 @@ class UnitOfWork(AbstractContextManager["UnitOfWork"], Protocol):
     resource_refs: ResourceRefRepository
     evidence: EvidenceRepository
     action_dependencies: ActionDependencyRepository
+    approvals: ApprovalRepository
+    execution_attempts: ExecutionAttemptRepository
+    verifications: VerificationRepository
     audits: AuditRepository
     traces: TraceRepository
 

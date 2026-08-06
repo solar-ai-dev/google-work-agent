@@ -3,7 +3,14 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from google_work_agent.domain import ResultCode, RunCommand, RunStatus
+from google_work_agent.domain import (
+    ApprovalStatus,
+    ExecutionAttemptStatus,
+    ResultCode,
+    RunCommand,
+    RunStatus,
+    VerificationStatus,
+)
 
 
 class CommandReceiptStatus(StrEnum):
@@ -50,6 +57,14 @@ class EvidenceOriginType(StrEnum):
     GOOGLE_RESOURCE = "GOOGLE_RESOURCE"
     USER_MESSAGE = "USER_MESSAGE"
     DERIVED = "DERIVED"
+
+
+class AttemptOutcome(StrEnum):
+    """Persisted write execution outcome markers."""
+
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    UNKNOWN_RESULT = "UNKNOWN_RESULT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,6 +198,62 @@ class EvidenceRecord:
     excerpt: str
     locator_json: str | None
     created_at_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovalRecord:
+    """Persisted approval projection."""
+
+    id: str
+    action_id: str
+    approval_no: int
+    action_version: int
+    status: ApprovalStatus
+    approved_by_account_id: str
+    approved_by_display: str | None
+    arguments_snapshot_json: str
+    canonical_arguments_hash: str
+    source_snapshot_json: str
+    source_snapshot_hash: str
+    policy_version: str
+    tool_schema_version: str
+    idempotency_key: str
+    recovery_fingerprint: str
+    approved_at_ms: int
+    expires_at_ms: int
+    consumed_at_ms: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionAttemptRecord:
+    """Persisted write execution attempt projection."""
+
+    id: str
+    approval_id: str
+    attempt_no: int
+    status: ExecutionAttemptStatus
+    version: int
+    result_resource_ref_id: str | None
+    response_metadata_json: str | None
+    error_code: str | None
+    error_detail_json: str | None
+    started_at_ms: int
+    finished_at_ms: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class VerificationRecord:
+    """Persisted verification projection."""
+
+    id: str
+    execution_attempt_id: str
+    verification_no: int
+    status: VerificationStatus
+    normalizer_version: str
+    expected_json: str
+    actual_json: str | None
+    diff_json: str
+    verified_at_ms: int
 
 
 @dataclass(frozen=True, slots=True)

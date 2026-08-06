@@ -13,15 +13,18 @@ from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.repositories import (
     SQLiteActionDependencyRepository,
     SQLiteActionRepository,
+    SQLiteApprovalRepository,
     SQLiteAuditRepository,
     SQLiteCommandReceiptRepository,
     SQLiteConversationRepository,
     SQLiteEvidenceRepository,
+    SQLiteExecutionAttemptRepository,
     SQLiteMessageRepository,
     SQLitePlanRepository,
     SQLiteResourceRefRepository,
     SQLiteRunRepository,
     SQLiteTraceRepository,
+    SQLiteVerificationRepository,
 )
 from google_work_agent.ports import UnitOfWork
 
@@ -137,6 +140,9 @@ class FaultInjectingSQLiteUnitOfWork:
         self.resource_refs = SQLiteResourceRefRepository(sqlite_connection)
         self.evidence = SQLiteEvidenceRepository(sqlite_connection)
         self.action_dependencies = SQLiteActionDependencyRepository(sqlite_connection)
+        self.approvals = SQLiteApprovalRepository(sqlite_connection)
+        self.execution_attempts = SQLiteExecutionAttemptRepository(sqlite_connection)
+        self.verifications = SQLiteVerificationRepository(sqlite_connection)
         self.audits = SQLiteAuditRepository(sqlite_connection)
         self.traces = SQLiteTraceRepository(sqlite_connection)
         return self

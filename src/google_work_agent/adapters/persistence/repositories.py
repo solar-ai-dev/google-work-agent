@@ -6,23 +6,28 @@ from json import dumps, loads
 from google_work_agent.domain import (
     ActionCommand,
     ActionStatus,
+    ApprovalStatus,
     CommandResult,
     EffectType,
+    ExecutionAttemptStatus,
     ResultCode,
     RunCommand,
     RunStatus,
+    VerificationStatus,
     transition_action,
     transition_run,
 )
 from google_work_agent.ports import (
     ActionRecord,
     AnswerOnlyResponse,
+    ApprovalRecord,
     AuditEventRecord,
     CommandReceiptRecord,
     CommandReceiptStatus,
     ConversationRecord,
     EvidenceOriginType,
     EvidenceRecord,
+    ExecutionAttemptRecord,
     MessageRecord,
     PlanRecord,
     PlanStatus,
@@ -31,6 +36,7 @@ from google_work_agent.ports import (
     RunRecord,
     StoredResourceType,
     TraceEventRecord,
+    VerificationRecord,
 )
 
 
@@ -220,6 +226,45 @@ class SQLiteRunRepository:
             raise sqlite3.IntegrityError(
                 "read-only run completion affected an unexpected row count"
             )
+        return result
+
+    def publish_write_plan(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+
+        result = transition_run(
+            current.status,
+            command=RunCommand.PUBLISH_PLAN,
+            current_version=current.version,
+            expected_version=expected_version,
+            plan_requires_approval=True,
+        )
+        if not result.applied:
+            return result
+
+        cursor = self._connection.execute(
+            """
+            UPDATE runs
+            SET status = ?, version = ?, finished_at_ms = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (
+                result.current_status.value,
+                result.current_version,
+                finished_at_ms,
+                run_id,
+                current.version,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("write-plan publish affected an unexpected row count")
         return result
 
 
@@ -439,6 +484,28 @@ class SQLitePlanRepository:
         if cursor.rowcount != 1:
             raise sqlite3.IntegrityError("plan activation affected an unexpected row count")
 
+    def wait_for_approval(self, plan_id: str) -> None:
+        cursor = self._connection.execute(
+            "UPDATE plans SET status = 'WAITING_APPROVAL' WHERE id = ? AND status = 'DRAFT';",
+            (plan_id,),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("plan wait-for-approval affected an unexpected row count")
+
+    def activate_waiting(self, plan_id: str) -> None:
+        cursor = self._connection.execute(
+            """
+            UPDATE plans
+            SET status = 'ACTIVE'
+            WHERE id = ? AND status = 'WAITING_APPROVAL';
+            """,
+            (plan_id,),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError(
+                "waiting-approval plan activation affected an unexpected row count"
+            )
+
     def complete(self, plan_id: str) -> None:
         cursor = self._connection.execute(
             "UPDATE plans SET status = 'COMPLETED' WHERE id = ? AND status = 'ACTIVE';",
@@ -491,6 +558,12 @@ class SQLiteActionRepository:
         return None if row is None else _action_record_from_row(row)
 
     def insert_read_action(self, action: ActionRecord) -> None:
+        self._insert_action(action)
+
+    def insert_write_action(self, action: ActionRecord) -> None:
+        self._insert_action(action)
+
+    def _insert_action(self, action: ActionRecord) -> None:
         self._connection.execute(
             """
             INSERT INTO actions (
@@ -575,6 +648,115 @@ class SQLiteActionRepository:
             expected_version=expected_version,
             updated_at_ms=updated_at_ms,
         )
+
+    def approve_write(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        return self._transition_write_action(
+            action_id,
+            command=ActionCommand.APPROVE_ACTION,
+            expected_version=expected_version,
+            updated_at_ms=updated_at_ms,
+        )
+
+    def reject_write(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        return self._transition_write_action(
+            action_id,
+            command=ActionCommand.REJECT_ACTION,
+            expected_version=expected_version,
+            updated_at_ms=updated_at_ms,
+        )
+
+    def claim_execution(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        return self._transition_write_action(
+            action_id,
+            command=ActionCommand.CLAIM_EXECUTION,
+            expected_version=expected_version,
+            updated_at_ms=updated_at_ms,
+        )
+
+    def store_success(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        return self._transition_write_action(
+            action_id,
+            command=ActionCommand.STORE_SUCCESS,
+            expected_version=expected_version,
+            updated_at_ms=updated_at_ms,
+        )
+
+    def mark_failed(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        return self._transition_write_action(
+            action_id,
+            command=ActionCommand.MARK_FAILED,
+            expected_version=expected_version,
+            updated_at_ms=updated_at_ms,
+        )
+
+    def store_verification(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+        verification_status: str,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        current = self.get_by_id(action_id)
+        if current is None:
+            raise LookupError(f"action not found: {action_id}")
+        result = transition_action(
+            ActionStatus(current.status),
+            command=ActionCommand.STORE_VERIFICATION,
+            current_version=current.version,
+            expected_version=expected_version,
+            effect_type=EffectType(current.effect_type),
+            verification_status=VerificationStatus(verification_status),
+        )
+        if not result.applied:
+            return result
+        cursor = self._connection.execute(
+            """
+            UPDATE actions
+            SET status = ?, version = ?, updated_at_ms = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (
+                result.current_status.value,
+                result.current_version,
+                updated_at_ms,
+                action_id,
+                current.version,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("write verification affected an unexpected row count")
+        return result
 
     def mark_dependency_blocked(self, action_id: str, *, updated_at_ms: int) -> bool:
         cursor = self._connection.execute(
@@ -667,12 +849,62 @@ class SQLiteActionRepository:
             raise sqlite3.IntegrityError("read action transition affected an unexpected row count")
         return result
 
+    def _transition_write_action(
+        self,
+        action_id: str,
+        *,
+        command: ActionCommand,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        current = self.get_by_id(action_id)
+        if current is None:
+            raise LookupError(f"action not found: {action_id}")
+        result = transition_action(
+            ActionStatus(current.status),
+            command=command,
+            current_version=current.version,
+            expected_version=expected_version,
+            effect_type=EffectType(current.effect_type),
+        )
+        if not result.applied:
+            return result
+        cursor = self._connection.execute(
+            """
+            UPDATE actions
+            SET status = ?, version = ?, updated_at_ms = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (
+                result.current_status.value,
+                result.current_version,
+                updated_at_ms,
+                action_id,
+                current.version,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("write action transition affected an unexpected row count")
+        return result
+
 
 class SQLiteResourceRefRepository:
     """SQLite resource reference repository."""
 
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
+
+    def get_by_id(self, resource_ref_id: str) -> ResourceRefRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT id, run_id, source, resource_type, resource_id, parent_resource_id,
+                   canonical_url, title, event_time_ms, version_token, metadata_json, captured_at_ms
+            FROM resource_refs
+            WHERE id = ?;
+            """,
+            (resource_ref_id,),
+        ).fetchone()
+        return None if row is None else _resource_ref_record_from_row(row)
 
     def get_by_unique_key(
         self,
@@ -821,6 +1053,304 @@ class SQLiteActionDependencyRepository:
         return tuple(str(row["depends_on_action_id"]) for row in rows)
 
 
+class SQLiteApprovalRepository:
+    """SQLite approval repository."""
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    def get_by_id(self, approval_id: str) -> ApprovalRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT id, action_id, approval_no, action_version, status, approved_by_account_id,
+                   approved_by_display, arguments_snapshot_json, canonical_arguments_hash,
+                   source_snapshot_json, source_snapshot_hash, policy_version,
+                   tool_schema_version, idempotency_key, recovery_fingerprint,
+                   approved_at_ms, expires_at_ms, consumed_at_ms
+            FROM approvals
+            WHERE id = ?;
+            """,
+            (approval_id,),
+        ).fetchone()
+        return None if row is None else _approval_record_from_row(row)
+
+    def get_active_by_action(self, action_id: str) -> ApprovalRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT id, action_id, approval_no, action_version, status, approved_by_account_id,
+                   approved_by_display, arguments_snapshot_json, canonical_arguments_hash,
+                   source_snapshot_json, source_snapshot_hash, policy_version,
+                   tool_schema_version, idempotency_key, recovery_fingerprint,
+                   approved_at_ms, expires_at_ms, consumed_at_ms
+            FROM approvals
+            WHERE action_id = ? AND status = 'ACTIVE'
+            ORDER BY approval_no DESC
+            LIMIT 1;
+            """,
+            (action_id,),
+        ).fetchone()
+        return None if row is None else _approval_record_from_row(row)
+
+    def insert(self, record: ApprovalRecord) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO approvals (
+                id, action_id, approval_no, action_version, status, approved_by_account_id,
+                approved_by_display, arguments_snapshot_json, canonical_arguments_hash,
+                source_snapshot_json, source_snapshot_hash, policy_version, tool_schema_version,
+                idempotency_key, recovery_fingerprint, approved_at_ms, expires_at_ms, consumed_at_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                record.id,
+                record.action_id,
+                record.approval_no,
+                record.action_version,
+                record.status.value,
+                record.approved_by_account_id,
+                record.approved_by_display,
+                record.arguments_snapshot_json,
+                record.canonical_arguments_hash,
+                record.source_snapshot_json,
+                record.source_snapshot_hash,
+                record.policy_version,
+                record.tool_schema_version,
+                record.idempotency_key,
+                record.recovery_fingerprint,
+                record.approved_at_ms,
+                record.expires_at_ms,
+                record.consumed_at_ms,
+            ),
+        )
+
+    def mark_consumed(self, approval_id: str, *, consumed_at_ms: int) -> None:
+        cursor = self._connection.execute(
+            """
+            UPDATE approvals
+            SET status = 'CONSUMED', consumed_at_ms = ?
+            WHERE id = ? AND status = 'ACTIVE';
+            """,
+            (consumed_at_ms, approval_id),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("approval consume affected an unexpected row count")
+
+    def list_by_action(self, action_id: str) -> tuple[ApprovalRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT id, action_id, approval_no, action_version, status, approved_by_account_id,
+                   approved_by_display, arguments_snapshot_json, canonical_arguments_hash,
+                   source_snapshot_json, source_snapshot_hash, policy_version,
+                   tool_schema_version, idempotency_key, recovery_fingerprint,
+                   approved_at_ms, expires_at_ms, consumed_at_ms
+            FROM approvals
+            WHERE action_id = ?
+            ORDER BY approval_no ASC;
+            """,
+            (action_id,),
+        ).fetchall()
+        return tuple(_approval_record_from_row(row) for row in rows)
+
+
+class SQLiteExecutionAttemptRepository:
+    """SQLite execution attempt repository."""
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    def get_by_id(self, attempt_id: str) -> ExecutionAttemptRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT id, approval_id, attempt_no, status, version, result_resource_ref_id,
+                   response_metadata_json, error_code, error_detail_json,
+                   started_at_ms, finished_at_ms
+            FROM execution_attempts
+            WHERE id = ?;
+            """,
+            (attempt_id,),
+        ).fetchone()
+        return None if row is None else _execution_attempt_record_from_row(row)
+
+    def get_active_by_approval(self, approval_id: str) -> ExecutionAttemptRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT id, approval_id, attempt_no, status, version, result_resource_ref_id,
+                   response_metadata_json, error_code, error_detail_json,
+                   started_at_ms, finished_at_ms
+            FROM execution_attempts
+            WHERE approval_id = ?
+              AND status IN ('CLAIMED', 'EXECUTING', 'UNKNOWN_RESULT')
+            ORDER BY attempt_no DESC
+            LIMIT 1;
+            """,
+            (approval_id,),
+        ).fetchone()
+        return None if row is None else _execution_attempt_record_from_row(row)
+
+    def insert_claimed(self, record: ExecutionAttemptRecord) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO execution_attempts (
+                id, approval_id, attempt_no, status, version, result_resource_ref_id,
+                response_metadata_json, error_code, error_detail_json, started_at_ms, finished_at_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                record.id,
+                record.approval_id,
+                record.attempt_no,
+                record.status.value,
+                record.version,
+                record.result_resource_ref_id,
+                record.response_metadata_json,
+                record.error_code,
+                record.error_detail_json,
+                record.started_at_ms,
+                record.finished_at_ms,
+            ),
+        )
+
+    def mark_succeeded(
+        self,
+        attempt_id: str,
+        *,
+        expected_version: int,
+        result_resource_ref_id: str | None,
+        response_metadata_json: str | None,
+        finished_at_ms: int,
+    ) -> ExecutionAttemptRecord:
+        current = self.get_by_id(attempt_id)
+        if current is None:
+            raise LookupError(f"execution attempt not found: {attempt_id}")
+        if current.version != expected_version:
+            raise sqlite3.IntegrityError("execution attempt version conflict")
+        cursor = self._connection.execute(
+            """
+            UPDATE execution_attempts
+            SET status = 'SUCCEEDED',
+                version = version + 1,
+                result_resource_ref_id = ?,
+                response_metadata_json = ?,
+                finished_at_ms = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (
+                result_resource_ref_id,
+                response_metadata_json,
+                finished_at_ms,
+                attempt_id,
+                expected_version,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError(
+                "execution attempt success affected an unexpected row count"
+            )
+        updated = self.get_by_id(attempt_id)
+        if updated is None:
+            raise LookupError(f"execution attempt not found after success: {attempt_id}")
+        return updated
+
+    def mark_failed(
+        self,
+        attempt_id: str,
+        *,
+        expected_version: int,
+        error_code: str,
+        error_detail_json: str,
+        finished_at_ms: int,
+    ) -> ExecutionAttemptRecord:
+        current = self.get_by_id(attempt_id)
+        if current is None:
+            raise LookupError(f"execution attempt not found: {attempt_id}")
+        if current.version != expected_version:
+            raise sqlite3.IntegrityError("execution attempt version conflict")
+        cursor = self._connection.execute(
+            """
+            UPDATE execution_attempts
+            SET status = 'FAILED',
+                version = version + 1,
+                error_code = ?,
+                error_detail_json = ?,
+                finished_at_ms = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (
+                error_code,
+                error_detail_json,
+                finished_at_ms,
+                attempt_id,
+                expected_version,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError(
+                "execution attempt failure affected an unexpected row count"
+            )
+        updated = self.get_by_id(attempt_id)
+        if updated is None:
+            raise LookupError(f"execution attempt not found after failure: {attempt_id}")
+        return updated
+
+    def list_by_approval(self, approval_id: str) -> tuple[ExecutionAttemptRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT id, approval_id, attempt_no, status, version, result_resource_ref_id,
+                   response_metadata_json, error_code, error_detail_json,
+                   started_at_ms, finished_at_ms
+            FROM execution_attempts
+            WHERE approval_id = ?
+            ORDER BY attempt_no ASC;
+            """,
+            (approval_id,),
+        ).fetchall()
+        return tuple(_execution_attempt_record_from_row(row) for row in rows)
+
+
+class SQLiteVerificationRepository:
+    """SQLite verification repository."""
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    def insert(self, record: VerificationRecord) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO verifications (
+                id, execution_attempt_id, verification_no, status, normalizer_version,
+                expected_json, actual_json, diff_json, verified_at_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                record.id,
+                record.execution_attempt_id,
+                record.verification_no,
+                record.status.value,
+                record.normalizer_version,
+                record.expected_json,
+                record.actual_json,
+                record.diff_json,
+                record.verified_at_ms,
+            ),
+        )
+
+    def list_by_attempt(self, execution_attempt_id: str) -> tuple[VerificationRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT id, execution_attempt_id, verification_no, status, normalizer_version,
+                   expected_json, actual_json, diff_json, verified_at_ms
+            FROM verifications
+            WHERE execution_attempt_id = ?
+            ORDER BY verification_no ASC;
+            """,
+            (execution_attempt_id,),
+        ).fetchall()
+        return tuple(_verification_record_from_row(row) for row in rows)
+
+
 class SQLiteAuditRepository:
     """Append-only SQLite audit repository."""
 
@@ -960,6 +1490,67 @@ def _evidence_record_from_row(row: sqlite3.Row) -> EvidenceRecord:
         excerpt=str(row["excerpt"]),
         locator_json=None if row["locator_json"] is None else str(row["locator_json"]),
         created_at_ms=int(row["created_at_ms"]),
+    )
+
+
+def _approval_record_from_row(row: sqlite3.Row) -> ApprovalRecord:
+    return ApprovalRecord(
+        id=str(row["id"]),
+        action_id=str(row["action_id"]),
+        approval_no=int(row["approval_no"]),
+        action_version=int(row["action_version"]),
+        status=ApprovalStatus(str(row["status"])),
+        approved_by_account_id=str(row["approved_by_account_id"]),
+        approved_by_display=(
+            None if row["approved_by_display"] is None else str(row["approved_by_display"])
+        ),
+        arguments_snapshot_json=str(row["arguments_snapshot_json"]),
+        canonical_arguments_hash=str(row["canonical_arguments_hash"]),
+        source_snapshot_json=str(row["source_snapshot_json"]),
+        source_snapshot_hash=str(row["source_snapshot_hash"]),
+        policy_version=str(row["policy_version"]),
+        tool_schema_version=str(row["tool_schema_version"]),
+        idempotency_key=str(row["idempotency_key"]),
+        recovery_fingerprint=str(row["recovery_fingerprint"]),
+        approved_at_ms=int(row["approved_at_ms"]),
+        expires_at_ms=int(row["expires_at_ms"]),
+        consumed_at_ms=_int_or_none(row["consumed_at_ms"]),
+    )
+
+
+def _execution_attempt_record_from_row(row: sqlite3.Row) -> ExecutionAttemptRecord:
+    return ExecutionAttemptRecord(
+        id=str(row["id"]),
+        approval_id=str(row["approval_id"]),
+        attempt_no=int(row["attempt_no"]),
+        status=ExecutionAttemptStatus(str(row["status"])),
+        version=int(row["version"]),
+        result_resource_ref_id=(
+            None if row["result_resource_ref_id"] is None else str(row["result_resource_ref_id"])
+        ),
+        response_metadata_json=(
+            None if row["response_metadata_json"] is None else str(row["response_metadata_json"])
+        ),
+        error_code=None if row["error_code"] is None else str(row["error_code"]),
+        error_detail_json=(
+            None if row["error_detail_json"] is None else str(row["error_detail_json"])
+        ),
+        started_at_ms=int(row["started_at_ms"]),
+        finished_at_ms=_int_or_none(row["finished_at_ms"]),
+    )
+
+
+def _verification_record_from_row(row: sqlite3.Row) -> VerificationRecord:
+    return VerificationRecord(
+        id=str(row["id"]),
+        execution_attempt_id=str(row["execution_attempt_id"]),
+        verification_no=int(row["verification_no"]),
+        status=VerificationStatus(str(row["status"])),
+        normalizer_version=str(row["normalizer_version"]),
+        expected_json=str(row["expected_json"]),
+        actual_json=None if row["actual_json"] is None else str(row["actual_json"]),
+        diff_json=str(row["diff_json"]),
+        verified_at_ms=int(row["verified_at_ms"]),
     )
 
 
