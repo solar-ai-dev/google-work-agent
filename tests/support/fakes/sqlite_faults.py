@@ -11,10 +11,15 @@ from typing import Any, cast
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.repositories import (
+    SQLiteActionDependencyRepository,
+    SQLiteActionRepository,
     SQLiteAuditRepository,
     SQLiteCommandReceiptRepository,
     SQLiteConversationRepository,
+    SQLiteEvidenceRepository,
     SQLiteMessageRepository,
+    SQLitePlanRepository,
+    SQLiteResourceRefRepository,
     SQLiteRunRepository,
     SQLiteTraceRepository,
 )
@@ -79,7 +84,11 @@ class FaultInjectingSQLiteConnection:
                 self._raise_after(SQLiteFaultStage.AFTER_TRACE_INSERT)
             elif normalized.startswith("INSERT INTO AUDIT_EVENTS"):
                 self._raise_after(SQLiteFaultStage.AFTER_AUDIT_INSERT)
-        elif normalized.startswith("UPDATE RUNS"):
+        elif (
+            normalized.startswith("UPDATE RUNS")
+            or normalized.startswith("UPDATE PLANS")
+            or normalized.startswith("UPDATE ACTIONS")
+        ):
             self._raise_after(SQLiteFaultStage.AFTER_AGGREGATE_UPDATE)
         elif normalized.startswith("COMMIT"):
             self._raise_after(SQLiteFaultStage.ON_COMMIT)
@@ -123,6 +132,11 @@ class FaultInjectingSQLiteUnitOfWork:
         self.runs = SQLiteRunRepository(sqlite_connection)
         self.messages = SQLiteMessageRepository(sqlite_connection)
         self.command_receipts = SQLiteCommandReceiptRepository(sqlite_connection)
+        self.plans = SQLitePlanRepository(sqlite_connection)
+        self.actions = SQLiteActionRepository(sqlite_connection)
+        self.resource_refs = SQLiteResourceRefRepository(sqlite_connection)
+        self.evidence = SQLiteEvidenceRepository(sqlite_connection)
+        self.action_dependencies = SQLiteActionDependencyRepository(sqlite_connection)
         self.audits = SQLiteAuditRepository(sqlite_connection)
         self.traces = SQLiteTraceRepository(sqlite_connection)
         return self

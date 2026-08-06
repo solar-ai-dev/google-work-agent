@@ -10,10 +10,15 @@ from google_work_agent.adapters.persistence.migration import (
     normalize_migration_bytes,
 )
 from google_work_agent.adapters.persistence.repositories import (
+    SQLiteActionDependencyRepository,
+    SQLiteActionRepository,
     SQLiteAuditRepository,
     SQLiteCommandReceiptRepository,
     SQLiteConversationRepository,
+    SQLiteEvidenceRepository,
     SQLiteMessageRepository,
+    SQLitePlanRepository,
+    SQLiteResourceRefRepository,
     SQLiteRunRepository,
     SQLiteTraceRepository,
 )
@@ -25,10 +30,15 @@ from google_work_agent.adapters.persistence.unit_of_work import (
 __all__ = [
     "MigrationFile",
     "MigrationResult",
+    "SQLiteActionDependencyRepository",
+    "SQLiteActionRepository",
     "SQLiteAuditRepository",
     "SQLiteCommandReceiptRepository",
     "SQLiteConversationRepository",
+    "SQLiteEvidenceRepository",
     "SQLiteMessageRepository",
+    "SQLitePlanRepository",
+    "SQLiteResourceRefRepository",
     "SQLiteRunRepository",
     "SQLiteTraceRepository",
     "SQLiteUnitOfWork",

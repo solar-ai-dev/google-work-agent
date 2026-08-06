@@ -14,6 +14,44 @@ class CommandReceiptStatus(StrEnum):
     REJECTED = "REJECTED"
 
 
+class PlanStatus(StrEnum):
+    """Persisted plan lifecycle values."""
+
+    DRAFT = "DRAFT"
+    WAITING_APPROVAL = "WAITING_APPROVAL"
+    ACTIVE = "ACTIVE"
+    SUPERSEDED = "SUPERSEDED"
+    CANCELLED = "CANCELLED"
+    COMPLETED = "COMPLETED"
+
+
+class ResourceSource(StrEnum):
+    """Persisted resource source values."""
+
+    GMAIL = "GMAIL"
+    TASKS = "TASKS"
+    CALENDAR = "CALENDAR"
+
+
+class StoredResourceType(StrEnum):
+    """Persisted resource reference type values."""
+
+    THREAD = "THREAD"
+    MESSAGE = "MESSAGE"
+    TASK = "TASK"
+    EVENT = "EVENT"
+    TASK_LIST = "TASK_LIST"
+    CALENDAR = "CALENDAR"
+
+
+class EvidenceOriginType(StrEnum):
+    """Persisted evidence origin values."""
+
+    GOOGLE_RESOURCE = "GOOGLE_RESOURCE"
+    USER_MESSAGE = "USER_MESSAGE"
+    DERIVED = "DERIVED"
+
+
 @dataclass(frozen=True, slots=True)
 class ConversationRecord:
     """Conversation projection used by application services."""
@@ -75,8 +113,76 @@ class CommandReceiptRecord:
     result_code: ResultCode | None
     result_version: int | None
     response: AnswerOnlyResponse | None
+    response_json: str | None
     created_at_ms: int
     completed_at_ms: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class PlanRecord:
+    """Persisted plan projection."""
+
+    id: str
+    run_id: str
+    revision_no: int
+    status: PlanStatus
+    summary_text: str | None
+    created_at_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class ActionRecord:
+    """Persisted action projection."""
+
+    id: str
+    plan_id: str
+    position: int
+    tool_name: str
+    effect_type: str
+    approval_requirement: str
+    verification_policy: str
+    recovery_policy: str
+    target_resource_ref_id: str | None
+    status: str
+    arguments_json: str
+    arguments_hash: str
+    expected_json: str
+    version: int
+    created_at_ms: int
+    updated_at_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceRefRecord:
+    """Persisted resource reference projection."""
+
+    id: str
+    run_id: str
+    source: ResourceSource
+    resource_type: StoredResourceType
+    resource_id: str
+    parent_resource_id: str | None
+    canonical_url: str | None
+    title: str | None
+    event_time_ms: int | None
+    version_token: str | None
+    metadata_json: str
+    captured_at_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceRecord:
+    """Persisted evidence projection."""
+
+    id: str
+    run_id: str
+    origin_type: EvidenceOriginType
+    resource_ref_id: str | None
+    message_id: str | None
+    kind: str
+    excerpt: str
+    locator_json: str | None
+    created_at_ms: int
 
 
 @dataclass(frozen=True, slots=True)

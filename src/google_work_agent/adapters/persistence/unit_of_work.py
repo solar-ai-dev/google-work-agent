@@ -7,10 +7,15 @@ from typing import cast
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.repositories import (
+    SQLiteActionDependencyRepository,
+    SQLiteActionRepository,
     SQLiteAuditRepository,
     SQLiteCommandReceiptRepository,
     SQLiteConversationRepository,
+    SQLiteEvidenceRepository,
     SQLiteMessageRepository,
+    SQLitePlanRepository,
+    SQLiteResourceRefRepository,
     SQLiteRunRepository,
     SQLiteTraceRepository,
 )
@@ -33,6 +38,11 @@ class SQLiteUnitOfWork:
         self.runs = SQLiteRunRepository(connection)
         self.messages = SQLiteMessageRepository(connection)
         self.command_receipts = SQLiteCommandReceiptRepository(connection)
+        self.plans = SQLitePlanRepository(connection)
+        self.actions = SQLiteActionRepository(connection)
+        self.resource_refs = SQLiteResourceRefRepository(connection)
+        self.evidence = SQLiteEvidenceRepository(connection)
+        self.action_dependencies = SQLiteActionDependencyRepository(connection)
         self.audits = SQLiteAuditRepository(connection)
         self.traces = SQLiteTraceRepository(connection)
         return self
