@@ -1,0 +1,32 @@
+{
+  "status": "PASS",
+  "case_counts": {
+    "core": 60,
+    "holdout": 12,
+    "stress": 20
+  },
+  "canonical_user_prompt_count": 92,
+  "fixture_snapshot_count": 14,
+  "resource_counts": {
+    "gmail": 56,
+    "tasks": 42,
+    "calendar": 42,
+    "total": 140
+  },
+  "segment_count": 196,
+  "retrieval_query_count": 92,
+  "agent_tier_a_item_counts": {
+    "request_understanding.classify": 92,
+    "acquisition.plan_sources": 92,
+    "context.select_evidence": 92,
+    "planning.draft_plan": 48,
+    "review.inspect": 92
+  },
+  "json_parse_errors": 0,
+  "duplicate_id_errors": 0,
+  "invalid_reference_errors": 0,
+  "split_leakage_errors": 0,
+  "forbidden_tool_errors": 0,
+  "personal_data_errors": 0,
+  "errors": []
+}

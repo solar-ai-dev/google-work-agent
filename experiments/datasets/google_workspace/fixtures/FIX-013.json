@@ -1,0 +1,77 @@
+{
+  "fixture_snapshot_id": "FIX-013",
+  "fixture_version": "r4-v0.1",
+  "fixture_relation_family": "STRESS-RF-AUTH-MISSING",
+  "base_time": "2026-08-23T09:00:00+09:00",
+  "user_timezone": "Asia/Seoul",
+  "work_hours": {
+    "days": [
+      "MO",
+      "TU",
+      "WE",
+      "TH",
+      "FR"
+    ],
+    "start": "09:00",
+    "end": "18:00"
+  },
+  "default_tasklist_id": "TL-FIX-013-DEFAULT",
+  "default_calendar_id": "CALENDAR-FIX-013-PRIMARY",
+  "gmail_threads": [
+    "GMAIL-FIX-013-001",
+    "GMAIL-FIX-013-002",
+    "GMAIL-FIX-013-003",
+    "GMAIL-FIX-013-004"
+  ],
+  "tasks": [
+    "TASK-FIX-013-001",
+    "TASK-FIX-013-002",
+    "TASK-FIX-013-003"
+  ],
+  "calendar_events": [
+    "CAL-FIX-013-001",
+    "CAL-FIX-013-002",
+    "CAL-FIX-013-003"
+  ],
+  "cross_resource_relations": [
+    {
+      "relation_id": "REL-FIX-013-001",
+      "from": "GMAIL-FIX-013-001",
+      "to": "TASK-FIX-013-001",
+      "type": "request_to_task"
+    },
+    {
+      "relation_id": "REL-FIX-013-002",
+      "from": "TASK-FIX-013-001",
+      "to": "CAL-FIX-013-001",
+      "type": "task_to_work_block"
+    },
+    {
+      "relation_id": "REL-FIX-013-003",
+      "from": "CAL-FIX-013-002",
+      "to": "GMAIL-FIX-013-002",
+      "type": "meeting_followup"
+    }
+  ],
+  "expected_duplicates": [
+    {
+      "resource_ids": [
+        "TASK-FIX-013-001",
+        "TASK-FIX-013-002"
+      ],
+      "duplicate_type": "similar"
+    }
+  ],
+  "expected_conflicts": [],
+  "injection_markers": [],
+  "fault_profiles": [
+    "401",
+    "404"
+  ],
+  "fixture_content_hash": {
+    "status": "TBD",
+    "proposed_algorithm": "sha256(canonical_json_utf8_sort_keys_no_whitespace_excluding_fixture_content_hash)",
+    "value": "0749674ae54caedeb0ff0736bce61725649d741974cf433b30c78af9c0021c01",
+    "requires_contract_confirmation": true
+  }
+}
