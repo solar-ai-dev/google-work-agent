@@ -46,7 +46,7 @@
       "prompt_bundle_version": "agent-r4-v0.1-baseline",
       "prompt_id": "acquisition.plan_sources",
       "prompt_version": "v0.1",
-      "content_hash": "7345f0d2796f5a54ac83e312e11612709d56159435d84dc07abb91735f123aab",
+      "content_hash": "dd1269b8c7334274cef9e9011e9ae3d370d051b83cf8f75470e7f540b29f5006",
       "agent_role": "api_discovery_acquisition",
       "subgraph_name": "acquisition",
       "node_name": "plan_sources",

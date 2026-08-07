@@ -11,6 +11,7 @@ from typing import Literal, Required, TypedDict, cast
 from google_work_agent.application.llm import LLMRuntimeService
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.contracts import (
+    AdditionalAcquisitionRequestV1,
     ApiAcquisitionResult,
     ApiPlanningResult,
     WorkflowPhase,
@@ -163,6 +164,7 @@ class ApiDiscoveryAcquisitionAgent:
         *,
         request_intent: RequestIntentV1,
         request: WorkflowStartRequest,
+        additional_acquisition_request: AdditionalAcquisitionRequestV1 | None = None,
     ) -> SourcePlanningOutputV1:
         llm_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
@@ -170,6 +172,7 @@ class ApiDiscoveryAcquisitionAgent:
                 request_intent=request_intent,
                 request=request,
                 retrieval_budget=self._retrieval_budget,
+                additional_acquisition_request=additional_acquisition_request,
             ),
             output_schema=SOURCE_FETCH_PLAN_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -426,9 +429,12 @@ def _planning_prompt_input(
     request_intent: RequestIntentV1,
     request: WorkflowStartRequest,
     retrieval_budget: RetrievalBudget,
+    additional_acquisition_request: AdditionalAcquisitionRequestV1 | None,
 ) -> dict[str, object]:
     return {
+        "planning_mode": "ADDITIONAL_DATA" if additional_acquisition_request else "INITIAL",
         "request_intent": request_intent,
+        "additional_acquisition_request": additional_acquisition_request,
         "entry_mode": request.entry_mode,
         "selected_resource_ids": list(request.selected_resource_ids),
         "selected_resources": [asdict(resource) for resource in request.selected_resources],

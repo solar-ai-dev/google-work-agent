@@ -148,6 +148,13 @@ Initialize
 - 검토: PASS | REVISE | RETRIEVE_MORE | CONFIRM | BLOCK
 - Domain: ALLOW_READ | REQUIRE_APPROVAL | BLOCK
 
+`ContextRetrievalResultV1.status == NEEDS_MORE_DATA`,
+`WorkAnalysisResultV1.status == NEEDS_MORE_DATA`,
+and `PlanReviewResultV1.status == RETRIEVE_MORE`
+carry `additional_acquisition_request: AdditionalAcquisitionRequestV1 | None`.
+Supervisor uses that structured handoff to route the run back to `SOURCE_PLANNING`
+without inferring source choice from free text.
+
 ## 7. Prompt Registry
 
 Prompt 선택 Key:

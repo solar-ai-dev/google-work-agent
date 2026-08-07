@@ -34,12 +34,16 @@ from google_work_agent.application.workflows.context_retrieval import (
     validate_sufficiency_output_v1,
 )
 from google_work_agent.application.workflows.contracts import (
+    ADDITIONAL_ACQUISITION_ALLOWED_PHASES,
+    ADDITIONAL_ACQUISITION_ALLOWED_RESULTS,
     LLM_PROVIDER_RESULT_FIELDS,
     LLM_PROVIDER_RESULT_OPTIONAL_FIELDS,
     LLM_PROVIDER_RESULT_REQUIRED_FIELDS,
     MULTI_AGENT_GRAPH_STATE_FIELDS,
     PROMPT_REF_FIELDS,
     PROMPT_SELECTION_KEY_FIELDS,
+    AdditionalAcquisitionOriginResult,
+    AdditionalAcquisitionRequestV1,
     AnalysisResult,
     ApiAcquisitionResult,
     ApiPlanningResult,
@@ -53,6 +57,7 @@ from google_work_agent.application.workflows.contracts import (
     RequestUnderstandingResult,
     ReviewResult,
     WorkflowPhase,
+    validate_additional_acquisition_request_v1,
 )
 from google_work_agent.application.workflows.plan_review import (
     PLAN_REVIEW_OUTPUT_SCHEMA,
@@ -112,6 +117,8 @@ from google_work_agent.application.workflows.work_analysis import (
 
 __all__ = [
     "ACQUISITION_RESULT_SCHEMA_VERSION",
+    "ADDITIONAL_ACQUISITION_ALLOWED_PHASES",
+    "ADDITIONAL_ACQUISITION_ALLOWED_RESULTS",
     "ACTION_DRAFT_SCHEMA_VERSION",
     "ACTION_PLAN_DRAFT_OUTPUT_SCHEMA",
     "ACTION_PLAN_DRAFT_SCHEMA_VERSION",
@@ -119,6 +126,8 @@ __all__ = [
     "AcquisitionResultV1",
     "ActionDraftV1",
     "ActionPlanDraftV1",
+    "AdditionalAcquisitionOriginResult",
+    "AdditionalAcquisitionRequestV1",
     "AnalysisResult",
     "AnalysisFindingV1",
     "ApiDiscoveryAcquisitionAgent",
@@ -194,6 +203,7 @@ __all__ = [
     "load_solution_planning_revise_answer_prompt_reference",
     "load_work_analysis_analyze_prompt_reference",
     "validate_action_plan_draft_v1",
+    "validate_additional_acquisition_request_v1",
     "validate_answer_draft_v1",
     "validate_context_retrieval_result_v1",
     "validate_evidence_selection_output_v1",

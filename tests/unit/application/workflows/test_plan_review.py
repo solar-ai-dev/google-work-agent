@@ -207,6 +207,20 @@ def test_inspect_accepts_all_answer_review_results() -> None:
         state_update = agent.build_state_update(result)
 
         assert result["status"] == status
+        expected_request = (
+            {
+                "schema_version": 1,
+                "origin_phase": WorkflowPhase.PLAN_REVIEW.value,
+                "origin_result": ReviewResult.RETRIEVE_MORE.value,
+                "missing_slots": [],
+                "missing_information": [],
+                "evidence_refs": ["evidence-2"],
+                "reason_codes": ["EVIDENCE_SUPPORTED"],
+            }
+            if status == ReviewResult.RETRIEVE_MORE.value
+            else None
+        )
+        assert result["additional_acquisition_request"] == expected_request
         assert prompt_input["review_target"] == "ANSWER"
         assert prompt_input["draft"] == answer_draft
         assert prompt_input["policy_review_context"] == build_policy_review_context_v1()
@@ -259,6 +273,20 @@ def test_inspect_accepts_all_plan_review_results() -> None:
         prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
 
         assert result["status"] == status
+        expected_request = (
+            {
+                "schema_version": 1,
+                "origin_phase": WorkflowPhase.PLAN_REVIEW.value,
+                "origin_result": ReviewResult.RETRIEVE_MORE.value,
+                "missing_slots": [],
+                "missing_information": [],
+                "evidence_refs": ["evidence-2"],
+                "reason_codes": ["SCOPE_EXCEEDED"],
+            }
+            if status == ReviewResult.RETRIEVE_MORE.value
+            else None
+        )
+        assert result["additional_acquisition_request"] == expected_request
         assert prompt_input["review_target"] == "PLAN"
         assert prompt_input["draft"] == plan_draft
         assert runtime.calls[0]["output_schema"] == PLAN_REVIEW_OUTPUT_SCHEMA
@@ -348,6 +376,32 @@ def test_duplicate_issue_ids_unknown_refs_and_answer_action_refs_are_rejected() 
         )
 
 
+def test_retrieve_more_requires_structured_reason_not_message_parsing() -> None:
+    answer_draft = _answer_draft()
+
+    with pytest.raises(
+        PlanReviewValidationError,
+        match=(
+            "additional acquisition request requires at least one of missing_slots, "
+            "missing_information, or reason_codes"
+        ),
+    ):
+        _validate_review_result(
+            _review_output(
+                ReviewResult.RETRIEVE_MORE.value,
+                issues=[
+                    _review_issue(
+                        evidence_refs=["evidence-2"],
+                        reason_codes=[],
+                        message="Search for more background before answering.",
+                    )
+                ],
+            ),
+            answer_draft=answer_draft,
+            plan_draft=None,
+        )
+
+
 def test_recheck_accepts_only_pass_or_block() -> None:
     runtime = FakeLLMRuntime()
     runtime.queued.append(_llm_result(_review_output(ReviewResult.PASS.value)))
@@ -425,6 +479,7 @@ def test_plan_review_exports_are_available() -> None:
     assert hasattr(workflows, "PlanReviewResultV1")
     assert hasattr(workflows, "ReviewIssueV1")
     assert hasattr(workflows, "PolicyReviewContextV1")
+    assert hasattr(workflows, "AdditionalAcquisitionRequestV1")
     assert hasattr(workflows, "build_policy_review_context_v1")
     assert hasattr(workflows, "resolve_review_target")
     assert hasattr(workflows, "validate_plan_review_result_v1")
@@ -546,6 +601,7 @@ def _context_result(
         "selected_segment_ids": ["seg-1"],
         "excluded_resource_handles": [],
         "missing_slots": [],
+        "additional_acquisition_request": None,
         "sufficiency": {
             "schema_version": 1,
             "reason_codes": ["CONTEXT_READY"],
@@ -579,6 +635,7 @@ def _analysis_result() -> dict[str, object]:
         "evidence_refs": ["evidence-1", "evidence-2"],
         "resource_refs": _context_result()["context_bundle"]["resource_refs"],
         "segment_refs": _context_result()["context_bundle"]["segment_refs"],
+        "additional_acquisition_request": None,
         "llm_provider_result": {"provider": "fake"},
     }
 
@@ -691,6 +748,8 @@ def _review_issue(
     affected_action_ids: list[str] | None = None,
     evidence_refs: list[str] | None = None,
     resource_refs: list[str] | None = None,
+    reason_codes: list[str] | None = None,
+    message: str = "Mention the pending task context in the draft.",
 ) -> dict[str, object]:
     if affected_action_ids is None:
         affected_action_ids = []
@@ -698,16 +757,18 @@ def _review_issue(
         evidence_refs = ["evidence-2"]
     if resource_refs is None:
         resource_refs = ["gmail_thread:thread-kim"]
+    if reason_codes is None:
+        reason_codes = ["EVIDENCE_SUPPORTED"]
     return {
         "schema_version": 1,
         "issue_id": issue_id,
         "kind": "MISSING_GOAL_COVERAGE",
-        "message": "Mention the pending task context in the draft.",
+        "message": message,
         "affected_action_ids": affected_action_ids,
         "affected_field_paths": ["$.answer"],
         "evidence_refs": evidence_refs,
         "resource_refs": resource_refs,
-        "reason_codes": ["EVIDENCE_SUPPORTED"],
+        "reason_codes": reason_codes,
     }
 
 

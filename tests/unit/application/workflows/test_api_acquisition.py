@@ -737,6 +737,33 @@ def test_retrieval_ambiguity_uses_planning_confirmation_not_request_understandin
     assert gateway.calls == []
 
 
+def test_additional_acquisition_request_is_forwarded_to_plan_sources_prompt_input() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "source follow-up"})]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+    additional_request = {
+        "schema_version": 1,
+        "origin_phase": WorkflowPhase.WORK_ANALYSIS.value,
+        "origin_result": "NEEDS_MORE_DATA",
+        "missing_slots": [],
+        "missing_information": ["Need the latest owner reply."],
+        "evidence_refs": ["evidence-1"],
+        "reason_codes": ["EVIDENCE_SUPPORTED"],
+    }
+
+    planning = agent.plan_sources(
+        request_intent=_intent(source="GMAIL"),
+        request=_request(),
+        additional_acquisition_request=additional_request,
+    )
+
+    prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
+    assert planning["result"] == ApiPlanningResult.PLAN_READY.value
+    assert prompt_input["planning_mode"] == "ADDITIONAL_DATA"
+    assert prompt_input["additional_acquisition_request"] == additional_request
+
+
 def test_planning_schema_failure_is_not_google_acquisition_failure() -> None:
     runtime = FakeLLMRuntime()
     runtime.queued.append(

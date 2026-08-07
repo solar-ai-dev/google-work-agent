@@ -11,7 +11,13 @@ from typing import Literal, NotRequired, Required, TypedDict, cast
 from google_work_agent.application.llm import LLMRuntimeService
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.api_acquisition import AcquisitionResultV1
-from google_work_agent.application.workflows.contracts import ContextResult, WorkflowPhase
+from google_work_agent.application.workflows.contracts import (
+    AdditionalAcquisitionOriginResult,
+    AdditionalAcquisitionRequestV1,
+    ContextResult,
+    WorkflowPhase,
+    validate_additional_acquisition_request_v1,
+)
 from google_work_agent.application.workflows.request_understanding import RequestIntentV1
 from google_work_agent.ports import (
     OutputSchemaDefinition,
@@ -59,6 +65,7 @@ class ContextRetrievalResultV1(TypedDict):
     selected_segment_ids: list[str]
     excluded_resource_handles: list[str]
     missing_slots: list[str]
+    additional_acquisition_request: AdditionalAcquisitionRequestV1 | None
     sufficiency: dict[str, object]
     llm_provider_result: NotRequired[dict[str, object]]
 
@@ -247,6 +254,11 @@ class ContextRetrievalAgent:
             "selected_segment_ids": list(selection_result["selected_segment_ids"]),
             "excluded_resource_handles": list(selection_result["excluded_resource_handles"]),
             "missing_slots": list(sufficiency_result["missing_slots"]),
+            "additional_acquisition_request": _build_additional_acquisition_request(
+                status=sufficiency_result["status"],
+                missing_slots=sufficiency_result["missing_slots"],
+                context_bundle=context_bundle,
+            ),
             "sufficiency": dict(sufficiency_result["sufficiency"]),
             "llm_provider_result": llm_provider_result,
         }
@@ -433,6 +445,7 @@ def validate_context_retrieval_result_v1(value: object) -> ContextRetrievalResul
             "selected_segment_ids",
             "excluded_resource_handles",
             "missing_slots",
+            "additional_acquisition_request",
             "sufficiency",
             "llm_provider_result",
         },
@@ -441,7 +454,18 @@ def validate_context_retrieval_result_v1(value: object) -> ContextRetrievalResul
     status = _require_string(root, "status", "$")
     if status not in _CONTEXT_RESULT_VALUES:
         raise ContextRetrievalValidationError("$.status is invalid")
-    return cast(ContextRetrievalResultV1, root)
+    result = cast(ContextRetrievalResultV1, root)
+    request = _nullable_mapping(
+        root["additional_acquisition_request"],
+        "$.additional_acquisition_request",
+    )
+    if request is not None:
+        result["additional_acquisition_request"] = validate_additional_acquisition_request_v1(
+            request,
+            allowed_evidence_refs=set(result["context_bundle"]["evidence_refs"]),
+        )
+    _validate_context_result_invariant(result)
+    return result
 
 
 def load_context_select_evidence_prompt_reference(
@@ -601,6 +625,38 @@ def _context_bundle(
         "missing_information": list(missing_information),
         "ambiguity": ambiguity,
     }
+
+
+def _build_additional_acquisition_request(
+    *,
+    status: ContextStatusValue,
+    missing_slots: list[str],
+    context_bundle: ContextBundleV1,
+) -> AdditionalAcquisitionRequestV1 | None:
+    if status != ContextResult.NEEDS_MORE_DATA.value:
+        return None
+    return {
+        "schema_version": 1,
+        "origin_phase": WorkflowPhase.CONTEXT_EVALUATION.value,
+        "origin_result": AdditionalAcquisitionOriginResult.NEEDS_MORE_DATA.value,
+        "missing_slots": list(missing_slots),
+        "missing_information": list(context_bundle["missing_information"]),
+        "evidence_refs": list(context_bundle["evidence_refs"]),
+        "reason_codes": [],
+    }
+
+
+def _validate_context_result_invariant(result: ContextRetrievalResultV1) -> None:
+    status = ContextResult(result["status"])
+    request = result["additional_acquisition_request"]
+    if status is ContextResult.NEEDS_MORE_DATA and request is None:
+        raise ContextRetrievalValidationError(
+            "NEEDS_MORE_DATA requires additional_acquisition_request"
+        )
+    if status is not ContextResult.NEEDS_MORE_DATA and request is not None:
+        raise ContextRetrievalValidationError(
+            "additional_acquisition_request is only allowed for NEEDS_MORE_DATA"
+        )
 
 
 def _unique_resources(segments: list[_SourceSegment]) -> list[_SourceSegment]:

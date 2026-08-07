@@ -295,7 +295,7 @@ sequenceDiagram
     actor U as 사용자
     participant ACQ as API 탐색·수집 Agent
 
-    RET-->>SUP: NEEDS_MORE_DATA<br>missing_slots·acquisition_request
+    RET-->>SUP: NEEDS_MORE_DATA<br>missing_slots·AdditionalAcquisitionRequestV1
     SUP->>SUP: 추가 수집 Round·Budget 검증
     alt 추가 수집 가능
         SUP->>ACQ: 제약된 추가 수집 요청

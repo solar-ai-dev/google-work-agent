@@ -10,7 +10,13 @@ from typing import Literal, NotRequired, Required, TypedDict, cast
 from google_work_agent.application.llm import LLMRuntimeService
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
-from google_work_agent.application.workflows.contracts import ReviewResult, WorkflowPhase
+from google_work_agent.application.workflows.contracts import (
+    AdditionalAcquisitionOriginResult,
+    AdditionalAcquisitionRequestV1,
+    ReviewResult,
+    WorkflowPhase,
+    validate_additional_acquisition_request_v1,
+)
 from google_work_agent.application.workflows.request_understanding import RequestIntentV1
 from google_work_agent.application.workflows.solution_planning import (
     ActionPlanDraftV1,
@@ -50,6 +56,7 @@ class PlanReviewResultV1(TypedDict):
     issues: list[ReviewIssueV1]
     confirmation: dict[str, object] | None
     blockers: list[str]
+    additional_acquisition_request: AdditionalAcquisitionRequestV1 | None
     llm_provider_result: NotRequired[dict[str, object]]
 
 
@@ -374,6 +381,11 @@ def validate_plan_review_result_v1(
         "issues": issues,
         "confirmation": _nullable_mapping(root["confirmation"], "$.confirmation"),
         "blockers": _require_string_list(root["blockers"], "$.blockers"),
+        "additional_acquisition_request": _build_additional_acquisition_request(
+            status=cast(ReviewStatusValue, status),
+            issues=issues,
+            allowed_evidence_refs=refs["evidence_ids"],
+        ),
     }
     if "llm_provider_result" in root:
         result["llm_provider_result"] = _require_mapping(
@@ -535,6 +547,15 @@ def _validate_plan_review_invariant(
         raise PlanReviewValidationError("CONFIRM requires confirmation")
     if status is ReviewResult.BLOCK and not result["blockers"]:
         raise PlanReviewValidationError("BLOCK requires blockers")
+    if status is ReviewResult.RETRIEVE_MORE and result["additional_acquisition_request"] is None:
+        raise PlanReviewValidationError("RETRIEVE_MORE requires additional_acquisition_request")
+    if (
+        status is not ReviewResult.RETRIEVE_MORE
+        and result["additional_acquisition_request"] is not None
+    ):
+        raise PlanReviewValidationError(
+            "additional_acquisition_request is only allowed for RETRIEVE_MORE"
+        )
     if target_kind == "ANSWER":
         for issue in result["issues"]:
             if issue["affected_action_ids"]:
@@ -560,6 +581,47 @@ def _reference_space(
         },
         "action_ids": action_ids,
     }
+
+
+def _build_additional_acquisition_request(
+    *,
+    status: ReviewStatusValue,
+    issues: list[ReviewIssueV1],
+    allowed_evidence_refs: set[str],
+) -> AdditionalAcquisitionRequestV1 | None:
+    if status != ReviewResult.RETRIEVE_MORE.value:
+        return None
+    try:
+        return validate_additional_acquisition_request_v1(
+            {
+                "schema_version": 1,
+                "origin_phase": WorkflowPhase.PLAN_REVIEW.value,
+                "origin_result": AdditionalAcquisitionOriginResult.RETRIEVE_MORE.value,
+                "missing_slots": [],
+                "missing_information": [],
+                "evidence_refs": _merge_issue_string_refs(issues, key="evidence_refs"),
+                "reason_codes": _merge_issue_string_refs(issues, key="reason_codes"),
+            },
+            allowed_evidence_refs=allowed_evidence_refs,
+        )
+    except ValueError as error:
+        raise PlanReviewValidationError(str(error)) from error
+
+
+def _merge_issue_string_refs(
+    issues: list[ReviewIssueV1],
+    *,
+    key: Literal["evidence_refs", "reason_codes"],
+) -> list[str]:
+    seen: set[str] = set()
+    merged: list[str] = []
+    for issue in issues:
+        for item in issue[key]:
+            if item in seen:
+                continue
+            seen.add(item)
+            merged.append(item)
+    return merged
 
 
 def _validated_string_refs(

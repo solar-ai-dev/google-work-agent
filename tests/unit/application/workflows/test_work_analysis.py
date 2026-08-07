@@ -91,6 +91,7 @@ def test_work_analysis_builds_complete_result_and_state_handoff() -> None:
         "evidence_refs",
         "resource_refs",
         "segment_refs",
+        "additional_acquisition_request",
         "llm_provider_result",
     }
     assert result["status"] == AnalysisResult.COMPLETE.value
@@ -201,6 +202,15 @@ def test_needs_more_data_requires_missing_information_without_external_call() ->
 
     assert result["status"] == AnalysisResult.NEEDS_MORE_DATA.value
     assert result["missing_information"] == ["Need the current due date."]
+    assert result["additional_acquisition_request"] == {
+        "schema_version": 1,
+        "origin_phase": WorkflowPhase.WORK_ANALYSIS.value,
+        "origin_result": AnalysisResult.NEEDS_MORE_DATA.value,
+        "missing_slots": [],
+        "missing_information": ["Need the current due date."],
+        "evidence_refs": ["evidence-1"],
+        "reason_codes": [],
+    }
     assert state_update["workflow_phase"] == WorkflowPhase.WORK_ANALYSIS.value
     assert len(runtime.calls) == 1
 
@@ -331,6 +341,7 @@ def test_work_analysis_exports_do_not_change_existing_workflow_contracts() -> No
     assert hasattr(workflows, "WorkAnalysisResultV1")
     assert hasattr(workflows, "AnalysisFindingV1")
     assert hasattr(workflows, "validate_work_analysis_result_v1")
+    assert hasattr(workflows, "AdditionalAcquisitionRequestV1")
 
 
 def _agent(runtime: FakeLLMRuntime) -> WorkAnalysisAgent:
@@ -438,6 +449,7 @@ def _context_result(
         "selected_segment_ids": ["seg-1"],
         "excluded_resource_handles": [],
         "missing_slots": [],
+        "additional_acquisition_request": None,
         "sufficiency": {
             "schema_version": 1,
             "reason_codes": ["CONTEXT_READY"],

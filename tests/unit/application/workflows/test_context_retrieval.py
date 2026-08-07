@@ -100,6 +100,7 @@ def test_context_retrieval_builds_sufficient_context_result() -> None:
         "selected_segment_ids",
         "excluded_resource_handles",
         "missing_slots",
+        "additional_acquisition_request",
         "sufficiency",
         "llm_provider_result",
     }
@@ -213,6 +214,20 @@ def test_sufficiency_all_context_results_are_llm_contract_outputs(status: str) -
     )
 
     assert result["status"] == status
+    expected_request = (
+        None
+        if status != ContextResult.NEEDS_MORE_DATA.value
+        else {
+            "schema_version": 1,
+            "origin_phase": WorkflowPhase.CONTEXT_EVALUATION.value,
+            "origin_result": ContextResult.NEEDS_MORE_DATA.value,
+            "missing_slots": ["more context"],
+            "missing_information": ["more context"],
+            "evidence_refs": ["evidence-1"],
+            "reason_codes": [],
+        }
+    )
+    assert result["additional_acquisition_request"] == expected_request
     assert len(runtime.calls) == 2
 
 
@@ -342,6 +357,7 @@ def test_context_retrieval_exports_do_not_change_existing_workflow_contracts() -
     assert hasattr(workflows, "ContextRetrievalResultV1")
     assert hasattr(workflows, "ContextBundleV1")
     assert hasattr(workflows, "EvidenceDraftV1")
+    assert hasattr(workflows, "AdditionalAcquisitionRequestV1")
 
 
 def _agent(

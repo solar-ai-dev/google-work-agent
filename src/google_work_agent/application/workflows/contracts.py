@@ -1,7 +1,7 @@
 """Workflow contracts taken from the agent workflow design document."""
 
 from enum import StrEnum
-from typing import NotRequired, TypedDict
+from typing import Literal, NotRequired, Required, TypedDict
 
 
 class MultiAgentGraphState(TypedDict):
@@ -126,6 +126,25 @@ class DomainValidationResult(StrEnum):
     BLOCK = "BLOCK"
 
 
+class AdditionalAcquisitionOriginResult(StrEnum):
+    """Structured retrieval-redirection results understood by the supervisor."""
+
+    NEEDS_MORE_DATA = "NEEDS_MORE_DATA"
+    RETRIEVE_MORE = "RETRIEVE_MORE"
+
+
+class AdditionalAcquisitionRequestV1(TypedDict):
+    """Structured request for another Stage 5 source-planning round."""
+
+    schema_version: Required[Literal[1]]
+    origin_phase: str
+    origin_result: str
+    missing_slots: list[str]
+    missing_information: list[str]
+    evidence_refs: list[str]
+    reason_codes: list[str]
+
+
 class PromptSelectionKey(TypedDict):
     """Prompt selection key fields defined by `docs/06-agent-workflow.md` section 7."""
 
@@ -167,6 +186,18 @@ class LlmProviderResult(TypedDict):
     fallback_reason: NotRequired[str]
 
 
+ADDITIONAL_ACQUISITION_ALLOWED_PHASES = frozenset(
+    {
+        WorkflowPhase.CONTEXT_EVALUATION.value,
+        WorkflowPhase.WORK_ANALYSIS.value,
+        WorkflowPhase.PLAN_REVIEW.value,
+    }
+)
+ADDITIONAL_ACQUISITION_ALLOWED_RESULTS = frozenset(
+    item.value for item in AdditionalAcquisitionOriginResult
+)
+
+
 MULTI_AGENT_GRAPH_STATE_FIELDS = frozenset(MultiAgentGraphState.__annotations__)
 PROMPT_SELECTION_KEY_FIELDS = frozenset(PromptSelectionKey.__annotations__)
 PROMPT_REF_FIELDS = frozenset(PromptRef.__annotations__)
@@ -174,7 +205,95 @@ LLM_PROVIDER_RESULT_FIELDS = frozenset(LlmProviderResult.__annotations__)
 LLM_PROVIDER_RESULT_REQUIRED_FIELDS = frozenset(LlmProviderResult.__required_keys__)
 LLM_PROVIDER_RESULT_OPTIONAL_FIELDS = frozenset(LlmProviderResult.__optional_keys__)
 
+
+def validate_additional_acquisition_request_v1(
+    value: object,
+    *,
+    allowed_evidence_refs: set[str] | None = None,
+) -> AdditionalAcquisitionRequestV1:
+    if not isinstance(value, dict):
+        raise ValueError("additional acquisition request must be an object")
+    required = {
+        "schema_version",
+        "origin_phase",
+        "origin_result",
+        "missing_slots",
+        "missing_information",
+        "evidence_refs",
+        "reason_codes",
+    }
+    actual = set(value)
+    missing = required - actual
+    extra = actual - required
+    if missing:
+        raise ValueError(
+            f"additional acquisition request missing required fields: {sorted(missing)}"
+        )
+    if extra:
+        raise ValueError(f"additional acquisition request has unsupported fields: {sorted(extra)}")
+    schema_version = value["schema_version"]
+    if schema_version != 1:
+        raise ValueError("additional acquisition request schema_version must be 1")
+    origin_phase = _require_string(value["origin_phase"], "origin_phase")
+    if origin_phase not in ADDITIONAL_ACQUISITION_ALLOWED_PHASES:
+        raise ValueError("additional acquisition request origin_phase is invalid")
+    origin_result = _require_string(value["origin_result"], "origin_result")
+    if origin_result not in ADDITIONAL_ACQUISITION_ALLOWED_RESULTS:
+        raise ValueError("additional acquisition request origin_result is invalid")
+    evidence_refs = _require_string_list(value["evidence_refs"], "evidence_refs")
+    missing_slots = _require_string_list(value["missing_slots"], "missing_slots")
+    missing_information = _require_string_list(
+        value["missing_information"],
+        "missing_information",
+    )
+    reason_codes = _require_string_list(value["reason_codes"], "reason_codes")
+    if not (missing_slots or missing_information or reason_codes):
+        raise ValueError(
+            "additional acquisition request requires at least one of missing_slots, "
+            "missing_information, or reason_codes"
+        )
+    if allowed_evidence_refs is not None:
+        for evidence_ref in evidence_refs:
+            if evidence_ref not in allowed_evidence_refs:
+                raise ValueError(
+                    "additional acquisition request evidence reference does not exist: "
+                    f"{evidence_ref}"
+                )
+    return {
+        "schema_version": 1,
+        "origin_phase": origin_phase,
+        "origin_result": origin_result,
+        "missing_slots": missing_slots,
+        "missing_information": missing_information,
+        "evidence_refs": evidence_refs,
+        "reason_codes": reason_codes,
+    }
+
+
+def _require_string(value: object, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"additional acquisition request {field_name} must be a string")
+    return value
+
+
+def _require_string_list(value: object, field_name: str) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"additional acquisition request {field_name} must be a list")
+    result: list[str] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, str):
+            raise ValueError(
+                f"additional acquisition request {field_name}[{index}] must be a string"
+            )
+        result.append(item)
+    return result
+
+
 __all__ = [
+    "ADDITIONAL_ACQUISITION_ALLOWED_PHASES",
+    "ADDITIONAL_ACQUISITION_ALLOWED_RESULTS",
+    "AdditionalAcquisitionOriginResult",
+    "AdditionalAcquisitionRequestV1",
     "AnalysisResult",
     "ApiAcquisitionResult",
     "ApiPlanningResult",
@@ -193,5 +312,6 @@ __all__ = [
     "PromptSelectionKey",
     "RequestUnderstandingResult",
     "ReviewResult",
+    "validate_additional_acquisition_request_v1",
     "WorkflowPhase",
 ]

@@ -551,6 +551,7 @@ def _context_result() -> dict[str, object]:
         "selected_segment_ids": ["seg-1"],
         "excluded_resource_handles": [],
         "missing_slots": [],
+        "additional_acquisition_request": None,
         "sufficiency": {
             "schema_version": 1,
             "reason_codes": ["CONTEXT_READY"],
@@ -584,6 +585,7 @@ def _analysis_result() -> dict[str, object]:
         "evidence_refs": ["evidence-1", "evidence-2"],
         "resource_refs": _context_result()["context_bundle"]["resource_refs"],
         "segment_refs": _context_result()["context_bundle"]["segment_refs"],
+        "additional_acquisition_request": None,
         "llm_provider_result": {"provider": "fake"},
     }
 

@@ -10,7 +10,13 @@ from typing import Literal, NotRequired, Required, TypedDict, cast
 from google_work_agent.application.llm import LLMRuntimeService
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
-from google_work_agent.application.workflows.contracts import AnalysisResult, WorkflowPhase
+from google_work_agent.application.workflows.contracts import (
+    AdditionalAcquisitionOriginResult,
+    AdditionalAcquisitionRequestV1,
+    AnalysisResult,
+    WorkflowPhase,
+    validate_additional_acquisition_request_v1,
+)
 from google_work_agent.application.workflows.request_understanding import RequestIntentV1
 from google_work_agent.ports import (
     OutputSchemaDefinition,
@@ -55,6 +61,7 @@ class WorkAnalysisResultV1(TypedDict):
     evidence_refs: list[str]
     resource_refs: list[dict[str, object]]
     segment_refs: list[dict[str, object]]
+    additional_acquisition_request: AdditionalAcquisitionRequestV1 | None
     llm_provider_result: NotRequired[dict[str, object]]
 
 
@@ -215,20 +222,28 @@ def validate_work_analysis_result_v1(
         for index, item in enumerate(_require_list(root["findings"], "$.findings"))
     ]
     _validate_unique_finding_ids(findings)
+    missing_information = _require_string_list(
+        root["missing_information"],
+        "$.missing_information",
+    )
+    evidence_refs = _validated_evidence_refs(root["evidence_refs"], refs)
     result: WorkAnalysisResultV1 = {
         "schema_version": 1,
         "status": cast(AnalysisStatusValue, status),
         "summary": _require_string(root, "summary", "$"),
         "findings": findings,
-        "missing_information": _require_string_list(
-            root["missing_information"],
-            "$.missing_information",
-        ),
+        "missing_information": missing_information,
         "confirmation": _nullable_mapping(root["confirmation"], "$.confirmation"),
         "blockers": _require_string_list(root["blockers"], "$.blockers"),
-        "evidence_refs": _validated_evidence_refs(root["evidence_refs"], refs),
+        "evidence_refs": evidence_refs,
         "resource_refs": _validated_resource_ref_objects(root["resource_refs"], refs),
         "segment_refs": _validated_segment_ref_objects(root["segment_refs"], refs),
+        "additional_acquisition_request": _build_additional_acquisition_request(
+            status=cast(AnalysisStatusValue, status),
+            findings=findings,
+            missing_information=missing_information,
+            evidence_refs=evidence_refs,
+        ),
     }
     if "llm_provider_result" in root:
         result["llm_provider_result"] = _require_mapping(
@@ -334,6 +349,54 @@ def _validate_result_invariant(result: WorkAnalysisResultV1) -> None:
         raise WorkAnalysisValidationError("NEEDS_CONFIRMATION requires confirmation")
     if status is AnalysisResult.BLOCKED and not result["blockers"]:
         raise WorkAnalysisValidationError("BLOCKED requires blockers")
+    if (
+        status is AnalysisResult.NEEDS_MORE_DATA
+        and result["additional_acquisition_request"] is None
+    ):
+        raise WorkAnalysisValidationError("NEEDS_MORE_DATA requires additional_acquisition_request")
+    if (
+        status is not AnalysisResult.NEEDS_MORE_DATA
+        and result["additional_acquisition_request"] is not None
+    ):
+        raise WorkAnalysisValidationError(
+            "additional_acquisition_request is only allowed for NEEDS_MORE_DATA"
+        )
+
+
+def _build_additional_acquisition_request(
+    *,
+    status: AnalysisStatusValue,
+    findings: list[AnalysisFindingV1],
+    missing_information: list[str],
+    evidence_refs: list[str],
+) -> AdditionalAcquisitionRequestV1 | None:
+    if status != AnalysisResult.NEEDS_MORE_DATA.value:
+        return None
+    reason_codes = _merged_reason_codes(findings)
+    return validate_additional_acquisition_request_v1(
+        {
+            "schema_version": 1,
+            "origin_phase": WorkflowPhase.WORK_ANALYSIS.value,
+            "origin_result": AdditionalAcquisitionOriginResult.NEEDS_MORE_DATA.value,
+            "missing_slots": [],
+            "missing_information": list(missing_information),
+            "evidence_refs": list(evidence_refs),
+            "reason_codes": reason_codes,
+        },
+        allowed_evidence_refs=set(evidence_refs),
+    )
+
+
+def _merged_reason_codes(findings: list[AnalysisFindingV1]) -> list[str]:
+    seen: set[str] = set()
+    merged: list[str] = []
+    for finding in findings:
+        for code in finding["reason_codes"]:
+            if code in seen:
+                continue
+            seen.add(code)
+            merged.append(code)
+    return merged
 
 
 class _ReferenceSpace(TypedDict):

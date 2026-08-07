@@ -1,12 +1,17 @@
 from enum import StrEnum
 
+import pytest
+
 from google_work_agent.application.workflows import (
+    ADDITIONAL_ACQUISITION_ALLOWED_PHASES,
+    ADDITIONAL_ACQUISITION_ALLOWED_RESULTS,
     LLM_PROVIDER_RESULT_FIELDS,
     LLM_PROVIDER_RESULT_OPTIONAL_FIELDS,
     LLM_PROVIDER_RESULT_REQUIRED_FIELDS,
     MULTI_AGENT_GRAPH_STATE_FIELDS,
     PROMPT_REF_FIELDS,
     PROMPT_SELECTION_KEY_FIELDS,
+    AdditionalAcquisitionOriginResult,
     AnalysisResult,
     ApiAcquisitionResult,
     ApiPlanningResult,
@@ -16,6 +21,7 @@ from google_work_agent.application.workflows import (
     RequestUnderstandingResult,
     ReviewResult,
     WorkflowPhase,
+    validate_additional_acquisition_request_v1,
 )
 
 
@@ -152,6 +158,62 @@ def test_domain_validation_result_values_match_workflow_document() -> None:
         "REQUIRE_APPROVAL",
         "BLOCK",
     )
+
+
+def test_additional_acquisition_origin_result_values_match_gap_a_contract() -> None:
+    assert _values(AdditionalAcquisitionOriginResult) == (
+        "NEEDS_MORE_DATA",
+        "RETRIEVE_MORE",
+    )
+    assert {
+        "CONTEXT_EVALUATION",
+        "WORK_ANALYSIS",
+        "PLAN_REVIEW",
+    } == ADDITIONAL_ACQUISITION_ALLOWED_PHASES
+    assert {
+        "NEEDS_MORE_DATA",
+        "RETRIEVE_MORE",
+    } == ADDITIONAL_ACQUISITION_ALLOWED_RESULTS
+
+
+def test_additional_acquisition_request_validator_accepts_minimal_runtime_contract() -> None:
+    request = validate_additional_acquisition_request_v1(
+        {
+            "schema_version": 1,
+            "origin_phase": "WORK_ANALYSIS",
+            "origin_result": "NEEDS_MORE_DATA",
+            "missing_slots": [],
+            "missing_information": ["Need the current due date."],
+            "evidence_refs": ["evidence-1"],
+            "reason_codes": ["EVIDENCE_SUPPORTED"],
+        },
+        allowed_evidence_refs={"evidence-1"},
+    )
+
+    assert request["origin_phase"] == "WORK_ANALYSIS"
+    assert request["origin_result"] == "NEEDS_MORE_DATA"
+
+
+def test_additional_acquisition_request_rejects_empty_handoff_reason() -> None:
+    with pytest.raises(
+        ValueError,
+        match=(
+            "additional acquisition request requires at least one of missing_slots, "
+            "missing_information, or reason_codes"
+        ),
+    ):
+        validate_additional_acquisition_request_v1(
+            {
+                "schema_version": 1,
+                "origin_phase": "PLAN_REVIEW",
+                "origin_result": "RETRIEVE_MORE",
+                "missing_slots": [],
+                "missing_information": [],
+                "evidence_refs": ["evidence-1"],
+                "reason_codes": [],
+            },
+            allowed_evidence_refs={"evidence-1"},
+        )
 
 
 def test_prompt_selection_key_fields_match_workflow_document() -> None:
