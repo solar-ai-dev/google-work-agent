@@ -171,6 +171,7 @@ class SolutionPlanningAgent:
         answer_only_prompt_ref: PromptReference | None = None,
         draft_plan_prompt_ref: PromptReference | None = None,
         revise_answer_prompt_ref: PromptReference | None = None,
+        revise_plan_prompt_ref: PromptReference | None = None,
         tool_registry: SignedToolRegistry | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
@@ -182,6 +183,9 @@ class SolutionPlanningAgent:
         )
         self._revise_answer_prompt_ref = (
             revise_answer_prompt_ref or load_solution_planning_revise_answer_prompt_reference()
+        )
+        self._revise_plan_prompt_ref = (
+            revise_plan_prompt_ref or load_solution_planning_revise_plan_prompt_reference()
         )
         self._tool_registry = tool_registry or build_p0_tool_registry()
 
@@ -296,6 +300,49 @@ class SolutionPlanningAgent:
         result = validate_answer_draft_v1(
             llm_result.structured_output,
             analysis_result=analysis_result,
+        )
+        result["llm_provider_result"] = _provider_summary(llm_result)
+        return result
+
+    def revise_plan(
+        self,
+        *,
+        request_intent: RequestIntentV1,
+        plan_draft: ActionPlanDraftV1,
+        review_issues: list[dict[str, object]],
+        review_summary: str | None,
+        context_result: ContextRetrievalResultV1,
+        analysis_result: WorkAnalysisResultV1,
+        request: WorkflowStartRequest,
+    ) -> ActionPlanDraftV1:
+        llm_result = self._llm_runtime.invoke_structured(
+            prompt_ref=self._revise_plan_prompt_ref,
+            prompt_input={
+                "request_text": request.request_text,
+                "request_intent": request_intent,
+                "plan_draft": plan_draft,
+                "review_summary": review_summary,
+                "review_issues": [dict(issue) for issue in review_issues],
+                "context_status": context_result["status"],
+                "context_bundle": context_result["context_bundle"],
+                "evidence_drafts": context_result["evidence_drafts"],
+                "analysis_result": analysis_result,
+                "source_content_is_untrusted": True,
+            },
+            output_schema=ACTION_PLAN_DRAFT_OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(
+                request_id=request.correlation.request_id,
+                command_id=request.correlation.command_id,
+                conversation_id=request.conversation_id,
+                run_id=request.run_id,
+                langgraph_thread_id=request.workflow_key,
+                llm_call_id=f"{request.run_id}:planning.revise_plan",
+            ),
+        )
+        result = validate_action_plan_draft_v1(
+            llm_result.structured_output,
+            analysis_result=analysis_result,
+            tool_registry=self._tool_registry,
         )
         result["llm_provider_result"] = _provider_summary(llm_result)
         return result
@@ -501,6 +548,15 @@ def load_solution_planning_revise_answer_prompt_reference(
 ) -> PromptReference:
     return _load_prompt_reference(
         "planning.revise_answer",
+        manifest_path or _default_prompt_manifest_path(),
+    )
+
+
+def load_solution_planning_revise_plan_prompt_reference(
+    manifest_path: Path | None = None,
+) -> PromptReference:
+    return _load_prompt_reference(
+        "planning.revise_plan",
         manifest_path or _default_prompt_manifest_path(),
     )
 
@@ -895,6 +951,7 @@ __all__ = [
     "load_solution_planning_answer_only_prompt_reference",
     "load_solution_planning_draft_plan_prompt_reference",
     "load_solution_planning_revise_answer_prompt_reference",
+    "load_solution_planning_revise_plan_prompt_reference",
     "validate_action_plan_draft_v1",
     "validate_answer_draft_v1",
 ]

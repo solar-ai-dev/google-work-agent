@@ -144,6 +144,7 @@ from google_work_agent.application.workflows.solution_planning import (
     load_solution_planning_answer_only_prompt_reference,
     load_solution_planning_draft_plan_prompt_reference,
     load_solution_planning_revise_answer_prompt_reference,
+    load_solution_planning_revise_plan_prompt_reference,
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
@@ -282,6 +283,7 @@ __all__ = [
     "load_solution_planning_answer_only_prompt_reference",
     "load_solution_planning_draft_plan_prompt_reference",
     "load_solution_planning_revise_answer_prompt_reference",
+    "load_solution_planning_revise_plan_prompt_reference",
     "load_work_analysis_analyze_prompt_reference",
     "validate_action_plan_draft_v1",
     "validate_additional_acquisition_request_v1",

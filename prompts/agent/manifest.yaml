@@ -213,14 +213,14 @@
     {
       "prompt_bundle_version": "agent-r4-v0.1-baseline",
       "prompt_id": "planning.revise_plan",
-      "prompt_version": "TBD",
-      "content_hash": "TBD",
+      "prompt_version": "v0.1",
+      "content_hash": "625326778cb3d548466b7258ecee77e12b3f17dc6415793fd956442aad3e4bb8",
       "agent_role": "solution_planning",
       "subgraph_name": "planning",
       "node_name": "revise_plan",
-      "node_state": "RESERVED",
+      "node_state": "BASELINE",
       "tier": "Tier B",
-      "purpose": "Reserved for later dataset after vertical flow or failure traces.",
+      "purpose": "Revise an existing action plan draft using structured review feedback without expanding scope.",
       "input_schema_version": "agent-node-input-v0.1",
       "output_schema_version": "agent-node-output-v0.1"
     },

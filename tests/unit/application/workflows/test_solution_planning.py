@@ -18,6 +18,7 @@ from google_work_agent.application.workflows import (
     load_solution_planning_answer_only_prompt_reference,
     load_solution_planning_draft_plan_prompt_reference,
     load_solution_planning_revise_answer_prompt_reference,
+    load_solution_planning_revise_plan_prompt_reference,
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
@@ -67,6 +68,19 @@ REVISE_ANSWER_PROMPT_REF = PromptReference(
     node_name="revise_answer",
     node_state="BASELINE",
     purpose="revise_answer",
+    input_schema_version="agent-node-input-v0.1",
+    output_schema_version="agent-node-output-v0.1",
+)
+REVISE_PLAN_PROMPT_REF = PromptReference(
+    prompt_bundle_version="agent-r4-v0.1-baseline",
+    prompt_id="planning.revise_plan",
+    prompt_version="v0.1",
+    content_hash="hash",
+    agent_role="solution_planning",
+    subgraph_name="planning",
+    node_name="revise_plan",
+    node_state="BASELINE",
+    purpose="revise_plan",
     input_schema_version="agent-node-input-v0.1",
     output_schema_version="agent-node-output-v0.1",
 )
@@ -254,6 +268,129 @@ def test_revise_answer_uses_existing_answer_and_review_issues() -> None:
     assert prompt_input["analysis_result"] == _analysis_result()
     assert prompt_input["source_content_is_untrusted"] is True
     assert result["status"] == PlanningResult.ANSWER_ONLY.value
+
+
+def test_revise_plan_uses_existing_plan_and_review_issues() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            _plan_output(
+                PlanningResult.PLAN_READY.value,
+                actions=[
+                    _action(
+                        "action-1",
+                        1,
+                        effect="READ",
+                        tool_name="gmail_get_thread",
+                        evidence_refs=["evidence-1"],
+                        resource_refs=["gmail_thread:thread-kim"],
+                    )
+                ],
+                evidence_refs=["evidence-1"],
+            )
+        )
+    )
+    agent = _agent(runtime)
+    plan_draft = validate_action_plan_draft_v1(
+        _plan_output(PlanningResult.PLAN_READY.value),
+        analysis_result=_analysis_result(),
+    )
+    review_issues = [_plan_review_issue()]
+
+    result = agent.revise_plan(
+        request_intent=_intent(),
+        plan_draft=plan_draft,
+        review_issues=review_issues,
+        review_summary="Remove the unnecessary task creation step.",
+        context_result=_context_result(),
+        analysis_result=_analysis_result(),
+        request=_request(),
+    )
+
+    prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
+    prompt_ref = cast(PromptReference, runtime.calls[0]["prompt_ref"])
+    assert prompt_ref.prompt_id == "planning.revise_plan"
+    assert runtime.calls[0]["output_schema"] == ACTION_PLAN_DRAFT_OUTPUT_SCHEMA
+    assert prompt_input["plan_draft"] == plan_draft
+    assert prompt_input["review_summary"] == "Remove the unnecessary task creation step."
+    assert prompt_input["review_issues"] == review_issues
+    assert prompt_input["analysis_result"] == _analysis_result()
+    assert prompt_input["source_content_is_untrusted"] is True
+    assert result["status"] == PlanningResult.PLAN_READY.value
+
+
+def test_revise_plan_state_update_replaces_plan_and_clears_answer_draft() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            _plan_output(
+                PlanningResult.PLAN_READY.value,
+                actions=[
+                    _action(
+                        "action-1",
+                        1,
+                        effect="READ",
+                        tool_name="gmail_get_thread",
+                        evidence_refs=["evidence-1"],
+                        resource_refs=["gmail_thread:thread-kim"],
+                    )
+                ],
+                evidence_refs=["evidence-1"],
+            )
+        )
+    )
+    agent = _agent(runtime)
+    revised = agent.revise_plan(
+        request_intent=_intent(),
+        plan_draft=validate_action_plan_draft_v1(
+            _plan_output(PlanningResult.PLAN_READY.value),
+            analysis_result=_analysis_result(),
+        ),
+        review_issues=[_plan_review_issue()],
+        review_summary="Remove the unnecessary task creation step.",
+        context_result=_context_result(),
+        analysis_result=_analysis_result(),
+        request=_request(),
+    )
+
+    state_update = agent.build_plan_state_update(revised)
+
+    assert state_update["workflow_phase"] == WorkflowPhase.PLAN_REVIEW.value
+    assert state_update["plan_draft"] == revised
+    assert state_update["answer_draft"] is None
+
+
+def test_revise_plan_confirmation_uses_existing_contract() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            _plan_output(
+                PlanningResult.NEEDS_CONFIRMATION.value,
+                actions=[],
+                confirmation={
+                    "reason_code": "MISSING_SCOPE",
+                    "question": "Should we still create a follow-up task?",
+                },
+            )
+        )
+    )
+    agent = _agent(runtime)
+
+    result = agent.revise_plan(
+        request_intent=_intent(),
+        plan_draft=validate_action_plan_draft_v1(
+            _plan_output(PlanningResult.PLAN_READY.value),
+            analysis_result=_analysis_result(),
+        ),
+        review_issues=[_plan_review_issue()],
+        review_summary="Clarify whether the task should remain.",
+        context_result=_context_result(),
+        analysis_result=_analysis_result(),
+        request=_request(),
+    )
+
+    assert result["status"] == PlanningResult.NEEDS_CONFIRMATION.value
+    assert result["confirmation"] is not None
 
 
 def test_plan_prompt_input_uses_stage7_outputs_and_marks_source_untrusted() -> None:
@@ -447,6 +584,7 @@ def test_prompt_refs_are_runtime_active() -> None:
     answer_prompt = load_solution_planning_answer_only_prompt_reference()
     plan_prompt = load_solution_planning_draft_plan_prompt_reference()
     revise_prompt = load_solution_planning_revise_answer_prompt_reference()
+    revise_plan_prompt = load_solution_planning_revise_plan_prompt_reference()
 
     assert answer_prompt.prompt_id == "planning.answer_only"
     assert answer_prompt.prompt_version == "v0.1"
@@ -463,6 +601,11 @@ def test_prompt_refs_are_runtime_active() -> None:
     assert revise_prompt.content_hash != "TBD"
     assert revise_prompt.node_state == "BASELINE"
 
+    assert revise_plan_prompt.prompt_id == "planning.revise_plan"
+    assert revise_plan_prompt.prompt_version == "v0.1"
+    assert revise_plan_prompt.content_hash != "TBD"
+    assert revise_plan_prompt.node_state == "BASELINE"
+
 
 def test_solution_planning_exports_are_available() -> None:
     import google_work_agent.application.workflows as workflows
@@ -474,6 +617,7 @@ def test_solution_planning_exports_are_available() -> None:
     assert hasattr(workflows, "validate_answer_draft_v1")
     assert hasattr(workflows, "validate_action_plan_draft_v1")
     assert hasattr(workflows, "load_solution_planning_revise_answer_prompt_reference")
+    assert hasattr(workflows, "load_solution_planning_revise_plan_prompt_reference")
 
 
 def _agent(runtime: FakeLLMRuntime) -> SolutionPlanningAgent:
@@ -482,6 +626,7 @@ def _agent(runtime: FakeLLMRuntime) -> SolutionPlanningAgent:
         answer_only_prompt_ref=ANSWER_ONLY_PROMPT_REF,
         draft_plan_prompt_ref=DRAFT_PLAN_PROMPT_REF,
         revise_answer_prompt_ref=REVISE_ANSWER_PROMPT_REF,
+        revise_plan_prompt_ref=REVISE_PLAN_PROMPT_REF,
     )
 
 
@@ -746,4 +891,17 @@ def _review_issue() -> dict[str, object]:
         "message": "Mention the pending task context in the answer.",
         "evidence_refs": ["evidence-2"],
         "resource_refs": ["gmail_thread:thread-kim"],
+    }
+
+
+def _plan_review_issue() -> dict[str, object]:
+    return {
+        "issue_id": "issue-1",
+        "kind": "UNNECESSARY_ACTION",
+        "message": "Remove the unnecessary follow-up task creation step.",
+        "affected_action_ids": ["action-2"],
+        "affected_field_paths": ["$.actions[1]"],
+        "evidence_refs": ["evidence-2"],
+        "resource_refs": ["gmail_thread:thread-kim"],
+        "reason_codes": ["SCOPE_EXCEEDED"],
     }
