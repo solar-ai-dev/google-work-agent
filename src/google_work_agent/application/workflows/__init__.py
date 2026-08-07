@@ -21,6 +21,17 @@ from google_work_agent.application.workflows.contracts import (
     ReviewResult,
     WorkflowPhase,
 )
+from google_work_agent.application.workflows.request_understanding import (
+    REQUEST_INTENT_OUTPUT_SCHEMA,
+    ClarificationQuestionV1,
+    RequestIntentV1,
+    RequestUnderstandingAgent,
+    RequestUnderstandingFailureV1,
+    RequestUnderstandingOutputV1,
+    RequestUnderstandingValidationError,
+    load_request_understanding_classify_prompt_reference,
+    validate_request_intent_v1,
+)
 
 __all__ = [
     "AnalysisResult",
@@ -39,7 +50,16 @@ __all__ = [
     "PlanningResult",
     "PromptRef",
     "PromptSelectionKey",
+    "REQUEST_INTENT_OUTPUT_SCHEMA",
+    "RequestIntentV1",
+    "RequestUnderstandingAgent",
+    "RequestUnderstandingFailureV1",
+    "RequestUnderstandingOutputV1",
     "RequestUnderstandingResult",
+    "RequestUnderstandingValidationError",
     "ReviewResult",
     "WorkflowPhase",
+    "ClarificationQuestionV1",
+    "load_request_understanding_classify_prompt_reference",
+    "validate_request_intent_v1",
 ]
