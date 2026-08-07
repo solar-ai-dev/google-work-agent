@@ -11,6 +11,7 @@ from google_work_agent.application.workflows import (
     RequestUnderstandingAgent,
     RequestUnderstandingResult,
     WorkflowPhase,
+    build_user_interrupt_v1,
     load_request_understanding_clarify_prompt_reference,
     resolve_confirmation_origin_target,
     validate_confirmation_response_v1,
@@ -300,15 +301,17 @@ def test_clarify_invokes_prompt_and_validates_question_output() -> None:
 
 
 def test_confirmation_response_contract_and_origin_resolution_are_deterministic() -> None:
-    user_interrupt = {
-        "schema_version": 1,
-        "origin_target": "planning.draft_plan",
-        "question": "Should we create the follow-up task?",
-        "affected_field_paths": [],
-        "reason_code": "MISSING_SCOPE",
-        "known_context_summary": "Handle Kim's follow-up",
-        "options": [{"option_id": "create-task", "label": "Create task"}],
-    }
+    user_interrupt = build_user_interrupt_v1(
+        {
+            "schema_version": 1,
+            "origin_target": "planning.draft_plan",
+            "question": "Should we create the follow-up task?",
+            "affected_field_paths": [],
+            "reason_code": "MISSING_SCOPE",
+            "known_context_summary": "Handle Kim's follow-up",
+            "options": [{"option_id": "create-task", "label": "Create task"}],
+        }
+    )
 
     selection = validate_confirmation_response_v1(
         {

@@ -25,11 +25,13 @@ from google_work_agent.application.workflows import (
     PlanningResult,
     RequestUnderstandingResult,
     ReviewResult,
+    UserInterruptV1,
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
     validate_confirmation_origin_target,
     validate_confirmation_response_v1,
     validate_finalize_intent_v1,
+    validate_user_interrupt_v1,
 )
 
 
@@ -284,6 +286,32 @@ def test_confirmation_contract_constants_match_gap_b_contract() -> None:
         "review.inspect",
     } == CONFIRMATION_ORIGIN_TARGETS
     assert CONFIRMATION_RESUME_KIND == "CONFIRMATION"
+
+
+def test_user_interrupt_validator_preserves_confirmation_projection() -> None:
+    user_interrupt: UserInterruptV1 = validate_user_interrupt_v1(
+        {
+            "schema_version": 1,
+            "interrupt_kind": "CONFIRMATION",
+            "resume_kind": "CONFIRMATION",
+            "origin_target": "review.inspect",
+            "question": "Which version should we keep?",
+            "affected_field_paths": ["draft.summary"],
+            "reason_code": "REVIEW_CONFIRMATION_REQUIRED",
+            "known_context_summary": "Review the current draft.",
+            "options": [
+                {"option_id": "keep-current", "label": "Keep current"},
+                {"option_id": "revise", "label": "Revise"},
+            ],
+        }
+    )
+
+    assert user_interrupt["origin_target"] == "review.inspect"
+    assert user_interrupt["resume_kind"] == "CONFIRMATION"
+    assert [item["option_id"] for item in user_interrupt["options"]] == [
+        "keep-current",
+        "revise",
+    ]
 
 
 def test_confirmation_origin_target_and_response_validators_enforce_runtime_contract() -> None:

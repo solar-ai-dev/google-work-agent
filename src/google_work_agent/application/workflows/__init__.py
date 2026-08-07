@@ -81,6 +81,8 @@ from google_work_agent.application.workflows.contracts import (
     ReviewResult,
     RunBudgetV1,
     SemanticFailureSignatureV1,
+    UserInterruptOptionV1,
+    UserInterruptV1,
     WorkflowPhase,
     approve_additional_acquisition,
     approve_planning_revision,
@@ -97,6 +99,7 @@ from google_work_agent.application.workflows.contracts import (
     validate_finalize_intent_v1,
     validate_run_budget_v1,
     validate_semantic_failure_signature_v1,
+    validate_user_interrupt_v1,
 )
 from google_work_agent.application.workflows.plan_review import (
     PLAN_REVIEW_OUTPUT_SCHEMA,
@@ -126,6 +129,7 @@ from google_work_agent.application.workflows.request_understanding import (
     RequestUnderstandingOutputV1,
     RequestUnderstandingValidationError,
     build_clarification_question_v1,
+    build_user_interrupt_v1,
     load_request_understanding_clarify_prompt_reference,
     load_request_understanding_classify_prompt_reference,
     resolve_confirmation_origin_target,
@@ -150,6 +154,11 @@ from google_work_agent.application.workflows.solution_planning import (
     load_solution_planning_revise_plan_prompt_reference,
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
+)
+from google_work_agent.application.workflows.supervisor import (
+    SupervisorDecisionV1,
+    SupervisorTarget,
+    route_supervisor,
 )
 from google_work_agent.application.workflows.work_analysis import (
     ANALYSIS_FINDING_SCHEMA_VERSION,
@@ -200,6 +209,7 @@ __all__ = [
     "build_source_planning_clarification_question",
     "build_work_analysis_clarification_question",
     "build_policy_review_context_v1",
+    "build_user_interrupt_v1",
     "check_llm_call_budget",
     "CLARIFICATION_QUESTION_OUTPUT_SCHEMA",
     "ClarificationOptionV1",
@@ -271,6 +281,10 @@ __all__ = [
     "SolutionPlanningAgent",
     "SolutionPlanningValidationError",
     "SufficiencyOutputV1",
+    "UserInterruptOptionV1",
+    "UserInterruptV1",
+    "SupervisorDecisionV1",
+    "SupervisorTarget",
     "WorkflowPhase",
     "WORK_ANALYSIS_OUTPUT_SCHEMA",
     "WORK_ANALYSIS_SCHEMA_VERSION",
@@ -305,9 +319,11 @@ __all__ = [
     "validate_run_budget_v1",
     "validate_semantic_failure_signature_v1",
     "validate_sufficiency_output_v1",
+    "validate_user_interrupt_v1",
     "validate_work_analysis_result_v1",
     "resolve_confirmation_origin_target",
     "resolve_review_target",
+    "route_supervisor",
     "PolicyReviewContextV1",
     "REVIEW_ISSUE_SCHEMA_VERSION",
     "approve_additional_acquisition",

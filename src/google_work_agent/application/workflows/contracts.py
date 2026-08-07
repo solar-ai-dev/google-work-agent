@@ -113,7 +113,7 @@ class MultiAgentGraphState(TypedDict):
     execution_summary: dict[str, object] | None
     verification_summary: dict[str, object] | None
     finalize_intent: "FinalizeIntentV1 | None"
-    user_interrupt: dict[str, object] | None
+    user_interrupt: "UserInterruptV1 | None"
     retry_budget: RunBudgetV1
     prompt_context: dict[str, object]
     trace_context: dict[str, object]
@@ -257,6 +257,27 @@ class ConfirmationResponseV1(TypedDict):
     response_kind: Literal["OPTION_SELECTION", "FREE_TEXT"]
     selected_option_ids: list[str]
     free_text: str | None
+
+
+class UserInterruptOptionV1(TypedDict):
+    """Checkpoint-safe clarification option projection persisted in `user_interrupt`."""
+
+    option_id: str
+    label: str
+
+
+class UserInterruptV1(TypedDict):
+    """Checkpoint-safe confirmation interrupt payload owned by the supervisor."""
+
+    schema_version: Required[Literal[1]]
+    interrupt_kind: Literal["CONFIRMATION"]
+    resume_kind: Literal["CONFIRMATION"]
+    origin_target: str
+    question: str
+    affected_field_paths: list[str]
+    reason_code: str
+    known_context_summary: str
+    options: list[UserInterruptOptionV1]
 
 
 class FinalizeIntentV1(TypedDict):
@@ -685,6 +706,88 @@ def validate_confirmation_response_v1(value: object) -> ConfirmationResponseV1:
         "response_kind": cast(Literal["OPTION_SELECTION", "FREE_TEXT"], response_kind),
         "selected_option_ids": selected_option_ids,
         "free_text": normalized_free_text,
+    }
+
+
+def validate_user_interrupt_v1(value: object) -> UserInterruptV1:
+    if not isinstance(value, dict):
+        raise ValueError("user interrupt must be an object")
+    required = {
+        "schema_version",
+        "interrupt_kind",
+        "resume_kind",
+        "origin_target",
+        "question",
+        "affected_field_paths",
+        "reason_code",
+        "known_context_summary",
+        "options",
+    }
+    actual = set(value)
+    missing = required - actual
+    extra = actual - required
+    if missing:
+        raise ValueError(f"user interrupt missing required fields: {sorted(missing)}")
+    if extra:
+        raise ValueError(f"user interrupt has unsupported fields: {sorted(extra)}")
+    if value["schema_version"] != 1:
+        raise ValueError("user interrupt schema_version must be 1")
+    interrupt_kind = _require_string(value["interrupt_kind"], "interrupt_kind")
+    if interrupt_kind != "CONFIRMATION":
+        raise ValueError("user interrupt interrupt_kind is invalid")
+    resume_kind = _require_string(value["resume_kind"], "resume_kind")
+    if resume_kind != CONFIRMATION_RESUME_KIND:
+        raise ValueError("user interrupt resume_kind is invalid")
+    options: list[UserInterruptOptionV1] = []
+    seen_option_ids: set[str] = set()
+    raw_options = value["options"]
+    if not isinstance(raw_options, list):
+        raise ValueError("user interrupt options must be a list")
+    for index, item in enumerate(raw_options):
+        if not isinstance(item, dict):
+            raise ValueError(f"user interrupt options[{index}] must be an object")
+        option_keys = set(item)
+        if option_keys != {"option_id", "label"}:
+            raise ValueError("user interrupt option has unsupported fields")
+        option_id = _require_non_empty_string(
+            item["option_id"],
+            f"options[{index}].option_id",
+            "user interrupt",
+        )
+        if option_id in seen_option_ids:
+            raise ValueError(f"duplicate user interrupt option_id: {option_id}")
+        seen_option_ids.add(option_id)
+        options.append(
+            {
+                "option_id": option_id,
+                "label": _require_non_empty_string(
+                    item["label"],
+                    f"options[{index}].label",
+                    "user interrupt",
+                ),
+            }
+        )
+    return {
+        "schema_version": 1,
+        "interrupt_kind": cast(Literal["CONFIRMATION"], interrupt_kind),
+        "resume_kind": cast(Literal["CONFIRMATION"], resume_kind),
+        "origin_target": validate_confirmation_origin_target(value["origin_target"]),
+        "question": _require_non_empty_string(value["question"], "question", "user interrupt"),
+        "affected_field_paths": _require_string_list(
+            value["affected_field_paths"],
+            "affected_field_paths",
+        ),
+        "reason_code": _require_non_empty_string(
+            value["reason_code"],
+            "reason_code",
+            "user interrupt",
+        ),
+        "known_context_summary": _require_non_empty_string(
+            value["known_context_summary"],
+            "known_context_summary",
+            "user interrupt",
+        ),
+        "options": options,
     }
 
 

@@ -12,9 +12,11 @@ from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.contracts import (
     ConfirmationResponseV1,
     RequestUnderstandingResult,
+    UserInterruptV1,
     WorkflowPhase,
     validate_confirmation_origin_target,
     validate_confirmation_response_v1,
+    validate_user_interrupt_v1,
 )
 from google_work_agent.ports import (
     OutputSchemaDefinition,
@@ -515,6 +517,25 @@ def build_clarification_question_v1(
     )
 
 
+def build_user_interrupt_v1(
+    clarification_question: ClarificationQuestionV1,
+) -> UserInterruptV1:
+    question = validate_clarification_question_v1(clarification_question)
+    return validate_user_interrupt_v1(
+        {
+            "schema_version": 1,
+            "interrupt_kind": "CONFIRMATION",
+            "resume_kind": "CONFIRMATION",
+            "origin_target": question["origin_target"],
+            "question": question["question"],
+            "affected_field_paths": list(question["affected_field_paths"]),
+            "reason_code": question["reason_code"],
+            "known_context_summary": question["known_context_summary"],
+            "options": [dict(option) for option in question["options"]],
+        }
+    )
+
+
 def load_request_understanding_classify_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
@@ -702,10 +723,10 @@ def _phase_for_result(result: RequestUnderstandingResult) -> WorkflowPhase:
 
 def resolve_confirmation_origin_target(
     *,
-    user_interrupt: ClarificationQuestionV1,
+    user_interrupt: UserInterruptV1,
     response: ConfirmationResponseV1,
 ) -> str:
-    question = validate_clarification_question_v1(user_interrupt)
+    question = validate_user_interrupt_v1(user_interrupt)
     normalized = validate_confirmation_response_v1(response)
     if normalized["response_kind"] == "OPTION_SELECTION":
         allowed_ids = {option["option_id"] for option in question["options"]}
