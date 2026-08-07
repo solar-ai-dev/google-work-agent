@@ -704,8 +704,7 @@ def test_verify_write_action_rechecks_version_after_external_get(
             delegate=fixture_gateway,
             database_path=write_database,
             after_get_sql=(
-                "UPDATE actions SET version = version + 1 "
-                "WHERE id = 'action-verify-race';"
+                "UPDATE actions SET version = version + 1 WHERE id = 'action-verify-race';"
             ),
         ),
     )

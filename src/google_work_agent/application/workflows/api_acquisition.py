@@ -606,8 +606,7 @@ def _acquire_tasks(
     remaining["candidates"] -= len(candidates)
     detail_ids = [item.resource_id for item in candidates[: plan["detail_limit"]]]
     details = [
-        gateway.get_task(task_list_id=task_list_id, task_id=task_id)
-        for task_id in detail_ids
+        gateway.get_task(task_list_id=task_list_id, task_id=task_id) for task_id in detail_ids
     ]
     remaining["details"] -= len(details)
     return details
@@ -736,8 +735,7 @@ def _all_plans_complete(
     plans: list[SourceFetchPlanV1],
 ) -> bool:
     return len(source_summaries) == len(plans) and all(
-        summary.get("status") == ApiAcquisitionResult.COMPLETE.value
-        for summary in source_summaries
+        summary.get("status") == ApiAcquisitionResult.COMPLETE.value for summary in source_summaries
     )
 
 
@@ -798,9 +796,7 @@ def _require_exact_keys(value: dict[str, object], path: str, keys: set[str]) -> 
     missing = keys - actual
     extra = actual - keys
     if missing:
-        raise SourcePlanningValidationError(
-            f"{path} is missing required fields: {sorted(missing)}"
-        )
+        raise SourcePlanningValidationError(f"{path} is missing required fields: {sorted(missing)}")
     if extra:
         raise SourcePlanningValidationError(f"{path} has unsupported fields: {sorted(extra)}")
 

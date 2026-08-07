@@ -461,9 +461,7 @@ class SQLiteRunRepository:
             finished_at_ms=finished_at_ms,
         )
         if not result.applied:
-            raise sqlite3.IntegrityError(
-                f"run require-recovery failed: {result.conflict_detail}"
-            )
+            raise sqlite3.IntegrityError(f"run require-recovery failed: {result.conflict_detail}")
         updated = self.get_by_id(run_id)
         if updated is None:
             raise LookupError(f"run not found after recovery update: {run_id}")

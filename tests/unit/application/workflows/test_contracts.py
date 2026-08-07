@@ -24,7 +24,7 @@ def _values(enum_type: type[StrEnum]) -> tuple[str, ...]:
 
 
 def test_multi_agent_graph_state_fields_match_workflow_document() -> None:
-    assert MULTI_AGENT_GRAPH_STATE_FIELDS == {
+    assert {
         "schema_version",
         "run_id",
         "conversation_id",
@@ -44,7 +44,7 @@ def test_multi_agent_graph_state_fields_match_workflow_document() -> None:
         "retry_budget",
         "prompt_context",
         "trace_context",
-    }
+    } == MULTI_AGENT_GRAPH_STATE_FIELDS
 
 
 def test_multi_agent_graph_state_has_no_implementation_only_fields() -> None:
@@ -153,7 +153,7 @@ def test_domain_validation_result_values_match_workflow_document() -> None:
 
 
 def test_prompt_selection_key_fields_match_workflow_document() -> None:
-    assert PROMPT_SELECTION_KEY_FIELDS == {
+    assert {
         "agent_role",
         "subgraph_name",
         "node_name",
@@ -161,11 +161,11 @@ def test_prompt_selection_key_fields_match_workflow_document() -> None:
         "purpose",
         "input_schema_version",
         "output_schema_version",
-    }
+    } == PROMPT_SELECTION_KEY_FIELDS
 
 
 def test_prompt_ref_fields_match_workflow_document() -> None:
-    assert PROMPT_REF_FIELDS == {
+    assert {
         "prompt_bundle_version",
         "prompt_id",
         "prompt_version",
@@ -177,7 +177,7 @@ def test_prompt_ref_fields_match_workflow_document() -> None:
         "purpose",
         "input_schema_version",
         "output_schema_version",
-    }
+    } == PROMPT_REF_FIELDS
 
 
 def test_prompt_ref_has_no_prompt_content_fields() -> None:
@@ -189,7 +189,7 @@ def test_prompt_ref_has_no_prompt_content_fields() -> None:
 
 
 def test_llm_provider_result_fields_match_interface_document() -> None:
-    assert LLM_PROVIDER_RESULT_FIELDS == {
+    assert {
         "structured_output",
         "provider",
         "model",
@@ -198,11 +198,11 @@ def test_llm_provider_result_fields_match_interface_document() -> None:
         "output_tokens",
         "latency_ms",
         "fallback_reason",
-    }
+    } == LLM_PROVIDER_RESULT_FIELDS
 
 
 def test_llm_provider_result_only_fallback_reason_is_optional() -> None:
-    assert LLM_PROVIDER_RESULT_REQUIRED_FIELDS == {
+    assert {
         "structured_output",
         "provider",
         "model",
@@ -210,5 +210,5 @@ def test_llm_provider_result_only_fallback_reason_is_optional() -> None:
         "input_tokens",
         "output_tokens",
         "latency_ms",
-    }
-    assert LLM_PROVIDER_RESULT_OPTIONAL_FIELDS == {"fallback_reason"}
+    } == LLM_PROVIDER_RESULT_REQUIRED_FIELDS
+    assert {"fallback_reason"} == LLM_PROVIDER_RESULT_OPTIONAL_FIELDS

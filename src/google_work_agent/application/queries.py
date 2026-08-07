@@ -476,9 +476,7 @@ def _selected_resource_ref_from_mapping(value: dict[object, object]) -> Selected
         resource_type=str(value["resource_type"]),
         resource_id=str(value["resource_id"]),
         parent_resource_id=(
-            None
-            if value.get("parent_resource_id") is None
-            else str(value["parent_resource_id"])
+            None if value.get("parent_resource_id") is None else str(value["parent_resource_id"])
         ),
     )
 
