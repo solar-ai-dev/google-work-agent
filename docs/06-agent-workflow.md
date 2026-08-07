@@ -306,6 +306,12 @@ prompt_context: PromptContextV1
 trace_context: TraceContextV1
 ```
 
+`RESOURCE_SELECTED`의 선택 Resource identity는 `RequestIntentV1`에 중복 저장하지 않는다.
+Runtime 입력과 `prompt_context`는 `selected_resource_ids` 호환 필드와 함께
+`SelectedResourceRefV1[]` projection을 보존한다. Stage 5는 이 projection의
+`source`, `resource_type`, `resource_id`, `parent_resource_id`로만 선택 Resource 상세 GET
+경로를 결정한다.
+
 ## 16. Node Registry
 
 | node_id | agent_role | phase | purpose | output | 주요 결과 | 최대 호출 |
@@ -313,7 +319,7 @@ trace_context: TraceContextV1
 | `request_understanding.classify` | request_understanding | REQUEST_ANALYSIS | classify | RequestIntentV1 | COMPLETE·NEEDS_CONFIRMATION·INVALID | 1 |
 | `request_understanding.clarify` | request_understanding | WAITING_CONFIRMATION | clarify | ClarificationQuestionV1 | QUESTION_READY | 1 |
 | `request_understanding.repair` | request_understanding | REQUEST_ANALYSIS | repair | RequestIntentV1 | COMPLETE·INVALID | 1 |
-| `acquisition.plan_sources` | api_discovery_acquisition | SOURCE_PLANNING | plan_sources | SourceFetchPlanV1[] | PLAN_READY·NO_FETCH_NEEDED·CONFIRM·BLOCKED | 1 |
+| `acquisition.plan_sources` | api_discovery_acquisition | SOURCE_PLANNING | plan_sources | SourceFetchPlanV1[] | PLAN_READY·NO_FETCH_NEEDED·NEEDS_CONFIRMATION·BLOCKED | 1 |
 | `acquisition.revise_partial` | api_discovery_acquisition | SOURCE_PLANNING | revise_partial | SourceFetchPlanV1[] | PLAN_READY·PARTIAL·BLOCKED | 1 |
 | `acquisition.repair` | api_discovery_acquisition | SOURCE_PLANNING | repair | SourceFetchPlanV1[] | PLAN_READY·BLOCKED | 1 |
 | `context.select_evidence` | context_retriever | CONTEXT_RETRIEVAL | select_evidence | EvidenceSelectionResultV1 | SELECTED·PARTIAL·BLOCKED | 1 |

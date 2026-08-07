@@ -1,5 +1,18 @@
 """Application workflow contract package."""
 
+from google_work_agent.application.workflows.api_acquisition import (
+    ACQUISITION_RESULT_SCHEMA_VERSION,
+    SOURCE_FETCH_PLAN_OUTPUT_SCHEMA,
+    SOURCE_FETCH_PLAN_SCHEMA_VERSION,
+    AcquisitionResultV1,
+    ApiDiscoveryAcquisitionAgent,
+    RetrievalBudget,
+    SourceFetchPlanV1,
+    SourcePlanningOutputV1,
+    SourcePlanningValidationError,
+    load_acquisition_plan_sources_prompt_reference,
+    validate_source_fetch_plans_v1,
+)
 from google_work_agent.application.workflows.contracts import (
     LLM_PROVIDER_RESULT_FIELDS,
     LLM_PROVIDER_RESULT_OPTIONAL_FIELDS,
@@ -34,7 +47,10 @@ from google_work_agent.application.workflows.request_understanding import (
 )
 
 __all__ = [
+    "ACQUISITION_RESULT_SCHEMA_VERSION",
+    "AcquisitionResultV1",
     "AnalysisResult",
+    "ApiDiscoveryAcquisitionAgent",
     "ApiAcquisitionResult",
     "ApiPlanningResult",
     "ContextResult",
@@ -58,8 +74,16 @@ __all__ = [
     "RequestUnderstandingResult",
     "RequestUnderstandingValidationError",
     "ReviewResult",
+    "RetrievalBudget",
+    "SOURCE_FETCH_PLAN_OUTPUT_SCHEMA",
+    "SOURCE_FETCH_PLAN_SCHEMA_VERSION",
+    "SourceFetchPlanV1",
+    "SourcePlanningOutputV1",
+    "SourcePlanningValidationError",
     "WorkflowPhase",
     "ClarificationQuestionV1",
+    "load_acquisition_plan_sources_prompt_reference",
     "load_request_understanding_classify_prompt_reference",
+    "validate_source_fetch_plans_v1",
     "validate_request_intent_v1",
 ]

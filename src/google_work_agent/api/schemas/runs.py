@@ -1,6 +1,15 @@
 """Run API schemas."""
 
+from pydantic import Field
+
 from .common import ApiModel, ContractVersionedRequest
+
+
+class SelectedResourceRefModel(ApiModel):
+    source: str
+    resource_type: str
+    resource_id: str
+    parent_resource_id: str | None = None
 
 
 class StartRunRequest(ContractVersionedRequest):
@@ -13,6 +22,7 @@ class StartRunRequest(ContractVersionedRequest):
     request_text: str
     entry_mode: str
     selected_resource_ids: list[str]
+    selected_resources: list[SelectedResourceRefModel] = Field(default_factory=list)
     requested_mode: str
 
 

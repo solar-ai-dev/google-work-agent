@@ -547,6 +547,7 @@ StartRunRequestV1
 - entry_mode: AGENT_SEARCH | RESOURCE_SELECTED
 - user_request: 1..65536 UTF-8
 - selected_resources: list[SelectedResourceRefV1], max 20
+- selected_resource_ids: list[string], max 20, legacy/native ID compatibility projection
 - requested_mode: AUTO | LOCAL_GPU | API_LLM
 
 StartRunResponseV1
@@ -566,6 +567,19 @@ RunSnapshotResponseV1
 - result_kind: COMPLETE | PARTIAL | NONE
 - projection_version
 ```
+
+`SelectedResourceRefV1`:
+
+```text
+source: GMAIL | TASKS | CALENDAR
+resource_type: THREAD | MESSAGE | TASK | EVENT
+resource_id: string
+parent_resource_id: string | null
+```
+
+`selected_resource_ids`만으로 Source 또는 Resource Type을 추론하지 않는다. Stage 5
+`RESOURCE_SELECTED` 실행은 `selected_resources`의 typed identity를 사용한다. Tasks의
+`parent_resource_id`는 `task_list_id`, Calendar의 `parent_resource_id`는 `calendar_id`다.
 
 ### 22.3 Action
 
