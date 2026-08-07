@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
-from google_work_agent.ports import WorkflowInvocationResult
+from google_work_agent.ports import (
+    WorkflowCancelRequest,
+    WorkflowInvocationResult,
+    WorkflowRecoveryRequest,
+    WorkflowResumeRequest,
+    WorkflowStartRequest,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,54 +41,35 @@ class FakeWorkflowRuntime:
         self.call_log: list[WorkflowCallRecord] = []
 
     def queue_result(self, result: WorkflowInvocationResult) -> None:
-        """Queue one successful invocation result."""
-
         self._results.append(result)
 
     def queue_failure(self, failure: WorkflowFailure) -> None:
-        """Queue one invocation failure."""
-
         self._failures.append(failure)
 
-    def start(
-        self, *, run_id: str, workflow_key: str, payload: dict[str, object]
-    ) -> WorkflowInvocationResult:
-        """Start one workflow invocation."""
+    def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
+        return self._invoke("start", request.run_id, request.workflow_key, asdict(request))
 
-        return self._invoke("start", run_id, workflow_key, payload)
+    def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
+        return self._invoke("resume", request.run_id, request.workflow_key, request.resume_payload)
 
-    def resume(
-        self,
-        *,
-        run_id: str,
-        workflow_key: str,
-        payload: dict[str, object],
-    ) -> WorkflowInvocationResult:
-        """Resume one workflow invocation."""
+    def request_cancel(self, request: WorkflowCancelRequest) -> WorkflowInvocationResult:
+        return self._invoke(
+            "request_cancel",
+            request.run_id,
+            request.workflow_key,
+            {"reason_code": request.reason_code},
+        )
 
-        return self._invoke("resume", run_id, workflow_key, payload)
+    def recover_open_run(self, request: WorkflowRecoveryRequest) -> WorkflowInvocationResult:
+        return self._invoke(
+            "recover_open_run",
+            request.run_id,
+            request.workflow_key,
+            {"domain_status": request.domain_status, "domain_version": request.domain_version},
+        )
 
-    def request_cancel(
-        self,
-        *,
-        run_id: str,
-        workflow_key: str,
-        payload: dict[str, object],
-    ) -> WorkflowInvocationResult:
-        """Request one workflow cancellation."""
-
-        return self._invoke("request_cancel", run_id, workflow_key, payload)
-
-    def recover_open_run(
-        self,
-        *,
-        run_id: str,
-        workflow_key: str,
-        payload: dict[str, object],
-    ) -> WorkflowInvocationResult:
-        """Recover one workflow run."""
-
-        return self._invoke("recover_open_run", run_id, workflow_key, payload)
+    def close(self) -> None:
+        return None
 
     def _invoke(
         self,
@@ -118,5 +105,6 @@ class FakeWorkflowRuntime:
         return WorkflowInvocationResult(
             run_id=result.run_id,
             workflow_key=result.workflow_key,
+            outcome=result.outcome,
             payload=deepcopy(result.payload),
         )

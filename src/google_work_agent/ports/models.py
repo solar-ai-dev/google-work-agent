@@ -79,6 +79,23 @@ class ConversationRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class RunCreateRecord:
+    """Persisted run input used by the start-run command."""
+
+    id: str
+    conversation_id: str
+    entry_mode: str
+    status: RunStatus
+    langgraph_thread_id: str
+    requested_mode: str
+    actual_runtime: str | None
+    budget_json: str
+    version: int
+    started_at_ms: int
+    finished_at_ms: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class RunRecord:
     """Run projection used by application services."""
 

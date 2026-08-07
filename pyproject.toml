@@ -8,7 +8,9 @@ version = "0.1.0"
 description = "Local single-user Google work agent skeleton."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "fastapi>=0.141,<0.142",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

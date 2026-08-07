@@ -43,6 +43,7 @@ from google_work_agent.ports import (
     PlanStatus,
     ResourceRefRecord,
     ResourceSource,
+    RunCreateRecord,
     RunRecord,
     StoredResourceType,
     TraceEventRecord,
@@ -75,6 +76,21 @@ class SQLiteConversationRepository:
             updated_at_ms=int(row["updated_at_ms"]),
         )
 
+    def add(self, conversation: ConversationRecord) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO conversations (id, account_id, title, created_at_ms, updated_at_ms)
+            VALUES (?, ?, ?, ?, ?);
+            """,
+            (
+                conversation.id,
+                conversation.account_id,
+                conversation.title,
+                conversation.created_at_ms,
+                conversation.updated_at_ms,
+            ),
+        )
+
 
 class SQLiteRunRepository:
     """SQLite run repository with optimistic state transitions."""
@@ -100,6 +116,39 @@ class SQLiteRunRepository:
             version=int(row["version"]),
             started_at_ms=int(row["started_at_ms"]),
             finished_at_ms=_int_or_none(row["finished_at_ms"]),
+        )
+
+    def add(self, run: RunCreateRecord) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO runs (
+                id,
+                conversation_id,
+                entry_mode,
+                status,
+                langgraph_thread_id,
+                requested_mode,
+                actual_runtime,
+                budget_json,
+                version,
+                started_at_ms,
+                finished_at_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                run.id,
+                run.conversation_id,
+                run.entry_mode,
+                run.status.value,
+                run.langgraph_thread_id,
+                run.requested_mode,
+                run.actual_runtime,
+                run.budget_json,
+                run.version,
+                run.started_at_ms,
+                run.finished_at_ms,
+            ),
         )
 
     def complete_answer_only_run(
@@ -806,6 +855,20 @@ class SQLiteActionRepository:
         return self._transition_write_action(
             action_id,
             command=ActionCommand.REJECT_ACTION,
+            expected_version=expected_version,
+            updated_at_ms=updated_at_ms,
+        )
+
+    def modify_write(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        return self._transition_write_action(
+            action_id,
+            command=ActionCommand.MODIFY_ACTION,
             expected_version=expected_version,
             updated_at_ms=updated_at_ms,
         )

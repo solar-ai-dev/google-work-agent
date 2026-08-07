@@ -26,6 +26,7 @@ from google_work_agent.ports.models import (
     PersistedTraceEventRecord,
     PlanRecord,
     ResourceRefRecord,
+    RunCreateRecord,
     RunRecord,
     TraceEventRecord,
     VerificationRecord,
@@ -38,12 +39,18 @@ class ConversationRepository(Protocol):
     def get_by_id(self, conversation_id: str) -> ConversationRecord | None:
         """Return a conversation by identifier."""
 
+    def add(self, conversation: ConversationRecord) -> None:
+        """Persist a new conversation row."""
+
 
 class RunRepository(Protocol):
     """Run access and state transition persistence."""
 
     def get_by_id(self, run_id: str) -> RunRecord | None:
         """Return a run by identifier."""
+
+    def add(self, run: RunCreateRecord) -> None:
+        """Persist a new run row."""
 
     def complete_answer_only_run(
         self,
@@ -256,6 +263,15 @@ class ActionRepository(Protocol):
         updated_at_ms: int,
     ) -> CommandResult[ActionStatus, ActionCommand]:
         """Transition a write action into REJECTED."""
+
+    def modify_write(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        """Transition a write action into MODIFIED."""
 
     def claim_execution(
         self,

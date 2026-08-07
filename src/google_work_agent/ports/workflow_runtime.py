@@ -3,55 +3,102 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any, Protocol
 
 type JsonValue = Any
 
 
+class WorkflowOutcome(StrEnum):
+    """External workflow invocation outcomes understood by the coordinator."""
+
+    ACCEPTED = "ACCEPTED"
+    ALREADY_RUNNING = "ALREADY_RUNNING"
+    COMPLETED = "COMPLETED"
+    CHECKPOINT_MISSING = "CHECKPOINT_MISSING"
+    DOMAIN_CHECKPOINT_CONFLICT = "DOMAIN_CHECKPOINT_CONFLICT"
+    RECOVERY_REQUIRED = "RECOVERY_REQUIRED"
+    FAILED = "FAILED"
+
+
 @dataclass(frozen=True, slots=True)
-class WorkflowInvocationResult:
-    """Minimal result returned from the workflow runtime."""
+class WorkflowCorrelationContext:
+    """Correlation metadata forwarded to the workflow runtime."""
+
+    request_id: str
+    command_id: str | None
+    api_contract_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowStartRequest:
+    """Typed workflow start contract."""
+
+    run_id: str
+    conversation_id: str
+    workflow_key: str
+    entry_mode: str
+    requested_mode: str
+    request_text: str
+    selected_resource_ids: tuple[str, ...]
+    correlation: WorkflowCorrelationContext
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowResumeRequest:
+    """Typed workflow resume contract."""
 
     run_id: str
     workflow_key: str
+    resume_kind: str
+    resume_payload: dict[str, JsonValue]
+    correlation: WorkflowCorrelationContext
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowCancelRequest:
+    """Typed workflow cancel contract."""
+
+    run_id: str
+    workflow_key: str
+    reason_code: str
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowRecoveryRequest:
+    """Typed workflow recovery contract."""
+
+    run_id: str
+    workflow_key: str
+    domain_status: str
+    domain_version: int
+    correlation: WorkflowCorrelationContext
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowInvocationResult:
+    """Result returned from the workflow runtime."""
+
+    run_id: str
+    workflow_key: str
+    outcome: WorkflowOutcome
     payload: dict[str, JsonValue]
 
 
 class WorkflowRuntime(Protocol):
     """Minimal workflow runtime surface for the product core."""
 
-    def start(
-        self,
-        *,
-        run_id: str,
-        workflow_key: str,
-        payload: dict[str, JsonValue],
-    ) -> WorkflowInvocationResult:
+    def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
         """Start a workflow run."""
 
-    def resume(
-        self,
-        *,
-        run_id: str,
-        workflow_key: str,
-        payload: dict[str, JsonValue],
-    ) -> WorkflowInvocationResult:
+    def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
         """Resume a workflow run."""
 
-    def request_cancel(
-        self,
-        *,
-        run_id: str,
-        workflow_key: str,
-        payload: dict[str, JsonValue],
-    ) -> WorkflowInvocationResult:
+    def request_cancel(self, request: WorkflowCancelRequest) -> WorkflowInvocationResult:
         """Request cancellation for a workflow run."""
 
-    def recover_open_run(
-        self,
-        *,
-        run_id: str,
-        workflow_key: str,
-        payload: dict[str, JsonValue],
-    ) -> WorkflowInvocationResult:
+    def recover_open_run(self, request: WorkflowRecoveryRequest) -> WorkflowInvocationResult:
         """Recover an open workflow run."""
+
+    def close(self) -> None:
+        """Release runtime resources if needed."""
