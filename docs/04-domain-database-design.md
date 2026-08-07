@@ -1,12 +1,12 @@
 # 04. Google Work Agent 도메인 · 데이터베이스 설계서
 
-> **문서 기준:** 이 문서는 요구사항·기능·정책·UI·UX·시스템 아키텍처와 2026-08-05까지의 확정 결정을 데이터 구조로 구체화한다. Notion `04. 도메인 · 데이터베이스 설계서` Draft v1.8과 동일한 설계 기준을 사용한다.
+> **문서 기준:** 이 문서는 요구사항·기능·정책·UI·UX·시스템 아키텍처와 2026-08-07까지의 확정 결정을 데이터 구조로 구체화한다. Notion `04. 도메인 · 데이터베이스 설계서` Draft v1.9과 동일한 설계 기준을 사용한다.
 
 ## 0. 문서 정보
 
 | 항목 | 내용 |
 |---|---|
-| 상태 | Draft v1.8 |
+| 상태 | Draft v1.9 |
 | 대상 | P0 MVP |
 | Database | SQLite |
 | 저장 형태 | 하나의 제품 DB 파일 |
@@ -236,8 +236,10 @@ P0 고정 매핑:
 | READ | NONE | NONE | NONE |
 | CREATE | REQUIRED | GET_COMPARE | RESOURCE_SEARCH |
 | UPDATE | REQUIRED | GET_COMPARE | GET_TARGET |
+| SEND | REQUIRED | SENT_LOOKUP | MESSAGE_SEARCH |
+| DELETE | REQUIRED | GET_ABSENT | GET_TARGET |
 
-`DELETE`는 P0 Tool Allowlist에 존재하지 않으므로 Schema에서도 허용하지 않는다. 분석은 LangGraph Node와 Trace이며 실행 Action으로 저장하지 않는다.
+`SEND`는 Gmail 실제 전송, `DELETE`는 P0에서 Calendar Event 삭제에만 사용한다. Task 완료와 Calendar 참석자 변경은 `UPDATE`다. Gmail 원문 삭제·Task 삭제·반복 Event 전체 일괄 수정은 Tool Allowlist에서 금지한다. 분석은 LangGraph Node와 Trace이며 실행 Action으로 저장하지 않는다.
 
 Tool Registry가 정책의 원본이며 Plan 생성 시 값을 Action Row에 Snapshot한다.
 
@@ -1310,3 +1312,23 @@ completed_at_ms          INTEGER?
 - 새 Approval의 첫 ExecutionAttempt `attempt_no`는 1이다.
 - 실패 재시도 전역 순서는 `approval_no`, `execution_attempt_id`, 시각으로 추적한다.
 - 현행 SQL 기준은 `schema-v1.2.sql`이다.
+
+# 28. Draft v1.9 승인형 Effect · Transaction · Recovery 정합성
+
+## 28.1 DB Schema v1.3
+`0001_initial.sql`은 Schema v1.2 baseline으로 보존하고 `0002_action_effect_send_delete.sql`을 적용한다.
+
+```text
+READ   → NONE     / NONE        / NONE
+CREATE → REQUIRED / GET_COMPARE / RESOURCE_SEARCH
+UPDATE → REQUIRED / GET_COMPARE / GET_TARGET
+SEND   → REQUIRED / SENT_LOOKUP / MESSAGE_SEARCH
+DELETE → REQUIRED / GET_ABSENT  / GET_TARGET
+```
+Task 완료·Calendar 참석자 변경은 UPDATE다. DELETE는 P0에서 Calendar Event 삭제에만 사용한다.
+
+## 28.2 외부 호출 Transaction 경계
+Google/MCP/LLM 응답 대기 중 SQLite Write Transaction을 유지하지 않는다. 외부 호출 전 Snapshot Transaction과 호출 후 결과 저장 Transaction을 분리하며 두 번째 Transaction에서 Version·Action·Attempt 상태를 재검사한다.
+
+## 28.3 Recovery Command 경계
+Application은 Repository setter로 Run 상태를 직접 변경하지 않는다. `RequireRecovery`·`ResolveRecovery` Domain Command와 조건부 UPDATE·Audit·Command Receipt를 사용한다.

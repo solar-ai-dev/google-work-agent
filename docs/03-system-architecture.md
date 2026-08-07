@@ -1,14 +1,14 @@
 # 03. Google Work Agent 시스템 아키텍처 설계서
 
-> **문서 기준:** 이 문서는 `01. 요구사항 정의서·PRD`, `01-A. 기능 정의서`, `01-B. 정책 정의서`, `02. UI·UX 설계서`와 2026-08-05 React·FastAPI 전환 결정을 시스템 구조로 구체화한다. 기존 v1 문서와 충돌하면 현재 권위 문서의 결정이 우선한다.
+> **문서 기준:** 이 문서는 `01. 요구사항 정의서·PRD`, `01-A. 기능 정의서`, `01-B. 정책 정의서`, `02. UI·UX 설계서`와 2026-08-07 React·FastAPI 전환 결정을 시스템 구조로 구체화한다. 기존 v1 문서와 충돌하면 현재 권위 문서의 결정이 우선한다.
 
 ## 0. 문서 정보
 
 | 항목 | 내용 |
 |---|---|
 | 문서명 | 03. Google Work Agent 시스템 아키텍처 설계서 |
-| 상태 | Draft v2.5 |
-| 기준일 | 2026-08-05 |
+| 상태 | Draft v2.6 |
+| 기준일 | 2026-08-07 |
 | 대상 릴리스 | P0 MVP |
 | 공식 환경 | Windows 11 x64 · 최신 Chrome·Microsoft Edge |
 | 제품 형태 | 단일 사용자용 로컬 Web UI + Python Agent 애플리케이션 |
@@ -111,7 +111,7 @@ Google Work Agent는 **로컬 Frontend와 Python Modular Monolith를 분리한 �
 | ARC-005 | Agent와 Domain·Policy 분리 | LLM은 제안하고 일반 코드는 허용·차단·검증을 결정한다. |
 | ARC-006 | Google 연동은 MCP `stdio` | Google Tool 계약과 실행 경계를 표준화하고 로컬에 유지한다. |
 | ARC-007 | Checkpoint와 Domain Store 분리 | Graph 재개 상태와 제품의 승인·실행 사실을 별도로 보존한다. |
-| ARC-008 | 모든 쓰기 후 GET 검증 | Tool 응답이 아니라 Google의 실제 Resource를 최종 결과로 사용한다. |
+| ARC-008 | 모든 쓰기 후 Effect별 결정적 검증 | Tool 응답만 신뢰하지 않는다. CREATE·UPDATE는 GET 비교, DELETE는 대상 부재/삭제 상태, SEND는 Sent 결과 조회를 사용한다. |
 | ARC-009 | Local Runtime은 Ollama로 고정 | 제품 Runtime과 실험 Runtime의 범위를 제한한다. |
 | ARC-010 | `API_ONLY`·`LOCAL_CAPABLE` 분리 | GPU가 없는 환경에 Ollama·모델 의존성을 강제하지 않는다. |
 
@@ -1020,7 +1020,7 @@ GPU가 없는 팀원은 `API_ONLY`, Mock, 고정 Fixture로 공통 UI·Graph·Po
 - LangGraph Interrupt로 확인 질문·승인·Recovery 후 같은 Thread를 재개한다.
 - Approval 없는 Write Tool 호출이 Application과 MCP 양쪽에서 차단된다.
 - 금지 Tool이 MCP Registry에 존재하지 않는다.
-- 모든 허용된 Write Action이 Google GET 재조회로 검증된다.
+- 모든 허용 Write Action이 Effect별 결정적 Verification으로 검증된다.
 - MCP 응답 유실과 앱 재시작 후 `UNKNOWN_RESULT`를 확인하고 중복 생성 없이 상태를 확정한다.
 - API_ONLY 환경에서 Ollama 없이 전체 Core 흐름과 정책 테스트가 동작한다.
 - LOCAL_CAPABLE 환경에서 Ollama 기반 `AUTO`, `LOCAL_GPU`, `API_LLM` 모드가 정책대로 동작한다.
@@ -1341,3 +1341,15 @@ Agent Workflow Layer는 LLM Adapter와 LangGraph Checkpointer에는 접근할 �
 - Token Payload는 `service_instance_id`, `action_id`, `approval_id`, `execution_attempt_id`, `tool_name`, `arguments_hash`, `expires_at_ms`, `nonce`다.
 - MCP는 Signature·TTL·Binding·Nonce를 검증하고 Nonce를 Process Memory에서 1회 소비한다.
 - Service·MCP 중 하나가 재시작하면 기존 Token은 무효다.
+
+## 2026-08-07 v2.6 구현 정합성 불변조건
+### External I/O ↔ SQLite Transaction
+```text
+Transaction A: 상태·Version·Snapshot 확보 → COMMIT
+External I/O: Google/MCP/LLM 호출 (DB Write Transaction 없음)
+Transaction B: expected_version·현재 상태 재검사 → 결과 저장 → COMMIT
+```
+### Recovery 진입 경계
+`RECOVERY_REQUIRED` 진입·해제는 Application → Domain Command(`RequireRecovery`·`ResolveRecovery`) → Repository conditional update 경로만 허용한다. Repository 직접 상태 setter는 금지한다.
+### 승인형 Effect
+`READ | CREATE | UPDATE | SEND | DELETE`를 사용하고 SEND·DELETE도 동일한 Approval Hash·Claim·UNKNOWN_RESULT 무재실행 원칙을 적용한다.

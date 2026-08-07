@@ -1,8 +1,8 @@
 # 08. Google Work Agent · 시퀀스 설계서
 
-> **문서 기준:** `01. 요구사항 정의서·PRD v2.2`, `01-A. 기능 정의서 v2.2`, `01-B. 정책 정의서 v2.2`, `02. UI·UX 설계서 v2.2`, `03. 시스템 아키텍처 설계서 v2.3`, `04. 도메인·데이터베이스 설계서 Draft v1.8`, `05. Context·Retrieval 설계서 Draft v2.0`, `06. Agent·Workflow 설계서 Draft v5.3`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v2.3`, Domain 상태 전이 계약 v1.3를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
+> **문서 기준:** `01. 요구사항 정의서·PRD v2.4`, `01-A. 기능 정의서 v2.3`, `01-B. 정책 정의서 v2.3`, `02. UI·UX 설계서 v2.3`, `03. 시스템 아키텍처 설계서 v2.6`, `04. 도메인·데이터베이스 설계서 Draft v1.9`, `05. Context·Retrieval 설계서 Draft v2.1`, `06. Agent·Workflow 설계서 Draft v5.5`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v2.4`, Domain 상태 전이 계약 v1.3를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
 
-> **상태:** Draft v2.5  
+> **상태:** Draft v2.6  
 > **대상:** P0 MVP  
 > **구조:** 결정적 Supervisor + 6개 전문 Agent + 결정적 실행·검증 Engine  
 > **상태 기준:** SQLite Domain Store가 승인·실행·검증 사실의 기준점이며 LangGraph Checkpoint는 재개 위치, SSE는 UI Projection이다.
@@ -976,3 +976,17 @@ claim_action_execution Commit
 ```
 
 검증 실패 시 Google API를 호출하지 않고 `APPROVAL_INVALID` 또는 Claim Token 오류를 반환한다.
+
+## 2026-08-07 v2.6 Transaction · Recovery · SEND/DELETE 시퀀스
+```text
+Transaction A: 상태·Version·Snapshot 확보 → COMMIT
+Google/MCP/LLM 호출: DB Write Transaction 없음
+Transaction B: expected_version·현재 상태 재검사 → 결과·Verification·Audit 저장 → COMMIT
+```
+Recovery는 `RequireRecovery`·`ResolveRecovery` Domain Command를 사용한다.
+
+### Gmail SEND
+Plan(SEND) → Domain Validation → WAITING_APPROVAL → Claim → gmail_send → Sent Lookup → VERIFIED | MISMATCH | UNKNOWN_RESULT.
+
+### Calendar DELETE
+Plan(DELETE) → Domain Validation → WAITING_APPROVAL → Claim → calendar_delete_event → target absence 확인 → VERIFIED | MISMATCH | UNKNOWN_RESULT.

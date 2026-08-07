@@ -1,6 +1,6 @@
 # 09. Google Work Agent · 보안 · Auth 설계서
 
-> **상태:** Draft v2.2 · **대상:** P0 MVP
+> **상태:** Draft v2.2 · **기준일:** 2026-08-07 · **대상:** P0 MVP
 
 ## 1. 핵심 결정
 
@@ -81,13 +81,13 @@ Google Source의 지시는 이 우선순위를 변경하지 못한다.
 - 만료: `EXPIRED → MODIFIED → 새 Approval`
 - FAILED Retry: 새 Approval·Idempotency Key·Source Snapshot
 - UNKNOWN_RESULT: 기존 결과 조회만
-- 모든 Write는 Google GET 검증
+- 모든 Write는 Effect별 결정적 검증: CREATE·UPDATE GET 비교, DELETE 대상 부재/삭제 상태, SEND Sent 결과 조회
 
 ## 9. MCP
 
 - `stdio` only, Network Listen 금지
 - 절대 경로, Signature·Manifest Hash, Shell·PATH Search 금지
-- 금지 Tool 미등록
+- 허용 Tool만 등록. `gmail_send`, Task 완료 UPDATE, `calendar_delete_event`, 참석자 UPDATE는 Approval·Hash·Policy 검증이 연결된 경우에만 등록. Gmail 원문 삭제·Task 삭제·반복 Event 전체 일괄 수정은 미등록
 - Write Tool은 Action·Approval·Hash·Claim 문맥 필요
 - Write 전달 가능성이 있으면 자동 재전송 금지
 
@@ -144,3 +144,9 @@ Artifact Signature·Manifest 100%
 ### OAuth 소유권
 
 Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credential Provider만 수행한다. FastAPI는 연결 Metadata만 취급한다.
+
+## 2026-08-07 승인형 고영향 Write 보안
+- SEND·DELETE·Task 완료·참석자 변경은 정확한 Target/Arguments와 명시 승인 후 실행한다.
+- SEND 응답 유실은 재전송하지 않고 UNKNOWN_RESULT로 전환한다.
+- DELETE는 Calendar Event에만 허용한다.
+- 승인 우회·Verification 생략·DB 직접 상태 변경은 사용자 요청으로 Override할 수 없다.

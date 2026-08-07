@@ -2,7 +2,7 @@
 
 > **문서 기준:** 2026-08-06까지의 설계 결정과 Notion 공식 원본을 최우선 기준으로 한다. 기존 문서와 충돌하면 본 문서가 우선한다.
 >
-> **상태:** Draft v2.3 · **대상:** P0 MVP
+> **상태:** Draft v2.4 · **기준일:** 2026-08-07 · **대상:** P0 MVP
 
 ## 1. 문서 목적
 
@@ -77,10 +77,10 @@ Google Work Agent는 Gmail, Google Tasks, Google Calendar에 흩어진 업무 �
 - 원격 Backend·외부 공개 REST API·멀티 사용자 API 서비스
 - 원격 MCP Server
 - CPU 기반 로컬 LLM 추론
-- Gmail 자동 전송
-- Gmail·Task·Event 삭제
-- 외부 참석자 자동 추가
-- Task 자동 완료 처리
+- Gmail Message·Thread 원문 삭제
+- Google Task 삭제
+- 승인 없이 외부로 영향을 주는 Google Write
+- 반복 Event 전체 일괄 수정
 - 실시간 메일 감시 및 백그라운드 자동 실행
 - 자유 대화형 Agent 군집·Peer-to-Peer A2A·Agent별 독립 장기 Memory
 - 범용 웹 브라우징 Agent
@@ -182,7 +182,7 @@ Agent가 미완료 Task, 관련 메일, Calendar 가용 시간을 분석해 수�
 |---|---|---|
 | FR-050 | 승인된 Action만 MCP Write Tool로 실행해야 한다. | MCP Server가 Approval Token과 Hash를 검증한다. |
 | FR-051 | Gmail Draft, Task, Calendar Event 생성·수정을 지원해야 한다. | 정책상 허용된 필드만 변경된다. |
-| FR-052 | 모든 쓰기 Action은 실행 후 GET 재조회 검증을 수행해야 한다. | expected·actual 비교 결과가 저장된다. |
+| FR-052 | 모든 쓰기 Action은 실행 후 Effect별 결정적 검증을 수행해야 한다. | CREATE·UPDATE는 GET 비교, DELETE는 대상 부재/삭제 상태, SEND는 Sent 결과 조회가 저장된다. |
 | FR-053 | 정상화 가능한 차이와 실제 불일치를 구분해야 한다. | 공백·Timezone 등은 정규화하고 핵심 필드 차이는 MISMATCH로 처리한다. |
 | FR-054 | 부분 실패 시 성공 Action을 보존하고 실패 Action만 재시도해야 한다. | 실행 결과와 종속 Action 차단 상태가 표시된다. |
 | FR-055 | 브라우저 새로고침, SSE 재연결 또는 앱 재시작 후 Checkpoint와 Domain Store에서 재개해야 한다. | 동일 Thread ID로 승인·실행 상태를 복원하며 Client State만으로 실행 사실을 판단하지 않는다. |
@@ -511,7 +511,7 @@ Domain 상태 전이·SQLite·Command Receipt
 - 승인 이후 Google Write, 상태 전이, 검증과 복구는 결정적 Subgraph와 Domain Command가 담당한다.
 - 요청별 LLM 호출은 필요한 Agent만 실행하며 호출 수·Token·지연 예산을 강제한다.
 
-## 21-A. Agent Workflow v5.4 Baseline 계약
+## 21-A. Agent Workflow v5.5 Baseline 계약
 
 - 결정적 Supervisor + 최대 6개 전문 LLM 역할 Node를 초기 Baseline으로 사용한다.
 - API 탐색·수집 Agent는 최소 API 호출 전략과 Source·Page·상세 조회 예산을 결정한다.
@@ -527,3 +527,12 @@ Domain 상태 전이·SQLite·Command Receipt
 - OAuth 시작·Callback·Token 교환·Refresh Token 저장은 MCP Credential Provider가 소유한다.
 - FastAPI는 Token 원문이 아닌 계정·Scope·연결 상태 Metadata만 취급한다.
 - 대화 이름 변경과 대화 삭제는 P1이며 P0 API·UI 범위에서 제외한다.
+
+## 2026-08-07 v2.4 승인형 Write·Clarification 보강
+- Gmail 실제 전송은 승인 필수 `SEND` Effect로 지원한다.
+- 정확한 Task 완료 상태 변경은 승인 필수 `UPDATE`다.
+- 정확한 Calendar Event 삭제는 승인 필수 `DELETE`다.
+- Calendar 참석자 추가·수정은 승인 필수 `UPDATE`다.
+- 사용자가 중복 사실을 인지하고 동일 Resource 추가 생성을 명시적으로 요구한 경우 재확인·승인 후 허용할 수 있다.
+- 모호성은 차단이 아니라 `NEEDS_CONFIRMATION → clarify → same Run/Thread resume`를 기본으로 한다.
+- 전체 Gmail Mailbox·장기간 무제한 원문·모든 Workspace Source 전체 조회는 데이터 최소화 정책에 따라 BLOCK한다.

@@ -725,7 +725,7 @@ Local Storage에는 Secret, Approval Token 원문, Gmail 전체 원문, 실행 �
 - 다중 LLM 호출은 하나의 Run 진행으로 묶고, 브라우저 새로고침 후 Run Snapshot과 Domain Store를 재조회한다.
 - React Client State와 SSE Event는 Agent Handoff·Checkpoint·승인·실행 사실의 기준점이 아니다.
 
-## 21. Draft v2.2 Multi-Agent 진행·결과 UX
+## 21. v2.2 Multi-Agent 진행·결과 UX 변경 이력
 
 사용자 단계:
 
@@ -763,3 +763,19 @@ Local Storage에는 Secret, Approval Token 원문, Gmail 전체 원문, 실행 �
 
 - P0: 새 대화, 대화 목록·검색·선택·재개.
 - P1: 대화 이름 변경·대화 삭제.
+
+## 22. v2.3 Clarification 선택 UX
+- 후보가 존재하면 자유입력만 요구하지 않고 후보 선택을 우선 표시한다.
+- 후보에는 번호/라벨/회사·팀·업무 등 의미 있는 차이/최근 관련 Resource를 표시한다.
+- 후보 선택 후에도 `처리/진행/시작`의 동작 의미가 불명확하면 필요한 최소 질문만 이어서 한다.
+- 문맥으로 의미가 확정되면 추가 질문하지 않는다.
+- 확인 응답 후 새 Run을 만들지 않고 같은 Run·LangGraph Thread를 Resume한다.
+
+예시:
+```text
+'김 대리' 후보가 여러 개 있습니다.
+1. 한빛건설 김 대리 — 최근 견적 회신
+2. 세진중공업 김 대리 — 납품 일정
+3. 디자인팀 김 대리 — 시안 검토
+어느 김 대리 건인가요?
+```
