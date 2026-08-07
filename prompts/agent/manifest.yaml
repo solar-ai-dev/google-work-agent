@@ -171,14 +171,14 @@
     {
       "prompt_bundle_version": "agent-r4-v0.1-baseline",
       "prompt_id": "planning.answer_only",
-      "prompt_version": "TBD",
-      "content_hash": "TBD",
+      "prompt_version": "v0.1",
+      "content_hash": "1f11f5dc44989032889201def78f9a4fa135e16f91bf1559f97ac5fa58687144",
       "agent_role": "solution_planning",
       "subgraph_name": "planning",
       "node_name": "answer_only",
-      "node_state": "RESERVED",
+      "node_state": "BASELINE",
       "tier": "Tier B",
-      "purpose": "Reserved for later dataset after vertical flow or failure traces.",
+      "purpose": "Produce an evidence-backed answer draft when no additional action plan is required.",
       "input_schema_version": "agent-node-input-v0.1",
       "output_schema_version": "agent-node-output-v0.1"
     },
