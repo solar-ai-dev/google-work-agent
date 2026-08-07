@@ -198,6 +198,20 @@
     },
     {
       "prompt_bundle_version": "agent-r4-v0.1-baseline",
+      "prompt_id": "planning.revise_answer",
+      "prompt_version": "v0.1",
+      "content_hash": "fa2b3ba4856a57b344acb2bba02fb78e3a6d20d8797b3f6d43ded269fb341ef7",
+      "agent_role": "solution_planning",
+      "subgraph_name": "planning",
+      "node_name": "revise_answer",
+      "node_state": "BASELINE",
+      "tier": "Tier B",
+      "purpose": "Revise an existing answer draft using review feedback without expanding scope.",
+      "input_schema_version": "agent-node-input-v0.1",
+      "output_schema_version": "agent-node-output-v0.1"
+    },
+    {
+      "prompt_bundle_version": "agent-r4-v0.1-baseline",
       "prompt_id": "planning.revise_plan",
       "prompt_version": "TBD",
       "content_hash": "TBD",

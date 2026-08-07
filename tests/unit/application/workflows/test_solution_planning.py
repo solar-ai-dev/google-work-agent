@@ -16,6 +16,7 @@ from google_work_agent.application.workflows import (
     WorkflowPhase,
     load_solution_planning_answer_only_prompt_reference,
     load_solution_planning_draft_plan_prompt_reference,
+    load_solution_planning_revise_answer_prompt_reference,
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
@@ -55,6 +56,19 @@ DRAFT_PLAN_PROMPT_REF = PromptReference(
     input_schema_version="agent-node-input-v0.1",
     output_schema_version="agent-node-output-v0.1",
 )
+REVISE_ANSWER_PROMPT_REF = PromptReference(
+    prompt_bundle_version="agent-r4-v0.1-baseline",
+    prompt_id="planning.revise_answer",
+    prompt_version="v0.1",
+    content_hash="hash",
+    agent_role="solution_planning",
+    subgraph_name="planning",
+    node_name="revise_answer",
+    node_state="BASELINE",
+    purpose="revise_answer",
+    input_schema_version="agent-node-input-v0.1",
+    output_schema_version="agent-node-output-v0.1",
+)
 
 
 @dataclass
@@ -84,7 +98,7 @@ class FakeLLMRuntime:
         return result
 
 
-def test_answer_only_builds_transient_result_without_plan_draft_state() -> None:
+def test_answer_only_stores_answer_draft_and_clears_plan_draft() -> None:
     runtime = FakeLLMRuntime()
     runtime.queued.append(_llm_result(_answer_output(PlanningResult.ANSWER_ONLY.value)))
     agent = _agent(runtime)
@@ -110,8 +124,8 @@ def test_answer_only_builds_transient_result_without_plan_draft_state() -> None:
     }
     assert result["status"] == PlanningResult.ANSWER_ONLY.value
     assert state_update["workflow_phase"] == WorkflowPhase.PLAN_REVIEW.value
-    assert "plan_draft" not in state_update
-    assert "answer_draft" not in state_update
+    assert state_update["answer_draft"] == result
+    assert state_update["plan_draft"] is None
     assert "user_interrupt" not in state_update
     assert cast(PromptReference, runtime.calls[0]["prompt_ref"]).prompt_id == "planning.answer_only"
     assert runtime.calls[0]["output_schema"] == ANSWER_DRAFT_OUTPUT_SCHEMA
@@ -196,9 +210,48 @@ def test_draft_plan_builds_plan_ready_and_stores_plan_draft_only() -> None:
     assert len(result["actions"]) == 2
     assert state_update["workflow_phase"] == WorkflowPhase.PLAN_REVIEW.value
     assert state_update["plan_draft"] == result
-    assert "answer_draft" not in state_update
+    assert state_update["answer_draft"] is None
     assert cast(PromptReference, runtime.calls[0]["prompt_ref"]).prompt_id == "planning.draft_plan"
     assert runtime.calls[0]["output_schema"] == ACTION_PLAN_DRAFT_OUTPUT_SCHEMA
+
+
+def test_revise_answer_uses_existing_answer_and_review_issues() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            _answer_output(
+                PlanningResult.ANSWER_ONLY.value,
+                blockers=[],
+            )
+        )
+    )
+    agent = _agent(runtime)
+    answer_draft = validate_answer_draft_v1(
+        _answer_output(PlanningResult.ANSWER_ONLY.value),
+        analysis_result=_analysis_result(),
+    )
+    review_issues = [_review_issue()]
+
+    result = agent.revise_answer(
+        request_intent=_intent(),
+        answer_draft=answer_draft,
+        review_issues=review_issues,
+        review_summary="The answer omitted the pending task context.",
+        context_result=_context_result(),
+        analysis_result=_analysis_result(),
+        request=_request(),
+    )
+
+    prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
+    prompt_ref = cast(PromptReference, runtime.calls[0]["prompt_ref"])
+    assert prompt_ref.prompt_id == "planning.revise_answer"
+    assert runtime.calls[0]["output_schema"] == ANSWER_DRAFT_OUTPUT_SCHEMA
+    assert prompt_input["answer_draft"] == answer_draft
+    assert prompt_input["review_summary"] == "The answer omitted the pending task context."
+    assert prompt_input["review_issues"] == review_issues
+    assert prompt_input["analysis_result"] == _analysis_result()
+    assert prompt_input["source_content_is_untrusted"] is True
+    assert result["status"] == PlanningResult.ANSWER_ONLY.value
 
 
 def test_plan_prompt_input_uses_stage7_outputs_and_marks_source_untrusted() -> None:
@@ -296,7 +349,8 @@ def test_action_plan_needs_confirmation_or_blocked_do_not_store_actions() -> Non
 
     assert result["status"] == PlanningResult.NEEDS_CONFIRMATION.value
     assert result["actions"] == []
-    assert "plan_draft" not in state_update
+    assert state_update["plan_draft"] is None
+    assert state_update["answer_draft"] is None
     assert "user_interrupt" not in state_update
 
     output = _plan_output(PlanningResult.BLOCKED.value, actions=[])
@@ -353,6 +407,7 @@ def test_answer_only_and_plan_source_have_no_google_mcp_or_completion_call() -> 
 def test_prompt_refs_are_runtime_active() -> None:
     answer_prompt = load_solution_planning_answer_only_prompt_reference()
     plan_prompt = load_solution_planning_draft_plan_prompt_reference()
+    revise_prompt = load_solution_planning_revise_answer_prompt_reference()
 
     assert answer_prompt.prompt_id == "planning.answer_only"
     assert answer_prompt.prompt_version == "v0.1"
@@ -364,6 +419,11 @@ def test_prompt_refs_are_runtime_active() -> None:
     assert plan_prompt.content_hash != "TBD"
     assert plan_prompt.node_state == "BASELINE"
 
+    assert revise_prompt.prompt_id == "planning.revise_answer"
+    assert revise_prompt.prompt_version == "v0.1"
+    assert revise_prompt.content_hash != "TBD"
+    assert revise_prompt.node_state == "BASELINE"
+
 
 def test_solution_planning_exports_are_available() -> None:
     import google_work_agent.application.workflows as workflows
@@ -374,6 +434,7 @@ def test_solution_planning_exports_are_available() -> None:
     assert hasattr(workflows, "ActionDraftV1")
     assert hasattr(workflows, "validate_answer_draft_v1")
     assert hasattr(workflows, "validate_action_plan_draft_v1")
+    assert hasattr(workflows, "load_solution_planning_revise_answer_prompt_reference")
 
 
 def _agent(runtime: FakeLLMRuntime) -> SolutionPlanningAgent:
@@ -381,6 +442,7 @@ def _agent(runtime: FakeLLMRuntime) -> SolutionPlanningAgent:
         llm_runtime=cast(object, runtime),
         answer_only_prompt_ref=ANSWER_ONLY_PROMPT_REF,
         draft_plan_prompt_ref=DRAFT_PLAN_PROMPT_REF,
+        revise_answer_prompt_ref=REVISE_ANSWER_PROMPT_REF,
     )
 
 
@@ -632,3 +694,13 @@ def _llm_result(payload: object) -> StructuredLLMResult:
         provider_request_id="provider-request-1",
         safe_error_code=None,
     )
+
+
+def _review_issue() -> dict[str, object]:
+    return {
+        "issue_id": "issue-1",
+        "kind": "MISSING_GOAL_COVERAGE",
+        "message": "Mention the pending task context in the answer.",
+        "evidence_refs": ["evidence-2"],
+        "resource_refs": ["gmail_thread:thread-kim"],
+    }

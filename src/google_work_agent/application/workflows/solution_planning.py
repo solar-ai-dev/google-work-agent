@@ -155,7 +155,7 @@ class SolutionPlanningValidationError(ValueError):
 
 
 class SolutionPlanningAgent:
-    """Build answer-only or action-plan drafts without execution or approval."""
+    """Build or revise answer drafts and action-plan drafts without execution or approval."""
 
     def __init__(
         self,
@@ -163,6 +163,7 @@ class SolutionPlanningAgent:
         llm_runtime: LLMRuntimeService,
         answer_only_prompt_ref: PromptReference | None = None,
         draft_plan_prompt_ref: PromptReference | None = None,
+        revise_answer_prompt_ref: PromptReference | None = None,
         tool_registry: SignedToolRegistry | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
@@ -171,6 +172,9 @@ class SolutionPlanningAgent:
         )
         self._draft_plan_prompt_ref = (
             draft_plan_prompt_ref or load_solution_planning_draft_plan_prompt_reference()
+        )
+        self._revise_answer_prompt_ref = (
+            revise_answer_prompt_ref or load_solution_planning_revise_answer_prompt_reference()
         )
         self._tool_registry = tool_registry or build_p0_tool_registry()
 
@@ -247,14 +251,58 @@ class SolutionPlanningAgent:
         result["llm_provider_result"] = _provider_summary(llm_result)
         return result
 
+    def revise_answer(
+        self,
+        *,
+        request_intent: RequestIntentV1,
+        answer_draft: AnswerDraftV1,
+        review_issues: list[dict[str, object]],
+        review_summary: str | None,
+        context_result: ContextRetrievalResultV1,
+        analysis_result: WorkAnalysisResultV1,
+        request: WorkflowStartRequest,
+    ) -> AnswerDraftV1:
+        llm_result = self._llm_runtime.invoke_structured(
+            prompt_ref=self._revise_answer_prompt_ref,
+            prompt_input={
+                "request_text": request.request_text,
+                "request_intent": request_intent,
+                "answer_draft": answer_draft,
+                "review_summary": review_summary,
+                "review_issues": [dict(issue) for issue in review_issues],
+                "context_status": context_result["status"],
+                "context_bundle": context_result["context_bundle"],
+                "evidence_drafts": context_result["evidence_drafts"],
+                "analysis_result": analysis_result,
+                "source_content_is_untrusted": True,
+            },
+            output_schema=ANSWER_DRAFT_OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(
+                request_id=request.correlation.request_id,
+                command_id=request.correlation.command_id,
+                conversation_id=request.conversation_id,
+                run_id=request.run_id,
+                langgraph_thread_id=request.workflow_key,
+                llm_call_id=f"{request.run_id}:planning.revise_answer",
+            ),
+        )
+        result = validate_answer_draft_v1(
+            llm_result.structured_output,
+            analysis_result=analysis_result,
+        )
+        result["llm_provider_result"] = _provider_summary(llm_result)
+        return result
+
     def build_answer_state_update(self, result: AnswerDraftV1) -> JsonObject:
         phase = (
             WorkflowPhase.PLAN_REVIEW
             if PlanningResult(result["status"]) is PlanningResult.ANSWER_ONLY
             else WorkflowPhase.SOLUTION_PLANNING
         )
-        return {
+        update: JsonObject = {
             "workflow_phase": phase.value,
+            "answer_draft": None,
+            "plan_draft": None,
             "trace_context": {
                 "planning_result": result["status"],
                 "answer_evidence_count": len(result["evidence_refs"]),
@@ -262,6 +310,9 @@ class SolutionPlanningAgent:
                 "blocker_count": len(result["blockers"]),
             },
         }
+        if PlanningResult(result["status"]) is PlanningResult.ANSWER_ONLY:
+            update["answer_draft"] = result
+        return update
 
     def build_plan_state_update(self, result: ActionPlanDraftV1) -> JsonObject:
         phase = (
@@ -271,6 +322,8 @@ class SolutionPlanningAgent:
         )
         update: JsonObject = {
             "workflow_phase": phase.value,
+            "answer_draft": None,
+            "plan_draft": None,
             "trace_context": {
                 "planning_result": result["status"],
                 "action_count": len(result["actions"]),
@@ -412,6 +465,15 @@ def load_solution_planning_draft_plan_prompt_reference(
 ) -> PromptReference:
     return _load_prompt_reference(
         "planning.draft_plan",
+        manifest_path or _default_prompt_manifest_path(),
+    )
+
+
+def load_solution_planning_revise_answer_prompt_reference(
+    manifest_path: Path | None = None,
+) -> PromptReference:
+    return _load_prompt_reference(
+        "planning.revise_answer",
         manifest_path or _default_prompt_manifest_path(),
     )
 
@@ -778,6 +840,7 @@ __all__ = [
     "SolutionPlanningValidationError",
     "load_solution_planning_answer_only_prompt_reference",
     "load_solution_planning_draft_plan_prompt_reference",
+    "load_solution_planning_revise_answer_prompt_reference",
     "validate_action_plan_draft_v1",
     "validate_answer_draft_v1",
 ]

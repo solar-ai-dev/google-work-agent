@@ -49,7 +49,7 @@
 12. SIX_ROLE_BASELINE Profile
 ```
 
-6개 역할과 19개 Prompt를 한 번에 구현하지 않는다. 각 수직 흐름의 Domain·Tool·Trace 계약이 통과한 후 다음 LLM Node를 추가한다.
+6개 역할과 20개 Prompt를 한 번에 구현하지 않는다. 각 수직 흐름의 Domain·Tool·Trace 계약이 통과한 후 다음 LLM Node를 추가한다.
 
 ## 2. 책임
 
@@ -79,6 +79,7 @@ class MultiAgentGraphState:
     acquisition_result: dict | None
     context_result: dict | None
     analysis_result: dict | None
+    answer_draft: dict | None
     plan_draft: dict | None
     plan_review: dict | None
     approved_plan_id: str | None
@@ -185,7 +186,7 @@ output_schema_version
 - Prompt 원문은 Graph State·Trace·Audit에 저장하지 않음
 - 실행·검증·승인·정책 판정에는 LLM Prompt를 사용하지 않음
 
-초기 Prompt Template 19개:
+초기 Prompt Template 20개:
 
 | Agent | Purpose Key | 수량 |
 |---|---|---:|
@@ -198,11 +199,13 @@ output_schema_version
 
 ## 7.1 Prompt 구현 우선순위
 
+`solution_planning` Prompt set은 `answer_only`, `draft_plan`, `revise_answer`, `revise_plan`, `repair` 5개를 기준으로 한다.
+
 - **Tier A · 우선 완성·실험:** `request_understanding.classify`, `acquisition.plan_sources`, `context.select_evidence`, `planning.draft_plan`, `review.inspect`
-- **Tier B · Baseline 작성:** `context.assess_sufficiency`, `analysis.analyze`, `planning.answer_only`, `planning.revise_plan`, `review.recheck`
+- **Tier B · Baseline 작성:** `context.assess_sufficiency`, `analysis.analyze`, `planning.answer_only`, `planning.revise_answer`, `planning.revise_plan`, `review.recheck`
 - **Tier C · 실패 사례 후 작성:** 모든 `repair`, `reassess`, `revise_partial`
 
-19개 Prompt Manifest와 ID 예약은 유지하지만, Tier C Prompt는 실제 실패 유형과 Trace가 확보되기 전 과도하게 튜닝하지 않는다.
+20개 Prompt Manifest와 ID 예약은 유지하지만, Tier C Prompt는 실제 실패 유형과 Trace가 확보되기 전 과도하게 튜닝하지 않는다.
 
 ## 8. Budget
 
@@ -296,6 +299,7 @@ acquisition_result: AcquisitionResultV1 | None
 evidence_selection_result: EvidenceSelectionResultV1 | None
 sufficiency_result: SufficiencyResultV1 | None
 analysis_result: WorkAnalysisResultV1 | None
+answer_draft: AnswerDraftV1 | None
 plan_draft: ActionPlanDraftV1 | None
 plan_review: PlanReviewResultV1 | None
 execution_summary: ExecutionSummaryV1 | None
@@ -345,6 +349,12 @@ Runtime 입력과 `prompt_context`는 `selected_resource_ids` 호환 필드와 �
 ## 24. 2026-08-07 Agent Failure·Prompt·Budget 계약 보강
 
 이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.0`를 적용한다.
+
+Answer-only review revision contract:
+
+- `planning.answer_only`가 `ANSWER_ONLY`를 반환하면 `answer_draft`를 기록하고 `plan_draft`는 `None`으로 비운다.
+- `planning.draft_plan`이 `PLAN_READY`를 반환하면 `plan_draft`를 기록하고 `answer_draft`는 `None`으로 비운다.
+- Answer-only 경로에서 `review.inspect`가 `REVISE`를 반환하면 `planning.revise_answer`가 수정된 `AnswerDraftV1`을 생성하고 `answer_draft`를 교체한 뒤 `review.recheck`로 진행한다.
 
 ### 24.1 Failure Record
 

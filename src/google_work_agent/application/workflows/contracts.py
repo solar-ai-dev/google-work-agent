@@ -17,6 +17,7 @@ class MultiAgentGraphState(TypedDict):
     acquisition_result: dict[str, object] | None
     context_result: dict[str, object] | None
     analysis_result: dict[str, object] | None
+    answer_draft: dict[str, object] | None
     plan_draft: dict[str, object] | None
     plan_review: dict[str, object] | None
     approved_plan_id: str | None

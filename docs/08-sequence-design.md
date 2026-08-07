@@ -345,6 +345,8 @@ sequenceDiagram
     API-->>FE: 최종 답변·COMPLETED
 ```
 
+Answer-only Review가 `REVISE`를 반환하면 Supervisor는 `planning.revise_answer`로 답변 초안을 수정하고, 교체된 `answer_draft`로 `review.recheck`를 거친 뒤 `PASS`일 때만 `complete_answer_only_run`으로 진행한다.
+
 Answer-only Run에는 Plan·Action·Approval·Attempt·Verification Row를 만들지 않는다.
 
 ## 10. READ-only Plan 실행
