@@ -1,3 +1,4 @@
+import sqlite3
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -43,11 +44,12 @@ from google_work_agent.application.write_actions import (
     classify_write_delivery,
     is_reauth_required_error,
 )
-from google_work_agent.domain import ResultCode
+from google_work_agent.domain import ResultCode, RunCommand, RunStatus
 from google_work_agent.ports import (
     EvidenceOriginType,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
+    ResourceSnapshot,
 )
 from tests.support.fakes import (
     FakeClock,
@@ -99,6 +101,69 @@ def write_database(tmp_path: Path) -> Path:
 def fixture_gateway() -> FakeGoogleGateway:
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     return FakeGoogleGateway(snapshot)
+
+
+class _TransactionCheckingGateway:
+    def __init__(
+        self,
+        *,
+        delegate: FakeGoogleGateway,
+        database_path: Path,
+        after_get_sql: str | None = None,
+    ) -> None:
+        self._delegate = delegate
+        self._database_path = database_path
+        self._after_get_sql = after_get_sql
+
+    def get_task(self, *, task_list_id: str, task_id: str) -> ResourceSnapshot:
+        _assert_can_open_sqlite_write_transaction(self._database_path)
+        snapshot = self._delegate.get_task(task_list_id=task_list_id, task_id=task_id)
+        if self._after_get_sql is not None:
+            connection = connect_sqlite(self._database_path)
+            try:
+                connection.execute(self._after_get_sql)
+                connection.commit()
+            finally:
+                connection.close()
+        return snapshot
+
+
+def _assert_can_open_sqlite_write_transaction(database_path: Path) -> None:
+    connection = sqlite3.connect(database_path, timeout=0, isolation_level=None)
+    try:
+        connection.execute("BEGIN IMMEDIATE;")
+        connection.execute("ROLLBACK;")
+    finally:
+        connection.close()
+
+
+def test_run_recovery_commands_use_domain_transitions(write_database: Path) -> None:
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        required = unit_of_work.runs.require_recovery(
+            "run-1",
+            expected_version=0,
+        )
+        resolved = unit_of_work.runs.resolve_recovery(
+            "run-1",
+            expected_version=1,
+            recovery_next_status=RunStatus.VERIFYING,
+        )
+        unit_of_work.commit()
+
+    assert required.applied is True
+    assert required.current_status is RunStatus.RECOVERY_REQUIRED
+    assert required.next_allowed_commands == (
+        RunCommand.REQUEST_CANCEL,
+        RunCommand.RESOLVE_RECOVERY,
+    )
+    assert resolved.applied is True
+    assert resolved.current_status is RunStatus.VERIFYING
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute("SELECT status, version FROM runs WHERE id = 'run-1';").fetchone()
+        assert tuple(row) == ("VERIFYING", 2)
+    finally:
+        connection.close()
 
 
 def test_write_happy_path_requires_approval_then_executes_and_verifies(
@@ -536,6 +601,146 @@ def test_verification_mismatch_is_persisted_without_auto_verifying_tool_response
         connection.close()
 
 
+def test_verify_write_action_get_runs_without_sqlite_write_transaction(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    claimed = _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="verify-boundary",
+    )
+    execute_service = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )
+    stored_service = StoreWriteActionSuccessService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    executed = execute_service(
+        action_id="action-verify-boundary",
+        claim_token=claimed.claim_token or "",
+    )
+    stored_service(
+        StoreWriteActionSuccessCommand(
+            command_id="store-verify-boundary",
+            request_hash="j1" * 32,
+            action_id="action-verify-boundary",
+            attempt_id="attempt-verify-boundary",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            snapshot=executed.snapshot,
+        )
+    )
+    verify_service = VerifyWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=_TransactionCheckingGateway(
+            delegate=fixture_gateway,
+            database_path=write_database,
+        ),
+    )
+
+    verified = verify_service(
+        VerifyWriteActionCommand(
+            command_id="verify-boundary",
+            request_hash="j2" * 32,
+            action_id="action-verify-boundary",
+            attempt_id="attempt-verify-boundary",
+            expected_action_version=3,
+            verification_id="verification-boundary",
+        )
+    )
+
+    assert verified.applied is True
+    assert verified.action_status == "VERIFIED"
+
+
+def test_verify_write_action_rechecks_version_after_external_get(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    claimed = _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="verify-race",
+    )
+    execute_service = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )
+    stored_service = StoreWriteActionSuccessService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    executed = execute_service(
+        action_id="action-verify-race",
+        claim_token=claimed.claim_token or "",
+    )
+    stored_service(
+        StoreWriteActionSuccessCommand(
+            command_id="store-verify-race",
+            request_hash="k1" * 32,
+            action_id="action-verify-race",
+            attempt_id="attempt-verify-race",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            snapshot=executed.snapshot,
+        )
+    )
+    verify_service = VerifyWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=_TransactionCheckingGateway(
+            delegate=fixture_gateway,
+            database_path=write_database,
+            after_get_sql=(
+                "UPDATE actions SET version = version + 1 "
+                "WHERE id = 'action-verify-race';"
+            ),
+        ),
+    )
+
+    verified = verify_service(
+        VerifyWriteActionCommand(
+            command_id="verify-race",
+            request_hash="k2" * 32,
+            action_id="action-verify-race",
+            attempt_id="attempt-verify-race",
+            expected_action_version=3,
+            verification_id="verification-race",
+        )
+    )
+
+    assert verified.applied is False
+    assert verified.result_code == ResultCode.VERSION_CONFLICT.value
+    connection = connect_sqlite(write_database)
+    try:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM verifications WHERE id = 'verification-race';"
+        ).fetchone()[0]
+        receipt = connection.execute(
+            """
+            SELECT status, result_code
+            FROM command_receipts
+            WHERE command_id = 'verify-race';
+            """
+        ).fetchone()
+        assert count == 0
+        assert tuple(receipt) == ("REJECTED", ResultCode.VERSION_CONFLICT.value)
+    finally:
+        connection.close()
+
+
 def test_delivery_certainty_and_reauth_classification_are_pure() -> None:
     not_sent = GoogleWorkspaceGatewayError(
         code=GoogleWorkspaceErrorCode.TIMEOUT,
@@ -704,6 +909,56 @@ def test_update_recovery_can_resolve_unknown_as_failed_when_source_is_unchanged(
     )
     assert retried.applied is True
     assert retried.action_status == "MODIFIED"
+
+
+def test_update_recovery_get_runs_without_sqlite_write_transaction(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_update_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="boundary-update",
+    )
+    unknown_service = MarkWriteActionUnknownResultService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    unknown_service(
+        MarkWriteActionUnknownResultCommand(
+            command_id="unknown-boundary-update",
+            request_hash="l1" * 32,
+            action_id="action-boundary-update",
+            attempt_id="attempt-boundary-update",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            error_code=GoogleWorkspaceErrorCode.TIMEOUT.value,
+            error_detail="timeout after delivery",
+        )
+    )
+    recover_service = RecoverUnknownUpdateActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=_TransactionCheckingGateway(
+            delegate=fixture_gateway,
+            database_path=write_database,
+        ),
+    )
+
+    resolved = recover_service(
+        RecoverUnknownUpdateActionCommand(
+            command_id="recover-boundary-update",
+            request_hash="l2" * 32,
+            action_id="action-boundary-update",
+            attempt_id="attempt-boundary-update",
+            expected_action_version=3,
+            expected_attempt_version=1,
+        )
+    )
+
+    assert resolved.applied is True
+    assert resolved.action_status == "FAILED"
 
 
 def test_waiting_approval_cancel_revokes_approval_and_finalizes_cancelled(

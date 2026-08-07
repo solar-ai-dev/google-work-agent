@@ -42,6 +42,8 @@ from google_work_agent.domain import (
         (RunStatus.CREATED, RunCommand.REQUEST_CANCEL, RunStatus.CANCEL_REQUESTED),
         (RunStatus.EXECUTING, RunCommand.REQUEST_CANCEL, RunStatus.CANCEL_REQUESTED),
         (RunStatus.CANCEL_REQUESTED, RunCommand.FINALIZE_CANCEL, RunStatus.CANCELLED),
+        (RunStatus.EXECUTING, RunCommand.REQUIRE_RECOVERY, RunStatus.RECOVERY_REQUIRED),
+        (RunStatus.RECOVERY_REQUIRED, RunCommand.RESOLVE_RECOVERY, RunStatus.VERIFYING),
     ),
 )
 def test_allowed_run_edges(
@@ -49,7 +51,15 @@ def test_allowed_run_edges(
     command: RunCommand,
     next_status: RunStatus,
 ) -> None:
-    result = transition_run(current_status, command, 7, 7)
+    result = transition_run(
+        current_status,
+        command,
+        7,
+        7,
+        recovery_next_status=RunStatus.VERIFYING
+        if command is RunCommand.RESOLVE_RECOVERY
+        else None,
+    )
 
     assert result.applied is True
     assert result.result_code is ResultCode.TRANSITION_APPLIED
@@ -83,6 +93,29 @@ def test_publish_plan_requires_explicit_branch() -> None:
         transition_run(RunStatus.PLANNING, RunCommand.PUBLISH_PLAN, 2, 2)
 
 
+def test_resolve_recovery_requires_explicit_status() -> None:
+    with pytest.raises(InvariantViolationError):
+        transition_run(RunStatus.RECOVERY_REQUIRED, RunCommand.RESOLVE_RECOVERY, 2, 2)
+
+
+@pytest.mark.parametrize(
+    "next_status",
+    (RunStatus.VERIFYING, RunStatus.FAILED, RunStatus.CANCELLED),
+)
+def test_resolve_recovery_allowed_targets(next_status: RunStatus) -> None:
+    result = transition_run(
+        RunStatus.RECOVERY_REQUIRED,
+        RunCommand.RESOLVE_RECOVERY,
+        2,
+        2,
+        recovery_next_status=next_status,
+    )
+
+    assert result.applied is True
+    assert result.current_status is next_status
+    assert result.current_version == 3
+
+
 def test_run_version_conflict_is_checked_before_transition() -> None:
     result = transition_run(RunStatus.CREATED, RunCommand.START_ANALYSIS, 3, 2)
 
@@ -90,7 +123,11 @@ def test_run_version_conflict_is_checked_before_transition() -> None:
     assert result.result_code is ResultCode.VERSION_CONFLICT
     assert result.current_status is RunStatus.CREATED
     assert result.current_version == 3
-    assert result.next_allowed_commands == (RunCommand.START_ANALYSIS, RunCommand.REQUEST_CANCEL)
+    assert result.next_allowed_commands == (
+        RunCommand.START_ANALYSIS,
+        RunCommand.REQUEST_CANCEL,
+        RunCommand.REQUIRE_RECOVERY,
+    )
 
 
 @pytest.mark.parametrize(
@@ -137,7 +174,11 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
     (
         (
             RunStatus.CREATED,
-            (RunCommand.START_ANALYSIS, RunCommand.REQUEST_CANCEL),
+            (
+                RunCommand.START_ANALYSIS,
+                RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_RECOVERY,
+            ),
         ),
         (
             RunStatus.ANALYZING,
@@ -146,6 +187,7 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
                 RunCommand.REQUEST_CONFIRMATION,
                 RunCommand.COMPLETE_ANSWER_ONLY_RUN,
                 RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_RECOVERY,
             ),
         ),
         (
@@ -155,11 +197,16 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
                 RunCommand.REQUEST_CONFIRMATION,
                 RunCommand.COMPLETE_ANSWER_ONLY_RUN,
                 RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_RECOVERY,
             ),
         ),
         (
             RunStatus.WAITING_CONFIRMATION,
-            (RunCommand.BEGIN_RETRIEVAL, RunCommand.REQUEST_CANCEL),
+            (
+                RunCommand.BEGIN_RETRIEVAL,
+                RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_RECOVERY,
+            ),
         ),
         (
             RunStatus.PLANNING,
@@ -168,16 +215,23 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
                 RunCommand.PUBLISH_PLAN,
                 RunCommand.COMPLETE_ANSWER_ONLY_RUN,
                 RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_RECOVERY,
             ),
         ),
-        (RunStatus.WAITING_APPROVAL, (RunCommand.REQUEST_CANCEL,)),
-        (RunStatus.EXECUTING, (RunCommand.REQUEST_CANCEL,)),
-        (RunStatus.VERIFYING, (RunCommand.REQUEST_CANCEL,)),
-        (RunStatus.CANCEL_REQUESTED, (RunCommand.FINALIZE_CANCEL,)),
+        (
+            RunStatus.WAITING_APPROVAL,
+            (RunCommand.REQUEST_CANCEL, RunCommand.REQUIRE_RECOVERY),
+        ),
+        (RunStatus.EXECUTING, (RunCommand.REQUEST_CANCEL, RunCommand.REQUIRE_RECOVERY)),
+        (RunStatus.VERIFYING, (RunCommand.REQUEST_CANCEL, RunCommand.REQUIRE_RECOVERY)),
+        (
+            RunStatus.CANCEL_REQUESTED,
+            (RunCommand.FINALIZE_CANCEL, RunCommand.REQUIRE_RECOVERY),
+        ),
         (RunStatus.COMPLETED, ()),
         (RunStatus.CANCELLED, ()),
-        (RunStatus.REAUTH_REQUIRED, (RunCommand.REQUEST_CANCEL,)),
-        (RunStatus.RECOVERY_REQUIRED, (RunCommand.REQUEST_CANCEL,)),
+        (RunStatus.REAUTH_REQUIRED, (RunCommand.REQUEST_CANCEL, RunCommand.REQUIRE_RECOVERY)),
+        (RunStatus.RECOVERY_REQUIRED, (RunCommand.REQUEST_CANCEL, RunCommand.RESOLVE_RECOVERY)),
         (RunStatus.FAILED, ()),
         (RunStatus.BLOCKED, ()),
     ),

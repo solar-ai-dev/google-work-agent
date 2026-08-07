@@ -1346,6 +1346,59 @@ class VerifyWriteActionService:
                     action_id=command.action_id,
                 )
 
+            action = _require_action(unit_of_work, command.action_id)
+            attempt = _require_attempt(unit_of_work, command.attempt_id)
+            if attempt.status is not ExecutionAttemptStatus.SUCCEEDED:
+                now_ms = self._now_ms()
+                unit_of_work.command_receipts.add_received(
+                    command_id=command.command_id,
+                    command_type="VerifyWriteAction",
+                    request_hash=command.request_hash,
+                    aggregate_type="Action",
+                    aggregate_id=command.action_id,
+                    created_at_ms=now_ms,
+                )
+                response = WriteActionResponse(
+                    applied=False,
+                    result_code=ResultCode.STATE_CONFLICT.value,
+                    action_id=action.id,
+                    action_status=action.status,
+                    action_version=action.version,
+                    next_allowed_commands=(),
+                    attempt_id=attempt.id,
+                    conflict_detail="verification requires a succeeded execution attempt",
+                )
+                _finish_json_receipt(
+                    unit_of_work,
+                    command.command_id,
+                    response,
+                    action.version,
+                    now_ms,
+                )
+                unit_of_work.commit()
+                return response
+            fallback_resource_id = _resolve_snapshot_fallback_resource_id(
+                unit_of_work,
+                action=action,
+                resource_ref_id=attempt.result_resource_ref_id,
+            )
+
+        actual_snapshot = _load_verification_snapshot(
+            gateway=self._gateway,
+            action=action,
+            fallback_resource_id=fallback_resource_id,
+        )
+
+        with self._unit_of_work_factory() as unit_of_work:
+            existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+            if existing is not None:
+                return _resolve_existing_action_receipt(
+                    unit_of_work=unit_of_work,
+                    receipt=existing,
+                    request_hash=command.request_hash,
+                    action_id=command.action_id,
+                )
+
             now_ms = self._now_ms()
             unit_of_work.command_receipts.add_received(
                 command_id=command.command_id,
@@ -1379,22 +1432,35 @@ class VerifyWriteActionService:
                 unit_of_work.commit()
                 return response
 
-            actual_snapshot = _load_verification_snapshot(
-                gateway=self._gateway,
-                action=action,
-                result_resource_ref_id=attempt.result_resource_ref_id,
-                unit_of_work=unit_of_work,
-            )
             expected = loads(action.expected_json)
             actual_projection = normalize_verification_projection(actual_snapshot)
             diff = calculate_verification_diff(expected, actual_projection)
             verification_status = (
                 VerificationStatus.VERIFIED if len(diff) == 0 else VerificationStatus.MISMATCH
             )
+            verification_no = len(unit_of_work.verifications.list_by_attempt(attempt.id)) + 1
+            result = unit_of_work.actions.store_verification(
+                action.id,
+                expected_version=command.expected_action_version,
+                updated_at_ms=now_ms,
+                verification_status=verification_status.value,
+            )
+            if not result.applied:
+                response = _action_response_from_result(action_id=action.id, result=result)
+                _finish_json_receipt(
+                    unit_of_work,
+                    command.command_id,
+                    response,
+                    result.current_version,
+                    now_ms,
+                )
+                unit_of_work.commit()
+                return response
+
             verification = VerificationRecord(
                 id=command.verification_id,
                 execution_attempt_id=attempt.id,
-                verification_no=len(unit_of_work.verifications.list_by_attempt(attempt.id)) + 1,
+                verification_no=verification_no,
                 status=verification_status,
                 normalizer_version=VERIFICATION_NORMALIZER_VERSION,
                 expected_json=canonicalize_json_value(expected),
@@ -1403,14 +1469,6 @@ class VerifyWriteActionService:
                 verified_at_ms=now_ms,
             )
             unit_of_work.verifications.insert(verification)
-            result = unit_of_work.actions.store_verification(
-                action.id,
-                expected_version=command.expected_action_version,
-                updated_at_ms=now_ms,
-                verification_status=verification_status.value,
-            )
-            if not result.applied:
-                raise RuntimeError("write action store_verification transition failed")
             if verification_status is VerificationStatus.MISMATCH:
                 _propagate_dependency_blocked(
                     unit_of_work=unit_of_work,
@@ -1497,6 +1555,36 @@ class RecoverExistingWriteResultService:
             action = _require_action(unit_of_work, command.action_id)
             attempt = _require_attempt(unit_of_work, command.attempt_id)
             plan = _require_plan(unit_of_work, action.plan_id)
+            if action.version != command.expected_action_version:
+                response = _write_action_version_conflict_response(
+                    action=action,
+                    attempt_id=attempt.id,
+                    conflict_detail="expected_action_version does not match current_version",
+                )
+                _finish_json_receipt(
+                    unit_of_work,
+                    command.command_id,
+                    response,
+                    action.version,
+                    now_ms,
+                )
+                unit_of_work.commit()
+                return response
+            if attempt.version != command.expected_attempt_version:
+                response = _write_action_version_conflict_response(
+                    action=action,
+                    attempt_id=attempt.id,
+                    conflict_detail="expected_attempt_version does not match current_version",
+                )
+                _finish_json_receipt(
+                    unit_of_work,
+                    command.command_id,
+                    response,
+                    action.version,
+                    now_ms,
+                )
+                unit_of_work.commit()
+                return response
             resource_ref = _resource_ref_from_snapshot(
                 run_id=plan.run_id,
                 snapshot=command.snapshot,
@@ -1597,6 +1685,36 @@ class ResolveUnknownWriteAsFailedService:
             action = _require_action(unit_of_work, command.action_id)
             attempt = _require_attempt(unit_of_work, command.attempt_id)
             plan = _require_plan(unit_of_work, action.plan_id)
+            if action.version != command.expected_action_version:
+                response = _write_action_version_conflict_response(
+                    action=action,
+                    attempt_id=attempt.id,
+                    conflict_detail="expected_action_version does not match current_version",
+                )
+                _finish_json_receipt(
+                    unit_of_work,
+                    command.command_id,
+                    response,
+                    action.version,
+                    now_ms,
+                )
+                unit_of_work.commit()
+                return response
+            if attempt.version != command.expected_attempt_version:
+                response = _write_action_version_conflict_response(
+                    action=action,
+                    attempt_id=attempt.id,
+                    conflict_detail="expected_attempt_version does not match current_version",
+                )
+                _finish_json_receipt(
+                    unit_of_work,
+                    command.command_id,
+                    response,
+                    action.version,
+                    now_ms,
+                )
+                unit_of_work.commit()
+                return response
             unit_of_work.execution_attempts.update_status(
                 attempt.id,
                 expected_version=command.expected_attempt_version,
@@ -1727,15 +1845,27 @@ class RecoverUnknownUpdateActionService:
 
     def __call__(self, command: RecoverUnknownUpdateActionCommand) -> WriteActionResponse:
         with self._unit_of_work_factory() as unit_of_work:
+            existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+            if existing is not None:
+                return _resolve_existing_action_receipt(
+                    unit_of_work=unit_of_work,
+                    receipt=existing,
+                    request_hash=command.request_hash,
+                    action_id=command.action_id,
+                )
             action = _require_action(unit_of_work, command.action_id)
             attempt = _require_attempt(unit_of_work, command.attempt_id)
             approval = _require_approval(unit_of_work, attempt.approval_id)
-            snapshot = _load_verification_snapshot(
-                gateway=self._gateway,
+            fallback_resource_id = _resolve_snapshot_fallback_resource_id(
+                unit_of_work,
                 action=action,
-                result_resource_ref_id=action.target_resource_ref_id,
-                unit_of_work=unit_of_work,
+                resource_ref_id=action.target_resource_ref_id,
             )
+        snapshot = _load_verification_snapshot(
+            gateway=self._gateway,
+            action=action,
+            fallback_resource_id=fallback_resource_id,
+        )
         normalized_actual = normalize_verification_projection(snapshot)
         expected_projection = cast(dict[str, object], loads(action.expected_json))
         if normalized_actual == expected_projection:
@@ -2385,28 +2515,49 @@ def _load_verification_snapshot(
     *,
     gateway: GoogleWorkspaceGateway,
     action: ActionRecord,
-    result_resource_ref_id: str | None,
-    unit_of_work: UnitOfWork,
+    fallback_resource_id: str | None,
 ) -> ResourceSnapshot:
     arguments = loads(action.arguments_json)
     if action.tool_name in {"gmail_create_draft", "gmail_update_draft"}:
-        draft_id = str(
-            arguments.get("draft_id") or _resource_id_from_ref(unit_of_work, result_resource_ref_id)
-        )
+        draft_id = str(arguments.get("draft_id") or _required_resource_id(fallback_resource_id))
         return gateway.get_gmail_draft(draft_id=draft_id)
     if action.tool_name in {"tasks_create_task", "tasks_update_task"}:
         task_list_id = str(arguments["task_list_id"])
-        task_id = str(
-            arguments.get("task_id") or _resource_id_from_ref(unit_of_work, result_resource_ref_id)
-        )
+        task_id = str(arguments.get("task_id") or _required_resource_id(fallback_resource_id))
         return gateway.get_task(task_list_id=task_list_id, task_id=task_id)
     if action.tool_name in {"calendar_create_event", "calendar_update_event"}:
         calendar_id = str(arguments["calendar_id"])
-        event_id = str(
-            arguments.get("event_id") or _resource_id_from_ref(unit_of_work, result_resource_ref_id)
-        )
+        event_id = str(arguments.get("event_id") or _required_resource_id(fallback_resource_id))
         return gateway.get_calendar_event(calendar_id=calendar_id, event_id=event_id)
     raise LookupError(f"unsupported verification tool: {action.tool_name}")
+
+
+def _resolve_snapshot_fallback_resource_id(
+    unit_of_work: UnitOfWork,
+    *,
+    action: ActionRecord,
+    resource_ref_id: str | None,
+) -> str | None:
+    arguments = loads(action.arguments_json)
+    if action.tool_name in {"gmail_create_draft", "gmail_update_draft"}:
+        return None if arguments.get("draft_id") is not None else _resource_id_from_ref(
+            unit_of_work, resource_ref_id
+        )
+    if action.tool_name in {"tasks_create_task", "tasks_update_task"}:
+        return None if arguments.get("task_id") is not None else _resource_id_from_ref(
+            unit_of_work, resource_ref_id
+        )
+    if action.tool_name in {"calendar_create_event", "calendar_update_event"}:
+        return None if arguments.get("event_id") is not None else _resource_id_from_ref(
+            unit_of_work, resource_ref_id
+        )
+    return None
+
+
+def _required_resource_id(resource_id: str | None) -> str:
+    if resource_id is None:
+        raise LookupError("resource reference is required for verification")
+    return resource_id
 
 
 def _resource_id_from_ref(unit_of_work: UnitOfWork, resource_ref_id: str | None) -> str:
@@ -2459,6 +2610,26 @@ def _action_response_from_result(
         action_version=result.current_version,
         next_allowed_commands=tuple(item.value for item in result.next_allowed_commands),
         conflict_detail=result.conflict_detail,
+    )
+
+
+def _write_action_version_conflict_response(
+    *,
+    action: ActionRecord,
+    attempt_id: str,
+    conflict_detail: str,
+) -> WriteActionResponse:
+    return WriteActionResponse(
+        applied=False,
+        result_code=ResultCode.VERSION_CONFLICT.value,
+        action_id=action.id,
+        action_status=action.status,
+        action_version=action.version,
+        next_allowed_commands=tuple(
+            item.value for item in _next_allowed_write_commands_for_record(action)
+        ),
+        attempt_id=attempt_id,
+        conflict_detail=conflict_detail,
     )
 
 
