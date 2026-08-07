@@ -824,3 +824,63 @@ DEFERRED
 ```
 
 Decision Record에는 Candidate Config Hash, Dataset·Projection·Grader Version, 반복 수, 품질·안전·비용·Latency, 주요 실패 Case, Node·Handoff 원인, 채택·탈락 근거를 포함한다.
+
+---
+
+## 15. 2026-08-07 Node Capability·Prompt 실험 확장
+
+Canonical 92는 업무 세계와 E2E Route를 담당한다. 개별 Agent가 대응할 수 있는 상황 전체는 별도 Node Dataset과 Prompt Dataset으로 평가한다.
+
+### 15.1 E02 분해
+
+```text
+E02-A Initial Prompt Quality
+E02-B Structured Output Schema Repair
+E02-C Failure-specific Semantic Revision
+E02-D Retry Selection and Stop Policy
+```
+
+### 15.2 E03 분해
+
+```text
+E03-A ORACLE Node Capability
+E03-B LIVE Handoff Robustness
+E03-C MUTATED Upstream Input
+E03-D Error Propagation Attribution
+```
+
+### 15.3 Dataset Layer
+
+```text
+canonical_e2e
+node_capability_dev
+node_capability_holdout
+prompt_repair_revision
+query_retrieval
+fault_safety
+paraphrase_robustness
+canonical_holdout
+```
+
+- Node HOLDOUT은 Canonical E2E Holdout과 별도다.
+- 같은 Failure·Scenario·Fixture Family를 DEV와 HOLDOUT에 나누지 않는다.
+- 모든 적용 가능한 Failure Reason은 최소 `DEV 3 + HOLDOUT 1` Item을 가진다.
+- Dataset은 Prompt Version이 아니라 Prompt Slot을 참조한다.
+
+### 15.4 Prompt 후보 승격
+
+```text
+DRAFT
+→ Node DEV
+→ Node HOLDOUT
+→ Safety Gate
+→ Prompt Manifest 승인
+→ RUNTIME_ACTIVE
+```
+
+실패별 Prompt를 작성했다는 이유만으로 제품 Runtime에 활성화하지 않는다.
+
+### 15.5 Budget 비교
+
+정상 Route, Retrieval-heavy Route, Revision-heavy Route를 별도 집계한다. 평균 품질뿐 아니라 First-pass Success, After-repair Success, After-revision Success, Retry Precision, Stop Accuracy와 LLM Call 수를 함께 비교한다.
+

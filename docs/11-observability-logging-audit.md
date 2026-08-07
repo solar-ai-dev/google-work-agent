@@ -296,3 +296,37 @@ OAUTH_CONNECTION_REVOKED
 기록 가능: `command_id`, `command_type`, Request Hash 앞 12자리, Aggregate ID, 결과 코드, Claim Token Version, 거절 사유.
 
 기록 금지: Claim Token 원문, Service–MCP Session Key, Authorization Code, PKCE Verifier, Access·Refresh Token.
+
+---
+
+## 13. 2026-08-07 Failure·Retry·Query Trace 확장
+
+Agent 개별실험과 Runtime Prompt 재시도를 분석하기 위해 다음 Trace Attribute를 추가한다.
+
+```text
+failure_reason_codes
+failure_origin
+detected_by
+runtime_disposition
+experiment_disposition
+retry_kind
+attempt_no
+parent_attempt_id
+previous_llm_call_id
+changed_field_paths
+stop_reason
+query_attempt_id
+budget_profile
+prompt_slot_id
+prompt_activation_status
+```
+
+규칙:
+
+- Prompt·Completion 원문은 저장하지 않는다.
+- Failure-specific Prompt는 `prompt_id`, `prompt_version`, `content_hash`, `failure_reason_code`로 연결한다.
+- ORACLE, LIVE, MUTATED Node Run을 구분한다.
+- 실험 Grader가 사후 발견한 실패는 `detected_by=EXPERIMENT_GRADER`로 기록하며 Runtime 감지처럼 표현하지 않는다.
+- Budget Profile과 실제 LLM Call 수를 함께 기록한다.
+- Query Attempt에는 Query 원문 전체 대신 정규화된 제약, Hash, Score·Confidence·Stop Reason을 저장한다.
+

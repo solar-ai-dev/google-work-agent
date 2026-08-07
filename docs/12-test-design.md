@@ -304,3 +304,39 @@ Experiment Runner는 Dataset·Projection 참조 오류, Holdout 누수, 의도 �
 | `TST-EVAL-106` | Write 승인·Claim·GET·End-state Strict 판정 |
 | `TST-EVAL-107` | Grader Version·Human Calibration·Dataset Issue 분리 |
 | `TST-EVAL-108` | Scenario Family·Fixture Relation Family Holdout 누수 0 |
+
+---
+
+## 14. 2026-08-07 Agent Capability·Retry 회귀 확장
+
+이 절은 기존 8절의 단일 `LLM 호출 Budget 최대 8회`, `Review Revision 최대 1회` 문구를 다음 Profile 계약으로 구체화한다.
+
+```text
+NORMAL_MAX_LLM_CALLS=8
+RETRIEVAL_HEAVY_MAX_LLM_CALLS=14
+REVISION_HEAVY_MAX_LLM_CALLS=12
+ABSOLUTE_MAX_LLM_CALLS=16
+PLANNING_REVISION_PER_RUN=2
+REVIEW_RECHECK_PER_PLANNING_REVISION=1
+```
+
+### 14.1 필수 회귀
+
+- 동일 실패 Signature에 Semantic Revision을 두 번 호출하지 않는다.
+- Schema Repair가 Goal·Evidence·Action 의미를 변경하면 실패다.
+- 비재시도 오류에 LLM Prompt를 호출하지 않는다.
+- `AUTH_REQUIRED`를 Acquisition Revision으로 해결하려 하지 않는다.
+- 429·5xx·Timeout을 LLM 재시도로 처리하지 않는다.
+- `UNKNOWN_RESULT`에서 Write Tool을 재호출하지 않는다.
+- Verification `MISMATCH`에서 자동 수정·Rollback하지 않는다.
+- `AGENT_SEARCH`의 저신뢰 후보를 자동 확정하지 않는다.
+- 사용자 날짜·사람·이메일 제약이 Query에서 누락되면 실패다.
+- 실패 후 Query·Page 상태가 모두 같은 `SEARCH`를 반복하면 실패다.
+- 같은 Query와 새로운 Page Token의 `NEXT_PAGE`는 정상으로 인정한다.
+- Node DEV와 Node HOLDOUT의 Failure·Scenario·Fixture Family가 겹치면 실패다.
+- Prompt Manifest가 `RUNTIME_ACTIVE`가 아닌 Prompt를 제품 Runtime이 선택하면 실패다.
+
+### 14.2 Node Dataset Gate
+
+모든 적용 가능한 Failure Reason은 최소 `DEV 3 + HOLDOUT 1` Item을 가진다. `ORACLE`, `LIVE`, `MUTATED` 결과는 같은 집계로 합치지 않는다.
+

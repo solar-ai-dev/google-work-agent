@@ -44,3 +44,12 @@
 - `ORACLE` Node 결과는 상한 분석용이며 제품 후보가 아니다.
 - Safety·Tool·Argument·End-state 판정은 가능한 경우 결정적 Grader를 사용한다.
 - 폐기된 r3·r4 통합본을 최신 구현 기준으로 사용하지 않는다.
+
+---
+
+## R6 Source Pack 동기화
+
+2026-08-07 기준 Source Pack은 `00-CODE-AGENT-START-HERE.md`와 `15-agent-capability-failure-prompt-contract.md`를 추가하고, `05·06·11·12·13`에 Agent Capability·Failure·Prompt 계약 부록을 반영한다.
+
+오래된 `r5-sync-manifest.md`는 Pack에서 제외하며 `r6-source-pack-manifest.md`가 현재 문서 목록과 Hash를 소유한다.
+
