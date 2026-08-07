@@ -1,0 +1,11 @@
+{
+  "resource_type": "task_list",
+  "resource_id": "task-list-default",
+  "parent_id": null,
+  "related_resource_ids": ["task-followup", "task-billing"],
+  "version": "1",
+  "recovery_fingerprint": "rf-task-list-default",
+  "payload": {
+    "title": "Personal"
+  }
+}

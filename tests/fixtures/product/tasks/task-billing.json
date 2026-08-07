@@ -1,0 +1,14 @@
+{
+  "resource_type": "task",
+  "resource_id": "task-billing",
+  "parent_id": "task-list-default",
+  "related_resource_ids": ["task-list-default"],
+  "version": "1",
+  "recovery_fingerprint": "rf-task-billing",
+  "payload": {
+    "title": "Pay contractor invoice",
+    "notes": "",
+    "due": null,
+    "status": "needsAction"
+  }
+}

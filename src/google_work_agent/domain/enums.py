@@ -50,6 +50,13 @@ class ApprovalStatus(StrEnum):
     REVOKED = "REVOKED"
 
 
+class ApprovalRequirement(StrEnum):
+    """Approval requirement values fixed by the action policy contract."""
+
+    NONE = "NONE"
+    REQUIRED = "REQUIRED"
+
+
 class ExecutionAttemptStatus(StrEnum):
     """Execution attempt lifecycle status values."""
 
@@ -69,6 +76,21 @@ class VerificationStatus(StrEnum):
     ERROR = "ERROR"
 
 
+class VerificationPolicy(StrEnum):
+    """Verification policy values fixed by the action policy contract."""
+
+    NONE = "NONE"
+    GET_COMPARE = "GET_COMPARE"
+
+
+class RecoveryPolicy(StrEnum):
+    """Recovery policy values fixed by the action policy contract."""
+
+    NONE = "NONE"
+    GET_TARGET = "GET_TARGET"
+    RESOURCE_SEARCH = "RESOURCE_SEARCH"
+
+
 class EffectType(StrEnum):
     """Supported P0 action effect types."""
 
@@ -83,3 +105,5 @@ class ResultCode(StrEnum):
     TRANSITION_APPLIED = "TRANSITION_APPLIED"
     STATE_CONFLICT = "STATE_CONFLICT"
     VERSION_CONFLICT = "VERSION_CONFLICT"
+    DUPLICATE_COMMAND = "DUPLICATE_COMMAND"
+    RECOVERY_REQUIRED = "RECOVERY_REQUIRED"
