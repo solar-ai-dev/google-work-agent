@@ -22,6 +22,8 @@ from google_work_agent.ports.models import (
     EvidenceRecord,
     ExecutionAttemptRecord,
     MessageRecord,
+    PersistedAuditEventRecord,
+    PersistedTraceEventRecord,
     PlanRecord,
     ResourceRefRecord,
     RunRecord,
@@ -390,15 +392,80 @@ class ActionDependencyRepository(Protocol):
 class AuditRepository(Protocol):
     """Append-only audit persistence."""
 
+    def append(self, event: AuditEventRecord) -> None:
+        """Append an audit event row."""
+
     def add(self, event: AuditEventRecord) -> None:
         """Append an audit event row."""
+
+    def list_by_aggregate(
+        self,
+        *,
+        run_id: str | None,
+        action_id: str | None = None,
+        cursor_after: int | None = None,
+        limit: int = 100,
+    ) -> tuple[PersistedAuditEventRecord, ...]:
+        """Return audit rows for one aggregate using keyset pagination."""
+
+    def list_after_cursor(
+        self,
+        *,
+        cursor_after: int | None,
+        limit: int = 100,
+    ) -> tuple[PersistedAuditEventRecord, ...]:
+        """Return audit rows after one cursor using keyset pagination."""
+
+    def list_before_retention_cutoff(
+        self,
+        *,
+        cutoff_ms: int,
+        limit: int,
+    ) -> tuple[PersistedAuditEventRecord, ...]:
+        """Return audit rows eligible for retention purge."""
+
+    def purge_before_cutoff(
+        self,
+        *,
+        cutoff_ms: int,
+        limit: int,
+    ) -> int:
+        """Delete at most `limit` audit rows older than the cutoff."""
 
 
 class TraceRepository(Protocol):
     """Append-only trace persistence."""
 
+    def append(self, event: TraceEventRecord) -> None:
+        """Append a trace event row."""
+
     def add(self, event: TraceEventRecord) -> None:
         """Append a trace event row."""
+
+    def list_by_run_after_cursor(
+        self,
+        *,
+        run_id: str,
+        cursor_after: int | None,
+        limit: int = 100,
+    ) -> tuple[PersistedTraceEventRecord, ...]:
+        """Return trace rows for one run using keyset pagination."""
+
+    def list_before_retention_cutoff(
+        self,
+        *,
+        cutoff_ms: int,
+        limit: int,
+    ) -> tuple[PersistedTraceEventRecord, ...]:
+        """Return trace rows eligible for retention purge."""
+
+    def purge_before_cutoff(
+        self,
+        *,
+        cutoff_ms: int,
+        limit: int,
+    ) -> int:
+        """Delete at most `limit` trace rows older than the cutoff."""
 
 
 class ApprovalRepository(Protocol):

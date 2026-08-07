@@ -2,7 +2,15 @@
 
 import sqlite3
 from json import dumps, loads
+from typing import cast
 
+from google_work_agent.application.observability import (
+    EventCategory,
+    ObservabilityContext,
+    Severity,
+    create_event_envelope,
+    serialize_event_envelope,
+)
 from google_work_agent.domain import (
     ActionCommand,
     ActionStatus,
@@ -29,6 +37,8 @@ from google_work_agent.ports import (
     EvidenceRecord,
     ExecutionAttemptRecord,
     MessageRecord,
+    PersistedAuditEventRecord,
+    PersistedTraceEventRecord,
     PlanRecord,
     PlanStatus,
     ResourceRefRecord,
@@ -1668,7 +1678,11 @@ class SQLiteAuditRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
+    def append(self, event: AuditEventRecord) -> None:
+        self.add(event)
+
     def add(self, event: AuditEventRecord) -> None:
+        metadata_json = _coerce_legacy_audit_metadata(event)
         self._connection.execute(
             """
             INSERT INTO audit_events (
@@ -1686,10 +1700,92 @@ class SQLiteAuditRepository:
                 event.actor_display,
                 event.event_type,
                 event.outcome,
-                event.metadata_json,
+                metadata_json,
                 event.created_at_ms,
             ),
         )
+
+    def list_by_aggregate(
+        self,
+        *,
+        run_id: str | None,
+        action_id: str | None = None,
+        cursor_after: int | None = None,
+        limit: int = 100,
+    ) -> tuple[PersistedAuditEventRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT id, account_id, run_id, action_id, actor_type, actor_id, actor_display,
+                   event_type, outcome, metadata_json, created_at_ms
+            FROM audit_events
+            WHERE (? IS NULL OR run_id = ?)
+              AND (? IS NULL OR action_id = ?)
+              AND (? IS NULL OR id > ?)
+            ORDER BY id ASC
+            LIMIT ?;
+            """,
+            (run_id, run_id, action_id, action_id, cursor_after, cursor_after, limit),
+        ).fetchall()
+        return tuple(_persisted_audit_event_from_row(row) for row in rows)
+
+    def list_after_cursor(
+        self,
+        *,
+        cursor_after: int | None,
+        limit: int = 100,
+    ) -> tuple[PersistedAuditEventRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT id, account_id, run_id, action_id, actor_type, actor_id, actor_display,
+                   event_type, outcome, metadata_json, created_at_ms
+            FROM audit_events
+            WHERE (? IS NULL OR id > ?)
+            ORDER BY id ASC
+            LIMIT ?;
+            """,
+            (cursor_after, cursor_after, limit),
+        ).fetchall()
+        return tuple(_persisted_audit_event_from_row(row) for row in rows)
+
+    def list_before_retention_cutoff(
+        self,
+        *,
+        cutoff_ms: int,
+        limit: int,
+    ) -> tuple[PersistedAuditEventRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT id, account_id, run_id, action_id, actor_type, actor_id, actor_display,
+                   event_type, outcome, metadata_json, created_at_ms
+            FROM audit_events
+            WHERE created_at_ms < ?
+            ORDER BY id ASC
+            LIMIT ?;
+            """,
+            (cutoff_ms, limit),
+        ).fetchall()
+        return tuple(_persisted_audit_event_from_row(row) for row in rows)
+
+    def purge_before_cutoff(
+        self,
+        *,
+        cutoff_ms: int,
+        limit: int,
+    ) -> int:
+        cursor = self._connection.execute(
+            """
+            DELETE FROM audit_events
+            WHERE id IN (
+                SELECT id
+                FROM audit_events
+                WHERE created_at_ms < ?
+                ORDER BY id ASC
+                LIMIT ?
+            );
+            """,
+            (cutoff_ms, limit),
+        )
+        return int(cursor.rowcount)
 
 
 class SQLiteTraceRepository:
@@ -1698,7 +1794,11 @@ class SQLiteTraceRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
+    def append(self, event: TraceEventRecord) -> None:
+        self.add(event)
+
     def add(self, event: TraceEventRecord) -> None:
+        payload_json = _coerce_legacy_trace_payload(event)
         self._connection.execute(
             """
             INSERT INTO trace_events (
@@ -1712,10 +1812,71 @@ class SQLiteTraceRepository:
                 event.event_type,
                 event.status,
                 event.duration_ms,
-                event.payload_json,
+                payload_json,
                 event.created_at_ms,
             ),
         )
+
+    def list_by_run_after_cursor(
+        self,
+        *,
+        run_id: str,
+        cursor_after: int | None,
+        limit: int = 100,
+    ) -> tuple[PersistedTraceEventRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT id, run_id, action_id, event_type, status, duration_ms,
+                   payload_json, created_at_ms
+            FROM trace_events
+            WHERE run_id = ?
+              AND (? IS NULL OR id > ?)
+            ORDER BY id ASC
+            LIMIT ?;
+            """,
+            (run_id, cursor_after, cursor_after, limit),
+        ).fetchall()
+        return tuple(_persisted_trace_event_from_row(row) for row in rows)
+
+    def list_before_retention_cutoff(
+        self,
+        *,
+        cutoff_ms: int,
+        limit: int,
+    ) -> tuple[PersistedTraceEventRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT id, run_id, action_id, event_type, status, duration_ms,
+                   payload_json, created_at_ms
+            FROM trace_events
+            WHERE created_at_ms < ?
+            ORDER BY id ASC
+            LIMIT ?;
+            """,
+            (cutoff_ms, limit),
+        ).fetchall()
+        return tuple(_persisted_trace_event_from_row(row) for row in rows)
+
+    def purge_before_cutoff(
+        self,
+        *,
+        cutoff_ms: int,
+        limit: int,
+    ) -> int:
+        cursor = self._connection.execute(
+            """
+            DELETE FROM trace_events
+            WHERE id IN (
+                SELECT id
+                FROM trace_events
+                WHERE created_at_ms < ?
+                ORDER BY id ASC
+                LIMIT ?
+            );
+            """,
+            (cutoff_ms, limit),
+        )
+        return int(cursor.rowcount)
 
 
 def _serialize_answer_only_response(response: AnswerOnlyResponse) -> str:
@@ -1863,6 +2024,95 @@ def _verification_record_from_row(row: sqlite3.Row) -> VerificationRecord:
         diff_json=str(row["diff_json"]),
         verified_at_ms=int(row["verified_at_ms"]),
     )
+
+
+def _persisted_trace_event_from_row(row: sqlite3.Row) -> PersistedTraceEventRecord:
+    return PersistedTraceEventRecord(
+        id=int(row["id"]),
+        run_id=str(row["run_id"]),
+        action_id=None if row["action_id"] is None else str(row["action_id"]),
+        event_type=str(row["event_type"]),
+        status=None if row["status"] is None else str(row["status"]),
+        duration_ms=_int_or_none(row["duration_ms"]),
+        payload_json=str(row["payload_json"]),
+        created_at_ms=int(row["created_at_ms"]),
+    )
+
+
+def _persisted_audit_event_from_row(row: sqlite3.Row) -> PersistedAuditEventRecord:
+    return PersistedAuditEventRecord(
+        id=int(row["id"]),
+        account_id=None if row["account_id"] is None else str(row["account_id"]),
+        run_id=None if row["run_id"] is None else str(row["run_id"]),
+        action_id=None if row["action_id"] is None else str(row["action_id"]),
+        actor_type=str(row["actor_type"]),
+        actor_id=str(row["actor_id"]),
+        actor_display=None if row["actor_display"] is None else str(row["actor_display"]),
+        event_type=str(row["event_type"]),
+        outcome=str(row["outcome"]),
+        metadata_json=str(row["metadata_json"]),
+        created_at_ms=int(row["created_at_ms"]),
+    )
+
+
+def _coerce_legacy_trace_payload(event: TraceEventRecord) -> str:
+    if _is_event_envelope_json(event.payload_json):
+        return event.payload_json
+    attributes = _safe_load_json_object(event.payload_json)
+    envelope = create_event_envelope(
+        event_name=event.event_type,
+        event_category=EventCategory.DOMAIN,
+        occurred_at_ms=event.created_at_ms,
+        severity=Severity.INFO,
+        component="trace_repository",
+        environment="test",
+        release_version="dev",
+        correlation=ObservabilityContext(run_id=event.run_id, action_id=event.action_id),
+        attributes=attributes,
+        result_code=None,
+        status=event.status,
+        duration_ms=event.duration_ms,
+    )
+    return serialize_event_envelope(envelope)
+
+
+def _coerce_legacy_audit_metadata(event: AuditEventRecord) -> str:
+    if _is_event_envelope_json(event.metadata_json):
+        return event.metadata_json
+    attributes = _safe_load_json_object(event.metadata_json)
+    envelope = create_event_envelope(
+        event_name=event.event_type,
+        event_category=EventCategory.DOMAIN,
+        occurred_at_ms=event.created_at_ms,
+        severity=Severity.INFO,
+        component="audit_repository",
+        environment="test",
+        release_version="dev",
+        correlation=ObservabilityContext(run_id=event.run_id, action_id=event.action_id),
+        attributes=attributes,
+        result_code=event.outcome,
+        status=None,
+        duration_ms=None,
+    )
+    return serialize_event_envelope(envelope)
+
+
+def _is_event_envelope_json(raw: str) -> bool:
+    try:
+        payload = loads(raw)
+    except Exception:
+        return False
+    return isinstance(payload, dict) and "schema_version" in payload and "attributes" in payload
+
+
+def _safe_load_json_object(raw: str) -> dict[str, object]:
+    try:
+        payload = loads(raw)
+    except Exception:
+        return {"raw": raw}
+    if isinstance(payload, dict):
+        return {str(key): cast(object, value) for key, value in payload.items()}
+    return {"value": cast(object, payload)}
 
 
 def _int_or_none(value: object) -> int | None:

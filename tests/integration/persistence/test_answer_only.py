@@ -130,11 +130,18 @@ def test_answer_only_completion_is_atomic(answer_only_database: Path) -> None:
         assert [(row["event_type"], row["status"]) for row in trace] == [
             ("COMMAND_APPLIED", "COMPLETED")
         ]
+        assert '"schema_version": 1' in trace[0]["payload_json"]
         assert '"mode": "ANSWER_ONLY"' in trace[0]["payload_json"]
         assert '"message_id": "message-1"' in trace[0]["payload_json"]
         assert [(row["event_type"], row["outcome"]) for row in audit] == [
             ("RUN_COMPLETED", "TRANSITION_APPLIED")
         ]
+        assert (
+            '"schema_version": 1'
+            in connection.execute(
+                "SELECT metadata_json FROM audit_events WHERE run_id = 'run-1';"
+            ).fetchone()[0]
+        )
         assert tuple(aggregate_counts) == (0, 0, 0, 0, 0)
     finally:
         connection.close()

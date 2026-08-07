@@ -31,6 +31,8 @@ from google_work_agent.ports.models import (
     EvidenceRecord,
     ExecutionAttemptRecord,
     MessageRecord,
+    PersistedAuditEventRecord,
+    PersistedTraceEventRecord,
     PlanRecord,
     PlanStatus,
     ResourceRefRecord,
@@ -39,6 +41,12 @@ from google_work_agent.ports.models import (
     StoredResourceType,
     TraceEventRecord,
     VerificationRecord,
+)
+from google_work_agent.ports.observability import (
+    MaintenanceGate,
+    MaintenanceWindow,
+    OperationalLogRecord,
+    OperationalLogSink,
 )
 from google_work_agent.ports.repositories import (
     ActionDependencyRepository,
@@ -93,6 +101,12 @@ __all__ = [
     "MCPTransportErrorCode",
     "MessageRecord",
     "MessageRepository",
+    "MaintenanceGate",
+    "MaintenanceWindow",
+    "OperationalLogRecord",
+    "OperationalLogSink",
+    "PersistedAuditEventRecord",
+    "PersistedTraceEventRecord",
     "PlanRecord",
     "PlanRepository",
     "PlanStatus",

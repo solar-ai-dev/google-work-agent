@@ -283,3 +283,34 @@ class TraceEventRecord:
     duration_ms: int | None
     payload_json: str
     created_at_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class PersistedTraceEventRecord:
+    """Trace event row returned by cursor-based queries."""
+
+    id: int
+    run_id: str
+    action_id: str | None
+    event_type: str
+    status: str | None
+    duration_ms: int | None
+    payload_json: str
+    created_at_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class PersistedAuditEventRecord:
+    """Audit event row returned by cursor-based queries."""
+
+    id: int
+    account_id: str | None
+    run_id: str | None
+    action_id: str | None
+    actor_type: str
+    actor_id: str
+    actor_display: str | None
+    event_type: str
+    outcome: str
+    metadata_json: str
+    created_at_ms: int
