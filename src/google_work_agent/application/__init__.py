@@ -4,6 +4,11 @@ from google_work_agent.application.answer_only import (
     CompleteAnswerOnlyRunCommand,
     CompleteAnswerOnlyRunService,
 )
+from google_work_agent.application.google_connection import (
+    DisconnectGoogleService,
+    GetGoogleConnectionService,
+    StartGoogleOAuthService,
+)
 from google_work_agent.application.read_only import (
     ClaimReadActionCommand,
     ClaimReadActionService,
@@ -72,17 +77,20 @@ __all__ = [
     "CompleteReadActionService",
     "CompletedEvidence",
     "CompletedResourceRef",
+    "DisconnectGoogleService",
     "ExecuteReadActionService",
     "FailReadActionCommand",
     "FailReadActionService",
     "FinalizeReadActionCommand",
     "FinalizeReadActionService",
+    "GetGoogleConnectionService",
     "PublishReadOnlyPlanCommand",
     "PublishReadOnlyPlanService",
     "ReadActionDraft",
     "ReadEvidenceDraft",
     "SaveReadOnlyPlanCommand",
     "SaveReadOnlyPlanService",
+    "StartGoogleOAuthService",
     "ApproveWriteActionCommand",
     "ApproveWriteActionService",
     "ClaimWriteActionCommand",

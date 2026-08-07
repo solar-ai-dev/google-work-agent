@@ -44,6 +44,8 @@ class RuntimeSummary:
     deployment_profile: str
     recovery_required_run_ids: tuple[str, ...]
     open_run_ids: tuple[str, ...]
+    google_connection: dict[str, object] | None = None
+    mcp_runtime: dict[str, object] | None = None
 
 
 class ReadinessAggregator(Protocol):

@@ -35,6 +35,8 @@ def get_runtime(
             "deployment_profile": summary.deployment_profile,
             "recovery_required_run_ids": list(summary.recovery_required_run_ids),
             "open_run_ids": list(summary.open_run_ids),
+            "google_connection": summary.google_connection,
+            "mcp_runtime": summary.mcp_runtime,
         },
         api_contract_version=container.api_contract_version,
     )

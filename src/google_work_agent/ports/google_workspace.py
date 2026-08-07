@@ -114,7 +114,12 @@ class GoogleWorkspaceGateway(Protocol):
     def get_gmail_message(self, *, message_id: str) -> ResourceSnapshot:
         """Return one Gmail message snapshot."""
 
-    def create_gmail_draft(self, *, payload: dict[str, JsonValue]) -> ResourceSnapshot:
+    def create_gmail_draft(
+        self,
+        *,
+        payload: dict[str, JsonValue],
+        claim_context: dict[str, JsonValue] | None = None,
+    ) -> ResourceSnapshot:
         """Create one Gmail draft."""
 
     def update_gmail_draft(
@@ -122,6 +127,7 @@ class GoogleWorkspaceGateway(Protocol):
         *,
         draft_id: str,
         payload: dict[str, JsonValue],
+        claim_context: dict[str, JsonValue] | None = None,
     ) -> ResourceSnapshot:
         """Update one Gmail draft."""
 
@@ -148,7 +154,13 @@ class GoogleWorkspaceGateway(Protocol):
     def get_task(self, *, task_list_id: str, task_id: str) -> ResourceSnapshot:
         """Return one task snapshot."""
 
-    def create_task(self, *, task_list_id: str, payload: dict[str, JsonValue]) -> ResourceSnapshot:
+    def create_task(
+        self,
+        *,
+        task_list_id: str,
+        payload: dict[str, JsonValue],
+        claim_context: dict[str, JsonValue] | None = None,
+    ) -> ResourceSnapshot:
         """Create one task."""
 
     def update_task(
@@ -157,6 +169,7 @@ class GoogleWorkspaceGateway(Protocol):
         task_list_id: str,
         task_id: str,
         payload: dict[str, JsonValue],
+        claim_context: dict[str, JsonValue] | None = None,
     ) -> ResourceSnapshot:
         """Update one task."""
 
@@ -188,6 +201,7 @@ class GoogleWorkspaceGateway(Protocol):
         *,
         calendar_id: str,
         payload: dict[str, JsonValue],
+        claim_context: dict[str, JsonValue] | None = None,
     ) -> ResourceSnapshot:
         """Create one calendar event."""
 
@@ -197,6 +211,7 @@ class GoogleWorkspaceGateway(Protocol):
         calendar_id: str,
         event_id: str,
         payload: dict[str, JsonValue],
+        claim_context: dict[str, JsonValue] | None = None,
     ) -> ResourceSnapshot:
         """Update one calendar event."""
 

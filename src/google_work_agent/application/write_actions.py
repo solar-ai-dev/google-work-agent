@@ -686,8 +686,8 @@ class ApproveWriteActionService:
                 canonical_arguments_hash=action.arguments_hash,
                 source_snapshot_json=canonicalize_json_value(command.source_snapshot),
                 source_snapshot_hash=calculate_canonical_json_hash(command.source_snapshot),
-                policy_version=entry.policy_version,
-                tool_schema_version=entry.schema_version,
+                policy_version=entry.registry_version,
+                tool_schema_version=entry.input_schema_version,
                 idempotency_key=command.idempotency_key,
                 recovery_fingerprint=calculate_recovery_fingerprint(
                     tool_name=action.tool_name,
@@ -820,9 +820,9 @@ class ClaimWriteActionService:
                         approval_action_version=approval.action_version,
                         current_action_version=action.version,
                         approval_policy_version=approval.policy_version,
-                        current_policy_version=entry.policy_version,
+                        current_policy_version=entry.registry_version,
                         approval_tool_schema_version=approval.tool_schema_version,
-                        current_tool_schema_version=entry.schema_version,
+                        current_tool_schema_version=entry.input_schema_version,
                         now_ms=now_ms,
                         expires_at_ms=approval.expires_at_ms,
                     )
@@ -1003,11 +1003,18 @@ class ExecuteWriteActionService:
                 raise PermissionError("execution attempt is not claimable")
 
         self._used_nonces.add(nonce)
+        claim_context = _prepare_gateway_claim_context(
+            gateway=self._gateway,
+            claim_payload=payload,
+            tool_name=action.tool_name,
+            canonical_arguments_hash=action.arguments_hash,
+        )
         snapshot = _dispatch_write_action(
             self._gateway,
             action.tool_name,
             loads(action.arguments_json),
             recovery_fingerprint=approval.recovery_fingerprint,
+            claim_context=claim_context,
         )
         return ExecutedWriteActionResult(
             snapshot=snapshot,
@@ -2304,6 +2311,7 @@ def _dispatch_write_action(
     arguments: dict[str, object],
     *,
     recovery_fingerprint: str | None = None,
+    claim_context: dict[str, object] | None = None,
 ) -> ResourceSnapshot:
     payload = _dict_argument(arguments.get("payload"))
     payload_with_recovery = dict(payload)
@@ -2314,32 +2322,63 @@ def _dispatch_write_action(
     }:
         payload_with_recovery["recovery_fingerprint"] = recovery_fingerprint
     if tool_name == "gmail_create_draft":
-        return gateway.create_gmail_draft(payload=payload_with_recovery)
+        return gateway.create_gmail_draft(
+            payload=payload_with_recovery,
+            claim_context=claim_context,
+        )
     if tool_name == "gmail_update_draft":
-        return gateway.update_gmail_draft(draft_id=str(arguments["draft_id"]), payload=payload)
+        return gateway.update_gmail_draft(
+            draft_id=str(arguments["draft_id"]),
+            payload=payload,
+            claim_context=claim_context,
+        )
     if tool_name == "tasks_create_task":
         return gateway.create_task(
             task_list_id=str(arguments["task_list_id"]),
             payload=payload_with_recovery,
+            claim_context=claim_context,
         )
     if tool_name == "tasks_update_task":
         return gateway.update_task(
             task_list_id=str(arguments["task_list_id"]),
             task_id=str(arguments["task_id"]),
             payload=payload,
+            claim_context=claim_context,
         )
     if tool_name == "calendar_create_event":
         return gateway.create_calendar_event(
             calendar_id=str(arguments["calendar_id"]),
             payload=payload_with_recovery,
+            claim_context=claim_context,
         )
     if tool_name == "calendar_update_event":
         return gateway.update_calendar_event(
             calendar_id=str(arguments["calendar_id"]),
             event_id=str(arguments["event_id"]),
             payload=payload,
+            claim_context=claim_context,
         )
     raise LookupError(f"unsupported write tool: {tool_name}")
+
+
+def _prepare_gateway_claim_context(
+    *,
+    gateway: GoogleWorkspaceGateway,
+    claim_payload: dict[str, object],
+    tool_name: str,
+    canonical_arguments_hash: str,
+) -> dict[str, object] | None:
+    prepare = getattr(gateway, "prepare_claim_context", None)
+    if not callable(prepare):
+        return None
+    return cast(
+        dict[str, object],
+        prepare(
+            claim_payload=claim_payload,
+            tool_name=tool_name,
+            canonical_arguments_hash=canonical_arguments_hash,
+        ),
+    )
 
 
 def _load_verification_snapshot(

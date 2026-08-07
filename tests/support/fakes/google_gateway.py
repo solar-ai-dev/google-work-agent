@@ -107,7 +107,13 @@ class FakeGoogleGateway:
     def get_gmail_message(self, *, message_id: str) -> ResourceSnapshot:
         return self._read_one("get_gmail_message", ResourceType.GMAIL_MESSAGE, message_id)
 
-    def create_gmail_draft(self, *, payload: dict[str, object]) -> ResourceSnapshot:
+    def create_gmail_draft(
+        self,
+        *,
+        payload: dict[str, object],
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        del claim_context
         return self._create_one("create_gmail_draft", ResourceType.GMAIL_DRAFT, payload)
 
     def update_gmail_draft(
@@ -115,7 +121,9 @@ class FakeGoogleGateway:
         *,
         draft_id: str,
         payload: dict[str, object],
+        claim_context: dict[str, object] | None = None,
     ) -> ResourceSnapshot:
+        del claim_context
         return self._update_one("update_gmail_draft", ResourceType.GMAIL_DRAFT, draft_id, payload)
 
     def get_gmail_draft(self, *, draft_id: str) -> ResourceSnapshot:
@@ -169,7 +177,14 @@ class FakeGoogleGateway:
             raise LookupError(f"task {task_id} does not belong to task list {task_list_id}")
         return task
 
-    def create_task(self, *, task_list_id: str, payload: dict[str, object]) -> ResourceSnapshot:
+    def create_task(
+        self,
+        *,
+        task_list_id: str,
+        payload: dict[str, object],
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        del claim_context
         created = self._create_one(
             "create_task", ResourceType.TASK, payload, parent_id=task_list_id
         )
@@ -183,7 +198,9 @@ class FakeGoogleGateway:
         task_list_id: str,
         task_id: str,
         payload: dict[str, object],
+        claim_context: dict[str, object] | None = None,
     ) -> ResourceSnapshot:
+        del claim_context
         task = self._update_one("update_task", ResourceType.TASK, task_id, payload)
         if task.parent_id != task_list_id:
             raise LookupError(f"task {task_id} does not belong to task list {task_list_id}")
@@ -269,7 +286,9 @@ class FakeGoogleGateway:
         *,
         calendar_id: str,
         payload: dict[str, object],
+        claim_context: dict[str, object] | None = None,
     ) -> ResourceSnapshot:
+        del claim_context
         created = self._create_one(
             "create_calendar_event",
             ResourceType.CALENDAR_EVENT,
@@ -286,7 +305,9 @@ class FakeGoogleGateway:
         calendar_id: str,
         event_id: str,
         payload: dict[str, object],
+        claim_context: dict[str, object] | None = None,
     ) -> ResourceSnapshot:
+        del claim_context
         event = self._update_one(
             "update_calendar_event", ResourceType.CALENDAR_EVENT, event_id, payload
         )

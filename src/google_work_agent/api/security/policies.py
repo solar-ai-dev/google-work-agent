@@ -59,6 +59,21 @@ DEFAULT_ENDPOINT_POLICY_REGISTRY = EndpointPolicyRegistry(
             policy=EndpointPolicy.BOOTSTRAP_EXCHANGE,
         ),
         EndpointRule.create(
+            methods=("POST",),
+            template="/api/v1/google/oauth/start",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("GET",),
+            template="/api/v1/google/connection",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("POST",),
+            template="/api/v1/google/disconnect",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
             methods=("GET",),
             template="/api/v1/runtime",
             policy=EndpointPolicy.API_SESSION_REQUIRED,

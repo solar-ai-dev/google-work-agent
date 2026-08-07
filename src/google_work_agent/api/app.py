@@ -16,6 +16,7 @@ from google_work_agent.api.routes import (
     actions,
     conversations,
     events,
+    google,
     health,
     runs,
     runtime,
@@ -72,6 +73,9 @@ class ApiContainer:
     endpoint_policy_registry: Any = DEFAULT_ENDPOINT_POLICY_REGISTRY
     client_address_resolver: Callable[[Request], str | None] | None = None
     operational_log_sink: OperationalLogSink | None = None
+    start_google_oauth_service: Any | None = None
+    get_google_connection_service: Any | None = None
+    disconnect_google_service: Any | None = None
 
 
 def create_app(container: ApiContainer) -> FastAPI:
@@ -178,6 +182,7 @@ def create_app(container: ApiContainer) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(session.router)
+    app.include_router(google.router)
     app.include_router(runtime.router)
     app.include_router(conversations.router)
     app.include_router(runs.router)

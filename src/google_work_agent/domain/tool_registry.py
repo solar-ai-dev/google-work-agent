@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
+from json import dumps
 
 from google_work_agent.domain.enums import (
     ApprovalRequirement,
@@ -26,8 +28,30 @@ class ToolRegistryEntry:
     recovery_policy: RecoveryPolicy
     scope: str
     retryable: bool
-    schema_version: str = DEFAULT_TOOL_SCHEMA_VERSION
-    policy_version: str = DEFAULT_POLICY_VERSION
+    input_schema_version: str = DEFAULT_TOOL_SCHEMA_VERSION
+    output_schema_version: str = DEFAULT_TOOL_SCHEMA_VERSION
+    registry_version: str = DEFAULT_POLICY_VERSION
+    tool_schema_hash: str = ""
+
+    def __post_init__(self) -> None:
+        if self.tool_schema_hash:
+            return
+        payload = dumps(
+            {
+                "tool_name": self.tool_name,
+                "effect_type": self.effect_type.value,
+                "approval_requirement": self.approval_requirement.value,
+                "verification_policy": self.verification_policy.value,
+                "recovery_policy": self.recovery_policy.value,
+                "scope": self.scope,
+                "retryable": self.retryable,
+                "input_schema_version": self.input_schema_version,
+                "output_schema_version": self.output_schema_version,
+                "registry_version": self.registry_version,
+            },
+            sort_keys=True,
+        ).encode("utf-8")
+        object.__setattr__(self, "tool_schema_hash", sha256(payload).hexdigest())
 
 
 class SignedToolRegistry:

@@ -6,6 +6,10 @@ from google_work_agent.ports.api_access import (
     ApiRequestContext,
     EndpointPolicy,
 )
+from google_work_agent.ports.artifact_verifier import (
+    ArtifactSignatureDecision,
+    ArtifactSignatureVerifier,
+)
 from google_work_agent.ports.clock import Clock
 from google_work_agent.ports.event_publisher import (
     BufferStatus,
@@ -15,6 +19,14 @@ from google_work_agent.ports.event_publisher import (
     RunEventPublisher,
     RunEventSubscription,
     SnapshotRequiredReplayError,
+)
+from google_work_agent.ports.google_oauth import (
+    CredentialState,
+    DisconnectResult,
+    GoogleConnectionStatus,
+    GoogleOAuthCredentialProvider,
+    OAuthEnvironment,
+    OAuthStartResult,
 )
 from google_work_agent.ports.google_workspace import (
     FreeBusyCalendar,
@@ -33,6 +45,8 @@ from google_work_agent.ports.launcher_probe import (
     LauncherProbeVerifier,
 )
 from google_work_agent.ports.mcp_transport import (
+    MCPControlResponse,
+    MCPRuntimeMetadata,
     MCPToolResponse,
     MCPTransport,
     MCPTransportError,
@@ -116,6 +130,8 @@ __all__ = [
     "ApiAccessGuard",
     "ApiRequestContext",
     "AnswerOnlyResponse",
+    "ArtifactSignatureDecision",
+    "ArtifactSignatureVerifier",
     "AttemptOutcome",
     "AuditEventRecord",
     "AuditRepository",
@@ -126,6 +142,8 @@ __all__ = [
     "CommandReceiptStatus",
     "ConversationRecord",
     "ConversationRepository",
+    "CredentialState",
+    "DisconnectResult",
     "EndpointPolicy",
     "EvidenceOriginType",
     "EvidenceRecord",
@@ -134,6 +152,8 @@ __all__ = [
     "ExecutionAttemptRepository",
     "FreeBusyCalendar",
     "FreeBusyInterval",
+    "GoogleConnectionStatus",
+    "GoogleOAuthCredentialProvider",
     "GoogleWorkspaceErrorCode",
     "GoogleWorkspaceGateway",
     "GoogleWorkspaceGatewayError",
@@ -142,14 +162,18 @@ __all__ = [
     "LauncherProbeCheckFactory",
     "LauncherProbeDecision",
     "LauncherProbeVerifier",
+    "MCPControlResponse",
+    "MCPRuntimeMetadata",
     "MCPToolResponse",
     "MCPTransport",
     "MCPTransportError",
     "MCPTransportErrorCode",
-    "MessageRecord",
-    "MessageRepository",
     "MaintenanceGate",
     "MaintenanceWindow",
+    "MessageRecord",
+    "MessageRepository",
+    "OAuthEnvironment",
+    "OAuthStartResult",
     "OperationalLogRecord",
     "OperationalLogSink",
     "PendingProjectionEvent",
