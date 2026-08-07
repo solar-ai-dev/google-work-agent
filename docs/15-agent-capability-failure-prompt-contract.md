@@ -367,7 +367,11 @@ ABSOLUTE_MAX_LLM_CALLS=16
 - `RETRIEVAL_HEAVY`는 `NEEDS_MORE_DATA` 또는 Additional Acquisition이 실제 발생한 경우에만 선택한다.
 - `REVISION_HEAVY`는 Review가 `REVISE`를 반환하고 Domain·Policy가 Revision을 허용한 경우에만 선택한다.
 - Profile 승격은 Supervisor의 결정적 규칙으로 수행한다.
+- Profile downgrade는 허용하지 않는다.
+- Revision과 Retrieval이 모두 발생하면 `RETRIEVAL_HEAVY`를 유지한다.
+- `ABSOLUTE`는 selectable profile이 아니다.
 - `ABSOLUTE_MAX_LLM_CALLS`를 넘으면 Prompt를 더 호출하지 않는다.
+- `llm_calls_used`는 actual provider prompt invocation 기준으로 집계한다.
 
 ### 8.3 Budget 소진 처리
 

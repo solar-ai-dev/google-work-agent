@@ -86,7 +86,7 @@ class MultiAgentGraphState:
     execution_summary: dict | None
     verification_summary: dict | None
     user_interrupt: dict | None
-    retry_budget: dict
+    retry_budget: RunBudgetV1
     prompt_context: dict
     trace_context: dict
 ```
@@ -217,13 +217,21 @@ output_schema_version
 ## 8. Budget
 
 ```text
-Structured Output Repair: 호출당 최대 1회
-추가 수집: 최대 2회
-계획 Revision: 최대 2회
-기본 LLM 호출: Run당 최대 8회
+Structured Output Repair: node call당 최대 1회
+추가 수집: 최초 수집 이후 최대 2회
+계획 Revision: run당 최대 2회
+Review Recheck: planning revision당 최대 1회
+NORMAL_MAX_LLM_CALLS=8
+REVISION_HEAVY_MAX_LLM_CALLS=12
+RETRIEVAL_HEAVY_MAX_LLM_CALLS=14
+ABSOLUTE_MAX_LLM_CALLS=16
 ```
 
-하드 상한 초과 시 Partial·Confirmation·Blocked 중 하나로 종료한다.
+`ABSOLUTE`는 selectable profile이 아니다.
+Profile promotion은 monotonic이며 downgrade는 없다.
+Revision과 Retrieval이 모두 발생하면 `RETRIEVAL_HEAVY`를 유지한다.
+`llm_calls_used`는 actual provider prompt invocation 기준으로 집계한다.
+Budget 초과 후 terminal mapping은 별도 terminal boundary가 결정한다.
 
 ## 9. Answer-only
 
@@ -410,6 +418,8 @@ ABSOLUTE_MAX_LLM_CALLS=16
 ```
 
 단일 `MAX_LLM_CALLS=8`을 모든 Route에 적용하지 않는다. Budget Profile 승격은 Supervisor의 결정적 규칙으로 수행하며 절대 상한 16회를 넘지 않는다.
+`ABSOLUTE`는 profile enum이 아니며 `NORMAL -> REVISION_HEAVY -> RETRIEVAL_HEAVY` 순서로만 승격한다.
+RunBudgetV1 최소 shape은 `schema_version`, `profile`, `llm_calls_used`, `additional_acquisitions_used`, `planning_revisions_used`, `last_rechecked_planning_revision`, `semantic_revision_signatures_used`를 포함한다.
 
 ### 24.4 Prompt 선택과 활성화
 

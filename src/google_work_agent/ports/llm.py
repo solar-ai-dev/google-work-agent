@@ -115,6 +115,7 @@ class StructuredLLMResult:
     structured_output_attempts: int
     provider_request_id: str | None
     safe_error_code: str | None
+    provider_calls_consumed: int = 1
 
 
 @dataclass(frozen=True, slots=True)
