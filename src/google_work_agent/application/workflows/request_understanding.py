@@ -10,8 +10,11 @@ from typing import Literal, NotRequired, Required, TypedDict, cast
 from google_work_agent.application.llm import LLMRuntimeService
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.contracts import (
+    ConfirmationResponseV1,
     RequestUnderstandingResult,
     WorkflowPhase,
+    validate_confirmation_origin_target,
+    validate_confirmation_response_v1,
 )
 from google_work_agent.ports import (
     OutputSchemaDefinition,
@@ -21,6 +24,11 @@ from google_work_agent.ports import (
 )
 
 JsonObject = dict[str, object]
+
+
+class ClarificationOptionV1(TypedDict):
+    option_id: str
+    label: str
 
 
 class RequestIntentGoalV1(TypedDict):
@@ -94,10 +102,12 @@ class RequestIntentV1(TypedDict):
 
 class ClarificationQuestionV1(TypedDict):
     schema_version: Required[Literal[1]]
+    origin_target: str
     question: str
     affected_field_paths: list[str]
     reason_code: str
     known_context_summary: str
+    options: list[ClarificationOptionV1]
 
 
 class RequestUnderstandingFailureV1(TypedDict):
@@ -118,6 +128,7 @@ class RequestUnderstandingOutputV1(TypedDict):
 
 
 REQUEST_INTENT_SCHEMA_VERSION = 1
+CLARIFICATION_QUESTION_SCHEMA_VERSION = 1
 REQUEST_UNDERSTANDING_OUTPUT_SCHEMA_VERSION = 1
 REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="request-intent-v1",
@@ -270,6 +281,42 @@ REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(
         },
     },
 )
+CLARIFICATION_QUESTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
+    schema_version="clarification-question-v1",
+    json_schema={
+        "type": "object",
+        "required": [
+            "schema_version",
+            "origin_target",
+            "question",
+            "affected_field_paths",
+            "reason_code",
+            "known_context_summary",
+            "options",
+        ],
+        "additionalProperties": False,
+        "properties": {
+            "schema_version": {"type": "integer", "enum": [1]},
+            "origin_target": {"type": "string"},
+            "question": {"type": "string"},
+            "affected_field_paths": {"type": "array", "items": {"type": "string"}},
+            "reason_code": {"type": "string"},
+            "known_context_summary": {"type": "string"},
+            "options": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["option_id", "label"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "option_id": {"type": "string"},
+                        "label": {"type": "string"},
+                    },
+                },
+            },
+        },
+    },
+)
 
 _TIME_GRANULARITY_VALUES = {"DATE", "DATETIME", "RANGE", "RELATIVE", "UNKNOWN"}
 _SOURCE_VALUES = {"GMAIL", "TASKS", "CALENDAR", "UNKNOWN"}
@@ -288,9 +335,13 @@ class RequestUnderstandingAgent:
         *,
         llm_runtime: LLMRuntimeService,
         prompt_ref: PromptReference | None = None,
+        clarify_prompt_ref: PromptReference | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
         self._prompt_ref = prompt_ref or load_request_understanding_classify_prompt_reference()
+        self._clarify_prompt_ref = (
+            clarify_prompt_ref or load_request_understanding_clarify_prompt_reference()
+        )
 
     def __call__(self, request: WorkflowStartRequest) -> RequestUnderstandingOutputV1:
         return self.classify(request)
@@ -312,17 +363,39 @@ class RequestUnderstandingAgent:
         intent = validate_request_intent_v1(llm_result.structured_output)
         return _classify_valid_intent(intent=intent, llm_result=llm_result)
 
+    def clarify(
+        self,
+        clarification_source: ClarificationQuestionV1,
+        *,
+        request: WorkflowStartRequest,
+    ) -> ClarificationQuestionV1:
+        llm_result = self._llm_runtime.invoke_structured(
+            prompt_ref=self._clarify_prompt_ref,
+            prompt_input={
+                "request_text": request.request_text,
+                "clarification_source": clarification_source,
+            },
+            output_schema=CLARIFICATION_QUESTION_OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(
+                request_id=request.correlation.request_id,
+                command_id=request.correlation.command_id,
+                conversation_id=request.conversation_id,
+                run_id=request.run_id,
+                langgraph_thread_id=request.workflow_key,
+                llm_call_id=f"{request.run_id}:request_understanding.clarify",
+            ),
+        )
+        return validate_clarification_question_v1(llm_result.structured_output)
+
     def build_state_update(
         self,
         output: RequestUnderstandingOutputV1,
         *,
         request: WorkflowStartRequest,
     ) -> JsonObject:
-        user_interrupt: object = output["clarification"] or output["failure"]
         phase = _phase_for_result(RequestUnderstandingResult(output["result"]))
         return {
             "request_intent": output["request_intent"],
-            "user_interrupt": user_interrupt,
             "workflow_phase": phase.value,
             "prompt_context": {
                 "entry_mode": request.entry_mode,
@@ -367,6 +440,81 @@ def validate_request_intent_v1(value: object) -> RequestIntentV1:
     )
 
 
+def validate_clarification_question_v1(value: object) -> ClarificationQuestionV1:
+    root = _require_mapping(value, "$")
+    _require_exact_keys(
+        root,
+        "$",
+        {
+            "schema_version",
+            "origin_target",
+            "question",
+            "affected_field_paths",
+            "reason_code",
+            "known_context_summary",
+            "options",
+        },
+    )
+    schema_version = _require_int(root, "schema_version", "$")
+    if schema_version != CLARIFICATION_QUESTION_SCHEMA_VERSION:
+        raise RequestUnderstandingValidationError("$.schema_version must be 1")
+    option_ids: set[str] = set()
+    options: list[ClarificationOptionV1] = []
+    for index, item in enumerate(_require_list(root["options"], "$.options")):
+        option = _require_mapping(item, f"$.options[{index}]")
+        _require_exact_keys(option, f"$.options[{index}]", {"option_id", "label"})
+        option_id = _require_string(option, "option_id", f"$.options[{index}]")
+        if not option_id.strip():
+            raise RequestUnderstandingValidationError(
+                f"$.options[{index}].option_id must not be empty"
+            )
+        if option_id in option_ids:
+            raise RequestUnderstandingValidationError(
+                f"duplicate clarification option_id: {option_id}"
+            )
+        option_ids.add(option_id)
+        options.append(
+            {
+                "option_id": option_id,
+                "label": _require_string(option, "label", f"$.options[{index}]"),
+            }
+        )
+    return {
+        "schema_version": 1,
+        "origin_target": validate_confirmation_origin_target(root["origin_target"]),
+        "question": _require_string(root, "question", "$"),
+        "affected_field_paths": _require_string_list(
+            root["affected_field_paths"],
+            "$.affected_field_paths",
+        ),
+        "reason_code": _require_string(root, "reason_code", "$"),
+        "known_context_summary": _require_string(root, "known_context_summary", "$"),
+        "options": options,
+    }
+
+
+def build_clarification_question_v1(
+    *,
+    origin_target: str,
+    question: str,
+    reason_code: str,
+    known_context_summary: str,
+    affected_field_paths: list[str] | None = None,
+    options: list[dict[str, object]] | None = None,
+) -> ClarificationQuestionV1:
+    return validate_clarification_question_v1(
+        {
+            "schema_version": 1,
+            "origin_target": origin_target,
+            "question": question,
+            "affected_field_paths": list(affected_field_paths or []),
+            "reason_code": reason_code,
+            "known_context_summary": known_context_summary,
+            "options": list(options or []),
+        }
+    )
+
+
 def load_request_understanding_classify_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
@@ -387,6 +535,28 @@ def load_request_understanding_classify_prompt_reference(
                 output_schema_version=_required_manifest_string(item, "output_schema_version"),
             )
     raise LookupError("request_understanding.classify prompt is missing from manifest")
+
+
+def load_request_understanding_clarify_prompt_reference(
+    manifest_path: Path | None = None,
+) -> PromptReference:
+    manifest = _load_prompt_manifest(manifest_path or _default_prompt_manifest_path())
+    for item in manifest:
+        if item.get("prompt_id") == "request_understanding.clarify":
+            return PromptReference(
+                prompt_bundle_version=_required_manifest_string(item, "prompt_bundle_version"),
+                prompt_id=_required_manifest_string(item, "prompt_id"),
+                prompt_version=_required_manifest_string(item, "prompt_version"),
+                content_hash=_required_manifest_string(item, "content_hash"),
+                agent_role=_required_manifest_string(item, "agent_role"),
+                subgraph_name=_required_manifest_string(item, "subgraph_name"),
+                node_name=_required_manifest_string(item, "node_name"),
+                node_state=_required_manifest_string(item, "node_state"),
+                purpose=_required_manifest_string(item, "purpose"),
+                input_schema_version=_required_manifest_string(item, "input_schema_version"),
+                output_schema_version=_required_manifest_string(item, "output_schema_version"),
+            )
+    raise LookupError("request_understanding.clarify prompt is missing from manifest")
 
 
 def _classify_valid_intent(
@@ -488,11 +658,13 @@ def _confirmation_for_missing_field(
         request_intent=intent,
         clarification={
             "schema_version": 1,
+            "origin_target": "request_understanding.classify",
             "question": question,
             "affected_field_paths": [field_path],
             "reason_code": reason_code,
             "known_context_summary": intent["goal"]["user_visible_objective"]
             or intent["goal"]["summary"],
+            "options": [],
         },
         failure=None,
         validator_codes=validator_codes,
@@ -504,11 +676,13 @@ def _build_clarification(intent: RequestIntentV1) -> ClarificationQuestionV1:
     first = intent["ambiguity"]["items"][0]
     return {
         "schema_version": 1,
+        "origin_target": "request_understanding.classify",
         "question": first["user_question"],
         "affected_field_paths": [item["field_path"] for item in intent["ambiguity"]["items"]],
         "reason_code": first["reason_code"],
         "known_context_summary": intent["goal"]["user_visible_objective"]
         or intent["goal"]["summary"],
+        "options": [],
     }
 
 
@@ -521,11 +695,26 @@ def _prompt_input_from_request(request: WorkflowStartRequest) -> dict[str, objec
 
 
 def _phase_for_result(result: RequestUnderstandingResult) -> WorkflowPhase:
-    if result is RequestUnderstandingResult.NEEDS_CONFIRMATION:
-        return WorkflowPhase.WAITING_CONFIRMATION
     if result is RequestUnderstandingResult.INVALID:
         return WorkflowPhase.FINALIZE
     return WorkflowPhase.REQUEST_ANALYSIS
+
+
+def resolve_confirmation_origin_target(
+    *,
+    user_interrupt: ClarificationQuestionV1,
+    response: ConfirmationResponseV1,
+) -> str:
+    question = validate_clarification_question_v1(user_interrupt)
+    normalized = validate_confirmation_response_v1(response)
+    if normalized["response_kind"] == "OPTION_SELECTION":
+        allowed_ids = {option["option_id"] for option in question["options"]}
+        for option_id in normalized["selected_option_ids"]:
+            if option_id not in allowed_ids:
+                raise RequestUnderstandingValidationError(
+                    f"unknown clarification option_id: {option_id}"
+                )
+    return question["origin_target"]
 
 
 def _provider_summary(result: StructuredLLMResult) -> dict[str, object]:

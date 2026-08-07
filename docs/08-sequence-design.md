@@ -305,8 +305,8 @@ sequenceDiagram
         SUP-->>API: confirmation_required Projection
         API-->>FE: 확인 질문 Card
         U->>FE: 후보 선택·추가 정보
-        FE->>API: POST /api/v1/runs/{run_id}/confirm
-        API->>APP: confirm_run(command)
+        FE->>API: POST /api/v1/runs/{run_id}/resume
+        API->>APP: resume_run(command)
         APP->>DB: 확인 응답 Message·Checkpoint 저장
         APP->>SUP: Interrupt resume
         SUP->>ACQ: 확인 결과 기반 수집 또는 요청 재분석

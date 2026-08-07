@@ -13,6 +13,7 @@ from google_work_agent.application.workflows import (
     WorkAnalysisAgent,
     WorkAnalysisValidationError,
     WorkflowPhase,
+    build_work_analysis_clarification_question,
     load_work_analysis_analyze_prompt_reference,
     validate_work_analysis_result_v1,
 )
@@ -236,10 +237,16 @@ def test_needs_confirmation_stays_inside_analysis_result_without_user_interrupt(
         request=_request(),
     )
     state_update = agent.build_state_update(result)
+    clarification = build_work_analysis_clarification_question(
+        result=result,
+        request_intent=_intent(),
+    )
 
     assert result["status"] == AnalysisResult.NEEDS_CONFIRMATION.value
     assert result["confirmation"] is not None
     assert "user_interrupt" not in state_update
+    assert clarification["origin_target"] == "analysis.analyze"
+    assert clarification["question"] == cast(dict[str, object], result["confirmation"])["question"]
 
 
 def test_blocked_requires_blocker_and_provider_failure_is_not_converted() -> None:

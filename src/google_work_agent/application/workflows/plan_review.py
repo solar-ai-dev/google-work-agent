@@ -17,7 +17,11 @@ from google_work_agent.application.workflows.contracts import (
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
 )
-from google_work_agent.application.workflows.request_understanding import RequestIntentV1
+from google_work_agent.application.workflows.request_understanding import (
+    ClarificationQuestionV1,
+    RequestIntentV1,
+    build_clarification_question_v1,
+)
 from google_work_agent.application.workflows.solution_planning import (
     ActionPlanDraftV1,
     AnswerDraftV1,
@@ -402,6 +406,23 @@ def validate_plan_review_result_v1(
     return result
 
 
+def build_plan_review_clarification_question(
+    *,
+    result: PlanReviewResultV1,
+    request_intent: RequestIntentV1,
+) -> ClarificationQuestionV1:
+    confirmation = _require_mapping(result["confirmation"], "$.confirmation")
+    return build_clarification_question_v1(
+        origin_target="review.inspect",
+        question=_require_string(confirmation, "question", "$.confirmation"),
+        reason_code=_require_string(confirmation, "reason_code", "$.confirmation"),
+        known_context_summary=request_intent["goal"]["user_visible_objective"]
+        or request_intent["goal"]["summary"],
+        affected_field_paths=_optional_string_list(confirmation.get("affected_field_paths")),
+        options=_optional_option_list(confirmation.get("options")),
+    )
+
+
 def load_plan_review_inspect_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
@@ -741,6 +762,25 @@ def _require_string_list(value: object, path: str) -> list[str]:
     return cast(list[str], items)
 
 
+def _optional_string_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    items = _require_list(value, "$.clarification.list")
+    result: list[str] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, str):
+            raise PlanReviewValidationError(f"clarification list entry must be string: {index}")
+        result.append(item)
+    return result
+
+
+def _optional_option_list(value: object) -> list[dict[str, object]]:
+    if value is None:
+        return []
+    items = _require_list(value, "$.clarification.options")
+    return [_require_mapping(item, "$.clarification.options[]") for item in items]
+
+
 @lru_cache(maxsize=1)
 def _load_prompt_manifest(path: Path) -> list[dict[str, object]]:
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -768,6 +808,7 @@ __all__ = [
     "PLAN_REVIEW_SCHEMA_VERSION",
     "POLICY_REVIEW_CONTEXT_SCHEMA_VERSION",
     "REVIEW_ISSUE_SCHEMA_VERSION",
+    "build_plan_review_clarification_question",
     "PlanReviewAgent",
     "PlanReviewResultV1",
     "PlanReviewValidationError",

@@ -11,7 +11,11 @@ from google_work_agent.application.llm import LLMRuntimeService
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
 from google_work_agent.application.workflows.contracts import PlanningResult, WorkflowPhase
-from google_work_agent.application.workflows.request_understanding import RequestIntentV1
+from google_work_agent.application.workflows.request_understanding import (
+    ClarificationQuestionV1,
+    RequestIntentV1,
+    build_clarification_question_v1,
+)
 from google_work_agent.application.workflows.work_analysis import WorkAnalysisResultV1
 from google_work_agent.domain import (
     EffectType,
@@ -70,6 +74,7 @@ class ActionPlanDraftV1(TypedDict):
     actions: list[ActionDraftV1]
     evidence_refs: list[str]
     resource_refs: list[dict[str, object]]
+    confirmation: dict[str, object] | None
     llm_provider_result: NotRequired[dict[str, object]]
 
 
@@ -119,6 +124,7 @@ ACTION_PLAN_DRAFT_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "actions",
             "evidence_refs",
             "resource_refs",
+            "confirmation",
         ],
         "additionalProperties": False,
         "properties": {
@@ -133,6 +139,7 @@ ACTION_PLAN_DRAFT_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "actions": {"type": "array", "items": {"type": "object"}},
             "evidence_refs": {"type": "array", "items": {"type": "string"}},
             "resource_refs": {"type": "array", "items": {"type": "object"}},
+            "confirmation": {},
         },
     },
 )
@@ -405,6 +412,7 @@ def validate_action_plan_draft_v1(
             "actions",
             "evidence_refs",
             "resource_refs",
+            "confirmation",
         },
         optional={"llm_provider_result"},
     )
@@ -441,6 +449,7 @@ def validate_action_plan_draft_v1(
         "actions": _validate_action_collection(actions),
         "evidence_refs": evidence_refs,
         "resource_refs": resource_refs,
+        "confirmation": _nullable_mapping(root["confirmation"], "$.confirmation"),
     }
     if "llm_provider_result" in root:
         result["llm_provider_result"] = _require_mapping(
@@ -449,6 +458,24 @@ def validate_action_plan_draft_v1(
         )
     _validate_action_plan_invariant(result)
     return result
+
+
+def build_solution_planning_clarification_question(
+    *,
+    result: AnswerDraftV1 | ActionPlanDraftV1,
+    request_intent: RequestIntentV1,
+) -> ClarificationQuestionV1:
+    confirmation = _require_mapping(result["confirmation"], "$.confirmation")
+    origin_target = "planning.answer_only" if "answer" in result else "planning.draft_plan"
+    return build_clarification_question_v1(
+        origin_target=origin_target,
+        question=_require_string(confirmation, "question", "$.confirmation"),
+        reason_code=_require_string(confirmation, "reason_code", "$.confirmation"),
+        known_context_summary=request_intent["goal"]["user_visible_objective"]
+        or request_intent["goal"]["summary"],
+        affected_field_paths=_optional_string_list(confirmation.get("affected_field_paths")),
+        options=_optional_option_list(confirmation.get("options")),
+    )
 
 
 def load_solution_planning_answer_only_prompt_reference(
@@ -636,8 +663,13 @@ def _validate_answer_draft_invariant(result: AnswerDraftV1) -> None:
 
 def _validate_action_plan_invariant(result: ActionPlanDraftV1) -> None:
     status = PlanningResult(result["status"])
-    if status is PlanningResult.PLAN_READY and not result["actions"]:
-        raise SolutionPlanningValidationError("PLAN_READY requires at least one action")
+    if status is PlanningResult.PLAN_READY:
+        if not result["actions"]:
+            raise SolutionPlanningValidationError("PLAN_READY requires at least one action")
+        if result["confirmation"] is not None:
+            raise SolutionPlanningValidationError("PLAN_READY must not include confirmation")
+    if status is PlanningResult.NEEDS_CONFIRMATION and result["confirmation"] is None:
+        raise SolutionPlanningValidationError("NEEDS_CONFIRMATION requires confirmation")
     if status is not PlanningResult.PLAN_READY and result["actions"]:
         raise SolutionPlanningValidationError(
             "non-PLAN_READY planning results must not include action drafts"
@@ -797,6 +829,27 @@ def _require_string_list(value: object, path: str) -> list[str]:
     return cast(list[str], items)
 
 
+def _optional_string_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    items = _require_list(value, "$.clarification.list")
+    result: list[str] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, str):
+            raise SolutionPlanningValidationError(
+                f"clarification list entry must be string: {index}"
+            )
+        result.append(item)
+    return result
+
+
+def _optional_option_list(value: object) -> list[dict[str, object]]:
+    if value is None:
+        return []
+    items = _require_list(value, "$.clarification.options")
+    return [_require_mapping(item, "$.clarification.options[]") for item in items]
+
+
 def _optional_string(value: object) -> str | None:
     if value is None:
         return None
@@ -836,6 +889,7 @@ __all__ = [
     "ActionDraftV1",
     "ActionPlanDraftV1",
     "AnswerDraftV1",
+    "build_solution_planning_clarification_question",
     "SolutionPlanningAgent",
     "SolutionPlanningValidationError",
     "load_solution_planning_answer_only_prompt_reference",

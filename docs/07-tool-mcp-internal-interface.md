@@ -65,7 +65,7 @@ Windows Installer
 | Session | `POST /api/v1/session/bootstrap` | Launcher Bootstrap으로 Local Session 수립 |
 | Conversation | `GET/POST /api/v1/conversations` | 대화 조회·생성 |
 | Run | `POST /api/v1/runs`, `GET /api/v1/runs/{run_id}` | 요청 시작·현재 Domain 상태 조회 |
-| Interrupt | `POST /api/v1/runs/{run_id}/confirm` | 확인 질문 응답으로 Graph 재개 |
+| Interrupt | `POST /api/v1/runs/{run_id}/resume` | `resume_kind=CONFIRMATION`과 typed payload로 확인 질문 응답을 재개 |
 | Approval | `POST /api/v1/actions/{action_id}/approve\|modify\|reject` | 승인·수정·거절 Command |
 | Retry | `POST /api/v1/actions/{action_id}/prepare-retry` | 실패한 Write를 `MODIFIED`로 전환해 새 승인 준비 |
 | Control | `POST /api/v1/runs/{run_id}/cancel\|resume` | 취소 요청·안전 지점 재개 |

@@ -4,10 +4,16 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import cast
 
+import pytest
+
 from google_work_agent.application.workflows import (
+    ConfirmationResponseKind,
     RequestUnderstandingAgent,
     RequestUnderstandingResult,
     WorkflowPhase,
+    load_request_understanding_clarify_prompt_reference,
+    resolve_confirmation_origin_target,
+    validate_confirmation_response_v1,
 )
 from google_work_agent.ports import (
     ActualRuntime,
@@ -31,6 +37,19 @@ PROMPT_REF = PromptReference(
     node_name="classify",
     node_state="BASELINE",
     purpose="classify",
+    input_schema_version="agent-node-input-v0.1",
+    output_schema_version="agent-node-output-v0.1",
+)
+CLARIFY_PROMPT_REF = PromptReference(
+    prompt_bundle_version="agent-r4-v0.1-baseline",
+    prompt_id="request_understanding.clarify",
+    prompt_version="v0.1",
+    content_hash="hash-clarify",
+    agent_role="request_understanding",
+    subgraph_name="request_understanding",
+    node_name="clarify",
+    node_state="BASELINE",
+    purpose="clarify",
     input_schema_version="agent-node-input-v0.1",
     output_schema_version="agent-node-output-v0.1",
 )
@@ -109,14 +128,16 @@ def test_linguistically_ambiguous_request_needs_confirmation() -> None:
     assert output["request_intent"] is not None
     assert output["clarification"] == {
         "schema_version": 1,
+        "origin_target": "request_understanding.classify",
         "question": "어떤 사람을 말하는지 알려주세요.",
         "affected_field_paths": ["semantic_constraints.people[0]"],
         "reason_code": "INTENT_AMBIGUITY_MISSED",
         "known_context_summary": "그 사람과 이야기했던 일정 정리",
+        "options": [],
     }
     assert output["failure"] is None
-    assert state_update["workflow_phase"] == WorkflowPhase.WAITING_CONFIRMATION.value
-    assert state_update["user_interrupt"] == output["clarification"]
+    assert state_update["workflow_phase"] == WorkflowPhase.REQUEST_ANALYSIS.value
+    assert "user_interrupt" not in state_update
 
 
 def test_retrieval_candidate_ambiguity_is_not_confirmed_by_request_understanding() -> None:
@@ -157,7 +178,7 @@ def test_unsupported_scope_returns_invalid_without_request_intent_handoff() -> N
         "diagnostic": "RequestIntentV1.unsupported_scope.is_unsupported=true",
     }
     assert state_update["workflow_phase"] == WorkflowPhase.FINALIZE.value
-    assert state_update["user_interrupt"] == output["failure"]
+    assert "user_interrupt" not in state_update
 
 
 def test_structured_output_schema_error_is_not_converted_to_invalid() -> None:
@@ -239,6 +260,112 @@ def test_agent_surface_has_no_google_mcp_or_action_dependency() -> None:
     assert len(runtime.calls) == 1
 
 
+def test_clarify_prompt_ref_is_runtime_active() -> None:
+    prompt_ref = load_request_understanding_clarify_prompt_reference()
+
+    assert prompt_ref.prompt_id == "request_understanding.clarify"
+    assert prompt_ref.prompt_version == "v0.1"
+    assert prompt_ref.content_hash != "TBD"
+    assert prompt_ref.node_state == "BASELINE"
+
+
+def test_clarify_invokes_prompt_and_validates_question_output() -> None:
+    runtime = FakeLLMRuntime()
+    clarification_source = {
+        "schema_version": 1,
+        "origin_target": "analysis.analyze",
+        "question": "Which task should be treated as the primary follow-up?",
+        "affected_field_paths": [],
+        "reason_code": "ANALYSIS_RELATIONSHIP_AMBIGUITY",
+        "known_context_summary": "Find the primary follow-up task",
+        "options": [{"option_id": "task-1", "label": "Task 1"}],
+    }
+    runtime.queued.append(_llm_result(dict(clarification_source)))
+    agent = RequestUnderstandingAgent(
+        llm_runtime=cast(object, runtime),
+        prompt_ref=PROMPT_REF,
+        clarify_prompt_ref=CLARIFY_PROMPT_REF,
+    )
+
+    result = agent.clarify(clarification_source, request=_request("Which task is primary?"))
+
+    assert result == clarification_source
+    assert cast(PromptReference, runtime.calls[0]["prompt_ref"]).prompt_id == (
+        "request_understanding.clarify"
+    )
+    assert runtime.calls[0]["prompt_input"] == {
+        "request_text": "Which task is primary?",
+        "clarification_source": clarification_source,
+    }
+
+
+def test_confirmation_response_contract_and_origin_resolution_are_deterministic() -> None:
+    user_interrupt = {
+        "schema_version": 1,
+        "origin_target": "planning.draft_plan",
+        "question": "Should we create the follow-up task?",
+        "affected_field_paths": [],
+        "reason_code": "MISSING_SCOPE",
+        "known_context_summary": "Handle Kim's follow-up",
+        "options": [{"option_id": "create-task", "label": "Create task"}],
+    }
+
+    selection = validate_confirmation_response_v1(
+        {
+            "schema_version": 1,
+            "response_kind": ConfirmationResponseKind.OPTION_SELECTION.value,
+            "selected_option_ids": ["create-task"],
+            "free_text": None,
+        }
+    )
+    free_text = validate_confirmation_response_v1(
+        {
+            "schema_version": 1,
+            "response_kind": ConfirmationResponseKind.FREE_TEXT.value,
+            "selected_option_ids": [],
+            "free_text": "Use the existing draft only.",
+        }
+    )
+
+    assert selection["selected_option_ids"] == ["create-task"]
+    assert free_text["free_text"] == "Use the existing draft only."
+    assert (
+        resolve_confirmation_origin_target(user_interrupt=user_interrupt, response=selection)
+        == "planning.draft_plan"
+    )
+
+    with pytest.raises(ValueError, match="OPTION_SELECTION requires at least one"):
+        validate_confirmation_response_v1(
+            {
+                "schema_version": 1,
+                "response_kind": ConfirmationResponseKind.OPTION_SELECTION.value,
+                "selected_option_ids": [],
+                "free_text": None,
+            }
+        )
+
+    with pytest.raises(ValueError, match="FREE_TEXT requires non-empty free_text"):
+        validate_confirmation_response_v1(
+            {
+                "schema_version": 1,
+                "response_kind": ConfirmationResponseKind.FREE_TEXT.value,
+                "selected_option_ids": [],
+                "free_text": "   ",
+            }
+        )
+
+    with pytest.raises(Exception, match="unknown clarification option_id"):
+        resolve_confirmation_origin_target(
+            user_interrupt=user_interrupt,
+            response={
+                "schema_version": 1,
+                "response_kind": ConfirmationResponseKind.OPTION_SELECTION.value,
+                "selected_option_ids": ["unknown-option"],
+                "free_text": None,
+            },
+        )
+
+
 def test_request_understanding_exports_do_not_change_existing_workflow_contracts() -> None:
     from google_work_agent.application import workflows
 
@@ -246,6 +373,8 @@ def test_request_understanding_exports_do_not_change_existing_workflow_contracts
     assert workflows.WorkflowPhase is WorkflowPhase
     assert hasattr(workflows, "RequestUnderstandingAgent")
     assert hasattr(workflows, "RequestIntentV1")
+    assert hasattr(workflows, "load_request_understanding_clarify_prompt_reference")
+    assert hasattr(workflows, "resolve_confirmation_origin_target")
 
 
 def _request(

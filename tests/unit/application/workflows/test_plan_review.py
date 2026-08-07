@@ -16,6 +16,7 @@ from google_work_agent.application.workflows import (
     PlanReviewValidationError,
     ReviewResult,
     WorkflowPhase,
+    build_plan_review_clarification_question,
     build_policy_review_context_v1,
     load_plan_review_inspect_prompt_reference,
     load_plan_review_recheck_prompt_reference,
@@ -271,6 +272,14 @@ def test_inspect_accepts_all_plan_review_results() -> None:
         )
 
         prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
+        clarification = (
+            build_plan_review_clarification_question(
+                result=result,
+                request_intent=_intent(),
+            )
+            if status == ReviewResult.CONFIRM.value
+            else None
+        )
 
         assert result["status"] == status
         expected_request = (
@@ -290,6 +299,15 @@ def test_inspect_accepts_all_plan_review_results() -> None:
         assert prompt_input["review_target"] == "PLAN"
         assert prompt_input["draft"] == plan_draft
         assert runtime.calls[0]["output_schema"] == PLAN_REVIEW_OUTPUT_SCHEMA
+        if clarification is not None:
+            assert clarification["origin_target"] == "review.inspect"
+            assert (
+                clarification["question"]
+                == cast(
+                    dict[str, object],
+                    result["confirmation"],
+                )["question"]
+            )
 
 
 def test_injection_boundary_treats_resource_and_draft_text_as_untrusted_data() -> None:
@@ -688,6 +706,7 @@ def _plan_draft() -> ActionPlanDraftV1:
             ],
             "evidence_refs": ["evidence-1", "evidence-2"],
             "resource_refs": _analysis_result()["resource_refs"],
+            "confirmation": None,
         },
         analysis_result=_analysis_result(),
     )

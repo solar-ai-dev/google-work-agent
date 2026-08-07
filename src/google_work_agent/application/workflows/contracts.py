@@ -1,7 +1,7 @@
 """Workflow contracts taken from the agent workflow design document."""
 
 from enum import StrEnum
-from typing import Literal, NotRequired, Required, TypedDict
+from typing import Literal, NotRequired, Required, TypedDict, cast
 
 
 class MultiAgentGraphState(TypedDict):
@@ -126,6 +126,13 @@ class DomainValidationResult(StrEnum):
     BLOCK = "BLOCK"
 
 
+class ConfirmationResponseKind(StrEnum):
+    """Typed confirmation response kinds carried through the resume boundary."""
+
+    OPTION_SELECTION = "OPTION_SELECTION"
+    FREE_TEXT = "FREE_TEXT"
+
+
 class AdditionalAcquisitionOriginResult(StrEnum):
     """Structured retrieval-redirection results understood by the supervisor."""
 
@@ -143,6 +150,15 @@ class AdditionalAcquisitionRequestV1(TypedDict):
     missing_information: list[str]
     evidence_refs: list[str]
     reason_codes: list[str]
+
+
+class ConfirmationResponseV1(TypedDict):
+    """Typed confirmation response payload sent through `/runs/{run_id}/resume`."""
+
+    schema_version: Required[Literal[1]]
+    response_kind: Literal["OPTION_SELECTION", "FREE_TEXT"]
+    selected_option_ids: list[str]
+    free_text: str | None
 
 
 class PromptSelectionKey(TypedDict):
@@ -196,6 +212,19 @@ ADDITIONAL_ACQUISITION_ALLOWED_PHASES = frozenset(
 ADDITIONAL_ACQUISITION_ALLOWED_RESULTS = frozenset(
     item.value for item in AdditionalAcquisitionOriginResult
 )
+CONFIRMATION_RESPONSE_ALLOWED_KINDS = frozenset(item.value for item in ConfirmationResponseKind)
+CONFIRMATION_ORIGIN_TARGETS = frozenset(
+    {
+        "request_understanding.classify",
+        "acquisition.plan_sources",
+        "context.assess_sufficiency",
+        "analysis.analyze",
+        "planning.answer_only",
+        "planning.draft_plan",
+        "review.inspect",
+    }
+)
+CONFIRMATION_RESUME_KIND = "CONFIRMATION"
 
 
 MULTI_AGENT_GRAPH_STATE_FIELDS = frozenset(MultiAgentGraphState.__annotations__)
@@ -270,6 +299,54 @@ def validate_additional_acquisition_request_v1(
     }
 
 
+def validate_confirmation_origin_target(value: object) -> str:
+    target = _require_string(value, "origin_target")
+    if target not in CONFIRMATION_ORIGIN_TARGETS:
+        raise ValueError("confirmation origin_target is invalid")
+    return target
+
+
+def validate_confirmation_response_v1(value: object) -> ConfirmationResponseV1:
+    if not isinstance(value, dict):
+        raise ValueError("confirmation response must be an object")
+    required = {"schema_version", "response_kind", "selected_option_ids", "free_text"}
+    actual = set(value)
+    missing = required - actual
+    extra = actual - required
+    if missing:
+        raise ValueError(f"confirmation response missing required fields: {sorted(missing)}")
+    if extra:
+        raise ValueError(f"confirmation response has unsupported fields: {sorted(extra)}")
+    schema_version = value["schema_version"]
+    if schema_version != 1:
+        raise ValueError("confirmation response schema_version must be 1")
+    response_kind = _require_string(value["response_kind"], "response_kind")
+    if response_kind not in CONFIRMATION_RESPONSE_ALLOWED_KINDS:
+        raise ValueError("confirmation response response_kind is invalid")
+    selected_option_ids = _require_string_list(value["selected_option_ids"], "selected_option_ids")
+    free_text = value["free_text"]
+    if free_text is not None and not isinstance(free_text, str):
+        raise ValueError("confirmation response free_text must be a string or null")
+    normalized_free_text = None if free_text is None else free_text.strip()
+    if response_kind == ConfirmationResponseKind.OPTION_SELECTION.value:
+        if not selected_option_ids:
+            raise ValueError("OPTION_SELECTION requires at least one selected_option_ids entry")
+        if normalized_free_text:
+            raise ValueError("OPTION_SELECTION must not include free_text")
+        normalized_free_text = None
+    else:
+        if selected_option_ids:
+            raise ValueError("FREE_TEXT must not include selected_option_ids")
+        if not normalized_free_text:
+            raise ValueError("FREE_TEXT requires non-empty free_text")
+    return {
+        "schema_version": 1,
+        "response_kind": cast(Literal["OPTION_SELECTION", "FREE_TEXT"], response_kind),
+        "selected_option_ids": selected_option_ids,
+        "free_text": normalized_free_text,
+    }
+
+
 def _require_string(value: object, field_name: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"additional acquisition request {field_name} must be a string")
@@ -294,9 +371,14 @@ __all__ = [
     "ADDITIONAL_ACQUISITION_ALLOWED_RESULTS",
     "AdditionalAcquisitionOriginResult",
     "AdditionalAcquisitionRequestV1",
+    "CONFIRMATION_ORIGIN_TARGETS",
+    "CONFIRMATION_RESUME_KIND",
+    "CONFIRMATION_RESPONSE_ALLOWED_KINDS",
     "AnalysisResult",
     "ApiAcquisitionResult",
     "ApiPlanningResult",
+    "ConfirmationResponseKind",
+    "ConfirmationResponseV1",
     "ContextResult",
     "DomainValidationResult",
     "LLM_PROVIDER_RESULT_FIELDS",
@@ -312,6 +394,8 @@ __all__ = [
     "PromptSelectionKey",
     "RequestUnderstandingResult",
     "ReviewResult",
+    "validate_confirmation_origin_target",
+    "validate_confirmation_response_v1",
     "validate_additional_acquisition_request_v1",
     "WorkflowPhase",
 ]

@@ -17,14 +17,14 @@
     {
       "prompt_bundle_version": "agent-r4-v0.1-baseline",
       "prompt_id": "request_understanding.clarify",
-      "prompt_version": "TBD",
-      "content_hash": "TBD",
+      "prompt_version": "v0.1",
+      "content_hash": "3e17385f2bd8f4dce824d0fca13e9a6f7a96ef8a37fb0f12dcf70d4bd32c9f45",
       "agent_role": "request_understanding",
       "subgraph_name": "request_understanding",
       "node_name": "clarify",
-      "node_state": "RESERVED",
+      "node_state": "BASELINE",
       "tier": "Tier B",
-      "purpose": "Recheck one revised draft and return PASS or BLOCK only.",
+      "purpose": "Generate a user clarification question with stable options and known differences only.",
       "input_schema_version": "agent-node-input-v0.1",
       "output_schema_version": "agent-node-output-v0.1"
     },

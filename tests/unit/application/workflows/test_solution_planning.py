@@ -14,6 +14,7 @@ from google_work_agent.application.workflows import (
     SolutionPlanningAgent,
     SolutionPlanningValidationError,
     WorkflowPhase,
+    build_solution_planning_clarification_question,
     load_solution_planning_answer_only_prompt_reference,
     load_solution_planning_draft_plan_prompt_reference,
     load_solution_planning_revise_answer_prompt_reference,
@@ -208,6 +209,7 @@ def test_draft_plan_builds_plan_ready_and_stores_plan_draft_only() -> None:
 
     assert result["status"] == PlanningResult.PLAN_READY.value
     assert len(result["actions"]) == 2
+    assert result["confirmation"] is None
     assert state_update["workflow_phase"] == WorkflowPhase.PLAN_REVIEW.value
     assert state_update["plan_draft"] == result
     assert state_update["answer_draft"] is None
@@ -335,7 +337,16 @@ def test_action_plan_rejects_unknown_refs_and_requires_plan_level_coverage() -> 
 def test_action_plan_needs_confirmation_or_blocked_do_not_store_actions() -> None:
     runtime = FakeLLMRuntime()
     runtime.queued.append(
-        _llm_result(_plan_output(PlanningResult.NEEDS_CONFIRMATION.value, actions=[]))
+        _llm_result(
+            _plan_output(
+                PlanningResult.NEEDS_CONFIRMATION.value,
+                actions=[],
+                confirmation={
+                    "reason_code": "MISSING_SCOPE",
+                    "question": "Should we create the follow-up task?",
+                },
+            )
+        )
     )
     agent = _agent(runtime)
 
@@ -346,16 +357,44 @@ def test_action_plan_needs_confirmation_or_blocked_do_not_store_actions() -> Non
         request=_request(),
     )
     state_update = agent.build_plan_state_update(result)
+    clarification = build_solution_planning_clarification_question(
+        result=result,
+        request_intent=_intent(),
+    )
 
     assert result["status"] == PlanningResult.NEEDS_CONFIRMATION.value
     assert result["actions"] == []
+    assert result["confirmation"] is not None
     assert state_update["plan_draft"] is None
     assert state_update["answer_draft"] is None
     assert "user_interrupt" not in state_update
+    assert clarification["origin_target"] == "planning.draft_plan"
 
     output = _plan_output(PlanningResult.BLOCKED.value, actions=[])
     blocked = validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
     assert blocked["status"] == PlanningResult.BLOCKED.value
+
+
+def test_action_plan_confirmation_invariants_are_enforced() -> None:
+    output = _plan_output(
+        PlanningResult.NEEDS_CONFIRMATION.value,
+        actions=[],
+        confirmation=None,
+    )
+
+    with pytest.raises(SolutionPlanningValidationError, match="requires confirmation"):
+        validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
+
+    output = _plan_output(
+        PlanningResult.PLAN_READY.value,
+        confirmation={
+            "reason_code": "MISSING_SCOPE",
+            "question": "Should we create the follow-up task?",
+        },
+    )
+
+    with pytest.raises(SolutionPlanningValidationError, match="must not include confirmation"):
+        validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
 
 
 def test_update_action_uses_existing_policy_validator() -> None:
@@ -615,6 +654,7 @@ def _plan_output(
     *,
     actions: list[dict[str, object]] | None = None,
     evidence_refs: list[str] | None = None,
+    confirmation: dict[str, object] | None = None,
 ) -> dict[str, object]:
     if actions is None:
         actions = [
@@ -647,6 +687,7 @@ def _plan_output(
         "actions": actions,
         "evidence_refs": evidence_refs,
         "resource_refs": _analysis_result()["resource_refs"],
+        "confirmation": confirmation,
     }
 
 

@@ -16,7 +16,11 @@ from google_work_agent.application.workflows.contracts import (
     ApiPlanningResult,
     WorkflowPhase,
 )
-from google_work_agent.application.workflows.request_understanding import RequestIntentV1
+from google_work_agent.application.workflows.request_understanding import (
+    ClarificationQuestionV1,
+    RequestIntentV1,
+    build_clarification_question_v1,
+)
 from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGateway,
@@ -263,7 +267,6 @@ class ApiDiscoveryAcquisitionAgent:
         )
         return {
             "source_fetch_plans": output["source_fetch_plans"],
-            "user_interrupt": output["clarification"],
             "workflow_phase": phase.value,
             "trace_context": {
                 "api_planning_result": output["result"],
@@ -345,6 +348,23 @@ def load_acquisition_plan_sources_prompt_reference(
                 output_schema_version=_required_manifest_string(item, "output_schema_version"),
             )
     raise LookupError("acquisition.plan_sources prompt is missing from manifest")
+
+
+def build_source_planning_clarification_question(
+    *,
+    output: SourcePlanningOutputV1,
+    request_intent: RequestIntentV1,
+) -> ClarificationQuestionV1:
+    clarification = _require_mapping(output["clarification"], "$.clarification")
+    return build_clarification_question_v1(
+        origin_target="acquisition.plan_sources",
+        question=_require_string(clarification, "question", "$.clarification"),
+        reason_code=_require_string(clarification, "reason_code", "$.clarification"),
+        known_context_summary=request_intent["goal"]["user_visible_objective"]
+        or request_intent["goal"]["summary"],
+        affected_field_paths=_optional_string_list(clarification.get("affected_field_paths")),
+        options=_optional_option_list(clarification.get("options")),
+    )
 
 
 def _interpret_source_plans(
@@ -841,6 +861,27 @@ def _require_string_list(value: object, path: str) -> list[str]:
         if not isinstance(item, str):
             raise SourcePlanningValidationError(f"{path}[{index}] must be string")
     return cast(list[str], value)
+
+
+def _optional_string_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SourcePlanningValidationError("clarification list field must be an array")
+    result: list[str] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, str):
+            raise SourcePlanningValidationError(f"clarification list entry must be string: {index}")
+        result.append(item)
+    return result
+
+
+def _optional_option_list(value: object) -> list[dict[str, object]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SourcePlanningValidationError("clarification options must be an array")
+    return [_require_mapping(item, "$.clarification.options[]") for item in value]
 
 
 @lru_cache(maxsize=1)

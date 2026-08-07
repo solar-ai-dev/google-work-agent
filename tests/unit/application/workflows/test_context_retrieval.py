@@ -12,6 +12,7 @@ from google_work_agent.application.workflows import (
     ContextRetrievalAgent,
     ContextRetrievalValidationError,
     WorkflowPhase,
+    build_context_clarification_question,
     load_context_assess_sufficiency_prompt_reference,
 )
 from google_work_agent.ports import (
@@ -255,10 +256,16 @@ def test_retrieval_ambiguity_becomes_user_interrupt_without_request_understandin
         request=_request(),
     )
     state_update = agent.build_state_update(result)
+    clarification = build_context_clarification_question(
+        result=result,
+        request_intent=_intent(),
+    )
 
     assert result["status"] == ContextResult.NEEDS_CONFIRMATION.value
     assert state_update["workflow_phase"] == WorkflowPhase.CONTEXT_EVALUATION.value
-    assert state_update["user_interrupt"] == ambiguity
+    assert "user_interrupt" not in state_update
+    assert clarification["origin_target"] == "context.assess_sufficiency"
+    assert clarification["question"] == ambiguity["question"]
 
 
 def test_evidence_deduplication_and_excluded_hard_negative_are_packaged() -> None:

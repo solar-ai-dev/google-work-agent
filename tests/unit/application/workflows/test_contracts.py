@@ -5,6 +5,9 @@ import pytest
 from google_work_agent.application.workflows import (
     ADDITIONAL_ACQUISITION_ALLOWED_PHASES,
     ADDITIONAL_ACQUISITION_ALLOWED_RESULTS,
+    CONFIRMATION_ORIGIN_TARGETS,
+    CONFIRMATION_RESPONSE_ALLOWED_KINDS,
+    CONFIRMATION_RESUME_KIND,
     LLM_PROVIDER_RESULT_FIELDS,
     LLM_PROVIDER_RESULT_OPTIONAL_FIELDS,
     LLM_PROVIDER_RESULT_REQUIRED_FIELDS,
@@ -15,6 +18,7 @@ from google_work_agent.application.workflows import (
     AnalysisResult,
     ApiAcquisitionResult,
     ApiPlanningResult,
+    ConfirmationResponseKind,
     ContextResult,
     DomainValidationResult,
     PlanningResult,
@@ -22,6 +26,8 @@ from google_work_agent.application.workflows import (
     ReviewResult,
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
+    validate_confirmation_origin_target,
+    validate_confirmation_response_v1,
 )
 
 
@@ -213,6 +219,71 @@ def test_additional_acquisition_request_rejects_empty_handoff_reason() -> None:
                 "reason_codes": [],
             },
             allowed_evidence_refs={"evidence-1"},
+        )
+
+
+def test_confirmation_contract_constants_match_gap_b_contract() -> None:
+    assert _values(ConfirmationResponseKind) == (
+        "OPTION_SELECTION",
+        "FREE_TEXT",
+    )
+    assert {"OPTION_SELECTION", "FREE_TEXT"} == CONFIRMATION_RESPONSE_ALLOWED_KINDS
+    assert {
+        "request_understanding.classify",
+        "acquisition.plan_sources",
+        "context.assess_sufficiency",
+        "analysis.analyze",
+        "planning.answer_only",
+        "planning.draft_plan",
+        "review.inspect",
+    } == CONFIRMATION_ORIGIN_TARGETS
+    assert CONFIRMATION_RESUME_KIND == "CONFIRMATION"
+
+
+def test_confirmation_origin_target_and_response_validators_enforce_runtime_contract() -> None:
+    assert validate_confirmation_origin_target("review.inspect") == "review.inspect"
+
+    selection = validate_confirmation_response_v1(
+        {
+            "schema_version": 1,
+            "response_kind": "OPTION_SELECTION",
+            "selected_option_ids": ["option-1"],
+            "free_text": None,
+        }
+    )
+    free_text = validate_confirmation_response_v1(
+        {
+            "schema_version": 1,
+            "response_kind": "FREE_TEXT",
+            "selected_option_ids": [],
+            "free_text": "Use the existing draft only.",
+        }
+    )
+
+    assert selection["selected_option_ids"] == ["option-1"]
+    assert free_text["free_text"] == "Use the existing draft only."
+
+    with pytest.raises(ValueError, match="confirmation origin_target is invalid"):
+        validate_confirmation_origin_target("planning.revise_plan")
+
+    with pytest.raises(ValueError, match="OPTION_SELECTION requires at least one"):
+        validate_confirmation_response_v1(
+            {
+                "schema_version": 1,
+                "response_kind": "OPTION_SELECTION",
+                "selected_option_ids": [],
+                "free_text": None,
+            }
+        )
+
+    with pytest.raises(ValueError, match="FREE_TEXT requires non-empty free_text"):
+        validate_confirmation_response_v1(
+            {
+                "schema_version": 1,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "   ",
+            }
         )
 
 

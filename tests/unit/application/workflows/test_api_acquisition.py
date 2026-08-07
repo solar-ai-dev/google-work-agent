@@ -12,6 +12,7 @@ from google_work_agent.application.workflows import (
     SourceFetchPlanV1,
     SourcePlanningValidationError,
     WorkflowPhase,
+    build_source_planning_clarification_question,
 )
 from google_work_agent.ports import (
     ActualRuntime,
@@ -371,6 +372,7 @@ def test_no_fetch_needed_when_planning_returns_empty_plan_list() -> None:
     assert planning["result"] == ApiPlanningResult.NO_FETCH_NEEDED.value
     assert planning["source_fetch_plans"] == []
     assert state_update["workflow_phase"] == WorkflowPhase.SOURCE_PLANNING.value
+    assert "user_interrupt" not in state_update
     assert gateway.calls == []
 
 
@@ -730,9 +732,15 @@ def test_retrieval_ambiguity_uses_planning_confirmation_not_request_understandin
     agent = _agent(runtime=runtime, gateway=gateway)
 
     planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=_request())
+    clarification = build_source_planning_clarification_question(
+        output=planning,
+        request_intent=_intent(source="CALENDAR"),
+    )
 
     assert planning["result"] == ApiPlanningResult.NEEDS_CONFIRMATION.value
     assert planning["clarification"] is not None
+    assert clarification["origin_target"] == "acquisition.plan_sources"
+    assert clarification["options"] == []
     assert runtime.calls[0]["prompt_input"]["request_intent"]["schema_version"] == 1
     assert gateway.calls == []
 

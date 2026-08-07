@@ -18,7 +18,11 @@ from google_work_agent.application.workflows.contracts import (
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
 )
-from google_work_agent.application.workflows.request_understanding import RequestIntentV1
+from google_work_agent.application.workflows.request_understanding import (
+    ClarificationQuestionV1,
+    RequestIntentV1,
+    build_clarification_question_v1,
+)
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
@@ -269,13 +273,9 @@ class ContextRetrievalAgent:
             if ContextResult(result["status"]) is ContextResult.SUFFICIENT
             else WorkflowPhase.CONTEXT_EVALUATION
         )
-        user_interrupt = None
-        if ContextResult(result["status"]) is ContextResult.NEEDS_CONFIRMATION:
-            user_interrupt = result["context_bundle"]["ambiguity"]
         return {
             "context_result": result,
             "workflow_phase": phase.value,
-            "user_interrupt": user_interrupt,
             "trace_context": {
                 "context_result": result["status"],
                 "selected_segment_count": len(result["selected_segment_ids"]),
@@ -466,6 +466,25 @@ def validate_context_retrieval_result_v1(value: object) -> ContextRetrievalResul
         )
     _validate_context_result_invariant(result)
     return result
+
+
+def build_context_clarification_question(
+    *,
+    result: ContextRetrievalResultV1,
+    request_intent: RequestIntentV1,
+) -> ClarificationQuestionV1:
+    ambiguity = _require_mapping(
+        result["context_bundle"]["ambiguity"], "$.context_bundle.ambiguity"
+    )
+    return build_clarification_question_v1(
+        origin_target="context.assess_sufficiency",
+        question=_require_string(ambiguity, "question", "$.context_bundle.ambiguity"),
+        reason_code=_require_string(ambiguity, "reason_code", "$.context_bundle.ambiguity"),
+        known_context_summary=request_intent["goal"]["user_visible_objective"]
+        or request_intent["goal"]["summary"],
+        affected_field_paths=_optional_string_list(ambiguity.get("affected_field_paths")),
+        options=_optional_option_list(ambiguity.get("options")),
+    )
 
 
 def load_context_select_evidence_prompt_reference(
@@ -830,6 +849,27 @@ def _optional_string(value: object) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _optional_string_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    items = _require_list(value, "$.clarification.list")
+    result: list[str] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, str):
+            raise ContextRetrievalValidationError(
+                f"clarification list entry must be string: {index}"
+            )
+        result.append(item)
+    return result
+
+
+def _optional_option_list(value: object) -> list[dict[str, object]]:
+    if value is None:
+        return []
+    items = _require_list(value, "$.clarification.options")
+    return [_require_mapping(item, "$.clarification.options[]") for item in items]
 
 
 def _truncate(value: str, max_chars: int) -> str:
