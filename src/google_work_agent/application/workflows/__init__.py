@@ -69,6 +69,7 @@ from google_work_agent.application.workflows.contracts import (
     ConfirmationResponseKind,
     ConfirmationResponseV1,
     ContextResult,
+    DomainValidationOutputV1,
     DomainValidationResult,
     FinalizeIntent,
     FinalizeIntentV1,
@@ -96,10 +97,17 @@ from google_work_agent.application.workflows.contracts import (
     validate_additional_acquisition_request_v1,
     validate_confirmation_origin_target,
     validate_confirmation_response_v1,
+    validate_domain_validation_output_v1,
     validate_finalize_intent_v1,
     validate_run_budget_v1,
     validate_semantic_failure_signature_v1,
     validate_user_interrupt_v1,
+)
+from google_work_agent.application.workflows.domain_validation import (
+    DomainValidationService,
+    DomainValidationValidationError,
+    build_domain_validation_output_v1,
+    validate_domain_validation_service_output_v1,
 )
 from google_work_agent.application.workflows.plan_review import (
     PLAN_REVIEW_OUTPUT_SCHEMA,
@@ -227,7 +235,10 @@ __all__ = [
     "ContextRetrievalResultV1",
     "ContextRetrievalValidationError",
     "consume_llm_provider_calls",
+    "DomainValidationOutputV1",
     "DomainValidationResult",
+    "DomainValidationService",
+    "DomainValidationValidationError",
     "FinalizeIntent",
     "FinalizeIntentV1",
     "EVIDENCE_DRAFT_SCHEMA_VERSION",
@@ -306,6 +317,8 @@ __all__ = [
     "load_work_analysis_analyze_prompt_reference",
     "validate_action_plan_draft_v1",
     "validate_additional_acquisition_request_v1",
+    "validate_domain_validation_output_v1",
+    "validate_domain_validation_service_output_v1",
     "validate_answer_draft_v1",
     "validate_clarification_question_v1",
     "validate_confirmation_origin_target",
@@ -330,4 +343,5 @@ __all__ = [
     "approve_planning_revision",
     "approve_review_recheck",
     "approve_semantic_revision",
+    "build_domain_validation_output_v1",
 ]

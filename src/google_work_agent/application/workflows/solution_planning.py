@@ -35,7 +35,7 @@ from google_work_agent.ports import (
 JsonObject = dict[str, object]
 AnswerDraftStatusValue = Literal["ANSWER_ONLY", "NEEDS_CONFIRMATION", "BLOCKED"]
 PlanDraftStatusValue = Literal["PLAN_READY", "NEEDS_CONFIRMATION", "BLOCKED"]
-ActionEffectValue = Literal["READ", "CREATE", "UPDATE"]
+ActionEffectValue = Literal["READ", "CREATE", "UPDATE", "SEND", "DELETE"]
 
 
 class AnswerDraftV1(TypedDict):
@@ -154,7 +154,13 @@ _PLAN_RESULT_VALUES = {
     PlanningResult.NEEDS_CONFIRMATION.value,
     PlanningResult.BLOCKED.value,
 }
-_ACTION_EFFECT_VALUES = {EffectType.READ.value, EffectType.CREATE.value, EffectType.UPDATE.value}
+_ACTION_EFFECT_VALUES = {
+    EffectType.READ.value,
+    EffectType.CREATE.value,
+    EffectType.UPDATE.value,
+    EffectType.SEND.value,
+    EffectType.DELETE.value,
+}
 
 
 class SolutionPlanningValidationError(ValueError):
@@ -640,7 +646,8 @@ def _validate_action_draft(
         validate_evidence_policy(
             EvidencePolicyInput(
                 evidence_count=len(evidence_refs),
-                requires_existing_resource=entry.effect_type is EffectType.UPDATE,
+                requires_existing_resource=entry.effect_type
+                in {EffectType.UPDATE, EffectType.DELETE},
                 has_user_selected_resource=target_resource_ref_id is not None,
                 has_explicit_resource_relation=target_resource_ref_id is not None,
             )

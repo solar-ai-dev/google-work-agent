@@ -414,7 +414,7 @@ def test_plan_prompt_input_uses_stage7_outputs_and_marks_source_untrusted() -> N
 
 def test_action_plan_rejects_invalid_refs_duplicate_ids_and_dependency_errors() -> None:
     output = _plan_output(PlanningResult.PLAN_READY.value)
-    cast(list[dict[str, object]], output["actions"])[0]["tool_name"] = "gmail_send"
+    cast(list[dict[str, object]], output["actions"])[0]["tool_name"] = "gmail_delete_message"
 
     with pytest.raises(SolutionPlanningValidationError, match="tool not registered"):
         validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
@@ -469,6 +469,45 @@ def test_action_plan_rejects_unknown_refs_and_requires_plan_level_coverage() -> 
 
     with pytest.raises(SolutionPlanningValidationError, match="covered by plan evidence_refs"):
         validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
+
+
+def test_action_plan_accepts_send_and_delete_registered_tools() -> None:
+    send_output = _plan_output(
+        PlanningResult.PLAN_READY.value,
+        actions=[
+            _action(
+                "action-send",
+                1,
+                effect="SEND",
+                tool_name="gmail_send",
+                evidence_refs=["evidence-1"],
+                resource_refs=["gmail_thread:thread-kim"],
+            )
+        ],
+        evidence_refs=["evidence-1"],
+    )
+    delete_output = _plan_output(
+        PlanningResult.PLAN_READY.value,
+        actions=[
+            _action(
+                "action-delete",
+                1,
+                effect="DELETE",
+                tool_name="calendar_delete_event",
+                evidence_refs=["evidence-1", "evidence-2"],
+                resource_refs=["gmail_thread:thread-kim"],
+            )
+        ],
+        evidence_refs=["evidence-1", "evidence-2"],
+    )
+
+    send_result = validate_action_plan_draft_v1(send_output, analysis_result=_analysis_result())
+    delete_result = validate_action_plan_draft_v1(delete_output, analysis_result=_analysis_result())
+
+    assert send_result["actions"][0]["effect"] == "SEND"
+    assert send_result["actions"][0]["tool_name"] == "gmail_send"
+    assert delete_result["actions"][0]["effect"] == "DELETE"
+    assert delete_result["actions"][0]["tool_name"] == "calendar_delete_event"
 
 
 def test_action_plan_needs_confirmation_or_blocked_do_not_store_actions() -> None:

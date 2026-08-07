@@ -20,6 +20,7 @@ from google_work_agent.application.workflows import (
     ApiPlanningResult,
     ConfirmationResponseKind,
     ContextResult,
+    DomainValidationOutputV1,
     DomainValidationResult,
     FinalizeIntent,
     PlanningResult,
@@ -30,6 +31,7 @@ from google_work_agent.application.workflows import (
     validate_additional_acquisition_request_v1,
     validate_confirmation_origin_target,
     validate_confirmation_response_v1,
+    validate_domain_validation_output_v1,
     validate_finalize_intent_v1,
     validate_user_interrupt_v1,
 )
@@ -169,6 +171,20 @@ def test_domain_validation_result_values_match_workflow_document() -> None:
         "REQUIRE_APPROVAL",
         "BLOCK",
     )
+
+
+def test_domain_validation_output_validator_accepts_minimal_runtime_contract() -> None:
+    output: DomainValidationOutputV1 = validate_domain_validation_output_v1(
+        {
+            "schema_version": 1,
+            "result": "REQUIRE_APPROVAL",
+            "reason_codes": ["WRITE_EFFECT_PRESENT"],
+            "blocked_action_ids": [],
+        }
+    )
+
+    assert output["result"] == "REQUIRE_APPROVAL"
+    assert output["blocked_action_ids"] == []
 
 
 def test_finalize_intent_values_match_terminal_boundary_contract() -> None:

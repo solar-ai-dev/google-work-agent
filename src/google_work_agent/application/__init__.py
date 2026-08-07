@@ -39,6 +39,11 @@ from google_work_agent.application.run_terminal import (
     build_finalize_state_update,
     derive_finalize_intent,
 )
+from google_work_agent.application.workflows.domain_validation import (
+    DomainValidationService,
+    DomainValidationValidationError,
+    build_domain_validation_output_v1,
+)
 from google_work_agent.application.write_actions import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
@@ -92,8 +97,11 @@ __all__ = [
     "CompletedEvidence",
     "CompletedResourceRef",
     "DisconnectGoogleService",
+    "DomainValidationService",
+    "DomainValidationValidationError",
     "ExecuteReadActionService",
     "derive_finalize_intent",
+    "build_domain_validation_output_v1",
     "FailReadActionCommand",
     "FailReadActionService",
     "FailRunCommand",

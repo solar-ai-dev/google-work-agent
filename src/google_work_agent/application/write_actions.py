@@ -2428,7 +2428,8 @@ def _validate_write_plan(
         validate_evidence_policy(
             policy_input=EvidencePolicyInput(
                 evidence_count=evidence_count,
-                requires_existing_resource=entry.effect_type is EffectType.UPDATE,
+                requires_existing_resource=entry.effect_type
+                in {EffectType.UPDATE, EffectType.DELETE},
                 has_user_selected_resource=action.target_resource_ref_id is not None,
                 has_explicit_resource_relation=action.target_resource_ref_id is not None,
             )

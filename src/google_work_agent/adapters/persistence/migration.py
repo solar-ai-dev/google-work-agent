@@ -232,6 +232,8 @@ def _apply_single_migration(
         raise MigrationApplyError(
             f"migration apply failed: version={migration.version} name={migration.name}"
         ) from exc
+    finally:
+        connection.execute("PRAGMA foreign_keys = ON;")
 
 
 def _split_sql_statements(sql: str) -> tuple[str, ...]:

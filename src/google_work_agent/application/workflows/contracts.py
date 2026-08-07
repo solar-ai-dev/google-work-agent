@@ -224,6 +224,15 @@ class DomainValidationResult(StrEnum):
     BLOCK = "BLOCK"
 
 
+class DomainValidationOutputV1(TypedDict):
+    """Deterministic domain-validation output consumed by the workflow boundary."""
+
+    schema_version: Required[Literal[1]]
+    result: Literal["ALLOW_READ", "REQUIRE_APPROVAL", "BLOCK"]
+    reason_codes: list[str]
+    blocked_action_ids: list[str]
+
+
 class ConfirmationResponseKind(StrEnum):
     """Typed confirmation response kinds carried through the resume boundary."""
 
@@ -661,6 +670,35 @@ def validate_additional_acquisition_request_v1(
     }
 
 
+def validate_domain_validation_output_v1(value: object) -> DomainValidationOutputV1:
+    if not isinstance(value, dict):
+        raise ValueError("domain validation output must be an object")
+    required = {"schema_version", "result", "reason_codes", "blocked_action_ids"}
+    actual = set(value)
+    missing = required - actual
+    extra = actual - required
+    if missing:
+        raise ValueError(f"domain validation output missing required fields: {sorted(missing)}")
+    if extra:
+        raise ValueError(f"domain validation output has unsupported fields: {sorted(extra)}")
+    if value["schema_version"] != 1:
+        raise ValueError("domain validation output schema_version must be 1")
+    result = _require_string(value["result"], "result")
+    if result not in {item.value for item in DomainValidationResult}:
+        raise ValueError("domain validation output result is invalid")
+    reason_codes = _require_general_string_list(value["reason_codes"], "reason_codes")
+    blocked_action_ids = _require_general_string_list(
+        value["blocked_action_ids"],
+        "blocked_action_ids",
+    )
+    return {
+        "schema_version": 1,
+        "result": cast(Literal["ALLOW_READ", "REQUIRE_APPROVAL", "BLOCK"], result),
+        "reason_codes": reason_codes,
+        "blocked_action_ids": blocked_action_ids,
+    }
+
+
 def validate_confirmation_origin_target(value: object) -> str:
     target = _require_string(value, "origin_target")
     if target not in CONFIRMATION_ORIGIN_TARGETS:
@@ -870,6 +908,17 @@ def _require_string_list(value: object, field_name: str) -> list[str]:
     return result
 
 
+def _require_general_string_list(value: object, field_name: str) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be a list")
+    result: list[str] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, str):
+            raise ValueError(f"{field_name}[{index}] must be a string")
+        result.append(item)
+    return result
+
+
 def _require_non_empty_string(value: object, field_name: str, context: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{context} {field_name} must be a string")
@@ -943,6 +992,7 @@ __all__ = [
     "ConfirmationResponseV1",
     "ContextResult",
     "DomainValidationResult",
+    "DomainValidationOutputV1",
     "FinalizeIntent",
     "FinalizeIntentV1",
     "LLM_PROVIDER_RESULT_FIELDS",
@@ -983,5 +1033,6 @@ __all__ = [
     "validate_confirmation_response_v1",
     "validate_finalize_intent_v1",
     "validate_additional_acquisition_request_v1",
+    "validate_domain_validation_output_v1",
     "WorkflowPhase",
 ]

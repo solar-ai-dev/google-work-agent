@@ -30,7 +30,14 @@ ACTION_TERMINAL_STATUSES = frozenset(
     }
 )
 
-WRITE_EFFECTS = frozenset({EffectType.CREATE, EffectType.UPDATE})
+WRITE_EFFECTS = frozenset(
+    {
+        EffectType.CREATE,
+        EffectType.UPDATE,
+        EffectType.SEND,
+        EffectType.DELETE,
+    }
+)
 
 RUN_TRANSITIONS: dict[tuple[RunStatus, RunCommand], RunStatus] = {
     (RunStatus.CREATED, RunCommand.START_ANALYSIS): RunStatus.ANALYZING,

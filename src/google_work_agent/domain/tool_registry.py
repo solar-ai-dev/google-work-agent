@@ -88,6 +88,7 @@ def build_p0_tool_registry() -> SignedToolRegistry:
         entries=(
             _read_tool(tool_name="calendar_get_event", scope="calendar.events"),
             _create_tool(tool_name="calendar_create_event", scope="calendar.events"),
+            _delete_tool(tool_name="calendar_delete_event", scope="calendar.events"),
             _read_tool(tool_name="calendar_list_calendars", scope="calendarlist.readonly"),
             _read_tool(tool_name="calendar_list_events", scope="calendar.events"),
             _read_tool(tool_name="calendar_query_freebusy", scope="calendar.events.freebusy"),
@@ -97,6 +98,7 @@ def build_p0_tool_registry() -> SignedToolRegistry:
             _read_tool(tool_name="gmail_get_message", scope="gmail.readonly"),
             _read_tool(tool_name="gmail_get_thread", scope="gmail.readonly"),
             _read_tool(tool_name="gmail_search_threads", scope="gmail.readonly"),
+            _send_tool(tool_name="gmail_send", scope="gmail.send"),
             _update_tool(tool_name="gmail_update_draft", scope="gmail.compose"),
             _create_tool(tool_name="tasks_create_task", scope="tasks"),
             _read_tool(tool_name="tasks_get_task", scope="tasks"),
@@ -137,6 +139,30 @@ def _update_tool(*, tool_name: str, scope: str) -> ToolRegistryEntry:
         effect_type=EffectType.UPDATE,
         approval_requirement=ApprovalRequirement.REQUIRED,
         verification_policy=VerificationPolicy.GET_COMPARE,
+        recovery_policy=RecoveryPolicy.GET_TARGET,
+        scope=scope,
+        retryable=False,
+    )
+
+
+def _send_tool(*, tool_name: str, scope: str) -> ToolRegistryEntry:
+    return ToolRegistryEntry(
+        tool_name=tool_name,
+        effect_type=EffectType.SEND,
+        approval_requirement=ApprovalRequirement.REQUIRED,
+        verification_policy=VerificationPolicy.SENT_LOOKUP,
+        recovery_policy=RecoveryPolicy.MESSAGE_SEARCH,
+        scope=scope,
+        retryable=False,
+    )
+
+
+def _delete_tool(*, tool_name: str, scope: str) -> ToolRegistryEntry:
+    return ToolRegistryEntry(
+        tool_name=tool_name,
+        effect_type=EffectType.DELETE,
+        approval_requirement=ApprovalRequirement.REQUIRED,
+        verification_policy=VerificationPolicy.GET_ABSENT,
         recovery_policy=RecoveryPolicy.GET_TARGET,
         scope=scope,
         retryable=False,
