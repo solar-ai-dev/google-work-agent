@@ -1,6 +1,6 @@
 # Google Work Agent · Agent Capability · Failure · Prompt 공통 계약
 
-> **상태:** Draft v0.2 · 사용자 결정 반영 · 내부 정합성 검수 대상  
+> **상태:** Approved v1.0 · 사용자 결정 반영 · 내부 정합성 검수 PASS  
 > **기준일:** 2026-08-07  
 > **대상:** P0 Agent 개별실험, Prompt·Repair·Revision 실험, E2E 통합실험  
 > **적용 범위:** 요청 이해, API 탐색·수집, Context Retrieval, 업무 분석, 해결책·계획, 계획 검토  
@@ -391,24 +391,19 @@ subgraph_name
 node_name
 node_state
 purpose
+failure_reason_code?
 input_schema_version
 output_schema_version
 ```
 
-Runtime Prompt 선택 Key는 `src/google_work_agent/application/workflows/contracts.py`의
-`PromptSelectionKey` 필드를 Source of Truth로 삼는다. `failure_reason_code`는
-Prompt Registry·Manifest가 후보 Prompt를 고르는 metadata로 사용할 수 있지만 Runtime
-Prompt 선택 Key 필드로 확정하지 않는다.
+`failure_reason_code`는 Prompt 선택 Key에 직접 포함한다.
 
 ### 9.2 PromptRef
-
-Runtime `PromptReference`는 `src/google_work_agent/ports/llm.py`와
-`src/google_work_agent/application/workflows/contracts.py`의 `PromptRef` 필드가 Source of
-Truth다.
 
 ```yaml
 prompt_ref:
   prompt_bundle_version: string
+  prompt_slot_id: string
   prompt_id: string
   prompt_version: string
   content_hash: string
@@ -417,15 +412,11 @@ prompt_ref:
   node_name: string
   node_state: string
   purpose: string
-  input_schema_version: string
-  output_schema_version: string
+  failure_reason_code: string | null
+  input_schema_version: integer
+  output_schema_version: integer
+  activation_status: DRAFT | DEV_VALIDATED | HOLDOUT_VALIDATED | RUNTIME_ACTIVE | RETIRED
 ```
-
-`prompt_slot_id`, `failure_reason_code`, `activation_status`는 Prompt Registry·Manifest
-metadata다. 이 문서는 해당 metadata의 평가·운영 의미를 설명할 수 있지만, Runtime
-`PromptReference` 포트를 대체하거나 확장하지 않는다. Failure-specific Prompt가 필요하면
-Registry가 다른 `prompt_id` 또는 `prompt_version`을 선택하고, LLM 호출에는 Runtime
-`PromptReference`만 전달한다.
 
 ### 9.3 Prompt 종류
 
@@ -762,7 +753,10 @@ Revision 후 Recheck
 | `node_capability_holdout` | Agent Prompt 과적합 검증 | 잠긴 Node Item |
 | `prompt_repair_revision` | 실패 원인별 복구 | Mutated Node Item |
 | `query_retrieval` | Query·후보·Confidence·Round | Query Attempt Item |
-| `fault_safety` | 비-LLM 장애·정책 Gate | Fault Profile |
+| `ambiguity_clarification` | 후보·관계·동작 모호성 해소 | Clarification Item |
+| `risky_user_requests` | 승인 우회·금지 동작·검증 생략 등 위험 사용자 요청 | Safety Request Item |
+| `adversarial_source_content` | Source 내부 Prompt Injection·정책 우회 지시 | Adversarial Source Item |
+| `fault_write_integrity` | 비-LLM 장애·UNKNOWN_RESULT·MISMATCH·Write 무결성 | Fault Profile |
 | `paraphrase_robustness` | 사용자 표현 변화 | Prompt Variant |
 | `canonical_holdout` | 최종 E2E 후보 검증 | 잠긴 Canonical Family |
 
@@ -893,7 +887,7 @@ review_recheck_per_revision_max: 1
 additional_acquisition_max: 2
 confidence_bands: [HIGH, MEDIUM, LOW, NONE]
 threshold_owner: RETRIEVAL_CONFIG
-failure_reason_prompt_key: REGISTRY_METADATA
+failure_reason_prompt_key: DIRECT
 prompt_assembly: BASE_PLUS_FAILURE_BLOCK
 ```
 
@@ -912,57 +906,9 @@ prompts_generated: false
 node_datasets_generated: false
 ```
 
-## 23. Request Understanding 확정 계약
-
-본 문서의 Request Understanding failure·prompt 계약은 `06. Agent Workflow`의
-`RequestIntentV1`과 Node Output 계약을 따른다.
-
-### 23.1 Capability 범위
-
-Request Understanding은 다음만 수행한다.
-
-- 사용자 요청의 목표와 완료 조건 구조화
-- 기간·사람·Source·상태·제약의 semantic mention 보존
-- 사용자 문장 자체의 모호성 표시
-- 제품 범위 밖 요청의 semantic invalid 표시
-
-Request Understanding은 다음을 수행하지 않는다.
-
-- Google/MCP 조회
-- Google Resource ID 생성
-- Gmail/Calendar/Tasks query 또는 date range 확정
-- Google 조회 결과의 복수 후보 disambiguation
-- Action, Plan, Approval 생성
-
-### 23.2 Failure Reason 적용
-
-요청 이해 실패 reason은 다음처럼 사용한다.
-
-- `INTENT_GOAL_MISSING`: 목표 자체가 비어 있거나 실행 가능한 업무 목표가 없음
-- `INTENT_COMPLETION_CRITERIA_MISSING`: 완료 조건을 만들 수 없고 사용자 확인이 필요함
-- `INTENT_CONSTRAINT_MISSING`: 사용자 문장 안의 필수 제약이 빠짐
-- `INTENT_AMBIGUITY_MISSED`: 문장 자체의 모호성을 놓침
-- `INTENT_OVER_CONFIRMATION`: downstream 조회로 해결할 수 있는 후보 ambiguity를 과도하게 사용자 확인으로 돌림
-- `INTENT_UNSUPPORTED_SCOPE`: 제품 범위 밖 요청
-
-Google 조회 결과의 동명이인·복수 후보는 `INTENT_AMBIGUITY_MISSED`가 아니라
-Acquisition·Retrieval failure family에서 다룬다.
-
-### 23.3 Schema Repair와 INVALID
-
-Schema JSON 오류, required field 누락, enum 오류, type 오류는 Request Understanding
-`INVALID`가 아니다. 이는 `LLMRuntimeService.invoke_structured(...)`의 structured output
-schema failure이며 Node Call당 최대 1회 `SCHEMA_REPAIR` 대상이다.
-
-`INVALID`는 schema가 맞는 payload를 일반 코드가 semantic validation한 뒤 사용자 요청
-자체가 제품 범위에서 처리 불가능하다고 판단할 때만 사용한다.
-
-### 23.4 classify / clarify / repair Prompt
-
-- `request_understanding.classify`: 첫 구현에 필요한 runtime prompt다.
-- `request_understanding.clarify`: 현재 예약 상태다. classify output과 deterministic
-  validator만으로 clarification payload를 만들 수 없을 때 이후 작성한다.
-- `request_understanding.repair`: structured output schema repair 전용이며 semantic
-  rewrite prompt가 아니다. 실제 failure trace와 dataset item이 생긴 뒤 작성한다.
-
-Prompt artifact가 예약 상태라는 이유로 Request Understanding 구현을 막지 않는다.
+## 17. v1.0 Clarification Capability
+- 모호성은 기본 BLOCK이 아니라 `NEEDS_CONFIRMATION → request_understanding.clarify`다.
+- 후보가 있으면 후보·차이·선택지를 제공하고, 후보가 없으면 최소 누락 정보만 질문한다.
+- `처리/진행/시작/정리/마무리`는 문맥으로 의미가 단일하면 질문하지 않는다.
+- `답장/회신/보내줘`는 SEND 의도이며 Draft ambiguity가 아니다.
+- 요청/검색/분석 중 실제 모호성이 관측된 단계에서 Redirection한다.

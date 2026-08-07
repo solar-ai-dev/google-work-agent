@@ -1,6 +1,6 @@
 # 14. Google Work Agent · 예외 처리 · 운영 · 트러블슈팅 가이드
 
-> **상태:** Draft v2.3 · **원격 운영 서버:** 없음
+> **상태:** Draft v2.2 · **원격 운영 서버:** 없음
 
 ## 1. Severity
 
@@ -201,3 +201,9 @@ Domain 상태가 허용 Terminal·Recovery이고, Write 결과가 확정되며, 
 ### 취소 부분 결과
 
 Domain Status는 `CANCELLED`, UI 결과는 `result_kind=PARTIAL`로 표시한다. 성공 Action을 롤백하거나 다시 실행하지 않는다.
+
+## 2026-08-07 v2.2 구현 정합성 진단
+- External Adapter 호출 중 SQLite Write Transaction이 열려 있으면 무결성/동시성 결함으로 분류한다.
+- 외부 호출 후 저장 Transaction에서 `expected_version`, Action 상태, Attempt 상태를 재검사한다.
+- Recovery 상태 변경은 `RequireRecovery`·`ResolveRecovery` Domain Command를 사용한다. Repository 직접 setter는 구현 결함이다.
+- 이 수정은 Domain 모델·Command Receipt·Recovery 알고리즘 전면 재설계가 아니라 Application Transaction 경계와 누락된 Domain Command 연결의 정합성 수정이다.

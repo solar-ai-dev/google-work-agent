@@ -1,6 +1,6 @@
 # 10. Google Work Agent · 인프라 · 환경 설정 설계서
 
-> **상태:** Draft v2.3 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v2.4 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 확정 결정
 
@@ -229,3 +229,8 @@ STOPPED
 ## 16. Service–MCP Handshake
 
 Service는 MCP Child 시작 시 Tool Manifest Version과 함께 Process Memory용 256-bit Session Key를 제한된 stdin Handshake로 전달한다. 재시작마다 새 Key를 생성하며 환경 변수·파일·CLI에 저장하지 않는다.
+
+## 2026-08-07 v2.4 Schema·Tool Startup 계약
+- Domain DB Schema 목표는 v1.3이며 `0001` v1.2 baseline 뒤 `0002_action_effect_send_delete.sql`을 적용한다.
+- Startup Tool Registry 검증은 승인형 `gmail_send`, Task 완료 UPDATE, `calendar_delete_event`, 참석자 UPDATE를 허용하고 Gmail 원문 삭제·Task 삭제·반복 Event 전체 일괄 수정은 차단한다.
+- Migration 후 `PRAGMA foreign_key_check`와 Tool Schema Version 검증을 통과해야 Write를 허용한다.

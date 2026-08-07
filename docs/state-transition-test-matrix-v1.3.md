@@ -30,7 +30,7 @@
 - Claim Transaction 성공 전 MCP Write 0
 - 유효 Claim Token 1회만 Write
 - Token 재사용·만료·Action·Hash 불일치 차단
-- Write 후 GET Verification
+- Write 후 Effect별 결정적 Verification (CREATE·UPDATE GET, DELETE 대상 부재/삭제 상태, SEND Sent 결과 조회)
 - MISMATCH 자동 수정 금지
 
 ## Retry·Recovery
@@ -39,7 +39,7 @@
 - FAILED→MODIFIED→새 Approval→새 Attempt 허용
 - 기존 Approval·Idempotency Key 재사용 차단
 - UNKNOWN_RESULT에서 새 Attempt·Write 차단
-- CREATE Search·UPDATE GET Target
+- CREATE Resource Search · UPDATE GET Target · SEND Message/Sent Search · DELETE GET Target/부재 확인
 
 ## Agent·Interface
 

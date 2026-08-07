@@ -290,19 +290,19 @@
 - **상태:** P0
 - **입력:** 기존 Thread, 실제 업무 가능성, 사용자 목표.
 - **출력:** 수신자, CC, 제목, 본문, Thread 연결.
-- **제한:** 전송하지 않고 Draft만 생성한다.
+- **규칙:** `초안`, `문구`, `작성만`, `검토용`은 Draft다. `답장해줘`, `회신해줘`, `보내줘`, `전송해줘`는 SEND 의도이며 최종 수신자·CC·제목·본문·Thread를 고정한 뒤 승인으로 진행한다.
 
 ### FN-043 Task 제안
 
 - **상태:** P0
 - **출력:** 제목, 메모, 기한, Task List.
-- **제한:** 삭제·완료 처리는 지원하지 않는다.
+- **제한:** Task 삭제는 지원하지 않는다. 정확한 Task 완료 상태 변경은 승인 후 허용한다.
 
 ### FN-044 작업 Event 제안
 
 - **상태:** P0
 - **출력:** 제목, 시작·종료, 설명, Calendar.
-- **제한:** 외부 참석자를 추가하지 않는다.
+- **규칙:** 정확한 Event 삭제와 참석자 추가·수정을 승인형 Write로 지원한다. 반복 Event 전체 일괄 수정은 지원하지 않는다.
 
 ## 9. 승인 기능
 
@@ -423,9 +423,10 @@
 
 | ID | 기능 | 상태 |
 |---|---|---|
-| OUT-001 | Gmail 자동 전송 | OUT |
-| OUT-002 | Gmail·Task·Event 삭제 | OUT |
-| OUT-003 | 외부 참석자 자동 추가 | OUT |
+| P0-WRITE-001 | Gmail 승인형 전송 | P0 |
+| OUT-002 | Gmail Message·Thread 원문 삭제 · Google Task 삭제 | OUT |
+| P0-WRITE-002 | Calendar Event 승인형 삭제 | P0 |
+| P0-WRITE-003 | Calendar 참석자 승인형 추가·수정 | P0 |
 | OUT-004 | CPU Local LLM | OUT |
 | OUT-005 | 원격 SaaS·멀티 사용자·외부 공개 API | OUT |
 | OUT-006 | 백그라운드 자동 실행 | OUT |
@@ -476,7 +477,7 @@ Agent Input·Result Schema Version을 검증하고 `resource_ref_id`, `evidence_
 ### FN-107 응답 조립
 Supervisor가 검증된 분석·Plan·실행·검증 결과를 사용자 응답으로 조립한다. 내부 Agent 대화와 비공개 추론은 사용자에게 노출하지 않는다.
 
-## 18. Draft v2.2 Agent 기능 확정
+## 18. v2.2 Agent 기능 변경 이력
 
 ### FN-108 API 탐색·수집 Agent
 `RequestIntent`와 API Budget으로 Source·조회 순서·Page·후보·상세 예산을 제안한다. 일반 코드가 Query를 검증하고 MCP 읽기를 실행한다.
@@ -542,3 +543,17 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 
 - **상태:** P1
 - P0에서는 대화·Run 삭제 API를 제공하지 않는다. 보존 기간·완전 삭제는 설정·Uninstall 정책을 따른다.
+
+## 2026-08-07 v2.3 Clarification·Write 기능 확정
+### Clarification
+- 요청만으로 모호하면 Request Understanding에서 확인한다.
+- 검색 후 복수 후보·저신뢰가 드러나면 Retrieval 이후 확인한다.
+- 분석 후 관계·충돌이 불명확하면 Work Analysis 이후 확인한다.
+- 후보가 있으면 후보 라벨·차이·Resource Ref를 선택지로 제공한다.
+- `처리/진행/시작/정리/마무리`는 이전 대화·선택 Resource로 의미가 단일하면 추가 질문하지 않는다.
+
+### 승인형 Write
+- `SEND`: Gmail 실제 전송.
+- `UPDATE`: Task 완료, Calendar 참석자 변경 포함.
+- `DELETE`: Calendar Event 삭제.
+- Gmail 원문 삭제와 Task 삭제는 OUT 유지.

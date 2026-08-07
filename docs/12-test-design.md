@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.3`, `01-A v2.2`, `01-B v2.2`, `02 UI·UX v2.2`, `03 Architecture v2.5`, `04 Database v1.8`, `05 Retrieval v2.0`, `06 Workflow v5.4`, `07 Interface v2.3`, `08 Sequence v2.3`, `09 Security`, `10 Infrastructure v2.3`, `11 Observability v2.3`, Domain 상태 전이 계약 v1.3과 테스트 매트릭스 v1.3을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.4`, `01-A v2.3`, `01-B v2.3`, `02 UI·UX v2.3`, `03 Architecture v2.6`, `04 Database v1.9`, `05 Retrieval v2.1`, `06 Workflow v5.5`, `07 Interface v2.4`, `08 Sequence v2.6`, `09 Security v2.2`, `10 Infrastructure v2.4`, `11 Observability v2.4`, Domain 상태 전이 계약 v1.3과 테스트 매트릭스 v1.3을 기준으로 한다.
 >
-> **상태:** Draft v2.4 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v2.5 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -309,7 +309,7 @@ Experiment Runner는 Dataset·Projection 참조 오류, Holdout 누수, 의도 �
 
 ## 14. 2026-08-07 Agent Capability·Retry 회귀 확장
 
-이 절은 기존 8절의 단일 `LLM 호출 Budget 최대 8회`, `Review Revision 최대 1회` 문구를 다음 Profile 계약으로 구체화한다.
+이 절은 기존 8절의 단일 예산·Review 재시도 설명을 폐기하고 다음 Route Profile 계약으로 대체한다.
 
 ```text
 NORMAL_MAX_LLM_CALLS=8
@@ -340,3 +340,16 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 
 모든 적용 가능한 Failure Reason은 최소 `DEV 3 + HOLDOUT 1` Item을 가진다. `ORACLE`, `LIVE`, `MUTATED` 결과는 같은 집계로 합치지 않는다.
 
+
+## 2026-08-07 v2.5 정합성 회귀 Gate
+- Google/MCP/LLM Stub 호출 순간 SQLite Write Transaction이 열려 있지 않아야 한다.
+- 외부 호출 전후 두 Transaction 사이 Version 변경 시 결과 저장을 차단한다.
+- Recovery는 `RequireRecovery`·`ResolveRecovery` 외 직접 상태 변경 0건이어야 한다.
+- SEND: Approval Hash 일치 + Sent Lookup + UNKNOWN_RESULT 자동 재전송 0.
+- DELETE: Calendar Event만 허용 + GET_ABSENT 확인.
+- Task 완료·Calendar 참석자 변경: 정확한 Target과 승인된 UPDATE.
+- Gmail 원문 삭제·Task 삭제·반복 Event 전체 일괄 수정: Tool 제안/실행 0.
+- `ClarificationQuestionV1`: 후보·차이·선택지·same-thread Resume.
+- 문맥으로 해결된 요청과 `답장해줘` SEND 의도에 불필요 Clarification 0.
+- 전체 Mailbox/무제한 Workspace 조회는 API 호출 전에 BLOCK.
+- Calendar overlap 자체를 conflict로 오판하지 않는다.
