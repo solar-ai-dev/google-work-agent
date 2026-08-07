@@ -14,6 +14,7 @@ from google_work_agent.api.schemas.runs import (
     CancelRunRequest,
     ResumeRunRequest,
     RunCommandResponse,
+    RunContextResponse,
     RunSnapshotResponse,
     StartRunRequest,
     StartRunResponseModel,
@@ -79,6 +80,24 @@ def get_run_snapshot(
         )
     return RunSnapshotResponse(
         snapshot=asdict(snapshot), api_contract_version=container.api_contract_version
+    )
+
+
+@router.get("/runs/{run_id}/context", response_model=RunContextResponse)
+def get_run_context(
+    run_id: str, request: Request, x_api_contract_version: str | None = Header(default=None)
+) -> RunContextResponse:
+    container = get_container(request)
+    enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
+    enforce_api_contract_version(
+        container=container,
+        request_id=request.state.request_id,
+        request_version=x_api_contract_version,
+    )
+    context = container.query_service.get_run_execution_context(run_id)
+    return RunContextResponse(
+        context=None if context is None else asdict(context),
+        api_contract_version=container.api_contract_version,
     )
 
 

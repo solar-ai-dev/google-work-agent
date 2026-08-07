@@ -25,3 +25,8 @@ class ConversationListResponse(ApiModel):
     items: list[dict[str, object]]
     next_cursor: str | None
     api_contract_version: str
+
+
+class LatestConversationRunResponse(ApiModel):
+    run: dict[str, object] | None
+    api_contract_version: str

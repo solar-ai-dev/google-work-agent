@@ -89,6 +89,21 @@ class OpenRunRecord:
     version: int
 
 
+@dataclass(frozen=True, slots=True)
+class ConversationRunRecord:
+    run_id: str
+    status: str
+    version: int
+    started_at_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class GoogleAccountRecord:
+    account_id: str
+    email: str
+    display_name: str | None
+
+
 class QueryService:
     """SQLite-backed read model queries for the API layer."""
 
@@ -369,6 +384,27 @@ class QueryService:
             for row in rows
         )
 
+    def get_latest_run_for_conversation(self, conversation_id: str) -> ConversationRunRecord | None:
+        with connect_sqlite(self._database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT id, status, version, started_at_ms
+                FROM runs
+                WHERE conversation_id = ?
+                ORDER BY started_at_ms DESC, id DESC
+                LIMIT 1;
+                """,
+                (conversation_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return ConversationRunRecord(
+            run_id=str(row["id"]),
+            status=str(row["status"]),
+            version=int(row["version"]),
+            started_at_ms=int(row["started_at_ms"]),
+        )
+
     def get_runtime_summary(self) -> RuntimeSummary:
         base = self._runtime_status_provider.get_summary()
         open_runs = self.list_open_runs()
@@ -383,6 +419,25 @@ class QueryService:
             deployment_profile=base.deployment_profile,
             recovery_required_run_ids=recovery_required,
             open_run_ids=tuple(run.run_id for run in open_runs),
+        )
+
+    def get_current_google_account(self) -> GoogleAccountRecord | None:
+        with connect_sqlite(self._database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT id, email, display_name
+                FROM google_accounts
+                WHERE disconnected_at_ms IS NULL
+                ORDER BY connected_at_ms DESC, id DESC
+                LIMIT 1;
+                """
+            ).fetchone()
+        if row is None:
+            return None
+        return GoogleAccountRecord(
+            account_id=str(row["id"]),
+            email=str(row["email"]),
+            display_name=None if row["display_name"] is None else str(row["display_name"]),
         )
 
 

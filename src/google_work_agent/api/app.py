@@ -18,6 +18,8 @@ from google_work_agent.api.routes import (
     events,
     google,
     health,
+    identity,
+    resources,
     runs,
     runtime,
     session,
@@ -76,6 +78,7 @@ class ApiContainer:
     start_google_oauth_service: Any | None = None
     get_google_connection_service: Any | None = None
     disconnect_google_service: Any | None = None
+    resource_query_service: Any | None = None
 
 
 def create_app(container: ApiContainer) -> FastAPI:
@@ -184,10 +187,12 @@ def create_app(container: ApiContainer) -> FastAPI:
     app.include_router(session.router)
     app.include_router(google.router)
     app.include_router(runtime.router)
+    app.include_router(identity.router)
     app.include_router(conversations.router)
     app.include_router(runs.router)
     app.include_router(actions.router)
     app.include_router(events.router)
+    app.include_router(resources.router)
 
     @app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])
     async def reject_unknown_api_path(request: Request, path: str) -> Response:

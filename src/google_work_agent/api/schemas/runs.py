@@ -57,3 +57,8 @@ class StartRunResponseModel(ApiModel):
 class RunSnapshotResponse(ApiModel):
     snapshot: dict[str, object]
     api_contract_version: str
+
+
+class RunContextResponse(ApiModel):
+    context: dict[str, object] | None
+    api_contract_version: str

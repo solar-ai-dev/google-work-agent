@@ -79,6 +79,11 @@ DEFAULT_ENDPOINT_POLICY_REGISTRY = EndpointPolicyRegistry(
             policy=EndpointPolicy.API_SESSION_REQUIRED,
         ),
         EndpointRule.create(
+            methods=("GET",),
+            template="/api/v1/identity/google-account",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
             methods=("POST", "GET"),
             template="/api/v1/conversations",
             policy=EndpointPolicy.API_SESSION_REQUIRED,
@@ -89,6 +94,11 @@ DEFAULT_ENDPOINT_POLICY_REGISTRY = EndpointPolicyRegistry(
             policy=EndpointPolicy.API_SESSION_REQUIRED,
         ),
         EndpointRule.create(
+            methods=("GET",),
+            template="/api/v1/conversations/{conversation_id}/latest-run",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
             methods=("POST",),
             template="/api/v1/runs",
             policy=EndpointPolicy.API_SESSION_REQUIRED,
@@ -96,6 +106,11 @@ DEFAULT_ENDPOINT_POLICY_REGISTRY = EndpointPolicyRegistry(
         EndpointRule.create(
             methods=("GET",),
             template="/api/v1/runs/{run_id}",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("GET",),
+            template="/api/v1/runs/{run_id}/context",
             policy=EndpointPolicy.API_SESSION_REQUIRED,
         ),
         EndpointRule.create(
@@ -131,6 +146,21 @@ DEFAULT_ENDPOINT_POLICY_REGISTRY = EndpointPolicyRegistry(
         EndpointRule.create(
             methods=("POST",),
             template="/api/v1/actions/{action_id}/prepare-retry",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("GET",),
+            template="/api/v1/resources/gmail",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("GET",),
+            template="/api/v1/resources/tasks",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("GET",),
+            template="/api/v1/resources/calendar",
             policy=EndpointPolicy.API_SESSION_REQUIRED,
         ),
     )

@@ -14,6 +14,7 @@ from google_work_agent.api.schemas.conversations import (
     ConversationListResponse,
     ConversationResponse,
     CreateConversationRequest,
+    LatestConversationRunResponse,
 )
 from google_work_agent.application.start_run import CreateConversationCommand
 from google_work_agent.ports import EndpointPolicy
@@ -95,5 +96,25 @@ def get_conversation(
     return ConversationListResponse(
         items=[asdict(conversation)],
         next_cursor=None,
+        api_contract_version=container.api_contract_version,
+    )
+
+
+@router.get("/{conversation_id}/latest-run", response_model=LatestConversationRunResponse)
+def get_latest_conversation_run(
+    conversation_id: str,
+    request: Request,
+    x_api_contract_version: str | None = Header(default=None),
+) -> LatestConversationRunResponse:
+    container = get_container(request)
+    enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
+    enforce_api_contract_version(
+        container=container,
+        request_id=request.state.request_id,
+        request_version=x_api_contract_version,
+    )
+    run = container.query_service.get_latest_run_for_conversation(conversation_id)
+    return LatestConversationRunResponse(
+        run=None if run is None else asdict(run),
         api_contract_version=container.api_contract_version,
     )
