@@ -8,10 +8,16 @@ from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublishe
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.readiness.composite import (
+    StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
     StaticRuntimeStatusProvider,
 )
 from google_work_agent.api import ApiContainer, create_app
+from google_work_agent.api.security import (
+    InMemoryBootstrapGrantStore,
+    InMemoryLocalSessionManager,
+    LocalApiAccessGuard,
+)
 from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.start_run import CreateConversationService, StartRunService
@@ -24,6 +30,7 @@ from google_work_agent.ports import (
     AccessDecision,
     ApiRequestContext,
     EndpointPolicy,
+    LauncherProbeDecision,
     ReadinessCheckResult,
     ReadinessReport,
     ReadinessState,
@@ -93,6 +100,15 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         api_contract_version="1",
         capacity=4,
     )
+    bind_host = "127.0.0.1"
+    bind_port = 8765
+    bootstrap_store = InMemoryBootstrapGrantStore()
+    bootstrap_store.provision(
+        secret="bootstrap-secret",
+        service_instance_id="svc-test",
+        now_ms=clock.now_ms(),
+    )
+    session_manager = InMemoryLocalSessionManager()
     container = ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
         query_service=query_service,
@@ -147,15 +163,47 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
             )
         ),
         runtime_status_provider=query_service._runtime_status_provider,
-        api_access_guard=_AllowGuard(),
+        api_access_guard=LocalApiAccessGuard(
+            expected_host=f"{bind_host}:{bind_port}",
+            expected_origin=f"http://{bind_host}:{bind_port}",
+            service_instance_id="svc-test",
+            session_manager=session_manager,
+            release_version="test",
+            environment="test",
+            now_ms=clock.now_ms,
+        ),
         clock=clock,
         id_generator=DeterministicUUID(prefix="req"),
         release_version="test",
         environment="test",
         service_instance_id="svc-test",
+        local_bind_host=bind_host,
+        local_bind_port=bind_port,
+        bootstrap_grant_store=bootstrap_store,
+        local_session_manager=session_manager,
+        launcher_probe_verifier=StaticLauncherProbeVerifier(LauncherProbeDecision(allowed=True)),
+        client_address_resolver=lambda _request: "127.0.0.1",
     )
 
-    with TestClient(create_app(container)) as client:
+    headers = {
+        "Origin": f"http://{bind_host}:{bind_port}",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
+    }
+    with TestClient(create_app(container), base_url=f"http://{bind_host}:{bind_port}") as client:
+        bootstrap_response = client.post(
+            "/api/v1/session/bootstrap",
+            json={
+                "bootstrap_secret": "bootstrap-secret",
+                "service_instance_id": "svc-test",
+                "api_contract_version": "1",
+            },
+            headers=headers,
+        )
+        assert bootstrap_response.status_code == 200
+        assert "gwa_session" in bootstrap_response.headers["set-cookie"]
+
         create_response = client.post(
             "/api/v1/conversations",
             json={
@@ -166,6 +214,7 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
                 "title": "Inbox",
                 "api_contract_version": "1",
             },
+            headers=headers,
         )
         assert create_response.status_code == 201
 
@@ -184,6 +233,7 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
                 "requested_mode": "AUTO",
                 "api_contract_version": "1",
             },
+            headers=headers,
         )
         assert start_response.status_code == 202
 
@@ -197,16 +247,30 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         assert replayed
         assert replayed[0].event_type == "run_status"
 
-        snapshot = client.get("/api/v1/runs/run-1")
+        snapshot = client.get("/api/v1/runs/run-1", headers=headers)
         assert snapshot.status_code == 200
         assert snapshot.json()["snapshot"]["run_id"] == "run-1"
 
         with client.stream(
             "GET",
             "/api/v1/runs/run-1/events",
-            headers={"Last-Event-ID": "other-service:1"},
+            headers={**headers, "Last-Event-ID": "other-service:1"},
         ) as stream:
             lines = [line for line in stream.iter_lines() if line]
 
         assert any(line.startswith("id: svc-test:") for line in lines)
         assert any(line == "event: snapshot_required" for line in lines)
+
+        blocked = client.post(
+            "/api/v1/conversations",
+            json={
+                "command_id": "conversation-cmd-2",
+                "request_hash": "c" * 64,
+                "conversation_id": "conversation-2",
+                "account_id": "account-1",
+                "title": "Blocked",
+                "api_contract_version": "1",
+            },
+            headers={**headers, "Origin": "http://malicious.example"},
+        )
+        assert blocked.status_code == 403

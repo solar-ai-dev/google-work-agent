@@ -1,9 +1,10 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClock
 
 from google_work_agent.adapters.readiness.composite import (
+    StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
     StaticRuntimeStatusProvider,
 )
@@ -12,6 +13,7 @@ from google_work_agent.ports import (
     AccessDecision,
     ApiRequestContext,
     EndpointPolicy,
+    LauncherProbeDecision,
     ReadinessCheckResult,
     ReadinessReport,
     ReadinessState,
@@ -126,6 +128,7 @@ def _build_container(guard: _AllowGuard | _DenyGuard) -> tuple[ApiContainer, _Co
         release_version="test",
         environment="test",
         service_instance_id="svc-test",
+        launcher_probe_verifier=StaticLauncherProbeVerifier(LauncherProbeDecision(allowed=True)),
     )
     return container, coordinator
 
@@ -141,13 +144,26 @@ def test_app_lifespan_starts_and_stops_coordinator() -> None:
     assert coordinator.stopped == 1
 
 
-def test_health_routes_bypass_guard_but_runtime_requires_guard() -> None:
+def test_health_routes_and_runtime_respect_guard() -> None:
     container, _ = _build_container(_DenyGuard())
 
     with TestClient(create_app(container)) as client:
         live = client.get("/health/live")
         runtime = client.get("/api/v1/runtime")
 
-    assert live.status_code == 200
+    assert live.status_code == 401
     assert runtime.status_code == 401
     assert runtime.json()["error_code"] == "LOCAL_SESSION_INVALID"
+
+
+def test_ready_route_fails_closed_without_launcher_probe_verifier() -> None:
+    container, _ = _build_container(_AllowGuard())
+    container = replace(container, launcher_probe_verifier=None)
+
+    with TestClient(create_app(container)) as client:
+        response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "NOT_READY"
+    assert any(check["name"] == "launcher_probe" for check in payload["checks"])

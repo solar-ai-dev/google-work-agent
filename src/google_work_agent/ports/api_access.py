@@ -18,12 +18,20 @@ class EndpointPolicy(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ApiRequestContext:
-    """Minimal request context exposed to the access guard."""
+    """Request context exposed to the access guard."""
 
     method: str
     path: str
     request_id: str
     client_host: str | None
+    host: str | None = None
+    origin: str | None = None
+    content_type: str | None = None
+    content_length: int | None = None
+    session_token: str | None = None
+    sec_fetch_site: str | None = None
+    sec_fetch_mode: str | None = None
+    sec_fetch_dest: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

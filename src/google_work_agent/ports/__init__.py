@@ -27,6 +27,11 @@ from google_work_agent.ports.google_workspace import (
     ResourceType,
 )
 from google_work_agent.ports.identity import IdGenerator
+from google_work_agent.ports.launcher_probe import (
+    LauncherProbeCheckFactory,
+    LauncherProbeDecision,
+    LauncherProbeVerifier,
+)
 from google_work_agent.ports.mcp_transport import (
     MCPToolResponse,
     MCPTransport,
@@ -134,6 +139,9 @@ __all__ = [
     "GoogleWorkspaceGatewayError",
     "IdGenerator",
     "InvalidReplayCursorError",
+    "LauncherProbeCheckFactory",
+    "LauncherProbeDecision",
+    "LauncherProbeVerifier",
     "MCPToolResponse",
     "MCPTransport",
     "MCPTransportError",

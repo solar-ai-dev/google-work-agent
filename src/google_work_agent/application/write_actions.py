@@ -2582,10 +2582,7 @@ def _finish_json_receipt(
     unit_of_work: UnitOfWork,
     command_id: str,
     response: (
-        SaveWritePlanResponse
-        | PublishWritePlanResponse
-        | WriteActionResponse
-        | WriteRunResponse
+        SaveWritePlanResponse | PublishWritePlanResponse | WriteActionResponse | WriteRunResponse
     ),
     result_version: int,
     completed_at_ms: int,

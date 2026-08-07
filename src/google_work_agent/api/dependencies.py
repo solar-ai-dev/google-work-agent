@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 from fastapi import Request
 
 from google_work_agent.api.errors import ApiError
+from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
 from google_work_agent.ports import AccessDecision, ApiRequestContext, EndpointPolicy
 
 if TYPE_CHECKING:
@@ -60,16 +61,38 @@ def enforce_access(
 
     container = get_container(request)
     request_id = get_request_id(request)
+    client_address_resolver = container.client_address_resolver
+    client_host = (
+        client_address_resolver(request)
+        if client_address_resolver is not None
+        else None
+        if request.client is None
+        else request.client.host
+    )
     decision = container.api_access_guard.authorize(
         ApiRequestContext(
             method=request.method,
             path=request.url.path,
             request_id=request_id,
-            client_host=None if request.client is None else request.client.host,
+            client_host=client_host,
+            host=request.headers.get("host"),
+            origin=request.headers.get("origin"),
+            content_type=request.headers.get("content-type"),
+            content_length=_parse_content_length(request.headers.get("content-length")),
+            session_token=request.cookies.get(LOCAL_SESSION_COOKIE_NAME),
+            sec_fetch_site=request.headers.get("sec-fetch-site"),
+            sec_fetch_mode=request.headers.get("sec-fetch-mode"),
+            sec_fetch_dest=request.headers.get("sec-fetch-dest"),
         ),
         endpoint_policy=policy,
     )
     _raise_if_denied(decision, request_id)
+
+
+def _parse_content_length(content_length: str | None) -> int | None:
+    if content_length is None or not content_length.isdigit():
+        return None
+    return int(content_length)
 
 
 def _raise_if_denied(decision: AccessDecision, request_id: str) -> None:

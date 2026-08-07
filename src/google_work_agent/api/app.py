@@ -12,11 +12,23 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from google_work_agent.api.errors import ApiError, api_error_from_http, api_error_from_validation
-from google_work_agent.api.routes import actions, conversations, events, health, runs, runtime
+from google_work_agent.api.routes import (
+    actions,
+    conversations,
+    events,
+    health,
+    runs,
+    runtime,
+    session,
+)
+from google_work_agent.api.security import DEFAULT_ENDPOINT_POLICY_REGISTRY, LocalBindPolicy
+from google_work_agent.api.security.body_limit import is_body_too_large
 from google_work_agent.ports import (
     ApiAccessGuard,
     Clock,
     IdGenerator,
+    LauncherProbeVerifier,
+    OperationalLogSink,
     ReadinessAggregator,
     RunEventPublisher,
     RuntimeStatusProvider,
@@ -50,10 +62,22 @@ class ApiContainer:
     environment: str
     service_instance_id: str
     api_contract_version: str = API_CONTRACT_VERSION
+    local_bind_host: str = "127.0.0.1"
+    local_bind_port: int = 8000
+    max_request_body_bytes: int = 64 * 1024
+    api_docs_enabled: bool = False
+    launcher_probe_verifier: LauncherProbeVerifier | None = None
+    bootstrap_grant_store: Any | None = None
+    local_session_manager: Any | None = None
+    endpoint_policy_registry: Any = DEFAULT_ENDPOINT_POLICY_REGISTRY
+    client_address_resolver: Callable[[Request], str | None] | None = None
+    operational_log_sink: OperationalLogSink | None = None
 
 
 def create_app(container: ApiContainer) -> FastAPI:
     """Create the FastAPI application with explicit dependency injection."""
+
+    LocalBindPolicy(host=container.local_bind_host, port=container.local_bind_port).validate()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -64,7 +88,9 @@ def create_app(container: ApiContainer) -> FastAPI:
         finally:
             container.local_run_coordinator.stop()
 
-    app = FastAPI(lifespan=lifespan)
+    docs_url = "/docs" if container.api_docs_enabled else None
+    openapi_url = "/openapi.json" if container.api_docs_enabled else None
+    app = FastAPI(lifespan=lifespan, docs_url=docs_url, redoc_url=None, openapi_url=openapi_url)
     app.state.container = container
 
     @app.middleware("http")
@@ -75,7 +101,42 @@ def create_app(container: ApiContainer) -> FastAPI:
         request.state.request_id = container.id_generator.next_id()
         response = await call_next(request)
         response.headers["X-Api-Contract-Version"] = container.api_contract_version
+        response.headers["Cache-Control"] = response.headers.get("Cache-Control", "no-store")
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["X-Frame-Options"] = "DENY"
         return response
+
+    @app.middleware("http")
+    async def body_limit_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        if request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+            body = await request.body()
+            content_length = request.headers.get("content-length")
+            parsed_length = (
+                int(content_length)
+                if content_length is not None and content_length.isdigit()
+                else None
+            )
+            if is_body_too_large(
+                content_length=parsed_length,
+                actual_length=len(body),
+                limit_bytes=container.max_request_body_bytes,
+            ):
+                request_id = getattr(request.state, "request_id", None)
+                if not isinstance(request_id, str):
+                    request_id = container.id_generator.next_id()
+                raise ApiError(
+                    error_code="INVALID_ARGUMENT",
+                    user_message="Request body exceeds the local API limit.",
+                    status_code=413,
+                    request_id=request_id,
+                    detail_code="REQUEST_BODY_TOO_LARGE",
+                )
+        return await call_next(request)
 
     @app.exception_handler(ApiError)
     async def api_error_handler(_: Request, error: ApiError) -> JSONResponse:
@@ -116,9 +177,26 @@ def create_app(container: ApiContainer) -> FastAPI:
         return await api_error_handler(request, api_error)
 
     app.include_router(health.router)
+    app.include_router(session.router)
     app.include_router(runtime.router)
     app.include_router(conversations.router)
     app.include_router(runs.router)
     app.include_router(actions.router)
     app.include_router(events.router)
+
+    @app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])
+    async def reject_unknown_api_path(request: Request, path: str) -> Response:
+        del path
+        from google_work_agent.api.dependencies import enforce_access
+        from google_work_agent.ports import EndpointPolicy
+
+        enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
+        raise ApiError(
+            error_code="NOT_FOUND",
+            user_message="Route not found.",
+            status_code=404,
+            request_id=request.state.request_id,
+            detail_code="API_ROUTE_NOT_FOUND",
+        )
+
     return app

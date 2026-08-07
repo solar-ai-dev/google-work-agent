@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from google_work_agent.ports import (
+    LauncherProbeDecision,
+    LauncherProbeVerifier,
     ReadinessAggregator,
     ReadinessCheckResult,
     ReadinessReport,
@@ -32,6 +34,17 @@ class StaticRuntimeStatusProvider(RuntimeStatusProvider):
 
     def get_summary(self) -> RuntimeSummary:
         return self.summary
+
+
+@dataclass(frozen=True, slots=True)
+class StaticLauncherProbeVerifier(LauncherProbeVerifier):
+    """Static launcher probe verifier for tests and local composition."""
+
+    decision: LauncherProbeDecision
+
+    def verify(self, *, service_instance_id: str) -> LauncherProbeDecision:
+        del service_instance_id
+        return self.decision
 
 
 def compose_readiness(checks: tuple[ReadinessCheckResult, ...]) -> ReadinessReport:

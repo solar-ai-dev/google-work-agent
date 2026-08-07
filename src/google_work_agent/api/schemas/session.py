@@ -1,0 +1,14 @@
+"""Local session bootstrap schemas."""
+
+from google_work_agent.api.schemas.common import ApiModel, ContractVersionedRequest
+
+
+class BootstrapSessionRequest(ContractVersionedRequest):
+    bootstrap_secret: str
+    service_instance_id: str
+
+
+class BootstrapSessionResponse(ApiModel):
+    session_established: bool
+    service_instance_id: str
+    api_contract_version: str
