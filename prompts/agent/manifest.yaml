@@ -129,14 +129,14 @@
     {
       "prompt_bundle_version": "agent-r4-v0.1-baseline",
       "prompt_id": "analysis.analyze",
-      "prompt_version": "TBD",
-      "content_hash": "TBD",
+      "prompt_version": "v0.1",
+      "content_hash": "a9e1e4e37dcc1c63c2097c9b073bc47637aa09a72d9bce4aa9bbfee800fb7f01",
       "agent_role": "work_analysis",
       "subgraph_name": "analysis",
       "node_name": "analyze",
-      "node_state": "RESERVED",
+      "node_state": "BASELINE",
       "tier": "Tier B",
-      "purpose": "Reserved for later dataset after vertical flow or failure traces.",
+      "purpose": "Analyze context and evidence for business relationships, missing information, duplicate candidates, conflicts, and schedule risks.",
       "input_schema_version": "agent-node-input-v0.1",
       "output_schema_version": "agent-node-output-v0.1"
     },
