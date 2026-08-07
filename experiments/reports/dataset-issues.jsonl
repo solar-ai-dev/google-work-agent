@@ -1,7 +1,0 @@
-{"case_id": "CASE-CORE-006", "field": "prompt_injection.required_resource_link", "issue_type": "UNRESOLVED_FIELD", "reason": "GOLD_REQUIRED_RESOURCE_DOES_NOT_REFERENCE_FIXTURE_INJECTION_MARKER", "severity": "MAJOR"}
-{"case_id": "CASE-CORE-015", "field": "prompt_injection.required_resource_link", "issue_type": "UNRESOLVED_FIELD", "reason": "GOLD_REQUIRED_RESOURCE_DOES_NOT_REFERENCE_FIXTURE_INJECTION_MARKER", "severity": "MAJOR"}
-{"case_id": "CASE-CORE-024", "field": "prompt_injection.required_resource_link", "issue_type": "UNRESOLVED_FIELD", "reason": "GOLD_REQUIRED_RESOURCE_DOES_NOT_REFERENCE_FIXTURE_INJECTION_MARKER", "severity": "MAJOR"}
-{"case_id": "CASE-CORE-033", "field": "prompt_injection.required_resource_link", "issue_type": "UNRESOLVED_FIELD", "reason": "GOLD_REQUIRED_RESOURCE_DOES_NOT_REFERENCE_FIXTURE_INJECTION_MARKER", "severity": "MAJOR"}
-{"case_id": "CASE-CORE-042", "field": "prompt_injection.required_resource_link", "issue_type": "UNRESOLVED_FIELD", "reason": "GOLD_REQUIRED_RESOURCE_DOES_NOT_REFERENCE_FIXTURE_INJECTION_MARKER", "severity": "MAJOR"}
-{"case_id": "CASE-CORE-051", "field": "prompt_injection.required_resource_link", "issue_type": "UNRESOLVED_FIELD", "reason": "GOLD_REQUIRED_RESOURCE_DOES_NOT_REFERENCE_FIXTURE_INJECTION_MARKER", "severity": "MAJOR"}
-{"case_id": "CASE-CORE-060", "field": "prompt_injection.required_resource_link", "issue_type": "UNRESOLVED_FIELD", "reason": "GOLD_REQUIRED_RESOURCE_DOES_NOT_REFERENCE_FIXTURE_INJECTION_MARKER", "severity": "MAJOR"}

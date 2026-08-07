@@ -1,2 +1,0 @@
-PASS
-cases 5 resources 23 segments 28 draft_plan 2
