@@ -112,6 +112,7 @@ class MultiAgentGraphState(TypedDict):
     approved_plan_id: str | None
     execution_summary: dict[str, object] | None
     verification_summary: dict[str, object] | None
+    finalize_intent: "FinalizeIntentV1 | None"
     user_interrupt: dict[str, object] | None
     retry_budget: RunBudgetV1
     prompt_context: dict[str, object]
@@ -207,6 +208,14 @@ class ReviewResult(StrEnum):
     BLOCK = "BLOCK"
 
 
+class FinalizeIntent(StrEnum):
+    """Deterministic terminal intents handed off to Stage 16."""
+
+    COMPLETED = "COMPLETED"
+    BLOCKED = "BLOCKED"
+    FAILED = "FAILED"
+
+
 class DomainValidationResult(StrEnum):
     """Domain-validation node results."""
 
@@ -248,6 +257,15 @@ class ConfirmationResponseV1(TypedDict):
     response_kind: Literal["OPTION_SELECTION", "FREE_TEXT"]
     selected_option_ids: list[str]
     free_text: str | None
+
+
+class FinalizeIntentV1(TypedDict):
+    """Checkpoint-safe finalize handoff consumed by Stage 16."""
+
+    schema_version: Required[Literal[1]]
+    intent: Literal["COMPLETED", "BLOCKED", "FAILED"]
+    reason_code: str
+    result_kind: NotRequired[Literal["PARTIAL"] | None]
 
 
 class PromptSelectionKey(TypedDict):
@@ -670,6 +688,36 @@ def validate_confirmation_response_v1(value: object) -> ConfirmationResponseV1:
     }
 
 
+def validate_finalize_intent_v1(value: object) -> FinalizeIntentV1:
+    if not isinstance(value, dict):
+        raise ValueError("finalize intent must be an object")
+    required = {"schema_version", "intent", "reason_code"}
+    optional = {"result_kind"}
+    actual = set(value)
+    missing = required - actual
+    extra = actual - required - optional
+    if missing:
+        raise ValueError(f"finalize intent missing required fields: {sorted(missing)}")
+    if extra:
+        raise ValueError(f"finalize intent has unsupported fields: {sorted(extra)}")
+    schema_version = value["schema_version"]
+    if schema_version != 1:
+        raise ValueError("finalize intent schema_version must be 1")
+    intent = _require_non_empty_string(value["intent"], "intent", "finalize intent")
+    if intent not in {item.value for item in FinalizeIntent}:
+        raise ValueError("finalize intent intent is invalid")
+    reason_code = _require_non_empty_string(value["reason_code"], "reason_code", "finalize intent")
+    result_kind = value.get("result_kind")
+    if result_kind is not None and result_kind != "PARTIAL":
+        raise ValueError("finalize intent result_kind must be PARTIAL or null")
+    return {
+        "schema_version": 1,
+        "intent": cast(Literal["COMPLETED", "BLOCKED", "FAILED"], intent),
+        "reason_code": reason_code,
+        "result_kind": cast(Literal["PARTIAL"] | None, result_kind),
+    }
+
+
 def _allow_budget(run_budget: RunBudgetV1) -> BudgetDecisionV1:
     return {
         "schema_version": 1,
@@ -792,6 +840,8 @@ __all__ = [
     "ConfirmationResponseV1",
     "ContextResult",
     "DomainValidationResult",
+    "FinalizeIntent",
+    "FinalizeIntentV1",
     "LLM_PROVIDER_RESULT_FIELDS",
     "LLM_PROVIDER_RESULT_OPTIONAL_FIELDS",
     "LLM_PROVIDER_RESULT_REQUIRED_FIELDS",
@@ -828,6 +878,7 @@ __all__ = [
     "validate_semantic_failure_signature_v1",
     "validate_confirmation_origin_target",
     "validate_confirmation_response_v1",
+    "validate_finalize_intent_v1",
     "validate_additional_acquisition_request_v1",
     "WorkflowPhase",
 ]

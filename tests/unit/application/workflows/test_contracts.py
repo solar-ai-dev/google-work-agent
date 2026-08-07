@@ -21,6 +21,7 @@ from google_work_agent.application.workflows import (
     ConfirmationResponseKind,
     ContextResult,
     DomainValidationResult,
+    FinalizeIntent,
     PlanningResult,
     RequestUnderstandingResult,
     ReviewResult,
@@ -28,6 +29,7 @@ from google_work_agent.application.workflows import (
     validate_additional_acquisition_request_v1,
     validate_confirmation_origin_target,
     validate_confirmation_response_v1,
+    validate_finalize_intent_v1,
 )
 
 
@@ -53,12 +55,13 @@ def test_multi_agent_graph_state_fields_match_workflow_document() -> None:
         "approved_plan_id",
         "execution_summary",
         "verification_summary",
+        "finalize_intent",
         "user_interrupt",
         "retry_budget",
         "prompt_context",
         "trace_context",
     } == MULTI_AGENT_GRAPH_STATE_FIELDS
-    assert len(MULTI_AGENT_GRAPH_STATE_FIELDS) == 20
+    assert len(MULTI_AGENT_GRAPH_STATE_FIELDS) == 21
 
 
 def test_multi_agent_graph_state_has_no_implementation_only_fields() -> None:
@@ -164,6 +167,49 @@ def test_domain_validation_result_values_match_workflow_document() -> None:
         "REQUIRE_APPROVAL",
         "BLOCK",
     )
+
+
+def test_finalize_intent_values_match_terminal_boundary_contract() -> None:
+    assert _values(FinalizeIntent) == (
+        "COMPLETED",
+        "BLOCKED",
+        "FAILED",
+    )
+
+
+def test_finalize_intent_validator_accepts_minimal_runtime_contract() -> None:
+    finalized = validate_finalize_intent_v1(
+        {
+            "schema_version": 1,
+            "intent": "FAILED",
+            "reason_code": "OUTPUT_SCHEMA_INVALID",
+            "result_kind": None,
+        }
+    )
+
+    assert finalized["intent"] == "FAILED"
+    assert finalized["reason_code"] == "OUTPUT_SCHEMA_INVALID"
+
+
+def test_finalize_intent_validator_rejects_non_terminal_values() -> None:
+    with pytest.raises(ValueError, match="finalize intent intent is invalid"):
+        validate_finalize_intent_v1(
+            {
+                "schema_version": 1,
+                "intent": "REAUTH_REQUIRED",
+                "reason_code": "AUTH_REQUIRED",
+            }
+        )
+
+    with pytest.raises(ValueError, match="finalize intent result_kind must be PARTIAL or null"):
+        validate_finalize_intent_v1(
+            {
+                "schema_version": 1,
+                "intent": "COMPLETED",
+                "reason_code": "ANSWER_ONLY_REVIEW_PASS",
+                "result_kind": "COMPLETED",
+            }
+        )
 
 
 def test_additional_acquisition_origin_result_values_match_gap_a_contract() -> None:

@@ -859,6 +859,10 @@ Launcher 종료 요청
 | `RECOVERY` | `RECOVERY_REQUIRED` | `recovery_required` |
 | `FINALIZE` | Terminal | `completed` 또는 `error` |
 
+- Supervisor는 `REAUTH`, `RECOVERY`, `FINALIZE` route만 선택하고 Run Status를 직접 쓰지 않는다.
+- `FINALIZE`는 기존 state/result와 transient finalize handoff에서 terminal intent를 도출한다.
+- `BudgetReasonCode`는 persisted graph state field가 아니라 budget decision handoff로 전달한다.
+
 ## 24. Transaction 경계 요약
 
 | 구간 | DB Transaction | 외부 호출 |

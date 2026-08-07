@@ -913,6 +913,13 @@ RECOVERY_REQUIRED
 
 `finished_at_ms`는 COMPLETED, CANCELLED, FAILED, BLOCKED에서만 설정한다.
 
+Stage 10 generic terminal command scope:
+- `BlockRun`: `ANALYZING | RETRIEVING | PLANNING -> BLOCKED`
+- `FailRun`: `ANALYZING | RETRIEVING | PLANNING -> FAILED`
+- `RequireReauth`: Stage 10 P0에서 `RETRIEVING -> REAUTH_REQUIRED`
+- `EXECUTING`과 `VERIFYING`에서는 generic `FailRun`보다 verification/recovery 계약이 우선한다.
+- Supervisor는 route만 선택하고 Run Status mutation은 Application/Domain command가 수행한다.
+
 ## 25.5 Plan 상태 전이
 
 | 현재 | Event | Guard | 다음 | 규칙 |

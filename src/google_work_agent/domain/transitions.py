@@ -40,10 +40,17 @@ RUN_TRANSITIONS: dict[tuple[RunStatus, RunCommand], RunStatus] = {
     (RunStatus.ANALYZING, RunCommand.REQUEST_CONFIRMATION): RunStatus.WAITING_CONFIRMATION,
     (RunStatus.RETRIEVING, RunCommand.REQUEST_CONFIRMATION): RunStatus.WAITING_CONFIRMATION,
     (RunStatus.PLANNING, RunCommand.REQUEST_CONFIRMATION): RunStatus.WAITING_CONFIRMATION,
+    (RunStatus.ANALYZING, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
+    (RunStatus.RETRIEVING, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
+    (RunStatus.PLANNING, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
+    (RunStatus.ANALYZING, RunCommand.FAIL_RUN): RunStatus.FAILED,
+    (RunStatus.RETRIEVING, RunCommand.FAIL_RUN): RunStatus.FAILED,
+    (RunStatus.PLANNING, RunCommand.FAIL_RUN): RunStatus.FAILED,
     (RunStatus.ANALYZING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.RETRIEVING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.PLANNING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.CANCEL_REQUESTED, RunCommand.FINALIZE_CANCEL): RunStatus.CANCELLED,
+    (RunStatus.RETRIEVING, RunCommand.REQUIRE_REAUTH): RunStatus.REAUTH_REQUIRED,
 }
 
 RUN_COMMAND_ORDER = tuple(RunCommand)

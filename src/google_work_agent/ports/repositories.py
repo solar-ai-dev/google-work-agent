@@ -61,6 +61,24 @@ class RunRepository(Protocol):
     ) -> CommandResult[RunStatus, RunCommand]:
         """Complete a run through the answer-only transition path."""
 
+    def block_run(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        """Transition one semantic/product blocked run into BLOCKED."""
+
+    def fail_run(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        """Transition one unrecoverable pre-effect run into FAILED."""
+
     def publish_read_only_plan(
         self,
         run_id: str,
@@ -104,6 +122,15 @@ class RunRepository(Protocol):
         finished_at_ms: int,
     ) -> CommandResult[RunStatus, RunCommand]:
         """Transition a run into CANCELLED."""
+
+    def require_reauth(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        """Transition one run into REAUTH_REQUIRED."""
 
     def require_recovery(
         self,

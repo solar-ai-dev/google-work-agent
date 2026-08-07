@@ -85,6 +85,7 @@ class MultiAgentGraphState:
     approved_plan_id: str | None
     execution_summary: dict | None
     verification_summary: dict | None
+    finalize_intent: dict | None
     user_interrupt: dict | None
     retry_budget: RunBudgetV1
     prompt_context: dict
@@ -117,6 +118,9 @@ FINALIZE
 ```
 
 Run Status는 CREATED, ANALYZING, RETRIEVING, WAITING_CONFIRMATION, PLANNING, WAITING_APPROVAL, EXECUTING, VERIFYING, CANCEL_REQUESTED, CANCELLED, REAUTH_REQUIRED, RECOVERY_REQUIRED, COMPLETED, BLOCKED, FAILED를 사용한다.
+
+Terminal Run Status는 `COMPLETED`, `CANCELLED`, `FAILED`, `BLOCKED`다.
+`REAUTH_REQUIRED`와 `RECOVERY_REQUIRED`는 non-terminal이며 `PARTIAL`은 Run Status가 아니라 projection `result_kind`다.
 
 ## 5. 상위 흐름
 
@@ -232,6 +236,7 @@ Profile promotion은 monotonic이며 downgrade는 없다.
 Revision과 Retrieval이 모두 발생하면 `RETRIEVAL_HEAVY`를 유지한다.
 `llm_calls_used`는 actual provider prompt invocation 기준으로 집계한다.
 Budget 초과 후 terminal mapping은 별도 terminal boundary가 결정한다.
+Budget reason은 `RunBudgetV1`에 저장하지 않고 `BudgetDecisionV1` handoff로 전달한다.
 
 ## 9. Answer-only
 
@@ -242,6 +247,8 @@ ANALYZING | RETRIEVING | PLANNING
 ```
 
 Plan·Action 없이 Assistant Message·Trace·Run Terminal을 원자 저장한다.
+Supervisor는 route만 선택하고 Run Status mutation은 하지 않는다.
+`FINALIZE`는 Stage 16 handoff boundary이며 terminal intent는 checkpoint-safe `finalize_intent` 또는 기존 persisted state/result로 도출한다.
 
 ## 10. READ-only
 
@@ -319,6 +326,7 @@ plan_draft: ActionPlanDraftV1 | None
 plan_review: PlanReviewResultV1 | None
 execution_summary: ExecutionSummaryV1 | None
 verification_summary: VerificationSummaryV1 | None
+finalize_intent: FinalizeIntentV1 | None
 user_interrupt: UserInterruptV1 | None
 retry_budget: RunBudgetV1
 prompt_context: PromptContextV1
