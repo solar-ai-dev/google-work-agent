@@ -29,9 +29,9 @@ def test_build_release_profiles_emit_distinct_runtime_metadata(tmp_path: Path) -
         (tmp_path / "api-only" / "runtime" / "profile-api_only.json").read_text(encoding="utf-8")
     )
     local_profile = json.loads(
-        (
-            tmp_path / "local-capable" / "runtime" / "profile-local_capable.json"
-        ).read_text(encoding="utf-8")
+        (tmp_path / "local-capable" / "runtime" / "profile-local_capable.json").read_text(
+            encoding="utf-8"
+        )
     )
     approved_models = json.loads(
         (tmp_path / "local-capable" / "runtime" / "approved-models.json").read_text(

@@ -234,7 +234,7 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
     ),
   );
   const startRunCall = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find(
-    ([path]) => path === "/api/v1/runs",
+    ([path, init]) => path === "/api/v1/runs" && init?.method === "POST",
   );
   const body = JSON.parse(String(startRunCall?.[1].body)) as {
     entry_mode: string;
