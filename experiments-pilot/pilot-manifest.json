@@ -1,0 +1,139 @@
+{
+  "counts": {
+    "calendar_resources": 6,
+    "cases": 5,
+    "classify": 5,
+    "draft_plan": 2,
+    "fixtures": 5,
+    "gmail_resources": 11,
+    "inspect": 5,
+    "plan_sources": 5,
+    "retrieval_gold": 5,
+    "retrieval_queries": 5,
+    "segments": 28,
+    "select_evidence": 5,
+    "task_resources": 6,
+    "user_prompts": 5
+  },
+  "dataset_version": "semantic-pilot-v1.0",
+  "files": [
+    {
+      "bytes": 1271,
+      "path": "README.md",
+      "sha256": "35ebe90ad292ac5ad1ea3e58b229d55624db933f7eaffd5c0ee87de390bf99f1"
+    },
+    {
+      "bytes": 12172,
+      "path": "datasets/agent_prompt/api_discovery_acquisition/plan_sources.jsonl",
+      "sha256": "a9ac9275d39b92f2b58f006eb910e18c79c32a4dbfdf66e0d3f67b4286a63480"
+    },
+    {
+      "bytes": 19326,
+      "path": "datasets/agent_prompt/context_retriever/select_evidence.jsonl",
+      "sha256": "2545e7d0ff7d49f14410e15c3ed9a74976bfb251e51d3835445330e234bee761"
+    },
+    {
+      "bytes": 13155,
+      "path": "datasets/agent_prompt/plan_review/inspect.jsonl",
+      "sha256": "a840f6b86d4b10a7e548ee53b5833f1397cd5524c5d4160a24d37d99e121892b"
+    },
+    {
+      "bytes": 10379,
+      "path": "datasets/agent_prompt/request_understanding/classify.jsonl",
+      "sha256": "2e7cd76102c121c5c1c9f286e31ec2bf9b01af907476f17d77dde5be4c6ed6d6"
+    },
+    {
+      "bytes": 10545,
+      "path": "datasets/agent_prompt/solution_planning/draft_plan.jsonl",
+      "sha256": "c13987322a70f60f0de481657d25108d22d77c79ac8d5a0d51c27c16e7a71244"
+    },
+    {
+      "bytes": 9245,
+      "path": "datasets/business-scenarios.jsonl",
+      "sha256": "2415ae5bca241936307a9daf1287dcd018876074d927b36fbab307cb45a2303a"
+    },
+    {
+      "bytes": 13922,
+      "path": "datasets/cases/pilot.jsonl",
+      "sha256": "93b008ed41fb42e5c8737a3e65cdf4f76a6b605edf1ce4b93f6136d5e10fdae6"
+    },
+    {
+      "bytes": 5064,
+      "path": "datasets/google_workspace/corpus/calendar-resources.jsonl",
+      "sha256": "c85ddf59d7bae669b77df9cb2d42ec13e5b5e0756fafbe9c8d5bbae9787a5930"
+    },
+    {
+      "bytes": 15327,
+      "path": "datasets/google_workspace/corpus/gmail-resources.jsonl",
+      "sha256": "d5d7265d711474cd564b01743058de178ff02e7495d8d011d7ff2245283bae1d"
+    },
+    {
+      "bytes": 4878,
+      "path": "datasets/google_workspace/corpus/task-resources.jsonl",
+      "sha256": "1c82ce7946d51283f0d6475d17813e539e7ef55d8af5860c28d471f75073ad3b"
+    },
+    {
+      "bytes": 667,
+      "path": "datasets/google_workspace/fixtures/FIX-PILOT-001.json",
+      "sha256": "ddbcbdabb0b4873ebd45221f32e62020698fb0069fa6be94ba40fe2284cbf158"
+    },
+    {
+      "bytes": 807,
+      "path": "datasets/google_workspace/fixtures/FIX-PILOT-002.json",
+      "sha256": "418dc1da71b0dc4b452dc4d11c52e4ad1b42a38851cc622bac00724746917825"
+    },
+    {
+      "bytes": 696,
+      "path": "datasets/google_workspace/fixtures/FIX-PILOT-003.json",
+      "sha256": "c0ed127fd0c70943175ae5cd3ba75e14f855face9b3d827f722cc6847f6f55bb"
+    },
+    {
+      "bytes": 554,
+      "path": "datasets/google_workspace/fixtures/FIX-PILOT-004.json",
+      "sha256": "398de1dfc7c5cdf91fa4a027307fc1fa7e0f49703e7b9b506bfe6aa04c38cb87"
+    },
+    {
+      "bytes": 660,
+      "path": "datasets/google_workspace/fixtures/FIX-PILOT-005.json",
+      "sha256": "39093ccd38261a30cce3cf36017c7891a6656d5e88ff7291753589702eb692ad"
+    },
+    {
+      "bytes": 10002,
+      "path": "datasets/google_workspace/retrieval/relevance-gold.jsonl",
+      "sha256": "fa17285ea11779de0081c0335a9c23793711f36da522ab5b98356b8dc35b41ba"
+    },
+    {
+      "bytes": 4145,
+      "path": "datasets/google_workspace/retrieval/retrieval-queries.jsonl",
+      "sha256": "0438bf4c6e6957adddaaa5d34750e49de9a27a24f7a205901c5164bebdc12926"
+    },
+    {
+      "bytes": 22506,
+      "path": "datasets/google_workspace/segments/source-segments.jsonl",
+      "sha256": "ad367c48b4a4f41fb258d120963e2cf8eb41bac184baaac5c95339246208538e"
+    },
+    {
+      "bytes": 1604,
+      "path": "reports/human-review-guide.md",
+      "sha256": "141f52531e591860aeeb5e05e8a96f56a3d84a92f57428005cb48a32a31f7dce"
+    },
+    {
+      "bytes": 51,
+      "path": "reports/validator-output.txt",
+      "sha256": "acd13e140e77a9555d1f6c13e43251f73f8ae4a6993fe813f23e13ff21a0d580"
+    },
+    {
+      "bytes": 2799,
+      "path": "tools/validate_pilot.py",
+      "sha256": "22ee4dfc59d0892c6490495c4f61d7300cb259c488c3c100b9246fa95ac6e638"
+    },
+    {
+      "bytes": 3263,
+      "path": "user_prompts/canonical-pilot.jsonl",
+      "sha256": "085a5b80dd5c351b0195aa593ce90fc072bc460e6e59023787f3d937bcb4f901"
+    }
+  ],
+  "generated_at": "2026-08-06T22:51:00+09:00",
+  "generator_version": "semantic-pilot-builder-v1.0",
+  "purpose": "사람 의미 검수용 5개 현실 업무 Pilot. 기존 92개 데이터셋을 대체하지 않음."
+}

@@ -1,0 +1,20 @@
+{
+  "status": "PASS",
+  "generated_at": "2026-08-06T22:30:00+09:00",
+  "dataset_version": "r4-v1.0",
+  "source_prompt_injection_cases": [
+    "CASE-CORE-006",
+    "CASE-CORE-015",
+    "CASE-CORE-024",
+    "CASE-CORE-033",
+    "CASE-CORE-042",
+    "CASE-CORE-051",
+    "CASE-CORE-060"
+  ],
+  "adversarial_user_request_cases": [
+    "CASE-STRESS-001",
+    "CASE-STRESS-006",
+    "CASE-STRESS-011",
+    "CASE-STRESS-016"
+  ]
+}

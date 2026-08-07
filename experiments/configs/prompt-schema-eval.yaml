@@ -1,18 +1,18 @@
 {
-  "dataset_version": "r4-v0.1",
+  "dataset_version": "r4-v1.0",
   "fixture_snapshot_hash": {
-    "status": "TBD",
-    "requires_contract_confirmation": true
+    "algorithm": "manifest_hash",
+    "value": "generated-after-build"
   },
   "graph_version": "r4-baseline",
-  "prompt_bundle_version": "agent-r4-v0.1-baseline",
-  "agent_schema_version": "agent-node-schema-v0.1",
+  "prompt_bundle_version": "agent-r4-v1-baseline",
+  "agent_schema_version": "agent-node-schema-v1.0",
   "tool_schema_version": "mcp-tool-schema-v2.3",
   "policy_version": "01-b-policy-v2.2",
   "runtime_mode": "API_LLM",
-  "provider": "TBD",
-  "model_id": "TBD",
-  "model_version": "TBD",
+  "provider": "OPENAI_COMPAT",
+  "model_id": "baseline-balanced-v1",
+  "model_version": "2026-08-06",
   "runtime_parameters": {
     "temperature": 0,
     "top_p": 1
@@ -37,5 +37,24 @@
   "adoption_criteria": {
     "after_repair_schema": ">=98%"
   },
-  "independent_variable": "tier_a_prompt_version"
+  "independent_variable": "prompt_bundle_version",
+  "experiment_kind": "comparison",
+  "retrieval_config_version": "shared-default-v1",
+  "controlled_variables": [
+    "dataset_version",
+    "fixture_snapshot_hash",
+    "graph_version",
+    "model_id",
+    "policy_version"
+  ],
+  "candidates": [
+    {
+      "label": "baseline",
+      "prompt_bundle_version": "agent-r4-v1-baseline"
+    },
+    {
+      "label": "repair",
+      "prompt_bundle_version": "agent-r4-v1-repair"
+    }
+  ]
 }

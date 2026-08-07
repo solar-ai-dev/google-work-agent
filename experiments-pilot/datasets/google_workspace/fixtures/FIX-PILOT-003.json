@@ -1,0 +1,28 @@
+{
+  "content_hash": "aef00e7b8e795565bdb123696ee074c91ce8052013f03e35660e7cd8fa022706",
+  "current_time": "2026-08-06T13:00:00+09:00",
+  "dataset_version": "semantic-pilot-v1.0",
+  "fixture_snapshot_id": "FIX-PILOT-003",
+  "relations": [
+    {
+      "from": "GMAIL-P3-THREAD-001",
+      "to": "TASK-P3-001",
+      "type": "request_to_existing_task"
+    },
+    {
+      "from": "GMAIL-P3-THREAD-001",
+      "to": "CAL-P3-002",
+      "type": "request_to_available_slot"
+    }
+  ],
+  "resource_ids": [
+    "GMAIL-P3-THREAD-001",
+    "GMAIL-P3-THREAD-002",
+    "TASK-P3-001",
+    "TASK-P3-002",
+    "CAL-P3-001",
+    "CAL-P3-002"
+  ],
+  "synthetic": true,
+  "title": "Orion Clinic Q3 고객 대응"
+}

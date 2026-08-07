@@ -1,0 +1,49 @@
+{
+  "status": "PASS",
+  "generated_at": "2026-08-06T22:30:00+09:00",
+  "dataset_version": "r4-v1.0",
+  "query_count": 92,
+  "queries_with_minimum_three_hard_negatives": 92,
+  "sample": [
+    {
+      "retrieval_query_id": "RQ-CORE-001",
+      "hard_negative_resource_ids": [
+        "GMAIL-FIX-001-002",
+        "GMAIL-FIX-001-003",
+        "GMAIL-FIX-001-004"
+      ]
+    },
+    {
+      "retrieval_query_id": "RQ-CORE-002",
+      "hard_negative_resource_ids": [
+        "GMAIL-FIX-002-002",
+        "GMAIL-FIX-002-003",
+        "GMAIL-FIX-002-004"
+      ]
+    },
+    {
+      "retrieval_query_id": "RQ-CORE-003",
+      "hard_negative_resource_ids": [
+        "GMAIL-FIX-003-002",
+        "GMAIL-FIX-003-003",
+        "GMAIL-FIX-003-004"
+      ]
+    },
+    {
+      "retrieval_query_id": "RQ-CORE-004",
+      "hard_negative_resource_ids": [
+        "GMAIL-FIX-004-002",
+        "GMAIL-FIX-004-003",
+        "GMAIL-FIX-004-004"
+      ]
+    },
+    {
+      "retrieval_query_id": "RQ-CORE-005",
+      "hard_negative_resource_ids": [
+        "GMAIL-FIX-005-002",
+        "GMAIL-FIX-005-003",
+        "GMAIL-FIX-005-004"
+      ]
+    }
+  ]
+}

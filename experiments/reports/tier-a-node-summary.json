@@ -1,27 +1,12 @@
 {
-  "request_understanding.classify": {
-    "item_count": 92,
-    "review_status": "REVIEWED",
-    "issues": 0
-  },
-  "acquisition.plan_sources": {
-    "item_count": 92,
-    "review_status": "REVIEWED",
-    "issues": 0
-  },
-  "context.select_evidence": {
-    "item_count": 92,
-    "review_status": "REVIEWED",
-    "issues": 0
-  },
-  "planning.draft_plan": {
-    "item_count": 48,
-    "review_status": "REVIEWED",
-    "issues": 0
-  },
-  "review.inspect": {
-    "item_count": 92,
-    "review_status": "REVIEWED",
-    "issues": 0
+  "status": "PASS",
+  "generated_at": "2026-08-06T22:30:00+09:00",
+  "dataset_version": "r4-v1.0",
+  "node_counts": {
+    "request_understanding.classify": 92,
+    "acquisition.plan_sources": 92,
+    "context.select_evidence": 92,
+    "planning.draft_plan": 48,
+    "review.inspect": 92
   }
 }

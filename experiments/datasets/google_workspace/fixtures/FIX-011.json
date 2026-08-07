@@ -1,7 +1,14 @@
 {
   "fixture_snapshot_id": "FIX-011",
-  "fixture_version": "r4-v0.1",
+  "fixture_version": "r4-v1.0",
+  "synthetic": true,
+  "synthetic_generator_version": "r2-final-dataset-builder-v1.0",
+  "dataset_version": "r4-v1.0",
   "fixture_relation_family": "HOLDOUT-RF-OOO-RESCHEDULE",
+  "workspace_theme": "OOO로 인한 일정 재조정",
+  "project_name": "Pine Reschedule",
+  "client_name": "Pine Advisory",
+  "owner_name": "다은",
   "base_time": "2026-08-21T09:00:00+09:00",
   "user_timezone": "Asia/Seoul",
   "work_hours": {
@@ -68,10 +75,5 @@
     "out_of_office",
     "403"
   ],
-  "fixture_content_hash": {
-    "status": "TBD",
-    "proposed_algorithm": "sha256(canonical_json_utf8_sort_keys_no_whitespace_excluding_fixture_content_hash)",
-    "value": "591c473caf82d6efb333b47643afc842cb9d674c255a8fb661523a6b8365dd90",
-    "requires_contract_confirmation": true
-  }
+  "fixture_content_hash": "7c08a4ab3bfbf09ef5b4b2e23ca273f1887e1c0fe5ee0e12b44892f6f79791a6"
 }

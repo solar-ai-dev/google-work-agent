@@ -1,0 +1,20 @@
+{
+  "content_hash": "1ed6826ca59de719e879b77c619b961932a8f096df6b156c17c569a35e81171f",
+  "current_time": "2026-08-06T17:00:00+09:00",
+  "dataset_version": "semantic-pilot-v1.0",
+  "fixture_snapshot_id": "FIX-PILOT-004",
+  "relations": [
+    {
+      "from": "GMAIL-P4-THREAD-001",
+      "to": "GMAIL-P4-THREAD-002",
+      "type": "same_display_name_different_person"
+    }
+  ],
+  "resource_ids": [
+    "GMAIL-P4-THREAD-001",
+    "GMAIL-P4-THREAD-002",
+    "CAL-P4-001"
+  ],
+  "synthetic": true,
+  "title": "Zephyr 캠페인 동명이인 일정 요청"
+}

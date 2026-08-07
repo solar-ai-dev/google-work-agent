@@ -1,0 +1,18 @@
+{
+  "title": "Final Fixture Resource Schema",
+  "type": "object",
+  "required": [
+    "resource_id",
+    "fixture_snapshot_id",
+    "source",
+    "resource_type",
+    "title_or_subject",
+    "body_or_description",
+    "participants",
+    "time_fields",
+    "status",
+    "version_token",
+    "metadata",
+    "content_hash"
+  ]
+}

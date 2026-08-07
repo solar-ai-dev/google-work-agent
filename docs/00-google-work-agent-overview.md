@@ -44,7 +44,7 @@
 | 01 PRD | v2.3 | `SYNCED` |
 | 03 시스템 아키텍처 | v2.5 | `SYNCED` |
 | 06 Agent·Workflow | v5.4 | `SYNCED` |
-| 13 평가·실험 | v2.4 | `SYNCED` |
+| 13 평가·실험 | v2.5 | `SYNCED` |
 | Domain 상태 전이 계약 | v1.3 | `SYNCED` |
 | 상태 전이 테스트 매트릭스 | v1.3 | `SYNCED` |
 
@@ -114,7 +114,7 @@ experiments/user_prompts/
 prompts/agent/
 ```
 
-평가 연결 키는 `case_id`, `fixture_snapshot_id`, `user_prompt_id`, `prompt_id`다. Agent 하나에 Prompt 하나를 고정하지 않고 `agent_role + subgraph_name + node_name + node_state + purpose`로 Prompt를 선택한다.
+평가 연결 키는 `experiment_id`, `evaluation_item_id`, `case_id`, `fixture_snapshot_id`, `user_prompt_id`, `candidate_config_hash`, `prompt_id`다. Canonical Case에서 Node·Acquisition·Retrieval·Trajectory·E2E Projection을 파생한다. Agent 하나에 Prompt 하나를 고정하지 않고 `agent_role + subgraph_name + node_name + node_state + purpose`로 Prompt를 선택한다.
 
 ## r3 구현 기준 계약
 
@@ -122,5 +122,5 @@ prompts/agent/
 - Google OAuth Credential 원문은 MCP Credential Provider와 OS Keyring 경계를 벗어나지 않는다.
 - Google Write는 실행 Claim 후 발급되는 짧은 수명의 1회용 `claim_token`을 MCP가 재검증한다.
 - 인증 전 Endpoint는 `/health/live`, `/health/ready`, `/api/v1/session/bootstrap`, 일시적 OAuth Loopback Callback으로 제한한다.
-- 평가 연결 단위는 `case_id`, `user_prompt_id`, `evaluation_item_id`, `fixture_snapshot_id`, `prompt_id`다.
+- 평가 연결 단위는 `experiment_id`, `evaluation_item_id`, `case_id`, `user_prompt_id`, `fixture_snapshot_id`, `candidate_config_hash`, `prompt_id`다.
 - 현행 DB 기준은 `schema-v1.2.sql`, 상태 전이 기준은 v1.3이다.

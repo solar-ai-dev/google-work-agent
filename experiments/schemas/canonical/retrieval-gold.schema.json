@@ -1,0 +1,27 @@
+{
+  "title": "Final Retrieval Gold Schema",
+  "type": "object",
+  "required": [
+    "retrieval_query_id",
+    "required_resource_ids",
+    "optional_resource_ids",
+    "forbidden_resource_ids",
+    "required_segment_ids",
+    "optional_segment_ids",
+    "hard_negative_resource_ids",
+    "required_evidence",
+    "case_id",
+    "fixture_snapshot_id",
+    "query_id",
+    "query_text",
+    "relevant_resource_ids",
+    "relevant_segment_ids",
+    "hard_negative_segment_ids",
+    "relevance_reason",
+    "hard_negative_reason",
+    "minimum_recall",
+    "evidence_coverage_expectation",
+    "synthetic",
+    "content_hash"
+  ]
+}

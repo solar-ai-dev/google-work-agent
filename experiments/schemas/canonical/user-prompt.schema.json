@@ -1,0 +1,18 @@
+{
+  "title": "Final User Prompt Schema",
+  "type": "object",
+  "required": [
+    "user_prompt_id",
+    "case_id",
+    "scenario_family_id",
+    "split",
+    "language",
+    "entry_mode",
+    "text",
+    "paraphrase_group_id",
+    "ambiguity_tags",
+    "expected_confirmation",
+    "synthetic",
+    "content_hash"
+  ]
+}

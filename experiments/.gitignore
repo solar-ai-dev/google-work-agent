@@ -1,0 +1,3 @@
+# Re-include canonical JSONL files inside experiments
+!*.jsonl
+!**/*.jsonl

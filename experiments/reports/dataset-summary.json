@@ -1,5 +1,8 @@
 {
-  "dataset_version": "r4-v0.1",
+  "status": "PASS",
+  "generated_at": "2026-08-06T22:30:00+09:00",
+  "generator_version": "r2-final-dataset-builder-v1.0",
+  "dataset_version": "r4-v1.0",
   "case_counts": {
     "core": 60,
     "holdout": 12,
@@ -13,42 +16,7 @@
     "calendar": 42,
     "total": 140
   },
-  "segment_count": 196,
+  "segment_count": 78,
   "retrieval_query_count": 92,
-  "agent_tier_a_item_counts": {
-    "request_understanding/classify.jsonl": 92,
-    "api_discovery_acquisition/plan_sources.jsonl": 92,
-    "context_retriever/select_evidence.jsonl": 92,
-    "solution_planning/draft_plan.jsonl": 48,
-    "plan_review/inspect.jsonl": 92
-  },
-  "smoke_case_ids": [
-    "CASE-CORE-001",
-    "CASE-CORE-002",
-    "CASE-CORE-003",
-    "CASE-CORE-004",
-    "CASE-CORE-005"
-  ],
-  "screening_case_ids": [
-    "CASE-CORE-001",
-    "CASE-CORE-002",
-    "CASE-CORE-003",
-    "CASE-CORE-004",
-    "CASE-CORE-005",
-    "CASE-CORE-006",
-    "CASE-CORE-007",
-    "CASE-CORE-008",
-    "CASE-CORE-009",
-    "CASE-CORE-010",
-    "CASE-CORE-011",
-    "CASE-CORE-012",
-    "CASE-CORE-013",
-    "CASE-CORE-014",
-    "CASE-CORE-015",
-    "CASE-CORE-016",
-    "CASE-CORE-017",
-    "CASE-CORE-018",
-    "CASE-CORE-019",
-    "CASE-CORE-020"
-  ]
+  "retrieval_gold_count": 92
 }

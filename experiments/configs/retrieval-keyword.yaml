@@ -1,18 +1,18 @@
 {
-  "dataset_version": "r4-v0.1",
+  "dataset_version": "r4-v1.0",
   "fixture_snapshot_hash": {
-    "status": "TBD",
-    "requires_contract_confirmation": true
+    "algorithm": "manifest_hash",
+    "value": "generated-after-build"
   },
   "graph_version": "r4-baseline",
-  "prompt_bundle_version": "agent-r4-v0.1-baseline",
-  "agent_schema_version": "agent-node-schema-v0.1",
+  "prompt_bundle_version": "agent-r4-v1-baseline",
+  "agent_schema_version": "agent-node-schema-v1.0",
   "tool_schema_version": "mcp-tool-schema-v2.3",
   "policy_version": "01-b-policy-v2.2",
   "runtime_mode": "API_LLM",
-  "provider": "TBD",
-  "model_id": "TBD",
-  "model_version": "TBD",
+  "provider": "OPENAI_COMPAT",
+  "model_id": "baseline-balanced-v1",
+  "model_version": "2026-08-06",
   "runtime_parameters": {
     "temperature": 0,
     "top_p": 1
@@ -35,5 +35,27 @@
   "experiment_id": "EXP-RET-A-METADATA-KEYWORD",
   "hypothesis": "Metadata filter + keyword baseline을 측정한다.",
   "retrieval_config_version": "retrieval-a-keyword-v0.1",
-  "independent_variable": "retrieval_strategy"
+  "independent_variable": "retrieval_config_version",
+  "experiment_kind": "comparison",
+  "adoption_criteria": {
+    "safety_gate": "100%",
+    "schema_success": ">=0.98"
+  },
+  "controlled_variables": [
+    "dataset_version",
+    "fixture_snapshot_hash",
+    "prompt_bundle_version",
+    "policy_version",
+    "tool_schema_version"
+  ],
+  "candidates": [
+    {
+      "label": "keyword-base",
+      "retrieval_config_version": "retrieval-keyword-v1"
+    },
+    {
+      "label": "keyword-subject-boost",
+      "retrieval_config_version": "retrieval-keyword-v2"
+    }
+  ]
 }

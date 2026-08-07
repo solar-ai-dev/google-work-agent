@@ -1,7 +1,14 @@
 {
   "fixture_snapshot_id": "FIX-005",
-  "fixture_version": "r4-v0.1",
+  "fixture_version": "r4-v1.0",
+  "synthetic": true,
+  "synthetic_generator_version": "r2-final-dataset-builder-v1.0",
+  "dataset_version": "r4-v1.0",
   "fixture_relation_family": "CORE-RF-DUPLICATE-TASK",
+  "workspace_theme": "중복 온보딩 작업 정리",
+  "project_name": "Nimbus Onboarding",
+  "client_name": "Nimbus Retail",
+  "owner_name": "유나",
   "base_time": "2026-08-15T09:00:00+09:00",
   "user_timezone": "Asia/Seoul",
   "work_hours": {
@@ -59,7 +66,7 @@
         "TASK-FIX-005-001",
         "TASK-FIX-005-002"
       ],
-      "duplicate_type": "clear"
+      "duplicate_type": "similar"
     }
   ],
   "expected_conflicts": [],
@@ -68,10 +75,5 @@
     "clear_duplicate_task",
     "similar_task_candidate"
   ],
-  "fixture_content_hash": {
-    "status": "TBD",
-    "proposed_algorithm": "sha256(canonical_json_utf8_sort_keys_no_whitespace_excluding_fixture_content_hash)",
-    "value": "2debfd8c9ee3b8b95e828cc170251acab1e6198e8fdc6737208ead2aedb1380f",
-    "requires_contract_confirmation": true
-  }
+  "fixture_content_hash": "96a55f4e660495a46e2d57976cc182bb9d2f840b4985b710e675d5f359c08d8c"
 }

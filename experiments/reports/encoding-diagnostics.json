@@ -1,0 +1,615 @@
+{
+  "status": "PASS",
+  "generated_at": "2026-08-06T13:28:39.718246+00:00",
+  "files": [
+    {
+      "file_path": "experiments/.gitignore",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/configs/e2e-smoke.yaml",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/configs/model-screening.yaml",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/configs/prompt-schema-eval.yaml",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/configs/retrieval-evidence-selection.yaml",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/configs/retrieval-keyword.yaml",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/configs/retrieval-vector-conditional.yaml",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/configs/workflow-single.yaml",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/configs/workflow-six-role.yaml",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/configs/workflow-three-stage.yaml",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/agent_prompt/api_discovery_acquisition/plan_sources.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/agent_prompt/context_retriever/select_evidence.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/agent_prompt/plan_review/inspect.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/agent_prompt/README.md",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/agent_prompt/request_understanding/classify.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/agent_prompt/reserved-node-registry.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/agent_prompt/solution_planning/draft_plan.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/cases/core.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/cases/holdout.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/cases/stress.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/cases/subset-manifest.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/e2e/README.md",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/e2e/screening.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/e2e/smoke.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/corpus/calendar-resources.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/corpus/gmail-resources.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/corpus/task-resources.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixture-relation-model.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-001.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-002.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-003.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-004.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-005.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-006.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-007.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-008.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-009.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-010.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-011.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-012.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-013.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/fixtures/FIX-014.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/README.md",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/retrieval/relevance-gold.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/retrieval/retrieval-queries.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/datasets/google_workspace/segments/source-segments.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/manifest.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/notion-import/agent-prompt-dataset-index.csv",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/notion-import/case-taxonomy.csv",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/notion-import/e2e-items.csv",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/notion-import/retrieval-queries.csv",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/notion-import/user-prompts.csv",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/README.md",
+      "bom": "UTF-8-BOM",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/case-type-summary.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/config-contract-report.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/dataset-issues-pre-fix-2026-08-06.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/dataset-issues.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/dataset-summary.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/dataset-validation-report.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/dataset-validation-report.md",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/encoding-diagnostics.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/existing-validator-report.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/final-readiness-report.md",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/final-validation-report.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/final-validation-report.md",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/git-tracking-report.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/gold-review-checklist.csv",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/prompt-injection-report.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/reference-integrity-report.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/retrieval-hard-negative-report.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/safety-validation-report.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/split-leakage-report.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/tier-a-dataset-report.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/tier-a-node-summary.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/reports/validation-report.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/schemas/canonical/case.schema.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/schemas/canonical/fixture-resource.schema.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/schemas/canonical/retrieval-gold.schema.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/schemas/canonical/source-segment.schema.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/schemas/canonical/tier-a-node-dataset.schema.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/schemas/canonical/user-prompt.schema.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/schemas/dataset-contract-summary.json",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/SHARING-GUIDE.md",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/user_prompts/canonical-core.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/user_prompts/canonical-holdout.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/user_prompts/canonical-stress.jsonl",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    },
+    {
+      "file_path": "experiments/user_prompts/README.md",
+      "bom": "NONE",
+      "classification": "DISPLAY_ONLY",
+      "utf8_decodable": true,
+      "contains_mojibake_pattern": false
+    }
+  ]
+}

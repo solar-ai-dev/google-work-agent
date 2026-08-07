@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "generated_at": "2026-08-06T22:30:00+09:00",
+  "dataset_version": "r4-v1.0",
+  "node_counts": {
+    "request_understanding.classify": 92,
+    "acquisition.plan_sources": 92,
+    "context.select_evidence": 92,
+    "planning.draft_plan": 48,
+    "review.inspect": 92
+  },
+  "applicable_rows": {
+    "planning.draft_plan": 48
+  }
+}

@@ -1,50 +1,11 @@
 {
-  "case_counts": {
-    "core": 60,
-    "holdout": 12,
-    "stress": 20
-  },
+  "status": "PASS",
+  "generated_at": "2026-08-06T22:30:00+09:00",
+  "dataset_version": "r4-v1.0",
   "expected_answer_type_counts": {
     "ANSWER_ONLY": 12,
     "PLAN_WAITING_APPROVAL": 48,
     "CONFIRMATION_REQUIRED": 28,
     "BLOCKED": 4
-  },
-  "planning_draft_basis": {
-    "PLAN_REQUIRED": 48,
-    "ANSWER_ONLY": 12,
-    "CONFIRMATION_REQUIRED": 28,
-    "POLICY_BLOCKED": 4,
-    "ERROR_OR_RECOVERY": 0
-  },
-  "smoke_case_ids": [
-    "CASE-CORE-001",
-    "CASE-CORE-002",
-    "CASE-CORE-003",
-    "CASE-CORE-004",
-    "CASE-CORE-005"
-  ],
-  "screening_case_ids": [
-    "CASE-CORE-001",
-    "CASE-CORE-002",
-    "CASE-CORE-003",
-    "CASE-CORE-004",
-    "CASE-CORE-005",
-    "CASE-CORE-006",
-    "CASE-CORE-007",
-    "CASE-CORE-008",
-    "CASE-CORE-009",
-    "CASE-CORE-010",
-    "CASE-CORE-011",
-    "CASE-CORE-012",
-    "CASE-CORE-013",
-    "CASE-CORE-014",
-    "CASE-CORE-015",
-    "CASE-CORE-016",
-    "CASE-CORE-017",
-    "CASE-CORE-018",
-    "CASE-CORE-019",
-    "CASE-CORE-020"
-  ],
-  "holdout_report_policy": "Holdout 상세 Gold는 일반 report에 복사하지 않음"
+  }
 }

@@ -1,0 +1,146 @@
+{
+  "status": "PASS",
+  "generated_at": "2026-08-06T22:30:00+09:00",
+  "dataset_version": "r4-v1.0",
+  "configs": [
+    {
+      "file_path": "experiments/configs/e2e-smoke.yaml",
+      "experiment_id": "EXP-E2E-SMOKE",
+      "experiment_kind": "gate",
+      "independent_variable": null,
+      "controlled_variables": [
+        "dataset_version",
+        "fixture_snapshot_hash",
+        "prompt_bundle_version",
+        "policy_version",
+        "tool_schema_version"
+      ],
+      "candidate_count": 1,
+      "status": "PASS"
+    },
+    {
+      "file_path": "experiments/configs/model-screening.yaml",
+      "experiment_id": "EXP-MODEL-SCREENING",
+      "experiment_kind": "comparison",
+      "independent_variable": "model_id",
+      "controlled_variables": [
+        "dataset_version",
+        "fixture_snapshot_hash",
+        "graph_version",
+        "prompt_bundle_version",
+        "policy_version",
+        "tool_schema_version"
+      ],
+      "candidate_count": 2,
+      "status": "PASS"
+    },
+    {
+      "file_path": "experiments/configs/prompt-schema-eval.yaml",
+      "experiment_id": "EXP-TIER-A-PROMPT-SCHEMA",
+      "experiment_kind": "comparison",
+      "independent_variable": "prompt_bundle_version",
+      "controlled_variables": [
+        "dataset_version",
+        "fixture_snapshot_hash",
+        "graph_version",
+        "model_id",
+        "policy_version"
+      ],
+      "candidate_count": 2,
+      "status": "PASS"
+    },
+    {
+      "file_path": "experiments/configs/retrieval-keyword.yaml",
+      "experiment_id": "EXP-RET-A-METADATA-KEYWORD",
+      "experiment_kind": "comparison",
+      "independent_variable": "retrieval_config_version",
+      "controlled_variables": [
+        "dataset_version",
+        "fixture_snapshot_hash",
+        "prompt_bundle_version",
+        "policy_version",
+        "tool_schema_version"
+      ],
+      "candidate_count": 2,
+      "status": "PASS"
+    },
+    {
+      "file_path": "experiments/configs/retrieval-evidence-selection.yaml",
+      "experiment_id": "EXP-RET-B-LLM-EVIDENCE",
+      "experiment_kind": "comparison",
+      "independent_variable": "retrieval_config_version",
+      "controlled_variables": [
+        "dataset_version",
+        "fixture_snapshot_hash",
+        "prompt_bundle_version",
+        "policy_version",
+        "tool_schema_version"
+      ],
+      "candidate_count": 2,
+      "status": "PASS"
+    },
+    {
+      "file_path": "experiments/configs/retrieval-vector-conditional.yaml",
+      "experiment_id": "EXP-RET-C-CONDITIONAL-VECTOR",
+      "experiment_kind": "conditional",
+      "independent_variable": null,
+      "controlled_variables": [
+        "dataset_version",
+        "fixture_snapshot_hash",
+        "prompt_bundle_version",
+        "policy_version",
+        "tool_schema_version"
+      ],
+      "candidate_count": 1,
+      "status": "PASS"
+    },
+    {
+      "file_path": "experiments/configs/workflow-single.yaml",
+      "experiment_id": "EXP-WF-SINGLE",
+      "experiment_kind": "comparison",
+      "independent_variable": "graph_version",
+      "controlled_variables": [
+        "dataset_version",
+        "fixture_snapshot_hash",
+        "prompt_bundle_version",
+        "policy_version",
+        "tool_schema_version",
+        "model_id"
+      ],
+      "candidate_count": 2,
+      "status": "PASS"
+    },
+    {
+      "file_path": "experiments/configs/workflow-six-role.yaml",
+      "experiment_id": "EXP-WF-SIX-ROLE",
+      "experiment_kind": "comparison",
+      "independent_variable": "graph_version",
+      "controlled_variables": [
+        "dataset_version",
+        "fixture_snapshot_hash",
+        "prompt_bundle_version",
+        "policy_version",
+        "tool_schema_version",
+        "model_id"
+      ],
+      "candidate_count": 2,
+      "status": "PASS"
+    },
+    {
+      "file_path": "experiments/configs/workflow-three-stage.yaml",
+      "experiment_id": "EXP-WF-THREE-STAGE",
+      "experiment_kind": "comparison",
+      "independent_variable": "graph_version",
+      "controlled_variables": [
+        "dataset_version",
+        "fixture_snapshot_hash",
+        "prompt_bundle_version",
+        "policy_version",
+        "tool_schema_version",
+        "model_id"
+      ],
+      "candidate_count": 2,
+      "status": "PASS"
+    }
+  ]
+}

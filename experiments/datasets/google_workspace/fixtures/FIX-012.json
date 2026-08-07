@@ -1,7 +1,14 @@
 {
   "fixture_snapshot_id": "FIX-012",
-  "fixture_version": "r4-v0.1",
+  "fixture_version": "r4-v1.0",
+  "synthetic": true,
+  "synthetic_generator_version": "r2-final-dataset-builder-v1.0",
+  "dataset_version": "r4-v1.0",
   "fixture_relation_family": "STRESS-RF-RATE-LIMIT",
+  "workspace_theme": "요청 폭주와 재시도 제한",
+  "project_name": "Procurement Burst",
+  "client_name": "Northwind Supply",
+  "owner_name": "준호",
   "base_time": "2026-08-22T09:00:00+09:00",
   "user_timezone": "Asia/Seoul",
   "work_hours": {
@@ -69,10 +76,5 @@
     "5xx",
     "timeout"
   ],
-  "fixture_content_hash": {
-    "status": "TBD",
-    "proposed_algorithm": "sha256(canonical_json_utf8_sort_keys_no_whitespace_excluding_fixture_content_hash)",
-    "value": "ea5b61e513cd1a8dd9683599112cc667289f7f206400bc1f6c439885a7506e49",
-    "requires_contract_confirmation": true
-  }
+  "fixture_content_hash": "7f5f67fb7ed43dc82cbf02fe6aefb3f893cc9ccb55dcea2d5e9129c549e3139d"
 }

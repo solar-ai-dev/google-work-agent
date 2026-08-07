@@ -1,7 +1,14 @@
 {
   "fixture_snapshot_id": "FIX-010",
-  "fixture_version": "r4-v0.1",
+  "fixture_version": "r4-v1.0",
+  "synthetic": true,
+  "synthetic_generator_version": "r2-final-dataset-builder-v1.0",
+  "dataset_version": "r4-v1.0",
   "fixture_relation_family": "HOLDOUT-RF-CLIENT-REVIEW",
+  "workspace_theme": "클라이언트 리뷰 준비",
+  "project_name": "Atlas Client Review",
+  "client_name": "Atlas Design",
+  "owner_name": "지후",
   "base_time": "2026-08-20T09:00:00+09:00",
   "user_timezone": "Asia/Seoul",
   "work_hours": {
@@ -68,10 +75,5 @@
     "external_thread",
     "calendar_free"
   ],
-  "fixture_content_hash": {
-    "status": "TBD",
-    "proposed_algorithm": "sha256(canonical_json_utf8_sort_keys_no_whitespace_excluding_fixture_content_hash)",
-    "value": "6aa231fdc8a846b17f9e9343a7b1a5fa2ce5fc9317f9544454d3e833941575aa",
-    "requires_contract_confirmation": true
-  }
+  "fixture_content_hash": "c40cdeed7abc5d77adcba23ae546264573ee1e47cf98d5892ab40fe627fa0237"
 }

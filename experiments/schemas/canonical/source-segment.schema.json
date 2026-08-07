@@ -1,0 +1,21 @@
+{
+  "title": "Final Source Segment Schema",
+  "type": "object",
+  "required": [
+    "segment_id",
+    "fixture_snapshot_id",
+    "source",
+    "resource_id",
+    "parent_resource_id",
+    "segment_index",
+    "text",
+    "token_estimate",
+    "locator",
+    "trust_classification",
+    "injection_marker",
+    "synthetic",
+    "content_hash",
+    "metadata",
+    "chunk_index"
+  ]
+}

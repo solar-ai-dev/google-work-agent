@@ -1,0 +1,26 @@
+{
+  "content_hash": "b03462a8d6c71bc4a8571cf0f4c9ba63840f08820a18b4459d8ef61f1d15ddf3",
+  "current_time": "2026-08-06T10:00:00+09:00",
+  "dataset_version": "semantic-pilot-v1.0",
+  "fixture_snapshot_id": "FIX-PILOT-001",
+  "relations": [
+    {
+      "from": "GMAIL-P1-THREAD-001",
+      "to": "TASK-P1-001",
+      "type": "same_brand_different_season"
+    },
+    {
+      "from": "GMAIL-P1-THREAD-001",
+      "to": "CAL-P1-001",
+      "type": "same_project_different_purpose"
+    }
+  ],
+  "resource_ids": [
+    "GMAIL-P1-THREAD-001",
+    "GMAIL-P1-THREAD-002",
+    "TASK-P1-001",
+    "CAL-P1-001"
+  ],
+  "synthetic": true,
+  "title": "Luma Travel Kit 최신 합의"
+}

@@ -1,7 +1,14 @@
 {
   "fixture_snapshot_id": "FIX-014",
-  "fixture_version": "r4-v0.1",
+  "fixture_version": "r4-v1.0",
+  "synthetic": true,
+  "synthetic_generator_version": "r2-final-dataset-builder-v1.0",
+  "dataset_version": "r4-v1.0",
   "fixture_relation_family": "STRESS-RF-DENSE-COLLISION",
+  "workspace_theme": "빽빽한 일정과 충돌 다발",
+  "project_name": "Launch Week Collision",
+  "client_name": "Flux Commerce",
+  "owner_name": "소연",
   "base_time": "2026-08-24T09:00:00+09:00",
   "user_timezone": "Asia/Seoul",
   "work_hours": {
@@ -68,7 +75,7 @@
         "CAL-FIX-014-001",
         "CAL-FIX-014-002"
       ],
-      "conflict_type": "busy_overlap"
+      "conflict_type": "time_overlap"
     }
   ],
   "injection_markers": [],
@@ -78,10 +85,5 @@
     "focus_time",
     "409"
   ],
-  "fixture_content_hash": {
-    "status": "TBD",
-    "proposed_algorithm": "sha256(canonical_json_utf8_sort_keys_no_whitespace_excluding_fixture_content_hash)",
-    "value": "cb343a3ce5f27b41b21fc35ee04e561e51d6004f5e2152b6405d417aa29dd277",
-    "requires_contract_confirmation": true
-  }
+  "fixture_content_hash": "e12e06bc5d2a03b717f3b8be0396b9a9d69a00c38fef7b851eec2d95ce3d1666"
 }

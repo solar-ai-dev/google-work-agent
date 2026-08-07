@@ -1,7 +1,14 @@
 {
   "fixture_snapshot_id": "FIX-008",
-  "fixture_version": "r4-v0.1",
+  "fixture_version": "r4-v1.0",
+  "synthetic": true,
+  "synthetic_generator_version": "r2-final-dataset-builder-v1.0",
+  "dataset_version": "r4-v1.0",
   "fixture_relation_family": "CORE-RF-RECOVERY",
+  "workspace_theme": "응답 유실 복구 점검",
+  "project_name": "Recovery Runbook",
+  "client_name": "Nova Health",
+  "owner_name": "태현",
   "base_time": "2026-08-18T09:00:00+09:00",
   "user_timezone": "Asia/Seoul",
   "work_hours": {
@@ -69,10 +76,5 @@
     "unknown_result_recovery",
     "response_lost"
   ],
-  "fixture_content_hash": {
-    "status": "TBD",
-    "proposed_algorithm": "sha256(canonical_json_utf8_sort_keys_no_whitespace_excluding_fixture_content_hash)",
-    "value": "45207a227152b800caa1cb85cd114dcd8387961214165af6e154f84760e4a972",
-    "requires_contract_confirmation": true
-  }
+  "fixture_content_hash": "3f6e7cf33081853330eea1f4befacae890fb9d47f9aef207b6cfb752b984f3df"
 }

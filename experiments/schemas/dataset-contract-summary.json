@@ -1,5 +1,20 @@
 {
-  "schema_version": "r4-dataset-schema-v0.1",
-  "status": "minimal_field_contract",
-  "source": "docs/13-evaluation-experiment.md"
+  "schema_version": "final-dataset-contract-v1.0",
+  "dataset_version": "r4-v1.0",
+  "status": "explicit_canonical_contract",
+  "canonical_source": "JSONL",
+  "derived_artifacts": [
+    "CSV Index",
+    "Notion Import CSV",
+    "Summary JSON",
+    "Markdown Report"
+  ],
+  "machine_judgement_contract": [
+    "policy_result",
+    "expected_route",
+    "forbidden_actions",
+    "argument_constraints",
+    "verification_expectation",
+    "expected_interrupt"
+  ]
 }

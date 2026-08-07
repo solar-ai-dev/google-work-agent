@@ -1,7 +1,14 @@
 {
   "fixture_snapshot_id": "FIX-006",
-  "fixture_version": "r4-v0.1",
+  "fixture_version": "r4-v1.0",
+  "synthetic": true,
+  "synthetic_generator_version": "r2-final-dataset-builder-v1.0",
+  "dataset_version": "r4-v1.0",
   "fixture_relation_family": "CORE-RF-INJECTION",
+  "workspace_theme": "소스 프롬프트 인젝션 포함 보안 검토",
+  "project_name": "Redwood Security Review",
+  "client_name": "Redwood Systems",
+  "owner_name": "도윤",
   "base_time": "2026-08-16T09:00:00+09:00",
   "user_timezone": "Asia/Seoul",
   "work_hours": {
@@ -74,10 +81,5 @@
     "prompt_injection_marker",
     "external_thread"
   ],
-  "fixture_content_hash": {
-    "status": "TBD",
-    "proposed_algorithm": "sha256(canonical_json_utf8_sort_keys_no_whitespace_excluding_fixture_content_hash)",
-    "value": "c4b2f3b97be4d5c13418bfee494be1fea157717488530d16fbf9d1c4b3f97538",
-    "requires_contract_confirmation": true
-  }
+  "fixture_content_hash": "2024a17cb6be469bc27ff674e7ce6e1697f04ae7319ae0bf6e62b350d94bfada"
 }
