@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from fastapi import Request
 
+from google_work_agent.adapters.runtime import RuntimeOperation
 from google_work_agent.api.errors import ApiError
 from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
 from google_work_agent.ports import AccessDecision, ApiRequestContext, EndpointPolicy
@@ -87,6 +88,22 @@ def enforce_access(
         endpoint_policy=policy,
     )
     _raise_if_denied(decision, request_id)
+
+
+def enforce_runtime_operation(request: Request, *, operation: RuntimeOperation) -> None:
+    container = get_container(request)
+    controller = container.safe_mode_controller
+    if controller is None or controller.allows(operation):
+        return
+    state = controller.snapshot()
+    raise ApiError(
+        error_code="SAFE_MODE",
+        user_message="현재 작업은 Safe Mode에서 허용되지 않습니다.",
+        status_code=409,
+        request_id=get_request_id(request),
+        detail_code="SAFE_MODE_BLOCKED",
+        current_state=",".join(state.reason_codes) if state.reason_codes else "SAFE_MODE",
+    )
 
 
 def _parse_content_length(content_length: str | None) -> int | None:

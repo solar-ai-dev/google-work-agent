@@ -46,6 +46,9 @@ class RuntimeSummary:
     open_run_ids: tuple[str, ...]
     google_connection: dict[str, object] | None = None
     mcp_runtime: dict[str, object] | None = None
+    safe_mode: bool = False
+    safe_mode_reason_codes: tuple[str, ...] = ()
+    allowed_operations: tuple[str, ...] = ()
 
 
 class ReadinessAggregator(Protocol):

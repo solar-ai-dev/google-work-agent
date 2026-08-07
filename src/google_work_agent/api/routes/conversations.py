@@ -4,9 +4,11 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Header, Query, Request, Response, status
 
+from google_work_agent.adapters.runtime import RuntimeOperation
 from google_work_agent.api.dependencies import (
     enforce_access,
     enforce_api_contract_version,
+    enforce_runtime_operation,
     get_container,
 )
 from google_work_agent.api.errors import ApiError, http_status_for_result_code
@@ -35,6 +37,7 @@ def create_conversation(
         request_id=request.state.request_id,
         request_version=payload.api_contract_version,
     )
+    enforce_runtime_operation(request, operation=RuntimeOperation.RUN_COMMANDS)
     result = container.create_conversation_service(
         CreateConversationCommand(**payload.model_dump())
     )

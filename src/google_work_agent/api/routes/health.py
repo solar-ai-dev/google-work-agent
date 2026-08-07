@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Request
 
+from google_work_agent.adapters.readiness.composite import compose_readiness
 from google_work_agent.api.dependencies import enforce_access, get_container
 from google_work_agent.api.schemas.runtime import LiveResponse, ReadyResponse
 from google_work_agent.ports import EndpointPolicy, ReadinessCheckResult, ReadinessState
@@ -52,6 +53,13 @@ def ready(request: Request) -> ReadyResponse:
                 )
             )
             state = ReadinessState.NOT_READY
+    if container.frontend_site is not None:
+        checks.append(container.frontend_site.readiness_check())
+    if container.safe_mode_controller is not None:
+        checks.append(container.safe_mode_controller.readiness_check())
+    for factory in container.additional_readiness_checks:
+        checks.append(factory())
+    state = compose_readiness(tuple(checks)).state
     return ReadyResponse(
         status=state.value,
         checks=[

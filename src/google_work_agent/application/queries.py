@@ -419,6 +419,11 @@ class QueryService:
             deployment_profile=base.deployment_profile,
             recovery_required_run_ids=recovery_required,
             open_run_ids=tuple(run.run_id for run in open_runs),
+            google_connection=base.google_connection,
+            mcp_runtime=base.mcp_runtime,
+            safe_mode=base.safe_mode,
+            safe_mode_reason_codes=base.safe_mode_reason_codes,
+            allowed_operations=base.allowed_operations,
         )
 
     def get_current_google_account(self) -> GoogleAccountRecord | None:

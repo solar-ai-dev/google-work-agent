@@ -26,6 +26,14 @@ def get_runtime(
         request_version=x_api_contract_version,
     )
     summary = container.query_service.get_runtime_summary()
+    safe_mode = summary.safe_mode
+    safe_mode_reason_codes = list(summary.safe_mode_reason_codes)
+    allowed_operations = list(summary.allowed_operations)
+    if container.safe_mode_controller is not None:
+        state = container.safe_mode_controller.snapshot()
+        safe_mode = state.enabled
+        safe_mode_reason_codes = list(state.reason_codes)
+        allowed_operations = [item.value for item in state.allowed_operations]
     return RuntimeSummaryResponse(
         summary={
             "google": summary.google,
@@ -37,6 +45,9 @@ def get_runtime(
             "open_run_ids": list(summary.open_run_ids),
             "google_connection": summary.google_connection,
             "mcp_runtime": summary.mcp_runtime,
+            "safe_mode": safe_mode,
+            "safe_mode_reason_codes": safe_mode_reason_codes,
+            "allowed_operations": allowed_operations,
         },
         api_contract_version=container.api_contract_version,
     )

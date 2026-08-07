@@ -4,9 +4,11 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Header, Request, Response, status
 
+from google_work_agent.adapters.runtime import RuntimeOperation
 from google_work_agent.api.dependencies import (
     enforce_access,
     enforce_api_contract_version,
+    enforce_runtime_operation,
     get_container,
 )
 from google_work_agent.api.errors import ApiError, http_status_for_result_code
@@ -36,6 +38,7 @@ def start_run(
         request_id=request.state.request_id,
         request_version=payload.api_contract_version,
     )
+    enforce_runtime_operation(request, operation=RuntimeOperation.RUN_COMMANDS)
     result = container.start_run_service(StartRunCommand(**payload.model_dump()))
     if result.applied and result.enqueued:
         try:
@@ -112,6 +115,7 @@ def cancel_run(
         request_id=request.state.request_id,
         request_version=payload.api_contract_version,
     )
+    enforce_runtime_operation(request, operation=RuntimeOperation.RUN_COMMANDS)
     from google_work_agent.application.write_actions import RequestRunCancellationCommand
 
     result = container.cancel_run_service(
@@ -151,6 +155,7 @@ def resume_run(
         request_id=request.state.request_id,
         request_version=payload.api_contract_version,
     )
+    enforce_runtime_operation(request, operation=RuntimeOperation.RUN_COMMANDS)
     result = container.resume_run_service(
         ResumeRunCommand(
             command_id=payload.command_id,

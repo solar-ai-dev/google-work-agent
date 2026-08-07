@@ -2,9 +2,11 @@
 
 from fastapi import APIRouter, Request, Response
 
+from google_work_agent.adapters.runtime import RuntimeOperation
 from google_work_agent.api.dependencies import (
     enforce_access,
     enforce_api_contract_version,
+    enforce_runtime_operation,
     get_container,
 )
 from google_work_agent.api.errors import http_status_for_result_code
@@ -35,6 +37,7 @@ def approve(
         request_id=request.state.request_id,
         request_version=payload.api_contract_version,
     )
+    enforce_runtime_operation(request, operation=RuntimeOperation.APPROVALS)
     from google_work_agent.application.write_actions import ApproveWriteActionCommand
 
     result = container.approve_action_service(
@@ -74,6 +77,7 @@ def modify(
         request_id=request.state.request_id,
         request_version=payload.api_contract_version,
     )
+    enforce_runtime_operation(request, operation=RuntimeOperation.APPROVALS)
     result = container.modify_action_service(
         ModifyWriteActionCommand(
             command_id=payload.command_id,
@@ -107,6 +111,7 @@ def reject(
         request_id=request.state.request_id,
         request_version=payload.api_contract_version,
     )
+    enforce_runtime_operation(request, operation=RuntimeOperation.APPROVALS)
     result = container.reject_action_service(
         RejectWriteActionCommand(
             command_id=payload.command_id,
@@ -140,6 +145,7 @@ def prepare_retry(
         request_id=request.state.request_id,
         request_version=payload.api_contract_version,
     )
+    enforce_runtime_operation(request, operation=RuntimeOperation.APPROVALS)
     from google_work_agent.application.write_actions import PrepareWriteRetryCommand
 
     result = container.prepare_retry_service(

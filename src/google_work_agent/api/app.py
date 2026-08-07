@@ -5,11 +5,12 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from google_work_agent.api.errors import ApiError, api_error_from_http, api_error_from_validation
 from google_work_agent.api.routes import (
@@ -23,6 +24,7 @@ from google_work_agent.api.routes import (
     runs,
     runtime,
     session,
+    settings,
 )
 from google_work_agent.api.security import DEFAULT_ENDPOINT_POLICY_REGISTRY, LocalBindPolicy
 from google_work_agent.api.security.body_limit import is_body_too_large
@@ -79,6 +81,15 @@ class ApiContainer:
     get_google_connection_service: Any | None = None
     disconnect_google_service: Any | None = None
     resource_query_service: Any | None = None
+    frontend_site: Any | None = None
+    additional_readiness_checks: tuple[Callable[[], Any], ...] = ()
+    safe_mode_controller: Any | None = None
+    get_settings_service: Any | None = None
+    patch_settings_service: Any | None = None
+    list_backups_service: Any | None = None
+    create_backup_service: Any | None = None
+    create_restore_plan_service: Any | None = None
+    request_shutdown_service: Any | None = None
 
 
 def create_app(container: ApiContainer) -> FastAPI:
@@ -193,6 +204,7 @@ def create_app(container: ApiContainer) -> FastAPI:
     app.include_router(actions.router)
     app.include_router(events.router)
     app.include_router(resources.router)
+    app.include_router(settings.router)
 
     @app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])
     async def reject_unknown_api_path(request: Request, path: str) -> Response:
@@ -208,5 +220,30 @@ def create_app(container: ApiContainer) -> FastAPI:
             request_id=request.state.request_id,
             detail_code="API_ROUTE_NOT_FOUND",
         )
+
+    frontend_site = container.frontend_site
+    if frontend_site is not None:
+
+        @app.get("/{path:path}")
+        async def frontend_entry(path: str) -> Response:
+            if path.startswith("api/") or path.startswith("health/"):
+                return JSONResponse(status_code=404, content={"detail": "not found"})
+            candidate = frontend_site.resolve_asset(path)
+            if candidate is not None and candidate.is_file():
+                response = FileResponse(candidate)
+                if Path(candidate).name == "index.html":
+                    response.headers["Cache-Control"] = "no-cache"
+                else:
+                    response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+                return response
+            if "." not in path and path:
+                response = FileResponse(frontend_site.index_path)
+                response.headers["Cache-Control"] = "no-cache"
+                return response
+            if path == "":
+                response = FileResponse(frontend_site.index_path)
+                response.headers["Cache-Control"] = "no-cache"
+                return response
+            return JSONResponse(status_code=404, content={"detail": "not found"})
 
     return app

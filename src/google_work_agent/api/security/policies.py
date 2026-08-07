@@ -149,6 +149,26 @@ DEFAULT_ENDPOINT_POLICY_REGISTRY = EndpointPolicyRegistry(
             policy=EndpointPolicy.API_SESSION_REQUIRED,
         ),
         EndpointRule.create(
+            methods=("GET", "PATCH"),
+            template="/api/v1/settings",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("GET", "POST"),
+            template="/api/v1/backups",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("POST",),
+            template="/api/v1/restore",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("POST",),
+            template="/api/v1/control/shutdown",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
             methods=("GET",),
             template="/api/v1/resources/gmail",
             policy=EndpointPolicy.API_SESSION_REQUIRED,
