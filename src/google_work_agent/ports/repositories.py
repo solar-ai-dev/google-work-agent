@@ -105,14 +105,33 @@ class RunRepository(Protocol):
     ) -> CommandResult[RunStatus, RunCommand]:
         """Transition a run into CANCELLED."""
 
+    def require_recovery(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        """Transition one non-terminal run into RECOVERY_REQUIRED."""
+
+    def resolve_recovery(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        recovery_next_status: RunStatus,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        """Transition one RECOVERY_REQUIRED run into the resolved recovery status."""
+
     def set_recovery_required(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
-        """Force one run into RECOVERY_REQUIRED and bump its version."""
+        """Move one run into RECOVERY_REQUIRED and bump its version."""
 
     def set_reauth_required(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
         """Force one run into REAUTH_REQUIRED and bump its version."""
 
     def set_verifying(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
-        """Force one run into VERIFYING and bump its version."""
+        """Move one run into VERIFYING and bump its version."""
 
 
 class MessageRepository(Protocol):

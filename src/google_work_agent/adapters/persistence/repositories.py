@@ -391,12 +391,83 @@ class SQLiteRunRepository:
             raise sqlite3.IntegrityError("run cancel finalize affected an unexpected row count")
         return result
 
+    def require_recovery(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = transition_run(
+            current.status,
+            command=RunCommand.REQUIRE_RECOVERY,
+            current_version=current.version,
+            expected_version=expected_version,
+        )
+        if not result.applied:
+            return result
+        self._apply_run_transition(
+            run_id=run_id,
+            previous_version=current.version,
+            status=result.current_status,
+            version=result.current_version,
+            finished_at_ms=finished_at_ms,
+            error_message="run require-recovery affected an unexpected row count",
+        )
+        return result
+
+    def resolve_recovery(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        recovery_next_status: RunStatus,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = transition_run(
+            current.status,
+            command=RunCommand.RESOLVE_RECOVERY,
+            current_version=current.version,
+            expected_version=expected_version,
+            recovery_next_status=recovery_next_status,
+        )
+        if not result.applied:
+            return result
+        self._apply_run_transition(
+            run_id=run_id,
+            previous_version=current.version,
+            status=result.current_status,
+            version=result.current_version,
+            finished_at_ms=finished_at_ms,
+            error_message="run resolve-recovery affected an unexpected row count",
+        )
+        return result
+
     def set_recovery_required(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
-        return self._force_status(
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        if current.status is RunStatus.RECOVERY_REQUIRED:
+            return current
+        result = self.require_recovery(
             run_id,
-            status=RunStatus.RECOVERY_REQUIRED,
+            expected_version=current.version,
             finished_at_ms=finished_at_ms,
         )
+        if not result.applied:
+            raise sqlite3.IntegrityError(
+                f"run require-recovery failed: {result.conflict_detail}"
+            )
+        updated = self.get_by_id(run_id)
+        if updated is None:
+            raise LookupError(f"run not found after recovery update: {run_id}")
+        return updated
 
     def set_reauth_required(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
         return self._force_status(
@@ -406,11 +477,50 @@ class SQLiteRunRepository:
         )
 
     def set_verifying(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        if current.status is RunStatus.RECOVERY_REQUIRED:
+            result = self.resolve_recovery(
+                run_id,
+                expected_version=current.version,
+                recovery_next_status=RunStatus.VERIFYING,
+                finished_at_ms=finished_at_ms,
+            )
+            if not result.applied:
+                raise sqlite3.IntegrityError(
+                    f"run resolve-recovery failed: {result.conflict_detail}"
+                )
+            updated = self.get_by_id(run_id)
+            if updated is None:
+                raise LookupError(f"run not found after recovery resolution: {run_id}")
+            return updated
         return self._force_status(
             run_id,
             status=RunStatus.VERIFYING,
             finished_at_ms=finished_at_ms,
         )
+
+    def _apply_run_transition(
+        self,
+        *,
+        run_id: str,
+        previous_version: int,
+        status: RunStatus,
+        version: int,
+        finished_at_ms: int | None,
+        error_message: str,
+    ) -> None:
+        cursor = self._connection.execute(
+            """
+            UPDATE runs
+            SET status = ?, version = ?, finished_at_ms = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (status.value, version, finished_at_ms, run_id, previous_version),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError(error_message)
 
     def _force_status(
         self,

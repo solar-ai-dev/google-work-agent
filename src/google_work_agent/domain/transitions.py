@@ -94,6 +94,8 @@ def next_allowed_run_commands(current_status: RunStatus) -> tuple[RunCommand, ..
         if (current_status, command) in RUN_TRANSITIONS
         or _is_publish_plan_candidate(current_status, command)
         or _is_cancel_candidate(current_status, command)
+        or _is_require_recovery_candidate(current_status, command)
+        or _is_resolve_recovery_candidate(current_status, command)
     ]
     return tuple(dict.fromkeys(commands))
 
@@ -124,6 +126,7 @@ def transition_run(
     expected_version: int,
     *,
     plan_requires_approval: bool | None = None,
+    recovery_next_status: RunStatus | None = None,
 ) -> CommandResult[RunStatus, RunCommand]:
     """Apply a pure Run status transition with optimistic version checking."""
     if not _is_non_negative_version(current_version):
@@ -144,8 +147,19 @@ def transition_run(
         and plan_requires_approval is None
     ):
         raise InvariantViolationError("plan_requires_approval is required")
+    if (
+        current_status is RunStatus.RECOVERY_REQUIRED
+        and command is RunCommand.RESOLVE_RECOVERY
+        and recovery_next_status is None
+    ):
+        raise InvariantViolationError("recovery_next_status is required")
 
-    next_status = _resolve_run_next_status(current_status, command, plan_requires_approval)
+    next_status = _resolve_run_next_status(
+        current_status,
+        command,
+        plan_requires_approval,
+        recovery_next_status,
+    )
     if next_status is None:
         return _run_failure(
             current_status,
@@ -217,6 +231,7 @@ def _resolve_run_next_status(
     current_status: RunStatus,
     command: RunCommand,
     plan_requires_approval: bool | None,
+    recovery_next_status: RunStatus | None,
 ) -> RunStatus | None:
     if command is RunCommand.PUBLISH_PLAN and current_status is RunStatus.PLANNING:
         if plan_requires_approval is None:
@@ -225,6 +240,18 @@ def _resolve_run_next_status(
 
     if _is_cancel_candidate(current_status, command):
         return RunStatus.CANCEL_REQUESTED
+
+    if _is_require_recovery_candidate(current_status, command):
+        return RunStatus.RECOVERY_REQUIRED
+
+    if command is RunCommand.RESOLVE_RECOVERY and current_status is RunStatus.RECOVERY_REQUIRED:
+        if recovery_next_status in {
+            RunStatus.VERIFYING,
+            RunStatus.FAILED,
+            RunStatus.CANCELLED,
+        }:
+            return recovery_next_status
+        return None
 
     return RUN_TRANSITIONS.get((current_status, command))
 
@@ -286,6 +313,18 @@ def _is_cancel_candidate(current_status: RunStatus, command: RunCommand) -> bool
         and current_status not in RUN_TERMINAL_STATUSES
         and current_status is not RunStatus.CANCEL_REQUESTED
     )
+
+
+def _is_require_recovery_candidate(current_status: RunStatus, command: RunCommand) -> bool:
+    return (
+        command is RunCommand.REQUIRE_RECOVERY
+        and current_status not in RUN_TERMINAL_STATUSES
+        and current_status is not RunStatus.RECOVERY_REQUIRED
+    )
+
+
+def _is_resolve_recovery_candidate(current_status: RunStatus, command: RunCommand) -> bool:
+    return current_status is RunStatus.RECOVERY_REQUIRED and command is RunCommand.RESOLVE_RECOVERY
 
 
 def _is_store_verification_candidate(

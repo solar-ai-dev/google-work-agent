@@ -168,7 +168,9 @@ finalize_cancel
 
 ## 5. Agent 내부 인터페이스
 
-Agent는 Versioned Structured Output만 반환한다.
+Agent는 Versioned Structured Output만 반환한다. 다음 목록은 Structured Output의 타입
+목록이며 Runtime Output Kind Enum이 아니다. `SourceFetchPlan[]`의 `[]`는 목록 타입
+표기이고 문자열 enum 값이 아니다.
 
 ```text
 RequestIntent
@@ -187,6 +189,49 @@ RoutingDecision
 - 실제 Query·Page Token·MCP Arguments는 결정적 Query Builder가 확정한다.
 - Context Retriever Agent는 MCP·Google API를 직접 호출하지 않는다.
 - Agent 간 대용량 원문 전달 대신 Cache Handle·Resource·Evidence·Segment ID를 사용한다.
+
+### 5.1 Request Understanding 내부 계약
+
+Request Understanding Node의 입력 경계는 `WorkflowStartRequest`다.
+
+```text
+run_id
+conversation_id
+workflow_key
+entry_mode
+requested_mode
+request_text
+selected_resource_ids
+correlation
+```
+
+별도 `RequestUnderstandingInput` DTO는 현재 만들지 않는다. Node는 위 값을
+`prompt_input`으로 투영하고 `LLMRuntimeService.invoke_structured(...)`를 호출한다.
+
+출력은 다음 envelope를 사용한다.
+
+```yaml
+schema_version: 1
+result: COMPLETE | NEEDS_CONFIRMATION | INVALID
+request_intent: RequestIntentV1 | null
+clarification: ClarificationQuestionV1 | null
+failure: RequestUnderstandingFailureV1 | null
+validator_codes: [string]
+```
+
+`RequestIntentV1`은 목표, 완료 조건, semantic constraints, ambiguity, unsupported scope만
+담는다. Google Query, Google Resource ID, Page Token, MCP Arguments는 담지 않는다.
+`selected_resource_ids`와 `entry_mode`는 Runtime 입력·Graph context로 유지하고
+`RequestIntentV1`에 중복 저장하지 않는다.
+
+결정 책임:
+
+- LLM: `RequestIntentV1` 후보 생성
+- 일반 코드: schema validation, semantic validation, `COMPLETE | NEEDS_CONFIRMATION | INVALID` 결정
+- Acquisition·Query Builder: Source-native query, date range, page token, Google 후보 ambiguity 처리
+
+`NEEDS_CONFIRMATION`은 사용자 문장 자체가 불충분할 때만 사용한다. Google 조회 결과의
+동명이인·복수 후보는 Acquisition/Retrieval ambiguity다.
 
 ## 6. MCP 연결
 
@@ -420,10 +465,24 @@ Stack Trace·SQL·Secret은 Frontend에 반환하지 않는다.
 
 ## 18. LLM Provider Adapter
 
-공통 인터페이스:
+Runtime Source of Truth:
+
+- Application service: `src/google_work_agent/application/llm.py`의
+  `LLMRuntimeService.invoke_structured(...)`
+- Provider port: `src/google_work_agent/ports/llm.py`의 `StructuredLLMProvider`
+- Prompt runtime value: `src/google_work_agent/ports/llm.py`의 `PromptReference`
+- Result value: `src/google_work_agent/ports/llm.py`의 `StructuredLLMResult`
+
+Application service 인터페이스:
 
 ```text
-invoke_structured(prompt_ref, input, output_schema, runtime_policy, trace_context)
+invoke_structured(prompt_ref, prompt_input, output_schema, trace_context)
+```
+
+Provider port 인터페이스:
+
+```text
+invoke_structured(prompt_ref, prompt_input, output_schema, runtime_policy, api_key)
 ```
 
 반환:
@@ -432,17 +491,26 @@ invoke_structured(prompt_ref, input, output_schema, runtime_policy, trace_contex
 structured_output
 provider
 model
+requested_mode
 actual_runtime
 input_tokens
 output_tokens
+total_tokens
 latency_ms
+estimated_cost_usd?
 fallback_reason?
+structured_output_attempts
+provider_request_id?
+safe_error_code?
 ```
 
 - `API_ONLY`: API Provider만 활성화한다.
 - `LOCAL_CAPABLE`: API Provider와 Ollama Adapter를 포함한다.
 - 명시적 `LOCAL_GPU` 실패 시 자동 API 전환을 금지한다.
 - `AUTO`는 기술적 실패에서 API fallback 최대 1회다.
+- Schema JSON 오류, required field 누락, type 오류, enum 오류는 Request Understanding
+  `INVALID`가 아니라 structured output schema failure다.
+- 현재 RuntimePolicy의 structured output repair budget은 최대 1회다.
 
 ## 19. 08 제공 계약
 
@@ -475,8 +543,10 @@ fallback_reason?
 
 - 인증 전 최소 상태: `GET /health/live`, `GET /health/ready`
 - Local Session 이후 상세 Runtime: `GET /api/v1/runtime`
-- LLM Adapter: `invoke_structured(prompt_ref, input, output_schema, runtime_policy, trace_context)`
-- PromptRef는 Bundle·ID·Version·Hash·Agent·Subgraph·Node·State·Purpose·Schema Version을 포함한다.
+- LLM Application Service: `invoke_structured(prompt_ref, prompt_input, output_schema, trace_context)`
+- LLM Provider Port: `invoke_structured(prompt_ref, prompt_input, output_schema, runtime_policy, api_key)`
+- Runtime `PromptReference`는 Bundle·ID·Version·Hash·Agent·Subgraph·Node·State·Purpose·Schema Version을 포함한다.
+- `prompt_slot_id`, `failure_reason_code`, `activation_status`는 Prompt Registry·Manifest metadata이며 Runtime `PromptReference` 필드가 아니다.
 - Prompt 원문은 Trace·Audit·Error Response에 포함하지 않는다.
 
 
