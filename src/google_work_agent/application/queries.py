@@ -421,6 +421,7 @@ class QueryService:
             open_run_ids=tuple(run.run_id for run in open_runs),
             google_connection=base.google_connection,
             mcp_runtime=base.mcp_runtime,
+            llm=base.llm,
             safe_mode=base.safe_mode,
             safe_mode_reason_codes=base.safe_mode_reason_codes,
             allowed_operations=base.allowed_operations,

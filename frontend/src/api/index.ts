@@ -7,6 +7,8 @@ import {
   type GoogleConnectionResponse,
   type GoogleOAuthStartResponse,
   type LatestConversationRunResponse,
+  type LLMApiKeyResponse,
+  type LLMConnectionResponse,
   type LiveResponse,
   type ReadyResponse,
   type ResourceListResponse,
@@ -14,6 +16,7 @@ import {
   type RunContextResponse,
   type RunSnapshotResponse,
   type RuntimeResponse,
+  type SettingsResponse,
   type StartRunResponse,
 } from "./contract";
 import { requestJson } from "./client";
@@ -38,6 +41,45 @@ export function bootstrapSession(payload: {
 
 export function getRuntime(): Promise<RuntimeResponse> {
   return requestJson("/api/v1/runtime");
+}
+
+export function getSettings(): Promise<SettingsResponse> {
+  return requestJson("/api/v1/settings");
+}
+
+export function patchSettings(payload: {
+  command_id: string;
+  requested_runtime_mode?: string;
+  external_llm_consent?: boolean;
+  ollama_endpoint?: string | null;
+  approved_model_id?: string | null;
+}): Promise<SettingsResponse> {
+  return requestJson("/api/v1/settings", {
+    method: "PATCH",
+    body: { ...payload, api_contract_version: API_CONTRACT_VERSION },
+  });
+}
+
+export function getLLMConnection(): Promise<LLMConnectionResponse> {
+  return requestJson("/api/v1/llm/connection");
+}
+
+export function storeLLMApiKey(payload: {
+  api_key: string;
+  storage_mode: "KEYRING" | "SESSION_MEMORY";
+}): Promise<LLMApiKeyResponse> {
+  return requestJson("/api/v1/llm/api-key", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function deleteLLMApiKey(): Promise<LLMApiKeyResponse> {
+  return requestJson("/api/v1/llm/api-key", { method: "DELETE" });
+}
+
+export function testLLMConnection(): Promise<LLMConnectionResponse> {
+  return requestJson("/api/v1/llm/test", { method: "POST", body: {} });
 }
 
 export function getGoogleConnection(): Promise<GoogleConnectionResponse> {

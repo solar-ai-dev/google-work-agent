@@ -13,7 +13,7 @@ describe("api index wrappers", () => {
     const cases: Array<{
       call: () => Promise<unknown>;
       path: string;
-      method: "GET" | "POST";
+      method: "GET" | "POST" | "PATCH" | "DELETE";
       bodyIncludes?: Record<string, unknown>;
     }> = [
       { call: () => api.getLive(), path: "/health/live", method: "GET" },
@@ -29,6 +29,31 @@ describe("api index wrappers", () => {
         bodyIncludes: { bootstrap_secret: "secret-1", service_instance_id: "svc-1" },
       },
       { call: () => api.getRuntime(), path: "/api/v1/runtime", method: "GET" },
+      { call: () => api.getSettings(), path: "/api/v1/settings", method: "GET" },
+      { call: () => api.getLLMConnection(), path: "/api/v1/llm/connection", method: "GET" },
+      {
+        call: () =>
+          api.patchSettings({
+            command_id: "settings-1",
+            requested_runtime_mode: "AUTO",
+            external_llm_consent: true,
+          }),
+        path: "/api/v1/settings",
+        method: "PATCH",
+        bodyIncludes: { command_id: "settings-1", requested_runtime_mode: "AUTO" },
+      },
+      {
+        call: () =>
+          api.storeLLMApiKey({
+            api_key: "sk-test",
+            storage_mode: "KEYRING",
+          }),
+        path: "/api/v1/llm/api-key",
+        method: "POST",
+        bodyIncludes: { api_key: "sk-test", storage_mode: "KEYRING" },
+      },
+      { call: () => api.deleteLLMApiKey(), path: "/api/v1/llm/api-key", method: "DELETE" },
+      { call: () => api.testLLMConnection(), path: "/api/v1/llm/test", method: "POST" },
       { call: () => api.getGoogleConnection(), path: "/api/v1/google/connection", method: "GET" },
       { call: () => api.startGoogleOAuth(), path: "/api/v1/google/oauth/start", method: "POST" },
       { call: () => api.disconnectGoogle(), path: "/api/v1/google/disconnect", method: "POST" },

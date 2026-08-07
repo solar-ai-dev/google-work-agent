@@ -13,7 +13,7 @@ export class ApiClientError extends Error {
 }
 
 type RequestOptions = {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
 };
 

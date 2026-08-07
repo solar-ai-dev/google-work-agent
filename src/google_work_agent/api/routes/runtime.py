@@ -45,6 +45,7 @@ def get_runtime(
             "open_run_ids": list(summary.open_run_ids),
             "google_connection": summary.google_connection,
             "mcp_runtime": summary.mcp_runtime,
+            "llm": summary.llm,
             "safe_mode": safe_mode,
             "safe_mode_reason_codes": safe_mode_reason_codes,
             "allowed_operations": allowed_operations,

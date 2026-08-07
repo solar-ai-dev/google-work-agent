@@ -48,10 +48,29 @@ export type RuntimeSummary = {
   open_run_ids: string[];
   google_connection?: Record<string, unknown> | null;
   mcp_runtime?: Record<string, unknown> | null;
+  llm?: Record<string, unknown> | null;
+  safe_mode?: boolean;
+  safe_mode_reason_codes?: string[];
+  allowed_operations?: string[];
 };
 
 export type RuntimeResponse = {
   summary: RuntimeSummary;
+  api_contract_version: string;
+};
+
+export type SettingsResponse = {
+  settings: Record<string, unknown>;
+  api_contract_version: string;
+};
+
+export type LLMConnectionResponse = {
+  llm: Record<string, unknown>;
+  api_contract_version: string;
+};
+
+export type LLMApiKeyResponse = {
+  credential_state: string;
   api_contract_version: string;
 };
 

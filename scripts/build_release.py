@@ -93,9 +93,14 @@ def build_release_from(
     )
     (layout.schemas_dir / "placeholder.json").write_text("{}", encoding="utf-8")
     (layout.runtime_dir / f"profile-{profile.value.lower()}.json").write_text(
-        json.dumps({"profile": profile.value}, ensure_ascii=False),
+        json.dumps(_runtime_profile_payload(profile), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    if profile is BuildProfile.LOCAL_CAPABLE:
+        (layout.runtime_dir / "approved-models.json").write_text(
+            json.dumps(_approved_models_payload(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
     service_script = layout.service_dir / "google_work_agent_service.py"
     mcp_script = layout.mcp_dir / "google_work_agent_mcp.py"
     launcher_script = layout.launcher_dir / "google_work_agent_launcher.pyw"
@@ -179,6 +184,36 @@ def _iter_files(root: Path) -> list[Path]:
         for path in root.rglob("*")
         if path.is_file() and not _skip_path(path.relative_to(root))
     ]
+
+
+def _runtime_profile_payload(profile: BuildProfile) -> dict[str, object]:
+    if profile is BuildProfile.API_ONLY:
+        return {
+            "profile": profile.value,
+            "available_runtime_modes": ["API_LLM"],
+            "local_runtime_enabled": False,
+            "approved_model_manifest": None,
+        }
+    return {
+        "profile": profile.value,
+        "available_runtime_modes": ["API_LLM", "LOCAL_GPU", "AUTO"],
+        "local_runtime_enabled": True,
+        "approved_model_manifest": "runtime/approved-models.json",
+    }
+
+
+def _approved_models_payload() -> dict[str, object]:
+    return {
+        "schema_version": "1",
+        "models": [
+            {
+                "model_id": "approved-model",
+                "runtime": "OLLAMA",
+                "manifest_version": "1",
+                "minimum_runtime_version": "0.1.0",
+            }
+        ],
+    }
 
 
 def _service_entrypoint() -> str:

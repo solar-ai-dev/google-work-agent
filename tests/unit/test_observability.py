@@ -38,6 +38,20 @@ def test_sanitize_event_attributes_removes_forbidden_keys_and_redacts_patterns()
     assert sanitized.removed_fields
 
 
+def test_sanitize_event_attributes_redacts_llm_canaries() -> None:
+    sanitized = sanitize_event_attributes(
+        {
+            "note": "contains canary_llm_api_key value",
+            "context_preview": "canary_context should never persist",
+            "completion_preview": "canary_completion should never persist",
+        }
+    )
+
+    assert sanitized.values["note"] == "<redacted>"
+    assert sanitized.values["context_preview"] == "<redacted>"
+    assert sanitized.values["completion_preview"] == "<redacted>"
+
+
 def test_create_event_envelope_rejects_negative_time() -> None:
     with pytest.raises(EventValidationError):
         create_event_envelope(

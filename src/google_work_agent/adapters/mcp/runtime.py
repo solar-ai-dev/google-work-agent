@@ -19,6 +19,7 @@ class MCPRuntimeStatusProvider(RuntimeStatusProvider):
     api_llm: str
     ollama: str
     deployment_profile: str
+    llm: dict[str, object] | None = None
 
     def get_summary(self) -> RuntimeSummary:
         connection = self.google_provider.get_connection_status()
@@ -36,4 +37,5 @@ class MCPRuntimeStatusProvider(RuntimeStatusProvider):
             open_run_ids=(),
             google_connection=asdict(connection),
             mcp_runtime=asdict(runtime),
+            llm=self.llm,
         )

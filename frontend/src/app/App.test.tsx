@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+﻿import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App";
@@ -127,7 +127,7 @@ test("boots from fragment and clears the bootstrap secret", async () => {
 
   render(<App />);
 
-  await screen.findByText("Google 연결됨");
+  await screen.findByText(/Google/);
   expect(window.location.hash).toBe("");
   expect(document.body.textContent).not.toContain("secret-1");
 });
@@ -414,6 +414,12 @@ test("starts Google OAuth from settings when disconnected", async () => {
         account_email: null,
       });
     }
+    if (path === "/api/v1/settings") {
+      return jsonResponse({ settings: settingsPayload(), api_contract_version: "1" });
+    }
+    if (path === "/api/v1/llm/connection") {
+      return jsonResponse({ llm: llmConnectionPayload(), api_contract_version: "1" });
+    }
     if (path === "/api/v1/identity/google-account") {
       return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
     }
@@ -440,7 +446,7 @@ test("starts Google OAuth from settings when disconnected", async () => {
   const user = userEvent.setup();
   render(<App />);
 
-  await screen.findByText("Google 미연결");
+  await screen.findByText(/Google/);
   await user.click(screen.getByRole("button", { name: "설정" }));
   await user.click(screen.getByRole("button", { name: "Google 로그인" }));
 
@@ -481,6 +487,12 @@ test("disconnects Google and refreshes the runtime summary", async () => {
             }
           : googleConnection(),
       );
+    }
+    if (path === "/api/v1/settings") {
+      return jsonResponse({ settings: settingsPayload(), api_contract_version: "1" });
+    }
+    if (path === "/api/v1/llm/connection") {
+      return jsonResponse({ llm: llmConnectionPayload(), api_contract_version: "1" });
     }
     if (path === "/api/v1/identity/google-account") {
       return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
@@ -688,6 +700,154 @@ test("opens only safe Google links from resource items", async () => {
   );
 });
 
+test("saves llm settings and stores, tests, then deletes the api key", async () => {
+  let requestedRuntimeMode = "API_LLM";
+  let externalLLMConsent = false;
+  let credentialState = "MISSING";
+  installFetch((path, init) => {
+    if (path === "/health/live") {
+      return jsonResponse(liveResponse());
+    }
+    if (path === "/health/ready") {
+      return jsonResponse(readyResponse());
+    }
+    if (path === "/api/v1/runtime") {
+      return jsonResponse({
+        summary: runtimeSummary([], {
+          llm: llmConnectionPayload({
+            requested_mode: requestedRuntimeMode,
+            external_llm_consent: externalLLMConsent,
+            api_provider: {
+              credential_state: credentialState,
+              availability: credentialState === "MISSING" ? "NOT_CONFIGURED" : "AVAILABLE",
+              last_probe: 1,
+              safe_error_code: null,
+            },
+          }),
+        }),
+        api_contract_version: "1",
+      });
+    }
+    if (path === "/api/v1/google/connection") {
+      return jsonResponse(googleConnection());
+    }
+    if (path === "/api/v1/settings" && (!init || init.method === "GET")) {
+      return jsonResponse({
+        settings: settingsPayload({
+          requested_runtime_mode: requestedRuntimeMode,
+          external_llm_consent: externalLLMConsent,
+        }),
+        api_contract_version: "1",
+      });
+    }
+    if (path === "/api/v1/llm/connection" && (!init || init.method === "GET")) {
+      return jsonResponse({
+        llm: llmConnectionPayload({
+          requested_mode: requestedRuntimeMode,
+          external_llm_consent: externalLLMConsent,
+          api_provider: {
+            credential_state: credentialState,
+            availability: credentialState === "MISSING" ? "NOT_CONFIGURED" : "AVAILABLE",
+            last_probe: 1,
+            safe_error_code: null,
+          },
+        }),
+        api_contract_version: "1",
+      });
+    }
+    if (path === "/api/v1/identity/google-account") {
+      return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
+    }
+    if (path.startsWith("/api/v1/conversations?")) {
+      return jsonResponse({ items: [], next_cursor: null, api_contract_version: "1" });
+    }
+    if (path.startsWith("/api/v1/resources/gmail")) {
+      return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
+    }
+    if (path === "/api/v1/settings" && init?.method === "PATCH") {
+      const body = JSON.parse(String(init.body)) as {
+        requested_runtime_mode: string;
+        external_llm_consent: boolean;
+      };
+      requestedRuntimeMode = body.requested_runtime_mode;
+      externalLLMConsent = body.external_llm_consent;
+      return jsonResponse({
+        settings: settingsPayload({
+          requested_runtime_mode: requestedRuntimeMode,
+          external_llm_consent: externalLLMConsent,
+        }),
+        api_contract_version: "1",
+      });
+    }
+    if (path === "/api/v1/llm/api-key" && init?.method === "POST") {
+      credentialState = "AVAILABLE";
+      return jsonResponse({ credential_state: credentialState, api_contract_version: "1" });
+    }
+    if (path === "/api/v1/llm/test" && init?.method === "POST") {
+      return jsonResponse({
+        llm: llmConnectionPayload({
+          requested_mode: requestedRuntimeMode,
+          external_llm_consent: externalLLMConsent,
+          api_provider: {
+            credential_state: credentialState,
+            availability: "AVAILABLE",
+            last_probe: 2,
+            safe_error_code: null,
+          },
+        }),
+        api_contract_version: "1",
+      });
+    }
+    if (path === "/api/v1/llm/api-key" && init?.method === "DELETE") {
+      credentialState = "MISSING";
+      return jsonResponse({ credential_state: credentialState, api_contract_version: "1" });
+    }
+    throw new Error(`Unhandled path ${path}`);
+  });
+
+  const user = userEvent.setup();
+  render(<App />);
+
+  await screen.findByText(/Google/);
+  await user.click(screen.getByRole("button", { name: "설정" }));
+  await screen.findByText("Requested mode");
+  await user.selectOptions(screen.getByDisplayValue("API_LLM"), "AUTO");
+  await user.click(screen.getByRole("checkbox"));
+  await user.click(screen.getByRole("button", { name: "LLM 설정 저장" }));
+  await waitFor(() =>
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/v1/settings",
+      expect.objectContaining({ method: "PATCH" }),
+    ),
+  );
+
+  await user.selectOptions(screen.getByDisplayValue("KEYRING"), "SESSION_MEMORY");
+  await user.type(screen.getByPlaceholderText("sk-..."), "sk-phase-m");
+  await user.click(screen.getByRole("button", { name: "API 키 저장" }));
+  await waitFor(() =>
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/v1/llm/api-key",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+
+  await user.click(screen.getByRole("button", { name: "연결 테스트" }));
+  await waitFor(() =>
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/v1/llm/test",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+
+  await user.click(screen.getByRole("button", { name: "API 키 삭제" }));
+  await waitFor(() =>
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/v1/llm/api-key",
+      expect.objectContaining({ method: "DELETE" }),
+    ),
+  );
+});
+
 function installFetch(handler: (path: string, init?: RequestInit) => MockResponse): void {
   globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
     const response = handler(String(input), init);
@@ -725,7 +885,7 @@ function readyResponse() {
   };
 }
 
-function runtimeSummary(openRunIds: string[]) {
+function runtimeSummary(openRunIds: string[], overrides: Record<string, unknown> = {}) {
   return {
     google: "CONNECTED",
     mcp: "READY",
@@ -734,6 +894,63 @@ function runtimeSummary(openRunIds: string[]) {
     deployment_profile: "test",
     recovery_required_run_ids: [],
     open_run_ids: openRunIds,
+    ...overrides,
+  };
+}
+
+function settingsPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    config_schema_version: 1,
+    deployment_profile: "LOCAL_CAPABLE",
+    requested_runtime_mode: "API_LLM",
+    default_calendar_id: null,
+    default_tasklist_id: null,
+    timezone: "Asia/Seoul",
+    work_hours: { days: [0, 1, 2, 3, 4], start: "09:00", end: "18:00" },
+    approval_ttl_minutes: 30,
+    run_retention_days: 30,
+    external_llm_consent: false,
+    ollama_endpoint: "http://127.0.0.1:11434",
+    approved_model_id: "approved-model",
+    log_level: "INFO",
+    ...overrides,
+  };
+}
+
+function llmConnectionPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    build_profile: "LOCAL_CAPABLE",
+    requested_mode: "API_LLM",
+    available_modes: ["API_LLM", "LOCAL_GPU", "AUTO"],
+    actual_runtime: null,
+    external_llm_consent: false,
+    api_provider: {
+      credential_state: "MISSING",
+      availability: "NOT_CONFIGURED",
+      last_probe: 1,
+      safe_error_code: null,
+    },
+    ollama: {
+      visible: true,
+      availability: "AVAILABLE",
+      version: "0.3.0",
+      endpoint_state: "CONFIGURED",
+      approved_model_state: "APPROVED",
+      hardware_capability: {
+        cpu_arch: "x86_64",
+        core_summary: "8",
+        memory_bytes: 17179869184,
+        gpu_present: true,
+        gpu_vendor: "NVIDIA",
+        gpu_name: "Test GPU",
+        gpu_memory_bytes: 8589934592,
+        capability_status: "VALIDATED",
+        safe_reason_codes: [],
+      },
+      last_probe: 1,
+      safe_error_code: null,
+    },
+    ...overrides,
   };
 }
 
@@ -812,3 +1029,4 @@ function defaultSnapshot(): SnapshotShape {
     snapshot_version: 1,
   };
 }
+

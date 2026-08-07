@@ -9,6 +9,13 @@ from tests.support.fakes.google_gateway import (
 )
 from tests.support.fakes.identity import DeterministicUUID
 from tests.support.fakes.keyring import FakeKeyring
+from tests.support.fakes.llm import (
+    FakeAPIProviderTransport,
+    FakeHardwareProbe,
+    FakeOllamaTransport,
+    FakeSchemaRepairer,
+    approved_model,
+)
 from tests.support.fakes.mcp_transport import (
     FakeMCPTransport,
     MCPCallRecord,
@@ -30,7 +37,11 @@ __all__ = [
     "DeterministicUUID",
     "FakeClock",
     "FakeGoogleGateway",
+    "FakeHardwareProbe",
     "FakeKeyring",
+    "FakeOllamaTransport",
+    "FakeSchemaRepairer",
+    "FakeAPIProviderTransport",
     "FakeMCPTransport",
     "FakeWorkflowRuntime",
     "FaultInjectingSQLiteError",
@@ -43,5 +54,6 @@ __all__ = [
     "SQLiteFaultStage",
     "WorkflowCallRecord",
     "WorkflowFailure",
+    "approved_model",
     "fault_injecting_unit_of_work_factory",
 ]

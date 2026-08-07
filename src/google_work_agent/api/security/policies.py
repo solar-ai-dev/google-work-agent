@@ -170,6 +170,26 @@ DEFAULT_ENDPOINT_POLICY_REGISTRY = EndpointPolicyRegistry(
         ),
         EndpointRule.create(
             methods=("GET",),
+            template="/api/v1/llm/connection",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("POST",),
+            template="/api/v1/llm/api-key",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("DELETE",),
+            template="/api/v1/llm/api-key",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("POST",),
+            template="/api/v1/llm/test",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("GET",),
             template="/api/v1/resources/gmail",
             policy=EndpointPolicy.API_SESSION_REQUIRED,
         ),

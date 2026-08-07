@@ -4,25 +4,31 @@ import {
   bootstrapSession,
   cancelRun,
   createConversation,
+  deleteLLMApiKey,
   disconnectGoogle,
   getCurrentAccount,
   getGoogleConnection,
+  getLLMConnection,
   getLatestConversationRun,
   getLive,
   getReady,
   getRunContext,
   getRunSnapshot,
   getRuntime,
+  getSettings,
   listCalendarResources,
   listConversations,
   listGmailResources,
   listTaskResources,
   modifyAction,
+  patchSettings,
   prepareRetry,
   rejectAction,
   resumeRun,
   startGoogleOAuth,
   startRun,
+  storeLLMApiKey,
+  testLLMConnection,
 } from "../api";
 import type {
   ConversationItem,
@@ -98,6 +104,12 @@ export function App(): JSX.Element {
   const refreshConversations = useCallback(async (accountId: string): Promise<void> => {
     const response = await listConversations(accountId);
     setConversations(response.items);
+  }, []);
+
+  const refreshRuntimeSummary = useCallback(async (): Promise<void> => {
+    const [runtimeResponse, googleResponse] = await Promise.all([getRuntime(), getGoogleConnection()]);
+    setRuntime(runtimeResponse.summary);
+    setGoogle(googleResponse);
   }, []);
 
   const selectRun = useCallback(async (runId: string): Promise<void> => {
@@ -423,8 +435,7 @@ export function App(): JSX.Element {
     await disconnectGoogle();
     resourceCache.clear();
     setResourceState((current) => ({ ...current, items: [], nextPageToken: null, selectedIds: [] }));
-    setGoogle(await getGoogleConnection());
-    setRuntime((await getRuntime()).summary);
+    await refreshRuntimeSummary();
   }
 
   if (startup.status !== "ready") {
@@ -453,14 +464,15 @@ export function App(): JSX.Element {
           </div>
         </section>
         {settingsOpen ? (
-          <SettingsDrawer
-            runtime={runtime}
-            google={google}
-            theme={theme}
-            onThemeChange={setTheme}
-            onClose={() => setSettingsOpen(false)}
-            onDisconnect={handleGoogleDisconnect}
-          />
+        <SettingsDrawer
+          runtime={runtime}
+          google={google}
+          theme={theme}
+          onThemeChange={setTheme}
+          onClose={() => setSettingsOpen(false)}
+          onDisconnect={handleGoogleDisconnect}
+          onRuntimeRefresh={refreshRuntimeSummary}
+        />
         ) : null}
       </main>
     );
@@ -753,6 +765,7 @@ export function App(): JSX.Element {
           onClose={() => setSettingsOpen(false)}
           onConnect={handleGoogleConnect}
           onDisconnect={handleGoogleDisconnect}
+          onRuntimeRefresh={refreshRuntimeSummary}
         />
       ) : null}
     </div>
@@ -767,7 +780,109 @@ function SettingsDrawer(props: {
   onClose: () => void;
   onConnect?: () => void;
   onDisconnect: () => void;
+  onRuntimeRefresh: () => Promise<void>;
 }): JSX.Element {
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [settingsSavedMessage, setSettingsSavedMessage] = useState<string | null>(null);
+  const [requestedRuntimeMode, setRequestedRuntimeMode] = useState("API_LLM");
+  const [externalLLMConsent, setExternalLLMConsent] = useState(false);
+  const [ollamaEndpoint, setOllamaEndpoint] = useState("");
+  const [approvedModelId, setApprovedModelId] = useState("");
+  const [llmState, setLLMState] = useState<Record<string, unknown> | null>(null);
+  const [llmStatusMessage, setLLMStatusMessage] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [storageMode, setStorageMode] = useState<"KEYRING" | "SESSION_MEMORY">("KEYRING");
+
+  const loadRuntimeSettings = useCallback(async (): Promise<void> => {
+    setSettingsLoading(true);
+    setSettingsError(null);
+    try {
+      const [settingsResponse, llmResponse] = await Promise.all([getSettings(), getLLMConnection()]);
+      const settings = asRecord(settingsResponse.settings);
+      setRequestedRuntimeMode(String(settings.requested_runtime_mode ?? "API_LLM"));
+      setExternalLLMConsent(Boolean(settings.external_llm_consent));
+      setOllamaEndpoint(String(settings.ollama_endpoint ?? ""));
+      setApprovedModelId(String(settings.approved_model_id ?? ""));
+      setLLMState(asRecord(llmResponse.llm));
+    } catch (error) {
+      setSettingsError(
+        error instanceof ApiClientError ? error.message : "설정 정보를 불러오지 못했습니다.",
+      );
+    } finally {
+      setSettingsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRuntimeSettings();
+  }, [loadRuntimeSettings]);
+
+  const llmSummary = useMemo(() => readLLMState(props.runtime?.llm), [props.runtime?.llm]);
+  const connectionSummary = useMemo(() => readLLMState(llmState), [llmState]);
+
+  async function handleSaveLLMSettings(): Promise<void> {
+    setSettingsSavedMessage(null);
+    setSettingsError(null);
+    try {
+      await patchSettings({
+        command_id: `settings-${Date.now()}`,
+        requested_runtime_mode: requestedRuntimeMode,
+        external_llm_consent: externalLLMConsent,
+        ollama_endpoint: ollamaEndpoint.trim() || null,
+        approved_model_id: approvedModelId.trim() || null,
+      });
+      await Promise.all([props.onRuntimeRefresh(), loadRuntimeSettings()]);
+      setSettingsSavedMessage("LLM 설정을 저장했습니다.");
+    } catch (error) {
+      setSettingsError(error instanceof ApiClientError ? error.message : "설정을 저장하지 못했습니다.");
+    }
+  }
+
+  async function handleStoreLLMApiKey(): Promise<void> {
+    setLLMStatusMessage(null);
+    setSettingsError(null);
+    try {
+      await storeLLMApiKey({ api_key: apiKey, storage_mode: storageMode });
+      setApiKey("");
+      await Promise.all([props.onRuntimeRefresh(), loadRuntimeSettings()]);
+      setLLMStatusMessage("API 키를 저장했습니다.");
+    } catch (error) {
+      setSettingsError(
+        error instanceof ApiClientError ? error.message : "API 키를 저장하지 못했습니다.",
+      );
+    }
+  }
+
+  async function handleDeleteLLMApiKey(): Promise<void> {
+    setLLMStatusMessage(null);
+    setSettingsError(null);
+    try {
+      await deleteLLMApiKey();
+      await Promise.all([props.onRuntimeRefresh(), loadRuntimeSettings()]);
+      setLLMStatusMessage("API 키를 삭제했습니다.");
+    } catch (error) {
+      setSettingsError(
+        error instanceof ApiClientError ? error.message : "API 키를 삭제하지 못했습니다.",
+      );
+    }
+  }
+
+  async function handleTestLLMConnection(): Promise<void> {
+    setLLMStatusMessage(null);
+    setSettingsError(null);
+    try {
+      const response = await testLLMConnection();
+      setLLMState(asRecord(response.llm));
+      await props.onRuntimeRefresh();
+      setLLMStatusMessage("LLM 연결 상태를 다시 확인했습니다.");
+    } catch (error) {
+      setSettingsError(
+        error instanceof ApiClientError ? error.message : "LLM 연결 테스트에 실패했습니다.",
+      );
+    }
+  }
+
   return (
     <aside className="drawer" aria-label="설정 및 진단">
       <div className="panel-header">
@@ -814,6 +929,109 @@ function SettingsDrawer(props: {
           <div className="muted">API LLM {props.runtime?.api_llm ?? "-"}</div>
           <div className="muted">Ollama {props.runtime?.ollama ?? "-"}</div>
         </section>
+        <section className="info-card">
+          <strong>LLM</strong>
+          {settingsLoading ? <p className="muted">설정을 불러오는 중입니다.</p> : null}
+          {settingsError ? <p className="status-warn">{settingsError}</p> : null}
+          {settingsSavedMessage ? <p className="muted">{settingsSavedMessage}</p> : null}
+          {llmStatusMessage ? <p className="muted">{llmStatusMessage}</p> : null}
+          <label style={{ display: "grid", gap: "0.35rem" }}>
+            <span className="muted">Requested mode</span>
+            <select
+              value={requestedRuntimeMode}
+              onChange={(event) => setRequestedRuntimeMode(event.target.value)}
+              disabled={settingsLoading}
+            >
+              <option value="API_LLM">API_LLM</option>
+              <option value="AUTO">AUTO</option>
+              <option value="LOCAL_GPU">LOCAL_GPU</option>
+            </select>
+          </label>
+          <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.75rem" }}>
+            <input
+              type="checkbox"
+              checked={externalLLMConsent}
+              onChange={(event) => setExternalLLMConsent(event.target.checked)}
+              disabled={settingsLoading}
+            />
+            <span>외부 LLM 사용 동의</span>
+          </label>
+          <label style={{ display: "grid", gap: "0.35rem", marginTop: "0.75rem" }}>
+            <span className="muted">Ollama endpoint</span>
+            <input
+              value={ollamaEndpoint}
+              onChange={(event) => setOllamaEndpoint(event.target.value)}
+              placeholder="http://127.0.0.1:11434"
+              disabled={settingsLoading}
+            />
+          </label>
+          <label style={{ display: "grid", gap: "0.35rem", marginTop: "0.75rem" }}>
+            <span className="muted">Approved model id</span>
+            <input
+              value={approvedModelId}
+              onChange={(event) => setApprovedModelId(event.target.value)}
+              placeholder="approved-model"
+              disabled={settingsLoading}
+            />
+          </label>
+          <div className="button-row" style={{ marginTop: "0.75rem" }}>
+            <button className="button-primary" type="button" onClick={() => void handleSaveLLMSettings()}>
+              LLM 설정 저장
+            </button>
+            <button className="button-secondary" type="button" onClick={() => void handleTestLLMConnection()}>
+              연결 테스트
+            </button>
+          </div>
+          <div className="muted" style={{ marginTop: "0.75rem" }}>
+            Build {llmSummary.buildProfile ?? "-"} / Actual {llmSummary.actualRuntime ?? "-"}
+          </div>
+          <div className="muted">Available {llmSummary.availableModes.join(", ") || "-"}</div>
+          <div className="muted">
+            API credential {connectionSummary.apiCredentialState ?? "-"} / API availability{" "}
+            {connectionSummary.apiAvailability ?? "-"}
+          </div>
+          <div className="muted">
+            Ollama {connectionSummary.ollamaAvailability ?? "-"} / Model{" "}
+            {connectionSummary.approvedModelState ?? "-"}
+          </div>
+        </section>
+        <section className="info-card">
+          <strong>API Key</strong>
+          <label style={{ display: "grid", gap: "0.35rem" }}>
+            <span className="muted">Storage mode</span>
+            <select
+              value={storageMode}
+              onChange={(event) =>
+                setStorageMode(event.target.value === "SESSION_MEMORY" ? "SESSION_MEMORY" : "KEYRING")
+              }
+            >
+              <option value="KEYRING">KEYRING</option>
+              <option value="SESSION_MEMORY">SESSION_MEMORY</option>
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: "0.35rem", marginTop: "0.75rem" }}>
+            <span className="muted">API key</span>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              placeholder="sk-..."
+            />
+          </label>
+          <div className="button-row" style={{ marginTop: "0.75rem" }}>
+            <button
+              className="button-primary"
+              type="button"
+              onClick={() => void handleStoreLLMApiKey()}
+              disabled={!apiKey.trim()}
+            >
+              API 키 저장
+            </button>
+            <button className="button-secondary" type="button" onClick={() => void handleDeleteLLMApiKey()}>
+              API 키 삭제
+            </button>
+          </div>
+        </section>
       </div>
     </aside>
   );
@@ -859,4 +1077,38 @@ function safeGoogleLink(url: string): string {
     return "https://calendar.google.com/";
   }
   return parsed.toString();
+}
+
+function readLLMState(value: Record<string, unknown> | null | undefined): {
+  buildProfile: string | null;
+  actualRuntime: string | null;
+  availableModes: string[];
+  apiCredentialState: string | null;
+  apiAvailability: string | null;
+  ollamaAvailability: string | null;
+  approvedModelState: string | null;
+} {
+  const llm = asRecord(value);
+  const apiProvider = asRecord(llm.api_provider);
+  const ollama = asRecord(llm.ollama);
+  return {
+    buildProfile: typeof llm.build_profile === "string" ? llm.build_profile : null,
+    actualRuntime: typeof llm.actual_runtime === "string" ? llm.actual_runtime : null,
+    availableModes: Array.isArray(llm.available_modes)
+      ? llm.available_modes.filter((item): item is string => typeof item === "string")
+      : [],
+    apiCredentialState:
+      typeof apiProvider.credential_state === "string" ? apiProvider.credential_state : null,
+    apiAvailability: typeof apiProvider.availability === "string" ? apiProvider.availability : null,
+    ollamaAvailability: typeof ollama.availability === "string" ? ollama.availability : null,
+    approvedModelState:
+      typeof ollama.approved_model_state === "string" ? ollama.approved_model_state : null,
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
 }
