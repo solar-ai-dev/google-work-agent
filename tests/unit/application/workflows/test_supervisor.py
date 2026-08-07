@@ -4,6 +4,7 @@ from google_work_agent.application import derive_finalize_intent
 from google_work_agent.application.workflows import (
     BudgetProfile,
     BudgetReasonCode,
+    DomainValidationResult,
     FinalizeIntent,
     MultiAgentGraphState,
     SupervisorTarget,
@@ -212,6 +213,75 @@ def test_review_pass_with_plan_routes_to_domain_validation() -> None:
     assert decision["target"] == SupervisorTarget.DOMAIN_VALIDATION.value
     assert decision["next_phase"] == WorkflowPhase.DOMAIN_VALIDATION.value
     assert decision["state_update"]["plan_review"] == result
+
+
+def test_domain_validation_allow_read_skips_approval_and_routes_to_preflight() -> None:
+    state = _state(
+        workflow_phase=WorkflowPhase.DOMAIN_VALIDATION,
+        plan_draft=_plan_draft("PLAN_READY"),
+    )
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.DOMAIN_VALIDATION,
+        state=state,
+        result={
+            "schema_version": 1,
+            "result": DomainValidationResult.ALLOW_READ.value,
+            "reason_codes": ["READ_ONLY_PLAN"],
+            "blocked_action_ids": [],
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.PREFLIGHT.value
+    assert decision["next_phase"] == WorkflowPhase.PREFLIGHT.value
+    assert decision["state_update"]["workflow_phase"] == WorkflowPhase.PREFLIGHT.value
+    assert decision["state_update"]["finalize_intent"] is None
+
+
+def test_domain_validation_require_approval_routes_to_waiting_approval() -> None:
+    state = _state(
+        workflow_phase=WorkflowPhase.DOMAIN_VALIDATION,
+        plan_draft=_plan_draft("PLAN_READY"),
+    )
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.DOMAIN_VALIDATION,
+        state=state,
+        result={
+            "schema_version": 1,
+            "result": DomainValidationResult.REQUIRE_APPROVAL.value,
+            "reason_codes": ["WRITE_EFFECT_PRESENT"],
+            "blocked_action_ids": [],
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.WAITING_APPROVAL.value
+    assert decision["next_phase"] == WorkflowPhase.WAITING_APPROVAL.value
+    assert decision["state_update"]["workflow_phase"] == WorkflowPhase.WAITING_APPROVAL.value
+    assert decision["state_update"]["finalize_intent"] is None
+
+
+def test_domain_validation_block_finalizes_with_blocked_intent() -> None:
+    state = _state(
+        workflow_phase=WorkflowPhase.DOMAIN_VALIDATION,
+        plan_draft=_plan_draft("PLAN_READY"),
+    )
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.DOMAIN_VALIDATION,
+        state=state,
+        result={
+            "schema_version": 1,
+            "result": DomainValidationResult.BLOCK.value,
+            "reason_codes": ["FORBIDDEN_DELETE"],
+            "blocked_action_ids": ["action-blocked"],
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.FINALIZE.value
+    assert decision["reason_code"] == "FORBIDDEN_DELETE"
+    assert decision["state_update"]["workflow_phase"] == WorkflowPhase.FINALIZE.value
+    assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
 
 
 def test_review_pass_with_answer_creates_checkpoint_safe_finalize_intent() -> None:

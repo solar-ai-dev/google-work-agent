@@ -17,6 +17,8 @@ from google_work_agent.application.workflows.context_retrieval import (
 from google_work_agent.application.workflows.contracts import (
     BudgetDecision,
     BudgetDecisionV1,
+    DomainValidationOutputV1,
+    DomainValidationResult,
     FinalizeIntent,
     MultiAgentGraphState,
     PlanningResult,
@@ -67,6 +69,8 @@ class SupervisorTarget(StrEnum):
     PLANNING_REVISE_ANSWER = "PLANNING_REVISE_ANSWER"
     PLANNING_REVISE_PLAN = "PLANNING_REVISE_PLAN"
     DOMAIN_VALIDATION = "DOMAIN_VALIDATION"
+    WAITING_APPROVAL = "WAITING_APPROVAL"
+    PREFLIGHT = "PREFLIGHT"
     WAITING_CONFIRMATION = "WAITING_CONFIRMATION"
     FINALIZE = "FINALIZE"
     REAUTH = "REAUTH"
@@ -129,6 +133,11 @@ def route_supervisor(
         return _route_plan_review(
             state=state,
             result=cast(PlanReviewResultV1, _require_mapping(result, "result")),
+        )
+    if current_phase is WorkflowPhase.DOMAIN_VALIDATION:
+        return _route_domain_validation(
+            state=state,
+            result=cast(DomainValidationOutputV1, _require_mapping(result, "result")),
         )
     if current_phase is WorkflowPhase.RECOVERY:
         return _decision(
@@ -481,6 +490,36 @@ def _route_plan_review(
     )
 
 
+def _route_domain_validation(
+    *,
+    state: MultiAgentGraphState,
+    result: DomainValidationOutputV1,
+) -> SupervisorDecisionV1:
+    validation_result = DomainValidationResult(str(result["result"]))
+    if validation_result is DomainValidationResult.ALLOW_READ:
+        return _decision(
+            target=SupervisorTarget.PREFLIGHT,
+            next_phase=WorkflowPhase.PREFLIGHT,
+            state_update=_base_state_update(WorkflowPhase.PREFLIGHT),
+            reason_code=_domain_validation_reason_code(result, default="ALLOW_READ"),
+        )
+    if validation_result is DomainValidationResult.REQUIRE_APPROVAL:
+        return _decision(
+            target=SupervisorTarget.WAITING_APPROVAL,
+            next_phase=WorkflowPhase.WAITING_APPROVAL,
+            state_update=_base_state_update(WorkflowPhase.WAITING_APPROVAL),
+            reason_code=_domain_validation_reason_code(result, default="REQUIRE_APPROVAL"),
+        )
+    return _finalize(
+        state=state,
+        intent=FinalizeIntent.BLOCKED.value,
+        reason_code=_domain_validation_reason_code(result, default="DOMAIN_VALIDATION_BLOCKED"),
+        plan_draft=state.get("plan_draft"),
+        plan_review=state.get("plan_review"),
+        analysis_result=state.get("analysis_result"),
+    )
+
+
 def _route_additional_acquisition(
     *,
     state: MultiAgentGraphState,
@@ -724,6 +763,15 @@ def _budget_reason_code(budget: BudgetDecisionV1, *, default: str) -> str:
     reason_code = budget.get("budget_reason_code")
     if isinstance(reason_code, str) and reason_code:
         return reason_code
+    return default
+
+
+def _domain_validation_reason_code(result: DomainValidationOutputV1, *, default: str) -> str:
+    reason_codes = result.get("reason_codes") or []
+    if reason_codes:
+        first_reason_code = reason_codes[0]
+        if isinstance(first_reason_code, str) and first_reason_code:
+            return first_reason_code
     return default
 
 
