@@ -333,3 +333,69 @@ trace_context: TraceContextV1
 - `purpose`를 Prompt Manifest·Trace의 공통 필드명으로 사용한다.
 - `repair_prompt_id`는 Node Registry에서 연결한다.
 - Supervisor는 Registry의 허용 Edge만 선택하고 Agent가 임의 Node를 호출하지 않는다.
+
+---
+
+## 24. 2026-08-07 Agent Failure·Prompt·Budget 계약 보강
+
+이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v0.2`를 적용한다.
+
+### 24.1 Failure Record
+
+```python
+class AgentFailureRecord:
+    failure_reason_code: str
+    failure_origin: str
+    detected_by: str
+    runtime_disposition: Literal[
+        "RETRYABLE", "REDIRECT", "DETERMINISTIC", "TERMINAL", "NOT_AVAILABLE"
+    ]
+    experiment_disposition: str
+    affected_field_paths: list[str]
+```
+
+실험 Grader가 발견한 오류와 제품 Runtime이 자체 감지 가능한 오류를 구분한다. `REVIEW_FALSE_PASS` 같은 평가 오류를 Runtime이 자동으로 감지한다고 가정하지 않는다.
+
+### 24.2 Retry Kind
+
+```text
+SCHEMA_REPAIR
+SEMANTIC_REVISION
+WORKFLOW_REDIRECTION
+DETERMINISTIC_RETRY
+DETERMINISTIC_RECOVERY
+```
+
+- Schema Repair는 구조만 교정하며 Goal·Evidence·Action 의미를 바꾸지 않는다.
+- Semantic Revision은 실패 이유와 변경 허용 범위를 입력으로 받는다.
+- Workflow Redirection은 Supervisor가 다른 Node·Interrupt·종료 Edge를 선택하는 것이다.
+- 401·429·5xx·Timeout은 일반 코드 Retry·Reauth 대상이며 LLM Repair 대상이 아니다.
+- `UNKNOWN_RESULT`와 Verification `MISMATCH`는 LLM 재계획 대상이 아니다.
+
+### 24.3 확정 Budget Profile
+
+```text
+SCHEMA_REPAIR_PER_NODE_CALL=1
+SEMANTIC_REVISION_SAME_FAILURE=1
+PLANNING_REVISION_PER_RUN=2
+REVIEW_RECHECK_PER_PLANNING_REVISION=1
+MAX_ADDITIONAL_ACQUISITIONS=2
+NORMAL_MAX_LLM_CALLS=8
+RETRIEVAL_HEAVY_MAX_LLM_CALLS=14
+REVISION_HEAVY_MAX_LLM_CALLS=12
+ABSOLUTE_MAX_LLM_CALLS=16
+```
+
+단일 `MAX_LLM_CALLS=8`을 모든 Route에 적용하지 않는다. Budget Profile 승격은 Supervisor의 결정적 규칙으로 수행하며 절대 상한 16회를 넘지 않는다.
+
+### 24.4 Prompt 선택과 활성화
+
+Prompt 선택 Key에는 선택적으로 `failure_reason_code`를 포함한다.
+
+```text
+agent_role + subgraph_name + node_name + node_state + purpose
++ failure_reason_code? + input_schema_version + output_schema_version
+```
+
+Prompt는 Base Role Contract, Node Purpose, Failure-specific Block, Allowed Change Scope, Output Schema를 조립한다. Node DEV, Node HOLDOUT, Safety Gate, Prompt Manifest 승인을 통과한 Prompt만 `RUNTIME_ACTIVE`가 된다.
+

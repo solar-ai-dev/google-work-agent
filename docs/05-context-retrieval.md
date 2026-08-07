@@ -221,3 +221,63 @@ evaluation_item_id      실제 Runner 실행 단위
 ```
 
 하나의 Case는 여러 User Prompt를 가질 수 있다. Retrieval 평가 결과는 `evaluation_item_id` 단위로 기록한다.
+
+---
+
+## 22. 2026-08-07 QueryAttempt·Confidence·재검색 계약 보강
+
+이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v0.2`를 적용하며, 기존 Retrieval 계약을 대체하지 않고 검색 시도와 저신뢰 처리의 관측·평가 계약을 보강한다.
+
+### 22.1 QueryAttempt
+
+```python
+class QueryAttempt:
+    schema_version: int
+    query_attempt_id: str
+    run_id: str
+    round_no: int
+    attempt_no: int
+    source: Literal["GMAIL", "TASKS", "CALENDAR"]
+    operation_kind: Literal["SEARCH", "NEXT_PAGE", "DETAIL_FETCH", "FREEBUSY"]
+    normalized_intent_constraints: dict
+    query_spec: dict
+    previous_query_hash: str | None
+    page_state_hash: str | None
+    added_constraints: list[str]
+    removed_constraints: list[str]
+    change_reason_code: str | None
+    candidate_count: int | None
+    top_score: float | None
+    score_margin: float | None
+    confidence_band: Literal["HIGH", "MEDIUM", "LOW", "NONE"] | None
+    retrieval_config_version: str
+    score_config_version: str
+    threshold_config_version: str
+    stop_reason: str | None
+```
+
+### 22.2 반복과 Pagination
+
+- 같은 Query와 새로운 Page Token을 사용하는 `NEXT_PAGE`는 정상 Pagination이다.
+- 실패 뒤 같은 Query와 같은 Page 상태로 `SEARCH`를 반복하면 `QUERY_UNCHANGED_AFTER_FAILURE`다.
+- `DETAIL_FETCH` 재호출은 Run Cache 또는 Provider 기술 재시도 규칙을 따른다.
+- 추가 수집 시 최소 하나의 제약 변경 또는 필요한 Source 추가가 있어야 한다.
+- 사용자 범위를 넘어서는 기간·Source 확대는 사용자 확인 없이 수행하지 않는다.
+
+### 22.3 저신뢰 후보
+
+- Confidence Band는 `HIGH`, `MEDIUM`, `LOW`, `NONE`으로 고정한다.
+- 실제 점수와 Threshold는 중앙 Retrieval Config가 소유한다.
+- `AGENT_SEARCH`에서 `LOW` 또는 `NONE` 후보만 존재하면 자동 확정하지 않는다.
+- `RESOURCE_SELECTED`는 사용자가 고른 Resource ID를 점수와 관계없이 상세 GET한다.
+- 후보 1위와 2위의 점수 차이가 설정된 Margin보다 작으면 확인 또는 추가 수집으로 전환한다.
+
+### 22.4 결정적 평가
+
+다음 항목은 LLM Judge가 아니라 코드 Grader가 우선한다.
+
+- 사용자 날짜·사람·이메일·선택 Resource가 Query Spec에 반영됐는지
+- 같은 실패 Query가 반복됐는지
+- 허용된 추가 수집 횟수와 Source Page Budget을 지켰는지
+- 저신뢰 후보를 임의로 확정했는지
+
