@@ -1,0 +1,235 @@
+"""Answer-only product core application flow."""
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from json import dumps
+
+from google_work_agent.domain import DuplicateCommandError, ResultCode, RunStatus
+from google_work_agent.domain.transitions import next_allowed_run_commands
+from google_work_agent.ports import (
+    AnswerOnlyResponse,
+    AuditEventRecord,
+    CommandReceiptRecord,
+    CommandReceiptStatus,
+    MessageRecord,
+    TraceEventRecord,
+    UnitOfWork,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CompleteAnswerOnlyRunCommand:
+    """Input contract for the answer-only completion use case."""
+
+    command_id: str
+    conversation_id: str
+    run_id: str
+    assistant_message: str
+    expected_version: int
+    request_hash: str
+
+
+class CompleteAnswerOnlyRunService:
+    """Durably complete an answer-only run with command receipts."""
+
+    def __init__(
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        message_id_factory: Callable[[], str],
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+        self._message_id_factory = message_id_factory
+
+    def __call__(self, command: CompleteAnswerOnlyRunCommand) -> AnswerOnlyResponse:
+        """Complete the run or return the previously stored idempotent response."""
+        with self._unit_of_work_factory() as unit_of_work:
+            existing_receipt = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+            if existing_receipt is not None:
+                return self._handle_existing_receipt(unit_of_work, command, existing_receipt)
+
+            now_ms = self._now_ms()
+            unit_of_work.command_receipts.add_received(
+                command_id=command.command_id,
+                command_type="CompleteAnswerOnlyRun",
+                request_hash=command.request_hash,
+                aggregate_type="Run",
+                aggregate_id=command.run_id,
+                created_at_ms=now_ms,
+            )
+
+            conversation = unit_of_work.conversations.get_by_id(command.conversation_id)
+            if conversation is None:
+                raise LookupError(f"conversation not found: {command.conversation_id}")
+
+            run = unit_of_work.runs.get_by_id(command.run_id)
+            if run is None:
+                raise LookupError(f"run not found: {command.run_id}")
+            if run.conversation_id != conversation.id:
+                raise LookupError(
+                    "run "
+                    f"{command.run_id} does not belong to conversation "
+                    f"{command.conversation_id}"
+                )
+
+            result = unit_of_work.runs.complete_answer_only_run(
+                command.run_id,
+                expected_version=command.expected_version,
+                finished_at_ms=now_ms,
+            )
+
+            response = AnswerOnlyResponse(
+                applied=result.applied,
+                result_code=result.result_code,
+                current_status=result.current_status,
+                current_version=result.current_version,
+                next_allowed_commands=result.next_allowed_commands,
+                conflict_detail=result.conflict_detail,
+            )
+
+            if result.applied:
+                assistant_message_id = self._message_id_factory()
+                unit_of_work.messages.add(
+                    MessageRecord(
+                        id=assistant_message_id,
+                        conversation_id=command.conversation_id,
+                        run_id=command.run_id,
+                        role="ASSISTANT",
+                        content=command.assistant_message,
+                        created_at_ms=now_ms,
+                    )
+                )
+                unit_of_work.traces.add(
+                    TraceEventRecord(
+                        run_id=command.run_id,
+                        action_id=None,
+                        event_type="COMMAND_APPLIED",
+                        status=result.current_status.value,
+                        duration_ms=None,
+                        payload_json=dumps(
+                            {
+                                "command_id": command.command_id,
+                                "command_type": "CompleteAnswerOnlyRun",
+                                "message_id": assistant_message_id,
+                                "mode": "ANSWER_ONLY",
+                                "request_hash_prefix": command.request_hash[:12],
+                            },
+                            sort_keys=True,
+                        ),
+                        created_at_ms=now_ms,
+                    )
+                )
+                unit_of_work.audits.add(
+                    AuditEventRecord(
+                        account_id=conversation.account_id,
+                        run_id=command.run_id,
+                        action_id=None,
+                        actor_type="AGENT",
+                        actor_id="complete_answer_only_run",
+                        actor_display="AnswerOnlyService",
+                        event_type="RUN_COMPLETED",
+                        outcome=result.result_code.value,
+                        metadata_json=dumps(
+                            {
+                                "command_id": command.command_id,
+                                "message_id": assistant_message_id,
+                                "mode": "ANSWER_ONLY",
+                            },
+                            sort_keys=True,
+                        ),
+                        created_at_ms=now_ms,
+                    )
+                )
+                response = AnswerOnlyResponse(
+                    applied=True,
+                    result_code=result.result_code,
+                    current_status=result.current_status,
+                    current_version=result.current_version,
+                    next_allowed_commands=result.next_allowed_commands,
+                    conflict_detail=result.conflict_detail,
+                    assistant_message_id=assistant_message_id,
+                )
+
+            unit_of_work.command_receipts.finish(
+                command_id=command.command_id,
+                response=response,
+                completed_at_ms=now_ms,
+            )
+            unit_of_work.commit()
+            return response
+
+    def _handle_existing_receipt(
+        self,
+        unit_of_work: UnitOfWork,
+        command: CompleteAnswerOnlyRunCommand,
+        existing_receipt: CommandReceiptRecord,
+    ) -> AnswerOnlyResponse:
+        if existing_receipt.request_hash != command.request_hash:
+            run = unit_of_work.runs.get_by_id(command.run_id)
+            if run is None:
+                raise DuplicateCommandError(command.command_id)
+            return AnswerOnlyResponse(
+                applied=False,
+                result_code=ResultCode.DUPLICATE_COMMAND,
+                current_status=run.status,
+                current_version=run.version,
+                next_allowed_commands=next_allowed_run_commands(run.status),
+                conflict_detail="command_id already exists with a different request_hash",
+            )
+
+        if (
+            existing_receipt.response is not None
+            and existing_receipt.status is not CommandReceiptStatus.RECEIVED
+        ):
+            return existing_receipt.response
+
+        return self._recover_pending_receipt(unit_of_work, command)
+
+    def _recover_pending_receipt(
+        self,
+        unit_of_work: UnitOfWork,
+        command: CompleteAnswerOnlyRunCommand,
+    ) -> AnswerOnlyResponse:
+        run = unit_of_work.runs.get_by_id(command.run_id)
+        if run is None:
+            raise LookupError(f"run not found during receipt recovery: {command.run_id}")
+
+        if run.status is RunStatus.COMPLETED:
+            message = unit_of_work.messages.find_assistant_message(
+                run_id=command.run_id,
+                content=command.assistant_message,
+            )
+            if message is not None:
+                response = AnswerOnlyResponse(
+                    applied=True,
+                    result_code=ResultCode.TRANSITION_APPLIED,
+                    current_status=run.status,
+                    current_version=run.version,
+                    next_allowed_commands=next_allowed_run_commands(run.status),
+                    assistant_message_id=message.id,
+                )
+                unit_of_work.command_receipts.finish(
+                    command_id=command.command_id,
+                    response=response,
+                    completed_at_ms=self._now_ms(),
+                )
+                unit_of_work.commit()
+                return response
+
+        response = AnswerOnlyResponse(
+            applied=False,
+            result_code=ResultCode.STATE_CONFLICT,
+            current_status=run.status,
+            current_version=run.version,
+            next_allowed_commands=next_allowed_run_commands(run.status),
+            conflict_detail="receipt is pending and aggregate state is not safely recoverable",
+        )
+        unit_of_work.command_receipts.finish(
+            command_id=command.command_id,
+            response=response,
+            completed_at_ms=self._now_ms(),
+        )
+        unit_of_work.commit()
+        return response

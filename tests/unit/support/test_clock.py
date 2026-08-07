@@ -1,0 +1,34 @@
+from tests.support.fakes import FakeClock
+
+
+def test_fake_clock_returns_same_initial_value() -> None:
+    clock = FakeClock(initial_ms=100)
+
+    assert clock.now_ms() == 100
+    assert clock.now_ms() == 100
+
+
+def test_fake_clock_advance_and_set_are_explicit() -> None:
+    clock = FakeClock(initial_ms=10)
+
+    assert clock.advance_ms(5) == 15
+    assert clock.set_ms(99) == 99
+    assert clock.now_ms() == 99
+
+
+def test_fake_clock_rejects_negative_values() -> None:
+    clock = FakeClock()
+
+    try:
+        clock.advance_ms(-1)
+    except ValueError as error:
+        assert "non-negative" in str(error)
+    else:
+        raise AssertionError("expected ValueError for negative advance")
+
+    try:
+        clock.set_ms(-1)
+    except ValueError as error:
+        assert "non-negative" in str(error)
+    else:
+        raise AssertionError("expected ValueError for negative set")

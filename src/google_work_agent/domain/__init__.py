@@ -1,13 +1,20 @@
 """Domain and policy core package."""
 
+from google_work_agent.domain.canonical import (
+    calculate_canonical_json_hash,
+    canonicalize_json_value,
+)
 from google_work_agent.domain.commands import ActionCommand, RunCommand
 from google_work_agent.domain.enums import (
     ActionStatus,
+    ApprovalRequirement,
     ApprovalStatus,
     EffectType,
     ExecutionAttemptStatus,
+    RecoveryPolicy,
     ResultCode,
     RunStatus,
+    VerificationPolicy,
     VerificationStatus,
 )
 from google_work_agent.domain.errors import (
@@ -16,9 +23,23 @@ from google_work_agent.domain.errors import (
     DuplicateCommandError,
     InvalidTransitionError,
     InvariantViolationError,
+    PolicyViolationError,
     VersionConflictError,
 )
+from google_work_agent.domain.policy import (
+    ApprovalIntegrityInput,
+    EvidencePolicyInput,
+    validate_approval_integrity,
+    validate_evidence_policy,
+)
 from google_work_agent.domain.results import CommandResult
+from google_work_agent.domain.tool_registry import (
+    DEFAULT_POLICY_VERSION,
+    DEFAULT_TOOL_SCHEMA_VERSION,
+    SignedToolRegistry,
+    ToolRegistryEntry,
+    build_p0_tool_registry,
+)
 from google_work_agent.domain.transitions import (
     next_allowed_action_commands,
     next_allowed_run_commands,
@@ -29,22 +50,37 @@ from google_work_agent.domain.transitions import (
 __all__ = [
     "ActionCommand",
     "ActionStatus",
+    "ApprovalIntegrityInput",
+    "ApprovalRequirement",
     "ApprovalStatus",
     "CommandHashMismatchError",
     "CommandResult",
+    "DEFAULT_POLICY_VERSION",
+    "DEFAULT_TOOL_SCHEMA_VERSION",
     "DomainError",
     "DuplicateCommandError",
+    "EvidencePolicyInput",
     "EffectType",
     "ExecutionAttemptStatus",
     "InvalidTransitionError",
     "InvariantViolationError",
+    "PolicyViolationError",
+    "RecoveryPolicy",
     "ResultCode",
     "RunCommand",
     "RunStatus",
+    "SignedToolRegistry",
+    "ToolRegistryEntry",
+    "VerificationPolicy",
     "VerificationStatus",
     "VersionConflictError",
+    "build_p0_tool_registry",
+    "calculate_canonical_json_hash",
+    "canonicalize_json_value",
     "next_allowed_action_commands",
     "next_allowed_run_commands",
     "transition_action",
     "transition_run",
+    "validate_approval_integrity",
+    "validate_evidence_policy",
 ]

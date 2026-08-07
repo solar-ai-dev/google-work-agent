@@ -1,0 +1,14 @@
+{
+  "resource_type": "task",
+  "resource_id": "task-followup",
+  "parent_id": "task-list-default",
+  "related_resource_ids": ["task-list-default"],
+  "version": "4",
+  "recovery_fingerprint": "rf-task-followup",
+  "payload": {
+    "title": "Reply to project sync",
+    "notes": "Reference the Thursday summary.",
+    "due": "2026-08-07",
+    "status": "needsAction"
+  }
+}

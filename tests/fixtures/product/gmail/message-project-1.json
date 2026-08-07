@@ -1,0 +1,16 @@
+{
+  "resource_type": "gmail_message",
+  "resource_id": "message-project-1",
+  "parent_id": "thread-project",
+  "related_resource_ids": ["thread-project"],
+  "version": "1",
+  "recovery_fingerprint": "rf-gmail-message-project-1",
+  "payload": {
+    "from": "pm@example.com",
+    "to": ["user@example.com"],
+    "body": "Please summarize the open items and draft a calm reply.",
+    "attachments": [
+      { "name": "agenda.pdf", "size_bytes": 2048 }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "resource_type": "gmail_draft",
+  "resource_id": "draft-followup",
+  "parent_id": "thread-project",
+  "related_resource_ids": ["thread-project"],
+  "version": "2",
+  "recovery_fingerprint": "rf-gmail-draft-followup",
+  "payload": {
+    "thread_id": "thread-project",
+    "to": ["pm@example.com"],
+    "subject": "Re: Project sync follow-up",
+    "body": "Draft summary is ready for review."
+  }
+}
