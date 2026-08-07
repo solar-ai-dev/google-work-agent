@@ -1,6 +1,6 @@
 # 05. Google Work Agent · Context · Retrieval 설계서
 
-> **상태:** Draft v2.0 · **대상:** P0 MVP
+> **상태:** Draft v2.1 · **기준일:** 2026-08-07 · **대상:** P0 MVP
 >
 > API 탐색·수집 Agent와 Context Retriever Agent를 분리한다. Google 원본을 요청 시점에 검색하고 Metadata로 후보를 줄인 뒤 필요한 상세만 읽는다.
 
@@ -226,7 +226,7 @@ evaluation_item_id      실제 Runner 실행 단위
 
 ## 22. 2026-08-07 QueryAttempt·Confidence·재검색 계약 보강
 
-이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v0.2`를 적용하며, 기존 Retrieval 계약을 대체하지 않고 검색 시도와 저신뢰 처리의 관측·평가 계약을 보강한다.
+이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.0`를 적용하며, 기존 Retrieval 계약을 대체하지 않고 검색 시도와 저신뢰 처리의 관측·평가 계약을 보강한다.
 
 ### 22.1 QueryAttempt
 
@@ -281,3 +281,9 @@ class QueryAttempt:
 - 허용된 추가 수집 횟수와 Source Page Budget을 지켰는지
 - 저신뢰 후보를 임의로 확정했는지
 
+
+## 2026-08-07 v2.1 Clarification · Overbroad Retrieval
+- 요청만으로 드러나는 모호성은 Request Understanding에서 확인한다.
+- 동명이인·복수 Resource·저신뢰 후보처럼 검색 후 드러나는 모호성은 후보·차이와 함께 `NEEDS_CONFIRMATION`으로 보낸다.
+- 전체 Mailbox·장기간 무제한 원문·모든 Workspace Source 전체 조회는 `BLOCKED`다.
+- Calendar 시간 overlap은 conflict와 분리하며 관계 근거를 Work Analysis에 전달한다.

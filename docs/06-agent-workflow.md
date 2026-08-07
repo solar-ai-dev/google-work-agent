@@ -1,8 +1,8 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.3`, `01-A v2.2`, `01-B v2.2`, `02 UI·UX v2.2`, `03 Architecture v2.5`, `04 Database v1.8`, `05 Retrieval v2.0`, `07 Interface v2.3`, Domain 상태 전이 계약 v1.3과 테스트 매트릭스 v1.3을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.4`, `01-A v2.3`, `01-B v2.3`, `02 UI·UX v2.3`, `03 Architecture v2.6`, `04 Database v1.9`, `05 Retrieval v2.1`, `07 Interface v2.4`, Domain 상태 전이 계약 v1.3과 테스트 매트릭스 v1.3을 기준으로 한다.
 >
-> **상태:** Draft v5.4 · **대상:** P0 MVP
+> **상태:** Draft v5.5 · **DB Schema:** v1.3 · **대상:** P0 MVP
 >
 > 결정적 Supervisor + 최대 6개 전문 LLM 역할 Node Baseline + 결정적 실행·검증 Engine을 사용한다. Agent 중간 상태는 Checkpoint, 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -334,255 +334,11 @@ trace_context: TraceContextV1
 - `repair_prompt_id`는 Node Registry에서 연결한다.
 - Supervisor는 Registry의 허용 Edge만 선택하고 Agent가 임의 Node를 호출하지 않는다.
 
-## 17. Request Understanding Runtime 계약
-
-현재 구현의 입력 경계는 `src/google_work_agent/ports/workflow_runtime.py`의
-`WorkflowStartRequest`다. Request Understanding Node는 별도
-`RequestUnderstandingInput` DTO를 만들지 않고 다음 값을 그대로 prompt input으로 투영한다.
-
-```text
-run_id
-conversation_id
-workflow_key
-entry_mode
-requested_mode
-request_text
-selected_resource_ids
-correlation.request_id
-correlation.command_id
-correlation.api_contract_version
-```
-
-`selected_resource_ids`는 이미 Runtime 입력 계약에 존재하므로 `RequestIntentV1`에
-불투명하게 복제하지 않는다. Initialize 단계는 선택 Resource ID를 Graph State의
-`prompt_context` 또는 Run-local cache handle로 보존하고, Acquisition·Context 단계가
-해당 runtime context를 함께 사용한다. Request Understanding은 선택 ID의 의미를
-추론할 수는 있지만 Google 조회나 ID 생성을 수행하지 않는다.
-
-LLM 경계의 Source of Truth는 `src/google_work_agent/application/llm.py`의
-`LLMRuntimeService.invoke_structured(...)`와 `src/google_work_agent/ports/llm.py`의
-`PromptReference`, `OutputSchemaDefinition`, `StructuredLLMResult`다. Request
-Understanding 구현은 새 LLM Port를 만들지 않는다.
-
-참고 원칙:
-
-- OpenAI Structured Outputs는 JSON Schema로 출력 구조를 제한하지만 값의 의미 오류까지
-  제거하지는 않는다. 따라서 Schema Validation 뒤에 일반 코드의 semantic validation이
-  필요하다. [OpenAI Structured Outputs, 2024](https://openai.com/index/introducing-structured-outputs-in-the-api/)
-- Routing workflow는 첫 단계에서 intent·task type을 분류하고 downstream workflow로
-  위임하는 데 적합하다. [AWS Prescriptive Guidance - Workflow for routing](https://docs.aws.amazon.com/prescriptive-guidance/latest/agentic-ai-patterns/workflow-for-routing.html)
-- 장기 실행 Agent는 checkpoint, interrupt/resume, idempotent side effect 경계가 필요하다.
-  [LangChain - production agent runtime](https://www.langchain.com/blog/runtime-behind-production-deep-agents)
-
-## 18. RequestIntentV1 Schema
-
-`RequestIntentV1`은 FN-101의 목표·완료 조건·기간·사람·Source·제약·모호성을
-실행 가능한 최소 semantic 구조로 보존한다. Google Query, Page Token, MCP Arguments,
-Resource ID 생성은 Acquisition·Query Builder 책임이다.
-
-```yaml
-request_intent:
-  schema_version: 1
-  goal:
-    summary: string
-    user_visible_objective: string
-  completion_criteria:
-    - string
-  semantic_constraints:
-    topics:
-      - text: string
-        source_text: string
-    people:
-      - mention: string
-        role_hint: string | null
-        source_text: string
-    time:
-      - mention: string
-        granularity_hint: DATE | DATETIME | RANGE | RELATIVE | UNKNOWN
-        source_text: string
-    sources:
-      - source: GMAIL | TASKS | CALENDAR | UNKNOWN
-        mention: string
-        confidence: HIGH | MEDIUM | LOW
-    status_or_state:
-      - mention: string
-        source_text: string
-    negative_constraints:
-      - string
-    policy_or_safety_constraints:
-      - string
-  ambiguity:
-    is_ambiguous: boolean
-    items:
-      - field_path: string
-        reason_code: string
-        user_question: string
-  unsupported_scope:
-    is_unsupported: boolean
-    reason_code: string | null
-    explanation: string | null
-```
-
-규칙:
-
-- `schema_version`은 정수 `1`이다.
-- `goal.summary`는 내부 요약이고, `goal.user_visible_objective`는 사용자에게 되돌려도
-  되는 목표 문장이다.
-- `time`은 semantic time constraint만 보존한다. 실제 Gmail·Calendar·Tasks query date
-  range 변환은 Acquisition·Query Builder가 수행한다.
-- `people`은 사용자가 표현한 semantic mention을 보존한다. Google contact, attendee,
-  sender, assignee 후보 검색은 이후 단계 책임이다.
-- `sources`는 명시 또는 강한 암시만 담는다. Source를 확정할 수 없으면
-  `UNKNOWN` 또는 낮은 confidence를 사용하고, 실제 Source 선택은 downstream validator가
-  결정한다.
-- `selected_resource_ids`와 `entry_mode`는 Runtime 입력·Graph context의 계약이며
-  `RequestIntentV1`에 중복 저장하지 않는다.
-
-## 19. 모호성 책임 경계
-
-Request Understanding이 처리하는 모호성은 사용자 문장 자체의 정보 부족이다.
-
-```text
-예: "그 사람이랑 이야기했던 일정 정리해줘"
-문장 안에 "그 사람"을 식별할 단서가 없음
-→ NEEDS_CONFIRMATION 가능
-```
-
-Google 조회 결과에서 후보가 여러 개 발견되는 모호성은 Request Understanding 책임이
-아니다.
-
-```text
-예: 사용자는 "민수"라고 명확히 말했지만 Google Resource 검색 결과 민수가 여러 명
-→ Acquisition/Retrieval 단계에서 후보 ambiguity 처리
-```
-
-Request Understanding은 다음을 하지 않는다.
-
-- Google/MCP 조회
-- Google Resource ID 생성
-- 검색 후보 사전 추측
-- 사용자 범위를 넘어선 자동 scope 확장
-
-명령이 clear, ambiguous, infeasible로 나뉠 수 있음을 명시적으로 모델링하는 연구는
-과도한 실행을 막기 위한 보조 근거다. 이 프로젝트에서는 해당 원칙을 Google 조회 전
-semantic boundary에만 적용한다. [CLARA, IEEE RA-L 2024](https://clararobot.github.io/)
-
-## 20. Request Understanding Node Output
-
-현재 코드의 결과 Enum은 `RequestUnderstandingResult`를 그대로 사용한다.
-
-```yaml
-request_understanding_output:
-  schema_version: 1
-  result: COMPLETE | NEEDS_CONFIRMATION | INVALID
-  request_intent: RequestIntentV1 | null
-  clarification: ClarificationQuestionV1 | null
-  failure: RequestUnderstandingFailureV1 | null
-  validator_codes:
-    - string
-```
-
-LLM은 `RequestIntentV1` 후보를 만든다. 일반 코드는 Schema Validation과 Semantic
-Validation을 수행한 뒤 `COMPLETE`, `NEEDS_CONFIRMATION`, `INVALID`를 결정한다.
-LLM이 최종 Workflow result를 단독 결정하지 않는다.
-
-### 20.1 COMPLETE
-
-```text
-result = COMPLETE
-request_intent != null
-clarification = null
-failure = null
-ambiguity.is_ambiguous = false
-unsupported_scope.is_unsupported = false
-```
-
-COMPLETE는 다음 단계가 Acquisition 또는 Answer-only planning으로 진행할 수 있는
-semantic 조건이 갖춰졌다는 뜻이다. Source query 가능성이나 Google 후보 존재 여부를
-보장하지 않는다.
-
-### 20.2 NEEDS_CONFIRMATION
-
-```yaml
-clarification:
-  schema_version: 1
-  question: string
-  affected_field_paths:
-    - string
-  reason_code: string
-  known_context_summary: string
-```
-
-`NEEDS_CONFIRMATION`은 사용자에게 무엇을 확인해야 하는지와 `RequestIntentV1`의 어느
-부분이 모호한지를 전달하기 위한 상태다. UI 선택지 전체, Google 후보 목록, Interrupt
-Resume 구현 방식은 이 계약에 포함하지 않는다.
-
-### 20.3 INVALID
-
-```yaml
-failure:
-  schema_version: 1
-  reason_code: string
-  user_safe_message: string
-  diagnostic: string
-```
-
-`INVALID`는 valid structured payload를 얻은 뒤에도 사용자 요청 자체가 제품 범위에서
-처리 불가능할 때 사용한다. `request_intent`는 `null`이며 `clarification`도 `null`이다.
-사용자가 정보를 더 주면 처리 가능한 경우는 `INVALID`가 아니라 `NEEDS_CONFIRMATION`이다.
-
-## 21. Schema Repair와 INVALID의 차이
-
-Schema JSON 오류, required field 누락, type 오류, enum 오류는 `INVALID`가 아니다.
-이들은 `LLMRuntimeService.invoke_structured(...)` 내부의 schema validation 실패이며
-`RuntimePolicy.structured_output_repair_budget = 1`에 따라 최대 1회 repair 대상이다.
-
-Repair 후에도 schema가 맞지 않으면 LLM invocation failure로 처리한다. `INVALID`는
-schema가 맞는 payload를 일반 코드가 semantic validation한 뒤 결정하는 Request
-Understanding 결과다.
-
-## 22. Typed Handoff 방식
-
-첫 구현에서는 별도 Handoff DTO를 만들지 않는다. LangGraph Node는 다음 partial state
-update만 반환한다.
-
-```yaml
-request_intent: RequestIntentV1 | null
-user_interrupt: ClarificationQuestionV1 | RequestUnderstandingFailureV1 | null
-workflow_phase: REQUEST_ANALYSIS | WAITING_CONFIRMATION | FINALIZE
-trace_context:
-  request_understanding_result: COMPLETE | NEEDS_CONFIRMATION | INVALID
-  validator_codes: list[string]
-```
-
-금지 invariant:
-
-- `COMPLETE`에서 `request_intent`가 `null`이면 안 된다.
-- `COMPLETE`에서 `user_interrupt`가 있으면 안 된다.
-- `NEEDS_CONFIRMATION`에서 `clarification` 없이 진행하면 안 된다.
-- `INVALID`에서 downstream Acquisition·Context·Write 경로로 진행하면 안 된다.
-- Schema Repair 실패를 `INVALID`로 위장하면 안 된다.
-
-## 23. Request Understanding Prompt 사용 계약
-
-- `request_understanding.classify`: 첫 Request Understanding 구현에 필요한 유일한
-  runtime prompt artifact다. `WorkflowStartRequest`에서 투영한 입력으로
-  `RequestIntentV1` 후보를 생성한다.
-- `request_understanding.clarify`: 현재 manifest에 예약되어 있다. classify 결과와
-  deterministic validator만으로 사용자 질문을 만들 수 없을 때 이후 단계에서 작성한다.
-- `request_understanding.repair`: semantic retry가 아니라 structured output schema repair
-  전용이다. 현재 `LLMRuntimeService`의 repair budget은 1회이며, prompt artifact는 실제
-  failure trace가 생긴 뒤 작성한다.
-
-`prompts/agent/request_understanding/classify.md`와
-`prompts/agent/manifest.yaml`의 `request_understanding.classify`가 현재 존재하는
-Prompt artifact다. `clarify`, `repair`는 예약 상태이므로 첫 구현 blocker가 아니다.
-
 ---
 
 ## 24. 2026-08-07 Agent Failure·Prompt·Budget 계약 보강
 
-이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v0.2`를 적용한다.
+이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.0`를 적용한다.
 
 ### 24.1 Failure Record
 
@@ -634,17 +390,26 @@ ABSOLUTE_MAX_LLM_CALLS=16
 
 ### 24.4 Prompt 선택과 활성화
 
-Runtime Prompt 선택 Key는 `src/google_work_agent/application/workflows/contracts.py`의
-`PromptSelectionKey` 필드를 Source of Truth로 삼는다.
+Prompt 선택 Key에는 선택적으로 `failure_reason_code`를 포함한다.
 
 ```text
 agent_role + subgraph_name + node_name + node_state + purpose
-+ input_schema_version + output_schema_version
++ failure_reason_code? + input_schema_version + output_schema_version
 ```
 
-`failure_reason_code`는 Prompt Registry·Manifest가 후보 Prompt를 고르는 metadata로 사용할
-수 있지만 Runtime `PromptSelectionKey` 또는 `PromptReference` 필드로 확정하지 않는다.
-Failure-specific Prompt가 필요하면 Registry가 다른 `prompt_id` 또는 `prompt_version`을
-선택하고, LLM 호출에는 현재 Runtime `PromptReference` 필드만 전달한다.
-
 Prompt는 Base Role Contract, Node Purpose, Failure-specific Block, Allowed Change Scope, Output Schema를 조립한다. Node DEV, Node HOLDOUT, Safety Gate, Prompt Manifest 승인을 통과한 Prompt만 `RUNTIME_ACTIVE`가 된다.
+
+
+## 2026-08-07 v5.5 승인형 Effect · Clarification
+- Planning Effect는 `READ | CREATE | UPDATE | SEND | DELETE`다.
+- SEND는 Gmail 실제 전송, DELETE는 Calendar Event 삭제, Task 완료·Calendar 참석자 변경은 UPDATE다.
+- 승인 후 Tool·Effect·Arguments·Target을 LLM이 변경하지 않는다.
+- `UNKNOWN_RESULT`의 SEND/DELETE 자동 재실행은 금지한다.
+
+### 모호성 발견 시점
+```text
+요청 자체에서 명확 → Request Understanding → NEEDS_CONFIRMATION
+검색 후 후보 복수/저신뢰 → Acquisition/Context → NEEDS_CONFIRMATION
+분석 후 관계/충돌 불명 → Work Analysis → NEEDS_CONFIRMATION
+```
+모든 경로는 `request_understanding.clarify`에서 후보·차이·선택지를 만들고 같은 Run·Thread를 Resume한다. Request Understanding이 검색 전부터 후보 수를 안다고 가정하지 않는다.

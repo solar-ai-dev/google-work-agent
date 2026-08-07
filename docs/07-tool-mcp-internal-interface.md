@@ -1,11 +1,11 @@
 # 07. Google Work Agent · Tool · MCP · 내부 인터페이스 명세서
 
-> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v5.3`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, MCP Tool, Python 내부 인터페이스 계약을 정의한다.
+> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v5.5`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, MCP Tool, Python 내부 인터페이스 계약을 정의한다.
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.3
-- **기준일:** 2026-08-05
+- **상태:** Draft v2.4
+- **기준일:** 2026-08-07
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
 
@@ -168,9 +168,7 @@ finalize_cancel
 
 ## 5. Agent 내부 인터페이스
 
-Agent는 Versioned Structured Output만 반환한다. 다음 목록은 Structured Output의 타입
-목록이며 Runtime Output Kind Enum이 아니다. `SourceFetchPlan[]`의 `[]`는 목록 타입
-표기이고 문자열 enum 값이 아니다.
+Agent는 Versioned Structured Output만 반환한다.
 
 ```text
 RequestIntent
@@ -190,49 +188,6 @@ RoutingDecision
 - Context Retriever Agent는 MCP·Google API를 직접 호출하지 않는다.
 - Agent 간 대용량 원문 전달 대신 Cache Handle·Resource·Evidence·Segment ID를 사용한다.
 
-### 5.1 Request Understanding 내부 계약
-
-Request Understanding Node의 입력 경계는 `WorkflowStartRequest`다.
-
-```text
-run_id
-conversation_id
-workflow_key
-entry_mode
-requested_mode
-request_text
-selected_resource_ids
-correlation
-```
-
-별도 `RequestUnderstandingInput` DTO는 현재 만들지 않는다. Node는 위 값을
-`prompt_input`으로 투영하고 `LLMRuntimeService.invoke_structured(...)`를 호출한다.
-
-출력은 다음 envelope를 사용한다.
-
-```yaml
-schema_version: 1
-result: COMPLETE | NEEDS_CONFIRMATION | INVALID
-request_intent: RequestIntentV1 | null
-clarification: ClarificationQuestionV1 | null
-failure: RequestUnderstandingFailureV1 | null
-validator_codes: [string]
-```
-
-`RequestIntentV1`은 목표, 완료 조건, semantic constraints, ambiguity, unsupported scope만
-담는다. Google Query, Google Resource ID, Page Token, MCP Arguments는 담지 않는다.
-`selected_resource_ids`와 `entry_mode`는 Runtime 입력·Graph context로 유지하고
-`RequestIntentV1`에 중복 저장하지 않는다.
-
-결정 책임:
-
-- LLM: `RequestIntentV1` 후보 생성
-- 일반 코드: schema validation, semantic validation, `COMPLETE | NEEDS_CONFIRMATION | INVALID` 결정
-- Acquisition·Query Builder: Source-native query, date range, page token, Google 후보 ambiguity 처리
-
-`NEEDS_CONFIRMATION`은 사용자 문장 자체가 불충분할 때만 사용한다. Google 조회 결과의
-동명이인·복수 후보는 Acquisition/Retrieval ambiguity다.
-
 ## 6. MCP 연결
 
 - Transport: `stdio`
@@ -251,9 +206,10 @@ gmail_get_message
 gmail_create_draft
 gmail_update_draft
 gmail_get_draft
+gmail_send
 ```
 
-`gmail_send`와 삭제 Tool은 등록하지 않는다.
+`gmail_send`는 승인 필수 `SEND` Effect다. 승인된 수신자·CC·제목·본문·Thread Hash와 일치할 때만 실행하며 전달 여부가 불명확하면 자동 재전송하지 않는다. Gmail Message·Thread 삭제 Tool은 등록하지 않는다.
 
 ## 8. Tasks Tool
 
@@ -265,7 +221,7 @@ tasks_create_task
 tasks_update_task
 ```
 
-삭제·완료 처리 Tool은 등록하지 않는다.
+`tasks_update_task`는 승인된 완료 상태 변경을 지원한다. Task 삭제 Tool은 등록하지 않는다.
 
 ## 9. Calendar Tool
 
@@ -276,9 +232,10 @@ calendar_query_freebusy
 calendar_get_event
 calendar_create_event
 calendar_update_event
+calendar_delete_event
 ```
 
-삭제·외부 참석자 자동 추가 Tool은 등록하지 않는다.
+`calendar_update_event`는 승인된 참석자 추가·수정을 지원한다. `calendar_delete_event`는 승인 필수 DELETE Effect다. 반복 Event 전체 일괄 수정은 등록하지 않는다.
 
 ## 10. 내부 결정 인터페이스
 
@@ -305,7 +262,7 @@ calendar_update_event
 - Timeout
 - Error Enum
 - Latency·Request ID
-- Effect Type
+- Effect Type (`READ | CREATE | UPDATE | SEND | DELETE`)
 - 허용 Scope
 - Retry 가능 여부
 - 전달 여부 판정 가능성
@@ -423,8 +380,10 @@ UNKNOWN_RESULT → EXECUTING
 ## 16. 검증·UNKNOWN_RESULT 계약
 
 - Write Tool은 Resource ID와 최소 응답 Metadata를 반환한다.
-- Executor는 대응 GET Tool로 다시 조회한다.
-- 일반 코드가 expected·actual을 정규화하고 `VerificationResult`를 만든다.
+- CREATE·UPDATE·Task 완료·참석자 변경은 대응 GET으로 재조회한다.
+- DELETE는 대상 GET의 NOT_FOUND/삭제 상태를 확인한다.
+- SEND는 Message/Thread 식별자 또는 결정적 전송 식별자로 Sent 결과를 조회한다.
+- 일반 코드가 Effect별 expected·actual을 정규화하고 `VerificationResult`를 만든다.
 - `UNKNOWN_RESULT`에서는 새 Attempt·Write를 금지한다.
 - CREATE는 Recovery Fingerprint 기반 Resource Search, UPDATE는 GET Target으로 기존 결과를 확인한다.
 - `NOT_FOUND` 또는 `ERROR` 한 번만으로 실패를 즉시 확정하지 않는다.
@@ -465,24 +424,10 @@ Stack Trace·SQL·Secret은 Frontend에 반환하지 않는다.
 
 ## 18. LLM Provider Adapter
 
-Runtime Source of Truth:
-
-- Application service: `src/google_work_agent/application/llm.py`의
-  `LLMRuntimeService.invoke_structured(...)`
-- Provider port: `src/google_work_agent/ports/llm.py`의 `StructuredLLMProvider`
-- Prompt runtime value: `src/google_work_agent/ports/llm.py`의 `PromptReference`
-- Result value: `src/google_work_agent/ports/llm.py`의 `StructuredLLMResult`
-
-Application service 인터페이스:
+공통 인터페이스:
 
 ```text
-invoke_structured(prompt_ref, prompt_input, output_schema, trace_context)
-```
-
-Provider port 인터페이스:
-
-```text
-invoke_structured(prompt_ref, prompt_input, output_schema, runtime_policy, api_key)
+invoke_structured(prompt_ref, input, output_schema, runtime_policy, trace_context)
 ```
 
 반환:
@@ -491,26 +436,17 @@ invoke_structured(prompt_ref, prompt_input, output_schema, runtime_policy, api_k
 structured_output
 provider
 model
-requested_mode
 actual_runtime
 input_tokens
 output_tokens
-total_tokens
 latency_ms
-estimated_cost_usd?
 fallback_reason?
-structured_output_attempts
-provider_request_id?
-safe_error_code?
 ```
 
 - `API_ONLY`: API Provider만 활성화한다.
 - `LOCAL_CAPABLE`: API Provider와 Ollama Adapter를 포함한다.
 - 명시적 `LOCAL_GPU` 실패 시 자동 API 전환을 금지한다.
 - `AUTO`는 기술적 실패에서 API fallback 최대 1회다.
-- Schema JSON 오류, required field 누락, type 오류, enum 오류는 Request Understanding
-  `INVALID`가 아니라 structured output schema failure다.
-- 현재 RuntimePolicy의 structured output repair budget은 최대 1회다.
 
 ## 19. 08 제공 계약
 
@@ -543,10 +479,8 @@ safe_error_code?
 
 - 인증 전 최소 상태: `GET /health/live`, `GET /health/ready`
 - Local Session 이후 상세 Runtime: `GET /api/v1/runtime`
-- LLM Application Service: `invoke_structured(prompt_ref, prompt_input, output_schema, trace_context)`
-- LLM Provider Port: `invoke_structured(prompt_ref, prompt_input, output_schema, runtime_policy, api_key)`
-- Runtime `PromptReference`는 Bundle·ID·Version·Hash·Agent·Subgraph·Node·State·Purpose·Schema Version을 포함한다.
-- `prompt_slot_id`, `failure_reason_code`, `activation_status`는 Prompt Registry·Manifest metadata이며 Runtime `PromptReference` 필드가 아니다.
+- LLM Adapter: `invoke_structured(prompt_ref, input, output_schema, runtime_policy, trace_context)`
+- PromptRef는 Bundle·ID·Version·Hash·Agent·Subgraph·Node·State·Purpose·Schema Version을 포함한다.
 - Prompt 원문은 Trace·Audit·Error Response에 포함하지 않는다.
 
 
@@ -741,3 +675,10 @@ metadata
 - 모든 ID·Page Token은 길이 1..2048, 제어문자 금지.
 - 날짜·시간은 RFC3339와 명시 Timezone을 사용한다.
 - Write Tool의 `claim context`는 Action·Approval·Attempt·Hash·Token을 포함한다.
+
+## 2026-08-07 v2.4 Verification·Recovery 보강
+- CREATE·UPDATE: GET_COMPARE.
+- DELETE: `GET_ABSENT` 정책으로 대상 GET에서 NOT_FOUND/삭제 상태를 확인한다.
+- SEND: `SENT_LOOKUP` 정책으로 반환된 Message/Thread 식별자 또는 결정적 전송 식별자를 조회한다.
+- SEND 전달 여부가 불명확하면 `UNKNOWN_RESULT`로 전환하고 자동 재전송하지 않는다.
+- 모든 외부 MCP/Google 호출은 SQLite Write Transaction 밖에서 수행한다.

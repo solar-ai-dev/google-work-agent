@@ -23,7 +23,7 @@
 |---|---|---|
 | READ | 조회·검색·분석 | 사용자 요청 범위에서 자동 실행 가능 |
 | WRITE_LOW | Draft·Task·Event 생성 또는 허용 필드 수정 | 사용자 승인 필수 |
-| WRITE_HIGH | 전송·삭제·외부 영향이 큰 작업 | Tool 미등록 또는 정책 차단 |
+| WRITE_HIGH | 메일 전송·Event 삭제·외부 참석자 변경처럼 외부 영향이 큰 작업 | 정확한 대상·인자를 고정하고 사용자 승인 후 실행. 승인 이후 인자 변경·UNKNOWN_RESULT 자동 재실행 금지 |
 | SYSTEM | Credential·환경·DB 변경 | 명시적 설정 화면에서만 수행 |
 
 ## 4. Tool 허용 정책
@@ -39,19 +39,18 @@
 ### 4.2 승인 후 허용되는 쓰기 Tool
 
 - Gmail Draft 생성·수정
-- Google Task 생성·허용 필드 수정
-- Calendar Event 생성·허용 필드 수정
+- Gmail 실제 전송 (`gmail_send`, `SEND`)
+- Google Task 생성·허용 필드 수정·완료 상태 변경
+- Calendar Event 생성·허용 필드 수정·삭제 (`calendar_delete_event`, `DELETE`)
+- Calendar 참석자 추가·수정
 
 ### 4.3 금지 Tool
 
-- Gmail 전송
-- Gmail 메시지·Thread 삭제
-- Task 삭제
-- Task 완료 처리
-- Calendar Event 삭제
-- 외부 참석자 추가
+- Gmail Message·Thread 원문 삭제
+- Google Task 삭제
 - Gmail Label·설정 변경
 - 반복 Event 전체 일괄 수정
+- 승인·Policy·Verification을 우회하는 System/DB 직접 변경
 
 금지 Tool은 UI에서 숨기는 것만으로 끝내지 않고 MCP Server에 등록하지 않는다.
 
@@ -59,7 +58,7 @@
 
 ### POL-APP-001 쓰기 승인
 
-모든 WRITE_LOW Action은 실행 전에 사용자의 명시적 승인을 받아야 한다.
+모든 WRITE_LOW·WRITE_HIGH Action은 실행 전에 사용자의 명시적 승인을 받아야 한다.
 
 ### POL-APP-002 승인 단위
 
@@ -150,7 +149,8 @@ Task 생성 전에 기존 미완료 Task를 검사한다.
 
 ### POL-TSK-002 중복 처리
 
-- 명확한 중복: 생성 차단
+- 명확한 중복: 기존 Resource를 보여주고 기본적으로 새 생성을 중단
+- 사용자가 중복임을 인지하고 동일 Resource 추가 생성을 명시적으로 요구: 재확인·승인 후 허용
 - 유사 후보: 경고 후 사용자 확인
 - 관련 없음: 생성 허용
 
@@ -163,7 +163,7 @@ Task 생성 전에 기존 미완료 Task를 검사한다.
 - 기한
 - 대상 Task List
 
-Task 완료 상태 변경과 삭제는 금지한다.
+Task 완료 상태 변경은 정확한 Task 대상과 사용자 승인 후 허용한다. Task 삭제는 금지한다.
 
 ## 9. Calendar 정책
 
@@ -189,9 +189,9 @@ Task 완료 상태 변경과 삭제는 금지한다.
 
 Tentative는 경고로 처리하고, Declined 또는 Free Event는 Busy에서 제외한다.
 
-### POL-CAL-003 외부 참석자
+### POL-CAL-003 참석자 변경
 
-외부·내부를 포함한 참석자 자동 추가 기능은 제품 범위에서 제외한다.
+내부·외부 참석자 추가·수정을 승인형 Write로 지원한다. 참석자 이메일과 대상 Event를 승인 화면에 명시하며 대상이나 이메일이 모호하면 실행 전에 확인한다.
 
 ### POL-CAL-004 작업 시간
 
@@ -206,7 +206,7 @@ Tentative는 경고로 처리하고, Declined 또는 Free Event는 Busy에서 �
 ### POL-DUP-002 Override
 
 - 중복·충돌 경고는 사용자 2차 확인으로 Override 가능
-- 명확한 중복 차단은 수정된 Arguments로 재검증 후에만 해제 가능
+- 명확한 중복도 사용자가 중복 사실을 인지하고 동일 Resource 추가 생성을 명시적으로 요구한 경우 재확인·승인 후 허용 가능
 - 금지 작업과 승인 무결성 위반은 Override 불가
 
 ## 11. Google OAuth 정책
@@ -246,7 +246,7 @@ P0 요청 Scope는 구현된 기능에 필요한 범위로 제한한다.
 - Tasks: `tasks`
 - Calendar: `calendar.events`, `calendar.calendarlist.readonly`, `calendar.events.freebusy`
 
-Gmail 전송 Tool은 등록하지 않지만 Draft 관리를 위한 `gmail.compose` Scope 자체에는 전송 권한이 포함될 수 있으므로 MCP Tool Allowlist와 승인 정책으로 전송을 이중 차단한다.
+Gmail 전송은 `gmail.compose` Scope 범위에서 승인형 `gmail_send` Tool로 제공한다. MCP Tool Allowlist, Approval Hash, 실행 직전 Policy 검증과 Sent 결과 확인으로 무승인 전송을 차단한다.
 
 ### POL-OAUTH-007 Gmail 데이터 외부 처리
 
@@ -770,3 +770,9 @@ LOCAL_CAPABLE Release는 검증된 Ollama Version, Model ID, Model Hash와 Runti
 - Google Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credential Provider가 소유한다.
 - FastAPI와 React에는 계정·Scope·연결 상태 Metadata만 반환한다.
 - Refresh Token 원문을 FastAPI Process Memory로 복사하는 구현은 금지한다.
+
+## 2026-08-07 v2.3 Clarification·조회 범위·일정 관계 정책
+- 전체 Gmail Mailbox, 장기간 무제한 원문, 모든 Workspace Source 전체 조회 요청은 `BLOCKED`다. 자동으로 범위를 축소해 실행하지 않는다.
+- bounded 범위 확대가 새로 필요하면 이유·Source·기간을 제시하고 사용자 확인 후 수행한다.
+- 시간 `overlap`은 곧바로 업무 `conflict`가 아니다. `NESTED_RELATED`, `TRUE_BUSY_CONFLICT`, `TENTATIVE`, `FREE_OR_TRANSPARENT`, `UNKNOWN_RELATION`을 구분한다.
+- 모호성은 실제 발견 단계에서 `NEEDS_CONFIRMATION`으로 보내며 후보가 존재하면 후보·차이·선택지를 제공한다.

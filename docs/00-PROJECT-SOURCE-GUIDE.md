@@ -12,12 +12,23 @@
 
 ## 최신 핵심 버전
 
-- PRD v2.3
-- Architecture v2.5
-- Workflow v5.4
-- Observability v2.3
-- Test v2.4
-- Evaluation v2.5
+- PRD v2.4
+- Functional v2.3
+- Policy v2.3
+- UI·UX v2.3
+- Architecture v2.6
+- Domain·DB v1.9 / DB Schema v1.3
+- Retrieval v2.1
+- Workflow v5.5
+- Interface v2.4
+- Sequence v2.6
+- Security v2.2
+- Infrastructure v2.4
+- Observability v2.4
+- Test v2.5
+- Evaluation v2.6
+- Operations v2.2
+- Agent Capability Contract v1.0
 - Domain State Transition v1.3
 - State Transition Test Matrix v1.3
 
@@ -35,7 +46,7 @@
   - Workflow Graph
   - Routing·Agent Skip
   - Review Agent
-- Dataset·Grader, Safety·Prompt Injection, Fault·Recovery·Write Integrity는 별도 Gate다.
+- Dataset·Grader, 위험 사용자 요청, Ambiguity·Clarification, Prompt Injection, Fault·Recovery·Write Integrity는 별도 Gate다.
 - Prompt는 Tier A 5개를 우선 구현하되 평가 Projection은 8개 핵심 Node를 수용한다.
 
 ## 주의
@@ -47,9 +58,9 @@
 
 ---
 
-## R6 Source Pack 동기화
+## R7 Source Pack 동기화
 
-2026-08-07 기준 Source Pack은 `00-CODE-AGENT-START-HERE.md`와 `15-agent-capability-failure-prompt-contract.md`를 추가하고, `05·06·11·12·13`에 Agent Capability·Failure·Prompt 계약 부록을 반영한다.
+2026-08-07 R7 Source Pack은 R6 공통 계약에 더해 승인형 `SEND | DELETE`, Task 완료·Calendar 참석자 UPDATE, Clarification UX, 과도 조회 BLOCK, Calendar overlap 관계 판정, External I/O↔SQLite Transaction 분리, Recovery Domain Command 경계를 반영한다.
 
-오래된 `r5-sync-manifest.md`는 Pack에서 제외하며 `r6-source-pack-manifest.md`가 현재 문서 목록과 Hash를 소유한다.
+`0001_initial.sql`은 Schema v1.2 baseline으로 보존하고 `0002_action_effect_send_delete.sql` 적용 후 Domain DB Schema v1.3을 사용한다. 실제 Windows Repository 반영 여부는 이 Export Snapshot과 별도로 검증한다.
 

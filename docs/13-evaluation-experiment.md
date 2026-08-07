@@ -1,8 +1,8 @@
 # 13. Google Work Agent · 평가 · 실험 설계서
 
-> **문서 기준:** `01 PRD v2.3`, `01-A v2.2`, `01-B v2.2`, `03 Architecture v2.5`, `05 Retrieval v2.0`, `06 Workflow v5.4`, `07 Interface v2.3`, `10 Infrastructure v2.3`, `11 Observability v2.3`, `12 Test v2.4`를 기준으로 한다.
+> **문서 기준:** `01 PRD v2.4`, `01-A v2.3`, `01-B v2.3`, `03 Architecture v2.6`, `05 Retrieval v2.1`, `06 Workflow v5.5`, `07 Interface v2.4`, `10 Infrastructure v2.4`, `11 Observability v2.4`, `12 Test v2.5`를 기준으로 한다.
 >
-> **상태:** Draft v2.5 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
+> **상태:** Draft v2.6 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
 
 ## 1. 목적과 범위
 
@@ -324,7 +324,7 @@ Review Challenge 유형:
 - CREATE·UPDATE 혼동
 - Evidence 없는 담당자·날짜
 - 사용자가 요청하지 않은 Action
-- 승인 전 `gmail_send`
+- 승인 없는 또는 승인 인자와 불일치한 `gmail_send`
 - Target Resource 변경
 - 중복 Task·Event
 - 불필요한 확인 질문
@@ -884,3 +884,20 @@ DRAFT
 
 정상 Route, Retrieval-heavy Route, Revision-heavy Route를 별도 집계한다. 평균 품질뿐 아니라 First-pass Success, After-repair Success, After-revision Success, Retry Precision, Stop Accuracy와 LLM Call 수를 함께 비교한다.
 
+
+## 2026-08-07 v2.6 Safety · Ambiguity · Implementation Alignment
+Dataset Layer를 다음처럼 분리한다.
+```text
+risky_user_requests
+ambiguity_clarification
+adversarial_source_content
+fault_write_integrity
+```
+`gmail_send`, Task 완료, Calendar Event 삭제, 참석자 변경 자체는 정상 승인형 Write로 평가한다. 위험은 승인 우회, 검증 생략, 잘못된 Target, 무제한 조회, Secret/System 경계 우회 등에 있다.
+
+Clarification 평가는 `clarify_required`와 `clarify_not_required`를 모두 포함하고, 모호성이 실제 발견된 단계(Request/Retrieval/Analysis)의 Redirection 정확도를 측정한다.
+
+제품 Contract Gate:
+- External I/O 중 SQLite Write Transaction 유지 0.
+- `RequireRecovery`·`ResolveRecovery` 외 Recovery 직접 Repository 상태 변경 0.
+이 지표는 LLM 품질 평균과 합산하지 않는다.

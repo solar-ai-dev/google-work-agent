@@ -1,6 +1,6 @@
 # 11. Google Work Agent · 관측성 · 로그 · 감사 설계서
 
-> **상태:** Draft v2.3 · **외부 Telemetry:** Production 기본 OFF
+> **상태:** Draft v2.4 · **외부 Telemetry:** Production 기본 OFF
 
 ## 1. 채널
 
@@ -330,3 +330,9 @@ prompt_activation_status
 - Budget Profile과 실제 LLM Call 수를 함께 기록한다.
 - Query Attempt에는 Query 원문 전체 대신 정규화된 제약, Hash, Score·Confidence·Stop Reason을 저장한다.
 
+
+## 2026-08-07 v2.4 Effect·Transaction 관측 보강
+- Trace/Audit에는 `effect_type`(`READ|CREATE|UPDATE|SEND|DELETE`)과 verification/recovery policy를 기록한다.
+- 외부 Adapter 호출 이벤트에는 DB Write Transaction 보유 여부를 테스트/진단 전용 필드로 검증할 수 있다. Production Trace에 DB 내부 상세를 노출하지 않는다.
+- Recovery Audit는 `RequireRecovery`·`ResolveRecovery` Command 결과와 연결한다.
+- SEND/DELETE의 UNKNOWN_RESULT에서도 원문/수신자 전체를 로그에 저장하지 않는다.
