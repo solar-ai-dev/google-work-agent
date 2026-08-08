@@ -170,6 +170,10 @@ class ApiDiscoveryAcquisitionAgent:
         )
         self._retrieval_budget = retrieval_budget
 
+    @property
+    def prompt_ref(self) -> PromptReference:
+        return self._prompt_ref
+
     def plan_sources(
         self,
         *,
@@ -177,7 +181,21 @@ class ApiDiscoveryAcquisitionAgent:
         request: WorkflowStartRequest,
         additional_acquisition_request: AdditionalAcquisitionRequestV1 | None = None,
     ) -> SourcePlanningOutputV1:
-        llm_result = self._llm_runtime.invoke_structured(
+        llm_result = self.invoke_plan_sources_llm(
+            request_intent=request_intent,
+            request=request,
+            additional_acquisition_request=additional_acquisition_request,
+        )
+        return self.build_planning_output_from_llm_result(llm_result)
+
+    def invoke_plan_sources_llm(
+        self,
+        *,
+        request_intent: RequestIntentV1,
+        request: WorkflowStartRequest,
+        additional_acquisition_request: AdditionalAcquisitionRequestV1 | None = None,
+    ) -> StructuredLLMResult:
+        return self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
             prompt_input=_planning_prompt_input(
                 request_intent=request_intent,
@@ -195,6 +213,11 @@ class ApiDiscoveryAcquisitionAgent:
                 llm_call_id=f"{request.run_id}:acquisition.plan_sources",
             ),
         )
+
+    def build_planning_output_from_llm_result(
+        self,
+        llm_result: StructuredLLMResult,
+    ) -> SourcePlanningOutputV1:
         plans = validate_source_fetch_plans_v1(llm_result.structured_output)
         return _interpret_source_plans(plans=plans, llm_result=llm_result)
 
@@ -326,6 +349,49 @@ class ApiDiscoveryAcquisitionAgent:
             "resource_handles": [_resource_handle(item) for item in snapshots],
             "resources": [_snapshot_summary(item) for item in snapshots],
         }
+
+
+def validate_acquisition_result_v1(value: object) -> AcquisitionResultV1:
+    root = _require_mapping(value, "$")
+    _require_exact_keys(
+        root,
+        "$",
+        {
+            "schema_version",
+            "status",
+            "resource_handles",
+            "source_summaries",
+            "missing_slots",
+            "remaining_budget",
+        },
+    )
+    if _require_int(root, "schema_version", "$") != ACQUISITION_RESULT_SCHEMA_VERSION:
+        raise SourcePlanningValidationError("$.schema_version must be 1")
+    status = _require_string(root, "status", "$")
+    if status not in {item.value for item in ApiAcquisitionResult}:
+        raise SourcePlanningValidationError("$.status is invalid")
+    resource_handles = _require_string_list(root["resource_handles"], "$.resource_handles")
+    source_summaries = _validate_source_summaries(root["source_summaries"])
+    missing_slots = _require_string_list(root["missing_slots"], "$.missing_slots")
+    remaining_budget = _validate_remaining_budget(root["remaining_budget"])
+    return {
+        "schema_version": 1,
+        "status": cast(
+            Literal[
+                "COMPLETE",
+                "PARTIAL",
+                "AUTH_REQUIRED",
+                "RATE_LIMITED",
+                "BUDGET_EXHAUSTED",
+                "FAILED",
+            ],
+            status,
+        ),
+        "resource_handles": resource_handles,
+        "source_summaries": source_summaries,
+        "missing_slots": missing_slots,
+        "remaining_budget": remaining_budget,
+    }
 
 
 def validate_source_fetch_plans_v1(value: object) -> list[SourceFetchPlanV1]:
@@ -800,6 +866,83 @@ def _provider_summary(result: StructuredLLMResult) -> dict[str, object]:
     }
 
 
+def _validate_source_summaries(value: object) -> list[dict[str, object]]:
+    summaries = _require_list(value, "$.source_summaries")
+    validated: list[dict[str, object]] = []
+    for index, item in enumerate(summaries):
+        summary = _require_mapping(item, f"$.source_summaries[{index}]")
+        required = {
+            "schema_version",
+            "source",
+            "status",
+            "required",
+            "resource_count",
+            "resource_handles",
+            "resources",
+        }
+        optional = {"reason_codes", "error_code"}
+        actual = set(summary)
+        missing = required - actual
+        extra = actual - required - optional
+        if missing:
+            raise SourcePlanningValidationError(
+                f"$.source_summaries[{index}] missing required fields: {sorted(missing)}"
+            )
+        if extra:
+            raise SourcePlanningValidationError(
+                f"$.source_summaries[{index}] has unsupported fields: {sorted(extra)}"
+            )
+        _require_int(summary, "schema_version", f"$.source_summaries[{index}]")
+        source = _require_string(summary, "source", f"$.source_summaries[{index}]")
+        if source not in _SOURCE_VALUES:
+            raise SourcePlanningValidationError(f"$.source_summaries[{index}].source is invalid")
+        status = _require_string(summary, "status", f"$.source_summaries[{index}]")
+        if status not in {item.value for item in ApiAcquisitionResult}:
+            raise SourcePlanningValidationError(f"$.source_summaries[{index}].status is invalid")
+        required_flag = summary["required"]
+        if not isinstance(required_flag, bool):
+            raise SourcePlanningValidationError(
+                f"$.source_summaries[{index}].required must be boolean"
+            )
+        _require_positive_int(summary, "resource_count", f"$.source_summaries[{index}]", minimum=0)
+        _require_string_list(
+            summary["resource_handles"], f"$.source_summaries[{index}].resource_handles"
+        )
+        resources = _require_list(summary["resources"], f"$.source_summaries[{index}].resources")
+        for resource_index, resource in enumerate(resources):
+            _require_mapping(
+                resource,
+                f"$.source_summaries[{index}].resources[{resource_index}]",
+            )
+        if "reason_codes" in summary:
+            _require_string_list(
+                summary["reason_codes"],
+                f"$.source_summaries[{index}].reason_codes",
+            )
+        if "error_code" in summary and not isinstance(summary["error_code"], str):
+            raise SourcePlanningValidationError(
+                f"$.source_summaries[{index}].error_code must be string"
+            )
+        validated.append(summary)
+    return validated
+
+
+def _validate_remaining_budget(value: object) -> dict[str, int]:
+    budget = _require_mapping(value, "$.remaining_budget")
+    _require_exact_keys(budget, "$.remaining_budget", {"sources", "pages", "candidates", "details"})
+    return {
+        "sources": _require_positive_int(budget, "sources", "$.remaining_budget", minimum=0),
+        "pages": _require_positive_int(budget, "pages", "$.remaining_budget", minimum=0),
+        "candidates": _require_positive_int(
+            budget,
+            "candidates",
+            "$.remaining_budget",
+            minimum=0,
+        ),
+        "details": _require_positive_int(budget, "details", "$.remaining_budget", minimum=0),
+    }
+
+
 def _require_mapping(value: object, path: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise SourcePlanningValidationError(f"{path} must be an object")
@@ -846,6 +989,12 @@ def _require_string(value: dict[str, object], field: str, path: str) -> str:
     if not isinstance(item, str):
         raise SourcePlanningValidationError(f"{path}.{field} must be string")
     return item
+
+
+def _require_list(value: object, path: str) -> list[object]:
+    if not isinstance(value, list):
+        raise SourcePlanningValidationError(f"{path} must be an array")
+    return value
 
 
 def _require_string_list(value: object, path: str) -> list[str]:

@@ -12,6 +12,7 @@ from google_work_agent.application.workflows.api_acquisition import (
     SourcePlanningValidationError,
     build_source_planning_clarification_question,
     load_acquisition_plan_sources_prompt_reference,
+    validate_acquisition_result_v1,
     validate_source_fetch_plans_v1,
 )
 from google_work_agent.application.workflows.context_retrieval import (
@@ -39,6 +40,7 @@ from google_work_agent.application.workflows.contracts import (
     ABSOLUTE_MAX_LLM_CALLS,
     ADDITIONAL_ACQUISITION_ALLOWED_PHASES,
     ADDITIONAL_ACQUISITION_ALLOWED_RESULTS,
+    AGENT_LOCAL_STATE_FIELDS,
     BUDGET_PROFILE_LIMITS,
     CONFIRMATION_ORIGIN_TARGETS,
     CONFIRMATION_RESPONSE_ALLOWED_KINDS,
@@ -59,6 +61,9 @@ from google_work_agent.application.workflows.contracts import (
     SEMANTIC_REVISION_SAME_FAILURE,
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
+    AgentDispositionV1,
+    AgentFailureRecordV1,
+    AgentLocalStateV1,
     AnalysisResult,
     ApiAcquisitionResult,
     ApiPlanningResult,
@@ -183,6 +188,7 @@ from google_work_agent.application.workflows.work_analysis import (
 
 __all__ = [
     "ACQUISITION_RESULT_SCHEMA_VERSION",
+    "AGENT_LOCAL_STATE_FIELDS",
     "ADDITIONAL_ACQUISITION_ALLOWED_PHASES",
     "ADDITIONAL_ACQUISITION_ALLOWED_RESULTS",
     "ABSOLUTE_MAX_LLM_CALLS",
@@ -195,6 +201,9 @@ __all__ = [
     "ActionPlanDraftV1",
     "AdditionalAcquisitionOriginResult",
     "AdditionalAcquisitionRequestV1",
+    "AgentDispositionV1",
+    "AgentFailureRecordV1",
+    "AgentLocalStateV1",
     "AnalysisResult",
     "AnalysisFindingV1",
     "ApiDiscoveryAcquisitionAgent",
@@ -215,6 +224,7 @@ __all__ = [
     "build_semantic_failure_signature_v1",
     "build_solution_planning_clarification_question",
     "build_source_planning_clarification_question",
+    "validate_acquisition_result_v1",
     "build_work_analysis_clarification_question",
     "build_policy_review_context_v1",
     "build_user_interrupt_v1",

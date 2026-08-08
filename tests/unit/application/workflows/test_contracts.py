@@ -5,6 +5,7 @@ import pytest
 from google_work_agent.application.workflows import (
     ADDITIONAL_ACQUISITION_ALLOWED_PHASES,
     ADDITIONAL_ACQUISITION_ALLOWED_RESULTS,
+    AGENT_LOCAL_STATE_FIELDS,
     CONFIRMATION_ORIGIN_TARGETS,
     CONFIRMATION_RESPONSE_ALLOWED_KINDS,
     CONFIRMATION_RESUME_KIND,
@@ -411,6 +412,24 @@ def test_prompt_ref_has_no_prompt_content_fields() -> None:
     assert "template" not in PROMPT_REF_FIELDS
     assert "system_prompt" not in PROMPT_REF_FIELDS
     assert "raw_prompt" not in PROMPT_REF_FIELDS
+
+
+def test_agent_local_state_fields_match_native_subgraph_contract() -> None:
+    assert {
+        "schema_version",
+        "agent_role",
+        "invocation_id",
+        "node_state",
+        "input_projection",
+        "candidate_output",
+        "prompt_ref",
+        "attempt_no",
+        "schema_repair_count",
+        "semantic_revision_count",
+        "failure_record",
+        "disposition",
+        "typed_result",
+    } == AGENT_LOCAL_STATE_FIELDS
 
 
 def test_llm_provider_result_fields_match_interface_document() -> None:

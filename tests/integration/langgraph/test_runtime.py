@@ -52,8 +52,10 @@ _RUNTIME_ACTIVE_PROMPT_IDS = {
 class _QueuedLLMRuntime:
     def __init__(self, payloads: list[object]) -> None:
         self._queued = deque(_llm_result(item) for item in payloads)
+        self.calls: list[dict[str, object]] = []
 
-    def invoke_structured(self, **_: object) -> StructuredLLMResult:
+    def invoke_structured(self, **kwargs: object) -> StructuredLLMResult:
+        self.calls.append(dict(kwargs))
         if not self._queued:
             raise RuntimeError("no queued llm result")
         return self._queued.popleft()
@@ -719,8 +721,7 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
     try:
         assert six.describe_topology() == (
             "request_understanding",
-            "source_planning",
-            "api_acquisition",
+            "acquisition",
             "context_retrieval",
             "work_analysis",
             "solution_planning",
@@ -732,6 +733,120 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
     finally:
         six.close()
         three.close()
+
+
+def test_six_role_runtime_exposes_native_request_and_acquisition_subgraphs(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-subgraphs.db",
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        assert runtime._node_handler("request_understanding") is runtime._request_subgraph  # noqa: SLF001
+        assert runtime._node_handler("acquisition") is runtime._acquisition_subgraph  # noqa: SLF001
+    finally:
+        runtime.close()
+
+
+def test_request_subgraph_clears_local_state_and_records_trace_counts(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[_clear_intent()],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-request-subgraph.db",
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        result = runtime._request_subgraph.invoke(state)  # noqa: SLF001
+
+        assert "__request_agent_local__" not in result
+        assert result["__logical_target__"] == "acquisition"
+        assert result["__target__"] == "acquisition"
+        trace_context = result["trace_context"]
+        assert trace_context["agent_invocation_count"] == 1
+        assert trace_context["llm_call_count"] == 1
+        assert [item["node_name"] for item in trace_context["agent_node_log"]] == [
+            "init",
+            "classify",
+            "finalize",
+        ]
+    finally:
+        runtime.close()
+
+
+def test_acquisition_subgraph_keeps_single_invocation_id_and_parent_isolation(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    llm_runtime = _QueuedLLMRuntime([[_plan("TASKS", {"task_list_id": "task-list-default"})]])
+    runtime = LangGraphWorkflowRuntime(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        llm_runtime=llm_runtime,
+        gateway=gateway,
+        now_ms=FakeClock(1000).now_ms,
+        id_factory=DeterministicUUID(prefix="runtime").next_id,
+        signing_secret="stage17-secret",
+        service_instance_id="stage17-service",
+        checkpoint_database_path=tmp_path / "checkpoints-acquisition-subgraph.db",
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        state["request_intent"] = _clear_intent()
+        result = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
+
+        assert "__request_agent_local__" not in result
+        assert "__acquisition_agent_local__" not in result
+        assert "__acquisition_planning_output__" not in result
+        assert result["__logical_target__"] == "context_retrieval"
+        assert result["__target__"] == "context_retrieval"
+        assert gateway.count_calls("list_tasks") == 1
+        assert gateway.count_calls("get_task") >= 1
+        assert gateway.count_calls("search_gmail_threads") == 0
+        assert gateway.count_calls("list_calendar_events") == 0
+        assert len(llm_runtime.calls) == 1
+
+        trace_context = result["trace_context"]
+        assert trace_context["agent_invocation_count"] == 1
+        assert trace_context["llm_call_count"] == 1
+        node_log = trace_context["agent_node_log"]
+        assert [item["node_name"] for item in node_log] == [
+            "init",
+            "plan_sources",
+            "plan_validate",
+            "deterministic_read",
+            "result_validate",
+            "finalize",
+        ]
+        invocation_ids = {item["agent_invocation_id"] for item in node_log}
+        assert len(invocation_ids) == 1
+        assert {item["agent_subgraph_id"] for item in node_log} == {"acquisition"}
+    finally:
+        runtime.close()
 
 
 def test_single_baseline_reports_prompt_artifact_gap(

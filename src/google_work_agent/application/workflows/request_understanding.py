@@ -352,11 +352,19 @@ class RequestUnderstandingAgent:
             clarify_prompt_ref or load_request_understanding_clarify_prompt_reference(manifest_path)
         )
 
+    @property
+    def prompt_ref(self) -> PromptReference:
+        return self._prompt_ref
+
     def __call__(self, request: WorkflowStartRequest) -> RequestUnderstandingOutputV1:
         return self.classify(request)
 
     def classify(self, request: WorkflowStartRequest) -> RequestUnderstandingOutputV1:
-        llm_result = self._llm_runtime.invoke_structured(
+        llm_result = self.invoke_classify_llm(request)
+        return self.build_output_from_llm_result(llm_result)
+
+    def invoke_classify_llm(self, request: WorkflowStartRequest) -> StructuredLLMResult:
+        return self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
             prompt_input=_prompt_input_from_request(request),
             output_schema=REQUEST_INTENT_OUTPUT_SCHEMA,
@@ -369,6 +377,11 @@ class RequestUnderstandingAgent:
                 llm_call_id=f"{request.run_id}:request_understanding.classify",
             ),
         )
+
+    def build_output_from_llm_result(
+        self,
+        llm_result: StructuredLLMResult,
+    ) -> RequestUnderstandingOutputV1:
         intent = validate_request_intent_v1(llm_result.structured_output)
         return _classify_valid_intent(intent=intent, llm_result=llm_result)
 

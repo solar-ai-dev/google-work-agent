@@ -13,6 +13,7 @@ from google_work_agent.application.workflows import (
     SourcePlanningValidationError,
     WorkflowPhase,
     build_source_planning_clarification_question,
+    validate_acquisition_result_v1,
 )
 from google_work_agent.ports import (
     ActualRuntime,
@@ -512,6 +513,38 @@ def test_partial_acquisition_when_one_source_succeeds_and_one_fails() -> None:
     assert acquisition["status"] == ApiAcquisitionResult.PARTIAL.value
     assert acquisition["resource_handles"] == ["gmail_thread:thread-kim"]
     assert "CALENDAR:UPSTREAM_5XX" in acquisition["missing_slots"]
+
+
+def test_validate_acquisition_result_v1_requires_native_result_shape() -> None:
+    acquisition = validate_acquisition_result_v1(
+        {
+            "schema_version": 1,
+            "status": "COMPLETE",
+            "resource_handles": ["task:task-1"],
+            "source_summaries": [
+                {
+                    "schema_version": 1,
+                    "source": "TASKS",
+                    "status": "COMPLETE",
+                    "required": True,
+                    "reason_codes": ["GOAL_RELEVANT"],
+                    "resource_count": 1,
+                    "resource_handles": ["task:task-1"],
+                    "resources": [{"resource_handle": "task:task-1"}],
+                }
+            ],
+            "missing_slots": [],
+            "remaining_budget": {
+                "sources": 2,
+                "pages": 2,
+                "candidates": 20,
+                "details": 10,
+            },
+        }
+    )
+
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert acquisition["resource_handles"] == ["task:task-1"]
 
 
 def test_optional_source_failure_with_required_success_returns_partial() -> None:
