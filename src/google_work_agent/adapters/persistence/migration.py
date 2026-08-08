@@ -208,11 +208,22 @@ def _apply_single_migration(
     applied_at_ms: int,
 ) -> None:
     statements = _split_sql_statements(raw.decode("utf-8"))
-    pragma_statements = [statement for statement in statements if _is_pragma_statement(statement)]
-    ddl_statements = [statement for statement in statements if not _is_pragma_statement(statement)]
+    pre_transaction_statements = [
+        statement for statement in statements if _is_pre_transaction_statement(statement)
+    ]
+    post_transaction_statements = [
+        statement for statement in statements if _is_post_transaction_statement(statement)
+    ]
+    ddl_statements = [
+        statement
+        for statement in statements
+        if not _is_pre_transaction_statement(statement)
+        and not _is_post_transaction_statement(statement)
+        and not _is_transaction_control_statement(statement)
+    ]
 
     try:
-        for statement in pragma_statements:
+        for statement in pre_transaction_statements:
             connection.execute(statement)
 
         connection.execute("BEGIN IMMEDIATE;")
@@ -226,6 +237,15 @@ def _apply_single_migration(
             (migration.version, migration.name, migration.checksum, applied_at_ms),
         )
         connection.execute("COMMIT;")
+        for statement in post_transaction_statements:
+            if _is_foreign_key_check_statement(statement):
+                if connection.execute(statement).fetchall():
+                    raise MigrationIntegrityError(
+                        "migration foreign key check failed: "
+                        f"version={migration.version} name={migration.name}"
+                    )
+                continue
+            connection.execute(statement)
     except sqlite3.Error as exc:
         if connection.in_transaction:
             connection.execute("ROLLBACK;")
@@ -258,6 +278,43 @@ def _is_pragma_statement(statement: str) -> bool:
             continue
         return stripped.upper().startswith("PRAGMA ")
     return False
+
+
+def _is_transaction_control_statement(statement: str) -> bool:
+    keyword = _statement_keyword(statement)
+    return keyword in {"BEGIN", "COMMIT", "ROLLBACK"}
+
+
+def _is_pre_transaction_statement(statement: str) -> bool:
+    return _is_pragma_statement(statement) and not _is_foreign_key_check_statement(statement)
+
+
+def _is_post_transaction_statement(statement: str) -> bool:
+    return _is_foreign_key_check_statement(statement)
+
+
+def _is_foreign_key_check_statement(statement: str) -> bool:
+    return _statement_keyword(statement) == "PRAGMA FOREIGN_KEY_CHECK"
+
+
+def _statement_keyword(statement: str) -> str:
+    for line in statement.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("--"):
+            continue
+        normalized = stripped.rstrip(";").upper()
+        if normalized.startswith("PRAGMA FOREIGN_KEY_CHECK"):
+            return "PRAGMA FOREIGN_KEY_CHECK"
+        if normalized.startswith("PRAGMA "):
+            return "PRAGMA"
+        if normalized.startswith("BEGIN"):
+            return "BEGIN"
+        if normalized.startswith("COMMIT"):
+            return "COMMIT"
+        if normalized.startswith("ROLLBACK"):
+            return "ROLLBACK"
+        return normalized.split(maxsplit=1)[0]
+    return ""
 
 
 def _system_now_ms() -> int:

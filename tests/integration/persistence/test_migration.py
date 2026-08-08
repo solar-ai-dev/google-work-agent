@@ -43,6 +43,15 @@ def test_docs_and_runtime_sql_raw_bytes_are_identical() -> None:
     assert runtime_sql == docs_sql
 
 
+def test_docs_and_runtime_second_migration_sql_raw_bytes_are_identical() -> None:
+    docs_sql = Path("docs/0002_action_effect_send_delete.sql").read_bytes()
+    runtime_sql = Path(
+        "src/google_work_agent/adapters/persistence/migrations/0002_action_effect_send_delete.sql"
+    ).read_bytes()
+
+    assert runtime_sql == docs_sql
+
+
 def test_package_resource_discovers_initial_migration() -> None:
     migrations = discover_migrations()
 
