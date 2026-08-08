@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import cast
 
 import pytest
+from tests.support.prompt_manifests import write_runtime_active_manifest
 
 from google_work_agent.application.workflows import (
     ContextBudget,
@@ -15,6 +17,7 @@ from google_work_agent.application.workflows import (
     build_context_clarification_question,
     load_context_assess_sufficiency_prompt_reference,
 )
+from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -347,13 +350,22 @@ def test_context_agent_has_no_google_gateway_or_domain_dependency() -> None:
     assert len(runtime.calls) == 2
 
 
-def test_assess_sufficiency_prompt_ref_is_runtime_active() -> None:
-    prompt_ref = load_context_assess_sufficiency_prompt_reference()
+def test_assess_sufficiency_prompt_ref_is_runtime_active(tmp_path: Path) -> None:
+    manifest_path = write_runtime_active_manifest(
+        tmp_path,
+        prompt_ids={"context.assess_sufficiency"},
+    )
+    prompt_ref = load_context_assess_sufficiency_prompt_reference(manifest_path)
 
     assert prompt_ref.prompt_id == "context.assess_sufficiency"
-    assert prompt_ref.prompt_version != "TBD"
-    assert prompt_ref.node_state == "BASELINE"
-    assert prompt_ref.content_hash != "TBD"
+    assert prompt_ref.prompt_version == "0.8.2"
+    assert prompt_ref.node_state == "INITIAL"
+    assert prompt_ref.content_hash
+
+
+def test_default_product_loader_rejects_draft_context_prompt() -> None:
+    with pytest.raises(InactivePromptArtifactError, match="context.assess_sufficiency"):
+        load_context_assess_sufficiency_prompt_reference()
 
 
 def test_context_retrieval_exports_do_not_change_existing_workflow_contracts() -> None:

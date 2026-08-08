@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from tests.support.prompt_manifests import write_runtime_active_manifest
 
 from google_work_agent.application.workflows import (
     ACTION_PLAN_DRAFT_OUTPUT_SCHEMA,
@@ -22,6 +23,7 @@ from google_work_agent.application.workflows import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
+from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -60,14 +62,14 @@ DRAFT_PLAN_PROMPT_REF = PromptReference(
 )
 REVISE_ANSWER_PROMPT_REF = PromptReference(
     prompt_bundle_version="agent-r4-v0.1-baseline",
-    prompt_id="planning.revise_answer",
+    prompt_id="planning.revise_plan",
     prompt_version="v0.1",
     content_hash="hash",
     agent_role="solution_planning",
     subgraph_name="planning",
-    node_name="revise_answer",
+    node_name="revise_plan",
     node_state="BASELINE",
-    purpose="revise_answer",
+    purpose="revise_plan",
     input_schema_version="agent-node-input-v0.1",
     output_schema_version="agent-node-output-v0.1",
 )
@@ -260,7 +262,7 @@ def test_revise_answer_uses_existing_answer_and_review_issues() -> None:
 
     prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
     prompt_ref = cast(PromptReference, runtime.calls[0]["prompt_ref"])
-    assert prompt_ref.prompt_id == "planning.revise_answer"
+    assert prompt_ref.prompt_id == "planning.revise_plan"
     assert runtime.calls[0]["output_schema"] == ANSWER_DRAFT_OUTPUT_SCHEMA
     assert prompt_input["answer_draft"] == answer_draft
     assert prompt_input["review_summary"] == "The answer omitted the pending task context."
@@ -619,31 +621,48 @@ def test_answer_only_and_plan_source_have_no_google_mcp_or_completion_call() -> 
     assert "PublishReadOnlyPlanCommand" not in source
 
 
-def test_prompt_refs_are_runtime_active() -> None:
-    answer_prompt = load_solution_planning_answer_only_prompt_reference()
-    plan_prompt = load_solution_planning_draft_plan_prompt_reference()
-    revise_prompt = load_solution_planning_revise_answer_prompt_reference()
-    revise_plan_prompt = load_solution_planning_revise_plan_prompt_reference()
+def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
+    manifest_path = write_runtime_active_manifest(
+        tmp_path,
+        prompt_ids={
+            "planning.answer_only",
+            "planning.draft_plan",
+            "planning.revise_plan",
+        },
+    )
+    answer_prompt = load_solution_planning_answer_only_prompt_reference(manifest_path)
+    plan_prompt = load_solution_planning_draft_plan_prompt_reference(manifest_path)
+    revise_prompt = load_solution_planning_revise_answer_prompt_reference(manifest_path)
+    revise_plan_prompt = load_solution_planning_revise_plan_prompt_reference(manifest_path)
 
     assert answer_prompt.prompt_id == "planning.answer_only"
-    assert answer_prompt.prompt_version != "TBD"
-    assert answer_prompt.content_hash != "TBD"
-    assert answer_prompt.node_state == "BASELINE"
+    assert answer_prompt.prompt_version == "0.8.2"
+    assert answer_prompt.content_hash
+    assert answer_prompt.node_state == "INITIAL"
+    assert answer_prompt.output_schema_version == "v1"
 
     assert plan_prompt.prompt_id == "planning.draft_plan"
-    assert plan_prompt.prompt_version != "TBD"
-    assert plan_prompt.content_hash != "TBD"
-    assert plan_prompt.node_state == "BASELINE"
+    assert plan_prompt.prompt_version == "0.8.2"
+    assert plan_prompt.content_hash
+    assert plan_prompt.node_state == "INITIAL"
+    assert plan_prompt.output_schema_version == "v1"
 
-    assert revise_prompt.prompt_id == "planning.revise_answer"
-    assert revise_prompt.prompt_version != "TBD"
-    assert revise_prompt.content_hash != "TBD"
-    assert revise_prompt.node_state == "BASELINE"
+    assert revise_prompt.prompt_id == "planning.revise_plan"
+    assert revise_prompt.prompt_version == "0.8.2"
+    assert revise_prompt.content_hash
+    assert revise_prompt.node_state == "SEMANTIC_REVISION"
+    assert revise_prompt.output_schema_version == "v1"
 
     assert revise_plan_prompt.prompt_id == "planning.revise_plan"
-    assert revise_plan_prompt.prompt_version != "TBD"
-    assert revise_plan_prompt.content_hash != "TBD"
-    assert revise_plan_prompt.node_state == "BASELINE"
+    assert revise_plan_prompt.prompt_version == "0.8.2"
+    assert revise_plan_prompt.content_hash
+    assert revise_plan_prompt.node_state == "SEMANTIC_REVISION"
+    assert revise_plan_prompt.output_schema_version == "v1"
+
+
+def test_default_product_loader_rejects_draft_planning_prompts() -> None:
+    with pytest.raises(InactivePromptArtifactError, match="planning.answer_only"):
+        load_solution_planning_answer_only_prompt_reference()
 
 
 def test_solution_planning_exports_are_available() -> None:

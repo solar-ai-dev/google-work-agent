@@ -136,10 +136,11 @@ class WorkAnalysisAgent:
         *,
         llm_runtime: LLMRuntimeService,
         analyze_prompt_ref: PromptReference | None = None,
+        manifest_path: Path | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
         self._analyze_prompt_ref = (
-            analyze_prompt_ref or load_work_analysis_analyze_prompt_reference()
+            analyze_prompt_ref or load_work_analysis_analyze_prompt_reference(manifest_path)
         )
 
     def analyze(

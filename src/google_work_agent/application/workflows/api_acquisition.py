@@ -161,10 +161,13 @@ class ApiDiscoveryAcquisitionAgent:
         gateway: GoogleWorkspaceGateway,
         prompt_ref: PromptReference | None = None,
         retrieval_budget: RetrievalBudget = DEFAULT_RETRIEVAL_BUDGET,
+        manifest_path: Path | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
         self._gateway = gateway
-        self._prompt_ref = prompt_ref or load_acquisition_plan_sources_prompt_reference()
+        self._prompt_ref = prompt_ref or load_acquisition_plan_sources_prompt_reference(
+            manifest_path
+        )
         self._retrieval_budget = retrieval_budget
 
     def plan_sources(

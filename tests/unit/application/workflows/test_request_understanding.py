@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import cast
 
 import pytest
+from tests.support.prompt_manifests import write_runtime_active_manifest
 
 from google_work_agent.application.workflows import (
     ConfirmationResponseKind,
@@ -16,6 +18,7 @@ from google_work_agent.application.workflows import (
     resolve_confirmation_origin_target,
     validate_confirmation_response_v1,
 )
+from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports import (
     ActualRuntime,
     LLMErrorCode,
@@ -90,6 +93,7 @@ def test_clear_request_returns_complete_request_intent() -> None:
     agent = RequestUnderstandingAgent(
         llm_runtime=cast(object, runtime),
         prompt_ref=PROMPT_REF,
+        clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
 
     output = agent.classify(request)
@@ -120,6 +124,7 @@ def test_linguistically_ambiguous_request_needs_confirmation() -> None:
     agent = RequestUnderstandingAgent(
         llm_runtime=cast(object, runtime),
         prompt_ref=PROMPT_REF,
+        clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
 
     output = agent.classify(request)
@@ -148,6 +153,7 @@ def test_retrieval_candidate_ambiguity_is_not_confirmed_by_request_understanding
     agent = RequestUnderstandingAgent(
         llm_runtime=cast(object, runtime),
         prompt_ref=PROMPT_REF,
+        clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
 
     output = agent.classify(request)
@@ -164,6 +170,7 @@ def test_unsupported_scope_returns_invalid_without_request_intent_handoff() -> N
     agent = RequestUnderstandingAgent(
         llm_runtime=cast(object, runtime),
         prompt_ref=PROMPT_REF,
+        clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
 
     output = agent.classify(_request("메일 전부 삭제해줘."))
@@ -193,6 +200,7 @@ def test_structured_output_schema_error_is_not_converted_to_invalid() -> None:
     agent = RequestUnderstandingAgent(
         llm_runtime=cast(object, runtime),
         prompt_ref=PROMPT_REF,
+        clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
 
     try:
@@ -209,6 +217,7 @@ def test_structured_output_repair_owned_by_llm_runtime_and_not_retried_by_agent(
     agent = RequestUnderstandingAgent(
         llm_runtime=cast(object, runtime),
         prompt_ref=PROMPT_REF,
+        clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
 
     output = agent.classify(_request("김대리 메일 찾아서 이번 주 해야 할 일 정리해줘."))
@@ -229,6 +238,7 @@ def test_resource_selected_preserves_selected_resource_context_without_intent_du
     agent = RequestUnderstandingAgent(
         llm_runtime=cast(object, runtime),
         prompt_ref=PROMPT_REF,
+        clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
 
     output = agent.classify(request)
@@ -253,6 +263,7 @@ def test_agent_surface_has_no_google_mcp_or_action_dependency() -> None:
     agent = RequestUnderstandingAgent(
         llm_runtime=cast(object, runtime),
         prompt_ref=PROMPT_REF,
+        clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
 
     output = agent.classify(_request("김대리 메일 찾아줘."))
@@ -261,13 +272,22 @@ def test_agent_surface_has_no_google_mcp_or_action_dependency() -> None:
     assert len(runtime.calls) == 1
 
 
-def test_clarify_prompt_ref_is_runtime_active() -> None:
-    prompt_ref = load_request_understanding_clarify_prompt_reference()
+def test_clarify_prompt_ref_is_runtime_active(tmp_path: Path) -> None:
+    manifest_path = write_runtime_active_manifest(
+        tmp_path,
+        prompt_ids={"request_understanding.clarify"},
+    )
+    prompt_ref = load_request_understanding_clarify_prompt_reference(manifest_path)
 
     assert prompt_ref.prompt_id == "request_understanding.clarify"
-    assert prompt_ref.prompt_version != "TBD"
-    assert prompt_ref.content_hash != "TBD"
-    assert prompt_ref.node_state == "BASELINE"
+    assert prompt_ref.prompt_version == "0.8.2"
+    assert prompt_ref.content_hash
+    assert prompt_ref.node_state == "CLARIFY"
+
+
+def test_default_product_loader_rejects_draft_request_understanding_prompt() -> None:
+    with pytest.raises(InactivePromptArtifactError, match="request_understanding.clarify"):
+        load_request_understanding_clarify_prompt_reference()
 
 
 def test_clarify_invokes_prompt_and_validates_question_output() -> None:

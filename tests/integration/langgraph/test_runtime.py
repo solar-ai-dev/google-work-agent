@@ -1,9 +1,11 @@
 from collections import deque
 from pathlib import Path
 
+import pytest
 from tests.integration.persistence.test_write_actions import _expected_task_projection
 from tests.support.fakes import DeterministicUUID, FakeClock, FakeGoogleGateway
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.prompt_manifests import write_runtime_active_manifest
 from tests.unit.application.workflows.test_api_acquisition import _plan
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 from tests.unit.application.workflows.test_plan_review import _review_output
@@ -20,6 +22,7 @@ from google_work_agent.adapters.persistence import (
     sqlite_unit_of_work_factory,
 )
 from google_work_agent.application import ApproveWriteActionCommand, ApproveWriteActionService
+from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports import (
     ActualRuntime,
     RequestedRuntimeMode,
@@ -31,6 +34,19 @@ from google_work_agent.ports import (
 )
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
+_RUNTIME_ACTIVE_PROMPT_IDS = {
+    "request_understanding.classify",
+    "request_understanding.clarify",
+    "acquisition.plan_sources",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.answer_only",
+    "planning.draft_plan",
+    "planning.revise_plan",
+    "review.inspect",
+    "review.recheck",
+}
 
 
 class _QueuedLLMRuntime:
@@ -270,6 +286,7 @@ def _make_runtime(
     gateway: FakeGoogleGateway,
     checkpoint_database_path: Path,
     graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
+    prompt_manifest_path: Path | None = None,
 ) -> LangGraphWorkflowRuntime:
     clock = FakeClock(1000)
     ids = DeterministicUUID(prefix="runtime")
@@ -283,6 +300,14 @@ def _make_runtime(
         service_instance_id="stage17-service",
         checkpoint_database_path=checkpoint_database_path,
         graph_profile=graph_profile,
+        prompt_manifest_path=prompt_manifest_path,
+    )
+
+
+def _runtime_active_manifest_path(tmp_path: Path) -> Path:
+    return write_runtime_active_manifest(
+        tmp_path,
+        prompt_ids=_RUNTIME_ACTIVE_PROMPT_IDS,
     )
 
 
@@ -373,7 +398,10 @@ def _start_read_request() -> WorkflowStartRequest:
     )
 
 
-def test_langgraph_runtime_completes_answer_only_run(tmp_path: Path) -> None:
+def test_langgraph_runtime_completes_answer_only_run(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     runtime = _make_runtime(
@@ -389,6 +417,7 @@ def test_langgraph_runtime_completes_answer_only_run(tmp_path: Path) -> None:
         ],
         gateway=FakeGoogleGateway(snapshot),
         checkpoint_database_path=tmp_path / "checkpoints-answer.db",
+        prompt_manifest_path=manifest_path,
     )
 
     result = runtime.start(_start_request())
@@ -416,6 +445,7 @@ def test_langgraph_runtime_completes_answer_only_run(tmp_path: Path) -> None:
 def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     tmp_path: Path,
 ) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     runtime = _make_runtime(
@@ -423,6 +453,7 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         llm_payloads=[_ambiguous_intent()],
         gateway=FakeGoogleGateway(snapshot),
         checkpoint_database_path=tmp_path / "checkpoints-confirm.db",
+        prompt_manifest_path=manifest_path,
     )
 
     first = runtime.start(_start_request())
@@ -450,6 +481,7 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         ],
         gateway=FakeGoogleGateway(snapshot),
         checkpoint_database_path=tmp_path / "checkpoints-confirm.db",
+        prompt_manifest_path=manifest_path,
     )
 
     resumed = resumed_runtime.resume(
@@ -489,7 +521,10 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         resumed_runtime.close()
 
 
-def test_langgraph_runtime_executes_verified_write_after_approval_resume(tmp_path: Path) -> None:
+def test_langgraph_runtime_executes_verified_write_after_approval_resume(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
@@ -506,6 +541,7 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(tmp_pat
         ],
         gateway=gateway,
         checkpoint_database_path=tmp_path / "checkpoints-write.db",
+        prompt_manifest_path=manifest_path,
     )
 
     started = runtime.start(_start_write_request())
@@ -564,7 +600,10 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(tmp_pat
         runtime.close()
 
 
-def test_langgraph_runtime_executes_read_only_plan_to_terminal(tmp_path: Path) -> None:
+def test_langgraph_runtime_executes_read_only_plan_to_terminal(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
@@ -581,6 +620,7 @@ def test_langgraph_runtime_executes_read_only_plan_to_terminal(tmp_path: Path) -
         ],
         gateway=gateway,
         checkpoint_database_path=tmp_path / "checkpoints-read.db",
+        prompt_manifest_path=manifest_path,
     )
 
     result = runtime.start(_start_read_request())
@@ -608,6 +648,7 @@ def test_langgraph_runtime_executes_read_only_plan_to_terminal(tmp_path: Path) -
 def test_langgraph_runtime_supports_same_database_for_domain_and_checkpointer(
     tmp_path: Path,
 ) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     runtime = _make_runtime(
@@ -623,6 +664,7 @@ def test_langgraph_runtime_supports_same_database_for_domain_and_checkpointer(
         ],
         gateway=FakeGoogleGateway(snapshot),
         checkpoint_database_path=database_path,
+        prompt_manifest_path=manifest_path,
     )
 
     result = runtime.start(_start_request())
@@ -650,7 +692,10 @@ def test_graph_profile_registry_exposes_three_supported_profiles() -> None:
     )
 
 
-def test_langgraph_runtime_reports_distinct_topologies_by_profile(tmp_path: Path) -> None:
+def test_langgraph_runtime_reports_distinct_topologies_by_profile(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
@@ -660,6 +705,7 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(tmp_path: Path
         gateway=gateway,
         checkpoint_database_path=tmp_path / "checkpoints-six.db",
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        prompt_manifest_path=manifest_path,
     )
     three = _make_runtime(
         database_path=database_path,
@@ -667,6 +713,7 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(tmp_path: Path
         gateway=gateway,
         checkpoint_database_path=tmp_path / "checkpoints-three.db",
         graph_profile=GraphProfile.THREE_STAGE,
+        prompt_manifest_path=manifest_path,
     )
 
     try:
@@ -687,7 +734,10 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(tmp_path: Path
         three.close()
 
 
-def test_single_baseline_reports_prompt_artifact_gap(tmp_path: Path) -> None:
+def test_single_baseline_reports_prompt_artifact_gap(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
 
@@ -698,6 +748,7 @@ def test_single_baseline_reports_prompt_artifact_gap(tmp_path: Path) -> None:
             gateway=FakeGoogleGateway(snapshot),
             checkpoint_database_path=tmp_path / "checkpoints-single.db",
             graph_profile=GraphProfile.SINGLE_BASELINE,
+            prompt_manifest_path=manifest_path,
         )
     except PromptArtifactGapError as error:
         assert "PROMPT_ARTIFACT_GAP" in str(error)
@@ -705,7 +756,10 @@ def test_single_baseline_reports_prompt_artifact_gap(tmp_path: Path) -> None:
         raise AssertionError("SINGLE_BASELINE should fail without a unified prompt artifact")
 
 
-def test_three_stage_runtime_completes_answer_only_run(tmp_path: Path) -> None:
+def test_three_stage_runtime_completes_answer_only_run(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     runtime = _make_runtime(
@@ -722,6 +776,7 @@ def test_three_stage_runtime_completes_answer_only_run(tmp_path: Path) -> None:
         gateway=FakeGoogleGateway(snapshot),
         checkpoint_database_path=tmp_path / "checkpoints-three-answer.db",
         graph_profile=GraphProfile.THREE_STAGE,
+        prompt_manifest_path=manifest_path,
     )
 
     result = runtime.start(_start_request())
@@ -739,7 +794,10 @@ def test_three_stage_runtime_completes_answer_only_run(tmp_path: Path) -> None:
         runtime.close()
 
 
-def test_resume_rejects_profile_change_for_same_thread(tmp_path: Path) -> None:
+def test_resume_rejects_profile_change_for_same_thread(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     three_runtime = _make_runtime(
@@ -748,6 +806,7 @@ def test_resume_rejects_profile_change_for_same_thread(tmp_path: Path) -> None:
         gateway=FakeGoogleGateway(snapshot),
         checkpoint_database_path=tmp_path / "checkpoints-profile.db",
         graph_profile=GraphProfile.THREE_STAGE,
+        prompt_manifest_path=manifest_path,
     )
     first = three_runtime.start(_start_request())
     assert first.outcome is WorkflowOutcome.ACCEPTED
@@ -759,6 +818,7 @@ def test_resume_rejects_profile_change_for_same_thread(tmp_path: Path) -> None:
         gateway=FakeGoogleGateway(snapshot),
         checkpoint_database_path=tmp_path / "checkpoints-profile.db",
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        prompt_manifest_path=manifest_path,
     )
 
     resumed = six_runtime.resume(
@@ -785,3 +845,23 @@ def test_resume_rejects_profile_change_for_same_thread(tmp_path: Path) -> None:
         assert resumed.payload["graph_profile"] == GraphProfile.SIX_ROLE_BASELINE.value
     finally:
         six_runtime.close()
+
+
+def test_default_product_runtime_rejects_draft_prompt_bundle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    monkeypatch.setenv(
+        "GOOGLE_WORK_AGENT_PROMPT_MANIFEST_PATH",
+        str(_runtime_active_manifest_path(tmp_path)),
+    )
+
+    with pytest.raises(InactivePromptArtifactError, match="request_understanding.classify"):
+        _make_runtime(
+            database_path=database_path,
+            llm_payloads=[],
+            gateway=FakeGoogleGateway(snapshot),
+            checkpoint_database_path=tmp_path / "checkpoints-draft.db",
+        )

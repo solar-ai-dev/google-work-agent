@@ -119,6 +119,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         service_instance_id: str,
         checkpoint_database_path: Path,
         graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
+        prompt_manifest_path: Path | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._gateway = gateway
@@ -135,12 +136,31 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
         self._checkpointer = SqliteSaver(self._checkpoint_connection)
 
-        self._request_understanding = RequestUnderstandingAgent(llm_runtime=llm_runtime)
-        self._acquisition = ApiDiscoveryAcquisitionAgent(llm_runtime=llm_runtime, gateway=gateway)
-        self._context = ContextRetrievalAgent(llm_runtime=llm_runtime)
-        self._analysis = WorkAnalysisAgent(llm_runtime=llm_runtime)
-        self._planning = SolutionPlanningAgent(llm_runtime=llm_runtime)
-        self._review = PlanReviewAgent(llm_runtime=llm_runtime)
+        self._request_understanding = RequestUnderstandingAgent(
+            llm_runtime=llm_runtime,
+            manifest_path=prompt_manifest_path,
+        )
+        self._acquisition = ApiDiscoveryAcquisitionAgent(
+            llm_runtime=llm_runtime,
+            gateway=gateway,
+            manifest_path=prompt_manifest_path,
+        )
+        self._context = ContextRetrievalAgent(
+            llm_runtime=llm_runtime,
+            manifest_path=prompt_manifest_path,
+        )
+        self._analysis = WorkAnalysisAgent(
+            llm_runtime=llm_runtime,
+            manifest_path=prompt_manifest_path,
+        )
+        self._planning = SolutionPlanningAgent(
+            llm_runtime=llm_runtime,
+            manifest_path=prompt_manifest_path,
+        )
+        self._review = PlanReviewAgent(
+            llm_runtime=llm_runtime,
+            manifest_path=prompt_manifest_path,
+        )
         self._domain_validation = DomainValidationService()
 
         self._complete_answer_only = CompleteAnswerOnlyRunService(
@@ -821,8 +841,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 )
             )
             verification_statuses.append(verified.action_status)
-        if actions and verification_statuses and all(
-            status == ActionStatus.VERIFIED.value for status in verification_statuses
+        if (
+            actions
+            and verification_statuses
+            and all(status == ActionStatus.VERIFIED.value for status in verification_statuses)
         ):
             self._complete_write_run(
                 CompleteWriteRunCommand(
@@ -1041,15 +1063,19 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         confirmation_response = prompt_context.get("confirmation_response")
         if not isinstance(confirmation_response, dict):
             return request
-        request_text = request.request_text + "\n\n[clarification]\n" + dumps(
-            {
-                "selected_option_ids": cast(
-                    list[str], confirmation_response.get("selected_option_ids", [])
-                ),
-                "free_text": cast(str | None, confirmation_response.get("free_text")),
-            },
-            ensure_ascii=True,
-            sort_keys=True,
+        request_text = (
+            request.request_text
+            + "\n\n[clarification]\n"
+            + dumps(
+                {
+                    "selected_option_ids": cast(
+                        list[str], confirmation_response.get("selected_option_ids", [])
+                    ),
+                    "free_text": cast(str | None, confirmation_response.get("free_text")),
+                },
+                ensure_ascii=True,
+                sort_keys=True,
+            )
         )
         return WorkflowStartRequest(
             run_id=request.run_id,

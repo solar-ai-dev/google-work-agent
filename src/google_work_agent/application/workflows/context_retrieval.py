@@ -202,13 +202,15 @@ class ContextRetrievalAgent:
         select_prompt_ref: PromptReference | None = None,
         sufficiency_prompt_ref: PromptReference | None = None,
         context_budget: ContextBudget = DEFAULT_CONTEXT_BUDGET,
+        manifest_path: Path | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
         self._select_prompt_ref = (
-            select_prompt_ref or load_context_select_evidence_prompt_reference()
+            select_prompt_ref or load_context_select_evidence_prompt_reference(manifest_path)
         )
         self._sufficiency_prompt_ref = (
-            sufficiency_prompt_ref or load_context_assess_sufficiency_prompt_reference()
+            sufficiency_prompt_ref
+            or load_context_assess_sufficiency_prompt_reference(manifest_path)
         )
         self._context_budget = context_budget
 

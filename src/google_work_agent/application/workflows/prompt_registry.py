@@ -10,10 +10,15 @@ from google_work_agent.ports import PromptReference
 
 DEFAULT_INPUT_SCHEMA_VERSION = "agent-node-input-v0.1"
 DEFAULT_OUTPUT_SCHEMA_VERSION = "agent-node-output-v0.1"
+RUNTIME_ACTIVE_STATUS = "RUNTIME_ACTIVE"
+
+
+class InactivePromptArtifactError(RuntimeError):
+    """Raised when a prompt slot exists but is not approved for product runtime."""
 
 
 def default_prompt_manifest_path() -> Path:
-    return Path(__file__).resolve().parents[4] / "prompts" / "agent" / "prompt-manifest-v0.7.json"
+    return Path(__file__).resolve().parents[4] / "prompts" / "agent" / "prompt-manifest-v0.8.2.json"
 
 
 def load_prompt_reference(prompt_id: str, manifest_path: Path | None = None) -> PromptReference:
@@ -40,21 +45,30 @@ def _load_slot_prompt_reference(prompt_id: str, payload: dict[str, object]) -> P
         raise ValueError("prompt manifest slots must be a list")
     for slot_value in slots:
         slot = _require_mapping(slot_value, "$.slots[]")
-        if slot.get("slot_id") != prompt_id:
+        slot_id = _required_string(slot, "slot_id")
+        if slot_id != prompt_id:
             continue
-        subgraph_name, node_name = _split_prompt_id(prompt_id)
+        _require_runtime_active(slot, prompt_id)
+        manifest_prompt_id = _optional_string(slot.get("prompt_id")) or slot_id
+        subgraph_name = _optional_string(slot.get("subgraph_name"))
+        node_name = _optional_string(slot.get("node_name"))
+        if subgraph_name is None or node_name is None:
+            subgraph_name, node_name = _split_prompt_id(manifest_prompt_id)
         return PromptReference(
             prompt_bundle_version=_required_string(payload, "prompt_bundle_version"),
-            prompt_id=prompt_id,
-            prompt_version=_required_string(slot, "version"),
+            prompt_id=manifest_prompt_id,
+            prompt_version=_optional_string(slot.get("prompt_version"))
+            or _required_string(slot, "version"),
             content_hash=_required_string(slot, "content_hash"),
             agent_role=_required_string(slot, "agent_role"),
             subgraph_name=subgraph_name,
             node_name=node_name,
-            node_state="BASELINE",
+            node_state=_optional_string(slot.get("node_state")) or "BASELINE",
             purpose=_required_string(slot, "purpose"),
-            input_schema_version=_schema_version(slot.get("input_schema")),
-            output_schema_version=_schema_version(slot.get("output_schema")),
+            input_schema_version=_optional_string(slot.get("input_schema_version"))
+            or DEFAULT_INPUT_SCHEMA_VERSION,
+            output_schema_version=_optional_string(slot.get("output_schema_version"))
+            or DEFAULT_OUTPUT_SCHEMA_VERSION,
         )
     raise LookupError(f"{prompt_id} prompt is missing from manifest")
 
@@ -70,18 +84,22 @@ def _load_legacy_prompt_reference(
         item = _require_mapping(item_value, "$.prompt_manifest[]")
         if item.get("prompt_id") != prompt_id:
             continue
+        _require_runtime_active(item, prompt_id)
+        subgraph_name, node_name = _split_prompt_id(prompt_id)
         return PromptReference(
-            prompt_bundle_version=_required_active_string(item, "prompt_bundle_version"),
-            prompt_id=_required_active_string(item, "prompt_id"),
-            prompt_version=_required_active_string(item, "prompt_version"),
-            content_hash=_required_active_string(item, "content_hash"),
-            agent_role=_required_active_string(item, "agent_role"),
-            subgraph_name=_required_active_string(item, "subgraph_name"),
-            node_name=_required_active_string(item, "node_name"),
-            node_state=_required_active_string(item, "node_state"),
-            purpose=_required_active_string(item, "purpose"),
-            input_schema_version=_required_active_string(item, "input_schema_version"),
-            output_schema_version=_required_active_string(item, "output_schema_version"),
+            prompt_bundle_version=_required_string(item, "prompt_bundle_version"),
+            prompt_id=_required_string(item, "prompt_id"),
+            prompt_version=_required_string(item, "prompt_version"),
+            content_hash=_required_string(item, "content_hash"),
+            agent_role=_required_string(item, "agent_role"),
+            subgraph_name=_optional_string(item.get("subgraph_name")) or subgraph_name,
+            node_name=_optional_string(item.get("node_name")) or node_name,
+            node_state=_optional_string(item.get("node_state")) or "BASELINE",
+            purpose=_required_string(item, "purpose"),
+            input_schema_version=_optional_string(item.get("input_schema_version"))
+            or DEFAULT_INPUT_SCHEMA_VERSION,
+            output_schema_version=_optional_string(item.get("output_schema_version"))
+            or DEFAULT_OUTPUT_SCHEMA_VERSION,
         )
     raise LookupError(f"{prompt_id} prompt is missing from manifest")
 
@@ -91,12 +109,6 @@ def _split_prompt_id(prompt_id: str) -> tuple[str, str]:
         raise ValueError(f"prompt_id must contain subgraph and node name: {prompt_id}")
     subgraph_name, node_name = prompt_id.split(".", 1)
     return subgraph_name, node_name
-
-
-def _schema_version(value: object) -> str:
-    if isinstance(value, str) and value:
-        return value
-    return DEFAULT_INPUT_SCHEMA_VERSION
 
 
 def _require_mapping(value: object, path: str) -> dict[str, object]:
@@ -117,8 +129,16 @@ def _required_string(item: dict[str, object], field: str) -> str:
     return value
 
 
-def _required_active_string(item: dict[str, object], field: str) -> str:
-    value = _required_string(item, field)
-    if value == "TBD":
-        raise ValueError(f"prompt manifest field is not runtime-active: {field}")
-    return value
+def _optional_string(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _require_runtime_active(item: dict[str, object], prompt_id: str) -> None:
+    activation_status = _required_string(item, "activation_status")
+    if activation_status != RUNTIME_ACTIVE_STATUS:
+        raise InactivePromptArtifactError(
+            f"{prompt_id} prompt exists but is not runtime-active: {activation_status}"
+        )

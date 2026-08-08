@@ -342,11 +342,14 @@ class RequestUnderstandingAgent:
         llm_runtime: LLMRuntimeService,
         prompt_ref: PromptReference | None = None,
         clarify_prompt_ref: PromptReference | None = None,
+        manifest_path: Path | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
-        self._prompt_ref = prompt_ref or load_request_understanding_classify_prompt_reference()
+        self._prompt_ref = prompt_ref or load_request_understanding_classify_prompt_reference(
+            manifest_path
+        )
         self._clarify_prompt_ref = (
-            clarify_prompt_ref or load_request_understanding_clarify_prompt_reference()
+            clarify_prompt_ref or load_request_understanding_clarify_prompt_reference(manifest_path)
         )
 
     def __call__(self, request: WorkflowStartRequest) -> RequestUnderstandingOutputV1:

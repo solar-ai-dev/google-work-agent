@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from tests.support.prompt_manifests import write_runtime_active_manifest
 
 from google_work_agent.application.workflows import (
     WORK_ANALYSIS_OUTPUT_SCHEMA,
@@ -17,6 +18,7 @@ from google_work_agent.application.workflows import (
     load_work_analysis_analyze_prompt_reference,
     validate_work_analysis_result_v1,
 )
+from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -332,13 +334,22 @@ def test_work_analysis_agent_has_no_google_mcp_domain_or_repository_dependency()
     assert "sql" not in source.lower()
 
 
-def test_analyze_prompt_ref_is_runtime_active() -> None:
-    prompt_ref = load_work_analysis_analyze_prompt_reference()
+def test_analyze_prompt_ref_is_runtime_active(tmp_path: Path) -> None:
+    manifest_path = write_runtime_active_manifest(
+        tmp_path,
+        prompt_ids={"analysis.analyze"},
+    )
+    prompt_ref = load_work_analysis_analyze_prompt_reference(manifest_path)
 
     assert prompt_ref.prompt_id == "analysis.analyze"
-    assert prompt_ref.prompt_version != "TBD"
-    assert prompt_ref.content_hash != "TBD"
-    assert prompt_ref.node_state == "BASELINE"
+    assert prompt_ref.prompt_version == "0.8.2"
+    assert prompt_ref.content_hash
+    assert prompt_ref.node_state == "INITIAL"
+
+
+def test_default_product_loader_rejects_draft_analysis_prompt() -> None:
+    with pytest.raises(InactivePromptArtifactError, match="analysis.analyze"):
+        load_work_analysis_analyze_prompt_reference()
 
 
 def test_work_analysis_exports_do_not_change_existing_workflow_contracts() -> None:

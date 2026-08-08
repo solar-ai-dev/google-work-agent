@@ -183,19 +183,24 @@ class SolutionPlanningAgent:
         revise_answer_prompt_ref: PromptReference | None = None,
         revise_plan_prompt_ref: PromptReference | None = None,
         tool_registry: SignedToolRegistry | None = None,
+        manifest_path: Path | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
         self._answer_only_prompt_ref = (
-            answer_only_prompt_ref or load_solution_planning_answer_only_prompt_reference()
+            answer_only_prompt_ref
+            or load_solution_planning_answer_only_prompt_reference(manifest_path)
         )
         self._draft_plan_prompt_ref = (
-            draft_plan_prompt_ref or load_solution_planning_draft_plan_prompt_reference()
+            draft_plan_prompt_ref
+            or load_solution_planning_draft_plan_prompt_reference(manifest_path)
         )
         self._revise_answer_prompt_ref = (
-            revise_answer_prompt_ref or load_solution_planning_revise_answer_prompt_reference()
+            revise_answer_prompt_ref
+            or load_solution_planning_revise_answer_prompt_reference(manifest_path)
         )
         self._revise_plan_prompt_ref = (
-            revise_plan_prompt_ref or load_solution_planning_revise_plan_prompt_reference()
+            revise_plan_prompt_ref
+            or load_solution_planning_revise_plan_prompt_reference(manifest_path)
         )
         self._tool_registry = tool_registry or build_p0_tool_registry()
 
@@ -557,7 +562,7 @@ def load_solution_planning_revise_answer_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "planning.revise_answer",
+        "planning.revise_plan",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 

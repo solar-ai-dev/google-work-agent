@@ -176,10 +176,15 @@ class PlanReviewAgent:
         inspect_prompt_ref: PromptReference | None = None,
         recheck_prompt_ref: PromptReference | None = None,
         tool_registry: SignedToolRegistry | None = None,
+        manifest_path: Path | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
-        self._inspect_prompt_ref = inspect_prompt_ref or load_plan_review_inspect_prompt_reference()
-        self._recheck_prompt_ref = recheck_prompt_ref or load_plan_review_recheck_prompt_reference()
+        self._inspect_prompt_ref = inspect_prompt_ref or load_plan_review_inspect_prompt_reference(
+            manifest_path
+        )
+        self._recheck_prompt_ref = recheck_prompt_ref or load_plan_review_recheck_prompt_reference(
+            manifest_path
+        )
         self._tool_registry = tool_registry or build_p0_tool_registry()
 
     def inspect(
