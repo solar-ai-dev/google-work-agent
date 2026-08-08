@@ -87,7 +87,7 @@ def _llm_result(payload: object) -> StructuredLLMResult:
 
 def _clear_intent() -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "goal": {
             "summary": "Follow up on the user's Google Workspace request.",
             "user_visible_objective": "Resolve the user's Google Workspace request.",
@@ -195,14 +195,14 @@ def _write_plan_output() -> dict[str, object]:
         version="1",
     )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "PLAN_READY",
         "plan_id": "plan-1",
         "summary": "Create the follow-up task requested by the user.",
         "objective": "Persist the follow-up task.",
         "actions": [
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "action_id": "action-1",
                 "position": 1,
                 "effect": "CREATE",
@@ -230,14 +230,14 @@ def _write_plan_output() -> dict[str, object]:
 
 def _read_plan_output() -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "PLAN_READY",
         "plan_id": "plan-read-1",
         "summary": "Read the follow-up task details for the user.",
         "objective": "Retrieve the requested Google Tasks item.",
         "actions": [
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "action_id": "action-read-1",
                 "position": 1,
                 "effect": "READ",
@@ -366,7 +366,7 @@ def _source_plan_output(result: str = "PLAN_READY") -> dict[str, object]:
 
 def _profile_request_source_output(result: str = "PLAN_READY") -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "request_intent": _clear_intent(),
         "source_plan": _source_plan_output(result),
     }
@@ -378,7 +378,7 @@ def _profile_planning_projection(
     answer_draft = _answer_output() if status == "ANSWER_ONLY" else None
     plan_draft = _write_plan_output() if status == "PLAN_READY" else None
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": status,
         "answer_draft": answer_draft,
         "plan_draft": plan_draft,
@@ -389,7 +389,7 @@ def _profile_reason_plan_output(
     status: str = "ANSWER_ONLY",
 ) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "context_result": _context_result(),
         "analysis_result": _analysis_output(),
         "planning_result": _profile_planning_projection(status),
@@ -1106,6 +1106,91 @@ def test_context_subgraph_routes_needs_more_data_back_to_parent_acquisition(
         runtime.close()
 
 
+def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _clear_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("NEEDS_MORE_DATA"),
+            _review_output(
+                "REVISE",
+                issues=[
+                    {
+                        "schema_version": 2,
+                        "issue_id": "issue-1",
+                        "kind": "MISSING_GOAL_COVERAGE",
+                        "message": "Need a revision.",
+                        "affected_action_ids": [],
+                        "affected_field_paths": ["$.answer"],
+                        "evidence_refs": ["evidence-1"],
+                        "resource_refs": ["task:task-followup"],
+                        "reason_codes": ["EVIDENCE_SUPPORTED"],
+                    }
+                ],
+            ),
+        ],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=tmp_path / "checkpoints-no-direct-peer.db",
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        prompt_manifest_path=manifest_path,
+    )
+
+    peer_invocations: list[str] = []
+
+    def _forbid_peer_invoke(peer_name: str):
+        def _raise(*args: object, **kwargs: object) -> object:
+            peer_invocations.append(peer_name)
+            raise AssertionError(f"unexpected direct peer invoke: {peer_name}")
+
+        return _raise
+
+    original_acquisition_invoke = runtime._acquisition_subgraph.invoke  # noqa: SLF001
+    original_context_invoke = runtime._context_subgraph.invoke  # noqa: SLF001
+    original_planning_invoke = runtime._planning_subgraph.invoke  # noqa: SLF001
+
+    try:
+        runtime._acquisition_subgraph.invoke = _forbid_peer_invoke("acquisition")  # type: ignore[method-assign]  # noqa: SLF001
+        request_state = runtime._initial_state(_start_request())  # noqa: SLF001
+        request_result = runtime._request_subgraph.invoke(request_state)  # noqa: SLF001
+        assert request_result["__target__"] == "acquisition"
+
+        runtime._acquisition_subgraph.invoke = original_acquisition_invoke  # type: ignore[method-assign]  # noqa: SLF001
+        runtime._context_subgraph.invoke = _forbid_peer_invoke("context_retriever")  # type: ignore[method-assign]  # noqa: SLF001
+        acquisition_state = runtime._initial_state(_start_request())  # noqa: SLF001
+        acquisition_state["request_intent"] = _clear_intent()
+        acquisition_result = runtime._acquisition_subgraph.invoke(acquisition_state)  # noqa: SLF001
+        assert acquisition_result["__target__"] == "context_retriever"
+
+        runtime._context_subgraph.invoke = original_context_invoke  # type: ignore[method-assign]  # noqa: SLF001
+        runtime._acquisition_subgraph.invoke = _forbid_peer_invoke("acquisition")  # type: ignore[method-assign]  # noqa: SLF001
+        routed = runtime._context_subgraph.invoke(acquisition_result)  # noqa: SLF001
+        assert routed["__target__"] == "acquisition"
+
+        runtime._acquisition_subgraph.invoke = original_acquisition_invoke  # type: ignore[method-assign]  # noqa: SLF001
+        runtime._planning_subgraph.invoke = _forbid_peer_invoke("planning")  # type: ignore[method-assign]  # noqa: SLF001
+        review_state = runtime._initial_state(_start_request())  # noqa: SLF001
+        review_state["request_intent"] = _clear_intent()
+        review_state["context_result"] = _context_result()
+        review_state["analysis_result"] = _analysis_output()
+        review_state["answer_draft"] = _answer_output()
+        review_result = runtime._review_subgraph.invoke(review_state)  # noqa: SLF001
+        assert review_result["__target__"] == "planning"
+
+        assert peer_invocations == []
+    finally:
+        runtime._acquisition_subgraph.invoke = original_acquisition_invoke  # type: ignore[method-assign]  # noqa: SLF001
+        runtime._context_subgraph.invoke = original_context_invoke  # type: ignore[method-assign]  # noqa: SLF001
+        runtime._planning_subgraph.invoke = original_planning_invoke  # type: ignore[method-assign]  # noqa: SLF001
+        runtime.close()
+
+
 def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
     tmp_path: Path,
 ) -> None:
@@ -1113,7 +1198,7 @@ def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     issue = {
-        "schema_version": 1,
+        "schema_version": 2,
         "issue_id": "issue-1",
         "kind": "MISSING_GOAL_COVERAGE",
         "message": "Need a revision.",
@@ -1149,6 +1234,132 @@ def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
         retrieve_state = runtime._review_subgraph.invoke(dict(base_state))  # noqa: SLF001
         assert retrieve_state["__logical_target__"] == "acquisition"
         assert retrieve_state["__target__"] == "acquisition"
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize(
+    "graph_profile",
+    [
+        GraphProfile.SIX_ROLE_BASELINE,
+        GraphProfile.SINGLE_BASELINE,
+        GraphProfile.THREE_STAGE,
+    ],
+)
+def test_agent_subgraphs_do_not_issue_google_writes_before_approval(
+    tmp_path: Path,
+    graph_profile: GraphProfile,
+) -> None:
+    root = tmp_path / graph_profile.value.lower()
+    root.mkdir()
+    manifest_path = _runtime_active_manifest_path(root)
+    database_path = _seed_runtime_database(root)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    llm_payloads = (
+        [
+            _clear_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ]
+        if graph_profile is GraphProfile.SIX_ROLE_BASELINE
+        else [
+            _profile_request_source_output(),
+            _profile_reason_plan_output("PLAN_READY"),
+            _review_output("PASS"),
+        ]
+    )
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=llm_payloads,
+        gateway=gateway,
+        checkpoint_database_path=root / "checkpoints-no-write.db",
+        graph_profile=graph_profile,
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        started = runtime.start(_start_write_request())
+        assert started.outcome is WorkflowOutcome.ACCEPTED
+        assert gateway.count_calls("create_task") == 0
+        assert gateway.count_calls("update_task") == 0
+        assert gateway.count_calls("create_calendar_event") == 0
+        assert gateway.count_calls("update_calendar_event") == 0
+        assert gateway.count_calls("create_gmail_draft") == 0
+        assert gateway.count_calls("update_gmail_draft") == 0
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize(
+    "graph_profile",
+    [
+        GraphProfile.SINGLE_BASELINE,
+        GraphProfile.THREE_STAGE,
+    ],
+)
+def test_agent_local_checkpoint_is_not_authority_for_approval_or_execution_facts(
+    tmp_path: Path,
+    graph_profile: GraphProfile,
+) -> None:
+    root = tmp_path / f"{graph_profile.value.lower()}-checkpoint-authority"
+    root.mkdir()
+    manifest_path = _runtime_active_manifest_path(root)
+    database_path = _seed_runtime_database(root)
+    checkpoint_database_path = root / "checkpoints.db"
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _profile_request_source_output(),
+            _profile_reason_plan_output("PLAN_READY"),
+            _review_output("PASS"),
+        ],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=checkpoint_database_path,
+        graph_profile=graph_profile,
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        started = runtime.start(_start_write_request())
+        assert started.outcome is WorkflowOutcome.ACCEPTED
+
+        checkpoint_connection = connect_sqlite(checkpoint_database_path)
+        try:
+            checkpoint_table_query_prefix = "SELECT name FROM sqlite_master WHERE type = 'table'"
+            checkpoint_table_query = (
+                f"{checkpoint_table_query_prefix} AND name LIKE 'checkpoints%';"
+            )
+            checkpoint_tables = [
+                row[0] for row in checkpoint_connection.execute(checkpoint_table_query).fetchall()
+            ]
+            assert checkpoint_tables
+            checkpoint_row_count = sum(
+                checkpoint_connection.execute(f"SELECT COUNT(*) FROM {table};").fetchone()[0]
+                for table in checkpoint_tables
+            )
+            assert checkpoint_row_count > 0
+        finally:
+            checkpoint_connection.close()
+
+        domain_connection = connect_sqlite(database_path)
+        try:
+            counts = domain_connection.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM approvals) AS approval_count,
+                    (SELECT COUNT(*) FROM execution_attempts) AS execution_attempt_count,
+                    (SELECT COUNT(*) FROM verifications) AS verification_count;
+                """
+            ).fetchone()
+            assert tuple(counts) == (0, 0, 0)
+        finally:
+            domain_connection.close()
     finally:
         runtime.close()
 

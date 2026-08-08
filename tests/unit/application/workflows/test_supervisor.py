@@ -616,7 +616,7 @@ def _state(
 
 def _request_intent() -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "goal": {
             "summary": "Summarize the latest status.",
             "user_visible_objective": "Summarize the latest status.",
@@ -786,7 +786,7 @@ def _answer_draft(status: str) -> dict[str, object]:
 
 def _plan_draft(status: str) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": status,
         "plan_id": "plan-1",
         "summary": "Plan summary",
@@ -809,7 +809,7 @@ def _plan_draft(status: str) -> dict[str, object]:
 
 def _action_draft() -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "action_id": "action-1",
         "position": 1,
         "effect": "READ",

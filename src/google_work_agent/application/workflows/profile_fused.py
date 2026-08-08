@@ -40,23 +40,28 @@ from google_work_agent.ports import OutputSchemaDefinition, PromptReference
 
 
 class ProfilePlanningProjectionV1(TypedDict):
-    schema_version: Required[Literal[1]]
+    schema_version: Required[Literal[2]]
     status: Literal["ANSWER_ONLY", "PLAN_READY", "NEEDS_CONFIRMATION", "BLOCKED"]
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None
 
 
 class ProfileRequestSourceOutputV1(TypedDict):
-    schema_version: Required[Literal[1]]
+    schema_version: Required[Literal[2]]
     request_intent: RequestIntentV1
     source_plan: SourcePlanningOutputV1
 
 
 class ProfileReasonPlanOutputV1(TypedDict):
-    schema_version: Required[Literal[1]]
+    schema_version: Required[Literal[2]]
     context_result: ContextRetrievalResultV1
     analysis_result: WorkAnalysisResultV1
     planning_result: ProfilePlanningProjectionV1
+
+
+PROFILE_REQUEST_SOURCE_SCHEMA_VERSION = 2
+PROFILE_FUSED_PLANNING_SCHEMA_VERSION = 2
+PROFILE_PLANNING_PROJECTION_SCHEMA_VERSION = 2
 
 
 class ProfileFusedValidationError(ValueError):
@@ -64,13 +69,16 @@ class ProfileFusedValidationError(ValueError):
 
 
 PROFILE_REQUEST_SOURCE_OUTPUT_SCHEMA = OutputSchemaDefinition(
-    schema_version="profile-request-source-output-v1",
+    schema_version="profile-request-source-output-v2",
     json_schema={
         "type": "object",
         "required": ["schema_version", "request_intent", "source_plan"],
         "additionalProperties": False,
         "properties": {
-            "schema_version": {"type": "integer", "enum": [1]},
+            "schema_version": {
+                "type": "integer",
+                "enum": [PROFILE_REQUEST_SOURCE_SCHEMA_VERSION],
+            },
             "request_intent": {"type": "object"},
             "source_plan": {"type": "object"},
         },
@@ -78,7 +86,7 @@ PROFILE_REQUEST_SOURCE_OUTPUT_SCHEMA = OutputSchemaDefinition(
 )
 
 PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA = OutputSchemaDefinition(
-    schema_version="profile-fused-planning-output-v1",
+    schema_version="profile-fused-planning-output-v2",
     json_schema={
         "type": "object",
         "required": [
@@ -89,7 +97,10 @@ PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA = OutputSchemaDefinition(
         ],
         "additionalProperties": False,
         "properties": {
-            "schema_version": {"type": "integer", "enum": [1]},
+            "schema_version": {
+                "type": "integer",
+                "enum": [PROFILE_FUSED_PLANNING_SCHEMA_VERSION],
+            },
             "context_result": {"type": "object"},
             "analysis_result": {"type": "object"},
             "planning_result": {
@@ -97,7 +108,10 @@ PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA = OutputSchemaDefinition(
                 "required": ["schema_version", "status", "answer_draft", "plan_draft"],
                 "additionalProperties": False,
                 "properties": {
-                    "schema_version": {"type": "integer", "enum": [1]},
+                    "schema_version": {
+                        "type": "integer",
+                        "enum": [PROFILE_PLANNING_PROJECTION_SCHEMA_VERSION],
+                    },
                     "status": {
                         "type": "string",
                         "enum": [
@@ -181,11 +195,11 @@ def load_profile_three_stage3_prompt_reference(
 def validate_profile_request_source_output_v1(value: object) -> ProfileRequestSourceOutputV1:
     root = _require_mapping(value, "$")
     _require_exact_keys(root, "$", {"schema_version", "request_intent", "source_plan"})
-    _require_schema_version(root, "$")
+    _require_schema_version(root, "$", PROFILE_REQUEST_SOURCE_SCHEMA_VERSION)
     request_intent = validate_request_intent_v1(root["request_intent"])
     source_plan = _validate_source_planning_output_v1(root["source_plan"])
     return {
-        "schema_version": 1,
+        "schema_version": PROFILE_REQUEST_SOURCE_SCHEMA_VERSION,
         "request_intent": request_intent,
         "source_plan": source_plan,
     }
@@ -198,7 +212,7 @@ def validate_profile_reason_plan_output_v1(value: object) -> ProfileReasonPlanOu
         "$",
         {"schema_version", "context_result", "analysis_result", "planning_result"},
     )
-    _require_schema_version(root, "$")
+    _require_schema_version(root, "$", PROFILE_FUSED_PLANNING_SCHEMA_VERSION)
     context_result = validate_context_retrieval_result_v1(root["context_result"])
     analysis_result = validate_work_analysis_result_v1(
         root["analysis_result"],
@@ -209,7 +223,7 @@ def validate_profile_reason_plan_output_v1(value: object) -> ProfileReasonPlanOu
         analysis_result=analysis_result,
     )
     return {
-        "schema_version": 1,
+        "schema_version": PROFILE_FUSED_PLANNING_SCHEMA_VERSION,
         "context_result": context_result,
         "analysis_result": analysis_result,
         "planning_result": planning_result,
@@ -227,7 +241,7 @@ def validate_profile_planning_projection_v1(
         "$",
         {"schema_version", "status", "answer_draft", "plan_draft"},
     )
-    _require_schema_version(root, "$")
+    _require_schema_version(root, "$", PROFILE_PLANNING_PROJECTION_SCHEMA_VERSION)
     status = _require_string(root, "status", "$")
     if status not in {"ANSWER_ONLY", "PLAN_READY", "NEEDS_CONFIRMATION", "BLOCKED"}:
         raise ProfileFusedValidationError("$.status is invalid")
@@ -242,7 +256,7 @@ def validate_profile_planning_projection_v1(
         else validate_action_plan_draft_v1(root["plan_draft"], analysis_result=analysis_result)
     )
     result: ProfilePlanningProjectionV1 = {
-        "schema_version": 1,
+        "schema_version": PROFILE_PLANNING_PROJECTION_SCHEMA_VERSION,
         "status": cast(
             Literal["ANSWER_ONLY", "PLAN_READY", "NEEDS_CONFIRMATION", "BLOCKED"],
             status,
@@ -309,7 +323,7 @@ def _validate_source_planning_output_v1(value: object) -> SourcePlanningOutputV1
         },
         optional={"llm_provider_result"},
     )
-    _require_schema_version(root, "$")
+    _require_schema_version(root, "$", 1)
     result = _require_string(root, "result", "$")
     if result not in {"PLAN_READY", "NO_FETCH_NEEDED", "NEEDS_CONFIRMATION", "BLOCKED"}:
         raise ProfileFusedValidationError("$.result is invalid")
@@ -371,10 +385,10 @@ def _require_exact_keys(
         raise ProfileFusedValidationError(f"{path} contains unsupported keys: {unknown}")
 
 
-def _require_schema_version(value: dict[str, object], path: str) -> None:
+def _require_schema_version(value: dict[str, object], path: str, expected: int) -> None:
     schema_version = value.get("schema_version")
-    if schema_version != 1:
-        raise ProfileFusedValidationError(f"{path}.schema_version must be 1")
+    if schema_version != expected:
+        raise ProfileFusedValidationError(f"{path}.schema_version must be {expected}")
 
 
 def _require_string(value: dict[str, object], field: str, path: str) -> str:

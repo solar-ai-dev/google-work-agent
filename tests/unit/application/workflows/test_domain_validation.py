@@ -91,7 +91,7 @@ def _analysis_result() -> dict[str, object]:
 
 def _plan_draft(*, actions: list[dict[str, object]]) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "PLAN_READY",
         "plan_id": "plan-1",
         "summary": "Draft plan for validation.",
@@ -111,7 +111,7 @@ def _action(
     tool_name: str,
 ) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "action_id": action_id,
         "position": position,
         "effect": effect,

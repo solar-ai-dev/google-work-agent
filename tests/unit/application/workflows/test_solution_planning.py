@@ -639,25 +639,25 @@ def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
     assert answer_prompt.prompt_version == "0.8.2"
     assert answer_prompt.content_hash
     assert answer_prompt.node_state == "INITIAL"
-    assert answer_prompt.output_schema_version == "v1"
+    assert answer_prompt.output_schema_version == "v2"
 
     assert plan_prompt.prompt_id == "planning.draft_plan"
     assert plan_prompt.prompt_version == "0.8.2"
     assert plan_prompt.content_hash
     assert plan_prompt.node_state == "INITIAL"
-    assert plan_prompt.output_schema_version == "v1"
+    assert plan_prompt.output_schema_version == "v2"
 
     assert revise_prompt.prompt_id == "planning.revise_plan"
     assert revise_prompt.prompt_version == "0.8.2"
     assert revise_prompt.content_hash
     assert revise_prompt.node_state == "SEMANTIC_REVISION"
-    assert revise_prompt.output_schema_version == "v1"
+    assert revise_prompt.output_schema_version == "v2"
 
     assert revise_plan_prompt.prompt_id == "planning.revise_plan"
     assert revise_plan_prompt.prompt_version == "0.8.2"
     assert revise_plan_prompt.content_hash
     assert revise_plan_prompt.node_state == "SEMANTIC_REVISION"
-    assert revise_plan_prompt.output_schema_version == "v1"
+    assert revise_plan_prompt.output_schema_version == "v2"
 
 
 def test_default_product_loader_rejects_draft_planning_prompts() -> None:
@@ -707,7 +707,7 @@ def _request() -> WorkflowStartRequest:
 
 def _intent() -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "goal": {
             "summary": "Plan the next response or actions",
             "user_visible_objective": "Handle Kim's follow-up",
@@ -733,7 +733,7 @@ def _intent() -> dict[str, object]:
 
 def _context_result() -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "SUFFICIENT",
         "context_bundle": {
             "schema_version": 1,
@@ -805,7 +805,7 @@ def _context_result() -> dict[str, object]:
 
 def _analysis_result() -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "COMPLETE",
         "summary": "A follow-up response is required and a task update may be needed.",
         "findings": [
@@ -882,7 +882,7 @@ def _plan_output(
     if evidence_refs is None:
         evidence_refs = ["evidence-1", "evidence-2"]
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": status,
         "plan_id": "plan-1",
         "summary": "Prepare a follow-up response and optional next-step task.",
@@ -908,7 +908,7 @@ def _action(
     if depends_on_action_ids is None:
         depends_on_action_ids = []
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "action_id": action_id,
         "position": position,
         "effect": effect,

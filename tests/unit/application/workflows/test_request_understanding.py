@@ -101,7 +101,7 @@ def test_clear_request_returns_complete_request_intent() -> None:
 
     assert output["result"] == RequestUnderstandingResult.COMPLETE.value
     assert output["request_intent"] is not None
-    assert output["request_intent"]["schema_version"] == 1
+    assert output["request_intent"]["schema_version"] == 2
     assert output["request_intent"]["goal"]["summary"] == "김대리 관련 메일에서 할 일 정리"
     assert output["clarification"] is None
     assert output["failure"] is None
@@ -283,6 +283,7 @@ def test_clarify_prompt_ref_is_runtime_active(tmp_path: Path) -> None:
     assert prompt_ref.prompt_version == "0.8.2"
     assert prompt_ref.content_hash
     assert prompt_ref.node_state == "CLARIFY"
+    assert prompt_ref.output_schema_version == "v2"
 
 
 def test_default_product_loader_rejects_draft_request_understanding_prompt() -> None:
@@ -443,7 +444,7 @@ def _llm_result(payload: dict[str, object], *, attempts: int = 1) -> StructuredL
 
 def _base_intent() -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "goal": {
             "summary": "김대리 관련 메일에서 할 일 정리",
             "user_visible_objective": "김대리 메일에서 이번 주 해야 할 일을 정리",

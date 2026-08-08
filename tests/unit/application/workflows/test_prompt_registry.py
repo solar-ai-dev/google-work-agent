@@ -40,7 +40,7 @@ def test_load_prompt_reference_succeeds_for_runtime_active_slot(tmp_path: Path) 
     assert prompt_ref.prompt_id == "planning.revise_plan"
     assert prompt_ref.node_state == "SEMANTIC_REVISION"
     assert prompt_ref.input_schema_version == "v1"
-    assert prompt_ref.output_schema_version == "v1"
+    assert prompt_ref.output_schema_version == "v2"
 
 
 def test_load_prompt_reference_distinguishes_missing_from_inactive_artifact() -> None:

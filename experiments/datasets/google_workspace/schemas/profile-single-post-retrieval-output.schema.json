@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://google-work-agent.local/schemas/profile-single-post-retrieval-output.schema.json",
-  "title": "ProfileSinglePostRetrievalOutputV1",
+  "title": "ProfileSinglePostRetrievalOutputV2",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -13,7 +13,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 2
     },
     "context_result": {
       "$ref": "context-retrieval-output.schema.json"
@@ -32,7 +32,7 @@
       ],
       "properties": {
         "schema_version": {
-          "const": 1
+          "const": 2
         },
         "status": {
           "enum": [

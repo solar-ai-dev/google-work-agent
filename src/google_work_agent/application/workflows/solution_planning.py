@@ -55,7 +55,7 @@ class AnswerDraftV1(TypedDict):
 
 
 class ActionDraftV1(TypedDict):
-    schema_version: Required[Literal[1]]
+    schema_version: Required[Literal[2]]
     action_id: str
     position: int
     effect: ActionEffectValue
@@ -70,7 +70,7 @@ class ActionDraftV1(TypedDict):
 
 
 class ActionPlanDraftV1(TypedDict):
-    schema_version: Required[Literal[1]]
+    schema_version: Required[Literal[2]]
     status: PlanDraftStatusValue
     plan_id: str
     summary: str
@@ -83,8 +83,8 @@ class ActionPlanDraftV1(TypedDict):
 
 
 ANSWER_DRAFT_SCHEMA_VERSION = 1
-ACTION_PLAN_DRAFT_SCHEMA_VERSION = 1
-ACTION_DRAFT_SCHEMA_VERSION = 1
+ACTION_PLAN_DRAFT_SCHEMA_VERSION = 2
+ACTION_DRAFT_SCHEMA_VERSION = 2
 ANSWER_DRAFT_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="answer-draft-v1",
     json_schema={
@@ -116,7 +116,7 @@ ANSWER_DRAFT_OUTPUT_SCHEMA = OutputSchemaDefinition(
     },
 )
 ACTION_PLAN_DRAFT_OUTPUT_SCHEMA = OutputSchemaDefinition(
-    schema_version="action-plan-draft-v1",
+    schema_version="action-plan-draft-v2",
     json_schema={
         "type": "object",
         "required": [
@@ -132,7 +132,7 @@ ACTION_PLAN_DRAFT_OUTPUT_SCHEMA = OutputSchemaDefinition(
         ],
         "additionalProperties": False,
         "properties": {
-            "schema_version": {"type": "integer", "enum": [1]},
+            "schema_version": {"type": "integer", "enum": [ACTION_PLAN_DRAFT_SCHEMA_VERSION]},
             "status": {
                 "type": "string",
                 "enum": ["PLAN_READY", "NEEDS_CONFIRMATION", "BLOCKED"],
@@ -542,7 +542,7 @@ def validate_answer_draft_v1(
     if status not in _ANSWER_RESULT_VALUES:
         raise SolutionPlanningValidationError("$.status is invalid")
     result: AnswerDraftV1 = {
-        "schema_version": 1,
+        "schema_version": ACTION_PLAN_DRAFT_SCHEMA_VERSION,
         "status": cast(AnswerDraftStatusValue, status),
         "answer": _require_string(root, "answer", "$"),
         "evidence_refs": _validated_evidence_refs(root["evidence_refs"], refs),
@@ -608,7 +608,7 @@ def validate_action_plan_draft_v1(
         for index, item in enumerate(_require_list(root["actions"], "$.actions"))
     ]
     result: ActionPlanDraftV1 = {
-        "schema_version": 1,
+        "schema_version": ACTION_PLAN_DRAFT_SCHEMA_VERSION,
         "status": cast(PlanDraftStatusValue, status),
         "plan_id": _require_string(root, "plan_id", "$"),
         "summary": _require_string(root, "summary", "$"),
@@ -769,7 +769,7 @@ def _validate_action_draft(
     except PolicyViolationError as error:
         raise SolutionPlanningValidationError(str(error)) from error
     return {
-        "schema_version": 1,
+        "schema_version": ACTION_DRAFT_SCHEMA_VERSION,
         "action_id": _require_string(action, "action_id", path),
         "position": _require_int(action, "position", path),
         "effect": cast(ActionEffectValue, effect),

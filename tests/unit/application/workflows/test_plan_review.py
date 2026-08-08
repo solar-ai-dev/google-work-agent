@@ -477,11 +477,13 @@ def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
     assert inspect_prompt.prompt_version == "0.8.2"
     assert inspect_prompt.content_hash
     assert inspect_prompt.node_state == "INITIAL"
+    assert inspect_prompt.output_schema_version == "v2"
 
     assert recheck_prompt.prompt_id == "review.recheck"
     assert recheck_prompt.prompt_version == "0.8.2"
     assert recheck_prompt.content_hash
     assert recheck_prompt.node_state == "RECHECK"
+    assert recheck_prompt.output_schema_version == "v2"
 
 
 def test_default_product_loader_rejects_draft_review_prompt() -> None:
@@ -541,7 +543,7 @@ def _request() -> WorkflowStartRequest:
 
 def _intent() -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "goal": {
             "summary": "Review the next response or action plan",
             "user_visible_objective": "Handle Kim's follow-up",
@@ -691,7 +693,7 @@ def _answer_draft(
 def _plan_draft() -> ActionPlanDraftV1:
     return validate_action_plan_draft_v1(
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "status": PlanningResult.PLAN_READY.value,
             "plan_id": "plan-1",
             "summary": "Prepare a follow-up response and optional next-step task.",
@@ -736,7 +738,7 @@ def _action(
     if depends_on_action_ids is None:
         depends_on_action_ids = []
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "action_id": action_id,
         "position": position,
         "effect": effect,
@@ -764,7 +766,7 @@ def _review_output(
     if blockers is None:
         blockers = []
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": status,
         "summary": "Review completed.",
         "issues": issues,
@@ -792,7 +794,7 @@ def _review_issue(
     if reason_codes is None:
         reason_codes = ["EVIDENCE_SUPPORTED"]
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "issue_id": issue_id,
         "kind": "MISSING_GOAL_COVERAGE",
         "message": message,
@@ -812,7 +814,7 @@ def _plan_issue(
     if affected_action_ids is None:
         affected_action_ids = ["action-2"]
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "issue_id": issue_id,
         "kind": "UNNECESSARY_ACTION",
         "message": "The plan adds an unnecessary task creation step.",

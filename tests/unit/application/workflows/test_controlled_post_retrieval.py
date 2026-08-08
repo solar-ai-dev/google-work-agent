@@ -149,6 +149,22 @@ def test_stage18_schema_audit_keeps_runtime_contract_fields_locked() -> None:
     ]
 
 
+def test_e06_candidates_keep_semantic_bundle_and_responsibility_parity() -> None:
+    candidates = [
+        _load_json(Path("experiments/candidates/cand-e06b-b1-integrated.template.json")),
+        _load_json(Path("experiments/candidates/cand-e06b-b2-staged.template.json")),
+        _load_json(Path("experiments/candidates/cand-e06b-b3-specialized.template.json")),
+    ]
+
+    assert {candidate["prompt_semantic_bundle_version"] for candidate in candidates} == {
+        "semantic-r8.3-v1"
+    }
+    assert {
+        candidate["graph_profile_spec"]["semantic_responsibility_map_version"]
+        for candidate in candidates
+    } == {"semantic-responsibility-r8.2-v1"}
+
+
 def test_controlled_replay_runner_executes_native_b1_b2_b3_topologies(
     tmp_path: Path,
 ) -> None:
@@ -706,14 +722,14 @@ def _answer_output() -> dict[str, object]:
 
 def _plan_output() -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "PLAN_READY",
         "plan_id": "plan-1",
         "summary": "Read the authoritative Gmail thread only.",
         "objective": "Use the frozen Gmail evidence without other products.",
         "actions": [
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "action_id": "action-1",
                 "position": 1,
                 "effect": "READ",
@@ -770,7 +786,7 @@ def _set_nested_value(payload: dict[str, object], field_path: str, value: object
 
 def _review_output() -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "PASS",
         "summary": (
             "The answer or plan is grounded in the frozen context and preserves the constraints."
@@ -787,7 +803,7 @@ def _b1_analysis_planning_output() -> dict[str, object]:
         "schema_version": 1,
         "analysis_result": _analysis_result(),
         "planning_result": {
-            "schema_version": 1,
+            "schema_version": 2,
             "status": "ANSWER_ONLY",
             "answer_draft": _answer_output(),
             "plan_draft": None,
@@ -800,7 +816,7 @@ def _b2_analysis_planning_output() -> dict[str, object]:
         "schema_version": 1,
         "analysis_result": _analysis_result(),
         "planning_result": {
-            "schema_version": 1,
+            "schema_version": 2,
             "status": "PLAN_READY",
             "answer_draft": None,
             "plan_draft": _plan_output(),

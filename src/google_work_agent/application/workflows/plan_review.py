@@ -46,7 +46,7 @@ ReviewTargetValue = Literal["ANSWER", "PLAN"]
 
 
 class ReviewIssueV1(TypedDict):
-    schema_version: Required[Literal[1]]
+    schema_version: Required[Literal[2]]
     issue_id: str
     kind: str
     message: str
@@ -58,7 +58,7 @@ class ReviewIssueV1(TypedDict):
 
 
 class PlanReviewResultV1(TypedDict):
-    schema_version: Required[Literal[1]]
+    schema_version: Required[Literal[2]]
     status: ReviewStatusValue
     summary: str
     issues: list[ReviewIssueV1]
@@ -94,11 +94,11 @@ class PolicyReviewContextV1(TypedDict):
     evidence_policy: EvidencePolicySummaryV1
 
 
-PLAN_REVIEW_SCHEMA_VERSION = 1
-REVIEW_ISSUE_SCHEMA_VERSION = 1
+PLAN_REVIEW_SCHEMA_VERSION = 2
+REVIEW_ISSUE_SCHEMA_VERSION = 2
 POLICY_REVIEW_CONTEXT_SCHEMA_VERSION = 1
 PLAN_REVIEW_OUTPUT_SCHEMA = OutputSchemaDefinition(
-    schema_version="plan-review-result-v1",
+    schema_version="plan-review-result-v2",
     json_schema={
         "type": "object",
         "required": [
@@ -112,7 +112,7 @@ PLAN_REVIEW_OUTPUT_SCHEMA = OutputSchemaDefinition(
         ],
         "additionalProperties": False,
         "properties": {
-            "schema_version": {"type": "integer", "enum": [1]},
+            "schema_version": {"type": "integer", "enum": [PLAN_REVIEW_SCHEMA_VERSION]},
             "status": {
                 "type": "string",
                 "enum": ["PASS", "REVISE", "RETRIEVE_MORE", "CONFIRM", "BLOCK"],
@@ -135,7 +135,10 @@ PLAN_REVIEW_OUTPUT_SCHEMA = OutputSchemaDefinition(
                     ],
                     "additionalProperties": False,
                     "properties": {
-                        "schema_version": {"type": "integer", "enum": [1]},
+                        "schema_version": {
+                            "type": "integer",
+                            "enum": [REVIEW_ISSUE_SCHEMA_VERSION],
+                        },
                         "issue_id": {"type": "string"},
                         "kind": {"type": "string"},
                         "message": {"type": "string"},
@@ -467,7 +470,7 @@ def validate_plan_review_result_v1(
     ]
     _validate_issue_collection(issues)
     result: PlanReviewResultV1 = {
-        "schema_version": 1,
+        "schema_version": PLAN_REVIEW_SCHEMA_VERSION,
         "status": cast(ReviewStatusValue, status),
         "summary": _require_string(root, "summary", "$"),
         "issues": issues,
@@ -608,7 +611,7 @@ def _validate_review_issue(
         "resource",
     )
     return {
-        "schema_version": 1,
+        "schema_version": REVIEW_ISSUE_SCHEMA_VERSION,
         "issue_id": _require_string(issue, "issue_id", path),
         "kind": _require_string(issue, "kind", path),
         "message": _require_string(issue, "message", path),

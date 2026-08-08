@@ -122,19 +122,20 @@ Shared fixed-environment payload builder: `google_work_agent.application.workflo
 
 ### Schema version audit (`7fd96e4`)
 
-| Artifact | Shape change | Semantic change | Final verdict |
-|---|---|---|---|
-| `request-intent.schema.json` | flattened legacy intent fields -> structured intent contract | yes | semantic contract change under same schema version; repository now locks the current runtime contract in regression |
-| `action-plan-draft.schema.json` | legacy result/answer form -> canonical `status/plan_id/summary/objective/actions/evidence_refs/resource_refs/confirmation` | yes | semantic contract change under same schema version; locked by regression |
-| `profile-single-post-retrieval-output.schema.json` | `plan_draft` -> `planning_result` union | yes | semantic contract change; locked by regression |
-| `profile-single-reason-plan-output.schema.json` | `plan_draft` -> `planning_result` union | yes | semantic contract change; locked by regression |
-| `profile-three-stage2-output.schema.json` | `plan_draft` -> `planning_result` union | yes | semantic contract change; locked by regression |
-| `plan-review-output.schema.json` | legacy findings/route fields -> canonical `status/summary/issues/confirmation/blockers/additional_acquisition_request` | yes | semantic contract change under same schema version; locked by regression |
+| Artifact | Old version | New version | Semantic change | Consumer synchronization |
+|---|---|---|---|---|
+| `request-intent.schema.json` | `v1` | `v2` | flattened legacy intent fields -> structured intent contract | `request_understanding.py`, `prompt-manifest-v0.8.2.json`, prompt registry tests, runtime/test manifests |
+| `action-plan-draft.schema.json` | `v1` | `v2` | canonical `status/plan_id/summary/objective/actions/evidence_refs/resource_refs/confirmation` contract | `solution_planning.py`, `prompt-manifest-v0.8.2.json`, solution planning/runtime tests |
+| `profile-single-post-retrieval-output.schema.json` | `v1` | `v2` | `planning_result` projection contract replaces legacy direct `plan_draft` shape | prompt manifest profile refs, controlled replay schemas/tests |
+| `profile-single-reason-plan-output.schema.json` | `v1` | `v2` | fused planning output now versioned with canonical planning projection | `profile_fused.py`, prompt manifest profile refs, runtime/replay tests |
+| `profile-three-stage2-output.schema.json` | `v1` | `v2` | stage-two planning projection follows canonical fused contract | prompt manifest stage-two refs, runtime tests |
+| `plan-review-output.schema.json` | `v1` | `v2` | canonical `status/summary/issues/confirmation/blockers/additional_acquisition_request` review contract | `plan_review.py`, prompt manifest review refs, review/runtime tests |
 
 Reference evidence:
 
-- commit diff: `git diff 7fd96e4^ 7fd96e4 -- <schema paths>`
-- lock test: `test_stage18_schema_audit_keeps_runtime_contract_fields_locked`
+- semantic diff basis: `git diff 7fd96e4^ 7fd96e4 -- <schema paths>`
+- runtime/schema lock: `test_stage18_schema_audit_keeps_runtime_contract_fields_locked`
+- manifest sync: `prompts/agent/prompt-manifest-v0.8.2.json`
 
 ### Semantic bundle verdict
 
@@ -152,11 +153,11 @@ Reference evidence:
 | `TST-AGT-204` | `test_request_subgraph_clears_local_state_and_records_trace_counts` | PASS |
 | `TST-AGT-205` | `test_acquisition_subgraph_keeps_single_invocation_id_and_parent_isolation` | PASS |
 | `TST-AGT-206` | `test_plan_review_output_schema_requires_additional_acquisition_request` | PASS |
-| `TST-AGT-207` | `test_native_profile_runtimes_expose_three_and_single_subgraphs` | PASS |
-| `TST-AGT-208` | `test_native_profiles_generate_plan_and_share_domain_approval_boundary` | PASS |
-| `TST-AGT-209` | `test_resume_rejects_mismatched_profile_for_thread` | PASS |
+| `TST-AGT-207` | `test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation` | PASS |
+| `TST-AGT-208` | `test_agent_subgraphs_do_not_issue_google_writes_before_approval` | PASS |
+| `TST-AGT-209` | `test_agent_local_checkpoint_is_not_authority_for_approval_or_execution_facts` | PASS |
 | `TST-EVAL-210` | `test_controlled_replay_runner_executes_native_b1_b2_b3_topologies` | PASS |
-| `TST-EVAL-212` | `test_stage18_schema_audit_keeps_runtime_contract_fields_locked` | PASS |
+| `TST-EVAL-212` | `test_e06_candidates_keep_semantic_bundle_and_responsibility_parity` | PASS |
 | `TST-EVAL-213` | `test_fixed_environment_payload_is_identical_for_b1_b2_b3_except_independent_variable` | PASS |
 | `TST-HANDOFF-214` | `test_controlled_replay_handoff_metrics_detect_required_field_loss`, `test_controlled_replay_handoff_metrics_detect_evidence_id_loss`, `test_controlled_replay_handoff_metrics_detect_answer_type_constraint_loss`, `test_controlled_replay_handoff_metrics_detect_forbidden_action_contradiction` | PASS |
 
@@ -169,3 +170,8 @@ Reference evidence:
 | READ persistence isolation | `tests.integration.langgraph.test_runtime.test_langgraph_runtime_executes_read_only_plan_to_terminal` |
 | Claim-before-write | `tests.integration.persistence.test_write_actions.test_claim_is_blocked_by_missing_approval_and_source_hash_mismatch` |
 | profile resume mismatch | `tests.integration.langgraph.test_runtime.test_resume_rejects_mismatched_profile_for_thread` |
+
+### Final verification baseline
+
+- Verified baseline HEAD before certification commit: `461943fea9b6df20a9b44108932d919a9df1f4f1`
+- Final pytest count on verified working tree: `536 passed`

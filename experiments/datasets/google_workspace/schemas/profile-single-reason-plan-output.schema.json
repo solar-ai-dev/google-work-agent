@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://google-work-agent.local/schemas/profile-single-reason-plan-output.schema.json",
-  "title": "ProfileSingleReasonPlanOutputV1",
+  "title": "ProfileSingleReasonPlanOutputV2",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,7 +12,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 2
     },
     "context_result": {
       "$ref": "context-retrieval-output.schema.json"
@@ -31,7 +31,7 @@
       ],
       "properties": {
         "schema_version": {
-          "const": 1
+          "const": 2
         },
         "status": {
           "enum": [

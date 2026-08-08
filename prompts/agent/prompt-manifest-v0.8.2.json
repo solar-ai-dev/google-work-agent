@@ -198,7 +198,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/context-sufficiency-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/context-retrieval-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/context_retriever/base.md",
         "prompts/agent/context_retriever/assess_sufficiency.md"
@@ -221,7 +221,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/context-sufficiency-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/context-retrieval-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/context_retriever/base.md",
         "prompts/agent/context_retriever/revise.md"
@@ -246,7 +246,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/context-repair-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/context-retrieval-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/context_retriever/base.md",
         "prompts/agent/context_retriever/repair.md"
@@ -276,7 +276,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/context-retrieval-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/context-retrieval-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/context_retriever/base.md",
         "prompts/agent/context_retriever/select_evidence.md"
@@ -299,7 +299,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/context-retrieval-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/context-retrieval-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/context_retriever/base.md",
         "prompts/agent/context_retriever/revise.md"
@@ -330,7 +330,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/context-ready-input-v1.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/e06b-analysis-planning-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/e06b/b1_base.md",
         "prompts/agent/r8.3/profiles/e06b/b1_integrated.md"
@@ -353,7 +353,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/planning-repair-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/e06b-analysis-planning-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/e06b/b1_base.md",
         "prompts/agent/r8.3/profiles/common/schema_repair.md"
@@ -376,7 +376,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/planning-revision-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/e06b-analysis-planning-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/e06b/b1_base.md",
         "prompts/agent/r8.3/profiles/common/semantic_revision.md"
@@ -399,7 +399,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/review-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/e06b/b1_base.md",
         "prompts/agent/r8.3/profiles/e06b/b1_self_review.md"
@@ -422,7 +422,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/review-recheck-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/e06b/b1_base.md",
         "prompts/agent/r8.3/profiles/e06b/b1_self_review.md"
@@ -445,7 +445,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/context-ready-input-v1.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/e06b-analysis-planning-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/e06b/b2_base.md",
         "prompts/agent/r8.3/profiles/e06b/b2_analysis_planning.md"
@@ -468,7 +468,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/planning-repair-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/e06b-analysis-planning-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/e06b/b2_base.md",
         "prompts/agent/r8.3/profiles/common/schema_repair.md"
@@ -491,7 +491,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/planning-revision-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/e06b-analysis-planning-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/e06b/b2_base.md",
         "prompts/agent/r8.3/profiles/common/semantic_revision.md"
@@ -514,7 +514,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/planning-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/action-plan-draft.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/planning/base.md",
         "prompts/agent/planning/answer_only.md"
@@ -537,7 +537,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/planning-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/action-plan-draft.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/planning/base.md",
         "prompts/agent/planning/draft_plan.md"
@@ -560,7 +560,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/planning-repair-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/action-plan-draft.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/planning/base.md",
         "prompts/agent/planning/repair.md"
@@ -590,7 +590,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/planning-revision-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/action-plan-draft.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/planning/base.md",
         "prompts/agent/planning/revise_plan.md"
@@ -625,7 +625,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/profile-post-read-input-v1.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/profile-single-reason-plan-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/single/base.md",
         "prompts/agent/r8.3/profiles/single/post_retrieval.md"
@@ -648,7 +648,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/context-repair-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/profile-single-reason-plan-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/single/base.md",
         "prompts/agent/r8.3/profiles/common/schema_repair.md"
@@ -671,7 +671,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/planning-revision-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/profile-single-reason-plan-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/single/base.md",
         "prompts/agent/r8.3/profiles/common/semantic_revision.md"
@@ -694,7 +694,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-input-v1.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/single/base.md",
         "prompts/agent/r8.3/profiles/single/request_source.md"
@@ -717,7 +717,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/request-understanding-repair-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/single/base.md",
         "prompts/agent/r8.3/profiles/common/schema_repair.md"
@@ -740,7 +740,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/acquisition-revision-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/single/base.md",
         "prompts/agent/r8.3/profiles/common/semantic_revision.md"
@@ -763,7 +763,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/review-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/single/base.md",
         "prompts/agent/r8.3/profiles/single/self_review.md"
@@ -786,7 +786,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/review-recheck-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/single/base.md",
         "prompts/agent/r8.3/profiles/single/self_review.md"
@@ -809,7 +809,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/review-repair-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/single/base.md",
         "prompts/agent/r8.3/profiles/common/schema_repair.md"
@@ -832,7 +832,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-input-v1.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/three/stage1_base.md",
         "prompts/agent/r8.3/profiles/three/stage1_request_source.md"
@@ -855,7 +855,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/request-understanding-repair-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/three/stage1_base.md",
         "prompts/agent/r8.3/profiles/common/schema_repair.md"
@@ -878,7 +878,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/acquisition-revision-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/three/stage1_base.md",
         "prompts/agent/r8.3/profiles/common/semantic_revision.md"
@@ -901,7 +901,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/profile-post-read-input-v1.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/profile-three-stage2-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/three/stage2_base.md",
         "prompts/agent/r8.3/profiles/three/stage2_evidence_analysis_plan.md"
@@ -924,7 +924,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/context-repair-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/profile-three-stage2-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/three/stage2_base.md",
         "prompts/agent/r8.3/profiles/common/schema_repair.md"
@@ -947,7 +947,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/planning-revision-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/profile-three-stage2-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/profiles/three/stage2_base.md",
         "prompts/agent/r8.3/profiles/common/semantic_revision.md"
@@ -970,7 +970,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/request-understanding-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/request-intent.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/request_understanding/base.md",
         "prompts/agent/request_understanding/clarify.md"
@@ -993,7 +993,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/request-understanding-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/request-intent.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/request_understanding/base.md",
         "prompts/agent/request_understanding/classify.md"
@@ -1016,7 +1016,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/request-understanding-repair-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/request-intent.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/request_understanding/base.md",
         "prompts/agent/request_understanding/repair.md"
@@ -1046,7 +1046,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/request-understanding-revision-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/request-intent.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/request_understanding/base.md",
         "prompts/agent/request_understanding/revise.md"
@@ -1077,7 +1077,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/review-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/review/base.md",
         "prompts/agent/review/inspect.md"
@@ -1100,7 +1100,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/review-recheck-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/review/base.md",
         "prompts/agent/review/recheck.md"
@@ -1129,7 +1129,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/review-repair-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/review/base.md",
         "prompts/agent/review/repair.md"
