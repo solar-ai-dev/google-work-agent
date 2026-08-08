@@ -1,0 +1,1002 @@
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass, field
+from typing import cast
+
+from google_work_agent.application.workflows import (
+    ApiAcquisitionResult,
+    ApiDiscoveryAcquisitionAgent,
+    ApiPlanningResult,
+    RetrievalBudget,
+    SourceFetchPlanV1,
+    SourcePlanningValidationError,
+    WorkflowPhase,
+    build_source_planning_clarification_question,
+)
+from google_work_agent.ports import (
+    ActualRuntime,
+    FreeBusyCalendar,
+    GoogleWorkspaceErrorCode,
+    GoogleWorkspaceGatewayError,
+    LLMErrorCode,
+    LLMInvocationError,
+    OutputSchemaDefinition,
+    PromptReference,
+    RequestedRuntimeMode,
+    ResourcePage,
+    ResourceSnapshot,
+    ResourceType,
+    SelectedResourceRef,
+    StructuredLLMResult,
+    WorkflowCorrelationContext,
+    WorkflowStartRequest,
+)
+
+PROMPT_REF = PromptReference(
+    prompt_bundle_version="agent-r4-v0.1-baseline",
+    prompt_id="acquisition.plan_sources",
+    prompt_version="v0.1",
+    content_hash="hash",
+    agent_role="api_discovery_acquisition",
+    subgraph_name="acquisition",
+    node_name="plan_sources",
+    node_state="BASELINE",
+    purpose="plan_sources",
+    input_schema_version="agent-node-input-v0.1",
+    output_schema_version="agent-node-output-v0.1",
+)
+DEFAULT_TEST_RETRIEVAL_BUDGET = RetrievalBudget()
+
+
+@dataclass
+class FakeLLMRuntime:
+    queued: deque[StructuredLLMResult | Exception] = field(default_factory=deque)
+    calls: list[dict[str, object]] = field(default_factory=list)
+
+    def invoke_structured(
+        self,
+        *,
+        prompt_ref: PromptReference,
+        prompt_input: dict[str, object],
+        output_schema: OutputSchemaDefinition,
+        trace_context: object,
+    ) -> StructuredLLMResult:
+        self.calls.append(
+            {
+                "prompt_ref": prompt_ref,
+                "prompt_input": dict(prompt_input),
+                "output_schema": output_schema,
+                "trace_context": trace_context,
+            }
+        )
+        result = self.queued.popleft()
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+class RecordingGoogleGateway:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, object]]] = []
+        self.faults: dict[str, GoogleWorkspaceGatewayError] = {}
+        self.gmail_threads = {
+            "thread-kim": _snapshot(
+                ResourceType.GMAIL_THREAD,
+                "thread-kim",
+                title="김대리 메일",
+                subject="김대리 메일",
+            )
+        }
+        self.task_lists = {
+            "task-list-default": _snapshot(
+                ResourceType.TASK_LIST,
+                "task-list-default",
+                title="Tasks",
+            )
+        }
+        self.tasks = {
+            "task-1": _snapshot(
+                ResourceType.TASK,
+                "task-1",
+                parent_id="task-list-default",
+                title="이번 주 할 일",
+            )
+        }
+        self.calendars = {
+            "calendar-primary": _snapshot(ResourceType.CALENDAR, "calendar-primary", title="기본")
+        }
+        self.events = {
+            "event-1": _snapshot(
+                ResourceType.CALENDAR_EVENT,
+                "event-1",
+                parent_id="calendar-primary",
+                title="이번 주 회의",
+            )
+        }
+
+    def queue_fault(self, operation: str, code: GoogleWorkspaceErrorCode) -> None:
+        self.faults[operation] = GoogleWorkspaceGatewayError(
+            code=code,
+            message=f"fault: {code.value}",
+            delivered=True,
+            mutated=False,
+        )
+
+    def search_gmail_threads(
+        self,
+        *,
+        query: str,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourcePage:
+        self._maybe_fault("search_gmail_threads")
+        self.calls.append(
+            (
+                "search_gmail_threads",
+                {"query": query, "page_token": page_token, "page_size": page_size},
+            )
+        )
+        return ResourcePage(
+            items=tuple(self.gmail_threads.values())[:page_size],
+            next_page_token=None,
+        )
+
+    def get_gmail_thread(self, *, thread_id: str) -> ResourceSnapshot:
+        self._maybe_fault("get_gmail_thread")
+        self.calls.append(("get_gmail_thread", {"thread_id": thread_id}))
+        return self.gmail_threads[thread_id]
+
+    def get_gmail_message(self, *, message_id: str) -> ResourceSnapshot:
+        raise NotImplementedError
+
+    def create_gmail_draft(
+        self,
+        *,
+        payload: dict[str, object],
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        raise NotImplementedError
+
+    def update_gmail_draft(
+        self,
+        *,
+        draft_id: str,
+        payload: dict[str, object],
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        raise NotImplementedError
+
+    def get_gmail_draft(self, *, draft_id: str) -> ResourceSnapshot:
+        raise NotImplementedError
+
+    def list_task_lists(self, *, page_token: str | None, page_size: int) -> ResourcePage:
+        self._maybe_fault("list_task_lists")
+        self.calls.append(("list_task_lists", {"page_token": page_token, "page_size": page_size}))
+        return ResourcePage(items=tuple(self.task_lists.values())[:page_size], next_page_token=None)
+
+    def list_tasks(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourcePage:
+        self._maybe_fault("list_tasks")
+        self.calls.append(
+            (
+                "list_tasks",
+                {
+                    "task_list_id": task_list_id,
+                    "page_token": page_token,
+                    "page_size": page_size,
+                },
+            )
+        )
+        return ResourcePage(items=tuple(self.tasks.values())[:page_size], next_page_token=None)
+
+    def get_task(self, *, task_list_id: str, task_id: str) -> ResourceSnapshot:
+        self._maybe_fault("get_task")
+        self.calls.append(("get_task", {"task_list_id": task_list_id, "task_id": task_id}))
+        return self.tasks[task_id]
+
+    def create_task(
+        self,
+        *,
+        task_list_id: str,
+        payload: dict[str, object],
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        raise NotImplementedError
+
+    def update_task(
+        self,
+        *,
+        task_list_id: str,
+        task_id: str,
+        payload: dict[str, object],
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        raise NotImplementedError
+
+    def list_calendars(self, *, page_token: str | None, page_size: int) -> ResourcePage:
+        self._maybe_fault("list_calendars")
+        self.calls.append(("list_calendars", {"page_token": page_token, "page_size": page_size}))
+        return ResourcePage(items=tuple(self.calendars.values())[:page_size], next_page_token=None)
+
+    def list_calendar_events(
+        self,
+        *,
+        calendar_id: str,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourcePage:
+        self._maybe_fault("list_calendar_events")
+        self.calls.append(
+            (
+                "list_calendar_events",
+                {
+                    "calendar_id": calendar_id,
+                    "page_token": page_token,
+                    "page_size": page_size,
+                },
+            )
+        )
+        return ResourcePage(items=tuple(self.events.values())[:page_size], next_page_token=None)
+
+    def query_freebusy(self, *, calendar_ids: tuple[str, ...]) -> tuple[FreeBusyCalendar, ...]:
+        raise NotImplementedError
+
+    def get_calendar_event(self, *, calendar_id: str, event_id: str) -> ResourceSnapshot:
+        self._maybe_fault("get_calendar_event")
+        self.calls.append(
+            ("get_calendar_event", {"calendar_id": calendar_id, "event_id": event_id})
+        )
+        return self.events[event_id]
+
+    def create_calendar_event(
+        self,
+        *,
+        calendar_id: str,
+        payload: dict[str, object],
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        raise NotImplementedError
+
+    def update_calendar_event(
+        self,
+        *,
+        calendar_id: str,
+        event_id: str,
+        payload: dict[str, object],
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        raise NotImplementedError
+
+    def search_by_recovery_fingerprint(
+        self,
+        *,
+        resource_type: ResourceType,
+        recovery_fingerprint: str,
+    ) -> tuple[ResourceSnapshot, ...]:
+        raise NotImplementedError
+
+    def _maybe_fault(self, operation: str) -> None:
+        error = self.faults.pop(operation, None)
+        if error is not None:
+            raise error
+
+
+def test_gmail_single_source_plan_and_acquisition_complete() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "김대리"})]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert planning["result"] == ApiPlanningResult.PLAN_READY.value
+    assert planning["source_fetch_plans"][0]["source"] == "GMAIL"
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert acquisition["resource_handles"] == ["gmail_thread:thread-kim"]
+    assert [name for name, _args in gateway.calls] == ["search_gmail_threads", "get_gmail_thread"]
+
+
+def test_calendar_single_source_acquisition_complete() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("CALENDAR", {"calendar_id": "calendar-primary"})]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert planning["result"] == ApiPlanningResult.PLAN_READY.value
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert [name for name, _args in gateway.calls] == [
+        "list_calendar_events",
+        "get_calendar_event",
+    ]
+
+
+def test_tasks_single_source_acquisition_complete() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("TASKS", {"task_list_id": "task-list-default"})]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="TASKS"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert planning["result"] == ApiPlanningResult.PLAN_READY.value
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert [name for name, _args in gateway.calls] == ["list_tasks", "get_task"]
+
+
+def test_multi_source_request_acquires_each_planned_source() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan("GMAIL", {"query": "김대리"}, priority=0),
+                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=1),
+                _plan("TASKS", {"task_list_id": "task-list-default"}, priority=2),
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert planning["result"] == ApiPlanningResult.PLAN_READY.value
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert acquisition["resource_handles"] == [
+        "gmail_thread:thread-kim",
+        "calendar_event:event-1",
+        "task:task-1",
+    ]
+
+
+def test_no_fetch_needed_when_planning_returns_empty_plan_list() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    state_update = agent.build_planning_state_update(planning)
+
+    assert planning["result"] == ApiPlanningResult.NO_FETCH_NEEDED.value
+    assert planning["source_fetch_plans"] == []
+    assert state_update["workflow_phase"] == WorkflowPhase.SOURCE_PLANNING.value
+    assert "user_interrupt" not in state_update
+    assert gateway.calls == []
+
+
+def test_resource_selected_uses_direct_get_and_does_not_search() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan(
+                    "GMAIL",
+                    {},
+                    reason_codes=["RESOURCE_SELECTED_DIRECT_GET"],
+                )
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+    request = _request(
+        entry_mode="RESOURCE_SELECTED",
+        selected_resource_ids=("thread-kim",),
+        selected_resources=(
+            SelectedResourceRef(
+                source="GMAIL",
+                resource_type="THREAD",
+                resource_id="thread-kim",
+            ),
+        ),
+    )
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=request)
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=request)
+
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert [name for name, _args in gateway.calls] == ["get_gmail_thread"]
+    assert runtime.calls[0]["prompt_input"]["selected_resources"] == [
+        {
+            "source": "GMAIL",
+            "resource_type": "THREAD",
+            "resource_id": "thread-kim",
+            "parent_resource_id": None,
+        }
+    ]
+    assert "selected_resource_ids" not in cast(dict[str, object], planning["source_fetch_plans"][0])
+
+
+def test_resource_selected_uses_task_parent_identity_without_default() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("TASKS", {})]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+    request = _request(
+        entry_mode="RESOURCE_SELECTED",
+        selected_resources=(
+            SelectedResourceRef(
+                source="TASKS",
+                resource_type="TASK",
+                resource_id="task-1",
+                parent_resource_id="task-list-default",
+            ),
+        ),
+    )
+
+    planning = agent.plan_sources(request_intent=_intent(source="TASKS"), request=request)
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=request)
+
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert [name for name, _args in gateway.calls] == ["get_task"]
+    assert gateway.calls[0][1] == {"task_list_id": "task-list-default", "task_id": "task-1"}
+
+
+def test_resource_selected_uses_calendar_parent_identity_without_primary() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("CALENDAR", {})]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+    request = _request(
+        entry_mode="RESOURCE_SELECTED",
+        selected_resources=(
+            SelectedResourceRef(
+                source="CALENDAR",
+                resource_type="EVENT",
+                resource_id="event-1",
+                parent_resource_id="calendar-primary",
+            ),
+        ),
+    )
+
+    planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=request)
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=request)
+
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert [name for name, _args in gateway.calls] == ["get_calendar_event"]
+    assert gateway.calls[0][1] == {"calendar_id": "calendar-primary", "event_id": "event-1"}
+
+
+def test_resource_selected_missing_parent_identity_fails_without_hidden_default() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("TASKS", {})]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+    request = _request(
+        entry_mode="RESOURCE_SELECTED",
+        selected_resources=(
+            SelectedResourceRef(
+                source="TASKS",
+                resource_type="TASK",
+                resource_id="task-1",
+            ),
+        ),
+    )
+
+    planning = agent.plan_sources(request_intent=_intent(source="TASKS"), request=request)
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=request)
+
+    assert acquisition["status"] == ApiAcquisitionResult.FAILED.value
+    assert gateway.calls == []
+
+
+def test_partial_acquisition_when_one_source_succeeds_and_one_fails() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan("GMAIL", {"query": "김대리"}, priority=0),
+                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=1),
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.queue_fault("list_calendar_events", GoogleWorkspaceErrorCode.UPSTREAM_5XX)
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.PARTIAL.value
+    assert acquisition["resource_handles"] == ["gmail_thread:thread-kim"]
+    assert "CALENDAR:UPSTREAM_5XX" in acquisition["missing_slots"]
+
+
+def test_optional_source_failure_with_required_success_returns_partial() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan("GMAIL", {"query": "김대리"}, priority=0),
+                _plan(
+                    "CALENDAR",
+                    {"calendar_id": "calendar-primary"},
+                    priority=1,
+                    required=False,
+                ),
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.queue_fault("list_calendar_events", GoogleWorkspaceErrorCode.UPSTREAM_5XX)
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.PARTIAL.value
+    assert acquisition["source_summaries"][1]["required"] is False
+
+
+def test_required_source_failure_with_optional_success_returns_partial() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan("GMAIL", {"query": "김대리"}, priority=0),
+                _plan(
+                    "CALENDAR",
+                    {"calendar_id": "calendar-primary"},
+                    priority=1,
+                    required=False,
+                ),
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.queue_fault("search_gmail_threads", GoogleWorkspaceErrorCode.UPSTREAM_5XX)
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.PARTIAL.value
+    assert acquisition["resource_handles"] == ["calendar_event:event-1"]
+
+
+def test_auth_required_maps_gateway_auth_failure() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "김대리"})]))
+    gateway = RecordingGoogleGateway()
+    gateway.queue_fault("search_gmail_threads", GoogleWorkspaceErrorCode.AUTH_EXPIRED)
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.AUTH_REQUIRED.value
+    assert acquisition["missing_slots"] == ["GMAIL:AUTH_EXPIRED"]
+
+
+def test_required_auth_overrides_usable_partial_data() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan("GMAIL", {"query": "김대리"}, priority=0),
+                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=1),
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.queue_fault("list_calendar_events", GoogleWorkspaceErrorCode.AUTH_EXPIRED)
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.AUTH_REQUIRED.value
+    assert acquisition["resource_handles"] == ["gmail_thread:thread-kim"]
+
+
+def test_rate_limited_maps_gateway_rate_limit_failure() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "김대리"})]))
+    gateway = RecordingGoogleGateway()
+    gateway.queue_fault("search_gmail_threads", GoogleWorkspaceErrorCode.RATE_LIMITED)
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.RATE_LIMITED.value
+    assert acquisition["missing_slots"] == ["GMAIL:RATE_LIMITED"]
+
+
+def test_usable_data_with_rate_limit_returns_partial() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan("GMAIL", {"query": "김대리"}, priority=0),
+                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=1),
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.queue_fault("list_calendar_events", GoogleWorkspaceErrorCode.RATE_LIMITED)
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.PARTIAL.value
+    assert acquisition["resource_handles"] == ["gmail_thread:thread-kim"]
+
+
+def test_budget_exhausted_when_plan_exceeds_retrieval_budget() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "김대리"}, page_size=99)]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(
+        runtime=runtime,
+        gateway=gateway,
+        retrieval_budget=RetrievalBudget(max_page_size=20),
+    )
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.BUDGET_EXHAUSTED.value
+    assert gateway.calls == []
+
+
+def test_usable_data_with_budget_exhaustion_returns_partial() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan("GMAIL", {"query": "김대리"}, priority=0),
+                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=1, page_size=99),
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    agent = _agent(
+        runtime=runtime,
+        gateway=gateway,
+        retrieval_budget=RetrievalBudget(max_page_size=20),
+    )
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.PARTIAL.value
+    assert acquisition["resource_handles"] == ["gmail_thread:thread-kim"]
+
+
+def test_no_usable_data_with_mixed_failures_returns_auth_required_first() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan("GMAIL", {"query": "김대리"}, priority=0),
+                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=1),
+                _plan("TASKS", {"task_list_id": "task-list-default"}, priority=2),
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.queue_fault("search_gmail_threads", GoogleWorkspaceErrorCode.AUTH_EXPIRED)
+    gateway.queue_fault("list_calendar_events", GoogleWorkspaceErrorCode.RATE_LIMITED)
+    gateway.queue_fault("list_tasks", GoogleWorkspaceErrorCode.UPSTREAM_5XX)
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.AUTH_REQUIRED.value
+    assert acquisition["resource_handles"] == []
+
+
+def test_transport_runtime_failure_maps_to_failed_when_no_source_succeeds() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "김대리"})]))
+    gateway = RecordingGoogleGateway()
+    gateway.queue_fault("search_gmail_threads", GoogleWorkspaceErrorCode.UPSTREAM_5XX)
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.FAILED.value
+    assert acquisition["source_summaries"][0]["error_code"] == "UPSTREAM_5XX"
+
+
+def test_retrieval_ambiguity_uses_planning_confirmation_not_request_understanding() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan(
+                    "CALENDAR",
+                    {"person": "민수"},
+                    reason_codes=["QUERY_LOW_CONFIDENCE_RESULTS"],
+                )
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=_request())
+    clarification = build_source_planning_clarification_question(
+        output=planning,
+        request_intent=_intent(source="CALENDAR"),
+    )
+
+    assert planning["result"] == ApiPlanningResult.NEEDS_CONFIRMATION.value
+    assert planning["clarification"] is not None
+    assert clarification["origin_target"] == "acquisition.plan_sources"
+    assert clarification["options"] == []
+    assert runtime.calls[0]["prompt_input"]["request_intent"]["schema_version"] == 1
+    assert gateway.calls == []
+
+
+def test_additional_acquisition_request_is_forwarded_to_plan_sources_prompt_input() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "source follow-up"})]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+    additional_request = {
+        "schema_version": 1,
+        "origin_phase": WorkflowPhase.WORK_ANALYSIS.value,
+        "origin_result": "NEEDS_MORE_DATA",
+        "missing_slots": [],
+        "missing_information": ["Need the latest owner reply."],
+        "evidence_refs": ["evidence-1"],
+        "reason_codes": ["EVIDENCE_SUPPORTED"],
+    }
+
+    planning = agent.plan_sources(
+        request_intent=_intent(source="GMAIL"),
+        request=_request(),
+        additional_acquisition_request=additional_request,
+    )
+
+    prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
+    assert planning["result"] == ApiPlanningResult.PLAN_READY.value
+    assert prompt_input["planning_mode"] == "ADDITIONAL_DATA"
+    assert prompt_input["additional_acquisition_request"] == additional_request
+
+
+def test_planning_schema_failure_is_not_google_acquisition_failure() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        LLMInvocationError(
+            LLMErrorCode.OUTPUT_SCHEMA_INVALID,
+            "structured output did not satisfy schema",
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    try:
+        agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    except LLMInvocationError as error:
+        assert error.code is LLMErrorCode.OUTPUT_SCHEMA_INVALID
+    else:
+        raise AssertionError("expected schema failure")
+    assert gateway.calls == []
+
+
+def test_source_fetch_plan_rejects_extra_fields() -> None:
+    runtime = FakeLLMRuntime()
+    plan = dict(_plan("GMAIL", {"query": "김대리"}))
+    plan["query"] = "from:kim"
+    runtime.queued.append(_llm_result([plan]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    try:
+        agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    except SourcePlanningValidationError as error:
+        assert "unsupported fields" in str(error)
+    else:
+        raise AssertionError("expected source plan validation failure")
+    assert gateway.calls == []
+
+
+def test_acquisition_result_has_stage5_handoff_fields() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "김대리"})]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert set(acquisition) == {
+        "schema_version",
+        "status",
+        "resource_handles",
+        "source_summaries",
+        "missing_slots",
+        "remaining_budget",
+    }
+    assert set(acquisition["source_summaries"][0]) == {
+        "schema_version",
+        "source",
+        "status",
+        "required",
+        "reason_codes",
+        "resource_count",
+        "resource_handles",
+        "resources",
+    }
+
+
+def test_planning_agent_does_not_call_google_or_mcp() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "김대리"})]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+
+    assert planning["result"] == ApiPlanningResult.PLAN_READY.value
+    assert len(runtime.calls) == 1
+    assert gateway.calls == []
+
+
+def test_acquisition_payload_does_not_include_stage6_outputs() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "김대리"})]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+    state_update = agent.build_acquisition_state_update(acquisition)
+
+    assert state_update["acquisition_result"] == acquisition
+    assert state_update["workflow_phase"] == WorkflowPhase.API_ACQUISITION.value
+    for forbidden in ("context_bundle", "evidence_drafts", "analysis_result", "plan_draft"):
+        assert forbidden not in acquisition
+    assert "score" not in acquisition["source_summaries"][0]
+
+
+def _agent(
+    *,
+    runtime: FakeLLMRuntime,
+    gateway: RecordingGoogleGateway,
+    retrieval_budget: RetrievalBudget = DEFAULT_TEST_RETRIEVAL_BUDGET,
+) -> ApiDiscoveryAcquisitionAgent:
+    return ApiDiscoveryAcquisitionAgent(
+        llm_runtime=cast(object, runtime),
+        gateway=cast(object, gateway),
+        prompt_ref=PROMPT_REF,
+        retrieval_budget=retrieval_budget,
+    )
+
+
+def _request(
+    *,
+    entry_mode: str = "AGENT_SEARCH",
+    selected_resource_ids: tuple[str, ...] = (),
+    selected_resources: tuple[SelectedResourceRef, ...] = (),
+) -> WorkflowStartRequest:
+    return WorkflowStartRequest(
+        run_id="run-1",
+        conversation_id="conversation-1",
+        workflow_key="thread-1",
+        entry_mode=entry_mode,
+        requested_mode="AUTO",
+        request_text="김대리 메일 찾아줘.",
+        selected_resource_ids=selected_resource_ids,
+        correlation=WorkflowCorrelationContext(
+            request_id="request-1",
+            command_id="command-1",
+            api_contract_version="v1",
+        ),
+        selected_resources=selected_resources,
+    )
+
+
+def _intent(*, source: str) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "goal": {
+            "summary": "Google Workspace 자료 조회",
+            "user_visible_objective": "요청한 업무 자료 조회",
+        },
+        "completion_criteria": ["필요한 원본 자료를 수집한다."],
+        "semantic_constraints": {
+            "topics": [{"text": "업무 자료", "source_text": "업무 자료"}],
+            "people": [{"mention": "김대리", "role_hint": None, "source_text": "김대리"}],
+            "time": [
+                {
+                    "mention": "이번 주",
+                    "granularity_hint": "RELATIVE",
+                    "source_text": "이번 주",
+                }
+            ],
+            "sources": [{"source": source, "mention": source.lower(), "confidence": "HIGH"}],
+            "status_or_state": [],
+            "negative_constraints": [],
+            "policy_or_safety_constraints": [],
+        },
+        "ambiguity": {"is_ambiguous": False, "items": []},
+        "unsupported_scope": {
+            "is_unsupported": False,
+            "reason_code": None,
+            "explanation": None,
+        },
+    }
+
+
+def _plan(
+    source: str,
+    constraints: dict[str, object],
+    *,
+    priority: int = 0,
+    reason_codes: list[str] | None = None,
+    page_size: int = 10,
+    required: bool = True,
+) -> SourceFetchPlanV1:
+    return {
+        "schema_version": 1,
+        "source": cast(SourceFetchPlanV1, {"source": source})["source"],
+        "priority": priority,
+        "reason_codes": reason_codes or ["SOURCE_REQUIRED"],
+        "constraints": constraints,
+        "page_size": page_size,
+        "max_pages": 1,
+        "max_candidates": 10,
+        "detail_limit": 5,
+        "required": required,
+    }
+
+
+def _llm_result(payload: object) -> StructuredLLMResult:
+    return StructuredLLMResult(
+        structured_output=payload,
+        provider="fake",
+        model="fake-model",
+        requested_mode=RequestedRuntimeMode.AUTO,
+        actual_runtime=ActualRuntime.API_LLM,
+        input_tokens=10,
+        output_tokens=20,
+        total_tokens=30,
+        latency_ms=5,
+        estimated_cost_usd=None,
+        fallback_reason=None,
+        structured_output_attempts=1,
+        provider_request_id="provider-request-1",
+        safe_error_code=None,
+    )
+
+
+def _snapshot(
+    resource_type: ResourceType,
+    resource_id: str,
+    *,
+    parent_id: str | None = None,
+    title: str,
+    subject: str | None = None,
+) -> ResourceSnapshot:
+    payload: dict[str, object] = {"title": title}
+    if subject is not None:
+        payload["subject"] = subject
+    return ResourceSnapshot(
+        fixture_snapshot_id="fixture-1",
+        resource_type=resource_type,
+        resource_id=resource_id,
+        parent_id=parent_id,
+        related_resource_ids=(),
+        version="1",
+        recovery_fingerprint=None,
+        payload=payload,
+    )

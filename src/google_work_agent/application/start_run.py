@@ -26,6 +26,7 @@ from google_work_agent.ports import (
     MessageRecord,
     RunCreateRecord,
     RunRecord,
+    SelectedResourceRef,
     TraceEventRecord,
     UnitOfWork,
 )
@@ -65,6 +66,7 @@ class StartRunCommand:
     selected_resource_ids: tuple[str, ...]
     requested_mode: str
     api_contract_version: str
+    selected_resources: tuple[SelectedResourceRef, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,6 +312,9 @@ class StartRunService:
                         {
                             "command_id": command.command_id,
                             "selected_resource_ids": list(command.selected_resource_ids),
+                            "selected_resources": [
+                                asdict(resource) for resource in command.selected_resources
+                            ],
                             "workflow_key": command.workflow_key,
                             "requested_mode": command.requested_mode,
                         },

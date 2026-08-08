@@ -147,8 +147,8 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 
 - 6개 Agent 중 필요한 단계만 호출
 - Peer-to-Peer 금지
-- LLM Call 최대 8
-- Revision 2, Repair 1, Additional Acquisition 2
+- Route Profile별 LLM Call 한도 검증
+- Revision 2, Review Recheck 1, Repair 1, Additional Acquisition 2
 - Retriever MCP 직접 호출 금지
 - Prompt Registry Key 검증
 - Supervisor는 Node만 Routing하고 선택된 Agent·Application Node가 PromptRef를 확정
@@ -319,6 +319,10 @@ ABSOLUTE_MAX_LLM_CALLS=16
 PLANNING_REVISION_PER_RUN=2
 REVIEW_RECHECK_PER_PLANNING_REVISION=1
 ```
+
+`ABSOLUTE`는 profile이 아니며 downgrade는 허용하지 않는다.
+Revision과 Retrieval이 모두 발생한 run은 `RETRIEVAL_HEAVY`로 유지한다.
+LLM accounting은 `structured_output_attempts`가 아니라 actual provider prompt invocation 기준으로 검증한다.
 
 ### 14.1 필수 회귀
 

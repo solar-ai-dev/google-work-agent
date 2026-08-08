@@ -295,7 +295,7 @@ sequenceDiagram
     actor U as 사용자
     participant ACQ as API 탐색·수집 Agent
 
-    RET-->>SUP: NEEDS_MORE_DATA<br>missing_slots·acquisition_request
+    RET-->>SUP: NEEDS_MORE_DATA<br>missing_slots·AdditionalAcquisitionRequestV1
     SUP->>SUP: 추가 수집 Round·Budget 검증
     alt 추가 수집 가능
         SUP->>ACQ: 제약된 추가 수집 요청
@@ -305,8 +305,8 @@ sequenceDiagram
         SUP-->>API: confirmation_required Projection
         API-->>FE: 확인 질문 Card
         U->>FE: 후보 선택·추가 정보
-        FE->>API: POST /api/v1/runs/{run_id}/confirm
-        API->>APP: confirm_run(command)
+        FE->>API: POST /api/v1/runs/{run_id}/resume
+        API->>APP: resume_run(command)
         APP->>DB: 확인 응답 Message·Checkpoint 저장
         APP->>SUP: Interrupt resume
         SUP->>ACQ: 확인 결과 기반 수집 또는 요청 재분석
@@ -344,6 +344,8 @@ sequenceDiagram
     SUP-->>API: completed Projection
     API-->>FE: 최종 답변·COMPLETED
 ```
+
+Answer-only Review가 `REVISE`를 반환하면 Supervisor는 `planning.revise_answer`로 답변 초안을 수정하고, 교체된 `answer_draft`로 `review.recheck`를 거친 뒤 `PASS`일 때만 `complete_answer_only_run`으로 진행한다.
 
 Answer-only Run에는 Plan·Action·Approval·Attempt·Verification Row를 만들지 않는다.
 
@@ -856,6 +858,10 @@ Launcher 종료 요청
 | `VERIFICATION` | `VERIFYING` | `verification_result` |
 | `RECOVERY` | `RECOVERY_REQUIRED` | `recovery_required` |
 | `FINALIZE` | Terminal | `completed` 또는 `error` |
+
+- Supervisor는 `REAUTH`, `RECOVERY`, `FINALIZE` route만 선택하고 Run Status를 직접 쓰지 않는다.
+- `FINALIZE`는 기존 state/result와 transient finalize handoff에서 terminal intent를 도출한다.
+- `BudgetReasonCode`는 persisted graph state field가 아니라 budget decision handoff로 전달한다.
 
 ## 24. Transaction 경계 요약
 

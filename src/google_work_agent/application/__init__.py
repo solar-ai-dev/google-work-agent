@@ -28,6 +28,26 @@ from google_work_agent.application.read_only import (
     SaveReadOnlyPlanCommand,
     SaveReadOnlyPlanService,
 )
+from google_work_agent.application.run_terminal import (
+    BlockRunCommand,
+    BlockRunService,
+    FailRunCommand,
+    FailRunService,
+    RequireReauthCommand,
+    RequireReauthService,
+    RunTransitionResponse,
+    build_finalize_state_update,
+    derive_finalize_intent,
+)
+from google_work_agent.application.start_run import (
+    RejectWriteActionCommand,
+    RejectWriteActionService,
+)
+from google_work_agent.application.workflows.domain_validation import (
+    DomainValidationService,
+    DomainValidationValidationError,
+    build_domain_validation_output_v1,
+)
 from google_work_agent.application.write_actions import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
@@ -71,6 +91,9 @@ from google_work_agent.application.write_actions import (
 __all__ = [
     "ClaimReadActionCommand",
     "ClaimReadActionService",
+    "BlockRunCommand",
+    "BlockRunService",
+    "build_finalize_state_update",
     "CompleteAnswerOnlyRunCommand",
     "CompleteAnswerOnlyRunService",
     "CompleteReadActionCommand",
@@ -78,9 +101,15 @@ __all__ = [
     "CompletedEvidence",
     "CompletedResourceRef",
     "DisconnectGoogleService",
+    "DomainValidationService",
+    "DomainValidationValidationError",
     "ExecuteReadActionService",
+    "derive_finalize_intent",
+    "build_domain_validation_output_v1",
     "FailReadActionCommand",
     "FailReadActionService",
+    "FailRunCommand",
+    "FailRunService",
     "FinalizeReadActionCommand",
     "FinalizeReadActionService",
     "GetGoogleConnectionService",
@@ -91,6 +120,8 @@ __all__ = [
     "SaveReadOnlyPlanCommand",
     "SaveReadOnlyPlanService",
     "StartGoogleOAuthService",
+    "RejectWriteActionCommand",
+    "RejectWriteActionService",
     "ApproveWriteActionCommand",
     "ApproveWriteActionService",
     "ClaimWriteActionCommand",
@@ -114,6 +145,8 @@ __all__ = [
     "RecoverUnknownUpdateActionService",
     "RequestRunCancellationCommand",
     "RequestRunCancellationService",
+    "RequireReauthCommand",
+    "RequireReauthService",
     "RequireWriteReauthCommand",
     "RequireWriteReauthService",
     "ResolveUnknownWriteAsFailedCommand",
@@ -127,5 +160,6 @@ __all__ = [
     "WriteActionResponse",
     "WriteActionDraft",
     "WriteEvidenceDraft",
+    "RunTransitionResponse",
     "WriteRunResponse",
 ]

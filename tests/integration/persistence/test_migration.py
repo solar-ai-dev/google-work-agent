@@ -46,10 +46,12 @@ def test_docs_and_runtime_sql_raw_bytes_are_identical() -> None:
 def test_package_resource_discovers_initial_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 1
+    assert len(migrations) == 2
     assert migrations[0].version == 1
     assert migrations[0].name == "initial"
     assert migrations[0].checksum == OFFICIAL_NORMALIZED_CHECKSUM
+    assert migrations[1].version == 2
+    assert migrations[1].name == "action_effect_send_delete"
 
 
 def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
@@ -58,26 +60,32 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
     connection = connect_sqlite(tmp_path / "migration.db")
     try:
         first_results = apply_migrations(connection, now_ms=lambda: 123456789)
-        row = connection.execute(
-            "SELECT version, name, checksum, applied_at_ms FROM schema_migrations;"
-        ).fetchone()
+        rows = connection.execute(
+            "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
+        ).fetchall()
 
-        assert len(first_results) == 1
+        assert len(first_results) == 2
         assert first_results[0].applied is True
-        assert row["version"] == 1
-        assert row["name"] == "initial"
-        assert row["checksum"] == OFFICIAL_NORMALIZED_CHECKSUM
-        assert row["applied_at_ms"] == 123456789
+        assert first_results[1].applied is True
+        assert [(row["version"], row["name"]) for row in rows] == [
+            (1, "initial"),
+            (2, "action_effect_send_delete"),
+        ]
+        assert rows[0]["checksum"] == OFFICIAL_NORMALIZED_CHECKSUM
+        assert rows[0]["applied_at_ms"] == 123456789
+        assert rows[1]["applied_at_ms"] == 123456789
 
         second_results = apply_migrations(connection, now_ms=lambda: 987654321)
         rows = connection.execute(
-            "SELECT version, name, checksum, applied_at_ms FROM schema_migrations;"
+            "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(second_results) == 1
+        assert len(second_results) == 2
         assert second_results[0].applied is False
-        assert len(rows) == 1
+        assert second_results[1].applied is False
+        assert len(rows) == 2
         assert rows[0]["applied_at_ms"] == 123456789
+        assert rows[1]["applied_at_ms"] == 123456789
     finally:
         connection.close()
 

@@ -65,7 +65,7 @@ Windows Installer
 | Session | `POST /api/v1/session/bootstrap` | Launcher Bootstrap으로 Local Session 수립 |
 | Conversation | `GET/POST /api/v1/conversations` | 대화 조회·생성 |
 | Run | `POST /api/v1/runs`, `GET /api/v1/runs/{run_id}` | 요청 시작·현재 Domain 상태 조회 |
-| Interrupt | `POST /api/v1/runs/{run_id}/confirm` | 확인 질문 응답으로 Graph 재개 |
+| Interrupt | `POST /api/v1/runs/{run_id}/resume` | `resume_kind=CONFIRMATION`과 typed payload로 확인 질문 응답을 재개 |
 | Approval | `POST /api/v1/actions/{action_id}/approve\|modify\|reject` | 승인·수정·거절 Command |
 | Retry | `POST /api/v1/actions/{action_id}/prepare-retry` | 실패한 Write를 `MODIFIED`로 전환해 새 승인 준비 |
 | Control | `POST /api/v1/runs/{run_id}/cancel\|resume` | 취소 요청·안전 지점 재개 |
@@ -547,6 +547,7 @@ StartRunRequestV1
 - entry_mode: AGENT_SEARCH | RESOURCE_SELECTED
 - user_request: 1..65536 UTF-8
 - selected_resources: list[SelectedResourceRefV1], max 20
+- selected_resource_ids: list[string], max 20, legacy/native ID compatibility projection
 - requested_mode: AUTO | LOCAL_GPU | API_LLM
 
 StartRunResponseV1
@@ -566,6 +567,19 @@ RunSnapshotResponseV1
 - result_kind: COMPLETE | PARTIAL | NONE
 - projection_version
 ```
+
+`SelectedResourceRefV1`:
+
+```text
+source: GMAIL | TASKS | CALENDAR
+resource_type: THREAD | MESSAGE | TASK | EVENT
+resource_id: string
+parent_resource_id: string | null
+```
+
+`selected_resource_ids`만으로 Source 또는 Resource Type을 추론하지 않는다. Stage 5
+`RESOURCE_SELECTED` 실행은 `selected_resources`의 typed identity를 사용한다. Tasks의
+`parent_resource_id`는 `task_list_id`, Calendar의 `parent_resource_id`는 `calendar_id`다.
 
 ### 22.3 Action
 

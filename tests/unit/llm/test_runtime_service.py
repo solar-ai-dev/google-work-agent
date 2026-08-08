@@ -152,6 +152,7 @@ def test_api_only_invokes_external_provider() -> None:
 
     assert result.actual_runtime is ActualRuntime.API_LLM
     assert result.structured_output == {"answer": "ok"}
+    assert result.provider_calls_consumed == 1
     assert len(api_transport.invocations) == 2  # probe + invoke
     assert not ollama_transport.invocations
 
@@ -342,4 +343,5 @@ def test_schema_repair_is_limited_to_one_attempt() -> None:
 
     assert result.structured_output == {"answer": "fixed"}
     assert result.structured_output_attempts == 2
+    assert result.provider_calls_consumed == 1
     assert len(repairer.calls) == 1

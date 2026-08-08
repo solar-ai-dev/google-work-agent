@@ -75,6 +75,13 @@ class AcquisitionResult:
     remaining_budget: dict
 ```
 
+Stage 5에서 `source_summaries`의 각 항목은 Source 단위 수집 결과를 담는다. 최소 필드는
+`schema_version`, `source`, `status`, `required`, `resource_count`, `resource_handles`,
+`resources`다. 실패 항목은 `error_code`를 추가한다. `resources`의 각 항목은 Stage 6이
+시작할 수 있도록 `resource_handle`, `resource_type`, `resource_id`, `parent_id`,
+`version`, `related_resource_ids`, `payload`를 포함한다. Stage 5는 Evidence ranking,
+compression, scoring을 수행하지 않는다.
+
 ## 5. Query Builder와 Read Port
 
 ```text
@@ -120,6 +127,44 @@ class ContextRetrievalResult:
 - 선택 ID를 검색 Query로 다시 찾지 않고 최신 상세 GET
 - 후보 점수와 무관하게 강제 포함
 - 추가 Source는 목표에 필요한 경우만 제안
+
+`RESOURCE_SELECTED`에서 선택 Resource의 Source와 Resource Type은 문자열 ID 모양이나
+`SourceFetchPlan.source`로 추론하지 않는다. Runtime 입력은 선택 Resource별로 다음 identity를
+보존해야 한다.
+
+```python
+class SelectedResourceRefV1:
+    source: Literal["GMAIL", "TASKS", "CALENDAR"]
+    resource_type: Literal["THREAD", "MESSAGE", "TASK", "EVENT"]
+    resource_id: str
+    parent_resource_id: str | None
+```
+
+- Gmail `THREAD`: `resource_id`를 `thread_id`로 사용해 Thread 상세 GET.
+- Gmail `MESSAGE`: `resource_id`를 `message_id`로 사용해 Message 상세 GET.
+- Tasks `TASK`: `parent_resource_id`를 `task_list_id`, `resource_id`를 `task_id`로 사용해 상세 GET.
+- Calendar `EVENT`: `parent_resource_id`를 `calendar_id`, `resource_id`를 `event_id`로 사용해 상세 GET.
+
+Tasks와 Calendar의 parent identity는 `"default"` 또는 `"primary"` 같은 숨은 기본값으로
+대체하지 않는다. 선택 Resource와 같은 Source의 계획은 선택 Resource 상세 GET을 수행하고,
+선택 Resource가 없는 추가 Source 계획은 `AGENT_SEARCH`와 동일한 결정적 Query Builder 경로를
+사용한다.
+
+### Acquisition Result 결정
+
+Stage 5는 Source별 결과를 모두 `source_summaries`에 기록한 뒤 다음 invariant로 전체
+`AcquisitionResult.status`를 결정한다.
+
+- `COMPLETE`: 모든 planned Source가 기술적으로 완료되었다.
+- `AUTH_REQUIRED`: required Source가 인증·권한 문제로 실패했거나, usable resource 없이 인증·권한 실패만으로 진행할 수 없다.
+- `PARTIAL`: 하나 이상의 usable resource가 있으나 모든 planned Source가 완료되지는 않았다.
+- `RATE_LIMITED`: usable resource가 없고 rate limit으로 진행할 수 없다.
+- `BUDGET_EXHAUSTED`: usable resource가 없고 budget 소진으로 진행할 수 없다.
+- `FAILED`: usable resource가 없고 위 상태에 해당하지 않는 기술 실패만 있다.
+
+Optional Source 실패는 required Source 완료 여부를 깨지 않지만, planned Source 전체 완료는
+아니므로 usable resource가 있으면 `PARTIAL`이다. Budget 소진 전 확보한 usable resource가
+있으면 `BUDGET_EXHAUSTED`로 성공을 숨기지 않고 `PARTIAL`에 missing slot을 남긴다.
 
 ### AGENT_SEARCH
 - RequestIntent 기반 Source-native 검색

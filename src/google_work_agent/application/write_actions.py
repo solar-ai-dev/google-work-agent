@@ -2428,7 +2428,8 @@ def _validate_write_plan(
         validate_evidence_policy(
             policy_input=EvidencePolicyInput(
                 evidence_count=evidence_count,
-                requires_existing_resource=entry.effect_type is EffectType.UPDATE,
+                requires_existing_resource=entry.effect_type
+                in {EffectType.UPDATE, EffectType.DELETE},
                 has_user_selected_resource=action.target_resource_ref_id is not None,
                 has_explicit_resource_relation=action.target_resource_ref_id is not None,
             )
@@ -2540,16 +2541,22 @@ def _resolve_snapshot_fallback_resource_id(
 ) -> str | None:
     arguments = loads(action.arguments_json)
     if action.tool_name in {"gmail_create_draft", "gmail_update_draft"}:
-        return None if arguments.get("draft_id") is not None else _resource_id_from_ref(
-            unit_of_work, resource_ref_id
+        return (
+            None
+            if arguments.get("draft_id") is not None
+            else _resource_id_from_ref(unit_of_work, resource_ref_id)
         )
     if action.tool_name in {"tasks_create_task", "tasks_update_task"}:
-        return None if arguments.get("task_id") is not None else _resource_id_from_ref(
-            unit_of_work, resource_ref_id
+        return (
+            None
+            if arguments.get("task_id") is not None
+            else _resource_id_from_ref(unit_of_work, resource_ref_id)
         )
     if action.tool_name in {"calendar_create_event", "calendar_update_event"}:
-        return None if arguments.get("event_id") is not None else _resource_id_from_ref(
-            unit_of_work, resource_ref_id
+        return (
+            None
+            if arguments.get("event_id") is not None
+            else _resource_id_from_ref(unit_of_work, resource_ref_id)
         )
     return None
 

@@ -151,6 +151,66 @@ class SQLiteRunRepository:
             ),
         )
 
+    def start_analysis(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        return self._transition_run(
+            run_id=run_id,
+            expected_version=expected_version,
+            command=RunCommand.START_ANALYSIS,
+            finished_at_ms=finished_at_ms,
+            error_message="run start_analysis affected an unexpected row count",
+        )
+
+    def begin_retrieval(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        return self._transition_run(
+            run_id=run_id,
+            expected_version=expected_version,
+            command=RunCommand.BEGIN_RETRIEVAL,
+            finished_at_ms=finished_at_ms,
+            error_message="run begin_retrieval affected an unexpected row count",
+        )
+
+    def begin_planning(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        return self._transition_run(
+            run_id=run_id,
+            expected_version=expected_version,
+            command=RunCommand.BEGIN_PLANNING,
+            finished_at_ms=finished_at_ms,
+            error_message="run begin_planning affected an unexpected row count",
+        )
+
+    def request_confirmation(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        return self._transition_run(
+            run_id=run_id,
+            expected_version=expected_version,
+            command=RunCommand.REQUEST_CONFIRMATION,
+            finished_at_ms=finished_at_ms,
+            error_message="run request_confirmation affected an unexpected row count",
+        )
+
     def complete_answer_only_run(
         self,
         run_id: str,
@@ -187,6 +247,62 @@ class SQLiteRunRepository:
         )
         if cursor.rowcount != 1:
             raise sqlite3.IntegrityError("answer-only run update affected an unexpected row count")
+        return result
+
+    def block_run(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = transition_run(
+            current.status,
+            command=RunCommand.BLOCK_RUN,
+            current_version=current.version,
+            expected_version=expected_version,
+        )
+        if not result.applied:
+            return result
+        self._apply_run_transition(
+            run_id=run_id,
+            previous_version=current.version,
+            status=result.current_status,
+            version=result.current_version,
+            finished_at_ms=finished_at_ms,
+            error_message="run block affected an unexpected row count",
+        )
+        return result
+
+    def fail_run(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = transition_run(
+            current.status,
+            command=RunCommand.FAIL_RUN,
+            current_version=current.version,
+            expected_version=expected_version,
+        )
+        if not result.applied:
+            return result
+        self._apply_run_transition(
+            run_id=run_id,
+            previous_version=current.version,
+            status=result.current_status,
+            version=result.current_version,
+            finished_at_ms=finished_at_ms,
+            error_message="run fail affected an unexpected row count",
+        )
         return result
 
     def publish_read_only_plan(
@@ -391,6 +507,34 @@ class SQLiteRunRepository:
             raise sqlite3.IntegrityError("run cancel finalize affected an unexpected row count")
         return result
 
+    def require_reauth(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = transition_run(
+            current.status,
+            command=RunCommand.REQUIRE_REAUTH,
+            current_version=current.version,
+            expected_version=expected_version,
+        )
+        if not result.applied:
+            return result
+        self._apply_run_transition(
+            run_id=run_id,
+            previous_version=current.version,
+            status=result.current_status,
+            version=result.current_version,
+            finished_at_ms=finished_at_ms,
+            error_message="run require-reauth affected an unexpected row count",
+        )
+        return result
+
     def require_recovery(
         self,
         run_id: str,
@@ -461,9 +605,7 @@ class SQLiteRunRepository:
             finished_at_ms=finished_at_ms,
         )
         if not result.applied:
-            raise sqlite3.IntegrityError(
-                f"run require-recovery failed: {result.conflict_detail}"
-            )
+            raise sqlite3.IntegrityError(f"run require-recovery failed: {result.conflict_detail}")
         updated = self.get_by_id(run_id)
         if updated is None:
             raise LookupError(f"run not found after recovery update: {run_id}")
@@ -521,6 +663,36 @@ class SQLiteRunRepository:
         )
         if cursor.rowcount != 1:
             raise sqlite3.IntegrityError(error_message)
+
+    def _transition_run(
+        self,
+        *,
+        run_id: str,
+        expected_version: int,
+        command: RunCommand,
+        finished_at_ms: int | None,
+        error_message: str,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = transition_run(
+            current.status,
+            command=command,
+            current_version=current.version,
+            expected_version=expected_version,
+        )
+        if not result.applied:
+            return result
+        self._apply_run_transition(
+            run_id=run_id,
+            previous_version=current.version,
+            status=result.current_status,
+            version=result.current_version,
+            finished_at_ms=finished_at_ms,
+            error_message=error_message,
+        )
+        return result
 
     def _force_status(
         self,

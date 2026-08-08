@@ -71,13 +71,25 @@ def test_other_enum_values_match_contract() -> None:
         "NOT_FOUND",
         "ERROR",
     )
-    assert tuple(policy.value for policy in VerificationPolicy) == ("NONE", "GET_COMPARE")
+    assert tuple(policy.value for policy in VerificationPolicy) == (
+        "NONE",
+        "GET_COMPARE",
+        "SENT_LOOKUP",
+        "GET_ABSENT",
+    )
     assert tuple(policy.value for policy in RecoveryPolicy) == (
         "NONE",
         "GET_TARGET",
         "RESOURCE_SEARCH",
+        "MESSAGE_SEARCH",
     )
-    assert tuple(effect.value for effect in EffectType) == ("READ", "CREATE", "UPDATE")
+    assert tuple(effect.value for effect in EffectType) == (
+        "READ",
+        "CREATE",
+        "UPDATE",
+        "SEND",
+        "DELETE",
+    )
     assert tuple(code.value for code in ResultCode) == (
         "TRANSITION_APPLIED",
         "STATE_CONFLICT",
@@ -87,8 +99,8 @@ def test_other_enum_values_match_contract() -> None:
     )
 
 
-def test_effect_type_has_no_delete() -> None:
-    assert "DELETE" not in {effect.value for effect in EffectType}
+def test_effect_type_includes_send_and_delete() -> None:
+    assert {"SEND", "DELETE"} <= {effect.value for effect in EffectType}
 
 
 def test_status_values_are_unique() -> None:

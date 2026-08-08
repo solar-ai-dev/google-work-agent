@@ -207,6 +207,7 @@ class LocalRunCoordinator:
                     request_text=context.request_text,
                     selected_resource_ids=context.selected_resource_ids,
                     correlation=correlation,
+                    selected_resources=context.selected_resources,
                 )
             )
         elif item.kind == "resume":

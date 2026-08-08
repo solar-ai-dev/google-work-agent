@@ -330,8 +330,8 @@ def validate() -> dict:
         DATASETS / "agent_prompt" / "request_understanding" / "classify.jsonl",
         DATASETS / "agent_prompt" / "api_discovery_acquisition" / "plan_sources.jsonl",
         DATASETS / "agent_prompt" / "context_retriever" / "select_evidence.jsonl",
-        DATASETS / "agent_prompt" / "solution_planning" / "draft_plan.jsonl",
-        DATASETS / "agent_prompt" / "plan_review" / "inspect.jsonl",
+        DATASETS / "agent_prompt" / "planning" / "draft_plan.jsonl",
+        DATASETS / "agent_prompt" / "review" / "inspect.jsonl",
     ]
     agent_counts: dict[str, int] = {}
     for path in tier_a_paths:
@@ -354,14 +354,14 @@ def validate() -> dict:
                 if f'"tool_name": "{tool}"' in text or f'"tool_name":"{tool}"' in text:
                     add_error(errors, "forbidden_tool", path.as_posix(), str(row.get("node_dataset_item_id")), tool)
 
-    prompt_manifest = read_yaml_as_json(ROOT / "prompts" / "agent" / "manifest.yaml", errors) or {}
-    prompt_entries = prompt_manifest.get("prompt_manifest", [])
-    if len(prompt_entries) != 19:
-        add_error(errors, "prompt_manifest_count", "prompts/agent/manifest.yaml", None, str(len(prompt_entries)))
-    prompt_ids = {entry.get("prompt_id") for entry in prompt_entries}
+    prompt_manifest = read_json(ROOT / "prompts" / "agent" / "prompt-manifest-v0.7.json", errors) or {}
+    prompt_entries = prompt_manifest.get("slots", [])
+    if not prompt_entries:
+        add_error(errors, "prompt_manifest_empty", "prompts/agent/prompt-manifest-v0.7.json", None, "no slots")
+    prompt_ids = {entry.get("slot_id") for entry in prompt_entries if isinstance(entry, dict)}
     missing_prompts = registry_nodes - prompt_ids
     if missing_prompts:
-        add_error(errors, "prompt_manifest_missing_node", "prompts/agent/manifest.yaml", None, ",".join(sorted(missing_prompts)))
+        add_error(errors, "prompt_manifest_missing_node", "prompts/agent/prompt-manifest-v0.7.json", None, ",".join(sorted(missing_prompts)))
 
     subset = read_json(DATASETS / "cases" / "subset-manifest.json", errors) or {}
     core_ids = {row["case_id"] for row in cases_by_split["core"] if "case_id" in row}
