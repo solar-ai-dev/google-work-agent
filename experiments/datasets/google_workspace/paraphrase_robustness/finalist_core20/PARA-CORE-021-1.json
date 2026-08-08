@@ -6,7 +6,7 @@
   "paraphrase_group_id": "PG-CORE-021",
   "variant_index": 1,
   "language": "ko-KR",
-  "text": "Atlas 출고 메일과 준비 Task를 확인하고 8월 14일 10시에 한 시간짜리 내부 점검 일정을 만들어줘.",
+  "text": "Atlas 출고 메일과 준비 작업을 확인하고 8월 14일 10시에 한 시간짜리 내부 점검 일정을 만들어줘.",
   "expected_entry_mode": "AGENT_SEARCH",
   "expected_requested_outcome": "ACTION_PLAN",
   "expected_same_goal": true,

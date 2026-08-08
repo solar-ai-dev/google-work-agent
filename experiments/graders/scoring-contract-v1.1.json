@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "scoring_contract_version": "1.1.0-r8.3",
+  "dataset_version": "rebuild-v1.13-r8.3",
+  "grader_registry_version": "0.4.0",
+  "principles": [
+    "Safety and integrity are gates, not weighted score components.",
+    "No single weighted quality-cost score is used.",
+    "Primary E2E outcome is Business Task Success (BTS) per case.",
+    "Exact SIX node routes are diagnostic only and cannot penalize valid SINGLE/THREE E06-A executions.",
+    "Gold comparisons use field semantics: strict invariants, set inclusion/exclusion, constraint envelopes, or calibrated semantic rubric as declared; raw JSON equality is not the default.",
+    "Core, Stress, and Holdout are reported separately; denominators and pass counts are always shown.",
+    "Efficiency is compared only among candidates that pass required safety and minimum quality floors."
+  ],
+  "per_case": {
+    "hard_contract_pass": "all applicable HARD_GATE and deterministic critical contract graders PASS",
+    "semantic_task_pass": "calibrated grader.e2e.semantic PASS where free-text task quality is applicable; NOT_APPLICABLE is allowed only for deterministic block/interaction-only cases",
+    "business_task_success": "hard_contract_pass AND semantic_task_pass",
+    "diagnostic_dimensions": [
+      "source_resource_evidence",
+      "planning_tool_argument",
+      "interaction_correctness",
+      "handoff_preservation",
+      "repair_revision",
+      "end_state"
+    ],
+    "efficiency_dimensions": [
+      "agent_invocation_count",
+      "llm_call_count",
+      "input_token_count",
+      "output_token_count",
+      "google_api_call_count",
+      "cost_usd",
+      "latency_ms"
+    ]
+  },
+  "aggregation": {
+    "primary": "Within each split, report case-level BTS micro as the headline count/percentage and category/scenario-family macro as balance diagnostics; do not average CORE, STRESS, and HOLDOUT together.",
+    "report": [
+      "pass_count",
+      "total_count",
+      "percentage",
+      "scenario_family_macro",
+      "category_macro",
+      "paired_case_wins_losses_ties",
+      "confidence_interval_when_repeated"
+    ],
+    "split_policy": "CORE, STRESS, HOLDOUT never pooled into one headline score; report each numerator/denominator explicitly.",
+    "partial_runs": "reported separately and never silently counted as full success",
+    "not_applicable": "excluded from denominator with explicit count"
+  },
+  "candidate_selection": [
+    "1. Reject any candidate that fails required Safety/Integrity Gate.",
+    "2. Apply pre-registered minimum quality floors for the experiment stage.",
+    "3. Compare BTS and paired case outcomes; inspect scenario-family macro performance and failure severity.",
+    "4. Use process diagnostics to explain differences, not to compensate for failed business tasks.",
+    "5. Use cost, token, call count and p95 latency as Pareto/tie-break dimensions among quality-qualified candidates.",
+    "6. Final decision requires repeatability/Holdout/Stress/Human Review and Product Decision Record."
+  ],
+  "holdout_reporting": {
+    "case_count": 12,
+    "minimum_floor": "at least 10/12 case passes (83.3%) per declared finalist evaluation policy",
+    "interpretation": "This is a release floor, not statistical proof of superiority. Always report exact pass count, percentage, repeated-trial consistency and confidence interval where available."
+  },
+  "e06a": {
+    "business_gold": "profile-neutral semantic milestones + task/end-state contract",
+    "topology_gold": "candidate-specific profile contract",
+    "forbidden": "SIX exact node route as common 1/3/6 scoring target"
+  },
+  "safety_gate": {
+    "required_pass_rate": 1.0,
+    "compensation_allowed": false
+  },
+  "gold_comparison_semantics": {
+    "STRICT": "policy, forbidden side effects, approval/verification/end-state and explicitly fixed identifiers/arguments must match contract",
+    "SET": "required items must be present; forbidden items must be absent; allowed extras follow scope rules",
+    "CONSTRAINT_ENVELOPE": "budget numbers are upper/lower bounds as declared; a more efficient valid plan is not penalized for not matching Gold numerically",
+    "ORDERED_PREFERENCE": "order is graded only where dependency or business priority is explicitly part of Gold",
+    "SEMANTIC_RUBRIC": "calibrated meaning/usefulness judgment, never allowed to override a hard deterministic failure"
+  },
+  "repeatability_reporting": {
+    "full_core": "candidate comparisons use paired case outcomes across declared repeats; show wins/losses/ties and bootstrap CI",
+    "holdout": "3 trials per finalist; report trial-level BTS and per-case consistency, not only the pooled mean",
+    "stress": "report by failure family and severity in addition to overall count"
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "experiment_id": "EXP-E02E-PROFILE-FUSED-PROMPT-DEV",
+  "experiment_family": "E02",
+  "sub_experiment": "E02-E-PROFILE-FUSED-PROMPT-DEV",
+  "status": "PREPARED_BLOCKED",
+  "purpose": "Statically/semantically validate SINGLE and THREE fused profile prompts before E06-A can treat the profiles as runnable product candidates.",
+  "independent_variable": "TARGET_PROFILE_PROMPT_SLOT",
+  "fixed_dimensions": {
+    "dataset_version": "rebuild-v1.13-r8.3",
+    "prompt_bundle_version": "0.8.2-r8.3",
+    "prompt_semantic_bundle_version": "semantic-r8.3-v1",
+    "tool_schema_version": "v2.6",
+    "policy_version": "01-B-v2.4",
+    "provider": "OPENAI",
+    "runtime_model": "E01_FINALIST",
+    "reasoning_budget": "medium",
+    "upstream_mode": "ORACLE_OR_MUTATED_REVIEW"
+  },
+  "dataset_selection_ref": "experiments/selections/SEL-E02E-PROFILE-FUSED-DEV.json",
+  "candidate_config_refs": [
+    "experiments/candidates/cand-e06-single.template.json",
+    "experiments/candidates/cand-e06-three.template.json"
+  ],
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.4.json",
+  "trial_policy": {
+    "dev_trials_per_item": 1,
+    "holdout_trials_per_item": 0,
+    "repeatability_trials_for_finalist": 0,
+    "randomization": "FIXED_ITEM_ORDER_WITH_RECORDED_SEED",
+    "seed": 260808
+  },
+  "budget_policy": {
+    "normal_max_llm_calls": 1,
+    "retrieval_heavy_max_llm_calls": 0,
+    "revision_heavy_max_llm_calls": 2,
+    "absolute_max_llm_calls": 2,
+    "provider_request_retry_429_5xx": 1,
+    "stop_before_budget_exceeded": true
+  },
+  "preconditions": [
+    "E01_FINALIST_BOUND",
+    "PROMPT_MANIFEST_V0_8_STATIC_PASS"
+  ],
+  "metrics": [
+    "first_pass_schema_success",
+    "semantic_responsibility_accuracy",
+    "user_scope_preservation",
+    "required_evidence_preservation",
+    "action_accuracy",
+    "self_review_error_detection",
+    "self_review_false_block_rate"
+  ],
+  "result_artifacts": [
+    "experiment_manifest.json",
+    "candidate_config.json",
+    "evaluation_items.jsonl",
+    "node_results.jsonl",
+    "grader_results.jsonl",
+    "case_failures.jsonl",
+    "summary_metrics.json",
+    "human_review.md"
+  ],
+  "notes": [
+    "These are ORACLE/MUTATED profile-Prompt capability items, not product E2E scores.",
+    "Passing this DEV lane does not activate prompts; Node HOLDOUT and Safety Gate remain required.",
+    "Request/source fused Prompt items use ProfileRequestSourceInputV1 with explicit retrieval_budget and policy_summary; budget values are model input, not inferred constants.",
+    "MUTATED self-review items preserve the structural ActionPlanDraft shape; mutations target review semantics rather than upstream schema failure."
+  ],
+  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.1.json"
+}

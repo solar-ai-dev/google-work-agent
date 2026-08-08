@@ -13,7 +13,7 @@
   "gold": {
     "goal": "완료 가능성 또는 위험을 근거와 함께 답한다.",
     "requested_outcome": "ANALYSIS",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

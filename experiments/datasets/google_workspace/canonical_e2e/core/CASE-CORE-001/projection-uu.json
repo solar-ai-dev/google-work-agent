@@ -13,7 +13,7 @@
   "gold": {
     "goal": "선택한 Boreal Thread를 명시적 READ Action으로 조회해 최종 서명 기한과 법무 담당을 보여준다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

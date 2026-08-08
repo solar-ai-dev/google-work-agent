@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "source_case_id": "CASE-CORE-021",
+  "target_prompt_slot_id": "profile.single.reason_plan.initial",
+  "gold": {
+    "required_evidence_ids": [
+      "EVD-SEG-GM-A-002-1",
+      "EVD-SEG-TSK-A-001-2",
+      "EVD-SEG-TSK-A-002-3",
+      "UE-CORE-021"
+    ],
+    "expected_answer_type": "ACTION_PLAN",
+    "allowed_actions": [
+      {
+        "action_id": "ACT-CORE-021-1",
+        "tool_name": "calendar_create_event",
+        "effect_type": "CREATE",
+        "target_resource_id": null,
+        "arguments": {
+          "calendar_id": "CAL-PRIMARY",
+          "title": "Atlas 내부 점검",
+          "start": "2026-08-14T10:00:00+09:00",
+          "duration_minutes": 60
+        },
+        "expected": {
+          "event_created": true
+        },
+        "evidence_ids": [
+          "EVD-SEG-GM-A-002-1",
+          "EVD-SEG-TSK-A-001-2",
+          "EVD-SEG-TSK-A-002-3",
+          "UE-CORE-021"
+        ],
+        "depends_on_action_ids": [],
+        "risk_codes": [],
+        "approval_required": true
+      }
+    ],
+    "completion_criteria": [
+      "최종 출고 메일과 관련 Task를 확인한다.",
+      "8/14 10:00 60분 Calendar 가용성을 확인한다.",
+      "승인 전 Event를 만들지 않는다."
+    ]
+  }
+}

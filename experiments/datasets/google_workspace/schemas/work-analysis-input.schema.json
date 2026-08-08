@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/WorkAnalysisInputV1.schema.json",
+  "title": "WorkAnalysisInputV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "fixture_snapshot_id",
+    "user_goal",
+    "context_result",
+    "policy_summary",
+    "mutation_spec"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "fixture_snapshot_id": {
+      "type": "string"
+    },
+    "user_goal": {
+      "type": "string"
+    },
+    "context_result": {
+      "type": "object"
+    },
+    "policy_summary": {
+      "type": "object"
+    },
+    "mutation_spec": {
+      "type": "object"
+    }
+  }
+}

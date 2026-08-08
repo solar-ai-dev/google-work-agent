@@ -13,7 +13,7 @@
   "gold": {
     "goal": "Alias 기반 재검색 후 날짜를 답한다.",
     "requested_outcome": "ANSWER",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

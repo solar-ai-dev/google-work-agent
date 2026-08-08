@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "source_case_id": "CASE-CORE-011",
+  "target_prompt_slot_id": "profile.single.self_review.initial",
+  "gold_review": {
+    "expected_result": "REVISE",
+    "must_not_pass": true,
+    "failure_reason_code": "REVIEW_FALSE_PASS",
+    "localized_action_id": "ACT-CORE-011-1-EXTRA",
+    "localized_field_path": "/actions/1",
+    "review_must_not_repair_plan": true
+  }
+}

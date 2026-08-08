@@ -13,7 +13,7 @@
   "gold": {
     "goal": "마감 위험을 과장 없이 알리는 Draft를 제안한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

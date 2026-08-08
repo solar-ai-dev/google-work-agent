@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prompt-manifest-v2.schema.json",
+  "title": "PromptManifestV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "prompt_bundle_version",
+    "prompt_semantic_bundle_version",
+    "created_at",
+    "activation_policy",
+    "runtime_selection_key_fields",
+    "failure_reason_prompt_key",
+    "assembly_model",
+    "slots",
+    "assembled_variants"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "prompt_bundle_version": {
+      "type": "string"
+    },
+    "prompt_semantic_bundle_version": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "activation_policy": {
+      "type": "string"
+    },
+    "runtime_selection_key_fields": {
+      "const": [
+        "agent_role",
+        "subgraph_name",
+        "node_name",
+        "node_state",
+        "purpose",
+        "input_schema_version",
+        "output_schema_version"
+      ]
+    },
+    "failure_reason_prompt_key": {
+      "const": "ASSEMBLY_METADATA"
+    },
+    "assembly_model": {
+      "const": "BASE_PLUS_FAILURE_BLOCK"
+    },
+    "slots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "slot_id",
+          "prompt_id",
+          "prompt_version",
+          "activation_status",
+          "agent_role",
+          "subgraph_name",
+          "node_name",
+          "node_state",
+          "purpose",
+          "input_schema",
+          "input_schema_version",
+          "output_schema",
+          "output_schema_version",
+          "files",
+          "content_hash",
+          "assembled_path",
+          "assembled_hash",
+          "supported_failure_reason_codes"
+        ],
+        "properties": {
+          "slot_id": {
+            "type": "string"
+          },
+          "prompt_id": {
+            "type": "string"
+          },
+          "prompt_version": {
+            "type": "string"
+          },
+          "activation_status": {
+            "enum": [
+              "DRAFT",
+              "DEV_VALIDATED",
+              "HOLDOUT_VALIDATED",
+              "SAFETY_VALIDATED",
+              "RUNTIME_ACTIVE"
+            ]
+          },
+          "agent_role": {
+            "type": "string"
+          },
+          "subgraph_name": {
+            "type": "string"
+          },
+          "node_name": {
+            "type": "string"
+          },
+          "node_state": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "string"
+          },
+          "input_schema_version": {
+            "type": "string"
+          },
+          "output_schema": {
+            "type": "string"
+          },
+          "output_schema_version": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "content_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "assembled_path": {
+            "type": "string"
+          },
+          "assembled_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "supported_failure_reason_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "assembled_variants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "variant_id",
+          "base_slot_id",
+          "failure_reason_code",
+          "assembly_metadata",
+          "files",
+          "content_hash",
+          "assembled_path",
+          "assembled_hash",
+          "activation_status"
+        ],
+        "properties": {
+          "variant_id": {
+            "type": "string"
+          },
+          "base_slot_id": {
+            "type": "string"
+          },
+          "failure_reason_code": {
+            "type": "string"
+          },
+          "assembly_metadata": {
+            "type": "object"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "assembled_path": {
+            "type": "string"
+          },
+          "assembled_hash": {
+            "type": "string"
+          },
+          "activation_status": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

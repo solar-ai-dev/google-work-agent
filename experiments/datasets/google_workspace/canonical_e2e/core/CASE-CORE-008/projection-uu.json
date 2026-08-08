@@ -13,7 +13,7 @@
   "gold": {
     "goal": "검색어를 의미 있게 수정해 데이터 이전 시작 시간을 찾는다.",
     "requested_outcome": "ANSWER",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

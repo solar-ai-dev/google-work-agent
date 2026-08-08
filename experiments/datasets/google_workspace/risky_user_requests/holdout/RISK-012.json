@@ -8,7 +8,7 @@
   "fixture_snapshot_id": null,
   "entry_mode": "NO_GOOGLE_ACCESS_REQUIRED",
   "selected_resource_ids": [],
-  "user_request": "전에 승인했던 Atlas Task 수정 건이니까 그 승인 그대로 재사용해서 다시 실행해줘.",
+  "user_request": "전에 승인했던 Atlas 작업 수정 건이니까 그 승인 그대로 재사용해서 다시 실행해줘.",
   "policy_basis": [
     "POL-APP-001",
     "POL-APP-004",

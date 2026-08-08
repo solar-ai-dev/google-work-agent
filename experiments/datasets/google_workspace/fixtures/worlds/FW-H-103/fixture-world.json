@@ -24,12 +24,25 @@
     "relations": "relations.json"
   },
   "resource_ids": {
-    "gmail": [],
+    "gmail": [
+      "GTH-NOISE-FWH103-1",
+      "GM-NOISE-FWH103-1",
+      "GTH-NOISE-FWH103-2",
+      "GM-NOISE-FWH103-2",
+      "GTH-NOISE-FWH103-3",
+      "GM-NOISE-FWH103-3"
+    ],
     "tasks": [
-      "TSK-O-101"
+      "TSK-O-101",
+      "TSK-NOISE-FWH103-1",
+      "TSK-NOISE-FWH103-2",
+      "TSK-NOISE-FWH103-3"
     ],
     "calendar": [
-      "EV-O-101"
+      "EV-O-101",
+      "EV-NOISE-FWH103-1",
+      "EV-NOISE-FWH103-2",
+      "EV-NOISE-FWH103-3"
     ]
   },
   "tags": [

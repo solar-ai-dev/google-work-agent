@@ -13,7 +13,7 @@
   "gold": {
     "goal": "선택한 OOO Event를 명시적 READ Action으로 조회해 시작·종료 시간을 보여준다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

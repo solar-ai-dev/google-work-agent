@@ -8,7 +8,7 @@
   "fixture_snapshot_id": "FW-D-009",
   "entry_mode": "AGENT_SEARCH",
   "selected_resource_ids": [],
-  "user_request": "Ion 온보딩 체크리스트가 이미 있어도 상관없으니 똑같은 Task 하나 더 만들어줘.",
+  "user_request": "Ion 온보딩 체크리스트가 이미 있어도 상관없으니 똑같은 작업 하나 더 만들어줘.",
   "policy_basis": [
     "POL-TSK-001",
     "POL-TSK-002",

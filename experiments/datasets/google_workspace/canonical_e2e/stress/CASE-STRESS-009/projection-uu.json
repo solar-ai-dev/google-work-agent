@@ -7,13 +7,13 @@
   "not_applicable_reason": null,
   "input_contract": {
     "fixture_snapshot_id": "FW-D-012",
-    "user_prompt_id": "UP-CORE-008",
+    "user_prompt_id": "UP-STRESS-009",
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
     "goal": "검색어를 의미 있게 수정해 데이터 이전 시작 시간을 찾는다.",
     "requested_outcome": "ANSWER",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

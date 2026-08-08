@@ -7,13 +7,13 @@
   "not_applicable_reason": null,
   "input_contract": {
     "fixture_snapshot_id": "FW-D-011",
-    "user_prompt_id": "UP-CORE-009",
+    "user_prompt_id": "UP-STRESS-002",
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
     "goal": "Kestrel 지연과 대체 일정 확인 Task 상태를 요약한다.",
     "requested_outcome": "ANALYSIS",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

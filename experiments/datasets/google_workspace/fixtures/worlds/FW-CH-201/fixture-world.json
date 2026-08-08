@@ -30,14 +30,26 @@
       "GM-SO-201",
       "GM-SO-202",
       "GTH-SO-299",
-      "GM-SO-299"
+      "GM-SO-299",
+      "GTH-NOISE-WCH201-1",
+      "GM-NOISE-WCH201-1",
+      "GTH-NOISE-WCH201-2",
+      "GM-NOISE-WCH201-2",
+      "GTH-NOISE-WCH201-3",
+      "GM-NOISE-WCH201-3"
     ],
     "tasks": [
       "TSK-SO-201",
-      "TSK-SO-202"
+      "TSK-SO-202",
+      "TSK-NOISE-WCH201-1",
+      "TSK-NOISE-WCH201-2",
+      "TSK-NOISE-WCH201-3"
     ],
     "calendar": [
-      "EV-SO-201"
+      "EV-SO-201",
+      "EV-NOISE-WCH201-1",
+      "EV-NOISE-WCH201-2",
+      "EV-NOISE-WCH201-3"
     ]
   },
   "tags": [

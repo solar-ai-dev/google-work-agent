@@ -7,20 +7,21 @@
   "purpose": "E02-A",
   "independent_variable": "PROMPT_SLOT_VERSION_ONE_AT_A_TIME",
   "fixed_dimensions": {
-    "dataset_version": "rebuild-v1.9",
+    "dataset_version": "rebuild-v1.13-r8.3",
     "graph_version": "SIX_ROLE_BASELINE",
-    "prompt_bundle_version": "0.7.0-r7",
-    "tool_schema_version": "v2.4",
-    "policy_version": "01-B-v2.3",
+    "prompt_bundle_version": "0.8.2-r8.3",
+    "tool_schema_version": "v2.6",
+    "policy_version": "01-B-v2.4",
     "retrieval_config_version": "baseline-r6",
-    "model_binding": "MUST_RESOLVE_FROM_E01_FINALIST"
+    "model_binding": "MUST_RESOLVE_FROM_E01_FINALIST",
+    "prompt_semantic_bundle_version": "semantic-r8.3-v1"
   },
   "dataset_selection_ref": "experiments/selections/SEL-E02A-DEV.json",
   "candidate_config_refs": [
     "experiments/candidates/candidate-e01-finalist-prompt-baseline.template.json",
     "experiments/candidates/candidate-e01-finalist-prompt-override.template.json"
   ],
-  "grader_registry_ref": "experiments/graders/grader-registry-v0.2.json",
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.4.json",
   "trial_policy": {
     "dev_trials_per_item": 1,
     "holdout_trials_per_item": 1,
@@ -64,5 +65,6 @@
     "One independent variable per comparison.",
     "Deterministic graders are authoritative where applicable.",
     "Holdout gold must not be exposed to prompt tuning."
-  ]
+  ],
+  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.1.json"
 }

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "review_pack_id": "HUMAN-SAMPLE-REVIEW-12-V1",
-  "status": "PENDING_USER_REVIEW",
+  "status": "SUPERSEDED_PROVENANCE_ONLY",
   "purpose": "Independent semantic review before model evaluation. No canonical holdout gold is exposed.",
   "selection_policy": [
     "CORE/STRESS only",
@@ -269,7 +269,7 @@
       "category": "THREE_SOURCE_COMPLEX",
       "scenario_family_id": "SF-C5-THREE-SOURCE-ACTION-DAG",
       "fixture_snapshot_id": "FW-D-001",
-      "prompt": "Atlas 메일·Task·Calendar를 확인해서 8월 14일 오전 10시에 60분 점검 Event를 만들고, ops@atlas.example.test에 그 일정 안내 Draft도 준비해줘.",
+      "prompt": "Atlas 메일·할 일·Calendar를 확인해서 8월 14일 오전 10시에 60분 점검 Event를 만들고, ops@atlas.example.test에 그 일정 안내 Draft도 준비해줘.",
       "business_scenario": "세 Source를 근거로 Event와 종속 Draft DAG를 제안한다.",
       "evidence_preview": [
         "Gmail GTH-A-001: [Atlas] 출고 일정 확정 — 2026-08-04T01:00:00Z: 초기 출고 예정일은 8월 18일입니다. | 2026-08-06T06:00:00Z: 최종 출고는 8월 19일 오전으로 확정합니다. 담당은 지민입니다.",
@@ -366,7 +366,7 @@
       "review_no": 6,
       "case_id": "CASE-CORE-051",
       "category": "AMBIGUITY_DUPLICATE_CONFLICT_ERROR_POLICY",
-      "scenario_family_id": "SF-C6-AMBIGUITY-LOWCONF",
+      "scenario_family_id": "SF-C6-AMBIGUITY-BOUNDARY",
       "fixture_snapshot_id": "FW-D-003",
       "prompt": "박민수님 메일 기준으로 다음 주 웨비나 검토 회의 준비 내용을 정리해줘.",
       "business_scenario": "동명이인 두 후보를 사용자에게 구분시킨다.",
@@ -671,7 +671,7 @@
       "category": "CALENDAR_GMAIL_TO_TASKS",
       "scenario_family_id": "SF-S8-UNKNOWN-UNRESOLVED",
       "fixture_snapshot_id": "FW-D-001",
-      "prompt": "Atlas 기존 QR Task 기한을 8월 15일로 바꿔줘.",
+      "prompt": "Atlas 기존 QR 할 일 기한을 8월 15일로 바꿔줘.",
       "business_scenario": "기존 Task를 정확히 UPDATE한다.",
       "evidence_preview": [
         "Gmail GTH-A-001: [Atlas] 출고 일정 확정 — 2026-08-04T01:00:00Z: 초기 출고 예정일은 8월 18일입니다. | 2026-08-06T06:00:00Z: 최종 출고는 8월 19일 오전으로 확정합니다. 담당은 지민입니다.",
@@ -767,7 +767,7 @@
       "category": "CALENDAR_GMAIL_TO_TASKS",
       "scenario_family_id": "SF-S9-VERIFICATION",
       "fixture_snapshot_id": "FW-D-001",
-      "prompt": "Atlas 기존 QR Task 기한을 8월 15일로 바꿔줘.",
+      "prompt": "Atlas 기존 QR 할 일 기한을 8월 15일로 바꿔줘.",
       "business_scenario": "기존 Task를 정확히 UPDATE한다.",
       "evidence_preview": [
         "Gmail GTH-A-001: [Atlas] 출고 일정 확정 — 2026-08-04T01:00:00Z: 초기 출고 예정일은 8월 18일입니다. | 2026-08-06T06:00:00Z: 최종 출고는 8월 19일 오전으로 확정합니다. 담당은 지민입니다.",
@@ -859,5 +859,7 @@
       ]
     }
   ],
-  "acceptance_rule": "All 12 PASS, or every flagged item is corrected and re-reviewed."
+  "acceptance_rule": "All 12 PASS, or every flagged item is corrected and re-reviewed.",
+  "superseded_by": "human-sample-review-12-v1.13.template.json",
+  "note": "This review predates CanonicalCaseV5/Gold scoring changes and must not satisfy the current G00 human-review gate."
 }

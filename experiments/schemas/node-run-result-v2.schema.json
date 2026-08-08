@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "node-run-result-v2.schema.json",
+  "title": "Node Run Result v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "evaluation_item_id",
+    "candidate_config_hash",
+    "trial_index",
+    "target_node_id",
+    "upstream_mode",
+    "result_status",
+    "graph_profile",
+    "agent_invocation_count",
+    "llm_call_count",
+    "latency_ms",
+    "input_tokens",
+    "output_tokens"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "experiment_id": {
+      "type": "string"
+    },
+    "evaluation_item_id": {
+      "type": "string"
+    },
+    "candidate_config_hash": {
+      "type": "string"
+    },
+    "trial_index": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "target_node_id": {
+      "type": "string"
+    },
+    "upstream_mode": {
+      "enum": [
+        "ORACLE",
+        "LIVE",
+        "MUTATED",
+        "CONTEXT_READY_REPLAY",
+        "N/A"
+      ]
+    },
+    "result_status": {
+      "enum": [
+        "COMPLETED",
+        "FAILED",
+        "BUDGET_STOPPED",
+        "NOT_RUN"
+      ]
+    },
+    "graph_profile": {
+      "type": "string"
+    },
+    "agent_subgraph_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent_invocation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent_invocation_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "prompt_slot_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "prompt_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "prompt_semantic_bundle_version": {
+      "type": "string"
+    },
+    "output_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "failure_reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "retry_kind": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "attempt_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "latency_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "input_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "output_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "llm_call_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "provider_request_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "communication_token_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "required_field_preservation_rate": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "evidence_id_preservation_rate": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "constraint_loss_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "contradiction_introduced": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "cost_usd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "evaluation_environment_hash": {
+      "type": "string"
+    },
+    "trace_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

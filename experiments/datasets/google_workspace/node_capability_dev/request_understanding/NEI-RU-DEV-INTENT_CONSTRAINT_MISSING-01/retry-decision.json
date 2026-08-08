@@ -6,7 +6,7 @@
     "INTENT_CONSTRAINT_MISSING"
   ],
   "retry_kind": "SEMANTIC_REVISION",
-  "next_prompt_slot_id": "request_understanding.revise.INTENT_CONSTRAINT_MISSING",
+  "next_prompt_slot_id": "request_understanding.revise",
   "next_node_id": null,
   "attempt_no": 1,
   "max_attempts": 2,

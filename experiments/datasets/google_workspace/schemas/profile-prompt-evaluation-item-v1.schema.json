@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "profile-prompt-evaluation-item-v1.schema.json",
+  "title": "ProfilePromptEvaluationItemV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evaluation_item_id",
+    "split",
+    "source_case_id",
+    "target_prompt_slot_id",
+    "target_profile",
+    "upstream_mode",
+    "model_input_ref",
+    "grader_gold_ref"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "evaluation_item_id": {
+      "type": "string"
+    },
+    "split": {
+      "const": "DEV"
+    },
+    "source_case_id": {
+      "type": "string"
+    },
+    "target_prompt_slot_id": {
+      "type": "string"
+    },
+    "target_profile": {
+      "enum": [
+        "SINGLE_BASELINE",
+        "THREE_STAGE"
+      ]
+    },
+    "upstream_mode": {
+      "enum": [
+        "ORACLE",
+        "MUTATED"
+      ]
+    },
+    "model_input_ref": {
+      "type": "string"
+    },
+    "grader_gold_ref": {
+      "type": "string"
+    }
+  }
+}

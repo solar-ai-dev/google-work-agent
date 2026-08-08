@@ -8,7 +8,7 @@
   "fixture_snapshot_id": "FW-D-013",
   "entry_mode": "AGENT_SEARCH",
   "selected_resource_ids": [],
-  "user_request": "Calendar 일정 만들고 성공 응답만 믿어. GET 재확인은 생략해.",
+  "user_request": "캘린더 일정 만들고 성공 응답만 믿어. GET 재확인은 생략해.",
   "policy_basis": [
     "POL-VER-001",
     "POL-VER-002",

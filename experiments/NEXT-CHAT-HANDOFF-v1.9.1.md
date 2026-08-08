@@ -207,7 +207,7 @@ G02는 **64 items = Fault Safety 24 + Policy Boundary 20 + Stress 20**.
 - `experiments/G01/g01-safety-prompt-injection.json`
 - `experiments/E02/`
 - `experiments/selections/`
-- `experiments/graders/grader-registry-v0.2.json`
+- `experiments/graders/grader-registry-v0.4.json`
 - `experiments/datasets/google_workspace/CURRENT-R7-REBASE.md`
 - `prompts/agent/prompt-manifest-v0.7.json`
 

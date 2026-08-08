@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/e06b-integrated-output.schema.json",
+  "title": "E06BIntegratedOutputV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "analysis_result",
+    "plan_draft",
+    "self_review"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "analysis_result": {
+      "$ref": "work-analysis-output.schema.json"
+    },
+    "plan_draft": {
+      "$ref": "action-plan-draft.schema.json"
+    },
+    "self_review": {
+      "$ref": "plan-review-output.schema.json"
+    }
+  }
+}

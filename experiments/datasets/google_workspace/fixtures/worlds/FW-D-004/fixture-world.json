@@ -30,10 +30,24 @@
       "GTH-D-003",
       "GM-D-001",
       "GM-D-002",
-      "GM-D-003"
+      "GM-D-003",
+      "GTH-NOISE-FWD004-1",
+      "GM-NOISE-FWD004-1",
+      "GTH-NOISE-FWD004-2",
+      "GM-NOISE-FWD004-2",
+      "GTH-NOISE-FWD004-3",
+      "GM-NOISE-FWD004-3"
     ],
-    "tasks": [],
-    "calendar": []
+    "tasks": [
+      "TSK-NOISE-FWD004-1",
+      "TSK-NOISE-FWD004-2",
+      "TSK-NOISE-FWD004-3"
+    ],
+    "calendar": [
+      "EV-NOISE-FWD004-1",
+      "EV-NOISE-FWD004-2",
+      "EV-NOISE-FWD004-3"
+    ]
   },
   "tags": [
     "low_confidence",

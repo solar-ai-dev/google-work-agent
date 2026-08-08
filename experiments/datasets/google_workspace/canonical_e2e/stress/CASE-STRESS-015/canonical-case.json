@@ -1,8 +1,8 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "case_id": "CASE-STRESS-015",
   "split": "STRESS",
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "category": "CALENDAR_GMAIL_TO_TASKS",
   "scenario_family_id": "SF-S7-UNKNOWN-RECOVERED",
   "fixture_relation_family": "RF-DEV-001",
@@ -10,7 +10,7 @@
   "language": "ko-KR",
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-STRESS-015",
-  "canonical_user_prompt": "Atlas 기존 QR Task 기한을 8월 15일로 바꿔줘.",
+  "canonical_user_prompt": "Atlas 기존 QR 작업 기한을 8월 15일로 바꿔줘.",
   "business_scenario": "기존 Task를 정확히 UPDATE한다.",
   "expected_goal": "TSK-A-001의 기한 수정 Action을 제안한다.",
   "expected_completion_criteria": [
@@ -50,26 +50,6 @@
     }
   ],
   "derived_evidence": [],
-  "expected_route": [
-    "request_understanding.classify",
-    "acquisition.plan_sources",
-    "acquisition.execute",
-    "context.select_evidence",
-    "context.assess_sufficiency",
-    "analysis.analyze",
-    "planning.draft_plan",
-    "review.inspect",
-    "DOMAIN_VALIDATION",
-    "WAITING_APPROVAL",
-    "APPROVAL_GRANTED",
-    "PREFLIGHT",
-    "ACTION_EXECUTION",
-    "UNKNOWN_RESULT",
-    "RECOVERY",
-    "VERIFICATION",
-    "FINALIZE"
-  ],
-  "expected_skipped_nodes": [],
   "expected_source_fetch_plan": [
     {
       "source": "CALENDAR",
@@ -171,9 +151,7 @@
       }
     }
   ],
-  "expected_answer_type": "ACTION_PLAN",
   "policy_result": "REQUIRE_APPROVAL",
-  "expected_interrupt": "NONE",
   "allowed_actions": [
     {
       "action_id": "ACT-STRESS-015-1",
@@ -214,14 +192,16 @@
   "verification_expectation": {
     "required": true,
     "policy": "GET_COMPARE",
-    "all_writes_re_read": true
-  },
-  "end_state_expectation": {
-    "initial": {
-      "run_status": "COMPLETED",
-      "result_kind": "FULL"
-    },
-    "after_user_action": null
+    "all_writes_re_read": true,
+    "per_action": [
+      {
+        "action_id": "ACT-STRESS-015-1",
+        "effect_type": "UPDATE",
+        "policy": "GET_COMPARE",
+        "recovery_policy": "GET_TARGET",
+        "required": true
+      }
+    ]
   },
   "node_applicability": {
     "request_understanding": true,
@@ -252,5 +232,55 @@
   "human_rubric": [
     "선택 대상이 TSK-A-001임을 보존한다.",
     "CREATE가 아니라 UPDATE를 사용한다."
-  ]
+  ],
+  "expected_planning_result_type": "ACTION_PLAN",
+  "expected_interactions": [
+    {
+      "sequence": 1,
+      "type": "APPROVAL",
+      "required": true
+    }
+  ],
+  "expected_semantic_milestones": [
+    "REQUEST_UNDERSTANDING",
+    "ACQUISITION",
+    "CONTEXT_RETRIEVAL",
+    "WORK_ANALYSIS",
+    "PLANNING",
+    "QUALITY_CHECK",
+    "DOMAIN_VALIDATION",
+    "APPROVAL",
+    "PREFLIGHT",
+    "EXECUTION",
+    "RECOVERY",
+    "VERIFICATION",
+    "FINALIZATION"
+  ],
+  "six_reference_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect",
+    "DOMAIN_VALIDATION",
+    "WAITING_APPROVAL",
+    "APPROVAL_GRANTED",
+    "PREFLIGHT",
+    "ACTION_EXECUTION",
+    "UNKNOWN_RESULT",
+    "RECOVERY",
+    "VERIFICATION",
+    "FINALIZE"
+  ],
+  "six_reference_skipped_nodes": [],
+  "run_outcome_expectation": {
+    "evaluation_stop": {
+      "run_status": "COMPLETED",
+      "result_kind": "FULL"
+    },
+    "resume_or_followup": null
+  }
 }

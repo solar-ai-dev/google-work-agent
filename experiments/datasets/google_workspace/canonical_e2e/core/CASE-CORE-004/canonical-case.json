@@ -1,8 +1,8 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "case_id": "CASE-CORE-004",
   "split": "CORE",
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "category": "SOURCE_SELECTION_READ",
   "scenario_family_id": "SF-C1-RESOURCE-SELECTED",
   "fixture_relation_family": "RF-DEV-010",
@@ -10,7 +10,7 @@
   "language": "ko-KR",
   "entry_mode": "RESOURCE_SELECTED",
   "user_prompt_id": "UP-CORE-004",
-  "canonical_user_prompt": "선택한 Out of Office 일정을 읽기 작업으로 다시 조회해서 시작·종료 시간을 보여줘. 다른 Calendar는 검색하지 마.",
+  "canonical_user_prompt": "선택한 Out of Office 일정을 다시 확인해서 시작·종료 시간을 보여줘. 다른 캘린더는 검색하지 마.",
   "business_scenario": "사용자가 선택 Resource에 대해 사용자에게 표시·재개 가능한 명시적 READ Action 실행을 요청한다.",
   "expected_goal": "선택한 OOO Event를 명시적 READ Action으로 조회해 시작·종료 시간을 보여준다.",
   "expected_completion_criteria": [
@@ -46,27 +46,6 @@
     }
   ],
   "derived_evidence": [],
-  "expected_route": [
-    "request_understanding.classify",
-    "acquisition.plan_sources",
-    "NO_FETCH_NEEDED",
-    "planning.draft_plan",
-    "review.inspect",
-    "domain_validation",
-    "publish_read_only_plan",
-    "claim_read_action",
-    "calendar_get_event",
-    "complete_read_action",
-    "finalize_read_action",
-    "response_synthesis",
-    "COMPLETED"
-  ],
-  "expected_skipped_nodes": [
-    "context.select_evidence",
-    "context.assess_sufficiency",
-    "analysis.analyze",
-    "planning.answer_only"
-  ],
   "expected_source_fetch_plan": [],
   "expected_tool_trajectory": [
     {
@@ -86,9 +65,7 @@
       ]
     }
   ],
-  "expected_answer_type": "ACTION_PLAN",
   "policy_result": "ALLOW_READ",
-  "expected_interrupt": "NONE",
   "allowed_actions": [
     {
       "action_id": "ACT-CORE-004-READ",
@@ -125,14 +102,8 @@
   "verification_expectation": {
     "required": false,
     "policy": "NONE",
-    "all_writes_re_read": false
-  },
-  "end_state_expectation": {
-    "initial": {
-      "run_status": "COMPLETED",
-      "result_kind": "FULL"
-    },
-    "after_user_action": null
+    "all_writes_re_read": false,
+    "per_action": []
   },
   "node_applicability": {
     "request_understanding": true,
@@ -165,5 +136,43 @@
     "READ Action을 EXECUTED 후 VERIFIED로 마무리한다.",
     "Approval·ExecutionAttempt·Write Verification Row를 만들지 않는다.",
     "전체 Calendar 목록 탐색을 하지 않는다."
-  ]
+  ],
+  "expected_planning_result_type": "ACTION_PLAN",
+  "expected_interactions": [],
+  "expected_semantic_milestones": [
+    "REQUEST_UNDERSTANDING",
+    "ACQUISITION",
+    "PLANNING",
+    "QUALITY_CHECK",
+    "DOMAIN_VALIDATION",
+    "FINALIZATION"
+  ],
+  "six_reference_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "NO_FETCH_NEEDED",
+    "planning.draft_plan",
+    "review.inspect",
+    "domain_validation",
+    "publish_read_only_plan",
+    "claim_read_action",
+    "calendar_get_event",
+    "complete_read_action",
+    "finalize_read_action",
+    "response_synthesis",
+    "COMPLETED"
+  ],
+  "six_reference_skipped_nodes": [
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.answer_only"
+  ],
+  "run_outcome_expectation": {
+    "evaluation_stop": {
+      "run_status": "COMPLETED",
+      "result_kind": "FULL"
+    },
+    "resume_or_followup": null
+  }
 }

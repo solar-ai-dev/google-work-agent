@@ -7,7 +7,7 @@
   "not_applicable_reason": null,
   "input_contract": {
     "fixture_snapshot_id": "FW-D-001",
-    "user_prompt_id": "UP-CORE-037",
+    "user_prompt_id": "UP-STRESS-012",
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
@@ -24,7 +24,7 @@
       "EVD-SEG-GM-A-002-1",
       "EVD-SEG-EV-A-001-4",
       "EVD-SEG-TSK-A-001-2",
-      "UE-CORE-037"
+      "UE-STRESS-012"
     ]
   },
   "grader_ids": [

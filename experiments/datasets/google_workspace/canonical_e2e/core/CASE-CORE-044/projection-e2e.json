@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "projection_id": "PROJ-CORE-044-E2E",
   "case_id": "CASE-CORE-044",
   "projection_kind": "E2E",
@@ -11,13 +11,55 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "end_state_expectation": {
-      "initial": {
-        "run_status": "COMPLETED",
-        "result_kind": "FULL"
-      },
-      "after_user_action": null
-    },
+    "expected_goal": "인쇄소 슬롯이 Task 기한보다 먼저임을 설명한다.",
+    "completion_criteria": [
+      "EV-A-001 8/13과 Task due 8/16·17을 비교한다.",
+      "Gmail 최종 출고 8/19도 맥락으로 포함한다."
+    ],
+    "required_sources": [
+      "GMAIL",
+      "TASKS",
+      "CALENDAR"
+    ],
+    "optional_sources": [],
+    "forbidden_sources": [],
+    "required_resource_ids": [
+      "GTH-A-001",
+      "TSK-A-001",
+      "TSK-A-002",
+      "EV-A-001"
+    ],
+    "hard_negative_resource_ids": [
+      "GTH-A-099",
+      "GM-A-099"
+    ],
+    "required_evidence_ids": [
+      "EVD-SEG-GM-A-002-1",
+      "EVD-SEG-TSK-A-001-2",
+      "EVD-SEG-TSK-A-002-3",
+      "EVD-SEG-EV-A-001-4"
+    ],
+    "policy_result": "ALLOW_READ",
+    "expected_interactions": [],
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "ACQUISITION",
+      "CONTEXT_RETRIEVAL",
+      "WORK_ANALYSIS",
+      "PLANNING",
+      "QUALITY_CHECK",
+      "FINALIZATION"
+    ],
+    "expected_planning_result_type": "ANSWER",
+    "allowed_actions": [],
+    "forbidden_actions": [
+      "gmail_send",
+      "gmail_delete",
+      "tasks_delete",
+      "tasks_complete",
+      "calendar_delete",
+      "calendar_add_external_attendee"
+    ],
     "approval_expectation": {
       "required": false,
       "scope": "ACTION_LEVEL",
@@ -26,12 +68,16 @@
     "verification_expectation": {
       "required": false,
       "policy": "NONE",
-      "all_writes_re_read": false
+      "all_writes_re_read": false,
+      "per_action": []
     },
-    "completion_criteria": [
-      "EV-A-001 8/13과 Task due 8/16·17을 비교한다.",
-      "Gmail 최종 출고 8/19도 맥락으로 포함한다."
-    ]
+    "run_outcome_expectation": {
+      "evaluation_stop": {
+        "run_status": "COMPLETED",
+        "result_kind": "FULL"
+      },
+      "resume_or_followup": null
+    }
   },
   "grader_ids": [
     "grader.e2e.deterministic",

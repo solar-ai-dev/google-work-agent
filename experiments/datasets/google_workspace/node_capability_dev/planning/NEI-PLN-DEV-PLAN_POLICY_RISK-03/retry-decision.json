@@ -6,7 +6,7 @@
     "PLAN_POLICY_RISK"
   ],
   "retry_kind": "SEMANTIC_REVISION",
-  "next_prompt_slot_id": "planning.revise_plan.PLAN_POLICY_RISK",
+  "next_prompt_slot_id": "planning.revise_plan",
   "next_node_id": null,
   "attempt_no": 2,
   "max_attempts": 2,

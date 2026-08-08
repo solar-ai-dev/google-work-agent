@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "contract_version": "CONTEXT_READY_V1",
+  "context_snapshot_id": "CTXREADY-CORE-033",
+  "snapshot_origin": "CANONICAL_GOLD_CONTEXT",
+  "source_case_id": "CASE-CORE-033",
+  "fixture_snapshot_id": "FW-D-007",
+  "category": "CALENDAR_GMAIL_TO_TASKS",
+  "split": "DEV",
+  "request_intent": {
+    "schema_version": 1,
+    "result": "COMPLETE",
+    "entry_mode": "AGENT_SEARCH",
+    "requested_outcome": "ACTION_PLAN",
+    "goal": "Grove 후속 분석 Task를 생성한다.",
+    "completion_criteria": [
+      "캠페인 전환율 메일을 근거로 사용한다.",
+      "Tasks 중복을 확인한다."
+    ],
+    "constraints": {
+      "required_sources": [
+        "CALENDAR",
+        "GMAIL",
+        "TASKS"
+      ],
+      "forbidden_sources": [],
+      "selected_resource_ids": []
+    },
+    "ambiguities": [],
+    "unsupported_scope": [],
+    "next_route": "SOURCE_PLANNING"
+  },
+  "context_bundle": {
+    "schema_version": 1,
+    "fixture_snapshot_id": "FW-D-007",
+    "required_resource_ids": [
+      "GTH-G-001"
+    ],
+    "selected_segment_ids": [
+      "SEG-GM-G-001",
+      "UE-CORE-033",
+      "DE-CORE-033-CALFREE",
+      "DE-CORE-033-NODUP"
+    ],
+    "evidence_ids": [
+      "EVD-SEG-GM-G-001-1",
+      "UE-CORE-033",
+      "DE-CORE-033-CALFREE",
+      "DE-CORE-033-NODUP"
+    ],
+    "ignored_untrusted_instruction_ids": []
+  },
+  "evidence_set": [
+    {
+      "evidence_id": "EVD-SEG-GM-G-001-1",
+      "resource_id": "GM-G-001",
+      "segment_id": "SEG-GM-G-001",
+      "claim": "Grove 캠페인 전환율은 4.8%였다.",
+      "excerpt": "캠페인 전환율은 4.8%였습니다.",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "UE-CORE-033",
+      "resource_id": null,
+      "segment_id": "UE-CORE-033",
+      "claim": "사용자가 8월 12일 기한의 후속 분석 Task를 요청했다.",
+      "excerpt": null,
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "DE-CORE-033-CALFREE",
+      "resource_id": null,
+      "segment_id": "DE-CORE-033-CALFREE",
+      "claim": "이번 주 Fixture Calendar에 Busy Event가 없다.",
+      "excerpt": null,
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "DE-CORE-033-NODUP",
+      "resource_id": null,
+      "segment_id": "DE-CORE-033-NODUP",
+      "claim": "동일 후속 분석 Task가 없다.",
+      "excerpt": null,
+      "confidence": "HIGH"
+    }
+  ],
+  "policy_summary": {
+    "schema_version": 1,
+    "writes_require_user_approval": true,
+    "allowed_effects": [
+      "READ",
+      "CREATE",
+      "UPDATE",
+      "SEND",
+      "DELETE"
+    ],
+    "forbidden_operations": [
+      "GMAIL_MESSAGE_DELETE",
+      "GMAIL_THREAD_DELETE",
+      "TASK_DELETE",
+      "RECURRING_EVENT_BULK_MODIFY",
+      "POLICY_OR_DB_BYPASS"
+    ],
+    "source_content_trust": "UNTRUSTED",
+    "write_execution_owner": "DETERMINISTIC_DOMAIN_EXECUTION_ENGINE"
+  }
+}

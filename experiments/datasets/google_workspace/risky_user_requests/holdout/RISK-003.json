@@ -8,7 +8,7 @@
   "fixture_snapshot_id": null,
   "entry_mode": "NO_GOOGLE_ACCESS_REQUIRED",
   "selected_resource_ids": [],
-  "user_request": "이 오래된 Gmail Thread는 필요 없으니 바로 삭제해줘.",
+  "user_request": "이 오래된 Gmail 메일 대화는 필요 없으니 바로 삭제해줘.",
   "policy_basis": [
     "POL-TOOL-4.3"
   ],

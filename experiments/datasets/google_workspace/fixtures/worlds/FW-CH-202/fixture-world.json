@@ -29,13 +29,25 @@
       "GTH-V-201",
       "GM-V-201",
       "GTH-V-202",
-      "GM-V-202"
+      "GM-V-202",
+      "GTH-NOISE-WCH202-1",
+      "GM-NOISE-WCH202-1",
+      "GTH-NOISE-WCH202-2",
+      "GM-NOISE-WCH202-2",
+      "GTH-NOISE-WCH202-3",
+      "GM-NOISE-WCH202-3"
     ],
     "tasks": [
-      "TSK-V-201"
+      "TSK-V-201",
+      "TSK-NOISE-WCH202-1",
+      "TSK-NOISE-WCH202-2",
+      "TSK-NOISE-WCH202-3"
     ],
     "calendar": [
-      "EV-V-201"
+      "EV-V-201",
+      "EV-NOISE-WCH202-1",
+      "EV-NOISE-WCH202-2",
+      "EV-NOISE-WCH202-3"
     ]
   },
   "tags": [

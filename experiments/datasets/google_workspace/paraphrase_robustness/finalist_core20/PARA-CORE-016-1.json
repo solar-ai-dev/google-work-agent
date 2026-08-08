@@ -6,7 +6,7 @@
   "paraphrase_group_id": "PG-CORE-016",
   "variant_index": 1,
   "language": "ko-KR",
-  "text": "Echo Task 마감과 오늘 바쁜 시간대를 비교해서 legal@echo.example.test에 일정 위험을 알리는 초안을 써줘.",
+  "text": "Echo 작업 마감과 오늘 바쁜 시간대를 비교해서 legal@echo.example.test에 일정 위험을 알리는 초안을 써줘.",
   "expected_entry_mode": "AGENT_SEARCH",
   "expected_requested_outcome": "ACTION_PLAN",
   "expected_same_goal": true,

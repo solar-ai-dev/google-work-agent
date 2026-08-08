@@ -13,7 +13,7 @@
   "gold": {
     "goal": "TSK-K-001 메모에 지연 사실을 추가한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

@@ -6,7 +6,7 @@
   "paraphrase_group_id": "PG-CORE-036",
   "variant_index": 1,
   "language": "ko-KR",
-  "text": "Ion 온보딩 체크리스트를 다음 주 월요일 기한으로 만들어줘. 관련 메일과 이번 주 Calendar도 확인하고 기존에 같은 Task가 있는지 먼저 봐줘.",
+  "text": "Ion 온보딩 체크리스트를 다음 주 월요일 기한으로 만들어줘. 관련 메일과 이번 주 캘린더도 확인하고 기존에 같은 작업이 있는지 먼저 봐줘.",
   "expected_entry_mode": "AGENT_SEARCH",
   "expected_requested_outcome": "ACTION_PLAN",
   "expected_same_goal": true,

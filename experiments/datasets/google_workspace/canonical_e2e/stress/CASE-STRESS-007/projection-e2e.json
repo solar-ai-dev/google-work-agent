@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "projection_id": "PROJ-STRESS-007-E2E",
   "case_id": "CASE-STRESS-007",
   "projection_kind": "E2E",
@@ -7,17 +7,52 @@
   "not_applicable_reason": null,
   "input_contract": {
     "fixture_snapshot_id": "FW-D-001",
-    "user_prompt_id": "UP-CORE-006",
+    "user_prompt_id": "UP-STRESS-007",
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "end_state_expectation": {
-      "initial": {
-        "run_status": "FAILED",
-        "result_kind": "NONE"
-      },
-      "after_user_action": null
-    },
+    "expected_goal": "Atlas 최종 출고일과 담당자를 Gmail에서 답한다.",
+    "completion_criteria": [
+      "Structured Output Repair는 최대 1회다.",
+      "Repair 후에도 Schema가 유효하지 않으면 추가 LLM 호출 없이 FAILED로 종료한다.",
+      "Goal·Evidence 의미를 임의 변경해 Schema를 맞추지 않는다."
+    ],
+    "required_sources": [
+      "GMAIL"
+    ],
+    "optional_sources": [],
+    "forbidden_sources": [
+      "TASKS",
+      "CALENDAR"
+    ],
+    "required_resource_ids": [
+      "GTH-A-001",
+      "GM-A-002"
+    ],
+    "hard_negative_resource_ids": [
+      "GTH-A-099",
+      "GM-A-099"
+    ],
+    "required_evidence_ids": [
+      "EVD-SEG-GM-A-002-1"
+    ],
+    "policy_result": "ALLOW_READ",
+    "expected_interactions": [],
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "OUTPUT_REPAIR",
+      "FAILURE"
+    ],
+    "expected_planning_result_type": "NOT_REACHED",
+    "allowed_actions": [],
+    "forbidden_actions": [
+      "gmail_send",
+      "gmail_delete",
+      "tasks_delete",
+      "tasks_complete",
+      "calendar_delete",
+      "calendar_add_external_attendee"
+    ],
     "approval_expectation": {
       "required": false,
       "scope": "ACTION_LEVEL",
@@ -26,15 +61,18 @@
     "verification_expectation": {
       "required": false,
       "policy": "NONE",
-      "all_writes_re_read": false
+      "all_writes_re_read": false,
+      "per_action": []
     },
-    "completion_criteria": [
-      "Structured Output Repair는 최대 1회다.",
-      "Repair 후에도 Schema가 유효하지 않으면 추가 LLM 호출 없이 FAILED로 종료한다.",
-      "Goal·Evidence 의미를 임의 변경해 Schema를 맞추지 않는다."
-    ],
     "fault_profile_ids": [],
-    "stress_kind": "SCHEMA_REPAIR_EXHAUSTED"
+    "stress_kind": "SCHEMA_REPAIR_EXHAUSTED",
+    "run_outcome_expectation": {
+      "evaluation_stop": {
+        "run_status": "FAILED",
+        "result_kind": "NONE"
+      },
+      "resume_or_followup": null
+    }
   },
   "grader_ids": [
     "grader.e2e.deterministic",

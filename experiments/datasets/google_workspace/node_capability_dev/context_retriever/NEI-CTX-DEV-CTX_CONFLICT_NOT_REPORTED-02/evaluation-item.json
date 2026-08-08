@@ -14,7 +14,7 @@
   "expected_initial_result": "SEMANTIC_INVALID",
   "injected_failure_reason_code": "CTX_CONFLICT_NOT_REPORTED",
   "expected_retry_kind": "SEMANTIC_REVISION",
-  "expected_retry_prompt_slot_id": "context.select_evidence.failure.CTX_CONFLICT_NOT_REPORTED",
+  "expected_retry_prompt_slot_id": "context.select_evidence.semantic_revision",
   "expected_final_result": "SELECTED",
   "max_attempts": 2,
   "forbidden_transitions": [

@@ -6,7 +6,7 @@
   "paraphrase_group_id": "PG-CORE-031",
   "variant_index": 1,
   "language": "ko-KR",
-  "text": "Atlas 출고 메일하고 인쇄소 슬롯을 보고 인쇄소 인계 확인 Task를 8월 13일 오후 1시 마감으로 만들어줘.",
+  "text": "Atlas 출고 메일하고 인쇄소 슬롯을 보고 인쇄소 인계 확인 작업을 8월 13일 오후 1시 마감으로 만들어줘.",
   "expected_entry_mode": "AGENT_SEARCH",
   "expected_requested_outcome": "ACTION_PLAN",
   "expected_same_goal": true,

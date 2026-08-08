@@ -26,12 +26,25 @@
   "resource_ids": {
     "gmail": [
       "GTH-K-001",
-      "GM-K-001"
+      "GM-K-001",
+      "GTH-NOISE-FWD011-1",
+      "GM-NOISE-FWD011-1",
+      "GTH-NOISE-FWD011-2",
+      "GM-NOISE-FWD011-2",
+      "GTH-NOISE-FWD011-3",
+      "GM-NOISE-FWD011-3"
     ],
     "tasks": [
-      "TSK-K-001"
+      "TSK-K-001",
+      "TSK-NOISE-FWD011-1",
+      "TSK-NOISE-FWD011-2",
+      "TSK-NOISE-FWD011-3"
     ],
-    "calendar": []
+    "calendar": [
+      "EV-NOISE-FWD011-1",
+      "EV-NOISE-FWD011-2",
+      "EV-NOISE-FWD011-3"
+    ]
   },
   "tags": [
     "partial_source",

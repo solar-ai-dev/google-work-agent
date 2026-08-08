@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/ContextSufficiencyInputV1.schema.json",
+  "title": "ContextSufficiencyInputV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "fixture_snapshot_id",
+    "user_goal",
+    "entry_mode",
+    "segments",
+    "hard_negative_segment_ids",
+    "candidate_scores",
+    "selected_resource_ids",
+    "context_budget",
+    "mutation_spec"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "fixture_snapshot_id": {
+      "type": "string"
+    },
+    "user_goal": {
+      "type": "string"
+    },
+    "entry_mode": {
+      "enum": [
+        "AGENT_SEARCH",
+        "RESOURCE_SELECTED"
+      ]
+    },
+    "segments": {
+      "type": "array"
+    },
+    "hard_negative_segment_ids": {
+      "type": "array"
+    },
+    "candidate_scores": {
+      "type": "object"
+    },
+    "selected_resource_ids": {
+      "type": "array"
+    },
+    "context_budget": {
+      "type": "object"
+    },
+    "mutation_spec": {
+      "type": "object"
+    }
+  },
+  "description": "Context sufficiency evaluates the same normalized segment/context input envelope as select_evidence; the purpose/PromptRef differs, not the parent input projection."
+}

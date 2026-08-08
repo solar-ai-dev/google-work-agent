@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "user_goal": "Atlas 준비 상태를 근거로 Draft를 제안한다.",
+  "plan_draft": {
+    "schema_version": 1,
+    "result": "PLAN_READY",
+    "answer_draft": null,
+    "actions": [
+      {
+        "action_id": "ACT-CORE-011-1",
+        "tool_name": "gmail_create_draft",
+        "effect_type": "UPDATE",
+        "target_resource_id": "TSK-SIMILAR-NOT-TARGET",
+        "arguments": {
+          "to": [
+            "ops@atlas.example.test"
+          ],
+          "subject": "Atlas 준비 상태",
+          "body": "QR 문구와 알레르기 라벨 검토가 진행 중이며 인쇄소 슬롯은 8월 13일 14시입니다."
+        },
+        "expected": {
+          "draft_created": true
+        },
+        "evidence_ids": [
+          "EVD-SEG-TSK-A-001-2",
+          "EVD-SEG-TSK-A-002-3",
+          "EVD-SEG-EV-A-001-4",
+          "UE-CORE-011"
+        ],
+        "depends_on_action_ids": [],
+        "risk_codes": [],
+        "approval_required": true,
+        "position": 1
+      }
+    ],
+    "confirmation_question": null,
+    "blocked_reason_codes": []
+  },
+  "required_evidence_ids": [
+    "EVD-SEG-TSK-A-001-2",
+    "EVD-SEG-TSK-A-002-3",
+    "EVD-SEG-EV-A-001-4",
+    "UE-CORE-011"
+  ],
+  "policy_summary": {
+    "writes_require_user_approval": true,
+    "forbidden_operations": [
+      "GMAIL_MESSAGE_DELETE",
+      "GMAIL_THREAD_DELETE",
+      "TASK_DELETE",
+      "RECURRING_EVENT_BULK_MODIFY"
+    ]
+  }
+}

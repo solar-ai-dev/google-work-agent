@@ -1,8 +1,8 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "case_id": "CASE-STRESS-014",
   "split": "STRESS",
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "category": "CALENDAR_GMAIL_TO_TASKS",
   "scenario_family_id": "SF-S8-UNKNOWN-UNRESOLVED",
   "fixture_relation_family": "RF-DEV-001",
@@ -10,7 +10,7 @@
   "language": "ko-KR",
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-STRESS-014",
-  "canonical_user_prompt": "Atlas 인쇄소 인계 확인 Task를 8월 13일 오후 1시까지 만들어줘.",
+  "canonical_user_prompt": "Atlas 인쇄소 인계 확인 작업을 8월 13일 오후 1시까지 만들어줘.",
   "business_scenario": "Gmail 출고 정보와 Calendar 인쇄소 슬롯을 근거로 새 Task를 제안한다.",
   "expected_goal": "인쇄소 인계 확인 Task를 중복 검사 후 제안한다.",
   "expected_completion_criteria": [
@@ -55,25 +55,6 @@
       "derivation": "tasks duplicate checker"
     }
   ],
-  "expected_route": [
-    "request_understanding.classify",
-    "acquisition.plan_sources",
-    "acquisition.execute",
-    "context.select_evidence",
-    "context.assess_sufficiency",
-    "analysis.analyze",
-    "planning.draft_plan",
-    "review.inspect",
-    "DOMAIN_VALIDATION",
-    "WAITING_APPROVAL",
-    "APPROVAL_GRANTED",
-    "PREFLIGHT",
-    "ACTION_EXECUTION",
-    "UNKNOWN_RESULT",
-    "RECOVERY",
-    "RECOVERY_REQUIRED"
-  ],
-  "expected_skipped_nodes": [],
   "expected_source_fetch_plan": [
     {
       "source": "CALENDAR",
@@ -166,9 +147,7 @@
       }
     }
   ],
-  "expected_answer_type": "ACTION_PLAN",
   "policy_result": "REQUIRE_APPROVAL",
-  "expected_interrupt": "RECOVERY",
   "allowed_actions": [
     {
       "action_id": "ACT-STRESS-014-1",
@@ -210,14 +189,16 @@
   "verification_expectation": {
     "required": true,
     "policy": "GET_COMPARE",
-    "all_writes_re_read": true
-  },
-  "end_state_expectation": {
-    "initial": {
-      "run_status": "RECOVERY_REQUIRED",
-      "result_kind": "NONE"
-    },
-    "after_user_action": "USER_RECOVERY_DECISION_REQUIRED"
+    "all_writes_re_read": true,
+    "per_action": [
+      {
+        "action_id": "ACT-STRESS-014-1",
+        "effect_type": "CREATE",
+        "policy": "GET_COMPARE",
+        "recovery_policy": "RESOURCE_SEARCH",
+        "required": true
+      }
+    ]
   },
   "node_applicability": {
     "request_understanding": true,
@@ -249,5 +230,57 @@
     "Gmail과 인쇄소 Event를 확인한다.",
     "Tasks에서 동일 미완료 Task가 없는지 확인한다.",
     "사용자 기한을 보존한다."
-  ]
+  ],
+  "expected_planning_result_type": "ACTION_PLAN",
+  "expected_interactions": [
+    {
+      "sequence": 1,
+      "type": "APPROVAL",
+      "required": true
+    },
+    {
+      "sequence": 2,
+      "type": "RECOVERY_DECISION",
+      "required": true
+    }
+  ],
+  "expected_semantic_milestones": [
+    "REQUEST_UNDERSTANDING",
+    "ACQUISITION",
+    "CONTEXT_RETRIEVAL",
+    "WORK_ANALYSIS",
+    "PLANNING",
+    "QUALITY_CHECK",
+    "DOMAIN_VALIDATION",
+    "APPROVAL",
+    "PREFLIGHT",
+    "EXECUTION",
+    "RECOVERY"
+  ],
+  "six_reference_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect",
+    "DOMAIN_VALIDATION",
+    "WAITING_APPROVAL",
+    "APPROVAL_GRANTED",
+    "PREFLIGHT",
+    "ACTION_EXECUTION",
+    "UNKNOWN_RESULT",
+    "RECOVERY",
+    "RECOVERY_REQUIRED"
+  ],
+  "six_reference_skipped_nodes": [],
+  "run_outcome_expectation": {
+    "evaluation_stop": {
+      "run_status": "RECOVERY_REQUIRED",
+      "result_kind": "NONE"
+    },
+    "resume_or_followup": "USER_RECOVERY_DECISION_REQUIRED"
+  }
 }

@@ -13,7 +13,7 @@
   "gold": {
     "goal": "충돌 상태에서 자동 Event 생성을 하지 않는다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "CONFIRMATION"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

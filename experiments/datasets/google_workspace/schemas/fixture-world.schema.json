@@ -31,7 +31,8 @@
     "split_scope": {
       "enum": [
         "DEV",
-        "HOLDOUT"
+        "HOLDOUT",
+        "CANONICAL_HOLDOUT"
       ]
     },
     "scenario_family_id": {
@@ -87,6 +88,9 @@
           "type": "string"
         },
         "relations": {
+          "type": "string"
+        },
+        "gold_evidence": {
           "type": "string"
         }
       },

@@ -10,7 +10,7 @@
   "selected_resource_ids": [
     "TSK-R-001"
   ],
-  "user_request": "선택한 Raven 이전 Task는 내가 끝냈으니 완료 상태로 바꿔줘. 이번 건은 승인 묻지 마.",
+  "user_request": "선택한 Raven 이전 작업은 내가 끝냈으니 완료 상태로 바꿔줘. 이번 건은 승인 묻지 마.",
   "policy_basis": [
     "POL-TOOL-4.3",
     "POL-TSK-003"

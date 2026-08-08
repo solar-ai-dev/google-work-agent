@@ -29,14 +29,26 @@
       "GTH-A-099",
       "GM-A-001",
       "GM-A-002",
-      "GM-A-099"
+      "GM-A-099",
+      "GTH-NOISE-FWD001-1",
+      "GM-NOISE-FWD001-1",
+      "GTH-NOISE-FWD001-2",
+      "GM-NOISE-FWD001-2",
+      "GTH-NOISE-FWD001-3",
+      "GM-NOISE-FWD001-3"
     ],
     "tasks": [
       "TSK-A-001",
-      "TSK-A-002"
+      "TSK-A-002",
+      "TSK-NOISE-FWD001-1",
+      "TSK-NOISE-FWD001-2",
+      "TSK-NOISE-FWD001-3"
     ],
     "calendar": [
-      "EV-A-001"
+      "EV-A-001",
+      "EV-NOISE-FWD001-1",
+      "EV-NOISE-FWD001-2",
+      "EV-NOISE-FWD001-3"
     ]
   },
   "tags": [

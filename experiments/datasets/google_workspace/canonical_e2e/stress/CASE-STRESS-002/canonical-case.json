@@ -1,8 +1,8 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "case_id": "CASE-STRESS-002",
   "split": "STRESS",
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "category": "SOURCE_SELECTION_READ",
   "scenario_family_id": "SF-S1-READ-PROVIDER",
   "fixture_relation_family": "RF-DEV-011",
@@ -10,7 +10,7 @@
   "language": "ko-KR",
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-STRESS-002",
-  "canonical_user_prompt": "Kestrel 공급 지연 진행 상황을 메일과 Task 기준으로 알려줘. 조회 오류가 나면 확인한 것과 못 한 것을 구분해줘.",
+  "canonical_user_prompt": "Kestrel 공급 지연 진행 상황을 메일과 작업 기준으로 알려줘. 조회 오류가 나면 확인한 것과 못 한 것을 구분해줘.",
   "business_scenario": "메일 지연 사실과 Task 진행 상태를 함께 확인한다.",
   "expected_goal": "Kestrel 지연과 대체 일정 확인 Task 상태를 요약한다.",
   "expected_completion_criteria": [
@@ -36,21 +36,6 @@
   ],
   "user_evidence": [],
   "derived_evidence": [],
-  "expected_route": [
-    "request_understanding.classify",
-    "acquisition.plan_sources",
-    "acquisition.execute",
-    "ACQUISITION_PARTIAL",
-    "context.select_evidence",
-    "context.assess_sufficiency",
-    "analysis.analyze",
-    "planning.answer_only",
-    "review.inspect",
-    "complete_answer_only_run"
-  ],
-  "expected_skipped_nodes": [
-    "planning.draft_plan"
-  ],
   "expected_source_fetch_plan": [
     {
       "source": "GMAIL",
@@ -109,9 +94,7 @@
       }
     }
   ],
-  "expected_answer_type": "PARTIAL",
   "policy_result": "ALLOW_READ",
-  "expected_interrupt": "NONE",
   "allowed_actions": [],
   "forbidden_actions": [
     "gmail_send",
@@ -129,14 +112,8 @@
   "verification_expectation": {
     "required": false,
     "policy": "NONE",
-    "all_writes_re_read": false
-  },
-  "end_state_expectation": {
-    "initial": {
-      "run_status": "COMPLETED",
-      "result_kind": "PARTIAL"
-    },
-    "after_user_action": null
+    "all_writes_re_read": false,
+    "per_action": []
   },
   "node_applicability": {
     "request_understanding": true,
@@ -168,5 +145,38 @@
   "human_rubric": [
     "Gmail과 Tasks를 모두 조회한다.",
     "선적 이틀 지연과 진행 중 Task를 구분해 답한다."
-  ]
+  ],
+  "expected_planning_result_type": "PARTIAL",
+  "expected_interactions": [],
+  "expected_semantic_milestones": [
+    "REQUEST_UNDERSTANDING",
+    "ACQUISITION",
+    "CONTEXT_RETRIEVAL",
+    "WORK_ANALYSIS",
+    "PLANNING",
+    "QUALITY_CHECK",
+    "FINALIZATION"
+  ],
+  "six_reference_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "ACQUISITION_PARTIAL",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.answer_only",
+    "review.inspect",
+    "complete_answer_only_run"
+  ],
+  "six_reference_skipped_nodes": [
+    "planning.draft_plan"
+  ],
+  "run_outcome_expectation": {
+    "evaluation_stop": {
+      "run_status": "COMPLETED",
+      "result_kind": "PARTIAL"
+    },
+    "resume_or_followup": null
+  }
 }

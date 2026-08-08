@@ -13,7 +13,7 @@
   "gold": {
     "goal": "Kestrel 공급업체 후속 확인 Task를 생성한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

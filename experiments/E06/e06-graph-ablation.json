@@ -3,17 +3,18 @@
   "experiment_id": "EXP-E06-GRAPH",
   "experiment_family": "E06",
   "sub_experiment": "E06-GRAPH-ABLATION",
-  "status": "PREPARED_BLOCKED",
+  "status": "SUPERSEDED_DO_NOT_RUN",
   "purpose": "Compare single, three-stage, and six-role graph structures under identical model/prompt/policy/retrieval.",
   "independent_variable": "GRAPH_PROFILE_ONLY",
   "fixed_dimensions": {
-    "dataset_version": "rebuild-v1.9",
-    "prompt_bundle_version": "0.7.0-r7",
-    "tool_schema_version": "v2.4",
-    "policy_version": "01-B-v2.3",
+    "dataset_version": "rebuild-v1.13-r8.3",
+    "prompt_bundle_version": "0.8.2-r8.3",
+    "tool_schema_version": "v2.6",
+    "policy_version": "01-B-v2.4",
     "provider": "OPENAI",
     "runtime_model": "E01_FINALIST",
-    "reasoning_budget": "medium"
+    "reasoning_budget": "medium",
+    "prompt_semantic_bundle_version": "semantic-r8.3-v1"
   },
   "dataset_selection_ref": "experiments/selections/SEL-E06-GRAPH-CORE60.json",
   "candidate_config_refs": [
@@ -21,7 +22,7 @@
     "experiments/candidates/cand-e06-three.template.json",
     "experiments/candidates/cand-e06-six.template.json"
   ],
-  "grader_registry_ref": "experiments/graders/grader-registry-v0.2.json",
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.4.json",
   "trial_policy": {
     "dev_trials_per_item": 1,
     "holdout_trials_per_item": 0,
@@ -65,5 +66,13 @@
     "budget_report.json",
     "human_review.md"
   ],
-  "notes": []
+  "notes": [
+    "SUPERSEDED_BY_R8_2_E06A_AND_E06B; do not schedule from this file.",
+    "R8.2: retained only for provenance. Runner MUST NOT execute this manifest."
+  ],
+  "superseded_by": [
+    "experiments/E06/e06a-native-architecture-ablation.json",
+    "experiments/E06/e06b-controlled-post-retrieval.json"
+  ],
+  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.1.json"
 }

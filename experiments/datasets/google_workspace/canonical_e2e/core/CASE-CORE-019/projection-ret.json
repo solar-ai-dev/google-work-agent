@@ -11,14 +11,10 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "required_resource_ids": [
-      "EV-F-001"
-    ],
+    "required_resource_ids": [],
+    "required_evidence_ids": [],
     "hard_negative_resource_ids": [],
-    "required_evidence_ids": [
-      "EVD-SEG-EV-F-001-2",
-      "UE-CORE-019"
-    ]
+    "sufficiency": "NOT_REACHED"
   },
   "grader_ids": [
     "grader.retrieval.deterministic",

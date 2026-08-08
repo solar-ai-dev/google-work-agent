@@ -11,18 +11,23 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "expected_route": [
+    "expected_tool_trajectory": [],
+    "topology_scope": "SIX_ROLE_BASELINE",
+    "six_reference_route": [
       "request_understanding.classify",
       "WAITING_CONFIRMATION"
     ],
-    "expected_skipped_nodes": [
+    "six_reference_skipped_nodes": [
       "acquisition.plan_sources",
       "context.select_evidence",
       "analysis.analyze",
       "planning.draft_plan",
       "review.inspect"
     ],
-    "expected_tool_trajectory": []
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "CONFIRMATION"
+    ]
   },
   "grader_ids": [
     "grader.routing_trajectory.deterministic",

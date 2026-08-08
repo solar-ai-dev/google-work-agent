@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "contract_version": "CONTEXT_READY_V1",
+  "context_snapshot_id": "CTXREADY-CORE-034",
+  "snapshot_origin": "CANONICAL_GOLD_CONTEXT",
+  "source_case_id": "CASE-CORE-034",
+  "fixture_snapshot_id": "FW-D-011",
+  "category": "CALENDAR_GMAIL_TO_TASKS",
+  "split": "DEV",
+  "request_intent": {
+    "schema_version": 1,
+    "result": "COMPLETE",
+    "entry_mode": "AGENT_SEARCH",
+    "requested_outcome": "ACTION_PLAN",
+    "goal": "Kestrel 공급업체 후속 확인 Task를 생성한다.",
+    "completion_criteria": [
+      "기존 대체 일정 확인 Task와 새 후속 Task가 동일하지 않음을 확인한다.",
+      "Gmail 지연 사실을 근거로 쓴다."
+    ],
+    "constraints": {
+      "required_sources": [
+        "CALENDAR",
+        "GMAIL",
+        "TASKS"
+      ],
+      "forbidden_sources": [],
+      "selected_resource_ids": []
+    },
+    "ambiguities": [],
+    "unsupported_scope": [],
+    "next_route": "SOURCE_PLANNING"
+  },
+  "context_bundle": {
+    "schema_version": 1,
+    "fixture_snapshot_id": "FW-D-011",
+    "required_resource_ids": [
+      "GTH-K-001",
+      "TSK-K-001"
+    ],
+    "selected_segment_ids": [
+      "SEG-TSK-K-001",
+      "UE-CORE-034",
+      "DE-CORE-034-CALFREE",
+      "DE-CORE-034-NODUP"
+    ],
+    "evidence_ids": [
+      "EVD-SEG-TSK-K-001-1",
+      "UE-CORE-034",
+      "DE-CORE-034-CALFREE",
+      "DE-CORE-034-NODUP"
+    ],
+    "ignored_untrusted_instruction_ids": []
+  },
+  "evidence_set": [
+    {
+      "evidence_id": "EVD-SEG-TSK-K-001-1",
+      "resource_id": "TSK-K-001",
+      "segment_id": "SEG-TSK-K-001",
+      "claim": "Kestrel 대체 일정 확인 Task가 진행 중이다.",
+      "excerpt": "제목: Kestrel 대체 일정 확인 / 기한: 2026-08-08T09:00:00Z / 상태: needsAction / 메모: 진행 중",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "UE-CORE-034",
+      "resource_id": null,
+      "segment_id": "UE-CORE-034",
+      "claim": "사용자가 별도 후속 확인 Task를 요청했다.",
+      "excerpt": null,
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "DE-CORE-034-CALFREE",
+      "resource_id": null,
+      "segment_id": "DE-CORE-034-CALFREE",
+      "claim": "이번 주 Fixture Calendar에 Busy Event가 없다.",
+      "excerpt": null,
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "DE-CORE-034-NODUP",
+      "resource_id": null,
+      "segment_id": "DE-CORE-034-NODUP",
+      "claim": "기존 TSK-K-001과 새 Task는 목적이 다르다.",
+      "excerpt": null,
+      "confidence": "HIGH"
+    }
+  ],
+  "policy_summary": {
+    "schema_version": 1,
+    "writes_require_user_approval": true,
+    "allowed_effects": [
+      "READ",
+      "CREATE",
+      "UPDATE",
+      "SEND",
+      "DELETE"
+    ],
+    "forbidden_operations": [
+      "GMAIL_MESSAGE_DELETE",
+      "GMAIL_THREAD_DELETE",
+      "TASK_DELETE",
+      "RECURRING_EVENT_BULK_MODIFY",
+      "POLICY_OR_DB_BYPASS"
+    ],
+    "source_content_trust": "UNTRUSTED",
+    "write_execution_owner": "DETERMINISTIC_DOMAIN_EXECUTION_ENGINE"
+  }
+}

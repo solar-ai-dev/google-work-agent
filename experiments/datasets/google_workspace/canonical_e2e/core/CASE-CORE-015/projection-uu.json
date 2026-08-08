@@ -13,7 +13,7 @@
   "gold": {
     "goal": "Task 진행 상태와 일정 가능성을 Draft로 제안한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

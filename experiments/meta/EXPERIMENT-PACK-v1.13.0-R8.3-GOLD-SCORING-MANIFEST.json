@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "pack_id": "google-work-agent-experiment-pack-v1.13.0-r8.3-gold-scoring-reviewed",
+  "created_at": "2026-08-08T17:50:00+09:00",
+  "dataset_version": "rebuild-v1.13-r8.3",
+  "prompt_bundle_version": "0.8.2-r8.3",
+  "prompt_semantic_bundle_version": "semantic-r8.3-v1",
+  "grader_registry": "experiments/graders/grader-registry-v0.4.json",
+  "scoring_contract": "experiments/graders/scoring-contract-v1.1.json",
+  "canonical_case_schema": "CanonicalCaseV5",
+  "e2e_projection_schema": "E2EProjectionV3",
+  "holdout_lock": "CANONICAL-HOLDOUT-v1.13-R8.3",
+  "model_execution_performed": false,
+  "prompt_runtime_activation": "DRAFT",
+  "independent_human_review": "PENDING",
+  "superseded_runtime_handoff_versions": [
+    "v1.10",
+    "v1.11"
+  ],
+  "important_changes": [
+    "Corrected Gold-policy mismatch in CASE-CORE-054.",
+    "Corrected early-confirmation/no-read Gold in CASE-CORE-019.",
+    "Replaced singular interrupt Gold with ordered expected_interactions.",
+    "Made E06-A Gold profile-neutral; SIX route is diagnostic only.",
+    "Replaced ambiguous end state with run_outcome_expectation evaluation_stop/resume_or_followup.",
+    "Changed acquisition numeric budget scoring from exact equality to constraint envelope.",
+    "Added non-compensatory BTS scoring contract and split-specific denominators.",
+    "Preserved Product Prompt/evaluator isolation."
+  ]
+}

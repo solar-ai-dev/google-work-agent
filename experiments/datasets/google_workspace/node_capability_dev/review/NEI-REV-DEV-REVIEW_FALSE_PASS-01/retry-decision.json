@@ -6,7 +6,7 @@
     "REVIEW_FALSE_PASS"
   ],
   "retry_kind": "SEMANTIC_REVISION",
-  "next_prompt_slot_id": "review.recheck.REVIEW_FALSE_PASS",
+  "next_prompt_slot_id": "review.recheck",
   "next_node_id": null,
   "attempt_no": 2,
   "max_attempts": 2,

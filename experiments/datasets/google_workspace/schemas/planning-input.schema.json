@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/PlanningInputV1.schema.json",
+  "title": "PlanningInputV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "fixture_snapshot_id",
+    "goal",
+    "requested_outcome",
+    "constraints",
+    "evidence",
+    "analysis"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "fixture_snapshot_id": {
+      "type": "string"
+    },
+    "goal": {
+      "type": "string"
+    },
+    "requested_outcome": {
+      "enum": [
+        "ANSWER",
+        "ANALYSIS",
+        "ACTION_PLAN"
+      ]
+    },
+    "constraints": {
+      "type": "object"
+    },
+    "evidence": {
+      "type": "array"
+    },
+    "analysis": {
+      "type": "object"
+    }
+  }
+}

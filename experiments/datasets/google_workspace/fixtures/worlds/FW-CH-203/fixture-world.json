@@ -27,13 +27,25 @@
   "resource_ids": {
     "gmail": [
       "GTH-W-201",
-      "GM-W-201"
+      "GM-W-201",
+      "GTH-NOISE-WCH203-1",
+      "GM-NOISE-WCH203-1",
+      "GTH-NOISE-WCH203-2",
+      "GM-NOISE-WCH203-2",
+      "GTH-NOISE-WCH203-3",
+      "GM-NOISE-WCH203-3"
     ],
     "tasks": [
-      "TSK-W-201"
+      "TSK-W-201",
+      "TSK-NOISE-WCH203-1",
+      "TSK-NOISE-WCH203-2",
+      "TSK-NOISE-WCH203-3"
     ],
     "calendar": [
-      "EV-W-201"
+      "EV-W-201",
+      "EV-NOISE-WCH203-1",
+      "EV-NOISE-WCH203-2",
+      "EV-NOISE-WCH203-3"
     ]
   },
   "tags": [

@@ -14,7 +14,7 @@
   "expected_initial_result": "SEMANTIC_INVALID",
   "injected_failure_reason_code": "PLAN_EXCESS_ACTION",
   "expected_retry_kind": "SEMANTIC_REVISION",
-  "expected_retry_prompt_slot_id": "planning.revise_plan.PLAN_EXCESS_ACTION",
+  "expected_retry_prompt_slot_id": "planning.revise_plan",
   "expected_final_result": "PLAN_READY",
   "max_attempts": 2,
   "forbidden_transitions": [

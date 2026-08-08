@@ -6,7 +6,7 @@
     "PLAN_ARGUMENT_CONSTRAINT_VIOLATION"
   ],
   "retry_kind": "SEMANTIC_REVISION",
-  "next_prompt_slot_id": "planning.revise_plan.PLAN_ARGUMENT_CONSTRAINT_VIOLATION",
+  "next_prompt_slot_id": "planning.revise_plan",
   "next_node_id": null,
   "attempt_no": 2,
   "max_attempts": 2,

@@ -25,7 +25,7 @@
     "holdout_lock_hashes"
   ],
   "prompt_manifest": "prompts/agent/prompt-manifest-v0.7.json",
-  "current_grader_registry": "experiments/graders/grader-registry-v0.2.json",
+  "current_grader_registry": "experiments/graders/grader-registry-v0.4.json",
   "current_risky_schema": "experiments/datasets/google_workspace/schemas/risky-user-request-v3.schema.json",
   "model_execution_performed": false,
   "prompt_activation": "DRAFT",

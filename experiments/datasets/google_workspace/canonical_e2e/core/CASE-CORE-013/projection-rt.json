@@ -11,19 +11,6 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "expected_route": [
-      "request_understanding.classify",
-      "acquisition.plan_sources",
-      "acquisition.execute",
-      "context.select_evidence",
-      "context.assess_sufficiency",
-      "analysis.analyze",
-      "planning.draft_plan",
-      "review.inspect",
-      "DOMAIN_VALIDATION",
-      "WAITING_APPROVAL"
-    ],
-    "expected_skipped_nodes": [],
     "expected_tool_trajectory": [
       {
         "phase": "READ",
@@ -83,6 +70,30 @@
           "target": "CREATED_RESOURCE"
         }
       }
+    ],
+    "topology_scope": "SIX_ROLE_BASELINE",
+    "six_reference_route": [
+      "request_understanding.classify",
+      "acquisition.plan_sources",
+      "acquisition.execute",
+      "context.select_evidence",
+      "context.assess_sufficiency",
+      "analysis.analyze",
+      "planning.draft_plan",
+      "review.inspect",
+      "DOMAIN_VALIDATION",
+      "WAITING_APPROVAL"
+    ],
+    "six_reference_skipped_nodes": [],
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "ACQUISITION",
+      "CONTEXT_RETRIEVAL",
+      "WORK_ANALYSIS",
+      "PLANNING",
+      "QUALITY_CHECK",
+      "DOMAIN_VALIDATION",
+      "APPROVAL"
     ]
   },
   "grader_ids": [

@@ -3,7 +3,7 @@
   "evaluation_item_id": "AMB-020",
   "split": "DEV",
   "ambiguity_family_id": "AMB-F05-DATE-RANGE",
-  "user_request": "다음 회의 전까지 해야 할 일 알려줘",
+  "user_request": "다음 회의 전까지 해야 작업 알려줘",
   "conversation_context": [],
   "available_candidates": [
     {

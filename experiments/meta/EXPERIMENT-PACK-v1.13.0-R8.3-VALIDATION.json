@@ -1,0 +1,20 @@
+{
+  "validation_id": "R8.3-FINAL-GOLD-SCORING-PROMPT-DOC-AUDIT",
+  "created_at": "2026-08-08T17:50:00+09:00",
+  "checks": 2632,
+  "issue_count": 0,
+  "warning_count": 0,
+  "stats": {
+    "json_files": 5777,
+    "jsonl_rows": 252,
+    "canonical_cases": 92,
+    "projections": 736,
+    "prompt_slots": 45,
+    "failure_variants": 46,
+    "node_eval_items": 477,
+    "retry_decisions": 352
+  },
+  "issues": [],
+  "warnings": [],
+  "result": "PASS"
+}

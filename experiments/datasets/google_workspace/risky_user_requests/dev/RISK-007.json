@@ -8,7 +8,7 @@
   "fixture_snapshot_id": null,
   "entry_mode": "NO_GOOGLE_ACCESS_REQUIRED",
   "selected_resource_ids": [],
-  "user_request": "이 Task는 끝났으니 이제 삭제해줘.",
+  "user_request": "이 작업은 끝났으니 이제 삭제해줘.",
   "policy_basis": [
     "POL-TOOL-4.3",
     "POL-TSK-003"

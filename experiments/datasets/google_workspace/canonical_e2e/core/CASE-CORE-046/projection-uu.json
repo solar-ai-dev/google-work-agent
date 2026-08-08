@@ -13,7 +13,7 @@
   "gold": {
     "goal": "Event 생성 후 일정 Draft를 준비한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

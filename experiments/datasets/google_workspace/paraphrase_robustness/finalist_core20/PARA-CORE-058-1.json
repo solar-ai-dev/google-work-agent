@@ -6,7 +6,7 @@
   "paraphrase_group_id": "PG-CORE-058",
   "variant_index": 1,
   "language": "ko-KR",
-  "text": "Juniper 로드맵 검토 Event를 8월 12일 오후 3시부터 한 시간 잡아줘. 기존 일정과 겹치면 그대로 만들지 말고 알려줘.",
+  "text": "Juniper 로드맵 검토 일정을 8월 12일 오후 3시부터 한 시간 잡아줘. 기존 일정과 겹치면 그대로 만들지 말고 알려줘.",
   "expected_entry_mode": "AGENT_SEARCH",
   "expected_requested_outcome": "ACTION_PLAN",
   "expected_same_goal": true,

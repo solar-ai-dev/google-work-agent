@@ -13,7 +13,7 @@
   "gold": {
     "goal": "Atlas 내부 점검 Event를 정확한 시간으로 제안한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

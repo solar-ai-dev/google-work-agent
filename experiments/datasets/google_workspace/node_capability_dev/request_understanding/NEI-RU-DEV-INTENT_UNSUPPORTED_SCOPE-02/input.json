@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "user_request": "Raven 이전 Task를 삭제해줘.",
+  "user_request": "Raven 이전 작업을 삭제해줘.",
   "entry_context": {
     "entry_mode_hint": "RESOURCE_SELECTED",
     "selected_resource_ids": [

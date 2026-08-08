@@ -1,8 +1,8 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "case_id": "CASE-STRESS-004",
   "split": "STRESS",
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "category": "SOURCE_SELECTION_READ",
   "scenario_family_id": "SF-S2-AUTH-MCP",
   "fixture_relation_family": "RF-DEV-001",
@@ -10,7 +10,7 @@
   "language": "ko-KR",
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-STRESS-004",
-  "canonical_user_prompt": "Atlas 최종 출고일과 담당자를 찾아줘. 조회 도중 로컬 Google 연결 프로세스가 재시작돼도 중복 조회를 최소화해줘.",
+  "canonical_user_prompt": "Atlas 최종 출고일과 담당자를 찾아줘. 조회 중 문제가 생기더라도 같은 내용을 불필요하게 반복해서 찾지는 마.",
   "business_scenario": "Gmail에서 Atlas 최신 출고 합의만 찾는다.",
   "expected_goal": "Atlas 최종 출고일과 담당자를 Gmail에서 답한다.",
   "expected_completion_criteria": [
@@ -42,23 +42,6 @@
   ],
   "user_evidence": [],
   "derived_evidence": [],
-  "expected_route": [
-    "request_understanding.classify",
-    "acquisition.plan_sources",
-    "acquisition.execute",
-    "MCP_RESTART_ONCE",
-    "TOOL_SCHEMA_REVALIDATION",
-    "acquisition.execute",
-    "context.select_evidence",
-    "context.assess_sufficiency",
-    "analysis.analyze",
-    "planning.answer_only",
-    "review.inspect",
-    "complete_answer_only_run"
-  ],
-  "expected_skipped_nodes": [
-    "planning.draft_plan"
-  ],
   "expected_source_fetch_plan": [
     {
       "source": "GMAIL",
@@ -89,9 +72,7 @@
       }
     }
   ],
-  "expected_answer_type": "ANSWER",
   "policy_result": "ALLOW_READ",
-  "expected_interrupt": "NONE",
   "allowed_actions": [],
   "forbidden_actions": [
     "gmail_send",
@@ -109,14 +90,8 @@
   "verification_expectation": {
     "required": false,
     "policy": "NONE",
-    "all_writes_re_read": false
-  },
-  "end_state_expectation": {
-    "initial": {
-      "run_status": "COMPLETED",
-      "result_kind": "FULL"
-    },
-    "after_user_action": null
+    "all_writes_re_read": false,
+    "per_action": []
   },
   "node_applicability": {
     "request_understanding": true,
@@ -150,5 +125,41 @@
     "관련 Atlas Thread를 찾는다.",
     "최신 메시지 GM-A-002를 사용한다.",
     "과거 회고 Thread를 배제한다."
-  ]
+  ],
+  "expected_planning_result_type": "ANSWER",
+  "expected_interactions": [],
+  "expected_semantic_milestones": [
+    "REQUEST_UNDERSTANDING",
+    "ACQUISITION",
+    "MCP_RECOVERY",
+    "CONTEXT_RETRIEVAL",
+    "WORK_ANALYSIS",
+    "PLANNING",
+    "QUALITY_CHECK",
+    "FINALIZATION"
+  ],
+  "six_reference_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "MCP_RESTART_ONCE",
+    "TOOL_SCHEMA_REVALIDATION",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.answer_only",
+    "review.inspect",
+    "complete_answer_only_run"
+  ],
+  "six_reference_skipped_nodes": [
+    "planning.draft_plan"
+  ],
+  "run_outcome_expectation": {
+    "evaluation_stop": {
+      "run_status": "COMPLETED",
+      "result_kind": "FULL"
+    },
+    "resume_or_followup": null
+  }
 }

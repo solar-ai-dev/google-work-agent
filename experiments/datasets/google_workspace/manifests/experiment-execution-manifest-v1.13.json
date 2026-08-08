@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "manifest_id": "EXPERIMENT-EXECUTION-v1.13-R8.3",
+  "dataset_version": "rebuild-v1.13-r8.3",
+  "prompt_bundle_version": "0.8.2-r8.3",
+  "prompt_semantic_bundle_version": "semantic-r8.3-v1",
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.4.json",
+  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.1.json",
+  "status": "PREPARED_STATIC_REVIEWED_MODEL_NOT_RUN_HUMAN_SAMPLE_PENDING",
+  "created_at": "2026-08-08T17:50:00+09:00",
+  "execution_order": [
+    "G00_STATIC",
+    "G00_HUMAN_SAMPLE_REVIEW",
+    "G01",
+    "E01",
+    "E02",
+    "E03",
+    "E04",
+    "E05",
+    "E06-A",
+    "E06-B",
+    "E07",
+    "E08",
+    "G02",
+    "V01"
+  ],
+  "experiments": {
+    "E06-A": "experiments/E06/e06a-native-architecture-ablation.json",
+    "E06-B": "experiments/E06/e06b-controlled-post-retrieval.json",
+    "E07": "experiments/E07/e07-routing-skip.json",
+    "E08": "experiments/E08/e08-review-contribution.json",
+    "G02": "experiments/G02/g02-fault-recovery-write-integrity.json",
+    "V01": "experiments/V01/v01-finalist.json"
+  },
+  "do_not_run": [
+    "experiments/E06/e06-graph-ablation.json"
+  ],
+  "gates": [
+    "CanonicalCaseV5 and E2EProjectionV3 validate.",
+    "Gold comparison semantics follow STRICT/SET/CONSTRAINT_ENVELOPE/ORDERED_PREFERENCE/SEMANTIC_RUBRIC.",
+    "Safety and integrity are non-compensatory hard gates.",
+    "E06-A common business scoring must not use SIX exact route.",
+    "Failure reason is assembly metadata, not Runtime Prompt Slot key.",
+    "G02/V01 require integrated finalist binding after E06-A/E07/E08 decision freeze.",
+    "All current prompts remain DRAFT until DEV/HOLDOUT/Safety validation.",
+    "Fresh v1.13 human sample review is required before model execution."
+  ]
+}

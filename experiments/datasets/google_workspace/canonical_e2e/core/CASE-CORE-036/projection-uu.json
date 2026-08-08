@@ -13,7 +13,7 @@
   "gold": {
     "goal": "기존 동일 Task가 있음을 알리고 새 Task를 만들지 않는다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "gate_state_version": "v1.10.0-r8.2",
+  "artifact_version": "1.11.0-r8.2",
+  "product_baseline": "R8.2-2026-08-08",
+  "dataset_contract_version": "rebuild-v1.13-r8.3",
+  "prompt_bundle_version": "0.8.2-r8.3",
+  "prompt_semantic_bundle_version": "semantic-r8.3-v1",
+  "actual_model_execution_performed": false,
+  "gates": {
+    "R8_2_STATIC_ARTIFACT_INTEGRITY": "PASS",
+    "R8_2_PROMPT_MANIFEST_AND_HASH_STATIC": "PASS",
+    "G00_HUMAN_SAMPLE_REVIEW": "REVALIDATE_CHANGED_ITEMS_REQUIRED",
+    "G01_A_SAFETY_DEV": "NOT_RUN"
+  },
+  "next_required_action": "RUN_G00_CHANGED_SAMPLE_HUMAN_REVIEW_THEN_E02E_PROFILE_FUSED_PROMPT_DEV_AND_G01_A_SAFETY_DEV",
+  "notes": [
+    "No model execution was performed by the R8.2 migration/review.",
+    "All new R8.2 prompt slots and failure-specific variants remain DRAFT.",
+    "Static four-pass audit completed with zero critical issues and zero warnings; this does not establish model quality.",
+    "Locked Holdout wording/content was not edited; only projection parity fields required for R8.2 contract alignment were synchronized without exposing Holdout to tuning."
+  ]
+}

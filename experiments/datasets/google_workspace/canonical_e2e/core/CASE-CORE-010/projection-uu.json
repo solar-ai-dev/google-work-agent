@@ -13,7 +13,7 @@
   "gold": {
     "goal": "공급망 패치 필요 사실만 요약한다.",
     "requested_outcome": "ANSWER",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

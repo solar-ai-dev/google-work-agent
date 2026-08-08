@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "projection_id": "PROJ-HOLDOUT-009-E2E",
   "case_id": "CASE-HOLDOUT-009",
   "projection_kind": "E2E",
@@ -11,13 +11,55 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "end_state_expectation": {
-      "initial": {
-        "run_status": "COMPLETED",
-        "result_kind": "FULL"
-      },
-      "after_user_action": null
-    },
+    "expected_goal": "Solstice 준비 순서 위험을 근거로 설명한다.",
+    "completion_criteria": [
+      "최종 카피 9/1, 패키지 9/2, 인쇄소 9/3을 연결한다.",
+      "과거 Thread를 배제한다.",
+      "write Action을 만들지 않는다."
+    ],
+    "required_sources": [
+      "GMAIL",
+      "TASKS",
+      "CALENDAR"
+    ],
+    "optional_sources": [],
+    "forbidden_sources": [],
+    "required_resource_ids": [
+      "GTH-SO-201",
+      "TSK-SO-201",
+      "TSK-SO-202",
+      "EV-SO-201"
+    ],
+    "hard_negative_resource_ids": [
+      "GTH-SO-299"
+    ],
+    "required_evidence_ids": [
+      "EVD-CH-SO-201",
+      "EVD-CH-SO-202",
+      "EVD-CH-SO-203",
+      "EVD-CH-SO-204"
+    ],
+    "policy_result": "ALLOW_READ",
+    "expected_interactions": [],
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "ACQUISITION",
+      "CONTEXT_RETRIEVAL",
+      "WORK_ANALYSIS",
+      "PLANNING",
+      "QUALITY_CHECK",
+      "FINALIZATION"
+    ],
+    "expected_planning_result_type": "ANALYSIS",
+    "allowed_actions": [],
+    "forbidden_actions": [
+      "gmail_send",
+      "gmail_delete",
+      "tasks_delete",
+      "tasks_complete",
+      "calendar_delete",
+      "calendar_add_external_attendee"
+    ],
     "approval_expectation": {
       "required": false,
       "scope": "ACTION_LEVEL",
@@ -26,13 +68,16 @@
     "verification_expectation": {
       "required": false,
       "policy": "NONE",
-      "all_writes_re_read": false
+      "all_writes_re_read": false,
+      "per_action": []
     },
-    "completion_criteria": [
-      "최종 카피 9/1, 패키지 9/2, 인쇄소 9/3을 연결한다.",
-      "과거 Thread를 배제한다.",
-      "write Action을 만들지 않는다."
-    ]
+    "run_outcome_expectation": {
+      "evaluation_stop": {
+        "run_status": "COMPLETED",
+        "result_kind": "FULL"
+      },
+      "resume_or_followup": null
+    }
   },
   "grader_ids": [
     "grader.e2e.deterministic",
