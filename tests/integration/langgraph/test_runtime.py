@@ -281,6 +281,39 @@ def _selection_output() -> dict[str, object]:
     }
 
 
+def _context_result(status: str = "SUFFICIENT") -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "status": status,
+        "context_bundle": {
+            "schema_version": 1,
+            "resource_refs": [
+                {
+                    "resource_handle": "task:task-followup",
+                    "resource_type": "task",
+                    "resource_id": "task-followup",
+                }
+            ],
+            "segment_refs": [
+                {
+                    "segment_id": "seg-2",
+                    "resource_handle": "task:task-followup",
+                }
+            ],
+            "evidence_refs": ["evidence-1"],
+            "normalized_context": [],
+            "missing_information": [],
+            "ambiguity": None,
+        },
+        "evidence_drafts": list(_selection_output()["evidence_drafts"]),
+        "selected_segment_ids": ["seg-2"],
+        "excluded_resource_handles": [],
+        "missing_slots": [],
+        "additional_acquisition_request": None,
+        "sufficiency": {"summary": "enough"},
+    }
+
+
 def _make_runtime(
     *,
     database_path: Path,
@@ -722,11 +755,10 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
         assert six.describe_topology() == (
             "request_understanding",
             "acquisition",
-            "context_retrieval",
+            "context_retriever",
             "work_analysis",
-            "solution_planning",
-            "plan_review",
-            "domain_validation",
+            "planning",
+            "review",
         )
         assert three.describe_topology() == ("stage_one", "stage_two", "stage_three")
         assert six.describe_topology() != three.describe_topology()
@@ -735,7 +767,7 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
         three.close()
 
 
-def test_six_role_runtime_exposes_native_request_and_acquisition_subgraphs(
+def test_six_role_runtime_exposes_six_native_agent_subgraphs(
     tmp_path: Path,
 ) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
@@ -752,8 +784,21 @@ def test_six_role_runtime_exposes_native_request_and_acquisition_subgraphs(
     )
 
     try:
+        assert tuple(runtime._native_agent_subgraphs) == (  # noqa: SLF001
+            "request_understanding",
+            "acquisition",
+            "context_retriever",
+            "work_analysis",
+            "planning",
+            "review",
+        )
+        assert len(runtime._native_agent_subgraphs) == 6  # noqa: SLF001
         assert runtime._node_handler("request_understanding") is runtime._request_subgraph  # noqa: SLF001
         assert runtime._node_handler("acquisition") is runtime._acquisition_subgraph  # noqa: SLF001
+        assert runtime._node_handler("context_retriever") is runtime._context_subgraph  # noqa: SLF001
+        assert runtime._node_handler("work_analysis") is runtime._analysis_subgraph  # noqa: SLF001
+        assert runtime._node_handler("planning") is runtime._planning_subgraph  # noqa: SLF001
+        assert runtime._node_handler("review") is runtime._review_subgraph  # noqa: SLF001
     finally:
         runtime.close()
 
@@ -822,8 +867,8 @@ def test_acquisition_subgraph_keeps_single_invocation_id_and_parent_isolation(
         assert "__request_agent_local__" not in result
         assert "__acquisition_agent_local__" not in result
         assert "__acquisition_planning_output__" not in result
-        assert result["__logical_target__"] == "context_retrieval"
-        assert result["__target__"] == "context_retrieval"
+        assert result["__logical_target__"] == "context_retriever"
+        assert result["__target__"] == "context_retriever"
         assert gateway.count_calls("list_tasks") == 1
         assert gateway.count_calls("get_task") >= 1
         assert gateway.count_calls("search_gmail_threads") == 0
@@ -845,6 +890,136 @@ def test_acquisition_subgraph_keeps_single_invocation_id_and_parent_isolation(
         invocation_ids = {item["agent_invocation_id"] for item in node_log}
         assert len(invocation_ids) == 1
         assert {item["agent_subgraph_id"] for item in node_log} == {"acquisition"}
+    finally:
+        runtime.close()
+
+
+def test_six_role_full_path_records_six_agent_invocations_and_seven_llm_calls(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _clear_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _answer_output(),
+            _review_output("PASS"),
+        ],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=tmp_path / "checkpoints-six-full.db",
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        result = runtime.start(_start_request())
+        snapshot_state = runtime._graph.get_state(runtime._config_for_thread("thread-1"))  # noqa: SLF001
+        values = snapshot_state.values
+
+        assert result.outcome is WorkflowOutcome.COMPLETED
+        trace_context = values["trace_context"]
+        assert trace_context["agent_invocation_count"] == 6
+        assert trace_context["llm_call_count"] == 7
+        init_log = [
+            item["agent_subgraph_id"]
+            for item in trace_context["agent_node_log"]
+            if item["node_name"] == "init"
+        ]
+        assert init_log == [
+            "request_understanding",
+            "acquisition",
+            "context_retriever",
+            "work_analysis",
+            "planning",
+            "review",
+        ]
+        invocation_ids = {item["agent_invocation_id"] for item in trace_context["agent_node_log"]}
+        assert len(invocation_ids) == 6
+    finally:
+        runtime.close()
+
+
+def test_context_subgraph_routes_needs_more_data_back_to_parent_acquisition(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("NEEDS_MORE_DATA"),
+        ],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=tmp_path / "checkpoints-context-route.db",
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        state["request_intent"] = _clear_intent()
+        acquired = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
+        routed = runtime._context_subgraph.invoke(acquired)  # noqa: SLF001
+
+        assert routed["__logical_target__"] == "acquisition"
+        assert routed["__target__"] == "acquisition"
+        assert "__context_agent_local__" not in routed
+    finally:
+        runtime.close()
+
+
+def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    issue = {
+        "schema_version": 1,
+        "issue_id": "issue-1",
+        "kind": "MISSING_GOAL_COVERAGE",
+        "message": "Need a revision.",
+        "affected_action_ids": [],
+        "affected_field_paths": ["$.answer"],
+        "evidence_refs": ["evidence-1"],
+        "resource_refs": ["task:task-followup"],
+        "reason_codes": ["EVIDENCE_SUPPORTED"],
+    }
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _review_output("REVISE", issues=[issue]),
+            _review_output("RETRIEVE_MORE", issues=[issue]),
+        ],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=tmp_path / "checkpoints-review-route.db",
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        base_state = runtime._initial_state(_start_request())  # noqa: SLF001
+        base_state["request_intent"] = _clear_intent()
+        base_state["context_result"] = _context_result()
+        base_state["analysis_result"] = _analysis_output()
+        base_state["answer_draft"] = _answer_output()
+
+        revise_state = runtime._review_subgraph.invoke(dict(base_state))  # noqa: SLF001
+        assert revise_state["__logical_target__"] == "planning"
+        assert revise_state["__target__"] == "planning"
+
+        retrieve_state = runtime._review_subgraph.invoke(dict(base_state))  # noqa: SLF001
+        assert retrieve_state["__logical_target__"] == "acquisition"
+        assert retrieve_state["__target__"] == "acquisition"
     finally:
         runtime.close()
 

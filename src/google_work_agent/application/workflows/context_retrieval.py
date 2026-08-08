@@ -214,6 +214,23 @@ class ContextRetrievalAgent:
         )
         self._context_budget = context_budget
 
+    @property
+    def select_prompt_ref(self) -> PromptReference:
+        return self._select_prompt_ref
+
+    @property
+    def sufficiency_prompt_ref(self) -> PromptReference:
+        return self._sufficiency_prompt_ref
+
+    def build_segments_from_acquisition(
+        self,
+        acquisition_result: AcquisitionResultV1,
+    ) -> list[object]:
+        return cast(
+            list[object],
+            _segments_from_acquisition(acquisition_result, self._context_budget),
+        )
+
     def retrieve(
         self,
         *,
@@ -221,8 +238,11 @@ class ContextRetrievalAgent:
         acquisition_result: AcquisitionResultV1,
         request: WorkflowStartRequest,
     ) -> ContextRetrievalResultV1:
-        segments = _segments_from_acquisition(acquisition_result, self._context_budget)
-        selection_result = self._select_evidence(
+        segments = cast(
+            list[_SourceSegment],
+            self.build_segments_from_acquisition(acquisition_result),
+        )
+        selection_result = self.select_evidence(
             request_intent=request_intent,
             acquisition_result=acquisition_result,
             request=request,
@@ -241,37 +261,19 @@ class ContextRetrievalAgent:
             ambiguity=selection_result["ambiguity"],
             context_budget=self._context_budget,
         )
-        sufficiency_result, llm_provider_result = self._assess_sufficiency(
+        sufficiency_result, llm_provider_result = self.assess_sufficiency(
             request_intent=request_intent,
             acquisition_result=acquisition_result,
             request=request,
             context_bundle=draft_bundle,
             evidence_drafts=evidence_drafts,
         )
-        context_bundle = _context_bundle(
-            selected_segments=selected_segments,
-            evidence_drafts=evidence_drafts,
-            missing_information=sufficiency_result["missing_slots"]
-            or selection_result["missing_information"],
-            ambiguity=sufficiency_result["ambiguity"] or selection_result["ambiguity"],
-            context_budget=self._context_budget,
+        return self.build_result_from_outputs(
+            selection_result=selection_result,
+            sufficiency_result=sufficiency_result,
+            acquisition_result=acquisition_result,
+            llm_provider_result=llm_provider_result,
         )
-        return {
-            "schema_version": 1,
-            "status": sufficiency_result["status"],
-            "context_bundle": context_bundle,
-            "evidence_drafts": evidence_drafts,
-            "selected_segment_ids": list(selection_result["selected_segment_ids"]),
-            "excluded_resource_handles": list(selection_result["excluded_resource_handles"]),
-            "missing_slots": list(sufficiency_result["missing_slots"]),
-            "additional_acquisition_request": _build_additional_acquisition_request(
-                status=sufficiency_result["status"],
-                missing_slots=sufficiency_result["missing_slots"],
-                context_bundle=context_bundle,
-            ),
-            "sufficiency": dict(sufficiency_result["sufficiency"]),
-            "llm_provider_result": llm_provider_result,
-        }
 
     def build_state_update(self, result: ContextRetrievalResultV1) -> JsonObject:
         phase = (
@@ -290,7 +292,7 @@ class ContextRetrievalAgent:
             },
         }
 
-    def _select_evidence(
+    def select_evidence(
         self,
         *,
         request_intent: RequestIntentV1,
@@ -324,7 +326,7 @@ class ContextRetrievalAgent:
             context_budget=self._context_budget,
         )
 
-    def _assess_sufficiency(
+    def assess_sufficiency(
         self,
         *,
         request_intent: RequestIntentV1,
@@ -355,6 +357,97 @@ class ContextRetrievalAgent:
         )
         return validate_sufficiency_output_v1(llm_result.structured_output), _provider_summary(
             llm_result
+        )
+
+    def build_result_from_outputs(
+        self,
+        *,
+        selection_result: EvidenceSelectionOutputV1,
+        sufficiency_result: SufficiencyOutputV1,
+        acquisition_result: AcquisitionResultV1,
+        llm_provider_result: dict[str, object],
+    ) -> ContextRetrievalResultV1:
+        context_bundle, evidence_drafts = self.build_draft_context_bundle(
+            selection_result=selection_result,
+            acquisition_result=acquisition_result,
+            missing_information=selection_result["missing_information"],
+            ambiguity=selection_result["ambiguity"],
+        )
+        context_bundle = _context_bundle(
+            selected_segments=cast(
+                list[_SourceSegment],
+                self.build_selected_segments(
+                    selection_result=selection_result,
+                    acquisition_result=acquisition_result,
+                ),
+            ),
+            evidence_drafts=evidence_drafts,
+            missing_information=sufficiency_result["missing_slots"]
+            or selection_result["missing_information"],
+            ambiguity=sufficiency_result["ambiguity"] or selection_result["ambiguity"],
+            context_budget=self._context_budget,
+        )
+        return {
+            "schema_version": 1,
+            "status": sufficiency_result["status"],
+            "context_bundle": context_bundle,
+            "evidence_drafts": evidence_drafts,
+            "selected_segment_ids": list(selection_result["selected_segment_ids"]),
+            "excluded_resource_handles": list(selection_result["excluded_resource_handles"]),
+            "missing_slots": list(sufficiency_result["missing_slots"]),
+            "additional_acquisition_request": _build_additional_acquisition_request(
+                status=sufficiency_result["status"],
+                missing_slots=sufficiency_result["missing_slots"],
+                context_bundle=context_bundle,
+            ),
+            "sufficiency": dict(sufficiency_result["sufficiency"]),
+            "llm_provider_result": llm_provider_result,
+        }
+
+    def build_selected_segments(
+        self,
+        *,
+        selection_result: EvidenceSelectionOutputV1,
+        acquisition_result: AcquisitionResultV1,
+    ) -> list[object]:
+        segments = cast(
+            list[_SourceSegment],
+            self.build_segments_from_acquisition(acquisition_result),
+        )
+        return cast(
+            list[object],
+            _selected_segments(
+                selection_result["selected_segment_ids"],
+                segments=segments,
+            ),
+        )
+
+    def build_draft_context_bundle(
+        self,
+        *,
+        selection_result: EvidenceSelectionOutputV1,
+        acquisition_result: AcquisitionResultV1,
+        missing_information: list[str],
+        ambiguity: dict[str, object] | None,
+    ) -> tuple[ContextBundleV1, list[EvidenceDraftV1]]:
+        selected_segments = cast(
+            list[_SourceSegment],
+            self.build_selected_segments(
+                selection_result=selection_result,
+                acquisition_result=acquisition_result,
+            ),
+        )
+        evidence_drafts = _deduplicate_evidence(selection_result["evidence_drafts"])
+        _validate_evidence_references(evidence_drafts, selected_segments=selected_segments)
+        return (
+            _context_bundle(
+                selected_segments=selected_segments,
+                evidence_drafts=evidence_drafts,
+                missing_information=missing_information,
+                ambiguity=ambiguity,
+                context_budget=self._context_budget,
+            ),
+            evidence_drafts,
         )
 
 

@@ -143,6 +143,10 @@ class WorkAnalysisAgent:
             analyze_prompt_ref or load_work_analysis_analyze_prompt_reference(manifest_path)
         )
 
+    @property
+    def analyze_prompt_ref(self) -> PromptReference:
+        return self._analyze_prompt_ref
+
     def analyze(
         self,
         *,
@@ -150,7 +154,21 @@ class WorkAnalysisAgent:
         context_result: ContextRetrievalResultV1,
         request: WorkflowStartRequest,
     ) -> WorkAnalysisResultV1:
-        llm_result = self._llm_runtime.invoke_structured(
+        llm_result = self.invoke_analyze_llm(
+            request_intent=request_intent,
+            context_result=context_result,
+            request=request,
+        )
+        return self.build_output_from_llm_result(llm_result, context_result=context_result)
+
+    def invoke_analyze_llm(
+        self,
+        *,
+        request_intent: RequestIntentV1,
+        context_result: ContextRetrievalResultV1,
+        request: WorkflowStartRequest,
+    ) -> StructuredLLMResult:
+        return self._llm_runtime.invoke_structured(
             prompt_ref=self._analyze_prompt_ref,
             prompt_input={
                 "request_text": request.request_text,
@@ -173,6 +191,13 @@ class WorkAnalysisAgent:
                 llm_call_id=f"{request.run_id}:analysis.analyze",
             ),
         )
+
+    def build_output_from_llm_result(
+        self,
+        llm_result: StructuredLLMResult,
+        *,
+        context_result: ContextRetrievalResultV1,
+    ) -> WorkAnalysisResultV1:
         result = validate_work_analysis_result_v1(
             llm_result.structured_output,
             context_result=context_result,

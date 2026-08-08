@@ -187,6 +187,14 @@ class PlanReviewAgent:
         )
         self._tool_registry = tool_registry or build_p0_tool_registry()
 
+    @property
+    def inspect_prompt_ref(self) -> PromptReference:
+        return self._inspect_prompt_ref
+
+    @property
+    def recheck_prompt_ref(self) -> PromptReference:
+        return self._recheck_prompt_ref
+
     def inspect(
         self,
         *,
@@ -202,7 +210,38 @@ class PlanReviewAgent:
             answer_draft=answer_draft,
             plan_draft=plan_draft,
         )
-        llm_result = self._llm_runtime.invoke_structured(
+        llm_result = self.invoke_inspect_llm(
+            request_intent=request_intent,
+            context_result=context_result,
+            analysis_result=analysis_result,
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+            request=request,
+            policy_review_context=policy_review_context,
+        )
+        return self.build_output_from_llm_result(
+            llm_result,
+            analysis_result=analysis_result,
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+        )
+
+    def invoke_inspect_llm(
+        self,
+        *,
+        request_intent: RequestIntentV1,
+        context_result: ContextRetrievalResultV1,
+        analysis_result: WorkAnalysisResultV1,
+        answer_draft: AnswerDraftV1 | None,
+        plan_draft: ActionPlanDraftV1 | None,
+        request: WorkflowStartRequest,
+        policy_review_context: PolicyReviewContextV1 | None = None,
+    ) -> StructuredLLMResult:
+        target_kind, draft = resolve_review_target(
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+        )
+        return self._llm_runtime.invoke_structured(
             prompt_ref=self._inspect_prompt_ref,
             prompt_input=_build_review_prompt_input(
                 request=request,
@@ -224,15 +263,6 @@ class PlanReviewAgent:
                 llm_call_id=f"{request.run_id}:review.inspect",
             ),
         )
-        result = validate_plan_review_result_v1(
-            llm_result.structured_output,
-            target_kind=target_kind,
-            analysis_result=analysis_result,
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-        )
-        result["llm_provider_result"] = _provider_summary(llm_result)
-        return result
 
     def recheck(
         self,
@@ -249,7 +279,39 @@ class PlanReviewAgent:
             answer_draft=answer_draft,
             plan_draft=plan_draft,
         )
-        llm_result = self._llm_runtime.invoke_structured(
+        llm_result = self.invoke_recheck_llm(
+            request_intent=request_intent,
+            context_result=context_result,
+            analysis_result=analysis_result,
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+            request=request,
+            policy_review_context=policy_review_context,
+        )
+        return self.build_output_from_llm_result(
+            llm_result,
+            analysis_result=analysis_result,
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+            allowed_statuses=_RECHECK_ALLOWED_STATUSES,
+        )
+
+    def invoke_recheck_llm(
+        self,
+        *,
+        request_intent: RequestIntentV1,
+        context_result: ContextRetrievalResultV1,
+        analysis_result: WorkAnalysisResultV1,
+        answer_draft: AnswerDraftV1 | None,
+        plan_draft: ActionPlanDraftV1 | None,
+        request: WorkflowStartRequest,
+        policy_review_context: PolicyReviewContextV1 | None = None,
+    ) -> StructuredLLMResult:
+        target_kind, draft = resolve_review_target(
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+        )
+        return self._llm_runtime.invoke_structured(
             prompt_ref=self._recheck_prompt_ref,
             prompt_input=_build_review_prompt_input(
                 request=request,
@@ -271,13 +333,27 @@ class PlanReviewAgent:
                 llm_call_id=f"{request.run_id}:review.recheck",
             ),
         )
+
+    def build_output_from_llm_result(
+        self,
+        llm_result: StructuredLLMResult,
+        *,
+        analysis_result: WorkAnalysisResultV1,
+        answer_draft: AnswerDraftV1 | None,
+        plan_draft: ActionPlanDraftV1 | None,
+        allowed_statuses: frozenset[str] = _INSPECT_ALLOWED_STATUSES,
+    ) -> PlanReviewResultV1:
+        target_kind, _draft = resolve_review_target(
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+        )
         result = validate_plan_review_result_v1(
             llm_result.structured_output,
             target_kind=target_kind,
             analysis_result=analysis_result,
             answer_draft=answer_draft,
             plan_draft=plan_draft,
-            allowed_statuses=_RECHECK_ALLOWED_STATUSES,
+            allowed_statuses=allowed_statuses,
         )
         result["llm_provider_result"] = _provider_summary(llm_result)
         return result

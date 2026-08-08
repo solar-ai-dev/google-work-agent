@@ -64,6 +64,8 @@ def merge_trace_context(
     prompt_ref: PromptReference | None = None,
     agent_invocation_increment: int = 0,
     llm_call_increment: int = 0,
+    repair_increment: int = 0,
+    revision_increment: int = 0,
 ) -> dict[str, object]:
     current = cast(dict[str, object], state.get("trace_context", {}))
     node_log = list(cast(list[dict[str, object]], current.get("agent_node_log", [])))
@@ -86,6 +88,8 @@ def merge_trace_context(
         "agent_invocation_count": int(current.get("agent_invocation_count", 0))
         + agent_invocation_increment,
         "llm_call_count": int(current.get("llm_call_count", 0)) + llm_call_increment,
+        "repair_count": int(current.get("repair_count", 0)) + repair_increment,
+        "revision_count": int(current.get("revision_count", 0)) + revision_increment,
         "agent_node_log": node_log,
         "prompt_refs": prompt_refs,
     }

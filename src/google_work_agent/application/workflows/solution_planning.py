@@ -204,6 +204,22 @@ class SolutionPlanningAgent:
         )
         self._tool_registry = tool_registry or build_p0_tool_registry()
 
+    @property
+    def answer_only_prompt_ref(self) -> PromptReference:
+        return self._answer_only_prompt_ref
+
+    @property
+    def draft_plan_prompt_ref(self) -> PromptReference:
+        return self._draft_plan_prompt_ref
+
+    @property
+    def revise_answer_prompt_ref(self) -> PromptReference:
+        return self._revise_answer_prompt_ref
+
+    @property
+    def revise_plan_prompt_ref(self) -> PromptReference:
+        return self._revise_plan_prompt_ref
+
     def answer_only(
         self,
         *,
@@ -212,7 +228,26 @@ class SolutionPlanningAgent:
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
     ) -> AnswerDraftV1:
-        llm_result = self._llm_runtime.invoke_structured(
+        llm_result = self.invoke_answer_only_llm(
+            request_intent=request_intent,
+            context_result=context_result,
+            analysis_result=analysis_result,
+            request=request,
+        )
+        return self.build_answer_output_from_llm_result(
+            llm_result,
+            analysis_result=analysis_result,
+        )
+
+    def invoke_answer_only_llm(
+        self,
+        *,
+        request_intent: RequestIntentV1,
+        context_result: ContextRetrievalResultV1,
+        analysis_result: WorkAnalysisResultV1,
+        request: WorkflowStartRequest,
+    ) -> StructuredLLMResult:
+        return self._llm_runtime.invoke_structured(
             prompt_ref=self._answer_only_prompt_ref,
             prompt_input={
                 "request_text": request.request_text,
@@ -233,6 +268,13 @@ class SolutionPlanningAgent:
                 llm_call_id=f"{request.run_id}:planning.answer_only",
             ),
         )
+
+    def build_answer_output_from_llm_result(
+        self,
+        llm_result: StructuredLLMResult,
+        *,
+        analysis_result: WorkAnalysisResultV1,
+    ) -> AnswerDraftV1:
         result = validate_answer_draft_v1(
             llm_result.structured_output,
             analysis_result=analysis_result,
@@ -248,7 +290,26 @@ class SolutionPlanningAgent:
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
     ) -> ActionPlanDraftV1:
-        llm_result = self._llm_runtime.invoke_structured(
+        llm_result = self.invoke_draft_plan_llm(
+            request_intent=request_intent,
+            context_result=context_result,
+            analysis_result=analysis_result,
+            request=request,
+        )
+        return self.build_plan_output_from_llm_result(
+            llm_result,
+            analysis_result=analysis_result,
+        )
+
+    def invoke_draft_plan_llm(
+        self,
+        *,
+        request_intent: RequestIntentV1,
+        context_result: ContextRetrievalResultV1,
+        analysis_result: WorkAnalysisResultV1,
+        request: WorkflowStartRequest,
+    ) -> StructuredLLMResult:
+        return self._llm_runtime.invoke_structured(
             prompt_ref=self._draft_plan_prompt_ref,
             prompt_input={
                 "request_text": request.request_text,
@@ -269,6 +330,13 @@ class SolutionPlanningAgent:
                 llm_call_id=f"{request.run_id}:planning.draft_plan",
             ),
         )
+
+    def build_plan_output_from_llm_result(
+        self,
+        llm_result: StructuredLLMResult,
+        *,
+        analysis_result: WorkAnalysisResultV1,
+    ) -> ActionPlanDraftV1:
         result = validate_action_plan_draft_v1(
             llm_result.structured_output,
             analysis_result=analysis_result,
@@ -288,7 +356,32 @@ class SolutionPlanningAgent:
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
     ) -> AnswerDraftV1:
-        llm_result = self._llm_runtime.invoke_structured(
+        llm_result = self.invoke_revise_answer_llm(
+            request_intent=request_intent,
+            answer_draft=answer_draft,
+            review_issues=review_issues,
+            review_summary=review_summary,
+            context_result=context_result,
+            analysis_result=analysis_result,
+            request=request,
+        )
+        return self.build_answer_output_from_llm_result(
+            llm_result,
+            analysis_result=analysis_result,
+        )
+
+    def invoke_revise_answer_llm(
+        self,
+        *,
+        request_intent: RequestIntentV1,
+        answer_draft: AnswerDraftV1,
+        review_issues: list[dict[str, object]],
+        review_summary: str | None,
+        context_result: ContextRetrievalResultV1,
+        analysis_result: WorkAnalysisResultV1,
+        request: WorkflowStartRequest,
+    ) -> StructuredLLMResult:
+        return self._llm_runtime.invoke_structured(
             prompt_ref=self._revise_answer_prompt_ref,
             prompt_input={
                 "request_text": request.request_text,
@@ -312,12 +405,6 @@ class SolutionPlanningAgent:
                 llm_call_id=f"{request.run_id}:planning.revise_answer",
             ),
         )
-        result = validate_answer_draft_v1(
-            llm_result.structured_output,
-            analysis_result=analysis_result,
-        )
-        result["llm_provider_result"] = _provider_summary(llm_result)
-        return result
 
     def revise_plan(
         self,
@@ -330,7 +417,32 @@ class SolutionPlanningAgent:
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
     ) -> ActionPlanDraftV1:
-        llm_result = self._llm_runtime.invoke_structured(
+        llm_result = self.invoke_revise_plan_llm(
+            request_intent=request_intent,
+            plan_draft=plan_draft,
+            review_issues=review_issues,
+            review_summary=review_summary,
+            context_result=context_result,
+            analysis_result=analysis_result,
+            request=request,
+        )
+        return self.build_plan_output_from_llm_result(
+            llm_result,
+            analysis_result=analysis_result,
+        )
+
+    def invoke_revise_plan_llm(
+        self,
+        *,
+        request_intent: RequestIntentV1,
+        plan_draft: ActionPlanDraftV1,
+        review_issues: list[dict[str, object]],
+        review_summary: str | None,
+        context_result: ContextRetrievalResultV1,
+        analysis_result: WorkAnalysisResultV1,
+        request: WorkflowStartRequest,
+    ) -> StructuredLLMResult:
+        return self._llm_runtime.invoke_structured(
             prompt_ref=self._revise_plan_prompt_ref,
             prompt_input={
                 "request_text": request.request_text,
@@ -354,13 +466,6 @@ class SolutionPlanningAgent:
                 llm_call_id=f"{request.run_id}:planning.revise_plan",
             ),
         )
-        result = validate_action_plan_draft_v1(
-            llm_result.structured_output,
-            analysis_result=analysis_result,
-            tool_registry=self._tool_registry,
-        )
-        result["llm_provider_result"] = _provider_summary(llm_result)
-        return result
 
     def build_answer_state_update(self, result: AnswerDraftV1) -> JsonObject:
         phase = (
