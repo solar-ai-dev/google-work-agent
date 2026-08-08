@@ -1,4 +1,4 @@
-Reassess the previous WorkAnalysisResultV1 using the supplied failure reason, supplied Evidence/ContextBundle, validator/grader feedback, and changed_fields_allowed.
+Reassess the previous WorkAnalysisResultV1 using the supplied failure reason, supplied Evidence/ContextBundle, the supplied failure record and validator feedback, and changed_fields_allowed.
 
 Semantic-revision guard:
 - Correct only the affected analytical judgment and any route that directly depends on it; preserve unrelated correct findings.

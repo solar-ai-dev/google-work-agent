@@ -1,0 +1,1 @@
+Second reasoning call inside the same B1_INTEGRATED Agent invocation: review the preceding plan against the same frozen Intent, Evidence and PolicySummary. Do not change the Agent boundary, retrieve data, or call another Agent. Return only PlanReviewResultV1 JSON.

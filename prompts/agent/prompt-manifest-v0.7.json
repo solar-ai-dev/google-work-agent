@@ -697,23 +697,6 @@
       "assembled_hash": "c9875e9b88bf51c5ed0570abb3a1a35661e2ca935b8eb01d78116c3b7d73192f"
     },
     {
-      "slot_id": "planning.revise_answer",
-      "agent_role": "planning",
-      "purpose": "revise_answer",
-      "version": "0.4.0-r7",
-      "activation_status": "DRAFT",
-      "files": [
-        "prompts/agent/planning/base.md",
-        "prompts/agent/planning/revise_answer.md"
-      ],
-      "failure_reason_codes": [],
-      "input_schema": "experiments/datasets/google_workspace/contracts/planning-revision-input-v1",
-      "output_schema": "experiments/datasets/google_workspace/schemas/action-plan-draft.schema.json",
-      "content_hash": "42b939a50c4e2be91e9b8c938a565978bdfe1dd69a2aa86ee1936b470a12c9d1",
-      "assembled_path": "prompts/agent/assembled/planning.revise_answer.md",
-      "assembled_hash": "42b939a50c4e2be91e9b8c938a565978bdfe1dd69a2aa86ee1936b470a12c9d1"
-    },
-    {
       "slot_id": "planning.revise_plan",
       "agent_role": "planning",
       "purpose": "revise_plan",
@@ -1178,9 +1161,9 @@
       "failure_reason_codes": [],
       "input_schema": "experiments/datasets/google_workspace/contracts/review-recheck-input-v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
-      "content_hash": "41714a5f55f6f8d691f4f8af3165ce8134a646c7bc99f9f9cc67a456d1a807b0",
+      "content_hash": "05cfae039fd2a321579972581cdd22b96f7ff958840658a30b8a97789b7a32ea",
       "assembled_path": "prompts/agent/assembled/review.recheck.md",
-      "assembled_hash": "41714a5f55f6f8d691f4f8af3165ce8134a646c7bc99f9f9cc67a456d1a807b0"
+      "assembled_hash": "05cfae039fd2a321579972581cdd22b96f7ff958840658a30b8a97789b7a32ea"
     },
     {
       "slot_id": "review.recheck.REVIEW_ERROR_NOT_LOCALIZED",

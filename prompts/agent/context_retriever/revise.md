@@ -1,4 +1,4 @@
-Re-evaluate the prior ContextRetrievalResultV1 only for the supplied failure reason, supplied segments, validator/grader feedback, and changed_fields_allowed.
+Re-evaluate the prior ContextRetrievalResultV1 only for the supplied failure reason, supplied segments, the supplied failure record and validator feedback, and changed_fields_allowed.
 
 Semantic-revision guard:
 - Change the smallest set of allowed semantic fields needed to correct the failure signature; preserve already-correct evidence and exclusions.
