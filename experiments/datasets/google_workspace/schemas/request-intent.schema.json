@@ -6,42 +6,31 @@
   "additionalProperties": false,
   "required": [
     "schema_version",
-    "result",
-    "entry_mode",
-    "requested_outcome",
     "goal",
     "completion_criteria",
-    "constraints",
-    "ambiguities",
-    "unsupported_scope",
-    "next_route"
+    "semantic_constraints",
+    "ambiguity",
+    "unsupported_scope"
   ],
   "properties": {
     "schema_version": {
       "const": 1
     },
-    "result": {
-      "enum": [
-        "COMPLETE",
-        "NEEDS_CONFIRMATION",
-        "INVALID"
-      ]
-    },
-    "entry_mode": {
-      "enum": [
-        "AGENT_SEARCH",
-        "RESOURCE_SELECTED"
-      ]
-    },
-    "requested_outcome": {
-      "enum": [
-        "ANSWER",
-        "ANALYSIS",
-        "ACTION_PLAN"
-      ]
-    },
     "goal": {
-      "type": "string"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "user_visible_objective"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "user_visible_objective": {
+          "type": "string"
+        }
+      }
     },
     "completion_criteria": {
       "type": "array",
@@ -49,27 +38,107 @@
         "type": "string"
       }
     },
-    "constraints": {
-      "type": "object"
-    },
-    "ambiguities": {
-      "type": "array",
-      "items": {
-        "type": "object"
+    "semantic_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "topics",
+        "people",
+        "time",
+        "sources",
+        "status_or_state",
+        "negative_constraints",
+        "policy_or_safety_constraints"
+      ],
+      "properties": {
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "people": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "time": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "status_or_state": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "negative_constraints": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "policy_or_safety_constraints": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
       }
     },
     "unsupported_scope": {
-      "type": "array",
-      "items": {
-        "type": "string"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "is_unsupported",
+        "reason_code",
+        "explanation"
+      ],
+      "properties": {
+        "is_unsupported": {
+          "type": "boolean"
+        },
+        "reason_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "explanation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
-    "next_route": {
-      "enum": [
-        "SOURCE_PLANNING",
-        "WAITING_CONFIRMATION",
-        "BLOCKED"
-      ]
+    "ambiguity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "is_ambiguous",
+        "items"
+      ],
+      "properties": {
+        "is_ambiguous": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
     }
   }
 }

@@ -18,10 +18,7 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     merge_trace_context,
     record_llm_result,
 )
-from google_work_agent.adapters.langgraph.profiles import (
-    GraphProfile,
-    PromptArtifactGapError,
-)
+from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.application import (
     BlockRunCommand,
     BlockRunService,
@@ -68,6 +65,7 @@ from google_work_agent.application import (
     WriteEvidenceDraft,
     derive_finalize_intent,
 )
+from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
     AgentLocalStateV1,
     ApiDiscoveryAcquisitionAgent,
@@ -85,6 +83,18 @@ from google_work_agent.application.workflows import (
     route_supervisor,
     validate_acquisition_result_v1,
     validate_context_retrieval_result_v1,
+)
+from google_work_agent.application.workflows.profile_fused import (
+    PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA,
+    PROFILE_REQUEST_SOURCE_OUTPUT_SCHEMA,
+    load_profile_single_reason_plan_prompt_reference,
+    load_profile_single_request_source_prompt_reference,
+    load_profile_single_self_review_prompt_reference,
+    load_profile_single_self_review_recheck_prompt_reference,
+    load_profile_three_stage1_prompt_reference,
+    load_profile_three_stage2_prompt_reference,
+    validate_profile_reason_plan_output_v1,
+    validate_profile_request_source_output_v1,
 )
 from google_work_agent.application.write_actions import (
     ClaimWriteActionCommand,
@@ -121,6 +131,8 @@ PLANNING_AGENT_LOCAL_KEY = "__planning_agent_local__"
 PLANNING_MODE_KEY = "__planning_mode__"
 REVIEW_AGENT_LOCAL_KEY = "__review_agent_local__"
 REVIEW_MODE_KEY = "__review_mode__"
+PROFILE_AGENT_LOCAL_KEY = "__profile_agent_local__"
+PROFILE_PROMPT_OUTPUT_KEY = "__profile_prompt_output__"
 
 
 class LangGraphWorkflowRuntime(WorkflowRuntime):
@@ -178,6 +190,28 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
         self._review = PlanReviewAgent(
             llm_runtime=llm_runtime,
+            manifest_path=prompt_manifest_path,
+        )
+        self._single_request_source_prompt_ref = (
+            load_profile_single_request_source_prompt_reference(prompt_manifest_path)
+        )
+        self._single_reason_plan_prompt_ref = load_profile_single_reason_plan_prompt_reference(
+            prompt_manifest_path
+        )
+        self._three_stage1_prompt_ref = load_profile_three_stage1_prompt_reference(
+            prompt_manifest_path
+        )
+        self._three_stage2_prompt_ref = load_profile_three_stage2_prompt_reference(
+            prompt_manifest_path
+        )
+        self._single_review = PlanReviewAgent(
+            llm_runtime=llm_runtime,
+            inspect_prompt_ref=load_profile_single_self_review_prompt_reference(
+                prompt_manifest_path
+            ),
+            recheck_prompt_ref=load_profile_single_self_review_recheck_prompt_reference(
+                prompt_manifest_path
+            ),
             manifest_path=prompt_manifest_path,
         )
         self._domain_validation = DomainValidationService()
@@ -285,14 +319,11 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._analysis_subgraph = self._build_analysis_subgraph()
         self._planning_subgraph = self._build_planning_subgraph()
         self._review_subgraph = self._build_review_subgraph()
-        self._native_agent_subgraphs = {
-            "request_understanding": self._request_subgraph,
-            "acquisition": self._acquisition_subgraph,
-            "context_retriever": self._context_subgraph,
-            "work_analysis": self._analysis_subgraph,
-            "planning": self._planning_subgraph,
-            "review": self._review_subgraph,
-        }
+        self._three_stage_one_subgraph = self._build_three_stage_one_subgraph()
+        self._three_stage_two_subgraph = self._build_three_stage_two_subgraph()
+        self._three_stage_review_subgraph = self._build_three_stage_review_subgraph()
+        self._single_workflow_subgraph = self._build_single_workflow_subgraph()
+        self._native_agent_subgraphs = self._native_subgraphs_for_profile()
         self._topology = self._topology_for_profile()
         self._graph = self._build_graph()
 
@@ -364,10 +395,6 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._checkpoint_connection.close()
 
     def _build_graph(self) -> Any:
-        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
-            raise PromptArtifactGapError(
-                "PROMPT_ARTIFACT_GAP: SINGLE_BASELINE requires a unified prompt artifact"
-            )
         graph = StateGraph(dict)
         for name in self._topology:
             graph.add_node(name, self._node_handler(name))
@@ -481,17 +508,36 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "work_analysis": self._analysis_subgraph,
             "planning": self._planning_subgraph,
             "review": self._review_subgraph,
+            "single_workflow": self._single_workflow_subgraph,
             "source_planning": self._source_planning_node,
             "api_acquisition": self._api_acquisition_node,
             "context_retrieval": self._context_retrieval_node,
             "solution_planning": self._solution_planning_node,
             "plan_review": self._plan_review_node,
             "domain_validation": self._domain_validation_node,
-            "stage_one": self._stage_one_node,
-            "stage_two": self._stage_two_node,
-            "stage_three": self._stage_three_node,
+            "stage_one": self._three_stage_one_subgraph,
+            "stage_two": self._three_stage_two_subgraph,
+            "stage_three": self._three_stage_review_subgraph,
         }
         return mapping[name]
+
+    def _native_subgraphs_for_profile(self) -> dict[str, Any]:
+        if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE:
+            return {
+                "request_understanding": self._request_subgraph,
+                "acquisition": self._acquisition_subgraph,
+                "context_retriever": self._context_subgraph,
+                "work_analysis": self._analysis_subgraph,
+                "planning": self._planning_subgraph,
+                "review": self._review_subgraph,
+            }
+        if self._graph_profile is GraphProfile.THREE_STAGE:
+            return {
+                "stage_one": self._three_stage_one_subgraph,
+                "stage_two": self._three_stage_two_subgraph,
+                "stage_three": self._three_stage_review_subgraph,
+            }
+        return {"single_workflow": self._single_workflow_subgraph}
 
     def _build_request_subgraph(self) -> Any:
         graph = StateGraph(dict)
@@ -887,6 +933,85 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         graph.add_edge("result_validate", "finalize")
         graph.add_edge("finalize", END)
         return graph.compile(name="review_subgraph")
+
+    def _build_three_stage_one_subgraph(self) -> Any:
+        graph = StateGraph(dict)
+        graph.add_node("init", self._three_stage_one_init_node)
+        graph.add_node("request_source", self._three_stage_one_request_source_node)
+        graph.add_node("plan_validate", self._three_stage_one_plan_validate_node)
+        graph.add_node("deterministic_read", self._three_stage_one_read_node)
+        graph.add_node("result_validate", self._three_stage_one_result_validate_node)
+        graph.add_node("finalize", self._three_stage_one_finalize_node)
+        graph.add_edge(START, "init")
+        graph.add_edge("init", "request_source")
+        graph.add_edge("request_source", "plan_validate")
+        graph.add_conditional_edges(
+            "plan_validate",
+            self._route_profile_stage_one_plan_validate,
+            {
+                "deterministic_read": "deterministic_read",
+                "finalize": "finalize",
+            },
+        )
+        graph.add_edge("deterministic_read", "result_validate")
+        graph.add_edge("result_validate", "finalize")
+        graph.add_edge("finalize", END)
+        return graph.compile(name="three_stage_one_subgraph")
+
+    def _build_three_stage_two_subgraph(self) -> Any:
+        graph = StateGraph(dict)
+        graph.add_node("init", self._three_stage_two_init_node)
+        graph.add_node("reason_plan", self._three_stage_two_reason_plan_node)
+        graph.add_node("result_validate", self._three_stage_two_result_validate_node)
+        graph.add_node("finalize", self._three_stage_two_finalize_node)
+        graph.add_edge(START, "init")
+        graph.add_edge("init", "reason_plan")
+        graph.add_edge("reason_plan", "result_validate")
+        graph.add_edge("result_validate", "finalize")
+        graph.add_edge("finalize", END)
+        return graph.compile(name="three_stage_two_subgraph")
+
+    def _build_three_stage_review_subgraph(self) -> Any:
+        graph = StateGraph(dict)
+        graph.add_node("init", self._three_stage_review_init_node)
+        graph.add_node("review", self._three_stage_review_node)
+        graph.add_node("result_validate", self._three_stage_review_result_validate_node)
+        graph.add_node("finalize", self._three_stage_review_finalize_node)
+        graph.add_edge(START, "init")
+        graph.add_edge("init", "review")
+        graph.add_edge("review", "result_validate")
+        graph.add_edge("result_validate", "finalize")
+        graph.add_edge("finalize", END)
+        return graph.compile(name="three_stage_review_subgraph")
+
+    def _build_single_workflow_subgraph(self) -> Any:
+        graph = StateGraph(dict)
+        graph.add_node("init", self._single_workflow_init_node)
+        graph.add_node("request_source", self._single_workflow_request_source_node)
+        graph.add_node("plan_validate", self._single_workflow_plan_validate_node)
+        graph.add_node("deterministic_read", self._single_workflow_read_node)
+        graph.add_node("reason_plan", self._single_workflow_reason_plan_node)
+        graph.add_node("self_review", self._single_workflow_self_review_node)
+        graph.add_node("result_validate", self._single_workflow_result_validate_node)
+        graph.add_node("finalize", self._single_workflow_finalize_node)
+        graph.add_edge(START, "init")
+        graph.add_edge("init", "request_source")
+        graph.add_edge("request_source", "plan_validate")
+        graph.add_conditional_edges(
+            "plan_validate",
+            self._route_single_workflow_plan_validate,
+            {
+                "deterministic_read": "deterministic_read",
+                "reason_plan": "reason_plan",
+                "finalize": "finalize",
+            },
+        )
+        graph.add_edge("deterministic_read", "reason_plan")
+        graph.add_edge("reason_plan", "self_review")
+        graph.add_edge("self_review", "result_validate")
+        graph.add_edge("result_validate", "finalize")
+        graph.add_edge("finalize", END)
+        return graph.compile(name="single_workflow_subgraph")
 
     def _context_subgraph_init_node(self, state: GraphState) -> GraphState:
         invocation_id = self._id_factory()
@@ -1532,6 +1657,879 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         merged.pop(REVIEW_MODE_KEY, None)
         return merged
 
+    def _three_stage_one_init_node(self, state: GraphState) -> GraphState:
+        request = self._request_from_state(state)
+        self._transition_run(request.run_id, "start_analysis")
+        invocation_id = self._id_factory()
+        local_state = build_agent_local_state(
+            agent_role="request_source_agent",
+            invocation_id=invocation_id,
+            node_state="INITIALIZED",
+            input_projection=self._profile_request_source_prompt_input(request),
+            prompt_ref=self._three_stage1_prompt_ref,
+        )
+        return {
+            **state,
+            PROFILE_AGENT_LOCAL_KEY: local_state,
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="stage_one",
+                agent_role="request_source_agent",
+                agent_invocation_id=invocation_id,
+                subgraph_namespace="three.stage1",
+                node_name="init",
+                prompt_ref=self._three_stage1_prompt_ref,
+                agent_invocation_increment=1,
+            ),
+        }
+
+    def _three_stage_one_request_source_node(self, state: GraphState) -> GraphState:
+        request = self._request_from_state(state)
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        llm_result = self._request_understanding._llm_runtime.invoke_structured(
+            prompt_ref=self._three_stage1_prompt_ref,
+            prompt_input=self._profile_request_source_prompt_input(request),
+            output_schema=PROFILE_REQUEST_SOURCE_OUTPUT_SCHEMA,
+            trace_context=self._profile_trace_context(
+                request=request,
+                llm_call_id=f"{request.run_id}:profile.three.stage1.initial",
+            ),
+        )
+        output = validate_profile_request_source_output_v1(llm_result.structured_output)
+        updated_local = dict(record_llm_result(local_state, llm_result))
+        updated_local["node_state"] = "REQUEST_SOURCE_COMPLETE"
+        updated_local["typed_result"] = cast(dict[str, object], output)
+        return {
+            **state,
+            PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            PROFILE_PROMPT_OUTPUT_KEY: output,
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="stage_one",
+                agent_role="request_source_agent",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="three.stage1",
+                node_name="request_source",
+                llm_call_id=f"{request.run_id}:profile.three.stage1.initial",
+                prompt_ref=self._three_stage1_prompt_ref,
+                llm_call_increment=llm_result.structured_output_attempts,
+                repair_increment=max(0, llm_result.structured_output_attempts - 1),
+            ),
+        }
+
+    def _three_stage_one_plan_validate_node(self, state: GraphState) -> GraphState:
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        prompt_output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
+        source_plan = cast(dict[str, object], prompt_output["source_plan"])
+        updated_local = dict(local_state)
+        updated_local["node_state"] = "PLAN_VALIDATED"
+        updated_local["typed_result"] = prompt_output
+        next_state = {
+            **state,
+            "request_intent": prompt_output["request_intent"],
+            "source_fetch_plans": cast(list[dict[str, object]], source_plan["source_fetch_plans"]),
+            PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="stage_one",
+                agent_role="request_source_agent",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="three.stage1",
+                node_name="plan_validate",
+            ),
+        }
+        if source_plan["result"] == "NO_FETCH_NEEDED":
+            next_state["acquisition_result"] = self._build_no_fetch_acquisition_result()
+        return next_state
+
+    def _route_profile_stage_one_plan_validate(self, state: GraphState) -> str:
+        prompt_output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
+        source_plan = cast(dict[str, object], prompt_output["source_plan"])
+        return "deterministic_read" if source_plan["result"] == "PLAN_READY" else "finalize"
+
+    def _route_single_workflow_plan_validate(self, state: GraphState) -> str:
+        prompt_output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
+        source_plan = cast(dict[str, object], prompt_output["source_plan"])
+        if source_plan["result"] == "PLAN_READY":
+            return "deterministic_read"
+        if source_plan["result"] == "NO_FETCH_NEEDED":
+            return "reason_plan"
+        return "finalize"
+
+    def _three_stage_one_read_node(self, state: GraphState) -> GraphState:
+        request = self._request_from_state(state)
+        self._transition_run(request.run_id, "begin_retrieval")
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        result = self._acquisition.acquire(
+            plans=cast(list[dict[str, object]], state["source_fetch_plans"]),
+            request=request,
+        )
+        updated_local = dict(local_state)
+        updated_local["node_state"] = "READ_COMPLETE"
+        updated_local["typed_result"] = cast(dict[str, object], result)
+        return {
+            **state,
+            "acquisition_result": result,
+            PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="stage_one",
+                agent_role="request_source_agent",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="three.stage1",
+                node_name="deterministic_read",
+            ),
+        }
+
+    def _three_stage_one_result_validate_node(self, state: GraphState) -> GraphState:
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        acquisition_result = validate_acquisition_result_v1(state["acquisition_result"])
+        updated_local = dict(local_state)
+        updated_local["node_state"] = "RESULT_VALIDATED"
+        updated_local["typed_result"] = cast(dict[str, object], acquisition_result)
+        return {
+            **state,
+            "acquisition_result": acquisition_result,
+            PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="stage_one",
+                agent_role="request_source_agent",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="three.stage1",
+                node_name="result_validate",
+            ),
+        }
+
+    def _three_stage_one_finalize_node(self, state: GraphState) -> GraphState:
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        prompt_output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
+        source_plan = cast(dict[str, object], prompt_output["source_plan"])
+        request_intent = cast(dict[str, object], prompt_output["request_intent"])
+        current = {
+            **state,
+            "request_intent": request_intent,
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="stage_one",
+                agent_role="request_source_agent",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="three.stage1",
+                node_name="finalize",
+            ),
+        }
+        if source_plan["result"] != "PLAN_READY":
+            decision = route_supervisor(
+                phase=WorkflowPhase.SOURCE_PLANNING,
+                state=cast(MultiAgentGraphState, current),
+                result=source_plan,
+            )
+            updated_local = dict(local_state)
+            updated_local["node_state"] = "FINALIZED"
+            updated_local["disposition"] = {
+                "schema_version": 1,
+                "status": cast(str, source_plan["result"]),
+                "next_target": cast(str, decision["target"]),
+                "reason_code": cast(str | None, decision.get("reason_code")),
+            }
+            merged = self._merge_decision(
+                {**current, PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local)},
+                {
+                    "request_intent": request_intent,
+                    **self._acquisition.build_planning_state_update(source_plan),
+                },
+                decision,
+            )
+        else:
+            acquisition_result = cast(dict[str, object], state["acquisition_result"])
+            decision = route_supervisor(
+                phase=WorkflowPhase.API_ACQUISITION,
+                state=cast(MultiAgentGraphState, current),
+                result=acquisition_result,
+            )
+            updated_local = dict(local_state)
+            updated_local["node_state"] = "FINALIZED"
+            updated_local["disposition"] = {
+                "schema_version": 1,
+                "status": cast(str, acquisition_result["status"]),
+                "next_target": cast(str, decision["target"]),
+                "reason_code": cast(str | None, decision.get("reason_code")),
+            }
+            merged = self._merge_decision(
+                {**current, PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local)},
+                {
+                    "request_intent": request_intent,
+                    **self._acquisition.build_planning_state_update(source_plan),
+                    **self._acquisition.build_acquisition_state_update(acquisition_result),
+                },
+                decision,
+            )
+        merged.pop(PROFILE_AGENT_LOCAL_KEY, None)
+        merged.pop(PROFILE_PROMPT_OUTPUT_KEY, None)
+        return merged
+
+    def _three_stage_two_init_node(self, state: GraphState) -> GraphState:
+        request = self._request_from_state(state)
+        self._transition_run(request.run_id, "begin_planning")
+        invocation_id = self._id_factory()
+        local_state = build_agent_local_state(
+            agent_role="evidence_analysis_plan_agent",
+            invocation_id=invocation_id,
+            node_state="INITIALIZED",
+            input_projection=self._profile_post_read_prompt_input(state),
+            prompt_ref=self._three_stage2_prompt_ref,
+        )
+        return {
+            **state,
+            PROFILE_AGENT_LOCAL_KEY: local_state,
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="stage_two",
+                agent_role="evidence_analysis_plan_agent",
+                agent_invocation_id=invocation_id,
+                subgraph_namespace="three.stage2",
+                node_name="init",
+                prompt_ref=self._three_stage2_prompt_ref,
+                agent_invocation_increment=1,
+            ),
+        }
+
+    def _three_stage_two_reason_plan_node(self, state: GraphState) -> GraphState:
+        request = self._request_from_state(state)
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        llm_result = self._request_understanding._llm_runtime.invoke_structured(
+            prompt_ref=self._three_stage2_prompt_ref,
+            prompt_input=self._profile_post_read_prompt_input(state),
+            output_schema=PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA,
+            trace_context=self._profile_trace_context(
+                request=request,
+                llm_call_id=f"{request.run_id}:profile.three.stage2.initial",
+            ),
+        )
+        output = validate_profile_reason_plan_output_v1(llm_result.structured_output)
+        updated_local = dict(record_llm_result(local_state, llm_result))
+        updated_local["node_state"] = "REASON_PLAN_COMPLETE"
+        updated_local["typed_result"] = cast(dict[str, object], output)
+        return {
+            **state,
+            PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            PROFILE_PROMPT_OUTPUT_KEY: output,
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="stage_two",
+                agent_role="evidence_analysis_plan_agent",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="three.stage2",
+                node_name="reason_plan",
+                llm_call_id=f"{request.run_id}:profile.three.stage2.initial",
+                prompt_ref=self._three_stage2_prompt_ref,
+                llm_call_increment=llm_result.structured_output_attempts,
+                repair_increment=max(0, llm_result.structured_output_attempts - 1),
+            ),
+        }
+
+    def _three_stage_two_result_validate_node(self, state: GraphState) -> GraphState:
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
+        updated_local = dict(local_state)
+        updated_local["node_state"] = "RESULT_VALIDATED"
+        updated_local["typed_result"] = output
+        return {
+            **state,
+            PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="stage_two",
+                agent_role="evidence_analysis_plan_agent",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="three.stage2",
+                node_name="result_validate",
+            ),
+        }
+
+    def _three_stage_two_finalize_node(self, state: GraphState) -> GraphState:
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
+        context_result = cast(dict[str, object], output["context_result"])
+        analysis_result = cast(dict[str, object], output["analysis_result"])
+        planning_result = cast(dict[str, object], output["planning_result"])
+        result = self._planning_result_from_projection(planning_result)
+        state_update = self._profile_reason_plan_state_update(output)
+        decision = route_supervisor(
+            phase=WorkflowPhase.SOLUTION_PLANNING,
+            state=cast(
+                MultiAgentGraphState,
+                {
+                    **state,
+                    "context_result": context_result,
+                    "analysis_result": analysis_result,
+                },
+            ),
+            result=result,
+        )
+        updated_local = dict(local_state)
+        updated_local["node_state"] = "FINALIZED"
+        updated_local["disposition"] = {
+            "schema_version": 1,
+            "status": cast(str, result["status"]),
+            "next_target": cast(str, decision["target"]),
+            "reason_code": cast(str | None, decision.get("reason_code")),
+        }
+        merged = self._merge_decision(
+            {
+                **state,
+                PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+                "trace_context": merge_trace_context(
+                    state,
+                    graph_profile=self._graph_profile.value,
+                    agent_subgraph_id="stage_two",
+                    agent_role="evidence_analysis_plan_agent",
+                    agent_invocation_id=local_state["invocation_id"],
+                    subgraph_namespace="three.stage2",
+                    node_name="finalize",
+                ),
+            },
+            state_update,
+            decision,
+        )
+        merged.pop(PROFILE_AGENT_LOCAL_KEY, None)
+        merged.pop(PROFILE_PROMPT_OUTPUT_KEY, None)
+        return merged
+
+    def _three_stage_review_init_node(self, state: GraphState) -> GraphState:
+        invocation_id = self._id_factory()
+        review = cast(dict[str, object] | None, state.get("plan_review"))
+        mode = (
+            "recheck"
+            if review is not None and review.get("status") == ReviewResult.REVISE.value
+            else "inspect"
+        )
+        prompt_ref = (
+            self._review.recheck_prompt_ref
+            if mode == "recheck"
+            else self._review.inspect_prompt_ref
+        )
+        local_state = build_agent_local_state(
+            agent_role="review",
+            invocation_id=invocation_id,
+            node_state="INITIALIZED",
+            input_projection={"mode": mode},
+            prompt_ref=prompt_ref,
+        )
+        return {
+            **state,
+            REVIEW_AGENT_LOCAL_KEY: local_state,
+            REVIEW_MODE_KEY: mode,
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="stage_three",
+                agent_role="review",
+                agent_invocation_id=invocation_id,
+                subgraph_namespace="three.stage3",
+                node_name="init",
+                prompt_ref=prompt_ref,
+                agent_invocation_increment=1,
+            ),
+        }
+
+    def _three_stage_review_node(self, state: GraphState) -> GraphState:
+        request = self._request_from_state(state)
+        local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
+        mode = cast(str, state[REVIEW_MODE_KEY])
+        if mode == "recheck":
+            llm_result = self._review.invoke_recheck_llm(
+                request_intent=cast(dict[str, object], state["request_intent"]),
+                context_result=cast(dict[str, object], state["context_result"]),
+                analysis_result=cast(dict[str, object], state["analysis_result"]),
+                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
+                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+                request=request,
+            )
+            result = self._review.build_output_from_llm_result(
+                llm_result,
+                analysis_result=cast(dict[str, object], state["analysis_result"]),
+                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
+                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+                allowed_statuses=frozenset({ReviewResult.PASS.value, ReviewResult.BLOCK.value}),
+            )
+            llm_call_id = f"{request.run_id}:review.recheck"
+        else:
+            llm_result = self._review.invoke_inspect_llm(
+                request_intent=cast(dict[str, object], state["request_intent"]),
+                context_result=cast(dict[str, object], state["context_result"]),
+                analysis_result=cast(dict[str, object], state["analysis_result"]),
+                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
+                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+                request=request,
+            )
+            result = self._review.build_output_from_llm_result(
+                llm_result,
+                analysis_result=cast(dict[str, object], state["analysis_result"]),
+                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
+                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+            )
+            llm_call_id = f"{request.run_id}:review.inspect"
+        updated_local = dict(record_llm_result(local_state, llm_result))
+        updated_local["node_state"] = "REVIEW_COMPLETE"
+        updated_local["typed_result"] = cast(dict[str, object], result)
+        return {
+            **state,
+            REVIEW_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            "plan_review": result,
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="stage_three",
+                agent_role="review",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="three.stage3",
+                node_name="review",
+                llm_call_id=llm_call_id,
+                llm_call_increment=llm_result.structured_output_attempts,
+                repair_increment=max(0, llm_result.structured_output_attempts - 1),
+            ),
+        }
+
+    def _three_stage_review_result_validate_node(self, state: GraphState) -> GraphState:
+        local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
+        result = cast(dict[str, object], state["plan_review"])
+        updated_local = dict(local_state)
+        updated_local["node_state"] = "RESULT_VALIDATED"
+        updated_local["typed_result"] = result
+        return {
+            **state,
+            REVIEW_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="stage_three",
+                agent_role="review",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="three.stage3",
+                node_name="result_validate",
+            ),
+        }
+
+    def _three_stage_review_finalize_node(self, state: GraphState) -> GraphState:
+        local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
+        result = cast(dict[str, object], state["plan_review"])
+        decision = route_supervisor(
+            phase=WorkflowPhase.PLAN_REVIEW,
+            state=cast(MultiAgentGraphState, state),
+            result=result,
+        )
+        updated_local = dict(local_state)
+        updated_local["node_state"] = "FINALIZED"
+        updated_local["disposition"] = {
+            "schema_version": 1,
+            "status": cast(str, result["status"]),
+            "next_target": cast(str, decision["target"]),
+            "reason_code": cast(str | None, decision.get("reason_code")),
+        }
+        merged = self._merge_decision(
+            {
+                **state,
+                REVIEW_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+                "trace_context": merge_trace_context(
+                    state,
+                    graph_profile=self._graph_profile.value,
+                    agent_subgraph_id="stage_three",
+                    agent_role="review",
+                    agent_invocation_id=local_state["invocation_id"],
+                    subgraph_namespace="three.stage3",
+                    node_name="finalize",
+                ),
+            },
+            self._review.build_state_update(result),
+            decision,
+        )
+        merged.pop(REVIEW_AGENT_LOCAL_KEY, None)
+        merged.pop(REVIEW_MODE_KEY, None)
+        return merged
+
+    def _single_workflow_init_node(self, state: GraphState) -> GraphState:
+        request = self._request_from_state(state)
+        self._transition_run(request.run_id, "start_analysis")
+        invocation_id = self._id_factory()
+        local_state = build_agent_local_state(
+            agent_role="unified_agent",
+            invocation_id=invocation_id,
+            node_state="INITIALIZED",
+            input_projection=self._profile_request_source_prompt_input(request),
+            prompt_ref=self._single_request_source_prompt_ref,
+        )
+        return {
+            **state,
+            PROFILE_AGENT_LOCAL_KEY: local_state,
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="single_workflow",
+                agent_role="unified_agent",
+                agent_invocation_id=invocation_id,
+                subgraph_namespace="single",
+                node_name="init",
+                prompt_ref=self._single_request_source_prompt_ref,
+                agent_invocation_increment=1,
+            ),
+        }
+
+    def _single_workflow_request_source_node(self, state: GraphState) -> GraphState:
+        request = self._request_from_state(state)
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        llm_result = self._request_understanding._llm_runtime.invoke_structured(
+            prompt_ref=self._single_request_source_prompt_ref,
+            prompt_input=self._profile_request_source_prompt_input(request),
+            output_schema=PROFILE_REQUEST_SOURCE_OUTPUT_SCHEMA,
+            trace_context=self._profile_trace_context(
+                request=request,
+                llm_call_id=f"{request.run_id}:profile.single.request_source.initial",
+            ),
+        )
+        output = validate_profile_request_source_output_v1(llm_result.structured_output)
+        updated_local = dict(record_llm_result(local_state, llm_result))
+        updated_local["node_state"] = "REQUEST_SOURCE_COMPLETE"
+        updated_local["typed_result"] = cast(dict[str, object], output)
+        return {
+            **state,
+            PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            PROFILE_PROMPT_OUTPUT_KEY: output,
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="single_workflow",
+                agent_role="unified_agent",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="single",
+                node_name="request_source",
+                llm_call_id=f"{request.run_id}:profile.single.request_source.initial",
+                prompt_ref=self._single_request_source_prompt_ref,
+                llm_call_increment=llm_result.structured_output_attempts,
+                repair_increment=max(0, llm_result.structured_output_attempts - 1),
+            ),
+        }
+
+    def _single_workflow_plan_validate_node(self, state: GraphState) -> GraphState:
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        prompt_output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
+        source_plan = cast(dict[str, object], prompt_output["source_plan"])
+        updated_local = dict(local_state)
+        updated_local["node_state"] = "PLAN_VALIDATED"
+        updated_local["typed_result"] = prompt_output
+        next_state = {
+            **state,
+            "request_intent": prompt_output["request_intent"],
+            "source_fetch_plans": cast(list[dict[str, object]], source_plan["source_fetch_plans"]),
+            PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="single_workflow",
+                agent_role="unified_agent",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="single",
+                node_name="plan_validate",
+            ),
+        }
+        if source_plan["result"] == "NO_FETCH_NEEDED":
+            next_state["acquisition_result"] = self._build_no_fetch_acquisition_result()
+        return next_state
+
+    def _single_workflow_read_node(self, state: GraphState) -> GraphState:
+        request = self._request_from_state(state)
+        self._transition_run(request.run_id, "begin_retrieval")
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        result = self._acquisition.acquire(
+            plans=cast(list[dict[str, object]], state["source_fetch_plans"]),
+            request=request,
+        )
+        updated_local = dict(local_state)
+        updated_local["node_state"] = "READ_COMPLETE"
+        updated_local["typed_result"] = cast(dict[str, object], result)
+        return {
+            **state,
+            "acquisition_result": result,
+            PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="single_workflow",
+                agent_role="unified_agent",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="single",
+                node_name="deterministic_read",
+            ),
+        }
+
+    def _single_workflow_reason_plan_node(self, state: GraphState) -> GraphState:
+        request = self._request_from_state(state)
+        self._transition_run(request.run_id, "begin_planning")
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        llm_result = self._request_understanding._llm_runtime.invoke_structured(
+            prompt_ref=self._single_reason_plan_prompt_ref,
+            prompt_input=self._profile_post_read_prompt_input(state),
+            output_schema=PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA,
+            trace_context=self._profile_trace_context(
+                request=request,
+                llm_call_id=f"{request.run_id}:profile.single.reason_plan.initial",
+            ),
+        )
+        output = validate_profile_reason_plan_output_v1(llm_result.structured_output)
+        updated_local = dict(record_llm_result(local_state, llm_result))
+        updated_local["node_state"] = "REASON_PLAN_COMPLETE"
+        updated_local["typed_result"] = cast(dict[str, object], output)
+        return {
+            **state,
+            PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            PROFILE_PROMPT_OUTPUT_KEY: output,
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="single_workflow",
+                agent_role="unified_agent",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="single",
+                node_name="reason_plan",
+                llm_call_id=f"{request.run_id}:profile.single.reason_plan.initial",
+                prompt_ref=self._single_reason_plan_prompt_ref,
+                llm_call_increment=llm_result.structured_output_attempts,
+                repair_increment=max(0, llm_result.structured_output_attempts - 1),
+            ),
+        }
+
+    def _single_workflow_self_review_node(self, state: GraphState) -> GraphState:
+        request = self._request_from_state(state)
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
+        planning_result = cast(dict[str, object], output["planning_result"])
+        result = self._planning_result_from_projection(planning_result)
+        llm_result = self._single_review.invoke_inspect_llm(
+            request_intent=cast(dict[str, object], state["request_intent"]),
+            context_result=cast(dict[str, object], output["context_result"]),
+            analysis_result=cast(dict[str, object], output["analysis_result"]),
+            answer_draft=cast(dict[str, object] | None, result if "answer" in result else None),
+            plan_draft=cast(dict[str, object] | None, result if "plan_id" in result else None),
+            request=request,
+        )
+        review_result = self._single_review.build_output_from_llm_result(
+            llm_result,
+            analysis_result=cast(dict[str, object], output["analysis_result"]),
+            answer_draft=cast(dict[str, object] | None, result if "answer" in result else None),
+            plan_draft=cast(dict[str, object] | None, result if "plan_id" in result else None),
+        )
+        updated_local = dict(record_llm_result(local_state, llm_result))
+        updated_local["node_state"] = "SELF_REVIEW_COMPLETE"
+        updated_local["typed_result"] = cast(dict[str, object], review_result)
+        return {
+            **state,
+            PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            "context_result": output["context_result"],
+            "analysis_result": output["analysis_result"],
+            **self._profile_planning_state_update(planning_result),
+            "plan_review": review_result,
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="single_workflow",
+                agent_role="unified_agent",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="single",
+                node_name="self_review",
+                llm_call_id=f"{request.run_id}:profile.single.self_review.initial",
+                prompt_ref=self._single_review.inspect_prompt_ref,
+                llm_call_increment=llm_result.structured_output_attempts,
+                repair_increment=max(0, llm_result.structured_output_attempts - 1),
+            ),
+        }
+
+    def _single_workflow_result_validate_node(self, state: GraphState) -> GraphState:
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        review_result = cast(dict[str, object], state["plan_review"])
+        updated_local = dict(local_state)
+        updated_local["node_state"] = "RESULT_VALIDATED"
+        updated_local["typed_result"] = review_result
+        return {
+            **state,
+            PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            "trace_context": merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="single_workflow",
+                agent_role="unified_agent",
+                agent_invocation_id=local_state["invocation_id"],
+                subgraph_namespace="single",
+                node_name="result_validate",
+            ),
+        }
+
+    def _single_workflow_finalize_node(self, state: GraphState) -> GraphState:
+        local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
+        if state.get("plan_review") is None:
+            prompt_output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
+            source_plan = cast(dict[str, object], prompt_output["source_plan"])
+            request_intent = cast(dict[str, object], prompt_output["request_intent"])
+            current = {
+                **state,
+                "request_intent": request_intent,
+                "trace_context": merge_trace_context(
+                    state,
+                    graph_profile=self._graph_profile.value,
+                    agent_subgraph_id="single_workflow",
+                    agent_role="unified_agent",
+                    agent_invocation_id=local_state["invocation_id"],
+                    subgraph_namespace="single",
+                    node_name="finalize",
+                ),
+            }
+            decision = route_supervisor(
+                phase=WorkflowPhase.SOURCE_PLANNING,
+                state=cast(MultiAgentGraphState, current),
+                result=source_plan,
+            )
+            updated_local = dict(local_state)
+            updated_local["node_state"] = "FINALIZED"
+            updated_local["disposition"] = {
+                "schema_version": 1,
+                "status": cast(str, source_plan["result"]),
+                "next_target": cast(str, decision["target"]),
+                "reason_code": cast(str | None, decision.get("reason_code")),
+            }
+            merged = self._merge_decision(
+                {**current, PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local)},
+                {
+                    "request_intent": request_intent,
+                    **self._acquisition.build_planning_state_update(source_plan),
+                },
+                decision,
+            )
+            merged.pop(PROFILE_AGENT_LOCAL_KEY, None)
+            merged.pop(PROFILE_PROMPT_OUTPUT_KEY, None)
+            return merged
+        result = cast(dict[str, object], state["plan_review"])
+        decision = route_supervisor(
+            phase=WorkflowPhase.PLAN_REVIEW,
+            state=cast(MultiAgentGraphState, state),
+            result=result,
+        )
+        updated_local = dict(local_state)
+        updated_local["node_state"] = "FINALIZED"
+        updated_local["disposition"] = {
+            "schema_version": 1,
+            "status": cast(str, result["status"]),
+            "next_target": cast(str, decision["target"]),
+            "reason_code": cast(str | None, decision.get("reason_code")),
+        }
+        merged = self._merge_decision(
+            {
+                **state,
+                PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+                "trace_context": merge_trace_context(
+                    state,
+                    graph_profile=self._graph_profile.value,
+                    agent_subgraph_id="single_workflow",
+                    agent_role="unified_agent",
+                    agent_invocation_id=local_state["invocation_id"],
+                    subgraph_namespace="single",
+                    node_name="finalize",
+                ),
+            },
+            self._single_review.build_state_update(result),
+            decision,
+        )
+        merged.pop(PROFILE_AGENT_LOCAL_KEY, None)
+        merged.pop(PROFILE_PROMPT_OUTPUT_KEY, None)
+        return merged
+
+    def _profile_request_source_prompt_input(
+        self,
+        request: WorkflowStartRequest,
+    ) -> dict[str, object]:
+        return {
+            "request_text": request.request_text,
+            "entry_mode": request.entry_mode,
+            "selected_resource_ids": list(request.selected_resource_ids),
+        }
+
+    def _profile_post_read_prompt_input(self, state: GraphState) -> dict[str, object]:
+        request = self._request_from_state(state)
+        return {
+            "request_text": request.request_text,
+            "request_intent": cast(dict[str, object], state["request_intent"]),
+            "acquisition_result": cast(dict[str, object], state["acquisition_result"]),
+        }
+
+    def _profile_trace_context(
+        self,
+        *,
+        request: WorkflowStartRequest,
+        llm_call_id: str,
+    ) -> ObservabilityContext:
+        return ObservabilityContext(
+            request_id=request.correlation.request_id,
+            command_id=request.correlation.command_id,
+            conversation_id=request.conversation_id,
+            run_id=request.run_id,
+            langgraph_thread_id=request.workflow_key,
+            llm_call_id=llm_call_id,
+        )
+
+    def _planning_result_from_projection(
+        self,
+        planning_result: dict[str, object],
+    ) -> dict[str, object]:
+        answer_draft = cast(dict[str, object] | None, planning_result.get("answer_draft"))
+        if answer_draft is not None:
+            return answer_draft
+        plan_draft = cast(dict[str, object] | None, planning_result.get("plan_draft"))
+        if plan_draft is not None:
+            return plan_draft
+        raise ValueError("planning_result must contain answer_draft or plan_draft")
+
+    def _profile_reason_plan_state_update(
+        self,
+        output: dict[str, object],
+    ) -> dict[str, object]:
+        planning_result = cast(dict[str, object], output["planning_result"])
+        return {
+            "context_result": output["context_result"],
+            "analysis_result": output["analysis_result"],
+            **self._profile_planning_state_update(planning_result),
+        }
+
+    def _profile_planning_state_update(
+        self,
+        planning_result: dict[str, object],
+    ) -> dict[str, object]:
+        result = self._planning_result_from_projection(planning_result)
+        if "answer" in result:
+            return self._planning.build_answer_state_update(cast(dict[str, object], result))
+        return self._planning.build_plan_state_update(cast(dict[str, object], result))
+
+    def _build_no_fetch_acquisition_result(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "status": "COMPLETE",
+            "resource_handles": [],
+            "source_summaries": [],
+            "missing_slots": [],
+            "remaining_budget": {
+                "sources": 0,
+                "pages": 0,
+                "candidates": 0,
+                "details": 0,
+            },
+        }
+
     def _request_understanding_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
         self._transition_run(request.run_id, "start_analysis")
@@ -1546,12 +2544,6 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             self._request_understanding.build_state_update(output, request=request),
             decision,
         )
-
-    def _stage_one_node(self, state: GraphState) -> GraphState:
-        next_state = self._request_understanding_node(state)
-        if next_state.get("__logical_target__") != "source_planning":
-            return next_state
-        return self._source_planning_node(next_state)
 
     def _source_planning_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
@@ -1591,18 +2583,6 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return self._merge_decision(
             state, self._acquisition.build_acquisition_state_update(result), decision
         )
-
-    def _stage_two_node(self, state: GraphState) -> GraphState:
-        next_state = self._api_acquisition_node(state)
-        if next_state.get("__logical_target__") != "context_retrieval":
-            return next_state
-        next_state = self._context_retrieval_node(next_state)
-        if next_state.get("__logical_target__") != "work_analysis":
-            return next_state
-        next_state = self._work_analysis_node(next_state)
-        if next_state.get("__logical_target__") != "solution_planning":
-            return next_state
-        return self._solution_planning_node(next_state)
 
     def _context_retrieval_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
@@ -1711,12 +2691,6 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             result=result,
         )
         return self._merge_decision(state, self._review.build_state_update(result), decision)
-
-    def _stage_three_node(self, state: GraphState) -> GraphState:
-        next_state = self._plan_review_node(state)
-        if next_state.get("__logical_target__") != "domain_validation":
-            return next_state
-        return self._domain_validation_node(next_state)
 
     def _domain_validation_node(self, state: GraphState) -> GraphState:
         plan_draft = cast(dict[str, object], state["plan_draft"])
@@ -2067,6 +3041,36 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return merged
 
     def _logical_target_name(self, target: str) -> str:
+        if self._graph_profile is GraphProfile.SINGLE_BASELINE and target in {
+            SupervisorTarget.SOURCE_PLANNING.value,
+            SupervisorTarget.API_ACQUISITION.value,
+            SupervisorTarget.CONTEXT_RETRIEVAL.value,
+            SupervisorTarget.WORK_ANALYSIS.value,
+            SupervisorTarget.SOLUTION_PLANNING.value,
+            SupervisorTarget.PLAN_REVIEW_INSPECT.value,
+            SupervisorTarget.PLAN_REVIEW_RECHECK.value,
+            SupervisorTarget.PLANNING_REVISE_ANSWER.value,
+            SupervisorTarget.PLANNING_REVISE_PLAN.value,
+        }:
+            return "single_workflow"
+        if self._graph_profile is GraphProfile.THREE_STAGE and target in {
+            SupervisorTarget.SOURCE_PLANNING.value,
+            SupervisorTarget.API_ACQUISITION.value,
+        }:
+            return "stage_one"
+        if self._graph_profile is GraphProfile.THREE_STAGE and target in {
+            SupervisorTarget.CONTEXT_RETRIEVAL.value,
+            SupervisorTarget.WORK_ANALYSIS.value,
+            SupervisorTarget.SOLUTION_PLANNING.value,
+            SupervisorTarget.PLANNING_REVISE_ANSWER.value,
+            SupervisorTarget.PLANNING_REVISE_PLAN.value,
+        }:
+            return "stage_two"
+        if self._graph_profile is GraphProfile.THREE_STAGE and target in {
+            SupervisorTarget.PLAN_REVIEW_INSPECT.value,
+            SupervisorTarget.PLAN_REVIEW_RECHECK.value,
+        }:
+            return "stage_three"
         if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE and target in {
             SupervisorTarget.SOURCE_PLANNING.value,
             SupervisorTarget.API_ACQUISITION.value,
@@ -2106,6 +3110,26 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return mapping.get(target, "end")
 
     def _target_to_node(self, target: str) -> str:
+        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
+            single_mapping = {
+                SupervisorTarget.SOURCE_PLANNING.value: "single_workflow",
+                SupervisorTarget.API_ACQUISITION.value: "single_workflow",
+                SupervisorTarget.CONTEXT_RETRIEVAL.value: "single_workflow",
+                SupervisorTarget.WORK_ANALYSIS.value: "single_workflow",
+                SupervisorTarget.SOLUTION_PLANNING.value: "single_workflow",
+                SupervisorTarget.PLAN_REVIEW_INSPECT.value: "single_workflow",
+                SupervisorTarget.PLAN_REVIEW_RECHECK.value: "single_workflow",
+                SupervisorTarget.PLANNING_REVISE_ANSWER.value: "single_workflow",
+                SupervisorTarget.PLANNING_REVISE_PLAN.value: "single_workflow",
+                SupervisorTarget.DOMAIN_VALIDATION.value: "domain_validation",
+                SupervisorTarget.WAITING_CONFIRMATION.value: "waiting_confirmation",
+                SupervisorTarget.WAITING_APPROVAL.value: "waiting_approval",
+                SupervisorTarget.ACTION_EXECUTION.value: "action_execution",
+                SupervisorTarget.REAUTH.value: "end",
+                SupervisorTarget.RECOVERY.value: "recovery",
+                SupervisorTarget.FINALIZE.value: "finalize",
+            }
+            return single_mapping.get(target, "end")
         if self._graph_profile is GraphProfile.THREE_STAGE:
             three_stage_mapping = {
                 SupervisorTarget.SOURCE_PLANNING.value: "stage_one",
@@ -2117,7 +3141,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 SupervisorTarget.PLAN_REVIEW_RECHECK.value: "stage_three",
                 SupervisorTarget.PLANNING_REVISE_ANSWER.value: "stage_two",
                 SupervisorTarget.PLANNING_REVISE_PLAN.value: "stage_two",
-                SupervisorTarget.DOMAIN_VALIDATION.value: "stage_three",
+                SupervisorTarget.DOMAIN_VALIDATION.value: "domain_validation",
                 SupervisorTarget.WAITING_CONFIRMATION.value: "waiting_confirmation",
                 SupervisorTarget.WAITING_APPROVAL.value: "waiting_approval",
                 SupervisorTarget.ACTION_EXECUTION.value: "action_execution",
@@ -2175,6 +3199,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 return "stage_two"
             if origin_target.startswith("review."):
                 return "stage_three"
+        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
+            return "single_workflow"
         if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE:
             return "acquisition"
         return "source_planning"

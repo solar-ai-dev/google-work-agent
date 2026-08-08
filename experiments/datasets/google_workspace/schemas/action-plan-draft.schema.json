@@ -6,29 +6,34 @@
   "additionalProperties": false,
   "required": [
     "schema_version",
-    "result",
-    "answer_draft",
+    "status",
+    "plan_id",
+    "summary",
+    "objective",
     "actions",
-    "confirmation_question",
-    "blocked_reason_codes"
+    "evidence_refs",
+    "resource_refs",
+    "confirmation"
   ],
   "properties": {
     "schema_version": {
       "const": 1
     },
-    "result": {
+    "status": {
       "enum": [
-        "ANSWER_ONLY",
         "PLAN_READY",
         "NEEDS_CONFIRMATION",
         "BLOCKED"
       ]
     },
-    "answer_draft": {
-      "type": [
-        "string",
-        "null"
-      ]
+    "plan_id": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "objective": {
+      "type": "string"
     },
     "actions": {
       "type": "array",
@@ -36,19 +41,23 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
+          "schema_version",
           "action_id",
           "position",
           "tool_name",
-          "effect_type",
-          "target_resource_id",
+          "effect",
           "arguments",
           "expected",
-          "evidence_ids",
+          "evidence_refs",
+          "resource_refs",
+          "target_resource_ref_id",
           "depends_on_action_ids",
-          "risk_codes",
-          "approval_required"
+          "user_visible_reason"
         ],
         "properties": {
+          "schema_version": {
+            "const": 1
+          },
           "action_id": {
             "type": "string"
           },
@@ -60,7 +69,7 @@
             "type": "string",
             "minLength": 1
           },
-          "effect_type": {
+          "effect": {
             "enum": [
               "READ",
               "CREATE",
@@ -69,23 +78,29 @@
               "DELETE"
             ]
           },
-          "target_resource_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "arguments": {
             "type": "object"
           },
           "expected": {
             "type": "object"
           },
-          "evidence_ids": {
+          "evidence_refs": {
             "type": "array",
             "items": {
               "type": "string"
             }
+          },
+          "resource_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "target_resource_ref_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "depends_on_action_ids": {
             "type": "array",
@@ -94,29 +109,32 @@
             },
             "uniqueItems": true
           },
-          "risk_codes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "approval_required": {
-            "type": "boolean"
+          "user_visible_reason": {
+            "type": "string"
           }
         }
       }
     },
-    "confirmation_question": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "blocked_reason_codes": {
+    "evidence_refs": {
       "type": "array",
       "items": {
         "type": "string"
       }
+    },
+    "resource_refs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "confirmation": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "llm_provider_result": {
+      "type": "object"
     }
   }
 }

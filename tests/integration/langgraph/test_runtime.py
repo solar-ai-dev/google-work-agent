@@ -13,7 +13,6 @@ from tests.unit.application.workflows.test_plan_review import _review_output
 from google_work_agent.adapters.langgraph import (
     GraphProfile,
     LangGraphWorkflowRuntime,
-    PromptArtifactGapError,
     supported_graph_profiles,
 )
 from google_work_agent.adapters.persistence import (
@@ -46,6 +45,12 @@ _RUNTIME_ACTIVE_PROMPT_IDS = {
     "planning.revise_plan",
     "review.inspect",
     "review.recheck",
+    "profile.single.request_source.initial",
+    "profile.single.reason_plan.initial",
+    "profile.single.self_review.initial",
+    "profile.single.self_review.recheck",
+    "profile.three.stage1.initial",
+    "profile.three.stage2.initial",
 }
 
 
@@ -311,6 +316,83 @@ def _context_result(status: str = "SUFFICIENT") -> dict[str, object]:
         "missing_slots": [],
         "additional_acquisition_request": None,
         "sufficiency": {"summary": "enough"},
+        "llm_provider_result": {
+            "provider": "fake",
+            "model": "fake-model",
+            "requested_mode": "AUTO",
+            "actual_runtime": "API_LLM",
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "total_tokens": 30,
+            "latency_ms": 5,
+            "fallback_reason": None,
+            "structured_output_attempts": 1,
+            "provider_request_id": "provider-request-1",
+            "safe_error_code": None,
+        },
+    }
+
+
+def _source_plan_output(result: str = "PLAN_READY") -> dict[str, object]:
+    fetch_plans = (
+        [_plan("TASKS", {"task_list_id": "task-list-default"})] if result == "PLAN_READY" else []
+    )
+    clarification = None
+    failure = None
+    if result == "NEEDS_CONFIRMATION":
+        clarification = {
+            "schema_version": 1,
+            "question": "Which task list should I inspect?",
+            "reason_code": "QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION",
+            "affected_field_paths": ["semantic_constraints.sources[0]"],
+            "options": [],
+        }
+    if result == "BLOCKED":
+        failure = {
+            "schema_version": 1,
+            "reason_code": "SOURCE_PLANNING_BLOCKED",
+            "user_safe_message": "Source planning is blocked.",
+            "diagnostic": "blocked in test fixture",
+        }
+    return {
+        "schema_version": 1,
+        "result": result,
+        "source_fetch_plans": fetch_plans,
+        "clarification": clarification,
+        "failure": failure,
+        "validator_codes": [result],
+    }
+
+
+def _profile_request_source_output(result: str = "PLAN_READY") -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "request_intent": _clear_intent(),
+        "source_plan": _source_plan_output(result),
+    }
+
+
+def _profile_planning_projection(
+    status: str = "ANSWER_ONLY",
+) -> dict[str, object]:
+    answer_draft = _answer_output() if status == "ANSWER_ONLY" else None
+    plan_draft = _write_plan_output() if status == "PLAN_READY" else None
+    return {
+        "schema_version": 1,
+        "status": status,
+        "answer_draft": answer_draft,
+        "plan_draft": plan_draft,
+    }
+
+
+def _profile_reason_plan_output(
+    status: str = "ANSWER_ONLY",
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "context_result": _context_result(),
+        "analysis_result": _analysis_output(),
+        "planning_result": _profile_planning_projection(status),
     }
 
 
@@ -750,6 +832,14 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
         graph_profile=GraphProfile.THREE_STAGE,
         prompt_manifest_path=manifest_path,
     )
+    single = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-single.db",
+        graph_profile=GraphProfile.SINGLE_BASELINE,
+        prompt_manifest_path=manifest_path,
+    )
 
     try:
         assert six.describe_topology() == (
@@ -761,10 +851,13 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
             "review",
         )
         assert three.describe_topology() == ("stage_one", "stage_two", "stage_three")
+        assert single.describe_topology() == ("single_workflow",)
         assert six.describe_topology() != three.describe_topology()
+        assert single.describe_topology() != three.describe_topology()
     finally:
         six.close()
         three.close()
+        single.close()
 
 
 def test_six_role_runtime_exposes_six_native_agent_subgraphs(
@@ -801,6 +894,42 @@ def test_six_role_runtime_exposes_six_native_agent_subgraphs(
         assert runtime._node_handler("review") is runtime._review_subgraph  # noqa: SLF001
     finally:
         runtime.close()
+
+
+def test_native_profile_runtimes_expose_three_and_single_subgraphs(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    three = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-three-subgraphs.db",
+        graph_profile=GraphProfile.THREE_STAGE,
+        prompt_manifest_path=manifest_path,
+    )
+    single = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-single-subgraphs.db",
+        graph_profile=GraphProfile.SINGLE_BASELINE,
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        assert tuple(three._native_agent_subgraphs) == ("stage_one", "stage_two", "stage_three")  # noqa: SLF001
+        assert three._node_handler("stage_one") is three._three_stage_one_subgraph  # noqa: SLF001
+        assert three._node_handler("stage_two") is three._three_stage_two_subgraph  # noqa: SLF001
+        assert three._node_handler("stage_three") is three._three_stage_review_subgraph  # noqa: SLF001
+        assert tuple(single._native_agent_subgraphs) == ("single_workflow",)  # noqa: SLF001
+        assert single._node_handler("single_workflow") is single._single_workflow_subgraph  # noqa: SLF001
+    finally:
+        three.close()
+        single.close()
 
 
 def test_request_subgraph_clears_local_state_and_records_trace_counts(
@@ -1024,26 +1153,44 @@ def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
         runtime.close()
 
 
-def test_single_baseline_reports_prompt_artifact_gap(
+def test_single_stage_runtime_completes_answer_only_run(
     tmp_path: Path,
 ) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _profile_request_source_output(),
+            _profile_reason_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=tmp_path / "checkpoints-single-answer.db",
+        graph_profile=GraphProfile.SINGLE_BASELINE,
+        prompt_manifest_path=manifest_path,
+    )
 
+    result = runtime.start(_start_request())
+
+    assert result.outcome is WorkflowOutcome.COMPLETED
+    assert result.payload["graph_profile"] == GraphProfile.SINGLE_BASELINE.value
+    connection = connect_sqlite(database_path)
     try:
-        _make_runtime(
-            database_path=database_path,
-            llm_payloads=[],
-            gateway=FakeGoogleGateway(snapshot),
-            checkpoint_database_path=tmp_path / "checkpoints-single.db",
-            graph_profile=GraphProfile.SINGLE_BASELINE,
-            prompt_manifest_path=manifest_path,
-        )
-    except PromptArtifactGapError as error:
-        assert "PROMPT_ARTIFACT_GAP" in str(error)
-    else:
-        raise AssertionError("SINGLE_BASELINE should fail without a unified prompt artifact")
+        run_row = connection.execute(
+            "SELECT status, version FROM runs WHERE id = 'run-1';"
+        ).fetchone()
+        plan_count = connection.execute(
+            "SELECT COUNT(*) FROM plans WHERE run_id = 'run-1';"
+        ).fetchone()[0]
+        action_count = connection.execute("SELECT COUNT(*) FROM actions;").fetchone()[0]
+        assert tuple(run_row) == ("COMPLETED", 4)
+        assert plan_count == 0
+        assert action_count == 0
+    finally:
+        connection.close()
+        runtime.close()
 
 
 def test_three_stage_runtime_completes_answer_only_run(
@@ -1055,12 +1202,8 @@ def test_three_stage_runtime_completes_answer_only_run(
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=[
-            _clear_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
-            _selection_output(),
-            _sufficiency_output("SUFFICIENT"),
-            _analysis_output(),
-            _answer_output(),
+            _profile_request_source_output(),
+            _profile_reason_plan_output(),
             _review_output("PASS"),
         ],
         gateway=FakeGoogleGateway(snapshot),
@@ -1078,10 +1221,77 @@ def test_three_stage_runtime_completes_answer_only_run(
         run_row = connection.execute(
             "SELECT status, version FROM runs WHERE id = 'run-1';"
         ).fetchone()
+        plan_count = connection.execute(
+            "SELECT COUNT(*) FROM plans WHERE run_id = 'run-1';"
+        ).fetchone()[0]
+        action_count = connection.execute("SELECT COUNT(*) FROM actions;").fetchone()[0]
         assert tuple(run_row) == ("COMPLETED", 4)
+        assert plan_count == 0
+        assert action_count == 0
     finally:
         connection.close()
         runtime.close()
+
+
+def test_native_three_and_single_profiles_record_expected_invocation_counts(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    three = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _profile_request_source_output(),
+            _profile_reason_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=tmp_path / "checkpoints-three-native-full.db",
+        graph_profile=GraphProfile.THREE_STAGE,
+        prompt_manifest_path=manifest_path,
+    )
+    try:
+        three_result = three.start(_start_request())
+        three_state = three._graph.get_state(three._config_for_thread("thread-1"))  # noqa: SLF001
+        assert three_result.outcome is WorkflowOutcome.COMPLETED
+        assert three_state.values["trace_context"]["agent_invocation_count"] == 3
+        assert three_state.values["trace_context"]["llm_call_count"] == 3
+        assert [
+            item["agent_subgraph_id"]
+            for item in three_state.values["trace_context"]["agent_node_log"]
+            if item["node_name"] == "init"
+        ] == ["stage_one", "stage_two", "stage_three"]
+    finally:
+        three.close()
+
+    single_root = tmp_path / "single-native"
+    single_root.mkdir()
+    database_path = _seed_runtime_database(single_root)
+    single = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _profile_request_source_output(),
+            _profile_reason_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=single_root / "checkpoints-single-native-full.db",
+        graph_profile=GraphProfile.SINGLE_BASELINE,
+        prompt_manifest_path=manifest_path,
+    )
+    try:
+        single_result = single.start(_start_request())
+        single_state = single._graph.get_state(single._config_for_thread("thread-1"))  # noqa: SLF001
+        assert single_result.outcome is WorkflowOutcome.COMPLETED
+        assert single_state.values["trace_context"]["agent_invocation_count"] == 1
+        assert single_state.values["trace_context"]["llm_call_count"] == 3
+        assert {
+            item["agent_subgraph_id"]
+            for item in single_state.values["trace_context"]["agent_node_log"]
+        } == {"single_workflow"}
+    finally:
+        single.close()
 
 
 def test_resume_rejects_profile_change_for_same_thread(
@@ -1092,7 +1302,7 @@ def test_resume_rejects_profile_change_for_same_thread(
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     three_runtime = _make_runtime(
         database_path=database_path,
-        llm_payloads=[_ambiguous_intent()],
+        llm_payloads=[_profile_request_source_output("NEEDS_CONFIRMATION")],
         gateway=FakeGoogleGateway(snapshot),
         checkpoint_database_path=tmp_path / "checkpoints-profile.db",
         graph_profile=GraphProfile.THREE_STAGE,
@@ -1135,6 +1345,194 @@ def test_resume_rejects_profile_change_for_same_thread(
         assert resumed.payload["graph_profile"] == GraphProfile.SIX_ROLE_BASELINE.value
     finally:
         six_runtime.close()
+
+
+@pytest.mark.parametrize(
+    ("graph_profile", "root_name"),
+    [
+        (GraphProfile.SINGLE_BASELINE, "single-plan"),
+        (GraphProfile.THREE_STAGE, "three-plan"),
+    ],
+)
+def test_native_profiles_generate_plan_and_share_domain_approval_boundary(
+    tmp_path: Path,
+    graph_profile: GraphProfile,
+    root_name: str,
+) -> None:
+    root = tmp_path / root_name
+    root.mkdir()
+    manifest_path = _runtime_active_manifest_path(root)
+    database_path = _seed_runtime_database(root)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _profile_request_source_output(),
+            _profile_reason_plan_output("PLAN_READY"),
+            _review_output("PASS"),
+        ],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=root / "checkpoints-plan.db",
+        graph_profile=graph_profile,
+        prompt_manifest_path=manifest_path,
+    )
+
+    started = runtime.start(_start_write_request())
+
+    assert started.outcome is WorkflowOutcome.ACCEPTED
+    connection = connect_sqlite(database_path)
+    try:
+        counts = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1') AS run_status,
+                (SELECT COUNT(*) FROM plans WHERE run_id = 'run-1') AS plan_count,
+                (SELECT COUNT(*) FROM actions) AS action_count;
+            """
+        ).fetchone()
+        assert tuple(counts) == ("WAITING_APPROVAL", 1, 1)
+    finally:
+        connection.close()
+        runtime.close()
+
+
+@pytest.mark.parametrize(
+    ("graph_profile", "root_name"),
+    [
+        (GraphProfile.SINGLE_BASELINE, "single-resume"),
+        (GraphProfile.THREE_STAGE, "three-resume"),
+    ],
+)
+def test_native_profiles_resume_with_same_profile_after_confirmation(
+    tmp_path: Path,
+    graph_profile: GraphProfile,
+    root_name: str,
+) -> None:
+    root = tmp_path / root_name
+    root.mkdir()
+    manifest_path = _runtime_active_manifest_path(root)
+    database_path = _seed_runtime_database(root)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    first_runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[_profile_request_source_output("NEEDS_CONFIRMATION")],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=root / "checkpoints-resume.db",
+        graph_profile=graph_profile,
+        prompt_manifest_path=manifest_path,
+    )
+
+    first = first_runtime.start(_start_request())
+
+    assert first.outcome is WorkflowOutcome.ACCEPTED
+    first_runtime.close()
+
+    resumed_runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _profile_request_source_output(),
+            _profile_reason_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=root / "checkpoints-resume.db",
+        graph_profile=graph_profile,
+        prompt_manifest_path=manifest_path,
+    )
+
+    resumed = resumed_runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="CONFIRMATION",
+            resume_payload={
+                "schema_version": 1,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "Use the default task list.",
+            },
+            correlation=WorkflowCorrelationContext(
+                request_id="request-2",
+                command_id="command-2",
+                api_contract_version="1",
+            ),
+        )
+    )
+
+    try:
+        assert resumed.outcome is WorkflowOutcome.COMPLETED
+    finally:
+        resumed_runtime.close()
+
+
+@pytest.mark.parametrize(
+    ("start_profile", "resume_profile", "root_name"),
+    [
+        (GraphProfile.SINGLE_BASELINE, GraphProfile.THREE_STAGE, "single-to-three"),
+        (GraphProfile.SIX_ROLE_BASELINE, GraphProfile.SINGLE_BASELINE, "six-to-single"),
+    ],
+)
+def test_resume_rejects_mismatched_profile_for_thread(
+    tmp_path: Path,
+    start_profile: GraphProfile,
+    resume_profile: GraphProfile,
+    root_name: str,
+) -> None:
+    root = tmp_path / root_name
+    root.mkdir()
+    manifest_path = _runtime_active_manifest_path(root)
+    database_path = _seed_runtime_database(root)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    start_payloads = (
+        [_ambiguous_intent()]
+        if start_profile is GraphProfile.SIX_ROLE_BASELINE
+        else [_profile_request_source_output("NEEDS_CONFIRMATION")]
+    )
+    starter = _make_runtime(
+        database_path=database_path,
+        llm_payloads=start_payloads,
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=root / "checkpoints-mismatch.db",
+        graph_profile=start_profile,
+        prompt_manifest_path=manifest_path,
+    )
+    first = starter.start(_start_request())
+    assert first.outcome is WorkflowOutcome.ACCEPTED
+    starter.close()
+
+    resumed_runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=root / "checkpoints-mismatch.db",
+        graph_profile=resume_profile,
+        prompt_manifest_path=manifest_path,
+    )
+
+    resumed = resumed_runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="CONFIRMATION",
+            resume_payload={
+                "schema_version": 1,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "Continue with the default task list.",
+            },
+            correlation=WorkflowCorrelationContext(
+                request_id="request-2",
+                command_id="command-2",
+                api_contract_version="1",
+            ),
+        )
+    )
+
+    try:
+        assert resumed.outcome is WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT
+        assert resumed.payload["graph_profile"] == resume_profile.value
+    finally:
+        resumed_runtime.close()
 
 
 def test_default_product_runtime_rejects_draft_prompt_bundle(
