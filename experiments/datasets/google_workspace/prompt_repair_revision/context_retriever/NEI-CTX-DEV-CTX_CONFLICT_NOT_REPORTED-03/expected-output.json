@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "result": "SELECTED",
+  "selected_segment_ids": [
+    "SEG-GM-A-001",
+    "SEG-GM-A-002"
+  ],
+  "evidence_drafts": [
+    {
+      "evidence_id": "EVD-SEG-GM-A-001-1",
+      "segment_id": "SEG-GM-A-001",
+      "resource_id": "GM-A-001",
+      "claim": "초기 출고 예정일은 8월 18일입니다.",
+      "excerpt": "초기 출고 예정일은 8월 18일입니다.",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "EVD-SEG-GM-A-002-2",
+      "segment_id": "SEG-GM-A-002",
+      "resource_id": "GM-A-002",
+      "claim": "최종 출고는 8월 19일 오전으로 확정합니다. 담당은 지민입니다.",
+      "excerpt": "최종 출고는 8월 19일 오전으로 확정합니다. 담당은 지민입니다.",
+      "confidence": "HIGH"
+    }
+  ],
+  "excluded_segment_ids": [
+    "SEG-GM-A-099"
+  ],
+  "conflicts": [
+    {
+      "field": "target_fact",
+      "segment_ids": [
+        "SEG-GM-A-001",
+        "SEG-GM-A-002"
+      ],
+      "resolution": "두 값이 상충함을 보존하고 최신성 또는 사용자 확인 규칙으로 후속 판단한다."
+    }
+  ],
+  "ignored_untrusted_instruction_ids": [],
+  "token_budget": {
+    "max_tokens": 900,
+    "used_tokens": 280
+  },
+  "missing_slots": [],
+  "confidence_band": "MEDIUM",
+  "next_route": "CONTINUE"
+}

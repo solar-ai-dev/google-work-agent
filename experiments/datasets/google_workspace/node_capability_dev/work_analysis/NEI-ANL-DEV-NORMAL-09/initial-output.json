@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "result": "COMPLETE",
+  "relations": [],
+  "duplicates": [
+    {
+      "candidate_id": "TSK-I-001",
+      "classification": "EXACT_DUPLICATE",
+      "evidence_ids": [
+        "EVD-SEG-TSK-I-001-1"
+      ]
+    }
+  ],
+  "schedule_risks": [],
+  "conflicts": [],
+  "unsupported_inferences": [],
+  "missing_data": [],
+  "next_route": "PLANNING"
+}

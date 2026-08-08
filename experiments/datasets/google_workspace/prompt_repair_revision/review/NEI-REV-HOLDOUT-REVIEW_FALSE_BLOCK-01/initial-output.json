@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "result": "BLOCK",
+  "findings": [
+    {
+      "code": "OVERBLOCK",
+      "severity": "ERROR",
+      "action_id": null,
+      "field_paths": [
+        "/actions/0"
+      ],
+      "evidence_ids": [],
+      "message": "승인이 필요한 write라는 이유만으로 차단했다."
+    }
+  ],
+  "localized_failure_codes": [
+    "REVIEW_FALSE_BLOCK"
+  ],
+  "next_route": "BLOCK",
+  "recheck_required": false
+}

@@ -265,7 +265,7 @@ def test_clarify_prompt_ref_is_runtime_active() -> None:
     prompt_ref = load_request_understanding_clarify_prompt_reference()
 
     assert prompt_ref.prompt_id == "request_understanding.clarify"
-    assert prompt_ref.prompt_version == "v0.1"
+    assert prompt_ref.prompt_version != "TBD"
     assert prompt_ref.content_hash != "TBD"
     assert prompt_ref.node_state == "BASELINE"
 

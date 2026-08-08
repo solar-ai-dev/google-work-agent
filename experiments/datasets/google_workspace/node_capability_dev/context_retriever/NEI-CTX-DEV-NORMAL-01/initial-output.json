@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "result": "PARTIAL",
+  "selected_segment_ids": [
+    "SEG-GM-A-002",
+    "SEG-TSK-A-001",
+    "SEG-TSK-A-002",
+    "SEG-EV-A-001"
+  ],
+  "evidence_drafts": [
+    {
+      "evidence_id": "EVD-SEG-GM-A-002-1",
+      "segment_id": "SEG-GM-A-002",
+      "resource_id": "GM-A-002",
+      "claim": "최종 출고는 8월 19일 오전이며 담당은 지민이다.",
+      "excerpt": "최종 출고는 8월 19일 오전으로 확정합니다. 담당은 지민입니다.",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "EVD-SEG-TSK-A-001-2",
+      "segment_id": "SEG-TSK-A-001",
+      "resource_id": "TSK-A-001",
+      "claim": "제목: Atlas QR 문구 확정",
+      "excerpt": "제목: Atlas QR 문구 확정 / 기한: 2026-08-16T09:00:00Z / 상태: needsAction / 메모: 담당 지민",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "EVD-SEG-TSK-A-002-3",
+      "segment_id": "SEG-TSK-A-002",
+      "resource_id": "TSK-A-002",
+      "claim": "제목: Atlas 알레르기 라벨 검토",
+      "excerpt": "제목: Atlas 알레르기 라벨 검토 / 기한: 2026-08-17T09:00:00Z / 상태: needsAction / 메모: 담당 민지",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "EVD-SEG-EV-A-001-4",
+      "segment_id": "SEG-EV-A-001",
+      "resource_id": "EV-A-001",
+      "claim": "일정: Atlas 인쇄소 슬롯",
+      "excerpt": "일정: Atlas 인쇄소 슬롯 / 시작: 2026-08-13T05:00:00Z / 종료: 2026-08-13T06:00:00Z / 투명도: opaque / 설명: ",
+      "confidence": "HIGH"
+    }
+  ],
+  "excluded_segment_ids": [
+    "SEG-GM-A-001",
+    "SEG-GM-A-099"
+  ],
+  "conflicts": [],
+  "ignored_untrusted_instruction_ids": [],
+  "token_budget": {
+    "max_tokens": 900,
+    "used_tokens": 460
+  },
+  "missing_slots": [
+    "complete_preparation_checklist"
+  ],
+  "confidence_band": "MEDIUM",
+  "next_route": "CONTINUE"
+}

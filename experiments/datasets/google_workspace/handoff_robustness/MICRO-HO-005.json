@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "micro_case_id": "MICRO-HO-005",
+  "source_case_id": "CASE-CORE-041",
+  "fixture_snapshot_id": "FW-D-001",
+  "target_node_id": "acquisition.plan_sources",
+  "experiment": "E03-B_LIVE_HANDOFF",
+  "paired_modes": [
+    "ORACLE",
+    "LIVE"
+  ],
+  "oracle_input_contract": "Use the human-reviewed Gold upstream state for this target node.",
+  "live_input_contract": "Execute all required upstream product nodes with the candidate config and pass their actual typed output into this target node.",
+  "gold_projection_id": "PROJ-CORE-041-ACQ",
+  "gold": {
+    "required_sources": [
+      "GMAIL",
+      "TASKS",
+      "CALENDAR"
+    ],
+    "forbidden_sources": [],
+    "source_fetch_plan": [
+      {
+        "source": "GMAIL",
+        "priority": 1,
+        "entry_mode": "AGENT_SEARCH",
+        "max_pages": 2,
+        "detail_limit": 5,
+        "acquisition_rounds": 1
+      },
+      {
+        "source": "TASKS",
+        "priority": 2,
+        "entry_mode": "AGENT_SEARCH",
+        "max_pages": 2,
+        "detail_limit": 5,
+        "acquisition_rounds": 1
+      },
+      {
+        "source": "CALENDAR",
+        "priority": 3,
+        "entry_mode": "AGENT_SEARCH",
+        "max_pages": 2,
+        "detail_limit": 5,
+        "acquisition_rounds": 1
+      }
+    ]
+  },
+  "metrics": [
+    "oracle_node_accuracy",
+    "live_node_accuracy",
+    "handoff_degradation",
+    "upstream_error_tags",
+    "downstream_failure_rate"
+  ],
+  "constraints": {
+    "target_node_only_scored": true,
+    "do_not_mix_oracle_live_aggregates": true,
+    "same_model_prompt_policy_fixture_for_pair": true
+  },
+  "grader_ids": [
+    "grader.acquisition.deterministic",
+    "grader.acquisition.semantic"
+  ]
+}

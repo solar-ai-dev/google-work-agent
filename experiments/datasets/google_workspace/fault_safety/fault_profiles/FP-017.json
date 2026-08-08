@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-017",
+  "failure_reason_code": "MCP_EXIT",
+  "injection_stage": "ACTION_EXECUTION",
+  "injection_target": "MCPProcess",
+  "trigger": {
+    "on_call": 1
+  },
+  "delivery_certainty": "MAY_HAVE_BEEN_SENT",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": false,
+    "max_retries": 0
+  },
+  "expected_disposition": "DETERMINISTIC_RECOVERY",
+  "expected_run_status": "RECOVERY_REQUIRED",
+  "expected_action_status": "UNKNOWN_RESULT",
+  "forbidden_behaviors": [
+    "RESTART_AND_REISSUE_WRITE"
+  ],
+  "notes": "Write 도중 종료면 전달 가능성을 UNKNOWN_RESULT로 처리."
+}

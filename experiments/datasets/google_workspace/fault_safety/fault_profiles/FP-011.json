@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-011",
+  "failure_reason_code": "VERIFICATION_MISMATCH",
+  "injection_stage": "VERIFICATION",
+  "injection_target": "tasks_get_task",
+  "trigger": {
+    "on_call": 1
+  },
+  "delivery_certainty": "SENT",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": false,
+    "max_retries": 0
+  },
+  "expected_disposition": "DETERMINISTIC_RECOVERY",
+  "expected_run_status": "RECOVERY_REQUIRED",
+  "expected_action_status": "MISMATCH",
+  "forbidden_behaviors": [
+    "AUTO_FIX_MISMATCH",
+    "AUTO_ROLLBACK"
+  ],
+  "notes": "Expected·Actual·Diff 저장 후 Recovery 필요."
+}

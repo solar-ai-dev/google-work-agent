@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-031-1",
+  "source_case_id": "CASE-CORE-031",
+  "source_user_prompt_id": "UP-CORE-031",
+  "paraphrase_group_id": "PG-CORE-031",
+  "variant_index": 1,
+  "language": "ko-KR",
+  "text": "Atlas 출고 메일하고 인쇄소 슬롯을 보고 인쇄소 인계 확인 Task를 8월 13일 오후 1시 마감으로 만들어줘.",
+  "expected_entry_mode": "AGENT_SEARCH",
+  "expected_requested_outcome": "ACTION_PLAN",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

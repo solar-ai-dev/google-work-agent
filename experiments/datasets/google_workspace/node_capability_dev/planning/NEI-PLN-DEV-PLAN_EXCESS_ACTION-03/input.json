@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-003",
+  "goal": "Task 하나만 생성한다.",
+  "requested_outcome": "ACTION_PLAN",
+  "constraints": {
+    "allowed_actions": [
+      "TASK_CREATE"
+    ]
+  },
+  "evidence": [
+    {
+      "evidence_id": "EVD-PL-EX1",
+      "segment_id": "SEG-PL-EX1",
+      "resource_id": "RES-PL-EX1",
+      "claim": "사용자는 법무 검토 Task 하나만 만들어 달라고 요청했다.",
+      "excerpt": "사용자는 법무 검토 Task 하나만 만들어 달라고 요청했다.",
+      "confidence": "HIGH"
+    }
+  ],
+  "analysis": {
+    "schema_version": 1,
+    "result": "COMPLETE",
+    "relations": [],
+    "duplicates": [],
+    "schedule_risks": [],
+    "conflicts": [],
+    "unsupported_inferences": [],
+    "missing_data": [],
+    "next_route": "PLANNING"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "result": "PARTIAL",
+  "selected_segment_ids": [
+    "SEG-TSK-K-001"
+  ],
+  "evidence_drafts": [
+    {
+      "evidence_id": "EVD-SEG-TSK-K-001-1",
+      "segment_id": "SEG-TSK-K-001",
+      "resource_id": "TSK-K-001",
+      "claim": "Kestrel 대체 일정 확인 Task가 진행 중이다.",
+      "excerpt": "제목: Kestrel 대체 일정 확인 / 기한: 2026-08-08T09:00:00Z / 상태: needsAction / 메모: 진행 중",
+      "confidence": "HIGH"
+    }
+  ],
+  "excluded_segment_ids": [],
+  "conflicts": [],
+  "ignored_untrusted_instruction_ids": [],
+  "token_budget": {
+    "max_tokens": 900,
+    "used_tokens": 190
+  },
+  "missing_slots": [
+    "gmail_delay_detail"
+  ],
+  "confidence_band": "MEDIUM",
+  "next_route": "CONTINUE"
+}

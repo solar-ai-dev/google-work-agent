@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "tasklists": [
+    {
+      "tasklist_id": "TL-WORK",
+      "title": "업무"
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "TSK-SO-201",
+      "tasklist_id": "TL-WORK",
+      "title": "Solstice 최종 카피",
+      "due": "2026-09-01T09:00:00Z",
+      "status": "needsAction",
+      "notes": "",
+      "updated_at": "2026-08-07T03:00:00Z"
+    },
+    {
+      "task_id": "TSK-SO-202",
+      "tasklist_id": "TL-WORK",
+      "title": "Solstice 패키지 확인",
+      "due": "2026-09-02T09:00:00Z",
+      "status": "needsAction",
+      "notes": "",
+      "updated_at": "2026-08-07T03:00:00Z"
+    }
+  ]
+}

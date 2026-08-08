@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "result": "READY",
+  "plans": [
+    {
+      "schema_version": 1,
+      "source": "GMAIL",
+      "priority": 1,
+      "reason_codes": [
+        "REQUIRED_BY_COMPLETION_CRITERIA"
+      ],
+      "constraints": {
+        "project_terms": [
+          "Kestrel",
+          "공급 지연"
+        ]
+      },
+      "page_size": 20,
+      "max_pages": 2,
+      "max_candidates": 40,
+      "detail_limit": 5,
+      "required": true
+    },
+    {
+      "schema_version": 1,
+      "source": "TASKS",
+      "priority": 2,
+      "reason_codes": [
+        "REQUIRED_BY_COMPLETION_CRITERIA"
+      ],
+      "constraints": {
+        "project_terms": [
+          "Kestrel",
+          "공급 지연"
+        ]
+      },
+      "page_size": 20,
+      "max_pages": 2,
+      "max_candidates": 40,
+      "detail_limit": 5,
+      "required": true
+    }
+  ],
+  "confirmation": null,
+  "blocked_reason": null,
+  "stop_reason": null
+}

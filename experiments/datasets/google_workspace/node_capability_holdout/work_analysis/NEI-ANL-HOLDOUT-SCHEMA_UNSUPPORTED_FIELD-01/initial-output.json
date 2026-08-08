@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "result": "COMPLETE",
+  "relations": [],
+  "duplicates": [],
+  "schedule_risks": [],
+  "conflicts": [],
+  "unsupported_inferences": [],
+  "missing_data": [],
+  "next_route": "PLANNING",
+  "unsupported_runtime_field": "must be rejected"
+}

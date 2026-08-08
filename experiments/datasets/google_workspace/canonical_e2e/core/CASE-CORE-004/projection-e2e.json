@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-004-E2E",
+  "case_id": "CASE-CORE-004",
+  "projection_kind": "E2E",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-010",
+    "user_prompt_id": "UP-CORE-004",
+    "entry_mode": "RESOURCE_SELECTED"
+  },
+  "gold": {
+    "end_state_expectation": {
+      "initial": {
+        "run_status": "COMPLETED",
+        "result_kind": "FULL"
+      },
+      "after_user_action": null
+    },
+    "approval_expectation": {
+      "required": false,
+      "scope": "ACTION_LEVEL",
+      "no_write_before_approval": true
+    },
+    "verification_expectation": {
+      "required": false,
+      "policy": "NONE",
+      "all_writes_re_read": false
+    },
+    "completion_criteria": [
+      "READ Plan을 승인 없이 ACTIVE로 만든다.",
+      "선택 Event EV-J-001만 calendar_get_event로 조회한다.",
+      "READ Action을 EXECUTED 후 VERIFIED로 마무리한다.",
+      "Approval·ExecutionAttempt·Write Verification Row를 만들지 않는다.",
+      "전체 Calendar 목록 탐색을 하지 않는다."
+    ],
+    "read_only_plan_expectation": {
+      "plan_active_without_approval": true,
+      "approval_rows": 0,
+      "execution_attempt_rows": 0,
+      "write_verification_rows": 0,
+      "read_action_final_status": "VERIFIED"
+    }
+  },
+  "grader_ids": [
+    "grader.e2e.deterministic",
+    "grader.e2e.semantic"
+  ]
+}

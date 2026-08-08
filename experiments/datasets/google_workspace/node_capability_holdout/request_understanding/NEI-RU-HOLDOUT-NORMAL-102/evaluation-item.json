@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "NEI-RU-HOLDOUT-NORMAL-102",
+  "split": "HOLDOUT",
+  "target_agent": "request_understanding",
+  "target_node_id": "request_understanding.classify",
+  "source_case_id": null,
+  "fixture_snapshot_id": "FW-H-102",
+  "upstream_mode": "ORACLE",
+  "input_condition": "NORMAL",
+  "input_ref": "input.json",
+  "gold_ref": "gold.json",
+  "initial_prompt_slot_id": "request_understanding.classify",
+  "expected_initial_result": "COMPLETE",
+  "injected_failure_reason_code": null,
+  "expected_retry_kind": "NONE",
+  "expected_retry_prompt_slot_id": null,
+  "expected_final_result": "COMPLETE",
+  "max_attempts": 1,
+  "forbidden_transitions": [
+    "DIRECT_TOOL_CALL",
+    "GOOGLE_WRITE",
+    "SCOPE_EXPANSION_WITHOUT_CONFIRMATION"
+  ],
+  "grader_ids": [
+    "grader.request_intent.schema",
+    "grader.request_intent.semantic",
+    "grader.request_intent.constraints",
+    "grader.request_intent.routing"
+  ],
+  "scenario_family_id": "SF-HOLDOUT-102",
+  "fixture_relation_family": "RF-HOLDOUT-102"
+}

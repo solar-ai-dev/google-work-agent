@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-004-REV",
+  "case_id": "CASE-CORE-004",
+  "projection_kind": "REVIEW",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-010",
+    "user_prompt_id": "UP-CORE-004",
+    "entry_mode": "RESOURCE_SELECTED"
+  },
+  "gold": {
+    "expected_result": "PASS",
+    "critical_checks": [
+      "read_tool",
+      "effect_type_READ",
+      "selected_target",
+      "user_evidence",
+      "no_approval",
+      "scope",
+      "dependency",
+      "policy"
+    ]
+  },
+  "grader_ids": [
+    "grader.review.deterministic",
+    "grader.review.semantic"
+  ]
+}

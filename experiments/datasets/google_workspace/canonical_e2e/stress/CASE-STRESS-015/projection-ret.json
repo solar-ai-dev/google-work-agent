@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-STRESS-015-RET",
+  "case_id": "CASE-STRESS-015",
+  "projection_kind": "RETRIEVAL",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-037",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "required_resource_ids": [
+      "GTH-A-001",
+      "EV-A-001",
+      "TSK-A-001"
+    ],
+    "hard_negative_resource_ids": [
+      "GTH-A-099",
+      "GM-A-099"
+    ],
+    "required_evidence_ids": [
+      "EVD-SEG-GM-A-002-1",
+      "EVD-SEG-EV-A-001-4",
+      "EVD-SEG-TSK-A-001-2",
+      "UE-CORE-037"
+    ]
+  },
+  "grader_ids": [
+    "grader.retrieval.deterministic",
+    "grader.retrieval.semantic"
+  ]
+}

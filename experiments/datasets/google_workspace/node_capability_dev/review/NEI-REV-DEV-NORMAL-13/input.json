@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-001",
+  "user_goal": "Event 생성 후 Draft 준비",
+  "evidence": [
+    {
+      "evidence_id": "EVD-PL-N-DAG",
+      "segment_id": "SEG-PL-N-DAG",
+      "resource_id": "RES-PL-N-DAG",
+      "claim": "킥오프 Event를 만든 뒤 해당 시간 정보를 포함한 Draft가 필요하다.",
+      "excerpt": "킥오프 Event를 만든 뒤 해당 시간 정보를 포함한 Draft가 필요하다.",
+      "confidence": "HIGH"
+    }
+  ],
+  "plan": {
+    "schema_version": 1,
+    "result": "PLAN_READY",
+    "answer_draft": null,
+    "actions": [
+      {
+        "action_id": "A1",
+        "position": 1,
+        "tool_name": "calendar_create_event",
+        "effect_type": "CREATE",
+        "target_resource_id": null,
+        "arguments": {
+          "title": "킥오프",
+          "start": "2026-08-20T14:00:00+09:00"
+        },
+        "expected": {
+          "created": true
+        },
+        "evidence_ids": [
+          "EVD-PL-N-DAG"
+        ],
+        "depends_on_action_ids": [],
+        "risk_codes": [],
+        "approval_required": true
+      },
+      {
+        "action_id": "A2",
+        "position": 2,
+        "tool_name": "gmail_create_draft",
+        "effect_type": "CREATE",
+        "target_resource_id": null,
+        "arguments": {
+          "thread_id": "GTH-X",
+          "body": "킥오프 일정 안내"
+        },
+        "expected": {
+          "draft_created": true
+        },
+        "evidence_ids": [
+          "EVD-PL-N-DAG"
+        ],
+        "depends_on_action_ids": [
+          "A1"
+        ],
+        "risk_codes": [],
+        "approval_required": true
+      }
+    ],
+    "confirmation_question": null,
+    "blocked_reason_codes": []
+  },
+  "prior_failure_signature": null
+}

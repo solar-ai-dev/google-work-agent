@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from functools import lru_cache
 from pathlib import Path
 from typing import Literal, NotRequired, Required, TypedDict, cast
 
@@ -16,6 +14,12 @@ from google_work_agent.application.workflows.contracts import (
     AnalysisResult,
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
+)
+from google_work_agent.application.workflows.prompt_registry import (
+    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
+)
+from google_work_agent.application.workflows.prompt_registry import (
+    load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.application.workflows.request_understanding import (
     ClarificationQuestionV1,
@@ -278,9 +282,9 @@ def build_work_analysis_clarification_question(
 def load_work_analysis_analyze_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
-    return _load_prompt_reference(
+    return _load_registry_prompt_reference(
         "analysis.analyze",
-        manifest_path or _default_prompt_manifest_path(),
+        manifest_path or _registry_default_prompt_manifest_path(),
     )
 
 
@@ -517,26 +521,6 @@ def _provider_summary(result: StructuredLLMResult) -> dict[str, object]:
     }
 
 
-def _load_prompt_reference(prompt_id: str, manifest_path: Path) -> PromptReference:
-    manifest = _load_prompt_manifest(manifest_path)
-    for item in manifest:
-        if item.get("prompt_id") == prompt_id:
-            return PromptReference(
-                prompt_bundle_version=_required_manifest_string(item, "prompt_bundle_version"),
-                prompt_id=_required_manifest_string(item, "prompt_id"),
-                prompt_version=_required_manifest_string(item, "prompt_version"),
-                content_hash=_required_manifest_string(item, "content_hash"),
-                agent_role=_required_manifest_string(item, "agent_role"),
-                subgraph_name=_required_manifest_string(item, "subgraph_name"),
-                node_name=_required_manifest_string(item, "node_name"),
-                node_state=_required_manifest_string(item, "node_state"),
-                purpose=_required_manifest_string(item, "purpose"),
-                input_schema_version=_required_manifest_string(item, "input_schema_version"),
-                output_schema_version=_required_manifest_string(item, "output_schema_version"),
-            )
-    raise LookupError(f"{prompt_id} prompt is missing from manifest")
-
-
 def _require_schema_version(value: dict[str, object], path: str, expected: int) -> None:
     schema_version = _require_int(value, "schema_version", path)
     if schema_version != expected:
@@ -621,28 +605,6 @@ def _optional_option_list(value: object) -> list[dict[str, object]]:
         return []
     items = _require_list(value, "$.clarification.options")
     return [_require_mapping(item, "$.clarification.options[]") for item in items]
-
-
-@lru_cache(maxsize=1)
-def _load_prompt_manifest(path: Path) -> list[dict[str, object]]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    manifest = payload.get("prompt_manifest") if isinstance(payload, dict) else None
-    if not isinstance(manifest, list):
-        raise ValueError("prompt manifest must contain prompt_manifest list")
-    return [_require_mapping(item, "$.prompt_manifest[]") for item in manifest]
-
-
-def _required_manifest_string(item: dict[str, object], field: str) -> str:
-    value = item.get(field)
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"prompt manifest field is required: {field}")
-    if value == "TBD":
-        raise ValueError(f"prompt manifest field is not runtime-active: {field}")
-    return value
-
-
-def _default_prompt_manifest_path() -> Path:
-    return Path(__file__).resolve().parents[4] / "prompts" / "agent" / "manifest.yaml"
 
 
 __all__ = [

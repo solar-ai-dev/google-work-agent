@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "matrix_version": "0.2",
+  "generated_at": "2026-08-07T14:09:00+09:00",
+  "agents": {
+    "request_understanding": {
+      "failure_codes": 13,
+      "required_dev": 39,
+      "actual_dev": 39,
+      "required_holdout": 13,
+      "actual_holdout": 13,
+      "status": "COMPLETE"
+    },
+    "acquisition": {
+      "failure_codes": 21,
+      "required_dev": 63,
+      "actual_dev": 63,
+      "required_holdout": 21,
+      "actual_holdout": 21,
+      "status": "COMPLETE"
+    }
+  }
+}

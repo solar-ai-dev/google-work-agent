@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "artifact_version": "1.8",
+  "status": "PASS",
+  "errors": [],
+  "counts": {
+    "ambiguity_total": 48,
+    "ambiguity_dev": 36,
+    "ambiguity_holdout": 12,
+    "ambiguity_families": 12,
+    "policy_boundary": 20
+  },
+  "checks": {
+    "family_split_leakage": 0,
+    "reply_send_not_ambiguous": true,
+    "context_resolved_low_info_verbs_do_not_clarify": true,
+    "clarify_uses_dedicated_schema": true,
+    "risky_policy_cases_updated": true
+  }
+}

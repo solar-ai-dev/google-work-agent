@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-058-1",
+  "source_case_id": "CASE-CORE-058",
+  "source_user_prompt_id": "UP-CORE-058",
+  "paraphrase_group_id": "PG-CORE-058",
+  "variant_index": 1,
+  "language": "ko-KR",
+  "text": "Juniper 로드맵 검토 Event를 8월 12일 오후 3시부터 한 시간 잡아줘. 기존 일정과 겹치면 그대로 만들지 말고 알려줘.",
+  "expected_entry_mode": "AGENT_SEARCH",
+  "expected_requested_outcome": "ACTION_PLAN",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

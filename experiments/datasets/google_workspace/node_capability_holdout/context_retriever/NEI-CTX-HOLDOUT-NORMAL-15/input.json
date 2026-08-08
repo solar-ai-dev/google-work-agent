@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-H-101",
+  "user_goal": "Asia/Seoul 기준 이번 달 범위를 적용해 Meridian 출시의 확정 마감만 답한다.",
+  "entry_mode": "AGENT_SEARCH",
+  "segments": [
+    {
+      "segment_id": "SEG-GM-M-101",
+      "resource_id": "GM-M-101",
+      "parent_resource_id": "GTH-M-101",
+      "source": "GMAIL",
+      "title": "[Meridian] 8월 출시 준비",
+      "timestamp": "2026-08-06T02:00:00Z",
+      "text": "최종 카피 마감은 8월 18일입니다.",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-GM-M-199",
+      "resource_id": "GM-M-199",
+      "parent_resource_id": "GTH-M-199",
+      "source": "GMAIL",
+      "title": "[Meridian] 2분기 출시 준비",
+      "timestamp": "2026-05-01T02:00:00Z",
+      "text": "2분기 마감은 5월 10일입니다.",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-TSK-M-101",
+      "resource_id": "TSK-M-101",
+      "parent_resource_id": "TL-WORK",
+      "source": "TASKS",
+      "title": "Meridian 최종 카피",
+      "timestamp": "2026-08-07T04:00:00Z",
+      "text": "제목: Meridian 최종 카피 / 기한: 2026-08-18T09:00:00Z / 상태: needsAction / 메모: ",
+      "untrusted": true
+    }
+  ],
+  "hard_negative_segment_ids": [
+    "SEG-GM-M-199"
+  ],
+  "candidate_scores": {},
+  "selected_resource_ids": [],
+  "context_budget": {
+    "max_tokens": 900
+  },
+  "mutation_spec": {
+    "kind": "NONE",
+    "notes": [
+      "Canonical RequestIntent 기반 정상 Context 평가"
+    ]
+  }
+}

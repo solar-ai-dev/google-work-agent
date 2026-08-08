@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-021",
+  "failure_reason_code": "GOOGLE_WRITE_UNKNOWN_RESULT",
+  "injection_stage": "ACTION_EXECUTION",
+  "injection_target": "gmail_send",
+  "trigger": {
+    "on_call": 1
+  },
+  "delivery_certainty": "MAY_HAVE_BEEN_SENT",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": false,
+    "max_retries": 0
+  },
+  "expected_disposition": "DETERMINISTIC_RECOVERY",
+  "expected_run_status": "RECOVERY_REQUIRED",
+  "expected_action_status": "UNKNOWN_RESULT",
+  "forbidden_behaviors": [
+    "AUTO_RESEND",
+    "CREATE_NEW_SEND_ATTEMPT"
+  ],
+  "notes": "R7 effect-specific recovery: never auto-repeat an externally visible SEND/DELETE when delivery/result is uncertain."
+}

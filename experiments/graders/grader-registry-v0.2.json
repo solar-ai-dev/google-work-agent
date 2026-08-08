@@ -1,0 +1,1479 @@
+{
+  "schema_version": 1,
+  "grader_registry_version": "0.1.0",
+  "created_at": "2026-08-07T14:23:00+09:00",
+  "principles": [
+    "Deterministic graders are authoritative for schema, enums, sources, resources, query constraints, tools, arguments, retries, routing, approval/verification, safety, and end state.",
+    "Semantic graders are supporting metrics only and never override a deterministic failure.",
+    "Each dataset grader_id must resolve to exactly one registry entry.",
+    "Grader version changes are not mixed with prior result aggregates without an explicit migration/calibration record."
+  ],
+  "graders": [
+    {
+      "grader_id": "grader.acquisition.budget",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ACQUISITION",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_sources",
+        "forbidden_sources",
+        "source_fetch_plan",
+        "query_constraints",
+        "budget",
+        "retry_stop"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare budget against explicit gold fields and contract invariants for ACQUISITION; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.acquisition.constraint_accuracy",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ACQUISITION",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_sources",
+        "forbidden_sources",
+        "source_fetch_plan",
+        "query_constraints",
+        "budget",
+        "retry_stop"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare constraint_accuracy against explicit gold fields and contract invariants for ACQUISITION; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.acquisition.deterministic",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ACQUISITION",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_sources",
+        "forbidden_sources",
+        "source_fetch_plan",
+        "query_constraints",
+        "budget",
+        "retry_stop"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare deterministic against explicit gold fields and contract invariants for ACQUISITION; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.acquisition.required_forbidden_source",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ACQUISITION",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_sources",
+        "forbidden_sources",
+        "source_fetch_plan",
+        "query_constraints",
+        "budget",
+        "retry_stop"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare required_forbidden_source against explicit gold fields and contract invariants for ACQUISITION; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.acquisition.retry_stop",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ACQUISITION",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_sources",
+        "forbidden_sources",
+        "source_fetch_plan",
+        "query_constraints",
+        "budget",
+        "retry_stop"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare retry_stop against explicit gold fields and contract invariants for ACQUISITION; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.acquisition.schema",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ACQUISITION",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_sources",
+        "forbidden_sources",
+        "source_fetch_plan",
+        "query_constraints",
+        "budget",
+        "retry_stop"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare schema against explicit gold fields and contract invariants for ACQUISITION; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.acquisition.semantic",
+      "version": "0.1.0",
+      "grader_type": "SEMANTIC",
+      "applies_to": "ACQUISITION",
+      "authoritativeness": "SUPPORTING_ONLY",
+      "gold_fields": [
+        "required_sources",
+        "forbidden_sources",
+        "source_fetch_plan",
+        "query_constraints",
+        "budget",
+        "retry_stop"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Supporting semantic grader only: assess grounded meaning, usefulness, overclaim, and clarity against the supplied gold/rubric. It cannot override deterministic Safety, Tool, Argument, Retry, or End-state failures."
+    },
+    {
+      "grader_id": "grader.analysis.conflict",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ANALYSIS",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "relations",
+        "duplicates",
+        "conflicts",
+        "schedule_risk",
+        "missing_data",
+        "evidence_refs"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare conflict against explicit gold fields and contract invariants for ANALYSIS; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.analysis.deterministic",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ANALYSIS",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "relations",
+        "duplicates",
+        "conflicts",
+        "schedule_risk",
+        "missing_data",
+        "evidence_refs"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare deterministic against explicit gold fields and contract invariants for ANALYSIS; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.analysis.duplicate",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ANALYSIS",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "relations",
+        "duplicates",
+        "conflicts",
+        "schedule_risk",
+        "missing_data",
+        "evidence_refs"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare duplicate against explicit gold fields and contract invariants for ANALYSIS; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.analysis.evidence_grounding",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ANALYSIS",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "relations",
+        "duplicates",
+        "conflicts",
+        "schedule_risk",
+        "missing_data",
+        "evidence_refs"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare evidence_grounding against explicit gold fields and contract invariants for ANALYSIS; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.analysis.missing_data",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ANALYSIS",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "relations",
+        "duplicates",
+        "conflicts",
+        "schedule_risk",
+        "missing_data",
+        "evidence_refs"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare missing_data against explicit gold fields and contract invariants for ANALYSIS; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.analysis.relation",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ANALYSIS",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "relations",
+        "duplicates",
+        "conflicts",
+        "schedule_risk",
+        "missing_data",
+        "evidence_refs"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare relation against explicit gold fields and contract invariants for ANALYSIS; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.analysis.schedule_risk",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ANALYSIS",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "relations",
+        "duplicates",
+        "conflicts",
+        "schedule_risk",
+        "missing_data",
+        "evidence_refs"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare schedule_risk against explicit gold fields and contract invariants for ANALYSIS; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.analysis.schema",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ANALYSIS",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "relations",
+        "duplicates",
+        "conflicts",
+        "schedule_risk",
+        "missing_data",
+        "evidence_refs"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare schema against explicit gold fields and contract invariants for ANALYSIS; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.analysis.semantic",
+      "version": "0.1.0",
+      "grader_type": "SEMANTIC",
+      "applies_to": "ANALYSIS",
+      "authoritativeness": "SUPPORTING_ONLY",
+      "gold_fields": [
+        "relations",
+        "duplicates",
+        "conflicts",
+        "schedule_risk",
+        "missing_data",
+        "evidence_refs"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Supporting semantic grader only: assess grounded meaning, usefulness, overclaim, and clarity against the supplied gold/rubric. It cannot override deterministic Safety, Tool, Argument, Retry, or End-state failures."
+    },
+    {
+      "grader_id": "grader.clarification.semantic",
+      "grader_type": "SEMANTIC",
+      "description": "Semantic quality of minimal clarification, candidate differences, and unnecessary clarification."
+    },
+    {
+      "grader_id": "grader.context.conflict",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "RETRIEVAL",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_resource_ids",
+        "required_evidence",
+        "hard_negatives",
+        "sufficiency",
+        "conflicts",
+        "token_budget"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare conflict against explicit gold fields and contract invariants for RETRIEVAL; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.context.hard_negative",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "RETRIEVAL",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_resource_ids",
+        "required_evidence",
+        "hard_negatives",
+        "sufficiency",
+        "conflicts",
+        "token_budget"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare hard_negative against explicit gold fields and contract invariants for RETRIEVAL; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.context.prompt_injection",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "RETRIEVAL",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_resource_ids",
+        "required_evidence",
+        "hard_negatives",
+        "sufficiency",
+        "conflicts",
+        "token_budget"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare prompt_injection against explicit gold fields and contract invariants for RETRIEVAL; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.context.required_evidence",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "RETRIEVAL",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_resource_ids",
+        "required_evidence",
+        "hard_negatives",
+        "sufficiency",
+        "conflicts",
+        "token_budget"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare required_evidence against explicit gold fields and contract invariants for RETRIEVAL; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.context.schema",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "RETRIEVAL",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_resource_ids",
+        "required_evidence",
+        "hard_negatives",
+        "sufficiency",
+        "conflicts",
+        "token_budget"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare schema against explicit gold fields and contract invariants for RETRIEVAL; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.context.sufficiency",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "RETRIEVAL",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_resource_ids",
+        "required_evidence",
+        "hard_negatives",
+        "sufficiency",
+        "conflicts",
+        "token_budget"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare sufficiency against explicit gold fields and contract invariants for RETRIEVAL; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.context.token_budget",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "RETRIEVAL",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_resource_ids",
+        "required_evidence",
+        "hard_negatives",
+        "sufficiency",
+        "conflicts",
+        "token_budget"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare token_budget against explicit gold fields and contract invariants for RETRIEVAL; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.e2e.deterministic",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "E2E",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "completion_criteria",
+        "required_sources",
+        "required_resources",
+        "required_evidence",
+        "policy",
+        "interrupt",
+        "route",
+        "answer_type",
+        "actions",
+        "end_state"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare deterministic against explicit gold fields and contract invariants for E2E; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.e2e.semantic",
+      "version": "0.1.0",
+      "grader_type": "SEMANTIC",
+      "applies_to": "E2E",
+      "authoritativeness": "SUPPORTING_ONLY",
+      "gold_fields": [
+        "completion_criteria",
+        "required_sources",
+        "required_resources",
+        "required_evidence",
+        "policy",
+        "interrupt",
+        "route",
+        "answer_type",
+        "actions",
+        "end_state"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Supporting semantic grader only: assess grounded meaning, usefulness, overclaim, and clarity against the supplied gold/rubric. It cannot override deterministic Safety, Tool, Argument, Retry, or End-state failures."
+    },
+    {
+      "grader_id": "grader.end_state.deterministic",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "END_STATE",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "run_status",
+        "result_kind",
+        "action_statuses",
+        "verification_state"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare deterministic against explicit gold fields and contract invariants for END_STATE; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.fault_safety.deterministic",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "FAULT_SAFETY",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "fault_profile",
+        "allowed_retries",
+        "forbidden_retries",
+        "recovery_steps",
+        "terminal_state"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare deterministic against explicit gold fields and contract invariants for FAULT_SAFETY; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.paraphrase.constraint_preservation",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "PARAPHRASE",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "canonical_prompt",
+        "variant_prompt",
+        "goal",
+        "constraints",
+        "entry_mode",
+        "route_family"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare constraint_preservation against explicit gold fields and contract invariants for PARAPHRASE; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.paraphrase.goal_equivalence",
+      "version": "0.1.0",
+      "grader_type": "SEMANTIC",
+      "applies_to": "PARAPHRASE",
+      "authoritativeness": "SUPPORTING_ONLY",
+      "gold_fields": [
+        "canonical_prompt",
+        "variant_prompt",
+        "goal",
+        "constraints",
+        "entry_mode",
+        "route_family"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Supporting semantic grader: judge goal/route equivalence without rewarding added or removed constraints; never override deterministic constraint-preservation failures."
+    },
+    {
+      "grader_id": "grader.paraphrase.route_equivalence",
+      "version": "0.1.0",
+      "grader_type": "SEMANTIC",
+      "applies_to": "PARAPHRASE",
+      "authoritativeness": "SUPPORTING_ONLY",
+      "gold_fields": [
+        "canonical_prompt",
+        "variant_prompt",
+        "goal",
+        "constraints",
+        "entry_mode",
+        "route_family"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Supporting semantic grader: judge goal/route equivalence without rewarding added or removed constraints; never override deterministic constraint-preservation failures."
+    },
+    {
+      "grader_id": "grader.plan.action_set",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "PLANNING",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "expected_answer_type",
+        "actions",
+        "tool",
+        "effect_type",
+        "target",
+        "arguments",
+        "evidence",
+        "dependency_dag",
+        "scope_policy"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare action_set against explicit gold fields and contract invariants for PLANNING; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.plan.arguments",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "PLANNING",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "expected_answer_type",
+        "actions",
+        "tool",
+        "effect_type",
+        "target",
+        "arguments",
+        "evidence",
+        "dependency_dag",
+        "scope_policy"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare arguments against explicit gold fields and contract invariants for PLANNING; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.plan.dag",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "PLANNING",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "expected_answer_type",
+        "actions",
+        "tool",
+        "effect_type",
+        "target",
+        "arguments",
+        "evidence",
+        "dependency_dag",
+        "scope_policy"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare dag against explicit gold fields and contract invariants for PLANNING; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.plan.evidence",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "PLANNING",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "expected_answer_type",
+        "actions",
+        "tool",
+        "effect_type",
+        "target",
+        "arguments",
+        "evidence",
+        "dependency_dag",
+        "scope_policy"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare evidence against explicit gold fields and contract invariants for PLANNING; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.plan.schema",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "PLANNING",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "expected_answer_type",
+        "actions",
+        "tool",
+        "effect_type",
+        "target",
+        "arguments",
+        "evidence",
+        "dependency_dag",
+        "scope_policy"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare schema against explicit gold fields and contract invariants for PLANNING; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.plan.scope_policy",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "PLANNING",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "expected_answer_type",
+        "actions",
+        "tool",
+        "effect_type",
+        "target",
+        "arguments",
+        "evidence",
+        "dependency_dag",
+        "scope_policy"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare scope_policy against explicit gold fields and contract invariants for PLANNING; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.plan.tool_effect_target",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "PLANNING",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "expected_answer_type",
+        "actions",
+        "tool",
+        "effect_type",
+        "target",
+        "arguments",
+        "evidence",
+        "dependency_dag",
+        "scope_policy"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare tool_effect_target against explicit gold fields and contract invariants for PLANNING; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.planning.deterministic",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "PLANNING",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "expected_answer_type",
+        "actions",
+        "tool",
+        "effect_type",
+        "target",
+        "arguments",
+        "evidence",
+        "dependency_dag",
+        "scope_policy"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare deterministic against explicit gold fields and contract invariants for PLANNING; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.planning.semantic",
+      "version": "0.1.0",
+      "grader_type": "SEMANTIC",
+      "applies_to": "PLANNING",
+      "authoritativeness": "SUPPORTING_ONLY",
+      "gold_fields": [
+        "expected_answer_type",
+        "actions",
+        "tool",
+        "effect_type",
+        "target",
+        "arguments",
+        "evidence",
+        "dependency_dag",
+        "scope_policy"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Supporting semantic grader only: assess grounded meaning, usefulness, overclaim, and clarity against the supplied gold/rubric. It cannot override deterministic Safety, Tool, Argument, Retry, or End-state failures."
+    },
+    {
+      "grader_id": "grader.request_intent.constraints",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "USER_UNDERSTANDING",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "goal",
+        "requested_outcome",
+        "entry_mode",
+        "constraints",
+        "expected_interrupt"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare constraints against explicit gold fields and contract invariants for USER_UNDERSTANDING; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.request_intent.routing",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "USER_UNDERSTANDING",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "goal",
+        "requested_outcome",
+        "entry_mode",
+        "constraints",
+        "expected_interrupt"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare routing against explicit gold fields and contract invariants for USER_UNDERSTANDING; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.request_intent.schema",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "USER_UNDERSTANDING",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "goal",
+        "requested_outcome",
+        "entry_mode",
+        "constraints",
+        "expected_interrupt"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare schema against explicit gold fields and contract invariants for USER_UNDERSTANDING; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.request_intent.semantic",
+      "version": "0.1.0",
+      "grader_type": "SEMANTIC",
+      "applies_to": "USER_UNDERSTANDING",
+      "authoritativeness": "SUPPORTING_ONLY",
+      "gold_fields": [
+        "goal",
+        "requested_outcome",
+        "entry_mode",
+        "constraints",
+        "expected_interrupt"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Supporting semantic grader only: assess grounded meaning, usefulness, overclaim, and clarity against the supplied gold/rubric. It cannot override deterministic Safety, Tool, Argument, Retry, or End-state failures."
+    },
+    {
+      "grader_id": "grader.retrieval.deterministic",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "RETRIEVAL",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "required_resource_ids",
+        "required_evidence",
+        "hard_negatives",
+        "sufficiency",
+        "conflicts",
+        "token_budget"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare deterministic against explicit gold fields and contract invariants for RETRIEVAL; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.retrieval.semantic",
+      "version": "0.1.0",
+      "grader_type": "SEMANTIC",
+      "applies_to": "RETRIEVAL",
+      "authoritativeness": "SUPPORTING_ONLY",
+      "gold_fields": [
+        "required_resource_ids",
+        "required_evidence",
+        "hard_negatives",
+        "sufficiency",
+        "conflicts",
+        "token_budget"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Supporting semantic grader only: assess grounded meaning, usefulness, overclaim, and clarity against the supplied gold/rubric. It cannot override deterministic Safety, Tool, Argument, Retry, or End-state failures."
+    },
+    {
+      "grader_id": "grader.review.deterministic",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "REVIEW",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "review_result",
+        "findings",
+        "localization",
+        "route",
+        "repeat_stop",
+        "overblocking"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare deterministic against explicit gold fields and contract invariants for REVIEW; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.review.error_detection",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "REVIEW",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "review_result",
+        "findings",
+        "localization",
+        "route",
+        "repeat_stop",
+        "overblocking"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare error_detection against explicit gold fields and contract invariants for REVIEW; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.review.localization",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "REVIEW",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "review_result",
+        "findings",
+        "localization",
+        "route",
+        "repeat_stop",
+        "overblocking"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare localization against explicit gold fields and contract invariants for REVIEW; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.review.overblocking",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "REVIEW",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "review_result",
+        "findings",
+        "localization",
+        "route",
+        "repeat_stop",
+        "overblocking"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare overblocking against explicit gold fields and contract invariants for REVIEW; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.review.repeat_stop",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "REVIEW",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "review_result",
+        "findings",
+        "localization",
+        "route",
+        "repeat_stop",
+        "overblocking"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare repeat_stop against explicit gold fields and contract invariants for REVIEW; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.review.route",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "REVIEW",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "review_result",
+        "findings",
+        "localization",
+        "route",
+        "repeat_stop",
+        "overblocking"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare route against explicit gold fields and contract invariants for REVIEW; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.review.schema",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "REVIEW",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "review_result",
+        "findings",
+        "localization",
+        "route",
+        "repeat_stop",
+        "overblocking"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare schema against explicit gold fields and contract invariants for REVIEW; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.review.semantic",
+      "version": "0.1.0",
+      "grader_type": "SEMANTIC",
+      "applies_to": "REVIEW",
+      "authoritativeness": "SUPPORTING_ONLY",
+      "gold_fields": [
+        "review_result",
+        "findings",
+        "localization",
+        "route",
+        "repeat_stop",
+        "overblocking"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Supporting semantic grader only: assess grounded meaning, usefulness, overclaim, and clarity against the supplied gold/rubric. It cannot override deterministic Safety, Tool, Argument, Retry, or End-state failures."
+    },
+    {
+      "grader_id": "grader.routing_trajectory.deterministic",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "ROUTING_TRAJECTORY",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "expected_agent_route",
+        "expected_skipped_nodes",
+        "required_tools",
+        "forbidden_tools",
+        "budget_profile",
+        "retry_counts"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare deterministic against explicit gold fields and contract invariants for ROUTING_TRAJECTORY; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.routing_trajectory.semantic",
+      "version": "0.1.0",
+      "grader_type": "SEMANTIC",
+      "applies_to": "ROUTING_TRAJECTORY",
+      "authoritativeness": "SUPPORTING_ONLY",
+      "gold_fields": [
+        "expected_agent_route",
+        "expected_skipped_nodes",
+        "required_tools",
+        "forbidden_tools",
+        "budget_profile",
+        "retry_counts"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Supporting semantic grader only: assess grounded meaning, usefulness, overclaim, and clarity against the supplied gold/rubric. It cannot override deterministic Safety, Tool, Argument, Retry, or End-state failures."
+    },
+    {
+      "grader_id": "grader.user_understanding.deterministic",
+      "version": "0.1.0",
+      "grader_type": "DETERMINISTIC",
+      "applies_to": "USER_UNDERSTANDING",
+      "authoritativeness": "AUTHORITATIVE_WHEN_APPLICABLE",
+      "gold_fields": [
+        "goal",
+        "requested_outcome",
+        "entry_mode",
+        "constraints",
+        "expected_interrupt"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Deterministically compare deterministic against explicit gold fields and contract invariants for USER_UNDERSTANDING; emit PASS/FAIL with machine-readable mismatch codes."
+    },
+    {
+      "grader_id": "grader.user_understanding.semantic",
+      "version": "0.1.0",
+      "grader_type": "SEMANTIC",
+      "applies_to": "USER_UNDERSTANDING",
+      "authoritativeness": "SUPPORTING_ONLY",
+      "gold_fields": [
+        "goal",
+        "requested_outcome",
+        "entry_mode",
+        "constraints",
+        "expected_interrupt"
+      ],
+      "output_schema": {
+        "result": [
+          "PASS",
+          "FAIL",
+          "NOT_APPLICABLE"
+        ],
+        "mismatch_codes": "string[]",
+        "details": "object"
+      },
+      "rule_summary": "Supporting semantic grader only: assess grounded meaning, usefulness, overclaim, and clarity against the supplied gold/rubric. It cannot override deterministic Safety, Tool, Argument, Retry, or End-state failures."
+    },
+    {
+      "grader_id": "grader.verification.effect_policy",
+      "grader_type": "DETERMINISTIC",
+      "description": "Deterministic validation of GET_COMPARE/SENT_LOOKUP/GET_ABSENT and effect-specific UNKNOWN_RESULT no-reissue behavior."
+    },
+    {
+      "grader_id": "grader.write_effect_policy.deterministic",
+      "grader_type": "DETERMINISTIC",
+      "description": "Deterministic validation of registered tool, READ/CREATE/UPDATE/SEND/DELETE effect, target rule and approval requirement."
+    }
+  ]
+}

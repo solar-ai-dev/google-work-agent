@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-030-ANL",
+  "case_id": "CASE-CORE-030",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-005",
+    "user_prompt_id": "UP-CORE-030",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "completion_criteria": [
+      "요청된 13~14시가 Busy와 겹침을 감지한다.",
+      "자동으로 다른 시간으로 옮기지 않는다."
+    ],
+    "tags": [
+      "gmail_tasks_to_calendar",
+      "sf-c3-availability-calendar",
+      "conflict"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

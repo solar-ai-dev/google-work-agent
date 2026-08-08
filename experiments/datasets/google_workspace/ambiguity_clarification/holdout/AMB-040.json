@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-040",
+  "split": "HOLDOUT",
+  "ambiguity_family_id": "AMB-F10-RECURRENCE-SCOPE",
+  "user_request": "다음 스탠드업 시간을 바꿔줘",
+  "conversation_context": [],
+  "available_candidates": [
+    {
+      "candidate_id": "e1",
+      "label": "8/10 occurrence",
+      "difference_summary": "occurrence"
+    },
+    {
+      "candidate_id": "e2",
+      "label": "8/17 occurrence",
+      "difference_summary": "occurrence"
+    }
+  ],
+  "gold": {
+    "should_clarify": true,
+    "ambiguity_kind": "RECURRENCE_SCOPE",
+    "expected_route": "WAITING_CONFIRMATION",
+    "expected_semantics": "다음의 기준 후보를 선택",
+    "question_strategy": "CANDIDATE_SELECTION",
+    "required_candidate_ids": [
+      "e1",
+      "e2"
+    ],
+    "forbidden_assumptions": [
+      "LOW_CONFIDENCE_AUTO_SELECTION",
+      "INVENTED_TARGET",
+      "INVENTED_EFFECT"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

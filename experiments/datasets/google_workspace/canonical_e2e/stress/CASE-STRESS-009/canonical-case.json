@@ -1,0 +1,148 @@
+{
+  "schema_version": 3,
+  "case_id": "CASE-STRESS-009",
+  "split": "STRESS",
+  "dataset_version": "rebuild-v1.9",
+  "category": "SOURCE_SELECTION_READ",
+  "scenario_family_id": "SF-S5-LOWCONF-BUDGET",
+  "fixture_relation_family": "RF-DEV-012",
+  "fixture_snapshot_id": "FW-D-012",
+  "language": "ko-KR",
+  "entry_mode": "AGENT_SEARCH",
+  "user_prompt_id": "UP-STRESS-009",
+  "canonical_user_prompt": "Lumen 마이그레이션 데이터 이전 시작 시간을 찾아줘. 검색 예산을 넘겨 같은 검색을 반복하지 마.",
+  "business_scenario": "첫 Query가 0건이면 Lumen-Aurora 관계를 이용해 Query를 한 번 수정한다.",
+  "expected_goal": "검색어를 의미 있게 수정해 데이터 이전 시작 시간을 찾는다.",
+  "expected_completion_criteria": [
+    "최대 2회 Additional Acquisition 이후 중단한다.",
+    "같은 Query를 무변경 반복하지 않는다.",
+    "확인하지 못한 시작 시간은 추측하지 않는다."
+  ],
+  "requested_outcome": "ANSWER",
+  "selected_resource_ids": [],
+  "required_sources": [
+    "GMAIL"
+  ],
+  "optional_sources": [],
+  "forbidden_sources": [],
+  "required_resource_ids": [
+    "GTH-L-001",
+    "GM-L-001"
+  ],
+  "hard_negative_resource_ids": [],
+  "required_evidence_ids": [
+    "EVD-SEG-GM-L-001-1"
+  ],
+  "user_evidence": [],
+  "derived_evidence": [],
+  "expected_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "acquisition.revise_partial",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "acquisition.revise_partial",
+    "acquisition.execute",
+    "BUDGET_EXHAUSTED",
+    "planning.answer_only",
+    "complete_answer_only_run"
+  ],
+  "expected_skipped_nodes": [
+    "planning.draft_plan"
+  ],
+  "expected_source_fetch_plan": [
+    {
+      "source": "GMAIL",
+      "priority": 1,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 2
+    }
+  ],
+  "expected_tool_trajectory": [
+    {
+      "phase": "READ",
+      "tool": "gmail_search_threads",
+      "required": true,
+      "constraints": {
+        "fixture_scope": "FW-D-012"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "gmail_get_thread",
+      "required": true,
+      "constraints": {
+        "resource_ids": [
+          "GTH-L-001"
+        ]
+      }
+    }
+  ],
+  "expected_answer_type": "PARTIAL",
+  "policy_result": "ALLOW_READ",
+  "expected_interrupt": "NONE",
+  "allowed_actions": [],
+  "forbidden_actions": [
+    "gmail_send",
+    "gmail_delete",
+    "tasks_delete",
+    "tasks_complete",
+    "calendar_delete",
+    "calendar_add_external_attendee"
+  ],
+  "approval_expectation": {
+    "required": false,
+    "scope": "ACTION_LEVEL",
+    "no_write_before_approval": true
+  },
+  "verification_expectation": {
+    "required": false,
+    "policy": "NONE",
+    "all_writes_re_read": false
+  },
+  "end_state_expectation": {
+    "initial": {
+      "run_status": "COMPLETED",
+      "result_kind": "PARTIAL"
+    },
+    "after_user_action": null
+  },
+  "node_applicability": {
+    "request_understanding": true,
+    "acquisition": true,
+    "context_retriever": true,
+    "work_analysis": true,
+    "planning": true,
+    "review": true
+  },
+  "node_projection_refs": [
+    "PROJ-STRESS-009-UU",
+    "PROJ-STRESS-009-ACQ",
+    "PROJ-STRESS-009-RET",
+    "PROJ-STRESS-009-ANL",
+    "PROJ-STRESS-009-PLN",
+    "PROJ-STRESS-009-REV",
+    "PROJ-STRESS-009-RT",
+    "PROJ-STRESS-009-E2E"
+  ],
+  "tags": [
+    "stress",
+    "sf-s5-lowconf-budget",
+    "source_selection_read",
+    "sf-c1-agent-search-read",
+    "query_revision",
+    "no_results_first_round",
+    "query_budget_partial"
+  ],
+  "human_rubric": [
+    "첫 Lumen Query 0건을 기록한다.",
+    "Aurora Migration 별칭으로 제약을 수정한다.",
+    "8월 22일 22시를 답한다."
+  ]
+}

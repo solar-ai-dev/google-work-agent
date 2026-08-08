@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-016",
+  "split": "DEV",
+  "ambiguity_family_id": "AMB-F04-LOW-INFO-ACTION-WITH-CONTEXT",
+  "user_request": "정리해서 진행해줘",
+  "conversation_context": [
+    "직전 user: 세 Task를 하나의 체크리스트 Task로 합쳐 새 Task를 만들자"
+  ],
+  "available_candidates": [],
+  "gold": {
+    "should_clarify": false,
+    "ambiguity_kind": "ACTION_SEMANTICS",
+    "expected_route": "CONTINUE",
+    "expected_semantics": "직전 명시 목표 상속",
+    "question_strategy": "NONE",
+    "required_candidate_ids": [],
+    "forbidden_assumptions": [
+      "UNNECESSARY_CLARIFICATION"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

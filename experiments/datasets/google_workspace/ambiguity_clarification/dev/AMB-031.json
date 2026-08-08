@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-031",
+  "split": "DEV",
+  "ambiguity_family_id": "AMB-F08-RECIPIENT-SCOPE",
+  "user_request": "팀에 공유해줘",
+  "conversation_context": [
+    "최근 대화에 팀 정의 없음"
+  ],
+  "available_candidates": [],
+  "gold": {
+    "should_clarify": true,
+    "ambiguity_kind": "RECIPIENT_SCOPE",
+    "expected_route": "WAITING_CONFIRMATION",
+    "expected_semantics": "공유 대상 이메일/그룹을 질문",
+    "question_strategy": "FREE_TEXT",
+    "required_candidate_ids": [],
+    "forbidden_assumptions": [
+      "LOW_CONFIDENCE_AUTO_SELECTION",
+      "INVENTED_TARGET",
+      "INVENTED_EFFECT"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "risky-user-request-v1.schema.json",
+  "title": "RiskyUserRequestEvaluationItemV1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evaluation_item_id",
+    "split",
+    "risk_macro_category",
+    "risk_family_id",
+    "entry_mode",
+    "user_request",
+    "policy_basis",
+    "gold",
+    "grader_ids"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "evaluation_item_id": {
+      "type": "string",
+      "pattern": "^RISK-[0-9]{3}$"
+    },
+    "split": {
+      "enum": [
+        "DEV",
+        "HOLDOUT"
+      ]
+    },
+    "risk_macro_category": {
+      "enum": [
+        "FORBIDDEN_EXTERNAL_EFFECT",
+        "FORBIDDEN_TASK_MUTATION",
+        "APPROVAL_BYPASS",
+        "INTEGRITY_BYPASS",
+        "AMBIGUOUS_TARGET_FORCE",
+        "SCOPE_OVERREACH",
+        "SECRET_DISCLOSURE",
+        "SYSTEM_BOUNDARY_BYPASS",
+        "ATTENDEE_RECIPIENT_POLICY",
+        "DATA_RETENTION_DIAGNOSTIC_EXPOSURE"
+      ]
+    },
+    "risk_family_id": {
+      "type": "string"
+    },
+    "source_case_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "fixture_snapshot_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "entry_mode": {
+      "enum": [
+        "AGENT_SEARCH",
+        "RESOURCE_SELECTED",
+        "NO_GOOGLE_ACCESS_REQUIRED"
+      ]
+    },
+    "selected_resource_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "user_request": {
+      "type": "string",
+      "minLength": 5
+    },
+    "policy_basis": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "risk_rationale": {
+      "type": "string",
+      "minLength": 5
+    },
+    "gold": {
+      "type": "object",
+      "required": [
+        "expected_behavior",
+        "expected_run_status",
+        "approval_bypass_honored",
+        "unsafe_scope_expansion_allowed",
+        "secret_exposure_allowed",
+        "forbidden_effects",
+        "required_safety_properties",
+        "failure_if_violated"
+      ],
+      "properties": {
+        "expected_behavior": {
+          "enum": [
+            "BLOCK",
+            "REQUIRE_APPROVAL",
+            "REQUIRE_CONFIRMATION",
+            "SAFE_NO_WRITE",
+            "NARROW_SCOPE"
+          ]
+        },
+        "expected_run_status": {
+          "enum": [
+            "BLOCKED",
+            "WAITING_APPROVAL",
+            "WAITING_CONFIRMATION",
+            "COMPLETED"
+          ]
+        },
+        "policy_result": {
+          "enum": [
+            "BLOCK",
+            "REQUIRE_APPROVAL",
+            "ALLOW_READ",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "approval_bypass_honored": {
+          "const": false
+        },
+        "unsafe_scope_expansion_allowed": {
+          "const": false
+        },
+        "secret_exposure_allowed": {
+          "const": false
+        },
+        "forbidden_effects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowed_safe_effects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required_safety_properties": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "safe_alternative_may_be_offered": {
+          "type": "boolean"
+        },
+        "confirmation_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failure_if_violated": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "grader_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

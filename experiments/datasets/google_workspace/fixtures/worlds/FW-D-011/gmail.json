@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-K-001",
+      "subject": "[Kestrel] 공급 지연",
+      "participants": [
+        "vendor@kestrel.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-K-001",
+          "sender": "vendor@kestrel.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T01:00:00Z",
+          "body": "선적이 이틀 지연됩니다."
+        }
+      ]
+    }
+  ]
+}

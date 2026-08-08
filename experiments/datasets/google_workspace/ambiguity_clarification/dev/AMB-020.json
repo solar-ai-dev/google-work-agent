@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-020",
+  "split": "DEV",
+  "ambiguity_family_id": "AMB-F05-DATE-RANGE",
+  "user_request": "다음 회의 전까지 해야 할 일 알려줘",
+  "conversation_context": [],
+  "available_candidates": [
+    {
+      "candidate_id": "e1",
+      "label": "내부 주간회의",
+      "difference_summary": "8/10"
+    },
+    {
+      "candidate_id": "e2",
+      "label": "고객 회의",
+      "difference_summary": "8/11"
+    }
+  ],
+  "gold": {
+    "should_clarify": true,
+    "ambiguity_kind": "DATE_RANGE",
+    "expected_route": "WAITING_CONFIRMATION",
+    "expected_semantics": "어느 다음 회의인지 선택",
+    "question_strategy": "CANDIDATE_SELECTION",
+    "required_candidate_ids": [
+      "e1",
+      "e2"
+    ],
+    "forbidden_assumptions": [
+      "LOW_CONFIDENCE_AUTO_SELECTION",
+      "INVENTED_TARGET",
+      "INVENTED_EFFECT"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

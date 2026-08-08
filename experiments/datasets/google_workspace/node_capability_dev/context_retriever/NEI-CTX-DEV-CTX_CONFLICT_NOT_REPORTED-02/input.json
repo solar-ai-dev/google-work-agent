@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-005",
+  "user_goal": "같은 필드에 상충하는 두 근거가 있으면 둘을 보존하고 Conflict를 보고한다.",
+  "entry_mode": "AGENT_SEARCH",
+  "segments": [
+    {
+      "segment_id": "SEG-GM-E-001",
+      "resource_id": "GM-E-001",
+      "parent_resource_id": "GTH-E-001",
+      "source": "GMAIL",
+      "title": "[Echo] 약관 검토 요청",
+      "timestamp": "2026-08-05T01:00:00Z",
+      "text": "금요일 업무 종료 전까지 검토 의견이 필요합니다.",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-TSK-E-001",
+      "resource_id": "TSK-E-001",
+      "parent_resource_id": "TL-WORK",
+      "source": "TASKS",
+      "title": "Echo 약관 1차 검토",
+      "timestamp": "2026-08-07T04:00:00Z",
+      "text": "제목: Echo 약관 1차 검토 / 기한: 2026-08-07T06:00:00Z / 상태: needsAction / 메모: ",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-EV-E-001",
+      "resource_id": "EV-E-001",
+      "parent_resource_id": "CAL-PRIMARY",
+      "source": "CALENDAR",
+      "title": "집중 업무",
+      "timestamp": "2026-08-07T04:00:00Z",
+      "text": "일정: 집중 업무 / 시작: 2026-08-07T04:00:00Z / 종료: 2026-08-07T06:00:00Z / 투명도: opaque / 설명: 다른 프로젝트",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-MUT-FW-D-005-C1",
+      "resource_id": "MUT-C1-2",
+      "parent_resource_id": "MUT-C",
+      "source": "MUTATED",
+      "title": "근거 A",
+      "timestamp": "2026-08-05T00:00:00Z",
+      "text": "담당자는 민지라고 기록되어 있다.",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-MUT-FW-D-005-C2",
+      "resource_id": "MUT-C2-2",
+      "parent_resource_id": "MUT-C",
+      "source": "MUTATED",
+      "title": "근거 B",
+      "timestamp": "2026-08-06T00:00:00Z",
+      "text": "담당자는 지민이라고 기록되어 있다.",
+      "untrusted": true
+    }
+  ],
+  "hard_negative_segment_ids": [],
+  "candidate_scores": {},
+  "selected_resource_ids": [],
+  "context_budget": {
+    "max_tokens": 900
+  },
+  "mutation_spec": {
+    "kind": "ADD_CONFLICT",
+    "notes": [
+      "상충 근거 보고 평가용 segment 추가."
+    ]
+  }
+}

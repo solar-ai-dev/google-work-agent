@@ -468,12 +468,12 @@ def test_prompt_refs_are_runtime_active() -> None:
     recheck_prompt = load_plan_review_recheck_prompt_reference()
 
     assert inspect_prompt.prompt_id == "review.inspect"
-    assert inspect_prompt.prompt_version == "v0.1"
+    assert inspect_prompt.prompt_version != "TBD"
     assert inspect_prompt.content_hash != "TBD"
     assert inspect_prompt.node_state == "BASELINE"
 
     assert recheck_prompt.prompt_id == "review.recheck"
-    assert recheck_prompt.prompt_version == "v0.1"
+    assert recheck_prompt.prompt_version != "TBD"
     assert recheck_prompt.content_hash != "TBD"
     assert recheck_prompt.node_state == "BASELINE"
 

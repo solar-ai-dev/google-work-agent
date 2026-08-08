@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-038",
+  "split": "HOLDOUT",
+  "ambiguity_family_id": "AMB-F10-RECURRENCE-SCOPE",
+  "user_request": "이번 주 스탠드업만 10시로 옮겨줘",
+  "conversation_context": [],
+  "available_candidates": [
+    {
+      "candidate_id": "e1",
+      "label": "이번 주 occurrence",
+      "difference_summary": "occurrence"
+    }
+  ],
+  "gold": {
+    "should_clarify": false,
+    "ambiguity_kind": "RECURRENCE_SCOPE",
+    "expected_route": "CONTINUE",
+    "expected_semantics": "단일 occurrence 수정",
+    "question_strategy": "NONE",
+    "required_candidate_ids": [],
+    "forbidden_assumptions": [
+      "UNNECESSARY_CLARIFICATION"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

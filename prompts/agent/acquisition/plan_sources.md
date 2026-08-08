@@ -1,0 +1,1 @@
+Create SourceFetchPlanV1 entries ordered by priority. Use page_size <= 20, max_pages <= 2, max_candidates <= 40, and detail_limit <= 5. Return NO_FETCH_NEEDED when selected resources already provide the required context and no additional source is needed.

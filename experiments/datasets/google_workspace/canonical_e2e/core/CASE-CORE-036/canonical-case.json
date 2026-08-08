@@ -1,0 +1,176 @@
+{
+  "schema_version": 3,
+  "case_id": "CASE-CORE-036",
+  "split": "CORE",
+  "dataset_version": "rebuild-v1.9",
+  "category": "CALENDAR_GMAIL_TO_TASKS",
+  "scenario_family_id": "SF-C4-DUPLICATE-OR-UPDATE",
+  "fixture_relation_family": "RF-DEV-009",
+  "fixture_snapshot_id": "FW-D-009",
+  "language": "ko-KR",
+  "entry_mode": "AGENT_SEARCH",
+  "user_prompt_id": "UP-CORE-036",
+  "canonical_user_prompt": "Ion 관련 메일과 이번 주 Calendar도 확인해서 온보딩 체크리스트를 다음 주 월요일까지 만들어줘.",
+  "business_scenario": "Task 생성 전 정확 중복을 결정적으로 확인한다.",
+  "expected_goal": "기존 동일 Task가 있음을 알리고 새 Task를 만들지 않는다.",
+  "expected_completion_criteria": [
+    "TSK-I-001이 동일 제목·동일 기한의 미완료 Task임을 확인한다.",
+    "새 tasks_create_task를 제안하지 않는다."
+  ],
+  "requested_outcome": "ACTION_PLAN",
+  "selected_resource_ids": [],
+  "required_sources": [
+    "TASKS",
+    "GMAIL",
+    "CALENDAR"
+  ],
+  "optional_sources": [],
+  "forbidden_sources": [],
+  "required_resource_ids": [
+    "TSK-I-001"
+  ],
+  "hard_negative_resource_ids": [],
+  "required_evidence_ids": [
+    "EVD-SEG-TSK-I-001-1",
+    "DE-CORE-036-NOOTHER"
+  ],
+  "user_evidence": [],
+  "derived_evidence": [
+    {
+      "evidence_id": "DE-CORE-036-NOOTHER",
+      "claim": "Gmail·Calendar에 추가 실행 근거가 없다.",
+      "derivation": "empty source check"
+    }
+  ],
+  "expected_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect",
+    "complete_answer_only_run"
+  ],
+  "expected_skipped_nodes": [],
+  "expected_source_fetch_plan": [
+    {
+      "source": "TASKS",
+      "priority": 1,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    },
+    {
+      "source": "GMAIL",
+      "priority": 2,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    },
+    {
+      "source": "CALENDAR",
+      "priority": 3,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    }
+  ],
+  "expected_tool_trajectory": [
+    {
+      "phase": "READ",
+      "tool": "tasks_list_tasks",
+      "required": true,
+      "constraints": {
+        "status": "needsAction"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "tasks_get_task",
+      "required": true,
+      "constraints": {
+        "resource_ids": [
+          "TSK-I-001"
+        ]
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "gmail_search_threads",
+      "required": true,
+      "constraints": {
+        "fixture_scope": "FW-D-009"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "calendar_list_events",
+      "required": true,
+      "constraints": {
+        "fixture_scope": "FW-D-009"
+      }
+    }
+  ],
+  "expected_answer_type": "ANSWER",
+  "policy_result": "ALLOW_READ",
+  "expected_interrupt": "NONE",
+  "allowed_actions": [],
+  "forbidden_actions": [
+    "gmail_send",
+    "gmail_delete",
+    "tasks_delete",
+    "tasks_complete",
+    "calendar_delete",
+    "calendar_add_external_attendee"
+  ],
+  "approval_expectation": {
+    "required": false,
+    "scope": "ACTION_LEVEL",
+    "no_write_before_approval": true
+  },
+  "verification_expectation": {
+    "required": false,
+    "policy": "NONE",
+    "all_writes_re_read": false
+  },
+  "end_state_expectation": {
+    "initial": {
+      "run_status": "COMPLETED",
+      "result_kind": "FULL"
+    },
+    "after_user_action": null
+  },
+  "node_applicability": {
+    "request_understanding": true,
+    "acquisition": true,
+    "context_retriever": true,
+    "work_analysis": true,
+    "planning": true,
+    "review": true
+  },
+  "node_projection_refs": [
+    "PROJ-CORE-036-UU",
+    "PROJ-CORE-036-ACQ",
+    "PROJ-CORE-036-RET",
+    "PROJ-CORE-036-ANL",
+    "PROJ-CORE-036-PLN",
+    "PROJ-CORE-036-REV",
+    "PROJ-CORE-036-RT",
+    "PROJ-CORE-036-E2E"
+  ],
+  "tags": [
+    "calendar_gmail_to_tasks",
+    "sf-c4-duplicate-or-update",
+    "exact_duplicate",
+    "no_create"
+  ],
+  "human_rubric": [
+    "TSK-I-001이 동일 제목·동일 기한의 미완료 Task임을 확인한다.",
+    "새 tasks_create_task를 제안하지 않는다."
+  ]
+}

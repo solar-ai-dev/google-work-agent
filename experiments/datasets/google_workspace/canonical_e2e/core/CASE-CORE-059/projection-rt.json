@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "case_id": "CASE-CORE-059",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-013",
+    "user_prompt_id": "UP-CORE-059",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "projection_id": "PROJ-CORE-059-RT",
+  "projection_kind": "ROUTING_TRAJECTORY",
+  "gold": {
+    "expected_route": [
+      "request_understanding.classify",
+      "acquisition.plan_sources",
+      "acquisition.execute",
+      "context.select_evidence",
+      "context.assess_sufficiency",
+      "analysis.analyze",
+      "planning.draft_plan",
+      "review.inspect",
+      "DOMAIN_VALIDATION",
+      "WAITING_APPROVAL"
+    ],
+    "expected_skipped_nodes": [],
+    "expected_tool_trajectory": [
+      {
+        "phase": "READ",
+        "tool": "gmail_search_threads",
+        "required": true,
+        "constraints": {
+          "project_terms": [
+            "Quartz",
+            "납품 일정"
+          ]
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "gmail_get_thread",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "GTH-Q-001"
+          ]
+        }
+      },
+      {
+        "phase": "WRITE",
+        "when": "AFTER_APPROVAL",
+        "tool": "gmail_send",
+        "required": true,
+        "constraints": {
+          "thread_id": "GTH-Q-001",
+          "to": [
+            "ops@quartz.example.test"
+          ],
+          "body": "8월 21일 납품 일정 확인했습니다."
+        }
+      },
+      {
+        "phase": "VERIFY",
+        "when": "AFTER_WRITE",
+        "tool": "gmail_get_message",
+        "required": true,
+        "constraints": {
+          "target": "SENT_MESSAGE_FROM_WRITE",
+          "verification_policy": "SENT_LOOKUP"
+        }
+      }
+    ]
+  },
+  "grader_ids": [
+    "grader.routing_trajectory.deterministic",
+    "grader.routing_trajectory.semantic"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "failure_id": "FAIL-NEI-ANL-DEV-ANALYSIS_UNSUPPORTED_INFERENCE-01",
+  "failure_reason_code": "ANALYSIS_UNSUPPORTED_INFERENCE",
+  "failure_origin": "LLM_OUTPUT",
+  "detected_by": "EXPERIMENT_SEMANTIC_GRADER",
+  "runtime_disposition": "RETRYABLE",
+  "experiment_disposition": "RUN_REVISION",
+  "affected_field_paths": [
+    "/"
+  ],
+  "evidence_refs": []
+}

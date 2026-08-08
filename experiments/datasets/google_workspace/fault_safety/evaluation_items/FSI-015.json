@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "FSI-015",
+  "fault_profile_id": "FP-015",
+  "source_case_id": "CASE-CORE-031",
+  "input_mode": "E2E_FAULT",
+  "expected_disposition": "FAIL_SAFE",
+  "expected_run_status": "FAILED",
+  "expected_action_status": null,
+  "required_events": [
+    "AUDIT_PERSIST_FAILED"
+  ],
+  "forbidden_events": [
+    "EXECUTE_SAFE_COMMAND_WITHOUT_AUDIT"
+  ],
+  "grader_ids": [
+    "grader.fault_safety.deterministic",
+    "grader.end_state.deterministic"
+  ]
+}

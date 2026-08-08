@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-A-001",
+      "subject": "[Atlas] 출고 일정 확정",
+      "participants": [
+        "jimin@team.example.test",
+        "ops@vendor.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-A-001",
+          "sender": "ops@vendor.example.test",
+          "to": [
+            "jimin@team.example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-04T01:00:00Z",
+          "body": "초기 출고 예정일은 8월 18일입니다."
+        },
+        {
+          "message_id": "GM-A-002",
+          "sender": "jimin@team.example.test",
+          "to": [
+            "ops@vendor.example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T06:00:00Z",
+          "body": "최종 출고는 8월 19일 오전으로 확정합니다. 담당은 지민입니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-A-099",
+      "subject": "[Atlas 과거] 2025년 출시 회고",
+      "participants": [
+        "archive@team.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-A-099",
+          "sender": "archive@team.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2025-08-01T01:00:00Z",
+          "body": "작년 출고일은 8월 18일이었습니다."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/acquisition-plan-output.schema.json",
+  "title": "AcquisitionPlanOutputV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "result",
+    "plans",
+    "confirmation",
+    "blocked_reason",
+    "stop_reason"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "result": {
+      "enum": [
+        "PLAN_READY",
+        "NO_FETCH_NEEDED",
+        "NEEDS_CONFIRMATION",
+        "BLOCKED",
+        "PARTIAL",
+        "AUTH_REQUIRED",
+        "RATE_LIMITED",
+        "BUDGET_EXHAUSTED",
+        "FAILED"
+      ]
+    },
+    "plans": {
+      "type": "array",
+      "items": {
+        "$ref": "source-fetch-plan.schema.json"
+      }
+    },
+    "confirmation": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "blocked_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "stop_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

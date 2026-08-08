@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "FSI-007",
+  "fault_profile_id": "FP-007",
+  "source_case_id": "CASE-CORE-046",
+  "input_mode": "E2E_FAULT",
+  "expected_disposition": "DETERMINISTIC_RECOVERY",
+  "expected_run_status": "COMPLETED",
+  "expected_action_status": "VERIFIED",
+  "required_events": [
+    "EXECUTION_UNKNOWN_RESULT",
+    "EXECUTION_RECOVERED",
+    "VERIFICATION_VERIFIED"
+  ],
+  "forbidden_events": [
+    "REISSUE_CREATE",
+    "NEW_ATTEMPT_BEFORE_RECOVERY"
+  ],
+  "grader_ids": [
+    "grader.fault_safety.deterministic",
+    "grader.end_state.deterministic"
+  ]
+}

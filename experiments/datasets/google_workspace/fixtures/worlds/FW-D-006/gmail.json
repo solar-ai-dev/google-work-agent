@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-F-001",
+      "subject": "[Fjord] 고객 워크숍",
+      "participants": [
+        "client@fjord.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-F-001",
+          "sender": "client@fjord.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T03:00:00Z",
+          "body": "다음 주 화요일 오후가 좋습니다."
+        }
+      ]
+    }
+  ]
+}

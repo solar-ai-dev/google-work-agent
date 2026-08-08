@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/plan-review-output.schema.json",
+  "title": "PlanReviewResultV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "result",
+    "findings",
+    "localized_failure_codes",
+    "next_route",
+    "recheck_required"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "result": {
+      "enum": [
+        "PASS",
+        "REVISE",
+        "RETRIEVE_MORE",
+        "CONFIRM",
+        "BLOCK"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "severity",
+          "action_id",
+          "field_paths",
+          "evidence_ids",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "CRITICAL",
+              "ERROR",
+              "WARN"
+            ]
+          },
+          "action_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "field_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "localized_failure_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next_route": {
+      "enum": [
+        "PLANNING",
+        "ACQUISITION",
+        "CONFIRM",
+        "BLOCK",
+        "DOMAIN_VALIDATION"
+      ]
+    },
+    "recheck_required": {
+      "type": "boolean"
+    }
+  }
+}

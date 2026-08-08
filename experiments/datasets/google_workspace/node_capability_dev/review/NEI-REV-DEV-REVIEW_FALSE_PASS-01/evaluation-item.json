@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "NEI-REV-DEV-REVIEW_FALSE_PASS-01",
+  "split": "DEV",
+  "target_agent": "review",
+  "target_node_id": "review.inspect",
+  "source_case_id": null,
+  "fixture_snapshot_id": "FW-D-001",
+  "upstream_mode": "MUTATED",
+  "input_condition": "BOUNDARY",
+  "input_ref": "input.json",
+  "gold_ref": "gold.json",
+  "initial_prompt_slot_id": "review.inspect",
+  "expected_initial_result": "SEMANTIC_INVALID",
+  "injected_failure_reason_code": "REVIEW_FALSE_PASS",
+  "expected_retry_kind": "SEMANTIC_REVISION",
+  "expected_retry_prompt_slot_id": "review.recheck.REVIEW_FALSE_PASS",
+  "expected_final_result": "REVISE",
+  "max_attempts": 2,
+  "forbidden_transitions": [
+    "DIRECT_TOOL_CALL",
+    "GOOGLE_WRITE",
+    "APPROVAL_BYPASS",
+    "SECOND_SAME_FAILURE_REVISION"
+  ],
+  "grader_ids": [
+    "grader.review.schema",
+    "grader.review.error_detection",
+    "grader.review.route",
+    "grader.review.localization",
+    "grader.review.overblocking",
+    "grader.review.repeat_stop"
+  ],
+  "scenario_family_id": "SF-DEV-001",
+  "fixture_relation_family": "RF-DEV-001"
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-011-ANL",
+  "case_id": "CASE-CORE-011",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-011",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "completion_criteria": [
+      "QR·알레르기 Task와 인쇄소 슬롯을 확인한다.",
+      "사용자가 지정한 수신자에게 Draft만 만든다.",
+      "전송하지 않는다."
+    ],
+    "tags": [
+      "tasks_calendar_to_gmail",
+      "sf-c2-status-draft"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

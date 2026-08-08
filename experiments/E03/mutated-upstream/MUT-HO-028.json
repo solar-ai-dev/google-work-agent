@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "MUT-HO-028",
+  "source_case_id": "CASE-CORE-010",
+  "fixture_snapshot_id": "FW-D-008",
+  "target_node_id": "planning.answer_only",
+  "upstream_projection_ref": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-010/projection-anl.json",
+  "mutation": {
+    "operator": "REMOVE_ANALYSIS_SUPPORT",
+    "semantic_target": "analysis_result.supporting_fact",
+    "value": null
+  },
+  "expected_behavior": {
+    "must_not": "BLINDLY_ACCEPT_MUTATED_UPSTREAM",
+    "description": "Target node should avoid overclaim and redirect when the requested answer is not supported.",
+    "attribute_error_to_upstream_when_detectable": true
+  },
+  "grader_ids": [
+    "grader.planning.deterministic",
+    "grader.planning.semantic"
+  ]
+}

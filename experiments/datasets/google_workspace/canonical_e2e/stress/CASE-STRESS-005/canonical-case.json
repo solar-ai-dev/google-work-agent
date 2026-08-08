@@ -1,0 +1,207 @@
+{
+  "schema_version": 3,
+  "case_id": "CASE-STRESS-005",
+  "split": "STRESS",
+  "dataset_version": "rebuild-v1.9",
+  "category": "THREE_SOURCE_COMPLEX",
+  "scenario_family_id": "SF-S3-LLM-RUNTIME",
+  "fixture_relation_family": "RF-DEV-001",
+  "fixture_snapshot_id": "FW-D-001",
+  "language": "ko-KR",
+  "entry_mode": "AGENT_SEARCH",
+  "user_prompt_id": "UP-STRESS-005",
+  "canonical_user_prompt": "Atlas 준비 순서의 위험을 메일·Task·Calendar를 모두 근거로 정리해줘.",
+  "business_scenario": "세 Source의 일정 순서를 대조한다.",
+  "expected_goal": "Atlas 준비 순서 위험을 분석한다.",
+  "expected_completion_criteria": [
+    "최종 출고 8/19, Task 기한 8/16·17, 인쇄소 슬롯 8/13을 연결한다.",
+    "새 write Action을 만들지 않는다.",
+    "AUTO 기술 실패 시 외부 전송 동의가 있는 경우 API fallback은 최대 1회다."
+  ],
+  "requested_outcome": "ANALYSIS",
+  "selected_resource_ids": [],
+  "required_sources": [
+    "GMAIL",
+    "TASKS",
+    "CALENDAR"
+  ],
+  "optional_sources": [],
+  "forbidden_sources": [],
+  "required_resource_ids": [
+    "GTH-A-001",
+    "TSK-A-001",
+    "TSK-A-002",
+    "EV-A-001"
+  ],
+  "hard_negative_resource_ids": [
+    "GTH-A-099",
+    "GM-A-099"
+  ],
+  "required_evidence_ids": [
+    "EVD-SEG-GM-A-002-1",
+    "EVD-SEG-TSK-A-001-2",
+    "EVD-SEG-TSK-A-002-3",
+    "EVD-SEG-EV-A-001-4"
+  ],
+  "user_evidence": [],
+  "derived_evidence": [],
+  "expected_route": [
+    "request_understanding.classify",
+    "LLM_AUTO_FALLBACK_ONCE",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.answer_only",
+    "review.inspect",
+    "complete_answer_only_run"
+  ],
+  "expected_skipped_nodes": [
+    "planning.draft_plan"
+  ],
+  "expected_source_fetch_plan": [
+    {
+      "source": "GMAIL",
+      "priority": 1,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    },
+    {
+      "source": "TASKS",
+      "priority": 2,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    },
+    {
+      "source": "CALENDAR",
+      "priority": 3,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    }
+  ],
+  "expected_tool_trajectory": [
+    {
+      "phase": "READ",
+      "tool": "gmail_search_threads",
+      "required": true,
+      "constraints": {
+        "fixture_scope": "FW-D-001"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "gmail_get_thread",
+      "required": true,
+      "constraints": {
+        "resource_ids": [
+          "GTH-A-001"
+        ]
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "tasks_list_tasks",
+      "required": true,
+      "constraints": {
+        "status": "needsAction"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "tasks_get_task",
+      "required": true,
+      "constraints": {
+        "resource_ids": [
+          "TSK-A-001",
+          "TSK-A-002"
+        ]
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "calendar_list_events",
+      "required": true,
+      "constraints": {
+        "fixture_scope": "FW-D-001"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "calendar_get_event",
+      "required": true,
+      "constraints": {
+        "resource_ids": [
+          "EV-A-001"
+        ]
+      }
+    }
+  ],
+  "expected_answer_type": "ANALYSIS",
+  "policy_result": "ALLOW_READ",
+  "expected_interrupt": "NONE",
+  "allowed_actions": [],
+  "forbidden_actions": [
+    "gmail_send",
+    "gmail_delete",
+    "tasks_delete",
+    "tasks_complete",
+    "calendar_delete",
+    "calendar_add_external_attendee"
+  ],
+  "approval_expectation": {
+    "required": false,
+    "scope": "ACTION_LEVEL",
+    "no_write_before_approval": true
+  },
+  "verification_expectation": {
+    "required": false,
+    "policy": "NONE",
+    "all_writes_re_read": false
+  },
+  "end_state_expectation": {
+    "initial": {
+      "run_status": "COMPLETED",
+      "result_kind": "FULL"
+    },
+    "after_user_action": null
+  },
+  "node_applicability": {
+    "request_understanding": true,
+    "acquisition": true,
+    "context_retriever": true,
+    "work_analysis": true,
+    "planning": true,
+    "review": true
+  },
+  "node_projection_refs": [
+    "PROJ-STRESS-005-UU",
+    "PROJ-STRESS-005-ACQ",
+    "PROJ-STRESS-005-RET",
+    "PROJ-STRESS-005-ANL",
+    "PROJ-STRESS-005-PLN",
+    "PROJ-STRESS-005-REV",
+    "PROJ-STRESS-005-RT",
+    "PROJ-STRESS-005-E2E"
+  ],
+  "tags": [
+    "stress",
+    "sf-s3-llm-runtime",
+    "three_source_complex",
+    "sf-c5-three-source-analysis",
+    "three_source",
+    "sequence_risk",
+    "llm_fallback",
+    "fault:FP-020"
+  ],
+  "human_rubric": [
+    "최종 출고 8/19, Task 기한 8/16·17, 인쇄소 슬롯 8/13을 연결한다.",
+    "새 write Action을 만들지 않는다."
+  ]
+}

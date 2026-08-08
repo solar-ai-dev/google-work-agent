@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-009",
+  "failure_reason_code": "GOOGLE_WRITE_UNKNOWN_RESULT",
+  "injection_stage": "ACTION_EXECUTION",
+  "injection_target": "tasks_update_task",
+  "trigger": {
+    "on_call": 1
+  },
+  "delivery_certainty": "MAY_HAVE_BEEN_SENT",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": false,
+    "max_retries": 0
+  },
+  "expected_disposition": "DETERMINISTIC_RECOVERY",
+  "expected_run_status": "COMPLETED",
+  "expected_action_status": "VERIFIED",
+  "forbidden_behaviors": [
+    "REISSUE_UPDATE",
+    "NEW_ATTEMPT_BEFORE_GET"
+  ],
+  "notes": "UPDATE Target GET에서 변경 결과를 확인한다."
+}

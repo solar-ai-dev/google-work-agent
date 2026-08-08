@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "selection_id": "SEL-E01-SMOKE-5",
+  "layer": "canonical_e2e",
+  "split": "DEV",
+  "locked": true,
+  "item_count": 5,
+  "items": [
+    {
+      "evaluation_item_id": "CASE-CORE-001",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-001/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-012",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-012/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-023",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-023/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-041",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-041/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-059",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-059/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    }
+  ],
+  "selection_hash": "5196181f7414f89021e6bd99c5405a650eba998eece7946990788072cf212575"
+}

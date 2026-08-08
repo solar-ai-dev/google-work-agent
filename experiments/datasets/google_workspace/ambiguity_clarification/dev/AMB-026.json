@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-026",
+  "split": "DEV",
+  "ambiguity_family_id": "AMB-F07-DESTINATION",
+  "user_request": "개인 일정에 3시 미팅 넣어줘",
+  "conversation_context": [],
+  "available_candidates": [],
+  "gold": {
+    "should_clarify": false,
+    "ambiguity_kind": "DESTINATION",
+    "expected_route": "CONTINUE",
+    "expected_semantics": "개인 Calendar가 명시되어 있으면 진행",
+    "question_strategy": "NONE",
+    "required_candidate_ids": [],
+    "forbidden_assumptions": [
+      "UNNECESSARY_CLARIFICATION"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

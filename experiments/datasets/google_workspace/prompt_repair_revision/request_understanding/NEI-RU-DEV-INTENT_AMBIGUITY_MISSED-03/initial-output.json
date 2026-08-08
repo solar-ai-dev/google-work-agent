@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "result": "COMPLETE",
+  "entry_mode": "AGENT_SEARCH",
+  "requested_outcome": "ANALYSIS",
+  "goal": "어느 박민수와 어느 웨비나인지 확인한 뒤 준비 내용을 정리한다.",
+  "completion_criteria": [
+    "동명이인 후보를 구분한다",
+    "사용자 선택 전 임의 후보를 확정하지 않는다"
+  ],
+  "constraints": {
+    "person_terms": [
+      "박민수"
+    ],
+    "relative_date": "다음 주",
+    "sources": [
+      "GMAIL"
+    ]
+  },
+  "ambiguities": [],
+  "unsupported_scope": [],
+  "next_route": "SOURCE_PLANNING"
+}

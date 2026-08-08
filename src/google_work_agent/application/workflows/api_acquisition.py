@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict, dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Required, TypedDict, cast
 
@@ -15,6 +13,12 @@ from google_work_agent.application.workflows.contracts import (
     ApiAcquisitionResult,
     ApiPlanningResult,
     WorkflowPhase,
+)
+from google_work_agent.application.workflows.prompt_registry import (
+    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
+)
+from google_work_agent.application.workflows.prompt_registry import (
+    load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.application.workflows.request_understanding import (
     ClarificationQuestionV1,
@@ -331,23 +335,10 @@ def validate_source_fetch_plans_v1(value: object) -> list[SourceFetchPlanV1]:
 def load_acquisition_plan_sources_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
-    manifest = _load_prompt_manifest(manifest_path or _default_prompt_manifest_path())
-    for item in manifest:
-        if item.get("prompt_id") == "acquisition.plan_sources":
-            return PromptReference(
-                prompt_bundle_version=_required_manifest_string(item, "prompt_bundle_version"),
-                prompt_id=_required_manifest_string(item, "prompt_id"),
-                prompt_version=_required_manifest_string(item, "prompt_version"),
-                content_hash=_required_manifest_string(item, "content_hash"),
-                agent_role=_required_manifest_string(item, "agent_role"),
-                subgraph_name=_required_manifest_string(item, "subgraph_name"),
-                node_name=_required_manifest_string(item, "node_name"),
-                node_state=_required_manifest_string(item, "node_state"),
-                purpose=_required_manifest_string(item, "purpose"),
-                input_schema_version=_required_manifest_string(item, "input_schema_version"),
-                output_schema_version=_required_manifest_string(item, "output_schema_version"),
-            )
-    raise LookupError("acquisition.plan_sources prompt is missing from manifest")
+    return _load_registry_prompt_reference(
+        "acquisition.plan_sources",
+        manifest_path or _registry_default_prompt_manifest_path(),
+    )
 
 
 def build_source_planning_clarification_question(
@@ -882,25 +873,3 @@ def _optional_option_list(value: object) -> list[dict[str, object]]:
     if not isinstance(value, list):
         raise SourcePlanningValidationError("clarification options must be an array")
     return [_require_mapping(item, "$.clarification.options[]") for item in value]
-
-
-@lru_cache(maxsize=1)
-def _load_prompt_manifest(path: Path) -> list[dict[str, object]]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    manifest = payload.get("prompt_manifest") if isinstance(payload, dict) else None
-    if not isinstance(manifest, list):
-        raise ValueError("prompt manifest must contain prompt_manifest list")
-    return [_require_mapping(item, "$.prompt_manifest[]") for item in manifest]
-
-
-def _required_manifest_string(item: dict[str, object], field: str) -> str:
-    value = item.get(field)
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"prompt manifest field is required: {field}")
-    if value == "TBD":
-        raise ValueError(f"prompt manifest field is not runtime-active: {field}")
-    return value
-
-
-def _default_prompt_manifest_path() -> Path:
-    return Path(__file__).resolve().parents[4] / "prompts" / "agent" / "manifest.yaml"

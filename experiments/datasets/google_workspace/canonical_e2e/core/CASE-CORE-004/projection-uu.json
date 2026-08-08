@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-004-UU",
+  "case_id": "CASE-CORE-004",
+  "projection_kind": "USER_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-010",
+    "user_prompt_id": "UP-CORE-004",
+    "entry_mode": "RESOURCE_SELECTED"
+  },
+  "gold": {
+    "goal": "선택한 OOO Event를 명시적 READ Action으로 조회해 시작·종료 시간을 보여준다.",
+    "requested_outcome": "ACTION_PLAN",
+    "expected_interrupt": "NONE"
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.user_understanding.semantic"
+  ]
+}

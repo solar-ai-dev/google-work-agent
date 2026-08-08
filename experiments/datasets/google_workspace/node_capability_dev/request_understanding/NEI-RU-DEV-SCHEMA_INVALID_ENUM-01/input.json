@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "user_request": "Juniper 로드맵 검토를 8월 12일 오후 3시부터 1시간으로 잡아줘.",
+  "entry_context": {
+    "entry_mode_hint": "AGENT_SEARCH",
+    "selected_resource_ids": []
+  },
+  "conversation_context": [],
+  "current_time": "2026-08-07T14:09:00+09:00",
+  "timezone": "Asia/Seoul",
+  "allowed_sources": [
+    "GMAIL",
+    "TASKS",
+    "CALENDAR"
+  ]
+}

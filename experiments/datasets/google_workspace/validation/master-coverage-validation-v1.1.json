@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "dataset_version": "1.1.0",
+  "status": "PASS",
+  "created_at": "2026-08-07T14:23:00+09:00",
+  "counts": {
+    "failure_taxonomy_codes": 73,
+    "agent_failure_pairs": 88,
+    "canonical_cases": 92,
+    "node_dev_items": 363,
+    "node_holdout_items": 114,
+    "prompt_repair_revision_items": 352,
+    "query_retrieval_items": 48,
+    "fault_profiles": 20,
+    "prompt_slots": 65,
+    "grader_registry_entries": 57,
+    "read_only_canonical_cases": 2,
+    "review_confirm_capability_items": 4
+  },
+  "checks": {
+    "failure_taxonomy_count_73": true,
+    "agent_failure_pairs_88": true,
+    "all_failure_pairs_dev3_holdout1": true,
+    "all_agent_result_enums_covered": true,
+    "all_required_e2e_route_features": true,
+    "read_only_plan_strict_contract": true,
+    "action_plan_schema_supports_READ": true,
+    "planning_prompt_supports_READ_no_approval": true,
+    "all_fault_profile_codes_in_taxonomy": true,
+    "prompt_slots_resolve": true,
+    "non_llm_fault_prompt_retry_zero": true,
+    "all_prompt_slots_draft": true,
+    "holdout_family_leakage_zero": true,
+    "canonical_total_92": true,
+    "focused_micro_views_present": true
+  },
+  "e2e_route_coverage": {
+    "ANSWER_ONLY": true,
+    "READ_ONLY": true,
+    "WRITE_APPROVAL": true,
+    "ADDITIONAL_ACQUISITION_0": true,
+    "ADDITIONAL_ACQUISITION_1": true,
+    "ADDITIONAL_ACQUISITION_2": true,
+    "CONFIRMATION_INTERRUPT": true,
+    "APPROVAL_INTERRUPT": true,
+    "REAUTH_INTERRUPT": true,
+    "RECOVERY_INTERRUPT": true,
+    "STATUS_COMPLETED": true,
+    "STATUS_BLOCKED": true,
+    "STATUS_FAILED": true,
+    "STATUS_CANCELLED": true,
+    "STATUS_RECOVERY_REQUIRED": true,
+    "PARTIAL_RESULT": true
+  },
+  "agent_result_coverage": {
+    "request_understanding": [
+      "COMPLETE",
+      "INVALID",
+      "NEEDS_CONFIRMATION"
+    ],
+    "acquisition": [
+      "BLOCKED",
+      "NEEDS_CONFIRMATION",
+      "NO_FETCH_NEEDED",
+      "PLAN_READY"
+    ],
+    "context_retriever": [
+      "BLOCKED",
+      "NEEDS_CONFIRMATION",
+      "NEEDS_MORE_DATA",
+      "PARTIAL",
+      "SELECTED",
+      "SUFFICIENT"
+    ],
+    "work_analysis": [
+      "BLOCKED",
+      "COMPLETE",
+      "NEEDS_CONFIRMATION",
+      "NEEDS_MORE_DATA"
+    ],
+    "planning": [
+      "ANSWER_ONLY",
+      "BLOCKED",
+      "NEEDS_CONFIRMATION",
+      "PLAN_READY"
+    ],
+    "review": [
+      "BLOCK",
+      "CONFIRM",
+      "PASS",
+      "RETRIEVE_MORE",
+      "REVISE"
+    ]
+  },
+  "errors": {
+    "failure_pair_gaps": [],
+    "result_gaps": {},
+    "fault_codes_missing_taxonomy": [],
+    "retry_prompt_missing": [],
+    "non_llm_prompt_retry": [],
+    "leakage": {
+      "canonical_core_holdout": [],
+      "node_dev_holdout": [],
+      "canonical_holdout_vs_node": []
+    }
+  }
+}

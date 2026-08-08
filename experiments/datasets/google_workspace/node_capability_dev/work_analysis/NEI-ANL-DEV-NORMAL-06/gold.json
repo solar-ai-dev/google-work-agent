@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "result": "NEEDS_CONFIRMATION",
+  "relations": [],
+  "duplicates": [],
+  "schedule_risks": [
+    {
+      "target_id": "WORKSHOP",
+      "classification": "UNKNOWN",
+      "reason_codes": [
+        "DURATION_MISSING"
+      ],
+      "evidence_ids": [
+        "EVD-SEG-GM-F-001-1"
+      ]
+    }
+  ],
+  "conflicts": [],
+  "unsupported_inferences": [],
+  "missing_data": [
+    "expected_duration"
+  ],
+  "next_route": "CONFIRM"
+}

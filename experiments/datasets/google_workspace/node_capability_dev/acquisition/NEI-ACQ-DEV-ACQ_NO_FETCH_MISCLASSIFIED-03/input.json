@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "request_intent": {
+    "schema_version": 1,
+    "result": "COMPLETE",
+    "entry_mode": "RESOURCE_SELECTED",
+    "requested_outcome": "ANSWER",
+    "goal": "선택된 Boreal Thread에서 최종 서명 기한과 법무 담당을 답한다.",
+    "completion_criteria": [
+      "선택 Thread의 최신 합의를 사용한다",
+      "서명 기한과 담당만 답한다",
+      "Workspace 검색을 수행하지 않는다"
+    ],
+    "constraints": {
+      "selected_resource_ids": [
+        "GTH-B-001"
+      ],
+      "no_workspace_search": true,
+      "sources": [
+        "GMAIL"
+      ]
+    },
+    "ambiguities": [],
+    "unsupported_scope": [],
+    "next_route": "SOURCE_PLANNING"
+  },
+  "entry_context": {
+    "selected_resource_ids": [
+      "GTH-B-001"
+    ]
+  },
+  "retrieval_budget": {
+    "max_additional_acquisitions": 2,
+    "max_pages_per_source_per_round": 2,
+    "max_total_source_pages": 8,
+    "max_detail_fetch_per_source": 5
+  },
+  "prior_query_attempts": [],
+  "provider_outcomes": []
+}

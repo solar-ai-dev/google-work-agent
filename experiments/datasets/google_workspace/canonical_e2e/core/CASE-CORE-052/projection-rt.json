@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-052-RT",
+  "case_id": "CASE-CORE-052",
+  "projection_kind": "ROUTING_TRAJECTORY",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-004",
+    "user_prompt_id": "UP-CORE-052",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "expected_route": [
+      "request_understanding.classify",
+      "acquisition.plan_sources",
+      "acquisition.execute",
+      "context.select_evidence",
+      "context.assess_sufficiency",
+      "WAITING_CONFIRMATION"
+    ],
+    "expected_skipped_nodes": [
+      "analysis.analyze",
+      "planning.draft_plan",
+      "review.inspect"
+    ],
+    "expected_tool_trajectory": [
+      {
+        "phase": "READ",
+        "tool": "gmail_search_threads",
+        "required": true,
+        "constraints": {
+          "fixture_scope": "FW-D-004"
+        }
+      }
+    ]
+  },
+  "grader_ids": [
+    "grader.routing_trajectory.deterministic",
+    "grader.routing_trajectory.semantic"
+  ]
+}

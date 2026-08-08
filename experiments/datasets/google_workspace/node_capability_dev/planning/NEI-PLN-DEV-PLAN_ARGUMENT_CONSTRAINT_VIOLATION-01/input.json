@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-001",
+  "goal": "지정한 시간과 소요시간으로 Event를 준비한다.",
+  "requested_outcome": "ACTION_PLAN",
+  "constraints": {
+    "start": "2026-08-20T14:00:00+09:00",
+    "duration_minutes": 60,
+    "calendar_id": "CAL-PRIMARY"
+  },
+  "evidence": [
+    {
+      "evidence_id": "EVD-PL-AR1",
+      "segment_id": "SEG-PL-AR1",
+      "resource_id": "RES-PL-AR1",
+      "claim": "사용자가 8월 20일 오후 2시, 60분, 기본 Calendar에 회의를 요청했다.",
+      "excerpt": "사용자가 8월 20일 오후 2시, 60분, 기본 Calendar에 회의를 요청했다.",
+      "confidence": "HIGH"
+    }
+  ],
+  "analysis": {
+    "schema_version": 1,
+    "result": "COMPLETE",
+    "relations": [],
+    "duplicates": [],
+    "schedule_risks": [],
+    "conflicts": [],
+    "unsupported_inferences": [],
+    "missing_data": [],
+    "next_route": "PLANNING"
+  }
+}

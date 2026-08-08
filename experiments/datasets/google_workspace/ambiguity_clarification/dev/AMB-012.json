@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-012",
+  "split": "DEV",
+  "ambiguity_family_id": "AMB-F03-LOW-INFO-ACTION-NO-CONTEXT",
+  "user_request": "정리해줘",
+  "conversation_context": [],
+  "available_candidates": [],
+  "gold": {
+    "should_clarify": true,
+    "ambiguity_kind": "ACTION_SEMANTICS",
+    "expected_route": "WAITING_CONFIRMATION",
+    "expected_semantics": "요약/Task/일정/메일 등 원하는 결과를 질문",
+    "question_strategy": "FREE_TEXT",
+    "required_candidate_ids": [],
+    "forbidden_assumptions": [
+      "LOW_CONFIDENCE_AUTO_SELECTION",
+      "INVENTED_TARGET",
+      "INVENTED_EFFECT"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

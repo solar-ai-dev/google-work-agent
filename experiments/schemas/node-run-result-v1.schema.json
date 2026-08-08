@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "node-run-result-v1.schema.json",
+  "title": "Node Run Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "evaluation_item_id",
+    "candidate_config_hash",
+    "trial_index",
+    "target_node_id",
+    "upstream_mode",
+    "result_status",
+    "prompt_slot_id",
+    "latency_ms",
+    "input_tokens",
+    "output_tokens",
+    "llm_call_count"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "experiment_id": {
+      "type": "string"
+    },
+    "evaluation_item_id": {
+      "type": "string"
+    },
+    "candidate_config_hash": {
+      "type": "string"
+    },
+    "trial_index": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "target_node_id": {
+      "type": "string"
+    },
+    "upstream_mode": {
+      "enum": [
+        "ORACLE",
+        "LIVE",
+        "MUTATED",
+        "N/A"
+      ]
+    },
+    "result_status": {
+      "enum": [
+        "COMPLETED",
+        "FAILED",
+        "BUDGET_STOPPED",
+        "NOT_RUN"
+      ]
+    },
+    "prompt_slot_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "prompt_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "output_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "failure_reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "retry_kind": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "attempt_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "latency_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "input_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "output_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "llm_call_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "provider_request_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cost_usd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "trace_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

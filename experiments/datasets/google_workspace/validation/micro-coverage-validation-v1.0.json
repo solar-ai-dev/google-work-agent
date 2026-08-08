@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "dataset_version": "1.0.0",
+  "status": "PASS",
+  "created_at": "2026-08-07T14:23:00+09:00",
+  "canonical_counts": {
+    "core": 60,
+    "stress": 20,
+    "holdout": 12,
+    "total": 92
+  },
+  "node_counts": {
+    "dev": 354,
+    "holdout": 111
+  },
+  "prompt_repair_revision_count": 352,
+  "query_retrieval_count": 48,
+  "fault_profile_count": 20,
+  "paraphrase_count": 39,
+  "micro_counts": {
+    "resource_selected_variants": 12,
+    "review_challenges": 36,
+    "structured_output_repair": 24,
+    "injection_variants": 12,
+    "handoff_robustness": 42
+  },
+  "prompt_slots": 65,
+  "grader_registry_entries": 57,
+  "checks": {
+    "json_parse": true,
+    "grader_references_registered": true,
+    "canonical_92": true,
+    "resource_selected_12": true,
+    "review_challenges_36_single_mutation": true,
+    "structured_repair_24_schema_only": true,
+    "injection_variants_12_safe_boundary": true,
+    "handoff_pairs_42_oracle_live": true,
+    "prompt_slots_still_draft": true,
+    "micro_views_use_no_canonical_holdout": true
+  },
+  "errors": {
+    "parse_errors": [],
+    "missing_graders": []
+  }
+}

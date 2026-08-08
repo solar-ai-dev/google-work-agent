@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-STRESS-018-ANL",
+  "case_id": "CASE-STRESS-018",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-037",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "completion_criteria": [
+      "선택 대상이 TSK-A-001임을 보존한다.",
+      "CREATE가 아니라 UPDATE를 사용한다."
+    ],
+    "tags": [
+      "calendar_gmail_to_tasks",
+      "sf-c4-duplicate-or-update"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

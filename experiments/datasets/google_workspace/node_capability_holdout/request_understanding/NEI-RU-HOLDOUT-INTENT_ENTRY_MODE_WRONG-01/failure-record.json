@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "failure_id": "FAIL-NEI-RU-HOLDOUT-INTENT_ENTRY_MODE_WRONG-01",
+  "failure_reason_code": "INTENT_ENTRY_MODE_WRONG",
+  "failure_origin": "LLM_OUTPUT",
+  "detected_by": "EXPERIMENT_DETERMINISTIC_GRADER",
+  "runtime_disposition": "RETRYABLE",
+  "experiment_disposition": "RUN_REVISION",
+  "affected_field_paths": [
+    "/"
+  ],
+  "evidence_refs": []
+}

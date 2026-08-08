@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "answer_draft": null,
+  "actions": [
+    {
+      "action_id": "A1",
+      "position": 1,
+      "tool_name": "tasks_create_task",
+      "effect_type": "CREATE",
+      "target_resource_id": null,
+      "arguments": {
+        "title": "후속 검토"
+      },
+      "expected": {
+        "created": true
+      },
+      "evidence_ids": [
+        "EVD-PL-EV1"
+      ],
+      "depends_on_action_ids": [],
+      "risk_codes": [],
+      "approval_required": true
+    }
+  ],
+  "confirmation_question": null,
+  "blocked_reason_codes": []
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-011-UU",
+  "case_id": "CASE-CORE-011",
+  "projection_kind": "USER_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-011",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "goal": "Atlas 준비 상태를 근거로 Draft를 제안한다.",
+    "requested_outcome": "ACTION_PLAN",
+    "expected_interrupt": "APPROVAL"
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.user_understanding.semantic"
+  ]
+}

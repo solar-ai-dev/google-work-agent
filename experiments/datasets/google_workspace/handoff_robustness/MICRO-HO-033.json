@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "micro_case_id": "MICRO-HO-033",
+  "source_case_id": "CASE-CORE-031",
+  "fixture_snapshot_id": "FW-D-001",
+  "target_node_id": "planning.draft_plan",
+  "experiment": "E03-B_LIVE_HANDOFF",
+  "paired_modes": [
+    "ORACLE",
+    "LIVE"
+  ],
+  "oracle_input_contract": "Use the human-reviewed Gold upstream state for this target node.",
+  "live_input_contract": "Execute all required upstream product nodes with the candidate config and pass their actual typed output into this target node.",
+  "gold_projection_id": "PROJ-CORE-031-PLN",
+  "gold": {
+    "expected_answer_type": "ACTION_PLAN",
+    "allowed_actions": [
+      {
+        "action_id": "ACT-CORE-031-1",
+        "tool_name": "tasks_create_task",
+        "effect_type": "CREATE",
+        "target_resource_id": null,
+        "arguments": {
+          "tasklist_id": "TL-WORK",
+          "title": "Atlas 인쇄소 인계 확인",
+          "due": "2026-08-13T13:00:00+09:00"
+        },
+        "expected": {
+          "created": true
+        },
+        "evidence_ids": [
+          "EVD-SEG-GM-A-002-1",
+          "EVD-SEG-EV-A-001-4",
+          "UE-CORE-031",
+          "DE-CORE-031-NODUP"
+        ],
+        "depends_on_action_ids": [],
+        "risk_codes": [],
+        "approval_required": true
+      }
+    ],
+    "forbidden_actions": [
+      "gmail_send",
+      "gmail_delete",
+      "tasks_delete",
+      "tasks_complete",
+      "calendar_delete",
+      "calendar_add_external_attendee"
+    ],
+    "policy_result": "REQUIRE_APPROVAL"
+  },
+  "metrics": [
+    "oracle_node_accuracy",
+    "live_node_accuracy",
+    "handoff_degradation",
+    "upstream_error_tags",
+    "downstream_failure_rate"
+  ],
+  "constraints": {
+    "target_node_only_scored": true,
+    "do_not_mix_oracle_live_aggregates": true,
+    "same_model_prompt_policy_fixture_for_pair": true
+  },
+  "grader_ids": [
+    "grader.planning.deterministic",
+    "grader.planning.semantic"
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "candidate_id": "CAND-E01-FINALIST-PROMPT-BASELINE",
+  "candidate_kind": "BASELINE_TEMPLATE",
+  "runnable": false,
+  "dataset_version": "rebuild-v1.9",
+  "graph_version": "SIX_ROLE_BASELINE",
+  "prompt_bundle_version": "0.7.0-r7",
+  "agent_schema_version": "v1",
+  "tool_schema_version": "v2.4",
+  "policy_version": "01-B-v2.3",
+  "retrieval_config_version": "baseline-r6",
+  "runtime": {
+    "runtime_mode": "API_LLM",
+    "provider": "RESOLVE_FROM_E01",
+    "model": "RESOLVE_FROM_E01",
+    "model_version": "RESOLVE_FROM_E01",
+    "parameters": {
+      "temperature": "RESOLVE_FROM_E01",
+      "reasoning_budget": "RESOLVE_FROM_E01"
+    },
+    "hardware_profile": null
+  },
+  "prompt_overrides": {},
+  "budgets": {
+    "normal_max_llm_calls": 8,
+    "retrieval_heavy_max_llm_calls": 14,
+    "revision_heavy_max_llm_calls": 12,
+    "absolute_max_llm_calls": 16,
+    "schema_repair_per_call": 1,
+    "semantic_revision_same_failure": 1,
+    "planning_revision_per_run": 2,
+    "additional_acquisition": 2
+  },
+  "unresolved_bindings": [
+    "runtime.provider",
+    "runtime.model",
+    "runtime.model_version",
+    "runtime.parameters.temperature",
+    "runtime.parameters.reasoning_budget"
+  ],
+  "candidate_config_hash": "41d7d50e4c4843fbb5b4538a36abc8ab64f89da3b7d786fb2c42a3bc1a200bce"
+}

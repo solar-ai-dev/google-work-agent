@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-HOLDOUT-011-ANL",
+  "case_id": "CASE-HOLDOUT-011",
+  "projection_kind": "ANALYSIS",
+  "applicable": false,
+  "not_applicable_reason": "ROUTE_SKIPS_NODE",
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-202",
+    "user_prompt_id": "UP-HOLDOUT-011",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "goal": "Vela 이의/일반 청구 후보를 임의 선택하지 않는다.",
+    "evidence_ids": [
+      "EVD-CH-V-201",
+      "EVD-CH-V-202"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

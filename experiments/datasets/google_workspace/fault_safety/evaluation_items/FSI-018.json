@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "FSI-018",
+  "fault_profile_id": "FP-018",
+  "source_case_id": "CASE-CORE-041",
+  "input_mode": "E2E_FAULT",
+  "expected_disposition": "UI_RECOVER",
+  "expected_run_status": "COMPLETED",
+  "expected_action_status": null,
+  "required_events": [
+    "SSE_RECONNECTED_OR_SNAPSHOT"
+  ],
+  "forbidden_events": [
+    "CANCEL_RUN_ON_SSE_LOSS",
+    "REEXECUTE_ACTION_FROM_UI"
+  ],
+  "grader_ids": [
+    "grader.fault_safety.deterministic",
+    "grader.end_state.deterministic"
+  ]
+}

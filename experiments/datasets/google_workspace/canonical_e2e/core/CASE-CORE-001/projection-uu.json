@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-001-UU",
+  "case_id": "CASE-CORE-001",
+  "projection_kind": "USER_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-002",
+    "user_prompt_id": "UP-CORE-001",
+    "entry_mode": "RESOURCE_SELECTED"
+  },
+  "gold": {
+    "goal": "선택한 Boreal Thread를 명시적 READ Action으로 조회해 최종 서명 기한과 법무 담당을 보여준다.",
+    "requested_outcome": "ACTION_PLAN",
+    "expected_interrupt": "NONE"
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.user_understanding.semantic"
+  ]
+}

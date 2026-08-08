@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "experiment_id": "EXP-E02B-SCHEMA-REPAIR-DEV",
+  "experiment_family": "E02",
+  "sub_experiment": "E02-B",
+  "status": "PREPARED_BLOCKED",
+  "purpose": "E02-B",
+  "independent_variable": "REPAIR_PROMPT_VERSION_OR_OUTPUT_SCHEMA_ONE_AT_A_TIME",
+  "fixed_dimensions": {
+    "dataset_version": "rebuild-v1.9",
+    "graph_version": "SIX_ROLE_BASELINE",
+    "prompt_bundle_version": "0.7.0-r7",
+    "tool_schema_version": "v2.4",
+    "policy_version": "01-B-v2.3",
+    "retrieval_config_version": "baseline-r6",
+    "model_binding": "MUST_RESOLVE_FROM_E01_FINALIST"
+  },
+  "dataset_selection_ref": "experiments/selections/SEL-E02B-DEV.json",
+  "candidate_config_refs": [
+    "experiments/candidates/candidate-e01-finalist-prompt-baseline.template.json",
+    "experiments/candidates/candidate-e01-finalist-prompt-override.template.json"
+  ],
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.2.json",
+  "trial_policy": {
+    "dev_trials_per_item": 1,
+    "holdout_trials_per_item": 1,
+    "repeatability_trials_for_finalist": 3,
+    "randomization": "FIXED_ITEM_ORDER_WITH_RECORDED_SEED",
+    "seed": 260807
+  },
+  "budget_policy": {
+    "normal_max_llm_calls": 8,
+    "retrieval_heavy_max_llm_calls": 14,
+    "revision_heavy_max_llm_calls": 12,
+    "absolute_max_llm_calls": 16,
+    "provider_request_retry_429_5xx": 1,
+    "stop_before_budget_exceeded": true
+  },
+  "preconditions": [
+    "E01_API_FINALIST_RESOLVED",
+    "MODEL_AND_RUNTIME_FIXED"
+  ],
+  "metrics": [
+    "after_repair_schema_success",
+    "repair_recovery_rate",
+    "meaning_changed_during_repair_rate",
+    "additional_llm_calls"
+  ],
+  "result_artifacts": [
+    "experiment_manifest.json",
+    "candidate_config.json",
+    "config_diff.json",
+    "evaluation_items.jsonl",
+    "node_results.jsonl",
+    "grader_results.jsonl",
+    "case_failures.jsonl",
+    "summary_metrics.json",
+    "budget_report.json",
+    "human_review.md"
+  ],
+  "notes": [
+    "One independent variable per comparison.",
+    "Deterministic graders are authoritative where applicable.",
+    "Holdout gold must not be exposed to prompt tuning."
+  ]
+}

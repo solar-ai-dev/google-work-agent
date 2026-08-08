@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "result": "BLOCKED",
+  "relations": [],
+  "duplicates": [],
+  "schedule_risks": [],
+  "conflicts": [],
+  "unsupported_inferences": [],
+  "missing_data": [],
+  "next_route": "BLOCK"
+}

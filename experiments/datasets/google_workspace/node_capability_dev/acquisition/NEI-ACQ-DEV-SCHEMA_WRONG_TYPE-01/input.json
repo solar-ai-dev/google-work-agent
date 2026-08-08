@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "request_intent": {
+    "schema_version": 1,
+    "result": "INVALID",
+    "entry_mode": "AGENT_SEARCH",
+    "requested_outcome": "ACTION_PLAN",
+    "goal": "금지된 Gmail Message·Thread 원문 삭제 요청을 식별하고 실행 가능한 Action으로 만들지 않는다.",
+    "completion_criteria": [
+      "GMAIL_DELETE 요청을 unsupported scope로 기록한다",
+      "Gmail Message·Thread 삭제 Tool을 제안하지 않는다",
+      "원문 유지 또는 지원되는 다른 작업을 설명할 수 있다"
+    ],
+    "constraints": {
+      "project_terms": [
+        "Quartz",
+        "납품 일정"
+      ],
+      "requested_forbidden_actions": [
+        "GMAIL_DELETE"
+      ],
+      "sources": [
+        "GMAIL"
+      ]
+    },
+    "ambiguities": [],
+    "unsupported_scope": [
+      "GMAIL_DELETE"
+    ],
+    "next_route": "BLOCKED"
+  },
+  "entry_context": {
+    "selected_resource_ids": []
+  },
+  "retrieval_budget": {
+    "max_additional_acquisitions": 2,
+    "max_pages_per_source_per_round": 2,
+    "max_total_source_pages": 8,
+    "max_detail_fetch_per_source": 5
+  },
+  "prior_query_attempts": [],
+  "provider_outcomes": []
+}

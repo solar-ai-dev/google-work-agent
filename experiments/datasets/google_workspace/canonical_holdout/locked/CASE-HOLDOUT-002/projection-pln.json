@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-HOLDOUT-002-PLN",
+  "case_id": "CASE-HOLDOUT-002",
+  "projection_kind": "PLANNING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-203",
+    "user_prompt_id": "UP-HOLDOUT-002",
+    "entry_mode": "RESOURCE_SELECTED"
+  },
+  "gold": {
+    "answer_type": "ANSWER",
+    "allowed_actions": [],
+    "policy_result": "ALLOW_READ"
+  },
+  "grader_ids": [
+    "grader.planning.deterministic",
+    "grader.planning.semantic"
+  ]
+}

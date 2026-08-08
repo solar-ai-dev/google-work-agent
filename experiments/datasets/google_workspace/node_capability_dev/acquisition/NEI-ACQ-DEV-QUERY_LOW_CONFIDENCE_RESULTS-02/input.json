@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "request_intent": {
+    "schema_version": 1,
+    "result": "COMPLETE",
+    "entry_mode": "AGENT_SEARCH",
+    "requested_outcome": "ANSWER",
+    "goal": "지난주 Delta 포장 승인 요청의 신뢰 가능한 후보를 찾고 최종 승인자를 답한다.",
+    "completion_criteria": [
+      "지난주 범위를 반영한다",
+      "낮은 신뢰도 후보를 자동 확정하지 않는다",
+      "필요하면 추가 조건을 요청한다"
+    ],
+    "constraints": {
+      "project_terms": [
+        "Delta",
+        "포장 승인"
+      ],
+      "date_range": [
+        "2026-07-27",
+        "2026-08-02"
+      ],
+      "sources": [
+        "GMAIL"
+      ]
+    },
+    "ambiguities": [],
+    "unsupported_scope": [],
+    "next_route": "SOURCE_PLANNING"
+  },
+  "entry_context": {
+    "selected_resource_ids": []
+  },
+  "retrieval_budget": {
+    "max_additional_acquisitions": 2,
+    "max_pages_per_source_per_round": 2,
+    "max_total_source_pages": 8,
+    "max_detail_fetch_per_source": 5
+  },
+  "prior_query_attempts": [
+    {
+      "schema_version": 1,
+      "query_attempt_id": "QA-NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-02-01",
+      "run_id": "RUN-NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-02",
+      "round_no": 0,
+      "attempt_no": 1,
+      "source": "GMAIL",
+      "operation_kind": "SEARCH",
+      "normalized_intent_constraints": {
+        "project_terms": [
+          "Delta",
+          "포장 승인"
+        ],
+        "date_range": [
+          "2026-07-27",
+          "2026-08-02"
+        ]
+      },
+      "query_spec": {
+        "project_terms": [
+          "Delta",
+          "포장 승인"
+        ],
+        "date_range": [
+          "2026-07-27",
+          "2026-08-02"
+        ]
+      },
+      "previous_query_hash": null,
+      "page_state_hash": "page-0",
+      "added_constraints": [],
+      "removed_constraints": [],
+      "change_reason_code": null,
+      "candidate_count": 2,
+      "top_score": 62,
+      "score_margin": 3,
+      "confidence_band": "LOW",
+      "retrieval_config_version": "ret-v0.1",
+      "score_config_version": "score-v0.1",
+      "threshold_config_version": "threshold-v0.1",
+      "stop_reason": null
+    }
+  ],
+  "provider_outcomes": []
+}

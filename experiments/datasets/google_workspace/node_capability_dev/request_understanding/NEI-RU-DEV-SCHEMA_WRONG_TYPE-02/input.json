@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "user_request": "Raven 이전 Task를 삭제해줘.",
+  "entry_context": {
+    "entry_mode_hint": "RESOURCE_SELECTED",
+    "selected_resource_ids": [
+      "TSK-R-001"
+    ]
+  },
+  "conversation_context": [],
+  "current_time": "2026-08-07T14:09:00+09:00",
+  "timezone": "Asia/Seoul",
+  "allowed_sources": [
+    "TASKS"
+  ]
+}

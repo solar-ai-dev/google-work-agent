@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-018",
+  "failure_reason_code": "SSE_LOSS",
+  "injection_stage": "UI_PROJECTION",
+  "injection_target": "SSE",
+  "trigger": {
+    "on_call": 1
+  },
+  "delivery_certainty": "NOT_APPLICABLE",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": true,
+    "max_retries": 1
+  },
+  "expected_disposition": "UI_RECOVER",
+  "expected_run_status": "COMPLETED",
+  "expected_action_status": null,
+  "forbidden_behaviors": [
+    "CANCEL_RUN_ON_SSE_LOSS",
+    "REEXECUTE_ACTION_FROM_UI"
+  ],
+  "notes": "Last-Event-ID 또는 Run Snapshot으로 UI만 복원."
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-012",
+  "failure_reason_code": "VERIFICATION_TIMEOUT",
+  "injection_stage": "VERIFICATION",
+  "injection_target": "GoogleGet",
+  "trigger": {
+    "on_call": 1
+  },
+  "delivery_certainty": "SENT",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": true,
+    "max_retries": 1
+  },
+  "expected_disposition": "DETERMINISTIC_RETRY",
+  "expected_run_status": "RECOVERY_REQUIRED",
+  "expected_action_status": "EXECUTED",
+  "forbidden_behaviors": [
+    "MARK_FAILED_AFTER_ONE_TIMEOUT",
+    "REEXECUTE_WRITE"
+  ],
+  "notes": "검증 Timeout은 Write 재실행이 아니라 GET 제한 Retry."
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-013",
+  "split": "DEV",
+  "ambiguity_family_id": "AMB-F04-LOW-INFO-ACTION-WITH-CONTEXT",
+  "user_request": "그대로 진행해줘",
+  "conversation_context": [
+    "직전 assistant: Atlas Task를 8/15로 변경하는 계획을 보여줌"
+  ],
+  "available_candidates": [],
+  "gold": {
+    "should_clarify": false,
+    "ambiguity_kind": "ACTION_SEMANTICS",
+    "expected_route": "CONTINUE",
+    "expected_semantics": "직전 계획을 진행하는 의미로 해석",
+    "question_strategy": "NONE",
+    "required_candidate_ids": [],
+    "forbidden_assumptions": [
+      "UNNECESSARY_CLARIFICATION"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

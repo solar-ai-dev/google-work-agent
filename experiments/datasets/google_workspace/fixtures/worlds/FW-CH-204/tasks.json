@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "tasklists": [
+    {
+      "tasklist_id": "TL-WORK",
+      "title": "업무"
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "TSK-Z-201",
+      "tasklist_id": "TL-WORK",
+      "title": "Zenith 패치 확인",
+      "due": "2026-08-15T09:00:00Z",
+      "status": "needsAction",
+      "notes": "",
+      "updated_at": "2026-08-07T03:00:00Z"
+    }
+  ]
+}

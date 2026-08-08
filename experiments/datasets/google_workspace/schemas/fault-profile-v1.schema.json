@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/fault-profile-v1.schema.json",
+  "title": "FaultProfileV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "fault_profile_id",
+    "failure_reason_code",
+    "injection_stage",
+    "injection_target",
+    "trigger",
+    "delivery_certainty",
+    "retry_policy",
+    "expected_disposition",
+    "expected_run_status",
+    "expected_action_status",
+    "forbidden_behaviors",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "fault_profile_id": {
+      "type": "string"
+    },
+    "failure_reason_code": {
+      "type": "string"
+    },
+    "injection_stage": {
+      "type": "string"
+    },
+    "injection_target": {
+      "type": "string"
+    },
+    "trigger": {
+      "type": "object"
+    },
+    "delivery_certainty": {
+      "enum": [
+        "NOT_APPLICABLE",
+        "DEFINITELY_NOT_SENT",
+        "MAY_HAVE_BEEN_SENT",
+        "SENT"
+      ]
+    },
+    "retry_policy": {
+      "type": "object",
+      "required": [
+        "llm_prompt_retry_allowed",
+        "deterministic_retry_allowed",
+        "max_retries"
+      ],
+      "properties": {
+        "llm_prompt_retry_allowed": {
+          "type": "boolean"
+        },
+        "deterministic_retry_allowed": {
+          "type": "boolean"
+        },
+        "max_retries": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "expected_disposition": {
+      "enum": [
+        "REAUTH",
+        "DETERMINISTIC_RETRY",
+        "DETERMINISTIC_RECOVERY",
+        "FAIL_SAFE",
+        "UI_RECOVER",
+        "REPAIR_ONCE",
+        "FALLBACK_ONCE"
+      ]
+    },
+    "expected_run_status": {
+      "type": "string"
+    },
+    "expected_action_status": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "forbidden_behaviors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

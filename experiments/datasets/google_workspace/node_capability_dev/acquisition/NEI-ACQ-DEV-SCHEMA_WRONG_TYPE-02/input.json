@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "request_intent": {
+    "schema_version": 1,
+    "result": "INVALID",
+    "entry_mode": "RESOURCE_SELECTED",
+    "requested_outcome": "ACTION_PLAN",
+    "goal": "금지된 Google Task 삭제 요청을 식별하고 차단한다.",
+    "completion_criteria": [
+      "TASK_DELETE를 unsupported scope로 기록한다",
+      "Task 삭제 Tool을 제안하지 않는다"
+    ],
+    "constraints": {
+      "selected_resource_ids": [
+        "TSK-R-001"
+      ],
+      "requested_forbidden_actions": [
+        "TASK_DELETE"
+      ],
+      "sources": [
+        "TASKS"
+      ]
+    },
+    "ambiguities": [],
+    "unsupported_scope": [
+      "TASK_DELETE"
+    ],
+    "next_route": "BLOCKED"
+  },
+  "entry_context": {
+    "selected_resource_ids": [
+      "TSK-R-001"
+    ]
+  },
+  "retrieval_budget": {
+    "max_additional_acquisitions": 2,
+    "max_pages_per_source_per_round": 2,
+    "max_total_source_pages": 8,
+    "max_detail_fetch_per_source": 5
+  },
+  "prior_query_attempts": [],
+  "provider_outcomes": []
+}

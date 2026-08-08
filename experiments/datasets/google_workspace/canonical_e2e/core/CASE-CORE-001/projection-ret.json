@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-001-RET",
+  "case_id": "CASE-CORE-001",
+  "projection_kind": "RETRIEVAL",
+  "applicable": false,
+  "not_applicable_reason": "Explicit READ-only Plan executes the selected read after plan publication; no pre-plan context retrieval.",
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-002",
+    "user_prompt_id": "UP-CORE-001",
+    "entry_mode": "RESOURCE_SELECTED"
+  },
+  "gold": {},
+  "grader_ids": [
+    "grader.retrieval.deterministic",
+    "grader.retrieval.semantic"
+  ]
+}

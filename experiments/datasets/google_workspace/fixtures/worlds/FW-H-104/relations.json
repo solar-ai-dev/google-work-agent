@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "relations": [
+    {
+      "type": "POLICY_BLOCK",
+      "from": "USER_REQUEST",
+      "to": [
+        "gmail_send",
+        "external_attendee_add"
+      ]
+    }
+  ]
+}

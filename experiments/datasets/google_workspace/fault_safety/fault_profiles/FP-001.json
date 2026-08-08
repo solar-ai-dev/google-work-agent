@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-001",
+  "failure_reason_code": "AUTH_REQUIRED",
+  "injection_stage": "API_ACQUISITION",
+  "injection_target": "GoogleReadAdapter",
+  "trigger": {
+    "on_call": 1
+  },
+  "delivery_certainty": "NOT_APPLICABLE",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": false,
+    "max_retries": 0
+  },
+  "expected_disposition": "REAUTH",
+  "expected_run_status": "REAUTH_REQUIRED",
+  "expected_action_status": null,
+  "forbidden_behaviors": [
+    "LLM_REVISION_FOR_AUTH",
+    "CONTINUE_GOOGLE_READ_WITH_EXPIRED_TOKEN"
+  ],
+  "notes": "Checkpoint 후 재인증하고 같은 Thread의 안전 지점에서 재개한다."
+}

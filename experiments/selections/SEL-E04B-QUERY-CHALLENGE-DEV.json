@@ -1,0 +1,263 @@
+{
+  "schema_version": 1,
+  "selection_id": "SEL-E04B-QUERY-CHALLENGE-DEV",
+  "layer": "query_retrieval",
+  "split": "DEV",
+  "locked": false,
+  "item_count": 36,
+  "items": [
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-01",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-01/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "AUTH_REQUIRED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-02",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-02/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "AUTH_REQUIRED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-03",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-03/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "AUTH_REQUIRED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-01",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-01/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "BUDGET_EXHAUSTED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-02",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-02/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "BUDGET_EXHAUSTED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-03",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-03/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "BUDGET_EXHAUSTED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-01",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-01/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "DETAIL_FETCH_FAILED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-02",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-02/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "DETAIL_FETCH_FAILED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-03",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-03/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "DETAIL_FETCH_FAILED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-01",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-01/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "LOW_CONFIDENCE_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-02",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-02/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "LOW_CONFIDENCE_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-03",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-03/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "LOW_CONFIDENCE_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_NO_RESULTS-01",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_NO_RESULTS-01/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "NO_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_NO_RESULTS-02",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_NO_RESULTS-02/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "NO_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_NO_RESULTS-03",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_NO_RESULTS-03/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "NO_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-01",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-01/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "PROVIDER_FAILED",
+      "retry_kind": "DETERMINISTIC_RETRY"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-02",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-02/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "PROVIDER_FAILED",
+      "retry_kind": "DETERMINISTIC_RETRY"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-03",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-03/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "PROVIDER_FAILED",
+      "retry_kind": "DETERMINISTIC_RETRY"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_RATE_LIMITED-01",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_RATE_LIMITED-01/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "RATE_LIMITED",
+      "retry_kind": "DETERMINISTIC_RETRY"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_RATE_LIMITED-02",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_RATE_LIMITED-02/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "RATE_LIMITED",
+      "retry_kind": "DETERMINISTIC_RETRY"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_RATE_LIMITED-03",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_RATE_LIMITED-03/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "RATE_LIMITED",
+      "retry_kind": "DETERMINISTIC_RETRY"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-01",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-01/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "REPEATED_WITHOUT_CHANGE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-02",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-02/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "REPEATED_WITHOUT_CHANGE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-03",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-03/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "REPEATED_WITHOUT_CHANGE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-01",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-01/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCOPE_EXPANSION_REQUIRES_CONFIRMATION",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-02",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-02/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCOPE_EXPANSION_REQUIRES_CONFIRMATION",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-03",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-03/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCOPE_EXPANSION_REQUIRES_CONFIRMATION",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_TOO_BROAD-01",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_TOO_BROAD-01/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "TOO_BROAD",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_TOO_BROAD-02",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_TOO_BROAD-02/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "TOO_BROAD",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_TOO_BROAD-03",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_TOO_BROAD-03/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "TOO_BROAD",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_TOO_NARROW-01",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_TOO_NARROW-01/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "TOO_NARROW",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_TOO_NARROW-02",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_TOO_NARROW-02/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "TOO_NARROW",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_TOO_NARROW-03",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_TOO_NARROW-03/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "TOO_NARROW",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-01",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-01/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "USER_CONSTRAINT_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-02",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-02/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "USER_CONSTRAINT_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-03",
+      "path": "experiments/datasets/google_workspace/query_retrieval/NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-03/query-attempts.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "USER_CONSTRAINT_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    }
+  ],
+  "selection_hash": "9d4bc42e8e0d80f8506ed23b220cdaeea85fc75d154bddafd3f4830ad97f70e9"
+}

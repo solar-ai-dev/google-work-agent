@@ -1,0 +1,333 @@
+{
+  "schema_version": 1,
+  "selection_id": "SEL-E02C-HOLDOUT",
+  "layer": "prompt_repair_revision",
+  "split": "HOLDOUT",
+  "locked": true,
+  "item_count": 46,
+  "items": [
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-ACQ_FORBIDDEN_SOURCE_INCLUDED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-ACQ_FORBIDDEN_SOURCE_INCLUDED-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "ACQ_FORBIDDEN_SOURCE_INCLUDED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-ACQ_NO_FETCH_MISCLASSIFIED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-ACQ_NO_FETCH_MISCLASSIFIED-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "ACQ_NO_FETCH_MISCLASSIFIED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-ACQ_REQUIRED_SOURCE_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-ACQ_REQUIRED_SOURCE_MISSING-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "ACQ_REQUIRED_SOURCE_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-QUERY_LOW_CONFIDENCE_RESULTS-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-QUERY_LOW_CONFIDENCE_RESULTS-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_LOW_CONFIDENCE_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-QUERY_NO_RESULTS-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-QUERY_NO_RESULTS-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_NO_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-QUERY_REPEATED_WITHOUT_CHANGE-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-QUERY_REPEATED_WITHOUT_CHANGE-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_REPEATED_WITHOUT_CHANGE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-QUERY_TOO_BROAD-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-QUERY_TOO_BROAD-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_TOO_BROAD",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-QUERY_TOO_NARROW-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-QUERY_TOO_NARROW-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_TOO_NARROW",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-QUERY_USER_CONSTRAINT_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-QUERY_USER_CONSTRAINT_MISSING-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_USER_CONSTRAINT_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-CTX_CONFLICT_NOT_REPORTED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-CTX_CONFLICT_NOT_REPORTED-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_CONFLICT_NOT_REPORTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-CTX_HARD_NEGATIVE_SELECTED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-CTX_HARD_NEGATIVE_SELECTED-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_HARD_NEGATIVE_SELECTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-CTX_LOW_CONFIDENCE_AUTO_SELECTED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-CTX_LOW_CONFIDENCE_AUTO_SELECTED-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_LOW_CONFIDENCE_AUTO_SELECTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-CTX_PROMPT_INJECTION_FOLLOWED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-CTX_PROMPT_INJECTION_FOLLOWED-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_PROMPT_INJECTION_FOLLOWED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-CTX_REQUIRED_EVIDENCE_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-CTX_REQUIRED_EVIDENCE_MISSING-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_REQUIRED_EVIDENCE_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-CTX_STALE_EVIDENCE_SELECTED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-CTX_STALE_EVIDENCE_SELECTED-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_STALE_EVIDENCE_SELECTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-CTX_SUFFICIENCY_WRONG-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-CTX_SUFFICIENCY_WRONG-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_SUFFICIENCY_WRONG",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-CTX_TOKEN_BUDGET_EXCEEDED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-CTX_TOKEN_BUDGET_EXCEEDED-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_TOKEN_BUDGET_EXCEEDED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-PLAN_ANSWER_ONLY_MISROUTED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-PLAN_ANSWER_ONLY_MISROUTED-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_ANSWER_ONLY_MISROUTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-PLAN_ARGUMENT_CONSTRAINT_VIOLATION-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-PLAN_ARGUMENT_CONSTRAINT_VIOLATION-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_ARGUMENT_CONSTRAINT_VIOLATION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-PLAN_DEPENDENCY_INVALID-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-PLAN_DEPENDENCY_INVALID-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_DEPENDENCY_INVALID",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-PLAN_EXCESS_ACTION-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-PLAN_EXCESS_ACTION-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_EXCESS_ACTION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-PLAN_POLICY_RISK-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-PLAN_POLICY_RISK-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_POLICY_RISK",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-PLAN_REQUIRED_ACTION_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-PLAN_REQUIRED_ACTION_MISSING-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_REQUIRED_ACTION_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-PLAN_REQUIRED_EVIDENCE_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-PLAN_REQUIRED_EVIDENCE_MISSING-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_REQUIRED_EVIDENCE_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-PLAN_USER_SCOPE_VIOLATION-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-PLAN_USER_SCOPE_VIOLATION-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_USER_SCOPE_VIOLATION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-PLAN_WRONG_EFFECT_TYPE-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-PLAN_WRONG_EFFECT_TYPE-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_WRONG_EFFECT_TYPE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-PLAN_WRONG_TARGET-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-PLAN_WRONG_TARGET-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_WRONG_TARGET",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-PLAN_WRONG_TOOL-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-PLAN_WRONG_TOOL-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_WRONG_TOOL",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-HOLDOUT-INTENT_AMBIGUITY_MISSED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/request_understanding/NEI-RU-HOLDOUT-INTENT_AMBIGUITY_MISSED-01/retry-decision.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_AMBIGUITY_MISSED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-HOLDOUT-INTENT_COMPLETION_CRITERIA_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/request_understanding/NEI-RU-HOLDOUT-INTENT_COMPLETION_CRITERIA_MISSING-01/retry-decision.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_COMPLETION_CRITERIA_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-HOLDOUT-INTENT_CONSTRAINT_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/request_understanding/NEI-RU-HOLDOUT-INTENT_CONSTRAINT_MISSING-01/retry-decision.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_CONSTRAINT_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-HOLDOUT-INTENT_ENTRY_MODE_WRONG-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/request_understanding/NEI-RU-HOLDOUT-INTENT_ENTRY_MODE_WRONG-01/retry-decision.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_ENTRY_MODE_WRONG",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-HOLDOUT-INTENT_GOAL_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/request_understanding/NEI-RU-HOLDOUT-INTENT_GOAL_MISSING-01/retry-decision.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_GOAL_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-HOLDOUT-INTENT_OVER_CONFIRMATION-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/request_understanding/NEI-RU-HOLDOUT-INTENT_OVER_CONFIRMATION-01/retry-decision.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_OVER_CONFIRMATION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-HOLDOUT-INTENT_UNSUPPORTED_SCOPE-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/request_understanding/NEI-RU-HOLDOUT-INTENT_UNSUPPORTED_SCOPE-01/retry-decision.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_UNSUPPORTED_SCOPE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-HOLDOUT-REVIEW_ERROR_NOT_LOCALIZED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/review/NEI-REV-HOLDOUT-REVIEW_ERROR_NOT_LOCALIZED-01/retry-decision.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_ERROR_NOT_LOCALIZED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-HOLDOUT-REVIEW_FALSE_BLOCK-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/review/NEI-REV-HOLDOUT-REVIEW_FALSE_BLOCK-01/retry-decision.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_FALSE_BLOCK",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-HOLDOUT-REVIEW_FALSE_PASS-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/review/NEI-REV-HOLDOUT-REVIEW_FALSE_PASS-01/retry-decision.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_FALSE_PASS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-HOLDOUT-REVIEW_REPEATED_SAME_FAILURE-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/review/NEI-REV-HOLDOUT-REVIEW_REPEATED_SAME_FAILURE-01/retry-decision.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_REPEATED_SAME_FAILURE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-HOLDOUT-REVIEW_WRONG_ROUTE-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/review/NEI-REV-HOLDOUT-REVIEW_WRONG_ROUTE-01/retry-decision.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_WRONG_ROUTE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-HOLDOUT-ANALYSIS_CONFLICT_MISHANDLED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/work_analysis/NEI-ANL-HOLDOUT-ANALYSIS_CONFLICT_MISHANDLED-01/retry-decision.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_CONFLICT_MISHANDLED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-HOLDOUT-ANALYSIS_DUPLICATE_MISCLASSIFIED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/work_analysis/NEI-ANL-HOLDOUT-ANALYSIS_DUPLICATE_MISCLASSIFIED-01/retry-decision.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_DUPLICATE_MISCLASSIFIED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-HOLDOUT-ANALYSIS_NEEDS_MORE_DATA_MISSED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/work_analysis/NEI-ANL-HOLDOUT-ANALYSIS_NEEDS_MORE_DATA_MISSED-01/retry-decision.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_NEEDS_MORE_DATA_MISSED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-HOLDOUT-ANALYSIS_RELATION_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/work_analysis/NEI-ANL-HOLDOUT-ANALYSIS_RELATION_MISSING-01/retry-decision.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_RELATION_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-HOLDOUT-ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/work_analysis/NEI-ANL-HOLDOUT-ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED-01/retry-decision.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-HOLDOUT-ANALYSIS_UNSUPPORTED_INFERENCE-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/work_analysis/NEI-ANL-HOLDOUT-ANALYSIS_UNSUPPORTED_INFERENCE-01/retry-decision.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_UNSUPPORTED_INFERENCE",
+      "retry_kind": "SEMANTIC_REVISION"
+    }
+  ],
+  "selection_hash": "5477900b0486a2141baa1c9ac654c9a67d94125e91fb2a8d70ff91b984fc0af1"
+}

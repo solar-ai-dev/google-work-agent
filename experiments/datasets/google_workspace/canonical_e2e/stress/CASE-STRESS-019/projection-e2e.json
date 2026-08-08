@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-STRESS-019-E2E",
+  "case_id": "CASE-STRESS-019",
+  "projection_kind": "E2E",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-011",
+    "user_prompt_id": "UP-CORE-048",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "end_state_expectation": {
+      "initial": {
+        "run_status": "COMPLETED",
+        "result_kind": "PARTIAL"
+      },
+      "after_user_action": null
+    },
+    "approval_expectation": {
+      "required": true,
+      "scope": "ACTION_LEVEL",
+      "no_write_before_approval": true
+    },
+    "verification_expectation": {
+      "required": true,
+      "policy": "GET_COMPARE",
+      "all_writes_re_read": true
+    },
+    "completion_criteria": [
+      "Task와 Event가 먼저 준비되고 Draft가 그 결과를 반영한다.",
+      "모든 write는 승인과 GET 검증이 필요하다.",
+      "성공한 독립 Action을 롤백하지 않는다.",
+      "실패 Action에 종속된 Draft는 DEPENDENCY_BLOCKED다."
+    ],
+    "fault_profile_ids": [
+      "FP-005"
+    ],
+    "stress_kind": "PARTIAL_DAG"
+  },
+  "grader_ids": [
+    "grader.e2e.deterministic",
+    "grader.e2e.semantic"
+  ]
+}

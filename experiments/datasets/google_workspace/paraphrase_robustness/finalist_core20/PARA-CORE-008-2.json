@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-008-2",
+  "source_case_id": "CASE-CORE-008",
+  "source_user_prompt_id": "UP-CORE-008",
+  "paraphrase_group_id": "PG-CORE-008",
+  "variant_index": 2,
+  "language": "ko-KR",
+  "text": "Lumen 이전 승인 건에서 데이터 마이그레이션 시작 시간이 몇 시인지 메일 기준으로 확인해줘.",
+  "expected_entry_mode": "AGENT_SEARCH",
+  "expected_requested_outcome": "ANSWER",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

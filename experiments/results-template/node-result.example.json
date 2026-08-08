@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "experiment_id": "EXAMPLE",
+  "evaluation_item_id": "EXAMPLE",
+  "candidate_config_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "trial_index": 0,
+  "target_node_id": "request_understanding.classify",
+  "upstream_mode": "ORACLE",
+  "result_status": "NOT_RUN",
+  "prompt_slot_id": null,
+  "prompt_version": null,
+  "output_ref": null,
+  "failure_reason_codes": [],
+  "retry_kind": null,
+  "attempt_count": 0,
+  "latency_ms": 0,
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "llm_call_count": 0,
+  "provider_request_count": 0,
+  "cost_usd": 0,
+  "trace_ref": null
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-HOLDOUT-006-UU",
+  "case_id": "CASE-HOLDOUT-006",
+  "projection_kind": "USER_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-202",
+    "user_prompt_id": "UP-HOLDOUT-006",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "goal": "Vela 일정 충돌을 사용자에게 확인한다.",
+    "completion_criteria": [
+      "이의 Thread와 증빙 Task를 사용한다.",
+      "15~16시 집중 업무 충돌을 확인한다.",
+      "자동으로 다른 시간으로 이동하지 않는다."
+    ],
+    "expected_interrupt": "CONFIRMATION"
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.user_understanding.semantic"
+  ]
+}

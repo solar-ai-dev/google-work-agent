@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-041",
+  "split": "HOLDOUT",
+  "ambiguity_family_id": "AMB-F11-REFERENCE",
+  "user_request": "그거 처리해줘",
+  "conversation_context": [
+    "직전 대화에 Task와 Gmail Thread 둘 다 언급됨"
+  ],
+  "available_candidates": [
+    {
+      "candidate_id": "r1",
+      "label": "Task",
+      "difference_summary": "Atlas 확인"
+    },
+    {
+      "candidate_id": "r2",
+      "label": "Gmail Thread",
+      "difference_summary": "Atlas 회신"
+    }
+  ],
+  "gold": {
+    "should_clarify": true,
+    "ambiguity_kind": "REFERENCE",
+    "expected_route": "WAITING_CONFIRMATION",
+    "expected_semantics": "지시대상 선택",
+    "question_strategy": "CANDIDATE_SELECTION",
+    "required_candidate_ids": [
+      "r1",
+      "r2"
+    ],
+    "forbidden_assumptions": [
+      "LOW_CONFIDENCE_AUTO_SELECTION",
+      "INVENTED_TARGET",
+      "INVENTED_EFFECT"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

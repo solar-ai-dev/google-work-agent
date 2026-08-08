@@ -41,13 +41,14 @@ NODE_REGISTRY = [
     ("analysis.analyze", "work_analysis", "analyze", "Tier B", "RESERVED"),
     ("analysis.reassess", "work_analysis", "reassess", "Tier C", "FAILURE_TRACE_REQUIRED"),
     ("analysis.repair", "work_analysis", "repair", "Tier C", "FAILURE_TRACE_REQUIRED"),
-    ("planning.answer_only", "solution_planning", "answer_only", "Tier B", "RESERVED"),
-    ("planning.draft_plan", "solution_planning", "draft_plan", "Tier A", "BASELINE"),
-    ("planning.revise_plan", "solution_planning", "revise_plan", "Tier B", "RESERVED"),
-    ("planning.repair", "solution_planning", "repair", "Tier C", "FAILURE_TRACE_REQUIRED"),
-    ("review.inspect", "plan_review", "inspect", "Tier A", "BASELINE"),
-    ("review.recheck", "plan_review", "recheck", "Tier B", "RESERVED"),
-    ("review.repair", "plan_review", "repair", "Tier C", "FAILURE_TRACE_REQUIRED"),
+    ("planning.answer_only", "planning", "answer_only", "Tier B", "RESERVED"),
+    ("planning.draft_plan", "planning", "draft_plan", "Tier A", "BASELINE"),
+    ("planning.revise_answer", "planning", "revise_answer", "Tier B", "RESERVED"),
+    ("planning.revise_plan", "planning", "revise_plan", "Tier B", "RESERVED"),
+    ("planning.repair", "planning", "repair", "Tier C", "FAILURE_TRACE_REQUIRED"),
+    ("review.inspect", "review", "inspect", "Tier A", "BASELINE"),
+    ("review.recheck", "review", "recheck", "Tier B", "RESERVED"),
+    ("review.repair", "review", "repair", "Tier C", "FAILURE_TRACE_REQUIRED"),
 ]
 
 CORE_CATEGORIES = [
@@ -100,8 +101,8 @@ def ensure_dirs() -> None:
         DATASETS / "agent_prompt" / "request_understanding",
         DATASETS / "agent_prompt" / "api_discovery_acquisition",
         DATASETS / "agent_prompt" / "context_retriever",
-        DATASETS / "agent_prompt" / "solution_planning",
-        DATASETS / "agent_prompt" / "plan_review",
+        DATASETS / "agent_prompt" / "planning",
+        DATASETS / "agent_prompt" / "review",
         DATASETS / "e2e",
         EXP / "user_prompts",
         EXP / "configs",
@@ -111,8 +112,8 @@ def ensure_dirs() -> None:
         PROMPTS / "api_discovery_acquisition",
         PROMPTS / "context_retriever",
         PROMPTS / "work_analysis",
-        PROMPTS / "solution_planning",
-        PROMPTS / "plan_review",
+        PROMPTS / "planning",
+        PROMPTS / "review",
         ROOT / "scripts" / "experiments",
     ]:
         path.mkdir(parents=True, exist_ok=True)
@@ -538,8 +539,8 @@ def make_node_items(cases: list[dict], prompts: dict[str, dict], segments: dict[
         "request_understanding/classify.jsonl": [],
         "api_discovery_acquisition/plan_sources.jsonl": [],
         "context_retriever/select_evidence.jsonl": [],
-        "solution_planning/draft_plan.jsonl": [],
-        "plan_review/inspect.jsonl": [],
+        "planning/draft_plan.jsonl": [],
+        "review/inspect.jsonl": [],
     }
     for case in cases:
         prompt = prompts[case["user_prompt_id"]]
@@ -644,7 +645,7 @@ def make_node_items(cases: list[dict], prompts: dict[str, dict], segments: dict[
                         "evidence_segment_ids": rel["required_segment_ids"],
                     }
                 )
-            items["solution_planning/draft_plan.jsonl"].append(
+            items["planning/draft_plan.jsonl"].append(
                 {
                     **base,
                     "node_dataset_item_id": f"NODE-PLAN-{case['evaluation_item_id']}",
@@ -657,7 +658,7 @@ def make_node_items(cases: list[dict], prompts: dict[str, dict], segments: dict[
                 }
             )
         decision = "CONFIRM" if case["expected_answer_type"] == "CONFIRMATION_REQUIRED" else "BLOCK" if case["expected_answer_type"] == "BLOCKED" else "PASS"
-        items["plan_review/inspect.jsonl"].append(
+        items["review/inspect.jsonl"].append(
             {
                 **base,
                 "node_dataset_item_id": f"NODE-REV-{case['evaluation_item_id']}",
@@ -777,7 +778,7 @@ def write_prompt_manifest() -> None:
                 "output_schema_version": "agent-node-output-v0.1",
             }
         )
-    dump_json(PROMPTS / "manifest.yaml", {"prompt_manifest": entries})
+    dump_json(DATASETS / "agent_prompt" / "prompt-registry-snapshot.json", {"prompt_manifest": entries})
 
 
 def write_docs_and_runner_stubs(summary: dict) -> None:

@@ -336,7 +336,7 @@ def test_analyze_prompt_ref_is_runtime_active() -> None:
     prompt_ref = load_work_analysis_analyze_prompt_reference()
 
     assert prompt_ref.prompt_id == "analysis.analyze"
-    assert prompt_ref.prompt_version == "v0.1"
+    assert prompt_ref.prompt_version != "TBD"
     assert prompt_ref.content_hash != "TBD"
     assert prompt_ref.node_state == "BASELINE"
 

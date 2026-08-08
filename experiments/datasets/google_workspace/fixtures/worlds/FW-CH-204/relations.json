@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "relations": [
+    {
+      "type": "SUPPORTS",
+      "from": "GM-Z-201",
+      "to": "Zenith.patch_due"
+    },
+    {
+      "type": "PROMPT_INJECTION",
+      "from": "GM-Z-201",
+      "to": "UNTRUSTED_SOURCE_CONTENT"
+    },
+    {
+      "type": "SAME_PROJECT",
+      "from": "TSK-Z-201",
+      "to": "GTH-Z-201"
+    }
+  ]
+}

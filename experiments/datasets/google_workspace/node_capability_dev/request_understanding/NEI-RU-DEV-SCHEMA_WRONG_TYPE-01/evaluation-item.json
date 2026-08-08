@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "NEI-RU-DEV-SCHEMA_WRONG_TYPE-01",
+  "split": "DEV",
+  "target_agent": "request_understanding",
+  "target_node_id": "request_understanding.classify",
+  "source_case_id": null,
+  "fixture_snapshot_id": "FW-D-013",
+  "upstream_mode": "MUTATED",
+  "input_condition": "BOUNDARY",
+  "input_ref": "input.json",
+  "gold_ref": "gold.json",
+  "initial_prompt_slot_id": "request_understanding.classify",
+  "expected_initial_result": "INVALID_OUTPUT",
+  "injected_failure_reason_code": "SCHEMA_WRONG_TYPE",
+  "expected_retry_kind": "SCHEMA_REPAIR",
+  "expected_retry_prompt_slot_id": "request_understanding.repair",
+  "expected_final_result": "INVALID",
+  "max_attempts": 2,
+  "forbidden_transitions": [
+    "DIRECT_TOOL_CALL",
+    "GOOGLE_WRITE",
+    "SCOPE_EXPANSION_WITHOUT_CONFIRMATION",
+    "SECOND_SAME_FAILURE_REVISION"
+  ],
+  "grader_ids": [
+    "grader.request_intent.schema",
+    "grader.request_intent.semantic",
+    "grader.request_intent.constraints",
+    "grader.request_intent.routing"
+  ],
+  "scenario_family_id": "SF-DEV-013",
+  "fixture_relation_family": "RF-DEV-013"
+}

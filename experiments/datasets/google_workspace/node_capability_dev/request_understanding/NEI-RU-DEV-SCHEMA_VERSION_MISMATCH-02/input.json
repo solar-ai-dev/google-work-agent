@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "user_request": "Ion 신입 온보딩 체크리스트 작업을 만들어줘. 다음 주 월요일까지야.",
+  "entry_context": {
+    "entry_mode_hint": "AGENT_SEARCH",
+    "selected_resource_ids": []
+  },
+  "conversation_context": [],
+  "current_time": "2026-08-07T14:09:00+09:00",
+  "timezone": "Asia/Seoul",
+  "allowed_sources": [
+    "GMAIL",
+    "TASKS",
+    "CALENDAR"
+  ]
+}

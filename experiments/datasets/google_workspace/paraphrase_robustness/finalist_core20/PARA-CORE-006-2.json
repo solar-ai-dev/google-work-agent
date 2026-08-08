@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-006-2",
+  "source_case_id": "CASE-CORE-006",
+  "source_user_prompt_id": "UP-CORE-006",
+  "paraphrase_group_id": "PG-CORE-006",
+  "variant_index": 2,
+  "language": "ko-KR",
+  "text": "Atlas 최신 출고 일정과 담당자만 확인해 줘. Task나 일정 쪽 준비 상태까지 넓히지는 마.",
+  "expected_entry_mode": "AGENT_SEARCH",
+  "expected_requested_outcome": "ANSWER",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

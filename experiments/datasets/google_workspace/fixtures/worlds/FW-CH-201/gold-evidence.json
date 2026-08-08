@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "evidence": [
+    {
+      "evidence_id": "EVD-CH-SO-201",
+      "resource_id": "GM-SO-202",
+      "source": "GMAIL",
+      "claim": "최종 카피 9월 1일 18시, 담당 하린, 인쇄소 슬롯 9월 3일 14시"
+    },
+    {
+      "evidence_id": "EVD-CH-SO-202",
+      "resource_id": "TSK-SO-201",
+      "source": "TASKS",
+      "claim": "Solstice 최종 카피 Task 기한 9월 1일 18시 KST"
+    },
+    {
+      "evidence_id": "EVD-CH-SO-203",
+      "resource_id": "TSK-SO-202",
+      "source": "TASKS",
+      "claim": "Solstice 패키지 확인 Task 기한 9월 2일 18시 KST"
+    },
+    {
+      "evidence_id": "EVD-CH-SO-204",
+      "resource_id": "EV-SO-201",
+      "source": "CALENDAR",
+      "claim": "Solstice 인쇄소 슬롯 9월 3일 14~15시 KST"
+    }
+  ]
+}

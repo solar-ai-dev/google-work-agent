@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "result": "PLAN_READY",
+  "answer_draft": null,
+  "actions": [
+    {
+      "action_id": "A1",
+      "position": 1,
+      "tool_name": "calendar_create_event",
+      "effect_type": "CREATE",
+      "target_resource_id": null,
+      "arguments": {
+        "calendar_id": "CAL-PRIMARY",
+        "title": "검토 회의",
+        "start": "2026-08-20T14:00:00+09:00",
+        "duration_minutes": 60
+      },
+      "expected": {
+        "created": true
+      },
+      "evidence_ids": [
+        "EVD-PL-AR1"
+      ],
+      "depends_on_action_ids": [],
+      "risk_codes": [],
+      "approval_required": true
+    }
+  ],
+  "confirmation_question": null,
+  "blocked_reason_codes": []
+}

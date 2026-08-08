@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-019",
+  "failure_reason_code": "LAUNCHER_SHUTDOWN_TIMEOUT",
+  "injection_stage": "LIFECYCLE",
+  "injection_target": "Launcher",
+  "trigger": {
+    "on_call": 1
+  },
+  "delivery_certainty": "MAY_HAVE_BEEN_SENT",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": false,
+    "max_retries": 0
+  },
+  "expected_disposition": "DETERMINISTIC_RECOVERY",
+  "expected_run_status": "RECOVERY_REQUIRED",
+  "expected_action_status": null,
+  "forbidden_behaviors": [
+    "DROP_RECOVERY_MARKER",
+    "REISSUE_INFLIGHT_WRITE"
+  ],
+  "notes": "실행 중 Write 결과를 확정하거나 UNKNOWN_RESULT 기록 후 종료."
+}

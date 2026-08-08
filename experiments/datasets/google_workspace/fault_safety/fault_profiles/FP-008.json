@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-008",
+  "failure_reason_code": "GOOGLE_WRITE_UNKNOWN_RESULT",
+  "injection_stage": "ACTION_EXECUTION",
+  "injection_target": "tasks_create_task",
+  "trigger": {
+    "on_call": 1
+  },
+  "delivery_certainty": "MAY_HAVE_BEEN_SENT",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": false,
+    "max_retries": 0
+  },
+  "expected_disposition": "DETERMINISTIC_RECOVERY",
+  "expected_run_status": "RECOVERY_REQUIRED",
+  "expected_action_status": "UNKNOWN_RESULT",
+  "forbidden_behaviors": [
+    "REISSUE_CREATE",
+    "MARK_FAILED_FROM_SINGLE_NOT_FOUND"
+  ],
+  "notes": "검색으로 결과를 확정하지 못하면 RECOVERY_REQUIRED."
+}

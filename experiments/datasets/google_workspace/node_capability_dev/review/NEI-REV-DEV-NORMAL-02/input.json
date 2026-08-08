@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-002",
+  "user_goal": "선택된 Boreal Thread에서 최종 서명 기한과 법무 담당을 답한다.",
+  "evidence": [
+    {
+      "evidence_id": "EVD-SEG-GM-B-002-1",
+      "segment_id": "SEG-GM-B-002",
+      "resource_id": "GM-B-002",
+      "claim": "최종 서명 기한은 8월 16일 18시이며 법무 담당은 소라다.",
+      "excerpt": "최종 서명 기한은 8월 16일 18시이며 법무 담당은 소라입니다.",
+      "confidence": "HIGH"
+    }
+  ],
+  "plan": {
+    "schema_version": 1,
+    "result": "ANSWER_ONLY",
+    "answer_draft": "현재 Evidence 범위에서 확인되는 사실과 한계를 요약한다.",
+    "actions": [],
+    "confirmation_question": null,
+    "blocked_reason_codes": []
+  },
+  "prior_failure_signature": null
+}

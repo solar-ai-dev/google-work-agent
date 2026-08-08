@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "dataset_version": "rebuild-v0.4",
+  "generated_at": "2026-08-07T14:23:00+09:00",
+  "status": "PASS",
+  "errors": [],
+  "counts": {
+    "fixture_worlds": 18,
+    "node_items_total": 465,
+    "node_items_dev": 354,
+    "node_items_holdout": 111,
+    "by_agent": {
+      "planning": 92,
+      "acquisition": 102,
+      "work_analysis": 66,
+      "context_retriever": 74,
+      "request_understanding": 70,
+      "review": 61
+    },
+    "prompt_repair_revision_items": 352,
+    "query_retrieval_items": 48,
+    "prompt_slots": 64,
+    "failure_combinations_complete": 88,
+    "failure_combinations_total": 88
+  },
+  "batch_03": {
+    "new_planning_items": 92,
+    "new_review_items": 61,
+    "planning_failure_codes": 17,
+    "review_failure_codes": 11
+  },
+  "checks": {
+    "all_agent_failure_coverage": true,
+    "plan_semantic_invariants": true,
+    "review_route_localization": true,
+    "holdout_family_leakage": true,
+    "prompt_hashes": true
+  }
+}

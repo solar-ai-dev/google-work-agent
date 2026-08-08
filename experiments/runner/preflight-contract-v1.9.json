@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "preflight_id": "PREFLIGHT-EXPERIMENT-SUITE-V1.9-R7",
+  "required_checks": [
+    "experiment_manifest_schema_valid",
+    "candidate_config_schema_valid",
+    "all_selection_refs_exist",
+    "all_selected_item_refs_exist",
+    "all_grader_ids_exist",
+    "all_prompt_slots_exist",
+    "dev_selection_contains_no_holdout_items",
+    "holdout_selection_locked",
+    "candidate_has_no_unresolved_bindings_before_run",
+    "candidate_diff_one_independent_variable",
+    "budget_policy_present",
+    "result_schema_versions_pinned",
+    "e01_same_provider_parameters",
+    "r7_policy_rebase_validation_pass",
+    "r7_effect_contract_read_create_update_send_delete",
+    "no_supported_write_misclassified_as_forbidden",
+    "clarification_contract_v1_present",
+    "g00_offline_integrity_pass",
+    "human_sample_review_pass_before_g01",
+    "gate_state_satisfied_before_external_call",
+    "effective_model_metadata_recorded"
+  ],
+  "blocking_failures": [
+    "UNRESOLVED_E01_MODEL_BINDING",
+    "HOLDOUT_LEAK",
+    "UNKNOWN_GRADER",
+    "UNKNOWN_PROMPT_SLOT",
+    "CONFIG_DIFF_OUTSIDE_ALLOWED_VARIABLE",
+    "BUDGET_MISSING",
+    "SCHEMA_VERSION_MISMATCH",
+    "R7_POLICY_REBASE_FAIL",
+    "STALE_POLICY_GOLD",
+    "G00_INTEGRITY_FAIL",
+    "HUMAN_SAMPLE_REVIEW_NOT_PASSED",
+    "G01_SAFETY_NOT_PASSED",
+    "E01_EFFECTIVE_MODEL_METADATA_MISSING"
+  ]
+}

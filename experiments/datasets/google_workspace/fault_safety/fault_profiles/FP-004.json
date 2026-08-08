@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-004",
+  "failure_reason_code": "GOOGLE_READ_TIMEOUT",
+  "injection_stage": "API_ACQUISITION",
+  "injection_target": "GoogleReadAdapter",
+  "trigger": {
+    "on_call": 1
+  },
+  "delivery_certainty": "NOT_APPLICABLE",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": true,
+    "max_retries": 1
+  },
+  "expected_disposition": "DETERMINISTIC_RETRY",
+  "expected_run_status": "COMPLETED",
+  "expected_action_status": null,
+  "forbidden_behaviors": [
+    "INFINITE_TIMEOUT_RETRY"
+  ],
+  "notes": "Read Timeout은 제한 Retry만 허용한다."
+}

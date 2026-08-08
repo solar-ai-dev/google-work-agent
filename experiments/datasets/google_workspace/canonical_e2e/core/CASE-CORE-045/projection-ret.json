@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-045-RET",
+  "case_id": "CASE-CORE-045",
+  "projection_kind": "RETRIEVAL",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-005",
+    "user_prompt_id": "UP-CORE-045",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "required_resource_ids": [
+      "GTH-E-001",
+      "TSK-E-001",
+      "EV-E-001"
+    ],
+    "hard_negative_resource_ids": [],
+    "required_evidence_ids": [
+      "EVD-SEG-GM-E-001-1",
+      "EVD-SEG-TSK-E-001-2",
+      "EVD-SEG-EV-E-001-3"
+    ]
+  },
+  "grader_ids": [
+    "grader.retrieval.deterministic",
+    "grader.retrieval.semantic"
+  ]
+}

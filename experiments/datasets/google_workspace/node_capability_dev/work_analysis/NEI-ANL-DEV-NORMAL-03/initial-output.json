@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "result": "NEEDS_CONFIRMATION",
+  "relations": [],
+  "duplicates": [],
+  "schedule_risks": [],
+  "conflicts": [],
+  "unsupported_inferences": [],
+  "missing_data": [
+    "target_person"
+  ],
+  "next_route": "CONFIRM"
+}

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/action-plan-draft.schema.json",
+  "title": "ActionPlanDraftV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "result",
+    "answer_draft",
+    "actions",
+    "confirmation_question",
+    "blocked_reason_codes"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "result": {
+      "enum": [
+        "ANSWER_ONLY",
+        "PLAN_READY",
+        "NEEDS_CONFIRMATION",
+        "BLOCKED"
+      ]
+    },
+    "answer_draft": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action_id",
+          "position",
+          "tool_name",
+          "effect_type",
+          "target_resource_id",
+          "arguments",
+          "expected",
+          "evidence_ids",
+          "depends_on_action_ids",
+          "risk_codes",
+          "approval_required"
+        ],
+        "properties": {
+          "action_id": {
+            "type": "string"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "tool_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "effect_type": {
+            "enum": [
+              "READ",
+              "CREATE",
+              "UPDATE",
+              "SEND",
+              "DELETE"
+            ]
+          },
+          "target_resource_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "arguments": {
+            "type": "object"
+          },
+          "expected": {
+            "type": "object"
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "depends_on_action_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "risk_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "approval_required": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "confirmation_question": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "blocked_reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

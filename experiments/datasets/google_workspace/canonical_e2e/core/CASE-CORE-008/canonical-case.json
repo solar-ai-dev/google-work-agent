@@ -1,0 +1,144 @@
+{
+  "schema_version": 3,
+  "case_id": "CASE-CORE-008",
+  "split": "CORE",
+  "dataset_version": "rebuild-v1.9",
+  "category": "SOURCE_SELECTION_READ",
+  "scenario_family_id": "SF-C1-AGENT-SEARCH-READ",
+  "fixture_relation_family": "RF-DEV-012",
+  "fixture_snapshot_id": "FW-D-012",
+  "language": "ko-KR",
+  "entry_mode": "AGENT_SEARCH",
+  "user_prompt_id": "UP-CORE-008",
+  "canonical_user_prompt": "Lumen 마이그레이션 승인 메일에서 데이터 이전 시작 시간을 찾아줘.",
+  "business_scenario": "첫 Query가 0건이면 Lumen-Aurora 관계를 이용해 Query를 한 번 수정한다.",
+  "expected_goal": "검색어를 의미 있게 수정해 데이터 이전 시작 시간을 찾는다.",
+  "expected_completion_criteria": [
+    "첫 Lumen Query 0건을 기록한다.",
+    "Aurora Migration 별칭으로 제약을 수정한다.",
+    "8월 22일 22시를 답한다."
+  ],
+  "requested_outcome": "ANSWER",
+  "selected_resource_ids": [],
+  "required_sources": [
+    "GMAIL"
+  ],
+  "optional_sources": [],
+  "forbidden_sources": [],
+  "required_resource_ids": [
+    "GTH-L-001",
+    "GM-L-001"
+  ],
+  "hard_negative_resource_ids": [],
+  "required_evidence_ids": [
+    "EVD-SEG-GM-L-001-1"
+  ],
+  "user_evidence": [],
+  "derived_evidence": [],
+  "expected_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "acquisition.revise_partial",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.answer_only",
+    "review.inspect",
+    "complete_answer_only_run"
+  ],
+  "expected_skipped_nodes": [
+    "planning.draft_plan"
+  ],
+  "expected_source_fetch_plan": [
+    {
+      "source": "GMAIL",
+      "priority": 1,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 2
+    }
+  ],
+  "expected_tool_trajectory": [
+    {
+      "phase": "READ",
+      "tool": "gmail_search_threads",
+      "required": true,
+      "constraints": {
+        "fixture_scope": "FW-D-012"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "gmail_get_thread",
+      "required": true,
+      "constraints": {
+        "resource_ids": [
+          "GTH-L-001"
+        ]
+      }
+    }
+  ],
+  "expected_answer_type": "ANSWER",
+  "policy_result": "ALLOW_READ",
+  "expected_interrupt": "NONE",
+  "allowed_actions": [],
+  "forbidden_actions": [
+    "gmail_send",
+    "gmail_delete",
+    "tasks_delete",
+    "tasks_complete",
+    "calendar_delete",
+    "calendar_add_external_attendee"
+  ],
+  "approval_expectation": {
+    "required": false,
+    "scope": "ACTION_LEVEL",
+    "no_write_before_approval": true
+  },
+  "verification_expectation": {
+    "required": false,
+    "policy": "NONE",
+    "all_writes_re_read": false
+  },
+  "end_state_expectation": {
+    "initial": {
+      "run_status": "COMPLETED",
+      "result_kind": "FULL"
+    },
+    "after_user_action": null
+  },
+  "node_applicability": {
+    "request_understanding": true,
+    "acquisition": true,
+    "context_retriever": true,
+    "work_analysis": true,
+    "planning": true,
+    "review": true
+  },
+  "node_projection_refs": [
+    "PROJ-CORE-008-UU",
+    "PROJ-CORE-008-ACQ",
+    "PROJ-CORE-008-RET",
+    "PROJ-CORE-008-ANL",
+    "PROJ-CORE-008-PLN",
+    "PROJ-CORE-008-REV",
+    "PROJ-CORE-008-RT",
+    "PROJ-CORE-008-E2E"
+  ],
+  "tags": [
+    "source_selection_read",
+    "sf-c1-agent-search-read",
+    "query_revision",
+    "no_results_first_round"
+  ],
+  "human_rubric": [
+    "첫 Lumen Query 0건을 기록한다.",
+    "Aurora Migration 별칭으로 제약을 수정한다.",
+    "8월 22일 22시를 답한다."
+  ]
+}

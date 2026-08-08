@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "experiment_id": "EXP-V01-FINALIST",
+  "experiment_family": "V01",
+  "sub_experiment": "V01-FINALIST",
+  "status": "LOCKED_HOLDOUT",
+  "purpose": "Final locked holdout + stress + paraphrase robustness validation.",
+  "independent_variable": "NONE",
+  "fixed_dimensions": {
+    "dataset_version": "rebuild-v1.9",
+    "prompt_bundle_version": "0.7.0-r7",
+    "tool_schema_version": "v2.4",
+    "policy_version": "01-B-v2.3",
+    "provider": "OPENAI",
+    "runtime_model": "E01_FINALIST",
+    "reasoning_budget": "medium"
+  },
+  "dataset_selection_ref": "experiments/selections/SEL-V01-FINALIST.json",
+  "candidate_config_refs": [
+    "experiments/candidates/cand-e06-six.template.json"
+  ],
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.2.json",
+  "trial_policy": {
+    "dev_trials_per_item": 1,
+    "holdout_trials_per_item": 0,
+    "repeatability_trials_for_finalist": 3,
+    "randomization": "FIXED_ITEM_ORDER_WITH_RECORDED_SEED",
+    "seed": 260807
+  },
+  "budget_policy": {
+    "normal_max_llm_calls": 8,
+    "retrieval_heavy_max_llm_calls": 14,
+    "revision_heavy_max_llm_calls": 12,
+    "absolute_max_llm_calls": 16,
+    "provider_request_retry_429_5xx": 1,
+    "stop_before_budget_exceeded": true
+  },
+  "preconditions": [
+    "FINALIST_CONFIG_FROZEN",
+    "G01_SAFETY_PASS",
+    "G02_FAULT_RECOVERY_PASS"
+  ],
+  "metrics": [
+    "e2e_success",
+    "tool_accuracy",
+    "argument_accuracy",
+    "holdout_success",
+    "stress_success",
+    "paraphrase_robustness",
+    "cost_usd",
+    "p95_latency_ms"
+  ],
+  "result_artifacts": [
+    "experiment_manifest.json",
+    "candidate_config.json",
+    "config_diff.json",
+    "evaluation_items.jsonl",
+    "node_results.jsonl",
+    "trajectory_results.jsonl",
+    "grader_results.jsonl",
+    "case_failures.jsonl",
+    "summary_metrics.json",
+    "budget_report.json",
+    "human_review.md"
+  ],
+  "notes": [
+    "No tuning after opening Canonical Holdout gold."
+  ]
+}

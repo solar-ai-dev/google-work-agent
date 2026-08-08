@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "input_condition": [
+    "NORMAL",
+    "BOUNDARY",
+    "AMBIGUOUS",
+    "INSUFFICIENT",
+    "LOW_CONFIDENCE",
+    "CONFLICTING",
+    "NOISY",
+    "ADVERSARIAL"
+  ],
+  "output_failure_type": [
+    "NONE",
+    "SCHEMA_INVALID",
+    "SEMANTIC_INVALID"
+  ],
+  "recovery_disposition": [
+    "RETRYABLE",
+    "REDIRECT",
+    "DETERMINISTIC",
+    "TERMINAL",
+    "NOT_AVAILABLE"
+  ],
+  "upstream_mode": [
+    "ORACLE",
+    "LIVE",
+    "MUTATED"
+  ],
+  "retry_kind": [
+    "NONE",
+    "SCHEMA_REPAIR",
+    "SEMANTIC_REVISION",
+    "WORKFLOW_REDIRECTION",
+    "DETERMINISTIC_RETRY",
+    "DETERMINISTIC_RECOVERY"
+  ],
+  "confidence_band": [
+    "HIGH",
+    "MEDIUM",
+    "LOW",
+    "NONE"
+  ],
+  "dataset_layers": [
+    "canonical_e2e",
+    "node_capability_dev",
+    "node_capability_holdout",
+    "prompt_repair_revision",
+    "query_retrieval",
+    "fault_safety",
+    "paraphrase_robustness",
+    "canonical_holdout"
+  ]
+}

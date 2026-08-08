@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "result": "INVALID",
+  "entry_mode": "AGENT_SEARCH",
+  "requested_outcome": "ACTION_PLAN",
+  "goal": "금지된 Gmail 원문 삭제와 반복 Event 전체 일괄 수정 요청을 식별하고 차단한다.",
+  "completion_criteria": [
+    "Gmail Message·Thread 삭제 Tool을 제안하지 않는다",
+    "반복 Event 전체 일괄 수정을 제안하지 않는다",
+    "원문 유지 또는 단일 Event 수정 같은 지원 가능한 대안을 설명할 수 있다"
+  ],
+  "constraints": {
+    "project_terms": [
+      "Polaris",
+      "공급업체 온보딩"
+    ],
+    "requested_forbidden_actions": [
+      "GMAIL_DELETE",
+      "RECURRING_EVENT_BULK_UPDATE"
+    ],
+    "sources": [
+      "GMAIL",
+      "CALENDAR"
+    ]
+  },
+  "ambiguities": [],
+  "unsupported_scope": [
+    "GMAIL_DELETE",
+    "RECURRING_EVENT_BULK_UPDATE"
+  ],
+  "next_route": "BLOCKED"
+}

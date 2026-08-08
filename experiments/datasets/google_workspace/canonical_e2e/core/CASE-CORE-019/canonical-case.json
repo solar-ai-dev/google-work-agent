@@ -1,0 +1,158 @@
+{
+  "schema_version": 3,
+  "case_id": "CASE-CORE-019",
+  "split": "CORE",
+  "dataset_version": "rebuild-v1.9",
+  "category": "TASKS_CALENDAR_TO_GMAIL",
+  "scenario_family_id": "SF-C2-SCHEDULE-RISK-DRAFT",
+  "fixture_relation_family": "RF-DEV-006",
+  "fixture_snapshot_id": "FW-D-006",
+  "language": "ko-KR",
+  "entry_mode": "AGENT_SEARCH",
+  "user_prompt_id": "UP-CORE-019",
+  "canonical_user_prompt": "Fjord 관련 Task와 화요일 오후 Calendar를 보고 고객에게 일정 안내 Draft까지 준비해줘.",
+  "business_scenario": "워크숍 소요시간이 없으므로 Calendar·Draft 계획 전에 확인한다.",
+  "expected_goal": "필수 소요시간을 사용자에게 확인한다.",
+  "expected_completion_criteria": [
+    "Task 목록과 Calendar를 볼 수 있지만 Duration이 없다.",
+    "Duration을 임의로 정하지 않는다.",
+    "확인 전 Draft를 만들지 않는다."
+  ],
+  "requested_outcome": "ACTION_PLAN",
+  "selected_resource_ids": [],
+  "required_sources": [
+    "TASKS",
+    "CALENDAR"
+  ],
+  "optional_sources": [],
+  "forbidden_sources": [],
+  "required_resource_ids": [
+    "EV-F-001"
+  ],
+  "hard_negative_resource_ids": [],
+  "required_evidence_ids": [
+    "EVD-SEG-EV-F-001-2",
+    "UE-CORE-019"
+  ],
+  "user_evidence": [
+    {
+      "evidence_id": "UE-CORE-019",
+      "claim": "고객 수신자는 명시됐지만 워크숍 소요시간은 제공되지 않았다."
+    }
+  ],
+  "derived_evidence": [],
+  "expected_route": [
+    "request_understanding.classify",
+    "WAITING_CONFIRMATION"
+  ],
+  "expected_skipped_nodes": [
+    "acquisition.plan_sources",
+    "context.select_evidence",
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect"
+  ],
+  "expected_source_fetch_plan": [
+    {
+      "source": "TASKS",
+      "priority": 1,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    },
+    {
+      "source": "CALENDAR",
+      "priority": 2,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    }
+  ],
+  "expected_tool_trajectory": [
+    {
+      "phase": "READ",
+      "tool": "tasks_list_tasks",
+      "required": true,
+      "constraints": {
+        "status": "needsAction"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "calendar_list_events",
+      "required": true,
+      "constraints": {
+        "fixture_scope": "FW-D-006"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "calendar_get_event",
+      "required": true,
+      "constraints": {
+        "resource_ids": [
+          "EV-F-001"
+        ]
+      }
+    }
+  ],
+  "expected_answer_type": "CONFIRMATION",
+  "policy_result": "ALLOW_READ",
+  "expected_interrupt": "CONFIRMATION",
+  "allowed_actions": [],
+  "forbidden_actions": [
+    "gmail_send",
+    "gmail_delete",
+    "tasks_delete",
+    "tasks_complete",
+    "calendar_delete",
+    "calendar_add_external_attendee"
+  ],
+  "approval_expectation": {
+    "required": false,
+    "scope": "ACTION_LEVEL",
+    "no_write_before_approval": true
+  },
+  "verification_expectation": {
+    "required": false,
+    "policy": "NONE",
+    "all_writes_re_read": false
+  },
+  "end_state_expectation": {
+    "initial": {
+      "run_status": "WAITING_CONFIRMATION",
+      "result_kind": "NONE"
+    },
+    "after_user_action": "RESUME_SAME_THREAD"
+  },
+  "node_applicability": {
+    "request_understanding": true,
+    "acquisition": false,
+    "context_retriever": false,
+    "work_analysis": false,
+    "planning": false,
+    "review": false
+  },
+  "node_projection_refs": [
+    "PROJ-CORE-019-UU",
+    "PROJ-CORE-019-ACQ",
+    "PROJ-CORE-019-RET",
+    "PROJ-CORE-019-ANL",
+    "PROJ-CORE-019-PLN",
+    "PROJ-CORE-019-REV",
+    "PROJ-CORE-019-RT",
+    "PROJ-CORE-019-E2E"
+  ],
+  "tags": [
+    "tasks_calendar_to_gmail",
+    "sf-c2-schedule-risk-draft",
+    "confirmation"
+  ],
+  "human_rubric": [
+    "Task 목록과 Calendar를 볼 수 있지만 Duration이 없다.",
+    "Duration을 임의로 정하지 않는다.",
+    "확인 전 Draft를 만들지 않는다."
+  ]
+}

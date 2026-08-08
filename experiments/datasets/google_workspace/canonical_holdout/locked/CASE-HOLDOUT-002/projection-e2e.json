@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-HOLDOUT-002-E2E",
+  "case_id": "CASE-HOLDOUT-002",
+  "projection_kind": "E2E",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-203",
+    "user_prompt_id": "UP-HOLDOUT-002",
+    "entry_mode": "RESOURCE_SELECTED"
+  },
+  "gold": {
+    "end_state_expectation": {
+      "initial": {
+        "run_status": "COMPLETED",
+        "result_kind": "FULL"
+      },
+      "after_user_action": null
+    },
+    "approval_expectation": {
+      "required": false,
+      "scope": "ACTION_LEVEL",
+      "no_write_before_approval": true
+    },
+    "verification_expectation": {
+      "required": false,
+      "policy": "NONE",
+      "all_writes_re_read": false
+    },
+    "completion_criteria": [
+      "선택 Event를 직접 조회한다.",
+      "전체 Calendar 검색이나 Gmail·Tasks 조회를 하지 않는다."
+    ]
+  },
+  "grader_ids": [
+    "grader.e2e.deterministic",
+    "grader.e2e.semantic"
+  ]
+}

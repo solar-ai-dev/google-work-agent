@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-HOLDOUT-001-RET",
+  "case_id": "CASE-HOLDOUT-001",
+  "projection_kind": "RETRIEVAL",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-201",
+    "user_prompt_id": "UP-HOLDOUT-001",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "required_resource_ids": [
+      "GTH-SO-201",
+      "GM-SO-202"
+    ],
+    "required_evidence_ids": [
+      "EVD-CH-SO-201"
+    ],
+    "hard_negative_resource_ids": [
+      "GTH-SO-299"
+    ]
+  },
+  "grader_ids": [
+    "grader.retrieval.deterministic",
+    "grader.retrieval.semantic"
+  ]
+}

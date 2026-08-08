@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "dataset_version": "rebuild-v0.3",
+  "generated_at": "2026-08-07T14:23:00+09:00",
+  "status": "PASS",
+  "errors": [],
+  "counts": {
+    "fixture_worlds": 18,
+    "node_items_total": 312,
+    "node_items_dev": 236,
+    "node_items_holdout": 76,
+    "by_agent": {
+      "acquisition": 102,
+      "work_analysis": 66,
+      "context_retriever": 74,
+      "request_understanding": 70
+    },
+    "prompt_repair_revision_items": 240,
+    "query_retrieval_items": 48,
+    "prompt_slots": 41
+  },
+  "batch_02": {
+    "new_context_items": 74,
+    "new_analysis_items": 66,
+    "context_failure_codes": 14,
+    "analysis_failure_codes": 12,
+    "minimum_rule": "DEV 3 + HOLDOUT 1 per applicable failure reason"
+  },
+  "checks": {
+    "json_schema": true,
+    "semantic_gold_integrity": true,
+    "prompt_hashes": true,
+    "holdout_family_leakage": true
+  },
+  "semantic_review": {
+    "representative_manual_review": "PASS",
+    "normal_context_user_goal_alignment": "PASS",
+    "analysis_evidence_grounding": "PASS",
+    "controlled_failure_gold": "PASS"
+  }
+}

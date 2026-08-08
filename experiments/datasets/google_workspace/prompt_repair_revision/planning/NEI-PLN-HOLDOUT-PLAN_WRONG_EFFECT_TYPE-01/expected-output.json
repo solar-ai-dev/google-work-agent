@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "result": "PLAN_READY",
+  "answer_draft": null,
+  "actions": [
+    {
+      "action_id": "A1",
+      "position": 1,
+      "tool_name": "tasks_update_task",
+      "effect_type": "UPDATE",
+      "target_resource_id": "TSK-X",
+      "arguments": {
+        "task_id": "TSK-X",
+        "due": "2026-08-21"
+      },
+      "expected": {
+        "due": "2026-08-21"
+      },
+      "evidence_ids": [
+        "EVD-PL-EF1"
+      ],
+      "depends_on_action_ids": [],
+      "risk_codes": [],
+      "approval_required": true
+    }
+  ],
+  "confirmation_question": null,
+  "blocked_reason_codes": []
+}

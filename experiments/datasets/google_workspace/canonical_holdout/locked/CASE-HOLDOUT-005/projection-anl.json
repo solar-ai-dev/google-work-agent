@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-HOLDOUT-005-ANL",
+  "case_id": "CASE-HOLDOUT-005",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-201",
+    "user_prompt_id": "UP-HOLDOUT-005",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "goal": "Solstice 점검 Event를 제안한다.",
+    "evidence_ids": [
+      "EVD-CH-SO-201",
+      "EVD-CH-SO-202",
+      "EVD-CH-SO-203",
+      "UE-HOLDOUT-005"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "failure_id": "FAIL-NEI-ANL-HOLDOUT-ANALYSIS_DUPLICATE_MISCLASSIFIED-01",
+  "failure_reason_code": "ANALYSIS_DUPLICATE_MISCLASSIFIED",
+  "failure_origin": "LLM_OUTPUT",
+  "detected_by": "EXPERIMENT_DETERMINISTIC_GRADER",
+  "runtime_disposition": "RETRYABLE",
+  "experiment_disposition": "RUN_REVISION",
+  "affected_field_paths": [
+    "/"
+  ],
+  "evidence_refs": []
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "result": "PLAN_READY",
+  "plans": [
+    {
+      "schema_version": 1,
+      "source": "CALENDAR",
+      "priority": 1,
+      "reason_codes": [
+        "REQUIRED_BY_COMPLETION_CRITERIA"
+      ],
+      "constraints": {
+        "project_terms": [
+          "Juniper",
+          "로드맵 검토"
+        ],
+        "start": "2026-08-12T15:00:00+09:00"
+      },
+      "page_size": 20,
+      "max_pages": 2,
+      "max_candidates": 40,
+      "detail_limit": 5,
+      "required": true
+    }
+  ],
+  "confirmation": null,
+  "blocked_reason": null,
+  "stop_reason": null
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-N-101",
+      "subject": "[Nimbus] 청구 이의 접수",
+      "participants": [
+        "billing-dispute@nimbus.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-N-101",
+          "sender": "billing-dispute@nimbus.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-05T02:00:00Z",
+          "body": "담당자는 윤아입니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-N-102",
+      "subject": "[Nimbus] 청구 문의",
+      "participants": [
+        "billing@nimbus.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-N-102",
+          "sender": "billing@nimbus.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T02:00:00Z",
+          "body": "일반 청구 담당자는 유나입니다."
+        }
+      ]
+    }
+  ]
+}

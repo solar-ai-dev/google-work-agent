@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-STRESS-009-E2E",
+  "case_id": "CASE-STRESS-009",
+  "projection_kind": "E2E",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-012",
+    "user_prompt_id": "UP-CORE-008",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "end_state_expectation": {
+      "initial": {
+        "run_status": "COMPLETED",
+        "result_kind": "PARTIAL"
+      },
+      "after_user_action": null
+    },
+    "approval_expectation": {
+      "required": false,
+      "scope": "ACTION_LEVEL",
+      "no_write_before_approval": true
+    },
+    "verification_expectation": {
+      "required": false,
+      "policy": "NONE",
+      "all_writes_re_read": false
+    },
+    "completion_criteria": [
+      "최대 2회 Additional Acquisition 이후 중단한다.",
+      "같은 Query를 무변경 반복하지 않는다.",
+      "확인하지 못한 시작 시간은 추측하지 않는다."
+    ],
+    "fault_profile_ids": [],
+    "stress_kind": "QUERY_BUDGET_PARTIAL"
+  },
+  "grader_ids": [
+    "grader.e2e.deterministic",
+    "grader.e2e.semantic"
+  ]
+}

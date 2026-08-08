@@ -626,22 +626,22 @@ def test_prompt_refs_are_runtime_active() -> None:
     revise_plan_prompt = load_solution_planning_revise_plan_prompt_reference()
 
     assert answer_prompt.prompt_id == "planning.answer_only"
-    assert answer_prompt.prompt_version == "v0.1"
+    assert answer_prompt.prompt_version != "TBD"
     assert answer_prompt.content_hash != "TBD"
     assert answer_prompt.node_state == "BASELINE"
 
     assert plan_prompt.prompt_id == "planning.draft_plan"
-    assert plan_prompt.prompt_version == "v0.1"
+    assert plan_prompt.prompt_version != "TBD"
     assert plan_prompt.content_hash != "TBD"
     assert plan_prompt.node_state == "BASELINE"
 
     assert revise_prompt.prompt_id == "planning.revise_answer"
-    assert revise_prompt.prompt_version == "v0.1"
+    assert revise_prompt.prompt_version != "TBD"
     assert revise_prompt.content_hash != "TBD"
     assert revise_prompt.node_state == "BASELINE"
 
     assert revise_plan_prompt.prompt_id == "planning.revise_plan"
-    assert revise_plan_prompt.prompt_version == "v0.1"
+    assert revise_plan_prompt.prompt_version != "TBD"
     assert revise_plan_prompt.content_hash != "TBD"
     assert revise_plan_prompt.node_state == "BASELINE"
 

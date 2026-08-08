@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "selection_id": "SEL-G00-INTEGRITY",
+  "layer": "validation",
+  "split": "N/A",
+  "locked": true,
+  "item_count": 14,
+  "items": [
+    {
+      "evaluation_item_id": "VAL-BATCH-01-AGGREGATE-VALIDATION-V0.2",
+      "path": "experiments/datasets/google_workspace/validation/batch-01-aggregate-validation-v0.2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "VAL-BATCH-01-DEEP-VALIDATION-V0.2",
+      "path": "experiments/datasets/google_workspace/validation/batch-01-deep-validation-v0.2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "VAL-BATCH-01-VALIDATION-V0.2",
+      "path": "experiments/datasets/google_workspace/validation/batch-01-validation-v0.2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "VAL-BATCH-02-AGGREGATE-VALIDATION-V0.3",
+      "path": "experiments/datasets/google_workspace/validation/batch-02-aggregate-validation-v0.3.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "VAL-BATCH-03-AGGREGATE-VALIDATION-V0.4",
+      "path": "experiments/datasets/google_workspace/validation/batch-03-aggregate-validation-v0.4.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "VAL-BATCH-04-CORE-CANONICAL-VALIDATION-V0.5",
+      "path": "experiments/datasets/google_workspace/validation/batch-04-core-canonical-validation-v0.5.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "VAL-BATCH-05-STRESS-FAULT-VALIDATION-V0.6",
+      "path": "experiments/datasets/google_workspace/validation/batch-05-stress-fault-validation-v0.6.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "VAL-BATCH-06-CANONICAL-HOLDOUT-VALIDATION-V0.7",
+      "path": "experiments/datasets/google_workspace/validation/batch-06-canonical-holdout-validation-v0.7.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "VAL-BATCH-07-PARAPHRASE-PROMPT-BUNDLE-VALIDATION-V0.8",
+      "path": "experiments/datasets/google_workspace/validation/batch-07-paraphrase-prompt-bundle-validation-v0.8.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "VAL-FOUNDATION-VALIDATION-V0.1",
+      "path": "experiments/datasets/google_workspace/validation/foundation-validation-v0.1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "VAL-MASTER-COVERAGE-VALIDATION-V1.1",
+      "path": "experiments/datasets/google_workspace/validation/master-coverage-validation-v1.1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "VAL-MICRO-COVERAGE-VALIDATION-V1.0",
+      "path": "experiments/datasets/google_workspace/validation/micro-coverage-validation-v1.0.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "VAL-PROMPT-GRADER-VALIDATION-V0.9",
+      "path": "experiments/datasets/google_workspace/validation/prompt-grader-validation-v0.9.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "VAL-R7-POLICY-REBASE-V1.9",
+      "path": "experiments/datasets/google_workspace/validation/r7-policy-rebase-validation-v1.9.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    }
+  ],
+  "selection_hash": "c9d102f7ac2e581fe2a314822479a24a37757a9839cf2add9f376c7666394551"
+}

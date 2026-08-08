@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-Q-001",
+      "subject": "[Quartz] 납품 일정 확인",
+      "participants": [
+        "ops@quartz.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-Q-001",
+          "sender": "ops@quartz.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T02:00:00Z",
+          "body": "납품일은 8월 21일로 확정했습니다."
+        }
+      ]
+    }
+  ]
+}

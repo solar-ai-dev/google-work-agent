@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/work-analysis-output.schema.json",
+  "title": "WorkAnalysisResultV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "result",
+    "relations",
+    "duplicates",
+    "schedule_risks",
+    "conflicts",
+    "unsupported_inferences",
+    "missing_data",
+    "next_route"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "result": {
+      "enum": [
+        "COMPLETE",
+        "NEEDS_MORE_DATA",
+        "NEEDS_CONFIRMATION",
+        "BLOCKED"
+      ]
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relation_type",
+          "subject_id",
+          "object_id",
+          "evidence_ids",
+          "confidence"
+        ],
+        "properties": {
+          "relation_type": {
+            "type": "string"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "object_id": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "confidence": {
+            "enum": [
+              "HIGH",
+              "MEDIUM",
+              "LOW"
+            ]
+          }
+        }
+      }
+    },
+    "duplicates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "candidate_id",
+          "classification",
+          "evidence_ids"
+        ],
+        "properties": {
+          "candidate_id": {
+            "type": "string"
+          },
+          "classification": {
+            "enum": [
+              "EXACT_DUPLICATE",
+              "SIMILAR",
+              "NOT_DUPLICATE",
+              "UNKNOWN"
+            ]
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "schedule_risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "target_id",
+          "classification",
+          "reason_codes",
+          "evidence_ids"
+        ],
+        "properties": {
+          "target_id": {
+            "type": "string"
+          },
+          "classification": {
+            "enum": [
+              "POSSIBLE",
+              "RISKY",
+              "IMPOSSIBLE",
+              "UNKNOWN"
+            ]
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "field",
+          "evidence_ids",
+          "handling"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 2
+          },
+          "handling": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "unsupported_inferences": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "missing_data": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next_route": {
+      "enum": [
+        "PLANNING",
+        "ACQUISITION",
+        "CONFIRM",
+        "BLOCK"
+      ]
+    }
+  }
+}

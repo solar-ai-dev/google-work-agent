@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-041-1",
+  "source_case_id": "CASE-CORE-041",
+  "source_user_prompt_id": "UP-CORE-041",
+  "paraphrase_group_id": "PG-CORE-041",
+  "variant_index": 1,
+  "language": "ko-KR",
+  "text": "Atlas 메일의 최종 출고일, 준비 Task 두 개, 인쇄소 슬롯을 전부 비교해서 일정 순서상 위험만 정리해줘. 새 Task나 Event는 만들지 마.",
+  "expected_entry_mode": "AGENT_SEARCH",
+  "expected_requested_outcome": "ANALYSIS",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

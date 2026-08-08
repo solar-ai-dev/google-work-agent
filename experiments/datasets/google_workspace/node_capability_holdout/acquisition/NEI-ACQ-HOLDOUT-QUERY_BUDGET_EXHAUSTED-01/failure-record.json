@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "failure_id": "FAIL-NEI-ACQ-HOLDOUT-QUERY_BUDGET_EXHAUSTED-01",
+  "failure_reason_code": "QUERY_BUDGET_EXHAUSTED",
+  "failure_origin": "QUERY_PLANNING",
+  "detected_by": "RUNTIME_DOMAIN_VALIDATOR",
+  "runtime_disposition": "REDIRECT",
+  "experiment_disposition": "COUNT_FAILURE",
+  "affected_field_paths": [
+    "/result"
+  ],
+  "evidence_refs": []
+}

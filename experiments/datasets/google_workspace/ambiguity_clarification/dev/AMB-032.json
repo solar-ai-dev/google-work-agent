@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-032",
+  "split": "DEV",
+  "ambiguity_family_id": "AMB-F08-RECIPIENT-SCOPE",
+  "user_request": "이 사람에게 회신해줘",
+  "conversation_context": [
+    "선택 Thread에 발신자 1명만 존재: owner@a.test"
+  ],
+  "available_candidates": [],
+  "gold": {
+    "should_clarify": false,
+    "ambiguity_kind": "RECIPIENT_SCOPE",
+    "expected_route": "CONTINUE",
+    "expected_semantics": "발신자에게 SEND 계획",
+    "question_strategy": "NONE",
+    "required_candidate_ids": [],
+    "forbidden_assumptions": [
+      "UNNECESSARY_CLARIFICATION"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

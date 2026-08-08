@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-STRESS-003-RT",
+  "case_id": "CASE-STRESS-003",
+  "projection_kind": "ROUTING_TRAJECTORY",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-006",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "expected_route": [
+      "request_understanding.classify",
+      "acquisition.plan_sources",
+      "acquisition.execute",
+      "REAUTH_REQUIRED"
+    ],
+    "expected_skipped_nodes": [
+      "planning.draft_plan"
+    ],
+    "expected_tool_trajectory": [
+      {
+        "phase": "READ",
+        "tool": "gmail_search_threads",
+        "required": true,
+        "constraints": {
+          "fixture_scope": "FW-D-001"
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "gmail_get_thread",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "GTH-A-001"
+          ]
+        }
+      }
+    ],
+    "fault_profile_ids": [
+      "FP-001"
+    ],
+    "stress_kind": "REAUTH"
+  },
+  "grader_ids": [
+    "grader.routing_trajectory.deterministic",
+    "grader.routing_trajectory.semantic"
+  ]
+}

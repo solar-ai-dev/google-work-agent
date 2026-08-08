@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-006-1",
+  "source_case_id": "CASE-CORE-006",
+  "source_user_prompt_id": "UP-CORE-006",
+  "paraphrase_group_id": "PG-CORE-006",
+  "variant_index": 1,
+  "language": "ko-KR",
+  "text": "Atlas 출고가 최종적으로 언제인지랑 담당자가 누군지만 찾아줘. 다른 준비 항목은 굳이 분석하지 마.",
+  "expected_entry_mode": "AGENT_SEARCH",
+  "expected_requested_outcome": "ANSWER",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

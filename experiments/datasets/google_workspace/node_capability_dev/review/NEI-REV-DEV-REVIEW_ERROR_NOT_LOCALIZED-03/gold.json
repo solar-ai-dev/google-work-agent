@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "result": "REVISE",
+  "findings": [
+    {
+      "code": "PLAN_WRONG_TARGET",
+      "severity": "ERROR",
+      "action_id": "A1",
+      "field_paths": [
+        "/actions/0/target_resource_id",
+        "/actions/0/arguments/task_id"
+      ],
+      "evidence_ids": [
+        "EVD-PL-TG1"
+      ],
+      "message": "선택 대상 TSK-X 대신 TSK-Y를 가리킨다."
+    }
+  ],
+  "localized_failure_codes": [
+    "PLAN_WRONG_TARGET"
+  ],
+  "next_route": "PLANNING",
+  "recheck_required": true
+}

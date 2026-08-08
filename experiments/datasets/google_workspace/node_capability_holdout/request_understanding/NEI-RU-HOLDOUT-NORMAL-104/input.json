@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "user_request": "Polaris 공급업체 온보딩 안내 메일 Thread를 삭제하고 다음 주 반복 회의 전체 시간을 한꺼번에 바꿔 줘.",
+  "entry_context": {
+    "entry_mode_hint": "AGENT_SEARCH",
+    "selected_resource_ids": []
+  },
+  "conversation_context": [],
+  "current_time": "2026-08-07T14:09:00+09:00",
+  "timezone": "Asia/Seoul",
+  "allowed_sources": [
+    "GMAIL",
+    "TASKS",
+    "CALENDAR"
+  ]
+}

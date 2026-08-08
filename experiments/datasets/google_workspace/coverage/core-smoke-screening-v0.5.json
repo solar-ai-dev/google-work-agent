@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "dataset_version": "rebuild-v0.5",
+  "smoke_5": [
+    "CASE-CORE-001",
+    "CASE-CORE-012",
+    "CASE-CORE-023",
+    "CASE-CORE-041",
+    "CASE-CORE-059"
+  ],
+  "screening_20": [
+    "CASE-CORE-001",
+    "CASE-CORE-006",
+    "CASE-CORE-008",
+    "CASE-CORE-010",
+    "CASE-CORE-011",
+    "CASE-CORE-012",
+    "CASE-CORE-016",
+    "CASE-CORE-019",
+    "CASE-CORE-021",
+    "CASE-CORE-023",
+    "CASE-CORE-026",
+    "CASE-CORE-031",
+    "CASE-CORE-036",
+    "CASE-CORE-041",
+    "CASE-CORE-046",
+    "CASE-CORE-047",
+    "CASE-CORE-051",
+    "CASE-CORE-056",
+    "CASE-CORE-058",
+    "CASE-CORE-059"
+  ]
+}

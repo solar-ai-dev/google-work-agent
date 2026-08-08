@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-006",
+  "goal": "워크숍 일정 생성 전 예상 소요시간을 확인한다.",
+  "requested_outcome": "ACTION_PLAN",
+  "constraints": {
+    "project_terms": [
+      "Fjord",
+      "고객 워크숍"
+    ],
+    "date": "2026-08-11",
+    "daypart": "afternoon",
+    "sources": [
+      "GMAIL",
+      "CALENDAR"
+    ]
+  },
+  "evidence": [
+    {
+      "evidence_id": "EVD-SEG-GM-F-001-1",
+      "segment_id": "SEG-GM-F-001",
+      "resource_id": "GM-F-001",
+      "claim": "다음 주 화요일 오후가 좋습니다.",
+      "excerpt": "다음 주 화요일 오후가 좋습니다.",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "EVD-SEG-EV-F-001-2",
+      "segment_id": "SEG-EV-F-001",
+      "resource_id": "EV-F-001",
+      "claim": "일정: 팀 회의",
+      "excerpt": "일정: 팀 회의 / 시작: 2026-08-11T06:00:00Z / 종료: 2026-08-11T07:00:00Z / 투명도: opaque / 설명: ",
+      "confidence": "HIGH"
+    }
+  ],
+  "analysis": {
+    "schema_version": 1,
+    "result": "NEEDS_CONFIRMATION",
+    "relations": [],
+    "duplicates": [],
+    "schedule_risks": [
+      {
+        "target_id": "WORKSHOP",
+        "classification": "UNKNOWN",
+        "reason_codes": [
+          "DURATION_MISSING"
+        ],
+        "evidence_ids": [
+          "EVD-SEG-GM-F-001-1"
+        ]
+      }
+    ],
+    "conflicts": [],
+    "unsupported_inferences": [],
+    "missing_data": [
+      "expected_duration"
+    ],
+    "next_route": "CONFIRM"
+  }
+}

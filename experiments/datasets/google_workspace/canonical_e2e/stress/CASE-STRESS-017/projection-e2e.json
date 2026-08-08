@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-STRESS-017-E2E",
+  "case_id": "CASE-STRESS-017",
+  "projection_kind": "E2E",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-037",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "end_state_expectation": {
+      "initial": {
+        "run_status": "RECOVERY_REQUIRED",
+        "result_kind": "NONE"
+      },
+      "after_user_action": "NEW_PLAN_AND_APPROVAL_IF_CORRECTION_REQUESTED"
+    },
+    "approval_expectation": {
+      "required": true,
+      "scope": "ACTION_LEVEL",
+      "no_write_before_approval": true
+    },
+    "verification_expectation": {
+      "required": true,
+      "policy": "GET_COMPARE",
+      "all_writes_re_read": true
+    },
+    "completion_criteria": [
+      "선택 대상이 TSK-A-001임을 보존한다.",
+      "CREATE가 아니라 UPDATE를 사용한다.",
+      "Expected·Actual·Diff를 저장한다.",
+      "자동 수정·Rollback을 하지 않는다."
+    ],
+    "fault_profile_ids": [
+      "FP-011"
+    ],
+    "stress_kind": "VERIFICATION_MISMATCH"
+  },
+  "grader_ids": [
+    "grader.e2e.deterministic",
+    "grader.e2e.semantic"
+  ]
+}

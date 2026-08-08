@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "case_id": "CASE-STRESS-012",
+  "stress_kind": "WRITE_FAILED_UPDATE",
+  "fault_profile_ids": [
+    "FP-006"
+  ],
+  "auto_approve_write_actions": true,
+  "expected_no_duplicate_write": true,
+  "expected_runtime_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect",
+    "DOMAIN_VALIDATION",
+    "WAITING_APPROVAL",
+    "APPROVAL_GRANTED",
+    "PREFLIGHT",
+    "ACTION_EXECUTION",
+    "EXECUTION_FAILED",
+    "FAILED"
+  ],
+  "expected_terminal": {
+    "run_status": "FAILED",
+    "result_kind": "NONE"
+  }
+}

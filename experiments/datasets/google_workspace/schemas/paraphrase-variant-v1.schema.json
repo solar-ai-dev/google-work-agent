@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/paraphrase-variant-v1.schema.json",
+  "title": "ParaphraseVariantV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "paraphrase_id",
+    "source_case_id",
+    "source_user_prompt_id",
+    "paraphrase_group_id",
+    "variant_index",
+    "language",
+    "text",
+    "expected_entry_mode",
+    "expected_requested_outcome",
+    "expected_same_goal",
+    "expected_same_route_family",
+    "holdout_visibility",
+    "grader_ids"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "paraphrase_id": {
+      "type": "string"
+    },
+    "source_case_id": {
+      "type": "string"
+    },
+    "source_user_prompt_id": {
+      "type": "string"
+    },
+    "paraphrase_group_id": {
+      "type": "string"
+    },
+    "variant_index": {
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "language": {
+      "enum": [
+        "ko-KR",
+        "en-US"
+      ]
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_entry_mode": {
+      "enum": [
+        "AGENT_SEARCH",
+        "RESOURCE_SELECTED"
+      ]
+    },
+    "expected_requested_outcome": {
+      "enum": [
+        "ANSWER",
+        "ANALYSIS",
+        "ACTION_PLAN"
+      ]
+    },
+    "expected_same_goal": {
+      "const": true
+    },
+    "expected_same_route_family": {
+      "const": true
+    },
+    "holdout_visibility": {
+      "enum": [
+        "DEV_FINALIST_ONLY"
+      ]
+    },
+    "grader_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

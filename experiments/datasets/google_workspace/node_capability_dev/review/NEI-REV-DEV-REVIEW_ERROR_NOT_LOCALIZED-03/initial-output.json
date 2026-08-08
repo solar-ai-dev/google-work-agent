@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "result": "REVISE",
+  "findings": [
+    {
+      "code": "PLAN_WRONG_TARGET",
+      "severity": "ERROR",
+      "action_id": null,
+      "field_paths": [
+        "/actions/0"
+      ],
+      "evidence_ids": [],
+      "message": "대상이 잘못된 것 같다."
+    }
+  ],
+  "localized_failure_codes": [
+    "PLAN_WRONG_TARGET"
+  ],
+  "next_route": "PLANNING",
+  "recheck_required": true
+}

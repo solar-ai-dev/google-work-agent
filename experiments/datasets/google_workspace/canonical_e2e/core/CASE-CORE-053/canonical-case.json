@@ -1,0 +1,99 @@
+{
+  "schema_version": 3,
+  "case_id": "CASE-CORE-053",
+  "split": "CORE",
+  "dataset_version": "rebuild-v1.9",
+  "category": "AMBIGUITY_DUPLICATE_CONFLICT_ERROR_POLICY",
+  "scenario_family_id": "SF-C6-AMBIGUITY-LOWCONF",
+  "fixture_relation_family": "RF-DEV-006",
+  "fixture_snapshot_id": "FW-D-006",
+  "language": "ko-KR",
+  "entry_mode": "AGENT_SEARCH",
+  "user_prompt_id": "UP-CORE-053",
+  "canonical_user_prompt": "Fjord 고객 워크숍을 다음 주 화요일 오후에 잡아줘.",
+  "business_scenario": "Calendar Event 생성 필수값인 소요시간을 확인한다.",
+  "expected_goal": "예상 소요시간을 질문한다.",
+  "expected_completion_criteria": [
+    "화요일 오후 선호를 보존한다.",
+    "소요시간을 임의로 만들지 않는다."
+  ],
+  "requested_outcome": "ACTION_PLAN",
+  "selected_resource_ids": [],
+  "required_sources": [],
+  "optional_sources": [],
+  "forbidden_sources": [],
+  "required_resource_ids": [],
+  "hard_negative_resource_ids": [],
+  "required_evidence_ids": [],
+  "user_evidence": [],
+  "derived_evidence": [],
+  "expected_route": [
+    "request_understanding.classify",
+    "WAITING_CONFIRMATION"
+  ],
+  "expected_skipped_nodes": [
+    "acquisition.plan_sources",
+    "context.select_evidence",
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect"
+  ],
+  "expected_source_fetch_plan": [],
+  "expected_tool_trajectory": [],
+  "expected_answer_type": "CONFIRMATION",
+  "policy_result": "ALLOW_READ",
+  "expected_interrupt": "CONFIRMATION",
+  "allowed_actions": [],
+  "forbidden_actions": [
+    "gmail_send",
+    "gmail_delete",
+    "tasks_delete",
+    "tasks_complete",
+    "calendar_delete",
+    "calendar_add_external_attendee"
+  ],
+  "approval_expectation": {
+    "required": false,
+    "scope": "ACTION_LEVEL",
+    "no_write_before_approval": true
+  },
+  "verification_expectation": {
+    "required": false,
+    "policy": "NONE",
+    "all_writes_re_read": false
+  },
+  "end_state_expectation": {
+    "initial": {
+      "run_status": "WAITING_CONFIRMATION",
+      "result_kind": "NONE"
+    },
+    "after_user_action": "RESUME_SAME_THREAD"
+  },
+  "node_applicability": {
+    "request_understanding": true,
+    "acquisition": false,
+    "context_retriever": false,
+    "work_analysis": false,
+    "planning": false,
+    "review": false
+  },
+  "node_projection_refs": [
+    "PROJ-CORE-053-UU",
+    "PROJ-CORE-053-ACQ",
+    "PROJ-CORE-053-RET",
+    "PROJ-CORE-053-ANL",
+    "PROJ-CORE-053-PLN",
+    "PROJ-CORE-053-REV",
+    "PROJ-CORE-053-RT",
+    "PROJ-CORE-053-E2E"
+  ],
+  "tags": [
+    "ambiguity_duplicate_conflict_error_policy",
+    "sf-c6-ambiguity-lowconf",
+    "missing_duration"
+  ],
+  "human_rubric": [
+    "화요일 오후 선호를 보존한다.",
+    "소요시간을 임의로 만들지 않는다."
+  ]
+}

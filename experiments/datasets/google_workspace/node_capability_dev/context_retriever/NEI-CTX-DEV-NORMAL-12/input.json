@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-012",
+  "user_goal": "첫 검색 결과가 없으면 허용 범위 안에서 공식 프로젝트명 관계를 사용해 Query를 수정한다.",
+  "entry_mode": "AGENT_SEARCH",
+  "segments": [
+    {
+      "segment_id": "SEG-GM-L-001",
+      "resource_id": "GM-L-001",
+      "parent_resource_id": "GTH-L-001",
+      "source": "GMAIL",
+      "title": "[Aurora Migration] 최종 승인",
+      "timestamp": "2026-08-05T05:00:00Z",
+      "text": "데이터 이전은 8월 22일 22시에 시작합니다.",
+      "untrusted": true
+    }
+  ],
+  "hard_negative_segment_ids": [],
+  "candidate_scores": {},
+  "selected_resource_ids": [],
+  "context_budget": {
+    "max_tokens": 900
+  },
+  "mutation_spec": {
+    "kind": "NONE",
+    "notes": [
+      "Canonical RequestIntent 기반 정상 Context 평가"
+    ]
+  }
+}

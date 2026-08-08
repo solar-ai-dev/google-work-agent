@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-H-102",
+  "user_goal": "저신뢰 후보만으로 대상을 자동 확정하지 말고 확인 또는 추가 수집 필요성을 판정한다.",
+  "entry_mode": "AGENT_SEARCH",
+  "segments": [
+    {
+      "segment_id": "SEG-GM-N-101",
+      "resource_id": "GM-N-101",
+      "parent_resource_id": "GTH-N-101",
+      "source": "GMAIL",
+      "title": "[Nimbus] 청구 이의 접수",
+      "timestamp": "2026-08-05T02:00:00Z",
+      "text": "담당자는 윤아입니다.",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-GM-N-102",
+      "resource_id": "GM-N-102",
+      "parent_resource_id": "GTH-N-102",
+      "source": "GMAIL",
+      "title": "[Nimbus] 청구 문의",
+      "timestamp": "2026-08-06T02:00:00Z",
+      "text": "일반 청구 담당자는 유나입니다.",
+      "untrusted": true
+    }
+  ],
+  "hard_negative_segment_ids": [],
+  "candidate_scores": {
+    "GTH-N-101": 88,
+    "GTH-N-102": 72
+  },
+  "selected_resource_ids": [],
+  "context_budget": {
+    "max_tokens": 900
+  },
+  "mutation_spec": {
+    "kind": "NONE",
+    "notes": []
+  }
+}

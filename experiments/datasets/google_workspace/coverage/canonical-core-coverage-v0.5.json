@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "dataset_version": "rebuild-v0.5",
+  "categories": {
+    "SOURCE_SELECTION_READ": {
+      "cases": 10,
+      "scenario_families": [
+        "SF-C1-AGENT-SEARCH-READ",
+        "SF-C1-RESOURCE-SELECTED"
+      ],
+      "entry_modes": [
+        "AGENT_SEARCH",
+        "RESOURCE_SELECTED"
+      ],
+      "requested_outcomes": [
+        "ANALYSIS",
+        "ANSWER"
+      ],
+      "interrupts": [
+        "CONFIRMATION",
+        "NONE"
+      ]
+    },
+    "TASKS_CALENDAR_TO_GMAIL": {
+      "cases": 10,
+      "scenario_families": [
+        "SF-C2-SCHEDULE-RISK-DRAFT",
+        "SF-C2-STATUS-DRAFT"
+      ],
+      "entry_modes": [
+        "AGENT_SEARCH"
+      ],
+      "requested_outcomes": [
+        "ACTION_PLAN"
+      ],
+      "interrupts": [
+        "APPROVAL",
+        "CONFIRMATION"
+      ]
+    },
+    "GMAIL_TASKS_TO_CALENDAR": {
+      "cases": 10,
+      "scenario_families": [
+        "SF-C3-AVAILABILITY-CALENDAR",
+        "SF-C3-DEADLINE-EVENT"
+      ],
+      "entry_modes": [
+        "AGENT_SEARCH"
+      ],
+      "requested_outcomes": [
+        "ACTION_PLAN",
+        "ANALYSIS"
+      ],
+      "interrupts": [
+        "APPROVAL",
+        "CONFIRMATION",
+        "NONE"
+      ]
+    },
+    "CALENDAR_GMAIL_TO_TASKS": {
+      "cases": 10,
+      "scenario_families": [
+        "SF-C4-DUPLICATE-OR-UPDATE",
+        "SF-C4-FOLLOWUP-TASK"
+      ],
+      "entry_modes": [
+        "AGENT_SEARCH"
+      ],
+      "requested_outcomes": [
+        "ACTION_PLAN"
+      ],
+      "interrupts": [
+        "APPROVAL",
+        "NONE"
+      ]
+    },
+    "THREE_SOURCE_COMPLEX": {
+      "cases": 10,
+      "scenario_families": [
+        "SF-C5-THREE-SOURCE-ACTION-DAG",
+        "SF-C5-THREE-SOURCE-ANALYSIS"
+      ],
+      "entry_modes": [
+        "AGENT_SEARCH"
+      ],
+      "requested_outcomes": [
+        "ACTION_PLAN",
+        "ANALYSIS",
+        "ANSWER"
+      ],
+      "interrupts": [
+        "APPROVAL",
+        "NONE"
+      ]
+    },
+    "AMBIGUITY_DUPLICATE_CONFLICT_ERROR_POLICY": {
+      "cases": 10,
+      "scenario_families": [
+        "SF-C6-AMBIGUITY-LOWCONF",
+        "SF-C6-SAFETY-DUP-CONFLICT"
+      ],
+      "entry_modes": [
+        "AGENT_SEARCH",
+        "RESOURCE_SELECTED"
+      ],
+      "requested_outcomes": [
+        "ACTION_PLAN",
+        "ANALYSIS",
+        "ANSWER"
+      ],
+      "interrupts": [
+        "CONFIRMATION",
+        "NONE"
+      ]
+    }
+  },
+  "route_features": {
+    "answer_only": 17,
+    "write_approval": 30,
+    "confirmation": 9,
+    "blocked": 2,
+    "resource_selected": 6,
+    "additional_acquisition_1": 2,
+    "all_three_sources": 30
+  }
+}

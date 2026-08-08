@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-011",
+  "split_scope": "DEV",
+  "scenario_family_id": "SF-DEV-011",
+  "fixture_relation_family": "RF-DEV-011",
+  "title": "Kestrel 공급 지연 부분 실패",
+  "locale": "ko-KR",
+  "timezone": "Asia/Seoul",
+  "as_of": "2026-08-07T14:09:00+09:00",
+  "business_context": "공급 지연 상황을 Gmail과 Tasks로 확인해야 하지만 Gmail 상세 조회가 일시적으로 실패하는 조건을 갖는다.",
+  "user_profile": {
+    "account_email": "user@example.test",
+    "work_hours": {
+      "weekdays": "09:00-18:00"
+    },
+    "default_tasklist_id": "TL-WORK",
+    "default_calendar_id": "CAL-PRIMARY"
+  },
+  "source_files": {
+    "gmail": "gmail.json",
+    "tasks": "tasks.json",
+    "calendar": "calendar.json",
+    "relations": "relations.json"
+  },
+  "resource_ids": {
+    "gmail": [
+      "GTH-K-001",
+      "GM-K-001"
+    ],
+    "tasks": [
+      "TSK-K-001"
+    ],
+    "calendar": []
+  },
+  "tags": [
+    "partial_source",
+    "provider_fault",
+    "answer"
+  ]
+}

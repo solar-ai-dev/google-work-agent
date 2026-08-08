@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/query-attempt.schema.json",
+  "title": "QueryAttemptV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "query_attempt_id",
+    "run_id",
+    "round_no",
+    "attempt_no",
+    "source",
+    "operation_kind",
+    "normalized_intent_constraints",
+    "query_spec",
+    "previous_query_hash",
+    "page_state_hash",
+    "added_constraints",
+    "removed_constraints",
+    "change_reason_code",
+    "candidate_count",
+    "top_score",
+    "score_margin",
+    "confidence_band",
+    "retrieval_config_version",
+    "score_config_version",
+    "threshold_config_version",
+    "stop_reason"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "query_attempt_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "round_no": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2
+    },
+    "attempt_no": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "source": {
+      "enum": [
+        "GMAIL",
+        "TASKS",
+        "CALENDAR"
+      ]
+    },
+    "operation_kind": {
+      "enum": [
+        "SEARCH",
+        "NEXT_PAGE",
+        "DETAIL_FETCH",
+        "FREEBUSY"
+      ]
+    },
+    "normalized_intent_constraints": {
+      "type": "object"
+    },
+    "query_spec": {
+      "type": "object"
+    },
+    "previous_query_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "page_state_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "added_constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "removed_constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "change_reason_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "candidate_count": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "top_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "score_margin": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "confidence_band": {
+      "enum": [
+        "HIGH",
+        "MEDIUM",
+        "LOW",
+        "NONE",
+        null
+      ]
+    },
+    "retrieval_config_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "score_config_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "threshold_config_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stop_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

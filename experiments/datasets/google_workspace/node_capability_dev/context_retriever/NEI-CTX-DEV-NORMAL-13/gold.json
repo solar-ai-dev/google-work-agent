@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "result": "SUFFICIENT",
+  "selected_segment_ids": [
+    "SEG-GM-Q-001"
+  ],
+  "evidence_drafts": [
+    {
+      "evidence_id": "EVD-SEG-GM-Q-001-1",
+      "segment_id": "SEG-GM-Q-001",
+      "resource_id": "GM-Q-001",
+      "claim": "Quartz 납품일은 8월 21일로 확정되었다.",
+      "excerpt": "납품일은 8월 21일로 확정했습니다.",
+      "confidence": "HIGH"
+    }
+  ],
+  "excluded_segment_ids": [],
+  "conflicts": [],
+  "ignored_untrusted_instruction_ids": [],
+  "token_budget": {
+    "max_tokens": 900,
+    "used_tokens": 190
+  },
+  "missing_slots": [],
+  "confidence_band": "HIGH",
+  "next_route": "WORK_ANALYSIS"
+}

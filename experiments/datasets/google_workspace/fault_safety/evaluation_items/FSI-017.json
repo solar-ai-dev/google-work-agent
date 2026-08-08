@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "FSI-017",
+  "fault_profile_id": "FP-017",
+  "source_case_id": "CASE-CORE-046",
+  "input_mode": "E2E_FAULT",
+  "expected_disposition": "DETERMINISTIC_RECOVERY",
+  "expected_run_status": "RECOVERY_REQUIRED",
+  "expected_action_status": "UNKNOWN_RESULT",
+  "required_events": [
+    "EXECUTION_UNKNOWN_RESULT",
+    "RECOVERY_REQUIRED"
+  ],
+  "forbidden_events": [
+    "RESTART_AND_REISSUE_WRITE"
+  ],
+  "grader_ids": [
+    "grader.fault_safety.deterministic",
+    "grader.end_state.deterministic"
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "dataset_version": "rebuild-v0.6",
+  "generated_at": "2026-08-07T14:23:00+09:00",
+  "status": "PASS",
+  "errors": [],
+  "counts": {
+    "core_cases": 60,
+    "stress_cases": 20,
+    "stress_projections": 160,
+    "fault_profiles": 20,
+    "fault_safety_items": 20
+  },
+  "stress_families": {
+    "SF-S1-READ-PROVIDER": 2,
+    "SF-S2-AUTH-MCP": 2,
+    "SF-S3-LLM-RUNTIME": 2,
+    "SF-S4-LLM-STOP-ADVERSARIAL": 2,
+    "SF-S5-LOWCONF-BUDGET": 2,
+    "SF-S6-WRITE-FAILED": 2,
+    "SF-S7-UNKNOWN-RECOVERED": 2,
+    "SF-S8-UNKNOWN-UNRESOLVED": 2,
+    "SF-S9-VERIFICATION": 2,
+    "SF-S10-PARTIAL-LIFECYCLE": 2
+  },
+  "terminal_distribution": {
+    "COMPLETED": 10,
+    "REAUTH_REQUIRED": 1,
+    "FAILED": 3,
+    "WAITING_CONFIRMATION": 1,
+    "RECOVERY_REQUIRED": 4,
+    "CANCELLED": 1
+  },
+  "checks": {
+    "fault_profiles_schema": true,
+    "non_llm_no_prompt_retry": true,
+    "stress_10_families_x2": true,
+    "unknown_result_no_duplicate_write": true,
+    "recovery_end_states": true
+  }
+}

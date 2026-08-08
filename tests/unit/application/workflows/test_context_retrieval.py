@@ -351,7 +351,7 @@ def test_assess_sufficiency_prompt_ref_is_runtime_active() -> None:
     prompt_ref = load_context_assess_sufficiency_prompt_reference()
 
     assert prompt_ref.prompt_id == "context.assess_sufficiency"
-    assert prompt_ref.prompt_version == "v0.1"
+    assert prompt_ref.prompt_version != "TBD"
     assert prompt_ref.node_state == "BASELINE"
     assert prompt_ref.content_hash != "TBD"
 

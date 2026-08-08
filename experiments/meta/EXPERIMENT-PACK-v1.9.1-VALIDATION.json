@@ -1,0 +1,13 @@
+{
+  "artifact_version": "1.9.1-project-root-ready",
+  "status": "PASS",
+  "json_files_parsed": 5522,
+  "reference_paths_checked": 2062,
+  "missing_reference_count": 0,
+  "required_paths_checked": 9,
+  "user_prompt_catalog": {
+    "canonical_core_stress": 80,
+    "paraphrases": 40
+  },
+  "errors": []
+}
