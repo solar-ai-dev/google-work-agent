@@ -44,6 +44,7 @@ from google_work_agent.application.workflows.work_analysis import (
     load_work_analysis_analyze_prompt_reference,
     validate_work_analysis_result_v1,
 )
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.ports import OutputSchemaDefinition, PromptReference, StructuredLLMResult
 
 JsonObject = dict[str, object]
@@ -159,6 +160,15 @@ class ControlledReplayRunResult:
     analysis_result: WorkAnalysisResultV1
     planning_result: ProfilePlanningProjectionV1
     self_review: PlanReviewResultV1 | None
+    handoff_metrics: HandoffFidelityMetrics
+
+
+@dataclass(frozen=True, slots=True)
+class HandoffFidelityMetrics:
+    required_field_preservation_rate: float | None
+    evidence_id_preservation_rate: float | None
+    constraint_loss_count: int
+    contradiction_introduced: bool | None
 
 
 class ControlledPostRetrievalReplayError(RuntimeError):
@@ -286,6 +296,20 @@ class ControlledPostRetrievalReplayRunner:
                 token_totals=token_totals,
             )
         latency_ms = max(0, int((perf_counter() - started) * 1000))
+        evaluation_environment_hash = _calculate_evaluation_environment_hash(
+            candidate_config=candidate_config,
+            evaluation_item=evaluation_item,
+        )
+        _validate_declared_evaluation_environment_hash(
+            candidate_config=candidate_config,
+            calculated_hash=evaluation_environment_hash,
+        )
+        handoff_metrics = _calculate_handoff_fidelity_metrics(
+            model_input=model_input,
+            gold=gold,
+            analysis_result=analysis_result,
+            planning_result=planning_result,
+        )
         result = ControlledReplayRunResult(
             graph_profile=graph_profile,
             candidate_id=_required_string(candidate_config, "candidate_id"),
@@ -296,10 +320,7 @@ class ControlledPostRetrievalReplayRunner:
                 candidate_config,
                 "prompt_semantic_bundle_version",
             ),
-            evaluation_environment_hash=_required_string(
-                cast(dict[str, object], candidate_config["evaluation_environment"]),
-                "evaluation_environment_hash",
-            ),
+            evaluation_environment_hash=evaluation_environment_hash,
             agent_invocation_count=int(trace_context["agent_invocation_count"]),
             llm_call_count=int(trace_context["llm_call_count"]),
             provider_request_count=token_totals["provider_request_count"],
@@ -311,6 +332,7 @@ class ControlledPostRetrievalReplayRunner:
             analysis_result=analysis_result,
             planning_result=planning_result,
             self_review=review_result,
+            handoff_metrics=handoff_metrics,
         )
         node_result = build_node_run_result_v2(
             experiment_id=experiment_id,
@@ -799,10 +821,12 @@ def build_node_run_result_v2(
         "llm_call_count": run_result.llm_call_count,
         "provider_request_count": run_result.provider_request_count,
         "communication_token_count": run_result.communication_token_count,
-        "required_field_preservation_rate": 1.0,
-        "evidence_id_preservation_rate": 1.0,
-        "constraint_loss_count": 0,
-        "contradiction_introduced": False,
+        "required_field_preservation_rate": (
+            run_result.handoff_metrics.required_field_preservation_rate
+        ),
+        "evidence_id_preservation_rate": run_result.handoff_metrics.evidence_id_preservation_rate,
+        "constraint_loss_count": run_result.handoff_metrics.constraint_loss_count,
+        "contradiction_introduced": run_result.handoff_metrics.contradiction_introduced,
         "cost_usd": 0.0,
         "evaluation_environment_hash": run_result.evaluation_environment_hash,
         "trace_ref": None,
@@ -895,6 +919,201 @@ def _build_context_result_from_model_input(
         },
     }
     return validate_context_retrieval_result_v1(context_result)
+
+
+def _calculate_evaluation_environment_hash(
+    *,
+    candidate_config: dict[str, object],
+    evaluation_item: ContextReadyEvaluationItemV1,
+) -> str:
+    runtime = _require_mapping(candidate_config.get("runtime"), "runtime")
+    parameters = cast(dict[str, object], runtime.get("parameters", {}))
+    evaluation_environment = _require_mapping(
+        candidate_config.get("evaluation_environment"),
+        "evaluation_environment",
+    )
+    graph_profile_spec = _require_mapping(
+        candidate_config.get("graph_profile_spec"),
+        "graph_profile_spec",
+    )
+    payload = {
+        "dataset_version": _required_string(candidate_config, "dataset_version"),
+        "tool_schema_version": _required_string(candidate_config, "tool_schema_version"),
+        "policy_version": _required_string(candidate_config, "policy_version"),
+        "prompt_semantic_bundle_version": _required_string(
+            candidate_config,
+            "prompt_semantic_bundle_version",
+        ),
+        "graph_profile": _required_string(graph_profile_spec, "profile_id"),
+        "runtime": {
+            "runtime_mode": _required_string(runtime, "runtime_mode"),
+            "provider": _required_string(runtime, "provider"),
+            "model": _required_string(runtime, "model"),
+            "model_version": _required_string(runtime, "model_version"),
+            "parameters": parameters,
+        },
+        "evaluation_environment": {
+            "environment_lock_version": _required_string(
+                evaluation_environment,
+                "environment_lock_version",
+            ),
+            "client_os": _required_string(evaluation_environment, "client_os"),
+            "llm_concurrency": _required_int(evaluation_environment, "llm_concurrency"),
+            "google_read_concurrency": _required_int(
+                evaluation_environment,
+                "google_read_concurrency",
+            ),
+            "write_concurrency": _required_int(evaluation_environment, "write_concurrency"),
+            "api_llm_timeout_seconds": _required_int(
+                evaluation_environment,
+                "api_llm_timeout_seconds",
+            ),
+            "google_timeout_seconds": _required_int(
+                evaluation_environment,
+                "google_timeout_seconds",
+            ),
+            "runner_version": _required_string(evaluation_environment, "runner_version"),
+            "hardware_profile_id": _required_string(
+                evaluation_environment,
+                "hardware_profile_id",
+            ),
+        },
+        "execution_contract": evaluation_item["execution_contract"],
+        "context_ready_contract_version": evaluation_item["contract_version"],
+    }
+    return calculate_canonical_json_hash(payload)
+
+
+def _validate_declared_evaluation_environment_hash(
+    *,
+    candidate_config: dict[str, object],
+    calculated_hash: str,
+) -> None:
+    declared_hash = _required_string(
+        _require_mapping(candidate_config.get("evaluation_environment"), "evaluation_environment"),
+        "evaluation_environment_hash",
+    )
+    if declared_hash != calculated_hash:
+        raise ControlledPostRetrievalReplayError(
+            "evaluation_environment_hash mismatch for candidate config"
+        )
+
+
+def _calculate_handoff_fidelity_metrics(
+    *,
+    model_input: ContextReadyReplayInputV1,
+    gold: ContextReadyGoldV1,
+    analysis_result: WorkAnalysisResultV1,
+    planning_result: ProfilePlanningProjectionV1,
+) -> HandoffFidelityMetrics:
+    required_evidence_ids = sorted(
+        {
+            *[_normalize_string(item) for item in analysis_result["evidence_refs"]],
+            *[
+                _normalize_string(item)
+                for item in cast(
+                    list[object],
+                    model_input["context_bundle"].get("evidence_ids", []),
+                )
+            ],
+        }
+    )
+    required_resource_refs = sorted(
+        {
+            *[
+                _normalize_string(_required_string(item, "resource_handle"))
+                for item in analysis_result["resource_refs"]
+            ]
+        }
+    )
+    downstream_evidence_ids = _collect_planning_evidence_ids(planning_result)
+    downstream_resource_refs = _collect_planning_resource_refs(planning_result)
+    preserved_required_fields = 0
+    total_required_fields = len(required_evidence_ids) + len(required_resource_refs)
+    preserved_required_fields += sum(
+        1 for item in required_evidence_ids if item in downstream_evidence_ids
+    )
+    preserved_required_fields += sum(
+        1 for item in required_resource_refs if item in downstream_resource_refs
+    )
+    required_field_preservation_rate = (
+        None if total_required_fields == 0 else preserved_required_fields / total_required_fields
+    )
+    evidence_id_preservation_rate = (
+        None
+        if not required_evidence_ids
+        else sum(1 for item in required_evidence_ids if item in downstream_evidence_ids)
+        / len(required_evidence_ids)
+    )
+    forbidden_tools = {
+        _normalize_string(item)
+        for item in cast(
+            list[object],
+            cast(dict[str, object], gold["gold"]).get("forbidden_actions", []),
+        )
+    }
+    action_tools = _collect_planning_action_tools(planning_result)
+    forbidden_action_uses = action_tools & forbidden_tools
+    unexpected_evidence_ids = downstream_evidence_ids - set(required_evidence_ids)
+    unexpected_resource_refs = downstream_resource_refs - set(required_resource_refs)
+    constraint_loss_count = (
+        sum(1 for item in required_resource_refs if item not in downstream_resource_refs)
+        + sum(1 for item in required_evidence_ids if item not in downstream_evidence_ids)
+        + len(forbidden_action_uses)
+    )
+    contradiction_introduced = bool(
+        forbidden_action_uses or unexpected_evidence_ids or unexpected_resource_refs
+    )
+    return HandoffFidelityMetrics(
+        required_field_preservation_rate=required_field_preservation_rate,
+        evidence_id_preservation_rate=evidence_id_preservation_rate,
+        constraint_loss_count=constraint_loss_count,
+        contradiction_introduced=contradiction_introduced,
+    )
+
+
+def _collect_planning_evidence_ids(planning_result: ProfilePlanningProjectionV1) -> set[str]:
+    evidence_ids: set[str] = set()
+    answer_draft = planning_result["answer_draft"]
+    if answer_draft is not None:
+        evidence_ids.update(_normalize_string(item) for item in answer_draft["evidence_refs"])
+    plan_draft = planning_result["plan_draft"]
+    if plan_draft is not None:
+        evidence_ids.update(_normalize_string(item) for item in plan_draft["evidence_refs"])
+    return evidence_ids
+
+
+def _collect_planning_resource_refs(planning_result: ProfilePlanningProjectionV1) -> set[str]:
+    resource_refs: set[str] = set()
+    answer_draft = planning_result["answer_draft"]
+    if answer_draft is not None:
+        resource_refs.update(
+            _normalize_string(_required_string(item, "resource_handle"))
+            for item in answer_draft["resource_refs"]
+        )
+    plan_draft = planning_result["plan_draft"]
+    if plan_draft is not None:
+        resource_refs.update(
+            _normalize_string(_required_string(item, "resource_handle"))
+            for item in plan_draft["resource_refs"]
+        )
+    return resource_refs
+
+
+def _collect_planning_action_tools(planning_result: ProfilePlanningProjectionV1) -> set[str]:
+    plan_draft = planning_result["plan_draft"]
+    if plan_draft is None:
+        return set()
+    return {_normalize_string(action["tool_name"]) for action in plan_draft["actions"]}
+
+
+def _normalize_string(value: object) -> str:
+    if not isinstance(value, str):
+        raise ValueError("expected string value")
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("string value must not be blank")
+    return normalized
 
 
 def _build_context_ready_prompt_input(
@@ -1136,6 +1355,13 @@ def _required_string(item: dict[str, object], field: str) -> str:
     value = item.get(field)
     if not isinstance(value, str) or not value:
         raise ControlledPostRetrievalReplayError(f"{field} must be a non-empty string")
+    return value
+
+
+def _required_int(item: dict[str, object], field: str) -> int:
+    value = item.get(field)
+    if not isinstance(value, int):
+        raise ControlledPostRetrievalReplayError(f"{field} must be an integer")
     return value
 
 

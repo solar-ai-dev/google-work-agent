@@ -28,5 +28,8 @@
 - E06-B runner injects only `CONTEXT_READY_V1` model input, preserves `context_snapshot_id`, and keeps Google Read / Acquisition / Retrieval execution at `0`.
 - `PlanReviewResultV1` exact typed contract is locked with `additional_acquisition_request` and parent supervisor routing invariants.
 - E06-B fused output schema now carries `planning_result` so answer-only and plan-ready post-retrieval candidates share one typed contract family.
+- Handoff fidelity metrics now come from replay outputs rather than fixed placeholders, covering required-field preservation, evidence preservation, constraint loss, and contradiction introduction.
+- `evaluation_environment_hash` is deterministically recomputed from candidate runtime/profile lock fields and checked against the declared candidate hash before replay execution.
+- The August 8, 2026 audit of commit `7fd96e4` is locked in tests for `request-intent`, profile fused outputs, `action-plan-draft`, and `plan-review` schema requirements.
 - Prompt activation state remains `DRAFT`; Stage 18 completion does not imply prompt promotion to `RUNTIME_ACTIVE`.
 - Full local regression at this handoff: `510 passed`, `ruff check PASS`, `ruff format --check PASS`, `git diff --check PASS`.

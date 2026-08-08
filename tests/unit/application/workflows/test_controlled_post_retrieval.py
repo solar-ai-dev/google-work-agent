@@ -13,6 +13,9 @@ from google_work_agent.application.workflows import (
     ControlledPostRetrievalReplayError,
     ControlledPostRetrievalReplayRunner,
 )
+from google_work_agent.application.workflows.controlled_post_retrieval import (
+    _calculate_evaluation_environment_hash,
+)
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -75,6 +78,71 @@ def test_e06b_analysis_planning_schema_supports_answer_only_projection() -> None
     required = E06B_ANALYSIS_PLANNING_OUTPUT_SCHEMA.json_schema["required"]
     assert isinstance(required, list)
     assert "planning_result" in required
+
+
+def test_stage18_schema_audit_keeps_runtime_contract_fields_locked() -> None:
+    request_intent_schema = _load_json(
+        Path("experiments/datasets/google_workspace/schemas/request-intent.schema.json")
+    )
+    profile_single_schema = _load_json(
+        Path(
+            "experiments/datasets/google_workspace/schemas/"
+            "profile-single-post-retrieval-output.schema.json"
+        )
+    )
+    profile_three_schema = _load_json(
+        Path(
+            "experiments/datasets/google_workspace/schemas/profile-three-stage2-output.schema.json"
+        )
+    )
+    action_plan_schema = _load_json(
+        Path("experiments/datasets/google_workspace/schemas/action-plan-draft.schema.json")
+    )
+    plan_review_schema = _load_json(
+        Path("experiments/datasets/google_workspace/schemas/plan-review-output.schema.json")
+    )
+
+    assert request_intent_schema["required"] == [
+        "schema_version",
+        "goal",
+        "completion_criteria",
+        "semantic_constraints",
+        "ambiguity",
+        "unsupported_scope",
+    ]
+    assert profile_single_schema["required"] == [
+        "schema_version",
+        "context_result",
+        "analysis_result",
+        "planning_result",
+        "self_review",
+    ]
+    assert profile_three_schema["required"] == [
+        "schema_version",
+        "context_result",
+        "analysis_result",
+        "planning_result",
+    ]
+    assert action_plan_schema["required"] == [
+        "schema_version",
+        "status",
+        "plan_id",
+        "summary",
+        "objective",
+        "actions",
+        "evidence_refs",
+        "resource_refs",
+        "confirmation",
+    ]
+    assert plan_review_schema["required"] == [
+        "schema_version",
+        "status",
+        "summary",
+        "issues",
+        "confirmation",
+        "blockers",
+        "additional_acquisition_request",
+    ]
 
 
 def test_controlled_replay_runner_executes_native_b1_b2_b3_topologies(
@@ -173,6 +241,79 @@ def test_controlled_replay_runner_executes_native_b1_b2_b3_topologies(
     assert isinstance(b3_node, dict)
     assert b3_node["required_field_preservation_rate"] == 1.0
     assert b3_node["evidence_id_preservation_rate"] == 1.0
+    assert b3_node["constraint_loss_count"] == 0
+    assert b3_node["contradiction_introduced"] is False
+
+
+def test_controlled_replay_runner_rejects_mismatched_environment_hash(
+    tmp_path: Path,
+) -> None:
+    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=PROMPT_IDS)
+    runner = ControlledPostRetrievalReplayRunner(
+        llm_runtime=FakeLLMRuntime(
+            deque(
+                [
+                    _llm_result(_b1_analysis_planning_output()),
+                    _llm_result(_review_output()),
+                ]
+            )
+        ),
+        manifest_path=manifest_path,
+    )
+    model_input = _load_json(FIXTURE_DIR / "input.json")
+    gold = _load_json(FIXTURE_DIR / "gold.json")
+    evaluation_item = _load_json(FIXTURE_DIR / "evaluation-item.json")
+    candidate_config = _load_json(
+        Path("experiments/candidates/cand-e06b-b1-integrated.template.json")
+    )
+    candidate_config["evaluation_environment"]["evaluation_environment_hash"] = "deadbeef"
+
+    try:
+        runner.run(
+            experiment_id="EXP-E06B-CONTROLLED-POST-RET",
+            candidate_config=candidate_config,
+            evaluation_item=evaluation_item,
+            model_input=model_input,
+            gold=gold,
+        )
+    except ControlledPostRetrievalReplayError as error:
+        assert "evaluation_environment_hash mismatch" in str(error)
+    else:
+        raise AssertionError("expected ControlledPostRetrievalReplayError")
+
+
+def test_controlled_replay_environment_hash_is_sensitive_to_profile_and_timeout() -> None:
+    candidate_config = _load_json(
+        Path("experiments/candidates/cand-e06b-b1-integrated.template.json")
+    )
+    evaluation_item = _load_json(FIXTURE_DIR / "evaluation-item.json")
+
+    baseline = _calculate_evaluation_environment_hash(
+        candidate_config=candidate_config,
+        evaluation_item=evaluation_item,
+    )
+
+    timeout_changed = _load_json(
+        Path("experiments/candidates/cand-e06b-b1-integrated.template.json")
+    )
+    timeout_changed["evaluation_environment"]["api_llm_timeout_seconds"] = 90
+    timeout_hash = _calculate_evaluation_environment_hash(
+        candidate_config=timeout_changed,
+        evaluation_item=evaluation_item,
+    )
+
+    profile_changed = _load_json(
+        Path("experiments/candidates/cand-e06b-b1-integrated.template.json")
+    )
+    profile_changed["graph_profile_spec"]["profile_id"] = "E06B_B2_STAGED"
+    profile_changed["graph_version"] = "E06B_B2_STAGED"
+    profile_hash = _calculate_evaluation_environment_hash(
+        candidate_config=profile_changed,
+        evaluation_item=evaluation_item,
+    )
+
+    assert baseline != timeout_hash
+    assert baseline != profile_hash
 
 
 def test_controlled_replay_runner_rejects_non_zero_google_read_boundary(
@@ -209,6 +350,44 @@ def test_controlled_replay_runner_rejects_non_zero_google_read_boundary(
         assert "Google Read count 0" in str(error)
     else:
         raise AssertionError("expected ControlledPostRetrievalReplayError")
+
+
+def test_controlled_replay_handoff_metrics_detect_forbidden_action_contradiction(
+    tmp_path: Path,
+) -> None:
+    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=PROMPT_IDS)
+    runner = ControlledPostRetrievalReplayRunner(
+        llm_runtime=FakeLLMRuntime(
+            deque(
+                [
+                    _llm_result(_analysis_result()),
+                    _llm_result(_forbidden_plan_output()),
+                    _llm_result(_review_output()),
+                ]
+            )
+        ),
+        manifest_path=manifest_path,
+    )
+    model_input = _load_json(FIXTURE_DIR / "input.json")
+    gold = _load_json(FIXTURE_DIR / "gold.json")
+    gold["gold"]["expected_answer_type"] = "PLAN"
+    evaluation_item = _load_json(FIXTURE_DIR / "evaluation-item.json")
+    candidate_config = _load_json(
+        Path("experiments/candidates/cand-e06b-b3-specialized.template.json")
+    )
+
+    _, node = runner.run(
+        experiment_id="EXP-E06B-CONTROLLED-POST-RET",
+        candidate_config=candidate_config,
+        evaluation_item=evaluation_item,
+        model_input=model_input,
+        gold=gold,
+    )
+
+    assert node["required_field_preservation_rate"] == 1.0
+    assert node["evidence_id_preservation_rate"] == 1.0
+    assert node["constraint_loss_count"] >= 1
+    assert node["contradiction_introduced"] is True
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -327,6 +506,13 @@ def _plan_output() -> dict[str, object]:
         ],
         "confirmation": None,
     }
+
+
+def _forbidden_plan_output() -> dict[str, object]:
+    payload = _plan_output()
+    payload["actions"][0]["tool_name"] = "gmail_send"
+    payload["actions"][0]["effect"] = "SEND"
+    return payload
 
 
 def _review_output() -> dict[str, object]:

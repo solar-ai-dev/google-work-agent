@@ -20,12 +20,12 @@
 - [ ] Agent invocation count와 LLM call count 분리 Trace
 - [ ] Acquisition Subgraph 내부 결정적 Read Node + invocation continuity
 - [ ] SINGLE Unified Agent integrated self-review
-- [ ] E06-B `CONTEXT_READY_V1` / 동일 `context_snapshot_id` Replay (Google Read 0)
-- [ ] E06-B B1/B2/B3 post-retrieval topology test
+- [x] E06-B `CONTEXT_READY_V1` / 동일 `context_snapshot_id` Replay (Google Read 0)
+- [x] E06-B B1/B2/B3 post-retrieval topology test
 - [ ] Prompt Runtime Slot Key에서 `failure_reason_code` 제외 + Failure Block assembly metadata 검증
 - [x] `prompt_semantic_bundle_version` parity lock
-- [ ] Handoff required-field / Evidence ID / constraint preservation grader
-- [ ] `evaluation_environment_hash`로 Hardware·Concurrency·Timeout 조건 고정
+- [x] Handoff required-field / Evidence ID / constraint preservation grader
+- [x] `evaluation_environment_hash`로 Hardware·Concurrency·Timeout 조건 고정
 
 ## Dataset·Grader 준비 Gate
 - [ ] BTS split별 numerator/denominator + Holdout 반복 일관성 보고
