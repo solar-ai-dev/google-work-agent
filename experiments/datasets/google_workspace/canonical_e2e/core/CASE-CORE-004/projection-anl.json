@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-004-ANL",
+  "case_id": "CASE-CORE-004",
+  "projection_kind": "ANALYSIS",
+  "applicable": false,
+  "not_applicable_reason": "No pre-plan work analysis is required to execute the explicit selected-resource READ Action.",
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-010",
+    "user_prompt_id": "UP-CORE-004",
+    "entry_mode": "RESOURCE_SELECTED"
+  },
+  "gold": {},
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

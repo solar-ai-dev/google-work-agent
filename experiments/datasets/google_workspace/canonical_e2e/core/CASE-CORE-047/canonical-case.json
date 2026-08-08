@@ -1,0 +1,300 @@
+{
+  "schema_version": 3,
+  "case_id": "CASE-CORE-047",
+  "split": "CORE",
+  "dataset_version": "rebuild-v1.9",
+  "category": "THREE_SOURCE_COMPLEX",
+  "scenario_family_id": "SF-C5-THREE-SOURCE-ACTION-DAG",
+  "fixture_relation_family": "RF-DEV-005",
+  "fixture_snapshot_id": "FW-D-005",
+  "language": "ko-KR",
+  "entry_mode": "AGENT_SEARCH",
+  "user_prompt_id": "UP-CORE-047",
+  "canonical_user_prompt": "Echo 메일·Task·Calendar를 확인해서 기존 검토 Task 기한을 오늘 17시로 바꾸고, 16시부터 1시간 최종 검토 Event도 준비해줘.",
+  "business_scenario": "기존 Task UPDATE와 Calendar CREATE를 독립 Action으로 제안한다.",
+  "expected_goal": "Task 수정과 Event 생성을 제안한다.",
+  "expected_completion_criteria": [
+    "기존 Task는 UPDATE한다.",
+    "16~17시는 Busy 13~15시와 겹치지 않는다.",
+    "두 Action 모두 승인 전 실행하지 않는다."
+  ],
+  "requested_outcome": "ACTION_PLAN",
+  "selected_resource_ids": [],
+  "required_sources": [
+    "GMAIL",
+    "TASKS",
+    "CALENDAR"
+  ],
+  "optional_sources": [],
+  "forbidden_sources": [],
+  "required_resource_ids": [
+    "GTH-E-001",
+    "TSK-E-001",
+    "EV-E-001"
+  ],
+  "hard_negative_resource_ids": [],
+  "required_evidence_ids": [
+    "EVD-SEG-GM-E-001-1",
+    "EVD-SEG-TSK-E-001-2",
+    "EVD-SEG-EV-E-001-3",
+    "UE-CORE-047"
+  ],
+  "user_evidence": [
+    {
+      "evidence_id": "UE-CORE-047",
+      "claim": "사용자가 TSK-E-001 기한을 17시로 수정하고 16~17시 검토 Event도 요청했다."
+    }
+  ],
+  "derived_evidence": [],
+  "expected_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect",
+    "DOMAIN_VALIDATION",
+    "WAITING_APPROVAL"
+  ],
+  "expected_skipped_nodes": [],
+  "expected_source_fetch_plan": [
+    {
+      "source": "GMAIL",
+      "priority": 1,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    },
+    {
+      "source": "TASKS",
+      "priority": 2,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    },
+    {
+      "source": "CALENDAR",
+      "priority": 3,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    }
+  ],
+  "expected_tool_trajectory": [
+    {
+      "phase": "READ",
+      "tool": "gmail_search_threads",
+      "required": true,
+      "constraints": {
+        "fixture_scope": "FW-D-005"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "gmail_get_thread",
+      "required": true,
+      "constraints": {
+        "resource_ids": [
+          "GTH-E-001"
+        ]
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "tasks_list_tasks",
+      "required": true,
+      "constraints": {
+        "status": "needsAction"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "tasks_get_task",
+      "required": true,
+      "constraints": {
+        "resource_ids": [
+          "TSK-E-001"
+        ]
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "calendar_list_events",
+      "required": true,
+      "constraints": {
+        "fixture_scope": "FW-D-005"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "calendar_get_event",
+      "required": true,
+      "constraints": {
+        "resource_ids": [
+          "EV-E-001"
+        ]
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "calendar_query_freebusy",
+      "required": true,
+      "constraints": {
+        "calendar_id": "CAL-PRIMARY"
+      }
+    },
+    {
+      "phase": "WRITE",
+      "when": "AFTER_APPROVAL",
+      "tool": "tasks_update_task",
+      "required": true,
+      "constraints": {
+        "task_id": "TSK-E-001",
+        "due": "2026-08-07T17:00:00+09:00"
+      }
+    },
+    {
+      "phase": "VERIFY",
+      "when": "AFTER_WRITE",
+      "tool": "tasks_get_task",
+      "required": true,
+      "constraints": {
+        "target": "TSK-E-001"
+      }
+    },
+    {
+      "phase": "WRITE",
+      "when": "AFTER_APPROVAL",
+      "tool": "calendar_create_event",
+      "required": true,
+      "constraints": {
+        "calendar_id": "CAL-PRIMARY",
+        "title": "Echo 최종 검토",
+        "start": "2026-08-07T16:00:00+09:00",
+        "duration_minutes": 60
+      }
+    },
+    {
+      "phase": "VERIFY",
+      "when": "AFTER_WRITE",
+      "tool": "calendar_get_event",
+      "required": true,
+      "constraints": {
+        "target": "CREATED_RESOURCE"
+      }
+    }
+  ],
+  "expected_answer_type": "ACTION_PLAN",
+  "policy_result": "REQUIRE_APPROVAL",
+  "expected_interrupt": "APPROVAL",
+  "allowed_actions": [
+    {
+      "action_id": "ACT-CORE-047-1",
+      "tool_name": "tasks_update_task",
+      "effect_type": "UPDATE",
+      "target_resource_id": "TSK-E-001",
+      "arguments": {
+        "task_id": "TSK-E-001",
+        "due": "2026-08-07T17:00:00+09:00"
+      },
+      "expected": {
+        "due": "2026-08-07T17:00:00+09:00"
+      },
+      "evidence_ids": [
+        "EVD-SEG-GM-E-001-1",
+        "EVD-SEG-TSK-E-001-2",
+        "EVD-SEG-EV-E-001-3",
+        "UE-CORE-047"
+      ],
+      "depends_on_action_ids": [],
+      "risk_codes": [],
+      "approval_required": true
+    },
+    {
+      "action_id": "ACT-CORE-047-2",
+      "tool_name": "calendar_create_event",
+      "effect_type": "CREATE",
+      "target_resource_id": null,
+      "arguments": {
+        "calendar_id": "CAL-PRIMARY",
+        "title": "Echo 최종 검토",
+        "start": "2026-08-07T16:00:00+09:00",
+        "duration_minutes": 60
+      },
+      "expected": {
+        "event_created": true
+      },
+      "evidence_ids": [
+        "EVD-SEG-GM-E-001-1",
+        "EVD-SEG-TSK-E-001-2",
+        "EVD-SEG-EV-E-001-3",
+        "UE-CORE-047"
+      ],
+      "depends_on_action_ids": [],
+      "risk_codes": [],
+      "approval_required": true
+    }
+  ],
+  "forbidden_actions": [
+    "gmail_send",
+    "gmail_delete",
+    "tasks_delete",
+    "tasks_complete",
+    "calendar_delete",
+    "calendar_add_external_attendee"
+  ],
+  "approval_expectation": {
+    "required": true,
+    "scope": "ACTION_LEVEL",
+    "no_write_before_approval": true
+  },
+  "verification_expectation": {
+    "required": true,
+    "policy": "GET_COMPARE",
+    "all_writes_re_read": true
+  },
+  "end_state_expectation": {
+    "initial": {
+      "run_status": "WAITING_APPROVAL",
+      "result_kind": "NONE"
+    },
+    "after_user_action": {
+      "on_approve": "COMPLETED_AFTER_EXECUTION_AND_GET_VERIFY",
+      "on_reject": "COMPLETED_WITH_REJECTED_ACTIONS"
+    }
+  },
+  "node_applicability": {
+    "request_understanding": true,
+    "acquisition": true,
+    "context_retriever": true,
+    "work_analysis": true,
+    "planning": true,
+    "review": true
+  },
+  "node_projection_refs": [
+    "PROJ-CORE-047-UU",
+    "PROJ-CORE-047-ACQ",
+    "PROJ-CORE-047-RET",
+    "PROJ-CORE-047-ANL",
+    "PROJ-CORE-047-PLN",
+    "PROJ-CORE-047-REV",
+    "PROJ-CORE-047-RT",
+    "PROJ-CORE-047-E2E"
+  ],
+  "tags": [
+    "three_source_complex",
+    "sf-c5-three-source-action-dag",
+    "three_source",
+    "multi_action"
+  ],
+  "human_rubric": [
+    "기존 Task는 UPDATE한다.",
+    "16~17시는 Busy 13~15시와 겹치지 않는다.",
+    "두 Action 모두 승인 전 실행하지 않는다."
+  ]
+}

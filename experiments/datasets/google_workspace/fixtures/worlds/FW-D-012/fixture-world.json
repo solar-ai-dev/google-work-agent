@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-012",
+  "split_scope": "DEV",
+  "scenario_family_id": "SF-DEV-012",
+  "fixture_relation_family": "RF-DEV-012",
+  "title": "Lumen 마이그레이션 검색 결과 없음",
+  "locale": "ko-KR",
+  "timezone": "Asia/Seoul",
+  "as_of": "2026-08-07T14:09:00+09:00",
+  "business_context": "사용자는 프로젝트 별칭 Lumen을 쓰지만 실제 메일에는 공식 명칭 Aurora Migration이 사용돼 첫 검색 결과가 없다.",
+  "user_profile": {
+    "account_email": "user@example.test",
+    "work_hours": {
+      "weekdays": "09:00-18:00"
+    },
+    "default_tasklist_id": "TL-WORK",
+    "default_calendar_id": "CAL-PRIMARY"
+  },
+  "source_files": {
+    "gmail": "gmail.json",
+    "tasks": "tasks.json",
+    "calendar": "calendar.json",
+    "relations": "relations.json"
+  },
+  "resource_ids": {
+    "gmail": [
+      "GTH-L-001",
+      "GM-L-001"
+    ],
+    "tasks": [],
+    "calendar": []
+  },
+  "tags": [
+    "no_results",
+    "query_revision",
+    "alias"
+  ]
+}

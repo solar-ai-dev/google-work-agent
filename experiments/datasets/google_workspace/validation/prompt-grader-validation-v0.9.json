@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "dataset_version": "0.9.0",
+  "status": "PASS",
+  "created_at": "2026-08-07T14:23:00+09:00",
+  "counts": {
+    "canonical_core": 60,
+    "canonical_stress": 20,
+    "canonical_holdout": 12,
+    "prompt_slots": 65,
+    "assembled_prompts": 65,
+    "grader_registry_entries": 57,
+    "referenced_grader_ids": 57,
+    "failure_blocks": 46
+  },
+  "checks": {
+    "all_json_parse": true,
+    "prompt_semantic_review": true,
+    "prompt_hashes_match": true,
+    "prompt_manifest_references_exist": true,
+    "all_prompt_slots_draft": true,
+    "retry_prompt_slots_resolve": true,
+    "non_llm_fault_has_no_llm_prompt": true,
+    "grader_registry_exact_reference_set": true,
+    "legacy_abbreviated_grader_ids_zero": true,
+    "canonical_total_92": true
+  },
+  "alias_replacements": {
+    "grader.uu.deterministic": 12,
+    "grader.uu.semantic": 12,
+    "grader.acq.deterministic": 12,
+    "grader.acq.semantic": 12,
+    "grader.ret.deterministic": 12,
+    "grader.ret.semantic": 12,
+    "grader.anl.deterministic": 12,
+    "grader.anl.semantic": 12,
+    "grader.pln.deterministic": 12,
+    "grader.pln.semantic": 12,
+    "grader.rev.deterministic": 12,
+    "grader.rev.semantic": 12,
+    "grader.rt.deterministic": 12,
+    "grader.rt.semantic": 12
+  },
+  "errors": {
+    "invalid_json": [],
+    "legacy_grader_ids": [],
+    "prompt_hash_errors": [],
+    "missing_prompt_files": [],
+    "retry_missing": [],
+    "nonllm_prompt_violations": [],
+    "unregistered_graders": [],
+    "unused_registry_graders": []
+  },
+  "prompt_review_checks": [
+    {
+      "check": "request_understanding.base responsibility boundary",
+      "status": "PASS",
+      "detail": "Base role contract declares bounded responsibility/rules."
+    },
+    {
+      "check": "acquisition.base responsibility boundary",
+      "status": "PASS",
+      "detail": "Base role contract declares bounded responsibility/rules."
+    },
+    {
+      "check": "context_retriever.base responsibility boundary",
+      "status": "PASS",
+      "detail": "Base role contract declares bounded responsibility/rules."
+    },
+    {
+      "check": "work_analysis.base responsibility boundary",
+      "status": "PASS",
+      "detail": "Base role contract declares bounded responsibility/rules."
+    },
+    {
+      "check": "planning.base responsibility boundary",
+      "status": "PASS",
+      "detail": "Base role contract declares bounded responsibility/rules."
+    },
+    {
+      "check": "review.base responsibility boundary",
+      "status": "PASS",
+      "detail": "Base role contract declares bounded responsibility/rules."
+    },
+    {
+      "check": "prompts/agent/planning/repair.md schema-only",
+      "status": "PASS",
+      "detail": "Repair explicitly preserves semantics and is single-attempt/schema-only."
+    },
+    {
+      "check": "prompts/agent/acquisition/repair.md schema-only",
+      "status": "PASS",
+      "detail": "Repair explicitly preserves semantics and is single-attempt/schema-only."
+    },
+    {
+      "check": "prompts/agent/work_analysis/repair.md schema-only",
+      "status": "PASS",
+      "detail": "Repair explicitly preserves semantics and is single-attempt/schema-only."
+    },
+    {
+      "check": "prompts/agent/context_retriever/repair.md schema-only",
+      "status": "PASS",
+      "detail": "Repair explicitly preserves semantics and is single-attempt/schema-only."
+    },
+    {
+      "check": "prompts/agent/request_understanding/repair.md schema-only",
+      "status": "PASS",
+      "detail": "Repair explicitly preserves semantics and is single-attempt/schema-only."
+    },
+    {
+      "check": "prompts/agent/review/repair.md schema-only",
+      "status": "PASS",
+      "detail": "Repair explicitly preserves semantics and is single-attempt/schema-only."
+    },
+    {
+      "check": "prompts/agent/request_understanding/revise.md one-failure guard",
+      "status": "PASS",
+      "detail": "Semantic revision/recheck explicitly limits repeated same-failure revision."
+    },
+    {
+      "check": "prompts/agent/acquisition/revise_partial.md one-failure guard",
+      "status": "PASS",
+      "detail": "Semantic revision/recheck explicitly limits repeated same-failure revision."
+    },
+    {
+      "check": "prompts/agent/context_retriever/revise.md one-failure guard",
+      "status": "PASS",
+      "detail": "Semantic revision/recheck explicitly limits repeated same-failure revision."
+    },
+    {
+      "check": "prompts/agent/work_analysis/reassess.md one-failure guard",
+      "status": "PASS",
+      "detail": "Semantic revision/recheck explicitly limits repeated same-failure revision."
+    },
+    {
+      "check": "prompts/agent/planning/revise_plan.md one-failure guard",
+      "status": "PASS",
+      "detail": "Semantic revision/recheck explicitly limits repeated same-failure revision."
+    },
+    {
+      "check": "prompts/agent/review/recheck.md one-failure guard",
+      "status": "PASS",
+      "detail": "Semantic revision/recheck explicitly limits repeated same-failure revision."
+    },
+    {
+      "check": "acquisition QueryAttempt/pagination distinction",
+      "status": "PASS",
+      "detail": "Acquisition revision covers query history, pagination, low confidence, non-LLM faults."
+    },
+    {
+      "check": "context supplied-only/untrusted guard",
+      "status": "PASS",
+      "detail": "Context revision cannot fetch/invent and preserves untrusted-source boundary."
+    },
+    {
+      "check": "analysis evidence/missing-data guard",
+      "status": "PASS",
+      "detail": "Analysis revision is evidence-only and redirects missing facts."
+    },
+    {
+      "check": "planning tool-target-evidence-approval guard",
+      "status": "PASS",
+      "detail": "Planning revision preserves effect/target/evidence/approval and allowed-field scope."
+    },
+    {
+      "check": "review no-self-repair/repeat-stop",
+      "status": "PASS",
+      "detail": "Review recheck does not repair and stops repeated failure."
+    },
+    {
+      "check": "failure blocks non-empty",
+      "status": "PASS",
+      "detail": "46 failure-specific blocks are substantive."
+    },
+    {
+      "check": "prompt activation remains DRAFT",
+      "status": "PASS",
+      "detail": "65 slots remain DRAFT pending DEV/HOLDOUT/Safety execution."
+    }
+  ],
+  "zip": {
+    "path": "/mnt/data/google-work-agent-dataset-rebuild-v0.9.zip",
+    "testzip": null,
+    "sha256": "90b5f6b98b2bd482220fe7c413a577f67bbb4f533ed9563404aa8182ddb1d3e5",
+    "members": 5284
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "case_id": "CASE-STRESS-006",
+  "stress_kind": "SCHEMA_REPAIR_SUCCESS",
+  "fault_profile_ids": [],
+  "auto_approve_write_actions": false,
+  "expected_no_duplicate_write": true,
+  "expected_runtime_route": [
+    "request_understanding.classify",
+    "SCHEMA_REPAIR_ONCE",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.answer_only",
+    "review.inspect",
+    "complete_answer_only_run"
+  ],
+  "expected_terminal": {
+    "run_status": "COMPLETED",
+    "result_kind": "FULL"
+  }
+}

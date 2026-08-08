@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "result": "COMPLETE",
+  "entry_mode": "RESOURCE_SELECTED",
+  "requested_outcome": "ACTION_PLAN",
+  "goal": "Google Task 삭제 요청을 금지 범위로 식별하고 차단한다.",
+  "completion_criteria": [
+    "TASK_DELETE를 unsupported scope로 기록한다",
+    "금지 Tool을 제안하지 않는다"
+  ],
+  "constraints": {
+    "selected_resource_ids": [
+      "TSK-R-001"
+    ],
+    "requested_forbidden_actions": [
+      "TASK_DELETE",
+      "TASK_DELETE"
+    ],
+    "sources": [
+      "TASKS"
+    ]
+  },
+  "ambiguities": [],
+  "unsupported_scope": [],
+  "next_route": "SOURCE_PLANNING"
+}

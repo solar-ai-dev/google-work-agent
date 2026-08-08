@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-HOLDOUT-007-ANL",
+  "case_id": "CASE-HOLDOUT-007",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-203",
+    "user_prompt_id": "UP-HOLDOUT-007",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "goal": "Willow 사전 공유 Task를 제안한다.",
+    "evidence_ids": [
+      "EVD-CH-W-201",
+      "EVD-CH-W-203",
+      "UE-HOLDOUT-007",
+      "DE-HOLDOUT-007-1"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

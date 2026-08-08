@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-HOLDOUT-001-ACQ",
+  "case_id": "CASE-HOLDOUT-001",
+  "projection_kind": "ACQUISITION",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-201",
+    "user_prompt_id": "UP-HOLDOUT-001",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "required_sources": [
+      "GMAIL"
+    ],
+    "forbidden_sources": [
+      "TASKS",
+      "CALENDAR"
+    ],
+    "source_fetch_plan": [
+      {
+        "source": "GMAIL",
+        "priority": 1,
+        "entry_mode": "AGENT_SEARCH",
+        "max_pages": 2,
+        "detail_limit": 5,
+        "acquisition_rounds": 1
+      }
+    ]
+  },
+  "grader_ids": [
+    "grader.acquisition.deterministic",
+    "grader.acquisition.semantic"
+  ]
+}

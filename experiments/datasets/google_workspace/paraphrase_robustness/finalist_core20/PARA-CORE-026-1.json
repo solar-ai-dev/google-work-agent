@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-026-1",
+  "source_case_id": "CASE-CORE-026",
+  "source_user_prompt_id": "UP-CORE-026",
+  "paraphrase_group_id": "PG-CORE-026",
+  "variant_index": 1,
+  "language": "ko-KR",
+  "text": "Atlas 출고와 두 준비 Task 기한을 보고 8월 16일 전에 한 시간 비는 슬롯 하나를 찾아 내부 점검 일정을 제안해줘.",
+  "expected_entry_mode": "AGENT_SEARCH",
+  "expected_requested_outcome": "ACTION_PLAN",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

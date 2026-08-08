@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "user_request": "Echo 약관 법무 검토를 이번 주 금요일까지 끝낼 수 있는지 봐줘.",
+  "entry_context": {
+    "entry_mode_hint": "AGENT_SEARCH",
+    "selected_resource_ids": []
+  },
+  "conversation_context": [],
+  "current_time": "2026-08-07T14:09:00+09:00",
+  "timezone": "Asia/Seoul",
+  "allowed_sources": [
+    "GMAIL",
+    "TASKS",
+    "CALENDAR"
+  ]
+}

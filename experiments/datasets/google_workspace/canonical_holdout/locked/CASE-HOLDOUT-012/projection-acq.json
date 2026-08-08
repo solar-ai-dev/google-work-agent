@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "case_id": "CASE-HOLDOUT-012",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-204",
+    "user_prompt_id": "UP-HOLDOUT-012",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "projection_id": "PROJ-HOLDOUT-012-ACQ",
+  "projection_kind": "ACQUISITION",
+  "gold": {
+    "required_sources": [],
+    "forbidden_sources": [],
+    "source_fetch_plan": []
+  },
+  "grader_ids": [
+    "grader.acquisition.deterministic",
+    "grader.acquisition.semantic"
+  ]
+}

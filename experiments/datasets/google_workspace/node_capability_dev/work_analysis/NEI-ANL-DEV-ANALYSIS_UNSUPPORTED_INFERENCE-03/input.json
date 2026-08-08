@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-003",
+  "user_goal": "확정 마감과 담당자를 분석하되 Evidence에 없는 담당자를 추정하지 않는다.",
+  "context_result": {
+    "schema_version": 1,
+    "result": "SELECTED",
+    "selected_segment_ids": [
+      "SEG-CTRL-UNSUP-1"
+    ],
+    "evidence_drafts": [
+      {
+        "evidence_id": "EVD-CTRL-UNSUP-1",
+        "segment_id": "SEG-CTRL-UNSUP-1",
+        "resource_id": "RES-CTRL-UNSUP-1",
+        "claim": "확정 마감은 8월 19일이다.",
+        "excerpt": "확정 마감은 8월 19일이다.",
+        "confidence": "HIGH"
+      }
+    ],
+    "excluded_segment_ids": [],
+    "conflicts": [],
+    "ignored_untrusted_instruction_ids": [],
+    "token_budget": {
+      "max_tokens": 900,
+      "used_tokens": 220
+    },
+    "missing_slots": [],
+    "confidence_band": "HIGH",
+    "next_route": "CONTINUE"
+  },
+  "policy_summary": {
+    "duplicate_final_decision": "DETERMINISTIC_VALIDATOR",
+    "schedule_final_decision": "DETERMINISTIC_VALIDATOR",
+    "no_write_execution": true
+  },
+  "mutation_spec": {
+    "kind": "MISSING_OWNER_EVIDENCE",
+    "notes": [
+      "담당자 근거를 의도적으로 제공하지 않음"
+    ]
+  }
+}

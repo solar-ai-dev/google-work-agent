@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-044-ANL",
+  "case_id": "CASE-CORE-044",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-044",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "completion_criteria": [
+      "EV-A-001 8/13과 Task due 8/16·17을 비교한다.",
+      "Gmail 최종 출고 8/19도 맥락으로 포함한다."
+    ],
+    "tags": [
+      "three_source_complex",
+      "sf-c5-three-source-analysis",
+      "three_source",
+      "date_compare"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

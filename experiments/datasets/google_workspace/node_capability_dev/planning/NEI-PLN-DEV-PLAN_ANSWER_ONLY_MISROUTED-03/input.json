@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-003",
+  "goal": "최종 마감과 담당자를 답한다.",
+  "requested_outcome": "ANSWER",
+  "constraints": {
+    "no_write": true
+  },
+  "evidence": [
+    {
+      "evidence_id": "EVD-PL-AO1",
+      "segment_id": "SEG-PL-AO1",
+      "resource_id": "RES-PL-AO1",
+      "claim": "최종 마감과 담당자 근거가 있다.",
+      "excerpt": "사용자는 최종 마감과 담당자를 알려 달라고만 요청했다.",
+      "confidence": "HIGH"
+    }
+  ],
+  "analysis": {
+    "schema_version": 1,
+    "result": "COMPLETE",
+    "relations": [],
+    "duplicates": [],
+    "schedule_risks": [],
+    "conflicts": [],
+    "unsupported_inferences": [],
+    "missing_data": [],
+    "next_route": "PLANNING"
+  }
+}

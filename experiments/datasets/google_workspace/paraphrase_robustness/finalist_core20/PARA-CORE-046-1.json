@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-046-1",
+  "source_case_id": "CASE-CORE-046",
+  "source_user_prompt_id": "UP-CORE-046",
+  "paraphrase_group_id": "PG-CORE-046",
+  "variant_index": 1,
+  "language": "ko-KR",
+  "text": "Atlas 메일·Task·Calendar를 확인한 뒤 8월 14일 10시에 60분 점검 Event를 만들고 ops@atlas.example.test에 그 일정 안내 Draft도 준비해줘.",
+  "expected_entry_mode": "AGENT_SEARCH",
+  "expected_requested_outcome": "ACTION_PLAN",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

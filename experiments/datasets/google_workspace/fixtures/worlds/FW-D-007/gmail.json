@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-G-001",
+      "subject": "[Grove] 캠페인 결과",
+      "participants": [
+        "marketing@grove.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-G-001",
+          "sender": "marketing@grove.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-05T01:00:00Z",
+          "body": "캠페인 전환율은 4.8%였습니다."
+        }
+      ]
+    }
+  ]
+}

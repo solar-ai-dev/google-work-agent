@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-002-ANL",
+  "case_id": "CASE-CORE-002",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-002",
+    "entry_mode": "RESOURCE_SELECTED"
+  },
+  "gold": {
+    "completion_criteria": [
+      "8월 19일 오전과 지민을 답한다.",
+      "초기 8월 18일 제안을 최종값으로 쓰지 않는다.",
+      "Tasks·Calendar를 조회하지 않는다."
+    ],
+    "tags": [
+      "source_selection_read",
+      "sf-c1-resource-selected",
+      "latest_over_stale"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

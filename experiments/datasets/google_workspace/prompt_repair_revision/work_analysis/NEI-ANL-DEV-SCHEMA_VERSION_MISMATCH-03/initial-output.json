@@ -1,0 +1,13 @@
+{
+  "schema_version": 2,
+  "result": "NEEDS_CONFIRMATION",
+  "relations": [],
+  "duplicates": [],
+  "schedule_risks": [],
+  "conflicts": [],
+  "unsupported_inferences": [],
+  "missing_data": [
+    "target_disambiguation"
+  ],
+  "next_route": "CONFIRM"
+}

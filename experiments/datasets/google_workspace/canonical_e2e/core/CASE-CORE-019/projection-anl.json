@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-019-ANL",
+  "case_id": "CASE-CORE-019",
+  "projection_kind": "ANALYSIS",
+  "applicable": false,
+  "not_applicable_reason": "work_analysis is skipped on the gold route.",
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-006",
+    "user_prompt_id": "UP-CORE-019",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "completion_criteria": [
+      "Task 목록과 Calendar를 볼 수 있지만 Duration이 없다.",
+      "Duration을 임의로 정하지 않는다.",
+      "확인 전 Draft를 만들지 않는다."
+    ],
+    "tags": [
+      "tasks_calendar_to_gmail",
+      "sf-c2-schedule-risk-draft",
+      "confirmation"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

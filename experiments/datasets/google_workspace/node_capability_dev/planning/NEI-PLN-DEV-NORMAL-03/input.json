@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-003",
+  "goal": "어느 박민수와 어느 웨비나인지 확인한 뒤 준비 내용을 정리한다.",
+  "requested_outcome": "ANALYSIS",
+  "constraints": {
+    "person_terms": [
+      "박민수"
+    ],
+    "relative_date": "다음 주",
+    "sources": [
+      "GMAIL"
+    ]
+  },
+  "evidence": [],
+  "analysis": {
+    "schema_version": 1,
+    "result": "NEEDS_CONFIRMATION",
+    "relations": [],
+    "duplicates": [],
+    "schedule_risks": [],
+    "conflicts": [],
+    "unsupported_inferences": [],
+    "missing_data": [
+      "target_person"
+    ],
+    "next_route": "CONFIRM"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "result": "COMPLETE",
+  "relations": [],
+  "duplicates": [],
+  "schedule_risks": [
+    {
+      "target_id": "REQUESTED_EVENT",
+      "classification": "IMPOSSIBLE",
+      "reason_codes": [
+        "OUT_OF_OFFICE_OVERLAP"
+      ],
+      "evidence_ids": [
+        "EVD-SEG-EV-J-001-1"
+      ]
+    }
+  ],
+  "conflicts": [],
+  "unsupported_inferences": [],
+  "missing_data": [],
+  "next_route": "PLANNING"
+}

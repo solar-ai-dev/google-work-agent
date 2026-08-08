@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/request-intent.schema.json",
+  "title": "RequestIntentV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "result",
+    "entry_mode",
+    "requested_outcome",
+    "goal",
+    "completion_criteria",
+    "constraints",
+    "ambiguities",
+    "unsupported_scope",
+    "next_route"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "result": {
+      "enum": [
+        "COMPLETE",
+        "NEEDS_CONFIRMATION",
+        "INVALID"
+      ]
+    },
+    "entry_mode": {
+      "enum": [
+        "AGENT_SEARCH",
+        "RESOURCE_SELECTED"
+      ]
+    },
+    "requested_outcome": {
+      "enum": [
+        "ANSWER",
+        "ANALYSIS",
+        "ACTION_PLAN"
+      ]
+    },
+    "goal": {
+      "type": "string"
+    },
+    "completion_criteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "constraints": {
+      "type": "object"
+    },
+    "ambiguities": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "unsupported_scope": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next_route": {
+      "enum": [
+        "SOURCE_PLANNING",
+        "WAITING_CONFIRMATION",
+        "BLOCKED"
+      ]
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-035-UU",
+  "case_id": "CASE-CORE-035",
+  "projection_kind": "USER_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-008",
+    "user_prompt_id": "UP-CORE-035",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "goal": "Harbor 패치 체크 Task를 안전하게 제안한다.",
+    "requested_outcome": "ACTION_PLAN",
+    "expected_interrupt": "APPROVAL"
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.user_understanding.semantic"
+  ]
+}

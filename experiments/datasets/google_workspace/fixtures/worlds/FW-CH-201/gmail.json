@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-SO-201",
+      "subject": "[Solstice] 9월 출시 준비",
+      "participants": [
+        "brand@solstice.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-SO-201",
+          "sender": "brand@solstice.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-04T01:00:00Z",
+          "body": "초안 기준 최종 카피는 8월 31일까지입니다."
+        },
+        {
+          "message_id": "GM-SO-202",
+          "sender": "brand@solstice.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T03:00:00Z",
+          "body": "최종 합의: 카피는 9월 1일 18시까지, 담당은 하린입니다. 인쇄소 확인은 9월 3일 14시 슬롯 기준입니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-SO-299",
+      "subject": "[Solstice] 7월 출시 회고",
+      "participants": [
+        "brand@solstice.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-SO-299",
+          "sender": "brand@solstice.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-07-01T03:00:00Z",
+          "body": "7월 카피 마감은 7월 5일이었습니다."
+        }
+      ]
+    }
+  ]
+}

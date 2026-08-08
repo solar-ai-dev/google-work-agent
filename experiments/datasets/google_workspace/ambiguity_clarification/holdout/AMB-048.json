@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-048",
+  "split": "HOLDOUT",
+  "ambiguity_family_id": "AMB-F12-CALENDAR-RELATION",
+  "user_request": "같은 시간에 잡아줘",
+  "conversation_context": [
+    "기존 Event와 신규 업무의 관계가 없음"
+  ],
+  "available_candidates": [
+    {
+      "candidate_id": "e1",
+      "label": "기존 고객 미팅",
+      "difference_summary": "busy"
+    }
+  ],
+  "gold": {
+    "should_clarify": true,
+    "ambiguity_kind": "RELATION",
+    "expected_route": "WAITING_CONFIRMATION",
+    "expected_semantics": "실제 충돌을 인지시키고 override 확인",
+    "question_strategy": "FREE_TEXT",
+    "required_candidate_ids": [],
+    "forbidden_assumptions": [
+      "LOW_CONFIDENCE_AUTO_SELECTION",
+      "INVENTED_TARGET",
+      "INVENTED_EFFECT"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

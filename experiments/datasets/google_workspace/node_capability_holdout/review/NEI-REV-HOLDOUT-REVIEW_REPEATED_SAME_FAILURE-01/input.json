@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-H-101",
+  "user_goal": "선택 Task TSK-X의 메모를 수정한다.",
+  "evidence": [
+    {
+      "evidence_id": "EVD-PL-TG1",
+      "segment_id": "SEG-PL-TG1",
+      "resource_id": "RES-PL-TG1",
+      "claim": "사용자가 선택한 수정 대상은 TSK-X이다.",
+      "excerpt": "사용자가 선택한 수정 대상은 TSK-X이다.",
+      "confidence": "HIGH"
+    }
+  ],
+  "plan": {
+    "schema_version": 1,
+    "result": "PLAN_READY",
+    "answer_draft": null,
+    "actions": [
+      {
+        "action_id": "A1",
+        "position": 1,
+        "tool_name": "tasks_update_task",
+        "effect_type": "UPDATE",
+        "target_resource_id": "TSK-Y",
+        "arguments": {
+          "task_id": "TSK-Y",
+          "notes": "검토 완료"
+        },
+        "expected": {
+          "notes": "검토 완료"
+        },
+        "evidence_ids": [
+          "EVD-PL-TG1"
+        ],
+        "depends_on_action_ids": [],
+        "risk_codes": [],
+        "approval_required": true
+      }
+    ],
+    "confirmation_question": null,
+    "blocked_reason_codes": []
+  },
+  "prior_failure_signature": "PLAN_WRONG_TARGET:/actions/0/target_resource_id",
+  "revision_attempts_for_signature": 1
+}

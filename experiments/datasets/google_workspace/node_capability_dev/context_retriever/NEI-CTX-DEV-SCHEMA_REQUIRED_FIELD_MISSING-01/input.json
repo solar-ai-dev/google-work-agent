@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-001",
+  "user_goal": "Atlas 리테일 출시의 메일 확정 일정과 기존 Task·Calendar 준비 상태를 대조한다.",
+  "entry_mode": "AGENT_SEARCH",
+  "segments": [
+    {
+      "segment_id": "SEG-GM-A-001",
+      "resource_id": "GM-A-001",
+      "parent_resource_id": "GTH-A-001",
+      "source": "GMAIL",
+      "title": "[Atlas] 출고 일정 확정",
+      "timestamp": "2026-08-04T01:00:00Z",
+      "text": "초기 출고 예정일은 8월 18일입니다.",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-GM-A-002",
+      "resource_id": "GM-A-002",
+      "parent_resource_id": "GTH-A-001",
+      "source": "GMAIL",
+      "title": "[Atlas] 출고 일정 확정",
+      "timestamp": "2026-08-06T06:00:00Z",
+      "text": "최종 출고는 8월 19일 오전으로 확정합니다. 담당은 지민입니다.",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-GM-A-099",
+      "resource_id": "GM-A-099",
+      "parent_resource_id": "GTH-A-099",
+      "source": "GMAIL",
+      "title": "[Atlas 과거] 2025년 출시 회고",
+      "timestamp": "2025-08-01T01:00:00Z",
+      "text": "작년 출고일은 8월 18일이었습니다.",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-TSK-A-001",
+      "resource_id": "TSK-A-001",
+      "parent_resource_id": "TL-WORK",
+      "source": "TASKS",
+      "title": "Atlas QR 문구 확정",
+      "timestamp": "2026-08-07T04:00:00Z",
+      "text": "제목: Atlas QR 문구 확정 / 기한: 2026-08-16T09:00:00Z / 상태: needsAction / 메모: 담당 지민",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-TSK-A-002",
+      "resource_id": "TSK-A-002",
+      "parent_resource_id": "TL-WORK",
+      "source": "TASKS",
+      "title": "Atlas 알레르기 라벨 검토",
+      "timestamp": "2026-08-07T04:00:00Z",
+      "text": "제목: Atlas 알레르기 라벨 검토 / 기한: 2026-08-17T09:00:00Z / 상태: needsAction / 메모: 담당 민지",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-EV-A-001",
+      "resource_id": "EV-A-001",
+      "parent_resource_id": "CAL-PRIMARY",
+      "source": "CALENDAR",
+      "title": "Atlas 인쇄소 슬롯",
+      "timestamp": "2026-08-07T04:00:00Z",
+      "text": "일정: Atlas 인쇄소 슬롯 / 시작: 2026-08-13T05:00:00Z / 종료: 2026-08-13T06:00:00Z / 투명도: opaque / 설명: ",
+      "untrusted": true
+    }
+  ],
+  "hard_negative_segment_ids": [
+    "SEG-GM-A-099"
+  ],
+  "candidate_scores": {},
+  "selected_resource_ids": [],
+  "context_budget": {
+    "max_tokens": 900
+  },
+  "mutation_spec": {
+    "kind": "NONE",
+    "notes": []
+  }
+}

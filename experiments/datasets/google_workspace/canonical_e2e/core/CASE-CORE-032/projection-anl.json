@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-032-ANL",
+  "case_id": "CASE-CORE-032",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-005",
+    "user_prompt_id": "UP-CORE-032",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "completion_criteria": [
+      "메일 deadline과 Calendar Busy를 확인한다.",
+      "기존 Task와 제목이 다른 새 Task인지 중복 검사한다."
+    ],
+    "tags": [
+      "calendar_gmail_to_tasks",
+      "sf-c4-followup-task"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

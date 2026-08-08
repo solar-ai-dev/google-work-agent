@@ -1,0 +1,2552 @@
+{
+  "schema_version": 1,
+  "selection_id": "SEL-E03A-DEV",
+  "layer": "node_capability_dev",
+  "split": "DEV",
+  "locked": false,
+  "item_count": 363,
+  "items": [
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-ACQ_FORBIDDEN_SOURCE_INCLUDED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-ACQ_FORBIDDEN_SOURCE_INCLUDED-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "ACQ_FORBIDDEN_SOURCE_INCLUDED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-ACQ_FORBIDDEN_SOURCE_INCLUDED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-ACQ_FORBIDDEN_SOURCE_INCLUDED-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "ACQ_FORBIDDEN_SOURCE_INCLUDED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-ACQ_FORBIDDEN_SOURCE_INCLUDED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-ACQ_FORBIDDEN_SOURCE_INCLUDED-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "ACQ_FORBIDDEN_SOURCE_INCLUDED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-ACQ_NO_FETCH_MISCLASSIFIED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-ACQ_NO_FETCH_MISCLASSIFIED-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "ACQ_NO_FETCH_MISCLASSIFIED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-ACQ_NO_FETCH_MISCLASSIFIED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-ACQ_NO_FETCH_MISCLASSIFIED-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "ACQ_NO_FETCH_MISCLASSIFIED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-ACQ_NO_FETCH_MISCLASSIFIED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-ACQ_NO_FETCH_MISCLASSIFIED-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "ACQ_NO_FETCH_MISCLASSIFIED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-ACQ_REQUIRED_SOURCE_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-ACQ_REQUIRED_SOURCE_MISSING-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "ACQ_REQUIRED_SOURCE_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-ACQ_REQUIRED_SOURCE_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-ACQ_REQUIRED_SOURCE_MISSING-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "ACQ_REQUIRED_SOURCE_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-ACQ_REQUIRED_SOURCE_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-ACQ_REQUIRED_SOURCE_MISSING-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "ACQ_REQUIRED_SOURCE_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-04",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-04/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-05",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-05/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-06",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-06/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-07",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-07/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-08",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-08/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-09",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-09/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-10",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-10/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-11",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-11/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-12",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-12/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-13",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-13/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-NORMAL-14",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-NORMAL-14/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_AUTH_REQUIRED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_AUTH_REQUIRED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_AUTH_REQUIRED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_BUDGET_EXHAUSTED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_BUDGET_EXHAUSTED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_BUDGET_EXHAUSTED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_DETAIL_FETCH_FAILED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_DETAIL_FETCH_FAILED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_DETAIL_FETCH_FAILED",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_LOW_CONFIDENCE_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_LOW_CONFIDENCE_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_LOW_CONFIDENCE_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_NO_RESULTS-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_NO_RESULTS-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_NO_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_NO_RESULTS-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_NO_RESULTS-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_NO_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_NO_RESULTS-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_NO_RESULTS-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_NO_RESULTS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_PROVIDER_FAILED",
+      "retry_kind": "DETERMINISTIC_RETRY"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_PROVIDER_FAILED",
+      "retry_kind": "DETERMINISTIC_RETRY"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_PROVIDER_FAILED",
+      "retry_kind": "DETERMINISTIC_RETRY"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_RATE_LIMITED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_RATE_LIMITED-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_RATE_LIMITED",
+      "retry_kind": "DETERMINISTIC_RETRY"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_RATE_LIMITED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_RATE_LIMITED-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_RATE_LIMITED",
+      "retry_kind": "DETERMINISTIC_RETRY"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_RATE_LIMITED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_RATE_LIMITED-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_RATE_LIMITED",
+      "retry_kind": "DETERMINISTIC_RETRY"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_REPEATED_WITHOUT_CHANGE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_REPEATED_WITHOUT_CHANGE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_REPEATED_WITHOUT_CHANGE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION",
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_TOO_BROAD-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_TOO_BROAD-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_TOO_BROAD",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_TOO_BROAD-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_TOO_BROAD-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_TOO_BROAD",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_TOO_BROAD-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_TOO_BROAD-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_TOO_BROAD",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_TOO_NARROW-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_TOO_NARROW-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_TOO_NARROW",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_TOO_NARROW-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_TOO_NARROW-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_TOO_NARROW",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_TOO_NARROW-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_TOO_NARROW-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_TOO_NARROW",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_USER_CONSTRAINT_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_USER_CONSTRAINT_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "QUERY_USER_CONSTRAINT_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_INVALID_ENUM-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_INVALID_ENUM-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_INVALID_ENUM-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_INVALID_ENUM-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_INVALID_ENUM-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_INVALID_ENUM-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_INVALID_JSON-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_INVALID_JSON-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_INVALID_JSON-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_INVALID_JSON-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_INVALID_JSON-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_INVALID_JSON-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_REQUIRED_FIELD_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_REQUIRED_FIELD_MISSING-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_REQUIRED_FIELD_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_REQUIRED_FIELD_MISSING-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_REQUIRED_FIELD_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_REQUIRED_FIELD_MISSING-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_UNSUPPORTED_FIELD-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_UNSUPPORTED_FIELD-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_UNSUPPORTED_FIELD-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_UNSUPPORTED_FIELD-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_UNSUPPORTED_FIELD-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_UNSUPPORTED_FIELD-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_VERSION_MISMATCH-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_VERSION_MISMATCH-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_VERSION_MISMATCH-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_VERSION_MISMATCH-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_VERSION_MISMATCH-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_VERSION_MISMATCH-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_WRONG_TYPE-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_WRONG_TYPE-01/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_WRONG_TYPE-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_WRONG_TYPE-02/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-DEV-SCHEMA_WRONG_TYPE-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/acquisition/NEI-ACQ-DEV-SCHEMA_WRONG_TYPE-03/evaluation-item.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_CONFLICT_NOT_REPORTED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_CONFLICT_NOT_REPORTED-01/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_CONFLICT_NOT_REPORTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_CONFLICT_NOT_REPORTED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_CONFLICT_NOT_REPORTED-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_CONFLICT_NOT_REPORTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_CONFLICT_NOT_REPORTED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_CONFLICT_NOT_REPORTED-03/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_CONFLICT_NOT_REPORTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_HARD_NEGATIVE_SELECTED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_HARD_NEGATIVE_SELECTED-01/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_HARD_NEGATIVE_SELECTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_HARD_NEGATIVE_SELECTED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_HARD_NEGATIVE_SELECTED-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_HARD_NEGATIVE_SELECTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_HARD_NEGATIVE_SELECTED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_HARD_NEGATIVE_SELECTED-03/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_HARD_NEGATIVE_SELECTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_LOW_CONFIDENCE_AUTO_SELECTED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_LOW_CONFIDENCE_AUTO_SELECTED-01/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_LOW_CONFIDENCE_AUTO_SELECTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_LOW_CONFIDENCE_AUTO_SELECTED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_LOW_CONFIDENCE_AUTO_SELECTED-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_LOW_CONFIDENCE_AUTO_SELECTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_LOW_CONFIDENCE_AUTO_SELECTED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_LOW_CONFIDENCE_AUTO_SELECTED-03/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_LOW_CONFIDENCE_AUTO_SELECTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_PROMPT_INJECTION_FOLLOWED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_PROMPT_INJECTION_FOLLOWED-01/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_PROMPT_INJECTION_FOLLOWED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_PROMPT_INJECTION_FOLLOWED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_PROMPT_INJECTION_FOLLOWED-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_PROMPT_INJECTION_FOLLOWED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_PROMPT_INJECTION_FOLLOWED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_PROMPT_INJECTION_FOLLOWED-03/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_PROMPT_INJECTION_FOLLOWED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_REQUIRED_EVIDENCE_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_REQUIRED_EVIDENCE_MISSING-01/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_REQUIRED_EVIDENCE_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_REQUIRED_EVIDENCE_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_REQUIRED_EVIDENCE_MISSING-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_REQUIRED_EVIDENCE_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_REQUIRED_EVIDENCE_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_REQUIRED_EVIDENCE_MISSING-03/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_REQUIRED_EVIDENCE_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_STALE_EVIDENCE_SELECTED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_STALE_EVIDENCE_SELECTED-01/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_STALE_EVIDENCE_SELECTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_STALE_EVIDENCE_SELECTED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_STALE_EVIDENCE_SELECTED-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_STALE_EVIDENCE_SELECTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_STALE_EVIDENCE_SELECTED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_STALE_EVIDENCE_SELECTED-03/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_STALE_EVIDENCE_SELECTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_SUFFICIENCY_WRONG-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_SUFFICIENCY_WRONG-01/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": "CTX_SUFFICIENCY_WRONG",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_SUFFICIENCY_WRONG-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_SUFFICIENCY_WRONG-02/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": "CTX_SUFFICIENCY_WRONG",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_SUFFICIENCY_WRONG-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_SUFFICIENCY_WRONG-03/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": "CTX_SUFFICIENCY_WRONG",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_TOKEN_BUDGET_EXCEEDED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_TOKEN_BUDGET_EXCEEDED-01/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_TOKEN_BUDGET_EXCEEDED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_TOKEN_BUDGET_EXCEEDED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_TOKEN_BUDGET_EXCEEDED-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_TOKEN_BUDGET_EXCEEDED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-CTX_TOKEN_BUDGET_EXCEEDED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-CTX_TOKEN_BUDGET_EXCEEDED-03/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "CTX_TOKEN_BUDGET_EXCEEDED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-01/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-03/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-04",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-04/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-05",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-05/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-06",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-06/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-07",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-07/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-08",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-08/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-09",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-09/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-10",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-10/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-11",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-11/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-12",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-12/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-13",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-13/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-NORMAL-14",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-NORMAL-14/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_INVALID_ENUM-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_INVALID_ENUM-01/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_INVALID_ENUM-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_INVALID_ENUM-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_INVALID_ENUM-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_INVALID_ENUM-03/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_INVALID_JSON-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_INVALID_JSON-01/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_INVALID_JSON-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_INVALID_JSON-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_INVALID_JSON-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_INVALID_JSON-03/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_REQUIRED_FIELD_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_REQUIRED_FIELD_MISSING-01/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_REQUIRED_FIELD_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_REQUIRED_FIELD_MISSING-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_REQUIRED_FIELD_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_REQUIRED_FIELD_MISSING-03/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_UNSUPPORTED_FIELD-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_UNSUPPORTED_FIELD-01/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_UNSUPPORTED_FIELD-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_UNSUPPORTED_FIELD-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_UNSUPPORTED_FIELD-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_UNSUPPORTED_FIELD-03/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_VERSION_MISMATCH-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_VERSION_MISMATCH-01/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_VERSION_MISMATCH-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_VERSION_MISMATCH-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_VERSION_MISMATCH-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_VERSION_MISMATCH-03/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_WRONG_TYPE-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_WRONG_TYPE-01/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_WRONG_TYPE-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_WRONG_TYPE-02/evaluation-item.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-DEV-SCHEMA_WRONG_TYPE-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/context_retriever/NEI-CTX-DEV-SCHEMA_WRONG_TYPE-03/evaluation-item.json",
+      "target_node_id": "context.assess_sufficiency",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-01/evaluation-item.json",
+      "target_node_id": "planning.answer_only",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-02/evaluation-item.json",
+      "target_node_id": "planning.answer_only",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-04",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-04/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-05",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-05/evaluation-item.json",
+      "target_node_id": "planning.answer_only",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-06",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-06/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-07",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-07/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-08",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-08/evaluation-item.json",
+      "target_node_id": "planning.answer_only",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-09",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-09/evaluation-item.json",
+      "target_node_id": "planning.answer_only",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-10",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-10/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-11",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-11/evaluation-item.json",
+      "target_node_id": "planning.answer_only",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-12",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-12/evaluation-item.json",
+      "target_node_id": "planning.answer_only",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-13",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-13/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-14",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-14/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-19",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-19/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-20",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-20/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-21",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-21/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-22",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-22/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-23",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-23/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-NORMAL-24",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-NORMAL-24/evaluation-item.json",
+      "target_node_id": "planning.answer_only",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_ANSWER_ONLY_MISROUTED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_ANSWER_ONLY_MISROUTED-01/evaluation-item.json",
+      "target_node_id": "planning.answer_only",
+      "failure_reason_code": "PLAN_ANSWER_ONLY_MISROUTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_ANSWER_ONLY_MISROUTED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_ANSWER_ONLY_MISROUTED-02/evaluation-item.json",
+      "target_node_id": "planning.answer_only",
+      "failure_reason_code": "PLAN_ANSWER_ONLY_MISROUTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_ANSWER_ONLY_MISROUTED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_ANSWER_ONLY_MISROUTED-03/evaluation-item.json",
+      "target_node_id": "planning.answer_only",
+      "failure_reason_code": "PLAN_ANSWER_ONLY_MISROUTED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_ARGUMENT_CONSTRAINT_VIOLATION-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_ARGUMENT_CONSTRAINT_VIOLATION-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_ARGUMENT_CONSTRAINT_VIOLATION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_ARGUMENT_CONSTRAINT_VIOLATION-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_ARGUMENT_CONSTRAINT_VIOLATION-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_ARGUMENT_CONSTRAINT_VIOLATION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_ARGUMENT_CONSTRAINT_VIOLATION-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_ARGUMENT_CONSTRAINT_VIOLATION-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_ARGUMENT_CONSTRAINT_VIOLATION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_DEPENDENCY_INVALID-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_DEPENDENCY_INVALID-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_DEPENDENCY_INVALID",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_DEPENDENCY_INVALID-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_DEPENDENCY_INVALID-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_DEPENDENCY_INVALID",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_DEPENDENCY_INVALID-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_DEPENDENCY_INVALID-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_DEPENDENCY_INVALID",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_EXCESS_ACTION-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_EXCESS_ACTION-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_EXCESS_ACTION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_EXCESS_ACTION-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_EXCESS_ACTION-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_EXCESS_ACTION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_EXCESS_ACTION-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_EXCESS_ACTION-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_EXCESS_ACTION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_POLICY_RISK-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_POLICY_RISK-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_POLICY_RISK",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_POLICY_RISK-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_POLICY_RISK-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_POLICY_RISK",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_POLICY_RISK-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_POLICY_RISK-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_POLICY_RISK",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_REQUIRED_ACTION_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_REQUIRED_ACTION_MISSING-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_REQUIRED_ACTION_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_REQUIRED_ACTION_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_REQUIRED_ACTION_MISSING-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_REQUIRED_ACTION_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_REQUIRED_ACTION_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_REQUIRED_ACTION_MISSING-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_REQUIRED_ACTION_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_REQUIRED_EVIDENCE_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_REQUIRED_EVIDENCE_MISSING-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_REQUIRED_EVIDENCE_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_REQUIRED_EVIDENCE_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_REQUIRED_EVIDENCE_MISSING-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_REQUIRED_EVIDENCE_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_REQUIRED_EVIDENCE_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_REQUIRED_EVIDENCE_MISSING-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_REQUIRED_EVIDENCE_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_USER_SCOPE_VIOLATION-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_USER_SCOPE_VIOLATION-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_USER_SCOPE_VIOLATION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_USER_SCOPE_VIOLATION-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_USER_SCOPE_VIOLATION-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_USER_SCOPE_VIOLATION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_USER_SCOPE_VIOLATION-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_USER_SCOPE_VIOLATION-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_USER_SCOPE_VIOLATION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_WRONG_EFFECT_TYPE-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_WRONG_EFFECT_TYPE-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_WRONG_EFFECT_TYPE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_WRONG_EFFECT_TYPE-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_WRONG_EFFECT_TYPE-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_WRONG_EFFECT_TYPE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_WRONG_EFFECT_TYPE-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_WRONG_EFFECT_TYPE-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_WRONG_EFFECT_TYPE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_WRONG_TARGET-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_WRONG_TARGET-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_WRONG_TARGET",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_WRONG_TARGET-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_WRONG_TARGET-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_WRONG_TARGET",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_WRONG_TARGET-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_WRONG_TARGET-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_WRONG_TARGET",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_WRONG_TOOL-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_WRONG_TOOL-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_WRONG_TOOL",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_WRONG_TOOL-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_WRONG_TOOL-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_WRONG_TOOL",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-PLAN_WRONG_TOOL-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-PLAN_WRONG_TOOL-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "PLAN_WRONG_TOOL",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-READ_ONLY-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-READ_ONLY-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-READ_ONLY-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-READ_ONLY-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-READ_ONLY-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-READ_ONLY-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-READ_ONLY-04",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-READ_ONLY-04/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-READ_ONLY-05",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-READ_ONLY-05/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-READ_ONLY-06",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-READ_ONLY-06/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_INVALID_ENUM-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_INVALID_ENUM-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_INVALID_ENUM-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_INVALID_ENUM-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_INVALID_ENUM-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_INVALID_ENUM-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_INVALID_JSON-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_INVALID_JSON-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_INVALID_JSON-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_INVALID_JSON-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_INVALID_JSON-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_INVALID_JSON-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_REQUIRED_FIELD_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_REQUIRED_FIELD_MISSING-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_REQUIRED_FIELD_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_REQUIRED_FIELD_MISSING-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_REQUIRED_FIELD_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_REQUIRED_FIELD_MISSING-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_UNSUPPORTED_FIELD-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_UNSUPPORTED_FIELD-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_UNSUPPORTED_FIELD-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_UNSUPPORTED_FIELD-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_UNSUPPORTED_FIELD-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_UNSUPPORTED_FIELD-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_VERSION_MISMATCH-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_VERSION_MISMATCH-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_VERSION_MISMATCH-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_VERSION_MISMATCH-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_VERSION_MISMATCH-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_VERSION_MISMATCH-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_WRONG_TYPE-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_WRONG_TYPE-01/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_WRONG_TYPE-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_WRONG_TYPE-02/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-DEV-SCHEMA_WRONG_TYPE-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/planning/NEI-PLN-DEV-SCHEMA_WRONG_TYPE-03/evaluation-item.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_AMBIGUITY_MISSED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_AMBIGUITY_MISSED-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_AMBIGUITY_MISSED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_AMBIGUITY_MISSED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_AMBIGUITY_MISSED-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_AMBIGUITY_MISSED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_AMBIGUITY_MISSED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_AMBIGUITY_MISSED-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_AMBIGUITY_MISSED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_COMPLETION_CRITERIA_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_COMPLETION_CRITERIA_MISSING-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_COMPLETION_CRITERIA_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_COMPLETION_CRITERIA_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_COMPLETION_CRITERIA_MISSING-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_COMPLETION_CRITERIA_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_COMPLETION_CRITERIA_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_COMPLETION_CRITERIA_MISSING-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_COMPLETION_CRITERIA_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_CONSTRAINT_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_CONSTRAINT_MISSING-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_CONSTRAINT_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_CONSTRAINT_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_CONSTRAINT_MISSING-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_CONSTRAINT_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_CONSTRAINT_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_CONSTRAINT_MISSING-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_CONSTRAINT_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_ENTRY_MODE_WRONG-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_ENTRY_MODE_WRONG-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_ENTRY_MODE_WRONG",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_ENTRY_MODE_WRONG-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_ENTRY_MODE_WRONG-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_ENTRY_MODE_WRONG",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_ENTRY_MODE_WRONG-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_ENTRY_MODE_WRONG-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_ENTRY_MODE_WRONG",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_GOAL_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_GOAL_MISSING-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_GOAL_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_GOAL_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_GOAL_MISSING-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_GOAL_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_GOAL_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_GOAL_MISSING-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_GOAL_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_OVER_CONFIRMATION-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_OVER_CONFIRMATION-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_OVER_CONFIRMATION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_OVER_CONFIRMATION-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_OVER_CONFIRMATION-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_OVER_CONFIRMATION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_OVER_CONFIRMATION-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_OVER_CONFIRMATION-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_OVER_CONFIRMATION",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_UNSUPPORTED_SCOPE-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_UNSUPPORTED_SCOPE-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_UNSUPPORTED_SCOPE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_UNSUPPORTED_SCOPE-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_UNSUPPORTED_SCOPE-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_UNSUPPORTED_SCOPE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-INTENT_UNSUPPORTED_SCOPE-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-INTENT_UNSUPPORTED_SCOPE-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "INTENT_UNSUPPORTED_SCOPE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-04",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-04/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-05",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-05/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-06",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-06/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-07",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-07/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-08",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-08/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-09",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-09/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-10",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-10/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-11",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-11/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-12",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-12/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-13",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-13/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-NORMAL-14",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-NORMAL-14/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_INVALID_ENUM-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_INVALID_ENUM-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_INVALID_ENUM-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_INVALID_ENUM-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_INVALID_ENUM-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_INVALID_ENUM-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_INVALID_JSON-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_INVALID_JSON-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_INVALID_JSON-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_INVALID_JSON-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_INVALID_JSON-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_INVALID_JSON-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_REQUIRED_FIELD_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_REQUIRED_FIELD_MISSING-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_REQUIRED_FIELD_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_REQUIRED_FIELD_MISSING-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_REQUIRED_FIELD_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_REQUIRED_FIELD_MISSING-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_UNSUPPORTED_FIELD-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_UNSUPPORTED_FIELD-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_UNSUPPORTED_FIELD-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_UNSUPPORTED_FIELD-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_UNSUPPORTED_FIELD-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_UNSUPPORTED_FIELD-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_VERSION_MISMATCH-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_VERSION_MISMATCH-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_VERSION_MISMATCH-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_VERSION_MISMATCH-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_VERSION_MISMATCH-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_VERSION_MISMATCH-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_WRONG_TYPE-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_WRONG_TYPE-01/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_WRONG_TYPE-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_WRONG_TYPE-02/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-DEV-SCHEMA_WRONG_TYPE-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/request_understanding/NEI-RU-DEV-SCHEMA_WRONG_TYPE-03/evaluation-item.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-CONFIRM-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-CONFIRM-01/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-CONFIRM-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-CONFIRM-02/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-CONFIRM-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-CONFIRM-03/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "WORKFLOW_REDIRECTION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-01/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-02/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-03/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-04",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-04/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-05",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-05/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-06",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-06/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-07",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-07/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-08",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-08/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-09",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-09/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-10",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-10/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-11",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-11/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-12",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-12/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-13",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-13/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-NORMAL-14",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-NORMAL-14/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_ERROR_NOT_LOCALIZED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_ERROR_NOT_LOCALIZED-01/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_ERROR_NOT_LOCALIZED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_ERROR_NOT_LOCALIZED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_ERROR_NOT_LOCALIZED-02/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_ERROR_NOT_LOCALIZED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_ERROR_NOT_LOCALIZED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_ERROR_NOT_LOCALIZED-03/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_ERROR_NOT_LOCALIZED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_FALSE_BLOCK-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_FALSE_BLOCK-01/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_FALSE_BLOCK",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_FALSE_BLOCK-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_FALSE_BLOCK-02/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_FALSE_BLOCK",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_FALSE_BLOCK-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_FALSE_BLOCK-03/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_FALSE_BLOCK",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_FALSE_PASS-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_FALSE_PASS-01/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_FALSE_PASS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_FALSE_PASS-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_FALSE_PASS-02/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_FALSE_PASS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_FALSE_PASS-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_FALSE_PASS-03/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_FALSE_PASS",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_REPEATED_SAME_FAILURE-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_REPEATED_SAME_FAILURE-01/evaluation-item.json",
+      "target_node_id": "review.recheck",
+      "failure_reason_code": "REVIEW_REPEATED_SAME_FAILURE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_REPEATED_SAME_FAILURE-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_REPEATED_SAME_FAILURE-02/evaluation-item.json",
+      "target_node_id": "review.recheck",
+      "failure_reason_code": "REVIEW_REPEATED_SAME_FAILURE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_REPEATED_SAME_FAILURE-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_REPEATED_SAME_FAILURE-03/evaluation-item.json",
+      "target_node_id": "review.recheck",
+      "failure_reason_code": "REVIEW_REPEATED_SAME_FAILURE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_WRONG_ROUTE-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_WRONG_ROUTE-01/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_WRONG_ROUTE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_WRONG_ROUTE-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_WRONG_ROUTE-02/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_WRONG_ROUTE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-REVIEW_WRONG_ROUTE-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-REVIEW_WRONG_ROUTE-03/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "REVIEW_WRONG_ROUTE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_INVALID_ENUM-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_INVALID_ENUM-01/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_INVALID_ENUM-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_INVALID_ENUM-02/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_INVALID_ENUM-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_INVALID_ENUM-03/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_INVALID_JSON-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_INVALID_JSON-01/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_INVALID_JSON-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_INVALID_JSON-02/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_INVALID_JSON-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_INVALID_JSON-03/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_REQUIRED_FIELD_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_REQUIRED_FIELD_MISSING-01/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_REQUIRED_FIELD_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_REQUIRED_FIELD_MISSING-02/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_REQUIRED_FIELD_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_REQUIRED_FIELD_MISSING-03/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_UNSUPPORTED_FIELD-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_UNSUPPORTED_FIELD-01/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_UNSUPPORTED_FIELD-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_UNSUPPORTED_FIELD-02/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_UNSUPPORTED_FIELD-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_UNSUPPORTED_FIELD-03/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_VERSION_MISMATCH-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_VERSION_MISMATCH-01/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_VERSION_MISMATCH-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_VERSION_MISMATCH-02/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_VERSION_MISMATCH-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_VERSION_MISMATCH-03/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_WRONG_TYPE-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_WRONG_TYPE-01/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_WRONG_TYPE-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_WRONG_TYPE-02/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-DEV-SCHEMA_WRONG_TYPE-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/review/NEI-REV-DEV-SCHEMA_WRONG_TYPE-03/evaluation-item.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_CONFLICT_MISHANDLED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_CONFLICT_MISHANDLED-01/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_CONFLICT_MISHANDLED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_CONFLICT_MISHANDLED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_CONFLICT_MISHANDLED-02/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_CONFLICT_MISHANDLED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_CONFLICT_MISHANDLED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_CONFLICT_MISHANDLED-03/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_CONFLICT_MISHANDLED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_DUPLICATE_MISCLASSIFIED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_DUPLICATE_MISCLASSIFIED-01/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_DUPLICATE_MISCLASSIFIED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_DUPLICATE_MISCLASSIFIED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_DUPLICATE_MISCLASSIFIED-02/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_DUPLICATE_MISCLASSIFIED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_DUPLICATE_MISCLASSIFIED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_DUPLICATE_MISCLASSIFIED-03/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_DUPLICATE_MISCLASSIFIED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_NEEDS_MORE_DATA_MISSED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_NEEDS_MORE_DATA_MISSED-01/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_NEEDS_MORE_DATA_MISSED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_NEEDS_MORE_DATA_MISSED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_NEEDS_MORE_DATA_MISSED-02/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_NEEDS_MORE_DATA_MISSED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_NEEDS_MORE_DATA_MISSED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_NEEDS_MORE_DATA_MISSED-03/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_NEEDS_MORE_DATA_MISSED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_RELATION_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_RELATION_MISSING-01/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_RELATION_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_RELATION_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_RELATION_MISSING-02/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_RELATION_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_RELATION_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_RELATION_MISSING-03/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_RELATION_MISSING",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED-01/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED-02/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED-03/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_UNSUPPORTED_INFERENCE-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_UNSUPPORTED_INFERENCE-01/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_UNSUPPORTED_INFERENCE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_UNSUPPORTED_INFERENCE-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_UNSUPPORTED_INFERENCE-02/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_UNSUPPORTED_INFERENCE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-ANALYSIS_UNSUPPORTED_INFERENCE-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-ANALYSIS_UNSUPPORTED_INFERENCE-03/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "ANALYSIS_UNSUPPORTED_INFERENCE",
+      "retry_kind": "SEMANTIC_REVISION"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-01/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-02/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-03/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-04",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-04/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-05",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-05/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-06",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-06/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-07",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-07/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-08",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-08/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-09",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-09/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-10",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-10/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-11",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-11/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-12",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-12/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-13",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-13/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-NORMAL-14",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-NORMAL-14/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": null,
+      "retry_kind": "NONE"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_INVALID_ENUM-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_INVALID_ENUM-01/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_INVALID_ENUM-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_INVALID_ENUM-02/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_INVALID_ENUM-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_INVALID_ENUM-03/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_INVALID_JSON-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_INVALID_JSON-01/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_INVALID_JSON-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_INVALID_JSON-02/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_INVALID_JSON-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_INVALID_JSON-03/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_REQUIRED_FIELD_MISSING-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_REQUIRED_FIELD_MISSING-01/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_REQUIRED_FIELD_MISSING-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_REQUIRED_FIELD_MISSING-02/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_REQUIRED_FIELD_MISSING-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_REQUIRED_FIELD_MISSING-03/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_UNSUPPORTED_FIELD-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_UNSUPPORTED_FIELD-01/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_UNSUPPORTED_FIELD-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_UNSUPPORTED_FIELD-02/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_UNSUPPORTED_FIELD-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_UNSUPPORTED_FIELD-03/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_VERSION_MISMATCH-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_VERSION_MISMATCH-01/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_VERSION_MISMATCH-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_VERSION_MISMATCH-02/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_VERSION_MISMATCH-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_VERSION_MISMATCH-03/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_WRONG_TYPE-01",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_WRONG_TYPE-01/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_WRONG_TYPE-02",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_WRONG_TYPE-02/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-DEV-SCHEMA_WRONG_TYPE-03",
+      "path": "experiments/datasets/google_workspace/node_capability_dev/work_analysis/NEI-ANL-DEV-SCHEMA_WRONG_TYPE-03/evaluation-item.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    }
+  ],
+  "selection_hash": "3e716274813ee7eb3579cf76365b13271977fff5fa219c291e93602a6d4b2b9a"
+}

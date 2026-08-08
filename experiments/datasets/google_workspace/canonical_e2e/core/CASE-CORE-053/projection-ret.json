@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-053-RET",
+  "case_id": "CASE-CORE-053",
+  "projection_kind": "RETRIEVAL",
+  "applicable": false,
+  "not_applicable_reason": "context_retriever is skipped on the gold route.",
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-006",
+    "user_prompt_id": "UP-CORE-053",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "required_resource_ids": [],
+    "hard_negative_resource_ids": [],
+    "required_evidence_ids": []
+  },
+  "grader_ids": [
+    "grader.retrieval.deterministic",
+    "grader.retrieval.semantic"
+  ]
+}

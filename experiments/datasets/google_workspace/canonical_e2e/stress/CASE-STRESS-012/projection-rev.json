@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-STRESS-012-REV",
+  "case_id": "CASE-STRESS-012",
+  "projection_kind": "REVIEW",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-037",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "expected_result": "PASS",
+    "critical_checks": [
+      "tool",
+      "effect_type",
+      "target",
+      "evidence",
+      "scope",
+      "dependency",
+      "policy"
+    ]
+  },
+  "grader_ids": [
+    "grader.review.deterministic",
+    "grader.review.semantic"
+  ]
+}

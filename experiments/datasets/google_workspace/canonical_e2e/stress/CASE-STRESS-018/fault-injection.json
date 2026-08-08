@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "case_id": "CASE-STRESS-018",
+  "stress_kind": "VERIFICATION_TIMEOUT",
+  "fault_profile_ids": [
+    "FP-012"
+  ],
+  "auto_approve_write_actions": true,
+  "expected_no_duplicate_write": true,
+  "expected_runtime_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect",
+    "DOMAIN_VALIDATION",
+    "WAITING_APPROVAL",
+    "APPROVAL_GRANTED",
+    "PREFLIGHT",
+    "ACTION_EXECUTION",
+    "VERIFICATION",
+    "GET_RETRY_ONCE",
+    "RECOVERY_REQUIRED"
+  ],
+  "expected_terminal": {
+    "run_status": "RECOVERY_REQUIRED",
+    "result_kind": "NONE"
+  }
+}

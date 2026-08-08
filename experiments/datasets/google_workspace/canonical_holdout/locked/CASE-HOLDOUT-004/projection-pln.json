@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-HOLDOUT-004-PLN",
+  "case_id": "CASE-HOLDOUT-004",
+  "projection_kind": "PLANNING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-203",
+    "user_prompt_id": "UP-HOLDOUT-004",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "answer_type": "ACTION_PLAN",
+    "allowed_actions": [
+      {
+        "action_id": "ACT-HOLDOUT-004-1",
+        "tool_name": "gmail_create_draft",
+        "effect_type": "CREATE",
+        "target_resource_id": null,
+        "arguments": {
+          "to": [
+            "team@willow.example.test"
+          ],
+          "subject": "Willow 킥오프 준비",
+          "body": "킥오프 전 자료 공유 Task와 일정 준비 상태를 확인하고 있습니다."
+        },
+        "expected": {
+          "draft_created": true
+        },
+        "evidence_ids": [
+          "EVD-CH-W-202",
+          "EVD-CH-W-203",
+          "UE-HOLDOUT-004"
+        ],
+        "depends_on_action_ids": [],
+        "risk_codes": [],
+        "approval_required": true
+      }
+    ],
+    "policy_result": "REQUIRE_APPROVAL"
+  },
+  "grader_ids": [
+    "grader.planning.deterministic",
+    "grader.planning.semantic"
+  ]
+}

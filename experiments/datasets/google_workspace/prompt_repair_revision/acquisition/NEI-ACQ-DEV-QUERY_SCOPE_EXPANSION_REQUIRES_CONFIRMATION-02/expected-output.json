@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "result": "NEEDS_CONFIRMATION",
+  "plans": [],
+  "confirmation": {
+    "ambiguities": [
+      {
+        "type": "DURATION",
+        "candidates": [],
+        "required_question": "워크숍 예상 소요시간을 확인"
+      }
+    ]
+  },
+  "blocked_reason": null,
+  "stop_reason": "USER_CONFIRMATION_REQUIRED"
+}

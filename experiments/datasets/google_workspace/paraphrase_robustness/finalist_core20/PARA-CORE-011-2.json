@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-011-2",
+  "source_case_id": "CASE-CORE-011",
+  "source_user_prompt_id": "UP-CORE-011",
+  "paraphrase_group_id": "PG-CORE-011",
+  "variant_index": 2,
+  "language": "ko-KR",
+  "text": "Atlas Task와 인쇄소 슬롯을 대조해서 ops@atlas.example.test용 현재 상태 회신 초안만 작성해줘.",
+  "expected_entry_mode": "AGENT_SEARCH",
+  "expected_requested_outcome": "ACTION_PLAN",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

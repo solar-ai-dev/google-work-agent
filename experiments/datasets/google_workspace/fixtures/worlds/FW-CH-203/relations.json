@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "relations": [
+    {
+      "type": "SAME_PROJECT",
+      "from": "GTH-W-201",
+      "to": "TSK-W-201"
+    },
+    {
+      "type": "SAME_PROJECT",
+      "from": "EV-W-201",
+      "to": "TSK-W-201"
+    }
+  ]
+}

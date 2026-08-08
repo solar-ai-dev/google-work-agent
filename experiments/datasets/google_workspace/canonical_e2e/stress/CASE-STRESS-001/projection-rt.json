@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-STRESS-001-RT",
+  "case_id": "CASE-STRESS-001",
+  "projection_kind": "ROUTING_TRAJECTORY",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-011",
+    "user_prompt_id": "UP-CORE-009",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "expected_route": [
+      "request_understanding.classify",
+      "acquisition.plan_sources",
+      "acquisition.execute",
+      "ACQUISITION_PARTIAL",
+      "context.select_evidence",
+      "context.assess_sufficiency",
+      "analysis.analyze",
+      "planning.answer_only",
+      "review.inspect",
+      "complete_answer_only_run"
+    ],
+    "expected_skipped_nodes": [
+      "planning.draft_plan"
+    ],
+    "expected_tool_trajectory": [
+      {
+        "phase": "READ",
+        "tool": "gmail_search_threads",
+        "required": true,
+        "constraints": {
+          "fixture_scope": "FW-D-011"
+        },
+        "expected_outcome": "RATE_LIMITED"
+      },
+      {
+        "phase": "READ",
+        "tool": "gmail_get_thread",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "GTH-K-001"
+          ]
+        },
+        "expected_outcome": "RATE_LIMITED"
+      },
+      {
+        "phase": "READ",
+        "tool": "tasks_list_tasks",
+        "required": true,
+        "constraints": {
+          "status": "needsAction"
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "tasks_get_task",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "TSK-K-001"
+          ]
+        }
+      }
+    ],
+    "fault_profile_ids": [
+      "FP-002"
+    ],
+    "stress_kind": "READ_429_PARTIAL"
+  },
+  "grader_ids": [
+    "grader.routing_trajectory.deterministic",
+    "grader.routing_trajectory.semantic"
+  ]
+}

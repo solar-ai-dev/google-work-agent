@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "result": "REVISE",
+  "findings": [
+    {
+      "code": "PLAN_REQUIRED_EVIDENCE_MISSING",
+      "severity": "ERROR",
+      "action_id": "A1",
+      "field_paths": [
+        "/actions/0/evidence_ids"
+      ],
+      "evidence_ids": [],
+      "message": "PLAN_REQUIRED_EVIDENCE_MISSING"
+    }
+  ],
+  "localized_failure_codes": [
+    "PLAN_REQUIRED_EVIDENCE_MISSING"
+  ],
+  "next_route": "PLANNING",
+  "recheck_required": true
+}

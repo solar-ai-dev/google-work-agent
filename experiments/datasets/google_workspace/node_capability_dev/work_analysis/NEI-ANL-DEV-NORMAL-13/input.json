@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-013",
+  "user_goal": "Quartz 납품일 확인 회신을 실제 전송하는 승인형 SEND 계획을 만든다.",
+  "context_result": {
+    "schema_version": 1,
+    "result": "BLOCKED",
+    "selected_segment_ids": [
+      "SEG-GM-Q-001"
+    ],
+    "evidence_drafts": [
+      {
+        "evidence_id": "EVD-SEG-GM-Q-001-1",
+        "segment_id": "SEG-GM-Q-001",
+        "resource_id": "GM-Q-001",
+        "claim": "Quartz 납품일은 8월 21일로 확정되었다.",
+        "excerpt": "납품일은 8월 21일로 확정했습니다.",
+        "confidence": "HIGH"
+      }
+    ],
+    "excluded_segment_ids": [],
+    "conflicts": [],
+    "ignored_untrusted_instruction_ids": [],
+    "token_budget": {
+      "max_tokens": 900,
+      "used_tokens": 190
+    },
+    "missing_slots": [],
+    "confidence_band": "HIGH",
+    "next_route": "BLOCK"
+  },
+  "policy_summary": {
+    "duplicate_final_decision": "DETERMINISTIC_VALIDATOR",
+    "schedule_final_decision": "DETERMINISTIC_VALIDATOR",
+    "no_write_execution": true
+  },
+  "mutation_spec": {
+    "kind": "NONE",
+    "notes": [
+      "Gold Context 기반 정상 Work Analysis 평가"
+    ]
+  }
+}

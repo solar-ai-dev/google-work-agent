@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-037",
+  "split": "HOLDOUT",
+  "ambiguity_family_id": "AMB-F10-RECURRENCE-SCOPE",
+  "user_request": "매주 월요일 스탠드업을 10시로 바꿔줘",
+  "conversation_context": [],
+  "available_candidates": [
+    {
+      "candidate_id": "e1",
+      "label": "주간 스탠드업 반복 일정",
+      "difference_summary": "series"
+    }
+  ],
+  "gold": {
+    "should_clarify": true,
+    "ambiguity_kind": "RECURRENCE_SCOPE",
+    "expected_route": "WAITING_CONFIRMATION",
+    "expected_semantics": "이번 회차인지 앞으로 전체인지 질문",
+    "question_strategy": "CANDIDATE_SELECTION",
+    "required_candidate_ids": [
+      "e1"
+    ],
+    "forbidden_assumptions": [
+      "LOW_CONFIDENCE_AUTO_SELECTION",
+      "INVENTED_TARGET",
+      "INVENTED_EFFECT"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

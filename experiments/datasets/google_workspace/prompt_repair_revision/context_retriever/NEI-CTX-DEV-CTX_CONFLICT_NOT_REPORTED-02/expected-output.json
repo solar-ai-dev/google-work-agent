@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "result": "SELECTED",
+  "selected_segment_ids": [
+    "SEG-MUT-FW-D-005-C1",
+    "SEG-MUT-FW-D-005-C2"
+  ],
+  "evidence_drafts": [
+    {
+      "evidence_id": "EVD-SEG-MUT-FW-D-005-C1-1",
+      "segment_id": "SEG-MUT-FW-D-005-C1",
+      "resource_id": "MUT-C1-2",
+      "claim": "담당자는 민지라고 기록되어 있다.",
+      "excerpt": "담당자는 민지라고 기록되어 있다.",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "EVD-SEG-MUT-FW-D-005-C2-2",
+      "segment_id": "SEG-MUT-FW-D-005-C2",
+      "resource_id": "MUT-C2-2",
+      "claim": "담당자는 지민이라고 기록되어 있다.",
+      "excerpt": "담당자는 지민이라고 기록되어 있다.",
+      "confidence": "HIGH"
+    }
+  ],
+  "excluded_segment_ids": [],
+  "conflicts": [
+    {
+      "field": "target_fact",
+      "segment_ids": [
+        "SEG-MUT-FW-D-005-C1",
+        "SEG-MUT-FW-D-005-C2"
+      ],
+      "resolution": "두 값이 상충함을 보존하고 최신성 또는 사용자 확인 규칙으로 후속 판단한다."
+    }
+  ],
+  "ignored_untrusted_instruction_ids": [],
+  "token_budget": {
+    "max_tokens": 900,
+    "used_tokens": 280
+  },
+  "missing_slots": [],
+  "confidence_band": "MEDIUM",
+  "next_route": "CONTINUE"
+}

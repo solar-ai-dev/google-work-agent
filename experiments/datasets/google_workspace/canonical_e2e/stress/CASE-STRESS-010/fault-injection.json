@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "case_id": "CASE-STRESS-010",
+  "stress_kind": "LOWCONF_CONFIRM",
+  "fault_profile_ids": [],
+  "auto_approve_write_actions": false,
+  "expected_no_duplicate_write": true,
+  "expected_runtime_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "acquisition.revise_partial",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "acquisition.revise_partial",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "WAITING_CONFIRMATION"
+  ],
+  "expected_terminal": {
+    "run_status": "WAITING_CONFIRMATION",
+    "result_kind": "NONE"
+  }
+}

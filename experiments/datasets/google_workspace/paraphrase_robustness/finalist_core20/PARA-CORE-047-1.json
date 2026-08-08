@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-047-1",
+  "source_case_id": "CASE-CORE-047",
+  "source_user_prompt_id": "UP-CORE-047",
+  "paraphrase_group_id": "PG-CORE-047",
+  "variant_index": 1,
+  "language": "ko-KR",
+  "text": "Echo 기존 검토 Task 마감은 오늘 17시로 바꾸고, 오늘 16시부터 한 시간 최종 검토 Event도 준비해줘. 메일·Task·Calendar를 확인해.",
+  "expected_entry_mode": "AGENT_SEARCH",
+  "expected_requested_outcome": "ACTION_PLAN",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

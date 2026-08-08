@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-015-RT",
+  "case_id": "CASE-CORE-015",
+  "projection_kind": "ROUTING_TRAJECTORY",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-011",
+    "user_prompt_id": "UP-CORE-015",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "expected_route": [
+      "request_understanding.classify",
+      "acquisition.plan_sources",
+      "acquisition.execute",
+      "context.select_evidence",
+      "context.assess_sufficiency",
+      "analysis.analyze",
+      "planning.draft_plan",
+      "review.inspect",
+      "DOMAIN_VALIDATION",
+      "WAITING_APPROVAL"
+    ],
+    "expected_skipped_nodes": [],
+    "expected_tool_trajectory": [
+      {
+        "phase": "READ",
+        "tool": "tasks_list_tasks",
+        "required": true,
+        "constraints": {
+          "status": "needsAction"
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "tasks_get_task",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "TSK-K-001"
+          ]
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "calendar_list_events",
+        "required": true,
+        "constraints": {
+          "fixture_scope": "FW-D-011"
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "calendar_query_freebusy",
+        "required": true,
+        "constraints": {
+          "calendar_id": "CAL-PRIMARY"
+        }
+      },
+      {
+        "phase": "WRITE",
+        "when": "AFTER_APPROVAL",
+        "tool": "gmail_create_draft",
+        "required": true,
+        "constraints": {
+          "to": [
+            "vendor-status@example.test"
+          ],
+          "subject": "Kestrel 일정 확인",
+          "body": "대체 일정 확인 작업이 진행 중이며 내일 확인 가능한 시간대를 확보했습니다."
+        }
+      },
+      {
+        "phase": "VERIFY",
+        "when": "AFTER_WRITE",
+        "tool": "gmail_get_draft",
+        "required": true,
+        "constraints": {
+          "target": "CREATED_RESOURCE"
+        }
+      }
+    ]
+  },
+  "grader_ids": [
+    "grader.routing_trajectory.deterministic",
+    "grader.routing_trajectory.semantic"
+  ]
+}

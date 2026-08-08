@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-009-E2E",
+  "case_id": "CASE-CORE-009",
+  "projection_kind": "E2E",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-011",
+    "user_prompt_id": "UP-CORE-009",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "end_state_expectation": {
+      "initial": {
+        "run_status": "COMPLETED",
+        "result_kind": "FULL"
+      },
+      "after_user_action": null
+    },
+    "approval_expectation": {
+      "required": false,
+      "scope": "ACTION_LEVEL",
+      "no_write_before_approval": true
+    },
+    "verification_expectation": {
+      "required": false,
+      "policy": "NONE",
+      "all_writes_re_read": false
+    },
+    "completion_criteria": [
+      "Gmail과 Tasks를 모두 조회한다.",
+      "선적 이틀 지연과 진행 중 Task를 구분해 답한다."
+    ]
+  },
+  "grader_ids": [
+    "grader.e2e.deterministic",
+    "grader.e2e.semantic"
+  ]
+}

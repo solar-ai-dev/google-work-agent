@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-014",
+  "split": "DEV",
+  "ambiguity_family_id": "AMB-F04-LOW-INFO-ACTION-WITH-CONTEXT",
+  "user_request": "그거 시작해줘",
+  "conversation_context": [
+    "직전 user: 오늘 3시에 30분 회의 일정 만들어줘",
+    "직전 assistant: 일정 계획 준비 완료"
+  ],
+  "available_candidates": [],
+  "gold": {
+    "should_clarify": false,
+    "ambiguity_kind": "ACTION_SEMANTICS",
+    "expected_route": "CONTINUE",
+    "expected_semantics": "직전 Event 생성 계획 진행",
+    "question_strategy": "NONE",
+    "required_candidate_ids": [],
+    "forbidden_assumptions": [
+      "UNNECESSARY_CLARIFICATION"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "relations": [
+    {
+      "type": "AMBIGUOUS_PERSON",
+      "from": "박민수",
+      "to": [
+        "GTH-C-001",
+        "GTH-C-002"
+      ]
+    }
+  ]
+}

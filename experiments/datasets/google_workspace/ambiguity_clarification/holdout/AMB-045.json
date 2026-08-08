@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-045",
+  "split": "HOLDOUT",
+  "ambiguity_family_id": "AMB-F12-CALENDAR-RELATION",
+  "user_request": "1~3일 워크샵 안에 2일 오후 2시 내부 미팅도 넣어줘",
+  "conversation_context": [],
+  "available_candidates": [
+    {
+      "candidate_id": "e1",
+      "label": "1~3일 워크샵",
+      "difference_summary": "parent"
+    }
+  ],
+  "gold": {
+    "should_clarify": false,
+    "ambiguity_kind": "RELATION",
+    "expected_route": "CONTINUE",
+    "expected_semantics": "관련된 nested overlap으로 허용",
+    "question_strategy": "NONE",
+    "required_candidate_ids": [],
+    "forbidden_assumptions": [
+      "UNNECESSARY_CLARIFICATION"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

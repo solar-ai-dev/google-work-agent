@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-H-101",
+  "user_goal": "Asia/Seoul 기준 이번 달 범위를 적용해 Meridian 출시의 확정 마감만 답한다.",
+  "evidence": [
+    {
+      "evidence_id": "EVD-SEG-GM-M-101-1",
+      "segment_id": "SEG-GM-M-101",
+      "resource_id": "GM-M-101",
+      "claim": "Meridian 최종 카피 마감은 8월 18일이다.",
+      "excerpt": "최종 카피 마감은 8월 18일입니다.",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "EVD-SEG-TSK-M-101-2",
+      "segment_id": "SEG-TSK-M-101",
+      "resource_id": "TSK-M-101",
+      "claim": "Meridian 최종 카피 Task 기한도 8월 18일이다.",
+      "excerpt": "제목: Meridian 최종 카피 / 기한: 2026-08-18T09:00:00Z / 상태: needsAction / 메모: ",
+      "confidence": "HIGH"
+    }
+  ],
+  "plan": {
+    "schema_version": 1,
+    "result": "ANSWER_ONLY",
+    "answer_draft": "현재 Evidence 범위에서 확인되는 사실과 한계를 요약한다.",
+    "actions": [],
+    "confirmation_question": null,
+    "blocked_reason_codes": []
+  },
+  "prior_failure_signature": null
+}

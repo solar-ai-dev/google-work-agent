@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-004-ACQ",
+  "case_id": "CASE-CORE-004",
+  "projection_kind": "ACQUISITION",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-010",
+    "user_prompt_id": "UP-CORE-004",
+    "entry_mode": "RESOURCE_SELECTED"
+  },
+  "gold": {
+    "required_sources": [],
+    "forbidden_sources": [
+      "GMAIL",
+      "TASKS"
+    ],
+    "source_fetch_plan": [],
+    "expected_result": "NO_FETCH_NEEDED",
+    "reason": "Selected resource ID and explicit READ action are sufficient to plan the read without prefetch."
+  },
+  "grader_ids": [
+    "grader.acquisition.deterministic",
+    "grader.acquisition.semantic"
+  ]
+}

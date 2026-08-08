@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-H-101",
+  "split_scope": "HOLDOUT",
+  "scenario_family_id": "SF-HOLDOUT-101",
+  "fixture_relation_family": "RF-HOLDOUT-101",
+  "title": "Meridian 브랜드 출시 범위 확인",
+  "locale": "ko-KR",
+  "timezone": "Asia/Seoul",
+  "as_of": "2026-08-07T14:09:00+09:00",
+  "business_context": "브랜드 출시 관련 유사 Thread가 여러 기간에 걸쳐 있고 사용자가 이번 달이라고만 표현한다.",
+  "user_profile": {
+    "account_email": "user@example.test",
+    "work_hours": {
+      "weekdays": "09:00-18:00"
+    },
+    "default_tasklist_id": "TL-WORK",
+    "default_calendar_id": "CAL-PRIMARY"
+  },
+  "source_files": {
+    "gmail": "gmail.json",
+    "tasks": "tasks.json",
+    "calendar": "calendar.json",
+    "relations": "relations.json"
+  },
+  "resource_ids": {
+    "gmail": [
+      "GTH-M-101",
+      "GTH-M-199",
+      "GM-M-101",
+      "GM-M-199"
+    ],
+    "tasks": [
+      "TSK-M-101"
+    ],
+    "calendar": []
+  },
+  "tags": [
+    "holdout",
+    "date_scope",
+    "hard_negative"
+  ]
+}

@@ -1,0 +1,263 @@
+{
+  "schema_version": 1,
+  "selection_id": "SEL-E02B-HOLDOUT",
+  "layer": "prompt_repair_revision",
+  "split": "HOLDOUT",
+  "locked": true,
+  "item_count": 36,
+  "items": [
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-SCHEMA_INVALID_ENUM-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-SCHEMA_INVALID_ENUM-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-SCHEMA_INVALID_JSON-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-SCHEMA_INVALID_JSON-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-SCHEMA_REQUIRED_FIELD_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-SCHEMA_REQUIRED_FIELD_MISSING-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-SCHEMA_UNSUPPORTED_FIELD-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-SCHEMA_UNSUPPORTED_FIELD-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-SCHEMA_VERSION_MISMATCH-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-SCHEMA_VERSION_MISMATCH-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ACQ-HOLDOUT-SCHEMA_WRONG_TYPE-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/acquisition/NEI-ACQ-HOLDOUT-SCHEMA_WRONG_TYPE-01/retry-decision.json",
+      "target_node_id": "acquisition.plan_sources",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-SCHEMA_INVALID_ENUM-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-SCHEMA_INVALID_ENUM-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-SCHEMA_INVALID_JSON-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-SCHEMA_INVALID_JSON-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-SCHEMA_REQUIRED_FIELD_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-SCHEMA_REQUIRED_FIELD_MISSING-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-SCHEMA_UNSUPPORTED_FIELD-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-SCHEMA_UNSUPPORTED_FIELD-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-SCHEMA_VERSION_MISMATCH-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-SCHEMA_VERSION_MISMATCH-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-CTX-HOLDOUT-SCHEMA_WRONG_TYPE-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/context_retriever/NEI-CTX-HOLDOUT-SCHEMA_WRONG_TYPE-01/retry-decision.json",
+      "target_node_id": "context.select_evidence",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-SCHEMA_INVALID_ENUM-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-SCHEMA_INVALID_ENUM-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-SCHEMA_INVALID_JSON-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-SCHEMA_INVALID_JSON-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-SCHEMA_REQUIRED_FIELD_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-SCHEMA_REQUIRED_FIELD_MISSING-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-SCHEMA_UNSUPPORTED_FIELD-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-SCHEMA_UNSUPPORTED_FIELD-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-SCHEMA_VERSION_MISMATCH-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-SCHEMA_VERSION_MISMATCH-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-PLN-HOLDOUT-SCHEMA_WRONG_TYPE-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/planning/NEI-PLN-HOLDOUT-SCHEMA_WRONG_TYPE-01/retry-decision.json",
+      "target_node_id": "planning.draft_plan",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-HOLDOUT-SCHEMA_INVALID_ENUM-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/request_understanding/NEI-RU-HOLDOUT-SCHEMA_INVALID_ENUM-01/retry-decision.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-HOLDOUT-SCHEMA_INVALID_JSON-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/request_understanding/NEI-RU-HOLDOUT-SCHEMA_INVALID_JSON-01/retry-decision.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-HOLDOUT-SCHEMA_REQUIRED_FIELD_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/request_understanding/NEI-RU-HOLDOUT-SCHEMA_REQUIRED_FIELD_MISSING-01/retry-decision.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-HOLDOUT-SCHEMA_UNSUPPORTED_FIELD-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/request_understanding/NEI-RU-HOLDOUT-SCHEMA_UNSUPPORTED_FIELD-01/retry-decision.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-HOLDOUT-SCHEMA_VERSION_MISMATCH-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/request_understanding/NEI-RU-HOLDOUT-SCHEMA_VERSION_MISMATCH-01/retry-decision.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-RU-HOLDOUT-SCHEMA_WRONG_TYPE-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/request_understanding/NEI-RU-HOLDOUT-SCHEMA_WRONG_TYPE-01/retry-decision.json",
+      "target_node_id": "request_understanding.classify",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-HOLDOUT-SCHEMA_INVALID_ENUM-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/review/NEI-REV-HOLDOUT-SCHEMA_INVALID_ENUM-01/retry-decision.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-HOLDOUT-SCHEMA_INVALID_JSON-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/review/NEI-REV-HOLDOUT-SCHEMA_INVALID_JSON-01/retry-decision.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-HOLDOUT-SCHEMA_REQUIRED_FIELD_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/review/NEI-REV-HOLDOUT-SCHEMA_REQUIRED_FIELD_MISSING-01/retry-decision.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-HOLDOUT-SCHEMA_UNSUPPORTED_FIELD-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/review/NEI-REV-HOLDOUT-SCHEMA_UNSUPPORTED_FIELD-01/retry-decision.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-HOLDOUT-SCHEMA_VERSION_MISMATCH-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/review/NEI-REV-HOLDOUT-SCHEMA_VERSION_MISMATCH-01/retry-decision.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-REV-HOLDOUT-SCHEMA_WRONG_TYPE-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/review/NEI-REV-HOLDOUT-SCHEMA_WRONG_TYPE-01/retry-decision.json",
+      "target_node_id": "review.inspect",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-HOLDOUT-SCHEMA_INVALID_ENUM-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/work_analysis/NEI-ANL-HOLDOUT-SCHEMA_INVALID_ENUM-01/retry-decision.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-HOLDOUT-SCHEMA_INVALID_JSON-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/work_analysis/NEI-ANL-HOLDOUT-SCHEMA_INVALID_JSON-01/retry-decision.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-HOLDOUT-SCHEMA_REQUIRED_FIELD_MISSING-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/work_analysis/NEI-ANL-HOLDOUT-SCHEMA_REQUIRED_FIELD_MISSING-01/retry-decision.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-HOLDOUT-SCHEMA_UNSUPPORTED_FIELD-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/work_analysis/NEI-ANL-HOLDOUT-SCHEMA_UNSUPPORTED_FIELD-01/retry-decision.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-HOLDOUT-SCHEMA_VERSION_MISMATCH-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/work_analysis/NEI-ANL-HOLDOUT-SCHEMA_VERSION_MISMATCH-01/retry-decision.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "retry_kind": "SCHEMA_REPAIR"
+    },
+    {
+      "evaluation_item_id": "NEI-ANL-HOLDOUT-SCHEMA_WRONG_TYPE-01",
+      "path": "experiments/datasets/google_workspace/prompt_repair_revision/work_analysis/NEI-ANL-HOLDOUT-SCHEMA_WRONG_TYPE-01/retry-decision.json",
+      "target_node_id": "analysis.analyze",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "retry_kind": "SCHEMA_REPAIR"
+    }
+  ],
+  "selection_hash": "e39f6d80a59d4e1608f647557854b33ad6419a9463e8e0e6efb60651e5d02721"
+}

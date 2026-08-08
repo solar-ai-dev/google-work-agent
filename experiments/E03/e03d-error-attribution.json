@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "experiment_id": "EXP-E03D-ERROR-ATTRIBUTION",
+  "experiment_family": "E03",
+  "sub_experiment": "E03-D",
+  "status": "ANALYSIS_ONLY",
+  "purpose": "Attribute downstream failures to upstream vs target node using E03-A/B/C outputs.",
+  "independent_variable": "NONE_ANALYSIS_ONLY",
+  "fixed_dimensions": {
+    "dataset_version": "rebuild-v1.9",
+    "graph_version": "SIX_ROLE_BASELINE",
+    "prompt_bundle_version": "0.7.0-r7",
+    "tool_schema_version": "v2.4",
+    "policy_version": "01-B-v2.3",
+    "retrieval_config_version": "baseline-r6",
+    "model_binding": "MUST_RESOLVE_FROM_E01_FINALIST"
+  },
+  "dataset_selection_ref": "experiments/E03/e03d-attribution-analysis.json",
+  "candidate_config_refs": [
+    "experiments/candidates/candidate-e01-finalist-prompt-baseline.template.json"
+  ],
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.2.json",
+  "trial_policy": {
+    "dev_trials_per_item": 0,
+    "holdout_trials_per_item": 0,
+    "repeatability_trials_for_finalist": 0,
+    "randomization": "NOT_APPLICABLE",
+    "seed": 260807
+  },
+  "budget_policy": {
+    "normal_max_llm_calls": 0,
+    "retrieval_heavy_max_llm_calls": 0,
+    "revision_heavy_max_llm_calls": 0,
+    "absolute_max_llm_calls": 0,
+    "provider_request_retry_429_5xx": 0,
+    "stop_before_budget_exceeded": true
+  },
+  "preconditions": [
+    "E03A_RESULTS_AVAILABLE",
+    "E03B_RESULTS_AVAILABLE",
+    "E03C_RESULTS_AVAILABLE"
+  ],
+  "metrics": [
+    "oracle_node_accuracy",
+    "live_node_accuracy",
+    "mutated_node_accuracy",
+    "handoff_degradation",
+    "upstream_error_tag_downstream_failure_rate",
+    "recovery_after_revision_rate"
+  ],
+  "result_artifacts": [
+    "summary_metrics.json",
+    "case_failures.jsonl",
+    "human_review.md"
+  ],
+  "notes": [
+    "No model calls are made in E03-D."
+  ]
+}

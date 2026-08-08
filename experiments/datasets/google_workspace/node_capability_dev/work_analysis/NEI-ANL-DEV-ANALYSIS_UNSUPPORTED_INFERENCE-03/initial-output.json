@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "result": "COMPLETE",
+  "relations": [
+    {
+      "relation_type": "OWNER",
+      "subject_id": "WORK_ITEM",
+      "object_id": "민지",
+      "evidence_ids": [
+        "EVD-CTRL-UNSUP-1"
+      ],
+      "confidence": "HIGH"
+    }
+  ],
+  "duplicates": [],
+  "schedule_risks": [],
+  "conflicts": [],
+  "unsupported_inferences": [
+    "담당자는 민지다."
+  ],
+  "missing_data": [],
+  "next_route": "PLANNING"
+}

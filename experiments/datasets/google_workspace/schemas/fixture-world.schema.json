@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/fixture-world.schema.json",
+  "title": "FixtureWorldV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "fixture_snapshot_id",
+    "split_scope",
+    "scenario_family_id",
+    "fixture_relation_family",
+    "title",
+    "locale",
+    "timezone",
+    "as_of",
+    "business_context",
+    "user_profile",
+    "source_files",
+    "resource_ids",
+    "tags"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "fixture_snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "split_scope": {
+      "enum": [
+        "DEV",
+        "HOLDOUT"
+      ]
+    },
+    "scenario_family_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fixture_relation_family": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "locale": {
+      "enum": [
+        "ko-KR",
+        "en-US",
+        "mixed"
+      ]
+    },
+    "timezone": {
+      "type": "string",
+      "minLength": 1
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "business_context": {
+      "type": "string",
+      "minLength": 1
+    },
+    "user_profile": {
+      "type": "object"
+    },
+    "source_files": {
+      "type": "object",
+      "required": [
+        "gmail",
+        "tasks",
+        "calendar",
+        "relations"
+      ],
+      "properties": {
+        "gmail": {
+          "type": "string"
+        },
+        "tasks": {
+          "type": "string"
+        },
+        "calendar": {
+          "type": "string"
+        },
+        "relations": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "resource_ids": {
+      "type": "object",
+      "required": [
+        "gmail",
+        "tasks",
+        "calendar"
+      ],
+      "properties": {
+        "gmail": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "calendar": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-010",
+  "user_goal": "요청 Event가 OOO와 겹치는지 일정 위험을 분류한다.",
+  "context_result": {
+    "schema_version": 1,
+    "result": "SELECTED",
+    "selected_segment_ids": [
+      "SEG-CTRL-SCH-1",
+      "SEG-CTRL-SCH-2"
+    ],
+    "evidence_drafts": [
+      {
+        "evidence_id": "EVD-CTRL-SCH-1",
+        "segment_id": "SEG-CTRL-SCH-1",
+        "resource_id": "RES-CTRL-SCH-1",
+        "claim": "요청 시간은 15:00~16:00 KST이다.",
+        "excerpt": "사용자 요청: 2026-08-12 15:00~16:00 KST에 1시간 작업 Event.",
+        "confidence": "HIGH"
+      },
+      {
+        "evidence_id": "EVD-CTRL-SCH-2",
+        "segment_id": "SEG-CTRL-SCH-2",
+        "resource_id": "RES-CTRL-SCH-2",
+        "claim": "동일 시간대에 OOO가 있다.",
+        "excerpt": "Calendar OOO: 2026-08-12 15:00~17:00 KST, opaque.",
+        "confidence": "HIGH"
+      }
+    ],
+    "excluded_segment_ids": [],
+    "conflicts": [],
+    "ignored_untrusted_instruction_ids": [],
+    "token_budget": {
+      "max_tokens": 900,
+      "used_tokens": 320
+    },
+    "missing_slots": [],
+    "confidence_band": "HIGH",
+    "next_route": "CONTINUE"
+  },
+  "policy_summary": {
+    "duplicate_final_decision": "DETERMINISTIC_VALIDATOR",
+    "schedule_final_decision": "DETERMINISTIC_VALIDATOR",
+    "no_write_execution": true
+  },
+  "mutation_spec": {
+    "kind": "OOO_OVERLAP",
+    "notes": []
+  }
+}

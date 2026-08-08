@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "failure_id": "FAIL-NEI-ACQ-DEV-QUERY_RATE_LIMITED-02",
+  "failure_reason_code": "QUERY_RATE_LIMITED",
+  "failure_origin": "PROVIDER",
+  "detected_by": "RUNTIME_PROVIDER",
+  "runtime_disposition": "DETERMINISTIC",
+  "experiment_disposition": "COUNT_FAILURE",
+  "affected_field_paths": [
+    "/result"
+  ],
+  "evidence_refs": []
+}

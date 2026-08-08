@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-V-201",
+      "subject": "[Vela] 청구 이의 접수",
+      "participants": [
+        "dispute@vela.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-V-201",
+          "sender": "dispute@vela.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T01:30:00Z",
+          "body": "청구 이의 담당은 서현입니다. 증빙은 8월 12일 17시까지 부탁드립니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-V-202",
+      "subject": "[Vela] 일반 청구 문의",
+      "participants": [
+        "billing@vela.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-V-202",
+          "sender": "billing@vela.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T02:00:00Z",
+          "body": "일반 청구 문의 담당은 서연입니다."
+        }
+      ]
+    }
+  ]
+}

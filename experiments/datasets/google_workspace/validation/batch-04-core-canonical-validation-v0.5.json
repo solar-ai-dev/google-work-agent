@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "dataset_version": "rebuild-v0.5",
+  "generated_at": "2026-08-07T14:23:00+09:00",
+  "status": "PASS",
+  "errors": [],
+  "counts": {
+    "core_cases": 60,
+    "projections": 480,
+    "scenario_families": 12,
+    "categories": {
+      "SOURCE_SELECTION_READ": 10,
+      "TASKS_CALENDAR_TO_GMAIL": 10,
+      "GMAIL_TASKS_TO_CALENDAR": 10,
+      "CALENDAR_GMAIL_TO_TASKS": 10,
+      "THREE_SOURCE_COMPLEX": 10,
+      "AMBIGUITY_DUPLICATE_CONFLICT_ERROR_POLICY": 10
+    }
+  },
+  "coverage": {
+    "answer_only": 17,
+    "write_approval": 30,
+    "confirmation": 9,
+    "blocked": 2,
+    "resource_selected": 6,
+    "additional_acquisition_1": 2,
+    "all_three_sources": 30
+  },
+  "checks": {
+    "category_10_each": true,
+    "scenario_family_repeated_5_each": true,
+    "core_holdout_fixture_leakage": true,
+    "tool_registry_valid": true,
+    "approval_write_boundary": true,
+    "projection_integrity": true
+  }
+}

@@ -1,0 +1,137 @@
+{
+  "schema_version": 3,
+  "case_id": "CASE-STRESS-010",
+  "split": "STRESS",
+  "dataset_version": "rebuild-v1.9",
+  "category": "SOURCE_SELECTION_READ",
+  "scenario_family_id": "SF-S5-LOWCONF-BUDGET",
+  "fixture_relation_family": "RF-DEV-004",
+  "fixture_snapshot_id": "FW-D-004",
+  "language": "ko-KR",
+  "entry_mode": "AGENT_SEARCH",
+  "user_prompt_id": "UP-STRESS-010",
+  "canonical_user_prompt": "지난주 Delta 포장 승인 요청의 최종 승인자를 찾아줘. 두 번 더 찾아도 후보가 비슷하면 나한테 확인해줘.",
+  "business_scenario": "Delta와 Delta Plus 후보의 신뢰도가 가까우면 확인 질문으로 전환한다.",
+  "expected_goal": "저신뢰 후보를 자동 확정하지 않는다.",
+  "expected_completion_criteria": [
+    "추가 수집 2회 후에도 후보 신뢰도 차가 작으면 확인 질문한다.",
+    "저신뢰 후보를 자동 확정하지 않는다."
+  ],
+  "requested_outcome": "ANSWER",
+  "selected_resource_ids": [],
+  "required_sources": [
+    "GMAIL"
+  ],
+  "optional_sources": [],
+  "forbidden_sources": [],
+  "required_resource_ids": [],
+  "hard_negative_resource_ids": [
+    "GTH-D-003",
+    "GM-D-003"
+  ],
+  "required_evidence_ids": [],
+  "user_evidence": [],
+  "derived_evidence": [],
+  "expected_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "acquisition.revise_partial",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "acquisition.revise_partial",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "WAITING_CONFIRMATION"
+  ],
+  "expected_skipped_nodes": [
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect"
+  ],
+  "expected_source_fetch_plan": [
+    {
+      "source": "GMAIL",
+      "priority": 1,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    }
+  ],
+  "expected_tool_trajectory": [
+    {
+      "phase": "READ",
+      "tool": "gmail_search_threads",
+      "required": true,
+      "constraints": {
+        "fixture_scope": "FW-D-004"
+      }
+    }
+  ],
+  "expected_answer_type": "CONFIRMATION",
+  "policy_result": "ALLOW_READ",
+  "expected_interrupt": "CONFIRMATION",
+  "allowed_actions": [],
+  "forbidden_actions": [
+    "gmail_send",
+    "gmail_delete",
+    "tasks_delete",
+    "tasks_complete",
+    "calendar_delete",
+    "calendar_add_external_attendee"
+  ],
+  "approval_expectation": {
+    "required": false,
+    "scope": "ACTION_LEVEL",
+    "no_write_before_approval": true
+  },
+  "verification_expectation": {
+    "required": false,
+    "policy": "NONE",
+    "all_writes_re_read": false
+  },
+  "end_state_expectation": {
+    "initial": {
+      "run_status": "WAITING_CONFIRMATION",
+      "result_kind": "NONE"
+    },
+    "after_user_action": "RESUME_SAME_THREAD"
+  },
+  "node_applicability": {
+    "request_understanding": true,
+    "acquisition": true,
+    "context_retriever": true,
+    "work_analysis": false,
+    "planning": false,
+    "review": false
+  },
+  "node_projection_refs": [
+    "PROJ-STRESS-010-UU",
+    "PROJ-STRESS-010-ACQ",
+    "PROJ-STRESS-010-RET",
+    "PROJ-STRESS-010-ANL",
+    "PROJ-STRESS-010-PLN",
+    "PROJ-STRESS-010-REV",
+    "PROJ-STRESS-010-RT",
+    "PROJ-STRESS-010-E2E"
+  ],
+  "tags": [
+    "stress",
+    "sf-s5-lowconf-budget",
+    "source_selection_read",
+    "sf-c1-agent-search-read",
+    "low_confidence",
+    "candidate_margin",
+    "lowconf_confirm"
+  ],
+  "human_rubric": [
+    "Delta 관련 후보를 검색한다.",
+    "상위 후보 점수 차가 작으면 사용자 확인을 요청한다.",
+    "포장 시안 Hard Negative를 배제한다."
+  ]
+}

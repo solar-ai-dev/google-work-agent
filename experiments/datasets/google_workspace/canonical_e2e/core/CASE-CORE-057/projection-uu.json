@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-057-UU",
+  "case_id": "CASE-CORE-057",
+  "projection_kind": "USER_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-009",
+    "user_prompt_id": "UP-CORE-057",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "goal": "중복 Task를 알려주고 새 생성은 차단한다.",
+    "requested_outcome": "ACTION_PLAN",
+    "expected_interrupt": "NONE"
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.user_understanding.semantic"
+  ]
+}

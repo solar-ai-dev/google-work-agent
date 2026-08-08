@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-003-ANL",
+  "case_id": "CASE-CORE-003",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-005",
+    "user_prompt_id": "UP-CORE-003",
+    "entry_mode": "RESOURCE_SELECTED"
+  },
+  "gold": {
+    "completion_criteria": [
+      "금요일 업무 종료 전이라는 표현을 보존한다.",
+      "Task·Calendar로 마감을 재해석하지 않는다."
+    ],
+    "tags": [
+      "source_selection_read",
+      "sf-c1-resource-selected",
+      "scope_minimal"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

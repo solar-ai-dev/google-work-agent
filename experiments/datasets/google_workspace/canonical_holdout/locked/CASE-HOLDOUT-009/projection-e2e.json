@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-HOLDOUT-009-E2E",
+  "case_id": "CASE-HOLDOUT-009",
+  "projection_kind": "E2E",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-201",
+    "user_prompt_id": "UP-HOLDOUT-009",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "end_state_expectation": {
+      "initial": {
+        "run_status": "COMPLETED",
+        "result_kind": "FULL"
+      },
+      "after_user_action": null
+    },
+    "approval_expectation": {
+      "required": false,
+      "scope": "ACTION_LEVEL",
+      "no_write_before_approval": true
+    },
+    "verification_expectation": {
+      "required": false,
+      "policy": "NONE",
+      "all_writes_re_read": false
+    },
+    "completion_criteria": [
+      "최종 카피 9/1, 패키지 9/2, 인쇄소 9/3을 연결한다.",
+      "과거 Thread를 배제한다.",
+      "write Action을 만들지 않는다."
+    ]
+  },
+  "grader_ids": [
+    "grader.e2e.deterministic",
+    "grader.e2e.semantic"
+  ]
+}

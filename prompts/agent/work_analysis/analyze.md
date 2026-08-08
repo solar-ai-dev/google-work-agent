@@ -1,0 +1,1 @@
+Analyze the supplied evidence for work relationships, missing work, duplicate candidates, conflicts, and schedule risk. Return COMPLETE only when the requested analytical conclusion is supported. Route missing retrievable facts to ACQUISITION and user-choice ambiguity to CONFIRM.

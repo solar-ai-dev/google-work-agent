@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "result": "BLOCKED",
+  "answer_draft": null,
+  "actions": [],
+  "confirmation_question": null,
+  "blocked_reason_codes": [
+    "GMAIL_DELETE",
+    "RECURRING_EVENT_BULK_UPDATE"
+  ]
+}

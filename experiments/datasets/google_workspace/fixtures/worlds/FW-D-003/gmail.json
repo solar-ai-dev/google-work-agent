@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-C-001",
+      "subject": "[Aster] POS 웨비나 검토",
+      "participants": [
+        "minsoo.park@aster.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-C-001",
+          "sender": "minsoo.park@aster.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T03:00:00Z",
+          "body": "Aster POS 웨비나 검토는 60분이 필요합니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-C-002",
+      "subject": "[Nova] 패키지 웨비나 검토",
+      "participants": [
+        "park.minsoo@nova.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-C-002",
+          "sender": "park.minsoo@nova.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T04:00:00Z",
+          "body": "Nova 패키지 웨비나 검토는 30분이면 됩니다."
+        }
+      ]
+    }
+  ]
+}

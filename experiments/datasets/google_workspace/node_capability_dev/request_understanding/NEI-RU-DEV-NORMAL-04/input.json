@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "user_request": "지난주 Delta 포장 승인 요청 메일을 찾아서 최종 승인자를 알려줘.",
+  "entry_context": {
+    "entry_mode_hint": "AGENT_SEARCH",
+    "selected_resource_ids": []
+  },
+  "conversation_context": [],
+  "current_time": "2026-08-07T14:09:00+09:00",
+  "timezone": "Asia/Seoul",
+  "allowed_sources": [
+    "GMAIL",
+    "TASKS",
+    "CALENDAR"
+  ]
+}

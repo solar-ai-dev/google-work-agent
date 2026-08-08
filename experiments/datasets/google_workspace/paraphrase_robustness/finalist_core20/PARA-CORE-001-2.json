@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-001-2",
+  "source_case_id": "CASE-CORE-001",
+  "source_user_prompt_id": "UP-CORE-001",
+  "paraphrase_group_id": "PG-CORE-001",
+  "variant_index": 2,
+  "language": "ko-KR",
+  "text": "Boreal 선택 메일에 대해 명시적 조회 작업을 실행해서 최종 서명 기한과 법무 담당을 보여줘. 워크스페이스 전체 검색은 필요 없어.",
+  "expected_entry_mode": "RESOURCE_SELECTED",
+  "expected_requested_outcome": "ACTION_PLAN",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

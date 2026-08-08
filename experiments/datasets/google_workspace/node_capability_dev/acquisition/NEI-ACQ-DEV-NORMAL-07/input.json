@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "request_intent": {
+    "schema_version": 1,
+    "result": "COMPLETE",
+    "entry_mode": "AGENT_SEARCH",
+    "requested_outcome": "ACTION_PLAN",
+    "goal": "캠페인 결과를 근거로 Draft를 제안하되 외부 수신자 포함 여부를 확인한다.",
+    "completion_criteria": [
+      "외부 주소가 기존 Thread 참여자인지 확인한다",
+      "사용자 직접 지정 여부를 보존한다",
+      "Draft만 제안하고 전송하지 않는다"
+    ],
+    "constraints": {
+      "project_terms": [
+        "Grove 캠페인"
+      ],
+      "recipient": "partner@grove-external.example.test",
+      "sources": [
+        "GMAIL"
+      ],
+      "write_scope": [
+        "GMAIL_DRAFT_CREATE"
+      ]
+    },
+    "ambiguities": [],
+    "unsupported_scope": [],
+    "next_route": "SOURCE_PLANNING"
+  },
+  "entry_context": {
+    "selected_resource_ids": []
+  },
+  "retrieval_budget": {
+    "max_additional_acquisitions": 2,
+    "max_pages_per_source_per_round": 2,
+    "max_total_source_pages": 8,
+    "max_detail_fetch_per_source": 5
+  },
+  "prior_query_attempts": [],
+  "provider_outcomes": []
+}

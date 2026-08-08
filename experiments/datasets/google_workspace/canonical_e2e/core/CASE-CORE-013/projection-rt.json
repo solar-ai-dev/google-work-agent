@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-013-RT",
+  "case_id": "CASE-CORE-013",
+  "projection_kind": "ROUTING_TRAJECTORY",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-013",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "expected_route": [
+      "request_understanding.classify",
+      "acquisition.plan_sources",
+      "acquisition.execute",
+      "context.select_evidence",
+      "context.assess_sufficiency",
+      "analysis.analyze",
+      "planning.draft_plan",
+      "review.inspect",
+      "DOMAIN_VALIDATION",
+      "WAITING_APPROVAL"
+    ],
+    "expected_skipped_nodes": [],
+    "expected_tool_trajectory": [
+      {
+        "phase": "READ",
+        "tool": "tasks_list_tasks",
+        "required": true,
+        "constraints": {
+          "status": "needsAction"
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "tasks_get_task",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "TSK-A-001"
+          ]
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "calendar_list_events",
+        "required": true,
+        "constraints": {
+          "fixture_scope": "FW-D-001"
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "calendar_get_event",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "EV-A-001"
+          ]
+        }
+      },
+      {
+        "phase": "WRITE",
+        "when": "AFTER_APPROVAL",
+        "tool": "gmail_create_draft",
+        "required": true,
+        "constraints": {
+          "to": [
+            "design@atlas.example.test"
+          ],
+          "subject": "Atlas QR 준비",
+          "body": "QR 문구 확정 작업과 인쇄소 슬롯 준비 상태를 공유드립니다."
+        }
+      },
+      {
+        "phase": "VERIFY",
+        "when": "AFTER_WRITE",
+        "tool": "gmail_get_draft",
+        "required": true,
+        "constraints": {
+          "target": "CREATED_RESOURCE"
+        }
+      }
+    ]
+  },
+  "grader_ids": [
+    "grader.routing_trajectory.deterministic",
+    "grader.routing_trajectory.semantic"
+  ]
+}

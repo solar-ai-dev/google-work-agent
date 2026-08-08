@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "analysis_id": "E03D-ERROR-PROPAGATION-ATTRIBUTION",
+  "source_experiments": [
+    "E03-A",
+    "E03-B",
+    "E03-C"
+  ],
+  "join_keys": [
+    "source_case_id",
+    "target_node_id",
+    "candidate_config_hash",
+    "trial_index"
+  ],
+  "metrics": [
+    "oracle_node_accuracy",
+    "live_node_accuracy",
+    "mutated_node_accuracy",
+    "handoff_degradation",
+    "upstream_error_tag_downstream_failure_rate",
+    "recovery_after_revision_rate"
+  ],
+  "attribution_rules": [
+    "If ORACLE passes and LIVE fails, attribute primary cause upstream unless target-node deterministic contract is violated.",
+    "If ORACLE and LIVE both fail on the same target node, attribute primary cause to target node/prompt candidate.",
+    "If MUTATED fails in the expected safe direction, count robustness PASS; blindly accepting the mutation is robustness FAIL.",
+    "Do not mix ORACLE and LIVE averages."
+  ]
+}

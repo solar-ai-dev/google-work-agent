@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "case_id": "CASE-STRESS-007",
+  "stress_kind": "SCHEMA_REPAIR_EXHAUSTED",
+  "fault_profile_ids": [],
+  "auto_approve_write_actions": false,
+  "expected_no_duplicate_write": true,
+  "expected_runtime_route": [
+    "request_understanding.classify",
+    "SCHEMA_REPAIR_ONCE",
+    "FAILED"
+  ],
+  "expected_terminal": {
+    "run_status": "FAILED",
+    "result_kind": "NONE"
+  }
+}

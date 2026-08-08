@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "micro_case_id": "MICRO-SR-PLN-SCHEMA_WRONG_TYPE",
+  "source_evaluation_item_id": "NEI-PLN-DEV-SCHEMA_WRONG_TYPE-01",
+  "agent_role": "planning",
+  "failure_reason_code": "SCHEMA_WRONG_TYPE",
+  "retry_kind": "SCHEMA_REPAIR",
+  "max_attempts": 1,
+  "prompt_slot_id": "planning.repair",
+  "gold": {
+    "after_repair_schema_valid": true,
+    "semantic_fingerprint_must_match_initial_intent": true,
+    "business_fields_must_not_change": true,
+    "second_schema_repair_for_same_node_call_forbidden": true
+  },
+  "grader_ids": [
+    "grader.plan.schema"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": 99,
+  "result": "PLAN_READY",
+  "plans": [
+    {
+      "schema_version": 1,
+      "source": "TASKS",
+      "priority": 1,
+      "reason_codes": [
+        "REQUIRED_BY_COMPLETION_CRITERIA"
+      ],
+      "constraints": {
+        "project_terms": [
+          "Ion",
+          "신입 온보딩 체크리스트"
+        ]
+      },
+      "page_size": 20,
+      "max_pages": 2,
+      "max_candidates": 40,
+      "detail_limit": 5,
+      "required": true
+    }
+  ],
+  "confirmation": null,
+  "blocked_reason": null,
+  "stop_reason": null
+}

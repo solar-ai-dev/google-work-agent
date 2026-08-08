@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "MUT-HO-016",
+  "source_case_id": "CASE-CORE-036",
+  "fixture_snapshot_id": "FW-D-009",
+  "target_node_id": "context.assess_sufficiency",
+  "upstream_projection_ref": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-036/projection-ret.json",
+  "mutation": {
+    "operator": "DROP_REQUIRED_EVIDENCE",
+    "semantic_target": "evidence_selection.required_evidence",
+    "value": null
+  },
+  "expected_behavior": {
+    "must_not": "BLINDLY_ACCEPT_MUTATED_UPSTREAM",
+    "description": "Target node should return NEEDS_MORE_DATA, NEEDS_CONFIRMATION, or PARTIAL as supported by the case; not SUFFICIENT by invention.",
+    "attribute_error_to_upstream_when_detectable": true
+  },
+  "grader_ids": [
+    "grader.retrieval.deterministic",
+    "grader.retrieval.semantic"
+  ]
+}

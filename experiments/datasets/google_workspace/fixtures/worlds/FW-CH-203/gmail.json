@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-W-201",
+      "subject": "[Willow] 킥오프 준비",
+      "participants": [
+        "pm@willow.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-W-201",
+          "sender": "pm@willow.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T04:00:00Z",
+          "body": "킥오프 자료는 8월 18일 정오까지 미리 공유해 주세요."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "calendars": [
+    {
+      "calendar_id": "CAL-PRIMARY",
+      "title": "기본 캘린더",
+      "timezone": "Asia/Seoul"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "EV-Z-201",
+      "calendar_id": "CAL-PRIMARY",
+      "title": "Out of Office",
+      "start": "2026-08-14T06:00:00Z",
+      "end": "2026-08-14T08:00:00Z",
+      "status": "confirmed",
+      "transparency": "opaque",
+      "attendees": [],
+      "description": "",
+      "updated_at": "2026-08-07T03:00:00Z"
+    }
+  ]
+}

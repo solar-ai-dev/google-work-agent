@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "result": "COMPLETE",
+  "entry_mode": "AGENT_SEARCH",
+  "requested_outcome": "ANALYSIS",
+  "goal": "박민수 관련 웨비나 메일을 검색하고, 검색 결과에 동명이인 후보가 복수이면 사용자 확인 후 준비 내용을 정리한다.",
+  "completion_criteria": [
+    "박민수 조건을 검색 제약으로 보존한다",
+    "검색 전 후보를 만들어내지 않는다",
+    "복수 후보가 실제 발견되면 사용자 확인으로 전환한다"
+  ],
+  "constraints": {
+    "person_terms": [
+      "박민수"
+    ],
+    "relative_date": "다음 주",
+    "sources": [
+      "GMAIL"
+    ]
+  },
+  "ambiguities": [],
+  "unsupported_scope": [],
+  "next_route": "SOURCE_PLANNING"
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-STRESS-014-ANL",
+  "case_id": "CASE-STRESS-014",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-031",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "completion_criteria": [
+      "Gmail과 인쇄소 Event를 확인한다.",
+      "Tasks에서 동일 미완료 Task가 없는지 확인한다.",
+      "사용자 기한을 보존한다."
+    ],
+    "tags": [
+      "calendar_gmail_to_tasks",
+      "sf-c4-followup-task"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

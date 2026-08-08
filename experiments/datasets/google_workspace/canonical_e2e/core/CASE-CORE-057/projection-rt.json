@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-057-RT",
+  "case_id": "CASE-CORE-057",
+  "projection_kind": "ROUTING_TRAJECTORY",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-009",
+    "user_prompt_id": "UP-CORE-057",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "expected_route": [
+      "request_understanding.classify",
+      "acquisition.plan_sources",
+      "acquisition.execute",
+      "context.select_evidence",
+      "context.assess_sufficiency",
+      "analysis.analyze",
+      "planning.draft_plan",
+      "review.inspect",
+      "complete_answer_only_run"
+    ],
+    "expected_skipped_nodes": [],
+    "expected_tool_trajectory": [
+      {
+        "phase": "READ",
+        "tool": "tasks_list_tasks",
+        "required": true,
+        "constraints": {
+          "status": "needsAction"
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "tasks_get_task",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "TSK-I-001"
+          ]
+        }
+      }
+    ]
+  },
+  "grader_ids": [
+    "grader.routing_trajectory.deterministic",
+    "grader.routing_trajectory.semantic"
+  ]
+}

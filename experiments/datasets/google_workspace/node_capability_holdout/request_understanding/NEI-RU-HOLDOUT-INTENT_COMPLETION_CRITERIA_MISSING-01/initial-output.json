@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "result": "COMPLETE",
+  "entry_mode": "RESOURCE_SELECTED",
+  "requested_outcome": "ANALYSIS",
+  "goal": "선택 Event를 최신 조회하고 관련 준비 사항만 정리한다.",
+  "completion_criteria": [],
+  "constraints": {
+    "selected_resource_ids": [
+      "EV-O-101"
+    ],
+    "no_workspace_search": true,
+    "sources": [
+      "CALENDAR"
+    ]
+  },
+  "ambiguities": [],
+  "unsupported_scope": [],
+  "next_route": "SOURCE_PLANNING"
+}

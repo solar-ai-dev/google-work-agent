@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-021-2",
+  "source_case_id": "CASE-CORE-021",
+  "source_user_prompt_id": "UP-CORE-021",
+  "paraphrase_group_id": "PG-CORE-021",
+  "variant_index": 2,
+  "language": "ko-KR",
+  "text": "8월 14일 오전 10시부터 60분 동안 Atlas 내부 점검 Event를 잡아줘. 출고 메일과 준비 Task를 근거로 확인해줘.",
+  "expected_entry_mode": "AGENT_SEARCH",
+  "expected_requested_outcome": "ACTION_PLAN",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

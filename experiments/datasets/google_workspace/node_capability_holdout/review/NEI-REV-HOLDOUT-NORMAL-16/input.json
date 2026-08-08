@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-H-102",
+  "user_goal": "청구 이의 Thread의 담당자를 찾고 일반 청구 문의를 배제한다.",
+  "evidence": [
+    {
+      "evidence_id": "EVD-SEG-GM-N-101-1",
+      "segment_id": "SEG-GM-N-101",
+      "resource_id": "GM-N-101",
+      "claim": "Nimbus 청구 이의 담당자는 윤아다.",
+      "excerpt": "담당자는 윤아입니다.",
+      "confidence": "HIGH"
+    }
+  ],
+  "plan": {
+    "schema_version": 1,
+    "result": "ANSWER_ONLY",
+    "answer_draft": "현재 Evidence 범위에서 확인되는 사실과 한계를 요약한다.",
+    "actions": [],
+    "confirmation_question": null,
+    "blocked_reason_codes": []
+  },
+  "prior_failure_signature": null
+}

@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "result": "PLAN_READY",
+  "plans": "GMAIL",
+  "confirmation": null,
+  "blocked_reason": null,
+  "stop_reason": null
+}

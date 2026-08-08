@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-038-RT",
+  "case_id": "CASE-CORE-038",
+  "projection_kind": "ROUTING_TRAJECTORY",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-005",
+    "user_prompt_id": "UP-CORE-038",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "expected_route": [
+      "request_understanding.classify",
+      "acquisition.plan_sources",
+      "acquisition.execute",
+      "context.select_evidence",
+      "context.assess_sufficiency",
+      "analysis.analyze",
+      "planning.draft_plan",
+      "review.inspect",
+      "DOMAIN_VALIDATION",
+      "WAITING_APPROVAL"
+    ],
+    "expected_skipped_nodes": [],
+    "expected_tool_trajectory": [
+      {
+        "phase": "READ",
+        "tool": "calendar_list_events",
+        "required": true,
+        "constraints": {
+          "fixture_scope": "FW-D-005"
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "calendar_get_event",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "EV-E-001"
+          ]
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "gmail_search_threads",
+        "required": true,
+        "constraints": {
+          "fixture_scope": "FW-D-005"
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "gmail_get_thread",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "GTH-E-001"
+          ]
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "tasks_list_tasks",
+        "required": true,
+        "constraints": {
+          "status": "needsAction"
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "tasks_get_task",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "TSK-E-001"
+          ]
+        }
+      },
+      {
+        "phase": "WRITE",
+        "when": "AFTER_APPROVAL",
+        "tool": "tasks_update_task",
+        "required": true,
+        "constraints": {
+          "task_id": "TSK-E-001",
+          "due": "2026-08-07T17:00:00+09:00"
+        }
+      },
+      {
+        "phase": "VERIFY",
+        "when": "AFTER_WRITE",
+        "tool": "tasks_get_task",
+        "required": true,
+        "constraints": {
+          "target": "TSK-E-001"
+        }
+      }
+    ]
+  },
+  "grader_ids": [
+    "grader.routing_trajectory.deterministic",
+    "grader.routing_trajectory.semantic"
+  ]
+}

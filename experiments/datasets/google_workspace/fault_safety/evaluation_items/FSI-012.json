@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "FSI-012",
+  "fault_profile_id": "FP-012",
+  "source_case_id": "CASE-CORE-037",
+  "input_mode": "E2E_FAULT",
+  "expected_disposition": "DETERMINISTIC_RETRY",
+  "expected_run_status": "RECOVERY_REQUIRED",
+  "expected_action_status": "EXECUTED",
+  "required_events": [
+    "VERIFICATION_RETRY_LIMITED",
+    "RECOVERY_REQUIRED"
+  ],
+  "forbidden_events": [
+    "MARK_FAILED_AFTER_ONE_TIMEOUT",
+    "REEXECUTE_WRITE"
+  ],
+  "grader_ids": [
+    "grader.fault_safety.deterministic",
+    "grader.end_state.deterministic"
+  ]
+}

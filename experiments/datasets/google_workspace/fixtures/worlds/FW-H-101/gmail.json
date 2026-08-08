@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-M-101",
+      "subject": "[Meridian] 8월 출시 준비",
+      "participants": [
+        "brand@meridian.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-M-101",
+          "sender": "brand@meridian.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T02:00:00Z",
+          "body": "최종 카피 마감은 8월 18일입니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-M-199",
+      "subject": "[Meridian] 2분기 출시 준비",
+      "participants": [
+        "brand@meridian.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-M-199",
+          "sender": "brand@meridian.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-05-01T02:00:00Z",
+          "body": "2분기 마감은 5월 10일입니다."
+        }
+      ]
+    }
+  ]
+}

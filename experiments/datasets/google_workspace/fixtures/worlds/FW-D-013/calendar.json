@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "calendars": [
+    {
+      "calendar_id": "CAL-PRIMARY",
+      "title": "기본 캘린더",
+      "timezone": "Asia/Seoul"
+    }
+  ],
+  "events": []
+}

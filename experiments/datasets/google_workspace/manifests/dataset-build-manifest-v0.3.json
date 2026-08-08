@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "dataset_version": "rebuild-v0.3",
+  "created_at": "2026-08-07T14:23:00+09:00",
+  "source_contract_versions": {
+    "retrieval": "05 v2.0 + 2026-08-07 QueryAttempt appendix",
+    "workflow": "06 v5.4 + 2026-08-07 retry appendix",
+    "observability": "11 v2.3 + failure/query trace appendix",
+    "test": "12 v2.4 + node holdout appendix",
+    "evaluation": "13 v2.5 + E02/E03 node layers",
+    "capability_failure_prompt": "15 v0.2"
+  },
+  "layers": {
+    "canonical_e2e": {
+      "status": "NOT_STARTED",
+      "item_count": 0
+    },
+    "node_capability_dev": {
+      "status": "IN_PROGRESS",
+      "item_count": 236
+    },
+    "node_capability_holdout": {
+      "status": "IN_PROGRESS",
+      "item_count": 76
+    },
+    "prompt_repair_revision": {
+      "status": "IN_PROGRESS",
+      "item_count": 240
+    },
+    "query_retrieval": {
+      "status": "IN_PROGRESS",
+      "item_count": 48
+    },
+    "fault_safety": {
+      "status": "NOT_STARTED",
+      "item_count": 0
+    },
+    "paraphrase_robustness": {
+      "status": "NOT_STARTED",
+      "item_count": 0
+    },
+    "canonical_holdout": {
+      "status": "NOT_STARTED",
+      "item_count": 0
+    }
+  },
+  "coverage_targets": {
+    "agent_failure_combinations": 88,
+    "minimum_node_dev_items": 264,
+    "minimum_node_holdout_items": 88,
+    "canonical_core": 60,
+    "canonical_stress": 20,
+    "canonical_holdout": 12,
+    "fixture_worlds_min": 12,
+    "fixture_worlds_max": 18
+  },
+  "holdout_policy": {
+    "node_holdout_separate_from_canonical_holdout": true,
+    "family_split_keys": [
+      "scenario_family_id",
+      "fixture_relation_family"
+    ],
+    "prompt_tuning_access": false
+  },
+  "current_batch": {
+    "fixture_worlds": 18,
+    "request_understanding_failure_coverage": "COMPLETE",
+    "acquisition_failure_coverage": "COMPLETE",
+    "context_retriever_failure_coverage": "COMPLETE",
+    "work_analysis_failure_coverage": "COMPLETE",
+    "remaining_agents": [
+      "planning",
+      "review"
+    ]
+  },
+  "prompt_bundle_version": "baseline-v0.2"
+}

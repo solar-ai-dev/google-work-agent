@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-003",
+  "user_goal": "요청을 충족하는 데 필요한 두 개의 필수 근거를 모두 선택한다.",
+  "entry_mode": "AGENT_SEARCH",
+  "segments": [
+    {
+      "segment_id": "SEG-GM-C-001",
+      "resource_id": "GM-C-001",
+      "parent_resource_id": "GTH-C-001",
+      "source": "GMAIL",
+      "title": "[Aster] POS 웨비나 검토",
+      "timestamp": "2026-08-06T03:00:00Z",
+      "text": "Aster POS 웨비나 검토는 60분이 필요합니다.",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-GM-C-002",
+      "resource_id": "GM-C-002",
+      "parent_resource_id": "GTH-C-002",
+      "source": "GMAIL",
+      "title": "[Nova] 패키지 웨비나 검토",
+      "timestamp": "2026-08-06T04:00:00Z",
+      "text": "Nova 패키지 웨비나 검토는 30분이면 됩니다.",
+      "untrusted": true
+    }
+  ],
+  "hard_negative_segment_ids": [],
+  "candidate_scores": {},
+  "selected_resource_ids": [],
+  "context_budget": {
+    "max_tokens": 900
+  },
+  "mutation_spec": {
+    "kind": "NONE",
+    "notes": []
+  }
+}

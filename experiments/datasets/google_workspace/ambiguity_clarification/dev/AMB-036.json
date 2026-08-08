@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-036",
+  "split": "DEV",
+  "ambiguity_family_id": "AMB-F09-REPLY-DRAFT-SEMANTICS",
+  "user_request": "이 메일 답장 초안만 써줘",
+  "conversation_context": [
+    "선택 Gmail Thread 존재"
+  ],
+  "available_candidates": [],
+  "gold": {
+    "should_clarify": false,
+    "ambiguity_kind": "ACTION_SEMANTICS",
+    "expected_route": "CONTINUE",
+    "expected_semantics": "DRAFT 의도",
+    "question_strategy": "NONE",
+    "required_candidate_ids": [],
+    "forbidden_assumptions": [
+      "UNNECESSARY_CLARIFICATION"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

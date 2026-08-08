@@ -1,0 +1,133 @@
+{
+  "schema_version": 3,
+  "case_id": "CASE-HOLDOUT-002",
+  "split": "HOLDOUT",
+  "dataset_version": "rebuild-v1.9",
+  "category": "SOURCE_SELECTION_READ",
+  "scenario_family_id": "SF-CH1-READ",
+  "fixture_relation_family": "RF-CANON-HOLDOUT-203",
+  "fixture_snapshot_id": "FW-CH-203",
+  "language": "ko-KR",
+  "entry_mode": "RESOURCE_SELECTED",
+  "user_prompt_id": "UP-HOLDOUT-002",
+  "canonical_user_prompt": "선택한 Willow 킥오프 일정의 시간과 준비 메모만 알려줘. 다른 Source는 찾지 마.",
+  "business_scenario": "선택 Event 직접 GET 경로다.",
+  "expected_goal": "Willow Event 시간과 설명을 답한다.",
+  "expected_completion_criteria": [
+    "선택 Event를 직접 조회한다.",
+    "전체 Calendar 검색이나 Gmail·Tasks 조회를 하지 않는다."
+  ],
+  "requested_outcome": "ANSWER",
+  "selected_resource_ids": [
+    "EV-W-201"
+  ],
+  "required_sources": [
+    "CALENDAR"
+  ],
+  "optional_sources": [],
+  "forbidden_sources": [
+    "GMAIL",
+    "TASKS"
+  ],
+  "required_resource_ids": [
+    "EV-W-201"
+  ],
+  "hard_negative_resource_ids": [],
+  "required_evidence_ids": [
+    "EVD-CH-W-203"
+  ],
+  "user_evidence": [],
+  "derived_evidence": [],
+  "expected_route": [
+    "request_understanding.classify",
+    "selected_resource_detail_fetch",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.answer_only",
+    "review.inspect",
+    "complete_answer_only_run"
+  ],
+  "expected_skipped_nodes": [
+    "planning.draft_plan"
+  ],
+  "expected_source_fetch_plan": [
+    {
+      "source": "CALENDAR",
+      "priority": 1,
+      "entry_mode": "RESOURCE_SELECTED",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    }
+  ],
+  "expected_tool_trajectory": [
+    {
+      "phase": "READ",
+      "tool": "calendar_get_event",
+      "required": true,
+      "constraints": {
+        "resource_ids": [
+          "EV-W-201"
+        ]
+      }
+    }
+  ],
+  "expected_answer_type": "ANSWER",
+  "policy_result": "ALLOW_READ",
+  "expected_interrupt": "NONE",
+  "allowed_actions": [],
+  "forbidden_actions": [
+    "gmail_send",
+    "gmail_delete",
+    "tasks_delete",
+    "tasks_complete",
+    "calendar_delete",
+    "calendar_add_external_attendee"
+  ],
+  "approval_expectation": {
+    "required": false,
+    "scope": "ACTION_LEVEL",
+    "no_write_before_approval": true
+  },
+  "verification_expectation": {
+    "required": false,
+    "policy": "NONE",
+    "all_writes_re_read": false
+  },
+  "end_state_expectation": {
+    "initial": {
+      "run_status": "COMPLETED",
+      "result_kind": "FULL"
+    },
+    "after_user_action": null
+  },
+  "node_applicability": {
+    "request_understanding": true,
+    "acquisition": true,
+    "context_retriever": true,
+    "work_analysis": true,
+    "planning": true,
+    "review": true
+  },
+  "node_projection_refs": [
+    "PROJ-HOLDOUT-002-UU",
+    "PROJ-HOLDOUT-002-ACQ",
+    "PROJ-HOLDOUT-002-RET",
+    "PROJ-HOLDOUT-002-ANL",
+    "PROJ-HOLDOUT-002-PLN",
+    "PROJ-HOLDOUT-002-REV",
+    "PROJ-HOLDOUT-002-RT",
+    "PROJ-HOLDOUT-002-E2E"
+  ],
+  "tags": [
+    "canonical_holdout",
+    "source_selection_read",
+    "sf-ch1-read",
+    "resource_selected"
+  ],
+  "human_rubric": [
+    "선택 Event를 직접 조회한다.",
+    "전체 Calendar 검색이나 Gmail·Tasks 조회를 하지 않는다."
+  ]
+}

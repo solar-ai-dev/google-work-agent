@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "request_intent": {
+    "schema_version": 1,
+    "result": "COMPLETE",
+    "entry_mode": "AGENT_SEARCH",
+    "requested_outcome": "ANALYSIS",
+    "goal": "Echo 법무 검토의 마감과 현재 업무·일정을 대조해 완료 가능성을 분석한다.",
+    "completion_criteria": [
+      "Asia/Seoul 기준 이번 주 금요일을 해석한다",
+      "Task와 Calendar를 대조한다"
+    ],
+    "constraints": {
+      "project_terms": [
+        "Echo",
+        "약관 법무 검토"
+      ],
+      "deadline": "2026-08-07T09:00:00+09:00",
+      "timezone": "Asia/Seoul",
+      "sources": [
+        "GMAIL",
+        "TASKS",
+        "CALENDAR"
+      ]
+    },
+    "ambiguities": [],
+    "unsupported_scope": [],
+    "next_route": "SOURCE_PLANNING"
+  },
+  "entry_context": {
+    "selected_resource_ids": []
+  },
+  "retrieval_budget": {
+    "max_additional_acquisitions": 2,
+    "max_pages_per_source_per_round": 2,
+    "max_total_source_pages": 8,
+    "max_detail_fetch_per_source": 5
+  },
+  "prior_query_attempts": [],
+  "provider_outcomes": []
+}

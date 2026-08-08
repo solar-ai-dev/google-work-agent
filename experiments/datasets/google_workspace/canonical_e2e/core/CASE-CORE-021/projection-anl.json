@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-021-ANL",
+  "case_id": "CASE-CORE-021",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-021",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "completion_criteria": [
+      "최종 출고 메일과 관련 Task를 확인한다.",
+      "8/14 10:00 60분 Calendar 가용성을 확인한다.",
+      "승인 전 Event를 만들지 않는다."
+    ],
+    "tags": [
+      "gmail_tasks_to_calendar",
+      "sf-c3-deadline-event"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

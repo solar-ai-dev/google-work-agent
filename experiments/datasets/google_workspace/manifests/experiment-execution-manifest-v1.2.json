@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "dataset_version": "rebuild-v1.2",
+  "created_at": "2026-08-07T15:38:00+09:00",
+  "parent_dataset_version": "rebuild-v1.1",
+  "new_layer": "experiment_execution_contracts",
+  "prompt_bundle_version": "0.6.0",
+  "experiment_manifests": {
+    "E02_A_DEV": "experiments/E02/e02a-initial-prompt-dev.json",
+    "E02_A_HOLDOUT": "experiments/E02/e02a-initial-prompt-holdout.json",
+    "E02_B_DEV": "experiments/E02/e02b-schema-repair-dev.json",
+    "E02_B_HOLDOUT": "experiments/E02/e02b-schema-repair-holdout.json",
+    "E02_C_DEV": "experiments/E02/e02c-semantic-revision-dev.json",
+    "E02_C_HOLDOUT": "experiments/E02/e02c-semantic-revision-holdout.json",
+    "E02_D_DEV": "experiments/E02/e02d-retry-stop-dev.json",
+    "E03_A": "experiments/E03/e03a-oracle-node-capability.json",
+    "E03_B": "experiments/E03/e03b-live-handoff.json",
+    "E03_C": "experiments/E03/e03c-mutated-upstream.json",
+    "E03_D": "experiments/E03/e03d-error-attribution.json",
+    "E01_SMOKE": "experiments/E01/e01-stage1-smoke-5.json",
+    "E01_SCREENING": "experiments/E01/e01-stage2-screening-20.json"
+  },
+  "selection_counts": {
+    "E02A_DEV": 99,
+    "E02A_HOLDOUT": 26,
+    "E02B_DEV": 108,
+    "E02B_HOLDOUT": 36,
+    "E02C_DEV": 138,
+    "E02C_HOLDOUT": 46,
+    "E02D_DEV": 264,
+    "E03A_DEV": 363,
+    "E03B": 42,
+    "E03C": 42,
+    "E01_SMOKE": 5,
+    "E01_SCREENING": 20
+  },
+  "execution_status": "PREPARED_BLOCKED_ON_API_MODEL_CANDIDATE_BINDING",
+  "next_gate": "BIND_2_TO_3_API_MODEL_CANDIDATES_THEN_RUN_G00_G01_AND_E01_SMOKE"
+}

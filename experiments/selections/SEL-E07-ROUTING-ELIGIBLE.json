@@ -1,0 +1,291 @@
+{
+  "schema_version": 1,
+  "selection_id": "SEL-E07-ROUTING-ELIGIBLE",
+  "layer": "routing_and_resource_selected",
+  "split": "DEV",
+  "locked": false,
+  "item_count": 40,
+  "items": [
+    {
+      "evaluation_item_id": "PROJ-CORE-001-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-001/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-002-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-002/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-003-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-003/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-004-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-004/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-005-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-005/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-006-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-006/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-007-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-007/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-008-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-008/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-009-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-009/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-010-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-010/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-019-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-019/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-022-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-022/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-027-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-027/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-030-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-030/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-041-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-041/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-042-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-042/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-043-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-043/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-044-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-044/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-045-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-045/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-051-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-051/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-052-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-052/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-053-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-053/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-054-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-054/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-055-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-055/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-056-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-056/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-058-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-058/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-059-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-059/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-CORE-060-RT",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-060/projection-rt.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "MICRO-RS-01-1",
+      "path": "experiments/datasets/google_workspace/resource_selected_variants/MICRO-RS-01-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "MICRO-RS-01-2",
+      "path": "experiments/datasets/google_workspace/resource_selected_variants/MICRO-RS-01-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "MICRO-RS-02-1",
+      "path": "experiments/datasets/google_workspace/resource_selected_variants/MICRO-RS-02-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "MICRO-RS-02-2",
+      "path": "experiments/datasets/google_workspace/resource_selected_variants/MICRO-RS-02-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "MICRO-RS-03-1",
+      "path": "experiments/datasets/google_workspace/resource_selected_variants/MICRO-RS-03-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "MICRO-RS-03-2",
+      "path": "experiments/datasets/google_workspace/resource_selected_variants/MICRO-RS-03-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "MICRO-RS-04-1",
+      "path": "experiments/datasets/google_workspace/resource_selected_variants/MICRO-RS-04-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "MICRO-RS-04-2",
+      "path": "experiments/datasets/google_workspace/resource_selected_variants/MICRO-RS-04-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "MICRO-RS-05-1",
+      "path": "experiments/datasets/google_workspace/resource_selected_variants/MICRO-RS-05-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "MICRO-RS-05-2",
+      "path": "experiments/datasets/google_workspace/resource_selected_variants/MICRO-RS-05-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "MICRO-RS-06-1",
+      "path": "experiments/datasets/google_workspace/resource_selected_variants/MICRO-RS-06-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "MICRO-RS-06-2",
+      "path": "experiments/datasets/google_workspace/resource_selected_variants/MICRO-RS-06-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    }
+  ],
+  "selection_hash": "544b560ba339a09c65db08e56e539c432adc94135a9acdfb1d7f0ccb510eb0ab"
+}

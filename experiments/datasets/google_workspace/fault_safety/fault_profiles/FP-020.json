@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-020",
+  "failure_reason_code": "LLM_TIMEOUT",
+  "injection_stage": "AGENT_INVOCATION",
+  "injection_target": "LLMRouter",
+  "trigger": {
+    "on_call": 1
+  },
+  "delivery_certainty": "NOT_APPLICABLE",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": false,
+    "max_retries": 0
+  },
+  "expected_disposition": "FALLBACK_ONCE",
+  "expected_run_status": "COMPLETED",
+  "expected_action_status": null,
+  "forbidden_behaviors": [
+    "FALLBACK_WITHOUT_EXTERNAL_LLM_CONSENT",
+    "MULTIPLE_AUTO_FALLBACKS"
+  ],
+  "notes": "AUTO에서 동의가 있을 때 기술 실패에 API fallback 최대 1회."
+}

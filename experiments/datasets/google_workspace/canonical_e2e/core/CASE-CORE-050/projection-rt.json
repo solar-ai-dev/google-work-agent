@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-050-RT",
+  "case_id": "CASE-CORE-050",
+  "projection_kind": "ROUTING_TRAJECTORY",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-005",
+    "user_prompt_id": "UP-CORE-050",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "expected_route": [
+      "request_understanding.classify",
+      "acquisition.plan_sources",
+      "acquisition.execute",
+      "context.select_evidence",
+      "context.assess_sufficiency",
+      "analysis.analyze",
+      "planning.draft_plan",
+      "review.inspect",
+      "DOMAIN_VALIDATION",
+      "WAITING_APPROVAL"
+    ],
+    "expected_skipped_nodes": [],
+    "expected_tool_trajectory": [
+      {
+        "phase": "READ",
+        "tool": "gmail_search_threads",
+        "required": true,
+        "constraints": {
+          "fixture_scope": "FW-D-005"
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "gmail_get_thread",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "GTH-E-001"
+          ]
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "tasks_list_tasks",
+        "required": true,
+        "constraints": {
+          "status": "needsAction"
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "tasks_get_task",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "TSK-E-001"
+          ]
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "calendar_list_events",
+        "required": true,
+        "constraints": {
+          "fixture_scope": "FW-D-005"
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "calendar_get_event",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "EV-E-001"
+          ]
+        }
+      },
+      {
+        "phase": "READ",
+        "tool": "calendar_query_freebusy",
+        "required": true,
+        "constraints": {
+          "calendar_id": "CAL-PRIMARY"
+        }
+      },
+      {
+        "phase": "WRITE",
+        "when": "AFTER_APPROVAL",
+        "tool": "tasks_create_task",
+        "required": true,
+        "constraints": {
+          "tasklist_id": "TL-WORK",
+          "title": "Echo 최종 의견 전달",
+          "due": "2026-08-07T17:30:00+09:00"
+        }
+      },
+      {
+        "phase": "VERIFY",
+        "when": "AFTER_WRITE",
+        "tool": "tasks_get_task",
+        "required": true,
+        "constraints": {
+          "target": "CREATED_RESOURCE"
+        }
+      },
+      {
+        "phase": "WRITE",
+        "when": "AFTER_APPROVAL",
+        "tool": "calendar_create_event",
+        "required": true,
+        "constraints": {
+          "calendar_id": "CAL-PRIMARY",
+          "title": "Echo 최종 의견 정리",
+          "start": "2026-08-07T16:00:00+09:00",
+          "duration_minutes": 60
+        }
+      },
+      {
+        "phase": "VERIFY",
+        "when": "AFTER_WRITE",
+        "tool": "calendar_get_event",
+        "required": true,
+        "constraints": {
+          "target": "CREATED_RESOURCE"
+        }
+      },
+      {
+        "phase": "WRITE",
+        "when": "AFTER_APPROVAL",
+        "tool": "gmail_create_draft",
+        "required": true,
+        "constraints": {
+          "to": [
+            "legal@echo.example.test"
+          ],
+          "subject": "Echo 약관 검토 진행",
+          "body": "최종 의견 정리 후 전달드리겠습니다."
+        }
+      },
+      {
+        "phase": "VERIFY",
+        "when": "AFTER_WRITE",
+        "tool": "gmail_get_draft",
+        "required": true,
+        "constraints": {
+          "target": "CREATED_RESOURCE"
+        }
+      }
+    ]
+  },
+  "grader_ids": [
+    "grader.routing_trajectory.deterministic",
+    "grader.routing_trajectory.semantic"
+  ]
+}

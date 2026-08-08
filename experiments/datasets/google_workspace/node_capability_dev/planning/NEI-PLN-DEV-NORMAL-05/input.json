@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-005",
+  "goal": "Echo 법무 검토의 마감과 현재 업무·일정을 대조해 완료 가능성을 분석한다.",
+  "requested_outcome": "ANALYSIS",
+  "constraints": {
+    "project_terms": [
+      "Echo",
+      "약관 법무 검토"
+    ],
+    "deadline": "2026-08-07T09:00:00+09:00",
+    "timezone": "Asia/Seoul",
+    "sources": [
+      "GMAIL",
+      "TASKS",
+      "CALENDAR"
+    ]
+  },
+  "evidence": [
+    {
+      "evidence_id": "EVD-SEG-GM-E-001-1",
+      "segment_id": "SEG-GM-E-001",
+      "resource_id": "GM-E-001",
+      "claim": "법무 검토 의견은 금요일 업무 종료 전까지 필요하다.",
+      "excerpt": "금요일 업무 종료 전까지 검토 의견이 필요합니다.",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "EVD-SEG-TSK-E-001-2",
+      "segment_id": "SEG-TSK-E-001",
+      "resource_id": "TSK-E-001",
+      "claim": "Echo 약관 1차 검토 Task의 기한은 2026-08-07T06:00:00Z이다.",
+      "excerpt": "제목: Echo 약관 1차 검토 / 기한: 2026-08-07T06:00:00Z / 상태: needsAction / 메모: ",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "EVD-SEG-EV-E-001-3",
+      "segment_id": "SEG-EV-E-001",
+      "resource_id": "EV-E-001",
+      "claim": "2026-08-07T04:00~06:00Z에 다른 프로젝트 집중 업무가 있다.",
+      "excerpt": "일정: 집중 업무 / 시작: 2026-08-07T04:00:00Z / 종료: 2026-08-07T06:00:00Z / 투명도: opaque / 설명: 다른 프로젝트",
+      "confidence": "HIGH"
+    }
+  ],
+  "analysis": {
+    "schema_version": 1,
+    "result": "NEEDS_MORE_DATA",
+    "relations": [
+      {
+        "relation_type": "DEADLINE",
+        "subject_id": "GTH-E-001",
+        "object_id": "TSK-E-001",
+        "evidence_ids": [
+          "EVD-SEG-GM-E-001-1",
+          "EVD-SEG-TSK-E-001-2"
+        ],
+        "confidence": "HIGH"
+      }
+    ],
+    "duplicates": [],
+    "schedule_risks": [
+      {
+        "target_id": "TSK-E-001",
+        "classification": "UNKNOWN",
+        "reason_codes": [
+          "EXPECTED_DURATION_MISSING",
+          "BUSY_WINDOW_PRESENT"
+        ],
+        "evidence_ids": [
+          "EVD-SEG-TSK-E-001-2",
+          "EVD-SEG-EV-E-001-3"
+        ]
+      }
+    ],
+    "conflicts": [],
+    "unsupported_inferences": [],
+    "missing_data": [
+      "expected_duration"
+    ],
+    "next_route": "ACQUISITION"
+  }
+}

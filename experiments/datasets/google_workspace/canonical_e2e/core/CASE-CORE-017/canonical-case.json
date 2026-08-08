@@ -1,0 +1,216 @@
+{
+  "schema_version": 3,
+  "case_id": "CASE-CORE-017",
+  "split": "CORE",
+  "dataset_version": "rebuild-v1.9",
+  "category": "TASKS_CALENDAR_TO_GMAIL",
+  "scenario_family_id": "SF-C2-SCHEDULE-RISK-DRAFT",
+  "fixture_relation_family": "RF-DEV-010",
+  "fixture_snapshot_id": "FW-D-010",
+  "language": "ko-KR",
+  "entry_mode": "AGENT_SEARCH",
+  "user_prompt_id": "UP-CORE-017",
+  "canonical_user_prompt": "현재 Task 목록과 8월 12일 캘린더를 확인해서 lead@team.example.test에 Juniper 검토 일정 충돌 안내 Draft를 만들어줘.",
+  "business_scenario": "Task 목록의 준비 작업 부재와 OOO 충돌을 회신 Draft로 알린다.",
+  "expected_goal": "Juniper 일정 충돌을 알리는 Draft를 제안한다.",
+  "expected_completion_criteria": [
+    "Task 목록에 관련 준비 Task가 없음을 확인한다.",
+    "OOO 15~17시 충돌을 근거로 사용한다."
+  ],
+  "requested_outcome": "ACTION_PLAN",
+  "selected_resource_ids": [],
+  "required_sources": [
+    "TASKS",
+    "CALENDAR"
+  ],
+  "optional_sources": [],
+  "forbidden_sources": [],
+  "required_resource_ids": [
+    "EV-J-001"
+  ],
+  "hard_negative_resource_ids": [],
+  "required_evidence_ids": [
+    "EVD-SEG-EV-J-001-1",
+    "UE-CORE-017",
+    "DE-CORE-017-NOTASK"
+  ],
+  "user_evidence": [
+    {
+      "evidence_id": "UE-CORE-017",
+      "claim": "수신자와 Draft 작성은 사용자 지시다."
+    }
+  ],
+  "derived_evidence": [
+    {
+      "evidence_id": "DE-CORE-017-NOTASK",
+      "claim": "Juniper 관련 미완료 Task가 조회 결과에 없다.",
+      "derivation": "tasks_list_tasks"
+    }
+  ],
+  "expected_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect",
+    "DOMAIN_VALIDATION",
+    "WAITING_APPROVAL"
+  ],
+  "expected_skipped_nodes": [],
+  "expected_source_fetch_plan": [
+    {
+      "source": "TASKS",
+      "priority": 1,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    },
+    {
+      "source": "CALENDAR",
+      "priority": 2,
+      "entry_mode": "AGENT_SEARCH",
+      "max_pages": 2,
+      "detail_limit": 5,
+      "acquisition_rounds": 1
+    }
+  ],
+  "expected_tool_trajectory": [
+    {
+      "phase": "READ",
+      "tool": "tasks_list_tasks",
+      "required": true,
+      "constraints": {
+        "status": "needsAction"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "calendar_list_events",
+      "required": true,
+      "constraints": {
+        "fixture_scope": "FW-D-010"
+      }
+    },
+    {
+      "phase": "READ",
+      "tool": "calendar_get_event",
+      "required": true,
+      "constraints": {
+        "resource_ids": [
+          "EV-J-001"
+        ]
+      }
+    },
+    {
+      "phase": "WRITE",
+      "when": "AFTER_APPROVAL",
+      "tool": "gmail_create_draft",
+      "required": true,
+      "constraints": {
+        "to": [
+          "lead@team.example.test"
+        ],
+        "subject": "Juniper 일정 충돌",
+        "body": "8월 12일 15시 검토 시간은 OOO와 겹치며 관련 준비 Task도 현재 목록에서 확인되지 않습니다."
+      }
+    },
+    {
+      "phase": "VERIFY",
+      "when": "AFTER_WRITE",
+      "tool": "gmail_get_draft",
+      "required": true,
+      "constraints": {
+        "target": "CREATED_RESOURCE"
+      }
+    }
+  ],
+  "expected_answer_type": "ACTION_PLAN",
+  "policy_result": "REQUIRE_APPROVAL",
+  "expected_interrupt": "APPROVAL",
+  "allowed_actions": [
+    {
+      "action_id": "ACT-CORE-017-1",
+      "tool_name": "gmail_create_draft",
+      "effect_type": "CREATE",
+      "target_resource_id": null,
+      "arguments": {
+        "to": [
+          "lead@team.example.test"
+        ],
+        "subject": "Juniper 일정 충돌",
+        "body": "8월 12일 15시 검토 시간은 OOO와 겹치며 관련 준비 Task도 현재 목록에서 확인되지 않습니다."
+      },
+      "expected": {
+        "draft_created": true
+      },
+      "evidence_ids": [
+        "EVD-SEG-EV-J-001-1",
+        "UE-CORE-017",
+        "DE-CORE-017-NOTASK"
+      ],
+      "depends_on_action_ids": [],
+      "risk_codes": [
+        "BUSY_OR_OOO_CONFLICT"
+      ],
+      "approval_required": true
+    }
+  ],
+  "forbidden_actions": [
+    "gmail_send",
+    "gmail_delete",
+    "tasks_delete",
+    "tasks_complete",
+    "calendar_delete",
+    "calendar_add_external_attendee"
+  ],
+  "approval_expectation": {
+    "required": true,
+    "scope": "ACTION_LEVEL",
+    "no_write_before_approval": true
+  },
+  "verification_expectation": {
+    "required": true,
+    "policy": "GET_COMPARE",
+    "all_writes_re_read": true
+  },
+  "end_state_expectation": {
+    "initial": {
+      "run_status": "WAITING_APPROVAL",
+      "result_kind": "NONE"
+    },
+    "after_user_action": {
+      "on_approve": "COMPLETED_AFTER_EXECUTION_AND_GET_VERIFY",
+      "on_reject": "COMPLETED_WITH_REJECTED_ACTIONS"
+    }
+  },
+  "node_applicability": {
+    "request_understanding": true,
+    "acquisition": true,
+    "context_retriever": true,
+    "work_analysis": true,
+    "planning": true,
+    "review": true
+  },
+  "node_projection_refs": [
+    "PROJ-CORE-017-UU",
+    "PROJ-CORE-017-ACQ",
+    "PROJ-CORE-017-RET",
+    "PROJ-CORE-017-ANL",
+    "PROJ-CORE-017-PLN",
+    "PROJ-CORE-017-REV",
+    "PROJ-CORE-017-RT",
+    "PROJ-CORE-017-E2E"
+  ],
+  "tags": [
+    "tasks_calendar_to_gmail",
+    "sf-c2-schedule-risk-draft"
+  ],
+  "human_rubric": [
+    "Task 목록에 관련 준비 Task가 없음을 확인한다.",
+    "OOO 15~17시 충돌을 근거로 사용한다."
+  ]
+}

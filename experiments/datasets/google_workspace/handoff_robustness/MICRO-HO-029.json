@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "micro_case_id": "MICRO-HO-029",
+  "source_case_id": "CASE-CORE-019",
+  "fixture_snapshot_id": "FW-D-006",
+  "target_node_id": "planning.answer_only",
+  "experiment": "E03-B_LIVE_HANDOFF",
+  "paired_modes": [
+    "ORACLE",
+    "LIVE"
+  ],
+  "oracle_input_contract": "Use the human-reviewed Gold upstream state for this target node.",
+  "live_input_contract": "Execute all required upstream product nodes with the candidate config and pass their actual typed output into this target node.",
+  "gold_projection_id": "PROJ-CORE-019-PLN",
+  "gold": {
+    "expected_answer_type": "CONFIRMATION",
+    "allowed_actions": [],
+    "forbidden_actions": [
+      "gmail_send",
+      "gmail_delete",
+      "tasks_delete",
+      "tasks_complete",
+      "calendar_delete",
+      "calendar_add_external_attendee"
+    ],
+    "policy_result": "ALLOW_READ"
+  },
+  "metrics": [
+    "oracle_node_accuracy",
+    "live_node_accuracy",
+    "handoff_degradation",
+    "upstream_error_tags",
+    "downstream_failure_rate"
+  ],
+  "constraints": {
+    "target_node_only_scored": true,
+    "do_not_mix_oracle_live_aggregates": true,
+    "same_model_prompt_policy_fixture_for_pair": true
+  },
+  "grader_ids": [
+    "grader.planning.deterministic",
+    "grader.planning.semantic"
+  ]
+}

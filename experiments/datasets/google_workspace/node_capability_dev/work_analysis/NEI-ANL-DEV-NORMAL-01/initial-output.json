@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "result": "NEEDS_MORE_DATA",
+  "relations": [
+    {
+      "relation_type": "SAME_PROJECT",
+      "subject_id": "TSK-A-001",
+      "object_id": "GTH-A-001",
+      "evidence_ids": [
+        "EVD-SEG-GM-A-002-1",
+        "EVD-SEG-TSK-A-001-2"
+      ],
+      "confidence": "HIGH"
+    }
+  ],
+  "duplicates": [],
+  "schedule_risks": [],
+  "conflicts": [],
+  "unsupported_inferences": [],
+  "missing_data": [
+    "complete_preparation_checklist"
+  ],
+  "next_route": "ACQUISITION"
+}

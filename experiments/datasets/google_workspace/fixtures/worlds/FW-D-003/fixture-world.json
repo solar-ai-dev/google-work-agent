@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-003",
+  "split_scope": "DEV",
+  "scenario_family_id": "SF-DEV-003",
+  "fixture_relation_family": "RF-DEV-003",
+  "title": "Cedar 웨비나 동명이인 확인",
+  "locale": "ko-KR",
+  "timezone": "Asia/Seoul",
+  "as_of": "2026-08-07T14:09:00+09:00",
+  "business_context": "박민수라는 이름의 서로 다른 외부 담당자 두 명이 각기 다른 웨비나 Thread에 등장한다.",
+  "user_profile": {
+    "account_email": "user@example.test",
+    "work_hours": {
+      "weekdays": "09:00-18:00"
+    },
+    "default_tasklist_id": "TL-WORK",
+    "default_calendar_id": "CAL-PRIMARY"
+  },
+  "source_files": {
+    "gmail": "gmail.json",
+    "tasks": "tasks.json",
+    "calendar": "calendar.json",
+    "relations": "relations.json"
+  },
+  "resource_ids": {
+    "gmail": [
+      "GTH-C-001",
+      "GTH-C-002",
+      "GM-C-001",
+      "GM-C-002"
+    ],
+    "tasks": [],
+    "calendar": []
+  },
+  "tags": [
+    "ambiguity",
+    "same_name",
+    "confirmation"
+  ]
+}

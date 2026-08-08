@@ -1,0 +1,515 @@
+{
+  "schema_version": 1,
+  "selection_id": "SEL-V01-FINALIST",
+  "layer": "canonical_holdout+stress+paraphrase",
+  "split": "MIXED",
+  "locked": true,
+  "item_count": 72,
+  "items": [
+    {
+      "evaluation_item_id": "PROJ-HOLDOUT-001-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-001/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-HOLDOUT-002-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-002/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-HOLDOUT-003-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-003/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-HOLDOUT-004-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-004/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-HOLDOUT-005-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-005/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-HOLDOUT-006-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-006/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-HOLDOUT-007-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-007/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-HOLDOUT-008-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-008/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-HOLDOUT-009-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-009/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-HOLDOUT-010-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-010/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-HOLDOUT-011-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-011/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-HOLDOUT-012-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-012/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-001-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-001/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-002-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-002/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-003-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-003/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-004-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-004/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-005-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-005/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-006-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-006/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-007-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-007/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-008-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-008/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-009-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-009/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-010-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-010/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-011-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-011/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-012-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-012/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-013-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-013/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-014-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-014/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-015-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-015/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-016-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-016/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-017-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-017/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-018-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-018/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-019-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-019/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PROJ-STRESS-020-E2E",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/stress/CASE-STRESS-020/projection-e2e.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-001-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-001-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-001-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-001-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-006-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-006-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-006-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-006-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-008-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-008-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-008-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-008-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-010-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-010-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-010-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-010-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-011-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-011-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-011-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-011-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-012-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-012-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-012-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-012-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-016-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-016-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-016-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-016-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-019-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-019-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-019-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-019-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-021-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-021-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-021-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-021-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-023-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-023-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-023-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-023-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-026-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-026-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-026-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-026-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-031-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-031-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-031-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-031-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-036-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-036-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-036-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-036-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-041-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-041-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-041-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-041-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-046-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-046-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-046-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-046-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-047-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-047-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-047-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-047-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-051-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-051-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-051-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-051-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-056-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-056-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-056-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-056-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-058-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-058-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-058-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-058-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-059-1",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-059-1.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "PARA-CORE-059-2",
+      "path": "experiments/datasets/google_workspace/paraphrase_robustness/finalist_core20/PARA-CORE-059-2.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    }
+  ],
+  "selection_hash": "f9c8e602c291ce098959eee388f3893c41a040984827f7b21db8be4a03065b7b"
+}

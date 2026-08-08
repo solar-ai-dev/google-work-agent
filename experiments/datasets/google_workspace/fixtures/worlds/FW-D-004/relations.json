@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "relations": [
+    {
+      "type": "CANDIDATE_SCORE",
+      "resource": "GTH-D-001",
+      "score": 82
+    },
+    {
+      "type": "CANDIDATE_SCORE",
+      "resource": "GTH-D-002",
+      "score": 77
+    },
+    {
+      "type": "HARD_NEGATIVE",
+      "from": "GTH-D-003",
+      "to": "GTH-D-001"
+    }
+  ]
+}

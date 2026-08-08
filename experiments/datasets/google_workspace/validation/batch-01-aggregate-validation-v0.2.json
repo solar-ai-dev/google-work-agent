@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "dataset_version": "rebuild-v0.2",
+  "status": "PASS",
+  "structural_validation": {
+    "schema_version": 1,
+    "dataset_version": "rebuild-v0.2",
+    "validated_at": "2026-08-07T14:09:00+09:00",
+    "status": "PASS",
+    "checks": {
+      "fixture_world_count": 18,
+      "fixture_dev_count": 14,
+      "fixture_holdout_count": 4,
+      "node_item_count": 172,
+      "node_dev_count": 130,
+      "node_holdout_count": 42,
+      "request_understanding_failure_codes_complete": 13,
+      "acquisition_failure_codes_complete": 21,
+      "prompt_slot_count": 21,
+      "prompt_repair_revision_count": 136,
+      "query_retrieval_item_count": 48,
+      "scenario_family_leakage_count": 0,
+      "fixture_relation_family_leakage_count": 0
+    },
+    "errors": []
+  },
+  "deep_semantic_contract_validation": {
+    "status": "PASS",
+    "counts": {
+      "gold": 172,
+      "semantic_initial": 88,
+      "schema_initial": 40,
+      "query_attempts": 24
+    },
+    "errors": []
+  }
+}

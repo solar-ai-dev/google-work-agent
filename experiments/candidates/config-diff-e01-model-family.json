@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "diff_id": "DIFF-E01-MODEL-FAMILY",
+  "baseline_candidate_ref": "experiments/candidates/candidate-e01-api-a.json",
+  "comparison_candidate_refs": [
+    "experiments/candidates/candidate-e01-api-b.json",
+    "experiments/candidates/candidate-e01-api-c.json"
+  ],
+  "independent_variable": "API_MODEL_ID_ONLY",
+  "allowed_substantive_paths": [
+    "/runtime/model",
+    "/runtime/model_version"
+  ],
+  "ignored_metadata_paths": [
+    "/candidate_id",
+    "/candidate_config_hash"
+  ],
+  "forbidden_change_paths": [
+    "/runtime/provider",
+    "/runtime/parameters",
+    "/graph_version",
+    "/prompt_bundle_version",
+    "/tool_schema_version",
+    "/policy_version",
+    "/retrieval_config_version"
+  ],
+  "status": "PASS_EXPECTED"
+}

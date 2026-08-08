@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "calendars": [
+    {
+      "calendar_id": "CAL-PRIMARY",
+      "title": "기본 캘린더",
+      "timezone": "Asia/Seoul"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "EV-E-001",
+      "calendar_id": "CAL-PRIMARY",
+      "title": "집중 업무",
+      "start": "2026-08-07T04:00:00Z",
+      "end": "2026-08-07T06:00:00Z",
+      "status": "confirmed",
+      "transparency": "opaque",
+      "attendees": [],
+      "description": "다른 프로젝트",
+      "updated_at": "2026-08-07T04:00:00Z"
+    }
+  ]
+}

@@ -1,0 +1,709 @@
+{
+  "schema_version": 1,
+  "rows": [
+    {
+      "target_agent": "request_understanding",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "request_understanding",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "request_understanding",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "request_understanding",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "request_understanding",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "request_understanding",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "request_understanding",
+      "failure_reason_code": "INTENT_GOAL_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "request_understanding",
+      "failure_reason_code": "INTENT_COMPLETION_CRITERIA_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "request_understanding",
+      "failure_reason_code": "INTENT_CONSTRAINT_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "request_understanding",
+      "failure_reason_code": "INTENT_ENTRY_MODE_WRONG",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "request_understanding",
+      "failure_reason_code": "INTENT_AMBIGUITY_MISSED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "request_understanding",
+      "failure_reason_code": "INTENT_OVER_CONFIRMATION",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "request_understanding",
+      "failure_reason_code": "INTENT_UNSUPPORTED_SCOPE",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "ACQ_REQUIRED_SOURCE_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "ACQ_FORBIDDEN_SOURCE_INCLUDED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "ACQ_NO_FETCH_MISCLASSIFIED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "QUERY_USER_CONSTRAINT_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "QUERY_TOO_BROAD",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "QUERY_TOO_NARROW",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "QUERY_REPEATED_WITHOUT_CHANGE",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "QUERY_LOW_CONFIDENCE_RESULTS",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "QUERY_NO_RESULTS",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "QUERY_BUDGET_EXHAUSTED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "QUERY_DETAIL_FETCH_FAILED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "QUERY_AUTH_REQUIRED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "QUERY_RATE_LIMITED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "acquisition",
+      "failure_reason_code": "QUERY_PROVIDER_FAILED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "CTX_REQUIRED_EVIDENCE_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "CTX_HARD_NEGATIVE_SELECTED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "CTX_STALE_EVIDENCE_SELECTED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "CTX_CONFLICT_NOT_REPORTED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "CTX_LOW_CONFIDENCE_AUTO_SELECTED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "CTX_PROMPT_INJECTION_FOLLOWED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "CTX_TOKEN_BUDGET_EXCEEDED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "context_retriever",
+      "failure_reason_code": "CTX_SUFFICIENCY_WRONG",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "work_analysis",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "work_analysis",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "work_analysis",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "work_analysis",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "work_analysis",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "work_analysis",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "work_analysis",
+      "failure_reason_code": "ANALYSIS_UNSUPPORTED_INFERENCE",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "work_analysis",
+      "failure_reason_code": "ANALYSIS_RELATION_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "work_analysis",
+      "failure_reason_code": "ANALYSIS_CONFLICT_MISHANDLED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "work_analysis",
+      "failure_reason_code": "ANALYSIS_DUPLICATE_MISCLASSIFIED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "work_analysis",
+      "failure_reason_code": "ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "work_analysis",
+      "failure_reason_code": "ANALYSIS_NEEDS_MORE_DATA_MISSED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "PLAN_REQUIRED_ACTION_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "PLAN_EXCESS_ACTION",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "PLAN_WRONG_TOOL",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "PLAN_WRONG_EFFECT_TYPE",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "PLAN_WRONG_TARGET",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "PLAN_REQUIRED_EVIDENCE_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "PLAN_DEPENDENCY_INVALID",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "PLAN_ARGUMENT_CONSTRAINT_VIOLATION",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "PLAN_USER_SCOPE_VIOLATION",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "PLAN_POLICY_RISK",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "planning",
+      "failure_reason_code": "PLAN_ANSWER_ONLY_MISROUTED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "review",
+      "failure_reason_code": "SCHEMA_INVALID_JSON",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "review",
+      "failure_reason_code": "SCHEMA_REQUIRED_FIELD_MISSING",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "review",
+      "failure_reason_code": "SCHEMA_INVALID_ENUM",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "review",
+      "failure_reason_code": "SCHEMA_WRONG_TYPE",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "review",
+      "failure_reason_code": "SCHEMA_UNSUPPORTED_FIELD",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "review",
+      "failure_reason_code": "SCHEMA_VERSION_MISMATCH",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": "Schema failure applies to every Agent."
+    },
+    {
+      "target_agent": "review",
+      "failure_reason_code": "REVIEW_FALSE_PASS",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "review",
+      "failure_reason_code": "REVIEW_FALSE_BLOCK",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "review",
+      "failure_reason_code": "REVIEW_WRONG_ROUTE",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "review",
+      "failure_reason_code": "REVIEW_ERROR_NOT_LOCALIZED",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    },
+    {
+      "target_agent": "review",
+      "failure_reason_code": "REVIEW_REPEATED_SAME_FAILURE",
+      "minimum_dev_items": 3,
+      "minimum_holdout_items": 1,
+      "status": "NOT_STARTED",
+      "notes": ""
+    }
+  ]
+}

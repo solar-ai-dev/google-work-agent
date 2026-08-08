@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-016-2",
+  "source_case_id": "CASE-CORE-016",
+  "source_user_prompt_id": "UP-CORE-016",
+  "paraphrase_group_id": "PG-CORE-016",
+  "variant_index": 2,
+  "language": "ko-KR",
+  "text": "오늘 Busy 시간 때문에 Echo 법무 마감이 위험한지 보고, legal@echo.example.test로 보낼 Draft를 준비해줘.",
+  "expected_entry_mode": "AGENT_SEARCH",
+  "expected_requested_outcome": "ACTION_PLAN",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

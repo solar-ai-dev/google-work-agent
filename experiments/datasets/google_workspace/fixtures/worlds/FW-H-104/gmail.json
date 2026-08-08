@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-P-101",
+      "subject": "[Polaris] 공급업체 온보딩",
+      "participants": [
+        "vendor@polaris.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-P-101",
+          "sender": "vendor@polaris.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T01:00:00Z",
+          "body": "온보딩 안내를 기다리고 있습니다."
+        }
+      ]
+    }
+  ]
+}

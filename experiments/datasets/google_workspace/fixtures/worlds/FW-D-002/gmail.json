@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-B-001",
+      "subject": "[Boreal] 계약 갱신 최종 조건",
+      "participants": [
+        "legal@boreal.example.test",
+        "sora@team.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-B-001",
+          "sender": "legal@boreal.example.test",
+          "to": [
+            "sora@team.example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-05T02:00:00Z",
+          "body": "서명 기한을 8월 15일로 제안합니다."
+        },
+        {
+          "message_id": "GM-B-002",
+          "sender": "sora@team.example.test",
+          "to": [
+            "legal@boreal.example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T07:30:00Z",
+          "body": "최종 서명 기한은 8월 16일 18시이며 법무 담당은 소라입니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-B-099",
+      "subject": "[Boreal] 마케팅 갱신",
+      "participants": [
+        "marketing@boreal.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-B-099",
+          "sender": "marketing@boreal.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T01:00:00Z",
+          "body": "마케팅 계약 갱신 관련입니다."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-022-ANL",
+  "case_id": "CASE-CORE-022",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-005",
+    "user_prompt_id": "UP-CORE-022",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "completion_criteria": [
+      "Gmail deadline과 Task를 확인한다.",
+      "14~15시가 기존 집중 업무와 겹침을 감지한다.",
+      "충돌을 무시하고 Event를 만들지 않는다."
+    ],
+    "tags": [
+      "gmail_tasks_to_calendar",
+      "sf-c3-deadline-event",
+      "conflict"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

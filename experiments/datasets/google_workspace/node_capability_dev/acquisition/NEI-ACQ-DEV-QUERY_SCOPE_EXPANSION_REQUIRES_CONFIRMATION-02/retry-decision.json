@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "decision_id": "RD-NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-02",
+  "node_call_id": "NC-NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-02",
+  "failure_reason_codes": [
+    "QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION"
+  ],
+  "retry_kind": "WORKFLOW_REDIRECTION",
+  "next_prompt_slot_id": null,
+  "next_node_id": null,
+  "attempt_no": 1,
+  "max_attempts": 1,
+  "changed_fields_allowed": [],
+  "required_route": "WAITING_CONFIRMATION",
+  "stop_reason": "QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION"
+}

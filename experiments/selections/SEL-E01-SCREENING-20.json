@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "selection_id": "SEL-E01-SCREENING-20",
+  "layer": "canonical_e2e",
+  "split": "DEV",
+  "locked": true,
+  "item_count": 20,
+  "items": [
+    {
+      "evaluation_item_id": "CASE-CORE-001",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-001/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-006",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-006/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-008",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-008/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-010",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-010/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-011",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-011/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-012",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-012/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-016",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-016/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-019",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-019/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-021",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-021/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-023",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-023/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-026",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-026/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-031",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-031/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-036",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-036/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-041",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-041/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-046",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-046/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-047",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-047/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-051",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-051/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-056",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-056/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-058",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-058/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "CASE-CORE-059",
+      "path": "experiments/datasets/google_workspace/canonical_e2e/core/CASE-CORE-059/canonical-case.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    }
+  ],
+  "selection_hash": "6998f23cd918ce5d65ef7e4882b3f5901502444a3b8df76a5857e96ed3b3df6a"
+}

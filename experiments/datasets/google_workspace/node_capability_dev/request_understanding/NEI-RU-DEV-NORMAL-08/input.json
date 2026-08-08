@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "user_request": "Harbor 보안 사고 메일을 요약하고 내가 해야 할 대응만 정리해 줘. 실행은 하지 마.",
+  "entry_context": {
+    "entry_mode_hint": "AGENT_SEARCH",
+    "selected_resource_ids": []
+  },
+  "conversation_context": [],
+  "current_time": "2026-08-07T14:09:00+09:00",
+  "timezone": "Asia/Seoul",
+  "allowed_sources": [
+    "GMAIL",
+    "TASKS",
+    "CALENDAR"
+  ]
+}

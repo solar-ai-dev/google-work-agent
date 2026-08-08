@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "case_id": "CASE-STRESS-005",
+  "stress_kind": "LLM_FALLBACK",
+  "fault_profile_ids": [
+    "FP-020"
+  ],
+  "auto_approve_write_actions": false,
+  "expected_no_duplicate_write": true,
+  "expected_runtime_route": [
+    "request_understanding.classify",
+    "LLM_AUTO_FALLBACK_ONCE",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.answer_only",
+    "review.inspect",
+    "complete_answer_only_run"
+  ],
+  "expected_terminal": {
+    "run_status": "COMPLETED",
+    "result_kind": "FULL"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-036-ANL",
+  "case_id": "CASE-CORE-036",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-009",
+    "user_prompt_id": "UP-CORE-036",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "completion_criteria": [
+      "TSK-I-001이 동일 제목·동일 기한의 미완료 Task임을 확인한다.",
+      "새 tasks_create_task를 제안하지 않는다."
+    ],
+    "tags": [
+      "calendar_gmail_to_tasks",
+      "sf-c4-duplicate-or-update",
+      "exact_duplicate",
+      "no_create"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

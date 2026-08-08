@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-D-006",
+  "user_goal": "워크숍 일정 생성 전 예상 소요시간을 확인한다.",
+  "entry_mode": "AGENT_SEARCH",
+  "segments": [
+    {
+      "segment_id": "SEG-GM-F-001",
+      "resource_id": "GM-F-001",
+      "parent_resource_id": "GTH-F-001",
+      "source": "GMAIL",
+      "title": "[Fjord] 고객 워크숍",
+      "timestamp": "2026-08-06T03:00:00Z",
+      "text": "다음 주 화요일 오후가 좋습니다.",
+      "untrusted": true
+    },
+    {
+      "segment_id": "SEG-EV-F-001",
+      "resource_id": "EV-F-001",
+      "parent_resource_id": "CAL-PRIMARY",
+      "source": "CALENDAR",
+      "title": "팀 회의",
+      "timestamp": "2026-08-07T04:00:00Z",
+      "text": "일정: 팀 회의 / 시작: 2026-08-11T06:00:00Z / 종료: 2026-08-11T07:00:00Z / 투명도: opaque / 설명: ",
+      "untrusted": true
+    }
+  ],
+  "hard_negative_segment_ids": [],
+  "candidate_scores": {},
+  "selected_resource_ids": [],
+  "context_budget": {
+    "max_tokens": 900
+  },
+  "mutation_spec": {
+    "kind": "NONE",
+    "notes": [
+      "Canonical RequestIntent 기반 정상 Context 평가"
+    ]
+  }
+}

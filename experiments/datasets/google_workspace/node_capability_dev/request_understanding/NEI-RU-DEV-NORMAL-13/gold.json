@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "result": "COMPLETE",
+  "entry_mode": "AGENT_SEARCH",
+  "requested_outcome": "ACTION_PLAN",
+  "goal": "Quartz 납품일 확인 회신을 실제 전송한다.",
+  "completion_criteria": [
+    "Quartz 납품일을 확인한다",
+    "기존 Quartz Thread에 회신을 SEND로 계획한다",
+    "실행 전 승인을 요구한다"
+  ],
+  "constraints": {
+    "project_terms": [
+      "Quartz",
+      "납품 일정"
+    ],
+    "requested_effects": [
+      "GMAIL_SEND"
+    ],
+    "sources": [
+      "GMAIL"
+    ]
+  },
+  "ambiguities": [],
+  "unsupported_scope": [],
+  "next_route": "SOURCE_PLANNING"
+}

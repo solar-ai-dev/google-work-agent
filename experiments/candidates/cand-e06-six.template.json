@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "candidate_id": "CAND-E06-SIX",
+  "candidate_kind": "BASELINE_TEMPLATE",
+  "runnable": false,
+  "dataset_version": "rebuild-v1.9",
+  "graph_version": "SIX_ROLE_BASELINE",
+  "prompt_bundle_version": "0.7.0-r7",
+  "agent_schema_version": "v1",
+  "tool_schema_version": "v2.4",
+  "policy_version": "01-B-v2.3",
+  "retrieval_config_version": "baseline-r6",
+  "runtime": {
+    "runtime_mode": "API_LLM",
+    "provider": "OPENAI",
+    "model": "RESOLVE_E01_FINALIST",
+    "model_version": "RESOLVE_E01_FINALIST_VERSION",
+    "parameters": {
+      "api_endpoint": "responses",
+      "processing_mode": "standard",
+      "temperature": null,
+      "reasoning_budget": "medium",
+      "reasoning_context": "current_turn",
+      "pro_mode": false,
+      "structured_output_mode": "json_schema"
+    },
+    "hardware_profile": null
+  },
+  "prompt_overrides": {},
+  "budgets": {
+    "normal_max_llm_calls": 8,
+    "retrieval_heavy_max_llm_calls": 14,
+    "revision_heavy_max_llm_calls": 12,
+    "absolute_max_llm_calls": 16,
+    "schema_repair_per_call": 1,
+    "semantic_revision_same_failure": 1,
+    "planning_revision_per_run": 2,
+    "additional_acquisition": 2
+  },
+  "unresolved_bindings": [
+    "runtime.model",
+    "runtime.model_version"
+  ],
+  "candidate_config_hash": "0ccc15c5bc043c36601f7727e9b09773149d2314ffedd9d0d4b3aca2a5b0ea64"
+}

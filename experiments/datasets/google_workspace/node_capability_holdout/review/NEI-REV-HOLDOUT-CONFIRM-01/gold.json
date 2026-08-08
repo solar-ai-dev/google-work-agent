@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "result": "CONFIRM",
+  "findings": [
+    {
+      "code": "PLAN_TARGET_AMBIGUOUS",
+      "severity": "ERROR",
+      "action_id": "A1",
+      "field_paths": [
+        "/actions/0/target_resource_id"
+      ],
+      "evidence_ids": [
+        "EVD-AMB-1"
+      ],
+      "message": "사용자가 대상 후보를 선택해야 한다."
+    }
+  ],
+  "next_route": "CONFIRM"
+}

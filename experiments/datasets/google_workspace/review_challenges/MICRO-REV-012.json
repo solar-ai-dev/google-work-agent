@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "micro_case_id": "MICRO-REV-012",
+  "source_case_id": "CASE-CORE-040",
+  "fixture_snapshot_id": "FW-D-011",
+  "challenge_type": "WRONG_TARGET",
+  "mutation_count": 1,
+  "input_plan": {
+    "schema_version": 1,
+    "result": "PLAN_READY",
+    "answer_draft": null,
+    "actions": [
+      {
+        "action_id": "ACT-CORE-040-1",
+        "tool_name": "tasks_update_task",
+        "effect_type": "UPDATE",
+        "target_resource_id": "TSK-SIMILAR-NOT-TARGET",
+        "arguments": {
+          "task_id": "TSK-K-001",
+          "notes": "선적 2일 지연"
+        },
+        "expected": {
+          "updated": true
+        },
+        "evidence_ids": [
+          "EVD-SEG-TSK-K-001-1",
+          "UE-CORE-040"
+        ],
+        "depends_on_action_ids": [],
+        "risk_codes": [],
+        "approval_required": true
+      }
+    ],
+    "confirmation_question": null,
+    "blocked_reason_codes": []
+  },
+  "gold_review": {
+    "expected_result": "REVISE",
+    "must_not_pass": true,
+    "failure_reason_code": "REVIEW_FALSE_PASS",
+    "localized_action_id": "ACT-CORE-040-1",
+    "localized_field_path": "/actions/0/target_resource_id",
+    "review_must_not_repair_plan": true
+  },
+  "grader_ids": [
+    "grader.review.error_detection",
+    "grader.review.localization",
+    "grader.review.route",
+    "grader.review.overblocking"
+  ]
+}

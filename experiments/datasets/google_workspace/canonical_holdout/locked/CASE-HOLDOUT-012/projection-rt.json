@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "case_id": "CASE-HOLDOUT-012",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-204",
+    "user_prompt_id": "UP-HOLDOUT-012",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "projection_id": "PROJ-HOLDOUT-012-RT",
+  "projection_kind": "ROUTING_TRAJECTORY",
+  "gold": {
+    "expected_route": [
+      "request_understanding.classify",
+      "DOMAIN_BLOCK"
+    ],
+    "expected_skipped_nodes": [
+      "acquisition.plan_sources",
+      "context.select_evidence",
+      "analysis.analyze",
+      "planning.draft_plan",
+      "review.inspect"
+    ],
+    "expected_tool_trajectory": []
+  },
+  "grader_ids": [
+    "grader.routing_trajectory.deterministic",
+    "grader.routing_trajectory.semantic"
+  ]
+}

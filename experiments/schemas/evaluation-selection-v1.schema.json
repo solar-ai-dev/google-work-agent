@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evaluation-selection-v1.schema.json",
+  "title": "Evaluation Selection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "selection_id",
+    "layer",
+    "split",
+    "locked",
+    "item_count",
+    "items",
+    "selection_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "selection_id": {
+      "type": "string"
+    },
+    "layer": {
+      "type": "string"
+    },
+    "split": {
+      "enum": [
+        "DEV",
+        "HOLDOUT",
+        "MIXED",
+        "N/A"
+      ]
+    },
+    "locked": {
+      "type": "boolean"
+    },
+    "item_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "evaluation_item_id",
+          "path"
+        ],
+        "properties": {
+          "evaluation_item_id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "target_node_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failure_reason_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retry_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "selection_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "unlock_condition": {
+      "type": "string"
+    }
+  }
+}

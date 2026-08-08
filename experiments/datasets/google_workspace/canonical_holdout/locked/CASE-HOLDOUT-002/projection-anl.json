@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-HOLDOUT-002-ANL",
+  "case_id": "CASE-HOLDOUT-002",
+  "projection_kind": "ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-203",
+    "user_prompt_id": "UP-HOLDOUT-002",
+    "entry_mode": "RESOURCE_SELECTED"
+  },
+  "gold": {
+    "goal": "Willow Event 시간과 설명을 답한다.",
+    "evidence_ids": [
+      "EVD-CH-W-203"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "decision_id": "RD-NEI-RU-DEV-INTENT_UNSUPPORTED_SCOPE-01",
+  "node_call_id": "NC-NEI-RU-DEV-INTENT_UNSUPPORTED_SCOPE-01",
+  "failure_reason_codes": [
+    "INTENT_UNSUPPORTED_SCOPE"
+  ],
+  "retry_kind": "SEMANTIC_REVISION",
+  "next_prompt_slot_id": "request_understanding.revise.INTENT_UNSUPPORTED_SCOPE",
+  "next_node_id": null,
+  "attempt_no": 1,
+  "max_attempts": 2,
+  "changed_fields_allowed": [
+    "/goal",
+    "/completion_criteria",
+    "/constraints",
+    "/ambiguities",
+    "/unsupported_scope",
+    "/result",
+    "/entry_mode",
+    "/next_route"
+  ],
+  "required_route": null,
+  "stop_reason": null
+}

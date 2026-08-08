@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "failure_id": "FAIL-NEI-ANL-DEV-ANALYSIS_NEEDS_MORE_DATA_MISSED-01",
+  "failure_reason_code": "ANALYSIS_NEEDS_MORE_DATA_MISSED",
+  "failure_origin": "LLM_OUTPUT",
+  "detected_by": "EXPERIMENT_SEMANTIC_GRADER",
+  "runtime_disposition": "RETRYABLE",
+  "experiment_disposition": "RUN_REVISION",
+  "affected_field_paths": [
+    "/"
+  ],
+  "evidence_refs": []
+}

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/source-fetch-plan.schema.json",
+  "title": "SourceFetchPlanV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source",
+    "priority",
+    "reason_codes",
+    "constraints",
+    "page_size",
+    "max_pages",
+    "max_candidates",
+    "detail_limit",
+    "required"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "source": {
+      "enum": [
+        "GMAIL",
+        "TASKS",
+        "CALENDAR"
+      ]
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "constraints": {
+      "type": "object"
+    },
+    "page_size": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+    },
+    "max_pages": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2
+    },
+    "max_candidates": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 40
+    },
+    "detail_limit": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "required": {
+      "type": "boolean"
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "candidate_kind": "MODEL_CANDIDATE_TEMPLATE",
+  "runnable": false,
+  "dataset_version": "rebuild-v1.9",
+  "graph_version": "SIX_ROLE_BASELINE",
+  "prompt_bundle_version": "0.7.0-r7",
+  "agent_schema_version": "v1",
+  "tool_schema_version": "v2.4",
+  "policy_version": "01-B-v2.3",
+  "retrieval_config_version": "baseline-r6",
+  "prompt_overrides": {},
+  "budgets": {
+    "normal_max_llm_calls": 8,
+    "retrieval_heavy_max_llm_calls": 14,
+    "revision_heavy_max_llm_calls": 12,
+    "absolute_max_llm_calls": 16,
+    "schema_repair_per_call": 1,
+    "semantic_revision_same_failure": 1,
+    "planning_revision_per_run": 2,
+    "additional_acquisition": 2
+  },
+  "candidate_id": "CAND-E01-API-C",
+  "runtime": {
+    "runtime_mode": "API_LLM",
+    "provider": "RESOLVE_API_PROVIDER_C",
+    "model": "RESOLVE_API_MODEL_C",
+    "model_version": "RESOLVE_MODEL_VERSION_C",
+    "parameters": {
+      "temperature": "FIX_SAME_VALUE_FOR_ALL_MODEL_CANDIDATES",
+      "reasoning_budget": "FIX_SAME_VALUE_FOR_ALL_MODEL_CANDIDATES"
+    },
+    "hardware_profile": null
+  },
+  "unresolved_bindings": [
+    "runtime.provider",
+    "runtime.model",
+    "runtime.model_version",
+    "runtime.parameters.temperature",
+    "runtime.parameters.reasoning_budget"
+  ],
+  "candidate_config_hash": "6b19eed82c11d0b2a6905736bdd8f2b14dc043aeecefe72a52e89db1bc1f5e74"
+}

@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "result": "NEEDS_CONFIRMATION",
+  "entry_mode": "AGENT_SEARCH",
+  "requested_outcome": "ANALYSIS",
+  "goal": "",
+  "completion_criteria": [
+    "동명이인 후보를 구분한다",
+    "사용자 선택 전 임의 후보를 확정하지 않는다"
+  ],
+  "constraints": {
+    "person_terms": [
+      "박민수"
+    ],
+    "relative_date": "다음 주",
+    "sources": [
+      "GMAIL"
+    ]
+  },
+  "ambiguities": [
+    {
+      "type": "PERSON",
+      "candidates": [
+        {
+          "name": "박민수",
+          "email": "minsoo.park@aster.example.test",
+          "project": "Aster POS 웨비나"
+        },
+        {
+          "name": "박민수",
+          "email": "park.minsoo@nova.example.test",
+          "project": "Nova 패키지 웨비나"
+        }
+      ],
+      "required_question": "어느 박민수님과 웨비나를 말씀하시는지 확인"
+    }
+  ],
+  "unsupported_scope": [],
+  "next_route": "WAITING_CONFIRMATION"
+}

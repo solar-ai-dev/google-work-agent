@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "calendars": [
+    {
+      "calendar_id": "CAL-PRIMARY",
+      "title": "기본 캘린더",
+      "timezone": "Asia/Seoul"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "EV-SO-201",
+      "calendar_id": "CAL-PRIMARY",
+      "title": "Solstice 인쇄소 슬롯",
+      "start": "2026-09-03T05:00:00Z",
+      "end": "2026-09-03T06:00:00Z",
+      "status": "confirmed",
+      "transparency": "opaque",
+      "attendees": [],
+      "description": "인쇄소 확인",
+      "updated_at": "2026-08-07T03:00:00Z"
+    }
+  ]
+}

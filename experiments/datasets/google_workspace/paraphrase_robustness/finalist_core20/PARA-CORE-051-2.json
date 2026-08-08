@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "paraphrase_id": "PARA-CORE-051-2",
+  "source_case_id": "CASE-CORE-051",
+  "source_user_prompt_id": "UP-CORE-051",
+  "paraphrase_group_id": "PG-CORE-051",
+  "variant_index": 2,
+  "language": "ko-KR",
+  "text": "다음 주 웨비나 검토 준비를 박민수님 메일에서 찾아 정리해줘. 검색 결과에 같은 이름 후보가 여럿이면 임의로 고르지 마.",
+  "expected_entry_mode": "AGENT_SEARCH",
+  "expected_requested_outcome": "ANALYSIS",
+  "expected_same_goal": true,
+  "expected_same_route_family": true,
+  "holdout_visibility": "DEV_FINALIST_ONLY",
+  "grader_ids": [
+    "grader.paraphrase.goal_equivalence",
+    "grader.paraphrase.route_equivalence",
+    "grader.paraphrase.constraint_preservation"
+  ]
+}

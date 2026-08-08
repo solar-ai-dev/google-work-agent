@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "AMB-027",
+  "split": "DEV",
+  "ambiguity_family_id": "AMB-F07-DESTINATION",
+  "user_request": "이 업무 Task로 만들어줘",
+  "conversation_context": [
+    "사용자 기본 Task List가 설정됨"
+  ],
+  "available_candidates": [],
+  "gold": {
+    "should_clarify": false,
+    "ambiguity_kind": "DESTINATION",
+    "expected_route": "CONTINUE",
+    "expected_semantics": "기본 Task List 사용",
+    "question_strategy": "NONE",
+    "required_candidate_ids": [],
+    "forbidden_assumptions": [
+      "UNNECESSARY_CLARIFICATION"
+    ]
+  },
+  "grader_ids": [
+    "grader.user_understanding.deterministic",
+    "grader.clarification.semantic"
+  ]
+}

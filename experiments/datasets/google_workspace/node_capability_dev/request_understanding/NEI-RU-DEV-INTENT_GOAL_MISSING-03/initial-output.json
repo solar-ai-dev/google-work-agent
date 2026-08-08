@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "result": "COMPLETE",
+  "entry_mode": "AGENT_SEARCH",
+  "requested_outcome": "ANSWER",
+  "goal": "",
+  "completion_criteria": [
+    "지난주 범위를 반영한다",
+    "낮은 신뢰도 후보를 자동 확정하지 않는다",
+    "필요하면 추가 조건을 요청한다"
+  ],
+  "constraints": {
+    "project_terms": [
+      "Delta",
+      "포장 승인"
+    ],
+    "date_range": [
+      "2026-07-27",
+      "2026-08-02"
+    ],
+    "sources": [
+      "GMAIL"
+    ]
+  },
+  "ambiguities": [],
+  "unsupported_scope": [],
+  "next_route": "SOURCE_PLANNING"
+}

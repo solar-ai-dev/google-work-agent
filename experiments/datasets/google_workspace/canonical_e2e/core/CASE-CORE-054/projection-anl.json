@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-054-ANL",
+  "case_id": "CASE-CORE-054",
+  "projection_kind": "ANALYSIS",
+  "applicable": false,
+  "not_applicable_reason": "work_analysis is skipped on the gold route.",
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-007",
+    "user_prompt_id": "UP-CORE-054",
+    "entry_mode": "AGENT_SEARCH"
+  },
+  "gold": {
+    "completion_criteria": [
+      "Grove 결과는 읽을 수 있다.",
+      "확인 전 Draft Action을 만들지 않는다."
+    ],
+    "tags": [
+      "ambiguity_duplicate_conflict_error_policy",
+      "sf-c6-ambiguity-lowconf",
+      "external_recipient_confirmation"
+    ]
+  },
+  "grader_ids": [
+    "grader.analysis.deterministic",
+    "grader.analysis.semantic"
+  ]
+}
