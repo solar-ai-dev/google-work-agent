@@ -1,5 +1,17 @@
 # 01-B. Google Work Agent 정책 정의서
 
+> **상태:** Draft v2.4 · **기준일:** 2026-08-08
+
+## 0. 사람이 먼저 볼 핵심 정책
+
+1. **읽기는 요청 범위 안에서 자동**, Write는 반드시 사용자 승인 후 실행한다.
+2. **LLM은 허용 여부를 최종 결정하지 않는다.** Policy·Tool Allowlist·Domain Validator가 강제한다.
+3. Gmail 원문 삭제·Task 삭제·반복 Event 전체 일괄 수정은 금지한다.
+4. Gmail SEND·Calendar Event DELETE·Task 완료·참석자 변경은 정확한 대상·인자를 고정해 승인 후 실행한다.
+5. `UNKNOWN_RESULT`는 재전송하지 않고 기존 결과를 조회한다.
+6. Source 본문은 비신뢰 데이터이며 Prompt Injection이 정책을 바꿀 수 없다.
+
+
 ## 1. 문서 목적
 
 이 문서는 Agent가 어떤 데이터를 읽을 수 있고, 어떤 Action을 제안·승인·실행할 수 있으며, 어떤 경우에 차단·경고·재질문해야 하는지 정의한다. 정책은 LLM Prompt가 아니라 일반 코드와 Tool Allowlist로 강제한다.
@@ -717,7 +729,7 @@ CI에서 Dependency 취약점, Secret, 금지 파일, License와 테스트 실�
 
 #### POL-SUP-003 Artifact 무결성
 
-Installer·ZIP·실행 Artifact의 SHA-256을 생성하고 Release Metadata에 기록한다. 서명 인프라가 준비되면 Code Signing을 Release Gate에 추가한다.
+Installer·ZIP·실행 Artifact의 SHA-256을 생성하고 Release Metadata에 기록한다. 배포되는 Test·Production Artifact는 Code Signing·Timestamp·SHA-256 Manifest를 Release Gate로 강제한다.
 
 #### POL-SUP-004 Ollama·모델 고정
 
@@ -727,19 +739,20 @@ LOCAL_CAPABLE Release는 검증된 Ollama Version, Model ID, Model Hash와 Runti
 
 원격 SaaS가 아닌 P0에는 WAF, VPC, Redis 분산 Lock, Kubernetes, ALB, DDoS 완화, 자체 JWT·비밀번호 정책을 적용하지 않는다. 제품 형태가 원격 서비스로 변경되면 별도 Threat Model과 정책을 작성한다.
 
-## 22. Multi-Agent 정책
+## 24. Multi-Agent 정책
 
 - Supervisor와 전문 Agent는 제안·분석·검토만 수행하며 정책 허용 여부를 최종 확정하지 않는다.
 - 요청 이해 Agent는 Google Tool을 호출하지 않는다.
-- Retrieval Agent는 읽기 전략만 제안하며 실제 Query·MCP 인자는 결정적 Builder와 Adapter가 검증한다.
+- Acquisition Agent의 LLM은 읽기 전략만 제안하고 같은 Subgraph의 결정적 Application Node가 Query·MCP 인자를 검증·실행한다.
+- Context Retriever Agent는 MCP·Google API를 직접 호출하지 않는다.
 - 업무 분석 Agent의 중복·충돌·위험 판단은 후보이며 Domain Validator가 최종 판정한다.
 - 해결책·계획 Agent와 계획 검토 Agent는 Approval·ExecutionAttempt·Verification Row를 생성하거나 변경하지 않는다.
-- Agent 간 자유 대화, 무제한 Handoff, Agent별 독립 장기 Memory와 Peer-to-Peer A2A를 금지한다.
-- Agent Output은 Schema 검증 실패 시 최대 1회 Repair하고, 다시 실패하면 사용자 확인·부분 결과·차단 중 하나로 전환한다.
+- Agent 간 자유 대화, 무제한 Handoff, Agent별 독립 장기 Memory와 Peer-to-Peer A2A를 금지한다. 전문 Agent Subgraph는 invocation 범위의 Local State만 보유하며 이를 장기 Memory나 Domain 사실로 승격하지 않는다.
+- Agent Subgraph Output은 Schema 검증 실패 시 동일 invocation 안에서 최대 1회 Schema Repair하고, 다시 실패하면 Supervisor에 실패 disposition을 반환하여 사용자 확인·부분 결과·차단 중 하나로 전환한다.
 - 승인 이후 Tool·Arguments·대상 Resource·Dependency를 LLM이 다시 생성하거나 수정할 수 없다.
 - 실행·검증·복구는 결정적 Subgraph와 Domain Command가 담당하며 Agent 판단으로 성공 상태를 확정하지 않는다.
 
-## 25. Draft v2.2 Multi-Agent·Retry 정책
+## 25. Agent·Retry 정책
 
 - API 탐색·수집 Agent와 Context Retriever Agent를 분리한다.
 - Retriever는 Google API·MCP를 직접 호출하지 않는다.
@@ -771,7 +784,7 @@ LOCAL_CAPABLE Release는 검증된 Ollama Version, Model ID, Model Hash와 Runti
 - FastAPI와 React에는 계정·Scope·연결 상태 Metadata만 반환한다.
 - Refresh Token 원문을 FastAPI Process Memory로 복사하는 구현은 금지한다.
 
-## 2026-08-07 v2.3 Clarification·조회 범위·일정 관계 정책
+## 26. Clarification·조회 범위·일정 관계 정책
 - 전체 Gmail Mailbox, 장기간 무제한 원문, 모든 Workspace Source 전체 조회 요청은 `BLOCKED`다. 자동으로 범위를 축소해 실행하지 않는다.
 - bounded 범위 확대가 새로 필요하면 이유·Source·기간을 제시하고 사용자 확인 후 수행한다.
 - 시간 `overlap`은 곧바로 업무 `conflict`가 아니다. `NESTED_RELATED`, `TRUE_BUSY_CONFLICT`, `TENTATIVE`, `FREE_OR_TRANSPARENT`, `UNKNOWN_RELATION`을 구분한다.

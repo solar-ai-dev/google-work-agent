@@ -1,6 +1,14 @@
 # 11. Google Work Agent · 관측성 · 로그 · 감사 설계서
 
-> **상태:** Draft v2.4 · **외부 Telemetry:** Production 기본 OFF
+> **상태:** Draft v2.8 · **외부 Telemetry:** Production 기본 OFF
+
+## 먼저 읽기
+
+- **Domain Store**는 제품 사실의 기준점이다.
+- **Trace**는 판단·호출·성능 원인을 설명한다.
+- **Audit**는 승인·정책·Write·Verification의 안전 기록이다.
+- **Evaluation Artifact**는 후보 비교 결과다.
+- 평가에서 BTS, Process, Efficiency, Reliability를 분리하며 비용이 Safety/업무 실패를 상쇄하는 단일 점수는 만들지 않는다.
 
 ## 1. 채널
 
@@ -52,6 +60,7 @@ projection_version
 upstream_mode?       # ORACLE | LIVE
 target_node_id?
 grader_version
+scoring_contract_version?
 ```
 
 평가 필드는 제품 일반 실행에 강제로 저장하지 않는다. Experiment Runner가 명시적으로 시작한 Run에만 연결한다.
@@ -239,6 +248,10 @@ p95_latency_ms
 repair_count
 revision_count
 retrieval_round_count
+hard_contract_pass?
+semantic_task_pass?
+business_task_success?
+score_denominator_group?   # CORE | STRESS | HOLDOUT
 ```
 
 규칙:
@@ -247,6 +260,8 @@ retrieval_round_count
 - Candidate Config Hash가 다른 결과를 같은 후보 집계에 합치지 않는다.
 - Budget Stop·Partial Run은 Full Run과 동일 순위로 비교하지 않는다.
 - Safety·Tool·Argument·End-state 결과는 결정적 Grader 결과를 우선한다.
+- `business_task_success`는 Hard Contract + calibrated task-semantic 결과로 계산하며 Cost·Latency로 보정하지 않는다.
+- Core·Stress·Holdout 집계를 하나의 headline denominator로 합치지 않는다.
 - LLM Judge 결과에는 `grader_version`과 Human Calibration 상태를 기록한다.
 
 ## 10. Diagnostic Bundle
@@ -299,7 +314,7 @@ OAUTH_CONNECTION_REVOKED
 
 ---
 
-## 13. 2026-08-07 Failure·Retry·Query Trace 확장
+## 13. Failure·Retry·Query Trace
 
 Agent 개별실험과 Runtime Prompt 재시도를 분석하기 위해 다음 Trace Attribute를 추가한다.
 
@@ -324,15 +339,56 @@ prompt_activation_status
 규칙:
 
 - Prompt·Completion 원문은 저장하지 않는다.
-- Failure-specific Prompt는 `prompt_id`, `prompt_version`, `content_hash`, `failure_reason_code`로 연결한다.
+- Failure-specific Prompt는 Base `prompt_id`/`prompt_version`/`content_hash`와 assembly metadata인 `failure_reason_code`를 연결한다. `failure_reason_code`를 Runtime Prompt Slot Key로 사용하지 않는다.
 - ORACLE, LIVE, MUTATED Node Run을 구분한다.
 - 실험 Grader가 사후 발견한 실패는 `detected_by=EXPERIMENT_GRADER`로 기록하며 Runtime 감지처럼 표현하지 않는다.
 - Budget Profile과 실제 LLM Call 수를 함께 기록한다.
 - Query Attempt에는 Query 원문 전체 대신 정규화된 제약, Hash, Score·Confidence·Stop Reason을 저장한다.
 
 
-## 2026-08-07 v2.4 Effect·Transaction 관측 보강
+## 14. Effect·Transaction 관측
 - Trace/Audit에는 `effect_type`(`READ|CREATE|UPDATE|SEND|DELETE`)과 verification/recovery policy를 기록한다.
 - 외부 Adapter 호출 이벤트에는 DB Write Transaction 보유 여부를 테스트/진단 전용 필드로 검증할 수 있다. Production Trace에 DB 내부 상세를 노출하지 않는다.
 - Recovery Audit는 `RequireRecovery`·`ResolveRecovery` Command 결과와 연결한다.
 - SEND/DELETE의 UNKNOWN_RESULT에서도 원문/수신자 전체를 로그에 저장하지 않는다.
+## 15. Agent Subgraph 관측 계약
+
+Agent 수와 LLM Call 수를 분리해 기록한다.
+
+```text
+graph_profile
+agent_subgraph_id
+agent_role
+agent_invocation_id
+parent_agent_invocation_id?
+subgraph_namespace
+replay_mode?              # NONE | CONTEXT_READY_REPLAY
+context_snapshot_id?
+controlled_candidate_id?  # B1_INTEGRATED | B2_STAGED | B3_SPECIALIZED
+local_attempt_no
+schema_repair_count
+semantic_revision_count
+handoff_from
+handoff_to
+handoff_disposition
+input_state_hash
+output_state_hash
+llm_call_id
+input_token_count
+output_token_count
+tool_call_count
+google_read_call_count
+communication_token_count
+required_field_preservation_rate?
+evidence_id_preservation_rate?
+constraint_loss_count?
+contradiction_introduced?
+```
+
+규칙:
+- `agent_invocation_count`와 `llm_call_count`를 별도 집계한다.
+- Local State 원문, Prompt 원문, Completion 원문, Google 원문 전체는 Trace에 저장하지 않는다.
+- Handoff는 Agent 간 자유 대화가 아니라 Parent Graph의 Typed Result 이동으로 기록한다.
+- E06-A는 Profile의 실제 native 비용을 측정한다. E06-B는 `CONTEXT_READY_V1`의 동일 `context_snapshot_id`에서 post-retrieval decomposition 차이를 비교하며 Google Read 호출은 0이어야 한다.
+- 평가 실행은 `evaluation_environment_hash`로 model/runtime parameter, hardware profile, concurrency, timeout, fixture, Tool Schema, Policy, Prompt semantic bundle, Graph Profile을 함께 잠근다.
+

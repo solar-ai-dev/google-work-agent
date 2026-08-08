@@ -145,7 +145,7 @@ Artifact Signature·Manifest 100%
 
 Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credential Provider만 수행한다. FastAPI는 연결 Metadata만 취급한다.
 
-## 2026-08-07 승인형 고영향 Write 보안
+## 15. 고영향 Write 보안
 - SEND·DELETE·Task 완료·참석자 변경은 정확한 Target/Arguments와 명시 승인 후 실행한다.
 - SEND 응답 유실은 재전송하지 않고 UNKNOWN_RESULT로 전환한다.
 - DELETE는 Calendar Event에만 허용한다.

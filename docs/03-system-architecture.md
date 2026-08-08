@@ -1,18 +1,34 @@
 # 03. Google Work Agent 시스템 아키텍처 설계서
 
-> **문서 기준:** 이 문서는 `01. 요구사항 정의서·PRD`, `01-A. 기능 정의서`, `01-B. 정책 정의서`, `02. UI·UX 설계서`와 2026-08-07 React·FastAPI 전환 결정을 시스템 구조로 구체화한다. 기존 v1 문서와 충돌하면 현재 권위 문서의 결정이 우선한다.
+> **문서 기준:** `01 PRD §1.1`의 Concern Owner 규칙을 따른다. 이 문서는 시스템 경계와 의존성 방향을 소유하며 Policy·Domain·Tool의 전문 계약을 완화하지 않는다.
 
 ## 0. 문서 정보
 
 | 항목 | 내용 |
 |---|---|
 | 문서명 | 03. Google Work Agent 시스템 아키텍처 설계서 |
-| 상태 | Draft v2.6 |
-| 기준일 | 2026-08-07 |
+| 상태 | Draft v2.9 |
+| 기준일 | 2026-08-08 |
 | 대상 릴리스 | P0 MVP |
 | 공식 환경 | Windows 11 x64 · 최신 Chrome·Microsoft Edge |
 | 제품 형태 | 단일 사용자용 로컬 Web UI + Python Agent 애플리케이션 |
 | 핵심 Runtime | React · TypeScript · Vite · FastAPI · LangGraph · Google Work MCP Server `stdio` · SQLite · OS Keyring |
+
+## 0-A. 한눈에 보는 구조
+
+```text
+React UI → FastAPI Local Service → Deterministic Supervisor → Agent Subgraph
+                                            ↓
+                                   Domain / Policy / Approval
+                                            ↓
+                                  MCP → Google Workspace
+                                            ↓
+                                      Verification
+```
+
+- **판단은 Agent**, **허용·실행 사실은 Domain**, **외부 효과는 MCP/Google**, **재개 위치는 Checkpoint**가 소유한다.
+- 원격 제품 Backend 없이 사용자 PC에서 동작한다.
+
 
 ## 1. 문서 목적
 
@@ -76,7 +92,7 @@ Google Work Agent는 **로컬 Frontend와 Python Modular Monolith를 분리한 �
 - 운영 UI 제공: FastAPI가 React Static Build와 `/api/v1`을 같은 Origin에서 제공
 - 내부 구조: Python Layered Modular Monolith
 - 의존성 방향: React → Local API → Application → Domain
-- Agent 구조: 결정적 Supervisor + 평가 가능한 최대 6개 전문 LLM 역할 Node Baseline + 결정적 실행·검증 Engine
+- Agent 구조: 결정적 Supervisor + 평가 가능한 1/3/6 Agent Subgraph Profile + 결정적 실행·검증 Engine
 - 진행 전달: REST Command·Query + SSE Event Stream
 - 외부 Tool 연동: MCP `stdio`
 - 상태 관리: SQLite Domain Store + LangGraph Checkpointer
@@ -107,7 +123,7 @@ Google Work Agent는 **로컬 Frontend와 Python Modular Monolith를 분리한 �
 | ARC-012 | REST Command + SSE Event | 상태 변경은 REST Command, 진행 전달은 재연결 가능한 SSE를 사용한다. |
 | ARC-013 | Launcher Process Supervision | Launcher가 Port·Service·Browser·MCP 수명주기를 조정한다. |
 | ARC-014 | Versioned Prompt Registry | Supervisor는 Node를 Routing하고 선택된 Agent·Application Node가 Node·상태·목적별 PromptRef를 확정한다. |
-| ARC-004 | 결정적 LangGraph Supervisor 기반 평가 가능 Workflow | `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE`을 같은 안전·Tool·Policy 계약으로 비교하며 승인·실행·검증·복구는 Graph 후보와 독립된 결정적 Engine이 통제한다. |
+| ARC-004 | 결정적 LangGraph Supervisor 기반 평가 가능 Workflow | `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE`을 같은 안전·Tool·Policy 계약으로 비교한다. Agent는 invocation 범위 Local State를 가진 Subgraph이며, 필요한 Google Read는 해당 Agent Subgraph 안의 결정적 Application Node가 수행할 수 있다. 승인·실행·검증·복구는 Graph 후보와 독립된 결정적 Engine이 통제한다. |
 | ARC-005 | Agent와 Domain·Policy 분리 | LLM은 제안하고 일반 코드는 허용·차단·검증을 결정한다. |
 | ARC-006 | Google 연동은 MCP `stdio` | Google Tool 계약과 실행 경계를 표준화하고 로컬에 유지한다. |
 | ARC-007 | Checkpoint와 Domain Store 분리 | Graph 재개 상태와 제품의 승인·실행 사실을 별도로 보존한다. |
@@ -996,21 +1012,21 @@ GPU가 없는 팀원은 `API_ONLY`, Mock, 고정 Fixture로 공통 UI·Graph·Po
 | ADR-004 | Google 연동을 로컬 MCP `stdio`로 제한 | Accepted |
 | ADR-005 | Domain Policy와 Agent 판단 분리 | Accepted |
 | ADR-006 | Checkpoint와 Domain Store 분리 | Accepted |
-| ADR-007 | 모든 쓰기 후 Google GET 검증 | Accepted |
+| ADR-007 | 모든 쓰기 후 Effect별 결정적 Verification | Accepted |
 | ADR-008 | Action Saga·부분 성공 보존 | Accepted |
 | ADR-009 | Ollama를 제품 Local Runtime으로 고정 | Accepted |
 | ADR-010 | `API_ONLY`·`LOCAL_CAPABLE` Artifact 분리 | Accepted |
 
-## 26. 후속 문서에서 결정할 미확정 사항
+## 26. 세부값 소유 문서
 
-- MCP 재시작 횟수·Backoff·Heartbeat
-- Approval Source Snapshot 비교의 Source별 Version Token 세부값
-- AUTO fallback의 세부 오류 코드
-- Launcher 패키징·업데이트·비정상 종료 처리의 구체 구현
-- 보존 기간 정리 실행 시점
-- Local 로그 Rotation과 최대 파일 크기
+아키텍처는 다음 값을 중복 정의하지 않고 Concern Owner의 최신 계약을 참조한다.
 
-이 항목은 현재 문서에서 임의 확정하지 않고 해당 후속 설계서에서 결정한다.
+- MCP 재시작·Timeout·Runtime 제한 → `10 Infrastructure`, `14 Operations`
+- Approval Source Snapshot·Version Token → `04 Domain·DB`, `07 Interface`
+- AUTO fallback 오류 분류 → `07 Interface`, `14 Operations`
+- Launcher 패키징·업데이트·비정상 종료 → `10 Infrastructure`
+- 보존 기간·Purge → `04 Domain·DB`, `11 Observability`
+- Local Log Rotation·최대 크기 → `11 Observability`
 
 ## 27. P0 아키텍처 완료 조건
 
@@ -1026,7 +1042,7 @@ GPU가 없는 팀원은 `API_ONLY`, Mock, 고정 Fixture로 공통 UI·Graph·Po
 - LOCAL_CAPABLE 환경에서 Ollama 기반 `AUTO`, `LOCAL_GPU`, `API_LLM` 모드가 정책대로 동작한다.
 - OAuth Token과 LLM API Key가 SQLite·Checkpoint·Trace에 저장되지 않는다.
 
-# 28. 보안·복구 아키텍처 보강
+# 28. 보안·복구 아키텍처
 
 이 절은 일반 웹 서비스 보안 체크리스트를 그대로 이식하지 않고, 로컬 단일 사용자·React·FastAPI·SQLite·MCP `stdio` 구조에서 실제로 필요한 안전성과 복구성을 아키텍처 수준으로 고정한다.
 
@@ -1219,10 +1235,10 @@ P0 로컬 제품에는 WAF, VPC, Redis 분산 Lock, Kubernetes, ALB, 자체 JWT�
 
 ## 28.10 DB 설계 문서로 넘기는 결정
 
-다음은 아키텍처 원칙은 확정됐지만 정확한 구현값은 `04. 도메인·데이터베이스 설계서`에서 결정한다.
+다음 물리값은 아키텍처가 중복 소유하지 않는다. 현재 값은 `04. 도메인·데이터베이스 설계서`와 관련 Concern Owner를 기준으로 한다.
 
 - Domain Table 목록과 Column
-- Approval을 별도 Table로 둘지 Action 상태에 포함할지
+- Approval·ExecutionAttempt·Verification Table 구조
 - SQLite 파일 분리 여부
 - WAL·`synchronous`·`busy_timeout`
 - Optimistic Version Column과 상태 전이 SQL
@@ -1233,31 +1249,7 @@ P0 로컬 제품에는 WAF, VPC, Redis 분산 Lock, Kubernetes, ALB, 자체 JWT�
 - Integrity Check 실행 주기
 - 물리 삭제와 Audit 최소 보존 Schema
 
-## 24. Multi-Agent 아키텍처 보완
-
-```mermaid
-flowchart TD
-    SUP["Supervisor Graph"] --> REQ["요청 이해 Agent"]
-    SUP --> RET["Retrieval Agent"]
-    SUP --> ANA["업무 분석 Agent"]
-    SUP --> PLAN["해결책·계획 Agent"]
-    SUP --> REVIEW["계획 검토 Agent"]
-    SUP --> EXEC["결정적 실행 Subgraph"]
-    SUP --> VERIFY["결정적 검증·복구 Subgraph"]
-
-    RET --> MCPR["MCP 읽기 Port"]
-    EXEC --> MCPW["MCP 쓰기 Port"]
-    VERIFY --> MCPR
-    SUP --> DOMAIN["Domain·Policy"]
-```
-
-- 전문 Agent는 동일 Run·Conversation·LangGraph Thread를 공유한다.
-- Agent별 Subgraph Checkpoint Namespace를 사용하되 승인·실행 사실은 Domain Store가 기준이다.
-- Agent 간 Handoff는 Typed State와 ID Reference로 제한한다.
-- Supervisor는 기본적으로 결정적 Router이며 Agent가 다른 Agent를 직접 호출하지 않는다.
-- 실행·검증 Subgraph는 LLM이 승인된 인자를 다시 생성하지 못하도록 한다.
-
-## 24. Multi-Agent v5.2 아키텍처
+# 29. Agent Subgraph 아키텍처
 
 ```mermaid
 flowchart TD
@@ -1276,29 +1268,64 @@ flowchart TD
 - 중간 결과는 Checkpoint·Run Retrieval Cache, 승인·실행 사실은 Domain Store가 소유한다.
 
 
----
+## 29.1 계층형 Agent Subgraph 계약
 
-## 문서 권위 규칙
+P0의 Multi-Agent는 자유 대화형 군집이 아니라 **결정적 Supervisor가 전문 LangGraph Subgraph를 호출하는 계층형 구조**다.
 
-```text
-00 → 01 → 01-A → 01-B → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12 → 13 → 14
+```mermaid
+flowchart TD
+    SUP["Main Supervisor Graph"] --> A["Agent Subgraph"]
+    A --> S["Agent Local State"]
+    S --> L["LLM Node"]
+    L --> V["Schema / Semantic Validation"]
+    V -->|"repair / revision 허용"| L
+    V -->|"complete"| R["Versioned Typed Result"]
+    R --> SUP
+    SUP --> D["Domain Validation"]
+    D --> X["Approval / Execution / Verification"]
 ```
 
-- 하위 문서는 상위 문서를 변경하지 않고 구현값·절차·검증 방법만 구체화한다.
-- `01-A`와 `01-B`가 충돌하면 금지·승인·개인정보 정책을 가진 `01-B`가 우선한다.
-- 상위 결정을 바꿀 때는 상위 문서를 먼저 수정하고 하위 문서를 순차 갱신한다.
+### Agent 정의
 
-## 정합성 보강: Prompt Registry와 Ollama 소유권
+Agent는 다음 조건을 함께 만족하는 실행 단위다.
+
+1. Main Supervisor가 하나의 Subgraph로 호출한다.
+2. 안정적인 책임 범위와 Prompt 계약을 가진다.
+3. Parent State와 분리된 호출 단위 Local State를 가질 수 있다.
+4. LLM 출력 검증과 허용된 bounded repair/revision loop를 내부에서 수행한다.
+5. 종료 시 Parent Graph에는 Versioned Typed Result와 disposition만 반환한다.
+6. 다른 Agent를 직접 호출하지 않는다. Agent 간 이동은 Supervisor가 결정한다.
+7. Agent Local State는 장기 Memory가 아니며 Domain Store·Approval·ExecutionAttempt·Verification의 기준점이 아니다.
+
+### Profile 토폴로지
+
+```text
+SINGLE_BASELINE  = Unified Agent Subgraph 1개
+THREE_STAGE      = Stage Agent Subgraph 3개
+SIX_ROLE_BASELINE= Specialized Agent Subgraph 6개
+```
+
+Agent 수와 LLM Call 수를 동일시하지 않는다. 한 Agent Subgraph가 acquisition 전후 판단이나 Schema Repair 때문에 둘 이상의 LLM Call을 사용할 수 있다. 실제 호출 수·Token·Latency는 Trace와 Evaluation에서 별도 측정한다.
+
+
+---
+
+## 29.2 문서 권위 규칙
+
+문서 번호 순서가 아니라 `01 PRD §1.1`의 **Concern Owner 규칙**을 따른다. 이 문서는 자신의 책임 범위만 구체화하며 01-B 안전 정책, 04 Domain·상태 전이, 07 Tool 계약 같은 전문 권위 계약을 완화하지 않는다.
+
+
+# 30. Prompt Registry와 Ollama 소유권
 
 - 제품 소유 실행 단위는 Launcher, React Frontend, FastAPI Local Agent Service, Google Work MCP Server다.
 - Ollama는 사용자가 별도 설치한 외부 Runtime이며 제품이 설치·시작·종료·업데이트하지 않는다.
 - FastAPI 내부에 Versioned Prompt Registry를 둔다.
-- Prompt 선택 Key는 `agent_role + subgraph_name + node_name + node_state + purpose`다.
+- Prompt Runtime Slot 선택 Key는 `agent_role + subgraph_name + node_name + node_state + purpose + input_schema_version + output_schema_version`다. `failure_reason_code`는 Base Prompt 선택 Key가 아니라 Failure-specific Instruction Block 조립 metadata다.
 - `ARC-014`: Supervisor는 Node만 Routing하고 선택된 Agent·Application Node가 PromptRef를 확정한다. Prompt Bundle Manifest로 Version·Hash·Schema를 고정한다.
 
-## 26. r3 무결성·Credential 아키텍처
+# 31. 무결성·Credential 아키텍처
 
-### 26.1 Command Receipt
+## 31.1 Command Receipt
 
 ```text
 FastAPI Route
@@ -1311,7 +1338,7 @@ FastAPI Route
 
 `command_id`는 재시작 후에도 중복 Command를 식별하는 영속 Key다. Receipt와 Domain 변경 중 하나만 Commit되는 상태를 허용하지 않는다.
 
-### 26.2 OAuth Credential 경계
+## 31.2 OAuth Credential 경계
 
 ```text
 React
@@ -1326,7 +1353,7 @@ React
 - FastAPI는 `account_id`, `email`, `granted_scopes`, `connection_status`, `reauth_required`만 받는다.
 - Access Token은 MCP Process Memory에만 둔다.
 
-### 26.3 Agent·MCP 호출 경계
+## 31.3 Agent·MCP 호출 경계
 
 ```text
 Agent Node → Structured Output → Supervisor → Application Node
@@ -1335,14 +1362,14 @@ Agent Node → Structured Output → Supervisor → Application Node
 
 Agent Workflow Layer는 LLM Adapter와 LangGraph Checkpointer에는 접근할 수 있지만 MCP Client·Google API·Domain Repository를 직접 호출하지 않는다.
 
-### 26.4 Write Claim Token
+## 31.4 Write Claim Token
 
 - `ExecutionClaimService`는 Domain Claim Commit 후 Process Memory의 Service–MCP Session Key로 HMAC Token을 생성한다.
 - Token Payload는 `service_instance_id`, `action_id`, `approval_id`, `execution_attempt_id`, `tool_name`, `arguments_hash`, `expires_at_ms`, `nonce`다.
 - MCP는 Signature·TTL·Binding·Nonce를 검증하고 Nonce를 Process Memory에서 1회 소비한다.
 - Service·MCP 중 하나가 재시작하면 기존 Token은 무효다.
 
-## 2026-08-07 v2.6 구현 정합성 불변조건
+# 32. 실행·Recovery 정합성 불변조건
 ### External I/O ↔ SQLite Transaction
 ```text
 Transaction A: 상태·Version·Snapshot 확보 → COMMIT

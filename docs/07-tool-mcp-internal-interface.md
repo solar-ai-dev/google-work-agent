@@ -1,11 +1,11 @@
 # 07. Google Work Agent · Tool · MCP · 내부 인터페이스 명세서
 
-> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v5.5`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, MCP Tool, Python 내부 인터페이스 계약을 정의한다.
+> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v5.8`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, MCP Tool, Python 내부 인터페이스 계약을 정의한다.
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.4
-- **기준일:** 2026-08-07
+- **상태:** Draft v2.6
+- **기준일:** 2026-08-08
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
 
@@ -65,7 +65,7 @@ Windows Installer
 | Session | `POST /api/v1/session/bootstrap` | Launcher Bootstrap으로 Local Session 수립 |
 | Conversation | `GET/POST /api/v1/conversations` | 대화 조회·생성 |
 | Run | `POST /api/v1/runs`, `GET /api/v1/runs/{run_id}` | 요청 시작·현재 Domain 상태 조회 |
-| Interrupt | `POST /api/v1/runs/{run_id}/resume` | `resume_kind=CONFIRMATION`과 typed payload로 확인 질문 응답을 재개 |
+| Interrupt | `POST /api/v1/runs/{run_id}/confirm` | 확인 질문 응답으로 Graph 재개 |
 | Approval | `POST /api/v1/actions/{action_id}/approve\|modify\|reject` | 승인·수정·거절 Command |
 | Retry | `POST /api/v1/actions/{action_id}/prepare-retry` | 실패한 Write를 `MODIFIED`로 전환해 새 승인 준비 |
 | Control | `POST /api/v1/runs/{run_id}/cancel\|resume` | 취소 요청·안전 지점 재개 |
@@ -168,7 +168,7 @@ finalize_cancel
 
 ## 5. Agent 내부 인터페이스
 
-Agent는 Versioned Structured Output만 반환한다.
+Agent는 Parent에 Versioned Structured Output만 반환한다. 다만 Agent Subgraph 내부에는 LLM Node 외에 책임 수행에 필요한 결정적 Validation·Read Application Node가 존재할 수 있다.
 
 ```text
 RequestIntent
@@ -178,15 +178,18 @@ ContextRetrievalResult
 WorkAnalysisResult
 ActionPlanDraft
 PlanReviewResult
-RoutingDecision
 ```
+
+`RoutingDecision`은 Agent Output이 아니라 결정적 Supervisor의 결과다. Agent는 다음 Agent를 직접 선택·호출하지 않고 자신의 Typed Result와 disposition을 반환한다.
 
 경계:
 
-- API 탐색·수집 Agent는 Source·순서·Budget을 제안한다.
-- 실제 Query·Page Token·MCP Arguments는 결정적 Query Builder가 확정한다.
+- API 탐색·수집 Agent의 **LLM Node**는 Source·순서·Budget만 제안한다.
+- 실제 Query·Page Token·MCP Arguments는 **같은 Acquisition Subgraph 내부의 결정적 Application Node**가 확정하고 Read Port를 호출한다.
+- Acquisition Subgraph는 `SourceFetchPlan[]`과 최종 `AcquisitionResult`를 Parent에 함께 반환한다. Read 중 Subgraph invocation을 종료하지 않는다.
 - Context Retriever Agent는 MCP·Google API를 직접 호출하지 않는다.
 - Agent 간 대용량 원문 전달 대신 Cache Handle·Resource·Evidence·Segment ID를 사용한다.
+- `SINGLE_BASELINE`은 하나의 Unified Agent Subgraph 안에서 요청 이해 → Source 계획 → 결정적 Read → Evidence → 분석 → 계획 → self-review를 수행할 수 있다. 이때 복수 LLM Call이 발생해도 Agent invocation은 1개다.
 
 ## 6. MCP 연결
 
@@ -447,6 +450,7 @@ fallback_reason?
 - `LOCAL_CAPABLE`: API Provider와 Ollama Adapter를 포함한다.
 - 명시적 `LOCAL_GPU` 실패 시 자동 API 전환을 금지한다.
 - `AUTO`는 기술적 실패에서 API fallback 최대 1회다.
+- 반환 Trace Metadata에는 `prompt_bundle_version`, `prompt_id`, `prompt_version`, `content_hash`, `agent_role`, `subgraph_name`, `node_name`, `node_state`, `purpose`, `input_schema_version`, `output_schema_version`을 포함하되 Prompt 원문은 포함하지 않는다.
 
 ## 19. 08 제공 계약
 
@@ -465,17 +469,12 @@ fallback_reason?
 
 ---
 
-## 문서 권위 규칙
+## 20. 문서 권위 규칙
 
-```text
-00 → 01 → 01-A → 01-B → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12 → 13 → 14
-```
+문서 번호 순서가 아니라 `01 PRD §1.1`의 **Concern Owner 규칙**을 따른다. 이 문서는 자신의 책임 범위만 구체화하며 01-B 안전 정책, 04 Domain·상태 전이, 07 Tool 계약 같은 전문 권위 계약을 완화하지 않는다.
 
-- 하위 문서는 상위 문서를 변경하지 않고 구현값·절차·검증 방법만 구체화한다.
-- `01-A`와 `01-B`가 충돌하면 금지·승인·개인정보 정책을 가진 `01-B`가 우선한다.
-- 상위 결정을 바꿀 때는 상위 문서를 먼저 수정하고 하위 문서를 순차 갱신한다.
 
-## 정합성 보강: Health·PromptRef
+## 21. Health·PromptRef 계약
 
 - 인증 전 최소 상태: `GET /health/live`, `GET /health/ready`
 - Local Session 이후 상세 Runtime: `GET /api/v1/runtime`
@@ -484,7 +483,7 @@ fallback_reason?
 - Prompt 원문은 Trace·Audit·Error Response에 포함하지 않는다.
 
 
-## 20. 인증 Matrix
+## 22. 인증 Matrix
 
 | Endpoint | 기존 Local Session | 추가 검증 |
 |---|---:|---|
@@ -497,7 +496,7 @@ fallback_reason?
 
 Bootstrap 오류: `BOOTSTRAP_EXPIRED`, `BOOTSTRAP_REUSED`, `BOOTSTRAP_INSTANCE_MISMATCH`.
 
-## 21. Command Receipt 계약
+## 23. Command Receipt 계약
 
 모든 상태 변경 Endpoint는 다음 Envelope를 사용한다.
 
@@ -513,9 +512,9 @@ Application Dispatcher는 Canonical Request Hash를 생성하고 `command_receip
 - 동일 ID·다른 Hash: HTTP 409 `DUPLICATE_COMMAND`
 - 다른 ID·오래된 Version: HTTP 409 `VERSION_CONFLICT`
 
-## 22. Local API Schema Catalog
+## 24. Local API Schema Catalog
 
-### 22.1 공통
+### 24.1 공통
 
 ```text
 CommandResponseV1
@@ -537,7 +536,7 @@ ErrorEnvelopeV1
 - detail_code: str?
 ```
 
-### 22.2 Run
+### 24.2 Run
 
 ```text
 StartRunRequestV1
@@ -547,7 +546,6 @@ StartRunRequestV1
 - entry_mode: AGENT_SEARCH | RESOURCE_SELECTED
 - user_request: 1..65536 UTF-8
 - selected_resources: list[SelectedResourceRefV1], max 20
-- selected_resource_ids: list[string], max 20, legacy/native ID compatibility projection
 - requested_mode: AUTO | LOCAL_GPU | API_LLM
 
 StartRunResponseV1
@@ -568,20 +566,7 @@ RunSnapshotResponseV1
 - projection_version
 ```
 
-`SelectedResourceRefV1`:
-
-```text
-source: GMAIL | TASKS | CALENDAR
-resource_type: THREAD | MESSAGE | TASK | EVENT
-resource_id: string
-parent_resource_id: string | null
-```
-
-`selected_resource_ids`만으로 Source 또는 Resource Type을 추론하지 않는다. Stage 5
-`RESOURCE_SELECTED` 실행은 `selected_resources`의 typed identity를 사용한다. Tasks의
-`parent_resource_id`는 `task_list_id`, Calendar의 `parent_resource_id`는 `calendar_id`다.
-
-### 22.3 Action
+### 24.3 Action
 
 ```text
 ApproveActionRequestV1
@@ -601,7 +586,7 @@ RejectActionRequestV1
 - reason_code?
 ```
 
-### 22.4 Connection·Settings·Operation Endpoint
+### 24.4 Connection·Settings·Operation Endpoint
 
 | Method·Path | 역할 |
 |---|---|
@@ -617,7 +602,7 @@ RejectActionRequestV1
 | `POST /api/v1/diagnostics/bundles` | Sanitized Bundle 생성 |
 | `POST /api/v1/control/shutdown` | Graceful Shutdown 요청 |
 
-## 23. OAuth Credential Port
+## 25. OAuth Credential Port
 
 ```text
 start_authorization(environment, requested_scopes) -> AuthorizationStartV1
@@ -629,7 +614,7 @@ get_connection_status() -> ConnectionMetadataV1
 
 `complete_authorization`와 Refresh Token Keyring I/O는 MCP Credential Provider Process가 수행한다. FastAPI에는 Token 원문 대신 Metadata만 반환한다.
 
-## 24. Claim Token 계약
+## 26. Claim Token 계약
 
 Claim 성공 후 `ExecutionClaimService`가 다음 Payload를 HMAC-SHA-256으로 보호한다.
 
@@ -653,7 +638,7 @@ nonce
 - Service 또는 MCP 재시작 시 기존 Token 무효
 - Token·Session Key는 Log·Trace·Audit·DB·CLI·환경 변수에 저장 금지
 
-## 25. MCP Tool Schema Catalog
+## 27. MCP Tool Schema Catalog
 
 공통 Output:
 
@@ -690,9 +675,28 @@ metadata
 - 날짜·시간은 RFC3339와 명시 Timezone을 사용한다.
 - Write Tool의 `claim context`는 Action·Approval·Attempt·Hash·Token을 포함한다.
 
-## 2026-08-07 v2.4 Verification·Recovery 보강
+## 28. Verification·Recovery 계약
 - CREATE·UPDATE: GET_COMPARE.
 - DELETE: `GET_ABSENT` 정책으로 대상 GET에서 NOT_FOUND/삭제 상태를 확인한다.
 - SEND: `SENT_LOOKUP` 정책으로 반환된 Message/Thread 식별자 또는 결정적 전송 식별자를 조회한다.
 - SEND 전달 여부가 불명확하면 `UNKNOWN_RESULT`로 전환하고 자동 재전송하지 않는다.
 - 모든 외부 MCP/Google 호출은 SQLite Write Transaction 밖에서 수행한다.
+
+## 29. Agent Subgraph 내부 인터페이스
+
+Parent Graph와 Agent Subgraph 사이의 인터페이스는 자유 텍스트 대화가 아니라 Typed Input Projection과 Typed Result로 고정한다.
+
+```text
+Parent Graph State
+→ AgentInputProjection
+→ Agent Subgraph Local State
+→ Versioned Typed Result + disposition
+→ Parent Graph State update
+```
+
+- `AgentInputProjection`은 해당 Role에 필요한 필드와 Resource·Evidence·Segment ID만 포함한다.
+- `AgentLocalState`는 invocation 범위 단편 상태이며 장기 Memory가 아니다.
+- Agent가 다른 Agent를 직접 호출하는 내부 Port는 제공하지 않는다.
+- Agent 내부에서 사용할 수 있는 재호출은 PromptRef 기반 bounded Schema Repair·Semantic Revision에 한정한다.
+- Agent Subgraph는 MCP/Google Write Port를 직접 받지 않는다.
+- 실제 Google Read가 필요한 Acquisition 경로는 Subgraph 내부에서 `SourceFetchPlan`을 결정적 Query Builder에 넘기고 MCP Read Port를 실행한 뒤, 같은 invocation에서 `AcquisitionResult`까지 확정해 Parent에 반환한다.

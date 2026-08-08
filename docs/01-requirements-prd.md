@@ -1,16 +1,54 @@
 # 01. Google Work Agent 요구사항 정의서 · PRD
 
-> **문서 기준:** 2026-08-06까지의 설계 결정과 Notion 공식 원본을 최우선 기준으로 한다. 기존 문서와 충돌하면 본 문서가 우선한다.
+> **문서 기준:** 2026-08-08 R8.2 설계 결정을 제품 목표·범위의 기준으로 한다. 문서 간 충돌은 §1.1의 권위·책임 소유 규칙으로 판정하며, PRD가 다른 Concern의 전문 권위 계약을 임의로 덮어쓰지 않는다.
 >
-> **상태:** Draft v2.4 · **기준일:** 2026-08-07 · **대상:** P0 MVP
+> **상태:** Draft v2.6 · **기준일:** 2026-08-08 · **대상:** P0 MVP
+
+## 0. 한눈에 보기
+
+- **사용자 문제:** Gmail·Tasks·Calendar에 흩어진 업무를 한 요청으로 연결하고 실행 가능한 계획으로 만든다.
+- **Agent 역할:** 이해·근거 수집·분석·계획.
+- **결정적 코드 역할:** Policy·승인·상태전이·Write·검증.
+- **실험:** 동일 책임을 SINGLE/THREE/SIX Subgraph에 재배치해 Release Graph를 선택한다.
+- **비목표:** SaaS, 무승인 자동 Write, 자유형 Peer-to-Peer Agent 군집.
+
 
 ## 1. 문서 목적
 
 이 문서는 Google Work Agent가 해결할 문제, 사용자, 제품 범위, 기능·비기능 요구사항, 완료 조건과 실험 대상을 정의한다. 세부 기능 동작은 `01-A 기능 정의서`, 허용·승인·차단 규칙은 `01-B 정책 정의서`에서 관리한다.
 
+## 1.1 문서 권위·책임 소유 규칙
+
+- **제품 목표·범위:** `01 PRD`가 소유한다.
+- **사용자 기능 동작:** `01-A`가 소유하되 PRD 범위와 `01-B` 안전 정책을 완화할 수 없다.
+- **안전·금지·승인:** `01-B`가 소유한다.
+- **시스템 경계:** `03`이 소유한다.
+- **영속 사실·상태 전이:** `04` + Domain 상태 전이 계약 + SQL Constraint가 소유한다.
+- **Retrieval / Workflow / Tool 경계:** 각각 `05 / 06 / 07`이 소유한다.
+- **검증과 평가:** `12 / 13`은 제품 계약을 측정하며 이를 재정의하거나 완화하지 않는다.
+- **Prompt·Failure 정규화:** `15`는 `01/04/05/06/07`을 실험·Prompt 관점으로 정규화하며 상위 안전·Domain 계약을 완화하지 않는다.
+
+같은 Concern에서 문구가 충돌하면 더 구체적인 권위 계약과 실행 가능한 Constraint를 우선하고, 상위 범위를 바꾸려면 상위 권위 문서를 먼저 수정한다.
+
 ## 2. 제품 개요
 
-Google Work Agent는 Gmail, Google Tasks, Google Calendar에 흩어진 업무 정보를 조회하고 연결해 사용자의 목표를 달성할 실행 계획을 만든다. 결정적 LangGraph Supervisor가 요청 이해, API 탐색·수집, Context Retrieval, 업무 분석, 해결책·계획, 계획 검토의 최대 6개 전문 LLM 역할 Node Baseline을 조정한다. 역할 분리 수는 제품 불변조건이 아니며 `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE` 비교 후 Release Graph를 확정한다. Agent 간 전달은 Versioned Typed State와 Resource·Evidence·Segment ID로 제한한다. 모든 쓰기는 사용자 승인 후 결정적 실행·검증 Engine이 수행하고 Google API 재조회로 검증한다.
+Google Work Agent는 Gmail, Google Tasks, Google Calendar에 흩어진 업무 정보를 조회하고 연결해 사용자의 목표를 달성할 실행 계획을 만든다. 결정적 LangGraph Supervisor가 최대 6개의 전문 **Agent Subgraph**를 조정한다. 각 Agent Subgraph는 자신의 호출 단위 Local State, Prompt 계약, bounded validation·repair/revision loop를 가지며 완료 시 Versioned Typed Result만 Main Graph에 반환한다. Agent별 장기 Memory는 두지 않는다. 역할 분리 수는 제품 불변조건이 아니며 `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE` 비교 후 Release Graph를 확정한다. 모든 쓰기는 사용자 승인 후 공통 결정적 실행·검증 Engine이 수행하고 Google API 재조회로 검증한다.
+
+## 2.1 Agent · Role · LLM Call · Subgraph 정의
+
+- **Agent:** Main Supervisor Graph가 호출하는 전문 LangGraph Subgraph다. 자기 책임 범위의 Local State와 Prompt 계약을 가지며 bounded loop를 수행하고 Typed Result를 반환한다.
+- **Agent Local State:** 한 Agent 호출 안에서만 유지되는 단편 상태다. candidate output, validation error, repair/revision attempt, local disposition 등을 포함할 수 있으나 장기 Memory가 아니다.
+- **Role:** Agent가 담당하는 안정적인 업무 책임 계약이다. 같은 Agent 안에서 `INITIAL`, `CLARIFY`, `SCHEMA_REPAIR`, `SEMANTIC_REVISION`, `RECHECK` PromptRef가 달라도 Agent 수가 늘어나는 것은 아니다.
+- **LLM Call:** 모델 추론 1회다. Agent 하나가 내부 bounded loop 때문에 둘 이상의 LLM Call을 사용할 수 있으므로 Agent 수와 LLM Call 수는 같은 개념이 아니다.
+- **Main Graph State:** Agent 간 공식 Handoff와 Run 재개에 필요한 Versioned Typed State다. Agent 내부 임시 상태를 모두 복제하지 않는다.
+- **Multi-Agent:** P0에서는 자유 대화형 Peer-to-Peer 군집이 아니라, 결정적 Supervisor가 2개 이상의 전문 Agent Subgraph를 조정하는 계층형 구조를 뜻한다.
+
+
+### 외부 설명 용어
+
+내부 구현에서는 위 operational definition에 따라 `Agent Subgraph`라는 용어를 사용한다. 다만 외부 문서·면접에서는 SIX를 곧바로 **“6 autonomous agents”**라고 과장하지 않고, **“deterministic Supervisor가 전문 Agent Subgraph를 조정하는 hierarchical multi-agent workflow”**라고 설명한다. Agent의 학술·산업 정의가 제품마다 다르므로, 자율성 수준·Local State·Tool 권한·Handoff 방식을 함께 명시한다.
+
+Graph Profile의 독립변수는 **Agent Subgraph 분해 수준**이다. `SINGLE_BASELINE=1`, `THREE_STAGE=3`, `SIX_ROLE_BASELINE=6` Agent Subgraph를 사용한다. 실제 LLM Call·Token·Latency는 결과 지표로 측정한다.
 
 제품은 사용자 PC에서만 실행된다. React Frontend와 Python Agent Runtime은 FastAPI Local Agent Service의 same-origin HTTP 경계로 연결한다. 운영 빌드에서는 FastAPI가 React 정적 산출물과 `/api/v1` REST Command, SSE Event Stream을 함께 제공하며 외부 공개 서버나 원격 제품 Backend를 두지 않는다.
 
@@ -63,7 +101,7 @@ Google Work Agent는 Gmail, Google Tasks, Google Calendar에 흩어진 업무 �
 - sLLM 실험 환경과 사용자 배포 환경을 분리한다.
 - API 모델 실험은 호출량·Token·비용·동시성 한도를 강제한다.
 - 모델·Graph·Retrieval 설계를 고정 평가셋으로 비교한다.
-- 최대 6개 역할 Node를 초기 Baseline으로 제공하되 단일·3단계·6역할 Graph를 같은 평가 조건에서 비교한다.
+- 동일 Semantic Responsibility를 `SINGLE_BASELINE=1`, `THREE_STAGE=3`, `SIX_ROLE_BASELINE=6` Agent Subgraph에 재배치해 비교하고 Release Graph는 평가 결과로 고정한다.
 - 안전·승인·실행·검증 계약은 Graph 후보와 무관하게 동일한 결정적 코드로 유지한다.
 - API LLM으로 핵심 수직 흐름과 Evaluation Runner를 먼저 안정화한 뒤 동일 Port에 Ollama Adapter를 연결한다.
 - React UI와 Python Agent Core를 명시적 계약으로 분리한다.
@@ -279,7 +317,7 @@ Agent가 미완료 Task, 관련 메일, Calendar 가용 시간을 분석해 수�
 | Source Selection | 90% 이상 |
 | Tool Selection | 90% 이상 |
 | Tool Argument Accuracy | 90% 이상 |
-| E2E Success | 80% 이상 |
+| Business Task Success (BTS) | Core 기준 80% 이상 |
 | Duplicate Creation | 5% 이하 |
 | Calendar Conflict | 3% 이하 |
 
@@ -502,19 +540,19 @@ Domain 상태 전이·SQLite·Command Receipt
 
 ## 21. Agent Workflow 제품 요구사항
 
-- P0 Agent Runtime은 결정적 Supervisor가 제어하는 평가 가능 Workflow를 사용한다.
-- 초기 Baseline은 요청 이해, API 탐색·수집, Context Retrieval, 업무 분석, 해결책·계획, 계획 검토의 최대 6개 역할 Node다.
-- 역할의 병합·생략·분리는 `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE` 실험 대상이며 Release Graph는 평가 결과로 고정한다.
+- P0 Agent Runtime은 결정적 Supervisor가 Agent Subgraph를 제어하는 평가 가능 계층형 Workflow를 사용한다.
+- 초기 Baseline은 요청 이해, API 탐색·수집, Context Retrieval, 업무 분석, 해결책·계획, 계획 검토의 최대 6개 전문 Agent Subgraph다.
+- Agent Subgraph의 병합·분리는 `SINGLE_BASELINE(1)`, `THREE_STAGE(3)`, `SIX_ROLE_BASELINE(6)` 실험 대상이며 Release Graph는 평가 결과로 고정한다.
 - Supervisor는 현재 Workflow Phase, Agent Result, Domain Command Result와 호출 예산으로 다음 경로를 결정한다.
 - Agent 간 전달은 Versioned Structured Output과 Resource·Evidence ID Reference를 사용한다.
-- 자유 대화형 Agent 군집, Peer-to-Peer A2A, Agent별 독립 DB·Credential·장기 Memory는 범위에서 제외한다.
-- 승인 이후 Google Write, 상태 전이, 검증과 복구는 결정적 Subgraph와 Domain Command가 담당한다.
+- 자유 대화형 Agent 군집, Peer-to-Peer A2A, Agent별 독립 DB·Credential·장기 Memory는 범위에서 제외한다. Agent Subgraph는 호출 단위 Local State만 가진다.
+- 승인 이후 Google Write, 상태 전이, 검증과 복구는 Agent Profile과 독립된 결정적 실행·검증 Engine과 Domain Command가 담당한다.
 - 요청별 LLM 호출은 필요한 Agent만 실행하며 호출 수·Token·지연 예산을 강제한다.
 
-## 21-A. Agent Workflow v5.5 Baseline 계약
+## 21-A. Agent Workflow Baseline 계약
 
-- 결정적 Supervisor + 최대 6개 전문 LLM 역할 Node를 초기 Baseline으로 사용한다.
-- API 탐색·수집 Agent는 최소 API 호출 전략과 Source·Page·상세 조회 예산을 결정한다.
+- 결정적 Supervisor + 최대 6개 전문 Agent Subgraph를 초기 Baseline으로 사용한다.
+- API 탐색·수집 Agent의 LLM Node는 최소 API 호출 전략과 Source·Page·상세 조회 예산을 제안하고, 같은 Subgraph의 결정적 Read Node가 검증된 Query·MCP Read를 수행해 `AcquisitionResult`까지 반환한다.
 - Context Retriever Agent는 수집된 데이터에서 필요한 Segment·Evidence만 선별하고 MCP를 직접 호출하지 않는다.
 - 일반 Retrieval 호출은 Domain Action Row를 만들지 않는다.
 - Answer-only Run, READ-only Plan, READ 실패와 Write Retry는 04·06의 Domain 계약을 따른다.
@@ -528,7 +566,7 @@ Domain 상태 전이·SQLite·Command Receipt
 - FastAPI는 Token 원문이 아닌 계정·Scope·연결 상태 Metadata만 취급한다.
 - 대화 이름 변경과 대화 삭제는 P1이며 P0 API·UI 범위에서 제외한다.
 
-## 2026-08-07 v2.4 승인형 Write·Clarification 보강
+## 승인형 Write·Clarification 계약
 - Gmail 실제 전송은 승인 필수 `SEND` Effect로 지원한다.
 - 정확한 Task 완료 상태 변경은 승인 필수 `UPDATE`다.
 - 정확한 Calendar Event 삭제는 승인 필수 `DELETE`다.

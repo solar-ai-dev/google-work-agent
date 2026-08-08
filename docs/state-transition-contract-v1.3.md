@@ -24,14 +24,12 @@
 | StartAnalysis | CREATED → ANALYZING |
 | BeginRetrieval | ANALYZING·WAITING_CONFIRMATION → RETRIEVING |
 | RequestConfirmation | ANALYZING·RETRIEVING·PLANNING → WAITING_CONFIRMATION |
-| BlockRun | ANALYZING·RETRIEVING·PLANNING → BLOCKED |
-| FailRun | ANALYZING·RETRIEVING·PLANNING → FAILED |
 | ResumeConfirmation | WAITING_CONFIRMATION → Checkpoint 허용 Phase |
 | PublishPlan | PLANNING → WAITING_APPROVAL 또는 EXECUTING |
 | CompleteAnswerOnlyRun | ANALYZING·RETRIEVING·PLANNING → COMPLETED |
 | RequestCancel | 비Terminal → CANCEL_REQUESTED |
 | FinalizeCancel | CANCEL_REQUESTED → CANCELLED |
-| RequireReauth | Stage 10 P0: RETRIEVING → REAUTH_REQUIRED |
+| RequireReauth | 안전한 비Terminal → REAUTH_REQUIRED |
 | ResumeAfterReauth | REAUTH_REQUIRED → Checkpoint 허용 Phase |
 | RequireRecovery | 비Terminal → RECOVERY_REQUIRED |
 | ResolveRecovery | RECOVERY_REQUIRED → VERIFYING·FAILED·CANCELLED |
