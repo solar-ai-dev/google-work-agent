@@ -1,6 +1,7 @@
 import json
 
 from google_work_agent.application import derive_finalize_intent
+from google_work_agent.application.read_only import ReadActionCommandResponse
 from google_work_agent.application.workflows import (
     BudgetProfile,
     BudgetReasonCode,
@@ -13,6 +14,7 @@ from google_work_agent.application.workflows import (
     route_supervisor,
     validate_user_interrupt_v1,
 )
+from google_work_agent.application.write_actions import WriteActionResponse
 
 
 def test_request_complete_routes_to_source_planning() -> None:
@@ -284,6 +286,129 @@ def test_domain_validation_block_finalizes_with_blocked_intent() -> None:
     assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
 
 
+def test_preflight_read_claim_routes_to_action_execution() -> None:
+    state = _state(
+        workflow_phase=WorkflowPhase.PREFLIGHT,
+        plan_draft=_plan_draft("PLAN_READY"),
+        approved_plan_id="approved-plan-1",
+    )
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.PREFLIGHT,
+        state=state,
+        result=ReadActionCommandResponse(
+            applied=True,
+            result_code="TRANSITION_APPLIED",
+            action_id="action-read-1",
+            action_status="EXECUTING",
+            action_version=3,
+            next_allowed_commands=("complete_read_action",),
+            plan_completed=False,
+            run_completed=False,
+            partial=False,
+            safe_error_code=None,
+            conflict_detail=None,
+        ),
+    )
+
+    assert decision["target"] == SupervisorTarget.ACTION_EXECUTION.value
+    assert decision["next_phase"] == WorkflowPhase.ACTION_EXECUTION.value
+    assert decision["state_update"]["workflow_phase"] == WorkflowPhase.ACTION_EXECUTION.value
+    assert decision["state_update"]["finalize_intent"] is None
+
+
+def test_preflight_write_claim_routes_to_action_execution() -> None:
+    state = _state(
+        workflow_phase=WorkflowPhase.PREFLIGHT,
+        plan_draft=_plan_draft("PLAN_READY"),
+        approved_plan_id="approved-plan-1",
+    )
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.PREFLIGHT,
+        state=state,
+        result=WriteActionResponse(
+            applied=True,
+            result_code="TRANSITION_APPLIED",
+            action_id="action-write-1",
+            action_status="EXECUTING",
+            action_version=5,
+            next_allowed_commands=("store_execution_success",),
+            approval_id="approval-1",
+            attempt_id="attempt-1",
+            claim_token="claim-token-1",
+            safe_error_code=None,
+            conflict_detail=None,
+        ),
+    )
+
+    assert decision["target"] == SupervisorTarget.ACTION_EXECUTION.value
+    assert decision["next_phase"] == WorkflowPhase.ACTION_EXECUTION.value
+    assert decision["state_update"]["workflow_phase"] == WorkflowPhase.ACTION_EXECUTION.value
+    assert decision["state_update"]["finalize_intent"] is None
+
+
+def test_preflight_reauth_required_routes_to_reauth_boundary() -> None:
+    state = _state(
+        workflow_phase=WorkflowPhase.PREFLIGHT,
+        plan_draft=_plan_draft("PLAN_READY"),
+        approved_plan_id="approved-plan-1",
+    )
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.PREFLIGHT,
+        state=state,
+        result={
+            "applied": False,
+            "result_code": "STATE_CONFLICT",
+            "action_id": "action-write-1",
+            "action_status": "APPROVED",
+            "action_version": 5,
+            "next_allowed_commands": [],
+            "approval_id": None,
+            "attempt_id": None,
+            "claim_token": None,
+            "safe_error_code": "REAUTH_REQUIRED",
+            "conflict_detail": "expired connection",
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.REAUTH.value
+    assert decision["next_phase"] is None
+    assert decision["state_update"]["finalize_intent"] is None
+
+
+def test_preflight_failure_blocks_even_with_approved_plan_id() -> None:
+    state = _state(
+        workflow_phase=WorkflowPhase.PREFLIGHT,
+        plan_draft=_plan_draft("PLAN_READY"),
+        approved_plan_id="approved-plan-1",
+    )
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.PREFLIGHT,
+        state=state,
+        result={
+            "applied": False,
+            "result_code": "STATE_CONFLICT",
+            "action_id": "action-write-1",
+            "action_status": "APPROVED",
+            "action_version": 5,
+            "next_allowed_commands": [],
+            "approval_id": None,
+            "attempt_id": None,
+            "claim_token": None,
+            "safe_error_code": None,
+            "conflict_detail": "write action requires an active approval",
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.FINALIZE.value
+    assert decision["reason_code"] == "STATE_CONFLICT"
+    assert decision["state_update"]["workflow_phase"] == WorkflowPhase.FINALIZE.value
+    assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
+
+
 def test_review_pass_with_answer_creates_checkpoint_safe_finalize_intent() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
@@ -461,6 +586,7 @@ def _state(
     answer_draft: dict[str, object] | None = None,
     plan_draft: dict[str, object] | None = None,
     plan_review: dict[str, object] | None = None,
+    approved_plan_id: str | None = None,
     retry_budget: dict[str, object] | None = None,
 ) -> MultiAgentGraphState:
     return {
@@ -477,7 +603,7 @@ def _state(
         "answer_draft": answer_draft,
         "plan_draft": plan_draft,
         "plan_review": plan_review,
-        "approved_plan_id": None,
+        "approved_plan_id": approved_plan_id,
         "execution_summary": None,
         "verification_summary": None,
         "finalize_intent": None,

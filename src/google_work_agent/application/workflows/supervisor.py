@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict, is_dataclass
 from enum import StrEnum
 from typing import TypedDict, cast
 
@@ -71,6 +72,7 @@ class SupervisorTarget(StrEnum):
     DOMAIN_VALIDATION = "DOMAIN_VALIDATION"
     WAITING_APPROVAL = "WAITING_APPROVAL"
     PREFLIGHT = "PREFLIGHT"
+    ACTION_EXECUTION = "ACTION_EXECUTION"
     WAITING_CONFIRMATION = "WAITING_CONFIRMATION"
     FINALIZE = "FINALIZE"
     REAUTH = "REAUTH"
@@ -138,6 +140,11 @@ def route_supervisor(
         return _route_domain_validation(
             state=state,
             result=cast(DomainValidationOutputV1, _require_mapping(result, "result")),
+        )
+    if current_phase is WorkflowPhase.PREFLIGHT:
+        return _route_preflight(
+            state=state,
+            result=_claim_result_mapping(result, "result"),
         )
     if current_phase is WorkflowPhase.RECOVERY:
         return _decision(
@@ -520,6 +527,34 @@ def _route_domain_validation(
     )
 
 
+def _route_preflight(
+    *,
+    state: MultiAgentGraphState,
+    result: JsonObject,
+) -> SupervisorDecisionV1:
+    result_code = _preflight_result_code(result, default="PREFLIGHT_REJECTED")
+    safe_error_code = _preflight_safe_error_code(result)
+    if safe_error_code == "REAUTH_REQUIRED" or result_code == "REAUTH_REQUIRED":
+        return _decision(
+            target=SupervisorTarget.REAUTH,
+            next_phase=None,
+            state_update=_boundary_state_update(),
+            reason_code="REAUTH_REQUIRED",
+        )
+    if bool(result.get("applied")):
+        return _decision(
+            target=SupervisorTarget.ACTION_EXECUTION,
+            next_phase=WorkflowPhase.ACTION_EXECUTION,
+            state_update=_base_state_update(WorkflowPhase.ACTION_EXECUTION),
+            reason_code=result_code,
+        )
+    return _finalize(
+        state=state,
+        intent=FinalizeIntent.BLOCKED.value,
+        reason_code=result_code,
+    )
+
+
 def _route_additional_acquisition(
     *,
     state: MultiAgentGraphState,
@@ -775,6 +810,20 @@ def _domain_validation_reason_code(result: DomainValidationOutputV1, *, default:
     return default
 
 
+def _preflight_result_code(result: JsonObject, *, default: str) -> str:
+    result_code = result.get("result_code")
+    if isinstance(result_code, str) and result_code:
+        return result_code
+    return default
+
+
+def _preflight_safe_error_code(result: JsonObject) -> str | None:
+    safe_error_code = result.get("safe_error_code")
+    if isinstance(safe_error_code, str) and safe_error_code:
+        return safe_error_code
+    return None
+
+
 def _partial_result_kind(state: MultiAgentGraphState, extra: JsonObject) -> str | None:
     for candidate in (extra.get("acquisition_result"), extra.get("context_result")):
         mapping = _mapping_or_none(candidate)
@@ -802,6 +851,14 @@ def _require_mapping(value: object, name: str) -> JsonObject:
     if mapping is None:
         raise ValueError(f"{name} is required")
     return mapping
+
+
+def _claim_result_mapping(value: object, name: str) -> JsonObject:
+    if isinstance(value, dict):
+        return cast(JsonObject, value)
+    if is_dataclass(value):
+        return cast(JsonObject, asdict(value))
+    raise ValueError(f"{name} is required")
 
 
 __all__ = [
