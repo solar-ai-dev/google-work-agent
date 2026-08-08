@@ -81,6 +81,8 @@ class VerificationPolicy(StrEnum):
 
     NONE = "NONE"
     GET_COMPARE = "GET_COMPARE"
+    SENT_LOOKUP = "SENT_LOOKUP"
+    GET_ABSENT = "GET_ABSENT"
 
 
 class RecoveryPolicy(StrEnum):
@@ -89,6 +91,7 @@ class RecoveryPolicy(StrEnum):
     NONE = "NONE"
     GET_TARGET = "GET_TARGET"
     RESOURCE_SEARCH = "RESOURCE_SEARCH"
+    MESSAGE_SEARCH = "MESSAGE_SEARCH"
 
 
 class EffectType(StrEnum):
@@ -97,6 +100,8 @@ class EffectType(StrEnum):
     READ = "READ"
     CREATE = "CREATE"
     UPDATE = "UPDATE"
+    SEND = "SEND"
+    DELETE = "DELETE"
 
 
 class ResultCode(StrEnum):

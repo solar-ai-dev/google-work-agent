@@ -22,7 +22,7 @@ from google_work_agent.api.schemas.runs import (
     StartRunResponseModel,
 )
 from google_work_agent.application.start_run import ResumeRunCommand, StartRunCommand
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports import EndpointPolicy, SelectedResourceRef
 
 router = APIRouter(prefix="/api/v1")
 
@@ -39,7 +39,14 @@ def start_run(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation=RuntimeOperation.RUN_COMMANDS)
-    result = container.start_run_service(StartRunCommand(**payload.model_dump()))
+    command_payload = payload.model_dump()
+    selected_resources = tuple(
+        SelectedResourceRef(**item) for item in command_payload.pop("selected_resources")
+    )
+    command_payload["selected_resource_ids"] = tuple(command_payload["selected_resource_ids"])
+    result = container.start_run_service(
+        StartRunCommand(**command_payload, selected_resources=selected_resources)
+    )
     if result.applied and result.enqueued:
         try:
             container.local_run_coordinator.enqueue_start(

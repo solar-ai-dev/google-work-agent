@@ -31,6 +31,16 @@ class WorkflowCorrelationContext:
 
 
 @dataclass(frozen=True, slots=True)
+class SelectedResourceRef:
+    """Runtime identity for one user-selected Google resource."""
+
+    source: str
+    resource_type: str
+    resource_id: str
+    parent_resource_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class WorkflowStartRequest:
     """Typed workflow start contract."""
 
@@ -42,6 +52,7 @@ class WorkflowStartRequest:
     request_text: str
     selected_resource_ids: tuple[str, ...]
     correlation: WorkflowCorrelationContext
+    selected_resources: tuple[SelectedResourceRef, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

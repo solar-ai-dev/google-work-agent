@@ -49,7 +49,7 @@
 12. SIX_ROLE_BASELINE Profile
 ```
 
-6개 역할과 19개 Prompt를 한 번에 구현하지 않는다. 각 수직 흐름의 Domain·Tool·Trace 계약이 통과한 후 다음 LLM Node를 추가한다.
+6개 역할과 20개 Prompt를 한 번에 구현하지 않는다. 각 수직 흐름의 Domain·Tool·Trace 계약이 통과한 후 다음 LLM Node를 추가한다.
 
 ## 2. 책임
 
@@ -79,13 +79,15 @@ class MultiAgentGraphState:
     acquisition_result: dict | None
     context_result: dict | None
     analysis_result: dict | None
+    answer_draft: dict | None
     plan_draft: dict | None
     plan_review: dict | None
     approved_plan_id: str | None
     execution_summary: dict | None
     verification_summary: dict | None
+    finalize_intent: dict | None
     user_interrupt: dict | None
-    retry_budget: dict
+    retry_budget: RunBudgetV1
     prompt_context: dict
     trace_context: dict
 ```
@@ -117,6 +119,9 @@ FINALIZE
 
 Run Status는 CREATED, ANALYZING, RETRIEVING, WAITING_CONFIRMATION, PLANNING, WAITING_APPROVAL, EXECUTING, VERIFYING, CANCEL_REQUESTED, CANCELLED, REAUTH_REQUIRED, RECOVERY_REQUIRED, COMPLETED, BLOCKED, FAILED를 사용한다.
 
+Terminal Run Status는 `COMPLETED`, `CANCELLED`, `FAILED`, `BLOCKED`다.
+`REAUTH_REQUIRED`와 `RECOVERY_REQUIRED`는 non-terminal이며 `PARTIAL`은 Run Status가 아니라 projection `result_kind`다.
+
 ## 5. 상위 흐름
 
 ```text
@@ -146,6 +151,13 @@ Initialize
 - 계획: ANSWER_ONLY | PLAN_READY | NEEDS_CONFIRMATION | BLOCKED
 - 검토: PASS | REVISE | RETRIEVE_MORE | CONFIRM | BLOCK
 - Domain: ALLOW_READ | REQUIRE_APPROVAL | BLOCK
+
+`ContextRetrievalResultV1.status == NEEDS_MORE_DATA`,
+`WorkAnalysisResultV1.status == NEEDS_MORE_DATA`,
+and `PlanReviewResultV1.status == RETRIEVE_MORE`
+carry `additional_acquisition_request: AdditionalAcquisitionRequestV1 | None`.
+Supervisor uses that structured handoff to route the run back to `SOURCE_PLANNING`
+without inferring source choice from free text.
 
 ## 7. Prompt Registry
 
@@ -185,7 +197,7 @@ output_schema_version
 - Prompt 원문은 Graph State·Trace·Audit에 저장하지 않음
 - 실행·검증·승인·정책 판정에는 LLM Prompt를 사용하지 않음
 
-초기 Prompt Template 19개:
+초기 Prompt Template 20개:
 
 | Agent | Purpose Key | 수량 |
 |---|---|---:|
@@ -198,22 +210,33 @@ output_schema_version
 
 ## 7.1 Prompt 구현 우선순위
 
+`solution_planning` Prompt set은 `answer_only`, `draft_plan`, `revise_answer`, `revise_plan`, `repair` 5개를 기준으로 한다.
+
 - **Tier A · 우선 완성·실험:** `request_understanding.classify`, `acquisition.plan_sources`, `context.select_evidence`, `planning.draft_plan`, `review.inspect`
-- **Tier B · Baseline 작성:** `context.assess_sufficiency`, `analysis.analyze`, `planning.answer_only`, `planning.revise_plan`, `review.recheck`
+- **Tier B · Baseline 작성:** `context.assess_sufficiency`, `analysis.analyze`, `planning.answer_only`, `planning.revise_answer`, `planning.revise_plan`, `review.recheck`
 - **Tier C · 실패 사례 후 작성:** 모든 `repair`, `reassess`, `revise_partial`
 
-19개 Prompt Manifest와 ID 예약은 유지하지만, Tier C Prompt는 실제 실패 유형과 Trace가 확보되기 전 과도하게 튜닝하지 않는다.
+20개 Prompt Manifest와 ID 예약은 유지하지만, Tier C Prompt는 실제 실패 유형과 Trace가 확보되기 전 과도하게 튜닝하지 않는다.
 
 ## 8. Budget
 
 ```text
-Structured Output Repair: 호출당 최대 1회
-추가 수집: 최대 2회
-계획 Revision: 최대 2회
-기본 LLM 호출: Run당 최대 8회
+Structured Output Repair: node call당 최대 1회
+추가 수집: 최초 수집 이후 최대 2회
+계획 Revision: run당 최대 2회
+Review Recheck: planning revision당 최대 1회
+NORMAL_MAX_LLM_CALLS=8
+REVISION_HEAVY_MAX_LLM_CALLS=12
+RETRIEVAL_HEAVY_MAX_LLM_CALLS=14
+ABSOLUTE_MAX_LLM_CALLS=16
 ```
 
-하드 상한 초과 시 Partial·Confirmation·Blocked 중 하나로 종료한다.
+`ABSOLUTE`는 selectable profile이 아니다.
+Profile promotion은 monotonic이며 downgrade는 없다.
+Revision과 Retrieval이 모두 발생하면 `RETRIEVAL_HEAVY`를 유지한다.
+`llm_calls_used`는 actual provider prompt invocation 기준으로 집계한다.
+Budget 초과 후 terminal mapping은 별도 terminal boundary가 결정한다.
+Budget reason은 `RunBudgetV1`에 저장하지 않고 `BudgetDecisionV1` handoff로 전달한다.
 
 ## 9. Answer-only
 
@@ -224,6 +247,8 @@ ANALYZING | RETRIEVING | PLANNING
 ```
 
 Plan·Action 없이 Assistant Message·Trace·Run Terminal을 원자 저장한다.
+Supervisor는 route만 선택하고 Run Status mutation은 하지 않는다.
+`FINALIZE`는 Stage 16 handoff boundary이며 terminal intent는 checkpoint-safe `finalize_intent` 또는 기존 persisted state/result로 도출한다.
 
 ## 10. READ-only
 
@@ -296,15 +321,23 @@ acquisition_result: AcquisitionResultV1 | None
 evidence_selection_result: EvidenceSelectionResultV1 | None
 sufficiency_result: SufficiencyResultV1 | None
 analysis_result: WorkAnalysisResultV1 | None
+answer_draft: AnswerDraftV1 | None
 plan_draft: ActionPlanDraftV1 | None
 plan_review: PlanReviewResultV1 | None
 execution_summary: ExecutionSummaryV1 | None
 verification_summary: VerificationSummaryV1 | None
+finalize_intent: FinalizeIntentV1 | None
 user_interrupt: UserInterruptV1 | None
 retry_budget: RunBudgetV1
 prompt_context: PromptContextV1
 trace_context: TraceContextV1
 ```
+
+`RESOURCE_SELECTED`의 선택 Resource identity는 `RequestIntentV1`에 중복 저장하지 않는다.
+Runtime 입력과 `prompt_context`는 `selected_resource_ids` 호환 필드와 함께
+`SelectedResourceRefV1[]` projection을 보존한다. Stage 5는 이 projection의
+`source`, `resource_type`, `resource_id`, `parent_resource_id`로만 선택 Resource 상세 GET
+경로를 결정한다.
 
 ## 16. Node Registry
 
@@ -313,7 +346,7 @@ trace_context: TraceContextV1
 | `request_understanding.classify` | request_understanding | REQUEST_ANALYSIS | classify | RequestIntentV1 | COMPLETE·NEEDS_CONFIRMATION·INVALID | 1 |
 | `request_understanding.clarify` | request_understanding | WAITING_CONFIRMATION | clarify | ClarificationQuestionV1 | QUESTION_READY | 1 |
 | `request_understanding.repair` | request_understanding | REQUEST_ANALYSIS | repair | RequestIntentV1 | COMPLETE·INVALID | 1 |
-| `acquisition.plan_sources` | api_discovery_acquisition | SOURCE_PLANNING | plan_sources | SourceFetchPlanV1[] | PLAN_READY·NO_FETCH_NEEDED·CONFIRM·BLOCKED | 1 |
+| `acquisition.plan_sources` | api_discovery_acquisition | SOURCE_PLANNING | plan_sources | SourceFetchPlanV1[] | PLAN_READY·NO_FETCH_NEEDED·NEEDS_CONFIRMATION·BLOCKED | 1 |
 | `acquisition.revise_partial` | api_discovery_acquisition | SOURCE_PLANNING | revise_partial | SourceFetchPlanV1[] | PLAN_READY·PARTIAL·BLOCKED | 1 |
 | `acquisition.repair` | api_discovery_acquisition | SOURCE_PLANNING | repair | SourceFetchPlanV1[] | PLAN_READY·BLOCKED | 1 |
 | `context.select_evidence` | context_retriever | CONTEXT_RETRIEVAL | select_evidence | EvidenceSelectionResultV1 | SELECTED·PARTIAL·BLOCKED | 1 |
@@ -339,6 +372,12 @@ trace_context: TraceContextV1
 ## 24. 2026-08-07 Agent Failure·Prompt·Budget 계약 보강
 
 이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.0`를 적용한다.
+
+Answer-only review revision contract:
+
+- `planning.answer_only`가 `ANSWER_ONLY`를 반환하면 `answer_draft`를 기록하고 `plan_draft`는 `None`으로 비운다.
+- `planning.draft_plan`이 `PLAN_READY`를 반환하면 `plan_draft`를 기록하고 `answer_draft`는 `None`으로 비운다.
+- Answer-only 경로에서 `review.inspect`가 `REVISE`를 반환하면 `planning.revise_answer`가 수정된 `AnswerDraftV1`을 생성하고 `answer_draft`를 교체한 뒤 `review.recheck`로 진행한다.
 
 ### 24.1 Failure Record
 
@@ -387,6 +426,8 @@ ABSOLUTE_MAX_LLM_CALLS=16
 ```
 
 단일 `MAX_LLM_CALLS=8`을 모든 Route에 적용하지 않는다. Budget Profile 승격은 Supervisor의 결정적 규칙으로 수행하며 절대 상한 16회를 넘지 않는다.
+`ABSOLUTE`는 profile enum이 아니며 `NORMAL -> REVISION_HEAVY -> RETRIEVAL_HEAVY` 순서로만 승격한다.
+RunBudgetV1 최소 shape은 `schema_version`, `profile`, `llm_calls_used`, `additional_acquisitions_used`, `planning_revisions_used`, `last_rechecked_planning_revision`, `semantic_revision_signatures_used`를 포함한다.
 
 ### 24.4 Prompt 선택과 활성화
 

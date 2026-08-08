@@ -153,7 +153,9 @@ run_status: COMPLETED
 result_kind: PARTIAL
 ```
 
-장애로 종료되면 `FAILED` 또는 `RECOVERY_REQUIRED`와 함께 기록한다.
+Terminal Run Status는 `COMPLETED`, `CANCELLED`, `FAILED`, `BLOCKED`다.
+`REAUTH_REQUIRED`와 `RECOVERY_REQUIRED`는 non-terminal 상태로 유지한다.
+장애로 종료되면 terminal status 또는 non-terminal recovery status와 함께 기록한다.
 
 ---
 
@@ -367,7 +369,11 @@ ABSOLUTE_MAX_LLM_CALLS=16
 - `RETRIEVAL_HEAVY`는 `NEEDS_MORE_DATA` 또는 Additional Acquisition이 실제 발생한 경우에만 선택한다.
 - `REVISION_HEAVY`는 Review가 `REVISE`를 반환하고 Domain·Policy가 Revision을 허용한 경우에만 선택한다.
 - Profile 승격은 Supervisor의 결정적 규칙으로 수행한다.
+- Profile downgrade는 허용하지 않는다.
+- Revision과 Retrieval이 모두 발생하면 `RETRIEVAL_HEAVY`를 유지한다.
+- `ABSOLUTE`는 selectable profile이 아니다.
 - `ABSOLUTE_MAX_LLM_CALLS`를 넘으면 Prompt를 더 호출하지 않는다.
+- `llm_calls_used`는 actual provider prompt invocation 기준으로 집계한다.
 
 ### 8.3 Budget 소진 처리
 
@@ -736,7 +742,8 @@ Revision 후 Recheck
 - Answer-only, READ-only, WRITE 경로가 존재한다.
 - Additional Acquisition 0·1·2회가 존재한다.
 - Confirmation·Approval·Reauth·Recovery Interrupt가 존재한다.
-- `COMPLETED`, `BLOCKED`, `FAILED`, `CANCELLED`, `RECOVERY_REQUIRED`가 존재한다.
+- Terminal Run Status `COMPLETED`, `BLOCKED`, `FAILED`, `CANCELLED`가 존재한다.
+- Non-terminal Run Status `REAUTH_REQUIRED`, `RECOVERY_REQUIRED`가 존재한다.
 - `PARTIAL` 결과 종류가 정상·장애 상태와 올바르게 조합된다.
 - Review의 PASS·REVISE·RETRIEVE_MORE·CONFIRM·BLOCK 경로가 존재한다.
 - LLM Prompt 경로와 결정적 Recovery 경로가 혼동되지 않는다.

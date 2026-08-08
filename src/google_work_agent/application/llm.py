@@ -349,6 +349,7 @@ class LLMRuntimeService:
             structured_output_attempts=attempts,
             provider_request_id=payload.provider_request_id,
             safe_error_code=None,
+            provider_calls_consumed=1,
         )
         self.event_recorder.record(
             event_name="LLM_CALL_COMPLETED",

@@ -67,6 +67,25 @@ def test_action_effect_contract_blocks_invalid_combinations(
             recovery_policy="GET_TARGET",
         )
 
+    _insert_action(
+        migrated_connection,
+        action_id="action-send",
+        position=1,
+        effect_type="SEND",
+        approval_requirement="REQUIRED",
+        verification_policy="SENT_LOOKUP",
+        recovery_policy="MESSAGE_SEARCH",
+    )
+    _insert_action(
+        migrated_connection,
+        action_id="action-delete-valid",
+        position=2,
+        effect_type="DELETE",
+        approval_requirement="REQUIRED",
+        verification_policy="GET_ABSENT",
+        recovery_policy="GET_TARGET",
+    )
+
 
 def test_json_hash_and_utf8_byte_constraints(
     migrated_connection: sqlite3.Connection,
@@ -248,6 +267,7 @@ def _insert_action(
     connection: sqlite3.Connection,
     *,
     action_id: str,
+    position: int = 1,
     effect_type: str,
     approval_requirement: str,
     verification_policy: str,
@@ -260,11 +280,12 @@ def _insert_action(
             verification_policy, recovery_policy, status, arguments_json,
             arguments_hash, expected_json, created_at_ms, updated_at_ms
         )
-        VALUES (?, 'plan-1', 1, 'gmail.search', ?, ?, ?, ?, 'PROPOSED',
+        VALUES (?, 'plan-1', ?, 'gmail.search', ?, ?, ?, ?, 'PROPOSED',
                 '{}', ?, '{}', 100, 100);
         """,
         (
             action_id,
+            position,
             effect_type,
             approval_requirement,
             verification_policy,

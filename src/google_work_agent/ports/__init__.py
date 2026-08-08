@@ -135,6 +135,7 @@ from google_work_agent.ports.repositories import (
 )
 from google_work_agent.ports.secret_store import SecretStore
 from google_work_agent.ports.workflow_runtime import (
+    SelectedResourceRef,
     WorkflowCancelRequest,
     WorkflowCorrelationContext,
     WorkflowInvocationResult,
@@ -239,6 +240,7 @@ __all__ = [
     "RuntimeStatusProvider",
     "RuntimeSummary",
     "SecretStore",
+    "SelectedResourceRef",
     "ProbeResult",
     "PromptReference",
     "ProviderResponsePayload",

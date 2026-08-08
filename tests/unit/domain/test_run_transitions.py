@@ -36,12 +36,19 @@ from google_work_agent.domain import (
             RunCommand.REQUEST_CONFIRMATION,
             RunStatus.WAITING_CONFIRMATION,
         ),
+        (RunStatus.ANALYZING, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
+        (RunStatus.RETRIEVING, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
+        (RunStatus.PLANNING, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
+        (RunStatus.ANALYZING, RunCommand.FAIL_RUN, RunStatus.FAILED),
+        (RunStatus.RETRIEVING, RunCommand.FAIL_RUN, RunStatus.FAILED),
+        (RunStatus.PLANNING, RunCommand.FAIL_RUN, RunStatus.FAILED),
         (RunStatus.ANALYZING, RunCommand.COMPLETE_ANSWER_ONLY_RUN, RunStatus.COMPLETED),
         (RunStatus.RETRIEVING, RunCommand.COMPLETE_ANSWER_ONLY_RUN, RunStatus.COMPLETED),
         (RunStatus.PLANNING, RunCommand.COMPLETE_ANSWER_ONLY_RUN, RunStatus.COMPLETED),
         (RunStatus.CREATED, RunCommand.REQUEST_CANCEL, RunStatus.CANCEL_REQUESTED),
         (RunStatus.EXECUTING, RunCommand.REQUEST_CANCEL, RunStatus.CANCEL_REQUESTED),
         (RunStatus.CANCEL_REQUESTED, RunCommand.FINALIZE_CANCEL, RunStatus.CANCELLED),
+        (RunStatus.RETRIEVING, RunCommand.REQUIRE_REAUTH, RunStatus.REAUTH_REQUIRED),
         (RunStatus.EXECUTING, RunCommand.REQUIRE_RECOVERY, RunStatus.RECOVERY_REQUIRED),
         (RunStatus.RECOVERY_REQUIRED, RunCommand.RESOLVE_RECOVERY, RunStatus.VERIFYING),
     ),
@@ -161,6 +168,29 @@ def test_terminal_run_status_blocks_commands(terminal_status: RunStatus) -> None
     assert result.next_allowed_commands == ()
 
 
+@pytest.mark.parametrize(
+    ("status", "command"),
+    (
+        (RunStatus.WAITING_CONFIRMATION, RunCommand.BLOCK_RUN),
+        (RunStatus.EXECUTING, RunCommand.BLOCK_RUN),
+        (RunStatus.VERIFYING, RunCommand.BLOCK_RUN),
+        (RunStatus.EXECUTING, RunCommand.FAIL_RUN),
+        (RunStatus.VERIFYING, RunCommand.FAIL_RUN),
+        (RunStatus.ANALYZING, RunCommand.REQUIRE_REAUTH),
+        (RunStatus.PLANNING, RunCommand.REQUIRE_REAUTH),
+    ),
+)
+def test_new_run_commands_reject_out_of_scope_statuses(
+    status: RunStatus,
+    command: RunCommand,
+) -> None:
+    result = transition_run(status, command, 1, 1)
+
+    assert result.applied is False
+    assert result.result_code is ResultCode.STATE_CONFLICT
+    assert command not in result.next_allowed_commands
+
+
 def test_cancel_requested_self_transition_is_blocked() -> None:
     result = transition_run(RunStatus.CANCEL_REQUESTED, RunCommand.REQUEST_CANCEL, 1, 1)
 
@@ -185,6 +215,8 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
             (
                 RunCommand.BEGIN_RETRIEVAL,
                 RunCommand.REQUEST_CONFIRMATION,
+                RunCommand.BLOCK_RUN,
+                RunCommand.FAIL_RUN,
                 RunCommand.COMPLETE_ANSWER_ONLY_RUN,
                 RunCommand.REQUEST_CANCEL,
                 RunCommand.REQUIRE_RECOVERY,
@@ -195,8 +227,11 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
             (
                 RunCommand.BEGIN_PLANNING,
                 RunCommand.REQUEST_CONFIRMATION,
+                RunCommand.BLOCK_RUN,
+                RunCommand.FAIL_RUN,
                 RunCommand.COMPLETE_ANSWER_ONLY_RUN,
                 RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_REAUTH,
                 RunCommand.REQUIRE_RECOVERY,
             ),
         ),
@@ -212,6 +247,8 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
             RunStatus.PLANNING,
             (
                 RunCommand.REQUEST_CONFIRMATION,
+                RunCommand.BLOCK_RUN,
+                RunCommand.FAIL_RUN,
                 RunCommand.PUBLISH_PLAN,
                 RunCommand.COMPLETE_ANSWER_ONLY_RUN,
                 RunCommand.REQUEST_CANCEL,

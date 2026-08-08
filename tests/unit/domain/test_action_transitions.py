@@ -200,6 +200,16 @@ def test_store_verification_terminal_results(
 
 
 @pytest.mark.parametrize(
+    "effect_type",
+    (EffectType.CREATE, EffectType.UPDATE, EffectType.SEND, EffectType.DELETE),
+)
+def test_store_verification_is_available_for_all_write_effects(effect_type: EffectType) -> None:
+    result = next_allowed_action_commands(ActionStatus.EXECUTED, effect_type=effect_type)
+
+    assert ActionCommand.STORE_VERIFICATION in result
+
+
+@pytest.mark.parametrize(
     "verification_status",
     (None, VerificationStatus.NOT_FOUND, VerificationStatus.ERROR),
 )

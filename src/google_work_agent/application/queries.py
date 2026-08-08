@@ -15,7 +15,7 @@ from google_work_agent.domain import (
     next_allowed_action_commands,
     next_allowed_run_commands,
 )
-from google_work_agent.ports import RuntimeStatusProvider, RuntimeSummary
+from google_work_agent.ports import RuntimeStatusProvider, RuntimeSummary, SelectedResourceRef
 
 MAX_PAGE_SIZE = 100
 
@@ -79,6 +79,7 @@ class RunExecutionContext:
     version: int
     request_text: str
     selected_resource_ids: tuple[str, ...]
+    selected_resources: tuple[SelectedResourceRef, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -343,6 +344,7 @@ class QueryService:
                 (run_id,),
             ).fetchall()
         selected_resource_ids: tuple[str, ...] = ()
+        selected_resources: tuple[SelectedResourceRef, ...] = ()
         for row in trace_rows:
             try:
                 payload = loads(str(row["payload_json"]))
@@ -350,6 +352,13 @@ class QueryService:
                 original = attributes.get("selected_resource_ids", [])
                 if isinstance(original, list):
                     selected_resource_ids = tuple(str(item) for item in original)
+                selected_original = attributes.get("selected_resources", [])
+                if isinstance(selected_original, list):
+                    selected_resources = tuple(
+                        _selected_resource_ref_from_mapping(item)
+                        for item in selected_original
+                        if isinstance(item, dict)
+                    )
             except Exception:
                 continue
         return RunExecutionContext(
@@ -362,6 +371,7 @@ class QueryService:
             version=int(run_row["version"]),
             request_text="" if message_row is None else str(message_row["content"]),
             selected_resource_ids=selected_resource_ids,
+            selected_resources=selected_resources,
         )
 
     def list_open_runs(self) -> tuple[OpenRunRecord, ...]:
@@ -458,6 +468,17 @@ def _validated_page_size(page_size: int) -> int:
 def _parse_keyset_cursor(cursor: str) -> tuple[int, str]:
     raw_time, conversation_id = cursor.split(":", 1)
     return int(raw_time), conversation_id
+
+
+def _selected_resource_ref_from_mapping(value: dict[object, object]) -> SelectedResourceRef:
+    return SelectedResourceRef(
+        source=str(value["source"]),
+        resource_type=str(value["resource_type"]),
+        resource_id=str(value["resource_id"]),
+        parent_resource_id=(
+            None if value.get("parent_resource_id") is None else str(value["parent_resource_id"])
+        ),
+    )
 
 
 def _conversation_item_from_row(row: Row) -> ConversationListItem:

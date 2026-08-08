@@ -189,6 +189,62 @@ class SQLiteRunRepository:
             raise sqlite3.IntegrityError("answer-only run update affected an unexpected row count")
         return result
 
+    def block_run(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = transition_run(
+            current.status,
+            command=RunCommand.BLOCK_RUN,
+            current_version=current.version,
+            expected_version=expected_version,
+        )
+        if not result.applied:
+            return result
+        self._apply_run_transition(
+            run_id=run_id,
+            previous_version=current.version,
+            status=result.current_status,
+            version=result.current_version,
+            finished_at_ms=finished_at_ms,
+            error_message="run block affected an unexpected row count",
+        )
+        return result
+
+    def fail_run(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = transition_run(
+            current.status,
+            command=RunCommand.FAIL_RUN,
+            current_version=current.version,
+            expected_version=expected_version,
+        )
+        if not result.applied:
+            return result
+        self._apply_run_transition(
+            run_id=run_id,
+            previous_version=current.version,
+            status=result.current_status,
+            version=result.current_version,
+            finished_at_ms=finished_at_ms,
+            error_message="run fail affected an unexpected row count",
+        )
+        return result
+
     def publish_read_only_plan(
         self,
         run_id: str,
@@ -391,6 +447,34 @@ class SQLiteRunRepository:
             raise sqlite3.IntegrityError("run cancel finalize affected an unexpected row count")
         return result
 
+    def require_reauth(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = transition_run(
+            current.status,
+            command=RunCommand.REQUIRE_REAUTH,
+            current_version=current.version,
+            expected_version=expected_version,
+        )
+        if not result.applied:
+            return result
+        self._apply_run_transition(
+            run_id=run_id,
+            previous_version=current.version,
+            status=result.current_status,
+            version=result.current_version,
+            finished_at_ms=finished_at_ms,
+            error_message="run require-reauth affected an unexpected row count",
+        )
+        return result
+
     def require_recovery(
         self,
         run_id: str,
@@ -461,9 +545,7 @@ class SQLiteRunRepository:
             finished_at_ms=finished_at_ms,
         )
         if not result.applied:
-            raise sqlite3.IntegrityError(
-                f"run require-recovery failed: {result.conflict_detail}"
-            )
+            raise sqlite3.IntegrityError(f"run require-recovery failed: {result.conflict_detail}")
         updated = self.get_by_id(run_id)
         if updated is None:
             raise LookupError(f"run not found after recovery update: {run_id}")
