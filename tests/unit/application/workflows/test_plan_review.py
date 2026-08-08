@@ -757,6 +757,7 @@ def _review_output(
     issues: list[dict[str, object]] | None = None,
     confirmation: dict[str, object] | None = None,
     blockers: list[str] | None = None,
+    additional_acquisition_request: dict[str, object] | None = None,
 ) -> dict[str, object]:
     if issues is None:
         issues = []
@@ -769,6 +770,7 @@ def _review_output(
         "issues": issues,
         "confirmation": confirmation,
         "blockers": blockers,
+        "additional_acquisition_request": additional_acquisition_request,
     }
 
 

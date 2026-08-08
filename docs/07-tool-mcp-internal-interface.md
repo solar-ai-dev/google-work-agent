@@ -180,6 +180,38 @@ ActionPlanDraft
 PlanReviewResult
 ```
 
+`PlanReviewResultV1` exact typed contract:
+
+```text
+schema_version: 1
+status: PASS | REVISE | RETRIEVE_MORE | CONFIRM | BLOCK
+summary: string
+issues: ReviewIssueV1[]
+confirmation: object | null
+blockers: string[]
+additional_acquisition_request: object | null
+```
+
+Invariant:
+
+```text
+PASS           -> issues=[], confirmation=null, blockers=[], additional_acquisition_request=null
+REVISE         -> issues required
+RETRIEVE_MORE  -> issues required, additional_acquisition_request required
+CONFIRM        -> confirmation required
+BLOCK          -> blockers required
+```
+
+Parent Supervisor consumption:
+
+```text
+PASS           -> DOMAIN_VALIDATION
+REVISE         -> PLANNING revision
+RETRIEVE_MORE  -> ACQUISITION re-entry
+CONFIRM        -> WAITING_CONFIRMATION
+BLOCK          -> terminal block path
+```
+
 `RoutingDecision`은 Agent Output이 아니라 결정적 Supervisor의 결과다. Agent는 다음 Agent를 직접 선택·호출하지 않고 자신의 Typed Result와 disposition을 반환한다.
 
 경계:

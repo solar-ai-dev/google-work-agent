@@ -108,6 +108,7 @@ PLAN_REVIEW_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "issues",
             "confirmation",
             "blockers",
+            "additional_acquisition_request",
         ],
         "additionalProperties": False,
         "properties": {
@@ -154,6 +155,7 @@ PLAN_REVIEW_OUTPUT_SCHEMA = OutputSchemaDefinition(
             },
             "confirmation": {},
             "blockers": {"type": "array", "items": {"type": "string"}},
+            "additional_acquisition_request": {},
         },
     },
 )
@@ -445,6 +447,7 @@ def validate_plan_review_result_v1(
             "issues",
             "confirmation",
             "blockers",
+            "additional_acquisition_request",
         },
         optional={"llm_provider_result"},
     )

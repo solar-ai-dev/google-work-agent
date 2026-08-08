@@ -29,7 +29,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/acquisition-plan-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/acquisition-plan-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/acquisition/base.md",
         "prompts/agent/acquisition/plan_sources.md"
@@ -52,7 +52,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/acquisition-repair-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/acquisition-plan-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/acquisition/base.md",
         "prompts/agent/acquisition/repair.md"
@@ -82,7 +82,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/acquisition-revision-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/acquisition-plan-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/acquisition/base.md",
         "prompts/agent/acquisition/revise_partial.md"
@@ -115,7 +115,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/work-analysis-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/work-analysis-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/work_analysis/base.md",
         "prompts/agent/work_analysis/analyze.md"
@@ -138,7 +138,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/work-analysis-revision-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/work-analysis-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/work_analysis/base.md",
         "prompts/agent/work_analysis/reassess.md"
@@ -168,7 +168,7 @@
       "input_schema": "experiments/datasets/google_workspace/schemas/work-analysis-repair-input.schema.json",
       "input_schema_version": "v1",
       "output_schema": "experiments/datasets/google_workspace/schemas/work-analysis-output.schema.json",
-      "output_schema_version": "v1",
+      "output_schema_version": "v2",
       "files": [
         "prompts/agent/r8.3/specialist/work_analysis/base.md",
         "prompts/agent/work_analysis/repair.md"
