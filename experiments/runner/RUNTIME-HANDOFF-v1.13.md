@@ -20,3 +20,13 @@
 6. Product Prompt never receives Gold, grader result, expected route, or benchmark score.
 7. Failure-specific Prompt assembly uses stable base slot + failure metadata.
 8. G02/V01 remain unbound until E06-A/E07/E08 selection is frozen.
+
+## Stage 18 status
+
+- Final implementation keeps `SINGLE=1`, `THREE=3`, `SIX=6` native Agent Subgraph topology.
+- E06-B controlled lane now has native replay boundaries for `B1=1`, `B2=2`, `B3=3` post-retrieval Agent invocations.
+- E06-B runner injects only `CONTEXT_READY_V1` model input, preserves `context_snapshot_id`, and keeps Google Read / Acquisition / Retrieval execution at `0`.
+- `PlanReviewResultV1` exact typed contract is locked with `additional_acquisition_request` and parent supervisor routing invariants.
+- E06-B fused output schema now carries `planning_result` so answer-only and plan-ready post-retrieval candidates share one typed contract family.
+- Prompt activation state remains `DRAFT`; Stage 18 completion does not imply prompt promotion to `RUNTIME_ACTIVE`.
+- Full local regression at this handoff: `510 passed`, `ruff check PASS`, `ruff format --check PASS`, `git diff --check PASS`.
