@@ -31,6 +31,8 @@ from google_work_agent.application.read_only import (
 from google_work_agent.application.run_terminal import (
     BlockRunCommand,
     BlockRunService,
+    CompleteWriteRunCommand,
+    CompleteWriteRunService,
     FailRunCommand,
     FailRunService,
     RequireReauthCommand,
@@ -94,6 +96,8 @@ __all__ = [
     "BlockRunCommand",
     "BlockRunService",
     "build_finalize_state_update",
+    "CompleteWriteRunCommand",
+    "CompleteWriteRunService",
     "CompleteAnswerOnlyRunCommand",
     "CompleteAnswerOnlyRunService",
     "CompleteReadActionCommand",

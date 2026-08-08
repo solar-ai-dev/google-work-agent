@@ -56,6 +56,7 @@ RUN_TRANSITIONS: dict[tuple[RunStatus, RunCommand], RunStatus] = {
     (RunStatus.ANALYZING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.RETRIEVING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.PLANNING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
+    (RunStatus.VERIFYING, RunCommand.COMPLETE_WRITE_RUN): RunStatus.COMPLETED,
     (RunStatus.CANCEL_REQUESTED, RunCommand.FINALIZE_CANCEL): RunStatus.CANCELLED,
     (RunStatus.RETRIEVING, RunCommand.REQUIRE_REAUTH): RunStatus.REAUTH_REQUIRED,
 }

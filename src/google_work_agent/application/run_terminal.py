@@ -47,6 +47,14 @@ class FailRunCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class CompleteWriteRunCommand:
+    command_id: str
+    request_hash: str
+    run_id: str
+    expected_version: int
+
+
+@dataclass(frozen=True, slots=True)
 class RequireReauthCommand:
     command_id: str
     request_hash: str
@@ -140,6 +148,31 @@ class RequireReauthService:
             event_type="RUN_REAUTH_REQUIRED",
             actor_id="require_reauth",
             persist_finished_at_ms=False,
+        )
+
+
+class CompleteWriteRunService:
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+
+    def __call__(self, command: CompleteWriteRunCommand) -> RunTransitionResponse:
+        return _apply_run_transition(
+            unit_of_work_factory=self._unit_of_work_factory,
+            now_ms=self._now_ms,
+            command_id=command.command_id,
+            command_type="CompleteWriteRun",
+            request_hash=command.request_hash,
+            run_id=command.run_id,
+            expected_version=command.expected_version,
+            reason_code="WRITE_VERIFIED",
+            target_status=RunStatus.COMPLETED,
+            repository_call="complete_write_run",
+            event_type="RUN_COMPLETED",
+            actor_id="complete_write_run",
+            persist_finished_at_ms=True,
         )
 
 

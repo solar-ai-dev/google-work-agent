@@ -97,6 +97,15 @@ class RunRepository(Protocol):
     ) -> CommandResult[RunStatus, RunCommand]:
         """Complete a run through the answer-only transition path."""
 
+    def complete_write_run(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        """Complete a verified write run once all actions are terminal."""
+
     def block_run(
         self,
         run_id: str,

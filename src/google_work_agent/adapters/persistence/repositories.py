@@ -249,6 +249,44 @@ class SQLiteRunRepository:
             raise sqlite3.IntegrityError("answer-only run update affected an unexpected row count")
         return result
 
+    def complete_write_run(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+
+        result = transition_run(
+            current.status,
+            command=RunCommand.COMPLETE_WRITE_RUN,
+            current_version=current.version,
+            expected_version=expected_version,
+        )
+        if not result.applied:
+            return result
+
+        cursor = self._connection.execute(
+            """
+            UPDATE runs
+            SET status = ?, version = ?, finished_at_ms = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (
+                result.current_status.value,
+                result.current_version,
+                finished_at_ms,
+                run_id,
+                current.version,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("write run update affected an unexpected row count")
+        return result
+
     def block_run(
         self,
         run_id: str,

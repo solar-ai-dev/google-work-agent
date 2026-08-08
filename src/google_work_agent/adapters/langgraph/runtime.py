@@ -13,25 +13,46 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
+from google_work_agent.adapters.langgraph.profiles import (
+    GraphProfile,
+    PromptArtifactGapError,
+)
 from google_work_agent.application import (
     BlockRunCommand,
     BlockRunService,
+    ClaimReadActionCommand,
+    ClaimReadActionService,
     CompleteAnswerOnlyRunCommand,
     CompleteAnswerOnlyRunService,
+    CompleteReadActionCommand,
+    CompleteReadActionService,
+    CompleteWriteRunCommand,
+    CompleteWriteRunService,
+    ExecuteReadActionService,
+    FailReadActionCommand,
+    FailReadActionService,
     FailRunCommand,
     FailRunService,
+    FinalizeReadActionCommand,
+    FinalizeReadActionService,
     MarkWriteActionFailedCommand,
     MarkWriteActionFailedService,
     MarkWriteActionUnknownResultCommand,
     MarkWriteActionUnknownResultService,
+    PublishReadOnlyPlanCommand,
+    PublishReadOnlyPlanService,
     PublishWritePlanCommand,
     PublishWritePlanService,
+    ReadActionDraft,
+    ReadEvidenceDraft,
     RecoverUnknownCreateActionCommand,
     RecoverUnknownCreateActionService,
     RecoverUnknownUpdateActionCommand,
     RecoverUnknownUpdateActionService,
     RequireWriteReauthCommand,
     RequireWriteReauthService,
+    SaveReadOnlyPlanCommand,
+    SaveReadOnlyPlanService,
     SaveWritePlanCommand,
     SaveWritePlanService,
     StoreWriteActionSuccessCommand,
@@ -40,7 +61,6 @@ from google_work_agent.application import (
     VerifyWriteActionService,
     WriteActionDraft,
     WriteEvidenceDraft,
-    build_finalize_state_update,
     derive_finalize_intent,
 )
 from google_work_agent.application.workflows import (
@@ -85,7 +105,7 @@ GraphState = dict[str, object]
 
 
 class LangGraphWorkflowRuntime(WorkflowRuntime):
-    """Stage 17 LangGraph runtime for the six-role baseline."""
+    """LangGraph runtime with selectable Stage 18 graph profiles."""
 
     def __init__(
         self,
@@ -98,6 +118,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         signing_secret: str,
         service_instance_id: str,
         checkpoint_database_path: Path,
+        graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._gateway = gateway
@@ -106,6 +127,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._signing_secret = signing_secret
         self._service_instance_id = service_instance_id
         self._checkpoint_database_path = checkpoint_database_path
+        self._graph_profile = graph_profile
         self._checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
         self._checkpoint_connection = sqlite3.connect(
             self._checkpoint_database_path,
@@ -126,6 +148,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             now_ms=now_ms,
             message_id_factory=id_factory,
         )
+        self._complete_write_run = CompleteWriteRunService(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
         self._block_run = BlockRunService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
@@ -135,6 +161,34 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             now_ms=now_ms,
         )
         self._save_write_plan = SaveWritePlanService(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
+        self._save_read_plan = SaveReadOnlyPlanService(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
+        self._publish_read_plan = PublishReadOnlyPlanService(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
+        self._claim_read = ClaimReadActionService(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
+        self._execute_read = ExecuteReadActionService(
+            unit_of_work_factory=unit_of_work_factory,
+            gateway=gateway,
+        )
+        self._complete_read = CompleteReadActionService(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
+        self._finalize_read = FinalizeReadActionService(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
+        self._fail_read = FailReadActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
@@ -186,6 +240,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             now_ms=now_ms,
             gateway=gateway,
         )
+        self._topology = self._topology_for_profile()
         self._graph = self._build_graph()
 
     def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
@@ -205,6 +260,13 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 workflow_key=request.workflow_key,
                 outcome=WorkflowOutcome.CHECKPOINT_MISSING,
                 payload={},
+            )
+        if not self._is_profile_compatible(cast(GraphState, snapshot.values)):
+            return WorkflowInvocationResult(
+                run_id=request.run_id,
+                workflow_key=request.workflow_key,
+                outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
+                payload={"graph_profile": self._graph_profile.value},
             )
         self._graph.invoke(Command(resume=request.resume_payload), config=config)
         return self._result_from_thread(
@@ -230,6 +292,13 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 outcome=WorkflowOutcome.CHECKPOINT_MISSING,
                 payload={},
             )
+        if not self._is_profile_compatible(cast(GraphState, snapshot.values)):
+            return WorkflowInvocationResult(
+                run_id=request.run_id,
+                workflow_key=request.workflow_key,
+                outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
+                payload={"graph_profile": self._graph_profile.value},
+            )
         values = cast(GraphState, snapshot.values)
         state = self._recovery_node(values)
         return self._workflow_result_from_state(
@@ -242,30 +311,21 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._checkpoint_connection.close()
 
     def _build_graph(self) -> Any:
+        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
+            raise PromptArtifactGapError(
+                "PROMPT_ARTIFACT_GAP: SINGLE_BASELINE requires a unified prompt artifact"
+            )
         graph = StateGraph(dict)
-        graph.add_node("request_understanding", self._request_understanding_node)
-        graph.add_node("source_planning", self._source_planning_node)
-        graph.add_node("api_acquisition", self._api_acquisition_node)
-        graph.add_node("context_retrieval", self._context_retrieval_node)
-        graph.add_node("work_analysis", self._work_analysis_node)
-        graph.add_node("solution_planning", self._solution_planning_node)
-        graph.add_node("plan_review", self._plan_review_node)
-        graph.add_node("domain_validation", self._domain_validation_node)
+        for name in self._topology:
+            graph.add_node(name, self._node_handler(name))
         graph.add_node("waiting_confirmation", self._waiting_confirmation_node)
         graph.add_node("waiting_approval", self._waiting_approval_node)
         graph.add_node("action_execution", self._action_execution_node)
         graph.add_node("recovery", self._recovery_node)
         graph.add_node("finalize", self._finalize_node)
-        graph.add_edge(START, "request_understanding")
+        graph.add_edge(START, self._topology[0])
         for name in (
-            "request_understanding",
-            "source_planning",
-            "api_acquisition",
-            "context_retrieval",
-            "work_analysis",
-            "solution_planning",
-            "plan_review",
-            "domain_validation",
+            *self._topology,
             "waiting_confirmation",
             "waiting_approval",
             "action_execution",
@@ -276,15 +336,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return graph.compile(checkpointer=self._checkpointer)
 
     def _edge_map(self) -> dict[str, str]:
-        return {
-            "request_understanding": "request_understanding",
-            "source_planning": "source_planning",
-            "api_acquisition": "api_acquisition",
-            "context_retrieval": "context_retrieval",
-            "work_analysis": "work_analysis",
-            "solution_planning": "solution_planning",
-            "plan_review": "plan_review",
-            "domain_validation": "domain_validation",
+        edges = {
             "waiting_confirmation": "waiting_confirmation",
             "waiting_approval": "waiting_approval",
             "action_execution": "action_execution",
@@ -292,6 +344,9 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "finalize": "finalize",
             "end": END,
         }
+        for name in self._topology:
+            edges[name] = name
+        return edges
 
     def _initial_state(self, request: WorkflowStartRequest) -> GraphState:
         return {
@@ -322,11 +377,56 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 "last_rechecked_planning_revision": 0,
                 "semantic_revision_signatures_used": [],
             },
-            "prompt_context": {},
+            "prompt_context": {"graph_profile": self._graph_profile.value},
             "trace_context": {},
             "__request__": request,
-            "__target__": "request_understanding",
+            "__target__": self._topology[0],
+            "__logical_target__": self._topology[0],
         }
+
+    def describe_topology(self) -> tuple[str, ...]:
+        return self._topology
+
+    def graph_profile(self) -> GraphProfile:
+        return self._graph_profile
+
+    def _topology_for_profile(self) -> tuple[str, ...]:
+        if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE:
+            return (
+                "request_understanding",
+                "source_planning",
+                "api_acquisition",
+                "context_retrieval",
+                "work_analysis",
+                "solution_planning",
+                "plan_review",
+                "domain_validation",
+            )
+        if self._graph_profile is GraphProfile.THREE_STAGE:
+            return (
+                "stage_one",
+                "stage_two",
+                "stage_three",
+            )
+        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
+            return ("single_workflow",)
+        raise ValueError(f"unsupported graph profile: {self._graph_profile}")
+
+    def _node_handler(self, name: str) -> Callable[[GraphState], GraphState]:
+        mapping = {
+            "request_understanding": self._request_understanding_node,
+            "source_planning": self._source_planning_node,
+            "api_acquisition": self._api_acquisition_node,
+            "context_retrieval": self._context_retrieval_node,
+            "work_analysis": self._work_analysis_node,
+            "solution_planning": self._solution_planning_node,
+            "plan_review": self._plan_review_node,
+            "domain_validation": self._domain_validation_node,
+            "stage_one": self._stage_one_node,
+            "stage_two": self._stage_two_node,
+            "stage_three": self._stage_three_node,
+        }
+        return mapping[name]
 
     def _request_understanding_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
@@ -342,6 +442,12 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             self._request_understanding.build_state_update(output, request=request),
             decision,
         )
+
+    def _stage_one_node(self, state: GraphState) -> GraphState:
+        next_state = self._request_understanding_node(state)
+        if next_state.get("__logical_target__") != "source_planning":
+            return next_state
+        return self._source_planning_node(next_state)
 
     def _source_planning_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
@@ -381,6 +487,18 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return self._merge_decision(
             state, self._acquisition.build_acquisition_state_update(result), decision
         )
+
+    def _stage_two_node(self, state: GraphState) -> GraphState:
+        next_state = self._api_acquisition_node(state)
+        if next_state.get("__logical_target__") != "context_retrieval":
+            return next_state
+        next_state = self._context_retrieval_node(next_state)
+        if next_state.get("__logical_target__") != "work_analysis":
+            return next_state
+        next_state = self._work_analysis_node(next_state)
+        if next_state.get("__logical_target__") != "solution_planning":
+            return next_state
+        return self._solution_planning_node(next_state)
 
     def _context_retrieval_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
@@ -490,6 +608,12 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
         return self._merge_decision(state, self._review.build_state_update(result), decision)
 
+    def _stage_three_node(self, state: GraphState) -> GraphState:
+        next_state = self._plan_review_node(state)
+        if next_state.get("__logical_target__") != "domain_validation":
+            return next_state
+        return self._domain_validation_node(next_state)
+
     def _domain_validation_node(self, state: GraphState) -> GraphState:
         plan_draft = cast(dict[str, object], state["plan_draft"])
         result = self._domain_validation(
@@ -509,11 +633,13 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 "approved_plan_id": plan_id,
             }
         elif result["result"] == DomainValidationResult.ALLOW_READ.value:
-            decision["target"] = SupervisorTarget.FINALIZE.value
-            decision["state_update"] = build_finalize_state_update(
-                intent="BLOCKED",
-                reason_code="READ_ONLY_RUNTIME_PENDING",
-            )
+            plan_id = self._persist_read_plan(state, plan_draft)
+            decision["target"] = SupervisorTarget.ACTION_EXECUTION.value
+            decision["state_update"] = {
+                **cast(dict[str, object], decision["state_update"]),
+                "approved_plan_id": plan_id,
+                "workflow_phase": WorkflowPhase.PREFLIGHT.value,
+            }
         return self._merge_decision(
             state, {"workflow_phase": WorkflowPhase.DOMAIN_VALIDATION.value}, decision
         )
@@ -540,9 +666,13 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return {
             **state,
             "__request__": augmented_request,
-            "__target__": "source_planning",
+            "__target__": self._confirmation_resume_target(interrupt_payload),
             "user_interrupt": None,
             "workflow_phase": WorkflowPhase.SOURCE_PLANNING.value,
+            "prompt_context": {
+                **cast(dict[str, object], state.get("prompt_context", {})),
+                "confirmation_response": cast(dict[str, object], resume_payload),
+            },
         }
 
     def _waiting_approval_node(self, state: GraphState) -> GraphState:
@@ -562,6 +692,12 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _action_execution_node(self, state: GraphState) -> GraphState:
         plan_id = self._required_string(state.get("approved_plan_id"), "approved_plan_id")
         actions = self._list_actions(plan_id)
+        if actions and all(action.effect_type == "READ" for action in actions):
+            return self._execute_read_only_plan(state, plan_id, actions)
+
+        with self._unit_of_work_factory() as unit_of_work:
+            unit_of_work.runs.set_verifying(cast(str, state["run_id"]))
+            unit_of_work.commit()
         verification_statuses: list[str] = []
         for action in actions:
             if action.status in {
@@ -685,6 +821,19 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 )
             )
             verification_statuses.append(verified.action_status)
+        if actions and verification_statuses and all(
+            status == ActionStatus.VERIFIED.value for status in verification_statuses
+        ):
+            self._complete_write_run(
+                CompleteWriteRunCommand(
+                    command_id=self._id_factory(),
+                    request_hash=self._request_hash(
+                        {"kind": "complete_write_run", "run_id": state["run_id"]}
+                    ),
+                    run_id=cast(str, state["run_id"]),
+                    expected_version=self._current_run_version(cast(str, state["run_id"])),
+                )
+            )
         return {
             **state,
             "__target__": "finalize",
@@ -793,12 +942,25 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         update: dict[str, object],
         decision: dict[str, object],
     ) -> GraphState:
-        merged = {**state, **update, **cast(dict[str, object], decision["state_update"])}
+        decision_state = cast(dict[str, object], decision["state_update"])
+        merged = {**state, **update, **decision_state}
+        merged["prompt_context"] = {
+            **cast(dict[str, object], state.get("prompt_context", {})),
+            **cast(dict[str, object], update.get("prompt_context", {})),
+            **cast(dict[str, object], decision_state.get("prompt_context", {})),
+        }
+        merged["trace_context"] = {
+            **cast(dict[str, object], state.get("trace_context", {})),
+            **cast(dict[str, object], update.get("trace_context", {})),
+            **cast(dict[str, object], decision_state.get("trace_context", {})),
+        }
+        logical_target = self._logical_target_name(cast(str, decision["target"]))
         target = self._target_to_node(cast(str, decision["target"]))
+        merged["__logical_target__"] = logical_target
         merged["__target__"] = target
         return merged
 
-    def _target_to_node(self, target: str) -> str:
+    def _logical_target_name(self, target: str) -> str:
         mapping = {
             SupervisorTarget.SOURCE_PLANNING.value: "source_planning",
             SupervisorTarget.API_ACQUISITION.value: "api_acquisition",
@@ -819,11 +981,87 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         }
         return mapping.get(target, "end")
 
+    def _target_to_node(self, target: str) -> str:
+        if self._graph_profile is GraphProfile.THREE_STAGE:
+            three_stage_mapping = {
+                SupervisorTarget.SOURCE_PLANNING.value: "stage_one",
+                SupervisorTarget.API_ACQUISITION.value: "stage_two",
+                SupervisorTarget.CONTEXT_RETRIEVAL.value: "stage_two",
+                SupervisorTarget.WORK_ANALYSIS.value: "stage_two",
+                SupervisorTarget.SOLUTION_PLANNING.value: "stage_two",
+                SupervisorTarget.PLAN_REVIEW_INSPECT.value: "stage_three",
+                SupervisorTarget.PLAN_REVIEW_RECHECK.value: "stage_three",
+                SupervisorTarget.PLANNING_REVISE_ANSWER.value: "stage_two",
+                SupervisorTarget.PLANNING_REVISE_PLAN.value: "stage_two",
+                SupervisorTarget.DOMAIN_VALIDATION.value: "stage_three",
+                SupervisorTarget.WAITING_CONFIRMATION.value: "waiting_confirmation",
+                SupervisorTarget.WAITING_APPROVAL.value: "waiting_approval",
+                SupervisorTarget.ACTION_EXECUTION.value: "action_execution",
+                SupervisorTarget.REAUTH.value: "end",
+                SupervisorTarget.RECOVERY.value: "recovery",
+                SupervisorTarget.FINALIZE.value: "finalize",
+            }
+            return three_stage_mapping.get(target, "end")
+        mapping = {
+            SupervisorTarget.SOURCE_PLANNING.value: "source_planning",
+            SupervisorTarget.API_ACQUISITION.value: "api_acquisition",
+            SupervisorTarget.CONTEXT_RETRIEVAL.value: "context_retrieval",
+            SupervisorTarget.WORK_ANALYSIS.value: "work_analysis",
+            SupervisorTarget.SOLUTION_PLANNING.value: "solution_planning",
+            SupervisorTarget.PLAN_REVIEW_INSPECT.value: "plan_review",
+            SupervisorTarget.PLAN_REVIEW_RECHECK.value: "plan_review",
+            SupervisorTarget.PLANNING_REVISE_ANSWER.value: "solution_planning",
+            SupervisorTarget.PLANNING_REVISE_PLAN.value: "solution_planning",
+            SupervisorTarget.DOMAIN_VALIDATION.value: "domain_validation",
+            SupervisorTarget.WAITING_CONFIRMATION.value: "waiting_confirmation",
+            SupervisorTarget.WAITING_APPROVAL.value: "waiting_approval",
+            SupervisorTarget.ACTION_EXECUTION.value: "action_execution",
+            SupervisorTarget.REAUTH.value: "end",
+            SupervisorTarget.RECOVERY.value: "recovery",
+            SupervisorTarget.FINALIZE.value: "finalize",
+        }
+        return mapping.get(target, "end")
+
+    def _confirmation_resume_target(self, interrupt_payload: dict[str, object]) -> str:
+        origin_target = cast(str | None, interrupt_payload.get("origin_target"))
+        if self._graph_profile is GraphProfile.THREE_STAGE and origin_target is not None:
+            if origin_target.startswith(("request_understanding.", "acquisition.")):
+                return "stage_one"
+            if origin_target.startswith(("context.", "analysis.", "planning.")):
+                return "stage_two"
+            if origin_target.startswith("review."):
+                return "stage_three"
+        return "source_planning"
+
     def _request_from_state(self, state: GraphState) -> WorkflowStartRequest:
         request = state.get("__request__")
         if not isinstance(request, WorkflowStartRequest):
             raise TypeError("workflow state is missing WorkflowStartRequest")
-        return request
+        prompt_context = cast(dict[str, object], state.get("prompt_context", {}))
+        confirmation_response = prompt_context.get("confirmation_response")
+        if not isinstance(confirmation_response, dict):
+            return request
+        request_text = request.request_text + "\n\n[clarification]\n" + dumps(
+            {
+                "selected_option_ids": cast(
+                    list[str], confirmation_response.get("selected_option_ids", [])
+                ),
+                "free_text": cast(str | None, confirmation_response.get("free_text")),
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        )
+        return WorkflowStartRequest(
+            run_id=request.run_id,
+            conversation_id=request.conversation_id,
+            workflow_key=request.workflow_key,
+            entry_mode=request.entry_mode,
+            requested_mode=request.requested_mode,
+            request_text=request_text,
+            selected_resource_ids=request.selected_resource_ids,
+            correlation=request.correlation,
+            selected_resources=request.selected_resources,
+        )
 
     def _config_for_thread(self, workflow_key: str) -> dict[str, object]:
         return {"configurable": {"thread_id": workflow_key}}
@@ -877,8 +1115,18 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 "execution_summary": state.get("execution_summary"),
                 "verification_summary": state.get("verification_summary"),
                 "run_status": run_status,
+                "graph_profile": self._graph_profile.value,
             },
         )
+
+    def _is_profile_compatible(self, state: GraphState) -> bool:
+        prompt_context = state.get("prompt_context")
+        if not isinstance(prompt_context, dict):
+            return True
+        persisted_profile = prompt_context.get("graph_profile")
+        if not isinstance(persisted_profile, str):
+            return True
+        return persisted_profile == self._graph_profile.value
 
     def _persist_write_plan(self, state: GraphState, plan_draft: dict[str, object]) -> str:
         run_id = cast(str, state["run_id"])
@@ -942,6 +1190,153 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         if not publish_response.applied:
             raise RuntimeError(f"publish_write_plan failed: {publish_response.result_code}")
         return plan_id
+
+    def _persist_read_plan(self, state: GraphState, plan_draft: dict[str, object]) -> str:
+        run_id = cast(str, state["run_id"])
+        run_version = self._current_run_version(run_id)
+        context_result = cast(dict[str, object], state["context_result"])
+        evidence_drafts = {
+            cast(str, item["evidence_id"]): item
+            for item in cast(list[dict[str, object]], context_result["evidence_drafts"])
+        }
+        mapped_evidence = []
+        for evidence_id in cast(list[str], plan_draft["evidence_refs"]):
+            item = cast(dict[str, object], evidence_drafts[evidence_id])
+            mapped_evidence.append(
+                ReadEvidenceDraft(
+                    evidence_id=evidence_id,
+                    origin_type=EvidenceOriginType.DERIVED,
+                    kind=cast(str, item["kind"]),
+                    excerpt=cast(str, item["excerpt"]),
+                    locator_json=None
+                    if item.get("locator") is None
+                    else dumps(item["locator"], sort_keys=True),
+                )
+            )
+        mapped_actions = tuple(
+            ReadActionDraft(
+                action_id=cast(str, action["action_id"]),
+                position=int(action["position"]),
+                tool_name=cast(str, action["tool_name"]),
+                arguments=cast(dict[str, object], action["arguments"]),
+                expected=cast(dict[str, object], action["expected"]),
+                evidence_ids=tuple(cast(list[str], action["evidence_refs"])),
+                depends_on_action_ids=tuple(
+                    cast(list[str], action.get("depends_on_action_ids", []))
+                ),
+                target_resource_ref_id=cast(str | None, action.get("target_resource_ref_id")),
+            )
+            for action in cast(list[dict[str, object]], plan_draft["actions"])
+        )
+        plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
+        save_response = self._save_read_plan(
+            SaveReadOnlyPlanCommand(
+                command_id=self._id_factory(),
+                request_hash=self._request_hash({"kind": "save_read_plan", "plan_id": plan_id}),
+                plan_id=plan_id,
+                run_id=run_id,
+                revision_no=1,
+                summary_text=self._required_string(plan_draft.get("summary"), "summary"),
+                expected_run_version=run_version,
+                actions=mapped_actions,
+                evidence=tuple(mapped_evidence),
+            )
+        )
+        if not save_response.applied:
+            raise RuntimeError(f"save_read_plan failed: {save_response.result_code}")
+        publish_response = self._publish_read_plan(
+            PublishReadOnlyPlanCommand(
+                command_id=self._id_factory(),
+                request_hash=self._request_hash({"kind": "publish_read_plan", "plan_id": plan_id}),
+                plan_id=plan_id,
+                run_id=run_id,
+                expected_run_version=save_response.run_version,
+            )
+        )
+        if not publish_response.applied:
+            raise RuntimeError(f"publish_read_plan failed: {publish_response.result_code}")
+        return plan_id
+
+    def _execute_read_only_plan(
+        self,
+        state: GraphState,
+        plan_id: str,
+        actions: tuple[ActionRecord, ...],
+    ) -> GraphState:
+        verification_statuses: list[str] = []
+        for action in actions:
+            if action.status in {
+                ActionStatus.VERIFIED.value,
+                ActionStatus.FAILED.value,
+                ActionStatus.BLOCKED.value,
+                ActionStatus.DEPENDENCY_BLOCKED.value,
+                ActionStatus.REJECTED.value,
+                ActionStatus.EXPIRED.value,
+                ActionStatus.MISMATCH.value,
+            }:
+                verification_statuses.append(action.status)
+                continue
+            if action.status != ActionStatus.PROPOSED.value:
+                continue
+            claimed = self._claim_read(
+                ClaimReadActionCommand(
+                    command_id=self._id_factory(),
+                    request_hash=self._request_hash({"kind": "claim_read", "action_id": action.id}),
+                    action_id=action.id,
+                    expected_version=action.version,
+                )
+            )
+            if not claimed.applied:
+                continue
+            try:
+                executed = self._execute_read(action_id=action.id)
+            except GoogleWorkspaceGatewayError as error:
+                failed = self._fail_read(
+                    FailReadActionCommand(
+                        command_id=self._id_factory(),
+                        request_hash=self._request_hash(
+                            {"kind": "fail_read", "action_id": action.id}
+                        ),
+                        action_id=action.id,
+                        expected_version=claimed.action_version,
+                        safe_error_code=error.code.value,
+                        retryable=False,
+                        safe_error_detail=str(error),
+                    )
+                )
+                verification_statuses.append(failed.action_status)
+                continue
+            completed = self._complete_read(
+                CompleteReadActionCommand(
+                    command_id=self._id_factory(),
+                    request_hash=self._request_hash(
+                        {"kind": "complete_read", "action_id": action.id}
+                    ),
+                    action_id=action.id,
+                    expected_version=claimed.action_version,
+                    output_json=executed.output_json,
+                    resource_refs=executed.resource_refs,
+                    evidence=executed.evidence,
+                )
+            )
+            finalized = self._finalize_read(
+                FinalizeReadActionCommand(
+                    command_id=self._id_factory(),
+                    request_hash=self._request_hash(
+                        {"kind": "finalize_read", "action_id": action.id}
+                    ),
+                    action_id=action.id,
+                    expected_version=completed.action_version,
+                )
+            )
+            verification_statuses.append(finalized.action_status)
+        return {
+            **state,
+            "__target__": "finalize",
+            "workflow_phase": WorkflowPhase.VERIFICATION.value,
+            "execution_summary": {"result": "READ_EXECUTED", "plan_id": plan_id},
+            "verification_summary": {"action_statuses": verification_statuses},
+        }
 
     def _transition_run(self, run_id: str, transition_name: str) -> None:
         with self._unit_of_work_factory() as unit_of_work:
@@ -1016,21 +1411,14 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         request: WorkflowStartRequest,
         resume_payload: dict[str, object],
     ) -> WorkflowStartRequest:
-        selected_option_ids = cast(list[str], resume_payload.get("selected_option_ids", []))
-        free_text = cast(str | None, resume_payload.get("free_text"))
-        addition = {
-            "selected_option_ids": selected_option_ids,
-            "free_text": free_text,
-        }
+        del resume_payload
         return WorkflowStartRequest(
             run_id=request.run_id,
             conversation_id=request.conversation_id,
             workflow_key=request.workflow_key,
             entry_mode=request.entry_mode,
             requested_mode=request.requested_mode,
-            request_text=request.request_text
-            + "\n\n[clarification]\n"
-            + dumps(addition, ensure_ascii=True, sort_keys=True),
+            request_text=request.request_text,
             selected_resource_ids=request.selected_resource_ids,
             correlation=request.correlation,
             selected_resources=request.selected_resources,
@@ -1046,4 +1434,19 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _should_draft_plan(self, request_text: str) -> bool:
         lowered = request_text.lower()
-        return any(token in lowered for token in ("create", "update", "send", "delete"))
+        return any(
+            token in lowered
+            for token in (
+                "create",
+                "update",
+                "send",
+                "delete",
+                "read",
+                "summarize",
+                "show",
+                "list",
+                "find",
+                "get",
+                "search",
+            )
+        )

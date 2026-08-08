@@ -8,7 +8,12 @@ from tests.unit.application.workflows.test_api_acquisition import _plan
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 from tests.unit.application.workflows.test_plan_review import _review_output
 
-from google_work_agent.adapters.langgraph import LangGraphWorkflowRuntime
+from google_work_agent.adapters.langgraph import (
+    GraphProfile,
+    LangGraphWorkflowRuntime,
+    PromptArtifactGapError,
+    supported_graph_profiles,
+)
 from google_work_agent.adapters.persistence import (
     apply_migrations,
     connect_sqlite,
@@ -200,6 +205,41 @@ def _write_plan_output() -> dict[str, object]:
     }
 
 
+def _read_plan_output() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "status": "PLAN_READY",
+        "plan_id": "plan-read-1",
+        "summary": "Read the follow-up task details for the user.",
+        "objective": "Retrieve the requested Google Tasks item.",
+        "actions": [
+            {
+                "schema_version": 1,
+                "action_id": "action-read-1",
+                "position": 1,
+                "effect": "READ",
+                "tool_name": "tasks_get_task",
+                "arguments": {"task_list_id": "task-list-default", "task_id": "task-followup"},
+                "expected": {"resource_type": "task"},
+                "evidence_refs": ["evidence-1"],
+                "resource_refs": ["task:task-followup"],
+                "target_resource_ref_id": None,
+                "depends_on_action_ids": [],
+                "user_visible_reason": "Read the requested follow-up task.",
+            }
+        ],
+        "evidence_refs": ["evidence-1"],
+        "resource_refs": [
+            {
+                "resource_handle": "task:task-followup",
+                "resource_type": "task",
+                "resource_id": "task-followup",
+            }
+        ],
+        "confirmation": None,
+    }
+
+
 def _selection_output() -> dict[str, object]:
     return {
         "schema_version": 1,
@@ -229,6 +269,7 @@ def _make_runtime(
     llm_payloads: list[object],
     gateway: FakeGoogleGateway,
     checkpoint_database_path: Path,
+    graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
 ) -> LangGraphWorkflowRuntime:
     clock = FakeClock(1000)
     ids = DeterministicUUID(prefix="runtime")
@@ -241,6 +282,7 @@ def _make_runtime(
         signing_secret="stage17-secret",
         service_instance_id="stage17-service",
         checkpoint_database_path=checkpoint_database_path,
+        graph_profile=graph_profile,
     )
 
 
@@ -305,6 +347,23 @@ def _start_write_request() -> WorkflowStartRequest:
         entry_mode="AGENT_SEARCH",
         requested_mode="AUTO",
         request_text="Create the follow-up task in Google Tasks.",
+        selected_resource_ids=(),
+        correlation=WorkflowCorrelationContext(
+            request_id="request-1",
+            command_id="command-1",
+            api_contract_version="1",
+        ),
+    )
+
+
+def _start_read_request() -> WorkflowStartRequest:
+    return WorkflowStartRequest(
+        run_id="run-1",
+        conversation_id="conversation-1",
+        workflow_key="thread-1",
+        entry_mode="AGENT_SEARCH",
+        requested_mode="AUTO",
+        request_text="Get the follow-up task details from Google Tasks.",
         selected_resource_ids=(),
         correlation=WorkflowCorrelationContext(
             request_id="request-1",
@@ -417,6 +476,14 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     try:
         run_row = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()
         assert run_row[0] == "COMPLETED"
+        snapshot = resumed_runtime._graph.get_state(  # noqa: SLF001
+            resumed_runtime._config_for_thread("thread-1")  # noqa: SLF001
+        )
+        request = snapshot.values["__request__"]
+        assert request.request_text == "Please handle the follow-up."
+        assert snapshot.values["prompt_context"]["confirmation_response"]["free_text"] == (
+            "I mean Kim from project alpha."
+        )
     finally:
         connection.close()
         resumed_runtime.close()
@@ -477,17 +544,244 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(tmp_pat
         )
     )
 
-    assert resumed.outcome is WorkflowOutcome.ACCEPTED
+    assert resumed.outcome is WorkflowOutcome.COMPLETED
     connection = connect_sqlite(database_path)
     try:
-        action_row = connection.execute(
-            "SELECT status FROM actions WHERE id = 'action-1';"
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1') AS run_status,
+                (SELECT status FROM actions WHERE id = 'action-1') AS action_status;
+            """
         ).fetchone()
         verification_count = connection.execute("SELECT COUNT(*) FROM verifications;").fetchone()[0]
-        assert action_row[0] == "VERIFIED"
+        assert tuple(row) == ("COMPLETED", "VERIFIED")
         assert verification_count == 1
         assert any(call.operation == "create_task" for call in gateway.call_log)
         assert any(call.operation == "get_task" for call in gateway.call_log)
     finally:
         connection.close()
         runtime.close()
+
+
+def test_langgraph_runtime_executes_read_only_plan_to_terminal(tmp_path: Path) -> None:
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _clear_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _read_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-read.db",
+    )
+
+    result = runtime.start(_start_read_request())
+
+    assert result.outcome is WorkflowOutcome.COMPLETED
+    connection = connect_sqlite(database_path)
+    try:
+        counts = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1') AS run_status,
+                (SELECT status FROM actions WHERE id = 'action-read-1') AS action_status,
+                (SELECT COUNT(*) FROM approvals) AS approval_count,
+                (SELECT COUNT(*) FROM execution_attempts) AS attempt_count,
+                (SELECT COUNT(*) FROM verifications) AS verification_count;
+            """
+        ).fetchone()
+        assert tuple(counts) == ("COMPLETED", "VERIFIED", 0, 0, 0)
+        assert any(call.operation == "get_task" for call in gateway.call_log)
+    finally:
+        connection.close()
+        runtime.close()
+
+
+def test_langgraph_runtime_supports_same_database_for_domain_and_checkpointer(
+    tmp_path: Path,
+) -> None:
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _clear_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _answer_output(),
+            _review_output("PASS"),
+        ],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=database_path,
+    )
+
+    result = runtime.start(_start_request())
+
+    assert result.outcome is WorkflowOutcome.COMPLETED
+    connection = connect_sqlite(database_path)
+    try:
+        checkpoint_tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'checkpoints%';"
+            ).fetchall()
+        }
+        assert checkpoint_tables
+    finally:
+        connection.close()
+        runtime.close()
+
+
+def test_graph_profile_registry_exposes_three_supported_profiles() -> None:
+    assert supported_graph_profiles() == (
+        GraphProfile.SINGLE_BASELINE,
+        GraphProfile.THREE_STAGE,
+        GraphProfile.SIX_ROLE_BASELINE,
+    )
+
+
+def test_langgraph_runtime_reports_distinct_topologies_by_profile(tmp_path: Path) -> None:
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    six = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-six.db",
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+    )
+    three = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-three.db",
+        graph_profile=GraphProfile.THREE_STAGE,
+    )
+
+    try:
+        assert six.describe_topology() == (
+            "request_understanding",
+            "source_planning",
+            "api_acquisition",
+            "context_retrieval",
+            "work_analysis",
+            "solution_planning",
+            "plan_review",
+            "domain_validation",
+        )
+        assert three.describe_topology() == ("stage_one", "stage_two", "stage_three")
+        assert six.describe_topology() != three.describe_topology()
+    finally:
+        six.close()
+        three.close()
+
+
+def test_single_baseline_reports_prompt_artifact_gap(tmp_path: Path) -> None:
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+
+    try:
+        _make_runtime(
+            database_path=database_path,
+            llm_payloads=[],
+            gateway=FakeGoogleGateway(snapshot),
+            checkpoint_database_path=tmp_path / "checkpoints-single.db",
+            graph_profile=GraphProfile.SINGLE_BASELINE,
+        )
+    except PromptArtifactGapError as error:
+        assert "PROMPT_ARTIFACT_GAP" in str(error)
+    else:
+        raise AssertionError("SINGLE_BASELINE should fail without a unified prompt artifact")
+
+
+def test_three_stage_runtime_completes_answer_only_run(tmp_path: Path) -> None:
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _clear_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _answer_output(),
+            _review_output("PASS"),
+        ],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=tmp_path / "checkpoints-three-answer.db",
+        graph_profile=GraphProfile.THREE_STAGE,
+    )
+
+    result = runtime.start(_start_request())
+
+    assert result.outcome is WorkflowOutcome.COMPLETED
+    assert result.payload["graph_profile"] == GraphProfile.THREE_STAGE.value
+    connection = connect_sqlite(database_path)
+    try:
+        run_row = connection.execute(
+            "SELECT status, version FROM runs WHERE id = 'run-1';"
+        ).fetchone()
+        assert tuple(run_row) == ("COMPLETED", 4)
+    finally:
+        connection.close()
+        runtime.close()
+
+
+def test_resume_rejects_profile_change_for_same_thread(tmp_path: Path) -> None:
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    three_runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[_ambiguous_intent()],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=tmp_path / "checkpoints-profile.db",
+        graph_profile=GraphProfile.THREE_STAGE,
+    )
+    first = three_runtime.start(_start_request())
+    assert first.outcome is WorkflowOutcome.ACCEPTED
+    three_runtime.close()
+
+    six_runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=tmp_path / "checkpoints-profile.db",
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+    )
+
+    resumed = six_runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="CONFIRMATION",
+            resume_payload={
+                "schema_version": 1,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "I mean Kim from project alpha.",
+            },
+            correlation=WorkflowCorrelationContext(
+                request_id="request-2",
+                command_id="command-2",
+                api_contract_version="1",
+            ),
+        )
+    )
+
+    try:
+        assert resumed.outcome is WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT
+        assert resumed.payload["graph_profile"] == GraphProfile.SIX_ROLE_BASELINE.value
+    finally:
+        six_runtime.close()

@@ -260,7 +260,14 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
             (RunCommand.REQUEST_CANCEL, RunCommand.REQUIRE_RECOVERY),
         ),
         (RunStatus.EXECUTING, (RunCommand.REQUEST_CANCEL, RunCommand.REQUIRE_RECOVERY)),
-        (RunStatus.VERIFYING, (RunCommand.REQUEST_CANCEL, RunCommand.REQUIRE_RECOVERY)),
+        (
+            RunStatus.VERIFYING,
+            (
+                RunCommand.COMPLETE_WRITE_RUN,
+                RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_RECOVERY,
+            ),
+        ),
         (
             RunStatus.CANCEL_REQUESTED,
             (RunCommand.FINALIZE_CANCEL, RunCommand.REQUIRE_RECOVERY),
