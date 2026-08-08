@@ -5,6 +5,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pytest
 from tests.support.prompt_manifests import write_runtime_active_manifest
 
 from google_work_agent.application.workflows import (
@@ -14,8 +15,11 @@ from google_work_agent.application.workflows import (
     ControlledPostRetrievalReplayRunner,
 )
 from google_work_agent.application.workflows.controlled_post_retrieval import (
+    _build_evaluation_environment_hash_payload,
+    _build_fixed_environment_payload,
     _calculate_evaluation_environment_hash,
 )
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -287,10 +291,12 @@ def test_controlled_replay_environment_hash_is_sensitive_to_profile_and_timeout(
         Path("experiments/candidates/cand-e06b-b1-integrated.template.json")
     )
     evaluation_item = _load_json(FIXTURE_DIR / "evaluation-item.json")
+    fixture_snapshot_id = "FW-D-001"
 
     baseline = _calculate_evaluation_environment_hash(
         candidate_config=candidate_config,
         evaluation_item=evaluation_item,
+        fixture_snapshot_id=fixture_snapshot_id,
     )
 
     timeout_changed = _load_json(
@@ -300,6 +306,7 @@ def test_controlled_replay_environment_hash_is_sensitive_to_profile_and_timeout(
     timeout_hash = _calculate_evaluation_environment_hash(
         candidate_config=timeout_changed,
         evaluation_item=evaluation_item,
+        fixture_snapshot_id=fixture_snapshot_id,
     )
 
     profile_changed = _load_json(
@@ -310,10 +317,84 @@ def test_controlled_replay_environment_hash_is_sensitive_to_profile_and_timeout(
     profile_hash = _calculate_evaluation_environment_hash(
         candidate_config=profile_changed,
         evaluation_item=evaluation_item,
+        fixture_snapshot_id=fixture_snapshot_id,
     )
 
     assert baseline != timeout_hash
     assert baseline != profile_hash
+
+
+def test_controlled_replay_environment_hash_is_stable_under_key_reordering() -> None:
+    evaluation_item = _load_json(FIXTURE_DIR / "evaluation-item.json")
+    fixture_snapshot_id = "FW-D-001"
+    payload = _build_evaluation_environment_hash_payload(
+        candidate_config=_load_json(
+            Path("experiments/candidates/cand-e06b-b1-integrated.template.json")
+        ),
+        evaluation_item=evaluation_item,
+        fixture_snapshot_id=fixture_snapshot_id,
+    )
+    reordered = {
+        "runtime": payload["runtime"],
+        "graph_profile": payload["graph_profile"],
+        "prompt_semantic_bundle_version": payload["prompt_semantic_bundle_version"],
+        "fixture_snapshot_id": payload["fixture_snapshot_id"],
+        "evaluation_environment": payload["evaluation_environment"],
+        "dataset_version": payload["dataset_version"],
+        "execution_contract": payload["execution_contract"],
+        "policy_version": payload["policy_version"],
+        "tool_schema_version": payload["tool_schema_version"],
+        "context_ready_contract_version": payload["context_ready_contract_version"],
+    }
+
+    assert calculate_canonical_json_hash(payload) == calculate_canonical_json_hash(reordered)
+
+
+@pytest.mark.parametrize(
+    ("field_path", "mutated_value"),
+    [
+        ("runtime.model", "RESOLVE_E01_ALTERNATE"),
+        ("runtime.parameters.reasoning_budget", "high"),
+        ("evaluation_environment.hardware_profile_id", "LOCAL_GPU_A100"),
+        ("evaluation_environment.llm_concurrency", 2),
+        ("evaluation_environment.api_llm_timeout_seconds", 90),
+        ("fixture_snapshot_id", "FW-D-999"),
+        ("tool_schema_version", "v2.7"),
+        ("policy_version", "01-B-v2.5"),
+        ("prompt_semantic_bundle_version", "semantic-r8.3-v2"),
+    ],
+)
+def test_controlled_replay_environment_hash_changes_for_each_fixed_dimension(
+    field_path: str,
+    mutated_value: object,
+) -> None:
+    candidate_config = _load_json(
+        Path("experiments/candidates/cand-e06b-b1-integrated.template.json")
+    )
+    evaluation_item = _load_json(FIXTURE_DIR / "evaluation-item.json")
+    fixture_snapshot_id = "FW-D-001"
+    baseline = _calculate_evaluation_environment_hash(
+        candidate_config=candidate_config,
+        evaluation_item=evaluation_item,
+        fixture_snapshot_id=fixture_snapshot_id,
+    )
+    mutated_candidate = _load_json(
+        Path("experiments/candidates/cand-e06b-b1-integrated.template.json")
+    )
+    mutated_fixture_snapshot_id = fixture_snapshot_id
+
+    if field_path == "fixture_snapshot_id":
+        mutated_fixture_snapshot_id = str(mutated_value)
+    else:
+        _set_nested_value(mutated_candidate, field_path, mutated_value)
+
+    mutated = _calculate_evaluation_environment_hash(
+        candidate_config=mutated_candidate,
+        evaluation_item=evaluation_item,
+        fixture_snapshot_id=mutated_fixture_snapshot_id,
+    )
+
+    assert baseline != mutated
 
 
 def test_controlled_replay_runner_rejects_non_zero_google_read_boundary(
@@ -388,6 +469,156 @@ def test_controlled_replay_handoff_metrics_detect_forbidden_action_contradiction
     assert node["evidence_id_preservation_rate"] == 1.0
     assert node["constraint_loss_count"] >= 1
     assert node["contradiction_introduced"] is True
+
+
+def test_controlled_replay_handoff_metrics_detect_required_field_loss(
+    tmp_path: Path,
+) -> None:
+    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=PROMPT_IDS)
+    runner = ControlledPostRetrievalReplayRunner(
+        llm_runtime=FakeLLMRuntime(
+            deque(
+                [
+                    _llm_result(_analysis_result()),
+                    _llm_result(_answer_output_missing_resource_ref()),
+                    _llm_result(_review_output()),
+                ]
+            )
+        ),
+        manifest_path=manifest_path,
+    )
+
+    _, node = runner.run(
+        experiment_id="EXP-E06B-CONTROLLED-POST-RET",
+        candidate_config=_load_json(
+            Path("experiments/candidates/cand-e06b-b3-specialized.template.json")
+        ),
+        evaluation_item=_load_json(FIXTURE_DIR / "evaluation-item.json"),
+        model_input=_load_json(FIXTURE_DIR / "input.json"),
+        gold=_load_json(FIXTURE_DIR / "gold.json"),
+    )
+
+    assert node["required_field_preservation_rate"] < 1.0
+    assert node["required_field_preservation_rate"] == 0.5
+
+
+def test_controlled_replay_handoff_metrics_detect_evidence_id_loss(
+    tmp_path: Path,
+) -> None:
+    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=PROMPT_IDS)
+    runner = ControlledPostRetrievalReplayRunner(
+        llm_runtime=FakeLLMRuntime(
+            deque(
+                [
+                    _llm_result(_analysis_result()),
+                    _llm_result(_answer_output_missing_evidence_ref()),
+                    _llm_result(_review_output()),
+                ]
+            )
+        ),
+        manifest_path=manifest_path,
+    )
+
+    _, node = runner.run(
+        experiment_id="EXP-E06B-CONTROLLED-POST-RET",
+        candidate_config=_load_json(
+            Path("experiments/candidates/cand-e06b-b3-specialized.template.json")
+        ),
+        evaluation_item=_load_json(FIXTURE_DIR / "evaluation-item.json"),
+        model_input=_load_json(FIXTURE_DIR / "input.json"),
+        gold=_load_json(FIXTURE_DIR / "gold.json"),
+    )
+
+    assert node["required_field_preservation_rate"] < 1.0
+    assert node["evidence_id_preservation_rate"] < 1.0
+    assert node["evidence_id_preservation_rate"] == 0.0
+    assert node["constraint_loss_count"] >= 1
+
+
+def test_controlled_replay_handoff_metrics_detect_answer_type_constraint_loss(
+    tmp_path: Path,
+) -> None:
+    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=PROMPT_IDS)
+    runner = ControlledPostRetrievalReplayRunner(
+        llm_runtime=FakeLLMRuntime(
+            deque(
+                [
+                    _llm_result(_b1_analysis_planning_output()),
+                    _llm_result(_review_output()),
+                ]
+            )
+        ),
+        manifest_path=manifest_path,
+    )
+    gold = _load_json(FIXTURE_DIR / "gold.json")
+    gold["gold"]["expected_answer_type"] = "PLAN"
+
+    _, node = runner.run(
+        experiment_id="EXP-E06B-CONTROLLED-POST-RET",
+        candidate_config=_load_json(
+            Path("experiments/candidates/cand-e06b-b1-integrated.template.json")
+        ),
+        evaluation_item=_load_json(FIXTURE_DIR / "evaluation-item.json"),
+        model_input=_load_json(FIXTURE_DIR / "input.json"),
+        gold=gold,
+    )
+
+    assert node["constraint_loss_count"] > 0
+    assert node["contradiction_introduced"] is False
+
+
+def test_fixed_environment_payload_is_identical_for_b1_b2_b3_except_independent_variable() -> None:
+    evaluation_item = _load_json(FIXTURE_DIR / "evaluation-item.json")
+    fixture_snapshot_id = "FW-D-001"
+    b1 = _build_fixed_environment_payload(
+        candidate_config=_load_json(
+            Path("experiments/candidates/cand-e06b-b1-integrated.template.json")
+        ),
+        evaluation_item=evaluation_item,
+        fixture_snapshot_id=fixture_snapshot_id,
+    )
+    b2 = _build_fixed_environment_payload(
+        candidate_config=_load_json(
+            Path("experiments/candidates/cand-e06b-b2-staged.template.json")
+        ),
+        evaluation_item=evaluation_item,
+        fixture_snapshot_id=fixture_snapshot_id,
+    )
+    b3 = _build_fixed_environment_payload(
+        candidate_config=_load_json(
+            Path("experiments/candidates/cand-e06b-b3-specialized.template.json")
+        ),
+        evaluation_item=evaluation_item,
+        fixture_snapshot_id=fixture_snapshot_id,
+    )
+
+    assert b1 == b2
+    assert b2 == b3
+
+
+def test_fixed_environment_payload_is_identical_for_e06a_profiles_except_independent_variable() -> (
+    None
+):
+    evaluation_item = _load_json(FIXTURE_DIR / "evaluation-item.json")
+    fixture_snapshot_id = "FW-D-001"
+    single = _build_fixed_environment_payload(
+        candidate_config=_load_json(Path("experiments/candidates/cand-e06-single.template.json")),
+        evaluation_item=evaluation_item,
+        fixture_snapshot_id=fixture_snapshot_id,
+    )
+    three = _build_fixed_environment_payload(
+        candidate_config=_load_json(Path("experiments/candidates/cand-e06-three.template.json")),
+        evaluation_item=evaluation_item,
+        fixture_snapshot_id=fixture_snapshot_id,
+    )
+    six = _build_fixed_environment_payload(
+        candidate_config=_load_json(Path("experiments/candidates/cand-e06-six.template.json")),
+        evaluation_item=evaluation_item,
+        fixture_snapshot_id=fixture_snapshot_id,
+    )
+
+    assert single == three
+    assert three == six
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -513,6 +744,28 @@ def _forbidden_plan_output() -> dict[str, object]:
     payload["actions"][0]["tool_name"] = "gmail_send"
     payload["actions"][0]["effect"] = "SEND"
     return payload
+
+
+def _answer_output_missing_resource_ref() -> dict[str, object]:
+    payload = _answer_output()
+    payload["resource_refs"] = []
+    return payload
+
+
+def _answer_output_missing_evidence_ref() -> dict[str, object]:
+    payload = _answer_output()
+    payload["evidence_refs"] = []
+    return payload
+
+
+def _set_nested_value(payload: dict[str, object], field_path: str, value: object) -> None:
+    path = field_path.split(".")
+    cursor: dict[str, object] = payload
+    for key in path[:-1]:
+        cursor = cursor[key]  # type: ignore[assignment]
+        if not isinstance(cursor, dict):
+            raise AssertionError(f"non-dict path segment: {field_path}")
+    cursor[path[-1]] = value
 
 
 def _review_output() -> dict[str, object]:

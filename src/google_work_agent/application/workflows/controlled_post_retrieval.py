@@ -299,6 +299,7 @@ class ControlledPostRetrievalReplayRunner:
         evaluation_environment_hash = _calculate_evaluation_environment_hash(
             candidate_config=candidate_config,
             evaluation_item=evaluation_item,
+            fixture_snapshot_id=model_input["fixture_snapshot_id"],
         )
         _validate_declared_evaluation_environment_hash(
             candidate_config=candidate_config,
@@ -925,7 +926,22 @@ def _calculate_evaluation_environment_hash(
     *,
     candidate_config: dict[str, object],
     evaluation_item: ContextReadyEvaluationItemV1,
+    fixture_snapshot_id: str,
 ) -> str:
+    payload = _build_evaluation_environment_hash_payload(
+        candidate_config=candidate_config,
+        evaluation_item=evaluation_item,
+        fixture_snapshot_id=fixture_snapshot_id,
+    )
+    return calculate_canonical_json_hash(payload)
+
+
+def _build_evaluation_environment_hash_payload(
+    *,
+    candidate_config: dict[str, object],
+    evaluation_item: ContextReadyEvaluationItemV1,
+    fixture_snapshot_id: str,
+) -> dict[str, object]:
     runtime = _require_mapping(candidate_config.get("runtime"), "runtime")
     parameters = cast(dict[str, object], runtime.get("parameters", {}))
     evaluation_environment = _require_mapping(
@@ -936,7 +952,7 @@ def _calculate_evaluation_environment_hash(
         candidate_config.get("graph_profile_spec"),
         "graph_profile_spec",
     )
-    payload = {
+    return {
         "dataset_version": _required_string(candidate_config, "dataset_version"),
         "tool_schema_version": _required_string(candidate_config, "tool_schema_version"),
         "policy_version": _required_string(candidate_config, "policy_version"),
@@ -978,10 +994,25 @@ def _calculate_evaluation_environment_hash(
                 "hardware_profile_id",
             ),
         },
+        "fixture_snapshot_id": fixture_snapshot_id,
         "execution_contract": evaluation_item["execution_contract"],
         "context_ready_contract_version": evaluation_item["contract_version"],
     }
-    return calculate_canonical_json_hash(payload)
+
+
+def _build_fixed_environment_payload(
+    *,
+    candidate_config: dict[str, object],
+    evaluation_item: ContextReadyEvaluationItemV1,
+    fixture_snapshot_id: str,
+) -> dict[str, object]:
+    payload = _build_evaluation_environment_hash_payload(
+        candidate_config=candidate_config,
+        evaluation_item=evaluation_item,
+        fixture_snapshot_id=fixture_snapshot_id,
+    )
+    payload.pop("graph_profile", None)
+    return payload
 
 
 def _validate_declared_evaluation_environment_hash(
@@ -1054,12 +1085,20 @@ def _calculate_handoff_fidelity_metrics(
     }
     action_tools = _collect_planning_action_tools(planning_result)
     forbidden_action_uses = action_tools & forbidden_tools
+    expected_answer_type = _required_string(
+        cast(dict[str, object], gold["gold"]),
+        "expected_answer_type",
+    )
+    answer_type_constraint_lost = (
+        expected_answer_type == "ANSWER" and planning_result["answer_draft"] is None
+    ) or (expected_answer_type == "PLAN" and planning_result["plan_draft"] is None)
     unexpected_evidence_ids = downstream_evidence_ids - set(required_evidence_ids)
     unexpected_resource_refs = downstream_resource_refs - set(required_resource_refs)
     constraint_loss_count = (
         sum(1 for item in required_resource_refs if item not in downstream_resource_refs)
         + sum(1 for item in required_evidence_ids if item not in downstream_evidence_ids)
         + len(forbidden_action_uses)
+        + int(answer_type_constraint_lost)
     )
     contradiction_introduced = bool(
         forbidden_action_uses or unexpected_evidence_ids or unexpected_resource_refs
