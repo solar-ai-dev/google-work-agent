@@ -120,6 +120,13 @@ def main() -> None:
         try:
             payload = _dispatch(state, request)
             _write({"id": request_id, "payload": payload})
+        except KeyError as error:
+            _write(
+                {
+                    "id": request_id,
+                    "error": {"code": "NOT_FOUND", "message": str(error)},
+                }
+            )
         except Exception as error:
             _write(
                 {
@@ -329,10 +336,12 @@ def _tool_call(
     if tool_name in {
         "gmail_create_draft",
         "gmail_update_draft",
+        "gmail_send",
         "tasks_create_task",
         "tasks_update_task",
         "calendar_create_event",
         "calendar_update_event",
+        "calendar_delete_event",
     }:
         _validate_claim_context(state, tool_name=tool_name, arguments=arguments)
         return {
@@ -438,7 +447,11 @@ def _validate_claim_context(
         raise ValueError("claim process binding mismatch")
     if _now_ms() >= int(str(claim_context["expires_at_ms"])):
         raise ValueError("claim expired")
-    canonical_arguments = {key: value for key, value in arguments.items() if key != "claim_context"}
+    canonical_arguments = {
+        key: value
+        for key, value in arguments.items()
+        if key not in {"claim_context", "recovery_fingerprint"}
+    }
     canonical_hash = hashlib.sha256(
         dumps(canonical_arguments, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -475,6 +488,46 @@ def _mutate_snapshot(
     arguments: dict[str, object],
 ) -> dict[str, object]:
     items = state.resources
+    if tool_name == "gmail_send":
+        draft_id = str(arguments["draft_id"])
+        draft = items[(ResourceType.GMAIL_DRAFT, draft_id)]
+        payload = dict(draft.payload)
+        payload["draft_id"] = draft_id
+        payload["sent"] = True
+        payload["recovery_fingerprint"] = arguments.get("recovery_fingerprint")
+        snapshot = ResourceSnapshot(
+            fixture_snapshot_id="mcp-runtime",
+            resource_type=ResourceType.GMAIL_MESSAGE,
+            resource_id=f"sent-{draft_id}",
+            parent_id=draft.parent_id,
+            related_resource_ids=draft.related_resource_ids,
+            version="1",
+            recovery_fingerprint=_optional_string(arguments.get("recovery_fingerprint")),
+            payload=payload,
+        )
+        items[(snapshot.resource_type, snapshot.resource_id)] = snapshot
+        return _snapshot_payload(snapshot)
+    if tool_name == "calendar_delete_event":
+        if arguments.get("delete_scope") not in {None, "SINGLE"}:
+            raise ValueError("recurring event series deletion is forbidden")
+        calendar_id = str(arguments["calendar_id"])
+        event_id = str(arguments["event_id"])
+        key = (ResourceType.CALENDAR_EVENT, event_id)
+        event = items[key]
+        if event.parent_id != calendar_id:
+            raise ValueError("calendar event parent mismatch")
+        del items[key]
+        tombstone = ResourceSnapshot(
+            fixture_snapshot_id=event.fixture_snapshot_id,
+            resource_type=event.resource_type,
+            resource_id=event.resource_id,
+            parent_id=event.parent_id,
+            related_resource_ids=event.related_resource_ids,
+            version=event.version,
+            recovery_fingerprint=event.recovery_fingerprint,
+            payload={"deleted": True},
+        )
+        return _snapshot_payload(tombstone)
     payload = cast(dict[str, object], arguments["payload"])
     if tool_name == "tasks_create_task":
         resource_id = str(payload.get("resource_id", f"task-{secrets.token_hex(4)}"))

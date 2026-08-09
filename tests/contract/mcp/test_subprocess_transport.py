@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 import sys
+from hashlib import sha256
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from urllib.request import urlopen
+
+import pytest
 
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
@@ -14,6 +17,7 @@ from google_work_agent.adapters.mcp import (
     build_manifest_payload,
     calculate_file_sha256,
 )
+from google_work_agent.ports import GoogleWorkspaceErrorCode, GoogleWorkspaceGatewayError
 
 
 def test_subprocess_transport_supports_oauth_and_google_tools(tmp_path: Path) -> None:
@@ -64,8 +68,56 @@ def test_subprocess_transport_supports_oauth_and_google_tools(tmp_path: Path) ->
         assert page.items
         assert page.items[0].resource_type.value == "gmail_thread"
 
+        sent = gateway.send_gmail(
+            draft_id="draft-followup",
+            recovery_fingerprint="contract-send-fingerprint",
+            claim_context=_claim_context(
+                gateway=gateway,
+                tool_name="gmail_send",
+                arguments={"draft_id": "draft-followup"},
+            ),
+        )
+        assert sent.resource_id == "sent-draft-followup"
+        assert gateway.get_gmail_message(message_id=sent.resource_id).payload["sent"] is True
+
+        deleted = gateway.delete_calendar_event(
+            calendar_id="calendar-primary",
+            event_id="event-focus",
+            claim_context=_claim_context(
+                gateway=gateway,
+                tool_name="calendar_delete_event",
+                arguments={"calendar_id": "calendar-primary", "event_id": "event-focus"},
+            ),
+        )
+        assert deleted.payload == {"deleted": True}
+        with pytest.raises(GoogleWorkspaceGatewayError) as error_info:
+            gateway.get_calendar_event(calendar_id="calendar-primary", event_id="event-focus")
+        assert error_info.value.code is GoogleWorkspaceErrorCode.NOT_FOUND
+
         runtime = transport.runtime_metadata()
         assert runtime.process_status == "READY"
         assert runtime.process_instance_id is not None
     finally:
         transport.close()
+
+
+def _claim_context(
+    *,
+    gateway: MCPGoogleWorkspaceGateway,
+    tool_name: str,
+    arguments: dict[str, object],
+) -> dict[str, object]:
+    return gateway.prepare_claim_context(
+        claim_payload={
+            "action_id": f"action-{tool_name}",
+            "approval_id": f"approval-{tool_name}",
+            "attempt_id": f"attempt-{tool_name}",
+            "service_instance_id": "svc-contract",
+            "expires_at_ms": 4_102_444_800_000,
+            "nonce": f"nonce-{tool_name}",
+        },
+        tool_name=tool_name,
+        canonical_arguments_hash=sha256(
+            json.dumps(arguments, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest(),
+    )

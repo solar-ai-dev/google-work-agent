@@ -3,7 +3,13 @@ from pathlib import Path
 
 import pytest
 from tests.integration.persistence.test_write_actions import _expected_task_projection
-from tests.support.fakes import DeterministicUUID, FakeClock, FakeGoogleGateway
+from tests.support.fakes import (
+    DeterministicUUID,
+    FakeClock,
+    FakeGoogleGateway,
+    GoogleGatewayFault,
+    GoogleGatewayFaultKind,
+)
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 from tests.support.prompt_manifests import write_runtime_active_manifest
 from tests.unit.application.workflows.test_api_acquisition import _plan
@@ -228,6 +234,65 @@ def _write_plan_output() -> dict[str, object]:
     }
 
 
+def _send_write_plan_output() -> dict[str, object]:
+    plan = _write_plan_output()
+    action = plan["actions"][0]
+    action.update(
+        {
+            "effect": "SEND",
+            "tool_name": "gmail_send",
+            "arguments": {"draft_id": "draft-followup"},
+            "expected": {
+                "resource_type": "gmail_message",
+                "resource_id": "sent-draft-followup",
+                "parent_id": "thread-project",
+                "version": "1",
+                "payload": {
+                    "thread_id": "thread-project",
+                    "to": ["pm@example.com"],
+                    "subject": "Re: Project sync follow-up",
+                    "body": "Draft summary is ready for review.",
+                    "draft_id": "draft-followup",
+                    "sent": True,
+                    "resource_id": "sent-draft-followup",
+                },
+            },
+            "user_visible_reason": "Send the approved Gmail draft.",
+        }
+    )
+    plan["summary"] = "Send the approved Gmail draft requested by the user."
+    return plan
+
+
+def _delete_write_plan_output() -> dict[str, object]:
+    plan = _write_plan_output()
+    action = plan["actions"][0]
+    action.update(
+        {
+            "effect": "DELETE",
+            "tool_name": "calendar_delete_event",
+            "arguments": {"calendar_id": "calendar-primary", "event_id": "event-focus"},
+            "expected": {
+                "resource_type": "calendar_event",
+                "resource_id": "event-focus",
+                "absent": True,
+            },
+            "resource_refs": ["calendar_event:event-focus"],
+            "target_resource_ref_id": "calendar_event:event-focus",
+            "user_visible_reason": "Delete the approved single calendar event.",
+        }
+    )
+    plan["summary"] = "Delete the approved single calendar event requested by the user."
+    plan["resource_refs"] = [
+        {
+            "resource_handle": "calendar_event:event-focus",
+            "resource_type": "calendar_event",
+            "resource_id": "event-focus",
+        }
+    ]
+    return plan
+
+
 def _read_plan_output() -> dict[str, object]:
     return {
         "schema_version": 2,
@@ -362,6 +427,56 @@ def _source_plan_output(result: str = "PLAN_READY") -> dict[str, object]:
         "failure": failure,
         "validator_codes": [result],
     }
+
+
+def _calendar_intent() -> dict[str, object]:
+    intent = _clear_intent()
+    intent["semantic_constraints"]["sources"] = [
+        {"source": "CALENDAR", "mention": "calendar", "confidence": "HIGH"}
+    ]
+    return intent
+
+
+def _calendar_selection_output() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "result": "SELECTED",
+        "selected_segment_ids": ["seg-1"],
+        "evidence_drafts": [
+            {
+                "schema_version": 1,
+                "evidence_id": "evidence-1",
+                "resource_handle": "calendar_event:event-focus",
+                "segment_id": "seg-1",
+                "kind": "excerpt",
+                "excerpt": "Focus block",
+                "locator": {"kind": "resource_payload"},
+                "reason_codes": ["GOAL_RELEVANT"],
+            }
+        ],
+        "excluded_resource_handles": [],
+        "missing_information": [],
+        "ambiguity": None,
+    }
+
+
+def _calendar_analysis_output() -> dict[str, object]:
+    result = _analysis_output()
+    finding = result["findings"][0]
+    finding["resource_refs"] = ["calendar_event:event-focus"]
+    finding["related_resource_handles"] = ["calendar_event:event-focus"]
+    finding["segment_refs"] = ["seg-1"]
+    result["resource_refs"] = [
+        {
+            "resource_handle": "calendar_event:event-focus",
+            "resource_type": "calendar_event",
+            "resource_id": "event-focus",
+        }
+    ]
+    result["segment_refs"] = [
+        {"segment_id": "seg-1", "resource_handle": "calendar_event:event-focus"}
+    ]
+    return result
 
 
 def _profile_request_source_output(result: str = "PLAN_READY") -> dict[str, object]:
@@ -712,6 +827,109 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(
         assert verification_count == 1
         assert any(call.operation == "create_task" for call in gateway.call_log)
         assert any(call.operation == "get_task" for call in gateway.call_log)
+    finally:
+        connection.close()
+        runtime.close()
+
+
+@pytest.mark.parametrize(
+    ("plan_output", "expected_operation", "calendar_context", "recovery_fault"),
+    [
+        (_send_write_plan_output, "send_gmail", False, None),
+        (_delete_write_plan_output, "delete_calendar_event", True, None),
+        (_send_write_plan_output, "send_gmail", False, GoogleGatewayFaultKind.HTTP_500),
+    ],
+)
+def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
+    tmp_path: Path,
+    plan_output: object,
+    expected_operation: str,
+    calendar_context: bool,
+    recovery_fault: GoogleGatewayFaultKind | None,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    llm_payloads = (
+        [
+            _calendar_intent(),
+            [_plan("CALENDAR", {"calendar_id": "calendar-primary"})],
+            _calendar_selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _calendar_analysis_output(),
+            plan_output(),
+            _review_output("PASS"),
+        ]
+        if calendar_context
+        else [
+            _clear_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            plan_output(),
+            _review_output("PASS"),
+        ]
+    )
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=llm_payloads,
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / f"checkpoints-{expected_operation}.db",
+        prompt_manifest_path=manifest_path,
+    )
+
+    started = runtime.start(_start_write_request())
+    assert started.outcome is WorkflowOutcome.ACCEPTED
+    approved = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=lambda: 1000,
+    )(
+        ApproveWriteActionCommand(
+            command_id=f"approve-{expected_operation}",
+            request_hash="c" * 64,
+            action_id="action-1",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id=f"approval-{expected_operation}",
+            idempotency_key="d" * 64,
+        )
+    )
+    assert approved.applied is True
+    if recovery_fault is not None:
+        gateway.queue_fault(
+            operation=expected_operation,
+            fault=GoogleGatewayFault(recovery_fault),
+        )
+
+    resumed = runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="APPROVAL",
+            resume_payload={"approved": True},
+            correlation=WorkflowCorrelationContext(
+                request_id="request-2",
+                command_id="command-2",
+                api_contract_version="1",
+            ),
+        )
+    )
+
+    assert resumed.outcome is (
+        WorkflowOutcome.ACCEPTED if recovery_fault is not None else WorkflowOutcome.COMPLETED
+    )
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute("SELECT status FROM actions WHERE id = 'action-1';").fetchone()
+        assert row[0] == "VERIFIED"
+        assert any(call.operation == expected_operation for call in gateway.call_log)
+        if recovery_fault is not None:
+            assert gateway.count_calls("send_gmail") == 1
+            assert gateway.count_calls("search_by_recovery_fingerprint") == 1
     finally:
         connection.close()
         runtime.close()

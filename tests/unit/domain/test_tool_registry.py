@@ -80,9 +80,14 @@ def test_write_tool_registry_contract_matches_policy() -> None:
 def test_unregistered_tool_lookup_fails() -> None:
     registry = build_p0_tool_registry()
 
-    try:
-        registry.require("gmail_delete_message")
-    except LookupError as error:
-        assert "tool not registered" in str(error)
-    else:
-        raise AssertionError("expected LookupError for unregistered tool")
+    for tool_name in (
+        "gmail_delete_message",
+        "tasks_delete_task",
+        "calendar_delete_series",
+    ):
+        try:
+            registry.require(tool_name)
+        except LookupError as error:
+            assert "tool not registered" in str(error)
+        else:
+            raise AssertionError(f"expected LookupError for unregistered tool: {tool_name}")

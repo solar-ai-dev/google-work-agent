@@ -218,6 +218,26 @@ class RecoverUnknownUpdateActionCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class RecoverUnknownSendActionCommand:
+    command_id: str
+    request_hash: str
+    action_id: str
+    attempt_id: str
+    expected_action_version: int
+    expected_attempt_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class RecoverUnknownDeleteActionCommand:
+    command_id: str
+    request_hash: str
+    action_id: str
+    attempt_id: str
+    expected_action_version: int
+    expected_attempt_version: int
+
+
+@dataclass(frozen=True, slots=True)
 class ResolveUnknownWriteAsFailedCommand:
     command_id: str
     request_hash: str
@@ -1060,6 +1080,58 @@ class ExecuteWriteActionService:
         )
 
 
+class PreflightWriteActionService:
+    """Read the approved target immediately before the claim transaction."""
+
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], gateway: GoogleWorkspaceGateway
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._gateway = gateway
+        self._registry = build_p0_tool_registry()
+
+    def __call__(self, *, action_id: str) -> None:
+        with self._unit_of_work_factory() as unit_of_work:
+            action = _require_action(unit_of_work, action_id)
+            if action.status != ActionStatus.APPROVED.value:
+                raise PolicyViolationError("write preflight requires an approved action")
+            self._registry.require(action.tool_name)
+            arguments = _dict_argument(loads(action.arguments_json))
+            target_ref = (
+                None
+                if action.target_resource_ref_id is None
+                else unit_of_work.resource_refs.get_by_id(action.target_resource_ref_id)
+            )
+
+        if action.tool_name == "gmail_send":
+            draft_id = _required_argument_string(arguments, "draft_id")
+            draft = self._gateway.get_gmail_draft(draft_id=draft_id)
+            _validate_preflight_target(
+                snapshot=draft,
+                target_ref=None,
+                expected_resource_type=ResourceType.GMAIL_DRAFT,
+                expected_parent_id=None,
+            )
+            return
+        if action.tool_name == "calendar_delete_event":
+            calendar_id = _required_argument_string(arguments, "calendar_id")
+            event_id = _required_argument_string(arguments, "event_id")
+            if arguments.get("delete_scope") not in {None, "SINGLE"}:
+                raise PolicyViolationError("calendar recurring series deletion is forbidden")
+            event = self._gateway.get_calendar_event(calendar_id=calendar_id, event_id=event_id)
+            if (
+                event.payload.get("recurring_event_id") is not None
+                and arguments.get("delete_scope") != "SINGLE"
+            ):
+                raise PolicyViolationError("recurring event series deletion is forbidden")
+            _validate_preflight_target(
+                snapshot=event,
+                target_ref=target_ref,
+                expected_resource_type=ResourceType.CALENDAR_EVENT,
+                expected_parent_id=calendar_id,
+            )
+
+
 class StoreWriteActionSuccessService:
     def __init__(
         self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
@@ -1096,11 +1168,14 @@ class StoreWriteActionSuccessService:
                 snapshot=command.snapshot,
                 captured_at_ms=now_ms,
             )
-            unit_of_work.resource_refs.upsert(resource_ref)
+            persisted_resource_ref = _upsert_resource_ref(
+                unit_of_work=unit_of_work,
+                resource_ref=resource_ref,
+            )
             unit_of_work.execution_attempts.mark_succeeded(
                 attempt.id,
                 expected_version=command.expected_attempt_version,
-                result_resource_ref_id=resource_ref.id,
+                result_resource_ref_id=persisted_resource_ref.id,
                 response_metadata_json=dumps(
                     {"operation": action.tool_name, "resource_id": command.snapshot.resource_id},
                     sort_keys=True,
@@ -1125,7 +1200,7 @@ class StoreWriteActionSuccessService:
                     status=ActionStatus.EXECUTED.value,
                     duration_ms=None,
                     payload_json=dumps(
-                        {"attempt_id": attempt.id, "resource_ref_id": resource_ref.id},
+                        {"attempt_id": attempt.id, "resource_ref_id": persisted_resource_ref.id},
                         sort_keys=True,
                     ),
                     created_at_ms=now_ms,
@@ -1418,11 +1493,28 @@ class VerifyWriteActionService:
                 resource_ref_id=attempt.result_resource_ref_id,
             )
 
-        actual_snapshot = _load_verification_snapshot(
-            gateway=self._gateway,
-            action=action,
-            fallback_resource_id=fallback_resource_id,
-        )
+        delete_target_absent = False
+        if action.tool_name == "calendar_delete_event":
+            try:
+                actual_snapshot = _load_verification_snapshot(
+                    gateway=self._gateway,
+                    action=action,
+                    fallback_resource_id=fallback_resource_id,
+                )
+            except LookupError:
+                delete_target_absent = True
+                actual_snapshot = None
+            except GoogleWorkspaceGatewayError as error:
+                if error.code is not GoogleWorkspaceErrorCode.NOT_FOUND:
+                    raise
+                delete_target_absent = True
+                actual_snapshot = None
+        else:
+            actual_snapshot = _load_verification_snapshot(
+                gateway=self._gateway,
+                action=action,
+                fallback_resource_id=fallback_resource_id,
+            )
 
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -1468,11 +1560,32 @@ class VerifyWriteActionService:
                 return response
 
             expected = loads(action.expected_json)
-            actual_projection = normalize_verification_projection(actual_snapshot)
-            diff = calculate_verification_diff(expected, actual_projection)
-            verification_status = (
-                VerificationStatus.VERIFIED if len(diff) == 0 else VerificationStatus.MISMATCH
-            )
+            if action.tool_name == "calendar_delete_event":
+                actual_projection = {
+                    "resource_type": ResourceType.CALENDAR_EVENT.value,
+                    "resource_id": _required_argument_string(
+                        _dict_argument(loads(action.arguments_json)), "event_id"
+                    ),
+                    "absent": delete_target_absent,
+                }
+                diff = (
+                    []
+                    if delete_target_absent
+                    else [{"path": "$.absent", "expected": True, "actual": False}]
+                )
+                verification_status = (
+                    VerificationStatus.VERIFIED
+                    if delete_target_absent
+                    else VerificationStatus.MISMATCH
+                )
+            else:
+                if actual_snapshot is None:
+                    raise RuntimeError("verification snapshot is required")
+                actual_projection = normalize_verification_projection(actual_snapshot)
+                diff = calculate_verification_diff(expected, actual_projection)
+                verification_status = (
+                    VerificationStatus.VERIFIED if len(diff) == 0 else VerificationStatus.MISMATCH
+                )
             verification_no = len(unit_of_work.verifications.list_by_attempt(attempt.id)) + 1
             result = unit_of_work.actions.store_verification(
                 action.id,
@@ -1628,14 +1741,17 @@ class RecoverExistingWriteResultService:
                 snapshot=command.snapshot,
                 captured_at_ms=now_ms,
             )
-            unit_of_work.resource_refs.upsert(resource_ref)
+            persisted_resource_ref = _upsert_resource_ref(
+                unit_of_work=unit_of_work,
+                resource_ref=resource_ref,
+            )
             unit_of_work.execution_attempts.update_status(
                 attempt.id,
                 expected_version=command.expected_attempt_version,
                 status=ExecutionAttemptStatus.SUCCEEDED,
                 error_code=command.safe_error_code,
                 error_detail_json=None,
-                result_resource_ref_id=resource_ref.id,
+                result_resource_ref_id=persisted_resource_ref.id,
                 response_metadata_json=dumps(
                     {"operation": action.tool_name, "resource_id": command.snapshot.resource_id},
                     sort_keys=True,
@@ -1658,7 +1774,7 @@ class RecoverExistingWriteResultService:
                     status=ActionStatus.EXECUTED.value,
                     duration_ms=None,
                     payload_json=dumps(
-                        {"attempt_id": attempt.id, "resource_ref_id": resource_ref.id},
+                        {"attempt_id": attempt.id, "resource_ref_id": persisted_resource_ref.id},
                         sort_keys=True,
                     ),
                     created_at_ms=now_ms,
@@ -1865,6 +1981,112 @@ class RecoverUnknownCreateActionService:
                 expected_action_version=command.expected_action_version,
                 expected_attempt_version=command.expected_attempt_version,
                 snapshot=candidates[0],
+            )
+        )
+
+
+class RecoverUnknownSendActionService:
+    """Recover an uncertain send by locating the existing sent message only."""
+
+    def __init__(
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        gateway: GoogleWorkspaceGateway,
+    ) -> None:
+        self._delegate = RecoverUnknownCreateActionService(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+            gateway=gateway,
+        )
+
+    def __call__(self, command: RecoverUnknownSendActionCommand) -> WriteActionResponse:
+        return self._delegate(
+            RecoverUnknownCreateActionCommand(
+                command_id=command.command_id,
+                request_hash=command.request_hash,
+                action_id=command.action_id,
+                attempt_id=command.attempt_id,
+                expected_action_version=command.expected_action_version,
+                expected_attempt_version=command.expected_attempt_version,
+            )
+        )
+
+
+class RecoverUnknownDeleteActionService:
+    """Reconcile an uncertain delete through target absence, never another delete call."""
+
+    def __init__(
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        gateway: GoogleWorkspaceGateway,
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+        self._gateway = gateway
+
+    def __call__(self, command: RecoverUnknownDeleteActionCommand) -> WriteActionResponse:
+        with self._unit_of_work_factory() as unit_of_work:
+            action = _require_action(unit_of_work, command.action_id)
+            attempt = _require_attempt(unit_of_work, command.attempt_id)
+            if action.tool_name != "calendar_delete_event":
+                raise PolicyViolationError("delete recovery requires calendar_delete_event")
+            arguments = _dict_argument(loads(action.arguments_json))
+        try:
+            self._gateway.get_calendar_event(
+                calendar_id=_required_argument_string(arguments, "calendar_id"),
+                event_id=_required_argument_string(arguments, "event_id"),
+            )
+        except LookupError:
+            return self._recover_absent_target(command=command, action=action, attempt=attempt)
+        except GoogleWorkspaceGatewayError as error:
+            if error.code is not GoogleWorkspaceErrorCode.NOT_FOUND:
+                raise
+            return self._recover_absent_target(command=command, action=action, attempt=attempt)
+        return WriteActionResponse(
+            applied=False,
+            result_code=ResultCode.RECOVERY_REQUIRED.value,
+            action_id=action.id,
+            action_status=action.status,
+            action_version=action.version,
+            next_allowed_commands=(),
+            attempt_id=attempt.id,
+            conflict_detail="delete target is still present; blind re-delete is forbidden",
+        )
+
+    def _recover_absent_target(
+        self,
+        *,
+        command: RecoverUnknownDeleteActionCommand,
+        action: ActionRecord,
+        attempt: ExecutionAttemptRecord,
+    ) -> WriteActionResponse:
+        arguments = _dict_argument(loads(action.arguments_json))
+        snapshot = ResourceSnapshot(
+            fixture_snapshot_id="recovery-absence",
+            resource_type=ResourceType.CALENDAR_EVENT,
+            resource_id=_required_argument_string(arguments, "event_id"),
+            parent_id=_required_argument_string(arguments, "calendar_id"),
+            related_resource_ids=(_required_argument_string(arguments, "calendar_id"),),
+            version="deleted",
+            recovery_fingerprint=None,
+            payload={"deleted": True},
+        )
+        return RecoverExistingWriteResultService(
+            unit_of_work_factory=self._unit_of_work_factory,
+            now_ms=self._now_ms,
+        )(
+            RecoverExistingWriteResultCommand(
+                command_id=command.command_id,
+                request_hash=command.request_hash,
+                action_id=command.action_id,
+                attempt_id=command.attempt_id,
+                expected_action_version=command.expected_action_version,
+                expected_attempt_version=command.expected_attempt_version,
+                snapshot=snapshot,
             )
         )
 
@@ -2656,6 +2878,18 @@ def _dispatch_write_action(
     recovery_fingerprint: str | None = None,
     claim_context: dict[str, object] | None = None,
 ) -> ResourceSnapshot:
+    if tool_name == "gmail_send":
+        return gateway.send_gmail(
+            draft_id=_required_argument_string(arguments, "draft_id"),
+            recovery_fingerprint=recovery_fingerprint,
+            claim_context=claim_context,
+        )
+    if tool_name == "calendar_delete_event":
+        return gateway.delete_calendar_event(
+            calendar_id=_required_argument_string(arguments, "calendar_id"),
+            event_id=_required_argument_string(arguments, "event_id"),
+            claim_context=claim_context,
+        )
     payload = _dict_argument(arguments.get("payload"))
     payload_with_recovery = dict(payload)
     if recovery_fingerprint is not None and tool_name in {
@@ -2734,6 +2968,9 @@ def _load_verification_snapshot(
     if action.tool_name in {"gmail_create_draft", "gmail_update_draft"}:
         draft_id = str(arguments.get("draft_id") or _required_resource_id(fallback_resource_id))
         return gateway.get_gmail_draft(draft_id=draft_id)
+    if action.tool_name == "gmail_send":
+        message_id = _required_resource_id(fallback_resource_id)
+        return gateway.get_gmail_message(message_id=message_id)
     if action.tool_name in {"tasks_create_task", "tasks_update_task"}:
         task_list_id = str(arguments["task_list_id"])
         task_id = str(arguments.get("task_id") or _required_resource_id(fallback_resource_id))
@@ -2741,6 +2978,10 @@ def _load_verification_snapshot(
     if action.tool_name in {"calendar_create_event", "calendar_update_event"}:
         calendar_id = str(arguments["calendar_id"])
         event_id = str(arguments.get("event_id") or _required_resource_id(fallback_resource_id))
+        return gateway.get_calendar_event(calendar_id=calendar_id, event_id=event_id)
+    if action.tool_name == "calendar_delete_event":
+        calendar_id = str(arguments["calendar_id"])
+        event_id = str(arguments["event_id"])
         return gateway.get_calendar_event(calendar_id=calendar_id, event_id=event_id)
     raise LookupError(f"unsupported verification tool: {action.tool_name}")
 
@@ -2770,6 +3011,8 @@ def _resolve_snapshot_fallback_resource_id(
             if arguments.get("event_id") is not None
             else _resource_id_from_ref(unit_of_work, resource_ref_id)
         )
+    if action.tool_name == "gmail_send":
+        return _resource_id_from_ref(unit_of_work, resource_ref_id)
     return None
 
 
@@ -2793,6 +3036,7 @@ def _resource_ref_from_snapshot(
 ) -> ResourceRefRecord:
     source_map = {
         ResourceType.GMAIL_DRAFT: (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
+        ResourceType.GMAIL_MESSAGE: (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
         ResourceType.TASK: (ResourceSource.TASKS, StoredResourceType.TASK),
         ResourceType.CALENDAR_EVENT: (ResourceSource.CALENDAR, StoredResourceType.EVENT),
     }
@@ -2814,6 +3058,22 @@ def _resource_ref_from_snapshot(
         metadata_json=dumps(snapshot.payload, sort_keys=True),
         captured_at_ms=captured_at_ms,
     )
+
+
+def _upsert_resource_ref(
+    *, unit_of_work: UnitOfWork, resource_ref: ResourceRefRecord
+) -> ResourceRefRecord:
+    """Resolve the durable id because upsert may retain a pre-existing reference."""
+    unit_of_work.resource_refs.upsert(resource_ref)
+    persisted = unit_of_work.resource_refs.get_by_unique_key(
+        run_id=resource_ref.run_id,
+        source=resource_ref.source.value,
+        resource_type=resource_ref.resource_type.value,
+        resource_id=resource_ref.resource_id,
+    )
+    if persisted is None:
+        raise RuntimeError("resource reference upsert did not persist")
+    return persisted
 
 
 def _action_response_from_result(
@@ -3129,6 +3389,39 @@ def _dict_argument(value: object) -> dict[str, object]:
     return {str(key): cast(object, item) for key, item in value.items()}
 
 
+def _required_argument_string(arguments: dict[str, object], key: str) -> str:
+    value = arguments.get(key)
+    if not isinstance(value, str) or not value:
+        raise PolicyViolationError(f"write action requires a non-empty {key}")
+    return value
+
+
+def _validate_preflight_target(
+    *,
+    snapshot: ResourceSnapshot,
+    target_ref: ResourceRefRecord | None,
+    expected_resource_type: ResourceType,
+    expected_parent_id: str | None,
+) -> None:
+    if snapshot.resource_type is not expected_resource_type:
+        raise PolicyViolationError("preflight target resource type mismatch")
+    if expected_parent_id is not None and snapshot.parent_id != expected_parent_id:
+        raise PolicyViolationError("preflight target parent mismatch")
+    if target_ref is None:
+        if expected_resource_type is ResourceType.CALENDAR_EVENT:
+            raise PolicyViolationError("calendar delete requires a persisted target reference")
+        return
+    if target_ref.resource_id != snapshot.resource_id:
+        raise PolicyViolationError("preflight target identity mismatch")
+    if target_ref.version_token is not None and target_ref.version_token != snapshot.version:
+        raise PolicyViolationError("preflight target version mismatch")
+    if (
+        target_ref.parent_resource_id is not None
+        and target_ref.parent_resource_id != snapshot.parent_id
+    ):
+        raise PolicyViolationError("preflight target parent reference mismatch")
+
+
 def _coerce_int(value: object) -> int:
     if isinstance(value, bool):
         return int(value)
@@ -3201,6 +3494,8 @@ def _propagate_dependency_blocked(
 
 
 def _recovery_resource_type_for_tool(tool_name: str) -> ResourceType:
+    if tool_name == "gmail_send":
+        return ResourceType.GMAIL_MESSAGE
     if tool_name.startswith("gmail_"):
         return ResourceType.GMAIL_DRAFT
     if tool_name.startswith("tasks_"):

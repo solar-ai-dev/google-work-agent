@@ -129,6 +129,29 @@ class FakeGoogleGateway:
     def get_gmail_draft(self, *, draft_id: str) -> ResourceSnapshot:
         return self._read_one("get_gmail_draft", ResourceType.GMAIL_DRAFT, draft_id)
 
+    def send_gmail(
+        self,
+        *,
+        draft_id: str,
+        recovery_fingerprint: str | None,
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        del claim_context
+        draft = self._resources.get((ResourceType.GMAIL_DRAFT, draft_id))
+        if draft is None:
+            raise LookupError(f"draft not found: {draft_id}")
+        payload = deepcopy(draft.payload)
+        payload["recovery_fingerprint"] = recovery_fingerprint
+        payload["sent"] = True
+        payload["draft_id"] = draft_id
+        payload["resource_id"] = f"sent-{draft_id}"
+        return self._create_one(
+            "send_gmail",
+            ResourceType.GMAIL_MESSAGE,
+            payload,
+            parent_id=draft.parent_id,
+        )
+
     def list_task_lists(
         self,
         *,
@@ -315,6 +338,21 @@ class FakeGoogleGateway:
             raise LookupError(f"event {event_id} does not belong to calendar {calendar_id}")
         return event
 
+    def delete_calendar_event(
+        self,
+        *,
+        calendar_id: str,
+        event_id: str,
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        del claim_context
+        return self._delete_one(
+            "delete_calendar_event",
+            ResourceType.CALENDAR_EVENT,
+            event_id,
+            parent_id=calendar_id,
+        )
+
     def search_by_recovery_fingerprint(
         self,
         *,
@@ -429,8 +467,6 @@ class FakeGoogleGateway:
             GoogleGatewayFaultKind.HTTP_404,
             GoogleGatewayFaultKind.HTTP_409,
             GoogleGatewayFaultKind.HTTP_429,
-            GoogleGatewayFaultKind.HTTP_500,
-            GoogleGatewayFaultKind.HTTP_503,
         }:
             self._raise_fault(fault=fault, delivered=False, mutated=False)
 
@@ -485,8 +521,6 @@ class FakeGoogleGateway:
             GoogleGatewayFaultKind.HTTP_404,
             GoogleGatewayFaultKind.HTTP_409,
             GoogleGatewayFaultKind.HTTP_429,
-            GoogleGatewayFaultKind.HTTP_500,
-            GoogleGatewayFaultKind.HTTP_503,
         }:
             self._raise_fault(fault=fault, delivered=False, mutated=False)
 
@@ -514,6 +548,53 @@ class FakeGoogleGateway:
         if fault is not None:
             self._raise_fault(fault=fault, delivered=True, mutated=True)
         return self._copy_snapshot(updated)
+
+    def _delete_one(
+        self,
+        operation: str,
+        resource_type: ResourceType,
+        resource_id: str,
+        *,
+        parent_id: str,
+    ) -> ResourceSnapshot:
+        fault = self._pop_fault(operation)
+        resource = self._resources.get((resource_type, resource_id))
+        if resource is None:
+            raise LookupError(f"resource not found: {resource_type.value}/{resource_id}")
+        if resource.parent_id != parent_id:
+            raise LookupError(f"resource {resource_id} does not belong to {parent_id}")
+        if fault is not None and fault.kind in {
+            GoogleGatewayFaultKind.TIMEOUT_BEFORE_DELIVERY,
+            GoogleGatewayFaultKind.CONNECTION_CLOSED_BEFORE_DELIVERY,
+            GoogleGatewayFaultKind.HTTP_401,
+            GoogleGatewayFaultKind.HTTP_403,
+            GoogleGatewayFaultKind.HTTP_404,
+            GoogleGatewayFaultKind.HTTP_409,
+            GoogleGatewayFaultKind.HTTP_429,
+        }:
+            self._raise_fault(fault=fault, delivered=False, mutated=False)
+
+        del self._resources[(resource_type, resource_id)]
+        self.call_log.append(
+            GoogleGatewayCallRecord(
+                operation=operation,
+                arguments={"resource_id": resource_id, "parent_id": parent_id},
+                delivered=True,
+                mutated=True,
+            )
+        )
+        if fault is not None:
+            self._raise_fault(fault=fault, delivered=True, mutated=True)
+        return ResourceSnapshot(
+            fixture_snapshot_id=resource.fixture_snapshot_id,
+            resource_type=resource.resource_type,
+            resource_id=resource.resource_id,
+            parent_id=resource.parent_id,
+            related_resource_ids=resource.related_resource_ids,
+            version=resource.version,
+            recovery_fingerprint=resource.recovery_fingerprint,
+            payload={"deleted": True},
+        )
 
     def _paginate(
         self,

@@ -41,6 +41,7 @@ from google_work_agent.application import (
     MarkWriteActionFailedService,
     MarkWriteActionUnknownResultCommand,
     MarkWriteActionUnknownResultService,
+    PreflightWriteActionService,
     PublishReadOnlyPlanCommand,
     PublishReadOnlyPlanService,
     PublishWritePlanCommand,
@@ -49,6 +50,10 @@ from google_work_agent.application import (
     ReadEvidenceDraft,
     RecoverUnknownCreateActionCommand,
     RecoverUnknownCreateActionService,
+    RecoverUnknownDeleteActionCommand,
+    RecoverUnknownDeleteActionService,
+    RecoverUnknownSendActionCommand,
+    RecoverUnknownSendActionService,
     RecoverUnknownUpdateActionCommand,
     RecoverUnknownUpdateActionService,
     RequireWriteReauthCommand,
@@ -101,13 +106,16 @@ from google_work_agent.application.write_actions import (
     ClaimWriteActionService,
     ExecuteWriteActionService,
 )
-from google_work_agent.domain import ActionStatus, ResultCode, RunStatus
+from google_work_agent.domain import ActionStatus, PolicyViolationError, ResultCode, RunStatus
 from google_work_agent.ports import (
     DeliveryCertainty,
     EvidenceOriginType,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
+    ResourceRefRecord,
+    ResourceSource,
+    StoredResourceType,
     UnitOfWork,
     WorkflowCancelRequest,
     WorkflowInvocationResult,
@@ -134,6 +142,59 @@ REVIEW_AGENT_LOCAL_KEY = "__review_agent_local__"
 REVIEW_MODE_KEY = "__review_mode__"
 PROFILE_AGENT_LOCAL_KEY = "__profile_agent_local__"
 PROFILE_PROMPT_OUTPUT_KEY = "__profile_prompt_output__"
+
+
+def _resource_handle_for_ref(resource_ref: ResourceRefRecord) -> str:
+    prefixes = {
+        ("GMAIL", "THREAD"): "gmail_thread",
+        ("GMAIL", "MESSAGE"): "gmail_message",
+        ("TASKS", "TASK_LIST"): "task_list",
+        ("TASKS", "TASK"): "task",
+        ("CALENDAR", "CALENDAR"): "calendar",
+        ("CALENDAR", "EVENT"): "calendar_event",
+    }
+    prefix = prefixes.get((resource_ref.source.value, resource_ref.resource_type.value))
+    if prefix is None:
+        raise LookupError(f"unsupported persisted resource reference: {resource_ref.id}")
+    return f"{prefix}:{resource_ref.resource_id}"
+
+
+def _acquired_resource_by_handle(
+    *, acquisition_result: dict[str, object], resource_handle: str
+) -> dict[str, object] | None:
+    source_summaries = cast(list[dict[str, object]], acquisition_result["source_summaries"])
+    for summary in source_summaries:
+        source = summary.get("source")
+        resources = summary.get("resources")
+        if not isinstance(source, str) or not isinstance(resources, list):
+            continue
+        for resource in resources:
+            if not isinstance(resource, dict):
+                continue
+            if resource.get("resource_handle") != resource_handle:
+                continue
+            payload = resource.get("payload")
+            if not isinstance(payload, dict):
+                raise LookupError(f"acquired resource payload is invalid: {resource_handle}")
+            return {**resource, "source": source, "payload": payload}
+    return None
+
+
+def _stored_resource_type_for_acquired_resource(
+    *, source: ResourceSource, resource_type: str
+) -> StoredResourceType:
+    mapping = {
+        (ResourceSource.GMAIL, "gmail_thread"): StoredResourceType.THREAD,
+        (ResourceSource.GMAIL, "gmail_message"): StoredResourceType.MESSAGE,
+        (ResourceSource.TASKS, "task_list"): StoredResourceType.TASK_LIST,
+        (ResourceSource.TASKS, "task"): StoredResourceType.TASK,
+        (ResourceSource.CALENDAR, "calendar"): StoredResourceType.CALENDAR,
+        (ResourceSource.CALENDAR, "calendar_event"): StoredResourceType.EVENT,
+    }
+    stored_type = mapping.get((source, resource_type))
+    if stored_type is None:
+        raise LookupError(f"unsupported acquired resource type: {source.value}/{resource_type}")
+    return stored_type
 
 
 class LangGraphWorkflowRuntime(WorkflowRuntime):
@@ -276,6 +337,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             signing_secret=signing_secret,
             service_instance_id=service_instance_id,
         )
+        self._preflight_write = PreflightWriteActionService(
+            unit_of_work_factory=unit_of_work_factory,
+            gateway=gateway,
+        )
         self._execute_write = ExecuteWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             gateway=gateway,
@@ -305,6 +370,16 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             now_ms=now_ms,
         )
         self._recover_unknown_create = RecoverUnknownCreateActionService(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+            gateway=gateway,
+        )
+        self._recover_unknown_send = RecoverUnknownSendActionService(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+            gateway=gateway,
+        )
+        self._recover_unknown_delete = RecoverUnknownDeleteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
             gateway=gateway,
@@ -2790,6 +2865,19 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 continue
             if action.status != ActionStatus.APPROVED.value:
                 continue
+            try:
+                self._preflight_write(action_id=action.id)
+            except (GoogleWorkspaceGatewayError, LookupError, PolicyViolationError) as error:
+                return {
+                    **state,
+                    "__target__": "end",
+                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
+                    "execution_summary": {
+                        "result": "PREFLIGHT_BLOCKED",
+                        "action_id": action.id,
+                        "safe_error_code": type(error).__name__,
+                    },
+                }
             claim_response = self._claim_write(
                 ClaimWriteActionCommand(
                     command_id=self._id_factory(),
@@ -2931,7 +3019,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 "__target__": "end",
                 "workflow_phase": WorkflowPhase.RECOVERY.value,
             }
-        action, attempt_id = unknown_action
+        action, attempt_id, attempt_version = unknown_action
         if action.effect_type == "CREATE":
             response = self._recover_unknown_create(
                 RecoverUnknownCreateActionCommand(
@@ -2942,7 +3030,33 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                     action_id=action.id,
                     attempt_id=attempt_id,
                     expected_action_version=action.version,
-                    expected_attempt_version=0,
+                    expected_attempt_version=attempt_version,
+                )
+            )
+        elif action.effect_type == "SEND":
+            response = self._recover_unknown_send(
+                RecoverUnknownSendActionCommand(
+                    command_id=self._id_factory(),
+                    request_hash=self._request_hash(
+                        {"kind": "recover_send", "action_id": action.id}
+                    ),
+                    action_id=action.id,
+                    attempt_id=attempt_id,
+                    expected_action_version=action.version,
+                    expected_attempt_version=attempt_version,
+                )
+            )
+        elif action.effect_type == "DELETE":
+            response = self._recover_unknown_delete(
+                RecoverUnknownDeleteActionCommand(
+                    command_id=self._id_factory(),
+                    request_hash=self._request_hash(
+                        {"kind": "recover_delete", "action_id": action.id}
+                    ),
+                    action_id=action.id,
+                    attempt_id=attempt_id,
+                    expected_action_version=action.version,
+                    expected_attempt_version=attempt_version,
                 )
             )
         else:
@@ -2955,7 +3069,20 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                     action_id=action.id,
                     attempt_id=attempt_id,
                     expected_action_version=action.version,
-                    expected_attempt_version=0,
+                    expected_attempt_version=attempt_version,
+                )
+            )
+        if response.applied and response.action_status == ActionStatus.EXECUTED.value:
+            response = self._verify_write(
+                VerifyWriteActionCommand(
+                    command_id=self._id_factory(),
+                    request_hash=self._request_hash(
+                        {"kind": "verify_recovered", "action_id": action.id}
+                    ),
+                    action_id=action.id,
+                    attempt_id=attempt_id,
+                    expected_action_version=response.action_version,
+                    verification_id=self._id_factory(),
                 )
             )
         outcome = (
@@ -3335,7 +3462,11 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 arguments=cast(dict[str, object], action["arguments"]),
                 expected=cast(dict[str, object], action["expected"]),
                 evidence_ids=tuple(cast(list[str], action["evidence_refs"])),
-                target_resource_ref_id=cast(str | None, action.get("target_resource_ref_id")),
+                target_resource_ref_id=self._resolve_target_resource_ref_id(
+                    run_id=run_id,
+                    resource_handle=cast(str | None, action.get("target_resource_ref_id")),
+                    acquisition_result=cast(dict[str, object], state["acquisition_result"]),
+                ),
             )
             for action in cast(list[dict[str, object]], plan_draft["actions"])
         )
@@ -3367,6 +3498,64 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         if not publish_response.applied:
             raise RuntimeError(f"publish_write_plan failed: {publish_response.result_code}")
         return plan_id
+
+    def _resolve_target_resource_ref_id(
+        self,
+        *,
+        run_id: str,
+        resource_handle: str | None,
+        acquisition_result: dict[str, object],
+    ) -> str | None:
+        if resource_handle is None:
+            return None
+        with self._unit_of_work_factory() as unit_of_work:
+            existing = unit_of_work.resource_refs.get_by_id(resource_handle)
+            if existing is not None:
+                return existing.id
+            for resource_ref in unit_of_work.resource_refs.list_by_run(run_id):
+                if resource_handle == _resource_handle_for_ref(resource_ref):
+                    return resource_ref.id
+            resource = _acquired_resource_by_handle(
+                acquisition_result=acquisition_result,
+                resource_handle=resource_handle,
+            )
+            if resource is None:
+                raise LookupError(
+                    f"target resource handle was not acquired for this run: {resource_handle}"
+                )
+            source = ResourceSource(str(resource["source"]))
+            resource_type = _stored_resource_type_for_acquired_resource(
+                source=source,
+                resource_type=str(resource["resource_type"]),
+            )
+            payload = cast(dict[str, object], resource["payload"])
+            resource_ref = ResourceRefRecord(
+                id=f"resource-ref-{run_id}-{resource_handle.replace(':', '-')}",
+                run_id=run_id,
+                source=source,
+                resource_type=resource_type,
+                resource_id=str(resource["resource_id"]),
+                parent_resource_id=cast(str | None, resource.get("parent_id")),
+                canonical_url=None,
+                title=str(
+                    payload.get("subject") or payload.get("title") or resource["resource_id"]
+                )[:200],
+                event_time_ms=None,
+                version_token=cast(str | None, resource.get("version")),
+                metadata_json=dumps(payload, sort_keys=True),
+                captured_at_ms=self._now_ms(),
+            )
+            unit_of_work.resource_refs.upsert(resource_ref)
+            persisted = unit_of_work.resource_refs.get_by_unique_key(
+                run_id=run_id,
+                source=source.value,
+                resource_type=resource_type.value,
+                resource_id=resource_ref.resource_id,
+            )
+            if persisted is None:
+                raise RuntimeError("target resource reference was not persisted")
+            unit_of_work.commit()
+            return persisted.id
 
     def _persist_read_plan(self, state: GraphState, plan_draft: dict[str, object]) -> str:
         run_id = cast(str, state["run_id"])
@@ -3564,7 +3753,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 sorted(unit_of_work.actions.list_by_plan(plan_id), key=lambda item: item.position)
             )
 
-    def _latest_unknown_action(self, run_id: str) -> tuple[ActionRecord, str] | None:
+    def _latest_unknown_action(self, run_id: str) -> tuple[ActionRecord, str, int] | None:
         with self._unit_of_work_factory() as unit_of_work:
             plans = unit_of_work.plans.list_by_run(run_id)
             if not plans:
@@ -3573,14 +3762,13 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             for action in unit_of_work.actions.list_by_plan(latest_plan.id):
                 if action.status != ActionStatus.UNKNOWN_RESULT.value:
                     continue
-                approval = unit_of_work.approvals.get_active_by_action(action.id)
-                if approval is None:
-                    continue
-                attempts = unit_of_work.execution_attempts.list_by_approval(approval.id)
-                if not attempts:
-                    continue
-                latest_attempt = sorted(attempts, key=lambda item: item.attempt_no)[-1]
-                return action, latest_attempt.id
+                approvals = unit_of_work.approvals.list_by_action(action.id)
+                for approval in sorted(approvals, key=lambda item: item.approval_no, reverse=True):
+                    attempts = unit_of_work.execution_attempts.list_by_approval(approval.id)
+                    if not attempts:
+                        continue
+                    latest_attempt = sorted(attempts, key=lambda item: item.attempt_no)[-1]
+                    return action, latest_attempt.id, latest_attempt.version
         return None
 
     def _request_with_confirmation(

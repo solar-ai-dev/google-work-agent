@@ -93,6 +93,22 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
     def get_gmail_draft(self, *, draft_id: str) -> ResourceSnapshot:
         return self._snapshot("gmail_get_draft", {"draft_id": draft_id})
 
+    def send_gmail(
+        self,
+        *,
+        draft_id: str,
+        recovery_fingerprint: str | None,
+        claim_context: dict[str, Any] | None = None,
+    ) -> ResourceSnapshot:
+        return self._snapshot(
+            "gmail_send",
+            {
+                "draft_id": draft_id,
+                "recovery_fingerprint": recovery_fingerprint,
+                "claim_context": claim_context,
+            },
+        )
+
     def list_task_lists(self, *, page_token: str | None, page_size: int) -> ResourcePage:
         return self._page(
             "tasks_list_tasklists",
@@ -223,6 +239,22 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
             },
         )
 
+    def delete_calendar_event(
+        self,
+        *,
+        calendar_id: str,
+        event_id: str,
+        claim_context: dict[str, Any] | None = None,
+    ) -> ResourceSnapshot:
+        return self._snapshot(
+            "calendar_delete_event",
+            {
+                "calendar_id": calendar_id,
+                "event_id": event_id,
+                "claim_context": claim_context,
+            },
+        )
+
     def search_by_recovery_fingerprint(
         self,
         *,
@@ -282,6 +314,7 @@ def _google_error_from_transport(error: MCPTransportError) -> GoogleWorkspaceGat
         MCPTransportErrorCode.TIMEOUT: GoogleWorkspaceErrorCode.TIMEOUT,
         MCPTransportErrorCode.CONNECTION_CLOSED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
         MCPTransportErrorCode.PROCESS_UNAVAILABLE: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
+        MCPTransportErrorCode.NOT_FOUND: GoogleWorkspaceErrorCode.NOT_FOUND,
         MCPTransportErrorCode.SCHEMA_MISMATCH: GoogleWorkspaceErrorCode.RESPONSE_MALFORMED,
         MCPTransportErrorCode.MALFORMED_RESPONSE: GoogleWorkspaceErrorCode.RESPONSE_MALFORMED,
         MCPTransportErrorCode.TOOL_REJECTED: GoogleWorkspaceErrorCode.PERMISSION_DENIED,

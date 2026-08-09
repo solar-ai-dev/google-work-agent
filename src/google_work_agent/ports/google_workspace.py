@@ -149,6 +149,15 @@ class GoogleWorkspaceGateway(Protocol):
     def get_gmail_draft(self, *, draft_id: str) -> ResourceSnapshot:
         """Return one Gmail draft snapshot."""
 
+    def send_gmail(
+        self,
+        *,
+        draft_id: str,
+        recovery_fingerprint: str | None,
+        claim_context: dict[str, JsonValue] | None = None,
+    ) -> ResourceSnapshot:
+        """Send one approved Gmail draft and return the provider message identity."""
+
     def list_task_lists(
         self,
         *,
@@ -229,6 +238,15 @@ class GoogleWorkspaceGateway(Protocol):
         claim_context: dict[str, JsonValue] | None = None,
     ) -> ResourceSnapshot:
         """Update one calendar event."""
+
+    def delete_calendar_event(
+        self,
+        *,
+        calendar_id: str,
+        event_id: str,
+        claim_context: dict[str, JsonValue] | None = None,
+    ) -> ResourceSnapshot:
+        """Delete one approved non-recurring Calendar event."""
 
     def search_by_recovery_fingerprint(
         self,
