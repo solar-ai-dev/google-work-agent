@@ -45,6 +45,14 @@ def start_google_oauth(
     except MCPTransportError as error:
         if error.code is not MCPTransportErrorCode.CONFIGURATION_ERROR:
             raise
+        if str(error) == "GOOGLE_OAUTH_CLIENT_SECRET_MISSING":
+            raise ApiError(
+                error_code="CONFIGURATION_ERROR",
+                user_message="Set GOOGLE_OAUTH_CLIENT_SECRET in .env.local.",
+                status_code=503,
+                request_id=request.state.request_id,
+                detail_code="GOOGLE_OAUTH_CLIENT_SECRET_MISSING",
+            ) from error
         raise ApiError(
             error_code="CONFIGURATION_ERROR",
             user_message="Set GOOGLE_OAUTH_CLIENT_ID in .env.local.",
@@ -95,6 +103,8 @@ def get_google_connection(
         reauth_required=result.reauth_required,
         oauth_environment=result.oauth_environment.value,
         last_checked_at_ms=result.last_checked_at_ms,
+        safe_error_code=result.safe_error_code,
+        safe_error_description=result.safe_error_description,
         api_contract_version=container.api_contract_version,
     )
 

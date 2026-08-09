@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
-from urllib.request import urlopen
+from urllib.request import HTTPRedirectHandler, build_opener
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClock
@@ -78,6 +78,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
                 "GWA_TEST_KEYRING_PATH": str(keyring_path.resolve()),
                 "GWA_PRODUCT_FIXTURE_MANIFEST": str(fixture_manifest.resolve()),
                 "GOOGLE_OAUTH_CLIENT_ID": "test-desktop-client-id",
+                "GOOGLE_OAUTH_CLIENT_SECRET": "compatibility-client-secret",
             },
         )
     )
@@ -181,20 +182,20 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
             assert "test-desktop-client-id" not in started.text
             state = parse_qs(urlparse(payload["authorization_url"]).query)["state"][0]
 
-            with urlopen(
-                f"{payload['callback_url']}?state={state}&code=CANARY_AUTH_CODE"
-            ) as response:
-                assert response.status == 200
+            response = build_opener(_NoRedirect()).open(
+                f"{payload['authorization_url']}&state={state}"
+            )
+            assert response.code == 302
+            assert urlparse(response.headers["Location"]).netloc == "accounts.google.com"
 
             connected = client.get("/api/v1/google/connection", headers=headers)
             assert connected.status_code == 200
-            assert connected.json()["connected"] is True
-            assert "CANARY_AUTH_CODE" not in connected.text
+            assert connected.json()["connected"] is False
 
             runtime = client.get("/api/v1/runtime", headers=headers)
             assert runtime.status_code == 200
             summary = runtime.json()["summary"]
-            assert summary["google_connection"]["connected"] is True
+            assert summary["google_connection"]["connected"] is False
             assert summary["mcp_runtime"]["process_status"] == "READY"
 
             disconnected = client.post("/api/v1/google/disconnect", headers=headers, json={})
@@ -202,3 +203,16 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
             assert disconnected.json()["disconnected"] is True
     finally:
         transport.close()
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    def http_error_302(
+        self,
+        request: object,
+        fp: object,
+        code: int,
+        message: str,
+        headers: object,
+    ) -> object:
+        del request, fp, message
+        return type("Response", (), {"code": code, "headers": headers})()

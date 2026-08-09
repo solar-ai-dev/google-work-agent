@@ -23,6 +23,8 @@ class GoogleConnectionResponse(ApiModel):
     reauth_required: bool
     oauth_environment: str
     last_checked_at_ms: int
+    safe_error_code: str | None = None
+    safe_error_description: str | None = None
     api_contract_version: str
 
 

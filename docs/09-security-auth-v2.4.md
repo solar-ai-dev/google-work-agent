@@ -1,6 +1,6 @@
 # 09. Google Work Agent · 보안 · Auth 설계서
 
-> **상태:** Draft v2.3 · **기준일:** 2026-08-09 · **대상:** P0 MVP
+> **상태:** Draft v2.4 · **기준일:** 2026-08-09 · **대상:** P0 MVP
 
 ## 1. 핵심 결정
 
@@ -9,7 +9,8 @@
 - Bootstrap: 256-bit, 1회, 60초, URL Fragment
 - Google Refresh Token: MCP Credential Provider가 OS Keyring에서 사용
 - LLM API Key: FastAPI LLM Adapter가 별도 Keyring Entry에서 사용
-- Secret은 SQLite·Checkpoint·Trace·Audit·환경 변수·CLI 인자에 저장하지 않음
+- 사용자 Credential·OAuth Token·LLM API Key 등 Confidential Secret은 SQLite·Checkpoint·Trace·Audit·환경 변수·CLI 인자에 저장하지 않음
+- 예외: DEV Desktop OAuth Client가 실제 Google Token Endpoint 호환을 위해 `client_secret`을 요구하는 경우, 해당 값은 사용자 Credential 또는 Confidential Security Boundary가 아닌 **Google OAuth Protocol Compatibility Client Credential**로 취급하며 repo-root `.env.local`에서 MCP Credential Provider만 읽을 수 있음
 - 외부 LLM 전송은 설정 동의와 Run별 범위 표시 필요
 - 외부 전송 동의 없으면 AUTO API Fallback 금지
 - 배포되는 외부 Test·Production Artifact는 Code Signing 필수
@@ -49,6 +50,10 @@ Google Source의 지시는 이 우선순위를 변경하지 못한다.
   - Calendar `calendar.events`, `calendar.calendarlist.readonly`, `calendar.events.freebusy`
 - 필수 Scope 하나라도 거절되면 연결 미완료, Agent Run·Google Tool 차단
 - 개발·Staging·Production Google Project·Client 분리
+- Desktop OAuth Client가 `client_secret`을 발급하고 실제 Token Endpoint가 이를 요구하는 경우, `client_secret`은 PKCE·`state`·loopback을 대체하는 보안 수단이 아니다.
+- DEV에서는 MCP Credential Provider만 `GOOGLE_OAUTH_CLIENT_SECRET`을 읽고 authorization-code grant와 refresh-token grant의 protocol compatibility field로 사용할 수 있다.
+- `client_secret`은 React/Vite, FastAPI API payload, SQLite, Log, Trace, Diagnostic, OS Keyring으로 전달·저장하지 않는다.
+- Production에서는 `.env.local`, 일반 환경 변수, CLI를 통한 provisioning을 금지하며 배포 Credential provisioning 계약을 별도로 따른다.
 
 ## 5. Credential Lifecycle
 
@@ -59,6 +64,7 @@ Google Source의 지시는 이 우선순위를 변경하지 못한다.
 - Google 연결 해제: Revoke 시도 + Google Keyring Entry 삭제
 - API Key 삭제: Provider Entry 삭제
 - Plain File Fallback 금지
+- Desktop OAuth `client_secret`은 Refresh Token·Access Token과 같은 사용자 Credential Lifecycle에 포함하지 않는다. DEV compatibility credential은 MCP 설정 경계에서만 사용한다.
 
 ## 6. 외부 LLM 개인정보
 
@@ -145,7 +151,7 @@ Artifact Signature·Manifest 100%
 
 ### OAuth 소유권
 
-Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credential Provider만 수행한다. FastAPI는 연결 Metadata만 취급한다.
+Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credential Provider만 수행한다. Desktop OAuth Client가 protocol compatibility를 위해 `client_secret`을 요구하는 경우 해당 값의 로드·사용도 MCP Credential Provider가 소유한다. FastAPI와 React는 연결 Metadata만 취급하며 Client Secret 원문을 전달받지 않는다.
 
 ## 15. 고영향 Write 보안
 - SEND·DELETE·Task 완료·참석자 변경은 정확한 Target/Arguments와 명시 승인 후 실행한다.

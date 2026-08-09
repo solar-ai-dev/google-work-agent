@@ -42,6 +42,8 @@ class GoogleConnectionStatus:
     reauth_required: bool
     oauth_environment: OAuthEnvironment
     last_checked_at_ms: int
+    safe_error_code: str | None = None
+    safe_error_description: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
