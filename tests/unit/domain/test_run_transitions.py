@@ -107,7 +107,13 @@ def test_resolve_recovery_requires_explicit_status() -> None:
 
 @pytest.mark.parametrize(
     "next_status",
-    (RunStatus.VERIFYING, RunStatus.FAILED, RunStatus.CANCELLED),
+    (
+        RunStatus.VERIFYING,
+        RunStatus.PLANNING,
+        RunStatus.COMPLETED,
+        RunStatus.FAILED,
+        RunStatus.CANCELLED,
+    ),
 )
 def test_resolve_recovery_allowed_targets(next_status: RunStatus) -> None:
     result = transition_run(
@@ -260,7 +266,14 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
             (RunCommand.REQUEST_CANCEL, RunCommand.REQUIRE_RECOVERY),
         ),
         (RunStatus.EXECUTING, (RunCommand.REQUEST_CANCEL, RunCommand.REQUIRE_RECOVERY)),
-        (RunStatus.VERIFYING, (RunCommand.REQUEST_CANCEL, RunCommand.REQUIRE_RECOVERY)),
+        (
+            RunStatus.VERIFYING,
+            (
+                RunCommand.COMPLETE_WRITE_RUN,
+                RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_RECOVERY,
+            ),
+        ),
         (
             RunStatus.CANCEL_REQUESTED,
             (RunCommand.FINALIZE_CANCEL, RunCommand.REQUIRE_RECOVERY),

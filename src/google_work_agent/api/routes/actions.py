@@ -1,22 +1,26 @@
 """Existing action command routes."""
 
+from typing import Any
+
 from fastapi import APIRouter, Request, Response
 
 from google_work_agent.adapters.runtime import RuntimeOperation
 from google_work_agent.api.dependencies import (
+    calculate_server_request_hash,
     enforce_access,
     enforce_api_contract_version,
     enforce_runtime_operation,
     get_container,
 )
-from google_work_agent.api.errors import http_status_for_result_code
+from google_work_agent.api.errors import ApiError, http_status_for_result_code
 from google_work_agent.api.schemas.actions import (
     ActionCommandResponse,
-    ApproveActionRequest,
-    ModifyActionRequest,
-    PrepareRetryRequest,
-    RejectActionRequest,
+    ApproveActionRequestV2,
+    ModifyActionRequestV2,
+    PrepareRetryRequestV2,
+    RejectActionRequestV2,
 )
+from google_work_agent.application.coordinator import QueueBusyError
 from google_work_agent.application.start_run import (
     ModifyWriteActionCommand,
     RejectWriteActionCommand,
@@ -28,7 +32,7 @@ router = APIRouter(prefix="/api/v1/actions")
 
 @router.post("/{action_id}/approve", response_model=ActionCommandResponse)
 def approve(
-    action_id: str, request: Request, payload: ApproveActionRequest, response: Response
+    action_id: str, request: Request, payload: ApproveActionRequestV2, response: Response
 ) -> ActionCommandResponse:
     container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
@@ -40,20 +44,46 @@ def approve(
     enforce_runtime_operation(request, operation=RuntimeOperation.APPROVALS)
     from google_work_agent.application.write_actions import ApproveWriteActionCommand
 
+    approved_by_account_id, run_id = _account_and_run_id_for_action(container, action_id)
     result = container.approve_action_service(
         ApproveWriteActionCommand(
             command_id=payload.command_id,
-            request_hash=payload.request_hash,
+            request_hash=calculate_server_request_hash(
+                operation="ApproveActionRequestV2",
+                payload={"action_id": action_id, **payload.model_dump()},
+            ),
             action_id=action_id,
             expected_version=payload.expected_version,
-            approved_by_account_id=payload.approved_by_account_id,
-            approved_by_display=payload.approved_by_display,
-            source_snapshot=payload.source_snapshot,
-            approval_id=payload.approval_id,
-            idempotency_key=payload.idempotency_key,
+            approved_by_account_id=approved_by_account_id,
+            approved_by_display=None,
+            source_snapshot={},
+            approval_id=container.id_generator.next_id(),
+            idempotency_key=calculate_server_request_hash(
+                operation="ApproveActionIdempotencyKeyV1",
+                payload={"action_id": action_id, "command_id": payload.command_id},
+            ),
             ttl_ms=payload.ttl_ms,
         )
     )
+    if result.applied:
+        try:
+            container.local_run_coordinator.enqueue_resume(
+                run_id=run_id,
+                request_id=request.state.request_id,
+                command_id=payload.command_id,
+                resume_kind="APPROVAL",
+                resume_payload={"approved": True},
+            )
+        except QueueBusyError as error:
+            raise ApiError(
+                error_code="SERVICE_BUSY",
+                user_message="The approval was saved, but runtime execution is still queued.",
+                status_code=503,
+                request_id=request.state.request_id,
+                retryable=True,
+                detail_code=type(error).__name__,
+                current_state=result.action_status,
+            ) from error
     response.status_code = http_status_for_result_code(result.result_code)
     return ActionCommandResponse(
         applied=result.applied,
@@ -66,9 +96,26 @@ def approve(
     )
 
 
+def _account_and_run_id_for_action(container: Any, action_id: str) -> tuple[str, str]:
+    with container.unit_of_work_factory() as unit_of_work:
+        action = unit_of_work.actions.get_by_id(action_id)
+        if action is None:
+            raise LookupError(f"action not found: {action_id}")
+        plan = unit_of_work.plans.get_by_id(action.plan_id)
+        if plan is None:
+            raise LookupError(f"plan not found: {action.plan_id}")
+        run = unit_of_work.runs.get_by_id(plan.run_id)
+        if run is None:
+            raise LookupError(f"run not found: {plan.run_id}")
+        conversation = unit_of_work.conversations.get_by_id(run.conversation_id)
+        if conversation is None:
+            raise LookupError(f"conversation not found: {run.conversation_id}")
+        return conversation.account_id, run.id
+
+
 @router.post("/{action_id}/modify", response_model=ActionCommandResponse)
 def modify(
-    action_id: str, request: Request, payload: ModifyActionRequest, response: Response
+    action_id: str, request: Request, payload: ModifyActionRequestV2, response: Response
 ) -> ActionCommandResponse:
     container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
@@ -81,7 +128,10 @@ def modify(
     result = container.modify_action_service(
         ModifyWriteActionCommand(
             command_id=payload.command_id,
-            request_hash=payload.request_hash,
+            request_hash=calculate_server_request_hash(
+                operation="ModifyActionRequestV2",
+                payload={"action_id": action_id, **payload.model_dump()},
+            ),
             action_id=action_id,
             expected_version=payload.expected_version,
         )
@@ -102,7 +152,7 @@ def modify(
 
 @router.post("/{action_id}/reject", response_model=ActionCommandResponse)
 def reject(
-    action_id: str, request: Request, payload: RejectActionRequest, response: Response
+    action_id: str, request: Request, payload: RejectActionRequestV2, response: Response
 ) -> ActionCommandResponse:
     container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
@@ -115,7 +165,10 @@ def reject(
     result = container.reject_action_service(
         RejectWriteActionCommand(
             command_id=payload.command_id,
-            request_hash=payload.request_hash,
+            request_hash=calculate_server_request_hash(
+                operation="RejectActionRequestV2",
+                payload={"action_id": action_id, **payload.model_dump()},
+            ),
             action_id=action_id,
             expected_version=payload.expected_version,
         )
@@ -136,7 +189,7 @@ def reject(
 
 @router.post("/{action_id}/prepare-retry", response_model=ActionCommandResponse)
 def prepare_retry(
-    action_id: str, request: Request, payload: PrepareRetryRequest, response: Response
+    action_id: str, request: Request, payload: PrepareRetryRequestV2, response: Response
 ) -> ActionCommandResponse:
     container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
@@ -151,7 +204,10 @@ def prepare_retry(
     result = container.prepare_retry_service(
         PrepareWriteRetryCommand(
             command_id=payload.command_id,
-            request_hash=payload.request_hash,
+            request_hash=calculate_server_request_hash(
+                operation="PrepareRetryRequestV2",
+                payload={"action_id": action_id, **payload.model_dump()},
+            ),
             action_id=action_id,
             expected_action_version=payload.expected_action_version,
         )

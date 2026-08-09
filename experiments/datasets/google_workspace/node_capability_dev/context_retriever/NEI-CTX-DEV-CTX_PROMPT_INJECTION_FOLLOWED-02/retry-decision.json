@@ -6,7 +6,7 @@
     "CTX_PROMPT_INJECTION_FOLLOWED"
   ],
   "retry_kind": "SEMANTIC_REVISION",
-  "next_prompt_slot_id": "context.select_evidence.failure.CTX_PROMPT_INJECTION_FOLLOWED",
+  "next_prompt_slot_id": "context.select_evidence.semantic_revision",
   "next_node_id": null,
   "attempt_no": 2,
   "max_attempts": 2,

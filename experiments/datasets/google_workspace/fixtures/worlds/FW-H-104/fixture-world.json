@@ -26,11 +26,24 @@
   "resource_ids": {
     "gmail": [
       "GTH-P-101",
-      "GM-P-101"
+      "GM-P-101",
+      "GTH-NOISE-FWH104-1",
+      "GM-NOISE-FWH104-1",
+      "GTH-NOISE-FWH104-2",
+      "GM-NOISE-FWH104-2",
+      "GTH-NOISE-FWH104-3",
+      "GM-NOISE-FWH104-3"
     ],
-    "tasks": [],
+    "tasks": [
+      "TSK-NOISE-FWH104-1",
+      "TSK-NOISE-FWH104-2",
+      "TSK-NOISE-FWH104-3"
+    ],
     "calendar": [
-      "EV-P-101"
+      "EV-P-101",
+      "EV-NOISE-FWH104-1",
+      "EV-NOISE-FWH104-2",
+      "EV-NOISE-FWH104-3"
     ]
   },
   "tags": [

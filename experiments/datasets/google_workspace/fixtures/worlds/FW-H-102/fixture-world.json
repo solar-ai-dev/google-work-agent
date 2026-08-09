@@ -28,10 +28,24 @@
       "GTH-N-101",
       "GTH-N-102",
       "GM-N-101",
-      "GM-N-102"
+      "GM-N-102",
+      "GTH-NOISE-FWH102-1",
+      "GM-NOISE-FWH102-1",
+      "GTH-NOISE-FWH102-2",
+      "GM-NOISE-FWH102-2",
+      "GTH-NOISE-FWH102-3",
+      "GM-NOISE-FWH102-3"
     ],
-    "tasks": [],
-    "calendar": []
+    "tasks": [
+      "TSK-NOISE-FWH102-1",
+      "TSK-NOISE-FWH102-2",
+      "TSK-NOISE-FWH102-3"
+    ],
+    "calendar": [
+      "EV-NOISE-FWH102-1",
+      "EV-NOISE-FWH102-2",
+      "EV-NOISE-FWH102-3"
+    ]
   },
   "tags": [
     "holdout",

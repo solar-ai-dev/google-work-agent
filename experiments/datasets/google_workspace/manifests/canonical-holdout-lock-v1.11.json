@@ -1,0 +1,552 @@
+{
+  "schema_version": 1,
+  "lock_id": "CANONICAL-HOLDOUT-v1.11-R8.2",
+  "dataset_version": "rebuild-v1.13-r8.3",
+  "locked_at": "2026-08-08T08:00:00Z",
+  "reason": "Non-performance-based R8.2 business-language/fixture-realism migration; no model output was used to change gold. Treat all previous holdout result versions as incomparable.",
+  "model_outputs_observed_during_migration": false,
+  "post_lock_tuning_forbidden": true,
+  "file_count": 108,
+  "files": [
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-001/canonical-case.json",
+      "sha256": "a3e65c3dba58469c30ffebf9c995d96949a8be6bfb7a31e5a7af815cd4584429",
+      "bytes": 3581
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-001/projection-acq.json",
+      "sha256": "03c02a1d8553d425a032f6b5a87f588cfc2ced9a13cd0d83910b91f2934d7273",
+      "bytes": 780
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-001/projection-anl.json",
+      "sha256": "f565b5b3f5712777773d112f4c251e09012f78db99b48e6b5a25b08f2c40040c",
+      "bytes": 564
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-001/projection-e2e.json",
+      "sha256": "54af87e904c4d4dcc2a0ebc2d58263f656b82dfdeb92d1f0c5cbb273f6209e07",
+      "bytes": 1001
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-001/projection-pln.json",
+      "sha256": "9e56f251163fd769b5066223c8d360f71062b98efdea840bff816c32bc0458df",
+      "bytes": 723
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-001/projection-ret.json",
+      "sha256": "b84561d31763bb9e965cab6b7753acf0049926f92b6274c43d6fb2384e70f504",
+      "bytes": 638
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-001/projection-rev.json",
+      "sha256": "0b1c2b5df66e5ab92fc32a3d907867642e1b05ec7aeba76c1613d66d29304790",
+      "bytes": 652
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-001/projection-rt.json",
+      "sha256": "8bb8e06322b76054b9a8df9ba413a295c58860f749e59f6582b6215a2729c7c5",
+      "bytes": 1275
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-001/projection-uu.json",
+      "sha256": "2fb7b468ad9d811bd56fa41cec6aed4099760595b88f07fb650daaa143f62456",
+      "bytes": 736
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-002/canonical-case.json",
+      "sha256": "8c008aef8b9618b477d40a32f0fcac5992f5276ba175236180ea207c860169d1",
+      "bytes": 3363
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-002/projection-acq.json",
+      "sha256": "c63772c316a3270142540e6c402620d83c53565342c767aac5457c79f7030b26",
+      "bytes": 793
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-002/projection-anl.json",
+      "sha256": "b1d11694b8d723639794bb7293b9a84232046c1d5242b5c3f853f20584f9626e",
+      "bytes": 551
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-002/projection-e2e.json",
+      "sha256": "162cf0006cee1ba69a5cd2bce37bae405de5c6e72e1feff1ac9aa0c8ad407546",
+      "bytes": 1006
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-002/projection-pln.json",
+      "sha256": "973c1b64ac3e53948ef74444f3e8ed9455deced97974c1c3e18acc4d22469072",
+      "bytes": 728
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-002/projection-ret.json",
+      "sha256": "7bb32be5b29ee1cd44f303501595115ec8039263a8bfed2f5fe2058ac3bd3856",
+      "bytes": 597
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-002/projection-rev.json",
+      "sha256": "7f5c4d6bab321a68a16d9d5a3bda6e91c4c4ec8e7e0ca18ff2ce74c26a66929f",
+      "bytes": 657
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-002/projection-rt.json",
+      "sha256": "c78007147bad6be8e678382be0b4f004d335d161bc752fcb61a84d2d27b0a417",
+      "bytes": 1075
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-002/projection-uu.json",
+      "sha256": "7e59421d950d09f3296ee3292a6ab1341fbd36394a0387f45d27137a0ea0648b",
+      "bytes": 724
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-003/canonical-case.json",
+      "sha256": "fa992da0c163c868da93cb3274941937243fccfdeab5f906bc4f8d168660a341",
+      "bytes": 5847
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-003/projection-acq.json",
+      "sha256": "f58fd3ed7fe7cfbeafcc3f14c89b77a459115127eebdea004d5aee1338965525",
+      "bytes": 952
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-003/projection-anl.json",
+      "sha256": "3ef850b4c2dbf7853e92748d621891c66ed4b6dfa7721e999ee9f2a2b2762e6a",
+      "bytes": 620
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-003/projection-e2e.json",
+      "sha256": "ff4d90846dc4188aab8842e50df29e748134f929c30dfef7fc4880a6b63b60fc",
+      "bytes": 1172
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-003/projection-pln.json",
+      "sha256": "695cd6b4095b93a7c0d7143a9edb37ad085e776742a3064c1aa432f1b594fe9b",
+      "bytes": 1497
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-003/projection-ret.json",
+      "sha256": "834326d279798fa6f7e7e077b01dc886f67e776e1b6cb114335c0c94c8159e5b",
+      "bytes": 704
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-003/projection-rev.json",
+      "sha256": "1bfb3d05707d3ccb9f0d52824e8560df21031da3baaa16693736d05924faf933",
+      "bytes": 658
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-003/projection-rt.json",
+      "sha256": "d09d3943e381d1a1c2df7d2eb7b12990a34094e870737316b343b6bc34032265",
+      "bytes": 2295
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-003/projection-uu.json",
+      "sha256": "ac298d15bb5b123faa103c8b802cfbf29cb88d086113fba762b567d1a45380e9",
+      "bytes": 760
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-004/canonical-case.json",
+      "sha256": "5259053cc63727c2c02ea4008e8fbe358816cd10972a6831e73f5917fdd9c41f",
+      "bytes": 5707
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-004/projection-acq.json",
+      "sha256": "85d88e20c239ca0c0ea9fe8cb1deba0a4fe55afda0bc08907956447ecf295219",
+      "bytes": 952
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-004/projection-anl.json",
+      "sha256": "d585818364cd7f6a36b90b5765bc175da505a492ecf93c92273e06cf13e97f6f",
+      "bytes": 595
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-004/projection-e2e.json",
+      "sha256": "799a42f1fef091567029c6b7a377f5a8cf12247c46cd06f98941ec7db13975e1",
+      "bytes": 1172
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-004/projection-pln.json",
+      "sha256": "b900f07e9fffbb5b8da0a5e2580d20d40f61766dec455dd328f10d993752776b",
+      "bytes": 1446
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-004/projection-ret.json",
+      "sha256": "f649cbe542c0ef57ba04d6b404bd61d24ce93236119e4eb59f5ef28e2218ebc9",
+      "bytes": 657
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-004/projection-rev.json",
+      "sha256": "8dfabb5d3f39799a91b6af95030b1dbf4d317a601cfdbe9ff2a697de468aeddb",
+      "bytes": 658
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-004/projection-rt.json",
+      "sha256": "b3a27da6def0d3c4c8bb22a99323593f84363d896ff43f8cde68d597d4cd5224",
+      "bytes": 2245
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-004/projection-uu.json",
+      "sha256": "41d0a18cb92a0b84c0247b9a45ea494f0e04a7f3adf0cc5cbc5a629ba3c8b732",
+      "bytes": 760
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-005/canonical-case.json",
+      "sha256": "b08c5ba394fd4bfbcf418684fa88d62af579b787dc91f1229471d9c78fdad259",
+      "bytes": 6193
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-005/projection-acq.json",
+      "sha256": "57227590b28e5ae1a853a04c5cb159f1626c2c67a73b0089fe8e52d77d17d9b4",
+      "bytes": 1155
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-005/projection-anl.json",
+      "sha256": "8b00eabd5e932089b942c2235976bca1db63c2ec84893c0c33701272c5af8abf",
+      "bytes": 612
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-005/projection-e2e.json",
+      "sha256": "88317e9e65a341516e57b88c22551a8751c50ba3d9bd06f127b885ad10ee86dd",
+      "bytes": 1161
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-005/projection-pln.json",
+      "sha256": "9ef75f600b19edcd871ac0fdaecad165013ac930864b3ad97f1974281dc2f1be",
+      "bytes": 1419
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-005/projection-ret.json",
+      "sha256": "611b4e9f93c7ed338da78dab29a7ff3d7d22480a41d0628bfbf1f5a3dbe3da3b",
+      "bytes": 729
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-005/projection-rev.json",
+      "sha256": "4be9a82b3c1663027db9516c04adb6192322c75bbced9698305eea7a3f240199",
+      "bytes": 658
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-005/projection-rt.json",
+      "sha256": "7348f7f478f33ea7c849220883e1ea7af5f4c0bc791632ecc503004704f8a85b",
+      "bytes": 2586
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-005/projection-uu.json",
+      "sha256": "afa8dc505eb9b12d647f94213803ecfe44d9636b83f3ff5b622c40f4158374bb",
+      "bytes": 741
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-006/canonical-case.json",
+      "sha256": "16afba3268cd48be249ead2d8353e90d7510af1283ce61e1d80227a1bb1621c1",
+      "bytes": 5103
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-006/projection-acq.json",
+      "sha256": "6706f5436a6c2e8389da54f46f3aa7fa98a7e67ed63ebaeafc301eaede51efc3",
+      "bytes": 1155
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-006/projection-anl.json",
+      "sha256": "8bd0fe31e2e5e7c3176ba6aa95b70848833ab685189417e71eca19d6c51269a9",
+      "bytes": 622
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-006/projection-e2e.json",
+      "sha256": "6837eb62c14ad33b7bf44a0b0c6d5c175ae7d22d776c20c3daca0239db9f8204",
+      "bytes": 1080
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-006/projection-pln.json",
+      "sha256": "e1f8e86b883bbb5c3ff9a81859372f38a35483badc052e836419032ee338f723",
+      "bytes": 549
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-006/projection-ret.json",
+      "sha256": "c78526aa4d2833ef46d42c4258888d8a65b707ff4fe70109333ad922eecc5f41",
+      "bytes": 698
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-006/projection-rev.json",
+      "sha256": "4ba30241e4e0cd86773ced0a4afc89f365f4e71bb5fecad3a548e68fda6f2b9f",
+      "bytes": 667
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-006/projection-rt.json",
+      "sha256": "344dbe6bfcccee3502fe467a5801244e04e5056b7e0b4c2e1f2dd93c2ae4729e",
+      "bytes": 2185
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-006/projection-uu.json",
+      "sha256": "8b66977e62dc21a7a078554214425ee604146e861a46e8b0806394fff158f4ef",
+      "bytes": 787
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-007/canonical-case.json",
+      "sha256": "f6f18380607cd76d3d028874bad865976b113a1cf4460548a56a870dd56164c2",
+      "bytes": 5979
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-007/projection-acq.json",
+      "sha256": "54fc9e0946e8f3ab45f59a388844700b9a78ab651f18b18c4b542c46c3e701f0",
+      "bytes": 1155
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-007/projection-anl.json",
+      "sha256": "053029690668152277abc7336f24124bf4e0dc35ab3fd4c0243704bf947379a4",
+      "bytes": 617
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-007/projection-e2e.json",
+      "sha256": "8557a55720a6917d54d1facf00e88d8692bfccdaa2cbb4bedef49b705cfc53db",
+      "bytes": 1129
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-007/projection-pln.json",
+      "sha256": "bb04e23d0c1ba39b59aeeb71b86f46072e04399f585c72460b24956d355dc82a",
+      "bytes": 1375
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-007/projection-ret.json",
+      "sha256": "5bbf8bc3564a624e4d8931666811e6f8df27dd9a1156f719ce85ca6ff4bf8ba5",
+      "bytes": 683
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-007/projection-rev.json",
+      "sha256": "4798b375fdd2d66e1bef1d7dafba7ae1396c47e25dead5e3c676e26e180543d2",
+      "bytes": 658
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-007/projection-rt.json",
+      "sha256": "e5885d9f3c864a540441b18a88203b537e609976f117c7c00dd131a3b9abf9e4",
+      "bytes": 2333
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-007/projection-uu.json",
+      "sha256": "b81f6d064792869483fb54140b70caf7ed4c9e857e41f6245675054e7dd485b4",
+      "bytes": 713
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-008/canonical-case.json",
+      "sha256": "588372308b43adee9d8bf9b6306b2afe35265af9127b1d80447e64ded9a66044",
+      "bytes": 5949
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-008/projection-acq.json",
+      "sha256": "2d8ffbe0e2e175c0ceea5f75d111bf0d9f8391d8127fe885b83518dc735b0a53",
+      "bytes": 1155
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-008/projection-anl.json",
+      "sha256": "55c055543b64a3741033f5faff213065285ce4289d2b66c6aa752d0d48aeed03",
+      "bytes": 614
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-008/projection-e2e.json",
+      "sha256": "570781be3f67b4244d2a2b4834f6ff7e4d7b91337bc5f6a857340f4e4c9f1607",
+      "bytes": 1115
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-008/projection-pln.json",
+      "sha256": "00ef1e6862328b8a60fae9ec92934a464ab56f7b751898158a72b4c0a99bff8b",
+      "bytes": 1354
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-008/projection-ret.json",
+      "sha256": "287a573d4fdbb9555a7cf1fe329f068a398a4bb1cc1fa72071a96b76e71b2353",
+      "bytes": 728
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-008/projection-rev.json",
+      "sha256": "3880732df2e22c80d950de3d696aec608bd85372e66acb6a26dd21f9417bbc1c",
+      "bytes": 658
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-008/projection-rt.json",
+      "sha256": "8d4b3657d27d570cd79c0920143fb16e57986e6efad55270cf0fea76594e48ae",
+      "bytes": 2503
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-008/projection-uu.json",
+      "sha256": "af46dd574fbbaa33b919d23d135c8af4110bbeadc461d15443aca4ac4a9a5e2e",
+      "bytes": 697
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-009/canonical-case.json",
+      "sha256": "66bed8d39dcd8cf4e9dffe33c16e993b3145b767f07d8d987899504839a53555",
+      "bytes": 4858
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-009/projection-acq.json",
+      "sha256": "1f80b919359804e3191634f771e33db5544ee4e32e096fbd0d7375610138ed6e",
+      "bytes": 1155
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-009/projection-anl.json",
+      "sha256": "fcbf657603ccc9257ad3ab8dabfd84826c3c2b17ea7b584dc3ac48dea891f670",
+      "bytes": 629
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-009/projection-e2e.json",
+      "sha256": "5309d8e06ef0ce37ca2d2f9f67869c784719666653a9e0b86a3f960346bd4ccc",
+      "bytes": 1036
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-009/projection-pln.json",
+      "sha256": "7e95702388b65313dd885ffa7d267e779d93d4f3c3c3892d4529fc9cc26104f7",
+      "bytes": 725
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-009/projection-ret.json",
+      "sha256": "956f858796225ca800459699ce7e72fe9c7423a135097d62409086a75e2b9fcf",
+      "bytes": 747
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-009/projection-rev.json",
+      "sha256": "8f3880e51c0a60431e04ff0901572fa9969bec985df7e9a342c8a1dce30dc6bb",
+      "bytes": 652
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-009/projection-rt.json",
+      "sha256": "79f149c499b596caf74b91f01b80db72d0cb546d6e1018befc2df5d93cefea7e",
+      "bytes": 2063
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-009/projection-uu.json",
+      "sha256": "0ad6c29302bff90200961ca63cfa886a26cfa177708a9fabf5c9e3c5f13d1c4c",
+      "bytes": 767
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-010/canonical-case.json",
+      "sha256": "72435bd1104089aa699791d87001e43b9d7330c793e7454a3c1ae717805266e8",
+      "bytes": 9066
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-010/projection-acq.json",
+      "sha256": "2140c288838e94bd240f91886ca758640e46d2b8aa2324d0162e768e6adacc93",
+      "bytes": 1155
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-010/projection-anl.json",
+      "sha256": "49ffd4b40d76a838582ad6dca83ced3f1402b70530852bd5fafe036ea5a620ff",
+      "bytes": 643
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-010/projection-e2e.json",
+      "sha256": "3fcbb05ab6656b5e4fe311ec160ecfd14fbb7391e18a24186e8db854581833c9",
+      "bytes": 1174
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-010/projection-pln.json",
+      "sha256": "8341b2234e2829f47dbc00c32cae49d59c99801708a25cd20e9db90d57f45211",
+      "bytes": 2898
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-010/projection-ret.json",
+      "sha256": "b60d6a001f882d2410b6c67a37f4b4c50cf073e5ce6aeee120a92707eb1e4f30",
+      "bytes": 724
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-010/projection-rev.json",
+      "sha256": "51ccda61266b8dde61b1653c2793b1f74682a7536e5ab14d72d7f651d3ac80b8",
+      "bytes": 658
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-010/projection-rt.json",
+      "sha256": "4c6e541e5b5bcf4962d895fda70c51ac9eb730b35df1239511febf6501b9b79b",
+      "bytes": 3829
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-010/projection-uu.json",
+      "sha256": "14bc0242e31160d4bdd7b247c8a49f04e411b02e74509dd23ad06b47d76ee5f1",
+      "bytes": 762
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-011/canonical-case.json",
+      "sha256": "590f7665497547aa5f70d37f1cff2082797d21dee3d6db82b30c9de621aaab9e",
+      "bytes": 3835
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-011/projection-acq.json",
+      "sha256": "8a4f399b633167dea9104b174e1a82f5229a18fe280e6478cbbb34abd6bafd3d",
+      "bytes": 743
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-011/projection-anl.json",
+      "sha256": "0ec9a2f56ee81fdd04afac230987ac290f080749bff078ffb17be8c9719e4781",
+      "bytes": 606
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-011/projection-e2e.json",
+      "sha256": "0c82223cb7f0625f77e835a4f5045e15ac8630afc5390d80f63ac36e6056fa0f",
+      "bytes": 1092
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-011/projection-pln.json",
+      "sha256": "d1fcd0c2eeb3e2a7cc39045f08822414e1cd942f6fdc2c514978397a321c49b1",
+      "bytes": 549
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-011/projection-ret.json",
+      "sha256": "851b531d8ab71317f6c4f51aa378ec465f12017f505ce5edc014968defba6955",
+      "bytes": 634
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-011/projection-rev.json",
+      "sha256": "2bfd836bfbf20099b678274dfd4fbfa312f56444fa3b9eb8ea3e5e83dcdc3bfb",
+      "bytes": 667
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-011/projection-rt.json",
+      "sha256": "37bd3d43982db8b60f71f5e51154331e07d0da0940cea24204590add042f2556",
+      "bytes": 1265
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-011/projection-uu.json",
+      "sha256": "a60dcfd5ab127e64335416e6e3c0dda3374b6485323e3d691fbe67cad3cd239c",
+      "bytes": 814
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-012/canonical-case.json",
+      "sha256": "fbf891bb213076929a417cf6a0c5b52a7cb0974733bdd37370d19c4b221a2ee7",
+      "bytes": 2770
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-012/projection-acq.json",
+      "sha256": "f49e6b02ab3db906e6de5fe108ecc1589b94abbc5c232581096e82f1ef9f0e94",
+      "bytes": 532
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-012/projection-anl.json",
+      "sha256": "0e0312d8a9f7c0d91f11b77a56ac1669afd165b19f601dda5d66d89df7347bba",
+      "bytes": 703
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-012/projection-e2e.json",
+      "sha256": "34a7b80b829e0edac10cf68904c29f60e0ee0ed8fcf419bfe0e57ba9add2af83",
+      "bytes": 1004
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-012/projection-pln.json",
+      "sha256": "ab5cf4f9f00d8e2ad6ac0b8b8dda0b54dfd8846eea43f3e23d27b27fbc930629",
+      "bytes": 647
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-012/projection-ret.json",
+      "sha256": "8e52d3f7a45178d5fee215620b8e30f394bcaae43d333c5585a2ec2eaca4f3fd",
+      "bytes": 544
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-012/projection-rev.json",
+      "sha256": "b048bc1342391abce31a34f827bd7e076ad557856b7c328ee97eba8ef3a581c0",
+      "bytes": 613
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-012/projection-rt.json",
+      "sha256": "dfdde4a58ac18d0e9797586df9fd8be803659d196dc75d0532d973afd90c740a",
+      "bytes": 778
+    },
+    {
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-012/projection-uu.json",
+      "sha256": "6f7af93ce20bdb8cbc2bbf25ee85385eae9558610cd7cc251662fed9ef82d3fb",
+      "bytes": 599
+    }
+  ]
+}

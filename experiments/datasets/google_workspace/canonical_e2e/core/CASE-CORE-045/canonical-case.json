@@ -1,8 +1,8 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "case_id": "CASE-CORE-045",
   "split": "CORE",
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "category": "THREE_SOURCE_COMPLEX",
   "scenario_family_id": "SF-C5-THREE-SOURCE-ANALYSIS",
   "fixture_relation_family": "RF-DEV-005",
@@ -10,7 +10,7 @@
   "language": "ko-KR",
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-CORE-045",
-  "canonical_user_prompt": "Echo 검토를 오늘 끝낼 수 있는지 메일 마감, Task 기한, Calendar Busy를 모두 근거로 판단해줘.",
+  "canonical_user_prompt": "Echo 검토를 오늘 끝낼 수 있는지 메일 마감, 작업 기한, 캘린더의 바쁜 시간을 모두 근거로 판단해줘.",
   "business_scenario": "마감·Task·Calendar를 통해 업무 가능성을 판단한다.",
   "expected_goal": "완료 가능성 또는 위험을 근거와 함께 답한다.",
   "expected_completion_criteria": [
@@ -39,20 +39,6 @@
   ],
   "user_evidence": [],
   "derived_evidence": [],
-  "expected_route": [
-    "request_understanding.classify",
-    "acquisition.plan_sources",
-    "acquisition.execute",
-    "context.select_evidence",
-    "context.assess_sufficiency",
-    "analysis.analyze",
-    "planning.answer_only",
-    "review.inspect",
-    "complete_answer_only_run"
-  ],
-  "expected_skipped_nodes": [
-    "planning.draft_plan"
-  ],
   "expected_source_fetch_plan": [
     {
       "source": "GMAIL",
@@ -135,9 +121,7 @@
       }
     }
   ],
-  "expected_answer_type": "ANALYSIS",
   "policy_result": "ALLOW_READ",
-  "expected_interrupt": "NONE",
   "allowed_actions": [],
   "forbidden_actions": [
     "gmail_send",
@@ -155,14 +139,8 @@
   "verification_expectation": {
     "required": false,
     "policy": "NONE",
-    "all_writes_re_read": false
-  },
-  "end_state_expectation": {
-    "initial": {
-      "run_status": "COMPLETED",
-      "result_kind": "FULL"
-    },
-    "after_user_action": null
+    "all_writes_re_read": false,
+    "per_action": []
   },
   "node_applicability": {
     "request_understanding": true,
@@ -191,5 +169,37 @@
   "human_rubric": [
     "모든 Source를 사용한다.",
     "Busy 시간 때문에 남은 가용 시간이 제한됨을 반영한다."
-  ]
+  ],
+  "expected_planning_result_type": "ANALYSIS",
+  "expected_interactions": [],
+  "expected_semantic_milestones": [
+    "REQUEST_UNDERSTANDING",
+    "ACQUISITION",
+    "CONTEXT_RETRIEVAL",
+    "WORK_ANALYSIS",
+    "PLANNING",
+    "QUALITY_CHECK",
+    "FINALIZATION"
+  ],
+  "six_reference_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.answer_only",
+    "review.inspect",
+    "complete_answer_only_run"
+  ],
+  "six_reference_skipped_nodes": [
+    "planning.draft_plan"
+  ],
+  "run_outcome_expectation": {
+    "evaluation_stop": {
+      "run_status": "COMPLETED",
+      "result_kind": "FULL"
+    },
+    "resume_or_followup": null
+  }
 }

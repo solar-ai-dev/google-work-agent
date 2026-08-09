@@ -6,7 +6,7 @@
     "INTENT_ENTRY_MODE_WRONG"
   ],
   "retry_kind": "SEMANTIC_REVISION",
-  "next_prompt_slot_id": "request_understanding.revise.INTENT_ENTRY_MODE_WRONG",
+  "next_prompt_slot_id": "request_understanding.revise",
   "next_node_id": null,
   "attempt_no": 1,
   "max_attempts": 2,

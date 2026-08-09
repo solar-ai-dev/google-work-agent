@@ -11,7 +11,6 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "expected_answer_type": "ACTION_PLAN",
     "allowed_actions": [
       {
         "action_id": "ACT-CORE-033-1",
@@ -45,7 +44,8 @@
       "calendar_delete",
       "calendar_add_external_attendee"
     ],
-    "policy_result": "REQUIRE_APPROVAL"
+    "policy_result": "REQUIRE_APPROVAL",
+    "expected_planning_result_type": "ACTION_PLAN"
   },
   "grader_ids": [
     "grader.planning.deterministic",

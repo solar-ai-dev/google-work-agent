@@ -11,29 +11,9 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "required_sources": [
-      "TASKS",
-      "CALENDAR"
-    ],
+    "required_sources": [],
     "forbidden_sources": [],
-    "source_fetch_plan": [
-      {
-        "source": "TASKS",
-        "priority": 1,
-        "entry_mode": "AGENT_SEARCH",
-        "max_pages": 2,
-        "detail_limit": 5,
-        "acquisition_rounds": 1
-      },
-      {
-        "source": "CALENDAR",
-        "priority": 2,
-        "entry_mode": "AGENT_SEARCH",
-        "max_pages": 2,
-        "detail_limit": 5,
-        "acquisition_rounds": 1
-      }
-    ]
+    "source_fetch_plan": []
   },
   "grader_ids": [
     "grader.acquisition.deterministic",

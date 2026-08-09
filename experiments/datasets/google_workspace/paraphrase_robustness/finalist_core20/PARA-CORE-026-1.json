@@ -6,7 +6,7 @@
   "paraphrase_group_id": "PG-CORE-026",
   "variant_index": 1,
   "language": "ko-KR",
-  "text": "Atlas 출고와 두 준비 Task 기한을 보고 8월 16일 전에 한 시간 비는 슬롯 하나를 찾아 내부 점검 일정을 제안해줘.",
+  "text": "Atlas 출고와 두 준비 작업 기한을 보고 8월 16일 전에 한 시간 비는 슬롯 하나를 찾아 내부 점검 일정을 제안해줘.",
   "expected_entry_mode": "AGENT_SEARCH",
   "expected_requested_outcome": "ACTION_PLAN",
   "expected_same_goal": true,

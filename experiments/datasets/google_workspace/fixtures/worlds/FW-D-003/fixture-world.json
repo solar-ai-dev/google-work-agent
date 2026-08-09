@@ -28,10 +28,24 @@
       "GTH-C-001",
       "GTH-C-002",
       "GM-C-001",
-      "GM-C-002"
+      "GM-C-002",
+      "GTH-NOISE-FWD003-1",
+      "GM-NOISE-FWD003-1",
+      "GTH-NOISE-FWD003-2",
+      "GM-NOISE-FWD003-2",
+      "GTH-NOISE-FWD003-3",
+      "GM-NOISE-FWD003-3"
     ],
-    "tasks": [],
-    "calendar": []
+    "tasks": [
+      "TSK-NOISE-FWD003-1",
+      "TSK-NOISE-FWD003-2",
+      "TSK-NOISE-FWD003-3"
+    ],
+    "calendar": [
+      "EV-NOISE-FWD003-1",
+      "EV-NOISE-FWD003-2",
+      "EV-NOISE-FWD003-3"
+    ]
   },
   "tags": [
     "ambiguity",

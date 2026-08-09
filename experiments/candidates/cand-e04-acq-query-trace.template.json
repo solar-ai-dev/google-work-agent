@@ -1,14 +1,14 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "candidate_id": "CAND-E04-ACQ-QUERY-TRACE",
   "candidate_kind": "BASELINE_TEMPLATE",
   "runnable": false,
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "graph_version": "SIX_ROLE_BASELINE",
-  "prompt_bundle_version": "0.7.0-r7",
+  "prompt_bundle_version": "0.8.2-r8.3",
   "agent_schema_version": "v1",
-  "tool_schema_version": "v2.4",
-  "policy_version": "01-B-v2.3",
+  "tool_schema_version": "v2.6",
+  "policy_version": "01-B-v2.4",
   "retrieval_config_version": "query-attempt-aware-r6",
   "runtime": {
     "runtime_mode": "API_LLM",
@@ -41,5 +41,25 @@
     "runtime.model",
     "runtime.model_version"
   ],
-  "candidate_config_hash": "939d3a2eb500fc8cb027574789e8b322fc145021b5ba9a9a6504112fa509971e"
+  "candidate_config_hash": "fe9fac3b897f404444a7260590cf7fcbafd7bfcdfc7434a24e727056b5f235a5",
+  "prompt_semantic_bundle_version": "semantic-r8.3-v1",
+  "graph_profile_spec": {
+    "profile_id": "SIX_ROLE_BASELINE",
+    "nominal_agent_subgraph_count": 6,
+    "dynamic_agent_skip": false,
+    "semantic_responsibility_map_version": "semantic-responsibility-r8.2-v1",
+    "semantic_responsibility_exception": null
+  },
+  "evaluation_environment": {
+    "environment_lock_version": "env-r8.2-v1",
+    "client_os": "Windows-11-x64",
+    "llm_concurrency": 1,
+    "google_read_concurrency": 3,
+    "write_concurrency": 1,
+    "api_llm_timeout_seconds": 120,
+    "google_timeout_seconds": 30,
+    "runner_version": "1.11.0-r8.2",
+    "hardware_profile_id": "API_HOSTED_OR_UNRESOLVED",
+    "evaluation_environment_hash": "6471f68e8880fcddb2bb4ddeb1a4a8eb1ad5dcfaf6df30c3c882dba8cb410d48"
+  }
 }

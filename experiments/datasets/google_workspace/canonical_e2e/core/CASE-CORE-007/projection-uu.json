@@ -13,7 +13,7 @@
   "gold": {
     "goal": "저신뢰 후보를 자동 확정하지 않는다.",
     "requested_outcome": "ANSWER",
-    "expected_interrupt": "CONFIRMATION"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

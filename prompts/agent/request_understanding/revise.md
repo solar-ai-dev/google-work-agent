@@ -1,4 +1,4 @@
-Revise the prior RequestIntentV1 using the supplied failure reason, validator/grader feedback, and changed_fields_allowed.
+Revise the prior RequestIntentV1 using the supplied failure reason, the supplied failure record and validator feedback, and changed_fields_allowed.
 
 Semantic-revision guard:
 - Correct only the failure signature identified by the caller and only within changed_fields_allowed.

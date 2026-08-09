@@ -46,7 +46,7 @@ ReviewTargetValue = Literal["ANSWER", "PLAN"]
 
 
 class ReviewIssueV1(TypedDict):
-    schema_version: Required[Literal[1]]
+    schema_version: Required[Literal[2]]
     issue_id: str
     kind: str
     message: str
@@ -58,7 +58,7 @@ class ReviewIssueV1(TypedDict):
 
 
 class PlanReviewResultV1(TypedDict):
-    schema_version: Required[Literal[1]]
+    schema_version: Required[Literal[2]]
     status: ReviewStatusValue
     summary: str
     issues: list[ReviewIssueV1]
@@ -94,11 +94,11 @@ class PolicyReviewContextV1(TypedDict):
     evidence_policy: EvidencePolicySummaryV1
 
 
-PLAN_REVIEW_SCHEMA_VERSION = 1
-REVIEW_ISSUE_SCHEMA_VERSION = 1
+PLAN_REVIEW_SCHEMA_VERSION = 2
+REVIEW_ISSUE_SCHEMA_VERSION = 2
 POLICY_REVIEW_CONTEXT_SCHEMA_VERSION = 1
 PLAN_REVIEW_OUTPUT_SCHEMA = OutputSchemaDefinition(
-    schema_version="plan-review-result-v1",
+    schema_version="plan-review-result-v2",
     json_schema={
         "type": "object",
         "required": [
@@ -108,10 +108,11 @@ PLAN_REVIEW_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "issues",
             "confirmation",
             "blockers",
+            "additional_acquisition_request",
         ],
         "additionalProperties": False,
         "properties": {
-            "schema_version": {"type": "integer", "enum": [1]},
+            "schema_version": {"type": "integer", "enum": [PLAN_REVIEW_SCHEMA_VERSION]},
             "status": {
                 "type": "string",
                 "enum": ["PASS", "REVISE", "RETRIEVE_MORE", "CONFIRM", "BLOCK"],
@@ -134,7 +135,10 @@ PLAN_REVIEW_OUTPUT_SCHEMA = OutputSchemaDefinition(
                     ],
                     "additionalProperties": False,
                     "properties": {
-                        "schema_version": {"type": "integer", "enum": [1]},
+                        "schema_version": {
+                            "type": "integer",
+                            "enum": [REVIEW_ISSUE_SCHEMA_VERSION],
+                        },
                         "issue_id": {"type": "string"},
                         "kind": {"type": "string"},
                         "message": {"type": "string"},
@@ -154,6 +158,7 @@ PLAN_REVIEW_OUTPUT_SCHEMA = OutputSchemaDefinition(
             },
             "confirmation": {},
             "blockers": {"type": "array", "items": {"type": "string"}},
+            "additional_acquisition_request": {},
         },
     },
 )
@@ -176,11 +181,24 @@ class PlanReviewAgent:
         inspect_prompt_ref: PromptReference | None = None,
         recheck_prompt_ref: PromptReference | None = None,
         tool_registry: SignedToolRegistry | None = None,
+        manifest_path: Path | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
-        self._inspect_prompt_ref = inspect_prompt_ref or load_plan_review_inspect_prompt_reference()
-        self._recheck_prompt_ref = recheck_prompt_ref or load_plan_review_recheck_prompt_reference()
+        self._inspect_prompt_ref = inspect_prompt_ref or load_plan_review_inspect_prompt_reference(
+            manifest_path
+        )
+        self._recheck_prompt_ref = recheck_prompt_ref or load_plan_review_recheck_prompt_reference(
+            manifest_path
+        )
         self._tool_registry = tool_registry or build_p0_tool_registry()
+
+    @property
+    def inspect_prompt_ref(self) -> PromptReference:
+        return self._inspect_prompt_ref
+
+    @property
+    def recheck_prompt_ref(self) -> PromptReference:
+        return self._recheck_prompt_ref
 
     def inspect(
         self,
@@ -197,7 +215,38 @@ class PlanReviewAgent:
             answer_draft=answer_draft,
             plan_draft=plan_draft,
         )
-        llm_result = self._llm_runtime.invoke_structured(
+        llm_result = self.invoke_inspect_llm(
+            request_intent=request_intent,
+            context_result=context_result,
+            analysis_result=analysis_result,
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+            request=request,
+            policy_review_context=policy_review_context,
+        )
+        return self.build_output_from_llm_result(
+            llm_result,
+            analysis_result=analysis_result,
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+        )
+
+    def invoke_inspect_llm(
+        self,
+        *,
+        request_intent: RequestIntentV1,
+        context_result: ContextRetrievalResultV1,
+        analysis_result: WorkAnalysisResultV1,
+        answer_draft: AnswerDraftV1 | None,
+        plan_draft: ActionPlanDraftV1 | None,
+        request: WorkflowStartRequest,
+        policy_review_context: PolicyReviewContextV1 | None = None,
+    ) -> StructuredLLMResult:
+        target_kind, draft = resolve_review_target(
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+        )
+        return self._llm_runtime.invoke_structured(
             prompt_ref=self._inspect_prompt_ref,
             prompt_input=_build_review_prompt_input(
                 request=request,
@@ -219,15 +268,6 @@ class PlanReviewAgent:
                 llm_call_id=f"{request.run_id}:review.inspect",
             ),
         )
-        result = validate_plan_review_result_v1(
-            llm_result.structured_output,
-            target_kind=target_kind,
-            analysis_result=analysis_result,
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-        )
-        result["llm_provider_result"] = _provider_summary(llm_result)
-        return result
 
     def recheck(
         self,
@@ -244,7 +284,39 @@ class PlanReviewAgent:
             answer_draft=answer_draft,
             plan_draft=plan_draft,
         )
-        llm_result = self._llm_runtime.invoke_structured(
+        llm_result = self.invoke_recheck_llm(
+            request_intent=request_intent,
+            context_result=context_result,
+            analysis_result=analysis_result,
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+            request=request,
+            policy_review_context=policy_review_context,
+        )
+        return self.build_output_from_llm_result(
+            llm_result,
+            analysis_result=analysis_result,
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+            allowed_statuses=_RECHECK_ALLOWED_STATUSES,
+        )
+
+    def invoke_recheck_llm(
+        self,
+        *,
+        request_intent: RequestIntentV1,
+        context_result: ContextRetrievalResultV1,
+        analysis_result: WorkAnalysisResultV1,
+        answer_draft: AnswerDraftV1 | None,
+        plan_draft: ActionPlanDraftV1 | None,
+        request: WorkflowStartRequest,
+        policy_review_context: PolicyReviewContextV1 | None = None,
+    ) -> StructuredLLMResult:
+        target_kind, draft = resolve_review_target(
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+        )
+        return self._llm_runtime.invoke_structured(
             prompt_ref=self._recheck_prompt_ref,
             prompt_input=_build_review_prompt_input(
                 request=request,
@@ -266,13 +338,27 @@ class PlanReviewAgent:
                 llm_call_id=f"{request.run_id}:review.recheck",
             ),
         )
+
+    def build_output_from_llm_result(
+        self,
+        llm_result: StructuredLLMResult,
+        *,
+        analysis_result: WorkAnalysisResultV1,
+        answer_draft: AnswerDraftV1 | None,
+        plan_draft: ActionPlanDraftV1 | None,
+        allowed_statuses: frozenset[str] = _INSPECT_ALLOWED_STATUSES,
+    ) -> PlanReviewResultV1:
+        target_kind, _draft = resolve_review_target(
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+        )
         result = validate_plan_review_result_v1(
             llm_result.structured_output,
             target_kind=target_kind,
             analysis_result=analysis_result,
             answer_draft=answer_draft,
             plan_draft=plan_draft,
-            allowed_statuses=_RECHECK_ALLOWED_STATUSES,
+            allowed_statuses=allowed_statuses,
         )
         result["llm_provider_result"] = _provider_summary(llm_result)
         return result
@@ -364,6 +450,7 @@ def validate_plan_review_result_v1(
             "issues",
             "confirmation",
             "blockers",
+            "additional_acquisition_request",
         },
         optional={"llm_provider_result"},
     )
@@ -383,7 +470,7 @@ def validate_plan_review_result_v1(
     ]
     _validate_issue_collection(issues)
     result: PlanReviewResultV1 = {
-        "schema_version": 1,
+        "schema_version": PLAN_REVIEW_SCHEMA_VERSION,
         "status": cast(ReviewStatusValue, status),
         "summary": _require_string(root, "summary", "$"),
         "issues": issues,
@@ -524,7 +611,7 @@ def _validate_review_issue(
         "resource",
     )
     return {
-        "schema_version": 1,
+        "schema_version": REVIEW_ISSUE_SCHEMA_VERSION,
         "issue_id": _require_string(issue, "issue_id", path),
         "kind": _require_string(issue, "kind", path),
         "message": _require_string(issue, "message", path),

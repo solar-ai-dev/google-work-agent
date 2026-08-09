@@ -11,7 +11,6 @@
     "entry_mode": "RESOURCE_SELECTED"
   },
   "gold": {
-    "expected_answer_type": "ANSWER",
     "allowed_actions": [],
     "forbidden_actions": [
       "gmail_send",
@@ -21,7 +20,8 @@
       "calendar_delete",
       "calendar_add_external_attendee"
     ],
-    "policy_result": "ALLOW_READ"
+    "policy_result": "ALLOW_READ",
+    "expected_planning_result_type": "ANSWER"
   },
   "grader_ids": [
     "grader.planning.deterministic",

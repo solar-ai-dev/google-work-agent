@@ -3,7 +3,7 @@
   "evaluation_item_id": "AMB-019",
   "split": "DEV",
   "ambiguity_family_id": "AMB-F05-DATE-RANGE",
-  "user_request": "곧 마감인 Task 정리해줘",
+  "user_request": "곧 마감인 작업 정리해줘",
   "conversation_context": [],
   "available_candidates": [],
   "gold": {

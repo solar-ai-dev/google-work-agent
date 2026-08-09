@@ -1,0 +1,30 @@
+{
+  "validation_version": "v1.11-business-ready",
+  "checked_at": "2026-08-08T07:55:00Z",
+  "checks": 11952,
+  "json_files_parsed": 5761,
+  "jsonl_rows_parsed": 252,
+  "canonical_case_counts": {
+    "CORE": 60,
+    "STRESS": 20,
+    "HOLDOUT": 12
+  },
+  "fixture_worlds": 22,
+  "fixture_avg_threads": 4.23,
+  "fixture_avg_tasks": 3.59,
+  "fixture_avg_events": 3.45,
+  "fixture_email_body_median_chars": 73.0,
+  "finalist_paraphrase_languages": {
+    "ko-KR": 20,
+    "en-US": 20
+  },
+  "prompt_slots": 45,
+  "prompt_variants": 46,
+  "node_evaluation_items": 477,
+  "node_retry_items": 328,
+  "selection_files": 28,
+  "critical_issues": 0,
+  "warnings": 0,
+  "errors": [],
+  "warning_messages": []
+}

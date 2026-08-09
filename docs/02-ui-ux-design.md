@@ -717,7 +717,7 @@ Local Storage에는 Secret, Approval Token 원문, Gmail 전체 원문, 실행 �
 - API_ONLY와 LOCAL_CAPABLE 환경에서 같은 핵심 사용자 흐름을 제공한다.
 - 연결 오류가 발생하면 사용자가 설정 위치를 찾지 않아도 현재 화면에서 해결 Action을 실행할 수 있다.
 
-## 20. Multi-Agent 진행 표시
+## 25. Multi-Agent 진행 표시
 
 - UI는 내부 Agent 대화를 노출하지 않고 `요청 이해 → 자료 검색 → 업무 분석 → 해결책 작성 → 계획 검토 → 승인 대기 → 실행 → 검증` 단계를 표시한다.
 - `agent_role`, `subgraph_name`, 내부 Prompt와 비공개 추론은 기본 화면에 표시하지 않는다.
@@ -725,7 +725,7 @@ Local Storage에는 Secret, Approval Token 원문, Gmail 전체 원문, 실행 �
 - 다중 LLM 호출은 하나의 Run 진행으로 묶고, 브라우저 새로고침 후 Run Snapshot과 Domain Store를 재조회한다.
 - React Client State와 SSE Event는 Agent Handoff·Checkpoint·승인·실행 사실의 기준점이 아니다.
 
-## 21. v2.2 Multi-Agent 진행·결과 UX 변경 이력
+## 26. Agent 진행·결과 UX
 
 사용자 단계:
 
@@ -741,7 +741,7 @@ Local Storage에는 Secret, Approval Token 원문, Gmail 전체 원문, 실행 �
 - READ-only Plan에는 실행 상태 Card만 표시하고 승인 Button은 표시하지 않는다.
 - Write 실패 후 기존 Approval을 재사용하는 즉시 재실행 Button을 제공하지 않는다.
 
-## 25. r3 UX 계약
+## 27. UX 실행 계약
 
 ### Local Session 전 화면
 
@@ -764,7 +764,7 @@ Local Storage에는 Secret, Approval Token 원문, Gmail 전체 원문, 실행 �
 - P0: 새 대화, 대화 목록·검색·선택·재개.
 - P1: 대화 이름 변경·대화 삭제.
 
-## 22. v2.3 Clarification 선택 UX
+## 28. Clarification 선택 UX
 - 후보가 존재하면 자유입력만 요구하지 않고 후보 선택을 우선 표시한다.
 - 후보에는 번호/라벨/회사·팀·업무 등 의미 있는 차이/최근 관련 Resource를 표시한다.
 - 후보 선택 후에도 `처리/진행/시작`의 동작 의미가 불명확하면 필요한 최소 질문만 이어서 한다.

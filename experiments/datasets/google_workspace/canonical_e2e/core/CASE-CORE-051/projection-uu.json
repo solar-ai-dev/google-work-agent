@@ -11,9 +11,9 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "goal": "박민수 웨비나 관련 메일을 찾아 준비 내용을 정리한다.",
+    "goal": "bounded Gmail 검색으로 박민수/웨비나 후보를 찾고, 복수 후보면 어느 건인지 확인한다.",
     "requested_outcome": "ANALYSIS",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

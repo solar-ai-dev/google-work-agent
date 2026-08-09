@@ -1,9 +1,26 @@
 -- Google Work Agent P0 Domain Database Schema v1.3
--- Effect authority expansion: READ / CREATE / UPDATE / SEND / DELETE
+-- Migration 0002: add SEND / DELETE Action effects and effect-specific verification/recovery policies
+-- SQLite / UTF-8
+--
+-- Preconditions:
+--   * 0001_initial.sql (Schema v1.2) has been applied.
+--   * Migration runner owns checksum/schema_migrations bookkeeping.
+--   * No external Google/MCP/LLM call may run while this migration is active.
+--
+-- Rationale:
+--   READ   -> NONE     / NONE        / NONE
+--   CREATE -> REQUIRED / GET_COMPARE / RESOURCE_SEARCH
+--   UPDATE -> REQUIRED / GET_COMPARE / GET_TARGET
+--   SEND   -> REQUIRED / SENT_LOOKUP / MESSAGE_SEARCH
+--   DELETE -> REQUIRED / GET_ABSENT  / GET_TARGET
+--
+-- DELETE is permitted only for Calendar Event deletion at the Policy/Tool layer.
+-- Gmail Message/Thread deletion and Google Task deletion remain forbidden.
 
 PRAGMA foreign_keys = OFF;
+BEGIN IMMEDIATE;
 
-CREATE TABLE actions_new (
+CREATE TABLE actions__v1_3 (
     id                      TEXT PRIMARY KEY,
     plan_id                 TEXT NOT NULL,
     position                INTEGER NOT NULL CHECK (position >= 1),
@@ -15,7 +32,7 @@ CREATE TABLE actions_new (
         approval_requirement IN ('NONE', 'REQUIRED')
     ),
     verification_policy     TEXT NOT NULL CHECK (
-        verification_policy IN ('NONE', 'GET_COMPARE', 'SENT_LOOKUP', 'GET_ABSENT')
+        verification_policy IN ('NONE', 'GET_COMPARE', 'GET_ABSENT', 'SENT_LOOKUP')
     ),
     recovery_policy         TEXT NOT NULL CHECK (
         recovery_policy IN ('NONE', 'GET_TARGET', 'RESOURCE_SEARCH', 'MESSAGE_SEARCH')
@@ -86,26 +103,57 @@ CREATE TABLE actions_new (
     )
 );
 
-INSERT INTO actions_new (
-    id, plan_id, position, tool_name, effect_type, approval_requirement,
-    verification_policy, recovery_policy, target_resource_ref_id, status,
-    arguments_json, arguments_hash, expected_json, risk_json, version,
-    created_at_ms, updated_at_ms
+INSERT INTO actions__v1_3 (
+    id,
+    plan_id,
+    position,
+    tool_name,
+    effect_type,
+    approval_requirement,
+    verification_policy,
+    recovery_policy,
+    target_resource_ref_id,
+    status,
+    arguments_json,
+    arguments_hash,
+    expected_json,
+    risk_json,
+    version,
+    created_at_ms,
+    updated_at_ms
 )
 SELECT
-    id, plan_id, position, tool_name, effect_type, approval_requirement,
-    verification_policy, recovery_policy, target_resource_ref_id, status,
-    arguments_json, arguments_hash, expected_json, risk_json, version,
-    created_at_ms, updated_at_ms
+    id,
+    plan_id,
+    position,
+    tool_name,
+    effect_type,
+    approval_requirement,
+    verification_policy,
+    recovery_policy,
+    target_resource_ref_id,
+    status,
+    arguments_json,
+    arguments_hash,
+    expected_json,
+    risk_json,
+    version,
+    created_at_ms,
+    updated_at_ms
 FROM actions;
 
 DROP TABLE actions;
-
-ALTER TABLE actions_new RENAME TO actions;
+ALTER TABLE actions__v1_3 RENAME TO actions;
 
 CREATE INDEX ix_actions_plan_status
     ON actions(plan_id, status, position);
 
 CREATE INDEX ix_actions_recovery
     ON actions(status, updated_at_ms)
-    WHERE status IN ('EXECUTING', 'UNKNOWN_RESULT', 'MISMATCH');
+    WHERE status IN ('UNKNOWN_RESULT', 'MISMATCH', 'FAILED');
+
+COMMIT;
+PRAGMA foreign_keys = ON;
+
+-- Migration runner must fail the migration/release if this returns any rows.
+PRAGMA foreign_key_check;

@@ -13,7 +13,8 @@
   "gold": {
     "answer_type": "CONFIRMATION",
     "allowed_actions": [],
-    "policy_result": "ALLOW_READ"
+    "policy_result": "ALLOW_READ",
+    "expected_planning_result_type": "NOT_REACHED"
   },
   "grader_ids": [
     "grader.planning.deterministic",

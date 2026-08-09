@@ -1,10 +1,10 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "case_id": "CASE-CORE-055",
   "split": "CORE",
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "category": "AMBIGUITY_DUPLICATE_CONFLICT_ERROR_POLICY",
-  "scenario_family_id": "SF-C6-AMBIGUITY-LOWCONF",
+  "scenario_family_id": "SF-C6-AMBIGUITY-BOUNDARY",
   "fixture_relation_family": "RF-DEV-012",
   "fixture_snapshot_id": "FW-D-012",
   "language": "ko-KR",
@@ -34,24 +34,6 @@
   ],
   "user_evidence": [],
   "derived_evidence": [],
-  "expected_route": [
-    "request_understanding.classify",
-    "acquisition.plan_sources",
-    "acquisition.execute",
-    "context.select_evidence",
-    "context.assess_sufficiency",
-    "acquisition.revise_partial",
-    "acquisition.execute",
-    "context.select_evidence",
-    "context.assess_sufficiency",
-    "analysis.analyze",
-    "planning.answer_only",
-    "review.inspect",
-    "complete_answer_only_run"
-  ],
-  "expected_skipped_nodes": [
-    "planning.draft_plan"
-  ],
   "expected_source_fetch_plan": [
     {
       "source": "GMAIL",
@@ -82,9 +64,7 @@
       }
     }
   ],
-  "expected_answer_type": "ANSWER",
   "policy_result": "ALLOW_READ",
-  "expected_interrupt": "NONE",
   "allowed_actions": [],
   "forbidden_actions": [
     "gmail_send",
@@ -102,14 +82,8 @@
   "verification_expectation": {
     "required": false,
     "policy": "NONE",
-    "all_writes_re_read": false
-  },
-  "end_state_expectation": {
-    "initial": {
-      "run_status": "COMPLETED",
-      "result_kind": "FULL"
-    },
-    "after_user_action": null
+    "all_writes_re_read": false,
+    "per_action": []
   },
   "node_applicability": {
     "request_understanding": true,
@@ -131,11 +105,47 @@
   ],
   "tags": [
     "ambiguity_duplicate_conflict_error_policy",
-    "sf-c6-ambiguity-lowconf",
+    "sf-c6-ambiguity-boundary",
     "query_retry_precision"
   ],
   "human_rubric": [
     "동일 Query 반복을 하지 않는다.",
     "Round 1에서 Aurora Migration 제약으로 수정한다."
-  ]
+  ],
+  "expected_planning_result_type": "ANSWER",
+  "expected_interactions": [],
+  "expected_semantic_milestones": [
+    "REQUEST_UNDERSTANDING",
+    "ACQUISITION",
+    "CONTEXT_RETRIEVAL",
+    "WORK_ANALYSIS",
+    "PLANNING",
+    "QUALITY_CHECK",
+    "FINALIZATION"
+  ],
+  "six_reference_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "acquisition.revise_partial",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.answer_only",
+    "review.inspect",
+    "complete_answer_only_run"
+  ],
+  "six_reference_skipped_nodes": [
+    "planning.draft_plan"
+  ],
+  "run_outcome_expectation": {
+    "evaluation_stop": {
+      "run_status": "COMPLETED",
+      "result_kind": "FULL"
+    },
+    "resume_or_followup": null
+  }
 }

@@ -29,10 +29,24 @@
       "GTH-B-099",
       "GM-B-001",
       "GM-B-002",
-      "GM-B-099"
+      "GM-B-099",
+      "GTH-NOISE-FWD002-1",
+      "GM-NOISE-FWD002-1",
+      "GTH-NOISE-FWD002-2",
+      "GM-NOISE-FWD002-2",
+      "GTH-NOISE-FWD002-3",
+      "GM-NOISE-FWD002-3"
     ],
-    "tasks": [],
-    "calendar": []
+    "tasks": [
+      "TSK-NOISE-FWD002-1",
+      "TSK-NOISE-FWD002-2",
+      "TSK-NOISE-FWD002-3"
+    ],
+    "calendar": [
+      "EV-NOISE-FWD002-1",
+      "EV-NOISE-FWD002-2",
+      "EV-NOISE-FWD002-3"
+    ]
   },
   "tags": [
     "resource_selected",

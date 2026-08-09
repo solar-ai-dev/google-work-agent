@@ -1,6 +1,6 @@
 # 14. Google Work Agent · 예외 처리 · 운영 · 트러블슈팅 가이드
 
-> **상태:** Draft v2.2 · **원격 운영 서버:** 없음
+> **상태:** Draft v2.4 · **기준일:** 2026-08-09 · **원격 운영 서버:** 없음
 
 ## 1. Severity
 
@@ -116,6 +116,22 @@ UPDATE → Target GET
 
 정규화 가능한 차이만 VERIFIED. 실제 차이는 Expected·Actual·Diff 저장, 자동 Rollback 금지, Recovery Write는 새 Approval.
 
+### 사용자 Recovery
+
+```text
+Expected·Actual·Diff 저장
+→ Action MISMATCH
+→ Run RECOVERY_REQUIRED
+→ 자동 수정·Rollback·기존 승인 재실행 금지
+```
+
+허용 선택:
+
+- `ACCEPT_PARTIAL`: 현재 Google 실제 상태를 수용하고 추가 Write 없이 종료한다. 미실행 Action은 취소되고 Run은 `COMPLETED`, 결과는 `PARTIAL`로 표시한다.
+- `CREATE_CORRECTIVE_PLAN`: 실제 Google 상태를 다시 읽고 같은 Run에서 새 Plan Revision을 만든다. 필요한 Write는 새 Approval·Claim·Attempt를 거친다.
+
+일반 Run 중단은 별도 Cancel Command를 사용한다.
+
 ## 14. SQLite·Migration
 
 확인: Disk → ACL → DB·WAL·SHM → quick_check → Migration → Open Run → Checkpoint.
@@ -202,8 +218,27 @@ Domain 상태가 허용 Terminal·Recovery이고, Write 결과가 확정되며, 
 
 Domain Status는 `CANCELLED`, UI 결과는 `result_kind=PARTIAL`로 표시한다. 성공 Action을 롤백하거나 다시 실행하지 않는다.
 
-## 2026-08-07 v2.2 구현 정합성 진단
+## 22. 구현 정합성 진단
 - External Adapter 호출 중 SQLite Write Transaction이 열려 있으면 무결성/동시성 결함으로 분류한다.
 - 외부 호출 후 저장 Transaction에서 `expected_version`, Action 상태, Attempt 상태를 재검사한다.
 - Recovery 상태 변경은 `RequireRecovery`·`ResolveRecovery` Domain Command를 사용한다. Repository 직접 setter는 구현 결함이다.
 - 이 수정은 Domain 모델·Command Receipt·Recovery 알고리즘 전면 재설계가 아니라 Application Transaction 경계와 누락된 Domain Command 연결의 정합성 수정이다.
+
+## 23. Write 전달 확실성 Runbook
+
+오류 대응 시 Exception 이름보다 `delivery_certainty`를 먼저 확인한다.
+
+- `NOT_SENT`: dispatch 전 실패가 확정된 경우. Domain은 FAILED로 확정할 수 있으나 직접 재실행하지 않고 retry 준비 → 최신 Source → 새 Approval을 거친다.
+- `MAY_HAVE_BEEN_SENT`: 요청 전달 가능성이 존재. `UNKNOWN_RESULT`로 두고 Target GET/Resource Search/Sent Search를 수행한다.
+- `SENT_RESPONSE_LOST`: 전달은 됐고 응답만 잃은 것으로 판단. `UNKNOWN_RESULT`에서 기존 결과만 찾는다.
+
+Timeout·5xx·MCP 종료를 일괄 `NOT_SENT`로 분류하지 않는다. 결과를 찾지 못했다는 이유만으로 같은 Write를 즉시 다시 보내지 않는다.
+
+## 24. 취소 Runbook 보완
+
+- 취소 Command의 Version/Receipt 충돌이면 어떤 child state도 변경하지 않는다.
+- `CANCEL_REQUESTED` 이후 새 Claim·Write를 시작하지 않는다.
+- 미실행 Action만 `CANCELLED` 처리한다.
+- `EXECUTING`, `EXECUTED`, `UNKNOWN_RESULT`는 먼저 실제 결과를 확정한다.
+- `UNKNOWN_RESULT`가 남아 있으면 Run을 `RECOVERY_REQUIRED`로 두며 확인 후 취소를 마무리한다.
+- 이미 성공한 Write는 유지하고 사용자 결과는 `PARTIAL`로 표시할 수 있다.

@@ -13,7 +13,7 @@
   "gold": {
     "goal": "필수 소요시간을 사용자에게 확인한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "CONFIRMATION"
+    "expected_request_disposition": "NEEDS_CONFIRMATION"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

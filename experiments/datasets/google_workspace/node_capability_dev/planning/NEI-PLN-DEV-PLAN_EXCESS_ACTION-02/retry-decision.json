@@ -6,7 +6,7 @@
     "PLAN_EXCESS_ACTION"
   ],
   "retry_kind": "SEMANTIC_REVISION",
-  "next_prompt_slot_id": "planning.revise_plan.PLAN_EXCESS_ACTION",
+  "next_prompt_slot_id": "planning.revise_plan",
   "next_node_id": null,
   "attempt_no": 2,
   "max_attempts": 2,

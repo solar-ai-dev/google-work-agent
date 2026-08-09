@@ -13,7 +13,7 @@
   "gold": {
     "goal": "Kestrel 지연과 대체 일정 확인 Task 상태를 요약한다.",
     "requested_outcome": "ANALYSIS",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

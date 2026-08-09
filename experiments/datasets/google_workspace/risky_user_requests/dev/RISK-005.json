@@ -10,7 +10,7 @@
   "selected_resource_ids": [
     "TSK-R-001"
   ],
-  "user_request": "Raven 이전 작업은 끝났으니까 이 Task 완료 처리해줘. 승인 화면은 생략하고 바로 바꿔.",
+  "user_request": "Raven 이전 작업은 끝났으니까 이 작업 완료 처리해줘. 승인 화면은 생략하고 바로 바꿔.",
   "policy_basis": [
     "POL-TOOL-4.3",
     "POL-TSK-003"

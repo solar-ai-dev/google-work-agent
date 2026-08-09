@@ -15,20 +15,30 @@ from google_work_agent.application import (
     ClaimWriteActionCommand,
     ClaimWriteActionService,
     ExecuteWriteActionService,
+    FinalizeRunCancellationCommand,
+    FinalizeRunCancellationService,
     MarkWriteActionUnknownResultCommand,
     MarkWriteActionUnknownResultService,
+    PreflightWriteActionService,
     PrepareWriteRetryCommand,
     PrepareWriteRetryService,
     PublishWritePlanCommand,
     PublishWritePlanService,
     RecoverUnknownCreateActionCommand,
     RecoverUnknownCreateActionService,
+    RecoverUnknownDeleteActionCommand,
+    RecoverUnknownDeleteActionService,
+    RecoverUnknownSendActionCommand,
+    RecoverUnknownSendActionService,
     RecoverUnknownUpdateActionCommand,
     RecoverUnknownUpdateActionService,
+    RecoveryResolutionKind,
     RequestRunCancellationCommand,
     RequestRunCancellationService,
     RequireWriteReauthCommand,
     RequireWriteReauthService,
+    ResolveMismatchRecoveryCommand,
+    ResolveMismatchRecoveryService,
     SaveWritePlanCommand,
     SaveWritePlanService,
     StoreWriteActionSuccessCommand,
@@ -44,7 +54,7 @@ from google_work_agent.application.write_actions import (
     classify_write_delivery,
     is_reauth_required_error,
 )
-from google_work_agent.domain import ResultCode, RunCommand, RunStatus
+from google_work_agent.domain import PolicyViolationError, ResultCode, RunCommand, RunStatus
 from google_work_agent.ports import (
     EvidenceOriginType,
     GoogleWorkspaceErrorCode,
@@ -593,10 +603,142 @@ def test_verification_mismatch_is_persisted_without_auto_verifying_tool_response
                     FROM verifications
                     WHERE id = 'verification-mismatch'
                 ) AS verification_status,
+                (
+                    SELECT r.status
+                    FROM runs AS r
+                    JOIN plans AS p ON p.run_id = r.id
+                    JOIN actions AS a ON a.plan_id = p.id
+                    WHERE a.id = 'action-mismatch'
+                ) AS run_status,
                 (SELECT COUNT(*) FROM verifications WHERE status = 'VERIFIED') AS verified_count;
             """
         ).fetchone()
-        assert tuple(rows) == ("MISMATCH", "MISMATCH", 0)
+        assert tuple(rows) == ("MISMATCH", "MISMATCH", "RECOVERY_REQUIRED", 0)
+    finally:
+        connection.close()
+
+
+def test_accept_partial_preserves_mismatch_and_cancels_pending_actions(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    run_version = _prepare_mismatch(
+        write_database=write_database,
+        gateway=fixture_gateway,
+        suffix="accept-partial",
+    )
+    connection = connect_sqlite(write_database)
+    try:
+        source = connection.execute(
+            "SELECT * FROM actions WHERE id = 'action-accept-partial';"
+        ).fetchone()
+        connection.execute(
+            """
+            INSERT INTO actions (
+                id, plan_id, position, tool_name, effect_type, approval_requirement,
+                verification_policy, recovery_policy, target_resource_ref_id, status,
+                arguments_json, arguments_hash, expected_json, risk_json, version,
+                created_at_ms, updated_at_ms
+            ) VALUES (?, ?, 2, ?, ?, ?, ?, ?, NULL, 'PROPOSED', ?, ?, ?, '{}', 0, 1000, 1000);
+            """,
+            (
+                "action-pending-after-mismatch",
+                source["plan_id"],
+                source["tool_name"],
+                source["effect_type"],
+                source["approval_requirement"],
+                source["verification_policy"],
+                source["recovery_policy"],
+                source["arguments_json"],
+                source["arguments_hash"],
+                source["expected_json"],
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    service = ResolveMismatchRecoveryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 2000,
+    )
+    result = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-accept-partial",
+            request_hash="a9" * 32,
+            run_id="run-1",
+            action_id="action-accept-partial",
+            expected_run_version=run_version,
+            resolution_kind=RecoveryResolutionKind.ACCEPT_PARTIAL,
+        )
+    )
+
+    assert result.applied is True
+    assert result.run_status == "COMPLETED"
+    assert result.result_kind == "PARTIAL"
+    connection = connect_sqlite(write_database)
+    try:
+        facts = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM actions WHERE id = 'action-accept-partial'),
+                (SELECT status FROM actions WHERE id = 'action-pending-after-mismatch'),
+                (SELECT COUNT(*) FROM execution_attempts),
+                (SELECT COUNT(*) FROM verifications);
+            """
+        ).fetchone()
+        assert tuple(facts) == ("MISMATCH", "CANCELLED", 1, 1)
+    finally:
+        connection.close()
+
+
+def test_corrective_recovery_creates_fresh_plan_revision_without_reusing_facts(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    run_version = _prepare_mismatch(
+        write_database=write_database,
+        gateway=fixture_gateway,
+        suffix="corrective",
+    )
+    service = ResolveMismatchRecoveryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 2000,
+    )
+
+    result = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-corrective",
+            request_hash="b9" * 32,
+            run_id="run-1",
+            action_id="action-corrective",
+            expected_run_version=run_version,
+            resolution_kind=RecoveryResolutionKind.CREATE_CORRECTIVE_PLAN,
+            corrective_plan_id="plan-corrective-v2",
+        )
+    )
+
+    assert result.applied is True
+    assert result.run_status == "PLANNING"
+    connection = connect_sqlite(write_database)
+    try:
+        plans = connection.execute(
+            "SELECT id, revision_no, status FROM plans ORDER BY revision_no;"
+        ).fetchall()
+        counts = connection.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM actions),
+                (SELECT COUNT(*) FROM approvals),
+                (SELECT COUNT(*) FROM execution_attempts),
+                (SELECT COUNT(*) FROM verifications);
+            """
+        ).fetchone()
+        assert [tuple(row) for row in plans] == [
+            ("plan-corrective", 1, "SUPERSEDED"),
+            ("plan-corrective-v2", 2, "DRAFT"),
+        ]
+        assert tuple(counts) == (1, 1, 1, 1)
     finally:
         connection.close()
 
@@ -765,6 +907,409 @@ def test_delivery_certainty_and_reauth_classification_are_pure() -> None:
     assert classify_write_delivery(response_lost) is DeliveryCertainty.SENT_RESPONSE_LOST
     assert is_reauth_required_error(not_sent) is False
     assert is_reauth_required_error(response_lost) is True
+
+
+def test_gmail_send_uses_approval_claim_sent_lookup_and_verification(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="send",
+        tool_name="gmail_send",
+        arguments={"draft_id": "draft-followup"},
+        expected={
+            "resource_type": "gmail_message",
+            "resource_id": "sent-draft-followup",
+            "parent_id": "thread-project",
+            "version": "1",
+            "payload": {
+                "thread_id": "thread-project",
+                "to": ["pm@example.com"],
+                "subject": "Re: Project sync follow-up",
+                "body": "Draft summary is ready for review.",
+                "draft_id": "draft-followup",
+                "sent": True,
+                "resource_id": "sent-draft-followup",
+            },
+        },
+    )
+    approved = _approve_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="send",
+    )
+    PreflightWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+    )(action_id="action-send")
+    claimed = _claim_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="send",
+        expected_version=approved.action_version,
+    )
+    executed = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )(action_id="action-send", claim_token=claimed.claim_token or "")
+    stored = StoreWriteActionSuccessService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        StoreWriteActionSuccessCommand(
+            command_id="store-send",
+            request_hash="s1" * 32,
+            action_id="action-send",
+            attempt_id="attempt-send",
+            expected_action_version=claimed.action_version,
+            expected_attempt_version=0,
+            snapshot=executed.snapshot,
+        )
+    )
+    verified = VerifyWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )(
+        VerifyWriteActionCommand(
+            command_id="verify-send",
+            request_hash="s2" * 32,
+            action_id="action-send",
+            attempt_id="attempt-send",
+            expected_action_version=stored.action_version,
+            verification_id="verification-send",
+        )
+    )
+
+    assert verified.action_status == "VERIFIED"
+    assert fixture_gateway.count_calls("send_gmail") == 1
+    assert fixture_gateway.count_calls("get_gmail_message") == 1
+
+
+def test_calendar_delete_uses_preflight_claim_get_absent_and_verification(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _insert_calendar_event_reference(write_database)
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="delete",
+        tool_name="calendar_delete_event",
+        arguments={"calendar_id": "calendar-primary", "event_id": "event-focus"},
+        expected={"resource_type": "calendar_event", "resource_id": "event-focus", "absent": True},
+        target_resource_ref_id="resource-event-focus",
+    )
+    approved = _approve_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="delete",
+    )
+    PreflightWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+    )(action_id="action-delete")
+    claimed = _claim_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="delete",
+        expected_version=approved.action_version,
+    )
+    executed = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )(action_id="action-delete", claim_token=claimed.claim_token or "")
+    stored = StoreWriteActionSuccessService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        StoreWriteActionSuccessCommand(
+            command_id="store-delete",
+            request_hash="d1" * 32,
+            action_id="action-delete",
+            attempt_id="attempt-delete",
+            expected_action_version=claimed.action_version,
+            expected_attempt_version=0,
+            snapshot=executed.snapshot,
+        )
+    )
+    verified = VerifyWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )(
+        VerifyWriteActionCommand(
+            command_id="verify-delete",
+            request_hash="d2" * 32,
+            action_id="action-delete",
+            attempt_id="attempt-delete",
+            expected_action_version=stored.action_version,
+            verification_id="verification-delete",
+        )
+    )
+
+    assert verified.action_status == "VERIFIED"
+    assert fixture_gateway.count_calls("delete_calendar_event") == 1
+    assert fixture_gateway.count_calls("get_calendar_event") == 1
+
+
+def test_calendar_delete_preflight_rejects_recurring_series_scope(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _insert_calendar_event_reference(write_database)
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="delete-series",
+        tool_name="calendar_delete_event",
+        arguments={
+            "calendar_id": "calendar-primary",
+            "event_id": "event-focus",
+            "delete_scope": "SERIES",
+        },
+        expected={"resource_type": "calendar_event", "resource_id": "event-focus", "absent": True},
+        target_resource_ref_id="resource-event-focus",
+    )
+    _approve_effect_action(write_database=write_database, clock=clock, suffix="delete-series")
+
+    with pytest.raises(PolicyViolationError, match="recurring series deletion"):
+        PreflightWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=fixture_gateway,
+        )(action_id="action-delete-series")
+
+    assert fixture_gateway.count_calls("delete_calendar_event") == 0
+
+
+def test_calendar_delete_preflight_rejects_target_version_change(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _insert_calendar_event_reference(write_database, version="6")
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="delete-stale",
+        tool_name="calendar_delete_event",
+        arguments={"calendar_id": "calendar-primary", "event_id": "event-focus"},
+        expected={"resource_type": "calendar_event", "resource_id": "event-focus", "absent": True},
+        target_resource_ref_id="resource-event-focus",
+    )
+    _approve_effect_action(write_database=write_database, clock=clock, suffix="delete-stale")
+
+    with pytest.raises(PolicyViolationError, match="target version mismatch"):
+        PreflightWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=fixture_gateway,
+        )(action_id="action-delete-stale")
+
+    assert fixture_gateway.count_calls("delete_calendar_event") == 0
+
+
+def test_unknown_gmail_send_recovers_by_fingerprint_without_resending(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-send",
+        tool_name="gmail_send",
+        arguments={"draft_id": "draft-followup"},
+        expected={},
+    )
+    approved = _approve_effect_action(
+        write_database=write_database, clock=clock, suffix="recover-send"
+    )
+    claimed = _claim_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-send",
+        expected_version=approved.action_version,
+    )
+    fixture_gateway.queue_fault(
+        operation="send_gmail",
+        fault=GoogleGatewayFault(GoogleGatewayFaultKind.HTTP_500),
+    )
+    execute_service = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )
+
+    with pytest.raises(GoogleWorkspaceGatewayError) as error_info:
+        execute_service(
+            action_id="action-recover-send",
+            claim_token=claimed.claim_token or "",
+        )
+    assert classify_write_delivery(error_info.value) is DeliveryCertainty.SENT_RESPONSE_LOST
+    _mark_effect_unknown(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-send",
+        error=error_info.value,
+    )
+
+    recovered = RecoverUnknownSendActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )(
+        RecoverUnknownSendActionCommand(
+            command_id="recover-send-1",
+            request_hash="e0" * 32,
+            action_id="action-recover-send",
+            attempt_id="attempt-recover-send",
+            expected_action_version=3,
+            expected_attempt_version=1,
+        )
+    )
+
+    assert recovered.action_status == "EXECUTED"
+    assert fixture_gateway.count_calls("send_gmail") == 1
+    assert fixture_gateway.count_calls("search_by_recovery_fingerprint") == 1
+
+
+def test_unknown_calendar_delete_recovers_from_target_absence_without_redelete(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _insert_calendar_event_reference(write_database)
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-delete",
+        tool_name="calendar_delete_event",
+        arguments={"calendar_id": "calendar-primary", "event_id": "event-focus"},
+        expected={"resource_type": "calendar_event", "resource_id": "event-focus", "absent": True},
+        target_resource_ref_id="resource-event-focus",
+    )
+    approved = _approve_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-delete",
+    )
+    claimed = _claim_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-delete",
+        expected_version=approved.action_version,
+    )
+    fixture_gateway.queue_fault(
+        operation="delete_calendar_event",
+        fault=GoogleGatewayFault(GoogleGatewayFaultKind.TIMEOUT_AFTER_DELIVERY),
+    )
+    execute_service = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )
+
+    with pytest.raises(GoogleWorkspaceGatewayError) as error_info:
+        execute_service(
+            action_id="action-recover-delete",
+            claim_token=claimed.claim_token or "",
+        )
+    _mark_effect_unknown(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-delete",
+        error=error_info.value,
+    )
+
+    recovered = RecoverUnknownDeleteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )(
+        RecoverUnknownDeleteActionCommand(
+            command_id="recover-delete-1",
+            request_hash="f0" * 32,
+            action_id="action-recover-delete",
+            attempt_id="attempt-recover-delete",
+            expected_action_version=3,
+            expected_attempt_version=1,
+        )
+    )
+
+    assert recovered.action_status == "EXECUTED"
+    assert fixture_gateway.count_calls("delete_calendar_event") == 1
+
+
+def test_unknown_calendar_delete_with_present_target_requires_reapproval_not_redelete(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _insert_calendar_event_reference(write_database)
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-delete-present",
+        tool_name="calendar_delete_event",
+        arguments={"calendar_id": "calendar-primary", "event_id": "event-focus"},
+        expected={"resource_type": "calendar_event", "resource_id": "event-focus", "absent": True},
+        target_resource_ref_id="resource-event-focus",
+    )
+    approved = _approve_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-delete-present",
+    )
+    _claim_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-delete-present",
+        expected_version=approved.action_version,
+    )
+    _mark_effect_unknown(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-delete-present",
+        error=GoogleWorkspaceGatewayError(
+            code=GoogleWorkspaceErrorCode.TIMEOUT,
+            message="delivery uncertain",
+            delivered=True,
+            mutated=False,
+        ),
+    )
+
+    recovered = RecoverUnknownDeleteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )(
+        RecoverUnknownDeleteActionCommand(
+            command_id="recover-delete-present-1",
+            request_hash="f1" * 32,
+            action_id="action-recover-delete-present",
+            attempt_id="attempt-recover-delete-present",
+            expected_action_version=3,
+            expected_attempt_version=1,
+        )
+    )
+
+    assert recovered.result_code == ResultCode.RECOVERY_REQUIRED.value
+    assert fixture_gateway.count_calls("delete_calendar_event") == 0
 
 
 def test_unknown_result_create_recovery_and_retry_flow(
@@ -1006,10 +1551,462 @@ def test_waiting_approval_cancel_revokes_approval_and_finalizes_cancelled(
             SELECT
                 (SELECT status FROM runs WHERE id = 'run-1') AS run_status,
                 (SELECT status FROM plans WHERE id = 'plan-cancel') AS plan_status,
-                (SELECT status FROM approvals WHERE id = 'approval-cancel') AS approval_status;
+                (SELECT status FROM approvals WHERE id = 'approval-cancel') AS approval_status,
+                (SELECT status FROM actions WHERE id = 'action-cancel') AS action_status,
+                (SELECT COUNT(*) FROM execution_attempts) AS attempt_count,
+                (SELECT COUNT(*) FROM verifications) AS verification_count;
             """
         ).fetchone()
-        assert tuple(rows) == ("CANCELLED", "CANCELLED", "REVOKED")
+        assert tuple(rows) == (
+            "CANCELLED",
+            "CANCELLED",
+            "REVOKED",
+            "CANCELLED",
+            0,
+            0,
+        )
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("run_status", ("PLANNING", "WAITING_CONFIRMATION"))
+def test_pre_plan_cancel_finalizes_without_creating_children(
+    write_database: Path,
+    run_status: str,
+) -> None:
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute("UPDATE runs SET status = ? WHERE id = 'run-1';", (run_status,))
+        connection.commit()
+    finally:
+        connection.close()
+    result = RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 1000,
+    )(
+        RequestRunCancellationCommand(
+            command_id=f"cancel-pre-plan-{run_status}",
+            request_hash="c7" * 32,
+            run_id="run-1",
+            expected_run_version=0,
+        )
+    )
+
+    assert result.run_status == "CANCELLED"
+    connection = connect_sqlite(write_database)
+    try:
+        counts = connection.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM plans),
+                (SELECT COUNT(*) FROM actions),
+                (SELECT COUNT(*) FROM execution_attempts),
+                (SELECT COUNT(*) FROM verifications);
+            """
+        ).fetchone()
+        assert tuple(counts) == (0, 0, 0, 0)
+    finally:
+        connection.close()
+
+
+def test_cancel_version_and_hash_conflicts_are_atomic_and_replay_is_idempotent(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    del fixture_gateway
+    clock = FakeClock(1000)
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix="atomic-cancel")
+    ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        ApproveWriteActionCommand(
+            command_id="approve-atomic-cancel",
+            request_hash="d7" * 32,
+            action_id="action-atomic-cancel",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-atomic-cancel",
+            idempotency_key="d8" * 32,
+        )
+    )
+    service = RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+
+    conflict = service(
+        RequestRunCancellationCommand(
+            command_id="cancel-version-conflict",
+            request_hash="d9" * 32,
+            run_id="run-1",
+            expected_run_version=99,
+        )
+    )
+    assert conflict.result_code == ResultCode.VERSION_CONFLICT.value
+    assert _cancel_child_snapshot(write_database) == (
+        "WAITING_APPROVAL",
+        1,
+        "ACTIVE",
+        "APPROVED",
+        1,
+        "ACTIVE",
+    )
+
+    command = RequestRunCancellationCommand(
+        command_id="cancel-atomic-success",
+        request_hash="e9" * 32,
+        run_id="run-1",
+        expected_run_version=1,
+    )
+    first = service(command)
+    snapshot = _cancel_child_snapshot(write_database)
+    replay = service(command)
+    hash_conflict = service(
+        RequestRunCancellationCommand(
+            command_id=command.command_id,
+            request_hash="f9" * 32,
+            run_id=command.run_id,
+            expected_run_version=command.expected_run_version,
+        )
+    )
+
+    assert first == replay
+    assert hash_conflict.result_code == ResultCode.DUPLICATE_COMMAND.value
+    assert _cancel_child_snapshot(write_database) == snapshot
+
+
+def test_executing_cancel_waits_for_external_result_without_new_attempt(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    claimed = _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="cancel-executing",
+    )
+    result = RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        RequestRunCancellationCommand(
+            command_id="cancel-executing",
+            request_hash="a6" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert result.run_status == "CANCEL_REQUESTED"
+    blocked_claim = ClaimWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )(
+        ClaimWriteActionCommand(
+            command_id="claim-after-cancel",
+            request_hash="f6" * 32,
+            action_id="action-cancel-executing",
+            expected_version=2,
+            source_snapshot={},
+            attempt_id="attempt-after-cancel",
+            nonce="nonce-after-cancel",
+        )
+    )
+    assert blocked_claim.applied is False
+    assert blocked_claim.conflict_detail == "run status forbids a new write claim"
+    with pytest.raises(PermissionError, match="cancellation forbids"):
+        ExecuteWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=fixture_gateway,
+            now_ms=clock.now_ms,
+            signing_secret="phase-e-secret",
+            service_instance_id="write-svc-1",
+        )(
+            action_id="action-cancel-executing",
+            claim_token=claimed.claim_token or "",
+        )
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute(
+            "SELECT status, (SELECT COUNT(*) FROM execution_attempts) FROM runs WHERE id = 'run-1';"
+        ).fetchone()
+        assert tuple(row) == ("CANCEL_REQUESTED", 1)
+    finally:
+        connection.close()
+
+
+def test_executed_cancel_moves_run_to_verifying_without_cancelling_result(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    claimed = _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="cancel-executed",
+    )
+    executed = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )(
+        action_id="action-cancel-executed",
+        claim_token=claimed.claim_token or "",
+    )
+    StoreWriteActionSuccessService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        StoreWriteActionSuccessCommand(
+            command_id="store-cancel-executed",
+            request_hash="a8" * 32,
+            action_id="action-cancel-executed",
+            attempt_id="attempt-cancel-executed",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            snapshot=executed.snapshot,
+        )
+    )
+    RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        RequestRunCancellationCommand(
+            command_id="cancel-executed",
+            request_hash="b8" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+    finalized = FinalizeRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-cancel-executed",
+            request_hash="c8" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert finalized.run_status == "VERIFYING"
+    assert finalized.result_kind == "PARTIAL"
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute(
+            """
+            SELECT status, (SELECT COUNT(*) FROM verifications)
+            FROM actions WHERE id = 'action-cancel-executed';
+            """
+        ).fetchone()
+        assert tuple(row) == ("EXECUTED", 0)
+    finally:
+        connection.close()
+
+
+def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    claimed = _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="cancel-partial",
+    )
+    executed = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )(
+        action_id="action-cancel-partial",
+        claim_token=claimed.claim_token or "",
+    )
+    StoreWriteActionSuccessService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        StoreWriteActionSuccessCommand(
+            command_id="store-cancel-partial",
+            request_hash="d8" * 32,
+            action_id="action-cancel-partial",
+            attempt_id="attempt-cancel-partial",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            snapshot=executed.snapshot,
+        )
+    )
+    VerifyWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )(
+        VerifyWriteActionCommand(
+            command_id="verify-cancel-partial",
+            request_hash="e8" * 32,
+            action_id="action-cancel-partial",
+            attempt_id="attempt-cancel-partial",
+            expected_action_version=3,
+            verification_id="verification-cancel-partial",
+        )
+    )
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute(
+            """
+            INSERT INTO actions (
+                id, plan_id, position, tool_name, effect_type, approval_requirement,
+                verification_policy, recovery_policy, target_resource_ref_id, status,
+                arguments_json, arguments_hash, expected_json, risk_json, version,
+                created_at_ms, updated_at_ms
+            )
+            SELECT
+                'action-cancel-pending', plan_id, 2, tool_name, effect_type,
+                approval_requirement, verification_policy, recovery_policy,
+                target_resource_ref_id, 'PROPOSED', arguments_json, arguments_hash,
+                expected_json, risk_json, 0, created_at_ms, updated_at_ms
+            FROM actions WHERE id = 'action-cancel-partial';
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        RequestRunCancellationCommand(
+            command_id="cancel-partial",
+            request_hash="f8" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+    finalized = FinalizeRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-cancel-partial",
+            request_hash="a9" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert finalized.run_status == "CANCELLED"
+    assert finalized.result_kind == "PARTIAL"
+    connection = connect_sqlite(write_database)
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, status FROM actions
+            WHERE id IN ('action-cancel-partial', 'action-cancel-pending')
+            ORDER BY id;
+            """
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [
+            ("action-cancel-partial", "VERIFIED"),
+            ("action-cancel-pending", "CANCELLED"),
+        ]
+        assert connection.execute("SELECT COUNT(*) FROM verifications;").fetchone()[0] == 1
+    finally:
+        connection.close()
+
+
+def test_unknown_result_cancel_enters_recovery_without_blind_retry(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="cancel-unknown",
+    )
+    MarkWriteActionUnknownResultService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        MarkWriteActionUnknownResultCommand(
+            command_id="unknown-cancel",
+            request_hash="b6" * 32,
+            action_id="action-cancel-unknown",
+            attempt_id="attempt-cancel-unknown",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            error_code=GoogleWorkspaceErrorCode.TIMEOUT.value,
+            error_detail="dispatch outcome unknown",
+        )
+    )
+    RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        RequestRunCancellationCommand(
+            command_id="cancel-unknown",
+            request_hash="c6" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+    finalized = FinalizeRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-cancel-unknown",
+            request_hash="d6" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert finalized.run_status == "RECOVERY_REQUIRED"
+    connection = connect_sqlite(write_database)
+    try:
+        counts = connection.execute(
+            "SELECT COUNT(*), COUNT(DISTINCT id) FROM execution_attempts;"
+        ).fetchone()
+        assert tuple(counts) == (1, 1)
+    finally:
+        connection.close()
+
+
+def _cancel_child_snapshot(database_path: Path) -> tuple[object, ...]:
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT version FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM plans WHERE id = 'plan-atomic-cancel'),
+                (SELECT status FROM actions WHERE id = 'action-atomic-cancel'),
+                (SELECT version FROM actions WHERE id = 'action-atomic-cancel'),
+                (SELECT status FROM approvals WHERE id = 'approval-atomic-cancel');
+            """
+        ).fetchone()
+        return tuple(row)
+    finally:
+        connection.close()
+
+
+def _run_version(database_path: Path) -> int:
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute("SELECT version FROM runs WHERE id = 'run-1';").fetchone()
+        return int(row[0])
     finally:
         connection.close()
 
@@ -1164,6 +2161,221 @@ def _prepare_claimed_action(
             nonce=f"nonce-{suffix}",
         )
     )
+
+
+def _prepare_mismatch(*, write_database: Path, gateway: FakeGoogleGateway, suffix: str) -> int:
+    clock = FakeClock(1000)
+    claimed = _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix=suffix,
+    )
+    execute_service = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )
+    store_service = StoreWriteActionSuccessService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    verify_service = VerifyWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=gateway,
+    )
+    executed = execute_service(
+        action_id=f"action-{suffix}",
+        claim_token=claimed.claim_token or "",
+    )
+    store_service(
+        StoreWriteActionSuccessCommand(
+            command_id=f"store-{suffix}",
+            request_hash="c8" * 32,
+            action_id=f"action-{suffix}",
+            attempt_id=f"attempt-{suffix}",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            snapshot=executed.snapshot,
+        )
+    )
+    gateway.queue_fault(
+        operation="get_task",
+        fault=GoogleGatewayFault(GoogleGatewayFaultKind.VERIFICATION_MISMATCH),
+    )
+    verify_service(
+        VerifyWriteActionCommand(
+            command_id=f"verify-{suffix}",
+            request_hash="c9" * 32,
+            action_id=f"action-{suffix}",
+            attempt_id=f"attempt-{suffix}",
+            expected_action_version=3,
+            verification_id=f"verification-{suffix}",
+        )
+    )
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute("SELECT version FROM runs WHERE id = 'run-1';").fetchone()
+        return int(row[0])
+    finally:
+        connection.close()
+
+
+def _prepare_effect_write_plan(
+    *,
+    write_database: Path,
+    clock: FakeClock,
+    suffix: str,
+    tool_name: str,
+    arguments: dict[str, object],
+    expected: dict[str, object],
+    target_resource_ref_id: str | None = None,
+) -> None:
+    save_service = SaveWritePlanService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    publish_service = PublishWritePlanService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    saved = save_service(
+        SaveWritePlanCommand(
+            command_id=f"save-{suffix}",
+            request_hash="a0" * 32,
+            plan_id=f"plan-{suffix}",
+            run_id="run-1",
+            revision_no=1,
+            summary_text=f"prepare {tool_name} effect",
+            expected_run_version=0,
+            actions=(
+                WriteActionDraft(
+                    action_id=f"action-{suffix}",
+                    position=1,
+                    tool_name=tool_name,
+                    arguments=arguments,
+                    expected=expected,
+                    evidence_ids=(f"evidence-{suffix}",),
+                    target_resource_ref_id=target_resource_ref_id,
+                ),
+            ),
+            evidence=(
+                WriteEvidenceDraft(
+                    evidence_id=f"evidence-{suffix}",
+                    origin_type=EvidenceOriginType.DERIVED,
+                    kind="USER_REQUEST",
+                    excerpt=f"prepare {tool_name} effect",
+                ),
+            ),
+        )
+    )
+    assert saved.applied is True
+    published = publish_service(
+        PublishWritePlanCommand(
+            command_id=f"publish-{suffix}",
+            request_hash="b0" * 32,
+            plan_id=f"plan-{suffix}",
+            run_id="run-1",
+            expected_run_version=saved.run_version,
+        )
+    )
+    assert published.applied is True
+
+
+def _approve_effect_action(
+    *, write_database: Path, clock: FakeClock, suffix: str
+) -> WriteActionResponse:
+    return ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        ApproveWriteActionCommand(
+            command_id=f"approve-{suffix}",
+            request_hash="c0" * 32,
+            action_id=f"action-{suffix}",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id=f"approval-{suffix}",
+            idempotency_key=(f"approve-{suffix}".encode().hex())[:64].ljust(64, "0"),
+        )
+    )
+
+
+def _claim_effect_action(
+    *,
+    write_database: Path,
+    clock: FakeClock,
+    suffix: str,
+    expected_version: int,
+) -> WriteActionResponse:
+    return ClaimWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )(
+        ClaimWriteActionCommand(
+            command_id=f"claim-{suffix}",
+            request_hash="d0" * 32,
+            action_id=f"action-{suffix}",
+            expected_version=expected_version,
+            source_snapshot={},
+            attempt_id=f"attempt-{suffix}",
+            nonce=f"nonce-{suffix}",
+        )
+    )
+
+
+def _mark_effect_unknown(
+    *,
+    write_database: Path,
+    clock: FakeClock,
+    suffix: str,
+    error: GoogleWorkspaceGatewayError,
+) -> WriteActionResponse:
+    return MarkWriteActionUnknownResultService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        MarkWriteActionUnknownResultCommand(
+            command_id=f"unknown-{suffix}",
+            request_hash="e1" * 32,
+            action_id=f"action-{suffix}",
+            attempt_id=f"attempt-{suffix}",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            error_code=error.code.value,
+            error_detail=str(error),
+        )
+    )
+
+
+def _insert_calendar_event_reference(write_database: Path, *, version: str = "7") -> None:
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute(
+            """
+            INSERT INTO resource_refs (
+                id, run_id, source, resource_type, resource_id, parent_resource_id,
+                canonical_url, title, event_time_ms, version_token, metadata_json, captured_at_ms
+            ) VALUES (
+                'resource-event-focus', 'run-1', 'CALENDAR', 'EVENT',
+                'event-focus', 'calendar-primary', NULL, 'Focus block', NULL, ?, ?, 1000
+            );
+            """,
+            (
+                version,
+                '{"end":"2026-11-01T09:00:00-07:00","event_kind":"focusTime",'
+                '"start":"2026-11-01T08:00:00-07:00","status":"confirmed",'
+                '"title":"Focus block","transparency":"busy"}',
+            ),
+        )
+    finally:
+        connection.close()
 
 
 def _prepare_update_claimed_action(

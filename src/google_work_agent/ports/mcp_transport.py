@@ -43,6 +43,7 @@ class MCPTransportErrorCode(StrEnum):
     TIMEOUT = "TIMEOUT"
     PROCESS_UNAVAILABLE = "PROCESS_UNAVAILABLE"
     CONNECTION_CLOSED = "CONNECTION_CLOSED"
+    NOT_FOUND = "NOT_FOUND"
     MALFORMED_RESPONSE = "MALFORMED_RESPONSE"
     SCHEMA_MISMATCH = "SCHEMA_MISMATCH"
     TOOL_REJECTED = "TOOL_REJECTED"
@@ -53,9 +54,16 @@ class MCPTransportErrorCode(StrEnum):
 class MCPTransportError(RuntimeError):
     """Transport-level failure."""
 
-    def __init__(self, *, code: MCPTransportErrorCode, message: str) -> None:
+    def __init__(
+        self,
+        *,
+        code: MCPTransportErrorCode,
+        message: str,
+        dispatch_started: bool = False,
+    ) -> None:
         super().__init__(message)
         self.code = code
+        self.dispatch_started = dispatch_started
 
 
 class MCPTransport(Protocol):

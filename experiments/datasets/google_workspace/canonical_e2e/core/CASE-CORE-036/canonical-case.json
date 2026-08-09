@@ -1,8 +1,8 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "case_id": "CASE-CORE-036",
   "split": "CORE",
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "category": "CALENDAR_GMAIL_TO_TASKS",
   "scenario_family_id": "SF-C4-DUPLICATE-OR-UPDATE",
   "fixture_relation_family": "RF-DEV-009",
@@ -10,7 +10,7 @@
   "language": "ko-KR",
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-CORE-036",
-  "canonical_user_prompt": "Ion 관련 메일과 이번 주 Calendar도 확인해서 온보딩 체크리스트를 다음 주 월요일까지 만들어줘.",
+  "canonical_user_prompt": "Ion 관련 메일과 이번 주 캘린더도 확인해서 온보딩 체크리스트를 다음 주 월요일까지 만들어줘.",
   "business_scenario": "Task 생성 전 정확 중복을 결정적으로 확인한다.",
   "expected_goal": "기존 동일 Task가 있음을 알리고 새 Task를 만들지 않는다.",
   "expected_completion_criteria": [
@@ -42,18 +42,6 @@
       "derivation": "empty source check"
     }
   ],
-  "expected_route": [
-    "request_understanding.classify",
-    "acquisition.plan_sources",
-    "acquisition.execute",
-    "context.select_evidence",
-    "context.assess_sufficiency",
-    "analysis.analyze",
-    "planning.draft_plan",
-    "review.inspect",
-    "complete_answer_only_run"
-  ],
-  "expected_skipped_nodes": [],
   "expected_source_fetch_plan": [
     {
       "source": "TASKS",
@@ -116,9 +104,7 @@
       }
     }
   ],
-  "expected_answer_type": "ANSWER",
   "policy_result": "ALLOW_READ",
-  "expected_interrupt": "NONE",
   "allowed_actions": [],
   "forbidden_actions": [
     "gmail_send",
@@ -136,14 +122,8 @@
   "verification_expectation": {
     "required": false,
     "policy": "NONE",
-    "all_writes_re_read": false
-  },
-  "end_state_expectation": {
-    "initial": {
-      "run_status": "COMPLETED",
-      "result_kind": "FULL"
-    },
-    "after_user_action": null
+    "all_writes_re_read": false,
+    "per_action": []
   },
   "node_applicability": {
     "request_understanding": true,
@@ -172,5 +152,35 @@
   "human_rubric": [
     "TSK-I-001이 동일 제목·동일 기한의 미완료 Task임을 확인한다.",
     "새 tasks_create_task를 제안하지 않는다."
-  ]
+  ],
+  "expected_planning_result_type": "ANSWER",
+  "expected_interactions": [],
+  "expected_semantic_milestones": [
+    "REQUEST_UNDERSTANDING",
+    "ACQUISITION",
+    "CONTEXT_RETRIEVAL",
+    "WORK_ANALYSIS",
+    "PLANNING",
+    "QUALITY_CHECK",
+    "FINALIZATION"
+  ],
+  "six_reference_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect",
+    "complete_answer_only_run"
+  ],
+  "six_reference_skipped_nodes": [],
+  "run_outcome_expectation": {
+    "evaluation_stop": {
+      "run_status": "COMPLETED",
+      "result_kind": "FULL"
+    },
+    "resume_or_followup": null
+  }
 }

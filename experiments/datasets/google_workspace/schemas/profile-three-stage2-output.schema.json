@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/profile-three-stage2-output.schema.json",
+  "title": "ProfileThreeStage2OutputV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "context_result",
+    "analysis_result",
+    "planning_result"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "context_result": {
+      "$ref": "context-retrieval-output.schema.json"
+    },
+    "analysis_result": {
+      "$ref": "work-analysis-output.schema.json"
+    },
+    "planning_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "status",
+        "answer_draft",
+        "plan_draft"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "status": {
+          "enum": [
+            "ANSWER_ONLY",
+            "PLAN_READY",
+            "NEEDS_CONFIRMATION",
+            "BLOCKED"
+          ]
+        },
+        "answer_draft": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "plan_draft": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

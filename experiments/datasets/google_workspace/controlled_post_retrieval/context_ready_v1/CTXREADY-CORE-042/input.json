@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "contract_version": "CONTEXT_READY_V1",
+  "context_snapshot_id": "CTXREADY-CORE-042",
+  "snapshot_origin": "CANONICAL_GOLD_CONTEXT",
+  "source_case_id": "CASE-CORE-042",
+  "fixture_snapshot_id": "FW-D-005",
+  "category": "THREE_SOURCE_COMPLEX",
+  "split": "DEV",
+  "request_intent": {
+    "schema_version": 1,
+    "result": "COMPLETE",
+    "entry_mode": "AGENT_SEARCH",
+    "requested_outcome": "ANALYSIS",
+    "goal": "Echo 마감 가능성과 위험을 분석한다.",
+    "completion_criteria": [
+      "마감과 Task due를 비교한다.",
+      "Busy 13~15시를 반영한다.",
+      "확실하지 않은 완료 보장을 하지 않는다."
+    ],
+    "constraints": {
+      "required_sources": [
+        "GMAIL",
+        "TASKS",
+        "CALENDAR"
+      ],
+      "forbidden_sources": [],
+      "selected_resource_ids": []
+    },
+    "ambiguities": [],
+    "unsupported_scope": [],
+    "next_route": "SOURCE_PLANNING"
+  },
+  "context_bundle": {
+    "schema_version": 1,
+    "fixture_snapshot_id": "FW-D-005",
+    "required_resource_ids": [
+      "GTH-E-001",
+      "TSK-E-001",
+      "EV-E-001"
+    ],
+    "selected_segment_ids": [
+      "SEG-GM-E-001",
+      "SEG-TSK-E-001",
+      "SEG-EV-E-001"
+    ],
+    "evidence_ids": [
+      "EVD-SEG-GM-E-001-1",
+      "EVD-SEG-TSK-E-001-2",
+      "EVD-SEG-EV-E-001-3"
+    ],
+    "ignored_untrusted_instruction_ids": []
+  },
+  "evidence_set": [
+    {
+      "evidence_id": "EVD-SEG-GM-E-001-1",
+      "resource_id": "GM-E-001",
+      "segment_id": "SEG-GM-E-001",
+      "claim": "법무 검토 의견은 금요일 업무 종료 전까지 필요하다.",
+      "excerpt": "금요일 업무 종료 전까지 검토 의견이 필요합니다.",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "EVD-SEG-TSK-E-001-2",
+      "resource_id": "TSK-E-001",
+      "segment_id": "SEG-TSK-E-001",
+      "claim": "Echo 약관 1차 검토 Task의 기한은 2026-08-07T06:00:00Z이다.",
+      "excerpt": "제목: Echo 약관 1차 검토 / 기한: 2026-08-07T06:00:00Z / 상태: needsAction / 메모: ",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "EVD-SEG-EV-E-001-3",
+      "resource_id": "EV-E-001",
+      "segment_id": "SEG-EV-E-001",
+      "claim": "2026-08-07T04:00~06:00Z에 다른 프로젝트 집중 업무가 있다.",
+      "excerpt": "일정: 집중 업무 / 시작: 2026-08-07T04:00:00Z / 종료: 2026-08-07T06:00:00Z / 투명도: opaque / 설명: 다른 프로젝트",
+      "confidence": "HIGH"
+    }
+  ],
+  "policy_summary": {
+    "schema_version": 1,
+    "writes_require_user_approval": true,
+    "allowed_effects": [
+      "READ",
+      "CREATE",
+      "UPDATE",
+      "SEND",
+      "DELETE"
+    ],
+    "forbidden_operations": [
+      "GMAIL_MESSAGE_DELETE",
+      "GMAIL_THREAD_DELETE",
+      "TASK_DELETE",
+      "RECURRING_EVENT_BULK_MODIFY",
+      "POLICY_OR_DB_BYPASS"
+    ],
+    "source_content_trust": "UNTRUSTED",
+    "write_execution_owner": "DETERMINISTIC_DOMAIN_EXECUTION_ENGINE"
+  }
+}

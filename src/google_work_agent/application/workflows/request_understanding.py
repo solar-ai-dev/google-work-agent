@@ -98,7 +98,7 @@ class RequestIntentUnsupportedScopeV1(TypedDict):
 
 
 class RequestIntentV1(TypedDict):
-    schema_version: Required[Literal[1]]
+    schema_version: Required[Literal[2]]
     goal: RequestIntentGoalV1
     completion_criteria: list[str]
     semantic_constraints: RequestIntentSemanticConstraintsV1
@@ -133,11 +133,11 @@ class RequestUnderstandingOutputV1(TypedDict):
     llm_provider_result: NotRequired[dict[str, object]]
 
 
-REQUEST_INTENT_SCHEMA_VERSION = 1
+REQUEST_INTENT_SCHEMA_VERSION = 2
 CLARIFICATION_QUESTION_SCHEMA_VERSION = 1
 REQUEST_UNDERSTANDING_OUTPUT_SCHEMA_VERSION = 1
 REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(
-    schema_version="request-intent-v1",
+    schema_version="request-intent-v2",
     json_schema={
         "type": "object",
         "required": [
@@ -150,7 +150,7 @@ REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(
         ],
         "additionalProperties": False,
         "properties": {
-            "schema_version": {"type": "integer", "enum": [1]},
+            "schema_version": {"type": "integer", "enum": [REQUEST_INTENT_SCHEMA_VERSION]},
             "goal": {
                 "type": "object",
                 "required": ["summary", "user_visible_objective"],
@@ -342,18 +342,29 @@ class RequestUnderstandingAgent:
         llm_runtime: LLMRuntimeService,
         prompt_ref: PromptReference | None = None,
         clarify_prompt_ref: PromptReference | None = None,
+        manifest_path: Path | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
-        self._prompt_ref = prompt_ref or load_request_understanding_classify_prompt_reference()
-        self._clarify_prompt_ref = (
-            clarify_prompt_ref or load_request_understanding_clarify_prompt_reference()
+        self._prompt_ref = prompt_ref or load_request_understanding_classify_prompt_reference(
+            manifest_path
         )
+        self._clarify_prompt_ref = (
+            clarify_prompt_ref or load_request_understanding_clarify_prompt_reference(manifest_path)
+        )
+
+    @property
+    def prompt_ref(self) -> PromptReference:
+        return self._prompt_ref
 
     def __call__(self, request: WorkflowStartRequest) -> RequestUnderstandingOutputV1:
         return self.classify(request)
 
     def classify(self, request: WorkflowStartRequest) -> RequestUnderstandingOutputV1:
-        llm_result = self._llm_runtime.invoke_structured(
+        llm_result = self.invoke_classify_llm(request)
+        return self.build_output_from_llm_result(llm_result)
+
+    def invoke_classify_llm(self, request: WorkflowStartRequest) -> StructuredLLMResult:
+        return self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
             prompt_input=_prompt_input_from_request(request),
             output_schema=REQUEST_INTENT_OUTPUT_SCHEMA,
@@ -366,6 +377,11 @@ class RequestUnderstandingAgent:
                 llm_call_id=f"{request.run_id}:request_understanding.classify",
             ),
         )
+
+    def build_output_from_llm_result(
+        self,
+        llm_result: StructuredLLMResult,
+    ) -> RequestUnderstandingOutputV1:
         intent = validate_request_intent_v1(llm_result.structured_output)
         return _classify_valid_intent(intent=intent, llm_result=llm_result)
 
@@ -430,14 +446,16 @@ def validate_request_intent_v1(value: object) -> RequestIntentV1:
     )
     schema_version = _require_int(root, "schema_version", "$")
     if schema_version != REQUEST_INTENT_SCHEMA_VERSION:
-        raise RequestUnderstandingValidationError("$.schema_version must be 1")
+        raise RequestUnderstandingValidationError(
+            f"$.schema_version must be {REQUEST_INTENT_SCHEMA_VERSION}"
+        )
     goal = _validate_goal(root["goal"])
     completion_criteria = _require_string_list(root["completion_criteria"], "$.completion_criteria")
     semantic_constraints = _validate_semantic_constraints(root["semantic_constraints"])
     ambiguity = _validate_ambiguity(root["ambiguity"])
     unsupported_scope = _validate_unsupported_scope(root["unsupported_scope"])
     return RequestIntentV1(
-        schema_version=1,
+        schema_version=REQUEST_INTENT_SCHEMA_VERSION,
         goal=goal,
         completion_criteria=completion_criteria,
         semantic_constraints=semantic_constraints,
@@ -463,7 +481,9 @@ def validate_clarification_question_v1(value: object) -> ClarificationQuestionV1
     )
     schema_version = _require_int(root, "schema_version", "$")
     if schema_version != CLARIFICATION_QUESTION_SCHEMA_VERSION:
-        raise RequestUnderstandingValidationError("$.schema_version must be 1")
+        raise RequestUnderstandingValidationError(
+            f"$.schema_version must be {CLARIFICATION_QUESTION_SCHEMA_VERSION}"
+        )
     option_ids: set[str] = set()
     options: list[ClarificationOptionV1] = []
     for index, item in enumerate(_require_list(root["options"], "$.options")):

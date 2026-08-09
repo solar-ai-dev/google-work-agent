@@ -1,8 +1,8 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "case_id": "CASE-STRESS-019",
   "split": "STRESS",
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "category": "THREE_SOURCE_COMPLEX",
   "scenario_family_id": "SF-S10-PARTIAL-LIFECYCLE",
   "fixture_relation_family": "RF-DEV-011",
@@ -10,7 +10,7 @@
   "language": "ko-KR",
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-STRESS-019",
-  "canonical_user_prompt": "Kestrel 메일·Task·Calendar를 확인해서 기존 Task 메모에 2일 지연을 추가하고, 8월 8일 10시에 30분 점검 Event와 vendor@kestrel.example.test 회신 Draft를 준비해줘. 일부 Action이 실패하면 성공한 결과는 유지해줘.",
+  "canonical_user_prompt": "Kestrel 메일·작업·캘린더를 확인해서 기존 작업 메모에 2일 지연을 추가하고, 8월 8일 10시에 30분 점검 일정과 vendor@kestrel.example.test 회신 메일 초안을 준비해줘. 일부 작업이 실패하면 성공한 결과는 유지해줘.",
   "business_scenario": "세 Source를 사용한 3-Action DAG를 제안한다.",
   "expected_goal": "Task UPDATE·Event CREATE·Draft CREATE를 계획한다.",
   "expected_completion_criteria": [
@@ -51,26 +51,6 @@
       "derivation": "calendar freebusy"
     }
   ],
-  "expected_route": [
-    "request_understanding.classify",
-    "acquisition.plan_sources",
-    "acquisition.execute",
-    "context.select_evidence",
-    "context.assess_sufficiency",
-    "analysis.analyze",
-    "planning.draft_plan",
-    "review.inspect",
-    "DOMAIN_VALIDATION",
-    "WAITING_APPROVAL",
-    "APPROVAL_GRANTED",
-    "PREFLIGHT",
-    "ACTION_EXECUTION",
-    "ACTION_1_VERIFIED",
-    "ACTION_2_FAILED",
-    "ACTION_3_DEPENDENCY_BLOCKED",
-    "FINALIZE"
-  ],
-  "expected_skipped_nodes": [],
   "expected_source_fetch_plan": [
     {
       "source": "GMAIL",
@@ -213,9 +193,7 @@
       }
     }
   ],
-  "expected_answer_type": "PARTIAL",
   "policy_result": "REQUIRE_APPROVAL",
-  "expected_interrupt": "NONE",
   "allowed_actions": [
     {
       "action_id": "ACT-STRESS-019-1",
@@ -302,14 +280,30 @@
   "verification_expectation": {
     "required": true,
     "policy": "GET_COMPARE",
-    "all_writes_re_read": true
-  },
-  "end_state_expectation": {
-    "initial": {
-      "run_status": "COMPLETED",
-      "result_kind": "PARTIAL"
-    },
-    "after_user_action": null
+    "all_writes_re_read": true,
+    "per_action": [
+      {
+        "action_id": "ACT-STRESS-019-1",
+        "effect_type": "UPDATE",
+        "policy": "GET_COMPARE",
+        "recovery_policy": "GET_TARGET",
+        "required": true
+      },
+      {
+        "action_id": "ACT-STRESS-019-2",
+        "effect_type": "CREATE",
+        "policy": "GET_COMPARE",
+        "recovery_policy": "RESOURCE_SEARCH",
+        "required": true
+      },
+      {
+        "action_id": "ACT-STRESS-019-3",
+        "effect_type": "CREATE",
+        "policy": "GET_COMPARE",
+        "recovery_policy": "RESOURCE_SEARCH",
+        "required": true
+      }
+    ]
   },
   "node_applicability": {
     "request_understanding": true,
@@ -343,5 +337,53 @@
   "human_rubric": [
     "Task와 Event가 먼저 준비되고 Draft가 그 결과를 반영한다.",
     "모든 write는 승인과 GET 검증이 필요하다."
-  ]
+  ],
+  "expected_planning_result_type": "PARTIAL",
+  "expected_interactions": [
+    {
+      "sequence": 1,
+      "type": "APPROVAL",
+      "required": true
+    }
+  ],
+  "expected_semantic_milestones": [
+    "REQUEST_UNDERSTANDING",
+    "ACQUISITION",
+    "CONTEXT_RETRIEVAL",
+    "WORK_ANALYSIS",
+    "PLANNING",
+    "QUALITY_CHECK",
+    "DOMAIN_VALIDATION",
+    "APPROVAL",
+    "PREFLIGHT",
+    "EXECUTION",
+    "FINALIZATION"
+  ],
+  "six_reference_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect",
+    "DOMAIN_VALIDATION",
+    "WAITING_APPROVAL",
+    "APPROVAL_GRANTED",
+    "PREFLIGHT",
+    "ACTION_EXECUTION",
+    "ACTION_1_VERIFIED",
+    "ACTION_2_FAILED",
+    "ACTION_3_DEPENDENCY_BLOCKED",
+    "FINALIZE"
+  ],
+  "six_reference_skipped_nodes": [],
+  "run_outcome_expectation": {
+    "evaluation_stop": {
+      "run_status": "COMPLETED",
+      "result_kind": "PARTIAL"
+    },
+    "resume_or_followup": null
+  }
 }

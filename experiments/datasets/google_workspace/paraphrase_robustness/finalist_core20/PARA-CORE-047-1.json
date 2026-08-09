@@ -6,7 +6,7 @@
   "paraphrase_group_id": "PG-CORE-047",
   "variant_index": 1,
   "language": "ko-KR",
-  "text": "Echo 기존 검토 Task 마감은 오늘 17시로 바꾸고, 오늘 16시부터 한 시간 최종 검토 Event도 준비해줘. 메일·Task·Calendar를 확인해.",
+  "text": "Echo 기존 검토 작업 마감은 오늘 17시로 바꾸고, 오늘 16시부터 한 시간 최종 검토 일정도 준비해줘. 메일·작업·캘린더를 확인해.",
   "expected_entry_mode": "AGENT_SEARCH",
   "expected_requested_outcome": "ACTION_PLAN",
   "expected_same_goal": true,

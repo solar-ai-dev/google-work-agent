@@ -9,6 +9,7 @@ from fastapi import Request
 from google_work_agent.adapters.runtime import RuntimeOperation
 from google_work_agent.api.errors import ApiError
 from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
+from google_work_agent.domain import calculate_canonical_json_hash
 from google_work_agent.ports import AccessDecision, ApiRequestContext, EndpointPolicy
 
 if TYPE_CHECKING:
@@ -31,6 +32,12 @@ def get_request_id(request: Request) -> str:
     request_id = container.id_generator.next_id()
     request.state.request_id = request_id
     return request_id
+
+
+def calculate_server_request_hash(*, operation: str, payload: dict[str, object]) -> str:
+    """Hash the versioned request contract on the server, never a browser-provided hash."""
+
+    return calculate_canonical_json_hash({"operation": operation, "payload": payload})
 
 
 def enforce_api_contract_version(

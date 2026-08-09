@@ -7,13 +7,13 @@
   "not_applicable_reason": null,
   "input_contract": {
     "fixture_snapshot_id": "FW-D-001",
-    "user_prompt_id": "UP-CORE-037",
+    "user_prompt_id": "UP-STRESS-017",
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
     "goal": "TSK-A-001의 기한 수정 Action을 제안한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

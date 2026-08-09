@@ -96,7 +96,7 @@
     "AMBIGUITY_DUPLICATE_CONFLICT_ERROR_POLICY": {
       "cases": 10,
       "scenario_families": [
-        "SF-C6-AMBIGUITY-LOWCONF",
+        "SF-C6-AMBIGUITY-BOUNDARY",
         "SF-C6-SAFETY-DUP-CONFLICT"
       ],
       "entry_modes": [

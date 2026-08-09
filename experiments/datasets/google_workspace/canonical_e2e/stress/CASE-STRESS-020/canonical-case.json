@@ -1,8 +1,8 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "case_id": "CASE-STRESS-020",
   "split": "STRESS",
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "category": "THREE_SOURCE_COMPLEX",
   "scenario_family_id": "SF-S10-PARTIAL-LIFECYCLE",
   "fixture_relation_family": "RF-DEV-001",
@@ -10,7 +10,7 @@
   "language": "ko-KR",
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-STRESS-020",
-  "canonical_user_prompt": "Atlas 메일·Task·Calendar를 확인해서 8월 14일 오전 10시에 60분 점검 Event와 ops@atlas.example.test 안내 Draft를 준비해줘. 실행 중 내가 취소하면 이미 완료된 건 유지하고 나머지는 멈춰줘.",
+  "canonical_user_prompt": "Atlas 메일·작업·캘린더를 확인해서 8월 14일 오전 10시에 60분 점검 일정과 ops@atlas.example.test 안내 메일 초안을 준비해줘. 실행 중 내가 취소하면 이미 완료된 건 유지하고 나머지는 멈춰줘.",
   "business_scenario": "세 Source를 근거로 Event와 종속 Draft DAG를 제안한다.",
   "expected_goal": "Event 생성 후 일정 Draft를 준비한다.",
   "expected_completion_criteria": [
@@ -53,26 +53,6 @@
     }
   ],
   "derived_evidence": [],
-  "expected_route": [
-    "request_understanding.classify",
-    "acquisition.plan_sources",
-    "acquisition.execute",
-    "context.select_evidence",
-    "context.assess_sufficiency",
-    "analysis.analyze",
-    "planning.draft_plan",
-    "review.inspect",
-    "DOMAIN_VALIDATION",
-    "WAITING_APPROVAL",
-    "APPROVAL_GRANTED",
-    "PREFLIGHT",
-    "ACTION_EXECUTION",
-    "ACTION_1_VERIFIED",
-    "CANCEL_REQUESTED",
-    "FINALIZE_CANCEL",
-    "CANCELLED"
-  ],
-  "expected_skipped_nodes": [],
   "expected_source_fetch_plan": [
     {
       "source": "GMAIL",
@@ -207,9 +187,7 @@
       }
     }
   ],
-  "expected_answer_type": "PARTIAL",
   "policy_result": "REQUIRE_APPROVAL",
-  "expected_interrupt": "NONE",
   "allowed_actions": [
     {
       "action_id": "ACT-STRESS-020-1",
@@ -281,14 +259,23 @@
   "verification_expectation": {
     "required": true,
     "policy": "GET_COMPARE",
-    "all_writes_re_read": true
-  },
-  "end_state_expectation": {
-    "initial": {
-      "run_status": "CANCELLED",
-      "result_kind": "PARTIAL"
-    },
-    "after_user_action": null
+    "all_writes_re_read": true,
+    "per_action": [
+      {
+        "action_id": "ACT-STRESS-020-1",
+        "effect_type": "CREATE",
+        "policy": "GET_COMPARE",
+        "recovery_policy": "RESOURCE_SEARCH",
+        "required": true
+      },
+      {
+        "action_id": "ACT-STRESS-020-2",
+        "effect_type": "CREATE",
+        "policy": "GET_COMPARE",
+        "recovery_policy": "RESOURCE_SEARCH",
+        "required": true
+      }
+    ]
   },
   "node_applicability": {
     "request_understanding": true,
@@ -322,5 +309,58 @@
     "세 Source를 확인한다.",
     "Event와 Draft를 두 Action으로 만든다.",
     "Draft는 Event에 의존한다."
-  ]
+  ],
+  "expected_planning_result_type": "PARTIAL",
+  "expected_interactions": [
+    {
+      "sequence": 1,
+      "type": "APPROVAL",
+      "required": true
+    },
+    {
+      "sequence": 2,
+      "type": "CANCEL_REQUEST",
+      "required": true
+    }
+  ],
+  "expected_semantic_milestones": [
+    "REQUEST_UNDERSTANDING",
+    "ACQUISITION",
+    "CONTEXT_RETRIEVAL",
+    "WORK_ANALYSIS",
+    "PLANNING",
+    "QUALITY_CHECK",
+    "DOMAIN_VALIDATION",
+    "APPROVAL",
+    "PREFLIGHT",
+    "EXECUTION",
+    "CANCELLATION"
+  ],
+  "six_reference_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect",
+    "DOMAIN_VALIDATION",
+    "WAITING_APPROVAL",
+    "APPROVAL_GRANTED",
+    "PREFLIGHT",
+    "ACTION_EXECUTION",
+    "ACTION_1_VERIFIED",
+    "CANCEL_REQUESTED",
+    "FINALIZE_CANCEL",
+    "CANCELLED"
+  ],
+  "six_reference_skipped_nodes": [],
+  "run_outcome_expectation": {
+    "evaluation_stop": {
+      "run_status": "CANCELLED",
+      "result_kind": "PARTIAL"
+    },
+    "resume_or_followup": null
+  }
 }

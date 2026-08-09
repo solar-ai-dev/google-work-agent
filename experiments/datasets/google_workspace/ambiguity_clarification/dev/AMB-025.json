@@ -3,7 +3,7 @@
   "evaluation_item_id": "AMB-025",
   "split": "DEV",
   "ambiguity_family_id": "AMB-F07-DESTINATION",
-  "user_request": "Task 만들어줘",
+  "user_request": "작업 만들어줘",
   "conversation_context": [],
   "available_candidates": [],
   "gold": {

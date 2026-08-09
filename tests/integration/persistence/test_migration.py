@@ -43,15 +43,35 @@ def test_docs_and_runtime_sql_raw_bytes_are_identical() -> None:
     assert runtime_sql == docs_sql
 
 
+def test_docs_and_runtime_second_migration_sql_raw_bytes_are_identical() -> None:
+    docs_sql = Path("docs/0002_action_effect_send_delete.sql").read_bytes()
+    runtime_sql = Path(
+        "src/google_work_agent/adapters/persistence/migrations/0002_action_effect_send_delete.sql"
+    ).read_bytes()
+
+    assert runtime_sql == docs_sql
+
+
+def test_docs_and_runtime_third_migration_sql_raw_bytes_are_identical() -> None:
+    docs_sql = Path("docs/0003_action_cancelled.sql").read_bytes()
+    runtime_sql = Path(
+        "src/google_work_agent/adapters/persistence/migrations/0003_action_cancelled.sql"
+    ).read_bytes()
+
+    assert runtime_sql == docs_sql
+
+
 def test_package_resource_discovers_initial_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 2
+    assert len(migrations) == 3
     assert migrations[0].version == 1
     assert migrations[0].name == "initial"
     assert migrations[0].checksum == OFFICIAL_NORMALIZED_CHECKSUM
     assert migrations[1].version == 2
     assert migrations[1].name == "action_effect_send_delete"
+    assert migrations[2].version == 3
+    assert migrations[2].name == "action_cancelled"
 
 
 def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
@@ -64,28 +84,114 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(first_results) == 2
+        assert len(first_results) == 3
         assert first_results[0].applied is True
         assert first_results[1].applied is True
+        assert first_results[2].applied is True
         assert [(row["version"], row["name"]) for row in rows] == [
             (1, "initial"),
             (2, "action_effect_send_delete"),
+            (3, "action_cancelled"),
         ]
         assert rows[0]["checksum"] == OFFICIAL_NORMALIZED_CHECKSUM
         assert rows[0]["applied_at_ms"] == 123456789
         assert rows[1]["applied_at_ms"] == 123456789
+        assert rows[2]["applied_at_ms"] == 123456789
 
         second_results = apply_migrations(connection, now_ms=lambda: 987654321)
         rows = connection.execute(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(second_results) == 2
+        assert len(second_results) == 3
         assert second_results[0].applied is False
         assert second_results[1].applied is False
-        assert len(rows) == 2
+        assert second_results[2].applied is False
+        assert len(rows) == 3
         assert rows[0]["applied_at_ms"] == 123456789
         assert rows[1]["applied_at_ms"] == 123456789
+        assert rows[2]["applied_at_ms"] == 123456789
+    finally:
+        connection.close()
+
+
+def test_v1_3_to_v1_4_preserves_rows_effect_contracts_and_foreign_keys(
+    tmp_path: Path,
+) -> None:
+    v1_3_dir = tmp_path / "v1-3-migrations"
+    v1_3_dir.mkdir()
+    runtime_dir = Path("src/google_work_agent/adapters/persistence/migrations")
+    shutil.copyfile(runtime_dir / "0001_initial.sql", v1_3_dir / "0001_initial.sql")
+    shutil.copyfile(
+        runtime_dir / "0002_action_effect_send_delete.sql",
+        v1_3_dir / "0002_action_effect_send_delete.sql",
+    )
+    connection = connect_sqlite(tmp_path / "upgrade.db")
+    try:
+        apply_migrations(connection, migrations_dir=v1_3_dir, now_ms=lambda: 1)
+        connection.execute(
+            "INSERT INTO google_accounts VALUES ('account-1', 'u@example.com', NULL, 1, NULL);"
+        )
+        connection.execute(
+            "INSERT INTO conversations VALUES ('conversation-1', 'account-1', 'Test', 1, 1);"
+        )
+        connection.execute(
+            """
+            INSERT INTO runs (
+                id, conversation_id, entry_mode, status, langgraph_thread_id,
+                requested_mode, budget_json, version, started_at_ms
+            ) VALUES ('run-1', 'conversation-1', 'AGENT_SEARCH', 'PLANNING',
+                      'thread-1', 'AUTO', '{}', 0, 1);
+            """
+        )
+        connection.execute("INSERT INTO plans VALUES ('plan-1', 'run-1', 1, 'ACTIVE', NULL, 1);")
+        for position, effect, verification, recovery in (
+            (1, "SEND", "SENT_LOOKUP", "MESSAGE_SEARCH"),
+            (2, "DELETE", "GET_ABSENT", "GET_TARGET"),
+        ):
+            connection.execute(
+                """
+                INSERT INTO actions (
+                    id, plan_id, position, tool_name, effect_type, approval_requirement,
+                    verification_policy, recovery_policy, status, arguments_json,
+                    arguments_hash, expected_json, version, created_at_ms, updated_at_ms
+                ) VALUES (?, 'plan-1', ?, ?, ?, 'REQUIRED', ?, ?, 'PROPOSED',
+                          '{}', ?, '{}', 0, 1, 1);
+                """,
+                (
+                    f"action-{effect.lower()}",
+                    position,
+                    f"test_{effect.lower()}",
+                    effect,
+                    verification,
+                    recovery,
+                    str(position) * 64,
+                ),
+            )
+        connection.commit()
+
+        results = apply_migrations(connection, now_ms=lambda: 2)
+        connection.execute("UPDATE actions SET status = 'CANCELLED' WHERE id = 'action-send';")
+
+        assert [result.applied for result in results] == [False, False, True]
+        rows = connection.execute(
+            """
+            SELECT id, effect_type, verification_policy, recovery_policy, status
+            FROM actions ORDER BY position;
+            """
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [
+            ("action-send", "SEND", "SENT_LOOKUP", "MESSAGE_SEARCH", "CANCELLED"),
+            ("action-delete", "DELETE", "GET_ABSENT", "GET_TARGET", "PROPOSED"),
+        ]
+        assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
+        indexes = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'actions';"
+            )
+        }
+        assert {"ix_actions_plan_status", "ix_actions_recovery"} <= indexes
     finally:
         connection.close()
 

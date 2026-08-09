@@ -13,7 +13,7 @@
   "gold": {
     "goal": "Atlas 준비 순서 위험을 분석한다.",
     "requested_outcome": "ANALYSIS",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

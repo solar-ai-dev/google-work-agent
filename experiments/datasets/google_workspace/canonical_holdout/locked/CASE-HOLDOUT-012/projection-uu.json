@@ -13,7 +13,7 @@
   "gold": {
     "goal": "Gmail Thread 삭제 요청을 차단한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "BLOCKED"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

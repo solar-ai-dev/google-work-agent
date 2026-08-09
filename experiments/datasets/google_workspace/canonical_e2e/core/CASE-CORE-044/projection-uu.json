@@ -13,7 +13,7 @@
   "gold": {
     "goal": "인쇄소 슬롯이 Task 기한보다 먼저임을 설명한다.",
     "requested_outcome": "ANSWER",
-    "expected_interrupt": "NONE"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

@@ -13,7 +13,7 @@
   "gold": {
     "goal": "다중 Action을 정확한 시간과 의존성으로 계획한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

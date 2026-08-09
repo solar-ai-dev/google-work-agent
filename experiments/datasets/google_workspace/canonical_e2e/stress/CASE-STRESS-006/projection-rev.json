@@ -7,7 +7,7 @@
   "not_applicable_reason": null,
   "input_contract": {
     "fixture_snapshot_id": "FW-D-001",
-    "user_prompt_id": "UP-CORE-006",
+    "user_prompt_id": "UP-STRESS-006",
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {

@@ -12,12 +12,8 @@
   },
   "gold": {
     "goal": "Vela 이의/일반 청구 후보를 임의 선택하지 않는다.",
-    "completion_criteria": [
-      "두 Thread를 조회한다.",
-      "이의 담당 서현과 일반 담당 서연 차이를 제시한다.",
-      "필요 시 사용자가 의도한 청구 종류를 확인한다."
-    ],
-    "expected_interrupt": "CONFIRMATION"
+    "requested_outcome": "ANSWER",
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

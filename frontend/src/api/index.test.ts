@@ -71,7 +71,6 @@ describe("api index wrappers", () => {
         call: () =>
           api.createConversation({
             command_id: "command-1",
-            request_hash: "hash-1",
             conversation_id: "conversation-1",
             account_id: "account-1",
             title: "Inbox triage",
@@ -95,7 +94,6 @@ describe("api index wrappers", () => {
         call: () =>
           api.startRun({
             command_id: "command-2",
-            request_hash: "hash-2",
             conversation_id: "conversation-1",
             user_message_id: "message-1",
             run_id: "run-1",
@@ -114,7 +112,6 @@ describe("api index wrappers", () => {
           api.cancelRun({
             run_id: "run-1",
             command_id: "command-3",
-            request_hash: "hash-3",
             expected_run_version: 4,
           }),
         path: "/api/v1/runs/run-1/cancel",
@@ -126,37 +123,56 @@ describe("api index wrappers", () => {
           api.resumeRun({
             run_id: "run-1",
             command_id: "command-4",
-            request_hash: "hash-4",
-            resume_kind: "manual",
-            resume_payload: {},
+            expected_version: 4,
+            resume_kind: "RECOVERY_RECHECK",
           }),
         path: "/api/v1/runs/run-1/resume",
         method: "POST",
-        bodyIncludes: { resume_kind: "manual" },
+        bodyIncludes: { expected_version: 4, resume_kind: "RECOVERY_RECHECK" },
+      },
+      {
+        call: () =>
+          api.confirmRun({
+            run_id: "run-1",
+            command_id: "command-confirm",
+            expected_version: 4,
+            interrupt_id: "interrupt-1",
+            response_kind: "OPTION_SELECTION",
+            selected_option_ids: ["option-1"],
+          }),
+        path: "/api/v1/runs/run-1/confirm",
+        method: "POST",
+        bodyIncludes: { interrupt_id: "interrupt-1", selected_option_ids: ["option-1"] },
+      },
+      {
+        call: () =>
+          api.resolveRecovery({
+            run_id: "run-1",
+            command_id: "command-recovery",
+            expected_version: 4,
+            action_id: "action-1",
+            resolution_kind: "ACCEPT_PARTIAL",
+          }),
+        path: "/api/v1/runs/run-1/resolve-recovery",
+        method: "POST",
+        bodyIncludes: { action_id: "action-1", resolution_kind: "ACCEPT_PARTIAL" },
       },
       {
         call: () =>
           api.approveAction({
             action_id: "action-1",
             command_id: "command-5",
-            request_hash: "hash-5",
             expected_version: 2,
-            approved_by_account_id: "account-1",
-            approved_by_display: "User",
-            source_snapshot: { action_id: "action-1" },
-            approval_id: "approval-1",
-            idempotency_key: "idempotency-1",
           }),
         path: "/api/v1/actions/action-1/approve",
         method: "POST",
-        bodyIncludes: { expected_version: 2, approved_by_account_id: "account-1" },
+        bodyIncludes: { expected_version: 2, ttl_ms: 30000 },
       },
       {
         call: () =>
           api.rejectAction({
             action_id: "action-1",
             command_id: "command-6",
-            request_hash: "hash-6",
             expected_version: 2,
           }),
         path: "/api/v1/actions/action-1/reject",
@@ -168,7 +184,6 @@ describe("api index wrappers", () => {
           api.modifyAction({
             action_id: "action-1",
             command_id: "command-7",
-            request_hash: "hash-7",
             expected_version: 2,
           }),
         path: "/api/v1/actions/action-1/modify",
@@ -180,7 +195,6 @@ describe("api index wrappers", () => {
           api.prepareRetry({
             action_id: "action-1",
             command_id: "command-8",
-            request_hash: "hash-8",
             expected_action_version: 3,
           }),
         path: "/api/v1/actions/action-1/prepare-retry",

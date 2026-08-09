@@ -27,6 +27,7 @@ ACTION_TERMINAL_STATUSES = frozenset(
         ActionStatus.BLOCKED,
         ActionStatus.DEPENDENCY_BLOCKED,
         ActionStatus.MISMATCH,
+        ActionStatus.CANCELLED,
     }
 )
 
@@ -56,6 +57,7 @@ RUN_TRANSITIONS: dict[tuple[RunStatus, RunCommand], RunStatus] = {
     (RunStatus.ANALYZING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.RETRIEVING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.PLANNING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
+    (RunStatus.VERIFYING, RunCommand.COMPLETE_WRITE_RUN): RunStatus.COMPLETED,
     (RunStatus.CANCEL_REQUESTED, RunCommand.FINALIZE_CANCEL): RunStatus.CANCELLED,
     (RunStatus.RETRIEVING, RunCommand.REQUIRE_REAUTH): RunStatus.REAUTH_REQUIRED,
 }
@@ -75,6 +77,10 @@ READ_ACTION_TRANSITIONS: dict[tuple[ActionStatus, ActionCommand], ActionStatus] 
     (ActionStatus.EXECUTING, ActionCommand.COMPLETE_READ_ACTION): ActionStatus.EXECUTED,
     (ActionStatus.EXECUTED, ActionCommand.FINALIZE_READ_ACTION): ActionStatus.VERIFIED,
     (ActionStatus.EXECUTING, ActionCommand.FAIL_READ_ACTION): ActionStatus.FAILED,
+    (ActionStatus.PROPOSED, ActionCommand.CANCEL_PENDING_ACTION): ActionStatus.CANCELLED,
+    (ActionStatus.MODIFIED, ActionCommand.CANCEL_PENDING_ACTION): ActionStatus.CANCELLED,
+    (ActionStatus.APPROVED, ActionCommand.CANCEL_PENDING_ACTION): ActionStatus.CANCELLED,
+    (ActionStatus.EXPIRED, ActionCommand.CANCEL_PENDING_ACTION): ActionStatus.CANCELLED,
 }
 
 WRITE_ACTION_TRANSITIONS: dict[tuple[ActionStatus, ActionCommand], ActionStatus] = {
@@ -94,6 +100,10 @@ WRITE_ACTION_TRANSITIONS: dict[tuple[ActionStatus, ActionCommand], ActionStatus]
     (ActionStatus.UNKNOWN_RESULT, ActionCommand.RECOVER_EXISTING_RESULT): ActionStatus.EXECUTED,
     (ActionStatus.UNKNOWN_RESULT, ActionCommand.RESOLVE_AS_FAILED): ActionStatus.FAILED,
     (ActionStatus.FAILED, ActionCommand.PREPARE_WRITE_RETRY): ActionStatus.MODIFIED,
+    (ActionStatus.PROPOSED, ActionCommand.CANCEL_PENDING_ACTION): ActionStatus.CANCELLED,
+    (ActionStatus.MODIFIED, ActionCommand.CANCEL_PENDING_ACTION): ActionStatus.CANCELLED,
+    (ActionStatus.APPROVED, ActionCommand.CANCEL_PENDING_ACTION): ActionStatus.CANCELLED,
+    (ActionStatus.EXPIRED, ActionCommand.CANCEL_PENDING_ACTION): ActionStatus.CANCELLED,
 }
 
 
@@ -127,8 +137,11 @@ def next_allowed_action_commands(
     commands = [
         command
         for command in ACTION_COMMAND_ORDER
-        if (current_status, command) in transition_table
-        or _is_store_verification_candidate(effect_type, current_status, command)
+        if command is not ActionCommand.CANCEL_PENDING_ACTION
+        and (
+            (current_status, command) in transition_table
+            or _is_store_verification_candidate(effect_type, current_status, command)
+        )
     ]
     return tuple(dict.fromkeys(commands))
 
@@ -261,6 +274,8 @@ def _resolve_run_next_status(
     if command is RunCommand.RESOLVE_RECOVERY and current_status is RunStatus.RECOVERY_REQUIRED:
         if recovery_next_status in {
             RunStatus.VERIFYING,
+            RunStatus.PLANNING,
+            RunStatus.COMPLETED,
             RunStatus.FAILED,
             RunStatus.CANCELLED,
         }:

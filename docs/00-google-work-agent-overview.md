@@ -1,3 +1,17 @@
+## 5분 안에 이해하기
+
+**무엇을 만드는가:** Gmail·Tasks·Calendar의 근거를 모아 업무를 분석하고, 필요한 경우 승인 가능한 실행 계획까지 만드는 로컬 업무 Agent다.
+
+**어떻게 안전한가:** LLM은 이해·검색 전략·분석·계획을 담당하지만 Policy·Approval·Claim·Google Write·Verification은 결정적 코드가 담당한다.
+
+**왜 1/3/6 Agent인가:** 멀티에이전트를 많이 쓰는 것이 목표가 아니라, 같은 업무 책임을 1·3·6개 Subgraph로 나눴을 때 실제 품질·비용이 어떻게 달라지는지 실험으로 선택하기 위해서다.
+
+**어떻게 평가하는가:** 안전은 Hard Gate, 업무 성공은 Business Task Success, 원인 분석은 Process, 운영성은 Cost·Latency·Reliability로 분리한다.
+
+```text
+사용자 요청 → Agent 판단/조회 → 근거/분석/계획 → Domain·Policy → 승인 → 실행 → 검증
+```
+
 ## 핵심 제품 방향
 
 - 사용자 로컬 PC에서 실행하는 단일 사용자 Google 업무 Agent
@@ -7,7 +21,7 @@
 - 운영 빌드는 React 정적 UI와 `/api/v1`을 같은 Origin에서 제공
 - REST Command·Query + Server-Sent Events 진행 전달
 - Launcher가 Local Service 시작·Health Check·브라우저 열기·종료를 조정
-- 결정적 LangGraph Supervisor + 최대 6개 전문 LLM 역할 Node Baseline + 결정적 실행·검증 Engine
+- 결정적 LangGraph Supervisor + 1/3/6 전문 Agent Subgraph Profile + 결정적 실행·검증 Engine
 - Google Work MCP Server (`stdio`)
 - SQLite Domain Store + LangGraph Checkpointer + OS Keyring
 - 원격 Backend·SaaS·외부 공개 API 없음
@@ -38,36 +52,39 @@
 
 ## 문서 버전 Manifest
 
-> **기준일:** 2026-08-07 · **공식 원본:** Notion · **이 파일:** Repository Export Snapshot
+> **기준일:** 2026-08-09 · **R8.3 Runtime E2E Canonical** · **공식 원본:** Notion · **이 파일:** Repository Export Snapshot
 
 | 문서 | 공식 버전 |
 |---|---:|
-| 00 프로젝트 개요 | v1.2 |
-| 01 PRD | v2.4 |
-| 01-A 기능 정의 | v2.3 |
-| 01-B 정책 정의 | v2.3 |
+| 00 프로젝트 개요 | v1.4 |
+| 01 PRD | v2.6 |
+| 01-A 기능 정의 | v2.5 |
+| 01-B 정책 정의 | v2.5 |
 | 02 UI·UX | v2.3 |
-| 03 시스템 아키텍처 | v2.6 |
-| 04 Domain·DB | v1.9 |
-| Domain DB Schema | v1.3 (`0001` v1.2 + `0002`) |
-| 05 Context·Retrieval | v2.1 |
-| 06 Agent·Workflow | v5.5 |
-| 07 Tool·MCP·Interface | v2.4 |
-| 08 Sequence | v2.6 |
-| 09 Security·Auth | v2.2 |
-| 10 Infrastructure | v2.4 |
-| 11 Observability | v2.4 |
-| 12 Test | v2.5 |
-| 13 Evaluation | v2.6 |
-| 14 Operations | v2.2 |
-| 15 Agent Capability·Failure·Prompt | v1.0 |
-| Domain 상태 전이 계약 | v1.3 |
-| 상태 전이 테스트 매트릭스 | v1.3 |
+| 03 시스템 아키텍처 | v2.9 |
+| 04 Domain·DB | v1.11 |
+| Domain DB Schema | v1.4 (Repository baseline v1.3 + Action `CANCELLED` Migration 필요) |
+| 05 Context·Retrieval | v2.4 |
+| 06 Agent·Workflow | v5.9 |
+| 07 Tool·MCP·Interface | v2.7 |
+| 08 Sequence | v3.0 |
+| 09 Security·Auth | v2.3 |
+| 10 Infrastructure | v2.5 |
+| 11 Observability | v2.8 |
+| 12 Test | v3.0 |
+| 13 Evaluation | v3.0 |
+| 14 Operations | v2.4 |
+| 15 Agent Capability·Failure·Prompt | v1.4 |
+| Domain 상태 전이 계약 | v1.4 |
+| 상태 전이 테스트 매트릭스 | v1.4 |
 
 ## Agent Graph 결정 원칙
 
-- 최대 6개 전문 역할 구조는 **초기 Baseline**이며 제품 불변조건이 아니다.
-- `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE`을 같은 Dataset·Model·Policy·Retrieval 조건에서 비교한다.
+- 최대 6개 전문 Agent Subgraph 구조는 **초기 Baseline**이며 제품 불변조건이 아니다.
+- `SINGLE_BASELINE(1 Agent Subgraph)`, `THREE_STAGE(3)`, `SIX_ROLE_BASELINE(6)`을 비교한다. Agent 수와 LLM Call 수는 별도 개념이며 호출·Token·Latency는 결과 지표로 기록한다.
+- Agent Subgraph는 호출 단위 Local State만 가지며 Agent별 장기 Memory는 두지 않는다.
+- E06-A는 실제 제품 후보의 1/3/6 native 구조·비용을 비교한다.
+- E06-B는 `CONTEXT_READY_V1` 이후 B1/B2/B3 post-retrieval 분해 효과만 통제 비교한다.
 - Release Graph는 E2E 품질, Tool·Argument 정확도, 비용, LLM 호출 수와 p95 Latency를 기준으로 실험 후 고정한다.
 - 안전·승인·실행·검증 Engine은 Graph 후보와 무관하게 동일한 결정적 코드와 Domain 계약을 사용한다.
 
@@ -114,13 +131,20 @@
 
 ## 문서 권위 규칙
 
+문서 번호가 뒤라고 더 높은 권위를 갖지 않는다. **충돌한 Concern을 소유한 문서가 우선**한다.
+
 ```text
-00 → 01 → 01-A → 01-B → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12 → 13 → 14
+제품 목표·범위          → 01 PRD
+사용자 기능             → 01-A
+안전·금지·승인          → 01-B
+시스템 경계             → 03
+영속 사실·상태 전이     → 04 + State Contract + SQL Constraint
+Retrieval / Workflow / Tool → 05 / 06 / 07
+관측·검증·평가          → 11 / 12 / 13
+Prompt·Failure 정규화   → 15 (상위 제품 계약을 완화하지 않음)
 ```
 
-- 하위 문서는 상위 문서를 변경하지 않고 구현값·절차·검증 방법만 구체화한다.
-- `01-A`와 `01-B`가 충돌하면 금지·승인·개인정보 정책을 가진 `01-B`가 우선한다.
-- 상위 결정을 바꿀 때는 상위 문서를 먼저 수정하고 하위 문서를 순차 갱신한다.
+세부 규칙은 `01 PRD §1.1`과 `00-PROJECT-SOURCE-GUIDE.md`를 기준으로 한다.
 
 ## 후속 실험·Prompt 산출물 경계
 
@@ -132,21 +156,30 @@ prompts/agent/
 
 평가 연결 키는 `experiment_id`, `evaluation_item_id`, `case_id`, `fixture_snapshot_id`, `user_prompt_id`, `candidate_config_hash`, `prompt_id`다. Canonical Case에서 Node·Acquisition·Retrieval·Trajectory·E2E Projection을 파생한다. Agent 하나에 Prompt 하나를 고정하지 않고 `agent_role + subgraph_name + node_name + node_state + purpose`로 Prompt를 선택한다.
 
-## r3 구현 기준 계약
+## Core Runtime 무결성 계약
 
 - 상태 변경 Command는 `command_receipts`에 영속 등록하며 Domain 변경과 같은 Transaction으로 완료한다.
 - Google OAuth Credential 원문은 MCP Credential Provider와 OS Keyring 경계를 벗어나지 않는다.
 - Google Write는 실행 Claim 후 발급되는 짧은 수명의 1회용 `claim_token`을 MCP가 재검증한다.
 - 인증 전 Endpoint는 `/health/live`, `/health/ready`, `/api/v1/session/bootstrap`, 일시적 OAuth Loopback Callback으로 제한한다.
 - 평가 연결 단위는 `experiment_id`, `evaluation_item_id`, `case_id`, `user_prompt_id`, `fixture_snapshot_id`, `candidate_config_hash`, `prompt_id`다.
-- 현행 DB 기준은 Schema v1.3(`0001_initial.sql` v1.2 baseline + `0002_action_effect_send_delete.sql`), 상태 전이 기준은 v1.3이다.
+- Repository DB baseline은 Schema v1.3(`0001_initial.sql` v1.2 + `0002_action_effect_send_delete.sql`)이며 Runtime E2E Canonical target은 Action `CANCELLED` Migration 적용 후 v1.4, 상태 전이 기준은 v1.4다.
 
 
-## 2026-08-07 구현 정합성 요약
+## 현재 구현 정합성 핵심
 
-- External I/O와 SQLite Write Transaction을 분리한다.
-- Recovery는 `RequireRecovery`·`ResolveRecovery` Domain Command를 거친다.
-- `gmail_send`, Task 완료, Calendar Event 삭제, Calendar 참석자 변경은 승인형 Write다.
-- Gmail 원문 삭제, Task 삭제, 반복 Event 전체 일괄 수정은 금지다.
-- 모호성은 요청/검색/분석 중 실제 발견된 단계에서 Clarification으로 보낸다. 후보가 있으면 후보·차이·선택지를 표시하고 같은 Run·Thread를 Resume한다.
-- 전체 Mailbox·무제한 Workspace 조회 요청은 BLOCK한다.
+- External Google/MCP/LLM I/O 동안 SQLite Write Transaction을 유지하지 않는다.
+- Recovery 상태는 Domain Command로만 변경한다.
+- SEND·Calendar DELETE·Task 완료·Attendee UPDATE는 승인형 Write다.
+- Agent는 invocation-local Subgraph이며 장기 Memory가 없다.
+- Canonical Gold는 Profile-neutral semantic milestone + ordered interaction을 사용한다.
+- Safety는 Hard Gate이며 Cost·Latency가 실패를 보상하지 않는다.
+
+세부 변경 이력은 Notion `99. 변경 이력 · 아카이브`와 Repository Full Docs의 `99-change-history-archive.md`에서만 관리한다.
+## Runtime E2E Canonical 핵심
+
+- Cancel: `CANCEL_REQUESTED` 후 신규 Claim·Write 금지, 미실행 Action `CANCELLED`, 성공 Write rollback 금지.
+- API Trust Boundary: Browser는 사용자 의도만 전달하며 request hash·approval/write authority metadata는 서버가 생성한다.
+- Insufficient Data: safety/POLICY → BLOCK, USER → confirmation, GOOGLE+budget → retrieve, Read-only budget 소진 + 근거 있음 → partial.
+- MISMATCH: Action/Verification 보존 + Run `RECOVERY_REQUIRED`; `ACCEPT_PARTIAL | CREATE_CORRECTIVE_PLAN`.
+- Delivery: `NOT_SENT | MAY_HAVE_BEEN_SENT | SENT_RESPONSE_LOST`; 미전달 확정이 아니면 UNKNOWN_RESULT.

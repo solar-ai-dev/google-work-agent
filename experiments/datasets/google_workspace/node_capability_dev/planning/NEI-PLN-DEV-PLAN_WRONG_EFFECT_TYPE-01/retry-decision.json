@@ -6,7 +6,7 @@
     "PLAN_WRONG_EFFECT_TYPE"
   ],
   "retry_kind": "SEMANTIC_REVISION",
-  "next_prompt_slot_id": "planning.revise_plan.PLAN_WRONG_EFFECT_TYPE",
+  "next_prompt_slot_id": "planning.revise_plan",
   "next_node_id": null,
   "attempt_no": 2,
   "max_attempts": 2,

@@ -13,7 +13,7 @@
   "gold": {
     "goal": "선택한 Raven Task를 완료 상태로 변경하는 계획을 만든다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

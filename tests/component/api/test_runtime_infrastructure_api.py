@@ -379,7 +379,6 @@ def test_static_settings_backup_and_safe_mode_flow(tmp_path: Path) -> None:
             "/api/v1/runs",
             json={
                 "command_id": "cmd-2",
-                "request_hash": "hash-1",
                 "conversation_id": "conversation-1",
                 "user_message_id": "message-1",
                 "run_id": "run-1",

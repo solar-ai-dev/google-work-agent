@@ -12,12 +12,8 @@
   },
   "gold": {
     "goal": "Willow 3-Action DAG를 정확히 계획한다.",
-    "completion_criteria": [
-      "Task UPDATE와 Event CREATE를 독립 준비한다.",
-      "Draft는 두 Action에 의존한다.",
-      "모든 write는 승인 후 GET 검증한다."
-    ],
-    "expected_interrupt": "APPROVAL"
+    "requested_outcome": "ACTION_PLAN",
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

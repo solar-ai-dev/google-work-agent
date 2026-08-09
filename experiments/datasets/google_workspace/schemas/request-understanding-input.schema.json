@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/RequestUnderstandingInputV1.schema.json",
+  "title": "RequestUnderstandingInputV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "user_request",
+    "entry_context",
+    "conversation_context",
+    "current_time",
+    "timezone",
+    "allowed_sources"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "user_request": {
+      "type": "string"
+    },
+    "entry_context": {
+      "type": "object"
+    },
+    "conversation_context": {
+      "type": "array"
+    },
+    "current_time": {
+      "type": "string"
+    },
+    "timezone": {
+      "type": "string"
+    },
+    "allowed_sources": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "GMAIL",
+          "TASKS",
+          "CALENDAR"
+        ]
+      }
+    }
+  }
+}

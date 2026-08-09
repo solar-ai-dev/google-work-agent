@@ -12,11 +12,8 @@
   },
   "gold": {
     "goal": "TSK-SO-202 notes UPDATE를 제안한다.",
-    "completion_criteria": [
-      "기존 Task를 정확히 UPDATE한다.",
-      "due나 다른 필드를 바꾸지 않는다."
-    ],
-    "expected_interrupt": "APPROVAL"
+    "requested_outcome": "ACTION_PLAN",
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

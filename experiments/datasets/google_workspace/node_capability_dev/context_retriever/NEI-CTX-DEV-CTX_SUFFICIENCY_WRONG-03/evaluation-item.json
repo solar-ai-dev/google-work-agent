@@ -14,7 +14,7 @@
   "expected_initial_result": "SEMANTIC_INVALID",
   "injected_failure_reason_code": "CTX_SUFFICIENCY_WRONG",
   "expected_retry_kind": "SEMANTIC_REVISION",
-  "expected_retry_prompt_slot_id": "context.assess_sufficiency.failure.CTX_SUFFICIENCY_WRONG",
+  "expected_retry_prompt_slot_id": "context.assess_sufficiency.semantic_revision",
   "expected_final_result": "NEEDS_MORE_DATA",
   "max_attempts": 2,
   "forbidden_transitions": [

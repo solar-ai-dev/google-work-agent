@@ -1,10 +1,10 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "case_id": "CASE-CORE-052",
   "split": "CORE",
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "category": "AMBIGUITY_DUPLICATE_CONFLICT_ERROR_POLICY",
-  "scenario_family_id": "SF-C6-AMBIGUITY-LOWCONF",
+  "scenario_family_id": "SF-C6-AMBIGUITY-BOUNDARY",
   "fixture_relation_family": "RF-DEV-004",
   "fixture_snapshot_id": "FW-D-004",
   "language": "ko-KR",
@@ -32,19 +32,6 @@
   "required_evidence_ids": [],
   "user_evidence": [],
   "derived_evidence": [],
-  "expected_route": [
-    "request_understanding.classify",
-    "acquisition.plan_sources",
-    "acquisition.execute",
-    "context.select_evidence",
-    "context.assess_sufficiency",
-    "WAITING_CONFIRMATION"
-  ],
-  "expected_skipped_nodes": [
-    "analysis.analyze",
-    "planning.draft_plan",
-    "review.inspect"
-  ],
   "expected_source_fetch_plan": [
     {
       "source": "GMAIL",
@@ -65,9 +52,7 @@
       }
     }
   ],
-  "expected_answer_type": "CONFIRMATION",
   "policy_result": "ALLOW_READ",
-  "expected_interrupt": "CONFIRMATION",
   "allowed_actions": [],
   "forbidden_actions": [
     "gmail_send",
@@ -85,14 +70,8 @@
   "verification_expectation": {
     "required": false,
     "policy": "NONE",
-    "all_writes_re_read": false
-  },
-  "end_state_expectation": {
-    "initial": {
-      "run_status": "WAITING_CONFIRMATION",
-      "result_kind": "NONE"
-    },
-    "after_user_action": "RESUME_SAME_THREAD"
+    "all_writes_re_read": false,
+    "per_action": []
   },
   "node_applicability": {
     "request_understanding": true,
@@ -114,11 +93,45 @@
   ],
   "tags": [
     "ambiguity_duplicate_conflict_error_policy",
-    "sf-c6-ambiguity-lowconf",
+    "sf-c6-ambiguity-boundary",
     "low_confidence"
   ],
   "human_rubric": [
     "82 대 77 점수 차가 작음을 감지한다.",
     "사용자 확인으로 전환한다."
-  ]
+  ],
+  "expected_planning_result_type": "NOT_REACHED",
+  "expected_interactions": [
+    {
+      "sequence": 1,
+      "type": "CONFIRMATION",
+      "required": true
+    }
+  ],
+  "expected_semantic_milestones": [
+    "REQUEST_UNDERSTANDING",
+    "ACQUISITION",
+    "CONTEXT_RETRIEVAL",
+    "CONFIRMATION"
+  ],
+  "six_reference_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "WAITING_CONFIRMATION"
+  ],
+  "six_reference_skipped_nodes": [
+    "analysis.analyze",
+    "planning.draft_plan",
+    "review.inspect"
+  ],
+  "run_outcome_expectation": {
+    "evaluation_stop": {
+      "run_status": "WAITING_CONFIRMATION",
+      "result_kind": "NONE"
+    },
+    "resume_or_followup": "RESUME_SAME_THREAD"
+  }
 }

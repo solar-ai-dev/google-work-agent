@@ -13,7 +13,7 @@
   "gold": {
     "goal": "세 Action의 근거와 의존성을 보존한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

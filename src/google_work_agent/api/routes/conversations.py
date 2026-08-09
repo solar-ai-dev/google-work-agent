@@ -6,6 +6,7 @@ from fastapi import APIRouter, Header, Query, Request, Response, status
 
 from google_work_agent.adapters.runtime import RuntimeOperation
 from google_work_agent.api.dependencies import (
+    calculate_server_request_hash,
     enforce_access,
     enforce_api_contract_version,
     enforce_runtime_operation,
@@ -38,9 +39,12 @@ def create_conversation(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation=RuntimeOperation.RUN_COMMANDS)
-    result = container.create_conversation_service(
-        CreateConversationCommand(**payload.model_dump())
+    command_payload = payload.model_dump()
+    command_payload["request_hash"] = calculate_server_request_hash(
+        operation="CreateConversationRequestV1",
+        payload=command_payload,
     )
+    result = container.create_conversation_service(CreateConversationCommand(**command_payload))
     response.status_code = http_status_for_result_code(
         result.result_code,
         default_success=201,

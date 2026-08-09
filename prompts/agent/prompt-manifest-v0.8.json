@@ -1,0 +1,1881 @@
+{
+  "schema_version": 2,
+  "prompt_bundle_version": "0.8.0-r8.2",
+  "prompt_semantic_bundle_version": "semantic-r8.3-v1",
+  "created_at": "2026-08-08T06:30:00Z",
+  "activation_policy": "DRAFT -> DEV_VALIDATED -> HOLDOUT_VALIDATED -> SAFETY_VALIDATED -> RUNTIME_ACTIVE",
+  "runtime_selection_key_fields": [
+    "agent_role",
+    "subgraph_name",
+    "node_name",
+    "node_state",
+    "purpose",
+    "input_schema_version",
+    "output_schema_version"
+  ],
+  "failure_reason_prompt_key": "ASSEMBLY_METADATA",
+  "assembly_model": "BASE_PLUS_FAILURE_BLOCK",
+  "slots": [
+    {
+      "slot_id": "acquisition.plan_sources",
+      "prompt_id": "acquisition.plan_sources",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "acquisition",
+      "subgraph_name": "acquisition",
+      "node_name": "plan_sources",
+      "node_state": "INITIAL",
+      "purpose": "plan_sources",
+      "input_schema": "experiments/datasets/google_workspace/schemas/request-intent.schema.json",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/acquisition-plan-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/acquisition/base.md",
+        "prompts/agent/acquisition/plan_sources.md"
+      ],
+      "content_hash": "ec0f8d5c85164c895bf2becba38831ead910e70397912cf3df605db4d82b5ba3",
+      "assembled_path": "prompts/agent/assembled-r8.3/acquisition.plan_sources.md",
+      "assembled_hash": "ec0f8d5c85164c895bf2becba38831ead910e70397912cf3df605db4d82b5ba3",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "acquisition.repair",
+      "prompt_id": "acquisition.repair",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "acquisition",
+      "subgraph_name": "acquisition",
+      "node_name": "repair",
+      "node_state": "SCHEMA_REPAIR",
+      "purpose": "repair",
+      "input_schema": "experiments/datasets/google_workspace/contracts/acquisition-repair-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/acquisition-plan-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/acquisition/base.md",
+        "prompts/agent/acquisition/repair.md"
+      ],
+      "content_hash": "9287bebe5cfa517cb4aeb2897968b66db3b67fcecc43f5dfda23eaa495d5b6f9",
+      "assembled_path": "prompts/agent/assembled-r8.3/acquisition.repair.md",
+      "assembled_hash": "9287bebe5cfa517cb4aeb2897968b66db3b67fcecc43f5dfda23eaa495d5b6f9",
+      "supported_failure_reason_codes": [
+        "SCHEMA_INVALID_JSON",
+        "SCHEMA_REQUIRED_FIELD_MISSING",
+        "SCHEMA_INVALID_ENUM",
+        "SCHEMA_WRONG_TYPE",
+        "SCHEMA_UNSUPPORTED_FIELD",
+        "SCHEMA_VERSION_MISMATCH"
+      ]
+    },
+    {
+      "slot_id": "acquisition.revise_partial",
+      "prompt_id": "acquisition.revise_partial",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "acquisition",
+      "subgraph_name": "acquisition",
+      "node_name": "revise_partial",
+      "node_state": "SEMANTIC_REVISION",
+      "purpose": "revise_partial",
+      "input_schema": "experiments/datasets/google_workspace/contracts/acquisition-revision-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/acquisition-plan-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/acquisition/base.md",
+        "prompts/agent/acquisition/revise_partial.md"
+      ],
+      "content_hash": "ac26d1a2a85475e55eb4006f13062b8f3bc8243307d287a11c7abb56ebb8950b",
+      "assembled_path": "prompts/agent/assembled-r8.3/acquisition.revise_partial.md",
+      "assembled_hash": "ac26d1a2a85475e55eb4006f13062b8f3bc8243307d287a11c7abb56ebb8950b",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "analysis.analyze",
+      "prompt_id": "analysis.analyze",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "work_analysis",
+      "subgraph_name": "work_analysis",
+      "node_name": "analyze",
+      "node_state": "INITIAL",
+      "purpose": "analyze",
+      "input_schema": "experiments/datasets/google_workspace/schemas/context-retrieval-output.schema.json",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/work-analysis-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/work_analysis/base.md",
+        "prompts/agent/work_analysis/analyze.md"
+      ],
+      "content_hash": "61acbccac35a0a3d9459fac8681b7640d21faa13fd5e913dc296c4c1b584a231",
+      "assembled_path": "prompts/agent/assembled-r8.3/analysis.analyze.md",
+      "assembled_hash": "61acbccac35a0a3d9459fac8681b7640d21faa13fd5e913dc296c4c1b584a231",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "analysis.reassess",
+      "prompt_id": "analysis.reassess",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "work_analysis",
+      "subgraph_name": "work_analysis",
+      "node_name": "reassess",
+      "node_state": "SEMANTIC_REVISION",
+      "purpose": "reassess",
+      "input_schema": "experiments/datasets/google_workspace/contracts/work-analysis-revision-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/work-analysis-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/work_analysis/base.md",
+        "prompts/agent/work_analysis/reassess.md"
+      ],
+      "content_hash": "018091dc615fd5344c0c375b44e98bd1b6b8384fa89804d2010c5b133b558f38",
+      "assembled_path": "prompts/agent/assembled-r8.3/analysis.reassess.md",
+      "assembled_hash": "018091dc615fd5344c0c375b44e98bd1b6b8384fa89804d2010c5b133b558f38",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "analysis.repair",
+      "prompt_id": "analysis.repair",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "work_analysis",
+      "subgraph_name": "work_analysis",
+      "node_name": "repair",
+      "node_state": "SCHEMA_REPAIR",
+      "purpose": "repair",
+      "input_schema": "experiments/datasets/google_workspace/contracts/work-analysis-repair-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/work-analysis-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/work_analysis/base.md",
+        "prompts/agent/work_analysis/repair.md"
+      ],
+      "content_hash": "f6e64d84786ac386979db0fa1b279b1102e092345e9e9ae1e37c35972ef84bdc",
+      "assembled_path": "prompts/agent/assembled-r8.3/analysis.repair.md",
+      "assembled_hash": "f6e64d84786ac386979db0fa1b279b1102e092345e9e9ae1e37c35972ef84bdc",
+      "supported_failure_reason_codes": [
+        "SCHEMA_INVALID_JSON",
+        "SCHEMA_REQUIRED_FIELD_MISSING",
+        "SCHEMA_INVALID_ENUM",
+        "SCHEMA_WRONG_TYPE",
+        "SCHEMA_UNSUPPORTED_FIELD",
+        "SCHEMA_VERSION_MISMATCH"
+      ]
+    },
+    {
+      "slot_id": "context.assess_sufficiency",
+      "prompt_id": "context.assess_sufficiency",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "context_retriever",
+      "subgraph_name": "context_retriever",
+      "node_name": "assess_sufficiency",
+      "node_state": "INITIAL",
+      "purpose": "assess_sufficiency",
+      "input_schema": "experiments/datasets/google_workspace/contracts/context-sufficiency-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/context-retrieval-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/context_retriever/base.md",
+        "prompts/agent/context_retriever/assess_sufficiency.md"
+      ],
+      "content_hash": "f811b276127717c53edc63f3faa03b493b6d1539b0b800ad90e37654dffbb166",
+      "assembled_path": "prompts/agent/assembled-r8.3/context.assess_sufficiency.md",
+      "assembled_hash": "f811b276127717c53edc63f3faa03b493b6d1539b0b800ad90e37654dffbb166",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "context.assess_sufficiency.semantic_revision",
+      "prompt_id": "context.assess_sufficiency.semantic_revision",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "context_retriever",
+      "subgraph_name": "context_retriever",
+      "node_name": "assess_sufficiency",
+      "node_state": "SEMANTIC_REVISION",
+      "purpose": "semantic_revision",
+      "input_schema": "experiments/datasets/google_workspace/contracts/context-sufficiency-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/context-retrieval-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/context_retriever/base.md",
+        "prompts/agent/context_retriever/revise.md"
+      ],
+      "content_hash": "60f13420d824c4925c88af054ee86fb3741d03c636f4819bb7344e231bd25f64",
+      "assembled_path": "prompts/agent/assembled-r8.3/context.assess_sufficiency.semantic_revision.md",
+      "assembled_hash": "60f13420d824c4925c88af054ee86fb3741d03c636f4819bb7344e231bd25f64",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "context.repair",
+      "prompt_id": "context.repair",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "context_retriever",
+      "subgraph_name": "context_retriever",
+      "node_name": "repair",
+      "node_state": "SCHEMA_REPAIR",
+      "purpose": "repair",
+      "input_schema": "experiments/datasets/google_workspace/contracts/context-repair-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/context-retrieval-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/context_retriever/base.md",
+        "prompts/agent/context_retriever/repair.md"
+      ],
+      "content_hash": "640d55a2acb8cb9c70f59f1222d690b3fc9c3b2137ef5f5f1f5631b832634c63",
+      "assembled_path": "prompts/agent/assembled-r8.3/context.repair.md",
+      "assembled_hash": "640d55a2acb8cb9c70f59f1222d690b3fc9c3b2137ef5f5f1f5631b832634c63",
+      "supported_failure_reason_codes": [
+        "SCHEMA_INVALID_JSON",
+        "SCHEMA_REQUIRED_FIELD_MISSING",
+        "SCHEMA_INVALID_ENUM",
+        "SCHEMA_WRONG_TYPE",
+        "SCHEMA_UNSUPPORTED_FIELD",
+        "SCHEMA_VERSION_MISMATCH"
+      ]
+    },
+    {
+      "slot_id": "context.select_evidence",
+      "prompt_id": "context.select_evidence",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "context_retriever",
+      "subgraph_name": "context_retriever",
+      "node_name": "select_evidence",
+      "node_state": "INITIAL",
+      "purpose": "select_evidence",
+      "input_schema": "experiments/datasets/google_workspace/contracts/context-retrieval-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/context-retrieval-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/context_retriever/base.md",
+        "prompts/agent/context_retriever/select_evidence.md"
+      ],
+      "content_hash": "293cd024f28eee8997232bb74ff42cb3e71d8636fc1e93b0e164769cad6d5db2",
+      "assembled_path": "prompts/agent/assembled-r8.3/context.select_evidence.md",
+      "assembled_hash": "293cd024f28eee8997232bb74ff42cb3e71d8636fc1e93b0e164769cad6d5db2",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "context.select_evidence.semantic_revision",
+      "prompt_id": "context.select_evidence.semantic_revision",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "context_retriever",
+      "subgraph_name": "context_retriever",
+      "node_name": "select_evidence",
+      "node_state": "SEMANTIC_REVISION",
+      "purpose": "semantic_revision",
+      "input_schema": "experiments/datasets/google_workspace/contracts/context-retrieval-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/context-retrieval-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/context_retriever/base.md",
+        "prompts/agent/context_retriever/revise.md"
+      ],
+      "content_hash": "60f13420d824c4925c88af054ee86fb3741d03c636f4819bb7344e231bd25f64",
+      "assembled_path": "prompts/agent/assembled-r8.3/context.select_evidence.semantic_revision.md",
+      "assembled_hash": "60f13420d824c4925c88af054ee86fb3741d03c636f4819bb7344e231bd25f64",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "e06b.b1.analysis_planning.initial",
+      "prompt_id": "e06b.b1.analysis_planning.initial",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "e06b_integrated_agent",
+      "subgraph_name": "e06b_b1",
+      "node_name": "analysis_planning",
+      "node_state": "INITIAL",
+      "purpose": "analysis_planning",
+      "input_schema": "experiments/datasets/google_workspace/schemas/context-ready-input-v1.schema.json",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/e06b-analysis-planning-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/e06b/b1_base.md",
+        "prompts/agent/r8.2/profiles/e06b/b1_integrated.md"
+      ],
+      "content_hash": "4e6f140241f74a00764e9f12576664c8df76437d4dd97bebaedf9888cd8749e5",
+      "assembled_path": "prompts/agent/assembled-r8.3/e06b.b1.analysis_planning.initial.md",
+      "assembled_hash": "4e6f140241f74a00764e9f12576664c8df76437d4dd97bebaedf9888cd8749e5",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "e06b.b1.analysis_planning.repair",
+      "prompt_id": "e06b.b1.analysis_planning.repair",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "e06b_integrated_agent",
+      "subgraph_name": "e06b_b1",
+      "node_name": "analysis_planning",
+      "node_state": "SCHEMA_REPAIR",
+      "purpose": "repair",
+      "input_schema": "experiments/datasets/google_workspace/contracts/planning-repair-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/e06b-analysis-planning-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/e06b/b1_base.md",
+        "prompts/agent/r8.2/profiles/common/schema_repair.md"
+      ],
+      "content_hash": "edaa7198ba65d238ee9e5cc0bfdbb7afab589c729edbcfbe9487e1ae053e2688",
+      "assembled_path": "prompts/agent/assembled-r8.3/e06b.b1.analysis_planning.repair.md",
+      "assembled_hash": "edaa7198ba65d238ee9e5cc0bfdbb7afab589c729edbcfbe9487e1ae053e2688",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "e06b.b1.analysis_planning.revision",
+      "prompt_id": "e06b.b1.analysis_planning.revision",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "e06b_integrated_agent",
+      "subgraph_name": "e06b_b1",
+      "node_name": "analysis_planning",
+      "node_state": "SEMANTIC_REVISION",
+      "purpose": "semantic_revision",
+      "input_schema": "experiments/datasets/google_workspace/contracts/planning-revision-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/e06b-analysis-planning-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/e06b/b1_base.md",
+        "prompts/agent/r8.2/profiles/common/semantic_revision.md"
+      ],
+      "content_hash": "3b2c36680e44fd81de432b2c30c0b8f30a7fd982b16b8defc31becb58353c63d",
+      "assembled_path": "prompts/agent/assembled-r8.3/e06b.b1.analysis_planning.revision.md",
+      "assembled_hash": "3b2c36680e44fd81de432b2c30c0b8f30a7fd982b16b8defc31becb58353c63d",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "e06b.b1.self_review.initial",
+      "prompt_id": "e06b.b1.self_review.initial",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "e06b_integrated_agent",
+      "subgraph_name": "e06b_b1",
+      "node_name": "self_review",
+      "node_state": "INITIAL",
+      "purpose": "self_review",
+      "input_schema": "experiments/datasets/google_workspace/contracts/review-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/e06b/b1_base.md",
+        "prompts/agent/r8.2/profiles/e06b/b1_self_review.md"
+      ],
+      "content_hash": "bdb391cb2a60652e7c6cb6cdcc94779456846433ae26884e8436672bdb0a1702",
+      "assembled_path": "prompts/agent/assembled-r8.3/e06b.b1.self_review.initial.md",
+      "assembled_hash": "bdb391cb2a60652e7c6cb6cdcc94779456846433ae26884e8436672bdb0a1702",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "e06b.b1.self_review.recheck",
+      "prompt_id": "e06b.b1.self_review.recheck",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "e06b_integrated_agent",
+      "subgraph_name": "e06b_b1",
+      "node_name": "self_review",
+      "node_state": "RECHECK",
+      "purpose": "recheck",
+      "input_schema": "experiments/datasets/google_workspace/contracts/review-recheck-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/e06b/b1_base.md",
+        "prompts/agent/r8.2/profiles/e06b/b1_self_review.md"
+      ],
+      "content_hash": "bdb391cb2a60652e7c6cb6cdcc94779456846433ae26884e8436672bdb0a1702",
+      "assembled_path": "prompts/agent/assembled-r8.3/e06b.b1.self_review.recheck.md",
+      "assembled_hash": "bdb391cb2a60652e7c6cb6cdcc94779456846433ae26884e8436672bdb0a1702",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "e06b.b2.analysis_planning.initial",
+      "prompt_id": "e06b.b2.analysis_planning.initial",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "e06b_analysis_planning_agent",
+      "subgraph_name": "e06b_b2",
+      "node_name": "analysis_planning",
+      "node_state": "INITIAL",
+      "purpose": "analysis_planning",
+      "input_schema": "experiments/datasets/google_workspace/schemas/context-ready-input-v1.schema.json",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/e06b-analysis-planning-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/e06b/b2_base.md",
+        "prompts/agent/r8.2/profiles/e06b/b2_analysis_planning.md"
+      ],
+      "content_hash": "7eb10ddce4be9087ac78db832a943dfa2978f8545f39745229afb2e7882ff42d",
+      "assembled_path": "prompts/agent/assembled-r8.3/e06b.b2.analysis_planning.initial.md",
+      "assembled_hash": "7eb10ddce4be9087ac78db832a943dfa2978f8545f39745229afb2e7882ff42d",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "e06b.b2.analysis_planning.repair",
+      "prompt_id": "e06b.b2.analysis_planning.repair",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "e06b_analysis_planning_agent",
+      "subgraph_name": "e06b_b2",
+      "node_name": "analysis_planning",
+      "node_state": "SCHEMA_REPAIR",
+      "purpose": "repair",
+      "input_schema": "experiments/datasets/google_workspace/contracts/planning-repair-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/e06b-analysis-planning-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/e06b/b2_base.md",
+        "prompts/agent/r8.2/profiles/common/schema_repair.md"
+      ],
+      "content_hash": "029bf83eb60ff7006ff7baa1bd1db8de91914670feeafdcc9cc43e36a4b67aeb",
+      "assembled_path": "prompts/agent/assembled-r8.3/e06b.b2.analysis_planning.repair.md",
+      "assembled_hash": "029bf83eb60ff7006ff7baa1bd1db8de91914670feeafdcc9cc43e36a4b67aeb",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "e06b.b2.analysis_planning.revision",
+      "prompt_id": "e06b.b2.analysis_planning.revision",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "e06b_analysis_planning_agent",
+      "subgraph_name": "e06b_b2",
+      "node_name": "analysis_planning",
+      "node_state": "SEMANTIC_REVISION",
+      "purpose": "semantic_revision",
+      "input_schema": "experiments/datasets/google_workspace/contracts/planning-revision-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/e06b-analysis-planning-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/e06b/b2_base.md",
+        "prompts/agent/r8.2/profiles/common/semantic_revision.md"
+      ],
+      "content_hash": "647a698ff20fce17f91ec4eea208370bd59391c6f09d1b1e0016b665fd4acaa5",
+      "assembled_path": "prompts/agent/assembled-r8.3/e06b.b2.analysis_planning.revision.md",
+      "assembled_hash": "647a698ff20fce17f91ec4eea208370bd59391c6f09d1b1e0016b665fd4acaa5",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "planning.answer_only",
+      "prompt_id": "planning.answer_only",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "planning",
+      "subgraph_name": "planning",
+      "node_name": "answer_only",
+      "node_state": "INITIAL",
+      "purpose": "answer_only",
+      "input_schema": "experiments/datasets/google_workspace/contracts/planning-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/action-plan-draft.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/answer_only.md"
+      ],
+      "content_hash": "1fe48feb99df619856c99cc936c79c32e534b3d707d6ba7c15d8bb5caa03d1cb",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.answer_only.md",
+      "assembled_hash": "1fe48feb99df619856c99cc936c79c32e534b3d707d6ba7c15d8bb5caa03d1cb",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "planning.draft_plan",
+      "prompt_id": "planning.draft_plan",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "planning",
+      "subgraph_name": "planning",
+      "node_name": "draft_plan",
+      "node_state": "INITIAL",
+      "purpose": "draft_plan",
+      "input_schema": "experiments/datasets/google_workspace/contracts/planning-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/action-plan-draft.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/draft_plan.md"
+      ],
+      "content_hash": "6944d364fff9c93679e7adaedd569747fb18c937f213e6529720dd6b1f299516",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.draft_plan.md",
+      "assembled_hash": "6944d364fff9c93679e7adaedd569747fb18c937f213e6529720dd6b1f299516",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "planning.repair",
+      "prompt_id": "planning.repair",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "planning",
+      "subgraph_name": "planning",
+      "node_name": "repair",
+      "node_state": "SCHEMA_REPAIR",
+      "purpose": "repair",
+      "input_schema": "experiments/datasets/google_workspace/contracts/planning-repair-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/action-plan-draft.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/repair.md"
+      ],
+      "content_hash": "bfaebe437955ef6ecff5c76085c5f895d2a2ef0abe03e008cb85ce69e2e4953e",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.repair.md",
+      "assembled_hash": "bfaebe437955ef6ecff5c76085c5f895d2a2ef0abe03e008cb85ce69e2e4953e",
+      "supported_failure_reason_codes": [
+        "SCHEMA_INVALID_JSON",
+        "SCHEMA_REQUIRED_FIELD_MISSING",
+        "SCHEMA_INVALID_ENUM",
+        "SCHEMA_WRONG_TYPE",
+        "SCHEMA_UNSUPPORTED_FIELD",
+        "SCHEMA_VERSION_MISMATCH"
+      ]
+    },
+    {
+      "slot_id": "planning.revise_plan",
+      "prompt_id": "planning.revise_plan",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "planning",
+      "subgraph_name": "planning",
+      "node_name": "revise_plan",
+      "node_state": "SEMANTIC_REVISION",
+      "purpose": "revise_plan",
+      "input_schema": "experiments/datasets/google_workspace/contracts/planning-revision-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/action-plan-draft.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/revise_plan.md"
+      ],
+      "content_hash": "591a396cf57831658baa4991028fc370707bc2abc2a5fc9d19e881366b623e1a",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.revise_plan.md",
+      "assembled_hash": "591a396cf57831658baa4991028fc370707bc2abc2a5fc9d19e881366b623e1a",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.single.reason_plan.initial",
+      "prompt_id": "profile.single.reason_plan.initial",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "unified_agent",
+      "subgraph_name": "single_baseline",
+      "node_name": "reason_plan",
+      "node_state": "INITIAL",
+      "purpose": "reason_plan",
+      "input_schema": "experiments/datasets/google_workspace/schemas/profile-post-read-input-v1.schema.json",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/profile-single-reason-plan-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/single/base.md",
+        "prompts/agent/r8.2/profiles/single/post_retrieval.md"
+      ],
+      "content_hash": "2611f3f164fe7a9beb97497339286110a42371af881272ac78c6d6435b30ec87",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.single.reason_plan.initial.md",
+      "assembled_hash": "2611f3f164fe7a9beb97497339286110a42371af881272ac78c6d6435b30ec87",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.single.reason_plan.repair",
+      "prompt_id": "profile.single.reason_plan.repair",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "unified_agent",
+      "subgraph_name": "single_baseline",
+      "node_name": "reason_plan",
+      "node_state": "SCHEMA_REPAIR",
+      "purpose": "repair",
+      "input_schema": "experiments/datasets/google_workspace/contracts/context-repair-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/profile-single-reason-plan-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/single/base.md",
+        "prompts/agent/r8.2/profiles/common/schema_repair.md"
+      ],
+      "content_hash": "0c07dbc57226f2844219cebc706d5498c22fc1758dea39d7f29643c6ff4f700f",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.single.reason_plan.repair.md",
+      "assembled_hash": "0c07dbc57226f2844219cebc706d5498c22fc1758dea39d7f29643c6ff4f700f",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.single.reason_plan.revision",
+      "prompt_id": "profile.single.reason_plan.revision",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "unified_agent",
+      "subgraph_name": "single_baseline",
+      "node_name": "reason_plan",
+      "node_state": "SEMANTIC_REVISION",
+      "purpose": "semantic_revision",
+      "input_schema": "experiments/datasets/google_workspace/contracts/planning-revision-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/profile-single-reason-plan-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/single/base.md",
+        "prompts/agent/r8.2/profiles/common/semantic_revision.md"
+      ],
+      "content_hash": "2f5f5f40210b62a97d5954390c0c6b1b489c4ab3621785e8001e3aa59dab2797",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.single.reason_plan.revision.md",
+      "assembled_hash": "2f5f5f40210b62a97d5954390c0c6b1b489c4ab3621785e8001e3aa59dab2797",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.single.request_source.initial",
+      "prompt_id": "profile.single.request_source.initial",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "unified_agent",
+      "subgraph_name": "single_baseline",
+      "node_name": "request_source",
+      "node_state": "INITIAL",
+      "purpose": "request_source",
+      "input_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-input-v1.schema.json",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/single/base.md",
+        "prompts/agent/r8.2/profiles/single/request_source.md"
+      ],
+      "content_hash": "92d94add55979d22b3367aa51ddb954263dc9658b70bdfd0072fbfa71ac6d34b",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.single.request_source.initial.md",
+      "assembled_hash": "92d94add55979d22b3367aa51ddb954263dc9658b70bdfd0072fbfa71ac6d34b",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.single.request_source.repair",
+      "prompt_id": "profile.single.request_source.repair",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "unified_agent",
+      "subgraph_name": "single_baseline",
+      "node_name": "request_source",
+      "node_state": "SCHEMA_REPAIR",
+      "purpose": "repair",
+      "input_schema": "experiments/datasets/google_workspace/contracts/request-understanding-repair-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/single/base.md",
+        "prompts/agent/r8.2/profiles/common/schema_repair.md"
+      ],
+      "content_hash": "0c07dbc57226f2844219cebc706d5498c22fc1758dea39d7f29643c6ff4f700f",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.single.request_source.repair.md",
+      "assembled_hash": "0c07dbc57226f2844219cebc706d5498c22fc1758dea39d7f29643c6ff4f700f",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.single.request_source.revision",
+      "prompt_id": "profile.single.request_source.revision",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "unified_agent",
+      "subgraph_name": "single_baseline",
+      "node_name": "request_source",
+      "node_state": "SEMANTIC_REVISION",
+      "purpose": "semantic_revision",
+      "input_schema": "experiments/datasets/google_workspace/contracts/acquisition-revision-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/single/base.md",
+        "prompts/agent/r8.2/profiles/common/semantic_revision.md"
+      ],
+      "content_hash": "2f5f5f40210b62a97d5954390c0c6b1b489c4ab3621785e8001e3aa59dab2797",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.single.request_source.revision.md",
+      "assembled_hash": "2f5f5f40210b62a97d5954390c0c6b1b489c4ab3621785e8001e3aa59dab2797",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.single.self_review.initial",
+      "prompt_id": "profile.single.self_review.initial",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "unified_agent",
+      "subgraph_name": "single_baseline",
+      "node_name": "self_review",
+      "node_state": "INITIAL",
+      "purpose": "self_review",
+      "input_schema": "experiments/datasets/google_workspace/contracts/review-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/single/base.md",
+        "prompts/agent/r8.2/profiles/single/self_review.md"
+      ],
+      "content_hash": "29ad89d45e4574e51dc6cd8bb6f7f938a38a2cb19922e6b5c598c0c14b3180a1",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.single.self_review.initial.md",
+      "assembled_hash": "29ad89d45e4574e51dc6cd8bb6f7f938a38a2cb19922e6b5c598c0c14b3180a1",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.single.self_review.recheck",
+      "prompt_id": "profile.single.self_review.recheck",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "unified_agent",
+      "subgraph_name": "single_baseline",
+      "node_name": "self_review",
+      "node_state": "RECHECK",
+      "purpose": "recheck",
+      "input_schema": "experiments/datasets/google_workspace/contracts/review-recheck-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/single/base.md",
+        "prompts/agent/r8.2/profiles/single/self_review.md"
+      ],
+      "content_hash": "29ad89d45e4574e51dc6cd8bb6f7f938a38a2cb19922e6b5c598c0c14b3180a1",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.single.self_review.recheck.md",
+      "assembled_hash": "29ad89d45e4574e51dc6cd8bb6f7f938a38a2cb19922e6b5c598c0c14b3180a1",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.single.self_review.repair",
+      "prompt_id": "profile.single.self_review.repair",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "unified_agent",
+      "subgraph_name": "single_baseline",
+      "node_name": "self_review",
+      "node_state": "SCHEMA_REPAIR",
+      "purpose": "repair",
+      "input_schema": "experiments/datasets/google_workspace/contracts/review-repair-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/single/base.md",
+        "prompts/agent/r8.2/profiles/common/schema_repair.md"
+      ],
+      "content_hash": "0c07dbc57226f2844219cebc706d5498c22fc1758dea39d7f29643c6ff4f700f",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.single.self_review.repair.md",
+      "assembled_hash": "0c07dbc57226f2844219cebc706d5498c22fc1758dea39d7f29643c6ff4f700f",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.three.stage1.initial",
+      "prompt_id": "profile.three.stage1.initial",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "request_source_agent",
+      "subgraph_name": "three_stage_1",
+      "node_name": "request_source",
+      "node_state": "INITIAL",
+      "purpose": "request_source",
+      "input_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-input-v1.schema.json",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/three/stage1_base.md",
+        "prompts/agent/r8.2/profiles/three/stage1_request_source.md"
+      ],
+      "content_hash": "b03d51c33e27e16b19a96fc9303dbf02860911b328e6b3015ba5ced7ed3b6f9c",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.three.stage1.initial.md",
+      "assembled_hash": "b03d51c33e27e16b19a96fc9303dbf02860911b328e6b3015ba5ced7ed3b6f9c",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.three.stage1.repair",
+      "prompt_id": "profile.three.stage1.repair",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "request_source_agent",
+      "subgraph_name": "three_stage_1",
+      "node_name": "request_source",
+      "node_state": "SCHEMA_REPAIR",
+      "purpose": "repair",
+      "input_schema": "experiments/datasets/google_workspace/contracts/request-understanding-repair-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/three/stage1_base.md",
+        "prompts/agent/r8.2/profiles/common/schema_repair.md"
+      ],
+      "content_hash": "807d221745fb6e7e0a1487c465312d1eed85a688e813d29dad9574c23bea7885",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.three.stage1.repair.md",
+      "assembled_hash": "807d221745fb6e7e0a1487c465312d1eed85a688e813d29dad9574c23bea7885",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.three.stage1.revision",
+      "prompt_id": "profile.three.stage1.revision",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "request_source_agent",
+      "subgraph_name": "three_stage_1",
+      "node_name": "request_source",
+      "node_state": "SEMANTIC_REVISION",
+      "purpose": "semantic_revision",
+      "input_schema": "experiments/datasets/google_workspace/contracts/acquisition-revision-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/profile-request-source-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/three/stage1_base.md",
+        "prompts/agent/r8.2/profiles/common/semantic_revision.md"
+      ],
+      "content_hash": "13414b0965a184385c21ee3d819ad6ad79ea43ad9b575680bc2ee9e9ec1da104",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.three.stage1.revision.md",
+      "assembled_hash": "13414b0965a184385c21ee3d819ad6ad79ea43ad9b575680bc2ee9e9ec1da104",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.three.stage2.initial",
+      "prompt_id": "profile.three.stage2.initial",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "evidence_analysis_plan_agent",
+      "subgraph_name": "three_stage_2",
+      "node_name": "evidence_analysis_plan",
+      "node_state": "INITIAL",
+      "purpose": "evidence_analysis_plan",
+      "input_schema": "experiments/datasets/google_workspace/schemas/profile-post-read-input-v1.schema.json",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/profile-three-stage2-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/three/stage2_base.md",
+        "prompts/agent/r8.2/profiles/three/stage2_evidence_analysis_plan.md"
+      ],
+      "content_hash": "9cb1c07fe7db5203c734a178ae64b9c00a431a2f37d9c4881d323216e1a781f1",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.three.stage2.initial.md",
+      "assembled_hash": "9cb1c07fe7db5203c734a178ae64b9c00a431a2f37d9c4881d323216e1a781f1",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.three.stage2.repair",
+      "prompt_id": "profile.three.stage2.repair",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "evidence_analysis_plan_agent",
+      "subgraph_name": "three_stage_2",
+      "node_name": "evidence_analysis_plan",
+      "node_state": "SCHEMA_REPAIR",
+      "purpose": "repair",
+      "input_schema": "experiments/datasets/google_workspace/contracts/context-repair-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/profile-three-stage2-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/three/stage2_base.md",
+        "prompts/agent/r8.2/profiles/common/schema_repair.md"
+      ],
+      "content_hash": "b03e1f78f37f79f2de0b7bfff13fea79cd18b32af055e3ed7835b662b7c025a8",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.three.stage2.repair.md",
+      "assembled_hash": "b03e1f78f37f79f2de0b7bfff13fea79cd18b32af055e3ed7835b662b7c025a8",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "profile.three.stage2.revision",
+      "prompt_id": "profile.three.stage2.revision",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "evidence_analysis_plan_agent",
+      "subgraph_name": "three_stage_2",
+      "node_name": "evidence_analysis_plan",
+      "node_state": "SEMANTIC_REVISION",
+      "purpose": "semantic_revision",
+      "input_schema": "experiments/datasets/google_workspace/contracts/planning-revision-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/profile-three-stage2-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/profiles/three/stage2_base.md",
+        "prompts/agent/r8.2/profiles/common/semantic_revision.md"
+      ],
+      "content_hash": "ab64faaaca72d1af476037e9866d9ea021bfd365ef0819d1af8afd063ac0c463",
+      "assembled_path": "prompts/agent/assembled-r8.3/profile.three.stage2.revision.md",
+      "assembled_hash": "ab64faaaca72d1af476037e9866d9ea021bfd365ef0819d1af8afd063ac0c463",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "request_understanding.clarify",
+      "prompt_id": "request_understanding.clarify",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "request_understanding",
+      "subgraph_name": "request_understanding",
+      "node_name": "clarify",
+      "node_state": "CLARIFY",
+      "purpose": "clarify",
+      "input_schema": "experiments/datasets/google_workspace/contracts/request-understanding-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/request-intent.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/request_understanding/base.md",
+        "prompts/agent/request_understanding/clarify.md"
+      ],
+      "content_hash": "281969a4b7df0f2745df69ce876de31c3c86535e41782c24aa0384ecb65b7d34",
+      "assembled_path": "prompts/agent/assembled-r8.3/request_understanding.clarify.md",
+      "assembled_hash": "281969a4b7df0f2745df69ce876de31c3c86535e41782c24aa0384ecb65b7d34",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "request_understanding.classify",
+      "prompt_id": "request_understanding.classify",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "request_understanding",
+      "subgraph_name": "request_understanding",
+      "node_name": "classify",
+      "node_state": "INITIAL",
+      "purpose": "classify",
+      "input_schema": "experiments/datasets/google_workspace/contracts/request-understanding-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/request-intent.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/request_understanding/base.md",
+        "prompts/agent/request_understanding/classify.md"
+      ],
+      "content_hash": "75a6b57afb1b12b89834778b76551167d072be9b953fca41fcef409277ad723a",
+      "assembled_path": "prompts/agent/assembled-r8.3/request_understanding.classify.md",
+      "assembled_hash": "75a6b57afb1b12b89834778b76551167d072be9b953fca41fcef409277ad723a",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "request_understanding.repair",
+      "prompt_id": "request_understanding.repair",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "request_understanding",
+      "subgraph_name": "request_understanding",
+      "node_name": "repair",
+      "node_state": "SCHEMA_REPAIR",
+      "purpose": "repair",
+      "input_schema": "experiments/datasets/google_workspace/contracts/request-understanding-repair-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/request-intent.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/request_understanding/base.md",
+        "prompts/agent/request_understanding/repair.md"
+      ],
+      "content_hash": "47ea727a13f046eae302c014c5ee51122425c1a18fece605aca1a8e889dd87bf",
+      "assembled_path": "prompts/agent/assembled-r8.3/request_understanding.repair.md",
+      "assembled_hash": "47ea727a13f046eae302c014c5ee51122425c1a18fece605aca1a8e889dd87bf",
+      "supported_failure_reason_codes": [
+        "SCHEMA_INVALID_JSON",
+        "SCHEMA_REQUIRED_FIELD_MISSING",
+        "SCHEMA_INVALID_ENUM",
+        "SCHEMA_WRONG_TYPE",
+        "SCHEMA_UNSUPPORTED_FIELD",
+        "SCHEMA_VERSION_MISMATCH"
+      ]
+    },
+    {
+      "slot_id": "request_understanding.revise",
+      "prompt_id": "request_understanding.revise",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "request_understanding",
+      "subgraph_name": "request_understanding",
+      "node_name": "revise",
+      "node_state": "SEMANTIC_REVISION",
+      "purpose": "semantic_revision",
+      "input_schema": "experiments/datasets/google_workspace/contracts/request-understanding-revision-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/request-intent.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/request_understanding/base.md",
+        "prompts/agent/request_understanding/revise.md"
+      ],
+      "content_hash": "37d990e78f9d93d0cb6033d7b296e7d1df00356bb909927e7e04b465593f94dd",
+      "assembled_path": "prompts/agent/assembled-r8.3/request_understanding.revise.md",
+      "assembled_hash": "37d990e78f9d93d0cb6033d7b296e7d1df00356bb909927e7e04b465593f94dd",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "review.inspect",
+      "prompt_id": "review.inspect",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "review",
+      "subgraph_name": "review",
+      "node_name": "inspect",
+      "node_state": "INITIAL",
+      "purpose": "inspect",
+      "input_schema": "experiments/datasets/google_workspace/contracts/review-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/review/base.md",
+        "prompts/agent/review/inspect.md"
+      ],
+      "content_hash": "614ed1fd8d901aaafa8c6d18dc5266165b840949011c26955222f3d430fa240f",
+      "assembled_path": "prompts/agent/assembled-r8.3/review.inspect.md",
+      "assembled_hash": "614ed1fd8d901aaafa8c6d18dc5266165b840949011c26955222f3d430fa240f",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "review.recheck",
+      "prompt_id": "review.recheck",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "review",
+      "subgraph_name": "review",
+      "node_name": "recheck",
+      "node_state": "RECHECK",
+      "purpose": "recheck",
+      "input_schema": "experiments/datasets/google_workspace/contracts/review-recheck-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/review/base.md",
+        "prompts/agent/review/recheck.md"
+      ],
+      "content_hash": "61418444c6929b76f62c3814c1b4a6d16f9ae2d05141a16c4f0254e38a79f539",
+      "assembled_path": "prompts/agent/assembled-r8.3/review.recheck.md",
+      "assembled_hash": "61418444c6929b76f62c3814c1b4a6d16f9ae2d05141a16c4f0254e38a79f539",
+      "supported_failure_reason_codes": []
+    },
+    {
+      "slot_id": "review.repair",
+      "prompt_id": "review.repair",
+      "prompt_version": "0.8.0",
+      "activation_status": "DRAFT",
+      "agent_role": "review",
+      "subgraph_name": "review",
+      "node_name": "repair",
+      "node_state": "SCHEMA_REPAIR",
+      "purpose": "repair",
+      "input_schema": "experiments/datasets/google_workspace/contracts/review-repair-input-v1",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/plan-review-output.schema.json",
+      "output_schema_version": "v1",
+      "files": [
+        "prompts/agent/r8.2/specialist/review/base.md",
+        "prompts/agent/review/repair.md"
+      ],
+      "content_hash": "ab3be6d76dd5ebdf54ea6eaad7730e6c093638f7b0a867a2c7aa64089ed8d388",
+      "assembled_path": "prompts/agent/assembled-r8.3/review.repair.md",
+      "assembled_hash": "ab3be6d76dd5ebdf54ea6eaad7730e6c093638f7b0a867a2c7aa64089ed8d388",
+      "supported_failure_reason_codes": [
+        "SCHEMA_INVALID_JSON",
+        "SCHEMA_REQUIRED_FIELD_MISSING",
+        "SCHEMA_INVALID_ENUM",
+        "SCHEMA_WRONG_TYPE",
+        "SCHEMA_UNSUPPORTED_FIELD",
+        "SCHEMA_VERSION_MISMATCH"
+      ]
+    }
+  ],
+  "assembled_variants": [
+    {
+      "variant_id": "acquisition.revise_partial::ACQ_FORBIDDEN_SOURCE_INCLUDED",
+      "base_slot_id": "acquisition.revise_partial",
+      "failure_reason_code": "ACQ_FORBIDDEN_SOURCE_INCLUDED",
+      "assembly_metadata": {
+        "failure_reason_code": "ACQ_FORBIDDEN_SOURCE_INCLUDED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/acquisition/base.md",
+        "prompts/agent/acquisition/revise_partial.md",
+        "prompts/agent/acquisition/failure-blocks/acq_forbidden_source_included.md"
+      ],
+      "content_hash": "c67572c7a7c0a5a35c65ff50fa88513bb69dea0b9fdef6312ff56d18abc03454",
+      "assembled_path": "prompts/agent/assembled-r8.3/acquisition.revise_partial.failure.ACQ_FORBIDDEN_SOURCE_INCLUDED.md",
+      "assembled_hash": "c67572c7a7c0a5a35c65ff50fa88513bb69dea0b9fdef6312ff56d18abc03454",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "acquisition.revise_partial::ACQ_NO_FETCH_MISCLASSIFIED",
+      "base_slot_id": "acquisition.revise_partial",
+      "failure_reason_code": "ACQ_NO_FETCH_MISCLASSIFIED",
+      "assembly_metadata": {
+        "failure_reason_code": "ACQ_NO_FETCH_MISCLASSIFIED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/acquisition/base.md",
+        "prompts/agent/acquisition/revise_partial.md",
+        "prompts/agent/acquisition/failure-blocks/acq_no_fetch_misclassified.md"
+      ],
+      "content_hash": "1464d01e6d61474710b6209c58eedb0033f3dd41e2ae8ae4344ed1d3facfeab1",
+      "assembled_path": "prompts/agent/assembled-r8.3/acquisition.revise_partial.failure.ACQ_NO_FETCH_MISCLASSIFIED.md",
+      "assembled_hash": "1464d01e6d61474710b6209c58eedb0033f3dd41e2ae8ae4344ed1d3facfeab1",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "acquisition.revise_partial::ACQ_REQUIRED_SOURCE_MISSING",
+      "base_slot_id": "acquisition.revise_partial",
+      "failure_reason_code": "ACQ_REQUIRED_SOURCE_MISSING",
+      "assembly_metadata": {
+        "failure_reason_code": "ACQ_REQUIRED_SOURCE_MISSING"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/acquisition/base.md",
+        "prompts/agent/acquisition/revise_partial.md",
+        "prompts/agent/acquisition/failure-blocks/acq_required_source_missing.md"
+      ],
+      "content_hash": "14f19f83b04b4431ea96b4a2958c66cf503f87cbf3e5574245e2f1320eb90ade",
+      "assembled_path": "prompts/agent/assembled-r8.3/acquisition.revise_partial.failure.ACQ_REQUIRED_SOURCE_MISSING.md",
+      "assembled_hash": "14f19f83b04b4431ea96b4a2958c66cf503f87cbf3e5574245e2f1320eb90ade",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "acquisition.revise_partial::QUERY_LOW_CONFIDENCE_RESULTS",
+      "base_slot_id": "acquisition.revise_partial",
+      "failure_reason_code": "QUERY_LOW_CONFIDENCE_RESULTS",
+      "assembly_metadata": {
+        "failure_reason_code": "QUERY_LOW_CONFIDENCE_RESULTS"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/acquisition/base.md",
+        "prompts/agent/acquisition/revise_partial.md",
+        "prompts/agent/acquisition/failure-blocks/query_low_confidence_results.md"
+      ],
+      "content_hash": "9c76e97e6705f828ef09b58693d25b2055984cc051b395b488dc6e51da01b234",
+      "assembled_path": "prompts/agent/assembled-r8.3/acquisition.revise_partial.failure.QUERY_LOW_CONFIDENCE_RESULTS.md",
+      "assembled_hash": "9c76e97e6705f828ef09b58693d25b2055984cc051b395b488dc6e51da01b234",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "acquisition.revise_partial::QUERY_NO_RESULTS",
+      "base_slot_id": "acquisition.revise_partial",
+      "failure_reason_code": "QUERY_NO_RESULTS",
+      "assembly_metadata": {
+        "failure_reason_code": "QUERY_NO_RESULTS"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/acquisition/base.md",
+        "prompts/agent/acquisition/revise_partial.md",
+        "prompts/agent/acquisition/failure-blocks/query_no_results.md"
+      ],
+      "content_hash": "fbe2604e39acdabd68ff7f57580ad7e0f6587d7af7511f41f40308b4b19113e3",
+      "assembled_path": "prompts/agent/assembled-r8.3/acquisition.revise_partial.failure.QUERY_NO_RESULTS.md",
+      "assembled_hash": "fbe2604e39acdabd68ff7f57580ad7e0f6587d7af7511f41f40308b4b19113e3",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "acquisition.revise_partial::QUERY_REPEATED_WITHOUT_CHANGE",
+      "base_slot_id": "acquisition.revise_partial",
+      "failure_reason_code": "QUERY_REPEATED_WITHOUT_CHANGE",
+      "assembly_metadata": {
+        "failure_reason_code": "QUERY_REPEATED_WITHOUT_CHANGE"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/acquisition/base.md",
+        "prompts/agent/acquisition/revise_partial.md",
+        "prompts/agent/acquisition/failure-blocks/query_repeated_without_change.md"
+      ],
+      "content_hash": "e7bff03e06ba620c6cd2f936f908d0a089be7f0d12c27431359d50d3920df07b",
+      "assembled_path": "prompts/agent/assembled-r8.3/acquisition.revise_partial.failure.QUERY_REPEATED_WITHOUT_CHANGE.md",
+      "assembled_hash": "e7bff03e06ba620c6cd2f936f908d0a089be7f0d12c27431359d50d3920df07b",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "acquisition.revise_partial::QUERY_TOO_BROAD",
+      "base_slot_id": "acquisition.revise_partial",
+      "failure_reason_code": "QUERY_TOO_BROAD",
+      "assembly_metadata": {
+        "failure_reason_code": "QUERY_TOO_BROAD"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/acquisition/base.md",
+        "prompts/agent/acquisition/revise_partial.md",
+        "prompts/agent/acquisition/failure-blocks/query_too_broad.md"
+      ],
+      "content_hash": "4a8fc9be9ae2e8512e9a33a2b5b09adc0dfb1c64b864c9b6ea9d40ddeae6572b",
+      "assembled_path": "prompts/agent/assembled-r8.3/acquisition.revise_partial.failure.QUERY_TOO_BROAD.md",
+      "assembled_hash": "4a8fc9be9ae2e8512e9a33a2b5b09adc0dfb1c64b864c9b6ea9d40ddeae6572b",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "acquisition.revise_partial::QUERY_TOO_NARROW",
+      "base_slot_id": "acquisition.revise_partial",
+      "failure_reason_code": "QUERY_TOO_NARROW",
+      "assembly_metadata": {
+        "failure_reason_code": "QUERY_TOO_NARROW"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/acquisition/base.md",
+        "prompts/agent/acquisition/revise_partial.md",
+        "prompts/agent/acquisition/failure-blocks/query_too_narrow.md"
+      ],
+      "content_hash": "e603b5fda1cae4108ec754223357013631fc0fe93233d7b0f5c4af8288f1518f",
+      "assembled_path": "prompts/agent/assembled-r8.3/acquisition.revise_partial.failure.QUERY_TOO_NARROW.md",
+      "assembled_hash": "e603b5fda1cae4108ec754223357013631fc0fe93233d7b0f5c4af8288f1518f",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "acquisition.revise_partial::QUERY_USER_CONSTRAINT_MISSING",
+      "base_slot_id": "acquisition.revise_partial",
+      "failure_reason_code": "QUERY_USER_CONSTRAINT_MISSING",
+      "assembly_metadata": {
+        "failure_reason_code": "QUERY_USER_CONSTRAINT_MISSING"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/acquisition/base.md",
+        "prompts/agent/acquisition/revise_partial.md",
+        "prompts/agent/acquisition/failure-blocks/query_user_constraint_missing.md"
+      ],
+      "content_hash": "67acdbc5735353dd79199b28ae082011c541f94df18b8c13d2100b0b43692cdd",
+      "assembled_path": "prompts/agent/assembled-r8.3/acquisition.revise_partial.failure.QUERY_USER_CONSTRAINT_MISSING.md",
+      "assembled_hash": "67acdbc5735353dd79199b28ae082011c541f94df18b8c13d2100b0b43692cdd",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "analysis.reassess::ANALYSIS_CONFLICT_MISHANDLED",
+      "base_slot_id": "analysis.reassess",
+      "failure_reason_code": "ANALYSIS_CONFLICT_MISHANDLED",
+      "assembly_metadata": {
+        "failure_reason_code": "ANALYSIS_CONFLICT_MISHANDLED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/work_analysis/base.md",
+        "prompts/agent/work_analysis/reassess.md",
+        "prompts/agent/work_analysis/failure-blocks/analysis_conflict_mishandled.md"
+      ],
+      "content_hash": "33e87c38d1d91dc07576924ad45e8bfbcaf6ea67ac2109fe3a074621fcf233d2",
+      "assembled_path": "prompts/agent/assembled-r8.3/analysis.reassess.failure.ANALYSIS_CONFLICT_MISHANDLED.md",
+      "assembled_hash": "33e87c38d1d91dc07576924ad45e8bfbcaf6ea67ac2109fe3a074621fcf233d2",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "analysis.reassess::ANALYSIS_DUPLICATE_MISCLASSIFIED",
+      "base_slot_id": "analysis.reassess",
+      "failure_reason_code": "ANALYSIS_DUPLICATE_MISCLASSIFIED",
+      "assembly_metadata": {
+        "failure_reason_code": "ANALYSIS_DUPLICATE_MISCLASSIFIED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/work_analysis/base.md",
+        "prompts/agent/work_analysis/reassess.md",
+        "prompts/agent/work_analysis/failure-blocks/analysis_duplicate_misclassified.md"
+      ],
+      "content_hash": "82ba249207c3e82ccdf39596419d79e6f3356e32c5cb2cea2c78066ec187b410",
+      "assembled_path": "prompts/agent/assembled-r8.3/analysis.reassess.failure.ANALYSIS_DUPLICATE_MISCLASSIFIED.md",
+      "assembled_hash": "82ba249207c3e82ccdf39596419d79e6f3356e32c5cb2cea2c78066ec187b410",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "analysis.reassess::ANALYSIS_NEEDS_MORE_DATA_MISSED",
+      "base_slot_id": "analysis.reassess",
+      "failure_reason_code": "ANALYSIS_NEEDS_MORE_DATA_MISSED",
+      "assembly_metadata": {
+        "failure_reason_code": "ANALYSIS_NEEDS_MORE_DATA_MISSED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/work_analysis/base.md",
+        "prompts/agent/work_analysis/reassess.md",
+        "prompts/agent/work_analysis/failure-blocks/analysis_needs_more_data_missed.md"
+      ],
+      "content_hash": "5f5353c31f315882bcc309126f007aec5f1ab596c7c2655103301657329acfc0",
+      "assembled_path": "prompts/agent/assembled-r8.3/analysis.reassess.failure.ANALYSIS_NEEDS_MORE_DATA_MISSED.md",
+      "assembled_hash": "5f5353c31f315882bcc309126f007aec5f1ab596c7c2655103301657329acfc0",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "analysis.reassess::ANALYSIS_RELATION_MISSING",
+      "base_slot_id": "analysis.reassess",
+      "failure_reason_code": "ANALYSIS_RELATION_MISSING",
+      "assembly_metadata": {
+        "failure_reason_code": "ANALYSIS_RELATION_MISSING"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/work_analysis/base.md",
+        "prompts/agent/work_analysis/reassess.md",
+        "prompts/agent/work_analysis/failure-blocks/analysis_relation_missing.md"
+      ],
+      "content_hash": "41add1f0e47705581275129b51cd0303f117bd01112b34ca6e8fef8f44900964",
+      "assembled_path": "prompts/agent/assembled-r8.3/analysis.reassess.failure.ANALYSIS_RELATION_MISSING.md",
+      "assembled_hash": "41add1f0e47705581275129b51cd0303f117bd01112b34ca6e8fef8f44900964",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "analysis.reassess::ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED",
+      "base_slot_id": "analysis.reassess",
+      "failure_reason_code": "ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED",
+      "assembly_metadata": {
+        "failure_reason_code": "ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/work_analysis/base.md",
+        "prompts/agent/work_analysis/reassess.md",
+        "prompts/agent/work_analysis/failure-blocks/analysis_schedule_risk_misclassified.md"
+      ],
+      "content_hash": "0e430249e33b255cd84128b61378ed2f5f232bd5891dbad715e57afa0823c83a",
+      "assembled_path": "prompts/agent/assembled-r8.3/analysis.reassess.failure.ANALYSIS_SCHEDULE_RISK_MISCLASSIFIED.md",
+      "assembled_hash": "0e430249e33b255cd84128b61378ed2f5f232bd5891dbad715e57afa0823c83a",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "analysis.reassess::ANALYSIS_UNSUPPORTED_INFERENCE",
+      "base_slot_id": "analysis.reassess",
+      "failure_reason_code": "ANALYSIS_UNSUPPORTED_INFERENCE",
+      "assembly_metadata": {
+        "failure_reason_code": "ANALYSIS_UNSUPPORTED_INFERENCE"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/work_analysis/base.md",
+        "prompts/agent/work_analysis/reassess.md",
+        "prompts/agent/work_analysis/failure-blocks/analysis_unsupported_inference.md"
+      ],
+      "content_hash": "0844f8ca14a86cfd2ed1825b1f0abe89e8752d7b27725663f60e58a46a688849",
+      "assembled_path": "prompts/agent/assembled-r8.3/analysis.reassess.failure.ANALYSIS_UNSUPPORTED_INFERENCE.md",
+      "assembled_hash": "0844f8ca14a86cfd2ed1825b1f0abe89e8752d7b27725663f60e58a46a688849",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "context.assess_sufficiency.failure::CTX_SUFFICIENCY_WRONG",
+      "base_slot_id": "context.assess_sufficiency.semantic_revision",
+      "failure_reason_code": "CTX_SUFFICIENCY_WRONG",
+      "assembly_metadata": {
+        "failure_reason_code": "CTX_SUFFICIENCY_WRONG"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/context_retriever/base.md",
+        "prompts/agent/context_retriever/revise.md",
+        "prompts/agent/context_retriever/failure-blocks/ctx_sufficiency_wrong.md"
+      ],
+      "content_hash": "91bdd18330e963ebc28dc0b3c70048a8b0fac4c0d6f9bcc4f56ab1976a510876",
+      "assembled_path": "prompts/agent/assembled-r8.3/context.assess_sufficiency.failure.failure.CTX_SUFFICIENCY_WRONG.md",
+      "assembled_hash": "91bdd18330e963ebc28dc0b3c70048a8b0fac4c0d6f9bcc4f56ab1976a510876",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "context.select_evidence.failure::CTX_CONFLICT_NOT_REPORTED",
+      "base_slot_id": "context.select_evidence.semantic_revision",
+      "failure_reason_code": "CTX_CONFLICT_NOT_REPORTED",
+      "assembly_metadata": {
+        "failure_reason_code": "CTX_CONFLICT_NOT_REPORTED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/context_retriever/base.md",
+        "prompts/agent/context_retriever/revise.md",
+        "prompts/agent/context_retriever/failure-blocks/ctx_conflict_not_reported.md"
+      ],
+      "content_hash": "3d13c074e00095b318c44194344f363a15a57b275b35ac5f226a544c030438be",
+      "assembled_path": "prompts/agent/assembled-r8.3/context.select_evidence.failure.failure.CTX_CONFLICT_NOT_REPORTED.md",
+      "assembled_hash": "3d13c074e00095b318c44194344f363a15a57b275b35ac5f226a544c030438be",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "context.select_evidence.failure::CTX_HARD_NEGATIVE_SELECTED",
+      "base_slot_id": "context.select_evidence.semantic_revision",
+      "failure_reason_code": "CTX_HARD_NEGATIVE_SELECTED",
+      "assembly_metadata": {
+        "failure_reason_code": "CTX_HARD_NEGATIVE_SELECTED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/context_retriever/base.md",
+        "prompts/agent/context_retriever/revise.md",
+        "prompts/agent/context_retriever/failure-blocks/ctx_hard_negative_selected.md"
+      ],
+      "content_hash": "cf090452c8fee4b4ffc4e4b2959535ad6212b9c71d6463d120272bab948b9553",
+      "assembled_path": "prompts/agent/assembled-r8.3/context.select_evidence.failure.failure.CTX_HARD_NEGATIVE_SELECTED.md",
+      "assembled_hash": "cf090452c8fee4b4ffc4e4b2959535ad6212b9c71d6463d120272bab948b9553",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "context.select_evidence.failure::CTX_LOW_CONFIDENCE_AUTO_SELECTED",
+      "base_slot_id": "context.select_evidence.semantic_revision",
+      "failure_reason_code": "CTX_LOW_CONFIDENCE_AUTO_SELECTED",
+      "assembly_metadata": {
+        "failure_reason_code": "CTX_LOW_CONFIDENCE_AUTO_SELECTED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/context_retriever/base.md",
+        "prompts/agent/context_retriever/revise.md",
+        "prompts/agent/context_retriever/failure-blocks/ctx_low_confidence_auto_selected.md"
+      ],
+      "content_hash": "9c08a7cfd8551cf55a783ccedd82e0f14a69ebba8e840c33cf7858f640541a9e",
+      "assembled_path": "prompts/agent/assembled-r8.3/context.select_evidence.failure.failure.CTX_LOW_CONFIDENCE_AUTO_SELECTED.md",
+      "assembled_hash": "9c08a7cfd8551cf55a783ccedd82e0f14a69ebba8e840c33cf7858f640541a9e",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "context.select_evidence.failure::CTX_PROMPT_INJECTION_FOLLOWED",
+      "base_slot_id": "context.select_evidence.semantic_revision",
+      "failure_reason_code": "CTX_PROMPT_INJECTION_FOLLOWED",
+      "assembly_metadata": {
+        "failure_reason_code": "CTX_PROMPT_INJECTION_FOLLOWED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/context_retriever/base.md",
+        "prompts/agent/context_retriever/revise.md",
+        "prompts/agent/context_retriever/failure-blocks/ctx_prompt_injection_followed.md"
+      ],
+      "content_hash": "ee36b194f612a76134bf414815773b8e19a8cf2255bdcf4d2f8eca42cb23f554",
+      "assembled_path": "prompts/agent/assembled-r8.3/context.select_evidence.failure.failure.CTX_PROMPT_INJECTION_FOLLOWED.md",
+      "assembled_hash": "ee36b194f612a76134bf414815773b8e19a8cf2255bdcf4d2f8eca42cb23f554",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "context.select_evidence.failure::CTX_REQUIRED_EVIDENCE_MISSING",
+      "base_slot_id": "context.select_evidence.semantic_revision",
+      "failure_reason_code": "CTX_REQUIRED_EVIDENCE_MISSING",
+      "assembly_metadata": {
+        "failure_reason_code": "CTX_REQUIRED_EVIDENCE_MISSING"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/context_retriever/base.md",
+        "prompts/agent/context_retriever/revise.md",
+        "prompts/agent/context_retriever/failure-blocks/ctx_required_evidence_missing.md"
+      ],
+      "content_hash": "199c1aa7bfe56ea1d5b312338d34d7cc53e02f94090d247f980fe0c9c9e00d26",
+      "assembled_path": "prompts/agent/assembled-r8.3/context.select_evidence.failure.failure.CTX_REQUIRED_EVIDENCE_MISSING.md",
+      "assembled_hash": "199c1aa7bfe56ea1d5b312338d34d7cc53e02f94090d247f980fe0c9c9e00d26",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "context.select_evidence.failure::CTX_STALE_EVIDENCE_SELECTED",
+      "base_slot_id": "context.select_evidence.semantic_revision",
+      "failure_reason_code": "CTX_STALE_EVIDENCE_SELECTED",
+      "assembly_metadata": {
+        "failure_reason_code": "CTX_STALE_EVIDENCE_SELECTED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/context_retriever/base.md",
+        "prompts/agent/context_retriever/revise.md",
+        "prompts/agent/context_retriever/failure-blocks/ctx_stale_evidence_selected.md"
+      ],
+      "content_hash": "45cd70240803e820276318b0e83f823e0e3466d06d5872e712ce60f568753579",
+      "assembled_path": "prompts/agent/assembled-r8.3/context.select_evidence.failure.failure.CTX_STALE_EVIDENCE_SELECTED.md",
+      "assembled_hash": "45cd70240803e820276318b0e83f823e0e3466d06d5872e712ce60f568753579",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "context.select_evidence.failure::CTX_TOKEN_BUDGET_EXCEEDED",
+      "base_slot_id": "context.select_evidence.semantic_revision",
+      "failure_reason_code": "CTX_TOKEN_BUDGET_EXCEEDED",
+      "assembly_metadata": {
+        "failure_reason_code": "CTX_TOKEN_BUDGET_EXCEEDED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/context_retriever/base.md",
+        "prompts/agent/context_retriever/revise.md",
+        "prompts/agent/context_retriever/failure-blocks/ctx_token_budget_exceeded.md"
+      ],
+      "content_hash": "0de3d1144f7a0063e827c61748ba446c5361e7bd5595befe0a61aac5d1cee8b2",
+      "assembled_path": "prompts/agent/assembled-r8.3/context.select_evidence.failure.failure.CTX_TOKEN_BUDGET_EXCEEDED.md",
+      "assembled_hash": "0de3d1144f7a0063e827c61748ba446c5361e7bd5595befe0a61aac5d1cee8b2",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "planning.revise_plan::PLAN_ANSWER_ONLY_MISROUTED",
+      "base_slot_id": "planning.revise_plan",
+      "failure_reason_code": "PLAN_ANSWER_ONLY_MISROUTED",
+      "assembly_metadata": {
+        "failure_reason_code": "PLAN_ANSWER_ONLY_MISROUTED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/revise_plan.md",
+        "prompts/agent/planning/failure-blocks/plan_answer_only_misrouted.md"
+      ],
+      "content_hash": "fffdd4f7f9fe8985d9b1d93b014663457c155a7b9b15b4e71bc885f0d544f271",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.revise_plan.failure.PLAN_ANSWER_ONLY_MISROUTED.md",
+      "assembled_hash": "fffdd4f7f9fe8985d9b1d93b014663457c155a7b9b15b4e71bc885f0d544f271",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "planning.revise_plan::PLAN_ARGUMENT_CONSTRAINT_VIOLATION",
+      "base_slot_id": "planning.revise_plan",
+      "failure_reason_code": "PLAN_ARGUMENT_CONSTRAINT_VIOLATION",
+      "assembly_metadata": {
+        "failure_reason_code": "PLAN_ARGUMENT_CONSTRAINT_VIOLATION"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/revise_plan.md",
+        "prompts/agent/planning/failure-blocks/plan_argument_constraint_violation.md"
+      ],
+      "content_hash": "2ddfa29cf6dd1cc5c1fc53003264289c5c1acb6705f8775aedf8a8dc2eac6f91",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.revise_plan.failure.PLAN_ARGUMENT_CONSTRAINT_VIOLATION.md",
+      "assembled_hash": "2ddfa29cf6dd1cc5c1fc53003264289c5c1acb6705f8775aedf8a8dc2eac6f91",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "planning.revise_plan::PLAN_DEPENDENCY_INVALID",
+      "base_slot_id": "planning.revise_plan",
+      "failure_reason_code": "PLAN_DEPENDENCY_INVALID",
+      "assembly_metadata": {
+        "failure_reason_code": "PLAN_DEPENDENCY_INVALID"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/revise_plan.md",
+        "prompts/agent/planning/failure-blocks/plan_dependency_invalid.md"
+      ],
+      "content_hash": "a795f688dd31c8e97d52a7df51dffeb6993fb19f957ded51c6e5728bd37a2e50",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.revise_plan.failure.PLAN_DEPENDENCY_INVALID.md",
+      "assembled_hash": "a795f688dd31c8e97d52a7df51dffeb6993fb19f957ded51c6e5728bd37a2e50",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "planning.revise_plan::PLAN_EXCESS_ACTION",
+      "base_slot_id": "planning.revise_plan",
+      "failure_reason_code": "PLAN_EXCESS_ACTION",
+      "assembly_metadata": {
+        "failure_reason_code": "PLAN_EXCESS_ACTION"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/revise_plan.md",
+        "prompts/agent/planning/failure-blocks/plan_excess_action.md"
+      ],
+      "content_hash": "ca6ebe616115e10efd5bd527b327cec647ff9209ced221383ffd0965f91cb3f5",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.revise_plan.failure.PLAN_EXCESS_ACTION.md",
+      "assembled_hash": "ca6ebe616115e10efd5bd527b327cec647ff9209ced221383ffd0965f91cb3f5",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "planning.revise_plan::PLAN_POLICY_RISK",
+      "base_slot_id": "planning.revise_plan",
+      "failure_reason_code": "PLAN_POLICY_RISK",
+      "assembly_metadata": {
+        "failure_reason_code": "PLAN_POLICY_RISK"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/revise_plan.md",
+        "prompts/agent/planning/failure-blocks/plan_policy_risk.md"
+      ],
+      "content_hash": "18c114904bf524123cffca25a1cd6517252875f974e120b762f9548aeed22302",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.revise_plan.failure.PLAN_POLICY_RISK.md",
+      "assembled_hash": "18c114904bf524123cffca25a1cd6517252875f974e120b762f9548aeed22302",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "planning.revise_plan::PLAN_REQUIRED_ACTION_MISSING",
+      "base_slot_id": "planning.revise_plan",
+      "failure_reason_code": "PLAN_REQUIRED_ACTION_MISSING",
+      "assembly_metadata": {
+        "failure_reason_code": "PLAN_REQUIRED_ACTION_MISSING"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/revise_plan.md",
+        "prompts/agent/planning/failure-blocks/plan_required_action_missing.md"
+      ],
+      "content_hash": "9ff35389bdb198098ab3bf057d798d9ae9ad240e6d6f7636709f9e8faa31bfcd",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.revise_plan.failure.PLAN_REQUIRED_ACTION_MISSING.md",
+      "assembled_hash": "9ff35389bdb198098ab3bf057d798d9ae9ad240e6d6f7636709f9e8faa31bfcd",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "planning.revise_plan::PLAN_REQUIRED_EVIDENCE_MISSING",
+      "base_slot_id": "planning.revise_plan",
+      "failure_reason_code": "PLAN_REQUIRED_EVIDENCE_MISSING",
+      "assembly_metadata": {
+        "failure_reason_code": "PLAN_REQUIRED_EVIDENCE_MISSING"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/revise_plan.md",
+        "prompts/agent/planning/failure-blocks/plan_required_evidence_missing.md"
+      ],
+      "content_hash": "dc25aa4213d3b1c8c6fadd17b0428c4746fca4477be3048ff5dc06952ed4f4c7",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.revise_plan.failure.PLAN_REQUIRED_EVIDENCE_MISSING.md",
+      "assembled_hash": "dc25aa4213d3b1c8c6fadd17b0428c4746fca4477be3048ff5dc06952ed4f4c7",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "planning.revise_plan::PLAN_USER_SCOPE_VIOLATION",
+      "base_slot_id": "planning.revise_plan",
+      "failure_reason_code": "PLAN_USER_SCOPE_VIOLATION",
+      "assembly_metadata": {
+        "failure_reason_code": "PLAN_USER_SCOPE_VIOLATION"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/revise_plan.md",
+        "prompts/agent/planning/failure-blocks/plan_user_scope_violation.md"
+      ],
+      "content_hash": "5f4c52b7b86c42d115f5714efd719c0ee40b253e9cb3e2674b101bb7b14420f7",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.revise_plan.failure.PLAN_USER_SCOPE_VIOLATION.md",
+      "assembled_hash": "5f4c52b7b86c42d115f5714efd719c0ee40b253e9cb3e2674b101bb7b14420f7",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "planning.revise_plan::PLAN_WRONG_EFFECT_TYPE",
+      "base_slot_id": "planning.revise_plan",
+      "failure_reason_code": "PLAN_WRONG_EFFECT_TYPE",
+      "assembly_metadata": {
+        "failure_reason_code": "PLAN_WRONG_EFFECT_TYPE"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/revise_plan.md",
+        "prompts/agent/planning/failure-blocks/plan_wrong_effect_type.md"
+      ],
+      "content_hash": "3618740bdbd7e3f24718bd77f52ca7bb2d275dd1ef96899e596e8bdb03ac268b",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.revise_plan.failure.PLAN_WRONG_EFFECT_TYPE.md",
+      "assembled_hash": "3618740bdbd7e3f24718bd77f52ca7bb2d275dd1ef96899e596e8bdb03ac268b",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "planning.revise_plan::PLAN_WRONG_TARGET",
+      "base_slot_id": "planning.revise_plan",
+      "failure_reason_code": "PLAN_WRONG_TARGET",
+      "assembly_metadata": {
+        "failure_reason_code": "PLAN_WRONG_TARGET"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/revise_plan.md",
+        "prompts/agent/planning/failure-blocks/plan_wrong_target.md"
+      ],
+      "content_hash": "8c4ff8ba4cc890b0e2240afa2750fa57acff7ab3f3b59ec51b1f4cbce4dc0307",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.revise_plan.failure.PLAN_WRONG_TARGET.md",
+      "assembled_hash": "8c4ff8ba4cc890b0e2240afa2750fa57acff7ab3f3b59ec51b1f4cbce4dc0307",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "planning.revise_plan::PLAN_WRONG_TOOL",
+      "base_slot_id": "planning.revise_plan",
+      "failure_reason_code": "PLAN_WRONG_TOOL",
+      "assembly_metadata": {
+        "failure_reason_code": "PLAN_WRONG_TOOL"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/planning/base.md",
+        "prompts/agent/planning/revise_plan.md",
+        "prompts/agent/planning/failure-blocks/plan_wrong_tool.md"
+      ],
+      "content_hash": "b47451be993aa9b3d81094a06e4cf3e9eec895bee754d901cecc568cb108bb6e",
+      "assembled_path": "prompts/agent/assembled-r8.3/planning.revise_plan.failure.PLAN_WRONG_TOOL.md",
+      "assembled_hash": "b47451be993aa9b3d81094a06e4cf3e9eec895bee754d901cecc568cb108bb6e",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "request_understanding.revise::INTENT_AMBIGUITY_MISSED",
+      "base_slot_id": "request_understanding.revise",
+      "failure_reason_code": "INTENT_AMBIGUITY_MISSED",
+      "assembly_metadata": {
+        "failure_reason_code": "INTENT_AMBIGUITY_MISSED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/request_understanding/base.md",
+        "prompts/agent/request_understanding/revise.md",
+        "prompts/agent/request_understanding/failure-blocks/intent_ambiguity_missed.md"
+      ],
+      "content_hash": "39499249a732a113ea40028bf768e24cc2e46532994b757bc090e66e39821de3",
+      "assembled_path": "prompts/agent/assembled-r8.3/request_understanding.revise.failure.INTENT_AMBIGUITY_MISSED.md",
+      "assembled_hash": "39499249a732a113ea40028bf768e24cc2e46532994b757bc090e66e39821de3",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "request_understanding.revise::INTENT_COMPLETION_CRITERIA_MISSING",
+      "base_slot_id": "request_understanding.revise",
+      "failure_reason_code": "INTENT_COMPLETION_CRITERIA_MISSING",
+      "assembly_metadata": {
+        "failure_reason_code": "INTENT_COMPLETION_CRITERIA_MISSING"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/request_understanding/base.md",
+        "prompts/agent/request_understanding/revise.md",
+        "prompts/agent/request_understanding/failure-blocks/intent_completion_criteria_missing.md"
+      ],
+      "content_hash": "c4316ff5c46f6dc95a7ac23d3dbab610ebe16472d7a5d23cbd5a8bb4484468b5",
+      "assembled_path": "prompts/agent/assembled-r8.3/request_understanding.revise.failure.INTENT_COMPLETION_CRITERIA_MISSING.md",
+      "assembled_hash": "c4316ff5c46f6dc95a7ac23d3dbab610ebe16472d7a5d23cbd5a8bb4484468b5",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "request_understanding.revise::INTENT_CONSTRAINT_MISSING",
+      "base_slot_id": "request_understanding.revise",
+      "failure_reason_code": "INTENT_CONSTRAINT_MISSING",
+      "assembly_metadata": {
+        "failure_reason_code": "INTENT_CONSTRAINT_MISSING"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/request_understanding/base.md",
+        "prompts/agent/request_understanding/revise.md",
+        "prompts/agent/request_understanding/failure-blocks/intent_constraint_missing.md"
+      ],
+      "content_hash": "e6e1dc8b77f184563feda46759107046e833c3a1abaaf56098d93910b761aeda",
+      "assembled_path": "prompts/agent/assembled-r8.3/request_understanding.revise.failure.INTENT_CONSTRAINT_MISSING.md",
+      "assembled_hash": "e6e1dc8b77f184563feda46759107046e833c3a1abaaf56098d93910b761aeda",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "request_understanding.revise::INTENT_ENTRY_MODE_WRONG",
+      "base_slot_id": "request_understanding.revise",
+      "failure_reason_code": "INTENT_ENTRY_MODE_WRONG",
+      "assembly_metadata": {
+        "failure_reason_code": "INTENT_ENTRY_MODE_WRONG"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/request_understanding/base.md",
+        "prompts/agent/request_understanding/revise.md",
+        "prompts/agent/request_understanding/failure-blocks/intent_entry_mode_wrong.md"
+      ],
+      "content_hash": "e9676be3c02ee7ab619f5e6238ae98522651acc4df64acb83d7122b90f3f57ec",
+      "assembled_path": "prompts/agent/assembled-r8.3/request_understanding.revise.failure.INTENT_ENTRY_MODE_WRONG.md",
+      "assembled_hash": "e9676be3c02ee7ab619f5e6238ae98522651acc4df64acb83d7122b90f3f57ec",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "request_understanding.revise::INTENT_GOAL_MISSING",
+      "base_slot_id": "request_understanding.revise",
+      "failure_reason_code": "INTENT_GOAL_MISSING",
+      "assembly_metadata": {
+        "failure_reason_code": "INTENT_GOAL_MISSING"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/request_understanding/base.md",
+        "prompts/agent/request_understanding/revise.md",
+        "prompts/agent/request_understanding/failure-blocks/intent_goal_missing.md"
+      ],
+      "content_hash": "b8637ec0531526ed102a556374310291b3f908e7591d0c34b87cd7e6dc4084be",
+      "assembled_path": "prompts/agent/assembled-r8.3/request_understanding.revise.failure.INTENT_GOAL_MISSING.md",
+      "assembled_hash": "b8637ec0531526ed102a556374310291b3f908e7591d0c34b87cd7e6dc4084be",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "request_understanding.revise::INTENT_OVER_CONFIRMATION",
+      "base_slot_id": "request_understanding.revise",
+      "failure_reason_code": "INTENT_OVER_CONFIRMATION",
+      "assembly_metadata": {
+        "failure_reason_code": "INTENT_OVER_CONFIRMATION"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/request_understanding/base.md",
+        "prompts/agent/request_understanding/revise.md",
+        "prompts/agent/request_understanding/failure-blocks/intent_over_confirmation.md"
+      ],
+      "content_hash": "8c6dadfa0814a4ebdd1e0b1ccff4c216fcf752545beb4a69fdf0dcc350634279",
+      "assembled_path": "prompts/agent/assembled-r8.3/request_understanding.revise.failure.INTENT_OVER_CONFIRMATION.md",
+      "assembled_hash": "8c6dadfa0814a4ebdd1e0b1ccff4c216fcf752545beb4a69fdf0dcc350634279",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "request_understanding.revise::INTENT_UNSUPPORTED_SCOPE",
+      "base_slot_id": "request_understanding.revise",
+      "failure_reason_code": "INTENT_UNSUPPORTED_SCOPE",
+      "assembly_metadata": {
+        "failure_reason_code": "INTENT_UNSUPPORTED_SCOPE"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/request_understanding/base.md",
+        "prompts/agent/request_understanding/revise.md",
+        "prompts/agent/request_understanding/failure-blocks/intent_unsupported_scope.md"
+      ],
+      "content_hash": "af6702e9c894e0ca46ac84ad2792bf9ea498089bc013b36773bd8ed2c19a7981",
+      "assembled_path": "prompts/agent/assembled-r8.3/request_understanding.revise.failure.INTENT_UNSUPPORTED_SCOPE.md",
+      "assembled_hash": "af6702e9c894e0ca46ac84ad2792bf9ea498089bc013b36773bd8ed2c19a7981",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "review.recheck::REVIEW_ERROR_NOT_LOCALIZED",
+      "base_slot_id": "review.recheck",
+      "failure_reason_code": "REVIEW_ERROR_NOT_LOCALIZED",
+      "assembly_metadata": {
+        "failure_reason_code": "REVIEW_ERROR_NOT_LOCALIZED"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/review/base.md",
+        "prompts/agent/review/recheck.md",
+        "prompts/agent/review/failure-blocks/review_error_not_localized.md"
+      ],
+      "content_hash": "d1e64967648ba6bf3d2dfbc60b3e36de2d0eeaca1e76ca5d6aecc5d45dadeb99",
+      "assembled_path": "prompts/agent/assembled-r8.3/review.recheck.failure.REVIEW_ERROR_NOT_LOCALIZED.md",
+      "assembled_hash": "d1e64967648ba6bf3d2dfbc60b3e36de2d0eeaca1e76ca5d6aecc5d45dadeb99",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "review.recheck::REVIEW_FALSE_BLOCK",
+      "base_slot_id": "review.recheck",
+      "failure_reason_code": "REVIEW_FALSE_BLOCK",
+      "assembly_metadata": {
+        "failure_reason_code": "REVIEW_FALSE_BLOCK"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/review/base.md",
+        "prompts/agent/review/recheck.md",
+        "prompts/agent/review/failure-blocks/review_false_block.md"
+      ],
+      "content_hash": "f36c8acbe37f22fb25577d3cb812e61bee24a78261e8f834625f6ed21838ae76",
+      "assembled_path": "prompts/agent/assembled-r8.3/review.recheck.failure.REVIEW_FALSE_BLOCK.md",
+      "assembled_hash": "f36c8acbe37f22fb25577d3cb812e61bee24a78261e8f834625f6ed21838ae76",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "review.recheck::REVIEW_FALSE_PASS",
+      "base_slot_id": "review.recheck",
+      "failure_reason_code": "REVIEW_FALSE_PASS",
+      "assembly_metadata": {
+        "failure_reason_code": "REVIEW_FALSE_PASS"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/review/base.md",
+        "prompts/agent/review/recheck.md",
+        "prompts/agent/review/failure-blocks/review_false_pass.md"
+      ],
+      "content_hash": "713bba703123b09544d1be5a47446ca52c4e6530500ef138e83099d292f4d25d",
+      "assembled_path": "prompts/agent/assembled-r8.3/review.recheck.failure.REVIEW_FALSE_PASS.md",
+      "assembled_hash": "713bba703123b09544d1be5a47446ca52c4e6530500ef138e83099d292f4d25d",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "review.recheck::REVIEW_REPEATED_SAME_FAILURE",
+      "base_slot_id": "review.recheck",
+      "failure_reason_code": "REVIEW_REPEATED_SAME_FAILURE",
+      "assembly_metadata": {
+        "failure_reason_code": "REVIEW_REPEATED_SAME_FAILURE"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/review/base.md",
+        "prompts/agent/review/recheck.md",
+        "prompts/agent/review/failure-blocks/review_repeated_same_failure.md"
+      ],
+      "content_hash": "ea22afbbfda139ecda01ceecb5ddcfadbb1d051b11107a793df78ec083c6972a",
+      "assembled_path": "prompts/agent/assembled-r8.3/review.recheck.failure.REVIEW_REPEATED_SAME_FAILURE.md",
+      "assembled_hash": "ea22afbbfda139ecda01ceecb5ddcfadbb1d051b11107a793df78ec083c6972a",
+      "activation_status": "DRAFT"
+    },
+    {
+      "variant_id": "review.recheck::REVIEW_WRONG_ROUTE",
+      "base_slot_id": "review.recheck",
+      "failure_reason_code": "REVIEW_WRONG_ROUTE",
+      "assembly_metadata": {
+        "failure_reason_code": "REVIEW_WRONG_ROUTE"
+      },
+      "files": [
+        "prompts/agent/r8.2/specialist/review/base.md",
+        "prompts/agent/review/recheck.md",
+        "prompts/agent/review/failure-blocks/review_wrong_route.md"
+      ],
+      "content_hash": "a7ffa2345760b78ce3eff2617166ed92d6047450ce29471677d106cf717689fc",
+      "assembled_path": "prompts/agent/assembled-r8.3/review.recheck.failure.REVIEW_WRONG_ROUTE.md",
+      "assembled_hash": "a7ffa2345760b78ce3eff2617166ed92d6047450ce29471677d106cf717689fc",
+      "activation_status": "DRAFT"
+    }
+  ]
+}

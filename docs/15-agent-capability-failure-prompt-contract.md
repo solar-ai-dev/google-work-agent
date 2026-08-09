@@ -1,10 +1,18 @@
 # Google Work Agent · Agent Capability · Failure · Prompt 공통 계약
 
-> **상태:** Approved v1.0 · 사용자 결정 반영 · 내부 정합성 검수 PASS  
-> **기준일:** 2026-08-07  
+> **상태:** Approved v1.4 · R8.3 Gold·Scoring·Prompt Isolation 검수 PASS  
+> **기준일:** 2026-08-08  
 > **대상:** P0 Agent 개별실험, Prompt·Repair·Revision 실험, E2E 통합실험  
 > **적용 범위:** 요청 이해, API 탐색·수집, Context Retrieval, 업무 분석, 해결책·계획, 계획 검토  
 > **비적용 범위:** 승인, Claim, Google Write, GET Verification, UNKNOWN_RESULT 복구, Domain 상태 전이의 최종 판정
+
+## 먼저 읽기 — Prompt가 알아도 되는 것
+
+- Product Prompt는 **사용자 요청, 허용된 Context, Policy Summary, Failure Record 같은 선언된 Runtime 입력만** 본다.
+- `gold`, `grader`, `expected_route`, benchmark score는 Product Prompt 입력이 아니다.
+- Failure-specific Prompt는 별도 전체 Prompt가 아니라 **Base Slot + Failure Instruction Block**으로 조립한다.
+- E06-B의 모델 입력과 Gold는 파일 수준에서도 분리한다.
+- 현재 정적 검수 기준 Prompt Bundle은 `0.8.2-r8.3`이며 모든 신규 Slot은 `DRAFT`다. Node DEV/HOLDOUT·Safety Gate 전에는 Runtime 활성화하지 않는다.
 
 ## 0. 문서 목적
 
@@ -29,6 +37,7 @@
 - 실제 Query·Page Token·Tool Arguments는 결정적 코드가 검증·생성한다.
 - Prompt는 Agent별 단일 문자열이 아니라 Node·상태·목적별 `PromptRef`로 선택한다.
 - Prompt·Completion 원문은 Graph State·일반 Trace·Audit에 저장하지 않는다.
+- Product Runtime Prompt 문구는 `grader`, `gold`, `expected_route`, 평가 점수에 의존하지 않는다. 실험 Grader가 발견한 오류도 Runtime과 동일한 `failure_record` 형태로 투영한 뒤 Prompt에 전달한다.
 - Structured Output Schema Repair는 Node Call당 최대 1회다.
 - 최초 수집 이후 Additional Acquisition은 최대 2회다.
 - Planning Revision은 Run당 최대 2회다.
@@ -38,9 +47,10 @@
 ### 1.2 충돌 우선순위
 
 ```text
-PRD·정책
-→ Domain 상태 전이·DB Constraint
-→ Tool Registry·Interface
+01 PRD·01-B 정책
+→ 03 Architecture 경계
+→ 04 Domain 상태 전이·DB Constraint
+→ 07 Tool Registry·Interface
 → 05 Context·Retrieval·06 Agent·Workflow 제품 계약
 → 본 공통 Capability·Failure·Prompt 계약
 → 11 Observability·12 Test·13 Evaluation
@@ -51,12 +61,35 @@ PRD·정책
 
 ---
 
+## 1.2 Agent Subgraph 공통 계약
+
+본 문서에서 **Agent**는 단순 Prompt 호출이나 Python 객체 수가 아니라, Main Supervisor가 호출하는 LangGraph Subgraph를 뜻한다.
+
+필수 속성:
+- 안정적인 `agent_role` 책임 계약
+- Parent State에서 필요한 입력만 받는 Input Projection
+- invocation 범위 `AgentLocalState`
+- PromptRef 기반 LLM Node
+- 역할상 필요한 결정적 Validation·Read Application Node
+- Schema Validation과 허용된 bounded Repair/Revision
+- Versioned Typed Result + disposition 반환
+- Agent→Agent 직접 호출 금지
+- 장기 Memory 금지
+
+Prompt Slot 수, PromptRef 수, LLM Call 수는 Agent 수와 독립적이다. 같은 Agent 안의 `INITIAL`, `CLARIFY`, `SCHEMA_REPAIR`, `SEMANTIC_REVISION`, `RECHECK`는 하나의 책임 계약을 보조하는 Prompt variant다.
+
+`AgentLocalState`는 candidate output, attempt, failure record, local disposition을 보존할 수 있으나 invocation 종료 후 다른 Agent 호출로 자동 승계하지 않는다. 제품의 장기 사실과 승인·실행·검증은 기존 Main Graph State와 Domain Store 계약을 따른다.
+
+Acquisition처럼 외부 READ가 필요한 Agent는 Subgraph invocation을 유지한 채 내부 결정적 Application Node가 Query Builder·MCP Read Port를 호출할 수 있다. LLM Node는 Source 전략만 제안하고 Raw Query·MCP Arguments를 직접 실행하지 않는다.
+
+Graph Profile 간 semantic responsibility parity를 유지한다. 특히 `SINGLE_BASELINE`은 별도 Review Agent를 두지 않더라도 Unified Agent 내부 `self_review` 단계로 계획 품질 점검 책임을 수행한다.
+
 ## 2. Agent Registry
 
 | Agent Role | 주 책임 | 주요 입력 | 주요 출력 | 금지 |
 |---|---|---|---|---|
 | `request_understanding` | 목표·완료 조건·제약·모호성 구조화 | 사용자 요청, Entry Mode, 선택 Resource | `RequestIntent` | Google 조회, Action 생성 |
-| `acquisition` | 필요한 Source·순서·Budget·조회 전략 제안 | `RequestIntent`, Entry Mode, Retrieval Budget | `SourceFetchPlan[]` | 검증 없는 Query 실행, Write |
+| `acquisition` | 필요한 Source·순서·Budget 제안 + 결정적 Read 실행 조정 | `RequestIntent`, Entry Mode, Retrieval Budget | `SourceFetchPlan[]`, `AcquisitionResult` | LLM의 검증 없는 Query 실행, Write |
 | `context_retriever` | Segment·Evidence 선택, 충분성 판정 | 수집 Resource Handle, 사용자 목표 | `ContextRetrievalResult` | MCP·Google API 직접 호출 |
 | `work_analysis` | 관계·누락·중복·충돌·일정 위험 분석 | `ContextBundle`, Evidence | `WorkAnalysisResult` | 정책 최종 판정, 실행 |
 | `planning` | Answer-only 또는 Action DAG 초안 | Intent, Evidence, Analysis | `ActionPlanDraft` 또는 Answer | 승인, 실행, Tool 직접 호출 |
@@ -153,9 +186,7 @@ run_status: COMPLETED
 result_kind: PARTIAL
 ```
 
-Terminal Run Status는 `COMPLETED`, `CANCELLED`, `FAILED`, `BLOCKED`다.
-`REAUTH_REQUIRED`와 `RECOVERY_REQUIRED`는 non-terminal 상태로 유지한다.
-장애로 종료되면 terminal status 또는 non-terminal recovery status와 함께 기록한다.
+장애로 종료되면 `FAILED` 또는 `RECOVERY_REQUIRED`와 함께 기록한다.
 
 ---
 
@@ -369,11 +400,7 @@ ABSOLUTE_MAX_LLM_CALLS=16
 - `RETRIEVAL_HEAVY`는 `NEEDS_MORE_DATA` 또는 Additional Acquisition이 실제 발생한 경우에만 선택한다.
 - `REVISION_HEAVY`는 Review가 `REVISE`를 반환하고 Domain·Policy가 Revision을 허용한 경우에만 선택한다.
 - Profile 승격은 Supervisor의 결정적 규칙으로 수행한다.
-- Profile downgrade는 허용하지 않는다.
-- Revision과 Retrieval이 모두 발생하면 `RETRIEVAL_HEAVY`를 유지한다.
-- `ABSOLUTE`는 selectable profile이 아니다.
 - `ABSOLUTE_MAX_LLM_CALLS`를 넘으면 Prompt를 더 호출하지 않는다.
-- `llm_calls_used`는 actual provider prompt invocation 기준으로 집계한다.
 
 ### 8.3 Budget 소진 처리
 
@@ -389,7 +416,7 @@ run_status: WAITING_CONFIRMATION | BLOCKED | FAILED | RECOVERY_REQUIRED
 
 ## 9. Prompt Registry Contract
 
-### 9.1 Prompt 선택 Key
+### 9.1 Prompt Runtime Slot 선택 Key
 
 ```text
 agent_role
@@ -397,12 +424,11 @@ subgraph_name
 node_name
 node_state
 purpose
-failure_reason_code?
 input_schema_version
 output_schema_version
 ```
 
-`failure_reason_code`는 Prompt 선택 Key에 직접 포함한다.
+`failure_reason_code`는 Runtime Prompt Slot 식별 Key가 아니다. 이미 선택된 Base Prompt에 결합할 Failure-specific Instruction Block을 선택하는 metadata다. 조립 완료 후 최종 Prompt의 `content_hash`를 계산한다.
 
 ### 9.2 PromptRef
 
@@ -418,7 +444,7 @@ prompt_ref:
   node_name: string
   node_state: string
   purpose: string
-  failure_reason_code: string | null
+  failure_reason_code: string | null  # assembly/trace metadata; not Runtime Slot Key
   input_schema_version: integer
   output_schema_version: integer
   activation_status: DRAFT | DEV_VALIDATED | HOLDOUT_VALIDATED | RUNTIME_ACTIVE | RETIRED
@@ -742,8 +768,7 @@ Revision 후 Recheck
 - Answer-only, READ-only, WRITE 경로가 존재한다.
 - Additional Acquisition 0·1·2회가 존재한다.
 - Confirmation·Approval·Reauth·Recovery Interrupt가 존재한다.
-- Terminal Run Status `COMPLETED`, `BLOCKED`, `FAILED`, `CANCELLED`가 존재한다.
-- Non-terminal Run Status `REAUTH_REQUIRED`, `RECOVERY_REQUIRED`가 존재한다.
+- `COMPLETED`, `BLOCKED`, `FAILED`, `CANCELLED`, `RECOVERY_REQUIRED`가 존재한다.
 - `PARTIAL` 결과 종류가 정상·장애 상태와 올바르게 조합된다.
 - Review의 PASS·REVISE·RETRIEVE_MORE·CONFIRM·BLOCK 경로가 존재한다.
 - LLM Prompt 경로와 결정적 Recovery 경로가 혼동되지 않는다.
@@ -830,6 +855,14 @@ LLM Judge는 보조 지표로만 사용한다.
 
 ---
 
+
+## 18.3 Prompt와 Evaluator 격리
+
+- Prompt 입력은 선언된 Input Schema만 사용한다. Gold·grader result·score field를 모델 입력에 넣지 않는다.
+- `failure_reason_code`는 Base Prompt Slot 선택 Key가 아니라 Failure Block 조립 metadata다.
+- Experiment-only feedback은 `failure_record`로 정규화하며 Product Prompt 문구에 “grader가 틀렸다고 했다” 같은 표현을 넣지 않는다.
+- E06-B는 model input과 grader Gold를 물리적으로 분리한다.
+
 ## 19. Trace·Artifact Contract
 
 Trace 추가 필드:
@@ -894,26 +927,11 @@ review_recheck_per_revision_max: 1
 additional_acquisition_max: 2
 confidence_bands: [HIGH, MEDIUM, LOW, NONE]
 threshold_owner: RETRIEVAL_CONFIG
-failure_reason_prompt_key: DIRECT
+failure_reason_prompt_key: ASSEMBLY_METADATA
 prompt_assembly: BASE_PLUS_FAILURE_BLOCK
 ```
 
----
-
-## 22. 승인 상태
-
-```yaml
-contract_version: 0.2.0-draft
-user_decisions: APPROVED
-internal_consistency_review: PENDING
-notion_updated: false
-repository_docs_updated: false
-schemas_generated: false
-prompts_generated: false
-node_datasets_generated: false
-```
-
-## 17. v1.0 Clarification Capability
+## 22. Clarification Capability
 - 모호성은 기본 BLOCK이 아니라 `NEEDS_CONFIRMATION → request_understanding.clarify`다.
 - 후보가 있으면 후보·차이·선택지를 제공하고, 후보가 없으면 최소 누락 정보만 질문한다.
 - `처리/진행/시작/정리/마무리`는 문맥으로 의미가 단일하면 질문하지 않는다.

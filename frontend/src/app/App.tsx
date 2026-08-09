@@ -3,6 +3,7 @@ import {
   approveAction,
   bootstrapSession,
   cancelRun,
+  confirmRun,
   createConversation,
   deleteLLMApiKey,
   disconnectGoogle,
@@ -24,6 +25,7 @@ import {
   patchSettings,
   prepareRetry,
   rejectAction,
+  resolveRecovery,
   resumeRun,
   startGoogleOAuth,
   startRun,
@@ -65,6 +67,11 @@ type ResourceState = {
   error: string | null;
 };
 
+type PendingConfirmation = {
+  interruptId: string;
+  question: string;
+};
+
 const resourceCache = new Map<string, { items: ResourceItem[]; nextPageToken: string | null }>();
 
 const THEME_KEY = "gwa.theme";
@@ -88,6 +95,8 @@ export function App(): JSX.Element {
   const [runContext, setRunContext] = useState<RunContext | null>(null);
   const [composerText, setComposerText] = useState("");
   const [busyCommand, setBusyCommand] = useState<string | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [confirmationText, setConfirmationText] = useState("");
   const [statusLine, setStatusLine] = useState("로컬 API에 연결되어 있습니다.");
   const [resourceState, setResourceState] = useState<ResourceState>({
     tab: "gmail",
@@ -100,6 +109,7 @@ export function App(): JSX.Element {
     error: null,
   });
   const subscriptionRef = useRef<(() => void) | null>(null);
+  const subscriptionRunIdRef = useRef<string | null>(null);
 
   const refreshConversations = useCallback(async (accountId: string): Promise<void> => {
     const response = await listConversations(accountId);
@@ -112,7 +122,7 @@ export function App(): JSX.Element {
     setGoogle(googleResponse);
   }, []);
 
-  const selectRun = useCallback(async (runId: string): Promise<void> => {
+  const refreshRun = useCallback(async (runId: string): Promise<void> => {
     const [snapshotResponse, contextResponse] = await Promise.all([
       getRunSnapshot(runId),
       getRunContext(runId),
@@ -120,18 +130,40 @@ export function App(): JSX.Element {
     setRunSnapshot(snapshotResponse.snapshot);
     setRunContext(contextResponse.context);
     setSelectedConversationId(snapshotResponse.snapshot.conversation_id);
+    setPendingConfirmation((current) =>
+      snapshotResponse.snapshot.status === "WAITING_CONFIRMATION" ? current : null,
+    );
+  }, []);
+
+  const selectRun = useCallback(async (runId: string): Promise<void> => {
+    await refreshRun(runId);
+    if (subscriptionRunIdRef.current === runId && subscriptionRef.current) {
+      return;
+    }
     subscriptionRef.current?.();
     subscriptionRef.current = subscribeRunEvents(runId, {
       onStateChange: (message) => setStatusLine(message),
       onEvent: (event) => {
-        if (event.eventType === "snapshot_required") {
-          void selectRun(runId);
-          return;
+        if (event.eventType === "confirmation_required") {
+          const interrupt = event.payload.user_interrupt;
+          if (interrupt && typeof interrupt === "object") {
+            const values = interrupt as Record<string, unknown>;
+            if (typeof values.interrupt_id === "string") {
+              setPendingConfirmation({
+                interruptId: values.interrupt_id,
+                question:
+                  typeof values.question === "string"
+                    ? values.question
+                    : "계속하려면 필요한 내용을 확인해 주세요.",
+              });
+            }
+          }
         }
-        void selectRun(runId);
+        void refreshRun(runId);
       },
     });
-  }, []);
+    subscriptionRunIdRef.current = runId;
+  }, [refreshRun]);
 
   const loadResources = useCallback(async (tab: ResourceTab, append: boolean): Promise<void> => {
     const cacheKey = [
@@ -246,6 +278,8 @@ export function App(): JSX.Element {
     void runStartup();
     return () => {
       subscriptionRef.current?.();
+      subscriptionRef.current = null;
+      subscriptionRunIdRef.current = null;
     };
   }, [runStartup]);
 
@@ -288,7 +322,6 @@ export function App(): JSX.Element {
       if (!selectedConversationId) {
         await createConversation({
           command_id: crypto.randomUUID(),
-          request_hash: await calculateRequestHash({ title: requestText, conversationId }),
           conversation_id: conversationId,
           account_id: currentAccount.account_id,
           title: requestText.slice(0, 80),
@@ -302,7 +335,6 @@ export function App(): JSX.Element {
       const workflowKey = `workflow-${runId}`;
       const response = await startRun({
         command_id: commandId,
-        request_hash: await calculateRequestHash({ commandId, requestText, selectedResourceIds }),
         conversation_id: conversationId,
         user_message_id: crypto.randomUUID(),
         run_id: runId,
@@ -329,17 +361,7 @@ export function App(): JSX.Element {
       await approveAction({
         action_id: action.action_id,
         command_id: commandId,
-        request_hash: await calculateRequestHash({ commandId, actionId: action.action_id, version: action.version }),
         expected_version: action.version,
-        approved_by_account_id: currentAccount.account_id,
-        approved_by_display: currentAccount.display_name ?? currentAccount.email,
-        source_snapshot: {
-          run_id: runSnapshot.run_id,
-          action_id: action.action_id,
-          action_status: action.status,
-        },
-        approval_id: crypto.randomUUID(),
-        idempotency_key: normalizeIdempotencyKey(commandId),
       });
       await selectRun(runSnapshot.run_id);
     } finally {
@@ -357,26 +379,22 @@ export function App(): JSX.Element {
     const commandId = crypto.randomUUID();
     setBusyCommand(`${kind}-${action.action_id}`);
     try {
-      const request_hash = await calculateRequestHash({ commandId, actionId: action.action_id, kind });
       if (kind === "modify") {
         await modifyAction({
           action_id: action.action_id,
           command_id: commandId,
-          request_hash,
           expected_version: action.version,
         });
       } else if (kind === "reject") {
         await rejectAction({
           action_id: action.action_id,
           command_id: commandId,
-          request_hash,
           expected_version: action.version,
         });
       } else {
         await prepareRetry({
           action_id: action.action_id,
           command_id: commandId,
-          request_hash,
           expected_action_version: action.version,
         });
       }
@@ -396,7 +414,6 @@ export function App(): JSX.Element {
       await cancelRun({
         run_id: runSnapshot.run_id,
         command_id: commandId,
-        request_hash: await calculateRequestHash({ commandId, runId: runSnapshot.run_id, version: runSnapshot.version }),
         expected_run_version: runSnapshot.version,
       });
       await selectRun(runSnapshot.run_id);
@@ -409,17 +426,68 @@ export function App(): JSX.Element {
     if (!runSnapshot || busyCommand) {
       return;
     }
+    const resumeKind = {
+      REAUTH_REQUIRED: "REAUTH_COMPLETED",
+      BLOCKED: "SAFE_CHECKPOINT_RESUME",
+      RECOVERY_REQUIRED: "RECOVERY_RECHECK",
+    }[runSnapshot.status] as "REAUTH_COMPLETED" | "SAFE_CHECKPOINT_RESUME" | "RECOVERY_RECHECK" | undefined;
+    if (!resumeKind) {
+      setStatusLine("현재 상태는 전용 확인 또는 승인 경로를 사용해야 합니다.");
+      return;
+    }
     setBusyCommand("resume-run");
     try {
       const commandId = crypto.randomUUID();
       await resumeRun({
         run_id: runSnapshot.run_id,
         command_id: commandId,
-        request_hash: await calculateRequestHash({ commandId, runId: runSnapshot.run_id, resume: true }),
-        resume_kind: "manual",
-        resume_payload: {},
+        expected_version: runSnapshot.version,
+        resume_kind: resumeKind,
       });
       await selectRun(runSnapshot.run_id);
+    } finally {
+      setBusyCommand(null);
+    }
+  }
+
+  async function handleConfirmation(): Promise<void> {
+    if (!runSnapshot || !pendingConfirmation || !confirmationText.trim() || busyCommand) {
+      return;
+    }
+    setBusyCommand("confirm-run");
+    try {
+      await confirmRun({
+        run_id: runSnapshot.run_id,
+        command_id: crypto.randomUUID(),
+        expected_version: runSnapshot.version,
+        interrupt_id: pendingConfirmation.interruptId,
+        response_kind: "FREE_TEXT",
+        free_text: confirmationText.trim(),
+      });
+      setConfirmationText("");
+      await refreshRun(runSnapshot.run_id);
+    } finally {
+      setBusyCommand(null);
+    }
+  }
+
+  async function handleResolveRecovery(
+    action: RunAction,
+    resolutionKind: "ACCEPT_PARTIAL" | "CREATE_CORRECTIVE_PLAN",
+  ): Promise<void> {
+    if (!runSnapshot || busyCommand) {
+      return;
+    }
+    setBusyCommand(`recovery-${resolutionKind}`);
+    try {
+      await resolveRecovery({
+        run_id: runSnapshot.run_id,
+        command_id: crypto.randomUUID(),
+        expected_version: runSnapshot.version,
+        action_id: action.action_id,
+        resolution_kind: resolutionKind,
+      });
+      await refreshRun(runSnapshot.run_id);
     } finally {
       setBusyCommand(null);
     }
@@ -612,6 +680,34 @@ export function App(): JSX.Element {
               </article>
             ) : null}
 
+            {runSnapshot?.status === "WAITING_CONFIRMATION" ? (
+              <article className="info-card">
+                <strong>추가 확인</strong>
+                <p>
+                  {pendingConfirmation?.question ?? "확인 요청 정보를 동기화하고 있습니다."}
+                </p>
+                <textarea
+                  aria-label="확인 응답"
+                  className="composer"
+                  disabled={!pendingConfirmation}
+                  value={confirmationText}
+                  onChange={(event) => setConfirmationText(event.target.value)}
+                />
+                <button
+                  className="button-primary"
+                  type="button"
+                  disabled={
+                    !pendingConfirmation ||
+                    !confirmationText.trim() ||
+                    busyCommand === "confirm-run"
+                  }
+                  onClick={() => void handleConfirmation()}
+                >
+                  응답 보내기
+                </button>
+              </article>
+            ) : null}
+
             {selectedResources.length > 0 ? (
               <div className="inline-row">
                 {selectedResources.map((item) => (
@@ -684,6 +780,31 @@ export function App(): JSX.Element {
                     ) : null}
                     {action.status === "UNKNOWN_RESULT" ? (
                       <p className="status-warn">실제 결과를 확인하는 중입니다. 새 쓰기 실행은 잠시 막혀 있습니다.</p>
+                    ) : null}
+                    {action.status === "MISMATCH" ? (
+                      <div>
+                        <p className="status-warn">
+                          실행 결과가 승인 내용과 다릅니다. 자동 수정이나 롤백은 수행하지 않습니다.
+                        </p>
+                        <div className="button-row">
+                          <button
+                            className="button-secondary"
+                            type="button"
+                            onClick={() => void handleResolveRecovery(action, "ACCEPT_PARTIAL")}
+                          >
+                            현재 결과 수용
+                          </button>
+                          <button
+                            className="button-primary"
+                            type="button"
+                            onClick={() =>
+                              void handleResolveRecovery(action, "CREATE_CORRECTIVE_PLAN")
+                            }
+                          >
+                            새 계획 만들기
+                          </button>
+                        </div>
+                      </div>
                     ) : null}
                   </article>
                 );
@@ -1054,16 +1175,6 @@ function readBootstrapFragment(hash: string): { bootstrap_secret: string; servic
     bootstrap_secret: bootstrapSecret,
     service_instance_id: serviceInstanceId,
   };
-}
-
-async function calculateRequestHash(payload: object): Promise<string> {
-  const raw = new TextEncoder().encode(JSON.stringify(payload));
-  const digest = await crypto.subtle.digest("SHA-256", raw);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function normalizeIdempotencyKey(commandId: string): string {
-  return commandId.replaceAll("-", "").padEnd(64, "0").slice(0, 64);
 }
 
 function formatTime(value: number): string {

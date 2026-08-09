@@ -11,9 +11,9 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "goal": "외부 수신자 포함 여부를 확인한다.",
+    "goal": "Grove 결과를 근거로 사용자가 직접 지정한 외부 수신자에게 답장 Draft를 제안한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "CONFIRMATION"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

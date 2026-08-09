@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "PFDEV-031-PROFILE-SINGLE-REQUEST-SOURCE-INITIAL",
+  "split": "DEV",
+  "source_case_id": "CASE-CORE-031",
+  "target_prompt_slot_id": "profile.single.request_source.initial",
+  "target_profile": "SINGLE_BASELINE",
+  "upstream_mode": "ORACLE",
+  "model_input_ref": "experiments/datasets/google_workspace/profile_fused_prompt_dev/v1/PFDEV-031-PROFILE-SINGLE-REQUEST-SOURCE-INITIAL/input.json",
+  "grader_gold_ref": "experiments/datasets/google_workspace/profile_fused_prompt_dev/v1/PFDEV-031-PROFILE-SINGLE-REQUEST-SOURCE-INITIAL/gold.json"
+}

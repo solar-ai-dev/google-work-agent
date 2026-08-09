@@ -6,7 +6,7 @@
   "paraphrase_group_id": "PG-CORE-046",
   "variant_index": 1,
   "language": "ko-KR",
-  "text": "Atlas 메일·Task·Calendar를 확인한 뒤 8월 14일 10시에 60분 점검 Event를 만들고 ops@atlas.example.test에 그 일정 안내 Draft도 준비해줘.",
+  "text": "Atlas 메일·작업·캘린더를 확인한 뒤 8월 14일 10시에 60분 점검 일정을 만들고 ops@atlas.example.test에 그 일정 안내 메일 초안도 준비해줘.",
   "expected_entry_mode": "AGENT_SEARCH",
   "expected_requested_outcome": "ACTION_PLAN",
   "expected_same_goal": true,

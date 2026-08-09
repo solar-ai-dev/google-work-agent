@@ -13,7 +13,7 @@
   "gold": {
     "goal": "기존 체크리스트 상태를 Draft로 제안한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

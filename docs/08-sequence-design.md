@@ -1,10 +1,10 @@
 # 08. Google Work Agent · 시퀀스 설계서
 
-> **문서 기준:** `01. 요구사항 정의서·PRD v2.4`, `01-A. 기능 정의서 v2.3`, `01-B. 정책 정의서 v2.3`, `02. UI·UX 설계서 v2.3`, `03. 시스템 아키텍처 설계서 v2.6`, `04. 도메인·데이터베이스 설계서 Draft v1.9`, `05. Context·Retrieval 설계서 Draft v2.1`, `06. Agent·Workflow 설계서 Draft v5.5`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v2.4`, Domain 상태 전이 계약 v1.3를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
+> **문서 기준:** `01. 요구사항 정의서·PRD v2.6`, `01-A. 기능 정의서 v2.5`, `01-B. 정책 정의서 v2.5`, `02. UI·UX 설계서 v2.3`, `03. 시스템 아키텍처 설계서 v2.9`, `04. 도메인·데이터베이스 설계서 Draft v1.11`, `05. Context·Retrieval 설계서 Draft v2.4`, `06. Agent·Workflow 설계서 Draft v5.9`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v2.7`, Domain 상태 전이 계약 v1.4를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
 
-> **상태:** Draft v2.6  
+> **상태:** Draft v3.0 · **기준일:** 2026-08-09  
 > **대상:** P0 MVP  
-> **구조:** 결정적 Supervisor + 6개 전문 Agent + 결정적 실행·검증 Engine  
+> **구조:** 결정적 Supervisor + 1/3/6 Agent Subgraph Profile + 결정적 실행·검증 Engine  
 > **상태 기준:** SQLite Domain Store가 승인·실행·검증 사실의 기준점이며 LangGraph Checkpoint는 재개 위치, SSE는 UI Projection이다.
 
 ## 1. 목적과 범위
@@ -146,83 +146,81 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     autonumber
-    participant SUP as Supervisor
-    participant NODE as Agent·Application Node
+    participant SUP as Main Supervisor
+    participant REQ as Request Agent Subgraph
+    participant ACQ as Acquisition Agent Subgraph
+    participant REXEC as Deterministic Read Node inside ACQ
+    participant RET as Context Agent Subgraph
+    participant ANA as Analysis Agent Subgraph
+    participant PLAN as Planning Agent Subgraph
+    participant REV as Review Agent Subgraph
     participant LLM as Prompt Registry·LLM Router
-    participant APP as Acquisition Executor
-    participant MCP as MCP 읽기 Port
+    participant MCP as MCP Read Port
     participant G as Google APIs
     participant DB as Checkpointer·Trace
 
-    SUP->>NODE: request_understanding.classify Node Routing
-    NODE->>LLM: PromptRef(classify, INITIAL)<br>사용자 요청·선택 범위
-    LLM-->>NODE: RequestIntent
-    NODE-->>SUP: RequestIntent
+    SUP->>REQ: Input Projection + invocation_id
+    REQ->>LLM: classify PromptRef
+    LLM-->>REQ: RequestIntent candidate
+    REQ->>REQ: Schema·Semantic Validate / bounded repair
+    REQ-->>SUP: RequestIntentV1 + disposition
     SUP->>DB: REQUEST_ANALYSIS Checkpoint
 
-    SUP->>NODE: api_discovery_acquisition.plan_sources Node Routing
-    NODE->>LLM: PromptRef(plan_sources, INITIAL)<br>RequestIntent·API Budget
-    LLM-->>NODE: SourceFetchPlan 목록
-    NODE-->>SUP: SourceFetchPlan 목록
-    SUP->>APP: Source Plan 검증·실행
-    APP->>APP: Query Builder·Page·범위 검증
-
+    SUP->>ACQ: RequestIntent + Retrieval Budget + invocation_id
+    ACQ->>LLM: plan_sources PromptRef
+    LLM-->>ACQ: SourceFetchPlan candidate
+    ACQ->>ACQ: Plan Validate / bounded revision
+    ACQ->>REXEC: validated SourceFetchPlan[]
+    REXEC->>REXEC: Query Builder·Page·범위 검증
     loop 필요한 Source만
-        APP->>MCP: 내부 Read Port 호출
+        REXEC->>MCP: validated Read Port call
         MCP->>G: Source-native API
-        G-->>MCP: Metadata Page
-        MCP-->>APP: Typed Metadata Result
-        APP->>APP: Exact Filter·Score·중복 제거
-        opt 상세가 필요한 후보
-            APP->>MCP: Source별 상세 Read Port
-            MCP->>G: GET 상세
-            G-->>MCP: Resource
-            MCP-->>APP: Typed Detail Result
-        end
+        G-->>MCP: Metadata / Detail Result
+        MCP-->>REXEC: Typed Read Result
     end
+    REXEC-->>ACQ: AcquisitionResult·Cache Handle
+    ACQ->>ACQ: Final acquisition contract validation
+    ACQ-->>SUP: SourceFetchPlan[] + AcquisitionResultV1 + disposition
 
-    APP-->>SUP: AcquisitionResult·Cache Handle
-    SUP->>NODE: context_retriever.select_evidence Node Routing
-    NODE->>LLM: PromptRef(select_evidence, ACQUISITION_READY)
-    LLM-->>NODE: selected_segment_ids·evidence_drafts
-    NODE-->>SUP: 선택 Segment·EvidenceDraft
-    SUP->>NODE: context_retriever.assess_sufficiency Node Routing
-    NODE->>LLM: PromptRef(assess_sufficiency, EVIDENCE_SELECTED)
-    LLM-->>NODE: ContextBundle·SufficiencyResult
-    NODE-->>SUP: ContextRetrievalResult
+    SUP->>RET: AcquisitionResult + Cache Handle + invocation_id
+    RET->>LLM: select_evidence PromptRef
+    LLM-->>RET: EvidenceSelection candidate
+    RET->>LLM: assess_sufficiency PromptRef
+    LLM-->>RET: Sufficiency candidate
+    RET->>RET: Validate / bounded reassessment
+    RET-->>SUP: ContextRetrievalResultV1
     SUP->>DB: Acquisition·Context Trace·Checkpoint
 
     alt Context 충분
-        SUP->>NODE: work_analysis.analyze Node Routing
-        NODE->>LLM: PromptRef(analyze, CONTEXT_SUFFICIENT)
-        LLM-->>NODE: WorkAnalysisResult
-        NODE-->>SUP: WorkAnalysisResult
-        alt 답변만 필요한 요청
-            SUP->>NODE: solution_planning.answer_only Node Routing
-            NODE->>LLM: PromptRef(answer_only, ANALYSIS_READY)
-            LLM-->>NODE: ANSWER_ONLY·answer_draft
-            NODE-->>SUP: ANSWER_ONLY 결과
-        else Action Plan 필요
-            SUP->>NODE: solution_planning.draft_plan Node Routing
-            NODE->>LLM: PromptRef(draft_plan, ANALYSIS_READY)
-            LLM-->>NODE: ActionPlanDraft
-            NODE-->>SUP: ActionPlanDraft
-        end
-        SUP->>NODE: plan_review.inspect Node Routing
-        NODE->>LLM: PromptRef(inspect, PLAN_READY)
-        LLM-->>NODE: PlanReviewResult
-        NODE-->>SUP: PlanReviewResult
+        SUP->>ANA: ContextBundle + Evidence + invocation_id
+        ANA->>LLM: analyze PromptRef
+        LLM-->>ANA: WorkAnalysisResult candidate
+        ANA->>ANA: Validate / bounded reassess
+        ANA-->>SUP: WorkAnalysisResultV1
+
+        SUP->>PLAN: Intent + Evidence + Analysis + invocation_id
+        PLAN->>LLM: answer_only 또는 draft_plan PromptRef
+        LLM-->>PLAN: AnswerDraft 또는 ActionPlanDraft
+        PLAN->>PLAN: Validate / bounded revision
+        PLAN-->>SUP: Planning Typed Result
+
+        SUP->>REV: Plan/Answer + Evidence + invocation_id
+        REV->>LLM: inspect PromptRef
+        LLM-->>REV: PlanReviewResult candidate
+        REV->>REV: Validate / bounded recheck
+        REV-->>SUP: PlanReviewResultV1
     else 추가 자료 필요
-        SUP->>SUP: Budget·Round 확인 후 API 수집으로 재분기
+        SUP->>SUP: Budget·Round 확인 후 새 Acquisition invocation으로 재분기
     else 사용자 확인 필요
         SUP->>SUP: WAITING_CONFIRMATION Interrupt
     end
 ```
 
-- Supervisor는 다음 Node만 결정하고 Prompt 원문·Prompt ID를 선택하지 않는다.
-- 선택된 Agent·Application Node가 PromptRef를 확정한 뒤 LLM Adapter를 호출한다.
-- API 탐색·수집 Agent는 전략을 제안하며 실제 Query와 MCP Arguments는 일반 코드가 확정한다.
-- Context Retriever Agent는 MCP·Google API를 호출하지 않는다.
+- Supervisor는 Agent Subgraph 단위로 Routing한다. Agent 내부 Node를 직접 Routing하지 않는다.
+- Agent Subgraph 내부 LLM Node가 PromptRef를 확정한다.
+- Acquisition Agent의 LLM은 Source 전략만 제안하며 실제 Query·MCP Read는 같은 Subgraph 내부의 결정적 Read Node가 수행한다.
+- Read가 진행되는 동안 Acquisition invocation은 종료되지 않는다.
+- Context Retriever Agent는 MCP·Google API를 직접 호출하지 않는다.
 
 ## 7. RESOURCE_SELECTED 요청 시퀀스
 
@@ -232,54 +230,56 @@ sequenceDiagram
     actor U as 사용자
     participant FE as React 프런트엔드
     participant API as FastAPI
-    participant APP as Application Service·Acquisition Executor
+    participant APP as Application Service
     participant SUP as Supervisor
-    participant NODE as Agent·Application Node
+    participant REQ as Request Agent Subgraph
+    participant ACQ as Acquisition Agent Subgraph
+    participant REXEC as Deterministic Read Node inside ACQ
+    participant RET as Context Agent Subgraph
     participant LLM as Prompt Registry·LLM Router
-    participant MCP as MCP 읽기 Port
+    participant MCP as MCP Read Port
     participant G as Google APIs
 
     U->>FE: Gmail·Task·Event 선택 후 요청
     FE->>API: POST /api/v1/runs<br>selected_resources·command_id
     API->>APP: start_run(command)
     APP->>SUP: Graph invoke<br>selected_resources Handle
-    SUP->>NODE: request_understanding.classify Node Routing
-    NODE->>LLM: PromptRef(classify, RESOURCE_SELECTED)
-    LLM-->>NODE: RequestIntent entry_mode=RESOURCE_SELECTED
-    NODE-->>SUP: RequestIntent
-    SUP->>APP: 선택 Resource 최신 상세 수집 요청
+    SUP->>REQ: RESOURCE_SELECTED Input Projection
+    REQ->>LLM: classify PromptRef
+    LLM-->>REQ: RequestIntent
+    REQ-->>SUP: RequestIntentV1
+
+    SUP->>ACQ: selected resource IDs + RequestIntent
+    ACQ->>REXEC: 선택 Resource 최신 상세 수집
     loop Source별 선택 ID
-        alt Gmail
-            APP->>MCP: get_gmail_threads(thread_ids)
-        else Tasks
-            APP->>MCP: get_tasks(task_ids)
-        else Calendar
-            APP->>MCP: get_calendar_events(event_ids)
-        end
-        MCP->>G: Resource ID 기반 GET
+        REXEC->>MCP: ID 기반 validated GET
+        MCP->>G: Resource GET
         G-->>MCP: 최신 Resource
-        MCP-->>APP: Typed Detail Result
+        MCP-->>REXEC: Typed Detail Result
     end
-    APP-->>SUP: AcquisitionResult<br>선택 Resource 강제 포함
-    SUP->>NODE: context_retriever.select_evidence Node Routing
-    NODE->>LLM: PromptRef(select_evidence, ACQUISITION_READY)
-    LLM-->>NODE: selected_segment_ids·evidence_drafts
-    NODE-->>SUP: 선택 Segment·EvidenceDraft
-    SUP->>NODE: context_retriever.assess_sufficiency Node Routing
-    NODE->>LLM: PromptRef(assess_sufficiency, EVIDENCE_SELECTED)
-    LLM-->>NODE: ContextBundle·SufficiencyResult
-    NODE-->>SUP: ContextRetrievalResult
+    REXEC-->>ACQ: AcquisitionResult·선택 Resource 강제 포함
+    ACQ-->>SUP: AcquisitionResultV1
+
+    SUP->>RET: AcquisitionResult + Cache Handle
+    RET->>LLM: select_evidence + assess_sufficiency
+    LLM-->>RET: ContextRetrievalResult candidate
+    RET->>RET: Validate / bounded reassessment
+    RET-->>SUP: ContextRetrievalResultV1
+
     opt 목표 수행에 다른 Source 필요
-        SUP->>NODE: api_discovery_acquisition.plan_sources Node Routing
-        NODE->>LLM: PromptRef(plan_sources, ADDITIONAL_DATA)<br>필요 Source만 추가
-        LLM-->>NODE: 추가 SourceFetchPlan
-        NODE-->>SUP: 추가 SourceFetchPlan
+        SUP->>ACQ: 새 invocation<br>missing slots + prior handles + 추가 budget
+        ACQ->>LLM: plan_sources ADDITIONAL_DATA
+        LLM-->>ACQ: 추가 SourceFetchPlan
+        ACQ->>REXEC: validated 추가 Read
+        REXEC-->>ACQ: 추가 AcquisitionResult
+        ACQ-->>SUP: merged AcquisitionResultV1 + disposition
     end
 ```
 
 - React는 Supervisor를 직접 호출하지 않고 FastAPI와 Application Service를 경유한다.
 - 선택 Resource를 검색 Query로 다시 찾지 않는다. 최초 Context 우선순위는 사용자 선택 Resource가 가장 높다.
-- 추가 Source가 사용자 지정 범위를 넓히면 실행 전에 `WAITING_CONFIRMATION`으로 전환한다.
+- 추가 Source가 사용자 지정 범위를 넓히면 실제 추가 Read 전에 `WAITING_CONFIRMATION`으로 전환한다.
+- 추가 수집은 **새 Acquisition invocation**이다. 이전 AgentLocalState를 재사용하지 않고 Parent의 공식 Typed Result와 Cache Handle만 입력으로 사용한다.
 
 ## 8. 추가 수집과 사용자 확인 Interrupt
 
@@ -295,21 +295,21 @@ sequenceDiagram
     actor U as 사용자
     participant ACQ as API 탐색·수집 Agent
 
-    RET-->>SUP: NEEDS_MORE_DATA<br>missing_slots·AdditionalAcquisitionRequestV1
+    RET-->>SUP: NEEDS_MORE_DATA<br>missing_slots·acquisition_request
     SUP->>SUP: 추가 수집 Round·Budget 검증
     alt 추가 수집 가능
-        SUP->>ACQ: 제약된 추가 수집 요청
-        ACQ-->>SUP: SourceFetchPlan
+        SUP->>ACQ: 새 invocation<br>제약된 추가 수집 요청 + 이전 공식 Result Handle
+        ACQ-->>SUP: SourceFetchPlan[] + AcquisitionResultV1
     else 사용자 범위 확대 필요 또는 모호성
         SUP->>DB: WAITING_CONFIRMATION Checkpoint
         SUP-->>API: confirmation_required Projection
         API-->>FE: 확인 질문 Card
         U->>FE: 후보 선택·추가 정보
-        FE->>API: POST /api/v1/runs/{run_id}/resume
-        API->>APP: resume_run(command)
+        FE->>API: POST /api/v1/runs/{run_id}/confirm
+        API->>APP: confirm_run(command)
         APP->>DB: 확인 응답 Message·Checkpoint 저장
         APP->>SUP: Interrupt resume
-        SUP->>ACQ: 확인 결과 기반 수집 또는 요청 재분석
+        SUP->>ACQ: 새 invocation으로 확인 결과 기반 수집 또는 요청 재분석
     else Budget 소진
         SUP->>SUP: PARTIAL 또는 BLOCKED 응답 경로
     end
@@ -344,8 +344,6 @@ sequenceDiagram
     SUP-->>API: completed Projection
     API-->>FE: 최종 답변·COMPLETED
 ```
-
-Answer-only Review가 `REVISE`를 반환하면 Supervisor는 `planning.revise_answer`로 답변 초안을 수정하고, 교체된 `answer_draft`로 `review.recheck`를 거친 뒤 `PASS`일 때만 `complete_answer_only_run`으로 진행한다.
 
 Answer-only Run에는 Plan·Action·Approval·Attempt·Verification Row를 만들지 않는다.
 
@@ -859,10 +857,6 @@ Launcher 종료 요청
 | `RECOVERY` | `RECOVERY_REQUIRED` | `recovery_required` |
 | `FINALIZE` | Terminal | `completed` 또는 `error` |
 
-- Supervisor는 `REAUTH`, `RECOVERY`, `FINALIZE` route만 선택하고 Run Status를 직접 쓰지 않는다.
-- `FINALIZE`는 기존 state/result와 transient finalize handoff에서 terminal intent를 도출한다.
-- `BudgetReasonCode`는 persisted graph state field가 아니라 budget decision handoff로 전달한다.
-
 ## 24. Transaction 경계 요약
 
 | 구간 | DB Transaction | 외부 호출 |
@@ -932,17 +926,12 @@ VERIFICATION_MISMATCH
 
 ---
 
-## 문서 권위 규칙
+## 28. 문서 권위 규칙
 
-```text
-00 → 01 → 01-A → 01-B → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12 → 13 → 14
-```
+문서 번호 순서가 아니라 `01 PRD §1.1`의 **Concern Owner 규칙**을 따른다. 이 문서는 자신의 책임 범위만 구체화하며 01-B 안전 정책, 04 Domain·상태 전이, 07 Tool 계약 같은 전문 권위 계약을 완화하지 않는다.
 
-- 하위 문서는 상위 문서를 변경하지 않고 구현값·절차·검증 방법만 구체화한다.
-- `01-A`와 `01-B`가 충돌하면 금지·승인·개인정보 정책을 가진 `01-B`가 우선한다.
-- 상위 결정을 바꿀 때는 상위 문서를 먼저 수정하고 하위 문서를 순차 갱신한다.
 
-## 정합성 보강: LLM 호출 전 PromptRef 선택
+### 28.1 LLM 호출 전 PromptRef 선택
 
 모든 LLM 호출 전에 Supervisor가 선택한 Agent·Application Node가 다음 Key로 PromptRef를 확정한다.
 
@@ -953,7 +942,7 @@ agent_role + subgraph_name + node_name + node_state + purpose
 Repair·Revision은 별도 PromptRef를 사용할 수 있으며 Prompt 선택 결과는 `prompt_id`·`prompt_version`·`content_hash`로 Trace한다.
 
 
-## 28. Command Receipt 시퀀스
+## 29. Command Receipt 시퀀스
 
 ```text
 Route가 Request 검증
@@ -970,7 +959,7 @@ Route가 Request 검증
 - 동일 ID·다른 Hash면 `DUPLICATE_COMMAND`다.
 - HTTP 응답 유실 후 재전송도 새 Run·Approval·Attempt를 만들지 않는다.
 
-## 29. Claim Token 시퀀스
+## 30. Claim Token 시퀀스
 
 ```text
 claim_action_execution Commit
@@ -983,7 +972,7 @@ claim_action_execution Commit
 
 검증 실패 시 Google API를 호출하지 않고 `APPROVAL_INVALID` 또는 Claim Token 오류를 반환한다.
 
-## 2026-08-07 v2.6 Transaction · Recovery · SEND/DELETE 시퀀스
+## 31. Transaction · Recovery · SEND/DELETE 시퀀스
 ```text
 Transaction A: 상태·Version·Snapshot 확보 → COMMIT
 Google/MCP/LLM 호출: DB Write Transaction 없음
@@ -996,3 +985,96 @@ Plan(SEND) → Domain Validation → WAITING_APPROVAL → Claim → gmail_send �
 
 ### Calendar DELETE
 Plan(DELETE) → Domain Validation → WAITING_APPROVAL → Claim → calendar_delete_event → target absence 확인 → VERIFIED | MISMATCH | UNKNOWN_RESULT.
+## 32. Agent Subgraph 호출·복귀 시퀀스
+
+```mermaid
+sequenceDiagram
+    participant SUP as Main Supervisor
+    participant AG as Agent Subgraph
+    participant LS as Agent Local State
+    participant LLM as LLM Adapter
+    participant APP as Deterministic Application Node
+
+    SUP->>AG: Parent Input Projection + invocation_id
+    AG->>LS: Local State 초기화
+    AG->>LLM: PromptRef + Typed Input
+    LLM-->>AG: Candidate Structured Output
+    AG->>AG: Schema / Semantic Validation
+    alt 허용된 Repair/Revision
+        AG->>LLM: Repair/Revision PromptRef
+        LLM-->>AG: Revised Output
+        AG->>AG: Re-Validate
+    end
+    opt 해당 Agent 책임에 실제 Google Read 필요
+        AG->>APP: validated SourceFetchPlan
+        APP->>APP: 결정적 Query Builder + MCP Read
+        APP-->>AG: AcquisitionResult
+        AG->>AG: 결과 계약 검증
+    end
+    AG-->>SUP: Versioned Typed Result + disposition
+```
+
+- Agent Local State는 invocation 범위에서만 유지한다. 외부 Read를 포함한 내부 Node 실행이 모두 끝난 뒤에만 invocation이 종료된다.
+- Agent가 다른 Agent를 직접 호출하지 않는다. 다른 단계가 필요하면 Supervisor에 disposition을 반환한다.
+- 실제 Google Write는 이 시퀀스와 분리된 공통 승인·실행·검증 경로에서만 수행한다.
+
+## 33. Runtime E2E 취소·복구·전달 확실성
+
+### 33.1 Cancel
+
+```text
+사용자 Cancel
+→ API가 command_id / expected_version 검증
+→ RequestCancel
+→ Run CANCEL_REQUESTED
+→ 신규 Claim·Write 차단
+→ 미실행 Action CANCELLED + ACTIVE Approval REVOKED
+→ EXECUTING/EXECUTED는 결과·Verification 확정
+→ UNKNOWN_RESULT가 있으면 RECOVERY_REQUIRED
+→ 모든 in-flight 결과 확정
+→ Plan/Run CANCELLED
+→ 이미 성공한 Write가 있으면 result_kind PARTIAL
+```
+
+취소는 성공한 Google 변경을 rollback하지 않는다.
+
+### 33.2 Insufficient Data
+
+```text
+POLICY/safety-critical required issue → BLOCKED
+USER required issue                  → NEEDS_CONFIRMATION
+GOOGLE required issue + budget       → RETRIEVE_MORE
+budget exhausted + read-only partial → PARTIAL
+Write 필수 정보 부족                 → CONFIRMATION 또는 BLOCKED
+```
+
+모든 Graph Profile은 동일 Supervisor Guard를 사용한다.
+
+### 33.3 Delivery Classification
+
+```text
+MCP/Google Write
+→ NOT_SENT | MAY_HAVE_BEEN_SENT | SENT_RESPONSE_LOST
+→ NOT_SENT만 FAILED 후보
+→ 나머지는 UNKNOWN_RESULT + GET/Search Recovery
+```
+
+### 33.4 Verification MISMATCH
+
+```text
+Verification MISMATCH
+→ Action MISMATCH 보존
+→ Run RECOVERY_REQUIRED
+→ 자동 수정·자동 rollback 금지
+→ ACCEPT_PARTIAL
+   → 미실행 Action CANCELLED
+   → Run COMPLETED + result_kind PARTIAL
+또는
+→ CREATE_CORRECTIVE_PLAN
+   → 실제 Google 상태 재조회
+   → Run PLANNING
+   → 새 Plan Revision
+   → 새 Approval·Claim·Attempt·Verification
+```
+
+기존 MISMATCH Action이나 Approval을 교정 Write에 재사용하지 않는다.

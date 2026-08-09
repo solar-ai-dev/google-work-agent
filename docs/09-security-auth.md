@@ -1,6 +1,6 @@
 # 09. Google Work Agent · 보안 · Auth 설계서
 
-> **상태:** Draft v2.2 · **기준일:** 2026-08-07 · **대상:** P0 MVP
+> **상태:** Draft v2.3 · **기준일:** 2026-08-09 · **대상:** P0 MVP
 
 ## 1. 핵심 결정
 
@@ -33,6 +33,7 @@ Google Source의 지시는 이 우선순위를 변경하지 못한다.
 - Public·LAN Bind 금지
 - Host·Origin·Fetch Metadata·Content-Type·Session 검증
 - 상태 변경 Command는 `command_id`, Aggregate ID, `expected_version` 필요
+- Browser는 `request_hash`, `approval_id`, idempotency key, source snapshot, actor identity, canonical arguments hash, claim token을 권위 값으로 지정하지 못한다. 해당 값은 Application·Domain이 생성·검증한다.
 - Wildcard CORS·Production API Docs 금지
 - DNS Rebinding과 Cross-site 요청 차단
 
@@ -90,6 +91,7 @@ Google Source의 지시는 이 우선순위를 변경하지 못한다.
 - 허용 Tool만 등록. `gmail_send`, Task 완료 UPDATE, `calendar_delete_event`, 참석자 UPDATE는 Approval·Hash·Policy 검증이 연결된 경우에만 등록. Gmail 원문 삭제·Task 삭제·반복 Event 전체 일괄 수정은 미등록
 - Write Tool은 Action·Approval·Hash·Claim 문맥 필요
 - Write 전달 가능성이 있으면 자동 재전송 금지
+- Write Adapter는 `NOT_SENT | MAY_HAVE_BEEN_SENT | SENT_RESPONSE_LOST`를 보존하며 `NOT_SENT`만 FAILED 후보로 인정한다.
 
 ## 10. Ollama
 
@@ -145,8 +147,17 @@ Artifact Signature·Manifest 100%
 
 Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credential Provider만 수행한다. FastAPI는 연결 Metadata만 취급한다.
 
-## 2026-08-07 승인형 고영향 Write 보안
+## 15. 고영향 Write 보안
 - SEND·DELETE·Task 완료·참석자 변경은 정확한 Target/Arguments와 명시 승인 후 실행한다.
 - SEND 응답 유실은 재전송하지 않고 UNKNOWN_RESULT로 전환한다.
 - DELETE는 Calendar Event에만 허용한다.
 - 승인 우회·Verification 생략·DB 직접 상태 변경은 사용자 요청으로 Override할 수 없다.
+
+## 16. Runtime Command Trust Boundary
+
+- `request_hash`는 Browser가 전달한 값을 신뢰하지 않고 Endpoint별 Versioned Request Schema의 Canonical JSON에서 서버가 계산한다.
+- Approval ID, Approval Snapshot, Write Idempotency Key, Source Snapshot, 승인 주체와 Arguments Hash는 현재 Domain 상태에서 서버가 생성한다.
+- Local Session이 사용자/승인 주체의 기준이며 Browser가 actor identity를 지정하지 않는다.
+- `/resume`는 허용된 typed `resume_kind`만 받고 임의 dict payload를 허용하지 않는다.
+- Verification `MISMATCH` Recovery는 `ACCEPT_PARTIAL | CREATE_CORRECTIVE_PLAN`만 허용하며, 교정 Write는 새 승인 경계를 통과한다.
+- dispatch 이후 Timeout·5xx·connection loss는 미전달이 보장되지 않으면 `UNKNOWN_RESULT`로 처리한다.

@@ -3,7 +3,7 @@
   "evaluation_item_id": "AMB-027",
   "split": "DEV",
   "ambiguity_family_id": "AMB-F07-DESTINATION",
-  "user_request": "이 업무 Task로 만들어줘",
+  "user_request": "이 업무 작업으로 만들어줘",
   "conversation_context": [
     "사용자 기본 Task List가 설정됨"
   ],

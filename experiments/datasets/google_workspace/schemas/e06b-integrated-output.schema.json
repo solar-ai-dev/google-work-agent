@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/e06b-integrated-output.schema.json",
+  "title": "E06BIntegratedOutputV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "analysis_result",
+    "planning_result",
+    "self_review"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "analysis_result": {
+      "$ref": "work-analysis-output.schema.json"
+    },
+    "planning_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "status",
+        "answer_draft",
+        "plan_draft"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "status": {
+          "enum": [
+            "ANSWER_ONLY",
+            "PLAN_READY",
+            "NEEDS_CONFIRMATION",
+            "BLOCKED"
+          ]
+        },
+        "answer_draft": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "plan_draft": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    },
+    "self_review": {
+      "$ref": "plan-review-output.schema.json"
+    }
+  }
+}

@@ -326,6 +326,42 @@ class PromptRef(TypedDict):
     output_schema_version: str
 
 
+class AgentFailureRecordV1(TypedDict):
+    """Invocation-local failure scratch owned by one native agent subgraph."""
+
+    schema_version: Required[Literal[1]]
+    reason_code: str
+    diagnostic: str | None
+    retryable: bool
+
+
+class AgentDispositionV1(TypedDict):
+    """Invocation-local disposition returned by one native agent subgraph."""
+
+    schema_version: Required[Literal[1]]
+    status: str
+    next_target: str | None
+    reason_code: str | None
+
+
+class AgentLocalStateV1(TypedDict):
+    """Canonical invocation-local state for one native agent subgraph."""
+
+    schema_version: Required[Literal[1]]
+    agent_role: str
+    invocation_id: str
+    node_state: str
+    input_projection: dict[str, object]
+    candidate_output: dict[str, object] | None
+    prompt_ref: PromptRef | None
+    attempt_no: int
+    schema_repair_count: int
+    semantic_revision_count: int
+    failure_record: AgentFailureRecordV1 | None
+    disposition: AgentDispositionV1 | None
+    typed_result: dict[str, object] | None
+
+
 class LlmProviderResult(TypedDict):
     """LLM provider result metadata from `docs/07-tool-mcp-internal-interface.md` section 18."""
 
@@ -367,6 +403,7 @@ CONFIRMATION_RESUME_KIND = "CONFIRMATION"
 MULTI_AGENT_GRAPH_STATE_FIELDS = frozenset(MultiAgentGraphState.__annotations__)
 PROMPT_SELECTION_KEY_FIELDS = frozenset(PromptSelectionKey.__annotations__)
 PROMPT_REF_FIELDS = frozenset(PromptRef.__annotations__)
+AGENT_LOCAL_STATE_FIELDS = frozenset(AgentLocalStateV1.__annotations__)
 LLM_PROVIDER_RESULT_FIELDS = frozenset(LlmProviderResult.__annotations__)
 LLM_PROVIDER_RESULT_REQUIRED_FIELDS = frozenset(LlmProviderResult.__required_keys__)
 LLM_PROVIDER_RESULT_OPTIONAL_FIELDS = frozenset(LlmProviderResult.__optional_keys__)

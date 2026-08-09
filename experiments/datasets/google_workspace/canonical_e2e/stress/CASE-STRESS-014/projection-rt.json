@@ -7,29 +7,10 @@
   "not_applicable_reason": null,
   "input_contract": {
     "fixture_snapshot_id": "FW-D-001",
-    "user_prompt_id": "UP-CORE-031",
+    "user_prompt_id": "UP-STRESS-014",
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "expected_route": [
-      "request_understanding.classify",
-      "acquisition.plan_sources",
-      "acquisition.execute",
-      "context.select_evidence",
-      "context.assess_sufficiency",
-      "analysis.analyze",
-      "planning.draft_plan",
-      "review.inspect",
-      "DOMAIN_VALIDATION",
-      "WAITING_APPROVAL",
-      "APPROVAL_GRANTED",
-      "PREFLIGHT",
-      "ACTION_EXECUTION",
-      "UNKNOWN_RESULT",
-      "RECOVERY",
-      "RECOVERY_REQUIRED"
-    ],
-    "expected_skipped_nodes": [],
     "expected_tool_trajectory": [
       {
         "phase": "READ",
@@ -99,7 +80,40 @@
     "fault_profile_ids": [
       "FP-008"
     ],
-    "stress_kind": "CREATE_UNKNOWN_UNRESOLVED"
+    "stress_kind": "CREATE_UNKNOWN_UNRESOLVED",
+    "topology_scope": "SIX_ROLE_BASELINE",
+    "six_reference_route": [
+      "request_understanding.classify",
+      "acquisition.plan_sources",
+      "acquisition.execute",
+      "context.select_evidence",
+      "context.assess_sufficiency",
+      "analysis.analyze",
+      "planning.draft_plan",
+      "review.inspect",
+      "DOMAIN_VALIDATION",
+      "WAITING_APPROVAL",
+      "APPROVAL_GRANTED",
+      "PREFLIGHT",
+      "ACTION_EXECUTION",
+      "UNKNOWN_RESULT",
+      "RECOVERY",
+      "RECOVERY_REQUIRED"
+    ],
+    "six_reference_skipped_nodes": [],
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "ACQUISITION",
+      "CONTEXT_RETRIEVAL",
+      "WORK_ANALYSIS",
+      "PLANNING",
+      "QUALITY_CHECK",
+      "DOMAIN_VALIDATION",
+      "APPROVAL",
+      "PREFLIGHT",
+      "EXECUTION",
+      "RECOVERY"
+    ]
   },
   "grader_ids": [
     "grader.routing_trajectory.deterministic",

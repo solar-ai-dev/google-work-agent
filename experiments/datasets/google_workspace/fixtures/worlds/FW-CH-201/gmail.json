@@ -16,7 +16,7 @@
           ],
           "cc": [],
           "sent_at": "2026-08-04T01:00:00Z",
-          "body": "초안 기준 최종 카피는 8월 31일까지입니다."
+          "body": "안녕하세요.\n오늘 기준으로 확인된 내용을 전달드립니다.\n\n초안 기준 최종 카피는 8월 31일까지입니다.\n\n관련 일정이나 담당 변경이 있으면 이 메일에 회신 부탁드립니다.\n감사합니다."
         },
         {
           "message_id": "GM-SO-202",
@@ -26,7 +26,7 @@
           ],
           "cc": [],
           "sent_at": "2026-08-06T03:00:00Z",
-          "body": "최종 합의: 카피는 9월 1일 18시까지, 담당은 하린입니다. 인쇄소 확인은 9월 3일 14시 슬롯 기준입니다."
+          "body": "안녕하세요.\n지난 논의 후속으로 현재 기준을 정리해 전달드립니다.\n\n최종 합의: 카피는 9월 1일 18시까지, 담당은 하린입니다. 인쇄소 확인은 9월 3일 14시 슬롯 기준입니다.\n\n업무 반영 전에 변경 사항이 있으면 알려 주세요.\n감사합니다."
         }
       ]
     },
@@ -45,7 +45,67 @@
           ],
           "cc": [],
           "sent_at": "2026-07-01T03:00:00Z",
-          "body": "7월 카피 마감은 7월 5일이었습니다."
+          "body": "안녕하세요.\n참고용으로 이전 기록을 공유드립니다.\n\n7월 카피 마감은 7월 5일이었습니다.\n\n현재 일정과 혼동하지 않도록 과거 기록으로만 참고해 주세요.\n감사합니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-NOISE-WCH201-1",
+      "subject": "[사내 안내] 복지 포인트 사용 안내",
+      "participants": [
+        "office@example.test",
+        "user@example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-NOISE-WCH201-1",
+          "sender": "office@example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-03T01:30:00Z",
+          "body": "안녕하세요.\n업무와 별개인 사내 공지입니다.\n\n이번 달 복지 포인트 사용 기한과 조회 방법을 안내드립니다.\n\n감사합니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-NOISE-WCH201-2",
+      "subject": "[사내 안내] 법인카드 영수증 제출 안내",
+      "participants": [
+        "office@example.test",
+        "user@example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-NOISE-WCH201-2",
+          "sender": "office@example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-04T02:30:00Z",
+          "body": "안녕하세요.\n업무와 별개인 사내 공지입니다.\n\n이번 달 법인카드 영수증은 사내 경비 시스템에 제출해 주세요.\n\n감사합니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-NOISE-WCH201-3",
+      "subject": "[사내 안내] 사내 점심 메뉴 설문",
+      "participants": [
+        "office@example.test",
+        "user@example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-NOISE-WCH201-3",
+          "sender": "office@example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-05T03:30:00Z",
+          "body": "안녕하세요.\n업무와 별개인 사내 공지입니다.\n\n다음 주 점심 메뉴 선호도 설문이 열렸습니다. 참여는 선택 사항입니다.\n\n감사합니다."
         }
       ]
     }

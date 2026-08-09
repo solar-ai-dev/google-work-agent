@@ -1,14 +1,24 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.4`, `01-A v2.3`, `01-B v2.3`, `02 UI·UX v2.3`, `03 Architecture v2.6`, `04 Database v1.9`, `05 Retrieval v2.1`, `07 Interface v2.4`, Domain 상태 전이 계약 v1.3과 테스트 매트릭스 v1.3을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.6`, `01-A v2.5`, `01-B v2.5`, `02 UI·UX v2.3`, `03 Architecture v2.9`, `04 Database v1.11`, `05 Retrieval v2.4`, `07 Interface v2.7`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v5.5 · **DB Schema:** v1.3 · **대상:** P0 MVP
+> **상태:** Draft v5.9 · **DB Schema:** v1.4 · **대상:** P0 MVP
 >
-> 결정적 Supervisor + 최대 6개 전문 LLM 역할 Node Baseline + 결정적 실행·검증 Engine을 사용한다. Agent 중간 상태는 Checkpoint, 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
+> 결정적 Supervisor + 최대 6개 전문 Agent Subgraph Baseline + 결정적 실행·검증 Engine을 사용한다. 각 Agent Subgraph는 invocation 범위 Local State와 bounded validation·repair/revision loop를 가지며 Typed Result만 Main Graph에 반환한다. Agent별 장기 Memory는 없고 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
+
+## 0. 먼저 이해할 것
+
+- Main Graph는 **결정적 Supervisor**다.
+- Agent는 한 번의 호출 동안만 Local State를 갖는 **LangGraph Subgraph**다.
+- `SINGLE=1`, `THREE=3`, `SIX=6`은 Agent 수이며 LLM Call 수와 다르다.
+- Agent 간 직접 대화는 없고 Typed Result를 Parent에 반환한다.
+- 모든 Profile은 동일한 요청 이해·Source·Evidence·분석·계획·품질 점검 책임을 가진다.
+- Write는 어떤 Agent도 직접 실행하지 않는다.
+
 
 ## 1. 확정 사항
 
-- 요청 이해, API 탐색·수집, Context Retrieval, 업무 분석, 해결책·계획, 계획 검토의 6개 역할을 초기 Baseline으로 정의
+- 요청 이해, API 탐색·수집, Context Retrieval, 업무 분석, 해결책·계획, 계획 검토의 6개 전문 Agent Subgraph를 초기 Baseline으로 정의
 - 6개 역할의 분리 자체는 제품 불변조건이 아니며 Graph Profile 비교 후 Release Graph 확정
 - Supervisor는 결정적 Router
 - Handoff는 Versioned Typed State와 Resource·Evidence·Segment ID
@@ -20,19 +30,76 @@
 
 | Profile | 구조 | 목적 |
 |---|---|---|
-| `SINGLE_BASELINE` | 하나의 통합 LLM Workflow가 요청 이해·Source·Evidence·분석·계획을 생성하고 결정적 Validator가 검토 | 최소 호출 Baseline |
-| `THREE_STAGE` | 1. 요청 이해·Source 계획 2. Evidence·분석·계획 3. 계획 검토 | 역할 분리와 비용의 균형 후보 |
-| `SIX_ROLE_BASELINE` | 요청 이해, API 탐색·수집, Context Retrieval, 업무 분석, 해결책·계획, 계획 검토 | 현행 최대 분리 Baseline |
+| `SINGLE_BASELINE` | 통합 Agent Subgraph 1개. 요청 이해·Source 계획·결정적 Read·Evidence·분석·계획·통합 self-review 책임을 한 invocation 안에서 소유한다. | 단일 Agent Baseline |
+| `THREE_STAGE` | Agent Subgraph 3개. ① 요청 이해+Source 계획+결정적 Read ② Evidence+분석+계획 ③ 독립 계획 검토 | 계층형 3-Agent 후보 |
+| `SIX_ROLE_BASELINE` | Agent Subgraph 6개. 요청 이해, API 탐색·수집, Context Retrieval, 업무 분석, 해결책·계획, 계획 검토 | 최대 전문화 Multi-Agent Baseline |
 
 공통 불변조건:
 
 - Domain·Policy·승인·Claim·실행·검증·복구 코드는 모든 Profile에서 동일하다.
-- Model·Policy·Tool Schema·Fixture·Retrieval 입력을 고정한 상태에서 Graph만 비교한다.
+- E06-A 제품 후보 비교에서는 Model·Policy·Tool Schema·Fixture를 고정하고 각 Profile의 자연스러운 Agent 실행 비용을 측정한다.
+- E06-B 통제 비교는 전체 1/3/6 제품 Graph를 다시 비교하지 않는다. `CONTEXT_READY_V1` 경계의 동일 Intent·ContextBundle·Evidence Snapshot을 고정하고 **post-retrieval reasoning Subgraph 분해**만 비교한다.
 - Agent 제거·Node Skip 실험에서 새로운 휴리스틱 비즈니스 로직을 추가하지 않는다.
 - 제거된 Node의 입력은 기존 공통 변환 함수, 이전 Node Output 또는 상한 분석용 Gold 입력으로 연결한다.
 - Gold 입력을 사용하는 Oracle 실험은 제품 후보가 아니라 성능 상한 분석으로만 기록한다.
 
-## 1.2 구현 순서
+## 1.2 Agent Subgraph 공통 정의
+
+### 1.2.1 Agent와 LLM Call
+
+- **Agent:** Main Supervisor Graph가 호출하는 LangGraph Subgraph다. 하나의 Agent Subgraph는 LLM Node뿐 아니라 자신의 책임 수행에 필요한 결정적 Validation·Read Application Node를 포함할 수 있다.
+- **Role:** 해당 Agent가 소유하는 안정적인 책임 계약이다.
+- **LLM Call:** 모델 추론 1회다. 하나의 Agent가 내부 bounded loop 때문에 복수 호출을 사용할 수 있다.
+- **PromptRef:** Agent 내부 Node·상태·목적별 실행 지시 Artifact다. PromptRef 개수는 Agent 수가 아니다.
+- **Agent Local State:** 해당 invocation 안에서만 존재하는 단편 상태다. 장기 Memory가 아니며 다음 Agent invocation으로 자동 승계하지 않는다.
+
+### 1.2.2 공통 Subgraph 골격
+
+```mermaid
+flowchart TD
+    IN["Parent Input Projection"] --> INIT["Initialize AgentLocalState"]
+    INIT --> LLM["LLM Node"]
+    LLM --> SV["Schema Validation"]
+    SV -->|"SCHEMA_INVALID + budget"| SR["Schema Repair Prompt"]
+    SR --> SV
+    SV -->|"schema ok"| CV["Semantic / Contract Validation"]
+    CV -->|"SEMANTIC_INVALID + allowed"| RV["Semantic Revision Prompt"]
+    RV --> CV
+    CV -->|"deterministic work needed"| DW["Deterministic Application Node"]
+    DW --> DV["Deterministic Result Validation"]
+    DV --> OUT["Typed Result + Disposition"]
+    CV -->|"redirect needed"| OUT
+    CV -->|"complete"| OUT
+```
+
+Subgraph 내부 Loop는 자기 출력의 Schema Repair 또는 허용된 Semantic Revision에 한정한다. `NEEDS_MORE_DATA`, `NEEDS_CONFIRMATION`, `RETRIEVE_MORE`처럼 다른 업무 단계가 필요한 경우 Agent가 다른 Agent를 직접 호출하지 않고 disposition을 반환하며 Supervisor가 다음 Edge를 선택한다.
+
+### 1.2.3 AgentLocalState
+
+```python
+class AgentLocalState:
+    schema_version: int
+    agent_role: str
+    invocation_id: str
+    node_state: str
+    input_projection: dict
+    candidate_output: dict | None
+    prompt_ref: dict | None
+    attempt_no: int
+    schema_repair_count: int
+    semantic_revision_count: int
+    failure_record: dict | None
+    disposition: str | None
+    typed_result: dict | None
+```
+
+규칙:
+- Local State는 invocation 종료 후 장기 기억으로 승격하지 않는다.
+- Parent Checkpoint에는 공식 Typed Result, budget counter, PromptRef metadata, trace correlation만 반영한다.
+- Prompt 원문·Completion 원문·임시 candidate 전체를 장기 Checkpoint에 복제하지 않는다.
+- Approval·ExecutionAttempt·Verification·Domain 상태는 Local State에 존재해도 권위가 없으며 반드시 Domain Store를 재조회한다.
+
+## 1.3 구현 순서
 
 ```text
 1. Domain 상태 전이·SQLite·Command Receipt
@@ -49,7 +116,7 @@
 12. SIX_ROLE_BASELINE Profile
 ```
 
-6개 역할과 20개 Prompt를 한 번에 구현하지 않는다. 각 수직 흐름의 Domain·Tool·Trace 계약이 통과한 후 다음 LLM Node를 추가한다.
+6개 Agent Subgraph와 Prompt Artifact를 한 번에 구현하지 않는다. 각 수직 흐름의 Domain·Tool·Trace 계약과 Subgraph isolation test가 통과한 후 다음 Agent를 추가한다.
 
 ## 2. 책임
 
@@ -65,6 +132,34 @@
 | 실행 Engine | 승인 인자 Claim·MCP Write | LLM 재계획 |
 | 검증·복구 | Google GET·Comparator·Recovery | LLM 성공 판정 |
 
+## 2.1 전문 Agent Subgraph 설계
+
+| Agent Subgraph | 핵심 내부 Node | Local Loop | Parent 반환 |
+|---|---|---|---|
+| Request Understanding | classify / clarify / validate | schema repair, 허용된 clarification revision | `RequestIntentV1` 또는 confirmation disposition |
+| Acquisition | plan_sources / validate_plan / execute_read / finalize_acquisition | schema repair, partial-plan revision | `SourceFetchPlanV1[]` + `AcquisitionResultV1` 및 acquisition disposition |
+| Context Retriever | select_evidence / assess_sufficiency / validate | schema repair, evidence reassessment | `EvidenceSelectionResultV1`, `SufficiencyResultV1` |
+| Work Analysis | analyze / validate | schema repair, bounded reassess | `WorkAnalysisResultV1` |
+| Planning | answer_only 또는 draft_plan / validate | schema repair, bounded plan revision | `AnswerDraftV1` 또는 `ActionPlanDraftV1` |
+| Review | inspect / validate | schema repair, planning revision 이후 recheck | `PlanReviewResultV1` |
+
+**Acquisition 경계:** LLM은 Source·순서·Budget 전략만 제안한다. 실제 Query Builder, Page Token 검증, MCP Read, Google Adapter 호출은 **Acquisition Agent Subgraph 내부의 결정적 Application Node**가 수행한다. 외부 Read가 진행되는 동안에도 같은 Agent invocation이 유지되며, `SourceFetchPlanV1[]`과 `AcquisitionResultV1`을 함께 검증한 뒤 Parent에 반환한다. LLM이 MCP Tool을 직접 호출하는 경로는 없다.
+
+**WRITE 경계:** 어떤 Agent Subgraph도 Google Write를 직접 실행하지 않는다. Agent는 Write Action을 제안할 수 있지만 실제 CREATE·UPDATE·SEND·DELETE는 `DOMAIN_VALIDATION → WAITING_APPROVAL → PREFLIGHT → ACTION_EXECUTION → VERIFICATION` 공통 경로만 사용한다.
+
+**Semantic Responsibility Parity:** E06-A의 세 Profile은 요청 이해, Source 판단, Evidence 판단, 업무 분석, 계획 생성, 계획 품질 점검이라는 동일한 의미 책임 범위를 가져야 한다. `SINGLE_BASELINE`의 품질 점검은 별도 Review Agent가 아니라 같은 Unified Agent Subgraph 내부 `self_review` 단계로 수행한다. `THREE_STAGE`와 `SIX_ROLE_BASELINE`은 독립 Review Agent Subgraph를 사용한다. 따라서 E06-A에서 Review 책임의 존재 여부가 독립변수로 섞이지 않는다.
+Profile 전용 fused/self-review Prompt Artifact는 기존 6-role Prompt를 연속 호출하는 wrapper로 대체하지 않는다. 해당 Prompt가 검증·승격되기 전에는 그 Profile을 `RUNTIME_ACTIVE`로 만들지 않는다.
+
+**E06-B Replay 경계:** Controlled 실험은 `CONTEXT_READY_V1`을 고정 입력 경계로 사용한다. 이 Lane에서는 Request·Acquisition·Context Agent를 실행하거나 채점하지 않는다. 동일 `RequestIntentV1 + ContextBundleV1 + EvidenceSetV1 + PolicySummaryV1`을 주입한 뒤 다음 세 post-retrieval 후보만 비교한다.
+
+```text
+B1_INTEGRATED = Analysis + Planning + Self-review Agent Subgraph 1개
+B2_STAGED     = Analysis+Planning Agent + Review Agent 2개
+B3_SPECIALIZED= Analysis Agent + Planning Agent + Review Agent 3개
+```
+
+E06-B 결과를 `SINGLE/THREE/SIX` 전체 제품 비용으로 해석하지 않는다. 제품 후보 선택은 E06-A가 소유하고 E06-B는 전문화·Handoff 원인 분석용이다.
+
 ## 3. Graph State
 
 ```python
@@ -79,15 +174,13 @@ class MultiAgentGraphState:
     acquisition_result: dict | None
     context_result: dict | None
     analysis_result: dict | None
-    answer_draft: dict | None
     plan_draft: dict | None
     plan_review: dict | None
     approved_plan_id: str | None
     execution_summary: dict | None
     verification_summary: dict | None
-    finalize_intent: dict | None
     user_interrupt: dict | None
-    retry_budget: RunBudgetV1
+    retry_budget: dict
     prompt_context: dict
     trace_context: dict
 ```
@@ -119,9 +212,6 @@ FINALIZE
 
 Run Status는 CREATED, ANALYZING, RETRIEVING, WAITING_CONFIRMATION, PLANNING, WAITING_APPROVAL, EXECUTING, VERIFYING, CANCEL_REQUESTED, CANCELLED, REAUTH_REQUIRED, RECOVERY_REQUIRED, COMPLETED, BLOCKED, FAILED를 사용한다.
 
-Terminal Run Status는 `COMPLETED`, `CANCELLED`, `FAILED`, `BLOCKED`다.
-`REAUTH_REQUIRED`와 `RECOVERY_REQUIRED`는 non-terminal이며 `PARTIAL`은 Run Status가 아니라 projection `result_kind`다.
-
 ## 5. 상위 흐름
 
 ```text
@@ -144,20 +234,13 @@ Initialize
 ## 6. Node 결과
 
 - 요청 이해: COMPLETE | NEEDS_CONFIRMATION | INVALID
-- API 계획: PLAN_READY | NO_FETCH_NEEDED | NEEDS_CONFIRMATION | BLOCKED
-- API 수집: COMPLETE | PARTIAL | AUTH_REQUIRED | RATE_LIMITED | BUDGET_EXHAUSTED | FAILED
+- Acquisition Agent: PLAN_READY | NO_FETCH_NEEDED | NEEDS_CONFIRMATION | COMPLETE | PARTIAL | AUTH_REQUIRED | RATE_LIMITED | BUDGET_EXHAUSTED | BLOCKED | FAILED
+  - `PLAN_READY` 이후 같은 Subgraph invocation 안의 결정적 Read Node가 실행되고 최종적으로 `AcquisitionResultV1`을 반환한다.
 - Context: SUFFICIENT | NEEDS_MORE_DATA | NEEDS_CONFIRMATION | PARTIAL | BLOCKED
 - 분석: COMPLETE | NEEDS_MORE_DATA | NEEDS_CONFIRMATION | BLOCKED
 - 계획: ANSWER_ONLY | PLAN_READY | NEEDS_CONFIRMATION | BLOCKED
 - 검토: PASS | REVISE | RETRIEVE_MORE | CONFIRM | BLOCK
 - Domain: ALLOW_READ | REQUIRE_APPROVAL | BLOCK
-
-`ContextRetrievalResultV1.status == NEEDS_MORE_DATA`,
-`WorkAnalysisResultV1.status == NEEDS_MORE_DATA`,
-and `PlanReviewResultV1.status == RETRIEVE_MORE`
-carry `additional_acquisition_request: AdditionalAcquisitionRequestV1 | None`.
-Supervisor uses that structured handoff to route the run back to `SOURCE_PLANNING`
-without inferring source choice from free text.
 
 ## 7. Prompt Registry
 
@@ -197,7 +280,7 @@ output_schema_version
 - Prompt 원문은 Graph State·Trace·Audit에 저장하지 않음
 - 실행·검증·승인·정책 판정에는 LLM Prompt를 사용하지 않음
 
-초기 Prompt Template 20개:
+초기 Prompt Template 19개:
 
 | Agent | Purpose Key | 수량 |
 |---|---|---:|
@@ -210,33 +293,22 @@ output_schema_version
 
 ## 7.1 Prompt 구현 우선순위
 
-`solution_planning` Prompt set은 `answer_only`, `draft_plan`, `revise_answer`, `revise_plan`, `repair` 5개를 기준으로 한다.
-
 - **Tier A · 우선 완성·실험:** `request_understanding.classify`, `acquisition.plan_sources`, `context.select_evidence`, `planning.draft_plan`, `review.inspect`
-- **Tier B · Baseline 작성:** `context.assess_sufficiency`, `analysis.analyze`, `planning.answer_only`, `planning.revise_answer`, `planning.revise_plan`, `review.recheck`
+- **Tier B · Baseline 작성:** `context.assess_sufficiency`, `analysis.analyze`, `planning.answer_only`, `planning.revise_plan`, `review.recheck`
 - **Tier C · 실패 사례 후 작성:** 모든 `repair`, `reassess`, `revise_partial`
 
-20개 Prompt Manifest와 ID 예약은 유지하지만, Tier C Prompt는 실제 실패 유형과 Trace가 확보되기 전 과도하게 튜닝하지 않는다.
+19개 Prompt Manifest와 ID 예약은 유지하지만, Tier C Prompt는 실제 실패 유형과 Trace가 확보되기 전 과도하게 튜닝하지 않는다.
 
 ## 8. Budget
 
 ```text
-Structured Output Repair: node call당 최대 1회
-추가 수집: 최초 수집 이후 최대 2회
-계획 Revision: run당 최대 2회
-Review Recheck: planning revision당 최대 1회
-NORMAL_MAX_LLM_CALLS=8
-REVISION_HEAVY_MAX_LLM_CALLS=12
-RETRIEVAL_HEAVY_MAX_LLM_CALLS=14
-ABSOLUTE_MAX_LLM_CALLS=16
+Structured Output Repair: 호출당 최대 1회
+추가 수집: 최대 2회
+계획 Revision: 최대 2회
+기본 LLM 호출: Run당 최대 8회
 ```
 
-`ABSOLUTE`는 selectable profile이 아니다.
-Profile promotion은 monotonic이며 downgrade는 없다.
-Revision과 Retrieval이 모두 발생하면 `RETRIEVAL_HEAVY`를 유지한다.
-`llm_calls_used`는 actual provider prompt invocation 기준으로 집계한다.
-Budget 초과 후 terminal mapping은 별도 terminal boundary가 결정한다.
-Budget reason은 `RunBudgetV1`에 저장하지 않고 `BudgetDecisionV1` handoff로 전달한다.
+하드 상한 초과 시 Partial·Confirmation·Blocked 중 하나로 종료한다.
 
 ## 9. Answer-only
 
@@ -247,8 +319,6 @@ ANALYZING | RETRIEVING | PLANNING
 ```
 
 Plan·Action 없이 Assistant Message·Trace·Run Terminal을 원자 저장한다.
-Supervisor는 route만 선택하고 Run Status mutation은 하지 않는다.
-`FINALIZE`는 Stage 16 handoff boundary이며 terminal intent는 checkpoint-safe `finalize_intent` 또는 기존 persisted state/result로 도출한다.
 
 ## 10. READ-only
 
@@ -321,23 +391,15 @@ acquisition_result: AcquisitionResultV1 | None
 evidence_selection_result: EvidenceSelectionResultV1 | None
 sufficiency_result: SufficiencyResultV1 | None
 analysis_result: WorkAnalysisResultV1 | None
-answer_draft: AnswerDraftV1 | None
 plan_draft: ActionPlanDraftV1 | None
 plan_review: PlanReviewResultV1 | None
 execution_summary: ExecutionSummaryV1 | None
 verification_summary: VerificationSummaryV1 | None
-finalize_intent: FinalizeIntentV1 | None
 user_interrupt: UserInterruptV1 | None
 retry_budget: RunBudgetV1
 prompt_context: PromptContextV1
 trace_context: TraceContextV1
 ```
-
-`RESOURCE_SELECTED`의 선택 Resource identity는 `RequestIntentV1`에 중복 저장하지 않는다.
-Runtime 입력과 `prompt_context`는 `selected_resource_ids` 호환 필드와 함께
-`SelectedResourceRefV1[]` projection을 보존한다. Stage 5는 이 projection의
-`source`, `resource_type`, `resource_id`, `parent_resource_id`로만 선택 Resource 상세 GET
-경로를 결정한다.
 
 ## 16. Node Registry
 
@@ -346,7 +408,7 @@ Runtime 입력과 `prompt_context`는 `selected_resource_ids` 호환 필드와 �
 | `request_understanding.classify` | request_understanding | REQUEST_ANALYSIS | classify | RequestIntentV1 | COMPLETE·NEEDS_CONFIRMATION·INVALID | 1 |
 | `request_understanding.clarify` | request_understanding | WAITING_CONFIRMATION | clarify | ClarificationQuestionV1 | QUESTION_READY | 1 |
 | `request_understanding.repair` | request_understanding | REQUEST_ANALYSIS | repair | RequestIntentV1 | COMPLETE·INVALID | 1 |
-| `acquisition.plan_sources` | api_discovery_acquisition | SOURCE_PLANNING | plan_sources | SourceFetchPlanV1[] | PLAN_READY·NO_FETCH_NEEDED·NEEDS_CONFIRMATION·BLOCKED | 1 |
+| `acquisition.plan_sources` | api_discovery_acquisition | SOURCE_PLANNING | plan_sources | SourceFetchPlanV1[] | PLAN_READY·NO_FETCH_NEEDED·CONFIRM·BLOCKED | 1 |
 | `acquisition.revise_partial` | api_discovery_acquisition | SOURCE_PLANNING | revise_partial | SourceFetchPlanV1[] | PLAN_READY·PARTIAL·BLOCKED | 1 |
 | `acquisition.repair` | api_discovery_acquisition | SOURCE_PLANNING | repair | SourceFetchPlanV1[] | PLAN_READY·BLOCKED | 1 |
 | `context.select_evidence` | context_retriever | CONTEXT_RETRIEVAL | select_evidence | EvidenceSelectionResultV1 | SELECTED·PARTIAL·BLOCKED | 1 |
@@ -369,15 +431,9 @@ Runtime 입력과 `prompt_context`는 `selected_resource_ids` 호환 필드와 �
 
 ---
 
-## 24. 2026-08-07 Agent Failure·Prompt·Budget 계약 보강
+## 17. Agent Failure·Prompt·Budget 계약
 
-이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.0`를 적용한다.
-
-Answer-only review revision contract:
-
-- `planning.answer_only`가 `ANSWER_ONLY`를 반환하면 `answer_draft`를 기록하고 `plan_draft`는 `None`으로 비운다.
-- `planning.draft_plan`이 `PLAN_READY`를 반환하면 `plan_draft`를 기록하고 `answer_draft`는 `None`으로 비운다.
-- Answer-only 경로에서 `review.inspect`가 `REVISE`를 반환하면 `planning.revise_answer`가 수정된 `AnswerDraftV1`을 생성하고 `answer_draft`를 교체한 뒤 `review.recheck`로 진행한다.
+이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.3`를 적용한다.
 
 ### 24.1 Failure Record
 
@@ -426,22 +482,22 @@ ABSOLUTE_MAX_LLM_CALLS=16
 ```
 
 단일 `MAX_LLM_CALLS=8`을 모든 Route에 적용하지 않는다. Budget Profile 승격은 Supervisor의 결정적 규칙으로 수행하며 절대 상한 16회를 넘지 않는다.
-`ABSOLUTE`는 profile enum이 아니며 `NORMAL -> REVISION_HEAVY -> RETRIEVAL_HEAVY` 순서로만 승격한다.
-RunBudgetV1 최소 shape은 `schema_version`, `profile`, `llm_calls_used`, `additional_acquisitions_used`, `planning_revisions_used`, `last_rechecked_planning_revision`, `semantic_revision_signatures_used`를 포함한다.
 
 ### 24.4 Prompt 선택과 활성화
 
-Prompt 선택 Key에는 선택적으로 `failure_reason_code`를 포함한다.
+Prompt Runtime Slot 선택 Key는 다음과 같이 고정한다.
 
 ```text
 agent_role + subgraph_name + node_name + node_state + purpose
-+ failure_reason_code? + input_schema_version + output_schema_version
++ input_schema_version + output_schema_version
 ```
+
+`failure_reason_code`는 Runtime Prompt Slot 식별 Key가 아니다. 이미 선택된 Base Prompt에 결합할 Failure-specific Instruction Block을 선택하는 metadata이며, 조립이 끝난 최종 Prompt의 `content_hash`를 계산한다.
 
 Prompt는 Base Role Contract, Node Purpose, Failure-specific Block, Allowed Change Scope, Output Schema를 조립한다. Node DEV, Node HOLDOUT, Safety Gate, Prompt Manifest 승인을 통과한 Prompt만 `RUNTIME_ACTIVE`가 된다.
 
 
-## 2026-08-07 v5.5 승인형 Effect · Clarification
+## 18. 승인형 Effect · Clarification
 - Planning Effect는 `READ | CREATE | UPDATE | SEND | DELETE`다.
 - SEND는 Gmail 실제 전송, DELETE는 Calendar Event 삭제, Task 완료·Calendar 참석자 변경은 UPDATE다.
 - 승인 후 Tool·Effect·Arguments·Target을 LLM이 변경하지 않는다.
@@ -454,3 +510,30 @@ Prompt는 Base Role Contract, Node Purpose, Failure-specific Block, Allowed Chan
 분석 후 관계/충돌 불명 → Work Analysis → NEEDS_CONFIRMATION
 ```
 모든 경로는 `request_understanding.clarify`에서 후보·차이·선택지를 만들고 같은 Run·Thread를 Resume한다. Request Understanding이 검색 전부터 후보 수를 안다고 가정하지 않는다.
+
+## 19. 정보 부족 Supervisor Guard
+
+Agent의 `NEEDS_MORE_DATA`, `NEEDS_CONFIRMATION`, `PARTIAL`, `BLOCKED`는 제안 결과이며 최종 Route는 결정적 Supervisor가 `05`의 `SufficiencyIssue` 계약으로 확정한다.
+
+```text
+required POLICY/safety-critical issue
+→ BLOCKED
+
+required USER issue
+→ NEEDS_CONFIRMATION
+
+required GOOGLE issue + acquisition budget 남음
+→ RETRIEVE_MORE
+
+budget exhausted + read-only + evidence-supported partial 가능
+→ PARTIAL
+
+budget exhausted + Write 필수 Target/Argument/Evidence 부족
+→ USER가 해결 가능한 경우 NEEDS_CONFIRMATION
+→ 그 외 BLOCKED
+```
+
+- Profile별로 별도 휴리스틱을 두지 않는다.
+- LLM confidence 하나로 안전 Route를 결정하지 않는다.
+- `PARTIAL`은 근거가 있는 Read-only 응답의 축약 완료이며 Write 필수 정보 부족을 우회하는 수단이 아니다.
+- `NEEDS_CONFIRMATION`은 같은 Run·Thread의 typed Interrupt로 재개한다.

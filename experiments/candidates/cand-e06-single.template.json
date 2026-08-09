@@ -1,14 +1,14 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "candidate_id": "CAND-E06-SINGLE",
   "candidate_kind": "BASELINE_TEMPLATE",
   "runnable": false,
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "graph_version": "SINGLE_BASELINE",
-  "prompt_bundle_version": "0.7.0-r7",
+  "prompt_bundle_version": "0.8.2-r8.3",
   "agent_schema_version": "v1",
-  "tool_schema_version": "v2.4",
-  "policy_version": "01-B-v2.3",
+  "tool_schema_version": "v2.6",
+  "policy_version": "01-B-v2.4",
   "retrieval_config_version": "baseline-r6",
   "runtime": {
     "runtime_mode": "API_LLM",
@@ -41,5 +41,31 @@
     "runtime.model",
     "runtime.model_version"
   ],
-  "candidate_config_hash": "59387f0b28ec134ef11b26044769f44ddefb7e5dc18bdacab9d1c03c0225b5f6"
+  "candidate_config_hash": "48a3c82f0e98a4c2bf8846e4c2c264dbc82e618c3b3fea87c7e79852e7e12ba0",
+  "prompt_semantic_bundle_version": "semantic-r8.3-v1",
+  "graph_profile_spec": {
+    "profile_id": "SINGLE_BASELINE",
+    "nominal_agent_subgraph_count": 1,
+    "dynamic_agent_skip": false,
+    "semantic_responsibility_map_version": "semantic-responsibility-r8.2-v1",
+    "semantic_responsibility_exception": null,
+    "required_prompt_slots": [
+      "profile.single.request_source.initial",
+      "profile.single.reason_plan.initial",
+      "profile.single.self_review.initial"
+    ],
+    "normal_path_llm_call_plan": 3
+  },
+  "evaluation_environment": {
+    "environment_lock_version": "env-r8.2-v1",
+    "client_os": "Windows-11-x64",
+    "llm_concurrency": 1,
+    "google_read_concurrency": 3,
+    "write_concurrency": 1,
+    "api_llm_timeout_seconds": 120,
+    "google_timeout_seconds": 30,
+    "runner_version": "1.11.0-r8.2",
+    "hardware_profile_id": "API_HOSTED_OR_UNRESOLVED",
+    "evaluation_environment_hash": "ea1391e0f280cf60138c89fd838c46f51ff2e1c8a0bbe4401e74c544e83b3102"
+  }
 }

@@ -1,0 +1,418 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/canonical-case-v4.schema.json",
+  "title": "CanonicalCaseV4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "split",
+    "dataset_version",
+    "category",
+    "scenario_family_id",
+    "fixture_relation_family",
+    "fixture_snapshot_id",
+    "language",
+    "entry_mode",
+    "user_prompt_id",
+    "canonical_user_prompt",
+    "business_scenario",
+    "expected_goal",
+    "expected_completion_criteria",
+    "requested_outcome",
+    "selected_resource_ids",
+    "required_sources",
+    "optional_sources",
+    "forbidden_sources",
+    "required_resource_ids",
+    "hard_negative_resource_ids",
+    "required_evidence_ids",
+    "user_evidence",
+    "derived_evidence",
+    "expected_source_fetch_plan",
+    "expected_tool_trajectory",
+    "policy_result",
+    "allowed_actions",
+    "forbidden_actions",
+    "approval_expectation",
+    "verification_expectation",
+    "end_state_expectation",
+    "node_applicability",
+    "node_projection_refs",
+    "tags",
+    "human_rubric",
+    "expected_planning_result_type",
+    "expected_interactions",
+    "expected_semantic_milestones",
+    "six_reference_route",
+    "six_reference_skipped_nodes"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 4
+    },
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "split": {
+      "enum": [
+        "CORE",
+        "STRESS",
+        "HOLDOUT"
+      ]
+    },
+    "dataset_version": {
+      "type": "string"
+    },
+    "category": {
+      "enum": [
+        "SOURCE_SELECTION_READ",
+        "TASKS_CALENDAR_TO_GMAIL",
+        "GMAIL_TASKS_TO_CALENDAR",
+        "CALENDAR_GMAIL_TO_TASKS",
+        "THREE_SOURCE_COMPLEX",
+        "AMBIGUITY_DUPLICATE_CONFLICT_ERROR_POLICY"
+      ]
+    },
+    "scenario_family_id": {
+      "type": "string"
+    },
+    "fixture_relation_family": {
+      "type": "string"
+    },
+    "fixture_snapshot_id": {
+      "type": "string"
+    },
+    "language": {
+      "enum": [
+        "ko-KR",
+        "en-US"
+      ]
+    },
+    "entry_mode": {
+      "enum": [
+        "AGENT_SEARCH",
+        "RESOURCE_SELECTED"
+      ]
+    },
+    "user_prompt_id": {
+      "type": "string"
+    },
+    "canonical_user_prompt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "business_scenario": {
+      "type": "string"
+    },
+    "expected_goal": {
+      "type": "string"
+    },
+    "expected_completion_criteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "requested_outcome": {
+      "enum": [
+        "ANSWER",
+        "ANALYSIS",
+        "ACTION_PLAN"
+      ]
+    },
+    "selected_resource_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "required_sources": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "GMAIL",
+          "TASKS",
+          "CALENDAR"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "optional_sources": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "GMAIL",
+          "TASKS",
+          "CALENDAR"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "forbidden_sources": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "GMAIL",
+          "TASKS",
+          "CALENDAR"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "required_resource_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "hard_negative_resource_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "required_evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "user_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "claim"
+        ],
+        "properties": {
+          "evidence_id": {
+            "type": "string"
+          },
+          "claim": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "derived_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "claim",
+          "derivation"
+        ],
+        "properties": {
+          "evidence_id": {
+            "type": "string"
+          },
+          "claim": {
+            "type": "string"
+          },
+          "derivation": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "expected_source_fetch_plan": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "expected_tool_trajectory": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "policy_result": {
+      "enum": [
+        "ALLOW_READ",
+        "REQUIRE_APPROVAL",
+        "BLOCK"
+      ]
+    },
+    "allowed_actions": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "forbidden_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "approval_expectation": {
+      "type": "object"
+    },
+    "verification_expectation": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "required",
+        "policy",
+        "all_writes_re_read",
+        "per_action"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "policy": {
+          "type": "string"
+        },
+        "all_writes_re_read": {
+          "type": "boolean"
+        },
+        "per_action": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action_id",
+              "effect_type",
+              "policy",
+              "recovery_policy",
+              "required"
+            ],
+            "properties": {
+              "action_id": {
+                "type": "string"
+              },
+              "effect_type": {
+                "enum": [
+                  "CREATE",
+                  "UPDATE",
+                  "SEND",
+                  "DELETE"
+                ]
+              },
+              "policy": {
+                "enum": [
+                  "GET_COMPARE",
+                  "SENT_LOOKUP",
+                  "GET_ABSENT"
+                ]
+              },
+              "recovery_policy": {
+                "enum": [
+                  "RESOURCE_SEARCH",
+                  "GET_TARGET",
+                  "MESSAGE_SEARCH"
+                ]
+              },
+              "required": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "end_state_expectation": {
+      "type": "object"
+    },
+    "node_applicability": {
+      "type": "object"
+    },
+    "node_projection_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 8,
+      "maxItems": 8,
+      "uniqueItems": true
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "human_rubric": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "expected_planning_result_type": {
+      "enum": [
+        "ANSWER",
+        "ANALYSIS",
+        "ACTION_PLAN",
+        "PARTIAL",
+        "NOT_REACHED"
+      ]
+    },
+    "expected_interactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sequence",
+          "type",
+          "required"
+        ],
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "type": {
+            "enum": [
+              "CONFIRMATION",
+              "APPROVAL",
+              "REAUTH",
+              "RECOVERY_DECISION",
+              "CANCEL_REQUEST"
+            ]
+          },
+          "required": {
+            "const": true
+          }
+        }
+      }
+    },
+    "expected_semantic_milestones": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "six_reference_route": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "six_reference_skipped_nodes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

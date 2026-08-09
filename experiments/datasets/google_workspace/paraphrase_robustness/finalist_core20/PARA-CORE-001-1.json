@@ -6,7 +6,7 @@
   "paraphrase_group_id": "PG-CORE-001",
   "variant_index": 1,
   "language": "ko-KR",
-  "text": "지금 선택한 Boreal 갱신 메일을 읽기 작업으로 다시 조회해 서명 마감과 법무 담당을 보여줘. 다른 메일 검색은 하지 말아줘.",
+  "text": "지금 선택한 Boreal 갱신 메일을 다시 확인해서 서명 마감과 법무 담당을 보여줘. 다른 메일 검색은 하지 말아줘.",
   "expected_entry_mode": "RESOURCE_SELECTED",
   "expected_requested_outcome": "ACTION_PLAN",
   "expected_same_goal": true,

@@ -1,22 +1,23 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://google-work-agent.local/schemas/plan-review-output.schema.json",
-  "title": "PlanReviewResultV1",
+  "title": "PlanReviewResultV2",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
-    "result",
-    "findings",
-    "localized_failure_codes",
-    "next_route",
-    "recheck_required"
+    "status",
+    "summary",
+    "issues",
+    "confirmation",
+    "blockers",
+    "additional_acquisition_request"
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 2
     },
-    "result": {
+    "status": {
       "enum": [
         "PASS",
         "REVISE",
@@ -25,71 +26,86 @@
         "BLOCK"
       ]
     },
-    "findings": {
+    "summary": {
+      "type": "string"
+    },
+    "issues": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "code",
-          "severity",
-          "action_id",
-          "field_paths",
-          "evidence_ids",
+          "schema_version",
+          "issue_id",
+          "kind",
           "message"
         ],
         "properties": {
-          "code": {
+          "schema_version": {
+            "const": 2
+          },
+          "issue_id": {
             "type": "string"
           },
-          "severity": {
-            "enum": [
-              "CRITICAL",
-              "ERROR",
-              "WARN"
-            ]
-          },
-          "action_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "field_paths": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "evidence_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          "kind": {
+            "type": "string"
           },
           "message": {
             "type": "string"
+          },
+          "affected_action_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "affected_field_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "resource_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       }
     },
-    "localized_failure_codes": {
+    "confirmation": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "blockers": {
       "type": "array",
       "items": {
         "type": "string"
       }
     },
-    "next_route": {
-      "enum": [
-        "PLANNING",
-        "ACQUISITION",
-        "CONFIRM",
-        "BLOCK",
-        "DOMAIN_VALIDATION"
+    "additional_acquisition_request": {
+      "type": [
+        "object",
+        "null"
       ]
     },
-    "recheck_required": {
-      "type": "boolean"
+    "llm_provider_result": {
+      "type": "object"
     }
   }
 }

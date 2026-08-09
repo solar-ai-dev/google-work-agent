@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "projection_id": "PROJ-CORE-019-E2E",
   "case_id": "CASE-CORE-019",
   "projection_kind": "E2E",
@@ -11,13 +11,41 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "end_state_expectation": {
-      "initial": {
-        "run_status": "WAITING_CONFIRMATION",
-        "result_kind": "NONE"
-      },
-      "after_user_action": "RESUME_SAME_THREAD"
-    },
+    "expected_goal": "Google 조회나 Draft 계획 전에 예상 소요시간을 사용자에게 확인한다.",
+    "completion_criteria": [
+      "화요일 오후 선호와 고객 워크숍 목적을 보존한다.",
+      "소요시간을 임의로 추정하지 않는다.",
+      "확인 전 Gmail·Tasks·Calendar를 조회하지 않는다.",
+      "확인 전 Draft Action을 만들지 않는다."
+    ],
+    "required_sources": [],
+    "optional_sources": [],
+    "forbidden_sources": [],
+    "required_resource_ids": [],
+    "hard_negative_resource_ids": [],
+    "required_evidence_ids": [],
+    "policy_result": "ALLOW_READ",
+    "expected_interactions": [
+      {
+        "sequence": 1,
+        "type": "CONFIRMATION",
+        "required": true
+      }
+    ],
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "CONFIRMATION"
+    ],
+    "expected_planning_result_type": "NOT_REACHED",
+    "allowed_actions": [],
+    "forbidden_actions": [
+      "gmail_send",
+      "gmail_delete",
+      "tasks_delete",
+      "tasks_complete",
+      "calendar_delete",
+      "calendar_add_external_attendee"
+    ],
     "approval_expectation": {
       "required": false,
       "scope": "ACTION_LEVEL",
@@ -26,13 +54,16 @@
     "verification_expectation": {
       "required": false,
       "policy": "NONE",
-      "all_writes_re_read": false
+      "all_writes_re_read": false,
+      "per_action": []
     },
-    "completion_criteria": [
-      "Task 목록과 Calendar를 볼 수 있지만 Duration이 없다.",
-      "Duration을 임의로 정하지 않는다.",
-      "확인 전 Draft를 만들지 않는다."
-    ]
+    "run_outcome_expectation": {
+      "evaluation_stop": {
+        "run_status": "WAITING_CONFIRMATION",
+        "result_kind": "NONE"
+      },
+      "resume_or_followup": "RESUME_SAME_THREAD"
+    }
   },
   "grader_ids": [
     "grader.e2e.deterministic",

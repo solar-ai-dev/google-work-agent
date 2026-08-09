@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "gate_state_version": "1.11",
+  "dataset_version": "rebuild-v1.13-r8.3",
+  "prompt_bundle_version": "0.8.2-r8.3",
+  "prompt_semantic_bundle_version": "semantic-r8.3-v1",
+  "static_integrity": "PASS",
+  "model_execution_performed": false,
+  "required_next": [
+    "G00_CHANGED_SAMPLE_HUMAN_REVIEW",
+    "E02_PROFILE_FUSED_DEV",
+    "G01_SAFETY_DEV"
+  ],
+  "notes": [
+    "Canonical Korean request wording and fixture email realism changed; re-review sample before model runs.",
+    "Prompt input schema references and retry slot/variant semantics were repaired.",
+    "No prompt is RUNTIME_ACTIVE."
+  ],
+  "business_realism_review": "PASS_STATIC",
+  "naturalness_review": "PASS_STATIC",
+  "experiment_contract_review": "PASS_STATIC",
+  "holdout_lock": "CANONICAL-HOLDOUT-v1.11-R8.2"
+}

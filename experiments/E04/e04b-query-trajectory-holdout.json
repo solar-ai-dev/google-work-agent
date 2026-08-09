@@ -7,20 +7,21 @@
   "purpose": "Evaluate query constraint reflection, low-confidence handling, changed-query retries, and stop policy.",
   "independent_variable": "ACQUISITION_STRATEGY_ONLY",
   "fixed_dimensions": {
-    "dataset_version": "rebuild-v1.9",
-    "prompt_bundle_version": "0.7.0-r7",
-    "tool_schema_version": "v2.4",
-    "policy_version": "01-B-v2.3",
+    "dataset_version": "rebuild-v1.13-r8.3",
+    "prompt_bundle_version": "0.8.2-r8.3",
+    "tool_schema_version": "v2.6",
+    "policy_version": "01-B-v2.4",
     "provider": "OPENAI",
     "runtime_model": "E01_FINALIST",
-    "reasoning_budget": "medium"
+    "reasoning_budget": "medium",
+    "prompt_semantic_bundle_version": "semantic-r8.3-v1"
   },
   "dataset_selection_ref": "experiments/selections/SEL-E04B-QUERY-CHALLENGE-HOLDOUT.json",
   "candidate_config_refs": [
     "experiments/candidates/cand-e04-acq-base.template.json",
     "experiments/candidates/cand-e04-acq-query-trace.template.json"
   ],
-  "grader_registry_ref": "experiments/graders/grader-registry-v0.2.json",
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.4.json",
   "trial_policy": {
     "dev_trials_per_item": 1,
     "holdout_trials_per_item": 0,
@@ -63,5 +64,6 @@
   ],
   "notes": [
     "Locked Node/query holdout; no tuning after opening results."
-  ]
+  ],
+  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.1.json"
 }

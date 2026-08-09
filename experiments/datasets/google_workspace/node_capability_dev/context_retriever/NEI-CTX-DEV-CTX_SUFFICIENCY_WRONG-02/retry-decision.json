@@ -6,7 +6,7 @@
     "CTX_SUFFICIENCY_WRONG"
   ],
   "retry_kind": "SEMANTIC_REVISION",
-  "next_prompt_slot_id": "context.assess_sufficiency.failure.CTX_SUFFICIENCY_WRONG",
+  "next_prompt_slot_id": "context.assess_sufficiency.semantic_revision",
   "next_node_id": null,
   "attempt_no": 2,
   "max_attempts": 2,

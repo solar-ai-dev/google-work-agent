@@ -13,7 +13,7 @@
   "gold": {
     "goal": "TSK-A-001의 기한 수정 Action을 제안한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

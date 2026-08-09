@@ -12,12 +12,8 @@
   },
   "gold": {
     "goal": "최종 마감과 담당자를 최신 Thread에서 답한다.",
-    "completion_criteria": [
-      "9월 Thread를 선택한다.",
-      "9월 1일 18시와 하린을 답한다.",
-      "7월 회고를 배제한다."
-    ],
-    "expected_interrupt": "NONE"
+    "requested_outcome": "ANSWER",
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

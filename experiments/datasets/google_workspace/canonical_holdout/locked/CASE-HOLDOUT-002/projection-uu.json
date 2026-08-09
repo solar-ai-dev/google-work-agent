@@ -12,11 +12,8 @@
   },
   "gold": {
     "goal": "Willow Event 시간과 설명을 답한다.",
-    "completion_criteria": [
-      "선택 Event를 직접 조회한다.",
-      "전체 Calendar 검색이나 Gmail·Tasks 조회를 하지 않는다."
-    ],
-    "expected_interrupt": "NONE"
+    "requested_outcome": "ANSWER",
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

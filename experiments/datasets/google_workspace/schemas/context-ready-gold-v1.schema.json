@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "context-ready-gold-v1.schema.json",
+  "title": "ContextReadyGoldV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "contract_version",
+    "context_snapshot_id",
+    "source_case_id",
+    "gold"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "contract_version": {
+      "const": "CONTEXT_READY_V1"
+    },
+    "context_snapshot_id": {
+      "type": "string"
+    },
+    "source_case_id": {
+      "type": "string"
+    },
+    "gold": {
+      "type": "object"
+    }
+  }
+}

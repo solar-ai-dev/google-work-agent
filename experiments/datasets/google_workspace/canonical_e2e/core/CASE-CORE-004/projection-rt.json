@@ -11,27 +11,6 @@
     "entry_mode": "RESOURCE_SELECTED"
   },
   "gold": {
-    "expected_route": [
-      "request_understanding.classify",
-      "acquisition.plan_sources",
-      "NO_FETCH_NEEDED",
-      "planning.draft_plan",
-      "review.inspect",
-      "domain_validation",
-      "publish_read_only_plan",
-      "claim_read_action",
-      "calendar_get_event",
-      "complete_read_action",
-      "finalize_read_action",
-      "response_synthesis",
-      "COMPLETED"
-    ],
-    "expected_skipped_nodes": [
-      "context.select_evidence",
-      "context.assess_sufficiency",
-      "analysis.analyze",
-      "planning.answer_only"
-    ],
     "expected_tool_trajectory": [
       {
         "phase": "READ_ACTION",
@@ -49,6 +28,36 @@
           "finalize_read_action"
         ]
       }
+    ],
+    "topology_scope": "SIX_ROLE_BASELINE",
+    "six_reference_route": [
+      "request_understanding.classify",
+      "acquisition.plan_sources",
+      "NO_FETCH_NEEDED",
+      "planning.draft_plan",
+      "review.inspect",
+      "domain_validation",
+      "publish_read_only_plan",
+      "claim_read_action",
+      "calendar_get_event",
+      "complete_read_action",
+      "finalize_read_action",
+      "response_synthesis",
+      "COMPLETED"
+    ],
+    "six_reference_skipped_nodes": [
+      "context.select_evidence",
+      "context.assess_sufficiency",
+      "analysis.analyze",
+      "planning.answer_only"
+    ],
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "ACQUISITION",
+      "PLANNING",
+      "QUALITY_CHECK",
+      "DOMAIN_VALIDATION",
+      "FINALIZATION"
     ]
   },
   "grader_ids": [

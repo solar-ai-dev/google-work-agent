@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.4`, `01-A v2.3`, `01-B v2.3`, `02 UI·UX v2.3`, `03 Architecture v2.6`, `04 Database v1.9`, `05 Retrieval v2.1`, `06 Workflow v5.5`, `07 Interface v2.4`, `08 Sequence v2.6`, `09 Security v2.2`, `10 Infrastructure v2.4`, `11 Observability v2.4`, Domain 상태 전이 계약 v1.3과 테스트 매트릭스 v1.3을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.6`, `01-A v2.5`, `01-B v2.5`, `02 UI·UX v2.3`, `03 Architecture v2.9`, `04 Database v1.11`, `05 Retrieval v2.4`, `06 Workflow v5.9`, `07 Interface v2.7`, `08 Sequence v3.0`, `09 Security v2.3`, `10 Infrastructure v2.5`, `11 Observability v2.8`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v2.5 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.0 · **기준일:** 2026-08-09 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -145,10 +145,12 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 
 ## 8. Multi-Agent·Prompt
 
-- 6개 Agent 중 필요한 단계만 호출
-- Peer-to-Peer 금지
-- Route Profile별 LLM Call 한도 검증
-- Revision 2, Review Recheck 1, Repair 1, Additional Acquisition 2
+- Profile별 Agent Subgraph 개수 계약: SINGLE=1, THREE=3, SIX=6
+- Agent Subgraph는 invocation 범위 Local State만 사용하고 장기 Memory를 생성하지 않음
+- Agent 간 직접 호출·Peer-to-Peer 금지
+- Agent invocation 수와 LLM Call 수를 별도 계수
+- Route별 LLM Budget Profile과 절대 상한 16 검증
+- Revision 2, Repair 1, Additional Acquisition 2
 - Retriever MCP 직접 호출 금지
 - Prompt Registry Key 검증
 - Supervisor는 Node만 Routing하고 선택된 Agent·Application Node가 PromptRef를 확정
@@ -253,6 +255,14 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - Write 최종 상태를 Google Fixture End-state와 비교
 - 텍스트 성공 선언만으로 Write 성공 처리 금지
 
+### Scoring Contract
+
+- `scoring-contract-v1.1.json` 존재·Version 고정
+- Hard Gate 실패 Candidate가 aggregate PASS가 되지 않음
+- Core·Stress·Holdout 분모를 분리
+- E06-A에서 `six_reference_route`를 common BTS 조건으로 사용하지 않음
+- 비용·Latency가 BTS 실패를 상쇄하지 않음
+
 ### Grader Calibration
 
 - 결정적 판정 가능 항목에 LLM Judge 단독 사용 금지
@@ -307,7 +317,7 @@ Experiment Runner는 Dataset·Projection 참조 오류, Holdout 누수, 의도 �
 
 ---
 
-## 14. 2026-08-07 Agent Capability·Retry 회귀 확장
+## 18. Agent Capability·Retry 회귀
 
 이 절은 기존 8절의 단일 예산·Review 재시도 설명을 폐기하고 다음 Route Profile 계약으로 대체한다.
 
@@ -320,11 +330,7 @@ PLANNING_REVISION_PER_RUN=2
 REVIEW_RECHECK_PER_PLANNING_REVISION=1
 ```
 
-`ABSOLUTE`는 profile이 아니며 downgrade는 허용하지 않는다.
-Revision과 Retrieval이 모두 발생한 run은 `RETRIEVAL_HEAVY`로 유지한다.
-LLM accounting은 `structured_output_attempts`가 아니라 actual provider prompt invocation 기준으로 검증한다.
-
-### 14.1 필수 회귀
+### 18.1 필수 회귀
 
 - 동일 실패 Signature에 Semantic Revision을 두 번 호출하지 않는다.
 - Schema Repair가 Goal·Evidence·Action 의미를 변경하면 실패다.
@@ -340,12 +346,12 @@ LLM accounting은 `structured_output_attempts`가 아니라 actual provider prom
 - Node DEV와 Node HOLDOUT의 Failure·Scenario·Fixture Family가 겹치면 실패다.
 - Prompt Manifest가 `RUNTIME_ACTIVE`가 아닌 Prompt를 제품 Runtime이 선택하면 실패다.
 
-### 14.2 Node Dataset Gate
+### 18.2 Node Dataset Gate
 
 모든 적용 가능한 Failure Reason은 최소 `DEV 3 + HOLDOUT 1` Item을 가진다. `ORACLE`, `LIVE`, `MUTATED` 결과는 같은 집계로 합치지 않는다.
 
 
-## 2026-08-07 v2.5 정합성 회귀 Gate
+## 19. 정합성 회귀 Gate
 - Google/MCP/LLM Stub 호출 순간 SQLite Write Transaction이 열려 있지 않아야 한다.
 - 외부 호출 전후 두 Transaction 사이 Version 변경 시 결과 저장을 차단한다.
 - Recovery는 `RequireRecovery`·`ResolveRecovery` 외 직접 상태 변경 0건이어야 한다.
@@ -357,3 +363,71 @@ LLM accounting은 `structured_output_attempts`가 아니라 actual provider prom
 - 문맥으로 해결된 요청과 `답장해줘` SEND 의도에 불필요 Clarification 0.
 - 전체 Mailbox/무제한 Workspace 조회는 API 호출 전에 BLOCK.
 - Calendar overlap 자체를 conflict로 오판하지 않는다.
+## 20. Agent Subgraph 회귀 테스트
+
+- Acquisition Agent는 LLM plan 후 같은 Subgraph invocation 안에서 결정적 Read Node를 실행하고 `AcquisitionResult` 반환 뒤 종료한다.
+- SourceFetchPlan을 Parent에 반환해 invocation을 끝낸 뒤 같은 Local State로 재진입하는 경로는 금지한다.
+- `SINGLE_BASELINE`은 Planning 결과에 대해 같은 Unified Agent 내부 self-review 책임을 수행한다.
+- E06-B는 `CONTEXT_READY_V1` 이후만 실행하며 Google Read 호출 수가 0이어야 한다.
+- E06-B 후보는 `B1_INTEGRATED=1`, `B2_STAGED=2`, `B3_SPECIALIZED=3` post-retrieval Agent Subgraph topology를 가져야 한다.
+
+| Test ID | 검증 | 기대 |
+|---|---|---|
+| `TST-AGT-201` | SINGLE Profile topology | Agent Subgraph 1개 |
+| `TST-AGT-202` | THREE Profile topology | 서로 다른 책임 계약의 Agent Subgraph 3개 |
+| `TST-AGT-203` | SIX Profile topology | 전문 Agent Subgraph 6개 |
+| `TST-AGT-204` | Agent Local State isolation | invocation 종료 후 다음 호출에 임시 candidate/repair state 자동 승계 0 |
+| `TST-AGT-205` | Parent/Child state projection | 허용 필드만 입력·Typed Result만 반환 |
+| `TST-AGT-206` | bounded repair loop | Schema Repair 최대 1, Semantic Revision 계약 상한 준수 |
+| `TST-AGT-207` | direct agent call prohibition | Agent→Agent 직접 Edge 0 |
+| `TST-AGT-208` | write boundary | Agent Subgraph의 MCP/Google Write 직접 호출 0 |
+| `TST-AGT-209` | checkpoint authority | Local Checkpoint로 Approval/Execution 사실 확정 불가 |
+| `TST-EVAL-210` | E06-B replay | 동일 `CONTEXT_READY_V1` / `context_snapshot_id`를 B1/B2/B3에 주입하고 Google Read 0 |
+| `TST-AGT-211` | Prompt Slot Key | `failure_reason_code`가 Runtime Slot Key에 포함되지 않고 Failure Block assembly metadata로만 사용 |
+| `TST-EVAL-212` | Semantic parity | E06 후보의 `prompt_semantic_bundle_version`과 책임 coverage 일치 |
+| `TST-EVAL-213` | Environment lock | 비교 후보의 `evaluation_environment_hash`가 의도한 독립변수 외 조건에서 동일 |
+| `TST-HANDOFF-214` | Handoff fidelity | Required Field·Evidence ID·Constraint 보존 및 contradiction introduction 측정 |
+
+## 21. Runtime E2E Canonical Contract 회귀
+
+### 21.1 Cancel
+
+- Version conflict 또는 같은 `command_id`의 다른 Hash에서는 Approval·Plan·Action 변경 0.
+- 취소 수락 후 신규 Claim·Google Write 0.
+- 미실행 `PROPOSED | MODIFIED | APPROVED | EXPIRED` Action은 `CANCELLED`; ACTIVE Approval은 REVOKED; 새 Attempt·Verification 0.
+- `EXECUTING` 취소는 결과 확정 전 상태를 덮어쓰지 않는다.
+- `UNKNOWN_RESULT` 취소는 Run `RECOVERY_REQUIRED`; blind resend 0.
+- 일부 Write 성공 후 취소는 Run `CANCELLED`, result_kind `PARTIAL`, rollback 0.
+
+### 21.2 Runtime API Trust Boundary
+
+- 같은 `command_id + canonical request hash` replay는 기존 결과 반환.
+- 같은 `command_id + 다른 canonical hash`는 `409`, Domain mutation 0.
+- Browser 제공 `request_hash`, `approval_id`, idempotency key, source snapshot, actor identity를 authority로 사용하지 않음.
+- confirm/cancel/resume/prepare-retry/resolve-recovery의 Versioned Request Schema와 state precondition Contract Test.
+- arbitrary resume payload 차단.
+
+### 21.3 Insufficient Data Guard
+
+- required safety/POLICY issue → `BLOCKED`.
+- required USER issue → `NEEDS_CONFIRMATION`.
+- required GOOGLE issue + budget → `NEEDS_MORE_DATA`/`RETRIEVE_MORE`.
+- budget exhausted + evidence-supported read-only → `PARTIAL`.
+- Write 필수 Target/Argument/Evidence 부족은 PARTIAL로 우회하지 않음.
+- SINGLE/THREE/SIX 동일 fixture에서 동일 semantic route 판정.
+
+### 21.4 MISMATCH Recovery
+
+- `MISMATCH` 기록 후 Run `RECOVERY_REQUIRED`, 기존 Verification append-only 유지.
+- `ACCEPT_PARTIAL`은 추가 Write 0, 미실행 Action `CANCELLED`, Run `COMPLETED` + result_kind `PARTIAL`.
+- `CREATE_CORRECTIVE_PLAN`은 Run `PLANNING`, 새 Plan Revision, 기존 MISMATCH Action·Approval·Attempt 재사용 0.
+- 교정 Write는 새 Approval → Claim → Attempt → Verification 필요.
+
+### 21.5 Delivery Certainty Failure Injection
+
+- validation/preflight/dispatch 전 확정 실패 → `NOT_SENT`; FAILED 가능.
+- dispatch 이후 Timeout → `MAY_HAVE_BEEN_SENT`; `UNKNOWN_RESULT`.
+- 5xx에서 미전달 보장 없음 → `UNKNOWN_RESULT`.
+- response loss → `SENT_RESPONSE_LOST`; `UNKNOWN_RESULT`.
+- MCP process exit에서 dispatch 여부 불명 → `UNKNOWN_RESULT`.
+- 모든 UNKNOWN_RESULT case에서 새 Attempt·blind resend 0.

@@ -1,6 +1,6 @@
 # 05. Google Work Agent · Context · Retrieval 설계서
 
-> **상태:** Draft v2.1 · **기준일:** 2026-08-07 · **대상:** P0 MVP
+> **상태:** Draft v2.4 · **기준일:** 2026-08-09 · **대상:** P0 MVP
 >
 > API 탐색·수집 Agent와 Context Retriever Agent를 분리한다. Google 원본을 요청 시점에 검색하고 Metadata로 후보를 줄인 뒤 필요한 상세만 읽는다.
 
@@ -75,13 +75,6 @@ class AcquisitionResult:
     remaining_budget: dict
 ```
 
-Stage 5에서 `source_summaries`의 각 항목은 Source 단위 수집 결과를 담는다. 최소 필드는
-`schema_version`, `source`, `status`, `required`, `resource_count`, `resource_handles`,
-`resources`다. 실패 항목은 `error_code`를 추가한다. `resources`의 각 항목은 Stage 6이
-시작할 수 있도록 `resource_handle`, `resource_type`, `resource_id`, `parent_id`,
-`version`, `related_resource_ids`, `payload`를 포함한다. Stage 5는 Evidence ranking,
-compression, scoring을 수행하지 않는다.
-
 ## 5. Query Builder와 Read Port
 
 ```text
@@ -127,44 +120,6 @@ class ContextRetrievalResult:
 - 선택 ID를 검색 Query로 다시 찾지 않고 최신 상세 GET
 - 후보 점수와 무관하게 강제 포함
 - 추가 Source는 목표에 필요한 경우만 제안
-
-`RESOURCE_SELECTED`에서 선택 Resource의 Source와 Resource Type은 문자열 ID 모양이나
-`SourceFetchPlan.source`로 추론하지 않는다. Runtime 입력은 선택 Resource별로 다음 identity를
-보존해야 한다.
-
-```python
-class SelectedResourceRefV1:
-    source: Literal["GMAIL", "TASKS", "CALENDAR"]
-    resource_type: Literal["THREAD", "MESSAGE", "TASK", "EVENT"]
-    resource_id: str
-    parent_resource_id: str | None
-```
-
-- Gmail `THREAD`: `resource_id`를 `thread_id`로 사용해 Thread 상세 GET.
-- Gmail `MESSAGE`: `resource_id`를 `message_id`로 사용해 Message 상세 GET.
-- Tasks `TASK`: `parent_resource_id`를 `task_list_id`, `resource_id`를 `task_id`로 사용해 상세 GET.
-- Calendar `EVENT`: `parent_resource_id`를 `calendar_id`, `resource_id`를 `event_id`로 사용해 상세 GET.
-
-Tasks와 Calendar의 parent identity는 `"default"` 또는 `"primary"` 같은 숨은 기본값으로
-대체하지 않는다. 선택 Resource와 같은 Source의 계획은 선택 Resource 상세 GET을 수행하고,
-선택 Resource가 없는 추가 Source 계획은 `AGENT_SEARCH`와 동일한 결정적 Query Builder 경로를
-사용한다.
-
-### Acquisition Result 결정
-
-Stage 5는 Source별 결과를 모두 `source_summaries`에 기록한 뒤 다음 invariant로 전체
-`AcquisitionResult.status`를 결정한다.
-
-- `COMPLETE`: 모든 planned Source가 기술적으로 완료되었다.
-- `AUTH_REQUIRED`: required Source가 인증·권한 문제로 실패했거나, usable resource 없이 인증·권한 실패만으로 진행할 수 없다.
-- `PARTIAL`: 하나 이상의 usable resource가 있으나 모든 planned Source가 완료되지는 않았다.
-- `RATE_LIMITED`: usable resource가 없고 rate limit으로 진행할 수 없다.
-- `BUDGET_EXHAUSTED`: usable resource가 없고 budget 소진으로 진행할 수 없다.
-- `FAILED`: usable resource가 없고 위 상태에 해당하지 않는 기술 실패만 있다.
-
-Optional Source 실패는 required Source 완료 여부를 깨지 않지만, planned Source 전체 완료는
-아니므로 usable resource가 있으면 `PARTIAL`이다. Budget 소진 전 확보한 usable resource가
-있으면 `BUDGET_EXHAUSTED`로 성공을 숨기지 않고 `PARTIAL`에 missing slot을 남긴다.
 
 ### AGENT_SEARCH
 - RequestIntent 기반 Source-native 검색
@@ -253,7 +208,7 @@ required_evidence
 
 Embedding·Reranker·Vector Index 비교 중 Source Acquisition 결과를 바꾸지 않는다.
 
-## 16. r3 평가 연결 계약
+## 16. 평가 연결 계약
 
 ```text
 case_id                 업무 상황과 Gold
@@ -269,11 +224,11 @@ evaluation_item_id      실제 Runner 실행 단위
 
 ---
 
-## 22. 2026-08-07 QueryAttempt·Confidence·재검색 계약 보강
+## 17. QueryAttempt·Confidence·재검색 계약
 
-이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.0`를 적용하며, 기존 Retrieval 계약을 대체하지 않고 검색 시도와 저신뢰 처리의 관측·평가 계약을 보강한다.
+이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.4`를 적용하며, 기존 Retrieval 계약을 대체하지 않고 검색 시도와 저신뢰 처리의 관측·평가 계약을 보강한다.
 
-### 22.1 QueryAttempt
+### 17.1 QueryAttempt
 
 ```python
 class QueryAttempt:
@@ -301,7 +256,7 @@ class QueryAttempt:
     stop_reason: str | None
 ```
 
-### 22.2 반복과 Pagination
+### 17.2 반복과 Pagination
 
 - 같은 Query와 새로운 Page Token을 사용하는 `NEXT_PAGE`는 정상 Pagination이다.
 - 실패 뒤 같은 Query와 같은 Page 상태로 `SEARCH`를 반복하면 `QUERY_UNCHANGED_AFTER_FAILURE`다.
@@ -309,7 +264,7 @@ class QueryAttempt:
 - 추가 수집 시 최소 하나의 제약 변경 또는 필요한 Source 추가가 있어야 한다.
 - 사용자 범위를 넘어서는 기간·Source 확대는 사용자 확인 없이 수행하지 않는다.
 
-### 22.3 저신뢰 후보
+### 17.3 저신뢰 후보
 
 - Confidence Band는 `HIGH`, `MEDIUM`, `LOW`, `NONE`으로 고정한다.
 - 실제 점수와 Threshold는 중앙 Retrieval Config가 소유한다.
@@ -317,7 +272,7 @@ class QueryAttempt:
 - `RESOURCE_SELECTED`는 사용자가 고른 Resource ID를 점수와 관계없이 상세 GET한다.
 - 후보 1위와 2위의 점수 차이가 설정된 Margin보다 작으면 확인 또는 추가 수집으로 전환한다.
 
-### 22.4 결정적 평가
+### 17.4 결정적 평가
 
 다음 항목은 LLM Judge가 아니라 코드 Grader가 우선한다.
 
@@ -327,8 +282,38 @@ class QueryAttempt:
 - 저신뢰 후보를 임의로 확정했는지
 
 
-## 2026-08-07 v2.1 Clarification · Overbroad Retrieval
+## 18. Clarification · Overbroad Retrieval
 - 요청만으로 드러나는 모호성은 Request Understanding에서 확인한다.
 - 동명이인·복수 Resource·저신뢰 후보처럼 검색 후 드러나는 모호성은 후보·차이와 함께 `NEEDS_CONFIRMATION`으로 보낸다.
 - 전체 Mailbox·장기간 무제한 원문·모든 Workspace Source 전체 조회는 `BLOCKED`다.
 - Calendar 시간 overlap은 conflict와 분리하며 관계 근거를 Work Analysis에 전달한다.
+
+## 18. 정보 부족 분류와 결정적 종료 Guard
+
+### 18.1 Sufficiency Issue
+
+Context 충분성 결과는 단순 confidence 값이 아니라 부족·충돌 항목의 해결 출처와 안전 중요도를 구조화한다.
+
+```python
+class SufficiencyIssue:
+    slot: str
+    issue_type: Literal["MISSING", "CONFLICT"]
+    required: bool
+    resolution_source: Literal["USER", "GOOGLE", "POLICY"]
+    safety_critical: bool
+    reason_codes: list[str]
+```
+
+`SufficiencyResult`의 다음 Schema Version은 `issues: list[SufficiencyIssue]`를 포함한다. 기존 `missing_slots`, `conflicting_slots`는 Projection·호환용으로 유지할 수 있으나 Supervisor routing의 권위 입력은 구조화된 `issues`다.
+
+### 18.2 결정적 종료 Guard
+
+모든 Graph Profile은 Agent가 제안한 disposition을 그대로 실행하지 않고 같은 Supervisor Guard를 통과한다. 우선순위는 다음과 같다.
+
+1. `required=true`이면서 `safety_critical=true` 또는 `resolution_source=POLICY`인 항목이 남아 있으면 `BLOCKED`.
+2. 필요한 항목 중 `resolution_source=USER`가 있으면 추가 Google 조회보다 `NEEDS_CONFIRMATION`을 우선한다.
+3. 필요한 항목 중 `resolution_source=GOOGLE`이 있고 Acquisition Budget이 남아 있으면 `NEEDS_MORE_DATA`.
+4. Budget이 소진됐고 요청이 Read-only이며 현재 Evidence만으로 사실을 과장하지 않는 부분 답변이 가능하면 `PARTIAL`.
+5. Budget이 소진됐고 Write의 Target·필수 Argument·승인 근거가 부족하면 사용자에게 정당하게 물을 수 있는 경우 `NEEDS_CONFIRMATION`, 그렇지 않으면 `BLOCKED`.
+
+LLM confidence 숫자 하나만으로 안전 Route를 결정하지 않는다. `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE`은 동일한 Guard와 동일한 Budget 의미를 사용한다.

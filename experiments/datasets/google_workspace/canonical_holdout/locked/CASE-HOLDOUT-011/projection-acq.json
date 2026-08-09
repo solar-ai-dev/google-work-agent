@@ -24,7 +24,15 @@
         "detail_limit": 5,
         "acquisition_rounds": 1
       }
-    ]
+    ],
+    "source_plan_match_policy": {
+      "mode": "CONSTRAINT_ENVELOPE",
+      "required_sources": "MUST_INCLUDE",
+      "forbidden_sources": "MUST_NOT_INCLUDE",
+      "priority": "ORDERED_PREFERENCE_WHEN_GOLD_SPECIFIES_DEPENDENCY",
+      "budget_numeric_fields": "ACTUAL_MUST_NOT_EXCEED_GOLD_CEILING",
+      "extra_sources": "ALLOWED_ONLY_IF_OPTIONAL_OR_JUSTIFIED_AND_WITHIN_USER_SCOPE"
+    }
   },
   "grader_ids": [
     "grader.acquisition.deterministic",

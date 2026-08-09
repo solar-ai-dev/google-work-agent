@@ -13,7 +13,7 @@
   "gold": {
     "goal": "인쇄소 인계 확인 Task를 중복 검사 후 제안한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

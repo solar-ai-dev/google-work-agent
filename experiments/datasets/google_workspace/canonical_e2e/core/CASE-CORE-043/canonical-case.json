@@ -1,8 +1,8 @@
 {
-  "schema_version": 3,
+  "schema_version": 5,
   "case_id": "CASE-CORE-043",
   "split": "CORE",
-  "dataset_version": "rebuild-v1.9",
+  "dataset_version": "rebuild-v1.13-r8.3",
   "category": "THREE_SOURCE_COMPLEX",
   "scenario_family_id": "SF-C5-THREE-SOURCE-ANALYSIS",
   "fixture_relation_family": "RF-DEV-011",
@@ -10,7 +10,7 @@
   "language": "ko-KR",
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-CORE-043",
-  "canonical_user_prompt": "Kestrel 지연 메일, 대체 일정 Task, 이번 주 Calendar를 같이 보고 지금 가장 먼저 확인할 일을 정리해줘.",
+  "canonical_user_prompt": "Kestrel 지연 메일, 대체 일정 작업, 이번 주 캘린더를 같이 보고 지금 가장 먼저 확인해야 할 작업을 정리해줘.",
   "business_scenario": "지연·Task·Calendar 가용성을 통합 분석한다.",
   "expected_goal": "현재 우선 확인 업무를 근거로 정리한다.",
   "expected_completion_criteria": [
@@ -42,20 +42,6 @@
       "claim": "Fixture Calendar에 관련 Busy Event가 없다.",
       "derivation": "calendar_list_events"
     }
-  ],
-  "expected_route": [
-    "request_understanding.classify",
-    "acquisition.plan_sources",
-    "acquisition.execute",
-    "context.select_evidence",
-    "context.assess_sufficiency",
-    "analysis.analyze",
-    "planning.answer_only",
-    "review.inspect",
-    "complete_answer_only_run"
-  ],
-  "expected_skipped_nodes": [
-    "planning.draft_plan"
   ],
   "expected_source_fetch_plan": [
     {
@@ -129,9 +115,7 @@
       }
     }
   ],
-  "expected_answer_type": "ANALYSIS",
   "policy_result": "ALLOW_READ",
-  "expected_interrupt": "NONE",
   "allowed_actions": [],
   "forbidden_actions": [
     "gmail_send",
@@ -149,14 +133,8 @@
   "verification_expectation": {
     "required": false,
     "policy": "NONE",
-    "all_writes_re_read": false
-  },
-  "end_state_expectation": {
-    "initial": {
-      "run_status": "COMPLETED",
-      "result_kind": "FULL"
-    },
-    "after_user_action": null
+    "all_writes_re_read": false,
+    "per_action": []
   },
   "node_applicability": {
     "request_understanding": true,
@@ -185,5 +163,37 @@
   "human_rubric": [
     "선적 이틀 지연과 진행 중 Task를 연결한다.",
     "Calendar 빈 상태를 가용성 정보로만 사용한다."
-  ]
+  ],
+  "expected_planning_result_type": "ANALYSIS",
+  "expected_interactions": [],
+  "expected_semantic_milestones": [
+    "REQUEST_UNDERSTANDING",
+    "ACQUISITION",
+    "CONTEXT_RETRIEVAL",
+    "WORK_ANALYSIS",
+    "PLANNING",
+    "QUALITY_CHECK",
+    "FINALIZATION"
+  ],
+  "six_reference_route": [
+    "request_understanding.classify",
+    "acquisition.plan_sources",
+    "acquisition.execute",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.answer_only",
+    "review.inspect",
+    "complete_answer_only_run"
+  ],
+  "six_reference_skipped_nodes": [
+    "planning.draft_plan"
+  ],
+  "run_outcome_expectation": {
+    "evaluation_stop": {
+      "run_status": "COMPLETED",
+      "result_kind": "FULL"
+    },
+    "resume_or_followup": null
+  }
 }

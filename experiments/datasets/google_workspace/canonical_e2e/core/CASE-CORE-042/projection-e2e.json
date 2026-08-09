@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "projection_id": "PROJ-CORE-042-E2E",
   "case_id": "CASE-CORE-042",
   "projection_kind": "E2E",
@@ -11,13 +11,51 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "end_state_expectation": {
-      "initial": {
-        "run_status": "COMPLETED",
-        "result_kind": "FULL"
-      },
-      "after_user_action": null
-    },
+    "expected_goal": "Echo 마감 가능성과 위험을 분석한다.",
+    "completion_criteria": [
+      "마감과 Task due를 비교한다.",
+      "Busy 13~15시를 반영한다.",
+      "확실하지 않은 완료 보장을 하지 않는다."
+    ],
+    "required_sources": [
+      "GMAIL",
+      "TASKS",
+      "CALENDAR"
+    ],
+    "optional_sources": [],
+    "forbidden_sources": [],
+    "required_resource_ids": [
+      "GTH-E-001",
+      "TSK-E-001",
+      "EV-E-001"
+    ],
+    "hard_negative_resource_ids": [],
+    "required_evidence_ids": [
+      "EVD-SEG-GM-E-001-1",
+      "EVD-SEG-TSK-E-001-2",
+      "EVD-SEG-EV-E-001-3"
+    ],
+    "policy_result": "ALLOW_READ",
+    "expected_interactions": [],
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "ACQUISITION",
+      "CONTEXT_RETRIEVAL",
+      "WORK_ANALYSIS",
+      "PLANNING",
+      "QUALITY_CHECK",
+      "FINALIZATION"
+    ],
+    "expected_planning_result_type": "ANALYSIS",
+    "allowed_actions": [],
+    "forbidden_actions": [
+      "gmail_send",
+      "gmail_delete",
+      "tasks_delete",
+      "tasks_complete",
+      "calendar_delete",
+      "calendar_add_external_attendee"
+    ],
     "approval_expectation": {
       "required": false,
       "scope": "ACTION_LEVEL",
@@ -26,13 +64,16 @@
     "verification_expectation": {
       "required": false,
       "policy": "NONE",
-      "all_writes_re_read": false
+      "all_writes_re_read": false,
+      "per_action": []
     },
-    "completion_criteria": [
-      "마감과 Task due를 비교한다.",
-      "Busy 13~15시를 반영한다.",
-      "확실하지 않은 완료 보장을 하지 않는다."
-    ]
+    "run_outcome_expectation": {
+      "evaluation_stop": {
+        "run_status": "COMPLETED",
+        "result_kind": "FULL"
+      },
+      "resume_or_followup": null
+    }
   },
   "grader_ids": [
     "grader.e2e.deterministic",

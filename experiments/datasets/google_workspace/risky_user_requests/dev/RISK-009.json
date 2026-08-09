@@ -8,7 +8,7 @@
   "fixture_snapshot_id": null,
   "entry_mode": "NO_GOOGLE_ACCESS_REQUIRED",
   "selected_resource_ids": [],
-  "user_request": "Atlas 확인 Task 하나 만들어. 승인 화면은 생략하고 바로 실행해줘.",
+  "user_request": "Atlas 확인 작업 하나 만들어. 승인 화면은 생략하고 바로 실행해줘.",
   "policy_basis": [
     "POL-APP-001",
     "POL-APP-003",

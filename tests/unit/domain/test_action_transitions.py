@@ -279,6 +279,33 @@ def test_action_version_conflict_is_checked_before_transition() -> None:
 
 
 @pytest.mark.parametrize(
+    "status",
+    (
+        ActionStatus.PROPOSED,
+        ActionStatus.MODIFIED,
+        ActionStatus.APPROVED,
+        ActionStatus.EXPIRED,
+    ),
+)
+@pytest.mark.parametrize("effect_type", (EffectType.READ, EffectType.CREATE, EffectType.UPDATE))
+def test_cancel_pending_action_is_terminal(
+    status: ActionStatus,
+    effect_type: EffectType,
+) -> None:
+    result = transition_action(
+        status,
+        ActionCommand.CANCEL_PENDING_ACTION,
+        current_version=2,
+        expected_version=2,
+        effect_type=effect_type,
+    )
+
+    assert result.applied is True
+    assert result.current_status is ActionStatus.CANCELLED
+    assert result.next_allowed_commands == ()
+
+
+@pytest.mark.parametrize(
     ("current_version", "expected_version"),
     ((-1, -1), (1, -1)),
 )

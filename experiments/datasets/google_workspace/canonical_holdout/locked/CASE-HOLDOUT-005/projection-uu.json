@@ -12,12 +12,8 @@
   },
   "gold": {
     "goal": "Solstice 점검 Event를 제안한다.",
-    "completion_criteria": [
-      "Gmail·Tasks를 근거로 사용한다.",
-      "8월 28일 10~11시 FreeBusy를 확인한다.",
-      "승인 전 생성하지 않는다."
-    ],
-    "expected_interrupt": "APPROVAL"
+    "requested_outcome": "ACTION_PLAN",
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

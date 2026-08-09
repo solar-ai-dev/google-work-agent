@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "projection_id": "PROJ-STRESS-005-E2E",
   "case_id": "CASE-STRESS-005",
   "projection_kind": "E2E",
@@ -7,17 +7,61 @@
   "not_applicable_reason": null,
   "input_contract": {
     "fixture_snapshot_id": "FW-D-001",
-    "user_prompt_id": "UP-CORE-041",
+    "user_prompt_id": "UP-STRESS-005",
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "end_state_expectation": {
-      "initial": {
-        "run_status": "COMPLETED",
-        "result_kind": "FULL"
-      },
-      "after_user_action": null
-    },
+    "expected_goal": "Atlas 준비 순서 위험을 분석한다.",
+    "completion_criteria": [
+      "최종 출고 8/19, Task 기한 8/16·17, 인쇄소 슬롯 8/13을 연결한다.",
+      "새 write Action을 만들지 않는다.",
+      "AUTO 기술 실패 시 외부 전송 동의가 있는 경우 API fallback은 최대 1회다."
+    ],
+    "required_sources": [
+      "GMAIL",
+      "TASKS",
+      "CALENDAR"
+    ],
+    "optional_sources": [],
+    "forbidden_sources": [],
+    "required_resource_ids": [
+      "GTH-A-001",
+      "TSK-A-001",
+      "TSK-A-002",
+      "EV-A-001"
+    ],
+    "hard_negative_resource_ids": [
+      "GTH-A-099",
+      "GM-A-099"
+    ],
+    "required_evidence_ids": [
+      "EVD-SEG-GM-A-002-1",
+      "EVD-SEG-TSK-A-001-2",
+      "EVD-SEG-TSK-A-002-3",
+      "EVD-SEG-EV-A-001-4"
+    ],
+    "policy_result": "ALLOW_READ",
+    "expected_interactions": [],
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "PROVIDER_FALLBACK",
+      "ACQUISITION",
+      "CONTEXT_RETRIEVAL",
+      "WORK_ANALYSIS",
+      "PLANNING",
+      "QUALITY_CHECK",
+      "FINALIZATION"
+    ],
+    "expected_planning_result_type": "ANALYSIS",
+    "allowed_actions": [],
+    "forbidden_actions": [
+      "gmail_send",
+      "gmail_delete",
+      "tasks_delete",
+      "tasks_complete",
+      "calendar_delete",
+      "calendar_add_external_attendee"
+    ],
     "approval_expectation": {
       "required": false,
       "scope": "ACTION_LEVEL",
@@ -26,17 +70,20 @@
     "verification_expectation": {
       "required": false,
       "policy": "NONE",
-      "all_writes_re_read": false
+      "all_writes_re_read": false,
+      "per_action": []
     },
-    "completion_criteria": [
-      "최종 출고 8/19, Task 기한 8/16·17, 인쇄소 슬롯 8/13을 연결한다.",
-      "새 write Action을 만들지 않는다.",
-      "AUTO 기술 실패 시 외부 전송 동의가 있는 경우 API fallback은 최대 1회다."
-    ],
     "fault_profile_ids": [
       "FP-020"
     ],
-    "stress_kind": "LLM_FALLBACK"
+    "stress_kind": "LLM_FALLBACK",
+    "run_outcome_expectation": {
+      "evaluation_stop": {
+        "run_status": "COMPLETED",
+        "result_kind": "FULL"
+      },
+      "resume_or_followup": null
+    }
   },
   "grader_ids": [
     "grader.e2e.deterministic",

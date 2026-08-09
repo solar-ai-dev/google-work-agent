@@ -1,5 +1,7 @@
 # 01-A. Google Work Agent 기능 정의서
 
+> **상태:** Draft v2.5 · **기준일:** 2026-08-08
+
 ## 1. 문서 목적
 
 이 문서는 사용자가 사용할 수 있는 기능과 시스템 내부 기능을 식별 가능한 단위로 정의한다. 각 기능은 기능 ID, 사용자 목적, 선행 조건, 입력, 처리, 출력, 예외, 완료 조건을 가진다.
@@ -454,7 +456,7 @@
 ## 17. Multi-Agent 기능
 
 ### FN-100 Supervisor Routing
-현재 Workflow Phase, Agent Result, Domain Command Result와 호출 예산을 입력으로 받아 다음 Agent·Interrupt·종료 경로를 결정한다. Agent는 다른 Agent를 직접 호출하지 않는다.
+현재 Workflow Phase, Agent Result, Domain Command Result와 호출 예산을 입력으로 받아 다음 Agent Subgraph·Interrupt·종료 경로를 결정한다. Agent Subgraph는 다른 Agent를 직접 호출하지 않고 Supervisor로 Typed Result를 반환한다.
 
 ### FN-101 요청 이해 Agent
 목표·완료 조건·기간·사람·Source·제약·모호성을 Structured Output으로 생성한다. Google 조회와 Action Plan 확정은 수행하지 않는다.
@@ -472,12 +474,12 @@ Evidence 기반 해결책, Action DAG, Arguments 초안, Risk와 Expected Result
 목표 충족, 근거 누락, 과잉 작업, 모순, Dependency 오류와 Unsupported Action을 독립 검토하고 `PASS`, `REVISE`, `RETRIEVE_MORE`, `CONFIRM`, `BLOCK` 중 하나를 반환한다.
 
 ### FN-106 Typed Handoff·Checkpoint
-Agent Input·Result Schema Version을 검증하고 `resource_ref_id`, `evidence_id`, `segment_id` 기반으로 필요한 Context만 전달한다. 자유 텍스트 Agent 대화와 Agent별 독립 장기 Memory는 금지한다.
+Agent Input·Result Schema Version을 검증하고 `resource_ref_id`, `evidence_id`, `segment_id` 기반으로 필요한 Context만 전달한다. 각 Agent Subgraph는 호출 단위 Local State와 bounded validation·repair/revision loop를 가질 수 있으나 자유 텍스트 Agent 대화와 Agent별 독립 장기 Memory는 금지한다.
 
 ### FN-107 응답 조립
 Supervisor가 검증된 분석·Plan·실행·검증 결과를 사용자 응답으로 조립한다. 내부 Agent 대화와 비공개 추론은 사용자에게 노출하지 않는다.
 
-## 18. v2.2 Agent 기능 변경 이력
+## 18. Agent 실행 기능
 
 ### FN-108 API 탐색·수집 Agent
 `RequestIntent`와 API Budget으로 Source·조회 순서·Page·후보·상세 예산을 제안한다. 일반 코드가 Query를 검증하고 MCP 읽기를 실행한다.
@@ -503,15 +505,10 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 
 ---
 
-## 문서 권위 규칙
+## 19. Local Command·Connection 보완 기능
 
-```text
-00 → 01 → 01-A → 01-B → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12 → 13 → 14
-```
+> 문서 권위는 `01 PRD §1.1`의 Concern Owner 규칙을 따른다. 이 절은 기능 동작만 정의하며 안전·Domain·Tool 계약을 완화하지 않는다.
 
-- 하위 문서는 상위 문서를 변경하지 않고 구현값·절차·검증 방법만 구체화한다.
-- `01-A`와 `01-B`가 충돌하면 금지·승인·개인정보 정책을 가진 `01-B`가 우선한다.
-- 상위 결정을 바꿀 때는 상위 문서를 먼저 수정하고 하위 문서를 순차 갱신한다.
 
 ### FN-019 Command Receipt
 
@@ -534,17 +531,17 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 - **처리:** Domain Claim Commit 후 Service Instance에 바인딩된 짧은 TTL의 1회용 `claim_token`을 생성하고 MCP Write Tool이 재검증한다.
 - **완료 조건:** Action·Approval·Attempt·Tool·Arguments Hash가 모두 일치할 때만 Write가 가능하다.
 
-### FN-090 대화 이름 변경
+### FN-076 대화 이름 변경
 
 - **상태:** P1
 - P0에서는 자동 생성 제목을 표시하며 이름 변경 API를 제공하지 않는다.
 
-### FN-091 대화 삭제
+### FN-077 대화 삭제
 
 - **상태:** P1
 - P0에서는 대화·Run 삭제 API를 제공하지 않는다. 보존 기간·완전 삭제는 설정·Uninstall 정책을 따른다.
 
-## 2026-08-07 v2.3 Clarification·Write 기능 확정
+## 20. Clarification·승인형 Write 기능
 ### Clarification
 - 요청만으로 모호하면 Request Understanding에서 확인한다.
 - 검색 후 복수 후보·저신뢰가 드러나면 Retrieval 이후 확인한다.
@@ -557,3 +554,11 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 - `UPDATE`: Task 완료, Calendar 참석자 변경 포함.
 - `DELETE`: Calendar Event 삭제.
 - Gmail 원문 삭제와 Task 삭제는 OUT 유지.
+### FN-115 Agent Subgraph 실행 계약
+
+- **상태:** P0
+- **처리:** Supervisor가 Profile Registry에 따라 Agent Subgraph를 호출한다. Subgraph는 Parent State에서 필요한 입력만 projection하고, 자신의 Local State에서 LLM 호출·Schema Validation·허용된 Repair/Revision을 수행한다.
+- **출력:** Versioned Typed Result와 disposition만 Parent Graph에 반환한다.
+- **상태 수명:** Local State는 해당 invocation이 끝나면 장기 기억으로 승격하지 않는다. Run 재개에 필요한 공식 결과만 Main Graph Checkpoint에 남긴다.
+- **완료 조건:** Agent 간 직접 호출 0, Local State의 Domain 사실 승격 0, bounded loop 상한 준수.
+

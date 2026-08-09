@@ -14,7 +14,7 @@
   "expected_initial_result": "INVALID_OUTPUT",
   "injected_failure_reason_code": "INTENT_UNSUPPORTED_SCOPE",
   "expected_retry_kind": "SEMANTIC_REVISION",
-  "expected_retry_prompt_slot_id": "request_understanding.revise.INTENT_UNSUPPORTED_SCOPE",
+  "expected_retry_prompt_slot_id": "request_understanding.revise",
   "expected_final_result": "INVALID",
   "max_attempts": 2,
   "forbidden_transitions": [

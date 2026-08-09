@@ -13,7 +13,7 @@
   "gold": {
     "goal": "기한 전 가용 Slot을 이용한 Event를 제안한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

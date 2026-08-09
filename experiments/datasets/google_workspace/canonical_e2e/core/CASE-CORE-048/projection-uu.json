@@ -13,7 +13,7 @@
   "gold": {
     "goal": "Task UPDATE·Event CREATE·Draft CREATE를 계획한다.",
     "requested_outcome": "ACTION_PLAN",
-    "expected_interrupt": "APPROVAL"
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

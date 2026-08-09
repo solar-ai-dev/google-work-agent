@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "contract_version": "CONTEXT_READY_V1",
+  "context_snapshot_id": "CTXREADY-CORE-024",
+  "snapshot_origin": "CANONICAL_GOLD_CONTEXT",
+  "source_case_id": "CASE-CORE-024",
+  "fixture_snapshot_id": "FW-D-001",
+  "category": "GMAIL_TASKS_TO_CALENDAR",
+  "split": "DEV",
+  "request_intent": {
+    "schema_version": 1,
+    "result": "COMPLETE",
+    "entry_mode": "AGENT_SEARCH",
+    "requested_outcome": "ACTION_PLAN",
+    "goal": "QR 점검 Event를 요청 시간에 제안한다.",
+    "completion_criteria": [
+      "Gmail과 QR Task를 근거로 사용한다.",
+      "Calendar availability를 확인한다."
+    ],
+    "constraints": {
+      "required_sources": [
+        "GMAIL",
+        "TASKS",
+        "CALENDAR"
+      ],
+      "forbidden_sources": [],
+      "selected_resource_ids": []
+    },
+    "ambiguities": [],
+    "unsupported_scope": [],
+    "next_route": "SOURCE_PLANNING"
+  },
+  "context_bundle": {
+    "schema_version": 1,
+    "fixture_snapshot_id": "FW-D-001",
+    "required_resource_ids": [
+      "GTH-A-001",
+      "TSK-A-001"
+    ],
+    "selected_segment_ids": [
+      "SEG-GM-A-002",
+      "SEG-TSK-A-001",
+      "UE-CORE-024"
+    ],
+    "evidence_ids": [
+      "EVD-SEG-GM-A-002-1",
+      "EVD-SEG-TSK-A-001-2",
+      "UE-CORE-024"
+    ],
+    "ignored_untrusted_instruction_ids": []
+  },
+  "evidence_set": [
+    {
+      "evidence_id": "EVD-SEG-GM-A-002-1",
+      "resource_id": "GM-A-002",
+      "segment_id": "SEG-GM-A-002",
+      "claim": "최종 출고는 8월 19일 오전이며 담당은 지민이다.",
+      "excerpt": "최종 출고는 8월 19일 오전으로 확정합니다. 담당은 지민입니다.",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "EVD-SEG-TSK-A-001-2",
+      "resource_id": "TSK-A-001",
+      "segment_id": "SEG-TSK-A-001",
+      "claim": "제목: Atlas QR 문구 확정",
+      "excerpt": "제목: Atlas QR 문구 확정 / 기한: 2026-08-16T09:00:00Z / 상태: needsAction / 메모: 담당 지민",
+      "confidence": "HIGH"
+    },
+    {
+      "evidence_id": "UE-CORE-024",
+      "resource_id": null,
+      "segment_id": "UE-CORE-024",
+      "claim": "사용자가 8월 15일 11시 30분을 명시했다.",
+      "excerpt": null,
+      "confidence": "HIGH"
+    }
+  ],
+  "policy_summary": {
+    "schema_version": 1,
+    "writes_require_user_approval": true,
+    "allowed_effects": [
+      "READ",
+      "CREATE",
+      "UPDATE",
+      "SEND",
+      "DELETE"
+    ],
+    "forbidden_operations": [
+      "GMAIL_MESSAGE_DELETE",
+      "GMAIL_THREAD_DELETE",
+      "TASK_DELETE",
+      "RECURRING_EVENT_BULK_MODIFY",
+      "POLICY_OR_DB_BYPASS"
+    ],
+    "source_content_trust": "UNTRUSTED",
+    "write_execution_owner": "DETERMINISTIC_DOMAIN_EXECUTION_ENGINE"
+  }
+}

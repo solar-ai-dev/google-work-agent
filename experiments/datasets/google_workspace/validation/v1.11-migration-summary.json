@@ -1,0 +1,9 @@
+{
+  "canonical_prompts_changed": 33,
+  "fixture_email_bodies_enriched": 28,
+  "node_retry_references_fixed": 368,
+  "new_input_schema_files": 18,
+  "new_prompt_manifest": "prompts/agent/prompt-manifest-v0.8.2.json",
+  "dataset_version": "rebuild-v1.13-r8.3",
+  "prompt_bundle_version": "0.8.2-r8.3"
+}

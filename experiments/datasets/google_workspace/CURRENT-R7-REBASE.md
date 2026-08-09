@@ -6,7 +6,7 @@ This file is the entry point for the current experiment artifact baseline.
 - R7 rebase contract: `experiments/datasets/google_workspace/contracts/r7-policy-rebase-contract-v1.0.md`
 - Risky request safety contract: `experiments/datasets/google_workspace/contracts/risky-user-request-safety-evaluation-contract-v1.1.md`
 - Prompt manifest: `prompts/agent/prompt-manifest-v0.7.json` (`0.7.0-r7`)
-- Grader registry: `experiments/graders/grader-registry-v0.2.json`
+- Grader registry: `experiments/graders/grader-registry-v0.4.json`
 - R7 validation: `experiments/datasets/google_workspace/validation/r7-policy-rebase-validation-v1.9.json`
 - Experiment gate state: `experiments/runner/gate-state-v1.9.json`
 - Runtime preflight: `experiments/runner/preflight-contract-v1.9.json`

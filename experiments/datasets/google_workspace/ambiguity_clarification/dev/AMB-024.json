@@ -3,7 +3,7 @@
   "evaluation_item_id": "AMB-024",
   "split": "DEV",
   "ambiguity_family_id": "AMB-F06-EVENT-DURATION",
-  "user_request": "8월 20일 3시에 설계 검토 Event 만들어줘",
+  "user_request": "8월 20일 3시에 설계 검토 일정 만들어줘",
   "conversation_context": [],
   "available_candidates": [],
   "gold": {

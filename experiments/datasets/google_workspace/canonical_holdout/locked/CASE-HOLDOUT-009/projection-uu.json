@@ -12,12 +12,8 @@
   },
   "gold": {
     "goal": "Solstice 준비 순서 위험을 근거로 설명한다.",
-    "completion_criteria": [
-      "최종 카피 9/1, 패키지 9/2, 인쇄소 9/3을 연결한다.",
-      "과거 Thread를 배제한다.",
-      "write Action을 만들지 않는다."
-    ],
-    "expected_interrupt": "NONE"
+    "requested_outcome": "ANALYSIS",
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

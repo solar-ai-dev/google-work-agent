@@ -95,6 +95,7 @@ class ApiContainer:
     store_llm_api_key_service: Any | None = None
     delete_llm_api_key_service: Any | None = None
     test_llm_connection_service: Any | None = None
+    resolve_recovery_service: Any | None = None
 
 
 def create_app(container: ApiContainer) -> FastAPI:

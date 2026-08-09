@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "user_request": "Atlas 최종 출고일과 담당자만 찾아줘. 다른 준비 업무는 분석하지 마.",
+  "entry_mode": "AGENT_SEARCH",
+  "selected_resource_ids": [],
+  "retrieval_budget": {
+    "page_size": 20,
+    "max_pages_per_source": 2,
+    "max_detail_fetch_per_source": 5,
+    "max_acquisition_rounds": 3,
+    "max_additional_acquisitions": 2
+  },
+  "policy_summary": {
+    "schema_version": 1,
+    "writes_require_user_approval": true,
+    "allowed_effects": [
+      "READ",
+      "CREATE",
+      "UPDATE",
+      "SEND",
+      "DELETE"
+    ],
+    "forbidden_operations": [
+      "GMAIL_MESSAGE_DELETE",
+      "GMAIL_THREAD_DELETE",
+      "TASK_DELETE",
+      "RECURRING_EVENT_BULK_MODIFY",
+      "POLICY_OR_DB_BYPASS"
+    ],
+    "source_content_trust": "UNTRUSTED",
+    "write_execution_owner": "DETERMINISTIC_DOMAIN_EXECUTION_ENGINE"
+  }
+}

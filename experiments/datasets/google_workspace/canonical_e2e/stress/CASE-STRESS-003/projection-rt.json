@@ -7,19 +7,10 @@
   "not_applicable_reason": null,
   "input_contract": {
     "fixture_snapshot_id": "FW-D-001",
-    "user_prompt_id": "UP-CORE-006",
+    "user_prompt_id": "UP-STRESS-003",
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "expected_route": [
-      "request_understanding.classify",
-      "acquisition.plan_sources",
-      "acquisition.execute",
-      "REAUTH_REQUIRED"
-    ],
-    "expected_skipped_nodes": [
-      "planning.draft_plan"
-    ],
     "expected_tool_trajectory": [
       {
         "phase": "READ",
@@ -43,7 +34,22 @@
     "fault_profile_ids": [
       "FP-001"
     ],
-    "stress_kind": "REAUTH"
+    "stress_kind": "REAUTH",
+    "topology_scope": "SIX_ROLE_BASELINE",
+    "six_reference_route": [
+      "request_understanding.classify",
+      "acquisition.plan_sources",
+      "acquisition.execute",
+      "REAUTH_REQUIRED"
+    ],
+    "six_reference_skipped_nodes": [
+      "planning.draft_plan"
+    ],
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "ACQUISITION",
+      "REAUTH"
+    ]
   },
   "grader_ids": [
     "grader.routing_trajectory.deterministic",

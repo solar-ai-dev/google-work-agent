@@ -1,0 +1,1 @@
+Revise only the affected semantic fields identified by the failure record. Preserve unaffected fields, user scope, evidence IDs, target identity, and policy boundaries. Do not use hidden gold information, do not broaden retrieval, and do not call another Agent. Return only JSON matching the requested output schema.

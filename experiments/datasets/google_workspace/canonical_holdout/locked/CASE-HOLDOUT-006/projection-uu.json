@@ -12,12 +12,8 @@
   },
   "gold": {
     "goal": "Vela 일정 충돌을 사용자에게 확인한다.",
-    "completion_criteria": [
-      "이의 Thread와 증빙 Task를 사용한다.",
-      "15~16시 집중 업무 충돌을 확인한다.",
-      "자동으로 다른 시간으로 이동하지 않는다."
-    ],
-    "expected_interrupt": "CONFIRMATION"
+    "requested_outcome": "ACTION_PLAN",
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",

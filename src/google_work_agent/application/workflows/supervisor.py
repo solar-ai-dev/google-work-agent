@@ -31,6 +31,13 @@ from google_work_agent.application.workflows.contracts import (
     approve_review_recheck,
     validate_finalize_intent_v1,
 )
+from google_work_agent.application.workflows.insufficient_data import (
+    InsufficientDataContext,
+    InsufficientDataDisposition,
+    InsufficientDataIssue,
+    ResolutionSource,
+    decide_insufficient_data,
+)
 from google_work_agent.application.workflows.plan_review import (
     PlanReviewResultV1,
     build_plan_review_clarification_question,
@@ -565,6 +572,30 @@ def _route_additional_acquisition(
     if request is None:
         raise ValueError("additional acquisition route requires a structured request")
     budget = approve_additional_acquisition(state["retry_budget"])
+    disposition = decide_insufficient_data(
+        InsufficientDataContext(
+            issues=(
+                InsufficientDataIssue(
+                    issue_type=reason_code,
+                    required=True,
+                    resolution_source=ResolutionSource.GOOGLE,
+                ),
+            ),
+            budget_remaining=1 if budget["decision"] == BudgetDecision.ALLOW.value else 0,
+            read_only=state.get("requested_effect_type") == "READ",
+            evidence_supported_partial_possible=_has_supported_evidence(current_update),
+            write_required_data_missing=state.get("requested_effect_type") != "READ",
+        )
+    )
+    if disposition is InsufficientDataDisposition.PARTIAL:
+        return _finalize(
+            state=state,
+            intent=FinalizeIntent.COMPLETED.value,
+            reason_code="EVIDENCE_SUPPORTED_PARTIAL",
+            result_kind="PARTIAL",
+            budget_decision=budget,
+            **current_update,
+        )
     if budget["decision"] == BudgetDecision.DENY.value:
         return _finalize(
             state=state,
@@ -675,6 +706,7 @@ def _finalize(
     state: MultiAgentGraphState,
     intent: str,
     reason_code: str,
+    result_kind: str | None = None,
     budget_decision: BudgetDecisionV1 | None = None,
     **extra: object,
 ) -> SupervisorDecisionV1:
@@ -687,7 +719,7 @@ def _finalize(
                     "schema_version": 1,
                     "intent": intent,
                     "reason_code": reason_code,
-                    "result_kind": _partial_result_kind(state, extra),
+                    "result_kind": result_kind or _partial_result_kind(state, extra),
                 }
             ),
         }
@@ -836,6 +868,17 @@ def _partial_result_kind(state: MultiAgentGraphState, extra: JsonObject) -> str 
     if context is not None and context.get("status") == "PARTIAL":
         return "PARTIAL"
     return None
+
+
+def _has_supported_evidence(current_update: JsonObject) -> bool:
+    for key in ("context_result", "analysis_result"):
+        result = _mapping_or_none(current_update.get(key))
+        if result is None:
+            continue
+        evidence = result.get("evidence_drafts", result.get("evidence_refs"))
+        if isinstance(evidence, list) and evidence:
+            return True
+    return False
 
 
 def _mapping_or_none(value: object) -> JsonObject | None:

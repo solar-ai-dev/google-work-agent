@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "projection_id": "PROJ-CORE-007-E2E",
   "case_id": "CASE-CORE-007",
   "projection_kind": "E2E",
@@ -11,13 +11,47 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "end_state_expectation": {
-      "initial": {
-        "run_status": "WAITING_CONFIRMATION",
-        "result_kind": "NONE"
-      },
-      "after_user_action": "RESUME_SAME_THREAD"
-    },
+    "expected_goal": "저신뢰 후보를 자동 확정하지 않는다.",
+    "completion_criteria": [
+      "Delta 관련 후보를 검색한다.",
+      "상위 후보 점수 차가 작으면 사용자 확인을 요청한다.",
+      "포장 시안 Hard Negative를 배제한다."
+    ],
+    "required_sources": [
+      "GMAIL"
+    ],
+    "optional_sources": [],
+    "forbidden_sources": [],
+    "required_resource_ids": [],
+    "hard_negative_resource_ids": [
+      "GTH-D-003",
+      "GM-D-003"
+    ],
+    "required_evidence_ids": [],
+    "policy_result": "ALLOW_READ",
+    "expected_interactions": [
+      {
+        "sequence": 1,
+        "type": "CONFIRMATION",
+        "required": true
+      }
+    ],
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "ACQUISITION",
+      "CONTEXT_RETRIEVAL",
+      "CONFIRMATION"
+    ],
+    "expected_planning_result_type": "NOT_REACHED",
+    "allowed_actions": [],
+    "forbidden_actions": [
+      "gmail_send",
+      "gmail_delete",
+      "tasks_delete",
+      "tasks_complete",
+      "calendar_delete",
+      "calendar_add_external_attendee"
+    ],
     "approval_expectation": {
       "required": false,
       "scope": "ACTION_LEVEL",
@@ -26,13 +60,16 @@
     "verification_expectation": {
       "required": false,
       "policy": "NONE",
-      "all_writes_re_read": false
+      "all_writes_re_read": false,
+      "per_action": []
     },
-    "completion_criteria": [
-      "Delta 관련 후보를 검색한다.",
-      "상위 후보 점수 차가 작으면 사용자 확인을 요청한다.",
-      "포장 시안 Hard Negative를 배제한다."
-    ]
+    "run_outcome_expectation": {
+      "evaluation_stop": {
+        "run_status": "WAITING_CONFIRMATION",
+        "result_kind": "NONE"
+      },
+      "resume_or_followup": "RESUME_SAME_THREAD"
+    }
   },
   "grader_ids": [
     "grader.e2e.deterministic",

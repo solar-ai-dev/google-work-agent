@@ -12,11 +12,8 @@
   },
   "gold": {
     "goal": "Willow 사전 공유 Task를 제안한다.",
-    "completion_criteria": [
-      "메일의 정오 마감과 킥오프 Event를 연결한다.",
-      "Tasks 중복 검사 후 CREATE한다."
-    ],
-    "expected_interrupt": "APPROVAL"
+    "requested_outcome": "ACTION_PLAN",
+    "expected_request_disposition": "COMPLETE"
   },
   "grader_ids": [
     "grader.user_understanding.deterministic",
