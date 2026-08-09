@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from json import loads
 from pathlib import Path
 from sqlite3 import Row
@@ -456,6 +457,37 @@ class QueryService:
             display_name=None if row["display_name"] is None else str(row["display_name"]),
         )
 
+    def ensure_google_account_connected(
+        self, *, email: str, display_name: str | None, now_ms: int
+    ) -> None:
+        """Provision or reactivate the `google_accounts` row for one email.
+
+        This is the only writer of `google_accounts`: it runs whenever the
+        API observes a resolved, connected account (see
+        GetGoogleConnectionService), keyed by email so a reconnect with the
+        same Google account reuses its existing id rather than orphaning
+        conversations that reference it as a foreign key.
+        """
+
+        account_id = _google_account_id_for_email(email)
+        with connect_sqlite(self._database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO google_accounts
+                    (id, email, display_name, connected_at_ms, disconnected_at_ms)
+                VALUES (:id, :email, :display_name, :now_ms, NULL)
+                ON CONFLICT(email) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    disconnected_at_ms = NULL;
+                """,
+                {
+                    "id": account_id,
+                    "email": email,
+                    "display_name": display_name,
+                    "now_ms": now_ms,
+                },
+            )
+
 
 def _validated_page_size(page_size: int) -> int:
     if page_size < 1:
@@ -463,6 +495,13 @@ def _validated_page_size(page_size: int) -> int:
     if page_size > MAX_PAGE_SIZE:
         raise ValueError(f"page_size must be <= {MAX_PAGE_SIZE}")
     return page_size
+
+
+def _google_account_id_for_email(email: str) -> str:
+    """Deterministic id so re-provisioning the same email is naturally idempotent."""
+
+    digest = sha256(email.strip().lower().encode("utf-8")).hexdigest()
+    return f"acct-{digest[:24]}"
 
 
 def _parse_keyset_cursor(cursor: str) -> tuple[int, str]:

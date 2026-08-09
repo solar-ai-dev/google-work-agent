@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -1040,6 +1041,7 @@ class ExecuteWriteActionService:
         self._signing_secret = signing_secret
         self._service_instance_id = service_instance_id
         self._used_nonces: set[str] = set()
+        self._nonce_lock = threading.Lock()
 
     def __call__(self, *, action_id: str, claim_token: str) -> ExecutedWriteActionResult:
         payload = read_claim_token(claim_token, signing_secret=self._signing_secret)
@@ -1048,34 +1050,53 @@ class ExecuteWriteActionService:
         if self._now_ms() >= _coerce_int(payload["expires_at_ms"]):
             raise PermissionError("claim token has expired")
         nonce = str(payload["nonce"])
-        if nonce in self._used_nonces:
-            raise PermissionError("claim token has already been used")
+        # Atomically check-and-reserve the nonce before doing anything else so
+        # two concurrent callers holding the same claim token can never both
+        # pass this gate, regardless of what happens to either request next.
+        with self._nonce_lock:
+            if nonce in self._used_nonces:
+                raise PermissionError("claim token has already been used")
+            self._used_nonces.add(nonce)
 
-        with self._unit_of_work_factory() as unit_of_work:
-            action = _require_action(unit_of_work, action_id)
-            plan = _require_plan(unit_of_work, action.plan_id)
-            run = _require_run(unit_of_work, plan.run_id)
-            if run.status in {RunStatus.CANCEL_REQUESTED, RunStatus.CANCELLED}:
-                raise PermissionError("run cancellation forbids Google write dispatch")
-            approval = _require_approval(unit_of_work, str(payload["approval_id"]))
-            attempt = _require_attempt(unit_of_work, str(payload["attempt_id"]))
-            if action.id != str(payload["action_id"]):
-                raise PermissionError("claim token action binding mismatch")
-            if action.tool_name != str(payload["tool_name"]):
-                raise PermissionError("claim token tool binding mismatch")
-            if action.arguments_hash != str(payload["arguments_hash"]):
-                raise PermissionError("claim token arguments binding mismatch")
-            if approval.action_id != action.id or attempt.approval_id != approval.id:
-                raise PermissionError("claim token persistence binding mismatch")
-            if attempt.status is not ExecutionAttemptStatus.CLAIMED:
-                raise PermissionError("execution attempt is not claimable")
+        try:
+            with self._unit_of_work_factory() as unit_of_work:
+                action = _require_action(unit_of_work, action_id)
+                plan = _require_plan(unit_of_work, action.plan_id)
+                run = _require_run(unit_of_work, plan.run_id)
+                if run.status in {RunStatus.CANCEL_REQUESTED, RunStatus.CANCELLED}:
+                    raise PermissionError("run cancellation forbids Google write dispatch")
+                approval = _require_approval(unit_of_work, str(payload["approval_id"]))
+                attempt = _require_attempt(unit_of_work, str(payload["attempt_id"]))
+                if action.id != str(payload["action_id"]):
+                    raise PermissionError("claim token action binding mismatch")
+                if action.tool_name != str(payload["tool_name"]):
+                    raise PermissionError("claim token tool binding mismatch")
+                if action.arguments_hash != str(payload["arguments_hash"]):
+                    raise PermissionError("claim token arguments binding mismatch")
+                if approval.action_id != action.id or attempt.approval_id != approval.id:
+                    raise PermissionError("claim token persistence binding mismatch")
+                if attempt.status is not ExecutionAttemptStatus.CLAIMED:
+                    raise PermissionError("execution attempt is not claimable")
+        except Exception:
+            # Nothing was dispatched: release the nonce so a legitimate retry
+            # of this same claim token (e.g. a langgraph resume that re-runs
+            # execution after a transient pre-dispatch validation failure) is
+            # not permanently blocked by a claim that never reached Google.
+            with self._nonce_lock:
+                self._used_nonces.discard(nonce)
+            raise
 
-        self._used_nonces.add(nonce)
+        final_arguments = _build_final_dispatch_arguments(
+            action.tool_name,
+            loads(action.arguments_json),
+            recovery_fingerprint=approval.recovery_fingerprint,
+        )
         claim_context = _prepare_gateway_claim_context(
             gateway=self._gateway,
             claim_payload=payload,
             tool_name=action.tool_name,
-            canonical_arguments_hash=action.arguments_hash,
+            approval_arguments_hash=action.arguments_hash,
+            execution_arguments_hash=calculate_canonical_json_hash(final_arguments),
         )
         snapshot = _dispatch_write_action(
             self._gateway,
@@ -2883,26 +2904,30 @@ def _validate_write_plan(
         )
 
 
-def _dispatch_write_action(
-    gateway: GoogleWorkspaceGateway,
+def _build_final_dispatch_arguments(
     tool_name: str,
     arguments: dict[str, object],
     *,
-    recovery_fingerprint: str | None = None,
-    claim_context: dict[str, object] | None = None,
-) -> ResourceSnapshot:
+    recovery_fingerprint: str | None,
+) -> dict[str, object]:
+    """Build the exact argument dict a write tool call dispatches with.
+
+    ``ExecuteWriteActionService`` also canonicalizes this same dict to
+    compute ClaimContextV2's ``execution_arguments_hash``, so it must stay
+    byte-for-byte identical to what ``_dispatch_write_action`` sends to the
+    gateway/MCP tool below.
+    """
+
     if tool_name == "gmail_send":
-        return gateway.send_gmail(
-            draft_id=_required_argument_string(arguments, "draft_id"),
-            recovery_fingerprint=recovery_fingerprint,
-            claim_context=claim_context,
-        )
+        return {
+            "draft_id": _required_argument_string(arguments, "draft_id"),
+            "recovery_fingerprint": recovery_fingerprint,
+        }
     if tool_name == "calendar_delete_event":
-        return gateway.delete_calendar_event(
-            calendar_id=_required_argument_string(arguments, "calendar_id"),
-            event_id=_required_argument_string(arguments, "event_id"),
-            claim_context=claim_context,
-        )
+        return {
+            "calendar_id": _required_argument_string(arguments, "calendar_id"),
+            "event_id": _required_argument_string(arguments, "event_id"),
+        }
     payload = _dict_argument(arguments.get("payload"))
     payload_with_recovery = dict(payload)
     if recovery_fingerprint is not None and tool_name in {
@@ -2912,40 +2937,92 @@ def _dispatch_write_action(
     }:
         payload_with_recovery["recovery_fingerprint"] = recovery_fingerprint
     if tool_name == "gmail_create_draft":
+        return {"payload": payload_with_recovery}
+    if tool_name == "gmail_update_draft":
+        return {"draft_id": str(arguments["draft_id"]), "payload": payload}
+    if tool_name == "tasks_create_task":
+        return {
+            "task_list_id": str(arguments["task_list_id"]),
+            "payload": payload_with_recovery,
+        }
+    if tool_name == "tasks_update_task":
+        return {
+            "task_list_id": str(arguments["task_list_id"]),
+            "task_id": str(arguments["task_id"]),
+            "payload": payload,
+        }
+    if tool_name == "calendar_create_event":
+        return {
+            "calendar_id": str(arguments["calendar_id"]),
+            "payload": payload_with_recovery,
+        }
+    if tool_name == "calendar_update_event":
+        return {
+            "calendar_id": str(arguments["calendar_id"]),
+            "event_id": str(arguments["event_id"]),
+            "payload": payload,
+        }
+    raise LookupError(f"unsupported write tool: {tool_name}")
+
+
+def _dispatch_write_action(
+    gateway: GoogleWorkspaceGateway,
+    tool_name: str,
+    arguments: dict[str, object],
+    *,
+    recovery_fingerprint: str | None = None,
+    claim_context: dict[str, object] | None = None,
+) -> ResourceSnapshot:
+    final_arguments = _build_final_dispatch_arguments(
+        tool_name, arguments, recovery_fingerprint=recovery_fingerprint
+    )
+    if tool_name == "gmail_send":
+        return gateway.send_gmail(
+            draft_id=cast(str, final_arguments["draft_id"]),
+            recovery_fingerprint=cast(str | None, final_arguments["recovery_fingerprint"]),
+            claim_context=claim_context,
+        )
+    if tool_name == "calendar_delete_event":
+        return gateway.delete_calendar_event(
+            calendar_id=cast(str, final_arguments["calendar_id"]),
+            event_id=cast(str, final_arguments["event_id"]),
+            claim_context=claim_context,
+        )
+    if tool_name == "gmail_create_draft":
         return gateway.create_gmail_draft(
-            payload=payload_with_recovery,
+            payload=cast(dict[str, object], final_arguments["payload"]),
             claim_context=claim_context,
         )
     if tool_name == "gmail_update_draft":
         return gateway.update_gmail_draft(
-            draft_id=str(arguments["draft_id"]),
-            payload=payload,
+            draft_id=cast(str, final_arguments["draft_id"]),
+            payload=cast(dict[str, object], final_arguments["payload"]),
             claim_context=claim_context,
         )
     if tool_name == "tasks_create_task":
         return gateway.create_task(
-            task_list_id=str(arguments["task_list_id"]),
-            payload=payload_with_recovery,
+            task_list_id=cast(str, final_arguments["task_list_id"]),
+            payload=cast(dict[str, object], final_arguments["payload"]),
             claim_context=claim_context,
         )
     if tool_name == "tasks_update_task":
         return gateway.update_task(
-            task_list_id=str(arguments["task_list_id"]),
-            task_id=str(arguments["task_id"]),
-            payload=payload,
+            task_list_id=cast(str, final_arguments["task_list_id"]),
+            task_id=cast(str, final_arguments["task_id"]),
+            payload=cast(dict[str, object], final_arguments["payload"]),
             claim_context=claim_context,
         )
     if tool_name == "calendar_create_event":
         return gateway.create_calendar_event(
-            calendar_id=str(arguments["calendar_id"]),
-            payload=payload_with_recovery,
+            calendar_id=cast(str, final_arguments["calendar_id"]),
+            payload=cast(dict[str, object], final_arguments["payload"]),
             claim_context=claim_context,
         )
     if tool_name == "calendar_update_event":
         return gateway.update_calendar_event(
-            calendar_id=str(arguments["calendar_id"]),
-            event_id=str(arguments["event_id"]),
-            payload=payload,
+            calendar_id=cast(str, final_arguments["calendar_id"]),
+            event_id=cast(str, final_arguments["event_id"]),
+            payload=cast(dict[str, object], final_arguments["payload"]),
             claim_context=claim_context,
         )
     raise LookupError(f"unsupported write tool: {tool_name}")
@@ -2956,7 +3033,8 @@ def _prepare_gateway_claim_context(
     gateway: GoogleWorkspaceGateway,
     claim_payload: dict[str, object],
     tool_name: str,
-    canonical_arguments_hash: str,
+    approval_arguments_hash: str,
+    execution_arguments_hash: str,
 ) -> dict[str, object] | None:
     prepare = getattr(gateway, "prepare_claim_context", None)
     if not callable(prepare):
@@ -2966,7 +3044,8 @@ def _prepare_gateway_claim_context(
         prepare(
             claim_payload=claim_payload,
             tool_name=tool_name,
-            canonical_arguments_hash=canonical_arguments_hash,
+            approval_arguments_hash=approval_arguments_hash,
+            execution_arguments_hash=execution_arguments_hash,
         ),
     )
 

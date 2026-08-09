@@ -684,7 +684,11 @@ def build_container(
         bootstrap_grant_store=grant_store,
         local_session_manager=session_manager,
         start_google_oauth_service=StartGoogleOAuthService(provider=google_provider),
-        get_google_connection_service=GetGoogleConnectionService(provider=google_provider),
+        get_google_connection_service=GetGoogleConnectionService(
+            provider=google_provider,
+            account_provisioner=query_service,
+            now_ms=clock.now_ms,
+        ),
         disconnect_google_service=DisconnectGoogleService(provider=google_provider),
         resource_query_service=ResourceQueryService(gateway=gateway),
         get_llm_connection_service=GetLLMConnectionService(

@@ -29,6 +29,8 @@ def test_mcp_oauth_flow_uses_google_loopback_authorization_and_no_token_leakage(
     assert query["scope"] == [
         " ".join(
             [
+                "openid",
+                "https://www.googleapis.com/auth/userinfo.email",
                 "https://www.googleapis.com/auth/gmail.readonly",
                 "https://www.googleapis.com/auth/gmail.compose",
                 "https://www.googleapis.com/auth/tasks",

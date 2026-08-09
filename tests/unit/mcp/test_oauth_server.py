@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 from email.message import Message
 from io import BytesIO
@@ -14,9 +15,41 @@ from google_work_agent.mcp.settings import GoogleOAuthSettings
 from google_work_agent.ports import CredentialState
 
 
+def _fake_id_token(claims: dict[str, object]) -> str:
+    header = server._b64url_encode(b'{"alg":"RS256","typ":"JWT"}')
+    payload = server._b64url_encode(json.dumps(claims).encode("utf-8"))
+    return f"{header}.{payload}.unverified-signature"
+
+
 def test_pkce_s256_matches_rfc_7636_vector() -> None:
     verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
     assert server._pkce_s256(verifier) == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+
+
+def test_required_scopes_include_openid_and_email() -> None:
+    assert "openid" in server.REQUIRED_SCOPES
+    assert "https://www.googleapis.com/auth/userinfo.email" in server.REQUIRED_SCOPES
+
+
+def test_verified_email_from_id_token_extracts_verified_email() -> None:
+    token = _fake_id_token({"email": "user@example.com", "email_verified": True})
+    assert server._verified_email_from_id_token(token) == "user@example.com"
+
+
+def test_verified_email_from_id_token_rejects_unverified_email() -> None:
+    token = _fake_id_token({"email": "user@example.com", "email_verified": False})
+    assert server._verified_email_from_id_token(token) is None
+
+
+def test_verified_email_from_id_token_rejects_missing_email_verified_claim() -> None:
+    token = _fake_id_token({"email": "user@example.com"})
+    assert server._verified_email_from_id_token(token) is None
+
+
+def test_verified_email_from_id_token_rejects_malformed_token() -> None:
+    assert server._verified_email_from_id_token("not-a-jwt") is None
+    assert server._verified_email_from_id_token("a.b") is None
+    assert server._verified_email_from_id_token("a.!!!not-base64!!!.c") is None
 
 
 def test_authorization_code_grant_binds_the_callback_uri_and_reports_only_redacted_errors(
@@ -109,7 +142,7 @@ def test_callback_consumes_a_flow_before_token_exchange_to_block_code_reuse(
         bound_flow: server._OAuthFlow,
         code: str,
         client_secret: str | None,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, str | None]:
         nonlocal exchanges
         exchanges += 1
         assert bound_flow.callback_url == flow.callback_url
@@ -117,7 +150,7 @@ def test_callback_consumes_a_flow_before_token_exchange_to_block_code_reuse(
         assert client_secret == "compatibility-client-secret"
         exchange_started.set()
         assert release_exchange.wait(timeout=2)
-        return "refresh-value", "access-value"
+        return "refresh-value", "access-value", None
 
     monkeypatch.setattr(server, "_exchange_authorization_code", exchange)
     callback_url = (
@@ -190,9 +223,9 @@ def test_refresh_grant_rotates_keyring_and_keeps_access_token_in_mcp_memory(
 
     def refresh(
         value: str, client_id: str | None, client_secret: str | None
-    ) -> tuple[str, int, str | None]:
+    ) -> tuple[str, int, str | None, str | None]:
         calls.append((value, client_id, client_secret))
-        return "access-value", server._now_ms() + 10_000, "rotated-value"
+        return "access-value", server._now_ms() + 10_000, "rotated-value", None
 
     monkeypatch.setattr(server, "_refresh_access_token", refresh)
     state.ensure_access_token()
@@ -204,6 +237,71 @@ def test_refresh_grant_rotates_keyring_and_keeps_access_token_in_mcp_memory(
     assert store.values["refresh"] == "rotated-value"
     assert "access-value" not in repr(state.connection_payload())
     assert "compatibility-client-secret" not in repr(state.connection_payload())
+
+
+def test_ensure_access_token_self_heals_account_email_from_refresh_id_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Access tokens (and any id_token that arrives with them) are process-
+    memory-only, so a restarted MCP process must re-derive account_email on
+    its next refresh rather than requiring the user to reconnect."""
+
+    store = _MemorySecretStore({"refresh": "stored-value"})
+    state = _state(store)
+    assert state.account_email is None
+
+    def refresh(
+        value: str, client_id: str | None, client_secret: str | None
+    ) -> tuple[str, int, str | None, str | None]:
+        del value, client_id, client_secret
+        return "access-value", server._now_ms() + 10_000, None, "user@example.com"
+
+    monkeypatch.setattr(server, "_refresh_access_token", refresh)
+    state.ensure_access_token()
+
+    assert state.account_email == "user@example.com"
+
+
+def test_refresh_access_token_decodes_email_from_id_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    token = _fake_id_token({"email": "user@example.com", "email_verified": True})
+    body = json.dumps(
+        {"access_token": "access-value", "expires_in": 3600, "id_token": token}
+    ).encode("utf-8")
+    monkeypatch.setattr(server, "urlopen", lambda request, *, timeout: _HTTPResponse(body))
+
+    access_token, _, rotated_refresh_token, email = server._refresh_access_token(
+        "stored-refresh-token", "desktop-client", "compatibility-client-secret"
+    )
+
+    assert access_token == "access-value"
+    assert rotated_refresh_token is None
+    assert email == "user@example.com"
+
+
+def test_exchange_authorization_code_decodes_email_from_id_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    flow = server._OAuthFlow(
+        flow_id="flow-1",
+        state="state-value",
+        verifier="verifier-value",
+        callback_url="http://127.0.0.1:43123/oauth/callback",
+        expires_at_ms=server._now_ms() + 60_000,
+        client_id="desktop-client",
+    )
+    token = _fake_id_token({"email": "user@example.com", "email_verified": True})
+    body = json.dumps(
+        {"refresh_token": "refresh-value", "access_token": "access-value", "id_token": token}
+    ).encode("utf-8")
+    monkeypatch.setattr(server, "urlopen", lambda request, *, timeout: _HTTPResponse(body))
+
+    refresh_token, access_token, email = server._exchange_authorization_code(
+        flow, "authorization-code", "compatibility-client-secret"
+    )
+
+    assert refresh_token == "refresh-value"
+    assert access_token == "access-value"
+    assert email == "user@example.com"
 
 
 def test_refresh_grant_uses_form_encoded_mcp_only_client_credentials(
@@ -219,7 +317,7 @@ def test_refresh_grant_uses_form_encoded_mcp_only_client_credentials(
 
     monkeypatch.setattr(server, "urlopen", accept)
 
-    access_token, _, rotated_refresh_token = server._refresh_access_token(
+    access_token, _, rotated_refresh_token, _ = server._refresh_access_token(
         "stored-refresh-token",
         "desktop-client",
         "compatibility-client-secret",
@@ -263,12 +361,12 @@ def test_concurrent_expired_access_token_refreshes_once(monkeypatch: pytest.Monk
 
     def refresh(
         value: str, client_id: str | None, client_secret: str | None
-    ) -> tuple[str, int, str | None]:
+    ) -> tuple[str, int, str | None, str | None]:
         nonlocal calls
         del value, client_id, client_secret
         with call_lock:
             calls += 1
-        return "access-value", server._now_ms() + 10_000, None
+        return "access-value", server._now_ms() + 10_000, None, None
 
     monkeypatch.setattr(server, "_refresh_access_token", refresh)
 
