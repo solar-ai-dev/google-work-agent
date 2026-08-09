@@ -82,8 +82,9 @@ Retrieval·Prompt·평가 작업에서는 `05`, `11`, `13`, 상태 전이 테스
 pytest tests/unit -q
 pytest tests/integration -q
 pytest -q
-ruff check src tests
-ruff format --check src tests
+ruff check src tests scripts
+ruff format --check src tests scripts
+mypy src tests
 ```
 
 저장소에 별도 명령이 정의돼 있으면 해당 명령을 우선한다. 안전·상태 전이·Tool Contract 실패가 하나라도 있으면 완료로 판정하지 않는다.

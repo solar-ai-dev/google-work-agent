@@ -4,13 +4,14 @@ import hashlib
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "experiments" / "datasets" / "google_workspace" / "fixtures"
 
 
 def canonical_hash(data: object) -> str:
-    raw = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    raw = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
     return hashlib.sha256(raw).hexdigest()
 
 
@@ -30,7 +31,13 @@ def main() -> int:
                 "match": expected == actual,
             }
         )
-    print(json.dumps({"status": "PASS" if all(r["match"] for r in results) else "FAIL", "fixtures": results}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {"status": "PASS" if all(r["match"] for r in results) else "FAIL", "fixtures": results},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     return 0 if all(r["match"] for r in results) else 1
 
 
