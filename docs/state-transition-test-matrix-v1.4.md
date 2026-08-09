@@ -81,3 +81,7 @@
 - typed confirm/cancel/resume/prepare-retry/resolve-recovery schema
 - arbitrary resume payload 차단
 - OAuth Token 원문 FastAPI·DB·Log 미노출
+
+## R8.4 Claim V2 보충 — 매트릭스 상태 의미 변경 없음
+
+기존 `ClaimExecution` 테스트의 “Claim Commit before MCP write”, “claim single-use”, “Action/Approval/Hash mismatch 차단” 의미는 유지한다. Signature·TTL·Process Instance·`execution_arguments_hash`·Nonce·MCP 실제 인자 재해시의 세부 Contract Test는 `12 Test v3.1`에서 추가 검증한다.

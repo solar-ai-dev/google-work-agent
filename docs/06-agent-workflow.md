@@ -1,8 +1,8 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.6`, `01-A v2.5`, `01-B v2.5`, `02 UI·UX v2.3`, `03 Architecture v2.9`, `04 Database v1.11`, `05 Retrieval v2.4`, `07 Interface v2.7`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.7`, `01-A v2.6`, `01-B v2.7`, `02 UI·UX v2.4`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.5`, `07 Interface v2.8`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v5.9 · **DB Schema:** v1.4 · **대상:** P0 MVP
+> **상태:** Draft v6.0 · **DB Schema:** v1.4 · **대상:** P0 MVP
 >
 > 결정적 Supervisor + 최대 6개 전문 Agent Subgraph Baseline + 결정적 실행·검증 Engine을 사용한다. 각 Agent Subgraph는 invocation 범위 Local State와 bounded validation·repair/revision loop를 가지며 Typed Result만 Main Graph에 반환한다. Agent별 장기 Memory는 없고 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -537,3 +537,11 @@ budget exhausted + Write 필수 Target/Argument/Evidence 부족
 - LLM confidence 하나로 안전 Route를 결정하지 않는다.
 - `PARTIAL`은 근거가 있는 Read-only 응답의 축약 완료이며 Write 필수 정보 부족을 우회하는 수단이 아니다.
 - `NEEDS_CONFIRMATION`은 같은 Run·Thread의 typed Interrupt로 재개한다.
+
+## R8.4 Attachment Agent 경계
+
+- 첨부파일 기능을 별도 Agent Capability로 만들지 않는다.
+- Agent는 파일명·MIME Type·크기·Attachment/Stage Descriptor 같은 Metadata만 사용할 수 있다.
+- 첨부파일 bytes는 `AgentLocalState`, `ContextBundle`, `Evidence`, Prompt 입력에 포함하지 않는다.
+- 실제 Download·Staging·MIME 조립은 결정적 Application·MCP 경계가 수행한다.
+- ClaimContextV2 생성·검증은 Agent Node가 아니라 공통 결정적 Execution Engine 책임이다.

@@ -1,10 +1,10 @@
 # 07. Google Work Agent · Tool · MCP · 내부 인터페이스 명세서
 
-> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v5.9`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, MCP Tool, Python 내부 인터페이스 계약을 정의한다.
+> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v6.0`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, MCP Tool, Python 내부 인터페이스 계약을 정의한다.
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.7
+- **상태:** Draft v2.8
 - **기준일:** 2026-08-09
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
@@ -747,3 +747,57 @@ SENT_RESPONSE_LOST
 | MCP process exit가 dispatch 이후일 수 있음 | `MAY_HAVE_BEEN_SENT` | `UNKNOWN_RESULT` |
 
 Exception class 하나만으로 `NOT_SENT`를 추론하지 않는다. `UNKNOWN_RESULT`에서는 기존 결과 GET/Search만 허용하며 새 Attempt·blind resend를 금지한다.
+
+## R8.4 ClaimContextV2 계약
+
+### Signed Claim Context
+
+```text
+claim_version = 2
+service_instance_id
+mcp_process_instance_id
+action_id
+approval_id
+execution_attempt_id
+tool_name
+approval_arguments_hash
+execution_arguments_hash
+issued_at_ms
+expires_at_ms
+nonce
+signature
+```
+
+규칙:
+- HMAC-SHA-256, 기본 TTL 30초·최대 60초, 1회용 Nonce.
+- Application은 Claim 발급 전 `approval_arguments_hash`가 현재 Approval Snapshot과 일치하는지 확인한다.
+- Application이 서버 생성 Metadata까지 포함한 최종 MCP 인자를 Canonicalize하여 `execution_arguments_hash`를 계산한다.
+- MCP는 Signature·Version·TTL·Service/MCP Process Instance·Action·Approval·Attempt·Tool·Approval Hash를 검증한다.
+- MCP는 실제 수신 Tool Arguments를 같은 Canonical 규칙으로 재해시하여 `execution_arguments_hash`가 다르면 `CLAIM_ARGUMENTS_MISMATCH`로 거절한다.
+- 모든 검증 성공 후에만 Nonce를 원자적으로 소비하고 Google Write를 호출한다.
+
+### Gmail 첨부파일 Local API·MCP
+
+```text
+GET  /api/v1/gmail/messages/{message_id}/attachments/{attachment_id}
+POST /api/v1/attachments/stage
+```
+
+MCP Read:
+```text
+get_gmail_attachment(message_id, attachment_id)
+```
+
+Attachment Descriptor 최소 필드:
+```text
+staged_attachment_id
+filename
+mime_type
+size_bytes
+sha256
+```
+
+- 수신 bytes는 FastAPI Download Stream으로 전달하고 LLM에 보내지 않는다.
+- 발신 bytes는 Local Staging에서 읽고 MIME message를 조립한다.
+- Draft CREATE/UPDATE·SEND의 Canonical Business Arguments에는 Attachment Descriptor를 포함하고, 실제 bytes의 size/SHA-256을 실행 직전 재검증한다.
+- Browser가 임의 Local Path를 MCP Argument로 지정할 수 없다.

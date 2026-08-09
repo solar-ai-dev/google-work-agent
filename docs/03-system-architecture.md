@@ -7,8 +7,8 @@
 | 항목 | 내용 |
 |---|---|
 | 문서명 | 03. Google Work Agent 시스템 아키텍처 설계서 |
-| 상태 | Draft v2.9 |
-| 기준일 | 2026-08-08 |
+| 상태 | Draft v3.0 |
+| 기준일 | 2026-08-09 |
 | 대상 릴리스 | P0 MVP |
 | 공식 환경 | Windows 11 x64 · 최신 Chrome·Microsoft Edge |
 | 제품 형태 | 단일 사용자용 로컬 Web UI + Python Agent 애플리케이션 |
@@ -1380,3 +1380,22 @@ Transaction B: expected_version·현재 상태 재검사 → 결과 저장 → C
 `RECOVERY_REQUIRED` 진입·해제는 Application → Domain Command(`RequireRecovery`·`ResolveRecovery`) → Repository conditional update 경로만 허용한다. Repository 직접 상태 setter는 금지한다.
 ### 승인형 Effect
 `READ | CREATE | UPDATE | SEND | DELETE`를 사용하고 SEND·DELETE도 동일한 Approval Hash·Claim·UNKNOWN_RESULT 무재실행 원칙을 적용한다.
+
+## R8.4 Claim V2·Attachment 시스템 경계
+
+```text
+Approval Snapshot
+→ approval_arguments_hash
+→ Application Claim 준비
+→ 실제 MCP Payload canonicalize
+→ execution_arguments_hash
+→ ClaimContextV2 발급
+→ COMMIT
+→ MCP: 서명·TTL·Instance·Binding·Nonce·실제 인자 Hash 검증
+→ Google Write
+```
+
+- `approval_arguments_hash`는 승인된 업무 의미의 무결성, `execution_arguments_hash`는 실제 MCP Dispatch Payload의 무결성을 담당한다.
+- 서버 생성 Metadata는 두 Hash를 구분함으로써 승인 의미를 바꾸지 않고 실행 Payload에 포함할 수 있다.
+- Gmail 첨부파일 bytes는 Agent·LLM 계층을 통과하지 않는다. 수신 Download와 발신 Staging/MIME 조립은 FastAPI Local Service↔MCP의 제한된 Binary I/O 경계다.
+- SQLite Write Transaction을 유지한 상태에서 파일 I/O·MCP·Google 호출을 기다리지 않는다.

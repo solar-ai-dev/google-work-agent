@@ -112,3 +112,16 @@
 - [ ] `ClarificationQuestionV1` 후보·차이·선택지·same-thread Resume
 - [ ] 전체 Mailbox/무제한 Workspace 조회 BLOCK
 - [ ] Calendar `overlap != conflict` 관계 판정 테스트
+
+## R8.4 Claim V2·Attachment 구현 Gate
+
+- [ ] `0003_action_cancelled.sql` 존재 및 Schema v1.4 적용 확인
+- [ ] ClaimContextV2 schema/version/signature/TTL/instance/nonce 구현
+- [ ] approval_arguments_hash와 execution_arguments_hash 분리
+- [ ] MCP 실제 Tool Arguments 재-canonicalize·rehash 후 Write
+- [ ] Gmail attachment metadata/read/download endpoint
+- [ ] Local attachment staging + SHA-256 descriptor
+- [ ] Draft CREATE/UPDATE·SEND MIME attachment
+- [ ] attachment bytes가 LLM/Context/SQLite/Trace에 유입되지 않는 회귀
+- [ ] staging mutation/expiry/hash mismatch가 기존 Approval을 무효화
+- [ ] Claim/Attachment 계약 회귀 후 기존 WRITE E2E 재실행

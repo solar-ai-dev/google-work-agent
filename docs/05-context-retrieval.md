@@ -1,6 +1,6 @@
 # 05. Google Work Agent · Context · Retrieval 설계서
 
-> **상태:** Draft v2.4 · **기준일:** 2026-08-09 · **대상:** P0 MVP
+> **상태:** Draft v2.5 · **기준일:** 2026-08-09 · **대상:** P0 MVP
 >
 > API 탐색·수집 Agent와 Context Retriever Agent를 분리한다. Google 원본을 요청 시점에 검색하고 Metadata로 후보를 줄인 뒤 필요한 상세만 읽는다.
 
@@ -317,3 +317,11 @@ class SufficiencyIssue:
 5. Budget이 소진됐고 Write의 Target·필수 Argument·승인 근거가 부족하면 사용자에게 정당하게 물을 수 있는 경우 `NEEDS_CONFIRMATION`, 그렇지 않으면 `BLOCKED`.
 
 LLM confidence 숫자 하나만으로 안전 Route를 결정하지 않는다. `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE`은 동일한 Guard와 동일한 Budget 의미를 사용한다.
+
+## R8.4 Gmail Attachment Retrieval 경계
+
+- Gmail Message 상세의 첨부파일은 `filename`, `mime_type`, `size_bytes`, Google `attachment_id` Metadata까지만 Retrieval 후보 정보로 사용할 수 있다.
+- `get_gmail_attachment(message_id, attachment_id)`는 사용자 다운로드 또는 결정적 파일 전달 요청에서만 실행한다.
+- 첨부파일 bytes는 Retrieval Cache·SourceSegment·EvidenceDraft·ContextBundle에 넣지 않는다.
+- 첨부파일 내용을 읽어 Evidence로 만드는 기능은 P0 범위 밖이다.
+- 따라서 Attachment Download는 LLM 재검색·추가 Acquisition Budget과 분리된 결정적 READ I/O다.

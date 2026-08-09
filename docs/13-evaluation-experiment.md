@@ -1,8 +1,8 @@
 # 13. Google Work Agent · 평가 · 실험 설계서
 
-> **문서 기준:** `01 PRD v2.6`, `01-A v2.5`, `01-B v2.4`, `03 Architecture v2.9`, `05 Retrieval v2.3`, `06 Workflow v5.8`, `07 Interface v2.6`, `10 Infrastructure v2.5`, `11 Observability v2.8`, `12 Test v2.9`, `15 Agent Capability·Failure·Prompt v1.4`를 기준으로 한다.
+> **문서 기준:** `01 PRD v2.7`, `01-A v2.6`, `01-B v2.7`, `03 Architecture v3.0`, `05 Retrieval v2.5`, `06 Workflow v6.0`, `07 Interface v2.8`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `12 Test v3.1`, `15 Agent Capability·Failure·Prompt v1.5`를 기준으로 한다.
 >
-> **상태:** Draft v3.0 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
+> **상태:** Draft v3.1 · **기준일:** 2026-08-09 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
 
 ## 먼저 읽기 — 이 문서가 결정하는 것
 
@@ -1105,3 +1105,10 @@ Clarification 평가는 `clarify_required`와 `clarify_not_required`를 모두 �
 - External I/O 중 SQLite Write Transaction 유지 0.
 - `RequireRecovery`·`ResolveRecovery` 외 Recovery 직접 Repository 상태 변경 0.
 이 지표는 LLM 품질 평균과 합산하지 않는다.
+
+## R8.4 평가 범위 경계
+
+- 첨부파일 bytes 자체는 Model·Prompt·Retrieval 품질 비교 입력으로 사용하지 않는다.
+- Attachment I/O 무결성은 `12`의 결정적 Product Regression과 `G02 Fault·Recovery·Write Integrity`가 소유한다.
+- G02에는 Claim V2 Signature·TTL·Instance·Execution Hash·Nonce 및 Attachment Download/Stage/Write isolation 회귀를 포함한다.
+- Agent 구조 실험에서 첨부파일 Metadata는 일반 Resource Metadata로 취급하되 bytes 분석 능력을 점수화하지 않는다.

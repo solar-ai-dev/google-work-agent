@@ -1,7 +1,7 @@
 # Google Work Agent · Agent Capability · Failure · Prompt 공통 계약
 
-> **상태:** Approved v1.4 · R8.3 Gold·Scoring·Prompt Isolation 검수 PASS  
-> **기준일:** 2026-08-08  
+> **상태:** Approved v1.5 · R8.4 Claim V2·Attachment Boundary 정합성 검수 PASS  
+> **기준일:** 2026-08-09  
 > **대상:** P0 Agent 개별실험, Prompt·Repair·Revision 실험, E2E 통합실험  
 > **적용 범위:** 요청 이해, API 탐색·수집, Context Retrieval, 업무 분석, 해결책·계획, 계획 검토  
 > **비적용 범위:** 승인, Claim, Google Write, GET Verification, UNKNOWN_RESULT 복구, Domain 상태 전이의 최종 판정
@@ -937,3 +937,11 @@ prompt_assembly: BASE_PLUS_FAILURE_BLOCK
 - `처리/진행/시작/정리/마무리`는 문맥으로 의미가 단일하면 질문하지 않는다.
 - `답장/회신/보내줘`는 SEND 의도이며 Draft ambiguity가 아니다.
 - 요청/검색/분석 중 실제 모호성이 관측된 단계에서 Redirection한다.
+
+## R8.4 Attachment Capability 경계
+
+- Gmail 첨부파일 I/O는 Agent Semantic Capability가 아니다.
+- Product Prompt에 첨부파일 bytes·파일 내용·Local Path를 넣지 않는다.
+- Agent는 필요 시 파일명·MIME Type·크기·Attachment Descriptor만 사용한다.
+- Download/Stage/Hash Verification/MIME 조립/Claim V2 검증 실패는 `DETERMINISTIC` 또는 `TERMINAL` Runtime 처리이며 LLM Repair·Semantic Revision 대상으로 바꾸지 않는다.
+- Claim V2와 Attachment integrity는 제품 Runtime 안전 계약이므로 Agent Profile 실험의 독립변수로 변경하지 않는다.

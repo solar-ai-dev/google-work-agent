@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.6`, `01-A v2.5`, `01-B v2.5`, `02 UI·UX v2.3`, `03 Architecture v2.9`, `04 Database v1.11`, `05 Retrieval v2.4`, `06 Workflow v5.9`, `07 Interface v2.7`, `08 Sequence v3.0`, `09 Security v2.3`, `10 Infrastructure v2.5`, `11 Observability v2.8`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.7`, `01-A v2.6`, `01-B v2.7`, `02 UI·UX v2.4`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.5`, `06 Workflow v6.0`, `07 Interface v2.8`, `08 Sequence v3.1`, `09 Security v2.5`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `15 Agent Capability·Failure·Prompt v1.5`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v3.0 · **기준일:** 2026-08-09 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.1 · **기준일:** 2026-08-09 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -431,3 +431,21 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 - response loss → `SENT_RESPONSE_LOST`; `UNKNOWN_RESULT`.
 - MCP process exit에서 dispatch 여부 불명 → `UNKNOWN_RESULT`.
 - 모든 UNKNOWN_RESULT case에서 새 Attempt·blind resend 0.
+
+## R8.4 Claim V2·Attachment 필수 회귀
+
+Claim V2:
+- version 누락/불일치, issued_at 미래, TTL>60초, 만료 차단.
+- Service/MCP Process Instance mismatch 차단.
+- Action·Approval·Attempt·Tool·Approval Hash mismatch 차단.
+- 실제 MCP Arguments 재해시 결과가 `execution_arguments_hash`와 다르면 Google 호출 0.
+- 같은 Nonce/Claim 재사용 시 Google 호출 0.
+- Claim DB Commit 전에 MCP Write 호출 0.
+
+Attachment:
+- Message Attachment Metadata와 실제 Download bytes 일치.
+- Download bytes가 LLM Prompt/Context/Evidence/SQLite/Trace로 유입되지 않음.
+- Stage 결과 filename/MIME/size/SHA-256이 실제 파일과 일치.
+- Staging 파일 변조·만료·삭제 후 기존 Approval 실행 0.
+- Draft CREATE/UPDATE·SEND 시 실제 MIME attachment와 승인 Descriptor가 일치.
+- Attachment 포함 SEND에서도 SENT_LOOKUP, UNKNOWN_RESULT no-resend 계약 유지.

@@ -1,8 +1,8 @@
 # 01. Google Work Agent 요구사항 정의서 · PRD
 
-> **문서 기준:** 2026-08-08 R8.2 설계 결정을 제품 목표·범위의 기준으로 한다. 문서 간 충돌은 §1.1의 권위·책임 소유 규칙으로 판정하며, PRD가 다른 Concern의 전문 권위 계약을 임의로 덮어쓰지 않는다.
+> **문서 기준:** 2026-08-09 R8.4 Claim V2·Attachment 설계 결정을 제품 목표·범위의 기준으로 한다. 문서 간 충돌은 §1.1의 권위·책임 소유 규칙으로 판정하며, PRD가 다른 Concern의 전문 권위 계약을 임의로 덮어쓰지 않는다.
 >
-> **상태:** Draft v2.6 · **기준일:** 2026-08-08 · **대상:** P0 MVP
+> **상태:** Draft v2.7 · **기준일:** 2026-08-09 · **대상:** P0 MVP
 
 ## 0. 한눈에 보기
 
@@ -574,3 +574,16 @@ Domain 상태 전이·SQLite·Command Receipt
 - 사용자가 중복 사실을 인지하고 동일 Resource 추가 생성을 명시적으로 요구한 경우 재확인·승인 후 허용할 수 있다.
 - 모호성은 차단이 아니라 `NEEDS_CONFIRMATION → clarify → same Run/Thread resume`를 기본으로 한다.
 - 전체 Gmail Mailbox·장기간 무제한 원문·모든 Workspace Source 전체 조회는 데이터 최소화 정책에 따라 BLOCK한다.
+
+## R8.4 Claim V2·Gmail 첨부파일 범위
+
+### 제품 범위 추가
+- Gmail Message 상세에서 첨부파일 Metadata를 확인하고 사용자가 선택한 첨부파일을 다운로드할 수 있어야 한다.
+- Gmail Draft 생성·수정 및 Gmail SEND에서 사용자가 선택한 로컬 파일을 첨부할 수 있어야 한다.
+- P0는 첨부파일의 **전달·다운로드**를 지원하며 첨부파일 내용을 LLM이 읽거나 요약·분석하는 기능은 범위에 포함하지 않는다.
+
+### Write 무결성 완료 조건
+- 승인된 Business Arguments는 `approval_arguments_hash`로 고정한다.
+- Application이 서버 생성 실행 Metadata까지 포함한 실제 MCP Dispatch Payload를 `execution_arguments_hash`로 고정한다.
+- MCP Write는 `ClaimContextV2`의 서명·TTL·Process Instance·Action·Approval·Attempt·Tool·두 Hash·Nonce를 검증한 뒤 실제 수신 인자를 재해시하여 `execution_arguments_hash`와 일치할 때만 수행한다.
+- 첨부파일이 포함된 Write는 승인 Snapshot에 raw bytes나 Local Path 대신 파일 Descriptor와 SHA-256을 고정하고 실제 bytes를 실행 직전에 재검증한다.

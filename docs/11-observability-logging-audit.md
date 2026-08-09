@@ -1,6 +1,6 @@
 # 11. Google Work Agent · 관측성 · 로그 · 감사 설계서
 
-> **상태:** Draft v2.8 · **외부 Telemetry:** Production 기본 OFF
+> **상태:** Draft v2.9 · **기준일:** 2026-08-09 · **외부 Telemetry:** Production 기본 OFF
 
 ## 먼저 읽기
 
@@ -392,3 +392,25 @@ contradiction_introduced?
 - E06-A는 Profile의 실제 native 비용을 측정한다. E06-B는 `CONTEXT_READY_V1`의 동일 `context_snapshot_id`에서 post-retrieval decomposition 차이를 비교하며 Google Read 호출은 0이어야 한다.
 - 평가 실행은 `evaluation_environment_hash`로 model/runtime parameter, hardware profile, concurrency, timeout, fixture, Tool Schema, Policy, Prompt semantic bundle, Graph Profile을 함께 잠근다.
 
+## R8.4 Claim·Attachment 관측 계약
+
+기록 가능:
+```text
+claim_version
+approval_arguments_hash_prefix
+execution_arguments_hash_prefix
+claim_reject_reason
+attachment_count
+attachment_size_bytes_total
+attachment_mime_types
+```
+
+기록 금지:
+- Claim Token·Nonce·Signature 원문
+- 전체 Approval Arguments/Snapshot
+- Gmail 첨부파일 bytes
+- Staging File 원문·Local Path
+- Attachment content hash 전체값(필요 시 correlation용 짧은 prefix만)
+
+추가 거절 사유 예:
+`CLAIM_VERSION_UNSUPPORTED`, `CLAIM_EXPIRED`, `CLAIM_INSTANCE_MISMATCH`, `CLAIM_ARGUMENTS_MISMATCH`, `CLAIM_NONCE_REUSED`, `ATTACHMENT_HASH_MISMATCH`.

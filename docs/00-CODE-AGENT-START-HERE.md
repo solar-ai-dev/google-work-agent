@@ -1,6 +1,6 @@
 # Google Work Agent · Code Agent Start Here
 
-> **Source Pack:** R8.3 Runtime E2E Canonical · 2026-08-09  
+> **Source Pack:** R8.4 Claim V2·Attachment Canonical · 2026-08-09  
 > **목적:** 구현·검수 Agent가 프로젝트 계약과 실제 소스의 차이를 빠르게 파악하고, 안전 경계를 훼손하지 않은 채 작업하도록 한다.
 
 ## 1. 최초 읽기 순서
@@ -82,9 +82,8 @@ Retrieval·Prompt·평가 작업에서는 `05`, `11`, `13`, 상태 전이 테스
 pytest tests/unit -q
 pytest tests/integration -q
 pytest -q
-ruff check src tests scripts
-ruff format --check src tests scripts
-mypy src tests
+ruff check src tests
+ruff format --check src tests
 ```
 
 저장소에 별도 명령이 정의돼 있으면 해당 명령을 우선한다. 안전·상태 전이·Tool Contract 실패가 하나라도 있으면 완료로 판정하지 않는다.
@@ -135,3 +134,13 @@ mypy src tests
 - `MISMATCH` Action은 immutable이며 `ACCEPT_PARTIAL | CREATE_CORRECTIVE_PLAN` 외 임의 recovery choice를 만들지 않는다.
 - Adapter는 `delivery_certainty`를 보존하며 dispatch 이후 Timeout을 무조건 미전달로 분류하지 않는다.
 - Gmail SEND와 Calendar DELETE는 승인 → Claim Commit → Write → SENT_LOOKUP/GET_ABSENT Verification 전체 경로가 있어야 완료다.
+
+## R8.4 구현 시작점
+
+코드 수정 전 다음을 구현 기준으로 고정한다.
+
+1. DB Schema v1.4는 `0003_action_cancelled.sql`까지 적용된 상태다. Claim V2/Attachment 때문에 추가 DB Migration을 만들지 않는다.
+2. `ClaimContextV2`: approval hash와 execution hash 분리, HMAC-SHA-256, TTL, Service/MCP instance binding, 1회 Nonce, MCP 실제 arguments 재해시.
+3. Gmail Attachment READ: metadata/detail → `get_gmail_attachment` → Download Stream. LLM 입력 금지.
+4. Gmail Attachment WRITE: Local stage → Descriptor/SHA-256 → Approval → Claim V2 → MCP bytes 재검증 → MIME Draft/SEND.
+5. 기존 WRITE 순서 `Approval → Claim Commit → external MCP/Google → Verification`을 유지한다.

@@ -6,7 +6,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 상태 | Draft v1.11 |
+| 상태 | Draft v1.12 |
 | 기준일 | 2026-08-09 |
 | 대상 | P0 MVP |
 | Database | SQLite |
@@ -1363,3 +1363,11 @@ Google/MCP/LLM 응답 대기 중 SQLite Write Transaction을 유지하지 않는
 
 ## 31.3 Recovery Command 경계
 Application은 Repository setter로 Run 상태를 직접 변경하지 않는다. `RequireRecovery`·`ResolveRecovery` Domain Command와 조건부 UPDATE·Audit·Command Receipt를 사용한다.
+
+## R8.4 Domain 저장 경계
+
+- `actions.arguments_hash`는 승인 대상 Canonical Business Arguments의 Domain 기준점이며 `07`의 `approval_arguments_hash`에 대응한다.
+- 실제 MCP Dispatch Payload의 `execution_arguments_hash`는 Claim 발급 시점의 짧은 수명 실행 무결성 값이다. 별도 Domain DB Column을 추가하지 않는다.
+- 첨부파일 bytes·Staging 파일 원문·Local Path는 SQLite Domain Store에 저장하지 않는다.
+- Action/Approval에는 필요할 때 Attachment Descriptor(`staged_attachment_id`, filename, MIME Type, size, SHA-256)만 포함한다.
+- Schema v1.4는 `0001 v1.2 + 0002 SEND/DELETE + 0003 Action CANCELLED`을 적용한 상태다. 이번 R8.4 Claim/Attachment 변경으로 추가 DB Migration은 필요하지 않다.
