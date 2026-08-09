@@ -1,6 +1,11 @@
+from typing import Literal
+
 from google_work_agent.application.workflows import (
+    ActionDraftV1,
+    ActionPlanDraftV1,
     DomainValidationResult,
     DomainValidationService,
+    WorkAnalysisResultV1,
     build_domain_validation_output_v1,
 )
 
@@ -63,7 +68,7 @@ def test_domain_validation_blocks_invalid_plan_draft() -> None:
     assert output["reason_codes"] == ["PLAN_DRAFT_INVALID"]
 
 
-def _analysis_result() -> dict[str, object]:
+def _analysis_result() -> WorkAnalysisResultV1:
     return {
         "schema_version": 1,
         "status": "COMPLETE",
@@ -89,7 +94,7 @@ def _analysis_result() -> dict[str, object]:
     }
 
 
-def _plan_draft(*, actions: list[dict[str, object]]) -> dict[str, object]:
+def _plan_draft(*, actions: list[ActionDraftV1]) -> ActionPlanDraftV1:
     return {
         "schema_version": 2,
         "status": "PLAN_READY",
@@ -107,9 +112,9 @@ def _action(
     *,
     action_id: str,
     position: int,
-    effect: str,
+    effect: Literal["READ", "CREATE", "UPDATE", "SEND", "DELETE"],
     tool_name: str,
-) -> dict[str, object]:
+) -> ActionDraftV1:
     return {
         "schema_version": 2,
         "action_id": action_id,

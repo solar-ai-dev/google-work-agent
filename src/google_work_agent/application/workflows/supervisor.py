@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from enum import StrEnum
 from typing import TypedDict, cast
@@ -21,6 +22,7 @@ from google_work_agent.application.workflows.contracts import (
     DomainValidationOutputV1,
     DomainValidationResult,
     FinalizeIntent,
+    GraphStateUpdateV1,
     MultiAgentGraphState,
     PlanningResult,
     RequestUnderstandingResult,
@@ -91,7 +93,7 @@ class SupervisorDecisionV1(TypedDict):
 
     target: str
     next_phase: str | None
-    state_update: JsonObject
+    state_update: GraphStateUpdateV1
     reason_code: str | None
     budget_decision: BudgetDecisionV1 | None
 
@@ -397,7 +399,7 @@ def _route_solution_planning(
             next_phase=WorkflowPhase.PLAN_REVIEW,
             state_update=_base_state_update(
                 WorkflowPhase.PLAN_REVIEW,
-                **planning_update,
+                current_update=planning_update,
             ),
             reason_code=status.value,
         )
@@ -419,7 +421,7 @@ def _route_solution_planning(
         state=state,
         intent=FinalizeIntent.BLOCKED.value,
         reason_code=_planning_block_reason_code(result),
-        **planning_update,
+        current_update=planning_update,
     )
 
 
@@ -429,7 +431,7 @@ def _route_plan_review(
     result: PlanReviewResultV1,
 ) -> SupervisorDecisionV1:
     status = ReviewResult(str(result["status"]))
-    review_update = {"plan_review": result}
+    review_update: GraphStateUpdateV1 = {"plan_review": result}
     if status is ReviewResult.PASS:
         target_kind, _draft = _review_target_from_state(state)
         if target_kind == "ANSWER":
@@ -437,14 +439,14 @@ def _route_plan_review(
                 state=state,
                 intent=FinalizeIntent.COMPLETED.value,
                 reason_code="ANSWER_ONLY_REVIEW_PASS",
-                **review_update,
+                current_update=review_update,
             )
         return _decision(
             target=SupervisorTarget.DOMAIN_VALIDATION,
             next_phase=WorkflowPhase.DOMAIN_VALIDATION,
             state_update=_base_state_update(
                 WorkflowPhase.DOMAIN_VALIDATION,
-                **review_update,
+                current_update=review_update,
             ),
             reason_code="PLAN_REVIEW_PASS",
         )
@@ -456,7 +458,7 @@ def _route_plan_review(
                 intent=FinalizeIntent.BLOCKED.value,
                 reason_code=_budget_reason_code(budget, default="PLANNING_REVISION_DENIED"),
                 budget_decision=budget,
-                **review_update,
+                current_update=review_update,
             )
         target_kind, _draft = _review_target_from_state(state)
         target = (
@@ -470,7 +472,7 @@ def _route_plan_review(
             state_update=_base_state_update(
                 WorkflowPhase.SOLUTION_PLANNING,
                 retry_budget=budget["run_budget"],
-                **review_update,
+                current_update=review_update,
             ),
             reason_code="PLAN_REVIEW_REVISE",
             budget_decision=budget,
@@ -500,7 +502,7 @@ def _route_plan_review(
         state=state,
         intent=FinalizeIntent.BLOCKED.value,
         reason_code="PLAN_REVIEW_BLOCK",
-        **review_update,
+        current_update=review_update,
     )
 
 
@@ -566,7 +568,7 @@ def _route_additional_acquisition(
     *,
     state: MultiAgentGraphState,
     reason_code: str,
-    current_update: JsonObject,
+    current_update: GraphStateUpdateV1,
     request: object,
 ) -> SupervisorDecisionV1:
     if request is None:
@@ -594,7 +596,7 @@ def _route_additional_acquisition(
             reason_code="EVIDENCE_SUPPORTED_PARTIAL",
             result_kind="PARTIAL",
             budget_decision=budget,
-            **current_update,
+            current_update=current_update,
         )
     if budget["decision"] == BudgetDecision.DENY.value:
         return _finalize(
@@ -602,7 +604,7 @@ def _route_additional_acquisition(
             intent=FinalizeIntent.BLOCKED.value,
             reason_code=_budget_reason_code(budget, default=reason_code),
             budget_decision=budget,
-            **current_update,
+            current_update=current_update,
         )
     return _decision(
         target=SupervisorTarget.SOURCE_PLANNING,
@@ -610,7 +612,7 @@ def _route_additional_acquisition(
         state_update=_base_state_update(
             WorkflowPhase.SOURCE_PLANNING,
             retry_budget=budget["run_budget"],
-            **current_update,
+            current_update=current_update,
         ),
         reason_code=reason_code,
         budget_decision=budget,
@@ -620,7 +622,7 @@ def _route_additional_acquisition(
 def _route_review_recheck(
     *,
     state: MultiAgentGraphState,
-    current_update: JsonObject,
+    current_update: GraphStateUpdateV1,
 ) -> SupervisorDecisionV1:
     budget = approve_review_recheck(state["retry_budget"])
     if budget["decision"] == BudgetDecision.DENY.value:
@@ -629,7 +631,7 @@ def _route_review_recheck(
             intent=FinalizeIntent.BLOCKED.value,
             reason_code=_budget_reason_code(budget, default="REVIEW_RECHECK_DENIED"),
             budget_decision=budget,
-            **current_update,
+            current_update=current_update,
         )
     return _decision(
         target=SupervisorTarget.PLAN_REVIEW_RECHECK,
@@ -637,7 +639,7 @@ def _route_review_recheck(
         state_update=_base_state_update(
             WorkflowPhase.PLAN_REVIEW,
             retry_budget=budget["run_budget"],
-            **current_update,
+            current_update=current_update,
         ),
         reason_code="REVIEW_RECHECK_READY",
         budget_decision=budget,
@@ -648,23 +650,32 @@ def _decision(
     *,
     target: SupervisorTarget,
     next_phase: WorkflowPhase | None,
-    state_update: JsonObject,
+    state_update: Mapping[str, object],
     reason_code: str | None = None,
     budget_decision: BudgetDecisionV1 | None = None,
 ) -> SupervisorDecisionV1:
     return {
         "target": target.value,
         "next_phase": None if next_phase is None else next_phase.value,
-        "state_update": state_update,
+        "state_update": _validated_state_update(state_update),
         "reason_code": reason_code,
         "budget_decision": budget_decision,
     }
+
+
+def _validated_state_update(value: Mapping[str, object]) -> GraphStateUpdateV1:
+    unknown_fields = set(value).difference(GraphStateUpdateV1.__annotations__)
+    if unknown_fields:
+        names = ", ".join(sorted(unknown_fields))
+        raise ValueError(f"supervisor state update contains unknown fields: {names}")
+    return cast(GraphStateUpdateV1, dict(value))
 
 
 def _base_state_update(
     next_phase: WorkflowPhase,
     *,
     retry_budget: object | None = None,
+    current_update: Mapping[str, object] | None = None,
     **extra: object,
 ) -> JsonObject:
     update: JsonObject = {
@@ -674,6 +685,8 @@ def _base_state_update(
     }
     if retry_budget is not None:
         update["retry_budget"] = retry_budget
+    if current_update is not None:
+        update.update(current_update)
     update.update(extra)
     return update
 
@@ -708,9 +721,13 @@ def _finalize(
     reason_code: str,
     result_kind: str | None = None,
     budget_decision: BudgetDecisionV1 | None = None,
+    current_update: Mapping[str, object] | None = None,
     **extra: object,
 ) -> SupervisorDecisionV1:
-    state_update = _boundary_state_update(**extra)
+    state_update = _boundary_state_update(
+        **({} if current_update is None else dict(current_update)),
+        **extra,
+    )
     state_update.update(
         {
             "workflow_phase": WorkflowPhase.FINALIZE.value,
@@ -743,22 +760,24 @@ def _review_target_from_state(
     state: MultiAgentGraphState,
 ) -> tuple[str, AnswerDraftV1 | ActionPlanDraftV1]:
     return resolve_review_target(
-        answer_draft=cast(AnswerDraftV1 | None, _mapping_or_none(state.get("answer_draft"))),
-        plan_draft=cast(ActionPlanDraftV1 | None, _mapping_or_none(state.get("plan_draft"))),
+        answer_draft=state["answer_draft"],
+        plan_draft=state["plan_draft"],
     )
 
 
 def _is_revision_follow_up(state: MultiAgentGraphState) -> bool:
-    review = _mapping_or_none(state.get("plan_review"))
+    review = state["plan_review"]
     return review is not None and review.get("status") == ReviewResult.REVISE.value
 
 
-def _planning_state_update(result: AnswerDraftV1 | ActionPlanDraftV1) -> JsonObject:
-    update: JsonObject = {
+def _planning_state_update(
+    result: AnswerDraftV1 | ActionPlanDraftV1,
+) -> GraphStateUpdateV1:
+    update: GraphStateUpdateV1 = {
         "answer_draft": None,
         "plan_draft": None,
     }
-    if "answer" in result:
+    if result["schema_version"] == 1:
         if PlanningResult(str(result["status"])) is PlanningResult.ANSWER_ONLY:
             update["answer_draft"] = result
         return update
@@ -801,12 +820,12 @@ def _reason_from_failure_mapping(value: object, *, default: str) -> str:
 
 
 def _planning_block_reason_code(result: AnswerDraftV1 | ActionPlanDraftV1) -> str:
-    if "reason_codes" in result:
+    if result["schema_version"] == 1:
         reason_codes = result["reason_codes"]
         if reason_codes:
             return reason_codes[0]
-    if "blockers" in result and result["blockers"]:
-        return "PLANNING_BLOCKED"
+        if result["blockers"]:
+            return "PLANNING_BLOCKED"
     return "PLANNING_BLOCKED"
 
 
@@ -870,7 +889,7 @@ def _partial_result_kind(state: MultiAgentGraphState, extra: JsonObject) -> str 
     return None
 
 
-def _has_supported_evidence(current_update: JsonObject) -> bool:
+def _has_supported_evidence(current_update: Mapping[str, object]) -> bool:
     for key in ("context_result", "analysis_result"):
         result = _mapping_or_none(current_update.get(key))
         if result is None:
@@ -899,7 +918,7 @@ def _require_mapping(value: object, name: str) -> JsonObject:
 def _claim_result_mapping(value: object, name: str) -> JsonObject:
     if isinstance(value, dict):
         return cast(JsonObject, value)
-    if is_dataclass(value):
+    if is_dataclass(value) and not isinstance(value, type):
         return cast(JsonObject, asdict(value))
     raise ValueError(f"{name} is required")
 

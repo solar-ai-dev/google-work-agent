@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, NotRequired, Required, TypedDict, cast
+from typing import Final, Literal, NotRequired, Required, TypedDict, cast
 
-from google_work_agent.application.llm import LLMRuntimeService
+from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
 from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
+    GraphStateUpdateV1,
     ReviewResult,
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
@@ -94,9 +95,9 @@ class PolicyReviewContextV1(TypedDict):
     evidence_policy: EvidencePolicySummaryV1
 
 
-PLAN_REVIEW_SCHEMA_VERSION = 2
-REVIEW_ISSUE_SCHEMA_VERSION = 2
-POLICY_REVIEW_CONTEXT_SCHEMA_VERSION = 1
+PLAN_REVIEW_SCHEMA_VERSION: Final = 2
+REVIEW_ISSUE_SCHEMA_VERSION: Final = 2
+POLICY_REVIEW_CONTEXT_SCHEMA_VERSION: Final = 1
 PLAN_REVIEW_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="plan-review-result-v2",
     json_schema={
@@ -177,7 +178,7 @@ class PlanReviewAgent:
     def __init__(
         self,
         *,
-        llm_runtime: LLMRuntimeService,
+        llm_runtime: StructuredLLMRuntime,
         inspect_prompt_ref: PromptReference | None = None,
         recheck_prompt_ref: PromptReference | None = None,
         tool_registry: SignedToolRegistry | None = None,
@@ -366,7 +367,7 @@ class PlanReviewAgent:
     def build_state_update(
         self,
         result: PlanReviewResultV1,
-    ) -> JsonObject:
+    ) -> GraphStateUpdateV1:
         return {
             "workflow_phase": WorkflowPhase.PLAN_REVIEW.value,
             "plan_review": result,

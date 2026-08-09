@@ -56,6 +56,20 @@ class LLMEventRecorder(Protocol):
         """Emit one sanitized LLM event."""
 
 
+class StructuredLLMRuntime(Protocol):
+    """Minimal structured-generation capability required by workflow agents."""
+
+    def invoke_structured(
+        self,
+        *,
+        prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object],
+        output_schema: OutputSchemaDefinition,
+        trace_context: ObservabilityContext,
+    ) -> StructuredLLMResult:
+        """Generate and validate one structured workflow result."""
+
+
 @dataclass(frozen=True, slots=True)
 class NullLLMEventRecorder:
     def record(

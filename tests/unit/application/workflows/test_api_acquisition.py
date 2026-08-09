@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import cast
+from typing import TypedDict
 
+from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
+    AdditionalAcquisitionRequestV1,
     ApiAcquisitionResult,
     ApiDiscoveryAcquisitionAgent,
     ApiPlanningResult,
+    RequestIntentV1,
     RetrievalBudget,
     SourceFetchPlanV1,
     SourcePlanningValidationError,
@@ -15,6 +19,7 @@ from google_work_agent.application.workflows import (
     build_source_planning_clarification_question,
     validate_acquisition_result_v1,
 )
+from google_work_agent.application.workflows.api_acquisition import SourceName
 from google_work_agent.ports import (
     ActualRuntime,
     FreeBusyCalendar,
@@ -50,18 +55,25 @@ PROMPT_REF = PromptReference(
 DEFAULT_TEST_RETRIEVAL_BUDGET = RetrievalBudget()
 
 
+class LLMCall(TypedDict):
+    prompt_ref: PromptReference
+    prompt_input: dict[str, object]
+    output_schema: OutputSchemaDefinition
+    trace_context: ObservabilityContext
+
+
 @dataclass
 class FakeLLMRuntime:
     queued: deque[StructuredLLMResult | Exception] = field(default_factory=deque)
-    calls: list[dict[str, object]] = field(default_factory=list)
+    calls: list[LLMCall] = field(default_factory=list)
 
     def invoke_structured(
         self,
         *,
         prompt_ref: PromptReference,
-        prompt_input: dict[str, object],
+        prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
-        trace_context: object,
+        trace_context: ObservabilityContext,
     ) -> StructuredLLMResult:
         self.calls.append(
             {
@@ -171,6 +183,15 @@ class RecordingGoogleGateway:
     def get_gmail_draft(self, *, draft_id: str) -> ResourceSnapshot:
         raise NotImplementedError
 
+    def send_gmail(
+        self,
+        *,
+        draft_id: str,
+        recovery_fingerprint: str | None,
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        raise NotImplementedError
+
     def list_task_lists(self, *, page_token: str | None, page_size: int) -> ResourcePage:
         self._maybe_fault("list_task_lists")
         self.calls.append(("list_task_lists", {"page_token": page_token, "page_size": page_size}))
@@ -254,6 +275,15 @@ class RecordingGoogleGateway:
             ("get_calendar_event", {"calendar_id": calendar_id, "event_id": event_id})
         )
         return self.events[event_id]
+
+    def delete_calendar_event(
+        self,
+        *,
+        calendar_id: str,
+        event_id: str,
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        raise NotImplementedError
 
     def create_calendar_event(
         self,
@@ -417,7 +447,7 @@ def test_resource_selected_uses_direct_get_and_does_not_search() -> None:
             "parent_resource_id": None,
         }
     ]
-    assert "selected_resource_ids" not in cast(dict[str, object], planning["source_fetch_plans"][0])
+    assert "selected_resource_ids" not in planning["source_fetch_plans"][0]
 
 
 def test_resource_selected_uses_task_parent_identity_without_default() -> None:
@@ -774,7 +804,9 @@ def test_retrieval_ambiguity_uses_planning_confirmation_not_request_understandin
     assert planning["clarification"] is not None
     assert clarification["origin_target"] == "acquisition.plan_sources"
     assert clarification["options"] == []
-    assert runtime.calls[0]["prompt_input"]["request_intent"]["schema_version"] == 1
+    request_intent = runtime.calls[0]["prompt_input"]["request_intent"]
+    assert isinstance(request_intent, dict)
+    assert request_intent["schema_version"] == 2
     assert gateway.calls == []
 
 
@@ -783,7 +815,7 @@ def test_additional_acquisition_request_is_forwarded_to_plan_sources_prompt_inpu
     runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "source follow-up"})]))
     gateway = RecordingGoogleGateway()
     agent = _agent(runtime=runtime, gateway=gateway)
-    additional_request = {
+    additional_request: AdditionalAcquisitionRequestV1 = {
         "schema_version": 1,
         "origin_phase": WorkflowPhase.WORK_ANALYSIS.value,
         "origin_result": "NEEDS_MORE_DATA",
@@ -799,7 +831,7 @@ def test_additional_acquisition_request_is_forwarded_to_plan_sources_prompt_inpu
         additional_acquisition_request=additional_request,
     )
 
-    prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
+    prompt_input = runtime.calls[0]["prompt_input"]
     assert planning["result"] == ApiPlanningResult.PLAN_READY.value
     assert prompt_input["planning_mode"] == "ADDITIONAL_DATA"
     assert prompt_input["additional_acquisition_request"] == additional_request
@@ -908,8 +940,8 @@ def _agent(
     retrieval_budget: RetrievalBudget = DEFAULT_TEST_RETRIEVAL_BUDGET,
 ) -> ApiDiscoveryAcquisitionAgent:
     return ApiDiscoveryAcquisitionAgent(
-        llm_runtime=cast(object, runtime),
-        gateway=cast(object, gateway),
+        llm_runtime=runtime,
+        gateway=gateway,
         prompt_ref=PROMPT_REF,
         retrieval_budget=retrieval_budget,
     )
@@ -938,9 +970,9 @@ def _request(
     )
 
 
-def _intent(*, source: str) -> dict[str, object]:
+def _intent(*, source: SourceName) -> RequestIntentV1:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "goal": {
             "summary": "Google Workspace 자료 조회",
             "user_visible_objective": "요청한 업무 자료 조회",
@@ -971,7 +1003,7 @@ def _intent(*, source: str) -> dict[str, object]:
 
 
 def _plan(
-    source: str,
+    source: SourceName,
     constraints: dict[str, object],
     *,
     priority: int = 0,
@@ -981,7 +1013,7 @@ def _plan(
 ) -> SourceFetchPlanV1:
     return {
         "schema_version": 1,
-        "source": cast(SourceFetchPlanV1, {"source": source})["source"],
+        "source": source,
         "priority": priority,
         "reason_codes": reason_codes or ["SOURCE_REQUIRED"],
         "constraints": constraints,

@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,12 @@ from google_work_agent.application import (
     FailRunService,
     RequireReauthCommand,
     RequireReauthService,
+    RunTransitionResponse,
 )
+
+TerminalCommand = BlockRunCommand | FailRunCommand | RequireReauthCommand
+TerminalService = Callable[..., RunTransitionResponse]
+TerminalServiceFactory = Callable[[Path], TerminalService]
 
 
 @pytest.fixture()
@@ -132,8 +138,8 @@ def _set_run_status(database_path: Path, *, status: str, version: int = 0) -> No
 )
 def test_run_terminal_services_persist_transition_receipt_and_events(
     run_terminal_database: Path,
-    service_factory,
-    command,
+    service_factory: TerminalServiceFactory,
+    command: TerminalCommand,
     initial_status: str,
     expected_status: str,
     event_type: str,
@@ -243,8 +249,8 @@ def test_run_terminal_services_persist_transition_receipt_and_events(
 )
 def test_run_terminal_services_return_stored_result_for_same_command_id_and_hash(
     run_terminal_database: Path,
-    service_factory,
-    command,
+    service_factory: TerminalServiceFactory,
+    command: TerminalCommand,
     initial_status: str,
 ) -> None:
     _set_run_status(run_terminal_database, status=initial_status)
@@ -308,8 +314,8 @@ def test_run_terminal_services_return_stored_result_for_same_command_id_and_hash
 )
 def test_run_terminal_services_reject_stale_version_and_record_receipt(
     run_terminal_database: Path,
-    service_factory,
-    command,
+    service_factory: TerminalServiceFactory,
+    command: TerminalCommand,
     initial_status: str,
     expected_status: str,
 ) -> None:

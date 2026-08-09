@@ -6,13 +6,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, NotRequired, Required, TypedDict, cast
 
-from google_work_agent.application.llm import LLMRuntimeService
+from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.api_acquisition import AcquisitionResultV1
 from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
     ContextResult,
+    GraphStateUpdateV1,
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
 )
@@ -198,7 +199,7 @@ class ContextRetrievalAgent:
     def __init__(
         self,
         *,
-        llm_runtime: LLMRuntimeService,
+        llm_runtime: StructuredLLMRuntime,
         select_prompt_ref: PromptReference | None = None,
         sufficiency_prompt_ref: PromptReference | None = None,
         context_budget: ContextBudget = DEFAULT_CONTEXT_BUDGET,
@@ -275,7 +276,7 @@ class ContextRetrievalAgent:
             llm_provider_result=llm_provider_result,
         )
 
-    def build_state_update(self, result: ContextRetrievalResultV1) -> JsonObject:
+    def build_state_update(self, result: ContextRetrievalResultV1) -> GraphStateUpdateV1:
         phase = (
             WorkflowPhase.WORK_ANALYSIS
             if ContextResult(result["status"]) is ContextResult.SUFFICIENT

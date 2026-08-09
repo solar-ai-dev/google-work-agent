@@ -6,12 +6,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal, Required, TypedDict, cast
 
-from google_work_agent.application.llm import LLMRuntimeService
+from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionRequestV1,
     ApiAcquisitionResult,
     ApiPlanningResult,
+    GraphStateUpdateV1,
     WorkflowPhase,
 )
 from google_work_agent.application.workflows.prompt_registry import (
@@ -157,7 +158,7 @@ class ApiDiscoveryAcquisitionAgent:
     def __init__(
         self,
         *,
-        llm_runtime: LLMRuntimeService,
+        llm_runtime: StructuredLLMRuntime,
         gateway: GoogleWorkspaceGateway,
         prompt_ref: PromptReference | None = None,
         retrieval_budget: RetrievalBudget = DEFAULT_RETRIEVAL_BUDGET,
@@ -288,7 +289,7 @@ class ApiDiscoveryAcquisitionAgent:
             remaining_budget=remaining,
         )
 
-    def build_planning_state_update(self, output: SourcePlanningOutputV1) -> JsonObject:
+    def build_planning_state_update(self, output: SourcePlanningOutputV1) -> GraphStateUpdateV1:
         result = ApiPlanningResult(output["result"])
         phase = (
             WorkflowPhase.API_ACQUISITION
@@ -304,7 +305,7 @@ class ApiDiscoveryAcquisitionAgent:
             },
         }
 
-    def build_acquisition_state_update(self, result: AcquisitionResultV1) -> JsonObject:
+    def build_acquisition_state_update(self, result: AcquisitionResultV1) -> GraphStateUpdateV1:
         return {
             "acquisition_result": result,
             "workflow_phase": WorkflowPhase.API_ACQUISITION.value,
@@ -800,7 +801,8 @@ def _choose_acquisition_status(
         return ApiAcquisitionResult.AUTH_REQUIRED
     has_usable_data = any(
         summary.get("status") == ApiAcquisitionResult.COMPLETE.value
-        and int(summary.get("resource_count", 0)) > 0
+        and isinstance(resource_count := summary.get("resource_count", 0), int)
+        and resource_count > 0
         for summary in source_summaries
     )
     if has_usable_data:

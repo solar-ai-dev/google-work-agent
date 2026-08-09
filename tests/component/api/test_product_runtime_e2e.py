@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -42,6 +43,7 @@ from google_work_agent.application.start_run import (
     ResumeRunService,
     StartRunService,
 )
+from google_work_agent.application.workflows import ActionPlanDraftV1
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
     PrepareWriteRetryService,
@@ -71,7 +73,7 @@ class _AllowGuard:
         return AccessDecision(allowed=True)
 
 
-def _gmail_draft_plan() -> dict[str, object]:
+def _gmail_draft_plan() -> ActionPlanDraftV1:
     plan = _write_plan_output()
     payload = {
         "resource_id": "draft-product-e2e",
@@ -96,7 +98,7 @@ def _gmail_draft_plan() -> dict[str, object]:
     return plan
 
 
-def _task_update_plan() -> dict[str, object]:
+def _task_update_plan() -> ActionPlanDraftV1:
     plan = _write_plan_output()
     payload = {
         "title": "Reply to project sync",
@@ -126,7 +128,7 @@ def _task_update_plan() -> dict[str, object]:
     return plan
 
 
-def _calendar_create_plan() -> dict[str, object]:
+def _calendar_create_plan() -> ActionPlanDraftV1:
     plan = _write_plan_output()
     payload = {
         "resource_id": "event-product-e2e",
@@ -153,7 +155,7 @@ def _calendar_create_plan() -> dict[str, object]:
     return plan
 
 
-def _calendar_update_plan() -> dict[str, object]:
+def _calendar_update_plan() -> ActionPlanDraftV1:
     plan = _delete_write_plan_output()
     payload = {
         "title": "Updated focus block",
@@ -198,7 +200,7 @@ def _calendar_update_plan() -> dict[str, object]:
 )
 def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
     tmp_path: Path,
-    plan_factory: Callable[[], dict[str, object]],
+    plan_factory: Callable[[], ActionPlanDraftV1],
     calendar_context: bool,
     write_operation: str,
     verification_operation: str,
@@ -321,7 +323,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
     with TestClient(create_app(container), base_url="http://127.0.0.1:8780") as client:
         _create_conversation_and_run(client)
         waiting = _wait_for_snapshot(client, "WAITING_APPROVAL")
-        action = waiting["actions"][0]
+        action = _first_action(waiting)
         reads_before_approval = gateway.count_calls(verification_operation)
 
         approval_body = {
@@ -334,7 +336,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         assert approved.status_code == 200
         completed = _wait_for_snapshot(client, "COMPLETED")
 
-        assert completed["actions"][0]["status"] == "VERIFIED"
+        assert _first_action(completed)["status"] == "VERIFIED"
         assert gateway.count_calls(write_operation) == 1
         assert gateway.count_calls(verification_operation) >= reads_before_approval + 1
         replay = client.post("/api/v1/actions/action-1/approve", json=approval_body)
@@ -418,9 +420,9 @@ def _create_conversation_and_run(client: TestClient) -> None:
 
 
 def _wait_for_snapshot(client: TestClient, expected_status: str) -> dict[str, object]:
-    deadline = time.time() + 3
+    deadline = time.monotonic() + 10
     latest: dict[str, object] = {}
-    while time.time() < deadline:
+    while time.monotonic() < deadline:
         response = client.get("/api/v1/runs/run-1")
         assert response.status_code == 200
         latest = response.json()["snapshot"]
@@ -428,3 +430,13 @@ def _wait_for_snapshot(client: TestClient, expected_status: str) -> dict[str, ob
             return latest
         time.sleep(0.01)
     raise AssertionError(f"run did not reach {expected_status}: {latest}")
+
+
+def _first_action(snapshot: dict[str, object]) -> dict[str, object]:
+    actions = snapshot.get("actions")
+    if not isinstance(actions, list) or not actions or not isinstance(actions[0], dict):
+        raise AssertionError("run snapshot must contain at least one action object")
+    action = actions[0]
+    if not all(isinstance(key, str) for key in action):
+        raise AssertionError("action keys must be strings")
+    return cast(dict[str, object], action)

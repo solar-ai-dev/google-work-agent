@@ -10,7 +10,7 @@ from hashlib import sha256
 from hmac import compare_digest
 from hmac import new as hmac_new
 from json import dumps, loads
-from typing import cast
+from typing import Protocol, cast
 
 from google_work_agent.domain import (
     ActionCommand,
@@ -58,6 +58,19 @@ from google_work_agent.ports import (
     UnitOfWork,
     VerificationRecord,
 )
+
+
+class VerificationSnapshotGateway(Protocol):
+    """Read capability required by deterministic write verification."""
+
+    def get_gmail_message(self, *, message_id: str) -> ResourceSnapshot: ...
+
+    def get_gmail_draft(self, *, draft_id: str) -> ResourceSnapshot: ...
+
+    def get_task(self, *, task_list_id: str, task_id: str) -> ResourceSnapshot: ...
+
+    def get_calendar_event(self, *, calendar_id: str, event_id: str) -> ResourceSnapshot: ...
+
 
 CLAIM_TOKEN_VERSION = "v1"
 VERIFICATION_NORMALIZER_VERSION = "2026-08-06.p0"
@@ -1439,7 +1452,7 @@ class VerifyWriteActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: GoogleWorkspaceGateway,
+        gateway: VerificationSnapshotGateway,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
@@ -2097,7 +2110,7 @@ class RecoverUnknownUpdateActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: GoogleWorkspaceGateway,
+        gateway: VerificationSnapshotGateway,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
@@ -2960,7 +2973,7 @@ def _prepare_gateway_claim_context(
 
 def _load_verification_snapshot(
     *,
-    gateway: GoogleWorkspaceGateway,
+    gateway: VerificationSnapshotGateway,
     action: ActionRecord,
     fallback_resource_id: str | None,
 ) -> ResourceSnapshot:

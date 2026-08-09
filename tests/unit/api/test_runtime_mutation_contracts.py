@@ -1,6 +1,5 @@
 import pytest
-from pydantic import ValidationError
-from tests.support.fakes import DeterministicUUID  # noqa: F401
+from pydantic import BaseModel, ValidationError
 
 from google_work_agent.api.dependencies import calculate_server_request_hash
 from google_work_agent.api.schemas.actions import (
@@ -72,7 +71,7 @@ def test_server_request_hash_is_canonical_and_semantic() -> None:
     ],
 )
 def test_versioned_mutation_schemas_accept_only_client_authority_fields(
-    schema: type,
+    schema: type[BaseModel],
     payload: dict[str, object],
 ) -> None:
     assert schema.model_validate(payload)

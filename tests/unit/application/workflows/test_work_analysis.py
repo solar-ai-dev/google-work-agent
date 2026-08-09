@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -8,9 +9,12 @@ from typing import cast
 import pytest
 from tests.support.prompt_manifests import write_runtime_active_manifest
 
+from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
     WORK_ANALYSIS_OUTPUT_SCHEMA,
     AnalysisResult,
+    ContextRetrievalResultV1,
+    RequestIntentV1,
     WorkAnalysisAgent,
     WorkAnalysisValidationError,
     WorkflowPhase,
@@ -53,9 +57,9 @@ class FakeLLMRuntime:
         self,
         *,
         prompt_ref: PromptReference,
-        prompt_input: dict[str, object],
+        prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
-        trace_context: object,
+        trace_context: ObservabilityContext,
     ) -> StructuredLLMResult:
         self.calls.append(
             {
@@ -364,7 +368,7 @@ def test_work_analysis_exports_do_not_change_existing_workflow_contracts() -> No
 
 def _agent(runtime: FakeLLMRuntime) -> WorkAnalysisAgent:
     return WorkAnalysisAgent(
-        llm_runtime=cast(object, runtime),
+        llm_runtime=runtime,
         analyze_prompt_ref=ANALYZE_PROMPT_REF,
     )
 
@@ -386,9 +390,9 @@ def _request() -> WorkflowStartRequest:
     )
 
 
-def _intent() -> dict[str, object]:
+def _intent() -> RequestIntentV1:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "goal": {
             "summary": "Analyze risky follow-up work",
             "user_visible_objective": "Find follow-up risks",
@@ -415,7 +419,7 @@ def _intent() -> dict[str, object]:
 def _context_result(
     *,
     excerpt: str = "Kim is waiting for the follow-up task.",
-) -> dict[str, object]:
+) -> ContextRetrievalResultV1:
     return {
         "schema_version": 1,
         "status": "SUFFICIENT",

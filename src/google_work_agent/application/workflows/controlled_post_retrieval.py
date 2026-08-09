@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Literal, Required, TypedDict, cast
+from typing import Literal, Required, TypedDict, cast
 
+from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.context_retrieval import (
     ContextRetrievalResultV1,
@@ -90,6 +92,75 @@ class ContextReadyEvaluationItemV1(TypedDict):
     execution_contract: dict[str, object]
     model_input_allowed_ref: str
     grader_only_ref: str
+
+
+def validate_context_ready_replay_input_v1(
+    value: Mapping[str, object],
+) -> ContextReadyReplayInputV1:
+    root = _require_mapping(dict(value), "model_input")
+    _require_exact_keys(root, "model_input", set(ContextReadyReplayInputV1.__required_keys__))
+    _require_schema_version(root, "model_input")
+    evidence = root["evidence_set"]
+    if not isinstance(evidence, list):
+        raise ControlledPostRetrievalReplayError("model_input.evidence_set must be an array")
+    evidence_set = [
+        _require_mapping(item, f"model_input.evidence_set[{index}]")
+        for index, item in enumerate(evidence)
+    ]
+    return {
+        "schema_version": 1,
+        "contract_version": _require_context_ready_version(root, "model_input"),
+        "context_snapshot_id": _required_string(root, "context_snapshot_id"),
+        "snapshot_origin": _required_string(root, "snapshot_origin"),
+        "source_case_id": _required_string(root, "source_case_id"),
+        "fixture_snapshot_id": _required_string(root, "fixture_snapshot_id"),
+        "category": _required_string(root, "category"),
+        "split": _required_string(root, "split"),
+        "request_intent": _require_mapping(root["request_intent"], "model_input.request_intent"),
+        "context_bundle": _require_mapping(root["context_bundle"], "model_input.context_bundle"),
+        "evidence_set": evidence_set,
+        "policy_summary": _require_mapping(root["policy_summary"], "model_input.policy_summary"),
+    }
+
+
+def validate_context_ready_gold_v1(value: Mapping[str, object]) -> ContextReadyGoldV1:
+    root = _require_mapping(dict(value), "gold")
+    _require_exact_keys(root, "gold", set(ContextReadyGoldV1.__required_keys__))
+    _require_schema_version(root, "gold")
+    return {
+        "schema_version": 1,
+        "contract_version": _require_context_ready_version(root, "gold"),
+        "context_snapshot_id": _required_string(root, "context_snapshot_id"),
+        "source_case_id": _required_string(root, "source_case_id"),
+        "gold": _require_mapping(root["gold"], "gold.gold"),
+    }
+
+
+def validate_context_ready_evaluation_item_v1(
+    value: Mapping[str, object],
+) -> ContextReadyEvaluationItemV1:
+    root = _require_mapping(dict(value), "evaluation_item")
+    _require_exact_keys(
+        root,
+        "evaluation_item",
+        set(ContextReadyEvaluationItemV1.__required_keys__),
+    )
+    _require_schema_version(root, "evaluation_item")
+    return {
+        "schema_version": 1,
+        "evaluation_item_id": _required_string(root, "evaluation_item_id"),
+        "contract_version": _require_context_ready_version(root, "evaluation_item"),
+        "context_snapshot_id": _required_string(root, "context_snapshot_id"),
+        "source_case_id": _required_string(root, "source_case_id"),
+        "split": _required_string(root, "split"),
+        "model_input_ref": _required_string(root, "model_input_ref"),
+        "grader_gold_ref": _required_string(root, "grader_gold_ref"),
+        "execution_contract": _require_mapping(
+            root["execution_contract"], "evaluation_item.execution_contract"
+        ),
+        "model_input_allowed_ref": _required_string(root, "model_input_allowed_ref"),
+        "grader_only_ref": _required_string(root, "grader_only_ref"),
+    }
 
 
 class E06BAnalysisPlanningOutputV1(TypedDict):
@@ -244,7 +315,9 @@ E06B_INTEGRATED_OUTPUT_SCHEMA = OutputSchemaDefinition(
 class ControlledPostRetrievalReplayRunner:
     """Run the E06-B controlled lane without acquisition, retrieval, or Google reads."""
 
-    def __init__(self, *, llm_runtime: Any, manifest_path: Path | None = None) -> None:
+    def __init__(
+        self, *, llm_runtime: StructuredLLMRuntime, manifest_path: Path | None = None
+    ) -> None:
         self._llm_runtime = llm_runtime
         self._manifest_path = manifest_path or _registry_default_prompt_manifest_path()
 
@@ -253,11 +326,14 @@ class ControlledPostRetrievalReplayRunner:
         *,
         experiment_id: str,
         candidate_config: dict[str, object],
-        evaluation_item: ContextReadyEvaluationItemV1,
-        model_input: ContextReadyReplayInputV1,
-        gold: ContextReadyGoldV1,
+        evaluation_item: Mapping[str, object],
+        model_input: Mapping[str, object],
+        gold: Mapping[str, object],
         trial_index: int = 0,
     ) -> tuple[ControlledReplayRunResult, ControlledReplayNodeResultV2]:
+        evaluation_item = validate_context_ready_evaluation_item_v1(evaluation_item)
+        model_input = validate_context_ready_replay_input_v1(model_input)
+        gold = validate_context_ready_gold_v1(gold)
         self._validate_replay_boundary(evaluation_item=evaluation_item, model_input=model_input)
         graph_profile = self._graph_profile(candidate_config)
         context_result = _build_context_result_from_model_input(model_input)
@@ -322,8 +398,8 @@ class ControlledPostRetrievalReplayRunner:
                 "prompt_semantic_bundle_version",
             ),
             evaluation_environment_hash=evaluation_environment_hash,
-            agent_invocation_count=int(trace_context["agent_invocation_count"]),
-            llm_call_count=int(trace_context["llm_call_count"]),
+            agent_invocation_count=_required_int(trace_context, "agent_invocation_count"),
+            llm_call_count=_required_int(trace_context, "llm_call_count"),
             provider_request_count=token_totals["provider_request_count"],
             latency_ms=latency_ms,
             input_tokens=token_totals["input_tokens"],
@@ -891,7 +967,7 @@ def _build_context_result_from_model_input(
                     "resource_handle": draft["resource_handle"],
                     "segment_id": draft["segment_id"],
                     "excerpt": draft["excerpt"],
-                    "claim": cast(str, evidence_set[index]["claim"]),
+                    "claim": _required_string(evidence_set[index], "claim"),
                 }
                 for index, draft in enumerate(evidence_drafts)
             ],
@@ -925,7 +1001,7 @@ def _build_context_result_from_model_input(
 def _calculate_evaluation_environment_hash(
     *,
     candidate_config: dict[str, object],
-    evaluation_item: ContextReadyEvaluationItemV1,
+    evaluation_item: Mapping[str, object],
     fixture_snapshot_id: str,
 ) -> str:
     payload = _build_evaluation_environment_hash_payload(
@@ -939,9 +1015,10 @@ def _calculate_evaluation_environment_hash(
 def _build_evaluation_environment_hash_payload(
     *,
     candidate_config: dict[str, object],
-    evaluation_item: ContextReadyEvaluationItemV1,
+    evaluation_item: Mapping[str, object],
     fixture_snapshot_id: str,
 ) -> dict[str, object]:
+    evaluation_item = validate_context_ready_evaluation_item_v1(evaluation_item)
     runtime = _require_mapping(candidate_config.get("runtime"), "runtime")
     parameters = cast(dict[str, object], runtime.get("parameters", {}))
     evaluation_environment = _require_mapping(
@@ -1003,7 +1080,7 @@ def _build_evaluation_environment_hash_payload(
 def _build_fixed_environment_payload(
     *,
     candidate_config: dict[str, object],
-    evaluation_item: ContextReadyEvaluationItemV1,
+    evaluation_item: Mapping[str, object],
     fixture_snapshot_id: str,
 ) -> dict[str, object]:
     payload = _build_evaluation_environment_hash_payload(
@@ -1218,14 +1295,14 @@ def _validate_specialized_planning_output(
     if answer_only:
         answer_draft = validate_answer_draft_v1(value, analysis_result=analysis_result)
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "status": answer_draft["status"],
             "answer_draft": answer_draft,
             "plan_draft": None,
         }
     plan_draft = validate_action_plan_draft_v1(value, analysis_result=analysis_result)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": plan_draft["status"],
         "answer_draft": None,
         "plan_draft": plan_draft,
@@ -1338,11 +1415,11 @@ def merge_trace_context(
         prompt_refs.append(_prompt_ref_to_mapping(prompt_ref))
     return {
         **current,
-        "agent_invocation_count": int(current.get("agent_invocation_count", 0))
+        "agent_invocation_count": _counter_value(current, "agent_invocation_count")
         + agent_invocation_increment,
-        "llm_call_count": int(current.get("llm_call_count", 0)) + llm_call_increment,
-        "repair_count": int(current.get("repair_count", 0)) + repair_increment,
-        "revision_count": int(current.get("revision_count", 0)) + revision_increment,
+        "llm_call_count": _counter_value(current, "llm_call_count") + llm_call_increment,
+        "repair_count": _counter_value(current, "repair_count") + repair_increment,
+        "revision_count": _counter_value(current, "revision_count") + revision_increment,
         "agent_node_log": node_log,
         "prompt_refs": prompt_refs,
     }
@@ -1397,8 +1474,27 @@ def _required_string(item: dict[str, object], field: str) -> str:
     return value
 
 
+def _require_context_ready_version(
+    item: dict[str, object],
+    path: str,
+) -> Literal["CONTEXT_READY_V1"]:
+    value = item.get("contract_version")
+    if value != "CONTEXT_READY_V1":
+        raise ControlledPostRetrievalReplayError(
+            f"{path}.contract_version must be CONTEXT_READY_V1"
+        )
+    return "CONTEXT_READY_V1"
+
+
 def _required_int(item: dict[str, object], field: str) -> int:
     value = item.get(field)
+    if not isinstance(value, int):
+        raise ControlledPostRetrievalReplayError(f"{field} must be an integer")
+    return value
+
+
+def _counter_value(item: dict[str, object], field: str) -> int:
+    value = item.get(field, 0)
     if not isinstance(value, int):
         raise ControlledPostRetrievalReplayError(f"{field} must be an integer")
     return value
