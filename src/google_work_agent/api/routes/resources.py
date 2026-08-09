@@ -11,7 +11,11 @@ from google_work_agent.api.dependencies import (
 )
 from google_work_agent.api.errors import ApiError
 from google_work_agent.api.schemas.resources import ResourceListResponse
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports import (
+    EndpointPolicy,
+    GoogleWorkspaceErrorCode,
+    GoogleWorkspaceGatewayError,
+)
 
 router = APIRouter(prefix="/api/v1/resources")
 
@@ -40,7 +44,10 @@ def list_gmail_resources(
             request_id=request.state.request_id,
             detail_code="RESOURCE_QUERY_UNAVAILABLE",
         )
-    page = service.list_gmail_threads(query=query, page_token=page_token, page_size=page_size)
+    try:
+        page = service.list_gmail_threads(query=query, page_token=page_token, page_size=page_size)
+    except GoogleWorkspaceGatewayError as error:
+        _raise_resource_error(error, request_id=request.state.request_id)
     return ResourceListResponse(
         source=page.source,
         items=[asdict(item) for item in page.items],
@@ -73,11 +80,14 @@ def list_task_resources(
             request_id=request.state.request_id,
             detail_code="RESOURCE_QUERY_UNAVAILABLE",
         )
-    page = service.list_tasks(
-        task_list_id=task_list_id,
-        page_token=page_token,
-        page_size=page_size,
-    )
+    try:
+        page = service.list_tasks(
+            task_list_id=task_list_id,
+            page_token=page_token,
+            page_size=page_size,
+        )
+    except GoogleWorkspaceGatewayError as error:
+        _raise_resource_error(error, request_id=request.state.request_id)
     return ResourceListResponse(
         source=page.source,
         items=[asdict(item) for item in page.items],
@@ -110,14 +120,43 @@ def list_calendar_resources(
             request_id=request.state.request_id,
             detail_code="RESOURCE_QUERY_UNAVAILABLE",
         )
-    page = service.list_calendar_resources(
-        calendar_id=calendar_id,
-        page_token=page_token,
-        page_size=page_size,
-    )
+    try:
+        page = service.list_calendar_resources(
+            calendar_id=calendar_id,
+            page_token=page_token,
+            page_size=page_size,
+        )
+    except GoogleWorkspaceGatewayError as error:
+        _raise_resource_error(error, request_id=request.state.request_id)
     return ResourceListResponse(
         source=page.source,
         items=[asdict(item) for item in page.items],
         next_page_token=page.next_page_token,
         api_contract_version=container.api_contract_version,
     )
+
+
+def _raise_resource_error(error: GoogleWorkspaceGatewayError, *, request_id: str) -> None:
+    mapping = {
+        GoogleWorkspaceErrorCode.INVALID_ARGUMENT: ("INVALID_ARGUMENT", 422, False),
+        GoogleWorkspaceErrorCode.AUTH_EXPIRED: ("AUTH_REQUIRED", 401, False),
+        GoogleWorkspaceErrorCode.PERMISSION_DENIED: ("PERMISSION_DENIED", 403, False),
+        GoogleWorkspaceErrorCode.NOT_FOUND: ("NOT_FOUND", 404, False),
+        GoogleWorkspaceErrorCode.RATE_LIMITED: ("UPSTREAM_UNAVAILABLE", 429, True),
+        GoogleWorkspaceErrorCode.UPSTREAM_5XX: ("UPSTREAM_UNAVAILABLE", 502, True),
+        GoogleWorkspaceErrorCode.TIMEOUT: ("UPSTREAM_UNAVAILABLE", 504, True),
+        GoogleWorkspaceErrorCode.CONNECTION_CLOSED: ("SERVICE_BUSY", 503, True),
+        GoogleWorkspaceErrorCode.RESPONSE_MALFORMED: ("UPSTREAM_UNAVAILABLE", 502, False),
+    }
+    error_code, status_code, retryable = mapping.get(
+        error.code,
+        ("UPSTREAM_UNAVAILABLE", 502, False),
+    )
+    raise ApiError(
+        error_code=error_code,
+        user_message="Google resource request could not be completed.",
+        status_code=status_code,
+        request_id=request_id,
+        retryable=retryable,
+        detail_code=f"GOOGLE_{error.code.value}",
+    ) from error

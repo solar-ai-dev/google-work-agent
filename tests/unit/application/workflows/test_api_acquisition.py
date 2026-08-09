@@ -35,6 +35,7 @@ from google_work_agent.ports import (
     ResourceType,
     SelectedResourceRef,
     StructuredLLMResult,
+    TimeRange,
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
@@ -266,7 +267,13 @@ class RecordingGoogleGateway:
         )
         return ResourcePage(items=tuple(self.events.values())[:page_size], next_page_token=None)
 
-    def query_freebusy(self, *, calendar_ids: tuple[str, ...]) -> tuple[FreeBusyCalendar, ...]:
+    def query_freebusy(
+        self,
+        *,
+        calendar_ids: tuple[str, ...],
+        time_range: TimeRange,
+    ) -> tuple[FreeBusyCalendar, ...]:
+        del calendar_ids, time_range
         raise NotImplementedError
 
     def get_calendar_event(self, *, calendar_id: str, event_id: str) -> ResourceSnapshot:

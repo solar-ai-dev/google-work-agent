@@ -15,6 +15,7 @@ from google_work_agent.ports import (
     ResourcePage,
     ResourceSnapshot,
     ResourceType,
+    TimeRange,
 )
 from tests.support.fixtures import ProductFixtureSnapshot
 
@@ -271,13 +272,22 @@ class FakeGoogleGateway:
             page_size=page_size,
         )
 
-    def query_freebusy(self, *, calendar_ids: tuple[str, ...]) -> tuple[FreeBusyCalendar, ...]:
+    def query_freebusy(
+        self,
+        *,
+        calendar_ids: tuple[str, ...],
+        time_range: TimeRange,
+    ) -> tuple[FreeBusyCalendar, ...]:
         operation = "query_freebusy"
         self._check_fault(operation=operation, can_mutate=False)
         self.call_log.append(
             GoogleGatewayCallRecord(
                 operation=operation,
-                arguments={"calendar_ids": list(calendar_ids)},
+                arguments={
+                    "calendar_ids": list(calendar_ids),
+                    "time_min": time_range.start,
+                    "time_max": time_range.end,
+                },
                 delivered=True,
                 mutated=False,
             )

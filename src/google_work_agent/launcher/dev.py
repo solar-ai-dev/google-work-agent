@@ -70,6 +70,7 @@ from google_work_agent.application.llm import (
     TestLLMConnectionService,
 )
 from google_work_agent.application.queries import QueryService
+from google_work_agent.application.resource_queries import ResourceQueryService
 from google_work_agent.application.start_run import (
     CreateConversationService,
     ModifyWriteActionService,
@@ -584,11 +585,12 @@ def build_container(
         raise CoreInitializationError("KEYRING_UNAVAILABLE") from error
     prompt_active = True
     workflow_runtime: LangGraphWorkflowRuntime | _PromptInactiveWorkflowRuntime
+    gateway = MCPGoogleWorkspaceGateway(transport=transport)
     try:
         workflow_runtime = LangGraphWorkflowRuntime(
             unit_of_work_factory=unit_of_work_factory,
             llm_runtime=llm_runtime,
-            gateway=MCPGoogleWorkspaceGateway(transport=transport),
+            gateway=gateway,
             now_ms=clock.now_ms,
             id_factory=id_generator.next_id,
             signing_secret=secrets.token_hex(32),
@@ -684,6 +686,7 @@ def build_container(
         start_google_oauth_service=StartGoogleOAuthService(provider=google_provider),
         get_google_connection_service=GetGoogleConnectionService(provider=google_provider),
         disconnect_google_service=DisconnectGoogleService(provider=google_provider),
+        resource_query_service=ResourceQueryService(gateway=gateway),
         get_llm_connection_service=GetLLMConnectionService(
             runtime_status_service=llm_runtime.status_service,
             settings_service=llm_runtime.settings_service,

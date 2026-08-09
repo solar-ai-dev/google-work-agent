@@ -38,6 +38,7 @@ from google_work_agent.ports.google_workspace import (
     ResourcePage,
     ResourceSnapshot,
     ResourceType,
+    TimeRange,
 )
 from google_work_agent.ports.identity import IdGenerator
 from google_work_agent.ports.launcher_probe import (
@@ -232,6 +233,7 @@ __all__ = [
     "ResourceSnapshot",
     "ResourceSource",
     "ResourceType",
+    "TimeRange",
     "RouteDecision",
     "RouteDecisionInput",
     "RunCreateRecord",
