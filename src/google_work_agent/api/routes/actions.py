@@ -12,7 +12,7 @@ from google_work_agent.api.dependencies import (
     enforce_runtime_operation,
     get_container,
 )
-from google_work_agent.api.errors import http_status_for_result_code
+from google_work_agent.api.errors import ApiError, http_status_for_result_code
 from google_work_agent.api.schemas.actions import (
     ActionCommandResponse,
     ApproveActionRequestV2,
@@ -20,6 +20,7 @@ from google_work_agent.api.schemas.actions import (
     PrepareRetryRequestV2,
     RejectActionRequestV2,
 )
+from google_work_agent.application.coordinator import QueueBusyError
 from google_work_agent.application.start_run import (
     ModifyWriteActionCommand,
     RejectWriteActionCommand,
@@ -43,7 +44,7 @@ def approve(
     enforce_runtime_operation(request, operation=RuntimeOperation.APPROVALS)
     from google_work_agent.application.write_actions import ApproveWriteActionCommand
 
-    approved_by_account_id = _account_id_for_action(container, action_id)
+    approved_by_account_id, run_id = _account_and_run_id_for_action(container, action_id)
     result = container.approve_action_service(
         ApproveWriteActionCommand(
             command_id=payload.command_id,
@@ -57,10 +58,32 @@ def approve(
             approved_by_display=None,
             source_snapshot={},
             approval_id=container.id_generator.next_id(),
-            idempotency_key=container.id_generator.next_id(),
+            idempotency_key=calculate_server_request_hash(
+                operation="ApproveActionIdempotencyKeyV1",
+                payload={"action_id": action_id, "command_id": payload.command_id},
+            ),
             ttl_ms=payload.ttl_ms,
         )
     )
+    if result.applied:
+        try:
+            container.local_run_coordinator.enqueue_resume(
+                run_id=run_id,
+                request_id=request.state.request_id,
+                command_id=payload.command_id,
+                resume_kind="APPROVAL",
+                resume_payload={"approved": True},
+            )
+        except QueueBusyError as error:
+            raise ApiError(
+                error_code="SERVICE_BUSY",
+                user_message="The approval was saved, but runtime execution is still queued.",
+                status_code=503,
+                request_id=request.state.request_id,
+                retryable=True,
+                detail_code=type(error).__name__,
+                current_state=result.action_status,
+            ) from error
     response.status_code = http_status_for_result_code(result.result_code)
     return ActionCommandResponse(
         applied=result.applied,
@@ -73,7 +96,7 @@ def approve(
     )
 
 
-def _account_id_for_action(container: Any, action_id: str) -> str:
+def _account_and_run_id_for_action(container: Any, action_id: str) -> tuple[str, str]:
     with container.unit_of_work_factory() as unit_of_work:
         action = unit_of_work.actions.get_by_id(action_id)
         if action is None:
@@ -87,7 +110,7 @@ def _account_id_for_action(container: Any, action_id: str) -> str:
         conversation = unit_of_work.conversations.get_by_id(run.conversation_id)
         if conversation is None:
             raise LookupError(f"conversation not found: {run.conversation_id}")
-        return conversation.account_id
+        return conversation.account_id, run.id
 
 
 @router.post("/{action_id}/modify", response_model=ActionCommandResponse)

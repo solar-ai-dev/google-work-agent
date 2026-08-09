@@ -3,6 +3,7 @@ import {
   approveAction,
   bootstrapSession,
   cancelRun,
+  confirmRun,
   createConversation,
   deleteLLMApiKey,
   disconnectGoogle,
@@ -24,6 +25,7 @@ import {
   patchSettings,
   prepareRetry,
   rejectAction,
+  resolveRecovery,
   resumeRun,
   startGoogleOAuth,
   startRun,
@@ -65,6 +67,11 @@ type ResourceState = {
   error: string | null;
 };
 
+type PendingConfirmation = {
+  interruptId: string;
+  question: string;
+};
+
 const resourceCache = new Map<string, { items: ResourceItem[]; nextPageToken: string | null }>();
 
 const THEME_KEY = "gwa.theme";
@@ -88,6 +95,8 @@ export function App(): JSX.Element {
   const [runContext, setRunContext] = useState<RunContext | null>(null);
   const [composerText, setComposerText] = useState("");
   const [busyCommand, setBusyCommand] = useState<string | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [confirmationText, setConfirmationText] = useState("");
   const [statusLine, setStatusLine] = useState("로컬 API에 연결되어 있습니다.");
   const [resourceState, setResourceState] = useState<ResourceState>({
     tab: "gmail",
@@ -100,6 +109,7 @@ export function App(): JSX.Element {
     error: null,
   });
   const subscriptionRef = useRef<(() => void) | null>(null);
+  const subscriptionRunIdRef = useRef<string | null>(null);
 
   const refreshConversations = useCallback(async (accountId: string): Promise<void> => {
     const response = await listConversations(accountId);
@@ -112,7 +122,7 @@ export function App(): JSX.Element {
     setGoogle(googleResponse);
   }, []);
 
-  const selectRun = useCallback(async (runId: string): Promise<void> => {
+  const refreshRun = useCallback(async (runId: string): Promise<void> => {
     const [snapshotResponse, contextResponse] = await Promise.all([
       getRunSnapshot(runId),
       getRunContext(runId),
@@ -120,18 +130,40 @@ export function App(): JSX.Element {
     setRunSnapshot(snapshotResponse.snapshot);
     setRunContext(contextResponse.context);
     setSelectedConversationId(snapshotResponse.snapshot.conversation_id);
+    setPendingConfirmation((current) =>
+      snapshotResponse.snapshot.status === "WAITING_CONFIRMATION" ? current : null,
+    );
+  }, []);
+
+  const selectRun = useCallback(async (runId: string): Promise<void> => {
+    await refreshRun(runId);
+    if (subscriptionRunIdRef.current === runId && subscriptionRef.current) {
+      return;
+    }
     subscriptionRef.current?.();
     subscriptionRef.current = subscribeRunEvents(runId, {
       onStateChange: (message) => setStatusLine(message),
       onEvent: (event) => {
-        if (event.eventType === "snapshot_required") {
-          void selectRun(runId);
-          return;
+        if (event.eventType === "confirmation_required") {
+          const interrupt = event.payload.user_interrupt;
+          if (interrupt && typeof interrupt === "object") {
+            const values = interrupt as Record<string, unknown>;
+            if (typeof values.interrupt_id === "string") {
+              setPendingConfirmation({
+                interruptId: values.interrupt_id,
+                question:
+                  typeof values.question === "string"
+                    ? values.question
+                    : "계속하려면 필요한 내용을 확인해 주세요.",
+              });
+            }
+          }
         }
-        void selectRun(runId);
+        void refreshRun(runId);
       },
     });
-  }, []);
+    subscriptionRunIdRef.current = runId;
+  }, [refreshRun]);
 
   const loadResources = useCallback(async (tab: ResourceTab, append: boolean): Promise<void> => {
     const cacheKey = [
@@ -246,6 +278,8 @@ export function App(): JSX.Element {
     void runStartup();
     return () => {
       subscriptionRef.current?.();
+      subscriptionRef.current = null;
+      subscriptionRunIdRef.current = null;
     };
   }, [runStartup]);
 
@@ -411,6 +445,49 @@ export function App(): JSX.Element {
         resume_kind: resumeKind,
       });
       await selectRun(runSnapshot.run_id);
+    } finally {
+      setBusyCommand(null);
+    }
+  }
+
+  async function handleConfirmation(): Promise<void> {
+    if (!runSnapshot || !pendingConfirmation || !confirmationText.trim() || busyCommand) {
+      return;
+    }
+    setBusyCommand("confirm-run");
+    try {
+      await confirmRun({
+        run_id: runSnapshot.run_id,
+        command_id: crypto.randomUUID(),
+        expected_version: runSnapshot.version,
+        interrupt_id: pendingConfirmation.interruptId,
+        response_kind: "FREE_TEXT",
+        free_text: confirmationText.trim(),
+      });
+      setConfirmationText("");
+      await refreshRun(runSnapshot.run_id);
+    } finally {
+      setBusyCommand(null);
+    }
+  }
+
+  async function handleResolveRecovery(
+    action: RunAction,
+    resolutionKind: "ACCEPT_PARTIAL" | "CREATE_CORRECTIVE_PLAN",
+  ): Promise<void> {
+    if (!runSnapshot || busyCommand) {
+      return;
+    }
+    setBusyCommand(`recovery-${resolutionKind}`);
+    try {
+      await resolveRecovery({
+        run_id: runSnapshot.run_id,
+        command_id: crypto.randomUUID(),
+        expected_version: runSnapshot.version,
+        action_id: action.action_id,
+        resolution_kind: resolutionKind,
+      });
+      await refreshRun(runSnapshot.run_id);
     } finally {
       setBusyCommand(null);
     }
@@ -603,6 +680,34 @@ export function App(): JSX.Element {
               </article>
             ) : null}
 
+            {runSnapshot?.status === "WAITING_CONFIRMATION" ? (
+              <article className="info-card">
+                <strong>추가 확인</strong>
+                <p>
+                  {pendingConfirmation?.question ?? "확인 요청 정보를 동기화하고 있습니다."}
+                </p>
+                <textarea
+                  aria-label="확인 응답"
+                  className="composer"
+                  disabled={!pendingConfirmation}
+                  value={confirmationText}
+                  onChange={(event) => setConfirmationText(event.target.value)}
+                />
+                <button
+                  className="button-primary"
+                  type="button"
+                  disabled={
+                    !pendingConfirmation ||
+                    !confirmationText.trim() ||
+                    busyCommand === "confirm-run"
+                  }
+                  onClick={() => void handleConfirmation()}
+                >
+                  응답 보내기
+                </button>
+              </article>
+            ) : null}
+
             {selectedResources.length > 0 ? (
               <div className="inline-row">
                 {selectedResources.map((item) => (
@@ -675,6 +780,31 @@ export function App(): JSX.Element {
                     ) : null}
                     {action.status === "UNKNOWN_RESULT" ? (
                       <p className="status-warn">실제 결과를 확인하는 중입니다. 새 쓰기 실행은 잠시 막혀 있습니다.</p>
+                    ) : null}
+                    {action.status === "MISMATCH" ? (
+                      <div>
+                        <p className="status-warn">
+                          실행 결과가 승인 내용과 다릅니다. 자동 수정이나 롤백은 수행하지 않습니다.
+                        </p>
+                        <div className="button-row">
+                          <button
+                            className="button-secondary"
+                            type="button"
+                            onClick={() => void handleResolveRecovery(action, "ACCEPT_PARTIAL")}
+                          >
+                            현재 결과 수용
+                          </button>
+                          <button
+                            className="button-primary"
+                            type="button"
+                            onClick={() =>
+                              void handleResolveRecovery(action, "CREATE_CORRECTIVE_PLAN")
+                            }
+                          >
+                            새 계획 만들기
+                          </button>
+                        </div>
+                      </div>
                     ) : null}
                   </article>
                 );

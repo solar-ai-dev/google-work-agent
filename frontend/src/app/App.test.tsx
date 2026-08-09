@@ -393,6 +393,120 @@ test("reloads snapshot when snapshot_required is emitted", async () => {
   await waitFor(() =>
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/v1/runs/run-1", expect.any(Object)),
   );
+  expect(FakeEventSource.instances).toHaveLength(1);
+});
+
+test("confirms an interrupt and explicitly resolves a mismatch", async () => {
+  let stage: "confirmation" | "mismatch" | "completed" = "confirmation";
+  installFetch((path, init) => {
+    if (path === "/health/live") {
+      return jsonResponse(liveResponse());
+    }
+    if (path === "/health/ready") {
+      return jsonResponse(readyResponse());
+    }
+    if (path === "/api/v1/runtime") {
+      return jsonResponse({ summary: runtimeSummary(["run-1"]), api_contract_version: "1" });
+    }
+    if (path === "/api/v1/google/connection") {
+      return jsonResponse(googleConnection());
+    }
+    if (path === "/api/v1/identity/google-account") {
+      return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
+    }
+    if (path.startsWith("/api/v1/conversations?")) {
+      return jsonResponse({
+        items: [{ id: "conversation-1", account_id: "account-1", title: "Inbox", created_at_ms: 1, updated_at_ms: 2 }],
+        next_cursor: null,
+        api_contract_version: "1",
+      });
+    }
+    if (path.startsWith("/api/v1/resources/gmail")) {
+      return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
+    }
+    if (path === "/api/v1/runs/run-1") {
+      const mismatch = stage === "mismatch";
+      return jsonResponse(
+        snapshotPayload({
+          status: stage === "confirmation" ? "WAITING_CONFIRMATION" : mismatch ? "RECOVERY_REQUIRED" : "COMPLETED",
+          version: stage === "confirmation" ? 1 : 2,
+          actions: mismatch
+            ? [{
+                action_id: "action-1",
+                tool_name: "tasks_update_task",
+                status: "MISMATCH",
+                version: 4,
+                effect_type: "UPDATE",
+                approval_required: false,
+                verification_policy: "GET_COMPARE",
+                next_allowed_commands: [],
+              }]
+            : [],
+          verification_summary: { verified_count: 0, mismatch_count: mismatch ? 1 : 0 },
+        }),
+      );
+    }
+    if (path === "/api/v1/runs/run-1/context") {
+      return jsonResponse({
+        context: {
+          run_id: "run-1",
+          conversation_id: "conversation-1",
+          workflow_key: "workflow-run-1",
+          entry_mode: "AGENT_SEARCH",
+          requested_mode: "AUTO",
+          status: stage === "confirmation" ? "WAITING_CONFIRMATION" : stage === "mismatch" ? "RECOVERY_REQUIRED" : "COMPLETED",
+          version: stage === "confirmation" ? 1 : 2,
+          request_text: "Update the task after confirmation",
+          selected_resource_ids: [],
+        },
+        api_contract_version: "1",
+      });
+    }
+    if (path === "/api/v1/runs/run-1/confirm" && init?.method === "POST") {
+      stage = "mismatch";
+      return jsonResponse({
+        applied: true,
+        result_code: "ACCEPTED",
+        run_id: "run-1",
+        run_status: "EXECUTING",
+        run_version: 2,
+      });
+    }
+    if (path === "/api/v1/runs/run-1/resolve-recovery" && init?.method === "POST") {
+      stage = "completed";
+      return jsonResponse({
+        applied: true,
+        result_code: "TRANSITION_APPLIED",
+        run_id: "run-1",
+        run_status: "COMPLETED",
+        run_version: 3,
+      });
+    }
+    throw new Error(`Unhandled path ${path}`);
+  });
+
+  const user = userEvent.setup();
+  render(<App />);
+
+  await screen.findByText("확인 요청 정보를 동기화하고 있습니다.");
+  expect(screen.getByLabelText("확인 응답")).toBeDisabled();
+  FakeEventSource.instances[0].emit("confirmation_required", {
+    user_interrupt: { interrupt_id: "interrupt-1", question: "Which task should be updated?" },
+  });
+  await screen.findByText("Which task should be updated?");
+  expect(screen.getByLabelText("확인 응답")).toBeEnabled();
+  await user.type(screen.getByLabelText("확인 응답"), "Use the follow-up task");
+  await user.click(screen.getByRole("button", { name: "응답 보내기" }));
+  await user.click(await screen.findByRole("button", { name: "현재 결과 수용" }));
+
+  expect(globalThis.fetch).toHaveBeenCalledWith(
+    "/api/v1/runs/run-1/confirm",
+    expect.objectContaining({ method: "POST", body: expect.stringContaining('"interrupt_id":"interrupt-1"') }),
+  );
+  expect(globalThis.fetch).toHaveBeenCalledWith(
+    "/api/v1/runs/run-1/resolve-recovery",
+    expect.objectContaining({ method: "POST", body: expect.stringContaining('"resolution_kind":"ACCEPT_PARTIAL"') }),
+  );
 });
 
 test("starts Google OAuth from settings when disconnected", async () => {

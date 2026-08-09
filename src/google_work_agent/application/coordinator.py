@@ -78,7 +78,6 @@ class LocalRunCoordinator:
         self._thread.start()
         for run in self._query_service.list_open_runs():
             if run.status in {
-                RunStatus.RECOVERY_REQUIRED.value,
                 RunStatus.REAUTH_REQUIRED.value,
                 RunStatus.COMPLETED.value,
                 RunStatus.CANCELLED.value,
@@ -263,7 +262,7 @@ class LocalRunCoordinator:
             )
             return
         event_type = {
-            WorkflowOutcome.ACCEPTED: "run_status",
+            WorkflowOutcome.ACCEPTED: _accepted_event_type(payload),
             WorkflowOutcome.ALREADY_RUNNING: "phase_changed",
             WorkflowOutcome.COMPLETED: "completed",
             WorkflowOutcome.RECOVERY_REQUIRED: "recovery_required",
@@ -283,3 +282,19 @@ class LocalRunCoordinator:
             self._event_publisher.publish(event)
         except Exception:
             return
+
+
+def _accepted_event_type(payload: dict[str, object]) -> str:
+    interrupt_payload = payload.get("user_interrupt")
+    if isinstance(interrupt_payload, dict):
+        interrupt_kind = interrupt_payload.get("interrupt_kind")
+        if interrupt_kind == "CONFIRMATION":
+            return "confirmation_required"
+        if interrupt_kind == "APPROVAL":
+            return "approval_required"
+    phase = payload.get("phase")
+    if phase == "WAITING_CONFIRMATION":
+        return "confirmation_required"
+    if phase == "WAITING_APPROVAL":
+        return "approval_required"
+    return "run_status"

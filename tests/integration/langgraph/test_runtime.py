@@ -26,7 +26,12 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application import ApproveWriteActionCommand, ApproveWriteActionService
+from google_work_agent.application import (
+    ApproveWriteActionCommand,
+    ApproveWriteActionService,
+    ClaimWriteActionCommand,
+    StoreWriteActionSuccessCommand,
+)
 from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports import (
     ActualRuntime,
@@ -34,6 +39,7 @@ from google_work_agent.ports import (
     StructuredLLMResult,
     WorkflowCorrelationContext,
     WorkflowOutcome,
+    WorkflowRecoveryRequest,
     WorkflowResumeRequest,
     WorkflowStartRequest,
 )
@@ -832,6 +838,121 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(
         runtime.close()
 
 
+def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_write(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    checkpoint_path = tmp_path / "checkpoints-executed-restart.db"
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _clear_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=checkpoint_path,
+        prompt_manifest_path=manifest_path,
+    )
+    assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    approved = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=lambda: 1000,
+    )(
+        ApproveWriteActionCommand(
+            command_id="approve-before-restart",
+            request_hash="e" * 64,
+            action_id="action-1",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-before-restart",
+            idempotency_key="f" * 64,
+        )
+    )
+    assert approved.applied is True
+
+    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+        unit_of_work.runs.set_verifying("run-1")
+        unit_of_work.commit()
+    runtime._preflight_write(action_id="action-1")  # noqa: SLF001
+    claim = runtime._claim_write(  # noqa: SLF001
+        ClaimWriteActionCommand(
+            command_id="claim-before-restart",
+            request_hash="1" * 64,
+            action_id="action-1",
+            expected_version=approved.action_version,
+            source_snapshot={},
+            attempt_id="attempt-before-restart",
+            nonce="nonce-before-restart",
+        )
+    )
+    executed = runtime._execute_write(  # noqa: SLF001
+        action_id="action-1",
+        claim_token=claim.claim_token,
+    )
+    runtime._store_write_success(  # noqa: SLF001
+        StoreWriteActionSuccessCommand(
+            command_id="store-before-restart",
+            request_hash="2" * 64,
+            action_id="action-1",
+            attempt_id="attempt-before-restart",
+            expected_action_version=claim.action_version,
+            expected_attempt_version=0,
+            snapshot=executed.snapshot,
+        )
+    )
+    assert gateway.count_calls("create_task") == 1
+    runtime.close()
+
+    restarted = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=gateway,
+        checkpoint_database_path=checkpoint_path,
+        prompt_manifest_path=manifest_path,
+    )
+    recovered = restarted.recover_open_run(
+        WorkflowRecoveryRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            domain_status="VERIFYING",
+            domain_version=3,
+            correlation=WorkflowCorrelationContext(
+                request_id="startup-recovery",
+                command_id=None,
+                api_contract_version="1",
+            ),
+        )
+    )
+
+    assert recovered.outcome is WorkflowOutcome.COMPLETED
+    assert gateway.count_calls("create_task") == 1
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT COUNT(*) FROM execution_attempts),
+                (SELECT COUNT(*) FROM verifications);
+            """
+        ).fetchone()
+        assert tuple(row) == ("COMPLETED", "VERIFIED", 1, 1)
+    finally:
+        connection.close()
+        restarted.close()
+
+
 @pytest.mark.parametrize(
     ("plan_output", "expected_operation", "calendar_context", "recovery_fault"),
     [
@@ -919,9 +1040,7 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
         )
     )
 
-    assert resumed.outcome is (
-        WorkflowOutcome.ACCEPTED if recovery_fault is not None else WorkflowOutcome.COMPLETED
-    )
+    assert resumed.outcome is WorkflowOutcome.COMPLETED
     connection = connect_sqlite(database_path)
     try:
         row = connection.execute("SELECT status FROM actions WHERE id = 'action-1';").fetchone()

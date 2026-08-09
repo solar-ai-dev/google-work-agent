@@ -113,6 +113,7 @@ from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
+    PlanRecord,
     ResourceRefRecord,
     ResourceSource,
     StoredResourceType,
@@ -460,7 +461,15 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 payload={"graph_profile": self._graph_profile.value},
             )
         values = cast(GraphState, snapshot.values)
-        state = self._recovery_node(values)
+        if self._latest_unknown_action(request.run_id) is not None:
+            state = self._recovery_node(values)
+        elif self._has_executed_action(request.run_id):
+            state = self._recover_executed_actions(values, request.run_id)
+        else:
+            return self._result_from_thread(
+                workflow_key=request.workflow_key,
+                run_id=request.run_id,
+            )
         return self._workflow_result_from_state(
             state=state,
             workflow_key=request.workflow_key,
@@ -3085,6 +3094,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                     verification_id=self._id_factory(),
                 )
             )
+        if response.applied and response.action_status == ActionStatus.VERIFIED.value:
+            self._complete_write_run_if_verified(action.plan_id, cast(str, state["run_id"]))
         outcome = (
             "RECOVERY_REQUIRED"
             if response.result_code == ResultCode.RECOVERY_REQUIRED.value
@@ -3095,6 +3106,40 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "__target__": "end",
             "workflow_phase": WorkflowPhase.RECOVERY.value,
             "execution_summary": {"result": outcome, "action_id": action.id},
+            "verification_summary": {"action_statuses": [response.action_status]},
+        }
+
+    def _recover_executed_actions(self, state: GraphState, run_id: str) -> GraphState:
+        plans = self._plans_for_run(run_id)
+        if not plans:
+            return {**state, "__target__": "end", "workflow_phase": WorkflowPhase.RECOVERY.value}
+        latest_plan = sorted(plans, key=lambda item: (item.revision_no, item.created_at_ms))[-1]
+        statuses: list[str] = []
+        for action in self._list_actions(latest_plan.id):
+            if action.status != ActionStatus.EXECUTED.value:
+                statuses.append(action.status)
+                continue
+            attempt_id = self._latest_attempt_id(action.id)
+            verified = self._verify_write(
+                VerifyWriteActionCommand(
+                    command_id=self._id_factory(),
+                    request_hash=self._request_hash(
+                        {"kind": "verify_after_restart", "action_id": action.id}
+                    ),
+                    action_id=action.id,
+                    attempt_id=attempt_id,
+                    expected_action_version=action.version,
+                    verification_id=self._id_factory(),
+                )
+            )
+            statuses.append(verified.action_status)
+        self._complete_write_run_if_verified(latest_plan.id, run_id)
+        return {
+            **state,
+            "__target__": "end",
+            "workflow_phase": WorkflowPhase.RECOVERY.value,
+            "execution_summary": {"result": "RESTART_RECONCILED", "plan_id": latest_plan.id},
+            "verification_summary": {"action_statuses": statuses},
         }
 
     def _finalize_node(self, state: GraphState) -> GraphState:
@@ -3752,6 +3797,48 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             return tuple(
                 sorted(unit_of_work.actions.list_by_plan(plan_id), key=lambda item: item.position)
             )
+
+    def _plans_for_run(self, run_id: str) -> tuple[PlanRecord, ...]:
+        with self._unit_of_work_factory() as unit_of_work:
+            return unit_of_work.plans.list_by_run(run_id)
+
+    def _has_executed_action(self, run_id: str) -> bool:
+        return any(
+            action.status == ActionStatus.EXECUTED.value
+            for plan in self._plans_for_run(run_id)
+            for action in self._list_actions(plan.id)
+        )
+
+    def _latest_attempt_id(self, action_id: str) -> str:
+        with self._unit_of_work_factory() as unit_of_work:
+            approvals = unit_of_work.approvals.list_by_action(action_id)
+            attempts = [
+                attempt
+                for approval in approvals
+                for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id)
+            ]
+            if not attempts:
+                raise LookupError(f"execution attempt not found for action: {action_id}")
+            return max(attempts, key=lambda item: (item.attempt_no, item.started_at_ms)).id
+
+    def _complete_write_run_if_verified(self, plan_id: str, run_id: str) -> None:
+        actions = self._list_actions(plan_id)
+        if not actions or not all(
+            action.status == ActionStatus.VERIFIED.value for action in actions
+        ):
+            return
+        response = self._complete_write_run(
+            CompleteWriteRunCommand(
+                command_id=self._id_factory(),
+                request_hash=self._request_hash(
+                    {"kind": "complete_recovered_write_run", "run_id": run_id}
+                ),
+                run_id=run_id,
+                expected_version=self._current_run_version(run_id),
+            )
+        )
+        if not response.applied and response.result_code != ResultCode.STATE_CONFLICT.value:
+            raise RuntimeError(f"recovered write completion failed: {response.result_code}")
 
     def _latest_unknown_action(self, run_id: str) -> tuple[ActionRecord, str, int] | None:
         with self._unit_of_work_factory() as unit_of_work:
