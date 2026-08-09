@@ -400,7 +400,7 @@ test("shows approve button for write actions and posts approve command", async (
   );
 });
 
-test("reloads snapshot when snapshot_required is emitted", async () => {
+test("TST-UI-212 reloads a snapshot after SSE recovery without replaying a write", async () => {
   installFetch((path) => {
     if (path === "/health/live") {
       return jsonResponse({ status: "LIVE", service_instance_id: "svc-1", release_version: "test", api_contract_version: "1", occurred_at_ms: 1 });
@@ -458,6 +458,7 @@ test("reloads snapshot when snapshot_required is emitted", async () => {
   await waitFor(() =>
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/v1/runs/run-1", expect.any(Object)),
   );
+  expect(globalThis.fetch).not.toHaveBeenCalledWith("/api/v1/runs", expect.any(Object));
   expect(FakeEventSource.instances).toHaveLength(1);
 });
 
@@ -1084,6 +1085,194 @@ test("saves llm settings and stores, tests, then deletes the api key", async () 
   );
 });
 
+test("TST-UI-201 header shows product, connection, account, help, settings, and safe status", async () => {
+  installUiContractFetch();
+  render(<App />);
+
+  await screen.findByText("승인이 필요합니다.");
+  expect(screen.getByText("user@example.com")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "도움말" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "설정" })).toBeInTheDocument();
+  expect(screen.getByText("승인이 필요합니다.")).toBeInTheDocument();
+  expect(screen.queryByText("WAITING_APPROVAL")).not.toBeInTheDocument();
+});
+
+test("TST-UI-202 renders the left, center, and right workspace panels", async () => {
+  installUiContractFetch();
+  render(<App />);
+
+  await screen.findByRole("list", { name: "Google 업무 자료" });
+  expect(screen.getByRole("region", { name: "선택 자료 상세" })).toBeInTheDocument();
+  expect(screen.getByText("대화")).toBeInTheDocument();
+  expect(screen.getByText("최근 실행")).toBeInTheDocument();
+});
+
+test("TST-UI-203 resource row supports focus, selection, and keyboard-accessible controls", async () => {
+  const user = userEvent.setup();
+  installUiContractFetch();
+  render(<App />);
+
+  const row = await screen.findByRole("button", { name: /첫 번째 자료/ });
+  await user.click(row);
+  expect(row).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "선택" })).toBeInTheDocument();
+  expect(screen.getByText("GMAIL")).toBeInTheDocument();
+  expect(screen.getByText("TASKS")).toBeInTheDocument();
+  expect(screen.getByText("CALENDAR")).toBeInTheDocument();
+});
+
+test("TST-UI-204 uses page size 10, sequential page tokens, and cached numeric pages", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch();
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  const firstPage = requests.find((request) => request.path.startsWith("/api/v1/resources/gmail"));
+  expect(firstPage?.path).toContain("page_size=10");
+  await user.click(screen.getByRole("button", { name: "다음" }));
+  await screen.findByText("두 번째 자료");
+  expect(requests.at(-1)?.path).toContain("page_token=page-2");
+  const countAfterNext = requests.length;
+  await user.click(screen.getByRole("button", { name: "1" }));
+  await screen.findByText("첫 번째 자료");
+  expect(requests).toHaveLength(countAfterNext);
+  expect(screen.queryByRole("button", { name: "3" })).not.toBeInTheDocument();
+});
+
+test("TST-UI-205 does not render a fake resource count", async () => {
+  installUiContractFetch();
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  expect(screen.queryByText(/총 .*건/)).not.toBeInTheDocument();
+});
+
+test("TST-UI-206 keeps focus separate from multiple selected resources and sends selected IDs", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ twoItems: true });
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  const selectButtons = screen.getAllByRole("button", { name: "선택" });
+  await user.click(selectButtons[0]!);
+  await user.click(selectButtons[1]!);
+  await user.click(screen.getByRole("button", { name: /두 번째 자료/ }));
+  expect(screen.getByRole("heading", { name: "두 번째 자료" })).toBeInTheDocument();
+  await user.type(screen.getByRole("textbox", { name: "자연어 요청" }), "선택 자료 정리");
+  await user.click(screen.getByRole("button", { name: "요청 시작" }));
+  const start = requests.find((request) => request.path === "/api/v1/runs");
+  expect(JSON.parse(String(start?.init?.body))).toMatchObject({
+    entry_mode: "RESOURCE_SELECTED",
+    selected_resource_ids: ["resource-1", "resource-2"],
+  });
+});
+
+test("TST-UI-207 uses AGENT_SEARCH without selection and quick action does not write directly", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch();
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await user.type(screen.getByRole("textbox", { name: "자연어 요청" }), "메일을 찾아줘");
+  await user.click(screen.getByRole("button", { name: "요청 시작" }));
+  const start = requests.find((request) => request.path === "/api/v1/runs");
+  expect(JSON.parse(String(start?.init?.body))).toMatchObject({ entry_mode: "AGENT_SEARCH" });
+  expect(requests.some((request) => request.path.includes("/actions/") || request.path.includes("gmail/send"))).toBe(false);
+});
+
+test("TST-UI-208 viewer and approval detail use only available projection fields", async () => {
+  installUiContractFetch({ action: true });
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await userEvent.setup().click(screen.getByRole("button", { name: /첫 번째 자료/ }));
+  expect(screen.getByText("현재 목록에서 제공된 상세 정보가 없습니다.")).toBeInTheDocument();
+  expect(screen.getByText("승인 상세")).toBeInTheDocument();
+  expect(screen.queryByText("Evidence")).not.toBeInTheDocument();
+});
+
+test("TST-UI-209 renders independent approval commands with versions and disables duplicate submission", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ action: true });
+  render(<App />);
+
+  await screen.findByRole("button", { name: "승인" });
+  await user.click(screen.getByRole("button", { name: "승인" }));
+  const approve = requests.find((request) => request.path.endsWith("/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({ expected_version: 7 });
+  expect(screen.getByText("승인 상세")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "수정" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "건너뛰기" })).toBeInTheDocument();
+});
+
+test("TST-UI-210 filters conversations and shows recent execution fallback", async () => {
+  const user = userEvent.setup();
+  installUiContractFetch({ conversations: true, run: false });
+  render(<App />);
+
+  await screen.findByText("업무 대화");
+  await user.type(screen.getByRole("textbox", { name: "대화 검색" }), "없는 대화");
+  expect(screen.queryByText("업무 대화")).not.toBeInTheDocument();
+  expect(screen.getByText("표시할 실행 기록이 없습니다.")).toBeInTheDocument();
+});
+
+test("TST-UI-211 shows loading, empty, error, focus, and disabled pagination states", async () => {
+  installUiContractFetch({ empty: true });
+  render(<App />);
+
+  await screen.findByText("표시할 자료가 없습니다.");
+  expect(screen.getByRole("button", { name: "이전" })).toBeDisabled();
+  expect(screen.getByRole("textbox", { name: "자연어 요청" })).toBeInTheDocument();
+});
+
+test("TST-UI-213 hides raw runtime status and has no native window controls", async () => {
+  installUiContractFetch({ status: "SINGLE" });
+  render(<App />);
+
+  await screen.findByText("작업을 처리하고 있습니다.");
+  expect(screen.queryByText("SINGLE")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /최소화|최대화|닫기/ })).not.toBeInTheDocument();
+});
+
+function installUiContractFetch(options: {
+  action?: boolean;
+  conversations?: boolean;
+  empty?: boolean;
+  run?: boolean;
+  status?: string;
+  twoItems?: boolean;
+} = {}): Array<{ path: string; init?: RequestInit }> {
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
+  globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
+    const path = String(input);
+    requests.push({ path, init });
+    if (path === "/health/live") return jsonFetchResponse(liveResponse());
+    if (path === "/health/ready") return jsonFetchResponse(readyResponse());
+    if (path === "/api/v1/runtime") return jsonFetchResponse({ summary: runtimeSummary(options.run === false ? [] : ["run-1"], { llm: {} }), api_contract_version: "1" });
+    if (path === "/api/v1/google/connection") return jsonFetchResponse(googleConnection());
+    if (path === "/api/v1/identity/google-account") return jsonFetchResponse({ account: currentAccount(), api_contract_version: "1" });
+    if (path.startsWith("/api/v1/conversations?")) {
+      return jsonFetchResponse({ items: options.conversations ? [{ id: "conversation-1", account_id: "account-1", title: "업무 대화", updated_at_ms: 1, created_at_ms: 1 }] : [], next_cursor: null, api_contract_version: "1" });
+    }
+    if (path.startsWith("/api/v1/resources/gmail")) {
+      const items = options.empty ? [] : path.includes("page_token=page-2")
+        ? [{ ...gmailThread(), resource_id: "resource-2", title: "두 번째 자료" }]
+        : [
+            { ...gmailThread(), resource_id: "resource-1", title: "첫 번째 자료" },
+            ...(options.twoItems ? [{ ...gmailThread(), resource_id: "resource-2", title: "두 번째 자료" }] : []),
+          ];
+      return jsonFetchResponse({ source: "gmail", items, next_page_token: options.empty || options.twoItems || path.includes("page_token=page-2") ? null : "page-2", api_contract_version: "1" });
+    }
+    if (path === "/api/v1/conversations" && init?.method === "POST") return jsonFetchResponse({ conversation_id: "conversation-1" });
+    if (path === "/api/v1/runs" && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-1", conversation_id: "conversation-1", run_status: "WAITING_APPROVAL", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-1", enqueued: true, request_replayed: false });
+    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", actions: options.action ? [{ action_id: "action-1", tool_name: "gmail_draft", status: "PROPOSED", version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", next_allowed_commands: [] }] : [] }));
+    if (path === "/api/v1/runs/run-1/context") return jsonFetchResponse({ context: null, api_contract_version: "1" });
+    if (path.includes("/api/v1/actions/") && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "OK", action_id: "action-1", action_status: "APPROVED", action_version: 8, next_allowed_commands: [] });
+    throw new Error(`Unhandled path ${path}`);
+  }) as typeof fetch;
+  return requests;
+}
+
 function installFetch(handler: (path: string, init?: RequestInit) => MockResponse): void {
   globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
     const response = handler(String(input), init);
@@ -1272,4 +1461,3 @@ function defaultSnapshot(): SnapshotShape {
     snapshot_version: 1,
   };
 }
-

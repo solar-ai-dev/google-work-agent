@@ -73,8 +73,8 @@ button {
 
 .panel {
   background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--border), transparent 25%);
+  border-radius: 12px;
   min-height: 0;
 }
 
@@ -106,16 +106,36 @@ button {
 .resource-item,
 .conversation-item,
 .info-card {
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 8px;
-  padding: 0.75rem;
-  background: color-mix(in srgb, var(--panel), var(--panel-strong) 18%);
+  padding: 0.7rem;
+  background: color-mix(in srgb, var(--panel), var(--panel-strong) 12%);
 }
 
 .resource-item.selected,
 .conversation-item.selected {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: color-mix(in srgb, var(--panel), var(--accent) 10%);
+}
+
+.resource-item.focused { outline: 2px solid color-mix(in srgb, var(--accent), transparent 45%); outline-offset: 1px; }
+.resource-summary { all: unset; cursor: pointer; display: grid; gap: 0.25rem; width: 100%; min-width: 0; }
+.resource-summary strong, .resource-summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resource-actions { margin-top: 0.55rem; }
+.resource-viewer { border-bottom: 1px solid var(--border); padding-bottom: 1rem; }
+.resource-viewer h2 { font-size: 1rem; margin: 0.6rem 0 0; }
+.section-heading { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+.metadata-list { display: grid; gap: .35rem; margin: .75rem 0 0; }
+.metadata-list div { display: grid; grid-template-columns: minmax(5rem, auto) 1fr; gap: .75rem; }
+.metadata-list dt { color: var(--muted); }
+.metadata-list dd { margin: 0; overflow-wrap: anywhere; }
+.pagination { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.search-field { display: grid; gap: .35rem; }
+.recent-execution { border-top: 1px solid var(--border); padding-top: .75rem; }
+
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent), transparent 45%);
+  outline-offset: 2px;
 }
 
 .muted {
@@ -222,4 +242,7 @@ button {
   .shell-grid {
     grid-template-columns: 1fr;
   }
+
+  .shell-grid > aside:first-child { order: 2; }
+  .shell-grid > main { order: 1; }
 }
