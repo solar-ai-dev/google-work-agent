@@ -46,6 +46,7 @@ def test_subprocess_transport_supports_oauth_and_google_tools(tmp_path: Path) ->
             extra_environment={
                 "GWA_TEST_KEYRING_PATH": str(keyring_path.resolve()),
                 "GWA_PRODUCT_FIXTURE_MANIFEST": str(fixture_manifest.resolve()),
+                "GOOGLE_OAUTH_CLIENT_ID": "test-desktop-client-id",
             },
         )
     )

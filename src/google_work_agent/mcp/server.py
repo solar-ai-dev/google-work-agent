@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from google_work_agent.adapters.mcp.transport import PROTOCOL_VERSION
 from google_work_agent.domain import build_p0_tool_registry
+from google_work_agent.mcp.settings import GoogleOAuthSettings
 from google_work_agent.ports import (
     CredentialState,
     OAuthEnvironment,
@@ -44,6 +45,11 @@ class _OAuthFlow:
     verifier: str
     callback_url: str
     expires_at_ms: int
+    client_id: str
+
+
+class _OAuthConfigurationError(RuntimeError):
+    """Raised only when the OAuth entry point lacks required local configuration."""
 
 
 class _TestKeyring:
@@ -86,6 +92,9 @@ class _WorkspaceState:
         self.access_token: str | None = None
         self.last_checked_at_ms = _now_ms()
         self.active_flow: _OAuthFlow | None = None
+        self.oauth_settings = GoogleOAuthSettings.load(
+            runtime_environment=os.environ.get("GWA_MCP_ENVIRONMENT", ""),
+        )
         self.keyring = _TestKeyring(Path(os.environ["GWA_TEST_KEYRING_PATH"]))
         self.resources = _load_resources(Path(os.environ["GWA_PRODUCT_FIXTURE_MANIFEST"]))
 
@@ -125,6 +134,16 @@ def main() -> None:
                 {
                     "id": request_id,
                     "error": {"code": "NOT_FOUND", "message": str(error)},
+                }
+            )
+        except _OAuthConfigurationError:
+            _write(
+                {
+                    "id": request_id,
+                    "error": {
+                        "code": "CONFIGURATION_ERROR",
+                        "message": "Set GOOGLE_OAUTH_CLIENT_ID in .env.local.",
+                    },
                 }
             )
         except Exception as error:
@@ -197,6 +216,8 @@ def _control_call(
             "credential_state": state.connection_state.value,
         }
     if method == "google.oauth.start":
+        if state.oauth_settings.google_oauth_client_id is None:
+            raise _OAuthConfigurationError
         if state.active_flow is not None and state.active_flow.expires_at_ms > _now_ms():
             raise ValueError("oauth flow already active")
         flow = _start_oauth_flow(state)
@@ -364,13 +385,19 @@ def _start_oauth_flow(state: _WorkspaceState) -> _OAuthFlow:
         verifier=verifier,
         callback_url=callback_url,
         expires_at_ms=expires_at_ms,
+        client_id=state.oauth_settings.google_oauth_client_id or "",
     )
 
 
 def _authorization_url(flow: _OAuthFlow) -> str:
+    launch_url = f"{flow.callback_url.removesuffix('/callback')}/authorize"
+    return f"{launch_url}?{urlencode({'state': flow.state})}"
+
+
+def _google_authorization_url(flow: _OAuthFlow) -> str:
     query = urlencode(
         {
-            "client_id": "desktop-client",
+            "client_id": flow.client_id,
             "redirect_uri": flow.callback_url,
             "response_type": "code",
             "scope": " ".join(REQUIRED_SCOPES),
@@ -398,6 +425,17 @@ class _OAuthCallbackServer:
                 parsed = urlparse(self.path)
                 params = parse_qs(parsed.query)
                 state_value = params.get("state", [""])[0]
+                if parsed.path == "/oauth/authorize":
+                    flow = outer._state.active_flow
+                    if flow is None or not hmac.compare_digest(state_value, outer._expected_state):
+                        self.send_response(400)
+                        self.end_headers()
+                        self.wfile.write(b"state mismatch")
+                        return
+                    self.send_response(302)
+                    self.send_header("Location", _google_authorization_url(flow))
+                    self.end_headers()
+                    return
                 code = params.get("code", [""])[0]
                 if not hmac.compare_digest(state_value, outer._expected_state):
                     self.send_response(400)

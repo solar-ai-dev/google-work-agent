@@ -77,6 +77,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
             extra_environment={
                 "GWA_TEST_KEYRING_PATH": str(keyring_path.resolve()),
                 "GWA_PRODUCT_FIXTURE_MANIFEST": str(fixture_manifest.resolve()),
+                "GOOGLE_OAUTH_CLIENT_ID": "test-desktop-client-id",
             },
         )
     )
@@ -177,6 +178,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
             started = client.post("/api/v1/google/oauth/start", headers=headers, json={})
             assert started.status_code == 200
             payload = started.json()
+            assert "test-desktop-client-id" not in started.text
             state = parse_qs(urlparse(payload["authorization_url"]).query)["state"][0]
 
             with urlopen(

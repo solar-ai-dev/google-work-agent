@@ -394,6 +394,7 @@ class SubprocessMCPTransport:
             else os.pathsep.join((source_path, existing_pythonpath))
         )
         child_env["GWA_MCP_MANIFEST_PATH"] = self._config.manifest_path
+        child_env["GWA_MCP_ENVIRONMENT"] = self._config.environment
         if self._config.extra_environment is not None:
             child_env.update(self._config.extra_environment)
         return child_env
