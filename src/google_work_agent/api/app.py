@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from google_work_agent.api.errors import ApiError, api_error_from_http, api_error_from_validation
 from google_work_agent.api.routes import (
     actions,
+    attachments,
     conversations,
     events,
     google,
@@ -98,6 +99,8 @@ class ApiContainer:
     delete_llm_api_key_service: Any | None = None
     test_llm_connection_service: Any | None = None
     resolve_recovery_service: Any | None = None
+    get_gmail_attachment_service: Any | None = None
+    stage_attachment_service: Any | None = None
     startup_callbacks: tuple[Callable[[], Awaitable[None]], ...] = ()
     shutdown_callbacks: tuple[Callable[[], None], ...] = ()
 
@@ -230,6 +233,7 @@ def create_app(container: ApiContainer) -> FastAPI:
     app.include_router(resources.router)
     app.include_router(settings.router)
     app.include_router(llm.router)
+    app.include_router(attachments.router)
 
     @app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])
     async def reject_unknown_api_path(request: Request, path: str) -> Response:

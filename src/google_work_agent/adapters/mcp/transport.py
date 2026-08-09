@@ -420,7 +420,6 @@ class SubprocessMCPTransport:
             try:
                 payload = self._wait_for_response(request_id=request_id)
             except MCPTransportError as error:
-                error.dispatch_started = True
                 self._last_safe_error_code = error.code.value
                 if (
                     error.code
@@ -464,26 +463,33 @@ class SubprocessMCPTransport:
                     raise MCPTransportError(
                         code=MCPTransportErrorCode.CONNECTION_CLOSED,
                         message="mcp child exited before responding",
+                        dispatch_started=True,
                     ) from error
                 continue
             if str(message.get("id")) != request_id:
                 raise MCPTransportError(
                     code=MCPTransportErrorCode.MALFORMED_RESPONSE,
                     message="unexpected response id",
+                    dispatch_started=True,
                 )
             if "error" in message:
                 error_payload = cast(dict[str, object], message["error"])
+                # A structured error response proves the child process ran the
+                # request and answered; only the server can know whether that
+                # answer came before or after any Google dispatch occurred.
                 raise MCPTransportError(
                     code=MCPTransportErrorCode(
                         str(error_payload.get("code", "MALFORMED_RESPONSE"))
                     ),
                     message=str(error_payload.get("message", "mcp request failed")),
+                    dispatch_started=bool(error_payload.get("dispatch_started", True)),
                 )
             response_payload = cast(JsonObject, message.get("payload", {}))
             return response_payload
         raise MCPTransportError(
             code=MCPTransportErrorCode.TIMEOUT,
             message="mcp request timed out",
+            dispatch_started=True,
         )
 
     def _read_stdout(self) -> None:
