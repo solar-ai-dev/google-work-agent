@@ -43,6 +43,8 @@ class MCPGoogleOAuthCredentialProvider(GoogleOAuthCredentialProvider):
             reauth_required=bool(payload["reauth_required"]),
             oauth_environment=OAuthEnvironment(str(payload["oauth_environment"])),
             last_checked_at_ms=int(payload["last_checked_at_ms"]),
+            safe_error_code=_optional_string(payload.get("safe_error_code")),
+            safe_error_description=_optional_string(payload.get("safe_error_description")),
         )
 
     def disconnect(self) -> DisconnectResult:

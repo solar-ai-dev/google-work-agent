@@ -1,4 +1,5 @@
 ﻿import { render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App";
@@ -95,16 +96,19 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-test("boots from fragment and clears the bootstrap secret", async () => {
+test("captures the bootstrap fragment before asynchronous startup checks", async () => {
   window.history.replaceState(null, "", "/#bootstrap_secret=secret-1&service_instance_id=svc-1");
+  let bootstrapRequested = false;
   installFetch((path) => {
     if (path === "/health/live") {
+      window.history.replaceState(null, "", "/");
       return jsonResponse({ status: "LIVE", service_instance_id: "svc-1", release_version: "test", api_contract_version: "1", occurred_at_ms: 1 });
     }
     if (path === "/health/ready") {
       return jsonResponse({ status: "READY", checks: [{ name: "sqlite", state: "READY" }], release_version: "test", api_contract_version: "1", occurred_at_ms: 2 });
     }
     if (path === "/api/v1/session/bootstrap") {
+      bootstrapRequested = true;
       return jsonResponse({ session_established: true, service_instance_id: "svc-1", api_contract_version: "1" });
     }
     if (path === "/api/v1/runtime") {
@@ -129,7 +133,68 @@ test("boots from fragment and clears the bootstrap secret", async () => {
 
   await screen.findByText(/Google/);
   expect(window.location.hash).toBe("");
+  expect(bootstrapRequested).toBe(true);
   expect(document.body.textContent).not.toContain("secret-1");
+});
+
+test("keeps the fragment until one StrictMode bootstrap request succeeds", async () => {
+  window.history.replaceState(null, "", "/#bootstrap_secret=secret-1&service_instance_id=svc-1");
+  const paths: string[] = [];
+  let bootstrapStarted = false;
+  let resolveBootstrap: (response: Response) => void = () => {
+    throw new Error("Bootstrap request did not start");
+  };
+  globalThis.fetch = vi.fn((input: string | URL) => {
+    const path = String(input);
+    paths.push(path);
+    if (path === "/health/live") {
+      return Promise.resolve(jsonFetchResponse(liveResponse()));
+    }
+    if (path === "/health/ready") {
+      return Promise.resolve(jsonFetchResponse(readyResponse()));
+    }
+    if (path === "/api/v1/session/bootstrap") {
+      bootstrapStarted = true;
+      return new Promise<Response>((resolve) => {
+        resolveBootstrap = resolve;
+      });
+    }
+    if (path === "/api/v1/runtime") {
+      return Promise.resolve(jsonFetchResponse({ summary: runtimeSummary([]), api_contract_version: "1" }));
+    }
+    if (path === "/api/v1/google/connection") {
+      return Promise.resolve(jsonFetchResponse(googleConnection()));
+    }
+    if (path === "/api/v1/identity/google-account") {
+      return Promise.resolve(jsonFetchResponse({ account: currentAccount(), api_contract_version: "1" }));
+    }
+    if (path.startsWith("/api/v1/conversations?")) {
+      return Promise.resolve(jsonFetchResponse({ items: [], next_cursor: null, api_contract_version: "1" }));
+    }
+    if (path.startsWith("/api/v1/resources/gmail")) {
+      return Promise.resolve(jsonFetchResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" }));
+    }
+    return Promise.reject(new Error(`Unhandled path ${path}`));
+  }) as typeof fetch;
+
+  render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+
+  await waitFor(() => expect(bootstrapStarted).toBe(true));
+  expect(paths.filter((path) => path === "/api/v1/session/bootstrap")).toHaveLength(1);
+  expect(paths).not.toContain("/api/v1/runtime");
+  expect(window.location.hash).toContain("bootstrap_secret");
+
+  resolveBootstrap(jsonFetchResponse({ session_established: true, service_instance_id: "svc-1", api_contract_version: "1" }));
+
+  await screen.findByText(/Google/);
+  expect(window.location.hash).toBe("");
+  expect(paths.indexOf("/api/v1/session/bootstrap")).toBeLessThan(paths.indexOf("/api/v1/runtime"));
+  expect(paths.indexOf("/api/v1/session/bootstrap")).toBeLessThan(paths.indexOf("/api/v1/google/connection"));
+  expect(paths.indexOf("/api/v1/session/bootstrap")).toBeLessThan(paths.indexOf("/api/v1/identity/google-account"));
 });
 
 test("starts a run in RESOURCE_SELECTED mode", async () => {
@@ -509,7 +574,7 @@ test("confirms an interrupt and explicitly resolves a mismatch", async () => {
   );
 });
 
-test("starts Google OAuth from settings when disconnected", async () => {
+test("starts Google OAuth from the disconnected status action", async () => {
   installFetch((path, init) => {
     if (path === "/health/live") {
       return jsonResponse(liveResponse());
@@ -526,6 +591,8 @@ test("starts Google OAuth from settings when disconnected", async () => {
         connected: false,
         credential_state: "DISCONNECTED",
         account_email: null,
+        safe_error_code: "TOKEN_EXCHANGE_INVALID_REQUEST",
+        safe_error_description: "Google rejected a required token request field.",
       });
     }
     if (path === "/api/v1/settings") {
@@ -546,7 +613,7 @@ test("starts Google OAuth from settings when disconnected", async () => {
     if (path === "/api/v1/google/oauth/start" && init?.method === "POST") {
       return jsonResponse({
         flow_id: "flow-1",
-        authorization_url: "https://accounts.google.com/o/oauth2/v2/auth?flow=1",
+        authorization_url: "http://127.0.0.1:43123/oauth/authorize?state=flow-1",
         callback_url: "http://localhost/callback",
         expires_at_ms: 1000,
         oauth_environment: "DEVELOPMENT",
@@ -562,14 +629,69 @@ test("starts Google OAuth from settings when disconnected", async () => {
 
   await screen.findByText(/Google/);
   await user.click(screen.getByRole("button", { name: "설정" }));
-  await user.click(screen.getByRole("button", { name: "Google 로그인" }));
+  expect(await screen.findByText("TOKEN_EXCHANGE_INVALID_REQUEST")).toBeInTheDocument();
+  expect(
+    screen.getByText("Google rejected a required token request field."),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Google 연결" }));
 
   expect(window.open).toHaveBeenCalledWith(
-    "https://accounts.google.com/o/oauth2/v2/auth?flow=1",
+    "http://127.0.0.1:43123/oauth/authorize?state=flow-1",
     "_blank",
     "noopener,noreferrer",
   );
   expect(await screen.findByText("Google 연결 완료를 기다리고 있습니다.")).toBeInTheDocument();
+});
+
+test("does not open an unexpected authorization URL returned by the API", async () => {
+  installFetch((path, init) => {
+    if (path === "/health/live") {
+      return jsonResponse(liveResponse());
+    }
+    if (path === "/health/ready") {
+      return jsonResponse(readyResponse());
+    }
+    if (path === "/api/v1/runtime") {
+      return jsonResponse({ summary: runtimeSummary([]), api_contract_version: "1" });
+    }
+    if (path === "/api/v1/google/connection") {
+      return jsonResponse({ ...googleConnection(), connected: false, credential_state: "DISCONNECTED", account_email: null });
+    }
+    if (path === "/api/v1/identity/google-account") {
+      return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
+    }
+    if (path.startsWith("/api/v1/conversations?")) {
+      return jsonResponse({ items: [], next_cursor: null, api_contract_version: "1" });
+    }
+    if (path.startsWith("/api/v1/resources/gmail")) {
+      return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
+    }
+    if (path === "/api/v1/google/oauth/start" && init?.method === "POST") {
+      return jsonResponse({
+        flow_id: "flow-1",
+        authorization_url: "https://invalid.example/authorization",
+        callback_url: "http://127.0.0.1/callback",
+        expires_at_ms: 1000,
+        oauth_environment: "DEVELOPMENT",
+        scopes: ["gmail.readonly"],
+        api_contract_version: "1",
+      });
+    }
+    throw new Error(`Unhandled path ${path}`);
+  });
+
+  const user = userEvent.setup();
+  render(<App />);
+
+  await user.click(await screen.findByRole("button", { name: "Google 연결" }));
+  await waitFor(() =>
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/v1/google/oauth/start",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+  expect(window.open).not.toHaveBeenCalled();
+  expect(screen.getByText("Google 연결을 시작하지 못했습니다.")).toBeInTheDocument();
 });
 
 test("disconnects Google and refreshes the runtime summary", async () => {
@@ -977,6 +1099,13 @@ function installFetch(handler: (path: string, init?: RequestInit) => MockRespons
 
 function jsonResponse(json: unknown, status = 200): MockResponse {
   return { status, json };
+}
+
+function jsonFetchResponse(json: unknown, status = 200): Response {
+  return new Response(JSON.stringify(json), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 function liveResponse() {

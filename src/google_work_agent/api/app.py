@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -85,6 +86,7 @@ class ApiContainer:
     frontend_site: Any | None = None
     additional_readiness_checks: tuple[Callable[[], Any], ...] = ()
     safe_mode_controller: Any | None = None
+    core_initialization_in_progress: bool = False
     get_settings_service: Any | None = None
     patch_settings_service: Any | None = None
     list_backups_service: Any | None = None
@@ -96,6 +98,7 @@ class ApiContainer:
     delete_llm_api_key_service: Any | None = None
     test_llm_connection_service: Any | None = None
     resolve_recovery_service: Any | None = None
+    startup_callbacks: tuple[Callable[[], Awaitable[None]], ...] = ()
     shutdown_callbacks: tuple[Callable[[], None], ...] = ()
 
 
@@ -107,11 +110,22 @@ def create_app(container: ApiContainer) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.container = container
+        startup_tasks: list[asyncio.Future[None]] = [
+            asyncio.ensure_future(callback()) for callback in container.startup_callbacks
+        ]
         container.local_run_coordinator.start()
         try:
             yield
         finally:
             try:
+                for task in startup_tasks:
+                    if not task.done():
+                        task.cancel()
+                if startup_tasks:
+                    await asyncio.wait_for(
+                        asyncio.gather(*startup_tasks, return_exceptions=True),
+                        timeout=30,
+                    )
                 container.local_run_coordinator.stop()
             finally:
                 _run_shutdown_callbacks(container.shutdown_callbacks)

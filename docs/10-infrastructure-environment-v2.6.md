@@ -1,6 +1,6 @@
 # 10. Google Work Agent · 인프라 · 환경 설정 설계서
 
-> **상태:** Draft v2.5 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v2.6 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 확정 결정
 
@@ -77,7 +77,7 @@ Single Instance Lock
 - `SEC-INF-017`: graceful shutdown
 - `SEC-INF-018`: crash recovery
 - `SEC-INF-019`: Ollama isolation
-- `SEC-INF-020`: production secret file/env/CLI prohibition
+- `SEC-INF-020`: production secret file/env/CLI prohibition. DEV Desktop OAuth의 protocol compatibility `client_secret`은 예외적으로 repo-root `.env.local`에서 MCP Credential Provider만 읽을 수 있으나, Production에서는 이 예외를 허용하지 않는다.
 
 ## 6. Directory
 
@@ -114,6 +114,20 @@ Launcher Runtime Argument
 ```
 
 Production Secret은 `.env`, JSON, Manifest, CLI에 넣지 않는다.
+
+DEV Google Desktop OAuth local config:
+```text
+<repo-root>/.env.local
+GOOGLE_OAUTH_CLIENT_ID=<developer-owned Desktop OAuth Client ID>
+GOOGLE_OAUTH_CLIENT_SECRET=<protocol compatibility credential, when required by provider>
+```
+
+- `.env.local`은 `GWA_MCP_ENVIRONMENT=DEVELOPMENT`에서만 읽는다.
+- `.env.example`에는 Key 이름과 빈 값만 추적하며 실제 Client Secret을 넣지 않는다.
+- `GOOGLE_OAUTH_CLIENT_SECRET`은 사용자 Credential 또는 Production Security Boundary가 아니며 Google Desktop OAuth Token Endpoint 호환을 위한 client credential이다.
+- MCP Credential Provider만 Client ID·Client Secret을 읽는다. React/Vite·FastAPI API payload·SQLite·Log·Trace·Diagnostic·OS Keyring으로 전달·저장하지 않는다.
+- Production은 `.env.local`을 읽지 않으며 `SEC-INF-020`을 유지한다. Production Client Credential provisioning은 서명된 배포 Artifact/Installer 경계의 별도 계약으로 관리한다.
+- Client Secret을 사용하더라도 PKCE S256·`state`·ephemeral loopback 요구사항은 그대로 유지한다.
 
 ## 8. Installer
 

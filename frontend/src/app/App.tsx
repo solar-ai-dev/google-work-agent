@@ -95,6 +95,7 @@ export function App(): JSX.Element {
   const [runContext, setRunContext] = useState<RunContext | null>(null);
   const [composerText, setComposerText] = useState("");
   const [busyCommand, setBusyCommand] = useState<string | null>(null);
+  const [googleConnectPending, setGoogleConnectPending] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [confirmationText, setConfirmationText] = useState("");
   const [statusLine, setStatusLine] = useState("로컬 API에 연결되어 있습니다.");
@@ -110,6 +111,7 @@ export function App(): JSX.Element {
   });
   const subscriptionRef = useRef<(() => void) | null>(null);
   const subscriptionRunIdRef = useRef<string | null>(null);
+  const startupPromiseRef = useRef<Promise<void> | null>(null);
 
   const refreshConversations = useCallback(async (accountId: string): Promise<void> => {
     const response = await listConversations(accountId);
@@ -209,6 +211,8 @@ export function App(): JSX.Element {
   }, [currentAccount?.account_id, resourceState.nextPageToken, resourceState.parentId, resourceState.query]);
 
   const runStartup = useCallback(async (): Promise<void> => {
+    // Preserve the one-time fragment in invocation-local memory before awaits.
+    const bootstrapFragment = readBootstrapFragment(window.location.hash);
     resourceCache.clear();
     setStartup({
       phase: "checks",
@@ -219,15 +223,14 @@ export function App(): JSX.Element {
     try {
       await getLive();
       const ready = await getReady();
-      const fragment = readBootstrapFragment(window.location.hash);
       setStartup({
         phase: "session",
         status: "loading",
-        message: fragment ? "로컬 세션을 수립하고 있습니다." : "기존 세션을 확인하고 있습니다.",
+        message: bootstrapFragment ? "로컬 세션을 수립하고 있습니다." : "기존 세션을 확인하고 있습니다.",
         checks: ready.checks,
       });
-      if (fragment) {
-        await bootstrapSession(fragment);
+      if (bootstrapFragment) {
+        await bootstrapSession(bootstrapFragment);
         window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
       }
       setStartup((current) => ({ ...current, phase: "runtime", message: "런타임 상태를 읽고 있습니다." }));
@@ -275,7 +278,9 @@ export function App(): JSX.Element {
   }, [settingsOpen]);
 
   useEffect(() => {
-    void runStartup();
+    if (startupPromiseRef.current === null) {
+      startupPromiseRef.current = runStartup();
+    }
     return () => {
       subscriptionRef.current?.();
       subscriptionRef.current = null;
@@ -494,9 +499,19 @@ export function App(): JSX.Element {
   }
 
   async function handleGoogleConnect(): Promise<void> {
-    const response = await startGoogleOAuth();
-    window.open(response.authorization_url, "_blank", "noopener,noreferrer");
-    setStatusLine("Google 연결 완료를 기다리고 있습니다.");
+    if (google?.connected || googleConnectPending) {
+      return;
+    }
+    setGoogleConnectPending(true);
+    try {
+      const response = await startGoogleOAuth();
+      window.open(requireOAuthLaunchUrl(response.authorization_url), "_blank", "noopener,noreferrer");
+      setStatusLine("Google 연결 완료를 기다리고 있습니다.");
+    } catch (error) {
+      setStatusLine(error instanceof ApiClientError ? error.message : "Google 연결을 시작하지 못했습니다.");
+    } finally {
+      setGoogleConnectPending(false);
+    }
   }
 
   async function handleGoogleDisconnect(): Promise<void> {
@@ -556,6 +571,16 @@ export function App(): JSX.Element {
         <div className="inline-row">
           <span className="pill">{google?.connected ? "Google 연결됨" : "Google 미연결"}</span>
           <span className="pill">{runSnapshot?.actual_runtime ?? runSnapshot?.requested_mode ?? "AUTO"}</span>
+          {!google?.connected ? (
+            <button
+              className="button-primary"
+              type="button"
+              disabled={googleConnectPending}
+              onClick={() => void handleGoogleConnect()}
+            >
+              {googleConnectPending ? "Google 연결 중..." : "Google 연결"}
+            </button>
+          ) : null}
           <button className="button-secondary" type="button" onClick={() => setSettingsOpen(true)}>
             설정
           </button>
@@ -1042,6 +1067,12 @@ function SettingsDrawer(props: {
           {props.google?.missing_scopes.length ? (
             <p className="status-warn">누락 Scope: {props.google.missing_scopes.join(", ")}</p>
           ) : null}
+          {props.google?.safe_error_code ? (
+            <p className="status-warn">{props.google.safe_error_code}</p>
+          ) : null}
+          {props.google?.safe_error_description ? (
+            <p className="status-warn">{props.google.safe_error_description}</p>
+          ) : null}
         </section>
         <section className="info-card">
           <strong>Runtime</strong>
@@ -1156,6 +1187,19 @@ function SettingsDrawer(props: {
       </div>
     </aside>
   );
+}
+
+function requireOAuthLaunchUrl(value: string): string {
+  const url = new URL(value);
+  if (
+    url.protocol !== "http:" ||
+    url.hostname !== "127.0.0.1" ||
+    !url.port ||
+    url.pathname !== "/oauth/authorize"
+  ) {
+    throw new Error("Unexpected OAuth authorization URL");
+  }
+  return url.toString();
 }
 
 function readBootstrapFragment(hash: string): { bootstrap_secret: string; service_instance_id: string } | null {

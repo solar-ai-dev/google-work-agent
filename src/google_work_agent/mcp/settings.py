@@ -15,6 +15,7 @@ class GoogleOAuthSettings:
     """Sanitized OAuth configuration; client IDs must not be logged or serialized."""
 
     google_oauth_client_id: str | None = field(repr=False)
+    google_oauth_client_secret: str | None = field(default=None, repr=False)
 
     @classmethod
     def load(
@@ -30,7 +31,15 @@ class GoogleOAuthSettings:
         )
         values.update(dict(os.environ) if environment is None else environment)
         client_id = values.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
-        return cls(google_oauth_client_id=client_id or None)
+        client_secret = (
+            values.get("GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
+            if runtime_environment.upper() == DEVELOPMENT_ENVIRONMENT
+            else ""
+        )
+        return cls(
+            google_oauth_client_id=client_id or None,
+            google_oauth_client_secret=client_secret or None,
+        )
 
 
 def _load_env_file(path: Path) -> dict[str, str]:

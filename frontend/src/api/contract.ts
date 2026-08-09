@@ -84,6 +84,8 @@ export type GoogleConnectionResponse = {
   reauth_required: boolean;
   oauth_environment: string;
   last_checked_at_ms: number;
+  safe_error_code?: string | null;
+  safe_error_description?: string | null;
   api_contract_version: string;
 };
 

@@ -1,6 +1,6 @@
 # 01-B. Google Work Agent 정책 정의서
 
-> **상태:** Draft v2.5 · **기준일:** 2026-08-09
+> **상태:** Draft v2.6 · **기준일:** 2026-08-09
 
 ## 0. 사람이 먼저 볼 핵심 정책
 
@@ -239,6 +239,9 @@ Tentative는 경고로 처리하고, Declined 또는 Free Event는 Busy에서 �
 - `state` 검증 필수
 - OOB 수동 코드 복사 방식 금지
 - Refresh Token은 OS Keyring 저장
+- Desktop OAuth Client가 `client_secret`을 발급하고 실제 Token Endpoint가 이를 요구하는 경우, 해당 값은 Confidential Secret 또는 사용자 Credential이 아니라 **Protocol Compatibility Client Credential**로 취급한다.
+- Client Secret은 PKCE·`state`·ephemeral loopback을 대체하거나 완화하는 인증 보안 경계로 사용하지 않는다.
+- Client Secret 원문은 MCP Credential Provider 경계를 벗어나 React/Vite·FastAPI API payload·SQLite·Log·Trace·Diagnostic·OS Keyring으로 전달·저장하지 않는다.
 
 ### POL-OAUTH-004 팀 테스트
 
@@ -804,8 +807,9 @@ LOCAL_CAPABLE Release는 검증된 Ollama Version, Model ID, Model Hash와 Runti
 ### POL-OAUTH-008 Credential Provider 소유권
 
 - Google Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credential Provider가 소유한다.
+- Desktop OAuth Client가 실제 Token Endpoint 호환을 위해 `client_secret`을 요구하는 경우, 해당 compatibility credential의 로드와 authorization-code/refresh-token grant 사용도 MCP Credential Provider가 소유한다.
 - FastAPI와 React에는 계정·Scope·연결 상태 Metadata만 반환한다.
-- Refresh Token 원문을 FastAPI Process Memory로 복사하는 구현은 금지한다.
+- Refresh Token 또는 Desktop OAuth Client Secret 원문을 FastAPI Process Memory나 React로 복사하는 구현은 금지한다.
 
 ## 26. Clarification·조회 범위·일정 관계 정책
 - 전체 Gmail Mailbox, 장기간 무제한 원문, 모든 Workspace Source 전체 조회 요청은 `BLOCKED`다. 자동으로 범위를 축소해 실행하지 않는다.

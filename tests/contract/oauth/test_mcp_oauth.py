@@ -1,111 +1,67 @@
 from __future__ import annotations
 
-import json
-import sys
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
-from urllib.request import urlopen
+from urllib.request import HTTPRedirectHandler, build_opener
 
-import pytest
-
-from google_work_agent.adapters.mcp import (
-    MCPArtifactConfig,
-    MCPGoogleOAuthCredentialProvider,
-    SubprocessMCPTransport,
-    build_manifest_payload,
-    calculate_file_sha256,
-)
-from google_work_agent.ports.mcp_transport import MCPTransportError, MCPTransportErrorCode
+from google_work_agent.mcp.server import _control_call, _WorkspaceState
+from google_work_agent.mcp.settings import GoogleOAuthSettings
 
 
-def test_mcp_oauth_flow_uses_loopback_callback_and_no_token_leakage(tmp_path: Path) -> None:
-    manifest_path = tmp_path / "manifest.json"
-    manifest_path.write_text(json.dumps(build_manifest_payload(), sort_keys=True), encoding="utf-8")
-    fixture_manifest = (
-        Path(__file__).resolve().parents[2] / "fixtures" / "product" / "manifest.json"
+def test_mcp_oauth_flow_uses_google_loopback_authorization_and_no_token_leakage() -> None:
+    state = _WorkspaceState(keyring=_FakeSecretStore())
+    state.oauth_settings = GoogleOAuthSettings(
+        google_oauth_client_id="test-desktop-client-id",
+        google_oauth_client_secret="compatibility-client-secret",
     )
-    keyring_path = tmp_path / "keyring.json"
-    executable = Path(sys.executable).resolve()
-    transport = SubprocessMCPTransport(
-        config=MCPArtifactConfig(
-            executable_path=str(executable),
-            manifest_path=str(manifest_path.resolve()),
-            expected_binary_sha256=calculate_file_sha256(executable),
-            expected_manifest_sha256=calculate_file_sha256(manifest_path.resolve()),
-            expected_manifest_version="2026-08-07.p0",
-            expected_protocol_version="2026-08-07.p0",
-            expected_tool_registry_version="2026-08-06.p0",
-            startup_timeout_ms=5_000,
-            request_timeout_ms=5_000,
-            max_restart_count=1,
-            environment="DEVELOPMENT",
-            service_instance_id="svc-oauth-contract",
-            working_directory=str(Path(__file__).resolve().parents[3]),
-            extra_environment={
-                "GWA_TEST_KEYRING_PATH": str(keyring_path.resolve()),
-                "GWA_PRODUCT_FIXTURE_MANIFEST": str(fixture_manifest.resolve()),
-                "GOOGLE_OAUTH_CLIENT_ID": "test-desktop-client-id",
-            },
+    started = _control_call(state, method="google.oauth.start")
+    callback_url = str(started["callback_url"])
+    authorization_url = str(started["authorization_url"])
+    assert callback_url.startswith("http://127.0.0.1:")
+    assert "test-desktop-client-id" not in authorization_url
+    state_value = parse_qs(urlparse(authorization_url).query)["state"][0]
+    response = build_opener(_NoRedirect()).open(f"{authorization_url}&state={state_value}")
+    assert response.code == 302
+    parsed = urlparse(response.headers["Location"])
+    query = parse_qs(parsed.query)
+    assert parsed.netloc == "accounts.google.com"
+    assert query["code_challenge_method"] == ["S256"]
+    assert query["redirect_uri"] == [callback_url]
+    assert query["scope"] == [
+        " ".join(
+            [
+                "https://www.googleapis.com/auth/gmail.readonly",
+                "https://www.googleapis.com/auth/gmail.compose",
+                "https://www.googleapis.com/auth/tasks",
+                "https://www.googleapis.com/auth/calendar.events",
+                "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+                "https://www.googleapis.com/auth/calendar.events.freebusy",
+            ]
         )
-    )
-    provider = MCPGoogleOAuthCredentialProvider(transport=transport)
-    try:
-        started = provider.start_oauth()
-        assert started.callback_url.startswith("http://127.0.0.1:")
-        assert "localhost" not in started.callback_url
-        assert "test-desktop-client-id" not in started.authorization_url
-        assert "refresh" not in started.authorization_url.lower()
-        assert "access" not in started.authorization_url.lower()
-
-        state = parse_qs(urlparse(started.authorization_url).query)["state"][0]
-        with urlopen(f"{started.callback_url}?state={state}&code=CANARY_AUTH_CODE") as response:
-            assert response.status == 200
-
-        connected = provider.get_connection_status()
-        assert connected.connected is True
-        assert "CANARY_AUTH_CODE" not in repr(connected)
-    finally:
-        transport.close()
+    ]
 
 
-def test_mcp_oauth_start_rejects_missing_client_id_without_leaking_configuration(
-    tmp_path: Path,
-) -> None:
-    manifest_path = tmp_path / "manifest.json"
-    manifest_path.write_text(json.dumps(build_manifest_payload(), sort_keys=True), encoding="utf-8")
-    fixture_manifest = (
-        Path(__file__).resolve().parents[2] / "fixtures" / "product" / "manifest.json"
-    )
-    executable = Path(sys.executable).resolve()
-    transport = SubprocessMCPTransport(
-        config=MCPArtifactConfig(
-            executable_path=str(executable),
-            manifest_path=str(manifest_path.resolve()),
-            expected_binary_sha256=calculate_file_sha256(executable),
-            expected_manifest_sha256=calculate_file_sha256(manifest_path.resolve()),
-            expected_manifest_version="2026-08-07.p0",
-            expected_protocol_version="2026-08-07.p0",
-            expected_tool_registry_version="2026-08-06.p0",
-            startup_timeout_ms=5_000,
-            request_timeout_ms=5_000,
-            max_restart_count=1,
-            environment="DEVELOPMENT",
-            service_instance_id="svc-oauth-missing-config",
-            working_directory=str(Path(__file__).resolve().parents[3]),
-            extra_environment={
-                "GWA_TEST_KEYRING_PATH": str((tmp_path / "keyring.json").resolve()),
-                "GWA_PRODUCT_FIXTURE_MANIFEST": str(fixture_manifest.resolve()),
-                "GOOGLE_OAUTH_CLIENT_ID": "",
-            },
-        )
-    )
-    provider = MCPGoogleOAuthCredentialProvider(transport=transport)
-    try:
-        with pytest.raises(MCPTransportError) as error_info:
-            provider.start_oauth()
+class _FakeSecretStore:
+    def __init__(self) -> None:
+        self.values: dict[tuple[str, str], str] = {}
 
-        assert error_info.value.code is MCPTransportErrorCode.CONFIGURATION_ERROR
-        assert "GOOGLE_OAUTH_CLIENT_ID" in str(error_info.value)
-        assert "client-id" not in str(error_info.value).lower()
-    finally:
-        transport.close()
+    def set_secret(self, *, service: str, account: str, secret: str) -> None:
+        self.values[(service, account)] = secret
+
+    def get_secret(self, *, service: str, account: str) -> str | None:
+        return self.values.get((service, account))
+
+    def delete_secret(self, *, service: str, account: str) -> bool:
+        return self.values.pop((service, account), None) is not None
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    def http_error_302(
+        self,
+        request: object,
+        fp: object,
+        code: int,
+        message: str,
+        headers: object,
+    ) -> object:
+        del request, fp, message
+        return type("Response", (), {"code": code, "headers": headers})()

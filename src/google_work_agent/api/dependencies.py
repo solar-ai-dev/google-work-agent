@@ -99,6 +99,15 @@ def enforce_access(
 
 def enforce_runtime_operation(request: Request, *, operation: RuntimeOperation) -> None:
     container = get_container(request)
+    if container.core_initialization_in_progress:
+        raise ApiError(
+            error_code="SAFE_MODE",
+            user_message="Core initialization is still in progress.",
+            status_code=409,
+            request_id=get_request_id(request),
+            detail_code="SAFE_MODE_BLOCKED",
+            current_state="CORE_INITIALIZING",
+        )
     controller = container.safe_mode_controller
     if controller is None or controller.allows(operation):
         return
