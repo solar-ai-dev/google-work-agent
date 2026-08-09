@@ -1,6 +1,6 @@
 # 01-B. Google Work Agent 정책 정의서
 
-> **상태:** Draft v2.6 · **기준일:** 2026-08-09
+> **상태:** Draft v2.7 · **기준일:** 2026-08-09
 
 ## 0. 사람이 먼저 볼 핵심 정책
 
@@ -816,3 +816,19 @@ LOCAL_CAPABLE Release는 검증된 Ollama Version, Model ID, Model Hash와 Runti
 - bounded 범위 확대가 새로 필요하면 이유·Source·기간을 제시하고 사용자 확인 후 수행한다.
 - 시간 `overlap`은 곧바로 업무 `conflict`가 아니다. `NESTED_RELATED`, `TRUE_BUSY_CONFLICT`, `TENTATIVE`, `FREE_OR_TRANSPARENT`, `UNKNOWN_RELATION`을 구분한다.
 - 모호성은 실제 발견 단계에서 `NEEDS_CONFIRMATION`으로 보내며 후보가 존재하면 후보·차이·선택지를 제공한다.
+
+## R8.4 승인 인자·첨부파일 정책
+
+### Claim V2
+1. Approval Snapshot은 사용자 의미를 갖는 Canonical Business Arguments와 `approval_arguments_hash`를 고정한다.
+2. 실행 준비 과정에서 Recovery Fingerprint 같은 서버 생성 전송 Metadata를 결정적으로 추가할 수 있으나 사용자 의미·Target·Tool을 변경할 수 없다.
+3. 최종 MCP Dispatch Payload는 별도 `execution_arguments_hash`로 고정한다.
+4. MCP는 실제 수신 인자를 동일 Canonical 규칙으로 재해시하여 서명된 ClaimContextV2의 `execution_arguments_hash`와 비교한 뒤에만 Write한다.
+5. Claim Token은 TTL 내 1회용이며 Process Instance와 Action·Approval·Attempt·Tool·두 Hash·Nonce에 바인딩한다.
+
+### 첨부파일
+- Gmail 수신 첨부파일 다운로드와 Draft/SEND 첨부파일 전달을 허용한다.
+- 첨부파일 bytes·내용은 Agent/LLM Context·Evidence·Prompt 입력으로 사용하지 않는다.
+- 발신 파일은 raw Local Path를 Action Argument로 신뢰하지 않고 Staging Descriptor와 SHA-256으로 승인한다.
+- Staging 파일이 바뀌거나 Hash가 불일치하면 기존 Approval·Claim을 사용할 수 없다.
+- 기존 Gmail Message/Thread 삭제 금지 정책은 그대로 유지한다.

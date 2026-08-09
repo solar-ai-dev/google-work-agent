@@ -1,6 +1,6 @@
 # 14. Google Work Agent · 예외 처리 · 운영 · 트러블슈팅 가이드
 
-> **상태:** Draft v2.4 · **기준일:** 2026-08-09 · **원격 운영 서버:** 없음
+> **상태:** Draft v2.5 · **기준일:** 2026-08-09 · **원격 운영 서버:** 없음
 
 ## 1. Severity
 
@@ -242,3 +242,10 @@ Timeout·5xx·MCP 종료를 일괄 `NOT_SENT`로 분류하지 않는다. 결과�
 - `EXECUTING`, `EXECUTED`, `UNKNOWN_RESULT`는 먼저 실제 결과를 확정한다.
 - `UNKNOWN_RESULT`가 남아 있으면 Run을 `RECOVERY_REQUIRED`로 두며 확인 후 취소를 마무리한다.
 - 이미 성공한 Write는 유지하고 사용자 결과는 `PARTIAL`로 표시할 수 있다.
+
+## R8.4 Claim·Attachment 운영 대응
+
+- `CLAIM_ARGUMENTS_MISMATCH`, Instance mismatch, Nonce reuse는 안전 거절이며 같은 Claim 재시도를 하지 않는다. Domain/Approval/Attempt 상태를 다시 읽고 필요 시 새 실행 준비를 수행한다.
+- Gmail 수신 첨부파일 다운로드 실패는 Message/Attachment ID, Google 연결 상태, 파일 크기 제한을 확인하고 READ 경로만 재시도한다. LLM Retry로 해결하지 않는다.
+- 발신 Staging 파일이 만료·삭제·Hash mismatch이면 기존 Approval로 실행하지 않는다. **파일 재선택 → Descriptor 갱신 → Action 수정 → 새 Approval** 순서다.
+- Attachment bytes·Local Path를 진단 Bundle이나 지원 요청에 포함시키지 않는다.

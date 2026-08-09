@@ -1,8 +1,8 @@
 # 08. Google Work Agent · 시퀀스 설계서
 
-> **문서 기준:** `01. 요구사항 정의서·PRD v2.6`, `01-A. 기능 정의서 v2.5`, `01-B. 정책 정의서 v2.5`, `02. UI·UX 설계서 v2.3`, `03. 시스템 아키텍처 설계서 v2.9`, `04. 도메인·데이터베이스 설계서 Draft v1.11`, `05. Context·Retrieval 설계서 Draft v2.4`, `06. Agent·Workflow 설계서 Draft v5.9`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v2.7`, Domain 상태 전이 계약 v1.4를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
+> **문서 기준:** `01. 요구사항 정의서·PRD v2.7`, `01-A. 기능 정의서 v2.6`, `01-B. 정책 정의서 v2.7`, `02. UI·UX 설계서 v2.4`, `03. 시스템 아키텍처 설계서 v3.0`, `04. 도메인·데이터베이스 설계서 Draft v1.12`, `05. Context·Retrieval 설계서 Draft v2.5`, `06. Agent·Workflow 설계서 Draft v6.0`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v2.8`, Domain 상태 전이 계약 v1.4를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
 
-> **상태:** Draft v3.0 · **기준일:** 2026-08-09  
+> **상태:** Draft v3.1 · **기준일:** 2026-08-09  
 > **대상:** P0 MVP  
 > **구조:** 결정적 Supervisor + 1/3/6 Agent Subgraph Profile + 결정적 실행·검증 Engine  
 > **상태 기준:** SQLite Domain Store가 승인·실행·검증 사실의 기준점이며 LangGraph Checkpoint는 재개 위치, SSE는 UI Projection이다.
@@ -1078,3 +1078,42 @@ Verification MISMATCH
 ```
 
 기존 MISMATCH Action이나 Approval을 교정 Write에 재사용하지 않는다.
+
+## R8.4 Claim V2·첨부파일 시퀀스
+
+### Write
+```text
+Approval ACTIVE
+→ ClaimExecution DB Transaction
+→ Action EXECUTING + Attempt CLAIMED + Approval CONSUMED
+→ COMMIT
+→ Application 최종 MCP Payload 구성
+→ execution_arguments_hash + ClaimContextV2
+→ MCP 실제 인자 재해시·Claim 검증
+→ Google Write
+→ 기존 Effect Verification
+```
+
+### 수신 첨부파일
+```text
+사용자 Download 선택
+→ FastAPI Local Session 검증
+→ MCP get_gmail_attachment
+→ Gmail users.messages.attachments.get
+→ FastAPI Stream
+→ 사용자 파일
+```
+
+### 발신 첨부파일
+```text
+사용자 파일 선택
+→ /attachments/stage
+→ Descriptor + SHA-256
+→ Action/Approval
+→ Claim V2
+→ MCP 실제 bytes size/hash 재검증
+→ MIME Draft/Send
+→ Google 재조회 Verification
+```
+
+첨부파일 bytes는 어느 시퀀스에서도 LLM·Agent Context를 통과하지 않는다.

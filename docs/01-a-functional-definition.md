@@ -1,6 +1,6 @@
 # 01-A. Google Work Agent 기능 정의서
 
-> **상태:** Draft v2.5 · **기준일:** 2026-08-08
+> **상태:** Draft v2.6 · **기준일:** 2026-08-09
 
 ## 1. 문서 목적
 
@@ -21,11 +21,11 @@
 |---|---|
 | 설정 | 첫 실행, Google 로그인, OAuth 환경, Runtime 진단, 배포 프로필, 기본 Resource 선택 |
 | 요청 | 자연어 입력, 범위 지정, 실행 취소, Run 재개 |
-| Context | Source 선택, 검색, 정규화, Evidence, 재검색 |
+| Context | Source 선택, 검색, 정규화, Evidence, 재검색, Gmail 첨부파일 Metadata 조회·사용자 요청 시 다운로드 |
 | 분석 | 관계 연결, 중복, 충돌, 업무 가능성 |
 | 계획 | Action Plan, DAG, Draft 생성, 위험 표시 |
 | 승인 | 전체·부분 승인, 수정, 거절, 승인 만료 |
-| 실행 | MCP Tool 호출, Idempotency, 부분 실행 |
+| 실행 | MCP Tool 호출, Idempotency, 부분 실행, Gmail Draft·Send 첨부파일 전달 |
 | 검증 | GET 재조회, 필드 비교, Recovery |
 | 관측 | Trace, Audit, 오류 진단 |
 | 실험 | API 호출 예산 통제, 모델·Graph·Retrieval 비교, sLLM 실험 분리 |
@@ -562,3 +562,21 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 - **상태 수명:** Local State는 해당 invocation이 끝나면 장기 기억으로 승격하지 않는다. Run 재개에 필요한 공식 결과만 Main Graph Checkpoint에 남긴다.
 - **완료 조건:** Agent 간 직접 호출 0, Local State의 Domain 사실 승격 0, bounded loop 상한 준수.
 
+## R8.4 Gmail 첨부파일 기능
+
+### FN-021A Gmail 첨부파일 조회·다운로드
+- **상태:** P0
+- **사용자 목적:** Gmail Message에 포함된 첨부파일을 확인하고 원본 파일을 받을 수 있다.
+- **입력:** `message_id`, `attachment_id`, 검증된 Local Session.
+- **처리:** Message 상세에서 파일명·MIME Type·크기·Google Attachment ID Metadata 확인 → MCP Gmail Attachment Read → Google API bytes 조회 → FastAPI Download Stream.
+- **출력:** 원본 bytes와 검증된 `filename`, `mime_type`, `size_bytes`.
+- **제한:** 첨부파일 bytes·내용을 LLM Prompt·Context·Evidence로 전달하지 않는다.
+- **완료 조건:** LLM 호출 없이 사용자가 선택한 첨부파일을 받을 수 있다.
+
+### FN-042A Gmail Draft·Send 첨부파일
+- **상태:** P0
+- **입력:** 사용자가 선택한 로컬 파일.
+- **처리:** Local Service가 제한된 Staging 경계에 파일 bytes를 수신하고 `staged_attachment_id`, 파일명, MIME Type, 크기, SHA-256 Descriptor를 생성한다. Action·Approval에는 Descriptor만 포함한다. Claim 발급 전과 MCP MIME 조립 직전에 실제 bytes의 크기·SHA-256을 재검증한다.
+- **출력:** 첨부파일이 포함된 Gmail Draft 또는 SEND 결과.
+- **예외:** Staging 만료·파일 누락·크기/Hash mismatch이면 기존 Approval을 실행하지 않고 파일 재선택→Action 수정→새 Approval로 돌아간다.
+- **완료 조건:** 승인된 파일과 실제 전송 파일이 동일하고 기존 SEND Verification 계약을 그대로 수행한다.

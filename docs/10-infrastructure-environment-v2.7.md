@@ -1,6 +1,6 @@
 # 10. Google Work Agent · 인프라 · 환경 설정 설계서
 
-> **상태:** Draft v2.6 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v2.7 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 확정 결정
 
@@ -248,3 +248,12 @@ Service는 MCP Child 시작 시 Tool Manifest Version과 함께 Process Memory�
 - Domain DB Schema 목표는 v1.4이며 `0001` v1.2 baseline → `0002_action_effect_send_delete.sql` v1.3 → `0003_action_cancelled.sql` v1.4 순서로 적용한다.
 - Startup Tool Registry 검증은 승인형 `gmail_send`, Task 완료 UPDATE, `calendar_delete_event`, 참석자 UPDATE를 허용하고 Gmail 원문 삭제·Task 삭제·반복 Event 전체 일괄 수정은 차단한다.
 - Migration 후 `PRAGMA foreign_key_check`와 Tool Schema Version 검증을 통과해야 Write를 허용한다.
+
+## R8.4 Attachment Staging Runtime
+
+- 발신 Gmail 첨부파일 임시 저장 위치는 `%LOCALAPPDATA%/GoogleWorkAgent/cache/attachments/` 아래 현재 사용자 전용 Directory다.
+- Staging 파일은 장기 저장소가 아니며 앱 재시작·만료·완료/취소 후 정리 대상으로 취급한다.
+- 파일명은 표시 Metadata일 뿐 filesystem path 권위가 아니다. 내부 생성 `staged_attachment_id`로 접근한다.
+- Staging Directory는 사용자 외 접근을 최소화하고 Log/Diagnostic Bundle/Backup 대상에서 제외한다.
+- Attachment bytes는 LLM Provider·Ollama Runtime 경로로 전달하지 않는다.
+- ClaimContextV2는 Service/MCP Process Instance에 바인딩되므로 MCP 재시작 후 이전 Claim을 사용할 수 없다.

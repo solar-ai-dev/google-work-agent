@@ -1,6 +1,6 @@
 # 09. Google Work Agent · 보안 · Auth 설계서
 
-> **상태:** Draft v2.4 · **기준일:** 2026-08-09 · **대상:** P0 MVP
+> **상태:** Draft v2.5 · **기준일:** 2026-08-09 · **대상:** P0 MVP
 
 ## 1. 핵심 결정
 
@@ -167,3 +167,19 @@ Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credentia
 - `/resume`는 허용된 typed `resume_kind`만 받고 임의 dict payload를 허용하지 않는다.
 - Verification `MISMATCH` Recovery는 `ACCEPT_PARTIAL | CREATE_CORRECTIVE_PLAN`만 허용하며, 교정 Write는 새 승인 경계를 통과한다.
 - dispatch 이후 Timeout·5xx·connection loss는 미전달이 보장되지 않으면 `UNKNOWN_RESULT`로 처리한다.
+
+## R8.4 ClaimContextV2·Gmail 첨부파일 보안 경계
+
+### ClaimContextV2
+- HMAC-SHA-256, `claim_version=2`, 기본 TTL 30초·최대 60초, 1회용 Nonce.
+- Service Instance와 MCP Process Instance에 모두 바인딩한다.
+- Action·Approval·ExecutionAttempt·Tool·`approval_arguments_hash`·`execution_arguments_hash`를 서명 범위에 포함한다.
+- Claim Token 원문은 Log·Trace·Audit에 기록하지 않는다.
+- MCP가 실제 수신 인자를 재해시해 일치시키기 전에는 Write를 수행하지 않는다.
+
+### Gmail 첨부파일
+- 기존 `gmail.readonly`는 수신 첨부파일 조회, `gmail.compose`는 Draft/Send MIME 첨부를 수용하므로 R8.4에서 새 OAuth Scope를 추가하지 않는다.
+- 발신 파일은 Browser가 임의 Local Path를 실행 인자로 지정하지 않는다. Local Service가 bytes를 받아 사용자 전용 Staging ID와 SHA-256을 발급한다.
+- Approval Snapshot에는 raw bytes가 아니라 Descriptor와 SHA-256을 고정한다.
+- Local Service와 MCP는 실행 직전 실제 bytes의 크기·SHA-256을 재검증한다.
+- 파일 bytes·Local Path는 LLM·SQLite·Trace·Diagnostic Bundle에 노출하지 않는다.
