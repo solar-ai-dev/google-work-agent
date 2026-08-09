@@ -62,13 +62,13 @@ config.local.*
 # ------------------------------------------------------------
 # Google Work Agent local runtime data
 # ------------------------------------------------------------
-data/
-backups/
-logs/
-diagnostics/
-runtime/
-cache/
-local-data/
+/data/
+/backups/
+/logs/
+/diagnostics/
+/runtime/
+/cache/
+/local-data/
 
 *.db
 *.db-wal

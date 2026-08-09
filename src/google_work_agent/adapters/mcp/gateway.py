@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from base64 import urlsafe_b64decode
 from json import dumps
 from typing import Any, cast
 
 from google_work_agent.ports import (
     FreeBusyCalendar,
     FreeBusyInterval,
+    GmailAttachmentBytes,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
@@ -21,6 +23,37 @@ from google_work_agent.ports import (
 )
 
 
+class MCPGmailAttachmentGateway:
+    """Gmail attachment READ gateway implemented over the MCP transport.
+
+    Kept separate from ``MCPGoogleWorkspaceGateway`` deliberately: attachment
+    bytes have no place moving through the write/verification port that the
+    rest of the application depends on, so this stays a narrow, standalone
+    adapter used only by the attachment download route.
+    """
+
+    def __init__(self, *, transport: MCPTransport) -> None:
+        self._transport = transport
+
+    def get_gmail_attachment(self, *, message_id: str, attachment_id: str) -> GmailAttachmentBytes:
+        try:
+            payload = self._transport.call_tool(
+                tool_name="gmail_get_attachment",
+                arguments={"message_id": message_id, "attachment_id": attachment_id},
+            ).payload
+        except MCPTransportError as error:
+            raise _google_error_from_transport(error) from error
+        raw_value = str(payload["data_base64url"])
+        padding = "=" * (-len(raw_value) % 4)
+        return GmailAttachmentBytes(
+            message_id=str(payload["message_id"]),
+            attachment_id=str(payload["attachment_id"]),
+            size_bytes=int(cast(int, payload["size_bytes"])),
+            sha256=str(payload["sha256"]),
+            data=urlsafe_b64decode(raw_value + padding),
+        )
+
+
 class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
     def __init__(self, *, transport: MCPTransport) -> None:
         self._transport = transport
@@ -30,20 +63,34 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
         *,
         claim_payload: dict[str, object],
         tool_name: str,
-        canonical_arguments_hash: str,
+        approval_arguments_hash: str,
+        execution_arguments_hash: str,
     ) -> dict[str, object]:
+        """Build and sign the R8.4 ClaimContextV2 envelope for one MCP write call.
+
+        ``approval_arguments_hash`` binds the business arguments the user
+        approved; ``execution_arguments_hash`` binds the actual final
+        arguments about to be dispatched (including any server-generated
+        metadata). MCP independently re-derives the latter from the
+        arguments it actually receives, so the two hashes must be kept
+        separate rather than collapsed into one value.
+        """
+
         transport = cast(Any, self._transport)
         process_instance_id = cast(str | None, getattr(transport, "process_instance_id", None))
         if process_instance_id is None:
             raise RuntimeError("mcp process instance id is unavailable")
         payload = {
+            "claim_version": 2,
             "action_id": str(claim_payload["action_id"]),
             "approval_id": str(claim_payload["approval_id"]),
             "execution_attempt_id": str(claim_payload["attempt_id"]),
             "tool_name": tool_name,
-            "canonical_arguments_hash": canonical_arguments_hash,
+            "approval_arguments_hash": approval_arguments_hash,
+            "execution_arguments_hash": execution_arguments_hash,
             "service_instance_id": str(claim_payload["service_instance_id"]),
             "mcp_process_instance_id": process_instance_id,
+            "issued_at_ms": int(str(claim_payload["issued_at_ms"])),
             "expires_at_ms": int(str(claim_payload["expires_at_ms"])),
             "nonce": str(claim_payload["nonce"]),
         }
