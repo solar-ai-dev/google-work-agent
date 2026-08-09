@@ -83,6 +83,8 @@ Prompt·Failure 정규화   → 15 (01/04/05/06/07을 완화하지 않음)
 현재 DB·Effect 계약은 승인형 `SEND | DELETE`, Task 완료·Calendar 참석자 UPDATE, Clarification UX, 과도 조회 BLOCK, Calendar overlap 관계 판정, External I/O↔SQLite Transaction 분리, Recovery Domain Command 경계를 포함한다.
 
 `0001_initial.sql`은 Schema v1.2 baseline, `0002_action_effect_send_delete.sql` 적용 후 Repository baseline은 v1.3이다. Runtime E2E Canonical은 Action `CANCELLED` CHECK 확장을 포함하는 다음 Migration 적용 후 Domain DB Schema v1.4를 사용한다. 이 Source Pack에는 아직 구현되지 않은 Migration을 임의 생성하지 않으며 Repository 작업에서 추가한다.
+
+Migration SQL의 Canonical executable source는 `src/google_work_agent/adapters/persistence/migrations/`이며, `docs/000*.sql`은 Source Pack용 byte-identical 문서 mirror다. Migration Runner와 checksum은 Runtime canonical source만 사용하고, 두 위치의 SQL은 `.gitattributes`의 LF 정책과 raw-byte equality 테스트로 drift를 차단한다.
 ## R8.3 Gold·Scoring 핵심 정의
 
 - Canonical Gold는 `CanonicalCaseV5`, E2E는 `E2EProjectionV3`를 사용한다.

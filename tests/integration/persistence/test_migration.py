@@ -17,48 +17,56 @@ from google_work_agent.adapters.persistence.errors import (
 )
 
 OFFICIAL_NORMALIZED_CHECKSUM = "77386baca1badadd6a79860823250836f7a6464e7f01bd865c3a84af094aa928"
+OFFICIAL_V2_NORMALIZED_CHECKSUM = "0cbd43fbaa351b19540128f860c4e88e827b263329b102cbe9016c1190145624"
+RUNTIME_MIGRATIONS_DIR = Path("src/google_work_agent/adapters/persistence/migrations")
+DOCUMENTATION_MIGRATIONS_DIR = Path("docs")
 
 
 def test_lf_and_crlf_sql_have_same_official_checksum() -> None:
-    lf_sql = Path("docs/0001_initial.sql").read_bytes().replace(b"\r\n", b"\n")
+    lf_sql = (RUNTIME_MIGRATIONS_DIR / "0001_initial.sql").read_bytes().replace(b"\r\n", b"\n")
     crlf_sql = lf_sql.replace(b"\n", b"\r\n")
 
     assert calculate_migration_checksum(lf_sql) == calculate_migration_checksum(crlf_sql)
     assert calculate_migration_checksum(crlf_sql) == OFFICIAL_NORMALIZED_CHECKSUM
 
 
+def test_v2_lf_and_crlf_have_same_official_checksum() -> None:
+    lf_sql = (RUNTIME_MIGRATIONS_DIR / "0002_action_effect_send_delete.sql").read_bytes()
+    lf_sql = lf_sql.replace(b"\r\n", b"\n")
+    crlf_sql = lf_sql.replace(b"\n", b"\r\n")
+
+    assert calculate_migration_checksum(lf_sql) == OFFICIAL_V2_NORMALIZED_CHECKSUM
+    assert calculate_migration_checksum(crlf_sql) == OFFICIAL_V2_NORMALIZED_CHECKSUM
+
+
 def test_checksum_changes_when_sql_content_changes() -> None:
-    raw = Path("docs/0001_initial.sql").read_bytes()
+    raw = (RUNTIME_MIGRATIONS_DIR / "0001_initial.sql").read_bytes()
     changed = raw.replace(b"Google Work Agent", b"Google Work Agenu", 1)
 
     assert calculate_migration_checksum(changed) != OFFICIAL_NORMALIZED_CHECKSUM
 
 
-def test_docs_and_runtime_sql_raw_bytes_are_identical() -> None:
-    docs_sql = Path("docs/0001_initial.sql").read_bytes()
-    runtime_sql = Path(
-        "src/google_work_agent/adapters/persistence/migrations/0001_initial.sql"
+def test_documentation_mirror_matches_runtime_initial_migration() -> None:
+    runtime_sql = (RUNTIME_MIGRATIONS_DIR / "0001_initial.sql").read_bytes()
+    documentation_mirror = (DOCUMENTATION_MIGRATIONS_DIR / "0001_initial.sql").read_bytes()
+
+    assert documentation_mirror == runtime_sql
+
+
+def test_documentation_mirror_matches_runtime_second_migration() -> None:
+    runtime_sql = (RUNTIME_MIGRATIONS_DIR / "0002_action_effect_send_delete.sql").read_bytes()
+    documentation_mirror = (
+        DOCUMENTATION_MIGRATIONS_DIR / "0002_action_effect_send_delete.sql"
     ).read_bytes()
 
-    assert runtime_sql == docs_sql
+    assert documentation_mirror == runtime_sql
 
 
-def test_docs_and_runtime_second_migration_sql_raw_bytes_are_identical() -> None:
-    docs_sql = Path("docs/0002_action_effect_send_delete.sql").read_bytes()
-    runtime_sql = Path(
-        "src/google_work_agent/adapters/persistence/migrations/0002_action_effect_send_delete.sql"
-    ).read_bytes()
+def test_documentation_mirror_matches_runtime_third_migration() -> None:
+    runtime_sql = (RUNTIME_MIGRATIONS_DIR / "0003_action_cancelled.sql").read_bytes()
+    documentation_mirror = (DOCUMENTATION_MIGRATIONS_DIR / "0003_action_cancelled.sql").read_bytes()
 
-    assert runtime_sql == docs_sql
-
-
-def test_docs_and_runtime_third_migration_sql_raw_bytes_are_identical() -> None:
-    docs_sql = Path("docs/0003_action_cancelled.sql").read_bytes()
-    runtime_sql = Path(
-        "src/google_work_agent/adapters/persistence/migrations/0003_action_cancelled.sql"
-    ).read_bytes()
-
-    assert runtime_sql == docs_sql
+    assert documentation_mirror == runtime_sql
 
 
 def test_package_resource_discovers_initial_migration() -> None:
@@ -94,6 +102,7 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             (3, "action_cancelled"),
         ]
         assert rows[0]["checksum"] == OFFICIAL_NORMALIZED_CHECKSUM
+        assert rows[1]["checksum"] == OFFICIAL_V2_NORMALIZED_CHECKSUM
         assert rows[0]["applied_at_ms"] == 123456789
         assert rows[1]["applied_at_ms"] == 123456789
         assert rows[2]["applied_at_ms"] == 123456789
@@ -115,15 +124,50 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
         connection.close()
 
 
+def test_crlf_applied_database_is_compatible_with_lf_runtime_migrations(
+    tmp_path: Path,
+) -> None:
+    crlf_dir = tmp_path / "crlf-migrations"
+    crlf_dir.mkdir()
+    for source in sorted(RUNTIME_MIGRATIONS_DIR.glob("*.sql")):
+        lf_bytes = source.read_bytes().replace(b"\r\n", b"\n")
+        (crlf_dir / source.name).write_bytes(lf_bytes.replace(b"\n", b"\r\n"))
+
+    connection = connect_sqlite(tmp_path / "windows-checkout.db")
+    try:
+        first_results = apply_migrations(
+            connection,
+            migrations_dir=crlf_dir,
+            now_ms=lambda: 1,
+        )
+        second_results = apply_migrations(
+            connection,
+            migrations_dir=RUNTIME_MIGRATIONS_DIR,
+            now_ms=lambda: 2,
+        )
+        rows = connection.execute(
+            "SELECT version, checksum FROM schema_migrations ORDER BY version;"
+        ).fetchall()
+
+        assert all(result.applied for result in first_results)
+        assert all(not result.applied for result in second_results)
+        assert rows[1]["checksum"] == OFFICIAL_V2_NORMALIZED_CHECKSUM
+        assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
+    finally:
+        connection.close()
+
+
 def test_v1_3_to_v1_4_preserves_rows_effect_contracts_and_foreign_keys(
     tmp_path: Path,
 ) -> None:
     v1_3_dir = tmp_path / "v1-3-migrations"
     v1_3_dir.mkdir()
-    runtime_dir = Path("src/google_work_agent/adapters/persistence/migrations")
-    shutil.copyfile(runtime_dir / "0001_initial.sql", v1_3_dir / "0001_initial.sql")
     shutil.copyfile(
-        runtime_dir / "0002_action_effect_send_delete.sql",
+        RUNTIME_MIGRATIONS_DIR / "0001_initial.sql",
+        v1_3_dir / "0001_initial.sql",
+    )
+    shutil.copyfile(
+        RUNTIME_MIGRATIONS_DIR / "0002_action_effect_send_delete.sql",
         v1_3_dir / "0002_action_effect_send_delete.sql",
     )
     connection = connect_sqlite(tmp_path / "upgrade.db")
@@ -294,7 +338,10 @@ def test_failed_migration_rolls_back_without_receipt_or_partial_table(tmp_path: 
 def test_second_migration_failure_preserves_first_migration(tmp_path: Path) -> None:
     migrations_dir = tmp_path / "migrations"
     migrations_dir.mkdir()
-    shutil.copyfile(Path("docs/0001_initial.sql"), migrations_dir / "0001_initial.sql")
+    shutil.copyfile(
+        RUNTIME_MIGRATIONS_DIR / "0001_initial.sql",
+        migrations_dir / "0001_initial.sql",
+    )
     (migrations_dir / "0002_broken.sql").write_text(
         """
         CREATE TABLE second_partial (id INTEGER PRIMARY KEY);
