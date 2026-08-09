@@ -1,8 +1,8 @@
 # 08. Google Work Agent · 시퀀스 설계서
 
-> **문서 기준:** `01. 요구사항 정의서·PRD v2.6`, `01-A. 기능 정의서 v2.5`, `01-B. 정책 정의서 v2.4`, `02. UI·UX 설계서 v2.3`, `03. 시스템 아키텍처 설계서 v2.9`, `04. 도메인·데이터베이스 설계서 Draft v1.10`, `05. Context·Retrieval 설계서 Draft v2.3`, `06. Agent·Workflow 설계서 Draft v5.8`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v2.6`, Domain 상태 전이 계약 v1.3를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
+> **문서 기준:** `01. 요구사항 정의서·PRD v2.6`, `01-A. 기능 정의서 v2.5`, `01-B. 정책 정의서 v2.5`, `02. UI·UX 설계서 v2.3`, `03. 시스템 아키텍처 설계서 v2.9`, `04. 도메인·데이터베이스 설계서 Draft v1.11`, `05. Context·Retrieval 설계서 Draft v2.4`, `06. Agent·Workflow 설계서 Draft v5.9`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v2.7`, Domain 상태 전이 계약 v1.4를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
 
-> **상태:** Draft v2.9  
+> **상태:** Draft v3.0 · **기준일:** 2026-08-09  
 > **대상:** P0 MVP  
 > **구조:** 결정적 Supervisor + 1/3/6 Agent Subgraph Profile + 결정적 실행·검증 Engine  
 > **상태 기준:** SQLite Domain Store가 승인·실행·검증 사실의 기준점이며 LangGraph Checkpoint는 재개 위치, SSE는 UI Projection이다.
@@ -1018,3 +1018,63 @@ sequenceDiagram
 - Agent가 다른 Agent를 직접 호출하지 않는다. 다른 단계가 필요하면 Supervisor에 disposition을 반환한다.
 - 실제 Google Write는 이 시퀀스와 분리된 공통 승인·실행·검증 경로에서만 수행한다.
 
+## 33. Runtime E2E 취소·복구·전달 확실성
+
+### 33.1 Cancel
+
+```text
+사용자 Cancel
+→ API가 command_id / expected_version 검증
+→ RequestCancel
+→ Run CANCEL_REQUESTED
+→ 신규 Claim·Write 차단
+→ 미실행 Action CANCELLED + ACTIVE Approval REVOKED
+→ EXECUTING/EXECUTED는 결과·Verification 확정
+→ UNKNOWN_RESULT가 있으면 RECOVERY_REQUIRED
+→ 모든 in-flight 결과 확정
+→ Plan/Run CANCELLED
+→ 이미 성공한 Write가 있으면 result_kind PARTIAL
+```
+
+취소는 성공한 Google 변경을 rollback하지 않는다.
+
+### 33.2 Insufficient Data
+
+```text
+POLICY/safety-critical required issue → BLOCKED
+USER required issue                  → NEEDS_CONFIRMATION
+GOOGLE required issue + budget       → RETRIEVE_MORE
+budget exhausted + read-only partial → PARTIAL
+Write 필수 정보 부족                 → CONFIRMATION 또는 BLOCKED
+```
+
+모든 Graph Profile은 동일 Supervisor Guard를 사용한다.
+
+### 33.3 Delivery Classification
+
+```text
+MCP/Google Write
+→ NOT_SENT | MAY_HAVE_BEEN_SENT | SENT_RESPONSE_LOST
+→ NOT_SENT만 FAILED 후보
+→ 나머지는 UNKNOWN_RESULT + GET/Search Recovery
+```
+
+### 33.4 Verification MISMATCH
+
+```text
+Verification MISMATCH
+→ Action MISMATCH 보존
+→ Run RECOVERY_REQUIRED
+→ 자동 수정·자동 rollback 금지
+→ ACCEPT_PARTIAL
+   → 미실행 Action CANCELLED
+   → Run COMPLETED + result_kind PARTIAL
+또는
+→ CREATE_CORRECTIVE_PLAN
+   → 실제 Google 상태 재조회
+   → Run PLANNING
+   → 새 Plan Revision
+   → 새 Approval·Claim·Attempt·Verification
+```
+
+기존 MISMATCH Action이나 Approval을 교정 Write에 재사용하지 않는다.

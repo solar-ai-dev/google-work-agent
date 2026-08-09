@@ -1,6 +1,6 @@
 # 01-B. Google Work Agent 정책 정의서
 
-> **상태:** Draft v2.4 · **기준일:** 2026-08-08
+> **상태:** Draft v2.5 · **기준일:** 2026-08-09
 
 ## 0. 사람이 먼저 볼 핵심 정책
 
@@ -388,7 +388,26 @@ System Policy, 사용자 요청, Source Context를 Prompt에서 명확히 분리
 
 ### POL-VER-003 불일치 처리
 
-Mismatch를 자동 수정하지 않고 사용자에게 차이와 Recovery Action을 보여준다.
+Mismatch를 자동 수정하지 않고 사용자에게 차이와 Recovery Action을 보여준다. `MISMATCH` Action과 Verification 사실은 변경하지 않으며 Run은 `RECOVERY_REQUIRED`로 전환한다.
+
+### POL-VER-004 MISMATCH Recovery 선택
+
+P0에서 Verification `MISMATCH`를 해소하는 사용자 선택은 다음 두 가지로 제한한다.
+
+- `ACCEPT_PARTIAL`: 현재 Google 실제 상태와 기존 `MISMATCH`를 보존하고 추가 Write 없이 종료한다. 미실행 Action은 취소 처리하며 Run은 `COMPLETED`, 결과 분류는 `PARTIAL`이다.
+- `CREATE_CORRECTIVE_PLAN`: 실제 Google 상태를 최신 Source Snapshot으로 재조회하고 같은 Run에서 새 Plan Revision을 만든다. 기존 MISMATCH Action·Approval·Attempt·Verification을 재사용하지 않는다.
+
+교정 Write는 반드시 새 Domain Validation → 새 Approval → 새 Claim → 새 ExecutionAttempt → 새 Verification 경계를 통과한다. 기존 MISMATCH Action을 `EXECUTING`으로 되돌리거나 자동 수정·자동 Rollback하지 않는다. 전체 Run 중단은 Recovery 선택이 아니라 별도 Cancel Command로 처리한다.
+
+### POL-VER-005 Write 전달 확실성
+
+Write 실패 분류는 Exception 이름이 아니라 외부 시스템 전달 가능성을 기준으로 한다.
+
+- `NOT_SENT`: Google 변경이 발생하지 않았음을 확정할 수 있는 경우에만 `FAILED` 후보가 된다.
+- `MAY_HAVE_BEEN_SENT`: 요청이 전달됐을 가능성이 있으면 `UNKNOWN_RESULT`로 처리한다.
+- `SENT_RESPONSE_LOST`: 요청 전달 후 응답만 유실된 경우 `UNKNOWN_RESULT`로 처리한다.
+
+Dispatch 이후 Timeout·5xx·Transport Disconnect를 Provider가 미전달로 보장하지 않는 한 `FAILED`로 단정하지 않는다.
 
 ## 18. 데이터 보존 정책
 
@@ -617,6 +636,10 @@ Local API 오류는 `error_code`, `user_message`, `retryable`, `current_state`, 
 #### POL-APIX-004 Frontend 비신뢰
 
 React Client State, Browser Storage, URL Parameter와 SSE Payload는 Domain 사실의 기준점이 아니다. 승인·실행·검증 여부는 Local Agent Service가 Domain Store에서 다시 확인한다.
+
+#### POL-APIX-005 상태 변경 권위 Metadata
+
+브라우저는 사용자 의도와 낙관적 동시성에 필요한 `command_id`, 대상 ID, `expected_version`, 허용된 사용자 입력만 전달한다. `request_hash`, `approval_id`, Write `idempotency_key`, `source_snapshot`, 승인 주체, `canonical_arguments_hash`, `claim_token`은 Application·Domain이 현재 상태에서 생성·검증하며 Browser 입력을 실행 권위로 신뢰하지 않는다. `request_hash`는 Endpoint별 Versioned Request Schema를 Canonical JSON으로 정규화한 뒤 서버에서 계산한다.
 
 ### 23.3 SQLite 동시성·트랜잭션 정책
 

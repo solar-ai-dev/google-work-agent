@@ -1,6 +1,6 @@
 # Google Work Agent · Code Agent Start Here
 
-> **Source Pack:** R8.3 · 2026-08-08  
+> **Source Pack:** R8.3 Runtime E2E Canonical · 2026-08-09  
 > **목적:** 구현·검수 Agent가 프로젝트 계약과 실제 소스의 차이를 빠르게 파악하고, 안전 경계를 훼손하지 않은 채 작업하도록 한다.
 
 ## 1. 최초 읽기 순서
@@ -16,7 +16,7 @@
 → 04-domain-database-design.md
 → 0001_initial.sql
 → 0002_action_effect_send_delete.sql
-→ state-transition-contract-v1.3.md
+→ state-transition-contract-v1.4.md
 → 06-agent-workflow.md
 → 07-tool-mcp-internal-interface.md
 → 12-test-design.md
@@ -92,7 +92,7 @@ ruff format --check src tests
 
 - Web GPT Canonical Pack은 **25개 파일**이며, Repository 전체 문서 Pack은 여기에 설명 문서 `00-A/B/C` 3개를 더한 **28개 파일**이다.
 - 현재 Pack에는 별도 `SOURCE-PACK-MANIFEST.json` 또는 `SHA256SUMS.txt`를 포함하지 않는다. 무결성 검사가 필요하면 Repository CI에서 생성한다.
-- R8.3 Pack은 2026-08-08 Agent Subgraph 정의와 E06-A/B 실험 계약까지 반영한다.
+- R8.3 Runtime E2E Pack은 2026-08-09 Agent Subgraph 계약에 더해 Cancel·API Trust Boundary·Insufficient Data Guard·MISMATCH Recovery·Write Delivery Classification을 반영한다.
 
 ## 8. Write·Recovery 구현 불변조건
 
@@ -125,3 +125,12 @@ ruff format --check src tests
 - Acquisition Gold의 Budget 수치는 ceiling이다. 더 적은 호출로 성공한 결과를 exact mismatch로 실패 처리하지 않는다.
 - Product Prompt에 Gold·Grader·expected route를 주입하지 않는다.
 - 활성 기준은 Grader Registry v0.4, Scoring Contract v1.1이다.
+## 10. Runtime E2E 구현 기준
+
+- Canonical DB target은 v1.4다. 기존 `0001`/`0002`는 이력으로 보존하고 Action `CANCELLED` CHECK 확장은 새 Migration으로 구현한다.
+- Cancel Command의 Command Receipt/expected_version 판정 전에 Approval·Plan·Action을 변경하지 않는다.
+- Browser 제공 `request_hash`, `approval_id`, idempotency key, source snapshot, actor identity를 authority로 사용하지 않는다.
+- 모든 Profile은 05/06의 동일 insufficient-data Supervisor Guard를 사용한다.
+- `MISMATCH` Action은 immutable이며 `ACCEPT_PARTIAL | CREATE_CORRECTIVE_PLAN` 외 임의 recovery choice를 만들지 않는다.
+- Adapter는 `delivery_certainty`를 보존하며 dispatch 이후 Timeout을 무조건 미전달로 분류하지 않는다.
+- Gmail SEND와 Calendar DELETE는 승인 → Claim Commit → Write → SENT_LOOKUP/GET_ABSENT Verification 전체 경로가 있어야 완료다.

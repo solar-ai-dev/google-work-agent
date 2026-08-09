@@ -52,31 +52,31 @@
 
 ## 문서 버전 Manifest
 
-> **기준일:** 2026-08-08 · **R8.3 Gold·Scoring·Human Readability Patch** · **공식 원본:** Notion · **이 파일:** R8.3 Repository Export Snapshot
+> **기준일:** 2026-08-09 · **R8.3 Runtime E2E Canonical** · **공식 원본:** Notion · **이 파일:** Repository Export Snapshot
 
 | 문서 | 공식 버전 |
 |---|---:|
 | 00 프로젝트 개요 | v1.4 |
 | 01 PRD | v2.6 |
 | 01-A 기능 정의 | v2.5 |
-| 01-B 정책 정의 | v2.4 |
+| 01-B 정책 정의 | v2.5 |
 | 02 UI·UX | v2.3 |
 | 03 시스템 아키텍처 | v2.9 |
-| 04 Domain·DB | v1.10 |
-| Domain DB Schema | v1.3 (`0001` v1.2 + `0002`) |
-| 05 Context·Retrieval | v2.3 |
-| 06 Agent·Workflow | v5.8 |
-| 07 Tool·MCP·Interface | v2.6 |
-| 08 Sequence | v2.9 |
-| 09 Security·Auth | v2.2 |
+| 04 Domain·DB | v1.11 |
+| Domain DB Schema | v1.4 (Repository baseline v1.3 + Action `CANCELLED` Migration 필요) |
+| 05 Context·Retrieval | v2.4 |
+| 06 Agent·Workflow | v5.9 |
+| 07 Tool·MCP·Interface | v2.7 |
+| 08 Sequence | v3.0 |
+| 09 Security·Auth | v2.3 |
 | 10 Infrastructure | v2.5 |
 | 11 Observability | v2.8 |
-| 12 Test | v2.9 |
+| 12 Test | v3.0 |
 | 13 Evaluation | v3.0 |
-| 14 Operations | v2.3 |
+| 14 Operations | v2.4 |
 | 15 Agent Capability·Failure·Prompt | v1.4 |
-| Domain 상태 전이 계약 | v1.3 |
-| 상태 전이 테스트 매트릭스 | v1.3 |
+| Domain 상태 전이 계약 | v1.4 |
+| 상태 전이 테스트 매트릭스 | v1.4 |
 
 ## Agent Graph 결정 원칙
 
@@ -163,7 +163,7 @@ prompts/agent/
 - Google Write는 실행 Claim 후 발급되는 짧은 수명의 1회용 `claim_token`을 MCP가 재검증한다.
 - 인증 전 Endpoint는 `/health/live`, `/health/ready`, `/api/v1/session/bootstrap`, 일시적 OAuth Loopback Callback으로 제한한다.
 - 평가 연결 단위는 `experiment_id`, `evaluation_item_id`, `case_id`, `user_prompt_id`, `fixture_snapshot_id`, `candidate_config_hash`, `prompt_id`다.
-- 현행 DB 기준은 Schema v1.3(`0001_initial.sql` v1.2 baseline + `0002_action_effect_send_delete.sql`), 상태 전이 기준은 v1.3이다.
+- Repository DB baseline은 Schema v1.3(`0001_initial.sql` v1.2 + `0002_action_effect_send_delete.sql`)이며 Runtime E2E Canonical target은 Action `CANCELLED` Migration 적용 후 v1.4, 상태 전이 기준은 v1.4다.
 
 
 ## 현재 구현 정합성 핵심
@@ -176,3 +176,10 @@ prompts/agent/
 - Safety는 Hard Gate이며 Cost·Latency가 실패를 보상하지 않는다.
 
 세부 변경 이력은 Notion `99. 변경 이력 · 아카이브`와 Repository Full Docs의 `99-change-history-archive.md`에서만 관리한다.
+## Runtime E2E Canonical 핵심
+
+- Cancel: `CANCEL_REQUESTED` 후 신규 Claim·Write 금지, 미실행 Action `CANCELLED`, 성공 Write rollback 금지.
+- API Trust Boundary: Browser는 사용자 의도만 전달하며 request hash·approval/write authority metadata는 서버가 생성한다.
+- Insufficient Data: safety/POLICY → BLOCK, USER → confirmation, GOOGLE+budget → retrieve, Read-only budget 소진 + 근거 있음 → partial.
+- MISMATCH: Action/Verification 보존 + Run `RECOVERY_REQUIRED`; `ACCEPT_PARTIAL | CREATE_CORRECTIVE_PLAN`.
+- Delivery: `NOT_SENT | MAY_HAVE_BEEN_SENT | SENT_RESPONSE_LOST`; 미전달 확정이 아니면 UNKNOWN_RESULT.

@@ -1,6 +1,6 @@
 # 05. Google Work Agent · Context · Retrieval 설계서
 
-> **상태:** Draft v2.3 · **기준일:** 2026-08-08 · **대상:** P0 MVP
+> **상태:** Draft v2.4 · **기준일:** 2026-08-09 · **대상:** P0 MVP
 >
 > API 탐색·수집 Agent와 Context Retriever Agent를 분리한다. Google 원본을 요청 시점에 검색하고 Metadata로 후보를 줄인 뒤 필요한 상세만 읽는다.
 
@@ -287,3 +287,33 @@ class QueryAttempt:
 - 동명이인·복수 Resource·저신뢰 후보처럼 검색 후 드러나는 모호성은 후보·차이와 함께 `NEEDS_CONFIRMATION`으로 보낸다.
 - 전체 Mailbox·장기간 무제한 원문·모든 Workspace Source 전체 조회는 `BLOCKED`다.
 - Calendar 시간 overlap은 conflict와 분리하며 관계 근거를 Work Analysis에 전달한다.
+
+## 18. 정보 부족 분류와 결정적 종료 Guard
+
+### 18.1 Sufficiency Issue
+
+Context 충분성 결과는 단순 confidence 값이 아니라 부족·충돌 항목의 해결 출처와 안전 중요도를 구조화한다.
+
+```python
+class SufficiencyIssue:
+    slot: str
+    issue_type: Literal["MISSING", "CONFLICT"]
+    required: bool
+    resolution_source: Literal["USER", "GOOGLE", "POLICY"]
+    safety_critical: bool
+    reason_codes: list[str]
+```
+
+`SufficiencyResult`의 다음 Schema Version은 `issues: list[SufficiencyIssue]`를 포함한다. 기존 `missing_slots`, `conflicting_slots`는 Projection·호환용으로 유지할 수 있으나 Supervisor routing의 권위 입력은 구조화된 `issues`다.
+
+### 18.2 결정적 종료 Guard
+
+모든 Graph Profile은 Agent가 제안한 disposition을 그대로 실행하지 않고 같은 Supervisor Guard를 통과한다. 우선순위는 다음과 같다.
+
+1. `required=true`이면서 `safety_critical=true` 또는 `resolution_source=POLICY`인 항목이 남아 있으면 `BLOCKED`.
+2. 필요한 항목 중 `resolution_source=USER`가 있으면 추가 Google 조회보다 `NEEDS_CONFIRMATION`을 우선한다.
+3. 필요한 항목 중 `resolution_source=GOOGLE`이 있고 Acquisition Budget이 남아 있으면 `NEEDS_MORE_DATA`.
+4. Budget이 소진됐고 요청이 Read-only이며 현재 Evidence만으로 사실을 과장하지 않는 부분 답변이 가능하면 `PARTIAL`.
+5. Budget이 소진됐고 Write의 Target·필수 Argument·승인 근거가 부족하면 사용자에게 정당하게 물을 수 있는 경우 `NEEDS_CONFIRMATION`, 그렇지 않으면 `BLOCKED`.
+
+LLM confidence 숫자 하나만으로 안전 Route를 결정하지 않는다. `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE`은 동일한 Guard와 동일한 Budget 의미를 사용한다.

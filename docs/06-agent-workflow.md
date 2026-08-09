@@ -1,8 +1,8 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.6`, `01-A v2.5`, `01-B v2.4`, `02 UI·UX v2.3`, `03 Architecture v2.9`, `04 Database v1.10`, `05 Retrieval v2.3`, `07 Interface v2.6`, Domain 상태 전이 계약 v1.3과 테스트 매트릭스 v1.3을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.6`, `01-A v2.5`, `01-B v2.5`, `02 UI·UX v2.3`, `03 Architecture v2.9`, `04 Database v1.11`, `05 Retrieval v2.4`, `07 Interface v2.7`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v5.8 · **DB Schema:** v1.3 · **대상:** P0 MVP
+> **상태:** Draft v5.9 · **DB Schema:** v1.4 · **대상:** P0 MVP
 >
 > 결정적 Supervisor + 최대 6개 전문 Agent Subgraph Baseline + 결정적 실행·검증 Engine을 사용한다. 각 Agent Subgraph는 invocation 범위 Local State와 bounded validation·repair/revision loop를 가지며 Typed Result만 Main Graph에 반환한다. Agent별 장기 Memory는 없고 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -510,3 +510,30 @@ Prompt는 Base Role Contract, Node Purpose, Failure-specific Block, Allowed Chan
 분석 후 관계/충돌 불명 → Work Analysis → NEEDS_CONFIRMATION
 ```
 모든 경로는 `request_understanding.clarify`에서 후보·차이·선택지를 만들고 같은 Run·Thread를 Resume한다. Request Understanding이 검색 전부터 후보 수를 안다고 가정하지 않는다.
+
+## 19. 정보 부족 Supervisor Guard
+
+Agent의 `NEEDS_MORE_DATA`, `NEEDS_CONFIRMATION`, `PARTIAL`, `BLOCKED`는 제안 결과이며 최종 Route는 결정적 Supervisor가 `05`의 `SufficiencyIssue` 계약으로 확정한다.
+
+```text
+required POLICY/safety-critical issue
+→ BLOCKED
+
+required USER issue
+→ NEEDS_CONFIRMATION
+
+required GOOGLE issue + acquisition budget 남음
+→ RETRIEVE_MORE
+
+budget exhausted + read-only + evidence-supported partial 가능
+→ PARTIAL
+
+budget exhausted + Write 필수 Target/Argument/Evidence 부족
+→ USER가 해결 가능한 경우 NEEDS_CONFIRMATION
+→ 그 외 BLOCKED
+```
+
+- Profile별로 별도 휴리스틱을 두지 않는다.
+- LLM confidence 하나로 안전 Route를 결정하지 않는다.
+- `PARTIAL`은 근거가 있는 Read-only 응답의 축약 완료이며 Write 필수 정보 부족을 우회하는 수단이 아니다.
+- `NEEDS_CONFIRMATION`은 같은 Run·Thread의 typed Interrupt로 재개한다.

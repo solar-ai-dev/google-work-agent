@@ -1,7 +1,7 @@
 # Implementation and Experiment Checklist
 
 ## 구현 Gate
-- [ ] State Transition v1.3 구현
+- [ ] State Transition v1.4 구현
 - [ ] SQLite Migration 및 Constraint 테스트
 - [ ] Command Receipt 멱등성
 - [ ] Approval Snapshot과 Arguments Hash
@@ -14,18 +14,36 @@
 
 - [ ] Agent 정의: Main Graph가 호출하는 독립 LangGraph Subgraph
 - [ ] AgentLocalState invocation isolation
-- [x] SINGLE=1 / THREE=3 / SIX=6 Agent Subgraph topology test
+- [ ] SINGLE=1 / THREE=3 / SIX=6 Agent Subgraph topology test
 - [ ] Agent→Agent 직접 호출 0
 - [ ] Agent 내부 bounded Schema Repair / Semantic Revision loop
 - [ ] Agent invocation count와 LLM call count 분리 Trace
 - [ ] Acquisition Subgraph 내부 결정적 Read Node + invocation continuity
 - [ ] SINGLE Unified Agent integrated self-review
-- [x] E06-B `CONTEXT_READY_V1` / 동일 `context_snapshot_id` Replay (Google Read 0)
-- [x] E06-B B1/B2/B3 post-retrieval topology test
+- [ ] E06-B `CONTEXT_READY_V1` / 동일 `context_snapshot_id` Replay (Google Read 0)
+- [ ] E06-B B1/B2/B3 post-retrieval topology test
 - [ ] Prompt Runtime Slot Key에서 `failure_reason_code` 제외 + Failure Block assembly metadata 검증
-- [x] `prompt_semantic_bundle_version` parity lock
-- [x] Handoff required-field / Evidence ID / constraint preservation grader
-- [x] `evaluation_environment_hash`로 Hardware·Concurrency·Timeout 조건 고정
+- [ ] `prompt_semantic_bundle_version` parity lock
+- [ ] Handoff required-field / Evidence ID / constraint preservation grader
+- [ ] `evaluation_environment_hash`로 Hardware·Concurrency·Timeout 조건 고정
+
+## Runtime E2E Canonical 구현 Gate
+- [ ] Domain DB Schema v1.4 Migration: Action `CANCELLED` CHECK 확장 + foreign_key_check
+- [ ] Cancel Command Receipt/expected_version 판정 전 child mutation 0
+- [ ] `CANCEL_REQUESTED` 이후 신규 Claim·Google Write 0
+- [ ] 미실행 Action → `CANCELLED`, ACTIVE Approval → REVOKED, 새 Attempt·Verification 0
+- [ ] Cancel 중 EXECUTING/EXECUTED/UNKNOWN_RESULT 결과 확정 후 finalize
+- [ ] Browser 제공 `request_hash`·Approval authority metadata 신뢰 0
+- [ ] confirm/cancel/resume/prepare-retry/resolve-recovery Versioned API Contract
+- [ ] SINGLE/THREE/SIX 동일 insufficient-data Supervisor Guard
+- [ ] `MISMATCH → RECOVERY_REQUIRED`
+- [ ] `ACCEPT_PARTIAL` 추가 Write 0 + result_kind PARTIAL
+- [ ] `CREATE_CORRECTIVE_PLAN` 새 Plan Revision + 새 Approval·Claim·Attempt
+- [ ] Adapter `delivery_certainty = NOT_SENT | MAY_HAVE_BEEN_SENT | SENT_RESPONSE_LOST`
+- [ ] dispatch 이후 Timeout/5xx/response loss UNKNOWN_RESULT Failure Injection
+- [ ] Gmail SEND Runtime + SENT_LOOKUP
+- [ ] Calendar DELETE Runtime + GET_ABSENT
+- [ ] Runtime E2E: Read-only / Write / reject / cancel / UNKNOWN_RESULT / MISMATCH / restart-resume
 
 ## Dataset·Grader 준비 Gate
 - [ ] BTS split별 numerator/denominator + Holdout 반복 일관성 보고
@@ -57,8 +75,8 @@
 - [ ] E03 Node 단독·Handoff 오류 전파 + Error Propagation Matrix
 - [ ] E04 Source Acquisition·Read Tool Trajectory
 - [ ] E05 Retrieval·Evidence·Context Budget
-- [x] E06-A Agent Subgraph Native Architecture Ablation
-- [x] E06-B Controlled Post-Retrieval Decomposition
+- [ ] E06-A Agent Subgraph Native Architecture Ablation
+- [ ] E06-B Controlled Post-Retrieval Decomposition
 - [ ] E07 Routing·Agent Skip
 - [ ] E08 Review Agent 기여도 (catch / false-block / over-correction / cost)
 

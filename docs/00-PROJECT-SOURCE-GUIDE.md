@@ -33,23 +33,23 @@ Prompt·Failure 정규화   → 15 (01/04/05/06/07을 완화하지 않음)
 
 - PRD v2.6
 - Functional v2.5
-- Policy v2.4
+- Policy v2.5
 - UI·UX v2.3
 - Architecture v2.9
-- Domain·DB v1.10 / DB Schema v1.3
-- Retrieval v2.3
-- Workflow v5.8
-- Interface v2.6
-- Sequence v2.9
-- Security v2.2
+- Domain·DB v1.11 / DB Schema v1.4
+- Retrieval v2.4
+- Workflow v5.9
+- Interface v2.7
+- Sequence v3.0
+- Security v2.3
 - Infrastructure v2.5
 - Observability v2.8
-- Test v2.9
+- Test v3.0
 - Evaluation v3.0
-- Operations v2.3
+- Operations v2.4
 - Agent Capability Contract v1.4
-- Domain State Transition v1.3
-- State Transition Test Matrix v1.3
+- Domain State Transition v1.4
+- State Transition Test Matrix v1.4
 
 ## 평가·실험 핵심 결정
 
@@ -82,7 +82,7 @@ Prompt·Failure 정규화   → 15 (01/04/05/06/07을 완화하지 않음)
 
 현재 DB·Effect 계약은 승인형 `SEND | DELETE`, Task 완료·Calendar 참석자 UPDATE, Clarification UX, 과도 조회 BLOCK, Calendar overlap 관계 판정, External I/O↔SQLite Transaction 분리, Recovery Domain Command 경계를 포함한다.
 
-`0001_initial.sql`은 Schema v1.2 baseline으로 보존하고 `0002_action_effect_send_delete.sql` 적용 후 Domain DB Schema v1.3을 사용한다. 실제 Windows Repository 반영 여부는 이 Export Snapshot과 별도로 검증한다.
+`0001_initial.sql`은 Schema v1.2 baseline, `0002_action_effect_send_delete.sql` 적용 후 Repository baseline은 v1.3이다. Runtime E2E Canonical은 Action `CANCELLED` CHECK 확장을 포함하는 다음 Migration 적용 후 Domain DB Schema v1.4를 사용한다. 이 Source Pack에는 아직 구현되지 않은 Migration을 임의 생성하지 않으며 Repository 작업에서 추가한다.
 ## R8.3 Gold·Scoring 핵심 정의
 
 - Canonical Gold는 `CanonicalCaseV5`, E2E는 `E2EProjectionV3`를 사용한다.
@@ -104,4 +104,10 @@ Prompt·Failure 정규화   → 15 (01/04/05/06/07을 완화하지 않음)
 - SINGLE/THREE/SIX는 1/3/6 Agent Subgraph 구조이며 LLM Call 수가 아니다.
 - E06-A는 실제 1/3/6 native architecture를 비교한다.
 - E06-B는 `CONTEXT_READY_V1` 이후의 post-retrieval reasoning을 B1(1)/B2(2)/B3(3) Agent Subgraph로 통제 비교한다.
+## Runtime E2E Canonical 추가 기준
 
+- Cancel은 `CANCEL_REQUESTED` 이후 새 Claim·Write를 금지하고 미실행 Action을 `CANCELLED`로 처리한다. in-flight Write는 결과를 먼저 확정하며 성공 Write를 rollback하지 않는다.
+- `request_hash`와 Approval/Write authority metadata는 Browser 입력이 아니라 Application·Domain이 생성·검증한다.
+- 정보 부족은 `POLICY/safety → BLOCKED`, `USER → NEEDS_CONFIRMATION`, `GOOGLE+budget → RETRIEVE_MORE`, Read-only budget 소진 시 근거 있는 경우에만 `PARTIAL` 순으로 결정한다.
+- Verification MISMATCH는 Run `RECOVERY_REQUIRED`; P0 선택은 `ACCEPT_PARTIAL | CREATE_CORRECTIVE_PLAN`이다.
+- Write Adapter는 `NOT_SENT | MAY_HAVE_BEEN_SENT | SENT_RESPONSE_LOST`를 보존하며 `NOT_SENT`만 FAILED 후보로 인정한다.

@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.6`, `01-A v2.5`, `01-B v2.4`, `02 UI·UX v2.3`, `03 Architecture v2.9`, `04 Database v1.10`, `05 Retrieval v2.3`, `06 Workflow v5.8`, `07 Interface v2.6`, `08 Sequence v2.9`, `09 Security v2.2`, `10 Infrastructure v2.5`, `11 Observability v2.8`, Domain 상태 전이 계약 v1.3과 테스트 매트릭스 v1.3을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.6`, `01-A v2.5`, `01-B v2.5`, `02 UI·UX v2.3`, `03 Architecture v2.9`, `04 Database v1.11`, `05 Retrieval v2.4`, `06 Workflow v5.9`, `07 Interface v2.7`, `08 Sequence v3.0`, `09 Security v2.3`, `10 Infrastructure v2.5`, `11 Observability v2.8`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v2.9 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.0 · **기준일:** 2026-08-09 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -388,3 +388,46 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 | `TST-EVAL-213` | Environment lock | 비교 후보의 `evaluation_environment_hash`가 의도한 독립변수 외 조건에서 동일 |
 | `TST-HANDOFF-214` | Handoff fidelity | Required Field·Evidence ID·Constraint 보존 및 contradiction introduction 측정 |
 
+## 21. Runtime E2E Canonical Contract 회귀
+
+### 21.1 Cancel
+
+- Version conflict 또는 같은 `command_id`의 다른 Hash에서는 Approval·Plan·Action 변경 0.
+- 취소 수락 후 신규 Claim·Google Write 0.
+- 미실행 `PROPOSED | MODIFIED | APPROVED | EXPIRED` Action은 `CANCELLED`; ACTIVE Approval은 REVOKED; 새 Attempt·Verification 0.
+- `EXECUTING` 취소는 결과 확정 전 상태를 덮어쓰지 않는다.
+- `UNKNOWN_RESULT` 취소는 Run `RECOVERY_REQUIRED`; blind resend 0.
+- 일부 Write 성공 후 취소는 Run `CANCELLED`, result_kind `PARTIAL`, rollback 0.
+
+### 21.2 Runtime API Trust Boundary
+
+- 같은 `command_id + canonical request hash` replay는 기존 결과 반환.
+- 같은 `command_id + 다른 canonical hash`는 `409`, Domain mutation 0.
+- Browser 제공 `request_hash`, `approval_id`, idempotency key, source snapshot, actor identity를 authority로 사용하지 않음.
+- confirm/cancel/resume/prepare-retry/resolve-recovery의 Versioned Request Schema와 state precondition Contract Test.
+- arbitrary resume payload 차단.
+
+### 21.3 Insufficient Data Guard
+
+- required safety/POLICY issue → `BLOCKED`.
+- required USER issue → `NEEDS_CONFIRMATION`.
+- required GOOGLE issue + budget → `NEEDS_MORE_DATA`/`RETRIEVE_MORE`.
+- budget exhausted + evidence-supported read-only → `PARTIAL`.
+- Write 필수 Target/Argument/Evidence 부족은 PARTIAL로 우회하지 않음.
+- SINGLE/THREE/SIX 동일 fixture에서 동일 semantic route 판정.
+
+### 21.4 MISMATCH Recovery
+
+- `MISMATCH` 기록 후 Run `RECOVERY_REQUIRED`, 기존 Verification append-only 유지.
+- `ACCEPT_PARTIAL`은 추가 Write 0, 미실행 Action `CANCELLED`, Run `COMPLETED` + result_kind `PARTIAL`.
+- `CREATE_CORRECTIVE_PLAN`은 Run `PLANNING`, 새 Plan Revision, 기존 MISMATCH Action·Approval·Attempt 재사용 0.
+- 교정 Write는 새 Approval → Claim → Attempt → Verification 필요.
+
+### 21.5 Delivery Certainty Failure Injection
+
+- validation/preflight/dispatch 전 확정 실패 → `NOT_SENT`; FAILED 가능.
+- dispatch 이후 Timeout → `MAY_HAVE_BEEN_SENT`; `UNKNOWN_RESULT`.
+- 5xx에서 미전달 보장 없음 → `UNKNOWN_RESULT`.
+- response loss → `SENT_RESPONSE_LOST`; `UNKNOWN_RESULT`.
+- MCP process exit에서 dispatch 여부 불명 → `UNKNOWN_RESULT`.
+- 모든 UNKNOWN_RESULT case에서 새 Attempt·blind resend 0.

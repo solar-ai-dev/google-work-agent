@@ -1,11 +1,11 @@
 # 07. Google Work Agent · Tool · MCP · 내부 인터페이스 명세서
 
-> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v5.8`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, MCP Tool, Python 내부 인터페이스 계약을 정의한다.
+> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v5.9`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, MCP Tool, Python 내부 인터페이스 계약을 정의한다.
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.6
-- **기준일:** 2026-08-08
+- **상태:** Draft v2.7
+- **기준일:** 2026-08-09
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
 
@@ -72,7 +72,32 @@ Windows Installer
 | Resource | `GET /api/v1/resources/gmail\|tasks\|calendar` | Sidebar 목록·검색·Page Token 조회 |
 | Event | `GET /api/v1/runs/{run_id}/events` | SSE 진행 Projection |
 
-### 3.3 SSE 계약
+### 3.3 상태 변경 API 입력 소유권
+
+브라우저는 사용자 의도와 낙관적 동시성에 필요한 값만 보낸다. Domain 권위 Metadata는 Application이 현재 Domain 상태에서 생성·검증한다.
+
+- Client 입력 허용: `command_id`, 대상 ID, `expected_version`, 사용자 선택·텍스트·수정하려는 허용 필드.
+- Server 생성·검증: `request_hash`, `approval_id`, Write `idempotency_key`, `source_snapshot`, 승인 주체 식별, `canonical_arguments_hash`, `claim_token`.
+- `request_hash`는 수신 JSON을 그대로 Hash하지 않고 Endpoint별 Versioned Request Schema를 Canonical JSON으로 정규화한 뒤 Application Dispatcher가 SHA-256으로 계산한다. 같은 `command_id + request_hash`는 기존 Result를 반환하고 같은 `command_id + 다른 hash`는 Conflict다.
+- Local Session이 승인 주체의 기준이며 Browser가 actor identity를 지정하지 않는다.
+- Browser가 보낸 Approval·Source Snapshot·Arguments Hash·Idempotency Key를 실행 권위로 사용하지 않는다.
+
+| Endpoint | Request Schema | 핵심 입력 | Domain/Application 매핑 |
+|---|---|---|---|
+| `POST /api/v1/runs/{run_id}/confirm` | `ConfirmationResponseV1` | `command_id`, `expected_version`, `interrupt_id`, `response_kind`, option 또는 free text | 확인 응답 저장 후 same-thread resume. 임의 resume payload 금지 |
+| `POST /api/v1/actions/{action_id}/approve` | `ApproveActionRequestV2` | `command_id`, `expected_version` | 서버가 최신 Action·Source·Policy·Tool Schema에서 Approval Snapshot·ID·Idempotency Key 생성 |
+| `POST /api/v1/actions/{action_id}/modify` | `ModifyActionRequestV2` | `command_id`, `expected_version`, 허용된 `arguments_patch` | `ModifyAction`; 기존 ACTIVE Approval revoke |
+| `POST /api/v1/actions/{action_id}/reject` | `RejectActionRequestV2` | `command_id`, `expected_version`, optional reason | `RejectAction` |
+| `POST /api/v1/actions/{action_id}/prepare-retry` | `PrepareRetryRequestV2` | `command_id`, `expected_version` | `FAILED → MODIFIED`; 새 Approval Metadata는 서버가 이후 생성 |
+| `POST /api/v1/runs/{run_id}/cancel` | `CancelRunRequestV2` | `command_id`, `expected_version`, optional reason | `RequestCancel`; Version/Receipt 판정 후에만 child mutation |
+| `POST /api/v1/runs/{run_id}/resume` | `ResumeRunRequestV2` | `command_id`, `expected_version`, `resume_kind` | `REAUTH_COMPLETED | SAFE_CHECKPOINT_RESUME | RECOVERY_RECHECK`만 허용. Confirmation/Approval은 전용 Endpoint 사용 |
+| `POST /api/v1/runs/{run_id}/resolve-recovery` | `ResolveRecoveryRequestV1` | `command_id`, `expected_version`, `action_id`, `resolution_kind` | Recovery reason별 허용 Enum만 `ResolveRecovery`로 전달 |
+
+공통 오류: Version/Command Hash 충돌은 `409`, Schema·허용 Enum·상태 precondition 위반은 `422`, 필요한 Local Runtime·MCP·Google 상태가 일시적으로 준비되지 않으면 `503`을 사용한다. 실패 응답 자체가 Domain 사실을 임의 변경하지 않는다.
+
+Verification MISMATCH의 `resolution_kind`는 `ACCEPT_PARTIAL | CREATE_CORRECTIVE_PLAN`이다. 일반 취소는 `/cancel`을 사용한다.
+
+### 3.4 SSE 계약
 
 Event 예:
 
@@ -180,38 +205,6 @@ ActionPlanDraft
 PlanReviewResult
 ```
 
-`PlanReviewResultV1` exact typed contract:
-
-```text
-schema_version: 1
-status: PASS | REVISE | RETRIEVE_MORE | CONFIRM | BLOCK
-summary: string
-issues: ReviewIssueV1[]
-confirmation: object | null
-blockers: string[]
-additional_acquisition_request: object | null
-```
-
-Invariant:
-
-```text
-PASS           -> issues=[], confirmation=null, blockers=[], additional_acquisition_request=null
-REVISE         -> issues required
-RETRIEVE_MORE  -> issues required, additional_acquisition_request required
-CONFIRM        -> confirmation required
-BLOCK          -> blockers required
-```
-
-Parent Supervisor consumption:
-
-```text
-PASS           -> DOMAIN_VALIDATION
-REVISE         -> PLANNING revision
-RETRIEVE_MORE  -> ACQUISITION re-entry
-CONFIRM        -> WAITING_CONFIRMATION
-BLOCK          -> terminal block path
-```
-
 `RoutingDecision`은 Agent Output이 아니라 결정적 Supervisor의 결과다. Agent는 다음 Agent를 직접 선택·호출하지 않고 자신의 Typed Result와 disposition을 반환한다.
 
 경계:
@@ -231,6 +224,7 @@ BLOCK          -> terminal block path
 - MCP Server는 LLM·LangGraph·Domain 상태 전이를 포함하지 않는다.
 - MCP 종료 시 Local Service가 최대 1회 재시작하고 Tool 목록·Schema Version을 다시 검증한다.
 - Write 전달 가능성이 있으면 자동 재전송하지 않고 `UNKNOWN_RESULT`로 전환한다.
+- MCP Client Adapter는 실패를 단순 Timeout/Error Name이 아니라 `delivery_certainty`와 함께 반환한다. `NOT_SENT | MAY_HAVE_BEEN_SENT | SENT_RESPONSE_LOST`를 사용하며 `NOT_SENT`만 Google 변경이 없다고 확정할 수 있다.
 
 ## 7. Gmail Tool
 
@@ -732,3 +726,24 @@ Parent Graph State
 - Agent 내부에서 사용할 수 있는 재호출은 PromptRef 기반 bounded Schema Repair·Semantic Revision에 한정한다.
 - Agent Subgraph는 MCP/Google Write Port를 직접 받지 않는다.
 - 실제 Google Read가 필요한 Acquisition 경로는 Subgraph 내부에서 `SourceFetchPlan`을 결정적 Query Builder에 넘기고 MCP Read Port를 실행한 뒤, 같은 invocation에서 `AcquisitionResult`까지 확정해 Parent에 반환한다.
+
+## 30. Write Delivery Classification
+
+Write Adapter와 MCP Port는 Error Code와 함께 전달 확실성을 보존한다.
+
+```text
+NOT_SENT
+MAY_HAVE_BEEN_SENT
+SENT_RESPONSE_LOST
+```
+
+| 실패 시점 | delivery_certainty | Domain 결과 |
+|---|---|---|
+| Schema/Policy/Preflight 실패, dispatch 전 process unavailable | `NOT_SENT` | `FAILED` 가능, 자동 Write 재실행은 하지 않고 retry 준비 계약 사용 |
+| connect/transport 오류에서 실제 dispatch 여부를 증명할 수 없음 | `MAY_HAVE_BEEN_SENT` | `UNKNOWN_RESULT` |
+| request bytes dispatch 후 Timeout | `MAY_HAVE_BEEN_SENT` | `UNKNOWN_RESULT` |
+| Provider 5xx에서 미전달 보장이 없음 | `MAY_HAVE_BEEN_SENT` | `UNKNOWN_RESULT` |
+| 요청 전달 후 response 유실·connection lost | `SENT_RESPONSE_LOST` | `UNKNOWN_RESULT` |
+| MCP process exit가 dispatch 이후일 수 있음 | `MAY_HAVE_BEEN_SENT` | `UNKNOWN_RESULT` |
+
+Exception class 하나만으로 `NOT_SENT`를 추론하지 않는다. `UNKNOWN_RESULT`에서는 기존 결과 GET/Search만 허용하며 새 Attempt·blind resend를 금지한다.
