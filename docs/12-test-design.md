@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.7`, `01-A v2.6`, `01-B v2.7`, `02 UI·UX v2.4`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.5`, `06 Workflow v6.0`, `07 Interface v2.8`, `08 Sequence v3.1`, `09 Security v2.5`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `15 Agent Capability·Failure·Prompt v1.5`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.7`, `01-A v2.7`, `01-B v2.7`, `02 UI·UX v2.5`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.5`, `06 Workflow v6.0`, `07 Interface v2.8`, `08 Sequence v3.1`, `09 Security v2.5`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `15 Agent Capability·Failure·Prompt v1.5`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v3.1 · **기준일:** 2026-08-09 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.2 · **기준일:** 2026-08-10 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -431,6 +431,32 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 - response loss → `SENT_RESPONSE_LOST`; `UNKNOWN_RESULT`.
 - MCP process exit에서 dispatch 여부 불명 → `UNKNOWN_RESULT`.
 - 모든 UNKNOWN_RESULT case에서 새 Attempt·blind resend 0.
+
+## 22. v3.2 Frontend Main UI 추적 계약
+
+이 절의 테스트는 `01-A v2.7`, `02 UI·UX v2.5`의 Frontend 구현 계약을 추적한다. 기존 Safety, Verification Diff, `UNKNOWN_RESULT`, Recovery, Chrome/Edge, Sanitization 회귀를 대체하거나 제거하지 않는다.
+
+| Test ID | 계층 | 검증 계약 |
+|---|---|---|
+| `TST-UI-201` | Component | Header는 제품명·Google 연결 상태·현재 계정·Settings를 표시하고 개발 Runtime/Node/Profile 문자열을 Main에 노출하지 않는다. |
+| `TST-UI-202` | Component | Desktop 3 panel: Left Resource, Center Viewer+Chat, Right Conversation+Recent Execution의 정보 구조와 collapse 순서를 검증한다. |
+| `TST-UI-203` | Component | Gmail/Tasks/Calendar 탭, 검색/필터, compact resource row, selected/hover/focus/disabled, 긴 문자열 ellipsis와 keyboard navigation을 검증한다. |
+| `TST-UI-204` | Integration | Sidebar UI page size 10, 숫자 페이지, Page Token 순차 조회, cache 재방문, 조건 변경/수동 새로고침 cache 무효화를 검증한다. Retrieval page size 20과 분리됨을 포함한다. |
+| `TST-UI-205` | Component | count는 Projection 제공 시에만 표시하고 Frontend 집계·hard code가 없음을 검증한다. |
+| `TST-UI-206` | Integration | Resource row 선택이 Focus Viewer를 갱신하고, 기존 다중 선택 Context 집합을 보존하며 `RESOURCE_SELECTED`가 선택 ID의 최신 상세 조회로 시작함을 검증한다. |
+| `TST-UI-207` | Integration | 선택 없는 자연어 요청은 `AGENT_SEARCH`, Quick Action은 Agent 요청이며 Google Write를 직접 호출하지 않음을 검증한다. |
+| `TST-UI-208` | Component | Viewer와 Approval detail은 실제 REST/SSE Projection의 필드만 표시하며 fake count/detail/approval data가 없음을 검증한다. |
+| `TST-UI-209` | Component | Inline Approval의 approve/modify/reject, detail expand, pending/submitting/completed 상태와 duplicate click 방지를 검증한다. |
+| `TST-UI-210` | Integration | Conversation 새로 만들기·검색·선택 시 Center 복원과 Recent Execution의 Projection 조건부 표시/Empty State를 검증한다. |
+| `TST-UI-211` | Component | Loading/Empty/Error, keyboard, focus, disabled, 반응형 Right→Left collapse, Chat Input과 Approval 접근성을 검증한다. |
+| `TST-UI-212` | Integration | refresh, SSE disconnect/reconnect, cursor/snapshot 복구가 Domain 실패 또는 Write 재실행으로 오인되지 않음을 검증한다. |
+| `TST-UI-213` | Regression | Browser P0에서 native Window Control을 기능으로 호출하지 않고 Settings/Diagnostics와 기존 사용자 설정을 보존함을 검증한다. |
+
+### UI Fixture 원칙
+
+- Projection fixture는 제공 필드와 누락 필드를 모두 포함한다. 누락 필드에는 placeholder 사실, 가짜 실행 이력, count를 만들지 않는다.
+- Page Token fixture는 최소 3페이지를 제공하며, 2/3페이지 재방문에서 API 호출이 없는 경우와 검색 조건 변경 후 1페이지 재조회 경우를 모두 검증한다.
+- 접근성 검증은 Chrome·Edge에서 keyboard path와 focus visible을 포함한다. 단위/Component 검증만으로 REST Command, SSE, Approval 안전 회귀를 대체하지 않는다.
 
 ## R8.4 Claim V2·Attachment 필수 회귀
 

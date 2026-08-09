@@ -1,6 +1,6 @@
 # 02. Google Work Agent UI · UX 설계서
 
-> **상태:** Draft v2.4 · **기준일:** 2026-08-09 · **대상:** P0 MVP
+> **상태:** Draft v2.5 · **기준일:** 2026-08-10 · **대상:** P0 MVP
 
 > **핵심 UX 원칙:** 사용자는 최소한의 행동으로 최대한의 결과를 얻어야 한다. 사용자가 이미 보고 있는 항목과 작업 흐름 안에서 다음 행동을 수행할 수 있어야 하며, 불필요한 화면 이동·재입력·반복 승인은 UX 실패로 본다.
 
@@ -781,6 +781,51 @@ Local Storage에는 Secret, Approval Token 원문, Gmail 전체 원문, 실행 �
 3. 디자인팀 김 대리 — 시안 검토
 어느 김 대리 건인가요?
 ```
+
+## 29. v2.5 Main UI Canonical 보완
+
+이 절은 v2.5의 구현 기준 화면 명세이며, 앞선 UI-003~UI-008 중 이 절과 상충하는 시각 표현과 Sidebar UI 페이지 단위는 이 절을 우선한다. API, 정책, Workflow, Domain 상태 권위는 바꾸지 않는다.
+
+### 29.1 Desktop 정보 구조
+
+```text
+Header: Google Work Agent | Google 연결 상태 | 현재 계정 | 설정
+Left:   Google 업무 자료 (메일·Tasks·Calendar, 검색/필터, Resource List, 숫자 페이지)
+Center: 선택 Resource Detail Viewer → Agent Conversation → Inline Status/Approval → Chat Input
+Right:  Conversation (새 대화·검색·목록) → Recent Execution
+```
+
+- Center가 주 작업 공간이며 Dashboard나 개발자 Runtime 상태를 우선하지 않는다.
+- Header는 제품명, 사용자 이해가 가능한 Google 연결 상태, 현재 계정, Settings만 기본 노출한다. `WAITING_APPROVAL`, node 이름, profile(`SINGLE/THREE/SIX`), `API_LLM`, `LOCAL_GPU`, `MCP READY`, `SSE CONNECTED` 같은 개발·Runtime 문자열은 Main에서 숨기고 Settings/Diagnostics로 옮긴다.
+- Browser P0에서 창 최소화·최대화·닫기 표식은 시각 장식이나 제품 Window Control 기능으로 정의하지 않는다.
+
+### 29.2 Left Resource Panel
+
+- 탭은 메일, Tasks, Calendar이며 검색/필터와 수동 새로고침을 제공한다. 목록은 compact row, selected/hover/focus/disabled 상태와 키보드 탐색을 제공한다.
+- 기본 UI page size는 10이다. Page Token 기반 API를 React Session Memory의 page number mapping으로 연결해 숫자 페이지를 제공한다. Agent Retrieval 20과 혼용하지 않는다.
+- count badge는 서버 Projection이 실제 count를 제공할 때만 표시한다. Frontend 전체 페이지 순회·hard code count는 금지한다.
+- 행을 선택하면 Center 상단 Viewer에 제공 가능한 Resource 상세를 표시한다. Gmail sender/recipient/subject/received time/body/attachment metadata, Task title/status/due/list/notes, Calendar title/start/end/attendees/location/description/calendar는 제공된 필드만 표시한다. 누락값의 추정·생성은 금지한다.
+- Focus Resource와 다중 선택 Resource 집합을 분리한다. Focus는 Viewer용이며 다중 선택은 기존 Agent Context 기능을 보존한다.
+
+### 29.3 Center Conversation과 Approval
+
+- Chat은 `Viewer → Conversation → Inline 상태/Action/Approval → Input` 순서다. 사용자에게는 업무 단계와 다음 행동을 보이고 Agent node/profile/prompt는 표시하지 않는다.
+- Quick Action은 Agent 요청의 Entry Point다. 직접 Google Write를 실행하지 않는다.
+- Write Approval은 compact inline card다. `확인`, `수정`, `건너뛰기` 버튼은 기존 `approve`, `modify`, `reject` Command에 연결한다. Action/Tool, Target, 변경 요약, Evidence, Risk, Expected Result는 실제 Projection이 존재하는 값만 Summary + detail expand에 표시한다.
+- pending/submitting/completed 상태에서는 중복 클릭을 막고, timeout 또는 SSE 단절은 Write 실패로 단정하지 않는다. Snapshot 재조회 또는 cursor 재구독으로 복구한다.
+
+### 29.4 Right Panel, Settings, 반응형
+
+- Conversation은 새 대화, 검색, 목록을 제공하고 선택 시 Center를 복원한다. Resource type은 Conversation의 분류 기준이 아니다.
+- Recent Execution은 실제 Projection이 있을 때만 표시하며, 없으면 숨기거나 Empty State를 표시한다. Fake history는 금지한다.
+- Settings/Diagnostics는 Drawer/Dialog다. 기존 사용자 설정과 Runtime/Model 진단을 구분해 보존한다.
+- Desktop은 3 panel이다. 폭이 줄면 Right를 먼저 collapse하고, 이후 Left는 collapse 또는 overlay로 전환한다. Center와 Chat Input, Approval action은 항상 접근 가능해야 한다.
+
+### 29.5 공통 상태와 접근성
+
+- 모든 주요 영역은 Loading, Empty, Error, Selected, Hover, Focus, Disabled, Submitting, Approval pending, Completed 상태를 사용자 행동과 함께 명시적으로 표현한다.
+- 색만으로 상태를 구분하지 않고 icon/문구를 함께 사용한다. 키보드로 탭, 목록, 대화, 승인, 취소, 입력을 사용할 수 있어야 하며 focus가 명확해야 한다.
+- 오류는 원인, 현재 상태, 다음 행동을 제시한다. 민감 정보·secret·개발 Runtime 상세를 Main에 노출하지 않는다.
 
 ## R8.4 Gmail 첨부파일 UX
 
