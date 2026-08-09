@@ -96,6 +96,7 @@ class ApiContainer:
     delete_llm_api_key_service: Any | None = None
     test_llm_connection_service: Any | None = None
     resolve_recovery_service: Any | None = None
+    shutdown_callbacks: tuple[Callable[[], None], ...] = ()
 
 
 def create_app(container: ApiContainer) -> FastAPI:
@@ -110,7 +111,10 @@ def create_app(container: ApiContainer) -> FastAPI:
         try:
             yield
         finally:
-            container.local_run_coordinator.stop()
+            try:
+                container.local_run_coordinator.stop()
+            finally:
+                _run_shutdown_callbacks(container.shutdown_callbacks)
 
     docs_url = "/docs" if container.api_docs_enabled else None
     openapi_url = "/openapi.json" if container.api_docs_enabled else None
@@ -254,3 +258,15 @@ def create_app(container: ApiContainer) -> FastAPI:
             return JSONResponse(status_code=404, content={"detail": "not found"})
 
     return app
+
+
+def _run_shutdown_callbacks(callbacks: tuple[Callable[[], None], ...]) -> None:
+    first_error: Exception | None = None
+    for callback in callbacks:
+        try:
+            callback()
+        except Exception as error:
+            if first_error is None:
+                first_error = error
+    if first_error is not None:
+        raise first_error

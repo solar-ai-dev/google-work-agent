@@ -29,6 +29,25 @@ PowerShell에서 GPU 환경을 활성화합니다.
 
 Colab 실험 환경은 `config/requirements-colab.txt`를 기준으로 합니다.
 
+## 개발용 Local Service 실행
+
+Terminal 1에서 FastAPI Local Service를 loopback으로 실행합니다.
+
+```powershell
+.\.venv-gpu\Scripts\python.exe -m google_work_agent.launcher.dev --host 127.0.0.1 --port 8000
+```
+
+실행 직후 출력되는 one-time bootstrap URL을 복사합니다. Terminal 2에서 Vite를 실행한 뒤,
+출력된 fragment를 붙인 `http://127.0.0.1:5173/` URL을 브라우저로 엽니다.
+
+```powershell
+Set-Location frontend
+npm run dev
+```
+
+Vite는 `/api`와 `/health`를 기본 `http://127.0.0.1:8000`으로 proxy합니다. Service port를
+변경했다면 Terminal 2에서 `VITE_API_PROXY_TARGET`에 같은 loopback 주소를 설정합니다.
+
 ## 검증 명령
 
 ```powershell

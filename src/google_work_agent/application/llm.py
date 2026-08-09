@@ -16,7 +16,7 @@ from google_work_agent.adapters.llm import (
     LLMRuntimeStatusService,
     validate_output_schema,
 )
-from google_work_agent.adapters.runtime import AppSettings
+from google_work_agent.adapters.runtime.settings import AppSettings
 from google_work_agent.application.observability import (
     ObservabilityContext,
     Severity,
