@@ -326,7 +326,11 @@ def test_read_only_failure_marks_dependency_blocked_and_keeps_independent_branch
                     action_id="action-branch",
                     position=3,
                     tool_name="calendar_query_freebusy",
-                    arguments={"calendar_ids": ["calendar-primary"]},
+                    arguments={
+                        "calendar_ids": ["calendar-primary"],
+                        "time_min": "2026-11-01T00:00:00-07:00",
+                        "time_max": "2026-11-02T00:00:00-08:00",
+                    },
                     expected={"result_kind": "FREEBUSY"},
                     evidence_ids=("evidence-plan-2",),
                 ),

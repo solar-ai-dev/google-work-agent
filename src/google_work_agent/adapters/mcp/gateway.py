@@ -17,6 +17,7 @@ from google_work_agent.ports import (
     ResourcePage,
     ResourceSnapshot,
     ResourceType,
+    TimeRange,
 )
 
 
@@ -182,8 +183,20 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
             {"calendar_id": calendar_id, "page_token": page_token, "page_size": page_size},
         )
 
-    def query_freebusy(self, *, calendar_ids: tuple[str, ...]) -> tuple[FreeBusyCalendar, ...]:
-        payload = self._call("calendar_query_freebusy", {"calendar_ids": list(calendar_ids)})
+    def query_freebusy(
+        self,
+        *,
+        calendar_ids: tuple[str, ...],
+        time_range: TimeRange,
+    ) -> tuple[FreeBusyCalendar, ...]:
+        payload = self._call(
+            "calendar_query_freebusy",
+            {
+                "calendar_ids": list(calendar_ids),
+                "time_min": time_range.start,
+                "time_max": time_range.end,
+            },
+        )
         results: list[FreeBusyCalendar] = []
         for item in cast(list[dict[str, object]], payload["calendars"]):
             intervals = tuple(
@@ -310,6 +323,18 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
 
 
 def _google_error_from_transport(error: MCPTransportError) -> GoogleWorkspaceGatewayError:
+    tool_error_map = {
+        "INVALID_ARGUMENT": GoogleWorkspaceErrorCode.INVALID_ARGUMENT,
+        "REAUTH_REQUIRED": GoogleWorkspaceErrorCode.AUTH_EXPIRED,
+        "OAUTH_NOT_CONNECTED": GoogleWorkspaceErrorCode.AUTH_EXPIRED,
+        "PERMISSION_DENIED": GoogleWorkspaceErrorCode.PERMISSION_DENIED,
+        "NOT_FOUND": GoogleWorkspaceErrorCode.NOT_FOUND,
+        "RATE_LIMITED": GoogleWorkspaceErrorCode.RATE_LIMITED,
+        "UPSTREAM_5XX": GoogleWorkspaceErrorCode.UPSTREAM_5XX,
+        "TIMEOUT": GoogleWorkspaceErrorCode.TIMEOUT,
+        "INVALID_MCP_OUTPUT": GoogleWorkspaceErrorCode.RESPONSE_MALFORMED,
+        "MCP_UNAVAILABLE": GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
+    }
     code_map = {
         MCPTransportErrorCode.TIMEOUT: GoogleWorkspaceErrorCode.TIMEOUT,
         MCPTransportErrorCode.CONNECTION_CLOSED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
@@ -322,7 +347,7 @@ def _google_error_from_transport(error: MCPTransportError) -> GoogleWorkspaceGat
         MCPTransportErrorCode.ARTIFACT_REJECTED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
     }
     return GoogleWorkspaceGatewayError(
-        code=code_map[error.code],
+        code=tool_error_map.get(str(error), code_map[error.code]),
         message=dumps({"safe_error": error.code.value, "detail": str(error)}, sort_keys=True),
         delivered=error.dispatch_started,
         mutated=False,

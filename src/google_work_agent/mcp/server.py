@@ -1,8 +1,4 @@
-"""Local MCP child process for Google OAuth credentials.
-
-Google Workspace resource adapters deliberately do not live in this module yet.
-This process owns the Desktop OAuth loopback flow and the OS-keyring refresh token.
-"""
+"""Local MCP child process for Google OAuth credentials and read tools."""
 
 from __future__ import annotations
 
@@ -18,16 +14,17 @@ import threading
 import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import cast
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from google_work_agent.adapters.keyring import OSKeyringSecretStore
 from google_work_agent.adapters.mcp.transport import PROTOCOL_VERSION
 from google_work_agent.domain import build_p0_tool_registry
 from google_work_agent.mcp.settings import GoogleOAuthSettings
-from google_work_agent.ports import CredentialState, OAuthEnvironment, SecretStore
+from google_work_agent.ports import CredentialState, OAuthEnvironment, SecretStore, TimeRange
 
 GOOGLE_AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
@@ -44,6 +41,7 @@ REQUIRED_SCOPES = (
 )
 OAUTH_FLOW_TTL_MS = 60_000
 DEFAULT_ACCESS_TOKEN_TTL_MS = 3_600_000
+GOOGLE_API_TIMEOUT_SECONDS = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,8 +79,12 @@ class _OAuthReauthenticationRequired(RuntimeError):
     """Raised when Google rejects a stored refresh token."""
 
 
-class _WorkspaceToolsNotImplemented(RuntimeError):
-    """Raised until real Gmail/Calendar/Tasks adapters are implemented."""
+class _WorkspaceToolError(RuntimeError):
+    """A sanitized Google Workspace read failure."""
+
+    def __init__(self, safe_code: str) -> None:
+        super().__init__(safe_code)
+        self.safe_code = safe_code
 
 
 class _WorkspaceState:
@@ -105,7 +107,7 @@ class _WorkspaceState:
         self.oauth_settings = GoogleOAuthSettings.load(
             runtime_environment=os.environ.get("GWA_MCP_ENVIRONMENT", ""),
         )
-        self.keyring = keyring or OSKeyringSecretStore()
+        self.keyring = keyring or _credential_store_from_environment()
         if (
             self.keyring.get_secret(
                 service=GOOGLE_KEYRING_SERVICE,
@@ -207,13 +209,13 @@ def main() -> None:
                     },
                 }
             )
-        except _WorkspaceToolsNotImplemented:
+        except _WorkspaceToolError as error:
             _write(
                 {
                     "id": request_id,
                     "error": {
                         "code": "TOOL_REJECTED",
-                        "message": "Google Workspace tools are not implemented.",
+                        "message": error.safe_code,
                     },
                 }
             )
@@ -252,8 +254,489 @@ def _dispatch(state: _WorkspaceState, request: dict[str, object]) -> dict[str, o
     if message_type == "control_call":
         return _control_call(state, method=str(request["method"]))
     if message_type == "tool_call":
-        raise _WorkspaceToolsNotImplemented
+        return _tool_call(
+            state,
+            tool_name=str(request["tool_name"]),
+            arguments=cast(dict[str, object], request["arguments"]),
+        )
     raise ValueError("unsupported message type")
+
+
+def _tool_call(
+    state: _WorkspaceState, *, tool_name: str, arguments: dict[str, object]
+) -> dict[str, object]:
+    read_tools = {
+        "gmail_search_threads": _gmail_search_threads,
+        "gmail_get_thread": _gmail_get_thread,
+        "gmail_get_message": _gmail_get_message,
+        "tasks_list_tasklists": _tasks_list_tasklists,
+        "tasks_list_tasks": _tasks_list_tasks,
+        "tasks_get_task": _tasks_get_task,
+        "calendar_list_calendars": _calendar_list_calendars,
+        "calendar_list_events": _calendar_list_events,
+        "calendar_get_event": _calendar_get_event,
+        "calendar_query_freebusy": _calendar_query_freebusy,
+    }
+    handler = read_tools.get(tool_name)
+    if handler is None:
+        raise _WorkspaceToolError("TOOL_NOT_AVAILABLE")
+    return handler(state, arguments)
+
+
+def _gmail_search_threads(
+    state: _WorkspaceState, arguments: dict[str, object]
+) -> dict[str, object]:
+    query = _text_argument(arguments, "query", maximum=2048, allow_empty=True)
+    params = _page_params(arguments)
+    if query:
+        params["q"] = query
+    payload = _google_api(state, "https://gmail.googleapis.com/gmail/v1/users/me/threads", params)
+    items = []
+    for thread in _object_list(payload.get("threads")):
+        thread_id = _required_response_text(thread, "id")
+        items.append(
+            _snapshot(
+                "gmail_thread",
+                thread_id,
+                None,
+                (),
+                thread.get("historyId"),
+                {"snippet": _optional_text(thread.get("snippet"))},
+            )
+        )
+    return {"items": items, "next_page_token": _optional_text(payload.get("nextPageToken"))}
+
+
+def _gmail_get_thread(state: _WorkspaceState, arguments: dict[str, object]) -> dict[str, object]:
+    thread_id = _text_argument(arguments, "thread_id", maximum=2048)
+    payload = _google_api(
+        state,
+        f"https://gmail.googleapis.com/gmail/v1/users/me/threads/{quote(thread_id, safe='')}",
+        {"format": "metadata"},
+    )
+    messages = _object_list(payload.get("messages"))
+    headers = _headers(messages[0]) if messages else {}
+    message_ids = tuple(_required_response_text(item, "id") for item in messages)
+    participants = tuple(value for value in (headers.get("from"), headers.get("to")) if value)
+    return {
+        "item": _snapshot(
+            "gmail_thread",
+            thread_id,
+            None,
+            message_ids,
+            payload.get("historyId"),
+            {
+                "subject": headers.get("subject", thread_id),
+                "snippet": _optional_text(payload.get("snippet")),
+                "participants": list(participants),
+                "message_ids": list(message_ids),
+            },
+        )
+    }
+
+
+def _gmail_get_message(state: _WorkspaceState, arguments: dict[str, object]) -> dict[str, object]:
+    message_id = _text_argument(arguments, "message_id", maximum=2048)
+    payload = _google_api(
+        state,
+        f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{quote(message_id, safe='')}",
+        {"format": "metadata"},
+    )
+    headers = _headers(payload)
+    return {
+        "item": _snapshot(
+            "gmail_message",
+            message_id,
+            _optional_text(payload.get("threadId")),
+            (),
+            payload.get("historyId"),
+            {
+                "subject": headers.get("subject", message_id),
+                "snippet": _optional_text(payload.get("snippet")),
+                "from": headers.get("from"),
+                "to": headers.get("to"),
+                "received_at": headers.get("date"),
+            },
+        )
+    }
+
+
+def _tasks_list_tasklists(
+    state: _WorkspaceState, arguments: dict[str, object]
+) -> dict[str, object]:
+    payload = _google_api(
+        state, "https://tasks.googleapis.com/tasks/v1/users/@me/lists", _page_params(arguments)
+    )
+    items = [
+        _snapshot(
+            "task_list",
+            _required_response_text(item, "id"),
+            None,
+            (),
+            item.get("updated"),
+            {
+                "title": _optional_text(item.get("title")) or _required_response_text(item, "id"),
+                "kind": _optional_text(item.get("kind")),
+            },
+        )
+        for item in _object_list(payload.get("items"))
+    ]
+    return {"items": items, "next_page_token": _optional_text(payload.get("nextPageToken"))}
+
+
+def _tasks_list_tasks(state: _WorkspaceState, arguments: dict[str, object]) -> dict[str, object]:
+    task_list_id = _text_argument(arguments, "task_list_id", maximum=2048)
+    payload = _google_api(
+        state,
+        f"https://tasks.googleapis.com/tasks/v1/lists/{quote(task_list_id, safe='')}/tasks",
+        _page_params(arguments),
+    )
+    items = [_task_snapshot(item, task_list_id) for item in _object_list(payload.get("items"))]
+    return {"items": items, "next_page_token": _optional_text(payload.get("nextPageToken"))}
+
+
+def _tasks_get_task(state: _WorkspaceState, arguments: dict[str, object]) -> dict[str, object]:
+    task_list_id = _text_argument(arguments, "task_list_id", maximum=2048)
+    task_id = _text_argument(arguments, "task_id", maximum=2048)
+    task_list_path = quote(task_list_id, safe="")
+    task_path = quote(task_id, safe="")
+    payload = _google_api(
+        state,
+        f"https://tasks.googleapis.com/tasks/v1/lists/{task_list_path}/tasks/{task_path}",
+    )
+    return {"item": _task_snapshot(payload, task_list_id)}
+
+
+def _calendar_list_calendars(
+    state: _WorkspaceState, arguments: dict[str, object]
+) -> dict[str, object]:
+    payload = _google_api(
+        state,
+        "https://www.googleapis.com/calendar/v3/users/me/calendarList",
+        _page_params(arguments),
+    )
+    items = [
+        _snapshot(
+            "calendar",
+            _required_response_text(item, "id"),
+            None,
+            (),
+            item.get("etag"),
+            {
+                "summary": _optional_text(item.get("summary"))
+                or _required_response_text(item, "id"),
+                "time_zone": _optional_text(item.get("timeZone")),
+            },
+        )
+        for item in _object_list(payload.get("items"))
+    ]
+    return {"items": items, "next_page_token": _optional_text(payload.get("nextPageToken"))}
+
+
+def _calendar_list_events(
+    state: _WorkspaceState, arguments: dict[str, object]
+) -> dict[str, object]:
+    calendar_id = _text_argument(arguments, "calendar_id", maximum=2048)
+    payload = _google_api(
+        state,
+        f"https://www.googleapis.com/calendar/v3/calendars/{quote(calendar_id, safe='')}/events",
+        _page_params(arguments),
+    )
+    items = [_event_snapshot(item, calendar_id) for item in _object_list(payload.get("items"))]
+    return {"items": items, "next_page_token": _optional_text(payload.get("nextPageToken"))}
+
+
+def _calendar_get_event(state: _WorkspaceState, arguments: dict[str, object]) -> dict[str, object]:
+    calendar_id = _text_argument(arguments, "calendar_id", maximum=2048)
+    event_id = _text_argument(arguments, "event_id", maximum=2048)
+    calendar_path = quote(calendar_id, safe="")
+    event_path = quote(event_id, safe="")
+    payload = _google_api(
+        state,
+        f"https://www.googleapis.com/calendar/v3/calendars/{calendar_path}/events/{event_path}",
+    )
+    return {"item": _event_snapshot(payload, calendar_id)}
+
+
+def _calendar_query_freebusy(
+    state: _WorkspaceState, arguments: dict[str, object]
+) -> dict[str, object]:
+    calendar_ids = _calendar_ids_argument(arguments)
+    try:
+        time_range = TimeRange(
+            start=_text_argument(arguments, "time_min", maximum=2048),
+            end=_text_argument(arguments, "time_max", maximum=2048),
+        )
+    except ValueError as error:
+        raise _WorkspaceToolError("INVALID_ARGUMENT") from error
+    payload = _google_api_post(
+        state,
+        "https://www.googleapis.com/calendar/v3/freeBusy",
+        {
+            "timeMin": time_range.start,
+            "timeMax": time_range.end,
+            "items": [{"id": calendar_id} for calendar_id in calendar_ids],
+        },
+    )
+    calendars = cast(dict[str, object], payload.get("calendars") or {})
+    return {
+        "calendars": [
+            {
+                "calendar_id": calendar_id,
+                "intervals": [
+                    {
+                        "start": _required_response_text(interval, "start"),
+                        "end": _required_response_text(interval, "end"),
+                        "transparency": "busy",
+                    }
+                    for interval in _object_list(
+                        cast(dict[str, object], calendars.get(calendar_id) or {}).get("busy")
+                    )
+                ],
+            }
+            for calendar_id in calendar_ids
+        ]
+    }
+
+
+def _task_snapshot(item: dict[str, object], task_list_id: str) -> dict[str, object]:
+    task_id = _required_response_text(item, "id")
+    return _snapshot(
+        "task",
+        task_id,
+        task_list_id,
+        (task_list_id,),
+        item.get("updated"),
+        {
+            "title": _optional_text(item.get("title")) or task_id,
+            "notes": _optional_text(item.get("notes")),
+            "due": _optional_text(item.get("due")),
+            "status": _optional_text(item.get("status")),
+        },
+    )
+
+
+def _event_snapshot(item: dict[str, object], calendar_id: str) -> dict[str, object]:
+    event_id = _required_response_text(item, "id")
+    start = cast(dict[str, object], item.get("start") or {})
+    end = cast(dict[str, object], item.get("end") or {})
+    return _snapshot(
+        "calendar_event",
+        event_id,
+        calendar_id,
+        (calendar_id,),
+        item.get("etag"),
+        {
+            "title": _optional_text(item.get("summary")) or event_id,
+            "status": _optional_text(item.get("status")),
+            "transparency": _optional_text(item.get("transparency")),
+            "event_kind": _optional_text(item.get("eventType")),
+            "start": _optional_text(start.get("dateTime")) or _optional_text(start.get("date")),
+            "end": _optional_text(end.get("dateTime")) or _optional_text(end.get("date")),
+        },
+    )
+
+
+def _snapshot(
+    resource_type: str,
+    resource_id: str,
+    parent_id: str | None,
+    related_resource_ids: tuple[str, ...],
+    version: object,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "fixture_snapshot_id": resource_id,
+        "resource_type": resource_type,
+        "resource_id": resource_id,
+        "parent_id": parent_id,
+        "related_resource_ids": list(related_resource_ids),
+        "version": _optional_text(version) or "",
+        "recovery_fingerprint": None,
+        "payload": {key: value for key, value in payload.items() if value is not None},
+    }
+
+
+def _page_params(arguments: dict[str, object]) -> dict[str, str]:
+    page_size = arguments.get("page_size", 20)
+    if not isinstance(page_size, int) or not 1 <= page_size <= 100:
+        raise _WorkspaceToolError("INVALID_ARGUMENT")
+    params = {"maxResults": str(page_size)}
+    page_token = arguments.get("page_token")
+    if page_token is not None:
+        params["pageToken"] = _text_value(page_token, maximum=2048)
+    return params
+
+
+def _text_argument(
+    arguments: dict[str, object], name: str, *, maximum: int, allow_empty: bool = False
+) -> str:
+    if name not in arguments:
+        raise _WorkspaceToolError("INVALID_ARGUMENT")
+    value = _text_value(arguments[name], maximum=maximum)
+    if not value and not allow_empty:
+        raise _WorkspaceToolError("INVALID_ARGUMENT")
+    return value
+
+
+def _text_value(value: object, *, maximum: int) -> str:
+    if not isinstance(value, str) or len(value) > maximum or any(ord(char) < 32 for char in value):
+        raise _WorkspaceToolError("INVALID_ARGUMENT")
+    return value
+
+
+def _calendar_ids_argument(arguments: dict[str, object]) -> tuple[str, ...]:
+    value = arguments.get("calendar_ids")
+    if not isinstance(value, list) or not 1 <= len(value) <= 20:
+        raise _WorkspaceToolError("INVALID_ARGUMENT")
+    return tuple(_text_value(item, maximum=2048) for item in value)
+
+
+def _google_api(
+    state: _WorkspaceState, url: str, params: dict[str, str] | None = None
+) -> dict[str, object]:
+    try:
+        state.ensure_access_token()
+    except _OAuthReauthenticationRequired as error:
+        state.connection_state = CredentialState.REAUTH_REQUIRED
+        raise _WorkspaceToolError("REAUTH_REQUIRED") from error
+    if state.access_token is None:
+        raise _WorkspaceToolError("OAUTH_NOT_CONNECTED")
+    request_url = f"{url}?{urlencode(params)}" if params else url
+    request = Request(
+        request_url,
+        headers={"Authorization": f"Bearer {state.access_token}", "Accept": "application/json"},
+    )
+    try:
+        with urlopen(request, timeout=GOOGLE_API_TIMEOUT_SECONDS) as response:  # nosec B310: fixed Google API endpoints
+            return cast(dict[str, object], json.loads(response.read().decode("utf-8")))
+    except HTTPError as error:
+        codes = {
+            401: "REAUTH_REQUIRED",
+            403: "PERMISSION_DENIED",
+            404: "NOT_FOUND",
+            429: "RATE_LIMITED",
+        }
+        if error.code == 401:
+            state.connection_state = CredentialState.REAUTH_REQUIRED
+            state.access_token = None
+            state.access_token_expires_at_ms = 0
+        raise _WorkspaceToolError(
+            codes.get(error.code, "UPSTREAM_5XX" if error.code >= 500 else "GOOGLE_REQUEST_FAILED")
+        ) from error
+    except (URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise _WorkspaceToolError(
+            "TIMEOUT" if isinstance(error, TimeoutError) else "MCP_UNAVAILABLE"
+        ) from error
+
+
+def _google_api_post(
+    state: _WorkspaceState, url: str, body: dict[str, object]
+) -> dict[str, object]:
+    try:
+        state.ensure_access_token()
+    except _OAuthReauthenticationRequired as error:
+        state.connection_state = CredentialState.REAUTH_REQUIRED
+        raise _WorkspaceToolError("REAUTH_REQUIRED") from error
+    if state.access_token is None:
+        raise _WorkspaceToolError("OAUTH_NOT_CONNECTED")
+    request = Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {state.access_token}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=GOOGLE_API_TIMEOUT_SECONDS) as response:  # nosec B310: fixed Google API endpoint
+            return cast(dict[str, object], json.loads(response.read().decode("utf-8")))
+    except HTTPError as error:
+        codes = {
+            401: "REAUTH_REQUIRED",
+            403: "PERMISSION_DENIED",
+            404: "NOT_FOUND",
+            429: "RATE_LIMITED",
+        }
+        if error.code == 401:
+            state.connection_state = CredentialState.REAUTH_REQUIRED
+            state.access_token = None
+            state.access_token_expires_at_ms = 0
+        raise _WorkspaceToolError(
+            codes.get(error.code, "UPSTREAM_5XX" if error.code >= 500 else "GOOGLE_REQUEST_FAILED")
+        ) from error
+    except (URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise _WorkspaceToolError(
+            "TIMEOUT" if isinstance(error, TimeoutError) else "MCP_UNAVAILABLE"
+        ) from error
+
+
+def _credential_store_from_environment() -> SecretStore:
+    test_keyring_path = os.environ.get("GWA_TEST_KEYRING_PATH")
+    if test_keyring_path:
+        return _TestFileSecretStore(Path(test_keyring_path))
+    return OSKeyringSecretStore()
+
+
+class _TestFileSecretStore(SecretStore):
+    """Test-only cross-process store selected by an explicit test environment variable."""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+
+    def set_secret(self, *, service: str, account: str, secret: str) -> None:
+        values = self._read()
+        values[f"{service}:{account}"] = secret
+        self._write(values)
+
+    def get_secret(self, *, service: str, account: str) -> str | None:
+        return self._read().get(f"{service}:{account}")
+
+    def delete_secret(self, *, service: str, account: str) -> bool:
+        values = self._read()
+        removed = values.pop(f"{service}:{account}", None) is not None
+        self._write(values)
+        return removed
+
+    def _read(self) -> dict[str, str]:
+        if not self._path.is_file():
+            return {}
+        payload = json.loads(self._path.read_text(encoding="utf-8"))
+        return {str(key): str(value) for key, value in cast(dict[str, object], payload).items()}
+
+    def _write(self, values: dict[str, str]) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(json.dumps(values, sort_keys=True), encoding="utf-8")
+
+
+def _object_list(value: object) -> list[dict[str, object]]:
+    return (
+        [cast(dict[str, object], item) for item in value if isinstance(item, dict)]
+        if isinstance(value, list)
+        else []
+    )
+
+
+def _required_response_text(payload: dict[str, object], name: str) -> str:
+    value = _optional_text(payload.get(name))
+    if value is None:
+        raise _WorkspaceToolError("INVALID_MCP_OUTPUT")
+    return value
+
+
+def _optional_text(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _headers(message: dict[str, object]) -> dict[str, str]:
+    payload = cast(dict[str, object], message.get("payload") or {})
+    return {
+        str(item.get("name", "")).lower(): str(item.get("value", ""))
+        for item in _object_list(payload.get("headers"))
+        if item.get("name") and item.get("value")
+    }
 
 
 def _control_call(state: _WorkspaceState, *, method: str) -> dict[str, object]:

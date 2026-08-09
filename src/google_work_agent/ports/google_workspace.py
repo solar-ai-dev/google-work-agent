@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, Protocol
 
@@ -61,10 +62,25 @@ class FreeBusyCalendar:
     intervals: tuple[FreeBusyInterval, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class TimeRange:
+    """Explicit timezone-aware range for Calendar free/busy requests."""
+
+    start: str
+    end: str
+
+    def __post_init__(self) -> None:
+        start = _parse_rfc3339(self.start)
+        end = _parse_rfc3339(self.end)
+        if start >= end:
+            raise ValueError("time range start must precede end")
+
+
 class GoogleWorkspaceErrorCode(StrEnum):
     """Deterministic fault codes exposed by the fake gateway."""
 
     AUTH_EXPIRED = "AUTH_EXPIRED"
+    INVALID_ARGUMENT = "INVALID_ARGUMENT"
     PERMISSION_DENIED = "PERMISSION_DENIED"
     NOT_FOUND = "NOT_FOUND"
     CONFLICT = "CONFLICT"
@@ -214,7 +230,12 @@ class GoogleWorkspaceGateway(Protocol):
     ) -> ResourcePage:
         """List calendar events for one calendar."""
 
-    def query_freebusy(self, *, calendar_ids: tuple[str, ...]) -> tuple[FreeBusyCalendar, ...]:
+    def query_freebusy(
+        self,
+        *,
+        calendar_ids: tuple[str, ...],
+        time_range: TimeRange,
+    ) -> tuple[FreeBusyCalendar, ...]:
         """Return free/busy intervals for calendars."""
 
     def get_calendar_event(self, *, calendar_id: str, event_id: str) -> ResourceSnapshot:
@@ -255,3 +276,16 @@ class GoogleWorkspaceGateway(Protocol):
         recovery_fingerprint: str,
     ) -> tuple[ResourceSnapshot, ...]:
         """Return recovery candidates for one fingerprint."""
+
+
+def _parse_rfc3339(value: str) -> datetime:
+    if not isinstance(value, str) or not value:
+        raise ValueError("time range value is required")
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as error:
+        raise ValueError("time range must use RFC3339") from error
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("time range must include a timezone")
+    return parsed

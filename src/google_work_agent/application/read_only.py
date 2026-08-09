@@ -36,6 +36,7 @@ from google_work_agent.ports import (
     ResourceSource,
     RunRecord,
     StoredResourceType,
+    TimeRange,
     TraceEventRecord,
     UnitOfWork,
 )
@@ -1138,7 +1139,14 @@ class ExecuteReadActionService:
         arguments: dict[str, object],
     ) -> ExecutedReadAction:
         calendar_ids = _string_tuple_argument(arguments.get("calendar_ids"))
-        result = self._gateway.query_freebusy(calendar_ids=calendar_ids)
+        time_range = TimeRange(
+            start=str(arguments["time_min"]),
+            end=str(arguments["time_max"]),
+        )
+        result = self._gateway.query_freebusy(
+            calendar_ids=calendar_ids,
+            time_range=time_range,
+        )
         return _executed_from_freebusy(run_id=run_id, calendars=result)
 
     def _execute_get_calendar_event(
