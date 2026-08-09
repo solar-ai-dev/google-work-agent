@@ -39,6 +39,7 @@ class ActionStatus(StrEnum):
     BLOCKED = "BLOCKED"
     DEPENDENCY_BLOCKED = "DEPENDENCY_BLOCKED"
     MISMATCH = "MISMATCH"
+    CANCELLED = "CANCELLED"
 
 
 class ApprovalStatus(StrEnum):

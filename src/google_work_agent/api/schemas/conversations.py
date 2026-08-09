@@ -5,7 +5,6 @@ from .common import ApiModel, ContractVersionedRequest
 
 class CreateConversationRequest(ContractVersionedRequest):
     command_id: str
-    request_hash: str
     conversation_id: str
     account_id: str
     title: str

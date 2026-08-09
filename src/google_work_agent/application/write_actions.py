@@ -39,6 +39,7 @@ from google_work_agent.ports import (
     AuditEventRecord,
     CommandReceiptRecord,
     CommandReceiptStatus,
+    DeliveryCertainty,
     EvidenceOriginType,
     EvidenceRecord,
     ExecutionAttemptRecord,
@@ -61,12 +62,6 @@ from google_work_agent.ports import (
 CLAIM_TOKEN_VERSION = "v1"
 VERIFICATION_NORMALIZER_VERSION = "2026-08-06.p0"
 DEFAULT_APPROVAL_TTL_MS = 30_000
-
-
-class DeliveryCertainty(StrEnum):
-    NOT_SENT = "NOT_SENT"
-    MAY_HAVE_BEEN_SENT = "MAY_HAVE_BEEN_SENT"
-    SENT_RESPONSE_LOST = "SENT_RESPONSE_LOST"
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,6 +251,22 @@ class FinalizeRunCancellationCommand:
     request_hash: str
     run_id: str
     expected_run_version: int
+
+
+class RecoveryResolutionKind(StrEnum):
+    ACCEPT_PARTIAL = "ACCEPT_PARTIAL"
+    CREATE_CORRECTIVE_PLAN = "CREATE_CORRECTIVE_PLAN"
+
+
+@dataclass(frozen=True, slots=True)
+class ResolveMismatchRecoveryCommand:
+    command_id: str
+    request_hash: str
+    run_id: str
+    action_id: str
+    expected_run_version: int
+    resolution_kind: RecoveryResolutionKind
+    corrective_plan_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -786,6 +797,27 @@ class ClaimWriteActionService:
                 created_at_ms=now_ms,
             )
             action = _require_action(unit_of_work, command.action_id)
+            plan = _require_plan(unit_of_work, action.plan_id)
+            run = _require_run(unit_of_work, plan.run_id)
+            if run.status in {
+                RunStatus.CANCEL_REQUESTED,
+                RunStatus.CANCELLED,
+                RunStatus.RECOVERY_REQUIRED,
+            }:
+                response = WriteActionResponse(
+                    applied=False,
+                    result_code=ResultCode.STATE_CONFLICT.value,
+                    action_id=action.id,
+                    action_status=action.status,
+                    action_version=action.version,
+                    next_allowed_commands=(),
+                    conflict_detail="run status forbids a new write claim",
+                )
+                _finish_json_receipt(
+                    unit_of_work, command.command_id, response, action.version, now_ms
+                )
+                unit_of_work.commit()
+                return response
             approval = unit_of_work.approvals.get_active_by_action(action.id)
             if approval is None:
                 response = WriteActionResponse(
@@ -913,7 +945,6 @@ class ClaimWriteActionService:
                 },
                 signing_secret=self._signing_secret,
             )
-            plan = _require_plan(unit_of_work, action.plan_id)
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=plan.run_id,
@@ -989,6 +1020,10 @@ class ExecuteWriteActionService:
 
         with self._unit_of_work_factory() as unit_of_work:
             action = _require_action(unit_of_work, action_id)
+            plan = _require_plan(unit_of_work, action.plan_id)
+            run = _require_run(unit_of_work, plan.run_id)
+            if run.status in {RunStatus.CANCEL_REQUESTED, RunStatus.CANCELLED}:
+                raise PermissionError("run cancellation forbids Google write dispatch")
             approval = _require_approval(unit_of_work, str(payload["approval_id"]))
             attempt = _require_attempt(unit_of_work, str(payload["attempt_id"]))
             if action.id != str(payload["action_id"]):
@@ -1476,6 +1511,9 @@ class VerifyWriteActionService:
                     run_id=plan.run_id,
                     updated_at_ms=now_ms,
                 )
+                # A persisted mismatch is an immutable external fact; only an explicit
+                # recovery decision may choose the next run transition.
+                unit_of_work.runs.set_recovery_required(plan.run_id)
 
             unit_of_work.traces.add(
                 TraceEventRecord(
@@ -2023,8 +2061,29 @@ class RequestRunCancellationService:
                 created_at_ms=now_ms,
             )
             run = _require_run(unit_of_work, command.run_id)
-            plan = _require_latest_plan_for_run(unit_of_work, run.id)
-            actions = unit_of_work.actions.list_by_plan(plan.id)
+            plans = unit_of_work.plans.list_by_run(run.id)
+            plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
+            actions = () if plan is None else unit_of_work.actions.list_by_plan(plan.id)
+            cancel_result = unit_of_work.runs.request_cancel(
+                run.id,
+                expected_version=command.expected_run_version,
+            )
+            if not cancel_result.applied:
+                response = WriteRunResponse(
+                    applied=False,
+                    result_code=cancel_result.result_code.value,
+                    run_id=run.id,
+                    run_status=cancel_result.current_status.value,
+                    run_version=cancel_result.current_version,
+                    plan_id=None if plan is None else plan.id,
+                    plan_status=None if plan is None else plan.status.value,
+                    conflict_detail=cancel_result.conflict_detail,
+                )
+                _finish_json_receipt(
+                    unit_of_work, command.command_id, response, run.version, now_ms
+                )
+                unit_of_work.commit()
+                return response
             has_started_write = any(
                 action.status
                 in {
@@ -2035,30 +2094,23 @@ class RequestRunCancellationService:
                 }
                 for action in actions
             )
-            if not has_started_write and run.status is RunStatus.WAITING_APPROVAL:
+            if not has_started_write:
                 for action in actions:
-                    unit_of_work.approvals.revoke_active_by_action(action.id)
-                unit_of_work.plans.cancel(plan.id)
-                cancel_result = unit_of_work.runs.request_cancel(
-                    run.id,
-                    expected_version=command.expected_run_version,
-                )
-                if not cancel_result.applied:
-                    response = WriteRunResponse(
-                        applied=False,
-                        result_code=cancel_result.result_code.value,
-                        run_id=run.id,
-                        run_status=cancel_result.current_status.value,
-                        run_version=cancel_result.current_version,
-                        plan_id=plan.id,
-                        plan_status=plan.status.value,
-                        conflict_detail=cancel_result.conflict_detail,
-                    )
-                    _finish_json_receipt(
-                        unit_of_work, command.command_id, response, run.version, now_ms
-                    )
-                    unit_of_work.commit()
-                    return response
+                    if action.status in {
+                        ActionStatus.PROPOSED.value,
+                        ActionStatus.MODIFIED.value,
+                        ActionStatus.APPROVED.value,
+                        ActionStatus.EXPIRED.value,
+                    }:
+                        if action.status == ActionStatus.APPROVED.value:
+                            unit_of_work.approvals.revoke_active_by_action(action.id)
+                        unit_of_work.actions.cancel_pending(
+                            action.id,
+                            expected_version=action.version,
+                            updated_at_ms=now_ms,
+                        )
+                if plan is not None:
+                    unit_of_work.plans.cancel(plan.id)
                 final_result = unit_of_work.runs.finalize_cancel(
                     run.id,
                     expected_version=cancel_result.current_version,
@@ -2070,39 +2122,19 @@ class RequestRunCancellationService:
                     run_id=run.id,
                     run_status=final_result.current_status.value,
                     run_version=final_result.current_version,
-                    plan_id=plan.id,
-                    plan_status=PlanStatus.CANCELLED.value,
+                    plan_id=None if plan is None else plan.id,
+                    plan_status=None if plan is None else PlanStatus.CANCELLED.value,
                     result_kind="CANCELLED",
                 )
             else:
-                result = unit_of_work.runs.request_cancel(
-                    run.id,
-                    expected_version=command.expected_run_version,
-                )
-                if not result.applied:
-                    response = WriteRunResponse(
-                        applied=False,
-                        result_code=result.result_code.value,
-                        run_id=run.id,
-                        run_status=result.current_status.value,
-                        run_version=result.current_version,
-                        plan_id=plan.id,
-                        plan_status=plan.status.value,
-                        conflict_detail=result.conflict_detail,
-                    )
-                    _finish_json_receipt(
-                        unit_of_work, command.command_id, response, run.version, now_ms
-                    )
-                    unit_of_work.commit()
-                    return response
                 response = WriteRunResponse(
                     applied=True,
                     result_code=ResultCode.TRANSITION_APPLIED.value,
                     run_id=run.id,
-                    run_status=result.current_status.value,
-                    run_version=result.current_version,
-                    plan_id=plan.id,
-                    plan_status=plan.status.value,
+                    run_status=cancel_result.current_status.value,
+                    run_version=cancel_result.current_version,
+                    plan_id=None if plan is None else plan.id,
+                    plan_status=None if plan is None else plan.status.value,
                     result_kind="CANCEL_REQUESTED",
                 )
             unit_of_work.traces.add(
@@ -2112,7 +2144,9 @@ class RequestRunCancellationService:
                     event_type="RUN_CANCELLATION_REQUESTED",
                     status=response.run_status,
                     duration_ms=None,
-                    payload_json=dumps({"plan_id": plan.id}, sort_keys=True),
+                    payload_json=dumps(
+                        {"plan_id": None if plan is None else plan.id}, sort_keys=True
+                    ),
                     created_at_ms=now_ms,
                 )
             )
@@ -2122,7 +2156,7 @@ class RequestRunCancellationService:
                     action_id=None,
                     event_type="RUN_CANCELLATION_REQUESTED",
                     outcome=ResultCode.TRANSITION_APPLIED.value,
-                    metadata={"plan_id": plan.id},
+                    metadata={"plan_id": None if plan is None else plan.id},
                     created_at_ms=now_ms,
                 )
             )
@@ -2166,13 +2200,30 @@ class FinalizeRunCancellationService:
             run = _require_run(unit_of_work, command.run_id)
             plan = _require_latest_plan_for_run(unit_of_work, run.id)
             actions = unit_of_work.actions.list_by_plan(plan.id)
+            if command.expected_run_version != run.version:
+                response = WriteRunResponse(
+                    applied=False,
+                    result_code=ResultCode.VERSION_CONFLICT.value,
+                    run_id=run.id,
+                    run_status=run.status.value,
+                    run_version=run.version,
+                    plan_id=plan.id,
+                    plan_status=plan.status.value,
+                    conflict_detail="expected_run_version does not match current version",
+                )
+                _finish_json_receipt(
+                    unit_of_work, command.command_id, response, run.version, now_ms
+                )
+                unit_of_work.commit()
+                return response
             if any(action.status == ActionStatus.UNKNOWN_RESULT.value for action in actions):
+                recovery_run = unit_of_work.runs.set_recovery_required(run.id)
                 response = WriteRunResponse(
                     applied=False,
                     result_code=ResultCode.RECOVERY_REQUIRED.value,
                     run_id=run.id,
-                    run_status=RunStatus.RECOVERY_REQUIRED.value,
-                    run_version=run.version,
+                    run_status=recovery_run.status.value,
+                    run_version=recovery_run.version,
                     plan_id=plan.id,
                     plan_status=plan.status.value,
                     result_kind="RECOVERY_REQUIRED",
@@ -2202,12 +2253,19 @@ class FinalizeRunCancellationService:
                     result_kind="PARTIAL",
                 )
             else:
-                unit_of_work.plans.cancel(plan.id)
                 final_result = unit_of_work.runs.finalize_cancel(
                     run.id,
                     expected_version=command.expected_run_version,
                     finished_at_ms=now_ms,
                 )
+                if not final_result.applied:
+                    raise RuntimeError("validated cancellation finalization was not applied")
+                _cancel_pending_actions(
+                    unit_of_work=unit_of_work,
+                    plan_id=plan.id,
+                    updated_at_ms=now_ms,
+                )
+                unit_of_work.plans.cancel(plan.id)
                 response = WriteRunResponse(
                     applied=True,
                     result_code=ResultCode.TRANSITION_APPLIED.value,
@@ -2216,7 +2274,11 @@ class FinalizeRunCancellationService:
                     run_version=final_result.current_version,
                     plan_id=plan.id,
                     plan_status=PlanStatus.CANCELLED.value,
-                    result_kind="CANCELLED",
+                    result_kind=(
+                        "PARTIAL"
+                        if any(action.status == ActionStatus.VERIFIED.value for action in actions)
+                        else "CANCELLED"
+                    ),
                 )
             unit_of_work.traces.add(
                 TraceEventRecord(
@@ -2244,6 +2306,156 @@ class FinalizeRunCancellationService:
             )
             unit_of_work.commit()
             return response
+
+
+class ResolveMismatchRecoveryService:
+    """Resolve an immutable verification mismatch without reusing write authority."""
+
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+
+    def __call__(self, command: ResolveMismatchRecoveryCommand) -> WriteRunResponse:
+        with self._unit_of_work_factory() as unit_of_work:
+            existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+            if existing is not None:
+                return _resolve_existing_run_receipt(
+                    unit_of_work=unit_of_work,
+                    receipt=existing,
+                    request_hash=command.request_hash,
+                    run_id=command.run_id,
+                )
+
+            now_ms = self._now_ms()
+            unit_of_work.command_receipts.add_received(
+                command_id=command.command_id,
+                command_type="ResolveMismatchRecovery",
+                request_hash=command.request_hash,
+                aggregate_type="Run",
+                aggregate_id=command.run_id,
+                created_at_ms=now_ms,
+            )
+            run = _require_run(unit_of_work, command.run_id)
+            action = _require_action(unit_of_work, command.action_id)
+            plan = _require_plan(unit_of_work, action.plan_id)
+            if plan.run_id != run.id or action.status != ActionStatus.MISMATCH.value:
+                response = WriteRunResponse(
+                    applied=False,
+                    result_code=ResultCode.STATE_CONFLICT.value,
+                    run_id=run.id,
+                    run_status=run.status.value,
+                    run_version=run.version,
+                    plan_id=plan.id,
+                    plan_status=plan.status.value,
+                    conflict_detail="recovery requires a MISMATCH action owned by the run",
+                )
+                return _finish_recovery_response(
+                    unit_of_work=unit_of_work,
+                    command_id=command.command_id,
+                    response=response,
+                    now_ms=now_ms,
+                )
+
+            next_status = (
+                RunStatus.COMPLETED
+                if command.resolution_kind is RecoveryResolutionKind.ACCEPT_PARTIAL
+                else RunStatus.PLANNING
+            )
+            resolved = unit_of_work.runs.resolve_recovery(
+                run.id,
+                expected_version=command.expected_run_version,
+                recovery_next_status=next_status,
+                finished_at_ms=now_ms if next_status is RunStatus.COMPLETED else None,
+            )
+            if not resolved.applied:
+                response = WriteRunResponse(
+                    applied=False,
+                    result_code=resolved.result_code.value,
+                    run_id=run.id,
+                    run_status=resolved.current_status.value,
+                    run_version=resolved.current_version,
+                    plan_id=plan.id,
+                    plan_status=plan.status.value,
+                    conflict_detail=resolved.conflict_detail,
+                )
+                return _finish_recovery_response(
+                    unit_of_work=unit_of_work,
+                    command_id=command.command_id,
+                    response=response,
+                    now_ms=now_ms,
+                )
+
+            if command.resolution_kind is RecoveryResolutionKind.ACCEPT_PARTIAL:
+                _cancel_pending_actions(
+                    unit_of_work=unit_of_work,
+                    plan_id=plan.id,
+                    updated_at_ms=now_ms,
+                )
+                unit_of_work.plans.complete(plan.id)
+                result_plan = plan.id
+                result_plan_status = PlanStatus.COMPLETED.value
+                result_kind = "PARTIAL"
+            else:
+                if not command.corrective_plan_id:
+                    raise ValueError("corrective_plan_id is required for CREATE_CORRECTIVE_PLAN")
+                unit_of_work.plans.supersede(plan.id)
+                next_revision = (
+                    max(item.revision_no for item in unit_of_work.plans.list_by_run(run.id)) + 1
+                )
+                corrective_plan = PlanRecord(
+                    id=command.corrective_plan_id,
+                    run_id=run.id,
+                    revision_no=next_revision,
+                    status=PlanStatus.DRAFT,
+                    summary_text=f"Corrective plan for mismatch action {action.id}",
+                    created_at_ms=now_ms,
+                )
+                unit_of_work.plans.insert_draft(corrective_plan)
+                result_plan = corrective_plan.id
+                result_plan_status = corrective_plan.status.value
+                result_kind = "CORRECTIVE_PLAN_REQUIRED"
+
+            unit_of_work.traces.add(
+                TraceEventRecord(
+                    run_id=run.id,
+                    action_id=action.id,
+                    event_type="RECOVERY_RESOLVED",
+                    status=resolved.current_status.value,
+                    duration_ms=None,
+                    payload_json=dumps(
+                        {"resolution_kind": command.resolution_kind.value}, sort_keys=True
+                    ),
+                    created_at_ms=now_ms,
+                )
+            )
+            unit_of_work.audits.add(
+                _audit_event(
+                    run_id=run.id,
+                    action_id=action.id,
+                    event_type="RECOVERY_RESOLVED",
+                    outcome=ResultCode.TRANSITION_APPLIED.value,
+                    metadata={"resolution_kind": command.resolution_kind.value},
+                    created_at_ms=now_ms,
+                )
+            )
+            response = WriteRunResponse(
+                applied=True,
+                result_code=ResultCode.TRANSITION_APPLIED.value,
+                run_id=run.id,
+                run_status=resolved.current_status.value,
+                run_version=resolved.current_version,
+                plan_id=result_plan,
+                plan_status=result_plan_status,
+                result_kind=result_kind,
+            )
+            return _finish_recovery_response(
+                unit_of_work=unit_of_work,
+                command_id=command.command_id,
+                response=response,
+                now_ms=now_ms,
+            )
 
 
 class RequireWriteReauthService:
@@ -2857,11 +3069,46 @@ def _require_attempt(unit_of_work: UnitOfWork, attempt_id: str) -> ExecutionAtte
 
 
 def classify_write_delivery(error: GoogleWorkspaceGatewayError) -> DeliveryCertainty:
-    if not error.delivered:
-        return DeliveryCertainty.NOT_SENT
-    if error.mutated:
-        return DeliveryCertainty.SENT_RESPONSE_LOST
-    return DeliveryCertainty.MAY_HAVE_BEEN_SENT
+    return error.delivery_certainty
+
+
+def _cancel_pending_actions(*, unit_of_work: UnitOfWork, plan_id: str, updated_at_ms: int) -> None:
+    pending_statuses = {
+        ActionStatus.PROPOSED.value,
+        ActionStatus.MODIFIED.value,
+        ActionStatus.APPROVED.value,
+        ActionStatus.EXPIRED.value,
+    }
+    for action in unit_of_work.actions.list_by_plan(plan_id):
+        if action.status not in pending_statuses:
+            continue
+        if action.status == ActionStatus.APPROVED.value:
+            unit_of_work.approvals.revoke_active_by_action(action.id)
+        result = unit_of_work.actions.cancel_pending(
+            action.id,
+            expected_version=action.version,
+            updated_at_ms=updated_at_ms,
+        )
+        if not result.applied:
+            raise RuntimeError(f"pending action cancellation failed: {action.id}")
+
+
+def _finish_recovery_response(
+    *,
+    unit_of_work: UnitOfWork,
+    command_id: str,
+    response: WriteRunResponse,
+    now_ms: int,
+) -> WriteRunResponse:
+    _finish_json_receipt(
+        unit_of_work,
+        command_id,
+        response,
+        response.run_version,
+        now_ms,
+    )
+    unit_of_work.commit()
+    return response
 
 
 def calculate_write_failure_result_code(error: GoogleWorkspaceGatewayError) -> ResultCode:
@@ -2981,14 +3228,19 @@ def _resolve_existing_run_receipt(
                 ),
             )
         run = _require_run(unit_of_work, run_id)
-        plan = _require_latest_plan_for_run(unit_of_work, run_id)
-        applied_statuses = {
-            RunStatus.CANCEL_REQUESTED.value,
-            RunStatus.CANCELLED.value,
-            RunStatus.REAUTH_REQUIRED.value,
-            RunStatus.RECOVERY_REQUIRED.value,
-            RunStatus.VERIFYING.value,
-        }
+        plans = unit_of_work.plans.list_by_run(run_id)
+        plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
+        applied_statuses = (
+            {RunStatus.COMPLETED.value, RunStatus.PLANNING.value}
+            if receipt.command_type == "ResolveMismatchRecovery"
+            else {
+                RunStatus.CANCEL_REQUESTED.value,
+                RunStatus.CANCELLED.value,
+                RunStatus.REAUTH_REQUIRED.value,
+                RunStatus.RECOVERY_REQUIRED.value,
+                RunStatus.VERIFYING.value,
+            }
+        )
         return WriteRunResponse(
             applied=run.status.value in applied_statuses,
             result_code=(
@@ -2999,8 +3251,8 @@ def _resolve_existing_run_receipt(
             run_id=run.id,
             run_status=run.status.value,
             run_version=run.version,
-            plan_id=plan.id,
-            plan_status=plan.status.value,
+            plan_id=None if plan is None else plan.id,
+            plan_status=None if plan is None else plan.status.value,
             result_kind=run.status.value,
             conflict_detail=None
             if run.status.value in applied_statuses

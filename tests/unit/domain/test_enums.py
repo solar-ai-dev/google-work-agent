@@ -47,6 +47,7 @@ def test_action_status_values_match_sql() -> None:
         "BLOCKED",
         "DEPENDENCY_BLOCKED",
         "MISMATCH",
+        "CANCELLED",
     )
 
 

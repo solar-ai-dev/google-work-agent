@@ -29,6 +29,7 @@ from google_work_agent.ports.google_oauth import (
     OAuthStartResult,
 )
 from google_work_agent.ports.google_workspace import (
+    DeliveryCertainty,
     FreeBusyCalendar,
     FreeBusyInterval,
     GoogleWorkspaceErrorCode,
@@ -181,6 +182,7 @@ __all__ = [
     "GoogleConnectionStatus",
     "GoogleOAuthCredentialProvider",
     "GoogleWorkspaceErrorCode",
+    "DeliveryCertainty",
     "GoogleWorkspaceGateway",
     "GoogleWorkspaceGatewayError",
     "HardwareCapability",

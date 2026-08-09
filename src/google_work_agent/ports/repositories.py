@@ -285,6 +285,9 @@ class PlanRepository(Protocol):
     def cancel(self, plan_id: str) -> None:
         """Mark a waiting or active plan as CANCELLED."""
 
+    def supersede(self, plan_id: str) -> None:
+        """Mark the prior recovery plan as SUPERSEDED."""
+
     def list_by_run(self, run_id: str) -> tuple[PlanRecord, ...]:
         """Return plans for one run."""
 
@@ -426,6 +429,15 @@ class ActionRepository(Protocol):
         updated_at_ms: int,
     ) -> CommandResult[ActionStatus, ActionCommand]:
         """Transition a failed write action back into MODIFIED."""
+
+    def cancel_pending(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+    ) -> CommandResult[ActionStatus, ActionCommand]:
+        """Cancel a pending action without creating an attempt or verification."""
 
     def store_verification(
         self,

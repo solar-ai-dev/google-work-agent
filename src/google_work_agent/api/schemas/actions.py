@@ -3,33 +3,24 @@
 from .common import ApiModel, ContractVersionedRequest
 
 
-class ApproveActionRequest(ContractVersionedRequest):
+class ApproveActionRequestV2(ContractVersionedRequest):
     command_id: str
-    request_hash: str
     expected_version: int
-    approved_by_account_id: str
-    approved_by_display: str | None = None
-    source_snapshot: dict[str, object]
-    approval_id: str
-    idempotency_key: str
     ttl_ms: int = 30000
 
 
-class ModifyActionRequest(ContractVersionedRequest):
+class ModifyActionRequestV2(ContractVersionedRequest):
     command_id: str
-    request_hash: str
     expected_version: int
 
 
-class RejectActionRequest(ContractVersionedRequest):
+class RejectActionRequestV2(ContractVersionedRequest):
     command_id: str
-    request_hash: str
     expected_version: int
 
 
-class PrepareRetryRequest(ContractVersionedRequest):
+class PrepareRetryRequestV2(ContractVersionedRequest):
     command_id: str
-    request_hash: str
     expected_action_version: int
 
 

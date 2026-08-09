@@ -103,6 +103,7 @@ from google_work_agent.application.write_actions import (
 )
 from google_work_agent.domain import ActionStatus, ResultCode, RunStatus
 from google_work_agent.ports import (
+    DeliveryCertainty,
     EvidenceOriginType,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGateway,
@@ -2833,7 +2834,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                         "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
                         "execution_summary": {"result": "REAUTH_REQUIRED", "action_id": action.id},
                     }
-                if error.delivered or error.mutated:
+                if error.delivery_certainty is not DeliveryCertainty.NOT_SENT:
                     unknown = self._mark_write_unknown(
                         MarkWriteActionUnknownResultCommand(
                             command_id=self._id_factory(),

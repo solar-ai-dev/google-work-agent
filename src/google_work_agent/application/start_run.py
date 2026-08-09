@@ -105,6 +105,7 @@ class ResumeRunCommand:
     command_id: str
     request_hash: str
     run_id: str
+    expected_run_version: int
     resume_kind: str
     api_contract_version: str
 
@@ -473,11 +474,23 @@ class ResumeRunService:
                 )
 
             allowed_statuses = {
-                RunStatus.WAITING_CONFIRMATION,
-                RunStatus.WAITING_APPROVAL,
-                RunStatus.BLOCKED,
+                "CONFIRMATION": {RunStatus.WAITING_CONFIRMATION},
+                "REAUTH_COMPLETED": {RunStatus.REAUTH_REQUIRED},
+                "SAFE_CHECKPOINT_RESUME": {RunStatus.BLOCKED},
+                "RECOVERY_RECHECK": {RunStatus.RECOVERY_REQUIRED},
             }
-            if unknown_result_exists:
+            if command.expected_run_version != run.version:
+                response = ResumeRunResponse(
+                    applied=False,
+                    result_code=ResultCode.VERSION_CONFLICT.value,
+                    run_id=run.id,
+                    run_status=run.status.value,
+                    run_version=run.version,
+                    should_enqueue=False,
+                    request_replayed=False,
+                    conflict_detail="expected_run_version does not match current version",
+                )
+            elif unknown_result_exists and command.resume_kind != "RECOVERY_RECHECK":
                 response = ResumeRunResponse(
                     applied=False,
                     result_code=ResultCode.RECOVERY_REQUIRED.value,
@@ -488,7 +501,7 @@ class ResumeRunService:
                     request_replayed=False,
                     conflict_detail="unknown write results must be resolved before resume",
                 )
-            elif run.status not in allowed_statuses:
+            elif run.status not in allowed_statuses.get(command.resume_kind, set()):
                 response = ResumeRunResponse(
                     applied=False,
                     result_code=ResultCode.STATE_CONFLICT.value,

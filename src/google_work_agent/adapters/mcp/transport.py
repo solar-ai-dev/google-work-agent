@@ -419,6 +419,7 @@ class SubprocessMCPTransport:
             try:
                 payload = self._wait_for_response(request_id=request_id)
             except MCPTransportError as error:
+                error.dispatch_started = True
                 self._last_safe_error_code = error.code.value
                 if (
                     error.code
@@ -441,8 +442,15 @@ class SubprocessMCPTransport:
                 message="mcp child stdin unavailable",
             )
         line = json.dumps(payload, sort_keys=True)
-        process.stdin.write(line + "\n")
-        process.stdin.flush()
+        try:
+            process.stdin.write(line + "\n")
+            process.stdin.flush()
+        except OSError as error:
+            raise MCPTransportError(
+                code=MCPTransportErrorCode.CONNECTION_CLOSED,
+                message="mcp child stdin closed during dispatch",
+                dispatch_started=True,
+            ) from error
 
     def _wait_for_response(self, *, request_id: str) -> JsonObject:
         deadline = time.monotonic() + (self._config.request_timeout_ms / 1000)

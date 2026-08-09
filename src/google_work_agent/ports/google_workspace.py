@@ -79,6 +79,14 @@ class GoogleWorkspaceErrorCode(StrEnum):
     NO_RECOVERY_CANDIDATE = "NO_RECOVERY_CANDIDATE"
 
 
+class DeliveryCertainty(StrEnum):
+    """Transport knowledge used to select FAILED versus UNKNOWN_RESULT."""
+
+    NOT_SENT = "NOT_SENT"
+    MAY_HAVE_BEEN_SENT = "MAY_HAVE_BEEN_SENT"
+    SENT_RESPONSE_LOST = "SENT_RESPONSE_LOST"
+
+
 class GoogleWorkspaceGatewayError(RuntimeError):
     """Gateway error that preserves delivery and mutation semantics."""
 
@@ -94,6 +102,13 @@ class GoogleWorkspaceGatewayError(RuntimeError):
         self.code = code
         self.delivered = delivered
         self.mutated = mutated
+        self.delivery_certainty = (
+            DeliveryCertainty.NOT_SENT
+            if not delivered
+            else DeliveryCertainty.SENT_RESPONSE_LOST
+            if mutated
+            else DeliveryCertainty.MAY_HAVE_BEEN_SENT
+        )
 
 
 class GoogleWorkspaceGateway(Protocol):

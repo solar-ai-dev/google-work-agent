@@ -53,9 +53,16 @@ class MCPTransportErrorCode(StrEnum):
 class MCPTransportError(RuntimeError):
     """Transport-level failure."""
 
-    def __init__(self, *, code: MCPTransportErrorCode, message: str) -> None:
+    def __init__(
+        self,
+        *,
+        code: MCPTransportErrorCode,
+        message: str,
+        dispatch_started: bool = False,
+    ) -> None:
         super().__init__(message)
         self.code = code
+        self.dispatch_started = dispatch_started
 
 
 class MCPTransport(Protocol):

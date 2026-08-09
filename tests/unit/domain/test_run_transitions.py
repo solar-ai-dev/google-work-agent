@@ -107,7 +107,13 @@ def test_resolve_recovery_requires_explicit_status() -> None:
 
 @pytest.mark.parametrize(
     "next_status",
-    (RunStatus.VERIFYING, RunStatus.FAILED, RunStatus.CANCELLED),
+    (
+        RunStatus.VERIFYING,
+        RunStatus.PLANNING,
+        RunStatus.COMPLETED,
+        RunStatus.FAILED,
+        RunStatus.CANCELLED,
+    ),
 )
 def test_resolve_recovery_allowed_targets(next_status: RunStatus) -> None:
     result = transition_run(

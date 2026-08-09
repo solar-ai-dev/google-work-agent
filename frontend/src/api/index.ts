@@ -108,7 +108,6 @@ export function listConversations(accountId: string, cursor?: string | null): Pr
 
 export function createConversation(payload: {
   command_id: string;
-  request_hash: string;
   conversation_id: string;
   account_id: string;
   title: string;
@@ -133,7 +132,6 @@ export function getRunContext(runId: string): Promise<RunContextResponse> {
 
 export function startRun(payload: {
   command_id: string;
-  request_hash: string;
   conversation_id: string;
   user_message_id: string;
   run_id: string;
@@ -152,14 +150,12 @@ export function startRun(payload: {
 export function cancelRun(payload: {
   run_id: string;
   command_id: string;
-  request_hash: string;
   expected_run_version: number;
 }): Promise<RunCommandResponse> {
   return requestJson(`/api/v1/runs/${encodeURIComponent(payload.run_id)}/cancel`, {
     method: "POST",
     body: {
       command_id: payload.command_id,
-      request_hash: payload.request_hash,
       expected_run_version: payload.expected_run_version,
       api_contract_version: API_CONTRACT_VERSION,
     },
@@ -169,17 +165,57 @@ export function cancelRun(payload: {
 export function resumeRun(payload: {
   run_id: string;
   command_id: string;
-  request_hash: string;
-  resume_kind: string;
-  resume_payload: Record<string, unknown>;
+  expected_version: number;
+  resume_kind: "REAUTH_COMPLETED" | "SAFE_CHECKPOINT_RESUME" | "RECOVERY_RECHECK";
 }): Promise<RunCommandResponse> {
   return requestJson(`/api/v1/runs/${encodeURIComponent(payload.run_id)}/resume`, {
     method: "POST",
     body: {
       command_id: payload.command_id,
-      request_hash: payload.request_hash,
+      expected_version: payload.expected_version,
       resume_kind: payload.resume_kind,
-      resume_payload: payload.resume_payload,
+      api_contract_version: API_CONTRACT_VERSION,
+    },
+  });
+}
+
+export function confirmRun(payload: {
+  run_id: string;
+  command_id: string;
+  expected_version: number;
+  interrupt_id: string;
+  response_kind: "OPTION_SELECTION" | "FREE_TEXT";
+  selected_option_ids?: string[];
+  free_text?: string | null;
+}): Promise<RunCommandResponse> {
+  return requestJson(`/api/v1/runs/${encodeURIComponent(payload.run_id)}/confirm`, {
+    method: "POST",
+    body: {
+      command_id: payload.command_id,
+      expected_version: payload.expected_version,
+      interrupt_id: payload.interrupt_id,
+      response_kind: payload.response_kind,
+      selected_option_ids: payload.selected_option_ids ?? [],
+      free_text: payload.free_text ?? null,
+      api_contract_version: API_CONTRACT_VERSION,
+    },
+  });
+}
+
+export function resolveRecovery(payload: {
+  run_id: string;
+  command_id: string;
+  expected_version: number;
+  action_id: string;
+  resolution_kind: "ACCEPT_PARTIAL" | "CREATE_CORRECTIVE_PLAN";
+}): Promise<RunCommandResponse> {
+  return requestJson(`/api/v1/runs/${encodeURIComponent(payload.run_id)}/resolve-recovery`, {
+    method: "POST",
+    body: {
+      command_id: payload.command_id,
+      expected_version: payload.expected_version,
+      action_id: payload.action_id,
+      resolution_kind: payload.resolution_kind,
       api_contract_version: API_CONTRACT_VERSION,
     },
   });
@@ -188,54 +224,62 @@ export function resumeRun(payload: {
 export function approveAction(payload: {
   action_id: string;
   command_id: string;
-  request_hash: string;
   expected_version: number;
-  approved_by_account_id: string;
-  approved_by_display?: string | null;
-  source_snapshot: Record<string, unknown>;
-  approval_id: string;
-  idempotency_key: string;
   ttl_ms?: number;
 }): Promise<ActionCommandResponse> {
   return requestJson(`/api/v1/actions/${encodeURIComponent(payload.action_id)}/approve`, {
     method: "POST",
-    body: { ...payload, ttl_ms: payload.ttl_ms ?? 30000, api_contract_version: API_CONTRACT_VERSION },
+    body: {
+      command_id: payload.command_id,
+      expected_version: payload.expected_version,
+      ttl_ms: payload.ttl_ms ?? 30000,
+      api_contract_version: API_CONTRACT_VERSION,
+    },
   });
 }
 
 export function rejectAction(payload: {
   action_id: string;
   command_id: string;
-  request_hash: string;
   expected_version: number;
 }): Promise<ActionCommandResponse> {
   return requestJson(`/api/v1/actions/${encodeURIComponent(payload.action_id)}/reject`, {
     method: "POST",
-    body: { ...payload, api_contract_version: API_CONTRACT_VERSION },
+    body: {
+      command_id: payload.command_id,
+      expected_version: payload.expected_version,
+      api_contract_version: API_CONTRACT_VERSION,
+    },
   });
 }
 
 export function modifyAction(payload: {
   action_id: string;
   command_id: string;
-  request_hash: string;
   expected_version: number;
 }): Promise<ActionCommandResponse> {
   return requestJson(`/api/v1/actions/${encodeURIComponent(payload.action_id)}/modify`, {
     method: "POST",
-    body: { ...payload, api_contract_version: API_CONTRACT_VERSION },
+    body: {
+      command_id: payload.command_id,
+      expected_version: payload.expected_version,
+      api_contract_version: API_CONTRACT_VERSION,
+    },
   });
 }
 
 export function prepareRetry(payload: {
   action_id: string;
   command_id: string;
-  request_hash: string;
   expected_action_version: number;
 }): Promise<ActionCommandResponse> {
   return requestJson(`/api/v1/actions/${encodeURIComponent(payload.action_id)}/prepare-retry`, {
     method: "POST",
-    body: { ...payload, api_contract_version: API_CONTRACT_VERSION },
+    body: {
+      command_id: payload.command_id,
+      expected_action_version: payload.expected_action_version,
+      api_contract_version: API_CONTRACT_VERSION,
+    },
   });
 }
 

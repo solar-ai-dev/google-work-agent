@@ -133,6 +133,13 @@ from google_work_agent.application.workflows.domain_validation import (
     build_domain_validation_output_v1,
     validate_domain_validation_service_output_v1,
 )
+from google_work_agent.application.workflows.insufficient_data import (
+    InsufficientDataContext,
+    InsufficientDataDisposition,
+    InsufficientDataIssue,
+    ResolutionSource,
+    decide_insufficient_data,
+)
 from google_work_agent.application.workflows.plan_review import (
     PLAN_REVIEW_OUTPUT_SCHEMA,
     PLAN_REVIEW_SCHEMA_VERSION,
@@ -206,6 +213,11 @@ from google_work_agent.application.workflows.work_analysis import (
 )
 
 __all__ = [
+    "InsufficientDataContext",
+    "InsufficientDataDisposition",
+    "InsufficientDataIssue",
+    "ResolutionSource",
+    "decide_insufficient_data",
     "ACQUISITION_RESULT_SCHEMA_VERSION",
     "AGENT_LOCAL_STATE_FIELDS",
     "ADDITIONAL_ACQUISITION_ALLOWED_PHASES",

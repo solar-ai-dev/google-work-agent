@@ -288,7 +288,6 @@ export function App(): JSX.Element {
       if (!selectedConversationId) {
         await createConversation({
           command_id: crypto.randomUUID(),
-          request_hash: await calculateRequestHash({ title: requestText, conversationId }),
           conversation_id: conversationId,
           account_id: currentAccount.account_id,
           title: requestText.slice(0, 80),
@@ -302,7 +301,6 @@ export function App(): JSX.Element {
       const workflowKey = `workflow-${runId}`;
       const response = await startRun({
         command_id: commandId,
-        request_hash: await calculateRequestHash({ commandId, requestText, selectedResourceIds }),
         conversation_id: conversationId,
         user_message_id: crypto.randomUUID(),
         run_id: runId,
@@ -329,17 +327,7 @@ export function App(): JSX.Element {
       await approveAction({
         action_id: action.action_id,
         command_id: commandId,
-        request_hash: await calculateRequestHash({ commandId, actionId: action.action_id, version: action.version }),
         expected_version: action.version,
-        approved_by_account_id: currentAccount.account_id,
-        approved_by_display: currentAccount.display_name ?? currentAccount.email,
-        source_snapshot: {
-          run_id: runSnapshot.run_id,
-          action_id: action.action_id,
-          action_status: action.status,
-        },
-        approval_id: crypto.randomUUID(),
-        idempotency_key: normalizeIdempotencyKey(commandId),
       });
       await selectRun(runSnapshot.run_id);
     } finally {
@@ -357,26 +345,22 @@ export function App(): JSX.Element {
     const commandId = crypto.randomUUID();
     setBusyCommand(`${kind}-${action.action_id}`);
     try {
-      const request_hash = await calculateRequestHash({ commandId, actionId: action.action_id, kind });
       if (kind === "modify") {
         await modifyAction({
           action_id: action.action_id,
           command_id: commandId,
-          request_hash,
           expected_version: action.version,
         });
       } else if (kind === "reject") {
         await rejectAction({
           action_id: action.action_id,
           command_id: commandId,
-          request_hash,
           expected_version: action.version,
         });
       } else {
         await prepareRetry({
           action_id: action.action_id,
           command_id: commandId,
-          request_hash,
           expected_action_version: action.version,
         });
       }
@@ -396,7 +380,6 @@ export function App(): JSX.Element {
       await cancelRun({
         run_id: runSnapshot.run_id,
         command_id: commandId,
-        request_hash: await calculateRequestHash({ commandId, runId: runSnapshot.run_id, version: runSnapshot.version }),
         expected_run_version: runSnapshot.version,
       });
       await selectRun(runSnapshot.run_id);
@@ -409,15 +392,23 @@ export function App(): JSX.Element {
     if (!runSnapshot || busyCommand) {
       return;
     }
+    const resumeKind = {
+      REAUTH_REQUIRED: "REAUTH_COMPLETED",
+      BLOCKED: "SAFE_CHECKPOINT_RESUME",
+      RECOVERY_REQUIRED: "RECOVERY_RECHECK",
+    }[runSnapshot.status] as "REAUTH_COMPLETED" | "SAFE_CHECKPOINT_RESUME" | "RECOVERY_RECHECK" | undefined;
+    if (!resumeKind) {
+      setStatusLine("현재 상태는 전용 확인 또는 승인 경로를 사용해야 합니다.");
+      return;
+    }
     setBusyCommand("resume-run");
     try {
       const commandId = crypto.randomUUID();
       await resumeRun({
         run_id: runSnapshot.run_id,
         command_id: commandId,
-        request_hash: await calculateRequestHash({ commandId, runId: runSnapshot.run_id, resume: true }),
-        resume_kind: "manual",
-        resume_payload: {},
+        expected_version: runSnapshot.version,
+        resume_kind: resumeKind,
       });
       await selectRun(runSnapshot.run_id);
     } finally {
@@ -1054,16 +1045,6 @@ function readBootstrapFragment(hash: string): { bootstrap_secret: string; servic
     bootstrap_secret: bootstrapSecret,
     service_instance_id: serviceInstanceId,
   };
-}
-
-async function calculateRequestHash(payload: object): Promise<string> {
-  const raw = new TextEncoder().encode(JSON.stringify(payload));
-  const digest = await crypto.subtle.digest("SHA-256", raw);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function normalizeIdempotencyKey(commandId: string): string {
-  return commandId.replaceAll("-", "").padEnd(64, "0").slice(0, 64);
 }
 
 function formatTime(value: number): string {

@@ -195,7 +195,6 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             "/api/v1/conversations",
             json={
                 "command_id": "conversation-cmd-1",
-                "request_hash": "a" * 64,
                 "conversation_id": "conversation-1",
                 "account_id": "account-1",
                 "title": "Inbox",
@@ -209,7 +208,6 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             "/api/v1/runs",
             json={
                 "command_id": "run-cmd-1",
-                "request_hash": "b" * 64,
                 "conversation_id": "conversation-1",
                 "user_message_id": "message-1",
                 "run_id": "run-1",

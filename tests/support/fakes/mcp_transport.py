@@ -28,6 +28,7 @@ class QueuedMCPFailure:
 
     code: MCPTransportErrorCode
     message: str
+    dispatch_started: bool = False
 
 
 class FakeMCPTransport:
@@ -58,7 +59,11 @@ class FakeMCPTransport:
         self.call_log.append(MCPCallRecord(tool_name=tool_name, arguments=deepcopy(arguments)))
         if self._failures:
             failure = self._failures.pop(0)
-            raise MCPTransportError(code=failure.code, message=failure.message)
+            raise MCPTransportError(
+                code=failure.code,
+                message=failure.message,
+                dispatch_started=failure.dispatch_started,
+            )
         if not self._responses:
             raise RuntimeError("no queued MCP response available")
         response = self._responses.pop(0)
@@ -68,7 +73,11 @@ class FakeMCPTransport:
         self.call_log.append(MCPCallRecord(tool_name=method, arguments=deepcopy(arguments)))
         if self._failures:
             failure = self._failures.pop(0)
-            raise MCPTransportError(code=failure.code, message=failure.message)
+            raise MCPTransportError(
+                code=failure.code,
+                message=failure.message,
+                dispatch_started=failure.dispatch_started,
+            )
         if not self._control_responses:
             raise RuntimeError("no queued MCP control response available")
         response = self._control_responses.pop(0)
