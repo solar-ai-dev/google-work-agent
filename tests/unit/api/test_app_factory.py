@@ -150,6 +150,24 @@ def test_app_lifespan_starts_and_stops_coordinator() -> None:
     assert coordinator.stopped == 1
 
 
+def test_app_lifespan_runs_all_resource_cleanup_callbacks() -> None:
+    container, _ = _build_container(_AllowGuard())
+    cleaned: list[str] = []
+
+    def close_first() -> None:
+        cleaned.append("first")
+
+    def close_second() -> None:
+        cleaned.append("second")
+
+    container = replace(container, shutdown_callbacks=(close_first, close_second))
+
+    with TestClient(create_app(container)):
+        pass
+
+    assert cleaned == ["first", "second"]
+
+
 def test_health_routes_and_runtime_respect_guard() -> None:
     container, _ = _build_container(_DenyGuard())
 
