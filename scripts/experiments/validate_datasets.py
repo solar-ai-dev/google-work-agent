@@ -1,12 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
-import sys
-import hashlib
 from pathlib import Path
 from typing import Any
-
 
 ROOT = Path(__file__).resolve().parents[2]
 EXP = ROOT / "experiments"
@@ -130,7 +128,10 @@ FORBIDDEN_TOOLS = {
     "gmail_modify_label",
 }
 
-REAL_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@(gmail|googlemail|naver|daum|kakao|outlook|hotmail|yahoo|icloud)\.[A-Za-z]{2,}\b", re.I)
+REAL_EMAIL_RE = re.compile(
+    r"\b[A-Za-z0-9._%+-]+@(gmail|googlemail|naver|daum|kakao|outlook|hotmail|yahoo|icloud)\.[A-Za-z]{2,}\b",
+    re.I,
+)
 TOKEN_RE = re.compile(r"\b(ya29\.|AIza[0-9A-Za-z_-]{20,}|sk-[0-9A-Za-z_-]{20,})")
 
 
@@ -159,7 +160,13 @@ def read_jsonl(path: Path, errors: list[dict]) -> list[dict]:
             try:
                 row = json.loads(line)
                 if not isinstance(row, dict):
-                    add_error(errors, "jsonl_parse", path.as_posix(), f"line:{line_no}", "line is not an object")
+                    add_error(
+                        errors,
+                        "jsonl_parse",
+                        path.as_posix(),
+                        f"line:{line_no}",
+                        "line is not an object",
+                    )
                 else:
                     rows.append(row)
             except Exception as exc:
@@ -173,11 +180,19 @@ def read_yaml_as_json(path: Path, errors: list[dict]) -> Any:
     return read_json(path, errors)
 
 
-def require_fields(rows: list[dict], fields: set[str], path: Path, errors: list[dict], id_field: str) -> None:
+def require_fields(
+    rows: list[dict], fields: set[str], path: Path, errors: list[dict], id_field: str
+) -> None:
     for row in rows:
         missing = sorted(fields - row.keys())
         if missing:
-            add_error(errors, "missing_required_field", path.as_posix(), str(row.get(id_field)), ",".join(missing))
+            add_error(
+                errors,
+                "missing_required_field",
+                path.as_posix(),
+                str(row.get(id_field)),
+                ",".join(missing),
+            )
 
 
 def check_duplicates(rows: list[dict], id_field: str, path: Path, errors: list[dict]) -> None:
@@ -203,7 +218,9 @@ def scan_text_files(errors: list[dict]) -> None:
         if REAL_EMAIL_RE.search(text):
             add_error(errors, "personal_data", path.as_posix(), None, "consumer email domain found")
         if TOKEN_RE.search(text):
-            add_error(errors, "personal_data", path.as_posix(), None, "token-like secret pattern found")
+            add_error(
+                errors, "personal_data", path.as_posix(), None, "token-like secret pattern found"
+            )
 
 
 def validate() -> dict:
@@ -272,47 +289,120 @@ def validate() -> dict:
     for case in all_cases:
         cid = case.get("case_id")
         if case.get("user_prompt_id") not in prompt_ids:
-            add_error(errors, "invalid_user_prompt_ref", "cases", str(cid), str(case.get("user_prompt_id")))
+            add_error(
+                errors,
+                "invalid_user_prompt_ref",
+                "cases",
+                str(cid),
+                str(case.get("user_prompt_id")),
+            )
         if case.get("fixture_snapshot_id") not in fixture_ids:
-            add_error(errors, "invalid_fixture_ref", "cases", str(cid), str(case.get("fixture_snapshot_id")))
+            add_error(
+                errors,
+                "invalid_fixture_ref",
+                "cases",
+                str(cid),
+                str(case.get("fixture_snapshot_id")),
+            )
         for rid in case.get("selected_resource_ids", []) + case.get("required_resource_ids", []):
             if rid not in resource_ids:
                 add_error(errors, "invalid_resource_ref", "cases", str(cid), rid)
         for ev in case.get("required_evidence", []):
             if ev.get("resource_id") not in resource_ids:
-                add_error(errors, "invalid_resource_ref", "case.required_evidence", str(cid), str(ev.get("resource_id")))
+                add_error(
+                    errors,
+                    "invalid_resource_ref",
+                    "case.required_evidence",
+                    str(cid),
+                    str(ev.get("resource_id")),
+                )
             if ev.get("segment_id") not in segment_ids:
-                add_error(errors, "invalid_segment_ref", "case.required_evidence", str(cid), str(ev.get("segment_id")))
+                add_error(
+                    errors,
+                    "invalid_segment_ref",
+                    "case.required_evidence",
+                    str(cid),
+                    str(ev.get("segment_id")),
+                )
         bad_allowed = sorted(FORBIDDEN_TOOLS.intersection(set(case.get("allowed_actions", []))))
         if bad_allowed:
             add_error(errors, "forbidden_tool", "cases", str(cid), ",".join(bad_allowed))
 
     for prompt in all_prompts:
         if prompt.get("case_id") not in case_ids:
-            add_error(errors, "invalid_case_ref", "user_prompts", str(prompt.get("user_prompt_id")), str(prompt.get("case_id")))
+            add_error(
+                errors,
+                "invalid_case_ref",
+                "user_prompts",
+                str(prompt.get("user_prompt_id")),
+                str(prompt.get("case_id")),
+            )
 
     for res in resources:
         if res.get("fixture_snapshot_id") not in fixture_ids:
-            add_error(errors, "invalid_fixture_ref", "resources", str(res.get("resource_id")), str(res.get("fixture_snapshot_id")))
+            add_error(
+                errors,
+                "invalid_fixture_ref",
+                "resources",
+                str(res.get("resource_id")),
+                str(res.get("fixture_snapshot_id")),
+            )
     for seg in segments:
         if seg.get("fixture_snapshot_id") not in fixture_ids:
-            add_error(errors, "invalid_fixture_ref", "segments", str(seg.get("segment_id")), str(seg.get("fixture_snapshot_id")))
+            add_error(
+                errors,
+                "invalid_fixture_ref",
+                "segments",
+                str(seg.get("segment_id")),
+                str(seg.get("fixture_snapshot_id")),
+            )
         if seg.get("resource_id") not in resource_ids:
-            add_error(errors, "invalid_resource_ref", "segments", str(seg.get("segment_id")), str(seg.get("resource_id")))
+            add_error(
+                errors,
+                "invalid_resource_ref",
+                "segments",
+                str(seg.get("segment_id")),
+                str(seg.get("resource_id")),
+            )
 
     for query in queries:
         qid = query.get("retrieval_query_id")
         if query.get("case_id") not in case_ids:
-            add_error(errors, "invalid_case_ref", "retrieval_queries", str(qid), str(query.get("case_id")))
+            add_error(
+                errors, "invalid_case_ref", "retrieval_queries", str(qid), str(query.get("case_id"))
+            )
         if query.get("evaluation_item_id") not in eval_ids:
-            add_error(errors, "invalid_evaluation_item_ref", "retrieval_queries", str(qid), str(query.get("evaluation_item_id")))
+            add_error(
+                errors,
+                "invalid_evaluation_item_ref",
+                "retrieval_queries",
+                str(qid),
+                str(query.get("evaluation_item_id")),
+            )
         if query.get("fixture_snapshot_id") not in fixture_ids:
-            add_error(errors, "invalid_fixture_ref", "retrieval_queries", str(qid), str(query.get("fixture_snapshot_id")))
+            add_error(
+                errors,
+                "invalid_fixture_ref",
+                "retrieval_queries",
+                str(qid),
+                str(query.get("fixture_snapshot_id")),
+            )
     if query_ids != gold_query_ids:
-        add_error(errors, "retrieval_gold_mismatch", "retrieval", None, f"queries={len(query_ids)} gold={len(gold_query_ids)}")
+        add_error(
+            errors,
+            "retrieval_gold_mismatch",
+            "retrieval",
+            None,
+            f"queries={len(query_ids)} gold={len(gold_query_ids)}",
+        )
     for row in relevance:
         qid = row.get("retrieval_query_id")
-        for rid in row.get("required_resource_ids", []) + row.get("optional_resource_ids", []) + row.get("forbidden_resource_ids", []) + row.get("hard_negative_resource_ids", []):
+        for rid in (
+            row.get("required_resource_ids", [])
+            + row.get("optional_resource_ids", [])
+            + row.get("forbidden_resource_ids", [])
+            + row.get("hard_negative_resource_ids", [])
+        ):
             if rid not in resource_ids:
                 add_error(errors, "invalid_resource_ref", "relevance_gold", str(qid), rid)
         for sid in row.get("required_segment_ids", []) + row.get("optional_segment_ids", []):
@@ -324,7 +414,13 @@ def validate() -> dict:
     registry = read_json(DATASETS / "agent_prompt" / "reserved-node-registry.json", errors) or {}
     registry_nodes = {node.get("node_id") for node in registry.get("nodes", [])}
     if len(registry_nodes) != 19:
-        add_error(errors, "node_registry_count", "agent_prompt/reserved-node-registry.json", None, str(len(registry_nodes)))
+        add_error(
+            errors,
+            "node_registry_count",
+            "agent_prompt/reserved-node-registry.json",
+            None,
+            str(len(registry_nodes)),
+        )
 
     tier_a_paths = [
         DATASETS / "agent_prompt" / "request_understanding" / "classify.jsonl",
@@ -344,40 +440,102 @@ def validate() -> dict:
             node_id = row.get("node_id")
             agent_counts[node_id] = agent_counts.get(node_id, 0) + 1
             if node_id not in registry_nodes:
-                add_error(errors, "invalid_node_ref", path.as_posix(), str(row.get("node_dataset_item_id")), str(node_id))
+                add_error(
+                    errors,
+                    "invalid_node_ref",
+                    path.as_posix(),
+                    str(row.get("node_dataset_item_id")),
+                    str(node_id),
+                )
             if row.get("case_id") not in case_ids:
-                add_error(errors, "invalid_case_ref", path.as_posix(), str(row.get("node_dataset_item_id")), str(row.get("case_id")))
+                add_error(
+                    errors,
+                    "invalid_case_ref",
+                    path.as_posix(),
+                    str(row.get("node_dataset_item_id")),
+                    str(row.get("case_id")),
+                )
             if row.get("evaluation_item_id") not in eval_ids:
-                add_error(errors, "invalid_evaluation_item_ref", path.as_posix(), str(row.get("node_dataset_item_id")), str(row.get("evaluation_item_id")))
+                add_error(
+                    errors,
+                    "invalid_evaluation_item_ref",
+                    path.as_posix(),
+                    str(row.get("node_dataset_item_id")),
+                    str(row.get("evaluation_item_id")),
+                )
             text = json.dumps(row.get("gold", {}), ensure_ascii=False)
             for tool in FORBIDDEN_TOOLS:
                 if f'"tool_name": "{tool}"' in text or f'"tool_name":"{tool}"' in text:
-                    add_error(errors, "forbidden_tool", path.as_posix(), str(row.get("node_dataset_item_id")), tool)
+                    add_error(
+                        errors,
+                        "forbidden_tool",
+                        path.as_posix(),
+                        str(row.get("node_dataset_item_id")),
+                        tool,
+                    )
 
-    prompt_manifest = read_json(ROOT / "prompts" / "agent" / "prompt-manifest-v0.7.json", errors) or {}
+    prompt_manifest = (
+        read_json(ROOT / "prompts" / "agent" / "prompt-manifest-v0.7.json", errors) or {}
+    )
     prompt_entries = prompt_manifest.get("slots", [])
     if not prompt_entries:
-        add_error(errors, "prompt_manifest_empty", "prompts/agent/prompt-manifest-v0.7.json", None, "no slots")
+        add_error(
+            errors,
+            "prompt_manifest_empty",
+            "prompts/agent/prompt-manifest-v0.7.json",
+            None,
+            "no slots",
+        )
     prompt_ids = {entry.get("slot_id") for entry in prompt_entries if isinstance(entry, dict)}
     missing_prompts = registry_nodes - prompt_ids
     if missing_prompts:
-        add_error(errors, "prompt_manifest_missing_node", "prompts/agent/prompt-manifest-v0.7.json", None, ",".join(sorted(missing_prompts)))
+        add_error(
+            errors,
+            "prompt_manifest_missing_node",
+            "prompts/agent/prompt-manifest-v0.7.json",
+            None,
+            ",".join(sorted(missing_prompts)),
+        )
 
     subset = read_json(DATASETS / "cases" / "subset-manifest.json", errors) or {}
     core_ids = {row["case_id"] for row in cases_by_split["core"] if "case_id" in row}
     for key in ["smoke_case_ids", "screening_case_ids"]:
         subset_ids = set(subset.get(key, []))
         if not subset_ids.issubset(core_ids):
-            add_error(errors, "subset_not_core", "subset-manifest.json", key, ",".join(sorted(subset_ids - core_ids)))
+            add_error(
+                errors,
+                "subset_not_core",
+                "subset-manifest.json",
+                key,
+                ",".join(sorted(subset_ids - core_ids)),
+            )
     if len(subset.get("smoke_case_ids", [])) != 5:
-        add_error(errors, "smoke_count", "subset-manifest.json", None, str(len(subset.get("smoke_case_ids", []))))
+        add_error(
+            errors,
+            "smoke_count",
+            "subset-manifest.json",
+            None,
+            str(len(subset.get("smoke_case_ids", []))),
+        )
     if len(subset.get("screening_case_ids", [])) != 20:
-        add_error(errors, "screening_count", "subset-manifest.json", None, str(len(subset.get("screening_case_ids", []))))
+        add_error(
+            errors,
+            "screening_count",
+            "subset-manifest.json",
+            None,
+            str(len(subset.get("screening_case_ids", []))),
+        )
 
     expected_counts = {"core": 60, "holdout": 12, "stress": 20}
     for split, expected in expected_counts.items():
         if len(cases_by_split[split]) != expected:
-            add_error(errors, "case_count", f"cases/{split}.jsonl", None, f"{len(cases_by_split[split])}!={expected}")
+            add_error(
+                errors,
+                "case_count",
+                f"cases/{split}.jsonl",
+                None,
+                f"{len(cases_by_split[split])}!={expected}",
+            )
     if len(all_prompts) != 92:
         add_error(errors, "canonical_prompt_count", "user_prompts", None, str(len(all_prompts)))
     if not (12 <= len(fixtures) <= 18):
@@ -388,33 +546,67 @@ def validate() -> dict:
     paraphrase_to_splits: dict[str, set[str]] = {}
     for case in all_cases:
         scenario_to_splits.setdefault(case.get("scenario_family_id"), set()).add(case.get("split"))
-        fixture_family_to_splits.setdefault(case.get("fixture_relation_family"), set()).add(case.get("split"))
+        fixture_family_to_splits.setdefault(case.get("fixture_relation_family"), set()).add(
+            case.get("split")
+        )
     for prompt in all_prompts:
-        paraphrase_to_splits.setdefault(prompt.get("paraphrase_group_id"), set()).add(prompt.get("split"))
+        paraphrase_to_splits.setdefault(prompt.get("paraphrase_group_id"), set()).add(
+            prompt.get("split")
+        )
     for scenario, splits in scenario_to_splits.items():
         if len(splits) > 1:
             add_error(errors, "split_leakage", "cases", str(scenario), ",".join(sorted(splits)))
     for family, splits in fixture_family_to_splits.items():
         if {"core", "holdout"}.issubset(splits):
-            add_error(errors, "fixture_relation_core_holdout_leakage", "cases", str(family), ",".join(sorted(splits)))
+            add_error(
+                errors,
+                "fixture_relation_core_holdout_leakage",
+                "cases",
+                str(family),
+                ",".join(sorted(splits)),
+            )
     for group, splits in paraphrase_to_splits.items():
         if len(splits) > 1:
-            add_error(errors, "paraphrase_split_leakage", "user_prompts", str(group), ",".join(sorted(splits)))
+            add_error(
+                errors,
+                "paraphrase_split_leakage",
+                "user_prompts",
+                str(group),
+                ",".join(sorted(splits)),
+            )
 
     for path in sorted((EXP / "configs").glob("*.yaml")):
         data = read_yaml_as_json(path, errors)
         if not isinstance(data, dict):
             add_error(errors, "yaml_parse", path.as_posix(), None, "not an object")
         elif "holdout" in json.dumps(data, ensure_ascii=False).lower() and "prompt" in path.name:
-            add_error(errors, "holdout_tuning_leakage", path.as_posix(), None, "holdout mentioned in prompt tuning config")
+            add_error(
+                errors,
+                "holdout_tuning_leakage",
+                path.as_posix(),
+                None,
+                "holdout mentioned in prompt tuning config",
+            )
 
     manifest = read_json(EXP / "manifest.json", errors) or {}
     for entry in manifest.get("files", []):
         path = ROOT / entry.get("file_path", "")
         if not path.exists():
-            add_error(errors, "manifest_missing_file", "experiments/manifest.json", entry.get("file_path"), "missing")
+            add_error(
+                errors,
+                "manifest_missing_file",
+                "experiments/manifest.json",
+                entry.get("file_path"),
+                "missing",
+            )
         elif sha256(path) != entry.get("sha256"):
-            add_error(errors, "manifest_hash_mismatch", "experiments/manifest.json", entry.get("file_path"), "sha256 mismatch")
+            add_error(
+                errors,
+                "manifest_hash_mismatch",
+                "experiments/manifest.json",
+                entry.get("file_path"),
+                "sha256 mismatch",
+            )
 
     scan_text_files(errors)
 

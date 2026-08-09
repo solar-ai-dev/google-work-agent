@@ -15,7 +15,10 @@ def main() -> int:
         "runner_interface": "IMPLEMENTED",
         "config": args.config,
         "dataset_root": str(Path(args.dataset_root)),
-        "reason": "Application Port, FakeGoogleGateway, or FakeLLMProvider is not implemented in this repository snapshot.",
+        "reason": (
+            "Application Port, FakeGoogleGateway, or FakeLLMProvider is not "
+            "implemented in this repository snapshot."
+        ),
         "result_schema": {
             "evaluation_item_id": "string",
             "status": "PASS|FAIL|BLOCKED",

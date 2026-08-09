@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import cast
 
-from google_work_agent.application.workflows import AgentLocalStateV1
+from google_work_agent.application.workflows import AgentLocalStateV1, PromptRef
 from google_work_agent.ports import PromptReference, StructuredLLMResult
 
-GraphState = dict[str, object]
+GraphState = Mapping[str, object]
 
 
 def build_agent_local_state(
@@ -35,7 +36,7 @@ def build_agent_local_state(
     }
 
 
-def prompt_ref_to_mapping(prompt_ref: PromptReference) -> dict[str, object]:
+def prompt_ref_to_mapping(prompt_ref: PromptReference) -> PromptRef:
     return {
         "prompt_bundle_version": prompt_ref.prompt_bundle_version,
         "prompt_id": prompt_ref.prompt_id,
@@ -69,7 +70,7 @@ def merge_trace_context(
 ) -> dict[str, object]:
     current = cast(dict[str, object], state.get("trace_context", {}))
     node_log = list(cast(list[dict[str, object]], current.get("agent_node_log", [])))
-    prompt_refs = list(cast(list[dict[str, object]], current.get("prompt_refs", [])))
+    prompt_refs = list(cast(list[PromptRef], current.get("prompt_refs", [])))
     node_log.append(
         {
             "graph_profile": graph_profile,
@@ -85,11 +86,11 @@ def merge_trace_context(
         prompt_refs.append(prompt_ref_to_mapping(prompt_ref))
     return {
         **current,
-        "agent_invocation_count": int(current.get("agent_invocation_count", 0))
+        "agent_invocation_count": _counter_value(current, "agent_invocation_count")
         + agent_invocation_increment,
-        "llm_call_count": int(current.get("llm_call_count", 0)) + llm_call_increment,
-        "repair_count": int(current.get("repair_count", 0)) + repair_increment,
-        "revision_count": int(current.get("revision_count", 0)) + revision_increment,
+        "llm_call_count": _counter_value(current, "llm_call_count") + llm_call_increment,
+        "repair_count": _counter_value(current, "repair_count") + repair_increment,
+        "revision_count": _counter_value(current, "revision_count") + revision_increment,
         "agent_node_log": node_log,
         "prompt_refs": prompt_refs,
     }
@@ -104,3 +105,10 @@ def record_llm_result(
     updated["candidate_output"] = candidate if isinstance(candidate, dict) else None
     updated["schema_repair_count"] = max(0, llm_result.structured_output_attempts - 1)
     return cast(AgentLocalStateV1, updated)
+
+
+def _counter_value(item: dict[str, object], field: str) -> int:
+    value = item.get(field, 0)
+    if not isinstance(value, int):
+        raise ValueError(f"trace_context {field} must be an integer")
+    return value

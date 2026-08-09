@@ -1,0 +1,2 @@
+# Migration documentation and runtime copies are compared as raw bytes.
+*.sql text eol=lf

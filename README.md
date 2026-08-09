@@ -33,9 +33,11 @@ Colab 실험 환경은 `config/requirements-colab.txt`를 기준으로 합니다
 
 ```powershell
 .\.venv-cpu\Scripts\python.exe -m pip check
-.\.venv-cpu\Scripts\python.exe -m pytest
-.\.venv-cpu\Scripts\python.exe -m ruff check .
-.\.venv-cpu\Scripts\python.exe -m ruff format --check .
+.\.venv-cpu\Scripts\python.exe -m pytest tests\unit -q
+.\.venv-cpu\Scripts\python.exe -m pytest tests\integration -q
+.\.venv-cpu\Scripts\python.exe -m pytest -q
+.\.venv-cpu\Scripts\python.exe -m ruff check src tests scripts
+.\.venv-cpu\Scripts\python.exe -m ruff format --check src tests scripts
 .\.venv-cpu\Scripts\python.exe -m mypy src tests
 ```
 

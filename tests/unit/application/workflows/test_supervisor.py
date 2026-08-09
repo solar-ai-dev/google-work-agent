@@ -1,14 +1,27 @@
 import json
+from typing import Literal, cast
 
 from google_work_agent.application import derive_finalize_intent
 from google_work_agent.application.read_only import ReadActionCommandResponse
 from google_work_agent.application.workflows import (
+    AcquisitionResultV1,
+    ActionDraftV1,
+    ActionPlanDraftV1,
+    AdditionalAcquisitionRequestV1,
+    AnswerDraftV1,
     BudgetProfile,
     BudgetReasonCode,
+    ContextRetrievalResultV1,
     DomainValidationResult,
     FinalizeIntent,
+    GraphStateUpdateV1,
     MultiAgentGraphState,
+    PlanReviewResultV1,
+    RequestIntentV1,
+    ReviewIssueV1,
+    RunBudgetV1,
     SupervisorTarget,
+    WorkAnalysisResultV1,
     WorkflowPhase,
     build_default_run_budget,
     route_supervisor,
@@ -92,6 +105,7 @@ def test_source_planning_no_fetch_needed_skips_acquisition_and_builds_canonical_
     assert decision["target"] == SupervisorTarget.CONTEXT_RETRIEVAL.value
     assert decision["next_phase"] == WorkflowPhase.CONTEXT_RETRIEVAL.value
     assert decision["state_update"]["source_fetch_plans"] == []
+    assert decision["state_update"]["acquisition_result"] is not None
     assert decision["state_update"]["acquisition_result"]["status"] == "COMPLETE"
     assert decision["state_update"]["acquisition_result"]["source_summaries"] == []
 
@@ -107,6 +121,7 @@ def test_acquisition_complete_routes_to_context_retrieval() -> None:
 
     assert decision["target"] == SupervisorTarget.CONTEXT_RETRIEVAL.value
     assert decision["next_phase"] == WorkflowPhase.CONTEXT_RETRIEVAL.value
+    assert decision["state_update"]["acquisition_result"] is not None
     assert decision["state_update"]["acquisition_result"]["status"] == "COMPLETE"
 
 
@@ -122,6 +137,7 @@ def test_acquisition_auth_required_routes_to_reauth_boundary() -> None:
     assert decision["target"] == SupervisorTarget.REAUTH.value
     assert decision["next_phase"] is None
     assert decision["state_update"]["finalize_intent"] is None
+    assert decision["state_update"]["acquisition_result"] is not None
     assert decision["state_update"]["acquisition_result"]["status"] == "AUTH_REQUIRED"
 
 
@@ -140,6 +156,8 @@ def test_context_needs_more_data_routes_to_source_planning_with_budget_update() 
 
     assert decision["target"] == SupervisorTarget.SOURCE_PLANNING.value
     assert decision["next_phase"] == WorkflowPhase.SOURCE_PLANNING.value
+    assert decision["budget_decision"] is not None
+    assert decision["state_update"]["retry_budget"] is not None
     assert decision["budget_decision"]["decision"] == "ALLOW"
     assert decision["state_update"]["retry_budget"]["additional_acquisitions_used"] == 1
     assert (
@@ -180,6 +198,7 @@ def test_analysis_complete_routes_to_solution_planning() -> None:
 
     assert decision["target"] == SupervisorTarget.SOLUTION_PLANNING.value
     assert decision["next_phase"] == WorkflowPhase.SOLUTION_PLANNING.value
+    assert decision["state_update"]["analysis_result"] is not None
     assert decision["state_update"]["analysis_result"]["status"] == "COMPLETE"
 
 
@@ -283,6 +302,7 @@ def test_domain_validation_block_finalizes_with_blocked_intent() -> None:
     assert decision["target"] == SupervisorTarget.FINALIZE.value
     assert decision["reason_code"] == "FORBIDDEN_DELETE"
     assert decision["state_update"]["workflow_phase"] == WorkflowPhase.FINALIZE.value
+    assert decision["state_update"]["finalize_intent"] is not None
     assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
 
 
@@ -406,6 +426,7 @@ def test_preflight_failure_blocks_even_with_approved_plan_id() -> None:
     assert decision["target"] == SupervisorTarget.FINALIZE.value
     assert decision["reason_code"] == "STATE_CONFLICT"
     assert decision["state_update"]["workflow_phase"] == WorkflowPhase.FINALIZE.value
+    assert decision["state_update"]["finalize_intent"] is not None
     assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
 
 
@@ -424,11 +445,12 @@ def test_review_pass_with_answer_creates_checkpoint_safe_finalize_intent() -> No
     next_state = _apply_state_update(state, decision["state_update"])
 
     assert decision["target"] == SupervisorTarget.FINALIZE.value
-    assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.COMPLETED.value
-    assert (
-        derive_finalize_intent(state=_checkpoint_roundtrip(next_state))["intent"]
-        == FinalizeIntent.COMPLETED.value
-    )
+    finalize_intent = decision["state_update"]["finalize_intent"]
+    assert finalize_intent is not None
+    assert finalize_intent["intent"] == FinalizeIntent.COMPLETED.value
+    restored_intent = derive_finalize_intent(state=_checkpoint_roundtrip(next_state))
+    assert restored_intent is not None
+    assert restored_intent["intent"] == FinalizeIntent.COMPLETED.value
 
 
 def test_review_revise_routes_answer_draft_to_revise_answer_with_shared_budget() -> None:
@@ -445,6 +467,8 @@ def test_review_revise_routes_answer_draft_to_revise_answer_with_shared_budget()
 
     assert decision["target"] == SupervisorTarget.PLANNING_REVISE_ANSWER.value
     assert decision["next_phase"] == WorkflowPhase.SOLUTION_PLANNING.value
+    assert decision["budget_decision"] is not None
+    assert decision["state_update"]["retry_budget"] is not None
     assert decision["budget_decision"]["decision"] == "ALLOW"
     assert decision["state_update"]["retry_budget"]["planning_revisions_used"] == 1
 
@@ -506,11 +530,13 @@ def test_review_retrieve_more_budget_deny_blocks_instead_of_guessing_failure() -
     )
 
     assert decision["target"] == SupervisorTarget.FINALIZE.value
+    assert decision["budget_decision"] is not None
     assert decision["budget_decision"]["decision"] == "DENY"
     assert (
         decision["budget_decision"]["budget_reason_code"]
         == BudgetReasonCode.ADDITIONAL_ACQUISITION_LIMIT_EXHAUSTED.value
     )
+    assert decision["state_update"]["finalize_intent"] is not None
     assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
 
 
@@ -532,6 +558,7 @@ def test_additional_acquisition_budget_deny_preserves_partial_result_kind_when_p
         result=_review_result("RETRIEVE_MORE"),
     )
 
+    assert decision["state_update"]["finalize_intent"] is not None
     assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
     assert decision["state_update"]["finalize_intent"]["result_kind"] == "PARTIAL"
 
@@ -559,6 +586,7 @@ def test_request_invalid_routes_to_blocked_finalize() -> None:
     )
 
     assert decision["target"] == SupervisorTarget.FINALIZE.value
+    assert decision["state_update"]["finalize_intent"] is not None
     assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
     assert decision["reason_code"] == "UNSUPPORTED_SCOPE"
 
@@ -579,15 +607,15 @@ def test_recovery_phase_routes_to_recovery_boundary() -> None:
 def _state(
     *,
     workflow_phase: WorkflowPhase = WorkflowPhase.REQUEST_ANALYSIS,
-    request_intent: dict[str, object] | None = None,
-    acquisition_result: dict[str, object] | None = None,
-    context_result: dict[str, object] | None = None,
-    analysis_result: dict[str, object] | None = None,
-    answer_draft: dict[str, object] | None = None,
-    plan_draft: dict[str, object] | None = None,
-    plan_review: dict[str, object] | None = None,
+    request_intent: RequestIntentV1 | None = None,
+    acquisition_result: AcquisitionResultV1 | None = None,
+    context_result: ContextRetrievalResultV1 | None = None,
+    analysis_result: WorkAnalysisResultV1 | None = None,
+    answer_draft: AnswerDraftV1 | None = None,
+    plan_draft: ActionPlanDraftV1 | None = None,
+    plan_review: PlanReviewResultV1 | None = None,
     approved_plan_id: str | None = None,
-    retry_budget: dict[str, object] | None = None,
+    retry_budget: RunBudgetV1 | None = None,
 ) -> MultiAgentGraphState:
     return {
         "schema_version": 1,
@@ -614,7 +642,7 @@ def _state(
     }
 
 
-def _request_intent() -> dict[str, object]:
+def _request_intent() -> RequestIntentV1:
     return {
         "schema_version": 2,
         "goal": {
@@ -643,7 +671,16 @@ def _request_intent() -> dict[str, object]:
     }
 
 
-def _acquisition_result(status: str) -> dict[str, object]:
+def _acquisition_result(
+    status: Literal[
+        "COMPLETE",
+        "PARTIAL",
+        "AUTH_REQUIRED",
+        "RATE_LIMITED",
+        "BUDGET_EXHAUSTED",
+        "FAILED",
+    ],
+) -> AcquisitionResultV1:
     return {
         "schema_version": 1,
         "status": status,
@@ -659,9 +696,11 @@ def _acquisition_result(status: str) -> dict[str, object]:
     }
 
 
-def _context_result(status: str) -> dict[str, object]:
-    additional_request = None
-    ambiguity = None
+def _context_result(
+    status: Literal["SUFFICIENT", "NEEDS_MORE_DATA", "NEEDS_CONFIRMATION", "PARTIAL", "BLOCKED"],
+) -> ContextRetrievalResultV1:
+    additional_request: AdditionalAcquisitionRequestV1 | None = None
+    ambiguity: dict[str, object] | None = None
     if status == "NEEDS_MORE_DATA":
         additional_request = {
             "schema_version": 1,
@@ -714,9 +753,11 @@ def _context_result(status: str) -> dict[str, object]:
     }
 
 
-def _analysis_result(status: str) -> dict[str, object]:
-    additional_request = None
-    confirmation = None
+def _analysis_result(
+    status: Literal["COMPLETE", "NEEDS_MORE_DATA", "NEEDS_CONFIRMATION", "BLOCKED"],
+) -> WorkAnalysisResultV1:
+    additional_request: AdditionalAcquisitionRequestV1 | None = None
+    confirmation: dict[str, object] | None = None
     if status == "NEEDS_MORE_DATA":
         additional_request = {
             "schema_version": 1,
@@ -762,7 +803,9 @@ def _analysis_result(status: str) -> dict[str, object]:
     }
 
 
-def _answer_draft(status: str) -> dict[str, object]:
+def _answer_draft(
+    status: Literal["ANSWER_ONLY", "NEEDS_CONFIRMATION", "BLOCKED"],
+) -> AnswerDraftV1:
     return {
         "schema_version": 1,
         "status": status,
@@ -784,7 +827,9 @@ def _answer_draft(status: str) -> dict[str, object]:
     }
 
 
-def _plan_draft(status: str) -> dict[str, object]:
+def _plan_draft(
+    status: Literal["PLAN_READY", "NEEDS_CONFIRMATION", "BLOCKED"],
+) -> ActionPlanDraftV1:
     return {
         "schema_version": 2,
         "status": status,
@@ -807,7 +852,7 @@ def _plan_draft(status: str) -> dict[str, object]:
     }
 
 
-def _action_draft() -> dict[str, object]:
+def _action_draft() -> ActionDraftV1:
     return {
         "schema_version": 2,
         "action_id": "action-1",
@@ -824,17 +869,19 @@ def _action_draft() -> dict[str, object]:
     }
 
 
-def _review_result(status: str) -> dict[str, object]:
-    request = None
-    confirmation = None
-    issues = []
+def _review_result(
+    status: Literal["PASS", "REVISE", "RETRIEVE_MORE", "CONFIRM", "BLOCK"],
+) -> PlanReviewResultV1:
+    request: AdditionalAcquisitionRequestV1 | None = None
+    confirmation: dict[str, object] | None = None
+    issues: list[ReviewIssueV1] = []
     blockers = []
     if status == "REVISE":
         issues = [
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "issue_id": "issue-1",
-                "kind": "MISSING_POINT",
+                "kind": "MISSING_GOAL_COVERAGE",
                 "message": "Missing one point",
                 "affected_action_ids": [],
                 "affected_field_paths": ["answer"],
@@ -846,7 +893,7 @@ def _review_result(status: str) -> dict[str, object]:
     if status == "RETRIEVE_MORE":
         issues = [
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "issue_id": "issue-1",
                 "kind": "EVIDENCE_GAP",
                 "message": "Need more evidence",
@@ -876,7 +923,7 @@ def _review_result(status: str) -> dict[str, object]:
     if status == "BLOCK":
         blockers = ["policy blocker"]
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": status,
         "summary": "Review summary",
         "issues": issues,
@@ -889,12 +936,15 @@ def _review_result(status: str) -> dict[str, object]:
 
 def _apply_state_update(
     state: MultiAgentGraphState,
-    state_update: dict[str, object],
+    state_update: GraphStateUpdateV1,
 ) -> MultiAgentGraphState:
-    updated = dict(state)
+    updated = state.copy()
     updated.update(state_update)
-    return updated  # type: ignore[return-value]
+    return updated
 
 
 def _checkpoint_roundtrip(state: MultiAgentGraphState) -> MultiAgentGraphState:
-    return json.loads(json.dumps(state))  # type: ignore[return-value]
+    decoded: object = json.loads(json.dumps(state))
+    if decoded != state:
+        raise AssertionError("checkpoint roundtrip changed graph state")
+    return cast(MultiAgentGraphState, decoded)

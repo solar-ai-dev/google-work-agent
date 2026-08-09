@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 import pytest
 from tests.support.prompt_manifests import write_runtime_active_manifest
 
+from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
     E06B_ANALYSIS_PLANNING_OUTPUT_SCHEMA,
     PLAN_REVIEW_OUTPUT_SCHEMA,
@@ -57,14 +60,14 @@ class FakeLLMRuntime:
         self,
         *,
         prompt_ref: PromptReference,
-        prompt_input: dict[str, object],
+        prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
-        trace_context: object,
+        trace_context: ObservabilityContext,
     ) -> StructuredLLMResult:
         self.calls.append(
             {
                 "prompt_ref": prompt_ref,
-                "prompt_input": prompt_input,
+                "prompt_input": dict(prompt_input),
                 "output_schema": output_schema,
                 "trace_context": trace_context,
             }
@@ -160,7 +163,7 @@ def test_e06_candidates_keep_semantic_bundle_and_responsibility_parity() -> None
         "semantic-r8.3-v1"
     }
     assert {
-        candidate["graph_profile_spec"]["semantic_responsibility_map_version"]
+        _nested_mapping(candidate, "graph_profile_spec")["semantic_responsibility_map_version"]
         for candidate in candidates
     } == {"semantic-responsibility-r8.2-v1"}
 
@@ -286,7 +289,9 @@ def test_controlled_replay_runner_rejects_mismatched_environment_hash(
     candidate_config = _load_json(
         Path("experiments/candidates/cand-e06b-b1-integrated.template.json")
     )
-    candidate_config["evaluation_environment"]["evaluation_environment_hash"] = "deadbeef"
+    _nested_mapping(candidate_config, "evaluation_environment")["evaluation_environment_hash"] = (
+        "deadbeef"
+    )
 
     try:
         runner.run(
@@ -318,7 +323,7 @@ def test_controlled_replay_environment_hash_is_sensitive_to_profile_and_timeout(
     timeout_changed = _load_json(
         Path("experiments/candidates/cand-e06b-b1-integrated.template.json")
     )
-    timeout_changed["evaluation_environment"]["api_llm_timeout_seconds"] = 90
+    _nested_mapping(timeout_changed, "evaluation_environment")["api_llm_timeout_seconds"] = 90
     timeout_hash = _calculate_evaluation_environment_hash(
         candidate_config=timeout_changed,
         evaluation_item=evaluation_item,
@@ -328,7 +333,7 @@ def test_controlled_replay_environment_hash_is_sensitive_to_profile_and_timeout(
     profile_changed = _load_json(
         Path("experiments/candidates/cand-e06b-b1-integrated.template.json")
     )
-    profile_changed["graph_profile_spec"]["profile_id"] = "E06B_B2_STAGED"
+    _nested_mapping(profile_changed, "graph_profile_spec")["profile_id"] = "E06B_B2_STAGED"
     profile_changed["graph_version"] = "E06B_B2_STAGED"
     profile_hash = _calculate_evaluation_environment_hash(
         candidate_config=profile_changed,
@@ -431,7 +436,7 @@ def test_controlled_replay_runner_rejects_non_zero_google_read_boundary(
     model_input = _load_json(FIXTURE_DIR / "input.json")
     gold = _load_json(FIXTURE_DIR / "gold.json")
     evaluation_item = _load_json(FIXTURE_DIR / "evaluation-item.json")
-    evaluation_item["execution_contract"]["google_read_call_count"] = 1
+    _nested_mapping(evaluation_item, "execution_contract")["google_read_call_count"] = 1
 
     try:
         runner.run(
@@ -467,7 +472,7 @@ def test_controlled_replay_handoff_metrics_detect_forbidden_action_contradiction
     )
     model_input = _load_json(FIXTURE_DIR / "input.json")
     gold = _load_json(FIXTURE_DIR / "gold.json")
-    gold["gold"]["expected_answer_type"] = "PLAN"
+    _nested_mapping(gold, "gold")["expected_answer_type"] = "PLAN"
     evaluation_item = _load_json(FIXTURE_DIR / "evaluation-item.json")
     candidate_config = _load_json(
         Path("experiments/candidates/cand-e06b-b3-specialized.template.json")
@@ -514,6 +519,7 @@ def test_controlled_replay_handoff_metrics_detect_required_field_loss(
         gold=_load_json(FIXTURE_DIR / "gold.json"),
     )
 
+    assert node["required_field_preservation_rate"] is not None
     assert node["required_field_preservation_rate"] < 1.0
     assert node["required_field_preservation_rate"] == 0.5
 
@@ -545,6 +551,8 @@ def test_controlled_replay_handoff_metrics_detect_evidence_id_loss(
         gold=_load_json(FIXTURE_DIR / "gold.json"),
     )
 
+    assert node["required_field_preservation_rate"] is not None
+    assert node["evidence_id_preservation_rate"] is not None
     assert node["required_field_preservation_rate"] < 1.0
     assert node["evidence_id_preservation_rate"] < 1.0
     assert node["evidence_id_preservation_rate"] == 0.0
@@ -567,7 +575,7 @@ def test_controlled_replay_handoff_metrics_detect_answer_type_constraint_loss(
         manifest_path=manifest_path,
     )
     gold = _load_json(FIXTURE_DIR / "gold.json")
-    gold["gold"]["expected_answer_type"] = "PLAN"
+    _nested_mapping(gold, "gold")["expected_answer_type"] = "PLAN"
 
     _, node = runner.run(
         experiment_id="EXP-E06B-CONTROLLED-POST-RET",
@@ -638,7 +646,17 @@ def test_fixed_environment_payload_is_identical_for_e06a_profiles_except_indepen
 
 
 def _load_json(path: Path) -> dict[str, object]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    value: object = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise AssertionError(f"expected JSON object: {path}")
+    return cast(dict[str, object], value)
+
+
+def _nested_mapping(payload: Mapping[str, object], key: str) -> dict[str, object]:
+    value = payload.get(key)
+    if not isinstance(value, dict) or not all(isinstance(item, str) for item in value):
+        raise AssertionError(f"{key} must be an object with string keys")
+    return cast(dict[str, object], value)
 
 
 def _llm_result(payload: object) -> StructuredLLMResult:
@@ -757,8 +775,12 @@ def _plan_output() -> dict[str, object]:
 
 def _forbidden_plan_output() -> dict[str, object]:
     payload = _plan_output()
-    payload["actions"][0]["tool_name"] = "gmail_send"
-    payload["actions"][0]["effect"] = "SEND"
+    actions = payload.get("actions")
+    if not isinstance(actions, list) or not actions or not isinstance(actions[0], dict):
+        raise AssertionError("plan actions must contain an object")
+    action = cast(dict[str, object], actions[0])
+    action["tool_name"] = "gmail_send"
+    action["effect"] = "SEND"
     return payload
 
 
@@ -778,9 +800,12 @@ def _set_nested_value(payload: dict[str, object], field_path: str, value: object
     path = field_path.split(".")
     cursor: dict[str, object] = payload
     for key in path[:-1]:
-        cursor = cursor[key]  # type: ignore[assignment]
-        if not isinstance(cursor, dict):
+        next_value = cursor[key]
+        if not isinstance(next_value, dict) or not all(
+            isinstance(item, str) for item in next_value
+        ):
             raise AssertionError(f"non-dict path segment: {field_path}")
+        cursor = cast(dict[str, object], next_value)
     cursor[path[-1]] = value
 
 

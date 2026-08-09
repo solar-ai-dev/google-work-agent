@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -8,12 +9,16 @@ from typing import cast
 import pytest
 from tests.support.prompt_manifests import write_runtime_active_manifest
 
+from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
     ACTION_PLAN_DRAFT_OUTPUT_SCHEMA,
     ANSWER_DRAFT_OUTPUT_SCHEMA,
+    ContextRetrievalResultV1,
     PlanningResult,
+    RequestIntentV1,
     SolutionPlanningAgent,
     SolutionPlanningValidationError,
+    WorkAnalysisResultV1,
     WorkflowPhase,
     build_solution_planning_clarification_question,
     load_solution_planning_answer_only_prompt_reference,
@@ -97,9 +102,9 @@ class FakeLLMRuntime:
         self,
         *,
         prompt_ref: PromptReference,
-        prompt_input: dict[str, object],
+        prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
-        trace_context: object,
+        trace_context: ObservabilityContext,
     ) -> StructuredLLMResult:
         self.calls.append(
             {
@@ -467,7 +472,7 @@ def test_action_plan_rejects_unknown_refs_and_requires_plan_level_coverage() -> 
         validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
 
     output = _plan_output(PlanningResult.PLAN_READY.value)
-    cast(list[dict[str, object]], output["evidence_refs"]).remove("evidence-2")
+    cast(list[str], output["evidence_refs"]).remove("evidence-2")
 
     with pytest.raises(SolutionPlanningValidationError, match="covered by plan evidence_refs"):
         validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
@@ -680,7 +685,7 @@ def test_solution_planning_exports_are_available() -> None:
 
 def _agent(runtime: FakeLLMRuntime) -> SolutionPlanningAgent:
     return SolutionPlanningAgent(
-        llm_runtime=cast(object, runtime),
+        llm_runtime=runtime,
         answer_only_prompt_ref=ANSWER_ONLY_PROMPT_REF,
         draft_plan_prompt_ref=DRAFT_PLAN_PROMPT_REF,
         revise_answer_prompt_ref=REVISE_ANSWER_PROMPT_REF,
@@ -705,7 +710,7 @@ def _request() -> WorkflowStartRequest:
     )
 
 
-def _intent() -> dict[str, object]:
+def _intent() -> RequestIntentV1:
     return {
         "schema_version": 2,
         "goal": {
@@ -731,9 +736,9 @@ def _intent() -> dict[str, object]:
     }
 
 
-def _context_result() -> dict[str, object]:
+def _context_result() -> ContextRetrievalResultV1:
     return {
-        "schema_version": 2,
+        "schema_version": 1,
         "status": "SUFFICIENT",
         "context_bundle": {
             "schema_version": 1,
@@ -803,9 +808,9 @@ def _context_result() -> dict[str, object]:
     }
 
 
-def _analysis_result() -> dict[str, object]:
+def _analysis_result() -> WorkAnalysisResultV1:
     return {
-        "schema_version": 2,
+        "schema_version": 1,
         "status": "COMPLETE",
         "summary": "A follow-up response is required and a task update may be needed.",
         "findings": [

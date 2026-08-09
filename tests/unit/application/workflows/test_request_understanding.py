@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -8,7 +9,9 @@ from typing import cast
 import pytest
 from tests.support.prompt_manifests import write_runtime_active_manifest
 
+from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
+    ClarificationQuestionV1,
     ConfirmationResponseKind,
     RequestUnderstandingAgent,
     RequestUnderstandingResult,
@@ -68,9 +71,9 @@ class FakeLLMRuntime:
         self,
         *,
         prompt_ref: PromptReference,
-        prompt_input: dict[str, object],
+        prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
-        trace_context: object,
+        trace_context: ObservabilityContext,
     ) -> StructuredLLMResult:
         self.calls.append(
             {
@@ -91,7 +94,7 @@ def test_clear_request_returns_complete_request_intent() -> None:
     runtime.queued.append(_llm_result(_clear_intent()))
     request = _request("김대리 메일 찾아서 이번 주 해야 할 일 정리해줘.")
     agent = RequestUnderstandingAgent(
-        llm_runtime=cast(object, runtime),
+        llm_runtime=runtime,
         prompt_ref=PROMPT_REF,
         clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
@@ -122,7 +125,7 @@ def test_linguistically_ambiguous_request_needs_confirmation() -> None:
     runtime.queued.append(_llm_result(_ambiguous_intent()))
     request = _request("그 사람이랑 얘기했던 일정 정리해줘.")
     agent = RequestUnderstandingAgent(
-        llm_runtime=cast(object, runtime),
+        llm_runtime=runtime,
         prompt_ref=PROMPT_REF,
         clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
@@ -151,7 +154,7 @@ def test_retrieval_candidate_ambiguity_is_not_confirmed_by_request_understanding
     runtime.queued.append(_llm_result(_minsu_intent()))
     request = _request("민수랑 얘기했던 일정 정리해줘.")
     agent = RequestUnderstandingAgent(
-        llm_runtime=cast(object, runtime),
+        llm_runtime=runtime,
         prompt_ref=PROMPT_REF,
         clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
@@ -168,7 +171,7 @@ def test_unsupported_scope_returns_invalid_without_request_intent_handoff() -> N
     runtime = FakeLLMRuntime()
     runtime.queued.append(_llm_result(_unsupported_intent()))
     agent = RequestUnderstandingAgent(
-        llm_runtime=cast(object, runtime),
+        llm_runtime=runtime,
         prompt_ref=PROMPT_REF,
         clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
@@ -198,7 +201,7 @@ def test_structured_output_schema_error_is_not_converted_to_invalid() -> None:
         )
     )
     agent = RequestUnderstandingAgent(
-        llm_runtime=cast(object, runtime),
+        llm_runtime=runtime,
         prompt_ref=PROMPT_REF,
         clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
@@ -215,7 +218,7 @@ def test_structured_output_repair_owned_by_llm_runtime_and_not_retried_by_agent(
     runtime = FakeLLMRuntime()
     runtime.queued.append(_llm_result(_clear_intent(), attempts=2))
     agent = RequestUnderstandingAgent(
-        llm_runtime=cast(object, runtime),
+        llm_runtime=runtime,
         prompt_ref=PROMPT_REF,
         clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
@@ -236,7 +239,7 @@ def test_resource_selected_preserves_selected_resource_context_without_intent_du
         selected_resource_ids=("gmail-thread-1",),
     )
     agent = RequestUnderstandingAgent(
-        llm_runtime=cast(object, runtime),
+        llm_runtime=runtime,
         prompt_ref=PROMPT_REF,
         clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
@@ -261,7 +264,7 @@ def test_agent_surface_has_no_google_mcp_or_action_dependency() -> None:
     runtime = FakeLLMRuntime()
     runtime.queued.append(_llm_result(_clear_intent()))
     agent = RequestUnderstandingAgent(
-        llm_runtime=cast(object, runtime),
+        llm_runtime=runtime,
         prompt_ref=PROMPT_REF,
         clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )
@@ -293,7 +296,7 @@ def test_default_product_loader_rejects_draft_request_understanding_prompt() -> 
 
 def test_clarify_invokes_prompt_and_validates_question_output() -> None:
     runtime = FakeLLMRuntime()
-    clarification_source = {
+    clarification_source: ClarificationQuestionV1 = {
         "schema_version": 1,
         "origin_target": "analysis.analyze",
         "question": "Which task should be treated as the primary follow-up?",
@@ -304,7 +307,7 @@ def test_clarify_invokes_prompt_and_validates_question_output() -> None:
     }
     runtime.queued.append(_llm_result(dict(clarification_source)))
     agent = RequestUnderstandingAgent(
-        llm_runtime=cast(object, runtime),
+        llm_runtime=runtime,
         prompt_ref=PROMPT_REF,
         clarify_prompt_ref=CLARIFY_PROMPT_REF,
     )

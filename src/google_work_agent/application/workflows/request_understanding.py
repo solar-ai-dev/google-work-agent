@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, NotRequired, Required, TypedDict, cast
+from typing import Final, Literal, NotRequired, Required, TypedDict, cast
 
-from google_work_agent.application.llm import LLMRuntimeService
+from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.contracts import (
     ConfirmationResponseV1,
+    GraphStateUpdateV1,
     RequestUnderstandingResult,
     UserInterruptV1,
     WorkflowPhase,
@@ -133,9 +134,9 @@ class RequestUnderstandingOutputV1(TypedDict):
     llm_provider_result: NotRequired[dict[str, object]]
 
 
-REQUEST_INTENT_SCHEMA_VERSION = 2
-CLARIFICATION_QUESTION_SCHEMA_VERSION = 1
-REQUEST_UNDERSTANDING_OUTPUT_SCHEMA_VERSION = 1
+REQUEST_INTENT_SCHEMA_VERSION: Final = 2
+CLARIFICATION_QUESTION_SCHEMA_VERSION: Final = 1
+REQUEST_UNDERSTANDING_OUTPUT_SCHEMA_VERSION: Final = 1
 REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="request-intent-v2",
     json_schema={
@@ -339,7 +340,7 @@ class RequestUnderstandingAgent:
     def __init__(
         self,
         *,
-        llm_runtime: LLMRuntimeService,
+        llm_runtime: StructuredLLMRuntime,
         prompt_ref: PromptReference | None = None,
         clarify_prompt_ref: PromptReference | None = None,
         manifest_path: Path | None = None,
@@ -414,7 +415,7 @@ class RequestUnderstandingAgent:
         output: RequestUnderstandingOutputV1,
         *,
         request: WorkflowStartRequest,
-    ) -> JsonObject:
+    ) -> GraphStateUpdateV1:
         phase = _phase_for_result(RequestUnderstandingResult(output["result"]))
         return {
             "request_intent": output["request_intent"],

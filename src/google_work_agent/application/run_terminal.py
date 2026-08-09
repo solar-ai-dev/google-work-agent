@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import cast
@@ -12,7 +12,6 @@ from google_work_agent.application.workflows import (
     ApiAcquisitionResult,
     FinalizeIntent,
     FinalizeIntentV1,
-    MultiAgentGraphState,
     PlanningResult,
     ReviewResult,
     WorkflowPhase,
@@ -23,6 +22,8 @@ from google_work_agent.ports import (
     AuditEventRecord,
     CommandReceiptRecord,
     CommandReceiptStatus,
+    ConversationRecord,
+    RunRecord,
     TraceEventRecord,
     UnitOfWork,
 )
@@ -178,7 +179,7 @@ class CompleteWriteRunService:
 
 def derive_finalize_intent(
     *,
-    state: MultiAgentGraphState,
+    state: Mapping[str, object],
 ) -> FinalizeIntentV1 | None:
     persisted_intent = state.get("finalize_intent")
     if persisted_intent is not None:
@@ -476,14 +477,14 @@ def _deserialize_run_transition_response(raw: str) -> RunTransitionResponse:
     )
 
 
-def _require_run(unit_of_work: UnitOfWork, run_id: str):
+def _require_run(unit_of_work: UnitOfWork, run_id: str) -> RunRecord:
     run = unit_of_work.runs.get_by_id(run_id)
     if run is None:
         raise LookupError(f"run not found: {run_id}")
     return run
 
 
-def _require_conversation(unit_of_work: UnitOfWork, conversation_id: str):
+def _require_conversation(unit_of_work: UnitOfWork, conversation_id: str) -> ConversationRecord:
     conversation = unit_of_work.conversations.get_by_id(conversation_id)
     if conversation is None:
         raise LookupError(f"conversation not found: {conversation_id}")

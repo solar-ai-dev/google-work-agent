@@ -1,5 +1,6 @@
 from copy import deepcopy
 from json import dumps, loads
+from typing import cast
 
 from google_work_agent.application import (
     build_finalize_state_update,
@@ -37,7 +38,10 @@ def _state(**overrides: object) -> dict[str, object]:
 
 
 def _checkpoint_roundtrip(state: dict[str, object]) -> dict[str, object]:
-    return loads(dumps(deepcopy(state)))
+    decoded: object = loads(dumps(deepcopy(state)))
+    if not isinstance(decoded, dict) or not all(isinstance(key, str) for key in decoded):
+        raise AssertionError("checkpoint state must be a JSON object")
+    return cast(dict[str, object], decoded)
 
 
 def test_derive_finalize_intent_prefers_persisted_finalize_handoff_after_checkpoint() -> None:

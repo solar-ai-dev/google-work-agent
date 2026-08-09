@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Hashable
 from hashlib import sha256
 from json import dumps
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Final, Literal, NotRequired, TypedDict, cast
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
@@ -72,26 +72,49 @@ from google_work_agent.application import (
 )
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
+    AcquisitionResultV1,
+    ActionPlanDraftV1,
+    AdditionalAcquisitionRequestV1,
     AgentLocalStateV1,
+    AnswerDraftV1,
     ApiDiscoveryAcquisitionAgent,
+    ContextBundleV1,
     ContextRetrievalAgent,
+    ContextRetrievalResultV1,
     DomainValidationResult,
     DomainValidationService,
+    EvidenceDraftV1,
+    EvidenceSelectionOutputV1,
+    GraphStateUpdateV1,
     MultiAgentGraphState,
     PlanReviewAgent,
+    PlanReviewResultV1,
+    RequestIntentV1,
     RequestUnderstandingAgent,
+    RequestUnderstandingOutputV1,
     ReviewResult,
+    RunBudgetV1,
     SolutionPlanningAgent,
+    SourceFetchPlanV1,
+    SourcePlanningOutputV1,
+    SufficiencyOutputV1,
+    SupervisorDecisionV1,
     SupervisorTarget,
     WorkAnalysisAgent,
+    WorkAnalysisResultV1,
     WorkflowPhase,
     route_supervisor,
     validate_acquisition_result_v1,
+    validate_action_plan_draft_v1,
+    validate_answer_draft_v1,
     validate_context_retrieval_result_v1,
 )
 from google_work_agent.application.workflows.profile_fused import (
     PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA,
     PROFILE_REQUEST_SOURCE_OUTPUT_SCHEMA,
+    ProfilePlanningProjectionV1,
+    ProfileReasonPlanOutputV1,
+    ProfileRequestSourceOutputV1,
     load_profile_single_reason_plan_prompt_reference,
     load_profile_single_request_source_prompt_reference,
     load_profile_single_self_review_prompt_reference,
@@ -129,20 +152,88 @@ from google_work_agent.ports import (
 from google_work_agent.ports.repositories import ActionRecord
 
 JsonObject = dict[str, object]
-GraphState = dict[str, object]
-REQUEST_AGENT_LOCAL_KEY = "__request_agent_local__"
-ACQUISITION_AGENT_LOCAL_KEY = "__acquisition_agent_local__"
-ACQUISITION_PLANNING_OUTPUT_KEY = "__acquisition_planning_output__"
-CONTEXT_AGENT_LOCAL_KEY = "__context_agent_local__"
-CONTEXT_SELECTION_OUTPUT_KEY = "__context_selection_output__"
-CONTEXT_SUFFICIENCY_OUTPUT_KEY = "__context_sufficiency_output__"
-ANALYSIS_AGENT_LOCAL_KEY = "__analysis_agent_local__"
-PLANNING_AGENT_LOCAL_KEY = "__planning_agent_local__"
-PLANNING_MODE_KEY = "__planning_mode__"
-REVIEW_AGENT_LOCAL_KEY = "__review_agent_local__"
-REVIEW_MODE_KEY = "__review_mode__"
-PROFILE_AGENT_LOCAL_KEY = "__profile_agent_local__"
-PROFILE_PROMPT_OUTPUT_KEY = "__profile_prompt_output__"
+
+
+class ParentGraphState(MultiAgentGraphState):
+    """State projected from a native subgraph back to the parent graph."""
+
+    __request__: WorkflowStartRequest
+    __target__: str
+    __logical_target__: str
+
+
+class GraphState(TypedDict):
+    """Executable graph state, including invocation-local subgraph projections."""
+
+    schema_version: Literal[1]
+    run_id: str
+    conversation_id: str
+    thread_id: str
+    workflow_phase: str
+    request_intent: RequestIntentV1 | None
+    source_fetch_plans: list[SourceFetchPlanV1]
+    acquisition_result: AcquisitionResultV1 | None
+    context_result: ContextRetrievalResultV1 | None
+    analysis_result: WorkAnalysisResultV1 | None
+    answer_draft: AnswerDraftV1 | None
+    plan_draft: ActionPlanDraftV1 | None
+    plan_review: PlanReviewResultV1 | None
+    approved_plan_id: str | None
+    execution_summary: dict[str, object] | None
+    verification_summary: dict[str, object] | None
+    finalize_intent: object | None
+    user_interrupt: object | None
+    retry_budget: RunBudgetV1
+    prompt_context: dict[str, object]
+    trace_context: dict[str, object]
+    context_bundle: NotRequired[ContextBundleV1]
+    evidence_drafts: NotRequired[list[EvidenceDraftV1]]
+    llm_provider_result: NotRequired[dict[str, object] | None]
+    __request__: WorkflowStartRequest
+    __target__: str
+    __logical_target__: str
+    __request_agent_local__: NotRequired[AgentLocalStateV1]
+    __request_output__: NotRequired[RequestUnderstandingOutputV1]
+    __acquisition_agent_local__: NotRequired[AgentLocalStateV1]
+    __acquisition_planning_output__: NotRequired[SourcePlanningOutputV1]
+    __context_agent_local__: NotRequired[AgentLocalStateV1]
+    __context_selection_output__: NotRequired[EvidenceSelectionOutputV1]
+    __context_sufficiency_output__: NotRequired[SufficiencyOutputV1]
+    __analysis_agent_local__: NotRequired[AgentLocalStateV1]
+    __planning_agent_local__: NotRequired[AgentLocalStateV1]
+    __planning_mode__: NotRequired[str]
+    __planning_result__: NotRequired[AnswerDraftV1 | ActionPlanDraftV1]
+    __review_agent_local__: NotRequired[AgentLocalStateV1]
+    __review_mode__: NotRequired[str]
+    __profile_agent_local__: NotRequired[AgentLocalStateV1]
+    __profile_request_source_output__: NotRequired[ProfileRequestSourceOutputV1]
+    __profile_reason_plan_output__: NotRequired[ProfileReasonPlanOutputV1]
+
+
+REQUEST_AGENT_LOCAL_KEY: Final = "__request_agent_local__"
+REQUEST_OUTPUT_KEY: Final = "__request_output__"
+ACQUISITION_AGENT_LOCAL_KEY: Final = "__acquisition_agent_local__"
+ACQUISITION_PLANNING_OUTPUT_KEY: Final = "__acquisition_planning_output__"
+CONTEXT_AGENT_LOCAL_KEY: Final = "__context_agent_local__"
+CONTEXT_SELECTION_OUTPUT_KEY: Final = "__context_selection_output__"
+CONTEXT_SUFFICIENCY_OUTPUT_KEY: Final = "__context_sufficiency_output__"
+ANALYSIS_AGENT_LOCAL_KEY: Final = "__analysis_agent_local__"
+PLANNING_AGENT_LOCAL_KEY: Final = "__planning_agent_local__"
+PLANNING_MODE_KEY: Final = "__planning_mode__"
+REVIEW_AGENT_LOCAL_KEY: Final = "__review_agent_local__"
+REVIEW_MODE_KEY: Final = "__review_mode__"
+PROFILE_AGENT_LOCAL_KEY: Final = "__profile_agent_local__"
+PROFILE_REQUEST_SOURCE_OUTPUT_KEY: Final = "__profile_request_source_output__"
+PROFILE_REASON_PLAN_OUTPUT_KEY: Final = "__profile_reason_plan_output__"
+
+
+def _require_state_value[StateValueT](
+    value: StateValueT | None,
+    field_name: str,
+) -> StateValueT:
+    if value is None:
+        raise ValueError(f"graph state is missing required field: {field_name}")
+    return value
 
 
 def _resource_handle_for_ref(resource_ref: ResourceRefRecord) -> str:
@@ -161,9 +252,9 @@ def _resource_handle_for_ref(resource_ref: ResourceRefRecord) -> str:
 
 
 def _acquired_resource_by_handle(
-    *, acquisition_result: dict[str, object], resource_handle: str
+    *, acquisition_result: AcquisitionResultV1, resource_handle: str
 ) -> dict[str, object] | None:
-    source_summaries = cast(list[dict[str, object]], acquisition_result["source_summaries"])
+    source_summaries = acquisition_result["source_summaries"]
     for summary in source_summaries:
         source = summary.get("source")
         resources = summary.get("resources")
@@ -480,7 +571,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._checkpoint_connection.close()
 
     def _build_graph(self) -> Any:
-        graph = StateGraph(dict)
+        graph = StateGraph(GraphState)
         for name in self._topology:
             graph.add_node(name, self._node_handler(name))
         graph.add_node("domain_validation", self._domain_validation_node)
@@ -502,8 +593,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             graph.add_conditional_edges(name, self._route_next_node, self._edge_map())
         return graph.compile(checkpointer=self._checkpointer)
 
-    def _edge_map(self) -> dict[str, str]:
-        edges = {
+    def _edge_map(self) -> dict[Hashable, str]:
+        edges: dict[Hashable, str] = {
             "domain_validation": "domain_validation",
             "waiting_confirmation": "waiting_confirmation",
             "waiting_approval": "waiting_approval",
@@ -625,7 +716,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return {"single_workflow": self._single_workflow_subgraph}
 
     def _build_request_subgraph(self) -> Any:
-        graph = StateGraph(dict)
+        graph = StateGraph(GraphState, output_schema=ParentGraphState)
         graph.add_node("init", self._request_subgraph_init_node)
         graph.add_node("classify", self._request_subgraph_classify_node)
         graph.add_node("finalize", self._request_subgraph_finalize_node)
@@ -636,7 +727,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return graph.compile(name="request_understanding_subgraph")
 
     def _build_acquisition_subgraph(self) -> Any:
-        graph = StateGraph(dict)
+        graph = StateGraph(GraphState, output_schema=ParentGraphState)
         graph.add_node("init", self._acquisition_subgraph_init_node)
         graph.add_node("plan_sources", self._acquisition_subgraph_plan_sources_node)
         graph.add_node("plan_validate", self._acquisition_subgraph_plan_validate_node)
@@ -701,6 +792,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return {
             **state,
             REQUEST_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            REQUEST_OUTPUT_KEY: output,
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -718,7 +810,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _request_subgraph_finalize_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[REQUEST_AGENT_LOCAL_KEY])
         request = self._request_from_state(state)
-        output = cast(dict[str, object], local_state["typed_result"])
+        output = state[REQUEST_OUTPUT_KEY]
         decision = route_supervisor(
             phase=WorkflowPhase.REQUEST_ANALYSIS,
             state=cast(MultiAgentGraphState, state),
@@ -750,31 +842,32 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             decision,
         )
         merged.pop(REQUEST_AGENT_LOCAL_KEY, None)
+        merged.pop(REQUEST_OUTPUT_KEY, None)
         return merged
 
     def _acquisition_subgraph_init_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
         self._transition_run(request.run_id, "begin_retrieval")
-        additional = None
+        additional: AdditionalAcquisitionRequestV1 | None = None
         context_result = state.get("context_result")
         analysis_result = state.get("analysis_result")
-        if isinstance(context_result, dict):
-            additional = context_result.get("additional_acquisition_request")
-        if additional is None and isinstance(analysis_result, dict):
-            additional = analysis_result.get("additional_acquisition_request")
+        if context_result is not None:
+            additional = context_result["additional_acquisition_request"]
+        if additional is None and analysis_result is not None:
+            additional = analysis_result["additional_acquisition_request"]
         invocation_id = self._id_factory()
         local_state = build_agent_local_state(
             agent_role="api_discovery_acquisition",
             invocation_id=invocation_id,
             node_state="INITIALIZED",
             input_projection={
-                "request_intent": cast(dict[str, object], state["request_intent"]),
-                "additional_acquisition_request": cast(dict[str, object] | None, additional),
+                "request_intent": _require_state_value(state["request_intent"], "request_intent"),
+                "additional_acquisition_request": additional,
                 "entry_mode": request.entry_mode,
             },
             prompt_ref=self._acquisition.prompt_ref,
         )
-        next_state = {
+        next_state: GraphState = {
             **state,
             ACQUISITION_AGENT_LOCAL_KEY: local_state,
             "trace_context": merge_trace_context(
@@ -789,24 +882,22 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 agent_invocation_increment=1,
             ),
         }
-        if additional is not None:
-            next_state[ACQUISITION_PLANNING_OUTPUT_KEY] = cast(dict[str, object], additional)
         return next_state
 
     def _acquisition_subgraph_plan_sources_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[ACQUISITION_AGENT_LOCAL_KEY])
-        additional = None
+        additional: AdditionalAcquisitionRequestV1 | None = None
         context_result = state.get("context_result")
         analysis_result = state.get("analysis_result")
-        if isinstance(context_result, dict):
-            additional = context_result.get("additional_acquisition_request")
-        if additional is None and isinstance(analysis_result, dict):
-            additional = analysis_result.get("additional_acquisition_request")
+        if context_result is not None:
+            additional = context_result["additional_acquisition_request"]
+        if additional is None and analysis_result is not None:
+            additional = analysis_result["additional_acquisition_request"]
         llm_result = self._acquisition.invoke_plan_sources_llm(
-            request_intent=cast(dict[str, object], state["request_intent"]),
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
             request=request,
-            additional_acquisition_request=cast(dict[str, object] | None, additional),
+            additional_acquisition_request=additional,
         )
         output = self._acquisition.build_planning_output_from_llm_result(llm_result)
         updated_local = dict(record_llm_result(local_state, llm_result))
@@ -832,7 +923,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _acquisition_subgraph_plan_validate_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[ACQUISITION_AGENT_LOCAL_KEY])
-        planning_output = cast(dict[str, object], state[ACQUISITION_PLANNING_OUTPUT_KEY])
+        planning_output = state[ACQUISITION_PLANNING_OUTPUT_KEY]
         source_fetch_plans = planning_output.get("source_fetch_plans")
         if not isinstance(source_fetch_plans, list):
             raise TypeError("acquisition planning output is missing source_fetch_plans")
@@ -854,15 +945,15 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         }
 
     def _route_acquisition_plan_validate(self, state: GraphState) -> str:
-        planning_output = cast(dict[str, object], state[ACQUISITION_PLANNING_OUTPUT_KEY])
+        planning_output = state[ACQUISITION_PLANNING_OUTPUT_KEY]
         return "deterministic_read" if planning_output["result"] == "PLAN_READY" else "finalize"
 
     def _acquisition_subgraph_read_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[ACQUISITION_AGENT_LOCAL_KEY])
-        planning_output = cast(dict[str, object], state[ACQUISITION_PLANNING_OUTPUT_KEY])
+        planning_output = state[ACQUISITION_PLANNING_OUTPUT_KEY]
         result = self._acquisition.acquire(
-            plans=cast(list[dict[str, object]], planning_output["source_fetch_plans"]),
+            plans=planning_output["source_fetch_plans"],
             request=request,
         )
         updated_local = dict(local_state)
@@ -906,8 +997,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _acquisition_subgraph_finalize_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[ACQUISITION_AGENT_LOCAL_KEY])
-        planning_output = cast(dict[str, object], state[ACQUISITION_PLANNING_OUTPUT_KEY])
-        current = {
+        planning_output = state[ACQUISITION_PLANNING_OUTPUT_KEY]
+        current: GraphState = {
             **state,
             "trace_context": merge_trace_context(
                 state,
@@ -939,7 +1030,9 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 decision,
             )
         else:
-            acquisition_result = cast(dict[str, object], state["acquisition_result"])
+            acquisition_result = _require_state_value(
+                state["acquisition_result"], "acquisition_result"
+            )
             decision = route_supervisor(
                 phase=WorkflowPhase.API_ACQUISITION,
                 state=cast(MultiAgentGraphState, current),
@@ -966,7 +1059,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return merged
 
     def _build_context_subgraph(self) -> Any:
-        graph = StateGraph(dict)
+        graph = StateGraph(GraphState, output_schema=ParentGraphState)
         graph.add_node("init", self._context_subgraph_init_node)
         graph.add_node("select_evidence", self._context_subgraph_select_evidence_node)
         graph.add_node("selection_validate", self._context_subgraph_selection_validate_node)
@@ -981,7 +1074,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return graph.compile(name="context_retriever_subgraph")
 
     def _build_analysis_subgraph(self) -> Any:
-        graph = StateGraph(dict)
+        graph = StateGraph(GraphState, output_schema=ParentGraphState)
         graph.add_node("init", self._analysis_subgraph_init_node)
         graph.add_node("analyze", self._analysis_subgraph_analyze_node)
         graph.add_node("result_validate", self._analysis_subgraph_result_validate_node)
@@ -994,7 +1087,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return graph.compile(name="work_analysis_subgraph")
 
     def _build_planning_subgraph(self) -> Any:
-        graph = StateGraph(dict)
+        graph = StateGraph(GraphState, output_schema=ParentGraphState)
         graph.add_node("init", self._planning_subgraph_init_node)
         graph.add_node("plan", self._planning_subgraph_plan_node)
         graph.add_node("result_validate", self._planning_subgraph_result_validate_node)
@@ -1007,7 +1100,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return graph.compile(name="planning_subgraph")
 
     def _build_review_subgraph(self) -> Any:
-        graph = StateGraph(dict)
+        graph = StateGraph(GraphState, output_schema=ParentGraphState)
         graph.add_node("init", self._review_subgraph_init_node)
         graph.add_node("review", self._review_subgraph_review_node)
         graph.add_node("result_validate", self._review_subgraph_result_validate_node)
@@ -1020,7 +1113,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return graph.compile(name="review_subgraph")
 
     def _build_three_stage_one_subgraph(self) -> Any:
-        graph = StateGraph(dict)
+        graph = StateGraph(GraphState, output_schema=ParentGraphState)
         graph.add_node("init", self._three_stage_one_init_node)
         graph.add_node("request_source", self._three_stage_one_request_source_node)
         graph.add_node("plan_validate", self._three_stage_one_plan_validate_node)
@@ -1044,7 +1137,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return graph.compile(name="three_stage_one_subgraph")
 
     def _build_three_stage_two_subgraph(self) -> Any:
-        graph = StateGraph(dict)
+        graph = StateGraph(GraphState, output_schema=ParentGraphState)
         graph.add_node("init", self._three_stage_two_init_node)
         graph.add_node("reason_plan", self._three_stage_two_reason_plan_node)
         graph.add_node("result_validate", self._three_stage_two_result_validate_node)
@@ -1057,7 +1150,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return graph.compile(name="three_stage_two_subgraph")
 
     def _build_three_stage_review_subgraph(self) -> Any:
-        graph = StateGraph(dict)
+        graph = StateGraph(GraphState, output_schema=ParentGraphState)
         graph.add_node("init", self._three_stage_review_init_node)
         graph.add_node("review", self._three_stage_review_node)
         graph.add_node("result_validate", self._three_stage_review_result_validate_node)
@@ -1070,7 +1163,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return graph.compile(name="three_stage_review_subgraph")
 
     def _build_single_workflow_subgraph(self) -> Any:
-        graph = StateGraph(dict)
+        graph = StateGraph(GraphState, output_schema=ParentGraphState)
         graph.add_node("init", self._single_workflow_init_node)
         graph.add_node("request_source", self._single_workflow_request_source_node)
         graph.add_node("plan_validate", self._single_workflow_plan_validate_node)
@@ -1105,8 +1198,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             invocation_id=invocation_id,
             node_state="INITIALIZED",
             input_projection={
-                "request_intent": cast(dict[str, object], state["request_intent"]),
-                "acquisition_result": cast(dict[str, object], state["acquisition_result"]),
+                "request_intent": _require_state_value(state["request_intent"], "request_intent"),
+                "acquisition_result": _require_state_value(
+                    state["acquisition_result"], "acquisition_result"
+                ),
             },
             prompt_ref=self._context.select_prompt_ref,
         )
@@ -1129,13 +1224,11 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _context_subgraph_select_evidence_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
-        acquisition_result = cast(dict[str, object], state["acquisition_result"])
-        segments = self._context.build_segments_from_acquisition(
-            cast(dict[str, object], acquisition_result)
-        )
+        acquisition_result = _require_state_value(state["acquisition_result"], "acquisition_result")
+        segments = self._context.build_segments_from_acquisition(acquisition_result)
         selection = self._context.select_evidence(
-            request_intent=cast(dict[str, object], state["request_intent"]),
-            acquisition_result=cast(dict[str, object], acquisition_result),
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            acquisition_result=acquisition_result,
             request=request,
             segments=cast(list[Any], segments),
         )
@@ -1162,13 +1255,13 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _context_subgraph_selection_validate_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
-        selection = cast(dict[str, object], state[CONTEXT_SELECTION_OUTPUT_KEY])
-        acquisition_result = cast(dict[str, object], state["acquisition_result"])
+        selection = state[CONTEXT_SELECTION_OUTPUT_KEY]
+        acquisition_result = _require_state_value(state["acquisition_result"], "acquisition_result")
         draft_bundle, evidence_drafts = self._context.build_draft_context_bundle(
-            selection_result=cast(dict[str, object], selection),
-            acquisition_result=cast(dict[str, object], acquisition_result),
-            missing_information=cast(list[str], selection["missing_information"]),
-            ambiguity=cast(dict[str, object] | None, selection["ambiguity"]),
+            selection_result=selection,
+            acquisition_result=acquisition_result,
+            missing_information=selection["missing_information"],
+            ambiguity=selection["ambiguity"],
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "SELECTION_VALIDATED"
@@ -1193,11 +1286,13 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         request = self._request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
         sufficiency_result, llm_provider_result = self._context.assess_sufficiency(
-            request_intent=cast(dict[str, object], state["request_intent"]),
-            acquisition_result=cast(dict[str, object], state["acquisition_result"]),
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            acquisition_result=_require_state_value(
+                state["acquisition_result"], "acquisition_result"
+            ),
             request=request,
-            context_bundle=cast(dict[str, object], state["context_bundle"]),
-            evidence_drafts=cast(list[dict[str, object]], state["evidence_drafts"]),
+            context_bundle=state["context_bundle"],
+            evidence_drafts=state["evidence_drafts"],
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "SUFFICIENCY_COMPLETE"
@@ -1223,14 +1318,19 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _context_subgraph_finalize_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
-        selection = cast(dict[str, object], state[CONTEXT_SELECTION_OUTPUT_KEY])
-        sufficiency = cast(dict[str, object], state[CONTEXT_SUFFICIENCY_OUTPUT_KEY])
+        selection = state[CONTEXT_SELECTION_OUTPUT_KEY]
+        sufficiency = state[CONTEXT_SUFFICIENCY_OUTPUT_KEY]
+        llm_provider_result = _require_state_value(
+            state.get("llm_provider_result"), "llm_provider_result"
+        )
         result = validate_context_retrieval_result_v1(
             self._context.build_result_from_outputs(
-                selection_result=cast(dict[str, object], selection),
-                sufficiency_result=cast(dict[str, object], sufficiency),
-                acquisition_result=cast(dict[str, object], state["acquisition_result"]),
-                llm_provider_result=cast(dict[str, object], state["llm_provider_result"]),
+                selection_result=selection,
+                sufficiency_result=sufficiency,
+                acquisition_result=_require_state_value(
+                    state["acquisition_result"], "acquisition_result"
+                ),
+                llm_provider_result=llm_provider_result,
             )
         )
         decision = route_supervisor(
@@ -1280,8 +1380,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             invocation_id=invocation_id,
             node_state="INITIALIZED",
             input_projection={
-                "request_intent": cast(dict[str, object], state["request_intent"]),
-                "context_result": cast(dict[str, object], state["context_result"]),
+                "request_intent": _require_state_value(state["request_intent"], "request_intent"),
+                "context_result": _require_state_value(state["context_result"], "context_result"),
             },
             prompt_ref=self._analysis.analyze_prompt_ref,
         )
@@ -1305,13 +1405,13 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         request = self._request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[ANALYSIS_AGENT_LOCAL_KEY])
         llm_result = self._analysis.invoke_analyze_llm(
-            request_intent=cast(dict[str, object], state["request_intent"]),
-            context_result=cast(dict[str, object], state["context_result"]),
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            context_result=_require_state_value(state["context_result"], "context_result"),
             request=request,
         )
         result = self._analysis.build_output_from_llm_result(
             llm_result,
-            context_result=cast(dict[str, object], state["context_result"]),
+            context_result=_require_state_value(state["context_result"], "context_result"),
         )
         updated_local = dict(record_llm_result(local_state, llm_result))
         updated_local["node_state"] = "ANALYZE_COMPLETE"
@@ -1337,7 +1437,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _analysis_subgraph_result_validate_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[ANALYSIS_AGENT_LOCAL_KEY])
-        result = cast(dict[str, object], state["analysis_result"])
+        result = _require_state_value(state["analysis_result"], "analysis_result")
         updated_local = dict(local_state)
         updated_local["node_state"] = "RESULT_VALIDATED"
         updated_local["typed_result"] = cast(dict[str, object], result)
@@ -1358,7 +1458,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _analysis_subgraph_finalize_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[ANALYSIS_AGENT_LOCAL_KEY])
-        result = cast(dict[str, object], state["analysis_result"])
+        result = _require_state_value(state["analysis_result"], "analysis_result")
         decision = route_supervisor(
             phase=WorkflowPhase.WORK_ANALYSIS,
             state=cast(MultiAgentGraphState, state),
@@ -1394,7 +1494,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _planning_subgraph_init_node(self, state: GraphState) -> GraphState:
         invocation_id = self._id_factory()
-        review = cast(dict[str, object] | None, state.get("plan_review"))
+        review = state["plan_review"]
         request = self._request_from_state(state)
         mode = "draft_plan" if self._should_draft_plan(request.request_text) else "answer_only"
         if review is not None and review.get("status") == ReviewResult.REVISE.value:
@@ -1410,8 +1510,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             invocation_id=invocation_id,
             node_state="INITIALIZED",
             input_projection={
-                "request_intent": cast(dict[str, object], state["request_intent"]),
-                "analysis_result": cast(dict[str, object], state["analysis_result"]),
+                "request_intent": _require_state_value(state["request_intent"], "request_intent"),
+                "analysis_result": _require_state_value(
+                    state["analysis_result"], "analysis_result"
+                ),
                 "mode": mode,
             },
             prompt_ref=prompt_ref,
@@ -1437,65 +1539,66 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _planning_subgraph_plan_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
-        mode = cast(str, state[PLANNING_MODE_KEY])
-        review_state = cast(dict[str, object] | None, state.get("plan_review"))
-        review_issues = []
-        review_summary = cast(str | None, None)
+        mode = state[PLANNING_MODE_KEY]
+        review_state = state["plan_review"]
+        review_issues: list[dict[str, object]] = []
+        review_summary: str | None = None
         if review_state is not None:
-            review_issues = cast(list[dict[str, object]], review_state["issues"])
-            review_summary = cast(str | None, review_state.get("summary"))
+            review_issues = [dict(issue) for issue in review_state["issues"]]
+            review_summary = review_state.get("summary")
+        result: AnswerDraftV1 | ActionPlanDraftV1
         if mode == "answer_only":
             llm_result = self._planning.invoke_answer_only_llm(
-                request_intent=cast(dict[str, object], state["request_intent"]),
-                context_result=cast(dict[str, object], state["context_result"]),
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                context_result=_require_state_value(state["context_result"], "context_result"),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
             )
             result = self._planning.build_answer_output_from_llm_result(
                 llm_result,
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
             )
             llm_call_id = f"{request.run_id}:planning.answer_only"
         elif mode == "draft_plan":
             llm_result = self._planning.invoke_draft_plan_llm(
-                request_intent=cast(dict[str, object], state["request_intent"]),
-                context_result=cast(dict[str, object], state["context_result"]),
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                context_result=_require_state_value(state["context_result"], "context_result"),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
             )
             result = self._planning.build_plan_output_from_llm_result(
                 llm_result,
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
             )
             llm_call_id = f"{request.run_id}:planning.draft_plan"
         elif mode == "revise_answer":
             llm_result = self._planning.invoke_revise_answer_llm(
-                request_intent=cast(dict[str, object], state["request_intent"]),
-                answer_draft=cast(dict[str, object], state["answer_draft"]),
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                answer_draft=_require_state_value(state["answer_draft"], "answer_draft"),
                 review_issues=review_issues,
                 review_summary=review_summary,
-                context_result=cast(dict[str, object], state["context_result"]),
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
+                context_result=_require_state_value(state["context_result"], "context_result"),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
             )
             result = self._planning.build_answer_output_from_llm_result(
                 llm_result,
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
             )
             llm_call_id = f"{request.run_id}:planning.revise_answer"
         else:
             llm_result = self._planning.invoke_revise_plan_llm(
-                request_intent=cast(dict[str, object], state["request_intent"]),
-                plan_draft=cast(dict[str, object], state["plan_draft"]),
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                plan_draft=_require_state_value(state["plan_draft"], "plan_draft"),
                 review_issues=review_issues,
                 review_summary=review_summary,
-                context_result=cast(dict[str, object], state["context_result"]),
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
+                context_result=_require_state_value(state["context_result"], "context_result"),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
             )
             result = self._planning.build_plan_output_from_llm_result(
                 llm_result,
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
             )
             llm_call_id = f"{request.run_id}:planning.revise_plan"
         updated_local = dict(record_llm_result(local_state, llm_result))
@@ -1521,7 +1624,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _planning_subgraph_result_validate_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
-        result = cast(dict[str, object], state["__planning_result__"])
+        result = state["__planning_result__"]
         updated_local = dict(local_state)
         updated_local["node_state"] = "RESULT_VALIDATED"
         updated_local["typed_result"] = result
@@ -1541,13 +1644,20 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _planning_subgraph_finalize_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
-        mode = cast(str, state[PLANNING_MODE_KEY])
-        result = cast(dict[str, object], state["__planning_result__"])
-        state_update = (
-            self._planning.build_answer_state_update(result)
-            if "answer" in result
-            else self._planning.build_plan_state_update(result)
-        )
+        mode = state[PLANNING_MODE_KEY]
+        result = state["__planning_result__"]
+        if "answer" in result:
+            answer_result = validate_answer_draft_v1(
+                result,
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+            )
+            state_update = self._planning.build_answer_state_update(answer_result)
+        else:
+            plan_result = validate_action_plan_draft_v1(
+                result,
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+            )
+            state_update = self._planning.build_plan_state_update(plan_result)
         decision = route_supervisor(
             phase=WorkflowPhase.SOLUTION_PLANNING,
             state=cast(MultiAgentGraphState, state),
@@ -1586,7 +1696,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _review_subgraph_init_node(self, state: GraphState) -> GraphState:
         invocation_id = self._id_factory()
-        review = cast(dict[str, object] | None, state.get("plan_review"))
+        review = state["plan_review"]
         mode = (
             "recheck"
             if review is not None and review.get("status") == ReviewResult.REVISE.value
@@ -1629,38 +1739,38 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _review_subgraph_review_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
-        mode = cast(str, state[REVIEW_MODE_KEY])
+        mode = state[REVIEW_MODE_KEY]
         if mode == "recheck":
             llm_result = self._review.invoke_recheck_llm(
-                request_intent=cast(dict[str, object], state["request_intent"]),
-                context_result=cast(dict[str, object], state["context_result"]),
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
-                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
-                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                context_result=_require_state_value(state["context_result"], "context_result"),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                answer_draft=state["answer_draft"],
+                plan_draft=state["plan_draft"],
                 request=request,
             )
             result = self._review.build_output_from_llm_result(
                 llm_result,
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
-                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
-                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                answer_draft=state["answer_draft"],
+                plan_draft=state["plan_draft"],
                 allowed_statuses=frozenset({ReviewResult.PASS.value, ReviewResult.BLOCK.value}),
             )
             llm_call_id = f"{request.run_id}:review.recheck"
         else:
             llm_result = self._review.invoke_inspect_llm(
-                request_intent=cast(dict[str, object], state["request_intent"]),
-                context_result=cast(dict[str, object], state["context_result"]),
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
-                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
-                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                context_result=_require_state_value(state["context_result"], "context_result"),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                answer_draft=state["answer_draft"],
+                plan_draft=state["plan_draft"],
                 request=request,
             )
             result = self._review.build_output_from_llm_result(
                 llm_result,
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
-                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
-                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                answer_draft=state["answer_draft"],
+                plan_draft=state["plan_draft"],
             )
             llm_call_id = f"{request.run_id}:review.inspect"
         updated_local = dict(record_llm_result(local_state, llm_result))
@@ -1686,7 +1796,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _review_subgraph_result_validate_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
-        result = cast(dict[str, object], state["plan_review"])
+        result = _require_state_value(state["plan_review"], "plan_review")
         updated_local = dict(local_state)
         updated_local["node_state"] = "RESULT_VALIDATED"
         updated_local["typed_result"] = cast(dict[str, object], result)
@@ -1707,7 +1817,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _review_subgraph_finalize_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
-        result = cast(dict[str, object], state["plan_review"])
+        result = _require_state_value(state["plan_review"], "plan_review")
         decision = route_supervisor(
             phase=WorkflowPhase.PLAN_REVIEW,
             state=cast(MultiAgentGraphState, state),
@@ -1788,7 +1898,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return {
             **state,
             PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
-            PROFILE_PROMPT_OUTPUT_KEY: output,
+            PROFILE_REQUEST_SOURCE_OUTPUT_KEY: output,
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -1806,15 +1916,15 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _three_stage_one_plan_validate_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
-        prompt_output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
-        source_plan = cast(dict[str, object], prompt_output["source_plan"])
+        prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
+        source_plan = prompt_output["source_plan"]
         updated_local = dict(local_state)
         updated_local["node_state"] = "PLAN_VALIDATED"
         updated_local["typed_result"] = prompt_output
-        next_state = {
+        next_state: GraphState = {
             **state,
             "request_intent": prompt_output["request_intent"],
-            "source_fetch_plans": cast(list[dict[str, object]], source_plan["source_fetch_plans"]),
+            "source_fetch_plans": source_plan["source_fetch_plans"],
             PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             "trace_context": merge_trace_context(
                 state,
@@ -1831,13 +1941,13 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return next_state
 
     def _route_profile_stage_one_plan_validate(self, state: GraphState) -> str:
-        prompt_output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
-        source_plan = cast(dict[str, object], prompt_output["source_plan"])
+        prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
+        source_plan = prompt_output["source_plan"]
         return "deterministic_read" if source_plan["result"] == "PLAN_READY" else "finalize"
 
     def _route_single_workflow_plan_validate(self, state: GraphState) -> str:
-        prompt_output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
-        source_plan = cast(dict[str, object], prompt_output["source_plan"])
+        prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
+        source_plan = prompt_output["source_plan"]
         if source_plan["result"] == "PLAN_READY":
             return "deterministic_read"
         if source_plan["result"] == "NO_FETCH_NEEDED":
@@ -1849,7 +1959,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._transition_run(request.run_id, "begin_retrieval")
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         result = self._acquisition.acquire(
-            plans=cast(list[dict[str, object]], state["source_fetch_plans"]),
+            plans=state["source_fetch_plans"],
             request=request,
         )
         updated_local = dict(local_state)
@@ -1893,10 +2003,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _three_stage_one_finalize_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
-        prompt_output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
-        source_plan = cast(dict[str, object], prompt_output["source_plan"])
-        request_intent = cast(dict[str, object], prompt_output["request_intent"])
-        current = {
+        prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
+        source_plan = prompt_output["source_plan"]
+        request_intent = prompt_output["request_intent"]
+        current: GraphState = {
             **state,
             "request_intent": request_intent,
             "trace_context": merge_trace_context(
@@ -1932,7 +2042,9 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 decision,
             )
         else:
-            acquisition_result = cast(dict[str, object], state["acquisition_result"])
+            acquisition_result = _require_state_value(
+                state["acquisition_result"], "acquisition_result"
+            )
             decision = route_supervisor(
                 phase=WorkflowPhase.API_ACQUISITION,
                 state=cast(MultiAgentGraphState, current),
@@ -1956,7 +2068,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 decision,
             )
         merged.pop(PROFILE_AGENT_LOCAL_KEY, None)
-        merged.pop(PROFILE_PROMPT_OUTPUT_KEY, None)
+        merged.pop(PROFILE_REQUEST_SOURCE_OUTPUT_KEY, None)
         return merged
 
     def _three_stage_two_init_node(self, state: GraphState) -> GraphState:
@@ -2005,7 +2117,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return {
             **state,
             PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
-            PROFILE_PROMPT_OUTPUT_KEY: output,
+            PROFILE_REASON_PLAN_OUTPUT_KEY: output,
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -2023,7 +2135,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _three_stage_two_result_validate_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
-        output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
+        output = state[PROFILE_REASON_PLAN_OUTPUT_KEY]
         updated_local = dict(local_state)
         updated_local["node_state"] = "RESULT_VALIDATED"
         updated_local["typed_result"] = output
@@ -2043,10 +2155,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _three_stage_two_finalize_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
-        output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
-        context_result = cast(dict[str, object], output["context_result"])
-        analysis_result = cast(dict[str, object], output["analysis_result"])
-        planning_result = cast(dict[str, object], output["planning_result"])
+        output = state[PROFILE_REASON_PLAN_OUTPUT_KEY]
+        context_result = output["context_result"]
+        analysis_result = output["analysis_result"]
+        planning_result = output["planning_result"]
         result = self._planning_result_from_projection(planning_result)
         state_update = self._profile_reason_plan_state_update(output)
         decision = route_supervisor(
@@ -2087,12 +2199,12 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             decision,
         )
         merged.pop(PROFILE_AGENT_LOCAL_KEY, None)
-        merged.pop(PROFILE_PROMPT_OUTPUT_KEY, None)
+        merged.pop(PROFILE_REASON_PLAN_OUTPUT_KEY, None)
         return merged
 
     def _three_stage_review_init_node(self, state: GraphState) -> GraphState:
         invocation_id = self._id_factory()
-        review = cast(dict[str, object] | None, state.get("plan_review"))
+        review = state["plan_review"]
         mode = (
             "recheck"
             if review is not None and review.get("status") == ReviewResult.REVISE.value
@@ -2130,38 +2242,38 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _three_stage_review_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
-        mode = cast(str, state[REVIEW_MODE_KEY])
+        mode = state[REVIEW_MODE_KEY]
         if mode == "recheck":
             llm_result = self._review.invoke_recheck_llm(
-                request_intent=cast(dict[str, object], state["request_intent"]),
-                context_result=cast(dict[str, object], state["context_result"]),
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
-                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
-                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                context_result=_require_state_value(state["context_result"], "context_result"),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                answer_draft=state["answer_draft"],
+                plan_draft=state["plan_draft"],
                 request=request,
             )
             result = self._review.build_output_from_llm_result(
                 llm_result,
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
-                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
-                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                answer_draft=state["answer_draft"],
+                plan_draft=state["plan_draft"],
                 allowed_statuses=frozenset({ReviewResult.PASS.value, ReviewResult.BLOCK.value}),
             )
             llm_call_id = f"{request.run_id}:review.recheck"
         else:
             llm_result = self._review.invoke_inspect_llm(
-                request_intent=cast(dict[str, object], state["request_intent"]),
-                context_result=cast(dict[str, object], state["context_result"]),
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
-                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
-                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                context_result=_require_state_value(state["context_result"], "context_result"),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                answer_draft=state["answer_draft"],
+                plan_draft=state["plan_draft"],
                 request=request,
             )
             result = self._review.build_output_from_llm_result(
                 llm_result,
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
-                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
-                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                answer_draft=state["answer_draft"],
+                plan_draft=state["plan_draft"],
             )
             llm_call_id = f"{request.run_id}:review.inspect"
         updated_local = dict(record_llm_result(local_state, llm_result))
@@ -2187,7 +2299,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _three_stage_review_result_validate_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
-        result = cast(dict[str, object], state["plan_review"])
+        result = _require_state_value(state["plan_review"], "plan_review")
         updated_local = dict(local_state)
         updated_local["node_state"] = "RESULT_VALIDATED"
         updated_local["typed_result"] = result
@@ -2207,7 +2319,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _three_stage_review_finalize_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
-        result = cast(dict[str, object], state["plan_review"])
+        result = _require_state_value(state["plan_review"], "plan_review")
         decision = route_supervisor(
             phase=WorkflowPhase.PLAN_REVIEW,
             state=cast(MultiAgentGraphState, state),
@@ -2288,7 +2400,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return {
             **state,
             PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
-            PROFILE_PROMPT_OUTPUT_KEY: output,
+            PROFILE_REQUEST_SOURCE_OUTPUT_KEY: output,
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -2306,15 +2418,15 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _single_workflow_plan_validate_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
-        prompt_output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
-        source_plan = cast(dict[str, object], prompt_output["source_plan"])
+        prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
+        source_plan = prompt_output["source_plan"]
         updated_local = dict(local_state)
         updated_local["node_state"] = "PLAN_VALIDATED"
         updated_local["typed_result"] = prompt_output
-        next_state = {
+        next_state: GraphState = {
             **state,
             "request_intent": prompt_output["request_intent"],
-            "source_fetch_plans": cast(list[dict[str, object]], source_plan["source_fetch_plans"]),
+            "source_fetch_plans": source_plan["source_fetch_plans"],
             PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             "trace_context": merge_trace_context(
                 state,
@@ -2335,7 +2447,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._transition_run(request.run_id, "begin_retrieval")
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         result = self._acquisition.acquire(
-            plans=cast(list[dict[str, object]], state["source_fetch_plans"]),
+            plans=state["source_fetch_plans"],
             request=request,
         )
         updated_local = dict(local_state)
@@ -2376,7 +2488,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return {
             **state,
             PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
-            PROFILE_PROMPT_OUTPUT_KEY: output,
+            PROFILE_REASON_PLAN_OUTPUT_KEY: output,
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -2395,22 +2507,32 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _single_workflow_self_review_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
-        output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
-        planning_result = cast(dict[str, object], output["planning_result"])
+        output = state[PROFILE_REASON_PLAN_OUTPUT_KEY]
+        planning_result = output["planning_result"]
         result = self._planning_result_from_projection(planning_result)
+        answer_draft = (
+            validate_answer_draft_v1(result, analysis_result=output["analysis_result"])
+            if "answer" in result
+            else None
+        )
+        plan_draft = (
+            validate_action_plan_draft_v1(result, analysis_result=output["analysis_result"])
+            if "plan_id" in result
+            else None
+        )
         llm_result = self._single_review.invoke_inspect_llm(
-            request_intent=cast(dict[str, object], state["request_intent"]),
-            context_result=cast(dict[str, object], output["context_result"]),
-            analysis_result=cast(dict[str, object], output["analysis_result"]),
-            answer_draft=cast(dict[str, object] | None, result if "answer" in result else None),
-            plan_draft=cast(dict[str, object] | None, result if "plan_id" in result else None),
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            context_result=output["context_result"],
+            analysis_result=output["analysis_result"],
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
             request=request,
         )
         review_result = self._single_review.build_output_from_llm_result(
             llm_result,
-            analysis_result=cast(dict[str, object], output["analysis_result"]),
-            answer_draft=cast(dict[str, object] | None, result if "answer" in result else None),
-            plan_draft=cast(dict[str, object] | None, result if "plan_id" in result else None),
+            analysis_result=output["analysis_result"],
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
         )
         updated_local = dict(record_llm_result(local_state, llm_result))
         updated_local["node_state"] = "SELF_REVIEW_COMPLETE"
@@ -2420,7 +2542,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             "context_result": output["context_result"],
             "analysis_result": output["analysis_result"],
-            **self._profile_planning_state_update(planning_result),
+            **self._profile_planning_state_update(
+                planning_result,
+                analysis_result=output["analysis_result"],
+            ),
             "plan_review": review_result,
             "trace_context": merge_trace_context(
                 state,
@@ -2439,7 +2564,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _single_workflow_result_validate_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
-        review_result = cast(dict[str, object], state["plan_review"])
+        review_result = _require_state_value(state["plan_review"], "plan_review")
         updated_local = dict(local_state)
         updated_local["node_state"] = "RESULT_VALIDATED"
         updated_local["typed_result"] = review_result
@@ -2460,10 +2585,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _single_workflow_finalize_node(self, state: GraphState) -> GraphState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         if state.get("plan_review") is None:
-            prompt_output = cast(dict[str, object], state[PROFILE_PROMPT_OUTPUT_KEY])
-            source_plan = cast(dict[str, object], prompt_output["source_plan"])
-            request_intent = cast(dict[str, object], prompt_output["request_intent"])
-            current = {
+            prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
+            source_plan = prompt_output["source_plan"]
+            request_intent = prompt_output["request_intent"]
+            current: GraphState = {
                 **state,
                 "request_intent": request_intent,
                 "trace_context": merge_trace_context(
@@ -2498,9 +2623,9 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 decision,
             )
             merged.pop(PROFILE_AGENT_LOCAL_KEY, None)
-            merged.pop(PROFILE_PROMPT_OUTPUT_KEY, None)
+            merged.pop(PROFILE_REQUEST_SOURCE_OUTPUT_KEY, None)
             return merged
-        result = cast(dict[str, object], state["plan_review"])
+        result = _require_state_value(state["plan_review"], "plan_review")
         decision = route_supervisor(
             phase=WorkflowPhase.PLAN_REVIEW,
             state=cast(MultiAgentGraphState, state),
@@ -2532,7 +2657,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             decision,
         )
         merged.pop(PROFILE_AGENT_LOCAL_KEY, None)
-        merged.pop(PROFILE_PROMPT_OUTPUT_KEY, None)
+        merged.pop(PROFILE_REASON_PLAN_OUTPUT_KEY, None)
         return merged
 
     def _profile_request_source_prompt_input(
@@ -2549,8 +2674,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         request = self._request_from_state(state)
         return {
             "request_text": request.request_text,
-            "request_intent": cast(dict[str, object], state["request_intent"]),
-            "acquisition_result": cast(dict[str, object], state["acquisition_result"]),
+            "request_intent": _require_state_value(state["request_intent"], "request_intent"),
+            "acquisition_result": _require_state_value(
+                state["acquisition_result"], "acquisition_result"
+            ),
         }
 
     def _profile_trace_context(
@@ -2570,37 +2697,44 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _planning_result_from_projection(
         self,
-        planning_result: dict[str, object],
-    ) -> dict[str, object]:
-        answer_draft = cast(dict[str, object] | None, planning_result.get("answer_draft"))
+        planning_result: ProfilePlanningProjectionV1,
+    ) -> AnswerDraftV1 | ActionPlanDraftV1:
+        answer_draft = planning_result["answer_draft"]
         if answer_draft is not None:
             return answer_draft
-        plan_draft = cast(dict[str, object] | None, planning_result.get("plan_draft"))
+        plan_draft = planning_result["plan_draft"]
         if plan_draft is not None:
             return plan_draft
         raise ValueError("planning_result must contain answer_draft or plan_draft")
 
     def _profile_reason_plan_state_update(
         self,
-        output: dict[str, object],
-    ) -> dict[str, object]:
-        planning_result = cast(dict[str, object], output["planning_result"])
+        output: ProfileReasonPlanOutputV1,
+    ) -> GraphStateUpdateV1:
+        planning_result = output["planning_result"]
         return {
             "context_result": output["context_result"],
             "analysis_result": output["analysis_result"],
-            **self._profile_planning_state_update(planning_result),
+            **self._profile_planning_state_update(
+                planning_result,
+                analysis_result=output["analysis_result"],
+            ),
         }
 
     def _profile_planning_state_update(
         self,
-        planning_result: dict[str, object],
-    ) -> dict[str, object]:
+        planning_result: ProfilePlanningProjectionV1,
+        *,
+        analysis_result: WorkAnalysisResultV1,
+    ) -> GraphStateUpdateV1:
         result = self._planning_result_from_projection(planning_result)
         if "answer" in result:
-            return self._planning.build_answer_state_update(cast(dict[str, object], result))
-        return self._planning.build_plan_state_update(cast(dict[str, object], result))
+            answer_result = validate_answer_draft_v1(result, analysis_result=analysis_result)
+            return self._planning.build_answer_state_update(answer_result)
+        plan_result = validate_action_plan_draft_v1(result, analysis_result=analysis_result)
+        return self._planning.build_plan_state_update(plan_result)
 
-    def _build_no_fetch_acquisition_result(self) -> dict[str, object]:
+    def _build_no_fetch_acquisition_result(self) -> AcquisitionResultV1:
         return {
             "schema_version": 1,
             "status": "COMPLETE",
@@ -2633,17 +2767,17 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _source_planning_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
         self._transition_run(request.run_id, "begin_retrieval")
-        additional = None
+        additional: AdditionalAcquisitionRequestV1 | None = None
         context_result = state.get("context_result")
         analysis_result = state.get("analysis_result")
-        if isinstance(context_result, dict):
-            additional = context_result.get("additional_acquisition_request")
-        if additional is None and isinstance(analysis_result, dict):
-            additional = analysis_result.get("additional_acquisition_request")
+        if context_result is not None:
+            additional = context_result["additional_acquisition_request"]
+        if additional is None and analysis_result is not None:
+            additional = analysis_result["additional_acquisition_request"]
         output = self._acquisition.plan_sources(
-            request_intent=cast(dict[str, object], state["request_intent"]),
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
             request=request,
-            additional_acquisition_request=cast(dict[str, object] | None, additional),
+            additional_acquisition_request=additional,
         )
         decision = route_supervisor(
             phase=WorkflowPhase.SOURCE_PLANNING,
@@ -2657,7 +2791,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _api_acquisition_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
         result = self._acquisition.acquire(
-            plans=cast(list[dict[str, object]], state["source_fetch_plans"]),
+            plans=state["source_fetch_plans"],
             request=request,
         )
         decision = route_supervisor(
@@ -2672,8 +2806,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _context_retrieval_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
         result = self._context.retrieve(
-            request_intent=cast(dict[str, object], state["request_intent"]),
-            acquisition_result=cast(dict[str, object], state["acquisition_result"]),
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            acquisition_result=_require_state_value(
+                state["acquisition_result"], "acquisition_result"
+            ),
             request=request,
         )
         decision = route_supervisor(
@@ -2687,8 +2823,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         request = self._request_from_state(state)
         self._transition_run(request.run_id, "begin_planning")
         result = self._analysis.analyze(
-            request_intent=cast(dict[str, object], state["request_intent"]),
-            context_result=cast(dict[str, object], state["context_result"]),
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            context_result=_require_state_value(state["context_result"], "context_result"),
             request=request,
         )
         decision = route_supervisor(
@@ -2700,44 +2836,49 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _solution_planning_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
-        review = cast(dict[str, object] | None, state.get("plan_review"))
+        review = state["plan_review"]
+        result: AnswerDraftV1 | ActionPlanDraftV1
         if review is not None and review.get("status") == ReviewResult.REVISE.value:
             if state.get("answer_draft") is not None:
                 result = self._planning.revise_answer(
-                    request_intent=cast(dict[str, object], state["request_intent"]),
-                    answer_draft=cast(dict[str, object], state["answer_draft"]),
-                    review_issues=cast(list[dict[str, object]], review["issues"]),
-                    review_summary=cast(str | None, review.get("summary")),
-                    context_result=cast(dict[str, object], state["context_result"]),
-                    analysis_result=cast(dict[str, object], state["analysis_result"]),
+                    request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                    answer_draft=_require_state_value(state["answer_draft"], "answer_draft"),
+                    review_issues=[dict(issue) for issue in review["issues"]],
+                    review_summary=review.get("summary"),
+                    context_result=_require_state_value(state["context_result"], "context_result"),
+                    analysis_result=_require_state_value(
+                        state["analysis_result"], "analysis_result"
+                    ),
                     request=request,
                 )
                 state_update = self._planning.build_answer_state_update(result)
             else:
                 result = self._planning.revise_plan(
-                    request_intent=cast(dict[str, object], state["request_intent"]),
-                    plan_draft=cast(dict[str, object], state["plan_draft"]),
-                    review_issues=cast(list[dict[str, object]], review["issues"]),
-                    review_summary=cast(str | None, review.get("summary")),
-                    context_result=cast(dict[str, object], state["context_result"]),
-                    analysis_result=cast(dict[str, object], state["analysis_result"]),
+                    request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                    plan_draft=_require_state_value(state["plan_draft"], "plan_draft"),
+                    review_issues=[dict(issue) for issue in review["issues"]],
+                    review_summary=review.get("summary"),
+                    context_result=_require_state_value(state["context_result"], "context_result"),
+                    analysis_result=_require_state_value(
+                        state["analysis_result"], "analysis_result"
+                    ),
                     request=request,
                 )
                 state_update = self._planning.build_plan_state_update(result)
         else:
-            analysis_result = cast(dict[str, object], state["analysis_result"])
+            analysis_result = _require_state_value(state["analysis_result"], "analysis_result")
             if self._should_draft_plan(request.request_text):
                 result = self._planning.draft_plan(
-                    request_intent=cast(dict[str, object], state["request_intent"]),
-                    context_result=cast(dict[str, object], state["context_result"]),
+                    request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                    context_result=_require_state_value(state["context_result"], "context_result"),
                     analysis_result=analysis_result,
                     request=request,
                 )
                 state_update = self._planning.build_plan_state_update(result)
             else:
                 result = self._planning.answer_only(
-                    request_intent=cast(dict[str, object], state["request_intent"]),
-                    context_result=cast(dict[str, object], state["context_result"]),
+                    request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                    context_result=_require_state_value(state["context_result"], "context_result"),
                     analysis_result=analysis_result,
                     request=request,
                 )
@@ -2751,23 +2892,23 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
 
     def _plan_review_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
-        review = cast(dict[str, object] | None, state.get("plan_review"))
+        review = state["plan_review"]
         if review is not None and review.get("status") == ReviewResult.REVISE.value:
             result = self._review.recheck(
-                request_intent=cast(dict[str, object], state["request_intent"]),
-                context_result=cast(dict[str, object], state["context_result"]),
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
-                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
-                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                context_result=_require_state_value(state["context_result"], "context_result"),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                answer_draft=state["answer_draft"],
+                plan_draft=state["plan_draft"],
                 request=request,
             )
         else:
             result = self._review.inspect(
-                request_intent=cast(dict[str, object], state["request_intent"]),
-                context_result=cast(dict[str, object], state["context_result"]),
-                analysis_result=cast(dict[str, object], state["analysis_result"]),
-                answer_draft=cast(dict[str, object] | None, state.get("answer_draft")),
-                plan_draft=cast(dict[str, object] | None, state.get("plan_draft")),
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                context_result=_require_state_value(state["context_result"], "context_result"),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                answer_draft=state["answer_draft"],
+                plan_draft=state["plan_draft"],
                 request=request,
             )
         decision = route_supervisor(
@@ -2778,10 +2919,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return self._merge_decision(state, self._review.build_state_update(result), decision)
 
     def _domain_validation_node(self, state: GraphState) -> GraphState:
-        plan_draft = cast(dict[str, object], state["plan_draft"])
+        plan_draft = _require_state_value(state["plan_draft"], "plan_draft")
         result = self._domain_validation(
             plan_draft=plan_draft,
-            analysis_result=cast(dict[str, object], state["analysis_result"]),
+            analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
         )
         decision = route_supervisor(
             phase=WorkflowPhase.DOMAIN_VALIDATION,
@@ -2792,14 +2933,14 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             plan_id = self._persist_write_plan(state, plan_draft)
             decision["target"] = SupervisorTarget.WAITING_APPROVAL.value
             decision["state_update"] = {
-                **cast(dict[str, object], decision["state_update"]),
+                **decision["state_update"],
                 "approved_plan_id": plan_id,
             }
         elif result["result"] == DomainValidationResult.ALLOW_READ.value:
             plan_id = self._persist_read_plan(state, plan_draft)
             decision["target"] = SupervisorTarget.ACTION_EXECUTION.value
             decision["state_update"] = {
-                **cast(dict[str, object], decision["state_update"]),
+                **decision["state_update"],
                 "approved_plan_id": plan_id,
                 "workflow_phase": WorkflowPhase.PREFLIGHT.value,
             }
@@ -3192,20 +3333,20 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _merge_decision(
         self,
         state: GraphState,
-        update: dict[str, object],
-        decision: dict[str, object],
+        update: GraphStateUpdateV1,
+        decision: SupervisorDecisionV1,
     ) -> GraphState:
-        decision_state = cast(dict[str, object], decision["state_update"])
-        merged = {**state, **update, **decision_state}
+        decision_state = decision["state_update"]
+        merged: GraphState = {**state, **update, **decision_state}
         merged["prompt_context"] = {
-            **cast(dict[str, object], state.get("prompt_context", {})),
-            **cast(dict[str, object], update.get("prompt_context", {})),
-            **cast(dict[str, object], decision_state.get("prompt_context", {})),
+            **state.get("prompt_context", {}),
+            **update.get("prompt_context", {}),
+            **decision_state.get("prompt_context", {}),
         }
         merged["trace_context"] = {
-            **cast(dict[str, object], state.get("trace_context", {})),
-            **cast(dict[str, object], update.get("trace_context", {})),
-            **cast(dict[str, object], decision_state.get("trace_context", {})),
+            **state.get("trace_context", {}),
+            **update.get("trace_context", {}),
+            **decision_state.get("trace_context", {}),
         }
         logical_target = self._logical_target_name(cast(str, decision["target"]))
         target = self._target_to_node(cast(str, decision["target"]))
@@ -3477,23 +3618,20 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             return True
         return persisted_profile == self._graph_profile.value
 
-    def _persist_write_plan(self, state: GraphState, plan_draft: dict[str, object]) -> str:
-        run_id = cast(str, state["run_id"])
+    def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
+        run_id = state["run_id"]
         run_version = self._current_run_version(run_id)
-        context_result = cast(dict[str, object], state["context_result"])
-        evidence_drafts = {
-            cast(str, item["evidence_id"]): item
-            for item in cast(list[dict[str, object]], context_result["evidence_drafts"])
-        }
+        context_result = _require_state_value(state["context_result"], "context_result")
+        evidence_drafts = {item["evidence_id"]: item for item in context_result["evidence_drafts"]}
         mapped_evidence = []
-        for evidence_id in cast(list[str], plan_draft["evidence_refs"]):
-            item = cast(dict[str, object], evidence_drafts[evidence_id])
+        for evidence_id in plan_draft["evidence_refs"]:
+            item = evidence_drafts[evidence_id]
             mapped_evidence.append(
                 WriteEvidenceDraft(
                     evidence_id=evidence_id,
                     origin_type=EvidenceOriginType.DERIVED,
-                    kind=cast(str, item["kind"]),
-                    excerpt=cast(str, item["excerpt"]),
+                    kind=item["kind"],
+                    excerpt=item["excerpt"],
                     locator_json=None
                     if item.get("locator") is None
                     else dumps(item["locator"], sort_keys=True),
@@ -3501,19 +3639,21 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             )
         mapped_actions = tuple(
             WriteActionDraft(
-                action_id=cast(str, action["action_id"]),
-                position=int(action["position"]),
-                tool_name=cast(str, action["tool_name"]),
-                arguments=cast(dict[str, object], action["arguments"]),
-                expected=cast(dict[str, object], action["expected"]),
-                evidence_ids=tuple(cast(list[str], action["evidence_refs"])),
+                action_id=action["action_id"],
+                position=action["position"],
+                tool_name=action["tool_name"],
+                arguments=action["arguments"],
+                expected=action["expected"],
+                evidence_ids=tuple(action["evidence_refs"]),
                 target_resource_ref_id=self._resolve_target_resource_ref_id(
                     run_id=run_id,
-                    resource_handle=cast(str | None, action.get("target_resource_ref_id")),
-                    acquisition_result=cast(dict[str, object], state["acquisition_result"]),
+                    resource_handle=action.get("target_resource_ref_id"),
+                    acquisition_result=_require_state_value(
+                        state["acquisition_result"], "acquisition_result"
+                    ),
                 ),
             )
-            for action in cast(list[dict[str, object]], plan_draft["actions"])
+            for action in plan_draft["actions"]
         )
         plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
         save_response = self._save_write_plan(
@@ -3549,7 +3689,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         *,
         run_id: str,
         resource_handle: str | None,
-        acquisition_result: dict[str, object],
+        acquisition_result: AcquisitionResultV1,
     ) -> str | None:
         if resource_handle is None:
             return None
@@ -3602,23 +3742,20 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             unit_of_work.commit()
             return persisted.id
 
-    def _persist_read_plan(self, state: GraphState, plan_draft: dict[str, object]) -> str:
-        run_id = cast(str, state["run_id"])
+    def _persist_read_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
+        run_id = state["run_id"]
         run_version = self._current_run_version(run_id)
-        context_result = cast(dict[str, object], state["context_result"])
-        evidence_drafts = {
-            cast(str, item["evidence_id"]): item
-            for item in cast(list[dict[str, object]], context_result["evidence_drafts"])
-        }
+        context_result = _require_state_value(state["context_result"], "context_result")
+        evidence_drafts = {item["evidence_id"]: item for item in context_result["evidence_drafts"]}
         mapped_evidence = []
-        for evidence_id in cast(list[str], plan_draft["evidence_refs"]):
-            item = cast(dict[str, object], evidence_drafts[evidence_id])
+        for evidence_id in plan_draft["evidence_refs"]:
+            item = evidence_drafts[evidence_id]
             mapped_evidence.append(
                 ReadEvidenceDraft(
                     evidence_id=evidence_id,
                     origin_type=EvidenceOriginType.DERIVED,
-                    kind=cast(str, item["kind"]),
-                    excerpt=cast(str, item["excerpt"]),
+                    kind=item["kind"],
+                    excerpt=item["excerpt"],
                     locator_json=None
                     if item.get("locator") is None
                     else dumps(item["locator"], sort_keys=True),
@@ -3626,18 +3763,16 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             )
         mapped_actions = tuple(
             ReadActionDraft(
-                action_id=cast(str, action["action_id"]),
-                position=int(action["position"]),
-                tool_name=cast(str, action["tool_name"]),
-                arguments=cast(dict[str, object], action["arguments"]),
-                expected=cast(dict[str, object], action["expected"]),
-                evidence_ids=tuple(cast(list[str], action["evidence_refs"])),
-                depends_on_action_ids=tuple(
-                    cast(list[str], action.get("depends_on_action_ids", []))
-                ),
-                target_resource_ref_id=cast(str | None, action.get("target_resource_ref_id")),
+                action_id=action["action_id"],
+                position=action["position"],
+                tool_name=action["tool_name"],
+                arguments=action["arguments"],
+                expected=action["expected"],
+                evidence_ids=tuple(action["evidence_refs"]),
+                depends_on_action_ids=tuple(action.get("depends_on_action_ids", [])),
+                target_resource_ref_id=action.get("target_resource_ref_id"),
             )
-            for action in cast(list[dict[str, object]], plan_draft["actions"])
+            for action in plan_draft["actions"]
         )
         plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
         save_response = self._save_read_plan(

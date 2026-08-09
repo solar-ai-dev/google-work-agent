@@ -1,5 +1,7 @@
 from collections import deque
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Literal
 
 import pytest
 from tests.integration.persistence.test_write_actions import _expected_task_projection
@@ -31,6 +33,15 @@ from google_work_agent.application import (
     ApproveWriteActionService,
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
+)
+from google_work_agent.application.workflows import (
+    ActionPlanDraftV1,
+    AnswerDraftV1,
+    ContextRetrievalResultV1,
+    EvidenceSelectionOutputV1,
+    RequestIntentV1,
+    WorkAnalysisResultV1,
+    validate_work_analysis_result_v1,
 )
 from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports import (
@@ -67,7 +78,7 @@ _RUNTIME_ACTIVE_PROMPT_IDS = {
 
 
 class _QueuedLLMRuntime:
-    def __init__(self, payloads: list[object]) -> None:
+    def __init__(self, payloads: Sequence[object]) -> None:
         self._queued = deque(_llm_result(item) for item in payloads)
         self.calls: list[dict[str, object]] = []
 
@@ -97,7 +108,7 @@ def _llm_result(payload: object) -> StructuredLLMResult:
     )
 
 
-def _clear_intent() -> dict[str, object]:
+def _clear_intent() -> RequestIntentV1:
     return {
         "schema_version": 2,
         "goal": {
@@ -123,7 +134,7 @@ def _clear_intent() -> dict[str, object]:
     }
 
 
-def _ambiguous_intent() -> dict[str, object]:
+def _ambiguous_intent() -> RequestIntentV1:
     payload = _clear_intent()
     payload["ambiguity"] = {
         "is_ambiguous": True,
@@ -176,7 +187,14 @@ def _analysis_output() -> dict[str, object]:
     }
 
 
-def _answer_output() -> dict[str, object]:
+def _validated_analysis_result() -> WorkAnalysisResultV1:
+    return validate_work_analysis_result_v1(
+        _analysis_output(),
+        context_result=_context_result(),
+    )
+
+
+def _answer_output() -> AnswerDraftV1:
     return {
         "schema_version": 1,
         "status": "ANSWER_ONLY",
@@ -195,7 +213,7 @@ def _answer_output() -> dict[str, object]:
     }
 
 
-def _write_plan_output() -> dict[str, object]:
+def _write_plan_output() -> ActionPlanDraftV1:
     payload = {
         "resource_id": "task-created-1",
         "title": "Send summary",
@@ -240,7 +258,7 @@ def _write_plan_output() -> dict[str, object]:
     }
 
 
-def _send_write_plan_output() -> dict[str, object]:
+def _send_write_plan_output() -> ActionPlanDraftV1:
     plan = _write_plan_output()
     action = plan["actions"][0]
     action.update(
@@ -270,7 +288,7 @@ def _send_write_plan_output() -> dict[str, object]:
     return plan
 
 
-def _delete_write_plan_output() -> dict[str, object]:
+def _delete_write_plan_output() -> ActionPlanDraftV1:
     plan = _write_plan_output()
     action = plan["actions"][0]
     action.update(
@@ -334,7 +352,7 @@ def _read_plan_output() -> dict[str, object]:
     }
 
 
-def _selection_output() -> dict[str, object]:
+def _selection_output() -> EvidenceSelectionOutputV1:
     return {
         "schema_version": 1,
         "result": "SELECTED",
@@ -357,7 +375,11 @@ def _selection_output() -> dict[str, object]:
     }
 
 
-def _context_result(status: str = "SUFFICIENT") -> dict[str, object]:
+def _context_result(
+    status: Literal[
+        "SUFFICIENT", "NEEDS_MORE_DATA", "NEEDS_CONFIRMATION", "PARTIAL", "BLOCKED"
+    ] = "SUFFICIENT",
+) -> ContextRetrievalResultV1:
     return {
         "schema_version": 1,
         "status": status,
@@ -435,7 +457,7 @@ def _source_plan_output(result: str = "PLAN_READY") -> dict[str, object]:
     }
 
 
-def _calendar_intent() -> dict[str, object]:
+def _calendar_intent() -> RequestIntentV1:
     intent = _clear_intent()
     intent["semantic_constraints"]["sources"] = [
         {"source": "CALENDAR", "mention": "calendar", "confidence": "HIGH"}
@@ -443,7 +465,7 @@ def _calendar_intent() -> dict[str, object]:
     return intent
 
 
-def _calendar_selection_output() -> dict[str, object]:
+def _calendar_selection_output() -> EvidenceSelectionOutputV1:
     return {
         "schema_version": 1,
         "result": "SELECTED",
@@ -467,7 +489,7 @@ def _calendar_selection_output() -> dict[str, object]:
 
 
 def _calendar_analysis_output() -> dict[str, object]:
-    result = _analysis_output()
+    result = _validated_analysis_result()
     finding = result["findings"][0]
     finding["resource_refs"] = ["calendar_event:event-focus"]
     finding["related_resource_handles"] = ["calendar_event:event-focus"]
@@ -482,7 +504,9 @@ def _calendar_analysis_output() -> dict[str, object]:
     result["segment_refs"] = [
         {"segment_id": "seg-1", "resource_handle": "calendar_event:event-focus"}
     ]
-    return result
+    payload: dict[str, object] = dict(result)
+    payload.pop("additional_acquisition_request")
+    return payload
 
 
 def _profile_request_source_output(result: str = "PLAN_READY") -> dict[str, object]:
@@ -520,7 +544,7 @@ def _profile_reason_plan_output(
 def _make_runtime(
     *,
     database_path: Path,
-    llm_payloads: list[object],
+    llm_payloads: Sequence[object],
     gateway: FakeGoogleGateway,
     checkpoint_database_path: Path,
     graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
@@ -895,6 +919,7 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
             nonce="nonce-before-restart",
         )
     )
+    assert claim.claim_token is not None
     executed = runtime._execute_write(  # noqa: SLF001
         action_id="action-1",
         claim_token=claim.claim_token,
@@ -963,7 +988,7 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
 )
 def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
     tmp_path: Path,
-    plan_output: object,
+    plan_output: Callable[[], ActionPlanDraftV1],
     expected_operation: str,
     calendar_context: bool,
     recovery_fault: GoogleGatewayFaultKind | None,
@@ -1481,7 +1506,7 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
 
     peer_invocations: list[str] = []
 
-    def _forbid_peer_invoke(peer_name: str):
+    def _forbid_peer_invoke(peer_name: str) -> Callable[..., object]:
         def _raise(*args: object, **kwargs: object) -> object:
             peer_invocations.append(peer_name)
             raise AssertionError(f"unexpected direct peer invoke: {peer_name}")
@@ -1493,38 +1518,38 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
     original_planning_invoke = runtime._planning_subgraph.invoke  # noqa: SLF001
 
     try:
-        runtime._acquisition_subgraph.invoke = _forbid_peer_invoke("acquisition")  # type: ignore[method-assign]  # noqa: SLF001
+        runtime._acquisition_subgraph.invoke = _forbid_peer_invoke("acquisition")  # noqa: SLF001
         request_state = runtime._initial_state(_start_request())  # noqa: SLF001
         request_result = runtime._request_subgraph.invoke(request_state)  # noqa: SLF001
         assert request_result["__target__"] == "acquisition"
 
-        runtime._acquisition_subgraph.invoke = original_acquisition_invoke  # type: ignore[method-assign]  # noqa: SLF001
-        runtime._context_subgraph.invoke = _forbid_peer_invoke("context_retriever")  # type: ignore[method-assign]  # noqa: SLF001
+        runtime._acquisition_subgraph.invoke = original_acquisition_invoke  # noqa: SLF001
+        runtime._context_subgraph.invoke = _forbid_peer_invoke("context_retriever")  # noqa: SLF001
         acquisition_state = runtime._initial_state(_start_request())  # noqa: SLF001
         acquisition_state["request_intent"] = _clear_intent()
         acquisition_result = runtime._acquisition_subgraph.invoke(acquisition_state)  # noqa: SLF001
         assert acquisition_result["__target__"] == "context_retriever"
 
-        runtime._context_subgraph.invoke = original_context_invoke  # type: ignore[method-assign]  # noqa: SLF001
-        runtime._acquisition_subgraph.invoke = _forbid_peer_invoke("acquisition")  # type: ignore[method-assign]  # noqa: SLF001
+        runtime._context_subgraph.invoke = original_context_invoke  # noqa: SLF001
+        runtime._acquisition_subgraph.invoke = _forbid_peer_invoke("acquisition")  # noqa: SLF001
         routed = runtime._context_subgraph.invoke(acquisition_result)  # noqa: SLF001
         assert routed["__target__"] == "acquisition"
 
-        runtime._acquisition_subgraph.invoke = original_acquisition_invoke  # type: ignore[method-assign]  # noqa: SLF001
-        runtime._planning_subgraph.invoke = _forbid_peer_invoke("planning")  # type: ignore[method-assign]  # noqa: SLF001
+        runtime._acquisition_subgraph.invoke = original_acquisition_invoke  # noqa: SLF001
+        runtime._planning_subgraph.invoke = _forbid_peer_invoke("planning")  # noqa: SLF001
         review_state = runtime._initial_state(_start_request())  # noqa: SLF001
         review_state["request_intent"] = _clear_intent()
         review_state["context_result"] = _context_result()
-        review_state["analysis_result"] = _analysis_output()
+        review_state["analysis_result"] = _validated_analysis_result()
         review_state["answer_draft"] = _answer_output()
         review_result = runtime._review_subgraph.invoke(review_state)  # noqa: SLF001
         assert review_result["__target__"] == "planning"
 
         assert peer_invocations == []
     finally:
-        runtime._acquisition_subgraph.invoke = original_acquisition_invoke  # type: ignore[method-assign]  # noqa: SLF001
-        runtime._context_subgraph.invoke = original_context_invoke  # type: ignore[method-assign]  # noqa: SLF001
-        runtime._planning_subgraph.invoke = original_planning_invoke  # type: ignore[method-assign]  # noqa: SLF001
+        runtime._acquisition_subgraph.invoke = original_acquisition_invoke  # noqa: SLF001
+        runtime._context_subgraph.invoke = original_context_invoke  # noqa: SLF001
+        runtime._planning_subgraph.invoke = original_planning_invoke  # noqa: SLF001
         runtime.close()
 
 
@@ -1561,7 +1586,7 @@ def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
         base_state = runtime._initial_state(_start_request())  # noqa: SLF001
         base_state["request_intent"] = _clear_intent()
         base_state["context_result"] = _context_result()
-        base_state["analysis_result"] = _analysis_output()
+        base_state["analysis_result"] = _validated_analysis_result()
         base_state["answer_draft"] = _answer_output()
 
         revise_state = runtime._review_subgraph.invoke(dict(base_state))  # noqa: SLF001

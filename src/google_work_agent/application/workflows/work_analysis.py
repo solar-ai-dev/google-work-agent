@@ -5,13 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal, NotRequired, Required, TypedDict, cast
 
-from google_work_agent.application.llm import LLMRuntimeService
+from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
 from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
     AnalysisResult,
+    GraphStateUpdateV1,
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
 )
@@ -134,7 +135,7 @@ class WorkAnalysisAgent:
     def __init__(
         self,
         *,
-        llm_runtime: LLMRuntimeService,
+        llm_runtime: StructuredLLMRuntime,
         analyze_prompt_ref: PromptReference | None = None,
         manifest_path: Path | None = None,
     ) -> None:
@@ -205,7 +206,7 @@ class WorkAnalysisAgent:
         result["llm_provider_result"] = _provider_summary(llm_result)
         return result
 
-    def build_state_update(self, result: WorkAnalysisResultV1) -> JsonObject:
+    def build_state_update(self, result: WorkAnalysisResultV1) -> GraphStateUpdateV1:
         phase = (
             WorkflowPhase.SOLUTION_PLANNING
             if AnalysisResult(result["status"]) is AnalysisResult.COMPLETE

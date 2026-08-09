@@ -14,6 +14,7 @@ from google_work_agent.api.schemas.google import (
     GoogleOAuthStartResponse,
 )
 from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.mcp_transport import MCPTransportError, MCPTransportErrorCode
 
 router = APIRouter(prefix="/api/v1/google")
 
@@ -39,7 +40,18 @@ def start_google_oauth(
             request_id=request.state.request_id,
             detail_code="GOOGLE_OAUTH_UNAVAILABLE",
         )
-    result = service()
+    try:
+        result = service()
+    except MCPTransportError as error:
+        if error.code is not MCPTransportErrorCode.CONFIGURATION_ERROR:
+            raise
+        raise ApiError(
+            error_code="CONFIGURATION_ERROR",
+            user_message="Set GOOGLE_OAUTH_CLIENT_ID in .env.local.",
+            status_code=503,
+            request_id=request.state.request_id,
+            detail_code="GOOGLE_OAUTH_CLIENT_ID_MISSING",
+        ) from error
     return GoogleOAuthStartResponse(
         flow_id=result.flow_id,
         authorization_url=result.authorization_url,

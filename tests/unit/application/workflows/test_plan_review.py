@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -8,14 +9,20 @@ from typing import cast
 import pytest
 from tests.support.prompt_manifests import write_runtime_active_manifest
 
+from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
     PLAN_REVIEW_OUTPUT_SCHEMA,
     ActionPlanDraftV1,
     AnswerDraftV1,
+    ContextRetrievalResultV1,
     PlanningResult,
     PlanReviewAgent,
+    PlanReviewResultV1,
     PlanReviewValidationError,
+    RequestIntentV1,
+    ReviewIssueV1,
     ReviewResult,
+    WorkAnalysisResultV1,
     WorkflowPhase,
     build_plan_review_clarification_question,
     build_policy_review_context_v1,
@@ -73,9 +80,9 @@ class FakeLLMRuntime:
         self,
         *,
         prompt_ref: PromptReference,
-        prompt_input: dict[str, object],
+        prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
-        trace_context: object,
+        trace_context: ObservabilityContext,
     ) -> StructuredLLMResult:
         self.calls.append(
             {
@@ -334,9 +341,10 @@ def test_injection_boundary_treats_resource_and_draft_text_as_untrusted_data() -
 
     prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
     assert prompt_input["source_content_is_untrusted"] is True
-    assert (
-        "ignore previous instructions" in cast(dict[str, object], prompt_input["draft"])["answer"]
-    )
+    draft = cast(dict[str, object], prompt_input["draft"])
+    answer = draft["answer"]
+    assert isinstance(answer, str)
+    assert "ignore previous instructions" in answer
     evidence_drafts = cast(list[dict[str, object]], prompt_input["evidence_drafts"])
     assert "delete event" in cast(str, evidence_drafts[0]["excerpt"])
 
@@ -518,7 +526,7 @@ def test_plan_review_exports_are_available() -> None:
 
 def _agent(runtime: FakeLLMRuntime) -> PlanReviewAgent:
     return PlanReviewAgent(
-        llm_runtime=cast(object, runtime),
+        llm_runtime=runtime,
         inspect_prompt_ref=INSPECT_PROMPT_REF,
         recheck_prompt_ref=RECHECK_PROMPT_REF,
     )
@@ -541,7 +549,7 @@ def _request() -> WorkflowStartRequest:
     )
 
 
-def _intent() -> dict[str, object]:
+def _intent() -> RequestIntentV1:
     return {
         "schema_version": 2,
         "goal": {
@@ -570,7 +578,7 @@ def _intent() -> dict[str, object]:
 def _context_result(
     *,
     excerpt: str = "Kim is waiting for a follow-up response.",
-) -> dict[str, object]:
+) -> ContextRetrievalResultV1:
     return {
         "schema_version": 1,
         "status": "SUFFICIENT",
@@ -642,7 +650,7 @@ def _context_result(
     }
 
 
-def _analysis_result() -> dict[str, object]:
+def _analysis_result() -> WorkAnalysisResultV1:
     return {
         "schema_version": 1,
         "status": "COMPLETE",
@@ -756,8 +764,8 @@ def _action(
 def _review_output(
     status: str,
     *,
-    issues: list[dict[str, object]] | None = None,
-    confirmation: dict[str, object] | None = None,
+    issues: Sequence[Mapping[str, object]] | None = None,
+    confirmation: Mapping[str, object] | None = None,
     blockers: list[str] | None = None,
     additional_acquisition_request: dict[str, object] | None = None,
 ) -> dict[str, object]:
@@ -769,8 +777,8 @@ def _review_output(
         "schema_version": 2,
         "status": status,
         "summary": "Review completed.",
-        "issues": issues,
-        "confirmation": confirmation,
+        "issues": [dict(issue) for issue in issues],
+        "confirmation": None if confirmation is None else dict(confirmation),
         "blockers": blockers,
         "additional_acquisition_request": additional_acquisition_request,
     }
@@ -784,7 +792,7 @@ def _review_issue(
     resource_refs: list[str] | None = None,
     reason_codes: list[str] | None = None,
     message: str = "Mention the pending task context in the draft.",
-) -> dict[str, object]:
+) -> ReviewIssueV1:
     if affected_action_ids is None:
         affected_action_ids = []
     if evidence_refs is None:
@@ -810,7 +818,7 @@ def _plan_issue(
     *,
     issue_id: str = "issue-1",
     affected_action_ids: list[str] | None = None,
-) -> dict[str, object]:
+) -> ReviewIssueV1:
     if affected_action_ids is None:
         affected_action_ids = ["action-2"]
     return {
@@ -832,7 +840,7 @@ def _validate_review_result(
     answer_draft: AnswerDraftV1 | None,
     plan_draft: ActionPlanDraftV1 | None,
     recheck: bool = False,
-) -> dict[str, object]:
+) -> PlanReviewResultV1:
     import google_work_agent.application.workflows as workflows
 
     target_kind, _ = resolve_review_target(

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, Required, TypedDict, cast
+from typing import Final, Literal, Required, TypedDict, cast
 
 from google_work_agent.application.workflows.api_acquisition import (
     SourcePlanningOutputV1,
+    validate_source_fetch_plans_v1,
 )
 from google_work_agent.application.workflows.context_retrieval import (
     ContextRetrievalResultV1,
@@ -59,9 +60,9 @@ class ProfileReasonPlanOutputV1(TypedDict):
     planning_result: ProfilePlanningProjectionV1
 
 
-PROFILE_REQUEST_SOURCE_SCHEMA_VERSION = 2
-PROFILE_FUSED_PLANNING_SCHEMA_VERSION = 2
-PROFILE_PLANNING_PROJECTION_SCHEMA_VERSION = 2
+PROFILE_REQUEST_SOURCE_SCHEMA_VERSION: Final = 2
+PROFILE_FUSED_PLANNING_SCHEMA_VERSION: Final = 2
+PROFILE_PLANNING_PROJECTION_SCHEMA_VERSION: Final = 2
 
 
 class ProfileFusedValidationError(ValueError):
@@ -343,7 +344,7 @@ def _validate_source_planning_output_v1(value: object) -> SourcePlanningOutputV1
             Literal["PLAN_READY", "NO_FETCH_NEEDED", "NEEDS_CONFIRMATION", "BLOCKED"],
             result,
         ),
-        "source_fetch_plans": cast(list[dict[str, object]], source_fetch_plans),
+        "source_fetch_plans": validate_source_fetch_plans_v1(source_fetch_plans),
         "clarification": cast(dict[str, object] | None, clarification),
         "failure": cast(dict[str, object] | None, failure),
         "validator_codes": validator_codes,

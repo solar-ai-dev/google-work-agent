@@ -137,6 +137,18 @@ class _TransactionCheckingGateway:
                 connection.close()
         return snapshot
 
+    def get_gmail_message(self, *, message_id: str) -> ResourceSnapshot:
+        _assert_can_open_sqlite_write_transaction(self._database_path)
+        return self._delegate.get_gmail_message(message_id=message_id)
+
+    def get_gmail_draft(self, *, draft_id: str) -> ResourceSnapshot:
+        _assert_can_open_sqlite_write_transaction(self._database_path)
+        return self._delegate.get_gmail_draft(draft_id=draft_id)
+
+    def get_calendar_event(self, *, calendar_id: str, event_id: str) -> ResourceSnapshot:
+        _assert_can_open_sqlite_write_transaction(self._database_path)
+        return self._delegate.get_calendar_event(calendar_id=calendar_id, event_id=event_id)
+
 
 def _assert_can_open_sqlite_write_transaction(database_path: Path) -> None:
     connection = sqlite3.connect(database_path, timeout=0, isolation_level=None)

@@ -1,7 +1,23 @@
 """Workflow contracts taken from the agent workflow design document."""
 
+from __future__ import annotations
+
 from enum import StrEnum
-from typing import Literal, NotRequired, Required, TypedDict, cast
+from typing import TYPE_CHECKING, Literal, NotRequired, Required, TypedDict, cast
+
+if TYPE_CHECKING:
+    from google_work_agent.application.workflows.api_acquisition import (
+        AcquisitionResultV1,
+        SourceFetchPlanV1,
+    )
+    from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
+    from google_work_agent.application.workflows.plan_review import PlanReviewResultV1
+    from google_work_agent.application.workflows.request_understanding import RequestIntentV1
+    from google_work_agent.application.workflows.solution_planning import (
+        ActionPlanDraftV1,
+        AnswerDraftV1,
+    )
+    from google_work_agent.application.workflows.work_analysis import WorkAnalysisResultV1
 
 
 class BudgetProfile(StrEnum):
@@ -101,19 +117,41 @@ class MultiAgentGraphState(TypedDict):
     conversation_id: str
     thread_id: str
     workflow_phase: str
-    request_intent: dict[str, object] | None
-    source_fetch_plans: list[dict[str, object]]
-    acquisition_result: dict[str, object] | None
-    context_result: dict[str, object] | None
-    analysis_result: dict[str, object] | None
-    answer_draft: dict[str, object] | None
-    plan_draft: dict[str, object] | None
-    plan_review: dict[str, object] | None
+    request_intent: RequestIntentV1 | None
+    source_fetch_plans: list[SourceFetchPlanV1]
+    acquisition_result: AcquisitionResultV1 | None
+    context_result: ContextRetrievalResultV1 | None
+    analysis_result: WorkAnalysisResultV1 | None
+    answer_draft: AnswerDraftV1 | None
+    plan_draft: ActionPlanDraftV1 | None
+    plan_review: PlanReviewResultV1 | None
     approved_plan_id: str | None
     execution_summary: dict[str, object] | None
     verification_summary: dict[str, object] | None
-    finalize_intent: "FinalizeIntentV1 | None"
-    user_interrupt: "UserInterruptV1 | None"
+    finalize_intent: FinalizeIntentV1 | None
+    user_interrupt: UserInterruptV1 | None
+    retry_budget: RunBudgetV1
+    prompt_context: dict[str, object]
+    trace_context: dict[str, object]
+
+
+class GraphStateUpdateV1(TypedDict, total=False):
+    """Typed partial update returned by workflow agents and the supervisor."""
+
+    workflow_phase: str
+    request_intent: RequestIntentV1 | None
+    source_fetch_plans: list[SourceFetchPlanV1]
+    acquisition_result: AcquisitionResultV1 | None
+    context_result: ContextRetrievalResultV1 | None
+    analysis_result: WorkAnalysisResultV1 | None
+    answer_draft: AnswerDraftV1 | None
+    plan_draft: ActionPlanDraftV1 | None
+    plan_review: PlanReviewResultV1 | None
+    approved_plan_id: str | None
+    execution_summary: dict[str, object] | None
+    verification_summary: dict[str, object] | None
+    finalize_intent: FinalizeIntentV1 | None
+    user_interrupt: UserInterruptV1 | None
     retry_budget: RunBudgetV1
     prompt_context: dict[str, object]
     trace_context: dict[str, object]
@@ -362,9 +400,7 @@ class AgentLocalStateV1(TypedDict):
     typed_result: dict[str, object] | None
 
 
-class LlmProviderResult(TypedDict):
-    """LLM provider result metadata from `docs/07-tool-mcp-internal-interface.md` section 18."""
-
+class _LlmProviderResultRequired(TypedDict):
     structured_output: dict[str, object]
     provider: str
     model: str
@@ -372,7 +408,12 @@ class LlmProviderResult(TypedDict):
     input_tokens: int
     output_tokens: int
     latency_ms: int
-    fallback_reason: NotRequired[str]
+
+
+class LlmProviderResult(_LlmProviderResultRequired, total=False):
+    """LLM provider result metadata from `docs/07-tool-mcp-internal-interface.md` section 18."""
+
+    fallback_reason: str
 
 
 ADDITIONAL_ACQUISITION_ALLOWED_PHASES = frozenset(
@@ -1032,6 +1073,7 @@ __all__ = [
     "DomainValidationOutputV1",
     "FinalizeIntent",
     "FinalizeIntentV1",
+    "GraphStateUpdateV1",
     "LLM_PROVIDER_RESULT_FIELDS",
     "LLM_PROVIDER_RESULT_OPTIONAL_FIELDS",
     "LLM_PROVIDER_RESULT_REQUIRED_FIELDS",

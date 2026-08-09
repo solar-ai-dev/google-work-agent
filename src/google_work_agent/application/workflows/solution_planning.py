@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, NotRequired, Required, TypedDict, cast
+from typing import Final, Literal, NotRequired, Required, TypedDict, cast
 
-from google_work_agent.application.llm import LLMRuntimeService
+from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
-from google_work_agent.application.workflows.contracts import PlanningResult, WorkflowPhase
+from google_work_agent.application.workflows.contracts import (
+    GraphStateUpdateV1,
+    PlanningResult,
+    WorkflowPhase,
+)
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )
@@ -82,9 +86,9 @@ class ActionPlanDraftV1(TypedDict):
     llm_provider_result: NotRequired[dict[str, object]]
 
 
-ANSWER_DRAFT_SCHEMA_VERSION = 1
-ACTION_PLAN_DRAFT_SCHEMA_VERSION = 2
-ACTION_DRAFT_SCHEMA_VERSION = 2
+ANSWER_DRAFT_SCHEMA_VERSION: Final = 1
+ACTION_PLAN_DRAFT_SCHEMA_VERSION: Final = 2
+ACTION_DRAFT_SCHEMA_VERSION: Final = 2
 ANSWER_DRAFT_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="answer-draft-v1",
     json_schema={
@@ -177,7 +181,7 @@ class SolutionPlanningAgent:
     def __init__(
         self,
         *,
-        llm_runtime: LLMRuntimeService,
+        llm_runtime: StructuredLLMRuntime,
         answer_only_prompt_ref: PromptReference | None = None,
         draft_plan_prompt_ref: PromptReference | None = None,
         revise_answer_prompt_ref: PromptReference | None = None,
@@ -467,13 +471,13 @@ class SolutionPlanningAgent:
             ),
         )
 
-    def build_answer_state_update(self, result: AnswerDraftV1) -> JsonObject:
+    def build_answer_state_update(self, result: AnswerDraftV1) -> GraphStateUpdateV1:
         phase = (
             WorkflowPhase.PLAN_REVIEW
             if PlanningResult(result["status"]) is PlanningResult.ANSWER_ONLY
             else WorkflowPhase.SOLUTION_PLANNING
         )
-        update: JsonObject = {
+        update: GraphStateUpdateV1 = {
             "workflow_phase": phase.value,
             "answer_draft": None,
             "plan_draft": None,
@@ -488,13 +492,13 @@ class SolutionPlanningAgent:
             update["answer_draft"] = result
         return update
 
-    def build_plan_state_update(self, result: ActionPlanDraftV1) -> JsonObject:
+    def build_plan_state_update(self, result: ActionPlanDraftV1) -> GraphStateUpdateV1:
         phase = (
             WorkflowPhase.PLAN_REVIEW
             if PlanningResult(result["status"]) is PlanningResult.PLAN_READY
             else WorkflowPhase.SOLUTION_PLANNING
         )
-        update: JsonObject = {
+        update: GraphStateUpdateV1 = {
             "workflow_phase": phase.value,
             "answer_draft": None,
             "plan_draft": None,
@@ -509,7 +513,7 @@ class SolutionPlanningAgent:
             update["plan_draft"] = result
         return update
 
-    def build_state_update(self, result: AnswerDraftV1 | ActionPlanDraftV1) -> JsonObject:
+    def build_state_update(self, result: AnswerDraftV1 | ActionPlanDraftV1) -> GraphStateUpdateV1:
         if "answer" in result:
             return self.build_answer_state_update(cast(AnswerDraftV1, result))
         return self.build_plan_state_update(cast(ActionPlanDraftV1, result))
@@ -542,7 +546,7 @@ def validate_answer_draft_v1(
     if status not in _ANSWER_RESULT_VALUES:
         raise SolutionPlanningValidationError("$.status is invalid")
     result: AnswerDraftV1 = {
-        "schema_version": ACTION_PLAN_DRAFT_SCHEMA_VERSION,
+        "schema_version": ANSWER_DRAFT_SCHEMA_VERSION,
         "status": cast(AnswerDraftStatusValue, status),
         "answer": _require_string(root, "answer", "$"),
         "evidence_refs": _validated_evidence_refs(root["evidence_refs"], refs),
