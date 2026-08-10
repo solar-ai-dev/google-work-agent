@@ -1,6 +1,6 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `02 UI·UX v2.8`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.6`, `06 Workflow v6.1`, `07 Interface v3.0`, `08 Sequence v3.2`, `09 Security v2.5`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `15 Agent Capability·Failure·Prompt v1.5`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `02 UI·UX v2.8`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.6`, `06 Workflow v6.1`, `07 Interface v2.10`, `08 Sequence v3.2`, `09 Security v2.5`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `15 Agent Capability·Failure·Prompt v1.5`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
 > **상태:** Draft v3.5 · **기준일:** 2026-08-10 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
@@ -433,9 +433,9 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 - MCP process exit에서 dispatch 여부 불명 → `UNKNOWN_RESULT`.
 - 모든 UNKNOWN_RESULT case에서 새 Attempt·blind resend 0.
 
-## 22. v3.4 Frontend Main UI 추적 계약
+## 22. Frontend Main UI 회귀 계약
 
-이 절의 테스트는 `01-A v2.8`, `02 UI·UX v2.7`의 Frontend 구현 계약을 추적한다. 기존 Safety, Verification Diff, `UNKNOWN_RESULT`, Recovery, Chrome/Edge, Sanitization 회귀를 대체하거나 제거하지 않는다.
+이 절의 테스트는 `01-A v2.9`, `02 UI·UX v2.8`의 Frontend 구현 계약을 추적한다. 기존 Safety, Verification Diff, `UNKNOWN_RESULT`, Recovery, Chrome/Edge, Sanitization 회귀를 대체하거나 제거하지 않는다.
 
 | Test ID | 계층 | 검증 계약 |
 |---|---|---|
@@ -443,7 +443,7 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 | `TST-UI-202` | Component | Desktop 3 panel: Left Resource, Center Viewer+Chat, Right Conversation+Recent Execution의 정보 구조와 collapse 순서를 검증한다. |
 | `TST-UI-203` | Component | Gmail/Tasks/Calendar 탭, 검색/필터, compact resource row, selected/hover/focus/disabled, 긴 문자열 ellipsis와 keyboard navigation을 검증한다. |
 | `TST-UI-204` | Integration | Sidebar UI page size 10, 숫자 페이지, Page Token 순차 조회, cache 재방문, 조건 변경/수동 새로고침 cache 무효화를 검증한다. Retrieval page size 20과 분리됨을 포함한다. |
-| `TST-UI-205` | Component | count는 Projection 제공 시에만 표시하고 Frontend 집계·hard code가 없음을 검증한다. |
+| `TST-UI-205` | Integration | Tasks는 미완료 Task 전체 `total_count`, Calendar는 현재부터 향후 90일 범위의 exact `total_count`를 표시하고, Frontend 전체 Page 순회·hard code가 없음을 검증한다. Gmail 추정 count는 exact badge로 표시하지 않는다. |
 | `TST-UI-206` | Integration | Resource row click은 Focus Viewer만 갱신하고 checkbox는 다중 선택 Context 집합만 변경함을 검증한다. 선택 집합이 있으면 Composer Context Summary에 사용자 의미 label과 선택 수를 표시하고, 중복 없는 선택 ID 전체로 `RESOURCE_SELECTED`가 최신 상세 조회를 시작함을 검증한다. 선택 집합이 없으면 `AGENT_SEARCH`를 검증한다. |
 | `TST-UI-207` | Integration | 선택 없는 자연어 요청은 `AGENT_SEARCH`, Quick Action은 Agent 요청이며 Google Write를 직접 호출하지 않음을 검증한다. |
 | `TST-UI-208` | Component | Viewer와 Approval detail은 실제 REST/SSE Projection의 필드만 표시하며 fake count/detail/approval data가 없음을 검증한다. |
@@ -453,9 +453,11 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 | `TST-UI-212` | Integration | refresh, SSE disconnect/reconnect, cursor/snapshot 복구가 Domain 실패 또는 Write 재실행으로 오인되지 않음을 검증한다. |
 | `TST-UI-213` | Regression | Browser P0에서 native Window Control을 기능으로 호출하지 않고 Settings/Diagnostics와 기존 사용자 설정을 보존함을 검증한다. |
 
-### Calendar·Tasks·Viewer 보완
+### Calendar·Tasks·Viewer 회귀
 
-- Calendar Sidebar는 실제 Event 제목과 같은 날/날짜가 다른 시간 범위, All-day 형식을 검증한다. 같은 날 시간 Event에는 연도·월·일·요일·시작/종료 시간이 있고 `시작`·`종료` label은 없으며, All-day Event에는 연도·월·일·요일과 `하루 종일`이 있다.
+- Calendar Sidebar는 기본 Query가 사용자 Timezone 기준 현재부터 향후 90일이며 실제 Event 제목과 같은 날/날짜가 다른 시간 범위, All-day 형식을 검증한다.
+- Tasks Sidebar는 기본 Query가 미완료 Task 전체를 대상으로 하고 완료 Task는 기본 count/list에서 제외됨을 검증한다.
+- 같은 날 시간 Event에는 연도·월·일·요일·시작/종료 시간이 있고 `시작`·`종료` label은 없으며, All-day Event에는 연도·월·일·요일과 `하루 종일`이 있다.
 - Calendar 중앙 Viewer에는 실제 Projection의 `시작`, `종료` 필드가 남아 있음을 검증한다.
 - Tasks Sidebar는 실제 Google Task Projection의 제목·예정일을 렌더링하고, Projection에 없는 priority·category·가짜 Task List를 표시하지 않음을 검증한다.
 - Viewer Empty State는 Gmail·Tasks·Calendar 각각의 안내 문구를 검증하며, Source 전환 뒤 이전 Source 상세가 남지 않음을 검증한다.
@@ -476,7 +478,7 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 - Page Token fixture는 최소 3페이지를 제공하며, 2/3페이지 재방문에서 API 호출이 없는 경우와 검색 조건 변경 후 1페이지 재조회 경우를 모두 검증한다.
 - 접근성 검증은 Chrome·Edge에서 keyboard path와 focus visible을 포함한다. 단위/Component 검증만으로 REST Command, SSE, Approval 안전 회귀를 대체하지 않는다.
 
-## R8.4 Claim V2·Attachment 필수 회귀
+## 23. Claim V2·Attachment 필수 회귀
 
 Claim V2:
 - version 누락/불일치, issued_at 미래, TTL>60초, 만료 차단.

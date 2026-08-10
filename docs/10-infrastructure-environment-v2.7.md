@@ -249,7 +249,7 @@ Service는 MCP Child 시작 시 Tool Manifest Version과 함께 Process Memory�
 - Startup Tool Registry 검증은 승인형 `gmail_send`, Task 완료 UPDATE, `tasks_delete_task`, `calendar_delete_event`, 참석자 UPDATE를 허용하고 Gmail 원문 삭제·반복 Event 전체 일괄 수정은 차단한다.
 - Migration 후 `PRAGMA foreign_key_check`와 Tool Schema Version 검증을 통과해야 Write를 허용한다.
 
-## R8.4 Attachment Staging Runtime
+## Attachment Staging Runtime
 
 - 발신 Gmail 첨부파일 임시 저장 위치는 `%LOCALAPPDATA%/GoogleWorkAgent/cache/attachments/` 아래 현재 사용자 전용 Directory다.
 - Staging 파일은 장기 저장소가 아니며 앱 재시작·만료·완료/취소 후 정리 대상으로 취급한다.

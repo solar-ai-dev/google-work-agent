@@ -537,7 +537,7 @@ P0 초기값:
 
 | 경로 | 초기값 |
 |---|---:|
-| Google Sidebar 목록 | 20개 |
+| Google Sidebar 목록 | 10개 |
 | Conversation·Message Page | 20개 |
 | 내부 ID Batch Query | 최대 50개 |
 | Plan·Action·Evidence Batch Write | 최대 50 Row |
@@ -754,7 +754,7 @@ SQLAlchemy·Alembic은 P0 고정 기술로 강제하지 않는다. 명시적 SQL
 - Runtime E2E 계약의 Action `CANCELLED` 반영은 다음 Migration에서 Schema v1.4로 승격한다. Repository Migration 반영 전 Notion Canonical이 더 최신이다.
 - Connection 초기화는 `foreign_keys=ON`, WAL, `synchronous=FULL`, `busy_timeout=5000`을 모든 Domain/Checkpointer Connection에 적용
 
-## 24. DB 구현 필수 보완
+## 24. DB 구현 필수 계약
 
 ### 24.1 Audit 주체와 조회
 
@@ -1187,7 +1187,7 @@ WHERE id = :action_id
 
 새 Domain 상태가 필요하면 먼저 04 문서와 Schema 영향을 검토한다.
 
-# 26. 상태 전이 보완 계약
+## 26. 상태 전이 계약 확장
 
 이 절은 25장의 상태 전이 규칙을 구체화한다. 이 절의 기존 READ 보완은 Schema v1.3에서 추가 Column을 요구하지 않았으며, Runtime E2E의 Action `CANCELLED` 계약 반영 후 현재 Canonical Schema는 v1.4다.
 
@@ -1364,7 +1364,7 @@ Google/MCP/LLM 응답 대기 중 SQLite Write Transaction을 유지하지 않는
 ## 31.3 Recovery Command 경계
 Application은 Repository setter로 Run 상태를 직접 변경하지 않는다. `RequireRecovery`·`ResolveRecovery` Domain Command와 조건부 UPDATE·Audit·Command Receipt를 사용한다.
 
-## R8.4 Domain 저장 경계
+## Claim V2·Attachment Domain 저장 경계
 
 - `actions.arguments_hash`는 승인 대상 Canonical Business Arguments의 Domain 기준점이며 `07`의 `approval_arguments_hash`에 대응한다.
 - 실제 MCP Dispatch Payload의 `execution_arguments_hash`는 Claim 발급 시점의 짧은 수명 실행 무결성 값이다. 별도 Domain DB Column을 추가하지 않는다.

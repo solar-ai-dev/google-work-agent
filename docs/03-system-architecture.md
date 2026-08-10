@@ -1381,7 +1381,7 @@ Transaction B: expected_version·현재 상태 재검사 → 결과 저장 → C
 ### 승인형 Effect
 `READ | CREATE | UPDATE | SEND | DELETE`를 사용하고 SEND·DELETE도 동일한 Approval Hash·Claim·UNKNOWN_RESULT 무재실행 원칙을 적용한다.
 
-## R8.4 Claim V2·Attachment 시스템 경계
+## Claim V2·Attachment 시스템 경계
 
 ```text
 Approval Snapshot

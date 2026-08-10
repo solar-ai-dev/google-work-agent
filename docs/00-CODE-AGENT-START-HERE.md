@@ -1,6 +1,6 @@
 # Google Work Agent · Code Agent Start Here
 
-> **Source Pack:** R8.4 Claim V2·Attachment Canonical · 2026-08-09  
+> **Source Pack:** Claim V2·Attachment·Task 날짜 의미 Canonical · 2026-08-10  
 > **목적:** 구현·검수 Agent가 프로젝트 계약과 실제 소스의 차이를 빠르게 파악하고, 안전 경계를 훼손하지 않은 채 작업하도록 한다.
 
 ## 1. 최초 읽기 순서
@@ -11,11 +11,12 @@
 00-google-work-agent-overview.md
 → 00-PROJECT-SOURCE-GUIDE.md
 → 01-requirements-prd.md
-→ 01-b-policy-definition.md
+→ 01-b-policy-definition-v2.8.md
 → 03-system-architecture.md
 → 04-domain-database-design.md
 → 0001_initial.sql
 → 0002_action_effect_send_delete.sql
+→ 0003_action_cancelled.sql
 → state-transition-contract-v1.4.md
 → 06-agent-workflow.md
 → 07-tool-mcp-internal-interface.md
@@ -135,7 +136,7 @@ ruff format --check src tests
 - Adapter는 `delivery_certainty`를 보존하며 dispatch 이후 Timeout을 무조건 미전달로 분류하지 않는다.
 - Gmail SEND와 Calendar DELETE는 승인 → Claim Commit → Write → SENT_LOOKUP/GET_ABSENT Verification 전체 경로가 있어야 완료다.
 
-## R8.4 구현 시작점
+## Claim V2·Attachment 구현 기준
 
 코드 수정 전 다음을 구현 기준으로 고정한다.
 

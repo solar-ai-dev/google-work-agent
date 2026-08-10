@@ -938,7 +938,7 @@ prompt_assembly: BASE_PLUS_FAILURE_BLOCK
 - `답장/회신/보내줘`는 SEND 의도이며 Draft ambiguity가 아니다.
 - 요청/검색/분석 중 실제 모호성이 관측된 단계에서 Redirection한다.
 
-## R8.4 Attachment Capability 경계
+## Attachment Capability 경계
 
 - Gmail 첨부파일 I/O는 Agent Semantic Capability가 아니다.
 - Product Prompt에 첨부파일 bytes·파일 내용·Local Path를 넣지 않는다.

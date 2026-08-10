@@ -1,6 +1,6 @@
 # Google Work Agent — 5분 개요
 
-> **기준일:** 2026-08-10 · **R8.4 Claim V2·Attachment·Task 시간 의미 Canonical** · **공식 원본:** Notion · **이 파일:** Repository Export Snapshot
+> **기준일:** 2026-08-10 · **Canonical:** Claim V2·Attachment·Task 날짜 의미 · **공식 원본:** Notion · **이 파일:** Repository Export Snapshot
 
 ## 제품 흐름
 
@@ -26,7 +26,7 @@
 - 모든 Profile은 같은 Domain·Policy·Execution·Verification Engine을 사용한다.
 - Domain Store는 승인·실행·검증 사실, Checkpoint는 재개 위치, SSE/UI는 Projection이다.
 
-## R8.4 핵심
+## 핵심 실행·첨부파일 계약
 
 ### ClaimContextV2
 `approval_arguments_hash`는 사용자가 승인한 Business Arguments를, `execution_arguments_hash`는 실제 MCP Dispatch Payload를 고정한다. MCP가 서명·TTL·Process Instance·Action·Approval·Attempt·Tool·두 Hash·Nonce와 실제 수신 Arguments hash를 모두 검증한 뒤에만 Write한다.

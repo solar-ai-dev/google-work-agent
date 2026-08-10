@@ -2,7 +2,7 @@
 
 ## 목적
 
-이 묶음은 WebGPT 프로젝트가 설계 검토, 구현 질의, 면접 준비, 실험 설계 검토를 수행할 때 사용하는 **R8.4 최신 프로젝트 소스 25개**다.
+이 묶음은 WebGPT 프로젝트가 설계 검토, 구현 질의, 면접 준비, 실험 설계 검토를 수행할 때 사용하는 **Canonical 프로젝트 소스 25개**다.
 
 ## 문서 권위·책임 소유 규칙
 
@@ -27,7 +27,7 @@ Prompt·Failure 정규화   → 15
 
 문서 번호가 뒤라고 더 높은 권위를 갖지 않는다. 같은 Concern에서는 해당 소유 계약과 실행 가능한 Domain/SQL Constraint를 우선한다.
 
-## R8.4 핵심 기준
+## 핵심 Canonical 기준
 
 - ClaimContextV2: 승인 Business Hash와 실제 Execution Hash 분리, HMAC-SHA-256, TTL, Service/MCP instance binding, one-time nonce, MCP 실제 arguments 재검증.
 - Gmail Attachment: metadata/read/download + Draft/Send attachment. Bytes는 LLM 입력·Evidence·SQLite·Trace에서 제외.
@@ -47,7 +47,7 @@ Prompt·Failure 정규화   → 15
 6. `0003_action_cancelled.sql`
 7. `01-requirements-prd.md`
 8. `01-a-functional-definition.md`
-9. `01-b-policy-definition-v2.7.md`
+9. `01-b-policy-definition-v2.8.md`
 10. `02-ui-ux-design.md`
 11. `03-system-architecture.md`
 12. `04-domain-database-design.md`
@@ -64,3 +64,14 @@ Prompt·Failure 정규화   → 15
 23. `15-agent-capability-failure-prompt-contract.md`
 24. `state-transition-contract-v1.4.md`
 25. `state-transition-test-matrix-v1.4.md`
+
+
+## 전체 문서 교체 Pack
+
+Notion 전체 설계 문서 교체용 Pack은 위 Canonical 25개에 다음 설명 문서 3개를 추가한 **28개**로 구성한다. 설명 문서는 Concern Owner가 아니며, 충돌 시 위 25개 Canonical 계약을 따른다.
+
+26. `00-A-product-design-decisions.md`
+27. `00-B-evaluation-experiment-strategy.md`
+28. `00-C-core-policy-safety-invariants.md`
+
+적용된 Migration SQL은 이력·checksum Artifact이므로 소급 수정하지 않는다. `0002_action_effect_send_delete.sql`의 Google Task DELETE 금지 주석은 v1.3 생성 시점 이력이다. 현재 DELETE 허용 범위는 `01-B Policy v2.8`과 `07 Interface v2.10`이 소유하며, 정확한 Google Task와 Calendar Event 삭제를 승인형 DELETE로 허용한다.

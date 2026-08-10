@@ -232,7 +232,7 @@ Gmail·Tasks·Calendar를 확인하는 동시에 현재 항목에서 바로 Agen
 - 검색·필터
 - 마지막 갱신 시간
 - 수동 새로고침
-- 페이지당 10~20개의 Resource 목록
+- 페이지당 **10개**의 Resource 목록
 - 이전·다음 페이지 이동
 - 단일 선택과 다중 선택
 - 원본 Google 서비스에서 열기
@@ -270,7 +270,7 @@ Gmail·Tasks·Calendar를 확인하는 동시에 현재 항목에서 바로 Agen
 
 - 앱 시작 화면에서는 Google 연결 상태만 검사하고 사이드바 목록 전체를 미리 조회하지 않는다.
 - 사용자가 각 Source 탭을 처음 열 때 첫 페이지를 Google API에서 조회한다.
-- 페이지당 10~20개를 표시하며 P0 기본값은 20개다.
+- Sidebar UI는 페이지당 **10개**를 표시한다. Agent Retrieval의 page size 20과 분리한다.
 - 다음 페이지로 이동하면 Google API의 Page Token으로 새 목록을 조회한다.
 - 이미 조회한 페이지로 돌아가면 React Client Session Cache의 결과를 즉시 표시한다.
 - 페이지 전환만으로 이미 조회한 페이지를 다시 호출하지 않는다.
@@ -784,9 +784,7 @@ Local Storage에는 Secret, Approval Token 원문, Gmail 전체 원문, 실행 �
 어느 김 대리 건인가요?
 ```
 
-## 29. v2.6 Main UI Canonical 보완
-
-이 절은 v2.6의 구현 기준 화면 명세이며, 앞선 UI-003~UI-008 중 이 절과 상충하는 시각 표현과 Sidebar UI 페이지 단위는 이 절을 우선한다. API, 정책, Workflow, Domain 상태 권위는 바꾸지 않는다.
+## 29. Main UI 구현 계약
 
 ### 29.1 Desktop 정보 구조
 
@@ -805,7 +803,8 @@ Right:  Conversation (새 대화·검색·목록) → Recent Execution
 
 - 탭은 메일, Tasks, Calendar이며 검색/필터와 수동 새로고침을 제공한다. 목록은 compact row, selected/hover/focus/disabled 상태와 키보드 탐색을 제공한다.
 - 기본 UI page size는 10이다. Page Token 기반 API를 React Session Memory의 page number mapping으로 연결해 숫자 페이지를 제공한다. Agent Retrieval 20과 혼용하지 않는다.
-- count badge는 서버 Projection이 실제 count를 제공할 때만 표시한다. Frontend 전체 페이지 순회·hard code count는 금지한다.
+- Tasks 기본 목록은 **미완료 Task 전체**를 대상으로 하고, Calendar 기본 목록은 사용자 Timezone 기준 **현재부터 향후 90일** Event를 대상으로 한다.
+- count badge는 서버 Projection이 정확한 `total_count`를 제공할 때 표시한다. Tasks는 현재 필터의 미완료 Task 전체 수, Calendar는 현재 Calendar·필터의 향후 90일 Event 전체 수를 표시한다. Gmail의 추정 count를 exact count로 표시하지 않는다. Frontend 전체 페이지 순회·hard code count는 금지한다.
 - 행을 선택하면 Center 상단 Viewer에 제공 가능한 Resource 상세를 표시한다. Gmail sender/recipient/subject/received time/body/attachment metadata, Task title/task_status/scheduled_date/list/notes, Calendar title/start/end/attendees/location/description/calendar는 제공된 필드만 표시한다. 누락값의 추정·생성은 금지한다.
 - Focus Resource와 다중 선택 Resource 집합을 분리한다. Focus는 Viewer용이며 다중 선택은 기존 Agent Context 기능을 보존한다.
 
@@ -829,9 +828,7 @@ Right:  Conversation (새 대화·검색·목록) → Recent Execution
 - 색만으로 상태를 구분하지 않고 icon/문구를 함께 사용한다. 키보드로 탭, 목록, 대화, 승인, 취소, 입력을 사용할 수 있어야 하며 focus가 명확해야 한다.
 - 오류는 원인, 현재 상태, 다음 행동을 제시한다. 민감 정보·secret·개발 Runtime 상세를 Main에 노출하지 않는다.
 
-## 30. v2.7 Calendar·Tasks Sidebar 및 Viewer Empty State
-
-이 절은 v2.7의 Source별 Sidebar·Viewer 화면 명세다. 앞선 Sidebar 시각 표현과 상충하면 이 절을 우선하며, 실제 REST Projection과 기존 Focus·다중 선택·Page Token 계약은 변경하지 않는다.
+## 30. Calendar·Tasks Sidebar 및 Viewer Empty State
 
 ### 30.1 Calendar Sidebar
 
@@ -839,7 +836,7 @@ Right:  Conversation (새 대화·검색·목록) → Recent Execution
 - 날짜가 다른 Event는 시작일과 종료일을 각각 식별할 수 있도록 표시한다. All-day Event는 `YYYY년 M월 D일 (요일) · 하루 종일`이다.
 - Sidebar에는 `시작`, `종료` label을 표시하지 않는다. 중앙 Resource Viewer에는 제공된 `시작`, `종료` 상세 필드를 유지한다.
 - 실제 Event Projection에 없는 색상 dot·원형 marker·priority·category·status badge·내부 Google ID·Page Token을 추가하지 않는다. 선택 Event는 기존 row의 background/focus styling만 사용한다.
-- Upcoming 조회 기간의 `time_max` 값은 별도 제품 정책 결정 사항이다. 이 UI 명세는 30일·60일·90일·월말·연말 등 임의 범위를 정의하지 않는다.
+- Upcoming 기본 조회 범위는 사용자 Timezone 기준 현재부터 **향후 90일**이다. 사용자가 기간을 지정하면 지정 범위를 우선한다.
 
 ### 30.2 Tasks Sidebar
 
@@ -855,7 +852,7 @@ Right:  Conversation (새 대화·검색·목록) → Recent Execution
 - 중앙 Viewer 제목은 `자료 상세`로 Source 공통이다. Focus가 없을 때 메일은 `왼쪽 목록에서 메일을 선택하면 상세 내용을 확인할 수 있습니다.`, Tasks는 `왼쪽 목록에서 태스크를 선택하면 상세 내용을 확인할 수 있습니다.`, Calendar는 `왼쪽 목록에서 일정을 선택하면 상세 내용을 확인할 수 있습니다.`를 표시한다.
 - Source 전환 시 이전 Source의 Focus 및 상세 정보는 남지 않는다. 새 Source의 Empty State를 먼저 표시하고, 행 Focus 후 해당 Source의 실제 Projection 상세만 표시한다.
 
-## R8.4 Gmail 첨부파일 UX
+## 31. Gmail 첨부파일 UX
 
 - Gmail Message에 첨부파일이 있으면 파일명·유형·크기를 표시한다.
 - 사용자가 선택한 파일만 다운로드하며 첨부파일 내용을 Agent가 자동 요약·분석하지 않는다.
