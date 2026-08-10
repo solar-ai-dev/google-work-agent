@@ -8,6 +8,7 @@ from typing import Final, Literal, NotRequired, Required, TypedDict, cast
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.contracts import (
+    CONFIRMATION_ORIGIN_TARGETS,
     ConfirmationResponseV1,
     GraphStateUpdateV1,
     RequestUnderstandingResult,
@@ -304,7 +305,7 @@ CLARIFICATION_QUESTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
         "additionalProperties": False,
         "properties": {
             "schema_version": {"type": "integer", "enum": [1]},
-            "origin_target": {"type": "string"},
+            "origin_target": {"type": "string", "enum": sorted(CONFIRMATION_ORIGIN_TARGETS)},
             "question": {"type": "string"},
             "affected_field_paths": {"type": "array", "items": {"type": "string"}},
             "reason_code": {"type": "string"},

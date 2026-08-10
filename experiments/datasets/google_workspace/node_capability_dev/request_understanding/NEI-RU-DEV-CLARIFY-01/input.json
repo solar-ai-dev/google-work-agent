@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "request_text": "그 메일에 회신해줘.",
+  "clarification_source": {
+    "schema_version": 1,
+    "origin_target": "request_understanding.classify",
+    "question": "어떤 메일에 회신할지 알려주세요. 최근 대화에서 메일이 두 건 이상 언급되었습니다.",
+    "affected_field_paths": [
+      "$.semantic_constraints.sources"
+    ],
+    "reason_code": "INTENT_AMBIGUITY_MISSED",
+    "known_context_summary": "사용자가 특정 메일에 대한 회신을 요청했지만 어느 메일인지 대화 맥락만으로는 확정할 수 없다.",
+    "options": []
+  },
+  "conversation_context": [
+    {
+      "role": "USER",
+      "content": "지민님 메일 확인해줘."
+    },
+    {
+      "role": "ASSISTANT",
+      "content": "지민님이 보낸 메일 2건을 찾았습니다."
+    }
+  ],
+  "current_time": "2026-08-10T09:00:00+09:00",
+  "timezone": "Asia/Seoul"
+}

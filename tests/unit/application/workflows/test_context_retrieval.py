@@ -245,7 +245,7 @@ def test_sufficiency_all_context_results_are_llm_contract_outputs(
             "missing_slots": ["more context"],
             "missing_information": ["more context"],
             "evidence_refs": ["evidence-1"],
-            "reason_codes": [],
+            "reason_codes": ["GOAL_RELEVANT"],
         }
     )
     assert result["additional_acquisition_request"] == expected_request
