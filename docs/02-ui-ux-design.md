@@ -1,6 +1,6 @@
 # 02. Google Work Agent UI · UX 설계서
 
-> **상태:** Draft v2.5 · **기준일:** 2026-08-10 · **대상:** P0 MVP
+> **상태:** Draft v2.6 · **기준일:** 2026-08-10 · **대상:** P0 MVP
 
 > **핵심 UX 원칙:** 사용자는 최소한의 행동으로 최대한의 결과를 얻어야 한다. 사용자가 이미 보고 있는 항목과 작업 흐름 안에서 다음 행동을 수행할 수 있어야 하며, 불필요한 화면 이동·재입력·반복 승인은 UX 실패로 본다.
 
@@ -207,7 +207,7 @@ Context 검토, 계획, 승인, 실행, 검증, 복구는 별도 페이지가 �
 
 ### 8.2 연결 상태
 
-상태 Icon을 누르면 다음 항목을 간단히 보여준다.
+상세 상태를 여는 기능이 있을 때만 상태 Control을 사용하며, 열리는 화면은 다음 항목을 간단히 보여준다.
 
 - Local Agent API
 - Event Stream
@@ -218,7 +218,7 @@ Context 검토, 계획, 승인, 실행, 검증, 복구는 별도 페이지가 �
 - Local 모델
 - 마지막 검사 시간
 
-정상 상태는 화면을 차지하지 않고 Icon으로만 표시하며, 경고나 오류가 있을 때만 Badge와 해결 Action을 보여준다.
+정상 Google 연결은 Header 정중앙의 비대화형 compact chip으로 표시한다. chip은 green status dot과 `Google 연결됨` 문구, 충분한 padding과 높이를 가지며 button semantics를 사용하지 않는다. 경고나 오류가 있을 때만 Badge와 해결 Action을 보여준다.
 
 ## 9. UI-005 왼쪽 Google 서비스 패널
 
@@ -294,7 +294,9 @@ Gmail·Tasks·Calendar를 확인하는 동시에 현재 항목에서 바로 Agen
 
 - 사용자는 하나 또는 여러 개의 Gmail·Task·Event를 선택할 수 있다.
 - 한 개를 클릭하면 Preview와 해당 Resource에서 수행할 수 있는 빠른 Agent Action을 표시한다.
-- 여러 개를 선택하면 `선택 항목으로 요청`, `채팅에 추가`, `선택 해제` Action Bar를 표시한다.
+- Row click은 Focus Resource와 Preview만 갱신하고, checkbox는 별도의 다중 선택 Context 집합만 변경한다. Focus 변경은 기존 선택 집합을 변경하지 않는다.
+- 선택 Resource가 하나 이상이면 Composer 가까이에 선택 수와 사용자 의미 label을 compact하게 표시한다. 별도의 `선택 항목으로 요청`, `채팅에 추가`, `선택 해제` Action Bar는 표시하지 않는다.
+- Composer 전송은 선택 집합이 있으면 중복 없는 전체 Resource ID를 `RESOURCE_SELECTED` Context로 전달하고, 선택 집합이 없으면 `AGENT_SEARCH`로 시작한다.
 - 선택된 Resource의 ID, Source, 제목과 최소 Metadata를 중앙 채팅의 Context로 전달한다.
 - 사용자가 이미 선택한 사람·날짜·제목을 채팅에서 다시 입력하도록 요구하지 않는다.
 
@@ -782,9 +784,9 @@ Local Storage에는 Secret, Approval Token 원문, Gmail 전체 원문, 실행 �
 어느 김 대리 건인가요?
 ```
 
-## 29. v2.5 Main UI Canonical 보완
+## 29. v2.6 Main UI Canonical 보완
 
-이 절은 v2.5의 구현 기준 화면 명세이며, 앞선 UI-003~UI-008 중 이 절과 상충하는 시각 표현과 Sidebar UI 페이지 단위는 이 절을 우선한다. API, 정책, Workflow, Domain 상태 권위는 바꾸지 않는다.
+이 절은 v2.6의 구현 기준 화면 명세이며, 앞선 UI-003~UI-008 중 이 절과 상충하는 시각 표현과 Sidebar UI 페이지 단위는 이 절을 우선한다. API, 정책, Workflow, Domain 상태 권위는 바꾸지 않는다.
 
 ### 29.1 Desktop 정보 구조
 

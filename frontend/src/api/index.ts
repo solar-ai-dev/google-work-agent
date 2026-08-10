@@ -6,6 +6,7 @@ import {
   type CurrentGoogleAccountResponse,
   type GoogleConnectionResponse,
   type GoogleOAuthStartResponse,
+  type GmailResourceDetailResponse,
   type LatestConversationRunResponse,
   type LLMApiKeyResponse,
   type LLMConnectionResponse,
@@ -293,6 +294,10 @@ export function listGmailResources(
     search.set("page_token", pageToken);
   }
   return requestJson(`/api/v1/resources/gmail?${search.toString()}`);
+}
+
+export function getGmailResourceDetail(resourceId: string): Promise<GmailResourceDetailResponse> {
+  return requestJson(`/api/v1/resources/gmail/${encodeURIComponent(resourceId)}`);
 }
 
 export function listTaskResources(

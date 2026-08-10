@@ -9,6 +9,7 @@ import {
   disconnectGoogle,
   getCurrentAccount,
   getGoogleConnection,
+  getGmailResourceDetail,
   getLLMConnection,
   getLatestConversationRun,
   getLive,
@@ -36,6 +37,7 @@ import type {
   ConversationItem,
   CurrentGoogleAccountResponse,
   GoogleConnectionResponse,
+  GmailResourceDetailResponse,
   ResourceItem,
   RunAction,
   RunContext,
@@ -76,6 +78,13 @@ type PendingConfirmation = {
   question: string;
 };
 
+type GmailDetailState = {
+  resourceId: string | null;
+  status: "idle" | "loading" | "ready" | "error";
+  detail: GmailResourceDetailResponse | null;
+  error: string | null;
+};
+
 const resourceCache = new Map<string, { items: ResourceItem[]; nextPageToken: string | null }>();
 
 const THEME_KEY = "gwa.theme";
@@ -104,6 +113,12 @@ export function App(): JSX.Element {
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [confirmationText, setConfirmationText] = useState("");
   const [statusLine, setStatusLine] = useState("로컬 API에 연결되어 있습니다.");
+  const [gmailDetail, setGmailDetail] = useState<GmailDetailState>({
+    resourceId: null,
+    status: "idle",
+    detail: null,
+    error: null,
+  });
   const [resourceState, setResourceState] = useState<ResourceState>({
     tab: "gmail",
     query: "",
@@ -118,6 +133,20 @@ export function App(): JSX.Element {
     loading: false,
     error: null,
   });
+  const selectedResourceIds = useMemo(
+    () => [...new Set(resourceState.selectedIds)],
+    [resourceState.selectedIds],
+  );
+  const selectedResourceLabels = useMemo(
+    () => resourceState.items
+      .filter((item) => selectedResourceIds.includes(item.resource_id))
+      .map((item) => resourcePresentation(item).title)
+      .filter((title): title is string => Boolean(title)),
+    [resourceState.items, selectedResourceIds],
+  );
+  const composerPrompt = selectedResourceIds.length > 0
+    ? "선택한 자료에 대해 질문하거나 업무를 요청하세요"
+    : "무엇을 도와드릴까요?";
   const subscriptionRef = useRef<(() => void) | null>(null);
   const subscriptionRunIdRef = useRef<string | null>(null);
   const startupPromiseRef = useRef<Promise<void> | null>(null);
@@ -175,6 +204,36 @@ export function App(): JSX.Element {
     });
     subscriptionRunIdRef.current = runId;
   }, [refreshRun]);
+
+  const loadGmailDetail = useCallback(async (resourceId: string): Promise<void> => {
+    setGmailDetail({ resourceId, status: "loading", detail: null, error: null });
+    try {
+      const detail = await getGmailResourceDetail(resourceId);
+      setGmailDetail((current) => current.resourceId === resourceId
+        ? { resourceId, status: "ready", detail, error: null }
+        : current);
+    } catch (error) {
+      setGmailDetail((current) => current.resourceId === resourceId
+        ? {
+            resourceId,
+            status: "error",
+            detail: null,
+            error: error instanceof ApiClientError
+              ? error.message
+              : "메일 내용을 불러오지 못했습니다.",
+          }
+        : current);
+    }
+  }, []);
+
+  useEffect(() => {
+    const focusItem = resourceState.focusItem;
+    if (focusItem?.resource_type === "gmail_thread") {
+      void loadGmailDetail(focusItem.resource_id);
+      return;
+    }
+    setGmailDetail({ resourceId: null, status: "idle", detail: null, error: null });
+  }, [loadGmailDetail, resourceState.focusItem]);
 
   const loadResources = useCallback(async (tab: ResourceTab, pageIndex: number): Promise<void> => {
     const pageToken = resourceState.pageTokens[pageIndex] ?? null;
@@ -322,11 +381,6 @@ export function App(): JSX.Element {
     void loadResources(resourceState.tab, 0);
   }, [currentAccount, loadResources, resourceState.pageItems.length, resourceState.parentId, resourceState.tab, startup.status]);
 
-  const selectedResources = useMemo(
-    () => resourceState.items.filter((item) => resourceState.selectedIds.includes(item.resource_id)),
-    [resourceState.items, resourceState.selectedIds],
-  );
-
   async function selectConversation(conversationId: string): Promise<void> {
     setSelectedConversationId(conversationId);
     const latest = await getLatestConversationRun(conversationId);
@@ -362,7 +416,6 @@ export function App(): JSX.Element {
         setSelectedConversationId(conversationId);
       }
       const commandId = crypto.randomUUID();
-      const selectedResourceIds = [...resourceState.selectedIds];
       const runId = crypto.randomUUID();
       const workflowKey = `workflow-${runId}`;
       const response = await startRun({
@@ -601,12 +654,15 @@ export function App(): JSX.Element {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div>
+        <div className="topbar-brand">
+          <span className="brand-mark" aria-hidden="true">✦</span>
           <strong>Google Work Agent</strong>
-          <div className="muted">{statusLine}</div>
+          <span className="sr-only" aria-live="polite">{statusLine}</span>
         </div>
-        <div className="inline-row">
+        <div className="topbar-connection" aria-live="polite">
           <span className="pill">{google?.connected ? "Google 연결됨" : "Google 미연결"}</span>
+        </div>
+        <div className="topbar-actions">
           {currentAccount ? <span className="muted">{currentAccount.email}</span> : null}
           <button
             className="button-secondary"
@@ -632,50 +688,54 @@ export function App(): JSX.Element {
         </div>
       </header>
       <div className="shell-grid">
-        <aside className="panel">
-          <div className="panel-header">
-            <strong>Google 자료</strong>
-            <div className="inline-row">
+        <aside className="panel resource-panel">
+          <div className="panel-body">
+            <div className="resource-tabbar">
+              <div className="resource-tabs" role="tablist" aria-label="자료 종류">
+              {(["gmail", "tasks", "calendar"] as ResourceTab[]).map((tab) => (
+                  <button
+                    key={tab}
+                    className={`resource-tab ${resourceState.tab === tab ? "selected" : ""}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={resourceState.tab === tab}
+                    onClick={() => setResourceState((current) => ({
+                      ...current,
+                      tab,
+                      items: [],
+                      nextPageToken: null,
+                      pageIndex: 0,
+                      pageItems: [],
+                      pageTokens: [null],
+                      parentId: null,
+                      focusItem: null,
+                    }))}
+                  >
+                    <span className="resource-tab-icon" aria-hidden="true">{resourceTabIcon(tab)}</span>
+                    <span>{resourceTabLabel(tab)}</span>
+                    <span className="sr-only">{tab.toUpperCase()}</span>
+                  </button>
+                ))}
+              </div>
               <button
-                className="button-secondary"
+                className="icon-button"
                 type="button"
+                aria-label="새로고침"
+                title="새로고침"
                 onClick={() => {
                   resourceCache.clear();
                   setResourceState((current) => ({ ...current, pageIndex: 0, pageItems: [], pageTokens: [null] }));
                   void loadResources(resourceState.tab, 0);
                 }}
               >
-                새로고침
+                ↻
               </button>
             </div>
-          </div>
-          <div className="panel-body">
-            <div className="inline-row">
-              {(["gmail", "tasks", "calendar"] as ResourceTab[]).map((tab) => (
-                <button
-                  key={tab}
-                  className={resourceState.tab === tab ? "button-primary" : "button-secondary"}
-                  type="button"
-                  onClick={() => setResourceState((current) => ({
-                    ...current,
-                    tab,
-                    items: [],
-                    nextPageToken: null,
-                    pageIndex: 0,
-                    pageItems: [],
-                    pageTokens: [null],
-                    parentId: null,
-                    focusItem: null,
-                  }))}
-                >
-                  {tab.toUpperCase()}
-                </button>
-              ))}
-            </div>
             {resourceState.tab === "gmail" ? (
-              <label>
+              <label className="search-field resource-search">
                 <span className="muted">검색</span>
                 <input
+                  placeholder="제목, 보낸사람, 내용"
                   value={resourceState.query}
                   onChange={(event) => setResourceState((current) => ({
                     ...current,
@@ -701,57 +761,48 @@ export function App(): JSX.Element {
               {resourceState.items.map((item) => {
                 const selected = resourceState.selectedIds.includes(item.resource_id);
                 const focused = resourceState.focusItem?.resource_id === item.resource_id;
+                const presentation = resourcePresentation(item);
                 return (
                   <li key={item.resource_id} className={`resource-item ${selected ? "selected" : ""} ${focused ? "focused" : ""}`}>
+                    <label className="resource-select-control" title="선택 항목에 포함">
+                      <input
+                        type="checkbox"
+                        aria-label={`${presentation.title ?? "제목 없음"} 선택`}
+                        checked={selected}
+                        onChange={() => setResourceState((current) => ({
+                          ...current,
+                          selectedIds: current.selectedIds.includes(item.resource_id)
+                            ? current.selectedIds.filter((resourceId) => resourceId !== item.resource_id)
+                            : [...current.selectedIds, item.resource_id],
+                        }))}
+                      />
+                    </label>
                     <button
                       className="resource-summary"
                       type="button"
                       aria-pressed={focused}
                       onClick={() => setResourceState((current) => ({ ...current, focusItem: item }))}
                     >
-                      <strong>{item.title}</strong>
-                      {item.subtitle ? <span className="muted">{item.subtitle}</span> : null}
-                      <span className="muted">{resourceLabel(item)}</span>
+                      {item.source.toLowerCase() === "gmail" ? (
+                        <>
+                          {(presentation.secondary || presentation.time) ? (
+                            <span className="row-mail-meta">
+                              {presentation.secondary ? <span className="row-sender">{presentation.secondary}</span> : null}
+                              {presentation.time ? <span className="row-meta">{presentation.time}</span> : null}
+                            </span>
+                          ) : null}
+                          <strong className="row-title">{presentation.title ?? "제목 없음"}</strong>
+                          {presentation.snippet ? <span className="row-snippet">{presentation.snippet}</span> : null}
+                        </>
+                      ) : (
+                        <>
+                          <strong className="row-title">{presentation.title ?? "제목 정보 없음"}</strong>
+                          {presentation.secondary ? <span className="row-secondary">{presentation.secondary}</span> : null}
+                          {presentation.snippet ? <span className="row-snippet">{presentation.snippet}</span> : null}
+                          {presentation.time ? <span className="row-meta">{presentation.time}</span> : null}
+                        </>
+                      )}
                     </button>
-                    <div className="button-row resource-actions">
-                      <button
-                        className="button-secondary"
-                        type="button"
-                        onClick={() => setResourceState((current) => ({
-                          ...current,
-                          selectedIds: current.selectedIds.includes(item.resource_id)
-                            ? current.selectedIds.filter((resourceId) => resourceId !== item.resource_id)
-                            : [...current.selectedIds, item.resource_id],
-                          focusItem: item,
-                        }))}
-                      >
-                        {selected ? "선택 해제" : "선택"}
-                      </button>
-                      <button className="button-secondary" type="button" onClick={() => void handleStartRun(`${item.title} 관련 핵심을 정리해 줘`)}>
-                        채팅에 추가
-                      </button>
-                      <button className="button-secondary" type="button" onClick={() => window.open(safeGoogleLink(item.link_url), "_blank", "noopener,noreferrer")}>
-                        원본 열기
-                      </button>
-                      {(item.resource_type === "task_list" || item.resource_type === "calendar") ? (
-                        <button
-                          className="button-secondary"
-                          type="button"
-                          onClick={() => setResourceState((current) => ({
-                            ...current,
-                            parentId: item.resource_id,
-                            items: [],
-                            nextPageToken: null,
-                            pageIndex: 0,
-                            pageItems: [],
-                            pageTokens: [null],
-                            focusItem: item,
-                          }))}
-                        >
-                          하위 보기
-                        </button>
-                      ) : null}
-                    </div>
                   </li>
                 );
               })}
@@ -796,72 +847,115 @@ export function App(): JSX.Element {
           <div className="panel-body">
             <section className="resource-viewer" aria-label="선택 자료 상세">
               <div className="section-heading">
-                <strong>선택 자료</strong>
-                {resourceState.focusItem ? <span className="pill">{resourceState.focusItem.source}</span> : null}
+                <strong>{resourceState.focusItem?.resource_type === "gmail_thread" ? "메일" : "자료 상세"}</strong>
+                {resourceState.focusItem ? (
+                  <div className="viewer-actions">
+                    {hasCanonicalGoogleUrl(
+                      gmailDetail.detail?.resource_id === resourceState.focusItem.resource_id
+                        ? gmailDetail.detail.canonical_url
+                        : resourceState.focusItem.link_url,
+                    ) ? (
+                      <button
+                        className="icon-button"
+                        type="button"
+                        aria-label="원본 열기"
+                        title="원본 열기"
+                        onClick={() => window.open(
+                          safeGoogleLink(
+                            gmailDetail.detail?.resource_id === resourceState.focusItem!.resource_id
+                              ? gmailDetail.detail.canonical_url
+                              : resourceState.focusItem!.link_url,
+                          ),
+                          "_blank",
+                          "noopener,noreferrer",
+                        )}
+                      >
+                        ↗
+                      </button>
+                    ) : null}
+                    {(resourceState.focusItem.resource_type === "task_list" || resourceState.focusItem.resource_type === "calendar") ? (
+                      <button
+                        className="icon-button"
+                        type="button"
+                        aria-label="하위 자료 보기"
+                        title="하위 자료 보기"
+                        onClick={() => setResourceState((current) => ({
+                          ...current,
+                          parentId: resourceState.focusItem!.resource_id,
+                          items: [],
+                          nextPageToken: null,
+                          pageIndex: 0,
+                          pageItems: [],
+                          pageTokens: [null],
+                        }))}
+                      >
+                        →
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
               {resourceState.focusItem ? (
-                <>
-                  <h2>{resourceState.focusItem.title}</h2>
-                  {resourceState.focusItem.subtitle ? <p>{resourceState.focusItem.subtitle}</p> : null}
-                  {Object.keys(resourceState.focusItem.metadata).length > 0 ? (
-                    <dl className="metadata-list">
-                      {Object.entries(resourceState.focusItem.metadata).slice(0, 6).map(([key, value]) => (
-                        <div key={key}>
-                          <dt>{key}</dt>
-                          <dd>{formatMetadata(value)}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  ) : <p className="muted">현재 목록에서 제공된 상세 정보가 없습니다.</p>}
-                </>
-              ) : <p className="muted">왼쪽 목록에서 자료를 열면 제공 가능한 상세 정보가 표시됩니다.</p>}
+                resourceState.focusItem.resource_type === "gmail_thread" ? (
+                  <GmailDetailViewer
+                    state={gmailDetail}
+                    onRetry={() => void loadGmailDetail(resourceState.focusItem!.resource_id)}
+                  />
+                ) : (
+                  <>
+                    <h2>{resourcePresentation(resourceState.focusItem).title ?? "제목 없음"}</h2>
+                    {resourcePresentation(resourceState.focusItem).secondary ? <p>{resourcePresentation(resourceState.focusItem).secondary}</p> : null}
+                    {viewerMetadataEntries(resourceState.focusItem).length > 0 ? (
+                      <dl className="metadata-list">
+                        {viewerMetadataEntries(resourceState.focusItem).map(([key, value]) => (
+                          <div key={key}>
+                            <dt>{key}</dt>
+                            <dd>{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : <p className="muted">현재 목록에서 제공된 상세 정보가 없습니다.</p>}
+                  </>
+                )
+              ) : <p className="muted">왼쪽 목록에서 메일을 선택하면 내용을 확인할 수 있습니다.</p>}
             </section>
-            {runContext?.request_text ? (
-              <article className="info-card">
-                <strong>사용자 요청</strong>
-                <p>{runContext.request_text}</p>
-              </article>
-            ) : null}
+            <section className="agent-workspace" aria-label="에이전트 대화">
+              <section className="card-list">
+              {runContext?.request_text ? (
+                <article className="info-card user-request-card">
+                  <strong>사용자 요청</strong>
+                  <p>{runContext.request_text}</p>
+                </article>
+              ) : null}
 
-            {runSnapshot?.status === "WAITING_CONFIRMATION" ? (
-              <article className="info-card">
-                <strong>추가 확인</strong>
-                <p>
-                  {pendingConfirmation?.question ?? "확인 요청 정보를 동기화하고 있습니다."}
-                </p>
-                <textarea
-                  aria-label="확인 응답"
-                  className="composer"
-                  disabled={!pendingConfirmation}
-                  value={confirmationText}
-                  onChange={(event) => setConfirmationText(event.target.value)}
-                />
-                <button
-                  className="button-primary"
-                  type="button"
-                  disabled={
-                    !pendingConfirmation ||
-                    !confirmationText.trim() ||
-                    busyCommand === "confirm-run"
-                  }
-                  onClick={() => void handleConfirmation()}
-                >
-                  응답 보내기
-                </button>
-              </article>
-            ) : null}
+              {runSnapshot?.status === "WAITING_CONFIRMATION" ? (
+                <article className="info-card">
+                  <strong>추가 확인</strong>
+                  <p>
+                    {pendingConfirmation?.question ?? "확인 요청 정보를 동기화하고 있습니다."}
+                  </p>
+                  <textarea
+                    aria-label="확인 응답"
+                    className="composer"
+                    disabled={!pendingConfirmation}
+                    value={confirmationText}
+                    onChange={(event) => setConfirmationText(event.target.value)}
+                  />
+                  <button
+                    className="button-primary"
+                    type="button"
+                    disabled={
+                      !pendingConfirmation ||
+                      !confirmationText.trim() ||
+                      busyCommand === "confirm-run"
+                    }
+                    onClick={() => void handleConfirmation()}
+                  >
+                    응답 보내기
+                  </button>
+                </article>
+              ) : null}
 
-            {selectedResources.length > 0 ? (
-              <div className="inline-row">
-                {selectedResources.map((item) => (
-                  <span key={item.resource_id} className="pill">
-                    {item.title}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            <section className="card-list">
               {runSnapshot?.active_plan ? (
                 <article className="info-card">
                   <strong>Action Plan</strong>
@@ -974,12 +1068,23 @@ export function App(): JSX.Element {
                   <p>결과 불명 작업 {runSnapshot.recovery_summary.unknown_result_action_count}건을 확인하고 있습니다.</p>
                 </article>
               ) : null}
+              </section>
             </section>
 
-            <label>
-              <span className="muted">자연어 요청</span>
+            <div className="composer-dock">
+            {selectedResourceIds.length > 0 ? (
+              <div className="composer-context" aria-live="polite">
+                <strong>요청에 사용할 자료 {selectedResourceIds.length}개</strong>
+                {selectedResourceLabels.length > 0 ? (
+                  <span>{selectedResourceLabels.join(" · ")}</span>
+                ) : null}
+              </div>
+            ) : null}
+            <label className="composer-field">
               <textarea
                 className="composer"
+                aria-label={composerPrompt}
+                placeholder={composerPrompt}
                 value={composerText}
                 onChange={(event) => setComposerText(event.target.value)}
                 onKeyDown={(event) => {
@@ -990,13 +1095,11 @@ export function App(): JSX.Element {
                 }}
               />
             </label>
-            <div className="button-row">
-              <button className="button-primary" type="button" disabled={busyCommand === "start-run"} onClick={() => void handleStartRun()}>
-                요청 시작
+            <div className="button-row composer-actions">
+              <button className="button-primary icon-button" type="button" aria-label="보내기" title="보내기" disabled={busyCommand === "start-run"} onClick={() => void handleStartRun()}>
+                <span aria-hidden="true">➤</span>
               </button>
-              <button className="button-secondary" type="button" onClick={() => setComposerText("")}>
-                입력 지우기
-              </button>
+            </div>
             </div>
           </div>
         </main>
@@ -1018,7 +1121,7 @@ export function App(): JSX.Element {
                 <li key={conversation.id} className={`conversation-item ${selectedConversationId === conversation.id ? "selected" : ""}`}>
                   <button
                     type="button"
-                    style={{ all: "unset", display: "grid", gap: "0.35rem", cursor: "pointer" }}
+                    className="conversation-summary"
                     onClick={() => void selectConversation(conversation.id)}
                   >
                     <strong>{conversation.title}</strong>
@@ -1383,26 +1486,254 @@ function userRunStatus(status: string | undefined): string {
   }
 }
 
-function resourceLabel(item: ResourceItem): string {
-  const metadata = item.metadata;
-  const value = metadata.received_at ?? metadata.updated_at ?? metadata.due ?? metadata.start ?? metadata.status;
-  return typeof value === "string" || typeof value === "number" ? String(value) : item.resource_type;
+function GmailDetailViewer({
+  state,
+  onRetry,
+}: {
+  state: GmailDetailState;
+  onRetry: () => void;
+}): JSX.Element {
+  if (state.status === "loading") {
+    return <div className="viewer-state" role="status">메일 내용을 불러오는 중입니다.</div>;
+  }
+  if (state.status === "error") {
+    return (
+      <div className="viewer-state" role="alert">
+        <p>{state.error ?? "메일 내용을 불러오지 못했습니다."}</p>
+        <button className="button-secondary" type="button" onClick={onRetry}>다시 시도</button>
+      </div>
+    );
+  }
+  if (state.status !== "ready" || !state.detail) {
+    return <div className="viewer-state">메일 내용을 선택해 주세요.</div>;
+  }
+
+  const detail = state.detail;
+  const sender = formatMailboxIdentity(detail.sender_name, detail.sender_email);
+  const receivedAt = formatDetailDate(detail.received_at);
+  return (
+    <article className="gmail-detail">
+      <header className="gmail-detail-header">
+        <div className="gmail-detail-sender">
+          {sender ? <strong>{sender}</strong> : <strong className="muted">보낸 사람 정보가 없습니다.</strong>}
+          <div className="gmail-detail-meta">
+            {detail.recipients.length > 0 ? <span>받는 사람 {detail.recipients.join(", ")}</span> : null}
+            {detail.cc.length > 0 ? <span>참조 {detail.cc.join(", ")}</span> : null}
+            {receivedAt ? <time>{receivedAt}</time> : null}
+          </div>
+        </div>
+        {detail.subject ? <h2>{detail.subject}</h2> : null}
+      </header>
+      {detail.body ? (
+        <div className="gmail-detail-body">{detail.body}</div>
+      ) : (
+        <p className="viewer-empty">표시할 메일 내용이 없습니다.</p>
+      )}
+      {detail.attachments.length > 0 ? (
+        <section className="gmail-attachments" aria-label="첨부파일">
+          <strong>첨부파일</strong>
+          <ul>
+            {detail.attachments.map((attachment) => (
+              <li key={`${attachment.message_id}:${attachment.attachment_id}`}>
+                <span>{attachment.filename}</span>
+                <small>
+                  {attachment.mime_type}
+                  {attachment.size_bytes !== null ? ` · ${formatFileSize(attachment.size_bytes)}` : ""}
+                </small>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </article>
+  );
 }
 
-function formatMetadata(value: unknown): string {
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return String(value);
+function resourcePresentation(item: ResourceItem): {
+  title: string | null;
+  secondary: string | null;
+  snippet: string | null;
+  time: string | null;
+} {
+  const metadata = item.metadata;
+  const source = item.source.toLowerCase();
+  const sender = userFacingValue(item.sender_name)
+    ?? firstPresentationValue(metadata, ["sender", "from", "sender_name", "from_name", "display_name", "participants"]);
+  const email = userFacingValue(item.sender_email)
+    ?? firstPresentationValue(metadata, ["sender_email", "from_email", "email"]);
+  const subject = userFacingValue(item.subject)
+    ?? firstPresentationValue(metadata, ["subject", "title", "summary", "name"]);
+  const subtitle = userFacingValue(item.subtitle);
+  const itemTitle = userFacingValue(item.title);
+  const title = isGenericResourceTitle(itemTitle, source) ? userFacingValue(subject) : itemTitle ?? userFacingValue(subject);
+  const secondary = source === "gmail"
+    ? formatMailboxIdentity(sender, email)
+    : sender ?? subtitle;
+  const snippet = userFacingValue(item.snippet)
+    ?? firstPresentationValue(metadata, ["snippet", "preview", "body_preview", "description", "notes"])
+    ?? (source === "gmail" ? subtitle : null);
+  const rawTime = userFacingValue(item.received_at)
+    ?? firstPresentationValue(metadata, ["received_at", "received_at_ms", "date", "updated_at", "updated_at_ms", "due", "start"]);
+  const time = source === "gmail" ? formatSidebarDate(rawTime) : rawTime;
+  return { title, secondary, snippet, time };
+}
+
+function formatMailboxIdentity(name: string | null, email: string | null): string | null {
+  if (name && email && name !== email) return `${name} <${email}>`;
+  if (name) return name;
+  return email ? `<${email}>` : null;
+}
+
+function parsedResourceDate(value: string | null): Date | null {
+  if (!value) return null;
+  const milliseconds = /^\d{12,}$/.test(value) ? Number(value) : Date.parse(value);
+  if (!Number.isFinite(milliseconds)) return null;
+  const date = new Date(milliseconds);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatSidebarDate(value: string | null, now = new Date()): string | null {
+  const date = parsedResourceDate(value);
+  if (!date) return null;
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfValue = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dayDifference = Math.round((startOfToday.getTime() - startOfValue.getTime()) / 86_400_000);
+  if (dayDifference === 0) {
+    return date.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit", hour12: true });
   }
-  return "제공된 상세 정보";
+  if (dayDifference === 1) return "어제";
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
+  }
+  return date.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+function formatDetailDate(value: string | null): string | null {
+  const date = parsedResourceDate(value);
+  return date?.toLocaleString("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }) ?? null;
+}
+
+function formatFileSize(sizeBytes: number): string {
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  if (sizeBytes < 1024 * 1024) return `${Math.round(sizeBytes / 1024)} KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function viewerMetadataEntries(item: ResourceItem): Array<[string, string]> {
+  const metadata = item.metadata;
+  const fields: Array<[string, string[]]> = item.source.toLowerCase() === "gmail"
+    ? [
+        ["보낸사람", ["sender", "from", "sender_name", "from_name", "display_name", "participants"]],
+        ["이메일", ["sender_email", "from_email", "email"]],
+        ["받는사람", ["recipients", "to", "recipient"]],
+        ["받은 시각", ["received_at", "received_at_ms", "date"]],
+        ["내용", ["body", "snippet", "preview", "body_preview"]],
+      ]
+    : [
+        ["상태", ["status"]],
+        ["마감일", ["due"]],
+        ["시작", ["start"]],
+        ["종료", ["end"]],
+        ["업데이트", ["updated_at", "updated_at_ms"]],
+        ["내용", ["description", "notes", "body", "snippet"]],
+      ];
+  return fields.flatMap(([label, keys]) => {
+    const value = firstPresentationValue(metadata, keys);
+    return value ? [[label, value]] : [];
+  });
+}
+
+function firstPresentationValue(metadata: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = userFacingValue(metadata[key]);
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function userFacingValue(value: unknown): string | null {
+  if (typeof value === "string" || typeof value === "number") {
+    const text = String(value).trim();
+    return text && !isTechnicalIdentifier(text) ? text : null;
+  }
+  if (Array.isArray(value)) {
+    const values = value
+      .map((entry) => userFacingValue(entry))
+      .filter((entry): entry is string => Boolean(entry));
+    return values.length ? values.join(", ") : null;
+  }
+  return null;
+}
+
+function isTechnicalIdentifier(value: string): boolean {
+  return /^[a-z0-9_-]{12,}$/i.test(value) && !value.includes("@");
+}
+
+function isGenericResourceTitle(value: string | null, source: string): boolean {
+  const sourceLabel = resourceSourceLabel(source).toLowerCase();
+  return source === "gmail" && [`${sourceLabel} 자료`, "gmail 자료", "google 자료"].includes(value?.toLowerCase() ?? "");
+}
+
+function resourceTabLabel(tab: ResourceTab): string {
+  switch (tab) {
+    case "gmail":
+      return "메일";
+    case "tasks":
+      return "태스크";
+    case "calendar":
+      return "캘린더";
+  }
+}
+
+function resourceTabIcon(tab: ResourceTab): string {
+  switch (tab) {
+    case "gmail":
+      return "✉";
+    case "tasks":
+      return "✓";
+    case "calendar":
+      return "▦";
+  }
+}
+
+function resourceSourceLabel(source: string): string {
+  switch (source.toLowerCase()) {
+    case "gmail":
+      return "메일";
+    case "tasks":
+      return "태스크";
+    case "calendar":
+      return "캘린더";
+    default:
+      return "Google 자료";
+  }
 }
 
 function safeGoogleLink(url: string): string {
-  const parsed = new URL(url);
-  const allowedHosts = new Set(["mail.google.com", "tasks.google.com", "calendar.google.com"]);
-  if (parsed.protocol !== "https:" || !allowedHosts.has(parsed.host)) {
+  if (!hasCanonicalGoogleUrl(url)) {
     return "https://calendar.google.com/";
   }
-  return parsed.toString();
+  return new URL(url).toString();
+}
+
+function hasCanonicalGoogleUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const allowedHosts = new Set(["mail.google.com", "tasks.google.com", "calendar.google.com"]);
+    return parsed.protocol === "https:" && allowedHosts.has(parsed.host);
+  } catch {
+    return false;
+  }
 }
 
 function readLLMState(value: Record<string, unknown> | null | undefined): {
