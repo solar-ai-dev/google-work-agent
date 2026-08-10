@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "lock_id": "CANONICAL-HOLDOUT-v1.14-R8.4",
+  "dataset_version": "rebuild-v1.14-r8.4",
+  "created_at": "2026-08-10T01:13:00+09:00",
+  "case_count": 12,
+  "cases": [
+    {
+      "case_id": "CASE-HOLDOUT-001",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-001/canonical-case.json",
+      "sha256": "253e7e93c8158e142b424c4b75cfc6cebedb8af8077a2d88d829cff1ba948988"
+    },
+    {
+      "case_id": "CASE-HOLDOUT-002",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-002/canonical-case.json",
+      "sha256": "726173de556191b87b9cca1503416fce789d20bd3584b4611956e7249d0318fa"
+    },
+    {
+      "case_id": "CASE-HOLDOUT-003",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-003/canonical-case.json",
+      "sha256": "0f26a05e8b724f5ec767237775e6645c1a3752d95bfa213e643eb7f17d08a7ea"
+    },
+    {
+      "case_id": "CASE-HOLDOUT-004",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-004/canonical-case.json",
+      "sha256": "84f240254232d3556349cdfef9187d7c44e95b0eb4dfca3628f782f6a803aca5"
+    },
+    {
+      "case_id": "CASE-HOLDOUT-005",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-005/canonical-case.json",
+      "sha256": "d60b31fda8381712d52c69778294c58e578986cee0130b1489e93e8537e432ce"
+    },
+    {
+      "case_id": "CASE-HOLDOUT-006",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-006/canonical-case.json",
+      "sha256": "b0d93e9a45ea55a0df32aac9ee6a2a019b4979cc7f808f2e3fff3357fa8f6b65"
+    },
+    {
+      "case_id": "CASE-HOLDOUT-007",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-007/canonical-case.json",
+      "sha256": "a7ec0288fb280e029db86ffb825375e0076b2be6feb697fcbe2cab6885275086"
+    },
+    {
+      "case_id": "CASE-HOLDOUT-008",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-008/canonical-case.json",
+      "sha256": "77b61810d03f375c8b5ad3e13e7937c42ce550d7a6e4ad378e26437170ff9b5d"
+    },
+    {
+      "case_id": "CASE-HOLDOUT-009",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-009/canonical-case.json",
+      "sha256": "b3ae994a37ebbcf8b5afb7d3cc02991c0b9e4fb5fcb519aede77e722c32722de"
+    },
+    {
+      "case_id": "CASE-HOLDOUT-010",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-010/canonical-case.json",
+      "sha256": "5e1e1ffcad3be7f5829a6996406a3e6503b92b27a718bccc219f2d525457a147"
+    },
+    {
+      "case_id": "CASE-HOLDOUT-011",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-011/canonical-case.json",
+      "sha256": "3b5ebf5c333ec7b4307f1d798315a263c3753c0e499208f053d6ac6e7bb50370"
+    },
+    {
+      "case_id": "CASE-HOLDOUT-012",
+      "path": "experiments/datasets/google_workspace/canonical_holdout/locked/CASE-HOLDOUT-012/canonical-case.json",
+      "sha256": "bff71a256a3e29e1c6e12d21cf895de72ef69a0338c7f1b4d8fcc338a52c0931"
+    }
+  ],
+  "lock_hash": "2a4bb51046315e54cf1b6c5dc0368ae5b522ae1b76e4d8cfb490bd2442190c99"
+}

@@ -7,18 +7,18 @@
   "purpose": "Deterministic dataset/schema/reference/split/grader integrity gate.",
   "independent_variable": "NONE",
   "fixed_dimensions": {
-    "dataset_version": "rebuild-v1.13-r8.3",
-    "prompt_bundle_version": "0.8.2-r8.3",
-    "tool_schema_version": "v2.6",
-    "policy_version": "01-B-v2.4",
+    "dataset_version": "rebuild-v1.14-r8.4",
+    "prompt_bundle_version": "0.8.3-r8.4",
+    "tool_schema_version": "v2.8",
+    "policy_version": "01-B-v2.7",
     "provider": "OPENAI",
     "runtime_model": "E01_FINALIST",
     "reasoning_budget": "medium",
-    "prompt_semantic_bundle_version": "semantic-r8.3-v1"
+    "prompt_semantic_bundle_version": "semantic-r8.4-v1"
   },
   "dataset_selection_ref": "experiments/selections/SEL-G00-INTEGRITY.json",
   "candidate_config_refs": [],
-  "grader_registry_ref": "experiments/graders/grader-registry-v0.4.json",
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.5.json",
   "trial_policy": {
     "dev_trials_per_item": 1,
     "holdout_trials_per_item": 0,
@@ -45,7 +45,11 @@
     "e2e_self_contained_gold_rate",
     "interaction_sequence_consistency",
     "profile_neutral_e06a_gold",
-    "scoring_contract_integrity"
+    "scoring_contract_integrity",
+    "prompt_catalog_parity",
+    "r8_4_policy_alignment",
+    "prompt_bundle_hash_integrity",
+    "r8_4_g02_coverage"
   ],
   "result_artifacts": [
     "experiment_manifest.json",
@@ -62,15 +66,29 @@
   ],
   "notes": [
     "No LLM call. Must pass before model experiments.",
-    "R8.3: validate CanonicalCaseV5, E2EProjectionV3 self-contained gold, ordered interactions, constraint-envelope acquisition gold, route-neutral E06-A business scoring, Grader Registry v0.4 and Scoring Contract v1.1 before any model run."
+    "R8.4 validates CanonicalCaseV5/E2EProjectionV3, prompt catalog parity, current policy/tool versions, prompt hashes, Grader v0.5, Scoring v1.2, and G02 Claim V2/Attachment coverage."
   ],
-  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.1.json",
+  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.2.json",
   "required_checks": [
     "CANONICAL_CASE_V5_SCHEMA_VALID",
     "E2E_PROJECTION_V3_SELF_CONTAINED_GOLD",
     "RUN_OUTCOME_EXPECTATION_UNAMBIGUOUS",
     "ACQUISITION_GOLD_USES_CONSTRAINT_ENVELOPE",
-    "GRADER_REGISTRY_V0_4_RESOLVES_ALL_IDS",
-    "SCORING_CONTRACT_V1_1_NON_COMPENSATORY"
+    "GRADER_REGISTRY_V0_5_RESOLVES_ALL_IDS",
+    "SCORING_CONTRACT_V1_2_NON_COMPENSATORY",
+    "PROMPT_CATALOG_SOURCE_HASH_PARITY",
+    "R8_4_POLICY_ALIGNMENT",
+    "PROMPT_MANIFEST_HASH_INTEGRITY",
+    "R8_4_G02_CLAIM_ATTACHMENT_COVERAGE"
+  ],
+  "hypothesis": "All integrity checks must pass before any model run.",
+  "stop_conditions": [
+    "Stop immediately on any schema/reference/catalog/prompt-hash/grader-ID mismatch."
+  ],
+  "adoption_criteria": [
+    "issue_count=0",
+    "catalog parity mismatch=0",
+    "all grader IDs resolve",
+    "R8.4 active versions only"
   ]
 }

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-029",
+  "failure_reason_code": "CLAIM_V2_MCP_INSTANCE_MISMATCH",
+  "injection_stage": "CLAIM_VALIDATION",
+  "injection_target": "claim_context_v2",
+  "trigger": {
+    "mcp_process_instance_mismatch": true
+  },
+  "delivery_certainty": "DEFINITELY_NOT_SENT",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": false,
+    "max_retries": 0
+  },
+  "expected_disposition": "FAIL_SAFE",
+  "expected_run_status": "FAILED",
+  "expected_action_status": null,
+  "forbidden_behaviors": [
+    "GOOGLE_WRITE_ON_INSTANCE_MISMATCH"
+  ],
+  "notes": "MCP Process Instance mismatch 차단."
+}

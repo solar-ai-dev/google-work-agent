@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-040",
+  "failure_reason_code": "ATTACHMENT_SEND_UNKNOWN_RESULT",
+  "injection_stage": "ACTION_EXECUTION",
+  "injection_target": "gmail_send",
+  "trigger": {
+    "attachment_send_response_lost": true
+  },
+  "delivery_certainty": "MAY_HAVE_BEEN_SENT",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": false,
+    "max_retries": 0
+  },
+  "expected_disposition": "DETERMINISTIC_RECOVERY",
+  "expected_run_status": "RECOVERY_REQUIRED",
+  "expected_action_status": "UNKNOWN_RESULT",
+  "forbidden_behaviors": [
+    "AUTO_RESEND_ATTACHMENT_SEND",
+    "SECOND_SEND_ATTEMPT"
+  ],
+  "notes": "Attachment 포함 SEND 응답 유실도 SENT_LOOKUP/MESSAGE_SEARCH 후 UNKNOWN_RESULT no-resend 계약 유지."
+}

@@ -1,1 +1,0 @@
-First reasoning call inside the same B1_INTEGRATED Agent invocation: produce WorkAnalysisResultV1 and ActionPlanDraftV1/answer from the frozen model input. Do not review the plan in this call; a second self-review LLM call will run inside the same Agent invocation. Preserve evidence IDs and user constraints. Return only JSON matching E06BAnalysisPlanningOutputV1.

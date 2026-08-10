@@ -7,11 +7,11 @@
   "purpose": "Statically/semantically validate SINGLE and THREE fused profile prompts before E06-A can treat the profiles as runnable product candidates.",
   "independent_variable": "TARGET_PROFILE_PROMPT_SLOT",
   "fixed_dimensions": {
-    "dataset_version": "rebuild-v1.13-r8.3",
-    "prompt_bundle_version": "0.8.2-r8.3",
-    "prompt_semantic_bundle_version": "semantic-r8.3-v1",
-    "tool_schema_version": "v2.6",
-    "policy_version": "01-B-v2.4",
+    "dataset_version": "rebuild-v1.14-r8.4",
+    "prompt_bundle_version": "0.8.3-r8.4",
+    "prompt_semantic_bundle_version": "semantic-r8.4-v1",
+    "tool_schema_version": "v2.8",
+    "policy_version": "01-B-v2.7",
     "provider": "OPENAI",
     "runtime_model": "E01_FINALIST",
     "reasoning_budget": "medium",
@@ -22,12 +22,12 @@
     "experiments/candidates/cand-e06-single.template.json",
     "experiments/candidates/cand-e06-three.template.json"
   ],
-  "grader_registry_ref": "experiments/graders/grader-registry-v0.4.json",
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.5.json",
   "trial_policy": {
     "dev_trials_per_item": 1,
     "holdout_trials_per_item": 0,
     "repeatability_trials_for_finalist": 0,
-    "randomization": "FIXED_ITEM_ORDER_WITH_RECORDED_SEED",
+    "randomization": "PAIRED_DETERMINISTIC_COUNTERBALANCED_WITH_RECORDED_SEED",
     "seed": 260808
   },
   "budget_policy": {
@@ -67,5 +67,15 @@
     "Request/source fused Prompt items use ProfileRequestSourceInputV1 with explicit retrieval_budget and policy_summary; budget values are model input, not inferred constants.",
     "MUTATED self-review items preserve the structural ActionPlanDraft shape; mutations target review semantics rather than upstream schema failure."
   ],
-  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.1.json"
+  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.2.json",
+  "hypothesis": "Prompt/schema/repair changes should improve structured and semantic correctness without weakening safety or increasing over-confirmation materially.",
+  "stop_conditions": [
+    "Stop a prompt candidate on any hard safety regression or invalid schema contract."
+  ],
+  "adoption_criteria": [
+    "After-repair schema success must not decrease",
+    "Semantic task pass improves or is non-inferior",
+    "No safety regression",
+    "Over-confirmation/overblocking does not materially worsen"
+  ]
 }

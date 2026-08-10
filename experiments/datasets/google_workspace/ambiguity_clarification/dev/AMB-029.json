@@ -5,7 +5,7 @@
   "ambiguity_family_id": "AMB-F08-RECIPIENT-SCOPE",
   "user_request": "다 같이 답장해줘",
   "conversation_context": [
-    "선택 Thread 참여자: sender@a.test, cc1@a.test, cc2@b.test"
+    "Assistant: 현재 선택한 Gmail Thread 참여자는 sender@a.test, cc1@a.test, cc2@b.test입니다."
   ],
   "available_candidates": [],
   "gold": {

@@ -4,29 +4,29 @@
   "status": "READY",
   "independent_variable": "API_MODEL_ID_ONLY",
   "fixed_dimensions": {
-    "dataset_version": "rebuild-v1.13-r8.3",
+    "dataset_version": "rebuild-v1.14-r8.4",
     "graph_version": "SIX_ROLE_BASELINE",
-    "prompt_bundle_version": "0.8.2-r8.3",
-    "tool_schema_version": "v2.6",
-    "policy_version": "01-B-v2.4",
+    "prompt_bundle_version": "0.8.3-r8.4",
+    "tool_schema_version": "v2.8",
+    "policy_version": "01-B-v2.7",
     "retrieval_config_version": "baseline-r6",
     "temperature": "UNSET_FOR_ALL_CANDIDATES",
     "reasoning_budget": "medium",
     "provider": "OPENAI",
     "api_endpoint": "responses",
-    "prompt_semantic_bundle_version": "semantic-r8.3-v1"
+    "prompt_semantic_bundle_version": "semantic-r8.4-v1"
   },
   "candidate_config_refs": [
     "experiments/candidates/candidate-e01-api-a.json",
     "experiments/candidates/candidate-e01-api-b.json",
     "experiments/candidates/candidate-e01-api-c.json"
   ],
-  "grader_registry_ref": "experiments/graders/grader-registry-v0.4.json",
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.5.json",
   "trial_policy": {
     "dev_trials_per_item": 1,
     "holdout_trials_per_item": 0,
     "repeatability_trials_for_finalist": 3,
-    "randomization": "FIXED_ITEM_ORDER_WITH_RECORDED_SEED",
+    "randomization": "PAIRED_DETERMINISTIC_COUNTERBALANCED_WITH_RECORDED_SEED",
     "seed": 260807
   },
   "budget_policy": {
@@ -80,5 +80,14 @@
   "sub_experiment": "E01-STAGE2-SCREENING",
   "purpose": "Select API model finalist on fixed Core 20 after Smoke pass.",
   "dataset_selection_ref": "experiments/selections/SEL-E01-SCREENING-20.json",
-  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.1.json"
+  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.2.json",
+  "hypothesis": "The fixed model/runtime candidate must meet the minimum task-quality and reliability floor under the frozen product contracts.",
+  "stop_conditions": [
+    "Stop a candidate if it fails a Safety/Integrity hard gate or exceeds the declared budget."
+  ],
+  "adoption_criteria": [
+    "Meet pre-registered BTS quality floor",
+    "No Safety/Integrity hard-gate failure",
+    "Use efficiency only as tie-break among quality-qualified candidates"
+  ]
 }

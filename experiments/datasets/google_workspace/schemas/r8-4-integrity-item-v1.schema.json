@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "R8.4 Deterministic Contract Item V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evaluation_item_id",
+    "category",
+    "source_case_id",
+    "fixture_snapshot_id",
+    "business_process",
+    "user_request",
+    "input_mode",
+    "input_contract",
+    "gold",
+    "scoring_role",
+    "grader_ids"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "evaluation_item_id": {
+      "type": "string",
+      "pattern": "^R84I-[0-9]{3}$"
+    },
+    "category": {
+      "enum": [
+        "CLAIM_V2",
+        "ATTACHMENT_READ",
+        "ATTACHMENT_STAGE",
+        "ATTACHMENT_DRAFT_CREATE",
+        "ATTACHMENT_DRAFT_UPDATE",
+        "ATTACHMENT_SEND"
+      ]
+    },
+    "source_case_id": {
+      "type": "string"
+    },
+    "fixture_snapshot_id": {
+      "type": "string"
+    },
+    "business_process": {
+      "type": "string",
+      "minLength": 10
+    },
+    "user_request": {
+      "type": "string",
+      "minLength": 5
+    },
+    "input_mode": {
+      "const": "R8_4_DETERMINISTIC_CONTRACT"
+    },
+    "input_contract": {
+      "type": "object"
+    },
+    "gold": {
+      "type": "object",
+      "required": [
+        "required_events",
+        "forbidden_events",
+        "expected_contract"
+      ],
+      "properties": {
+        "required_events": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "forbidden_events": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expected_contract": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "scoring_role": {
+      "const": "HARD_GATE"
+    },
+    "grader_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  }
+}

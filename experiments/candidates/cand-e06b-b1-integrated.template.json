@@ -3,12 +3,12 @@
   "candidate_id": "CAND-E06B-B1-INTEGRATED",
   "candidate_kind": "BASELINE_TEMPLATE",
   "runnable": false,
-  "dataset_version": "rebuild-v1.13-r8.3",
+  "dataset_version": "rebuild-v1.14-r8.4",
   "graph_version": "E06B_B1_INTEGRATED",
-  "prompt_bundle_version": "0.8.2-r8.3",
+  "prompt_bundle_version": "0.8.3-r8.4",
   "agent_schema_version": "v1",
-  "tool_schema_version": "v2.6",
-  "policy_version": "01-B-v2.4",
+  "tool_schema_version": "v2.8",
+  "policy_version": "01-B-v2.7",
   "retrieval_config_version": "CONTEXT_READY_V1_REPLAY",
   "runtime": {
     "runtime_mode": "API_LLM",
@@ -42,7 +42,7 @@
     "runtime.model_version"
   ],
   "candidate_config_hash": "82df73a06fc972867fc41842d6ec590b4a3509596a393746c0787a6b03cd693d",
-  "prompt_semantic_bundle_version": "semantic-r8.3-v1",
+  "prompt_semantic_bundle_version": "semantic-r8.4-v1",
   "graph_profile_spec": {
     "profile_id": "E06B_B1_INTEGRATED",
     "nominal_agent_subgraph_count": 1,

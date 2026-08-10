@@ -100,8 +100,8 @@ ruff format --check src tests
 - 외부 호출 전 Snapshot Transaction과 호출 후 저장 Transaction을 분리하고, 두 번째 Transaction에서 `expected_version`, Action·Attempt 상태를 재검사한다.
 - Run Recovery 진입·해제는 `RequireRecovery`·`ResolveRecovery` Domain Command를 거친다. Repository 직접 상태 setter는 금지한다.
 - 승인형 Effect는 `READ | CREATE | UPDATE | SEND | DELETE`다.
-- `gmail_send`, Task 완료 UPDATE, Calendar Event DELETE, Calendar 참석자 UPDATE는 정확한 Target·Arguments와 사용자 승인을 요구한다.
-- Gmail Message·Thread 원문 삭제, Task 삭제, 반복 Event 전체 일괄 수정은 금지한다.
+- `gmail_send`, Task 완료 UPDATE, Google Task DELETE, Calendar Event DELETE, Calendar 참석자 UPDATE는 정확한 Target·Arguments와 사용자 승인을 요구한다.
+- Gmail Message·Thread 원문 삭제와 반복 Event 전체 일괄 수정은 금지한다. Google Task 삭제는 정확한 Target·Arguments와 사용자 승인 후 허용되는 `DELETE`이며 Claim·GET_ABSENT Verification을 거친다.
 - 모호성은 실제 발견된 단계에서 `NEEDS_CONFIRMATION`으로 보내고 `request_understanding.clarify`가 후보·차이·선택지를 생성한다.
 ## 9. Agent Subgraph 구현 기준
 

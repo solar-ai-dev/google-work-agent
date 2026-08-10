@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "R84I-002",
+  "category": "ATTACHMENT_READ",
+  "source_case_id": "CASE-CORE-054",
+  "fixture_snapshot_id": "FW-D-007",
+  "business_process": "Grove 캠페인 결과 메일의 첨부파일 Metadata를 확인한 사용자가 해당 파일을 다운로드하며, 파일 bytes는 LLM 경계를 거치지 않는다.",
+  "user_request": "Grove 캠페인 결과 메일에 첨부된 결과 파일을 다운로드해줘.",
+  "input_mode": "R8_4_DETERMINISTIC_CONTRACT",
+  "input_contract": {
+    "message_id": "GM-G-001",
+    "attachment_id": "ATT-G-001",
+    "metadata": {
+      "filename": "grove-campaign-results.csv",
+      "mime_type": "text/csv",
+      "size_bytes": 36,
+      "sha256": "f86b52b9a4123aa8003d29eb17c64b2037260a18f2ae1a75c5ae82560ead4a7c"
+    },
+    "fixture_path": "experiments/datasets/google_workspace/fixtures/attachments/grove-campaign-results.csv"
+  },
+  "gold": {
+    "required_events": [
+      "ATTACHMENT_METADATA_VALIDATED",
+      "ATTACHMENT_DOWNLOAD_STREAMED"
+    ],
+    "forbidden_events": [
+      "LLM_CALLED_FOR_ATTACHMENT_DOWNLOAD",
+      "ATTACHMENT_BYTES_IN_CONTEXT",
+      "ATTACHMENT_BYTES_IN_EVIDENCE",
+      "ATTACHMENT_BYTES_IN_SQLITE",
+      "ATTACHMENT_BYTES_IN_TRACE"
+    ],
+    "expected_contract": {
+      "download_sha256": "f86b52b9a4123aa8003d29eb17c64b2037260a18f2ae1a75c5ae82560ead4a7c",
+      "download_size_bytes": 36,
+      "llm_call_count": 0
+    }
+  },
+  "scoring_role": "HARD_GATE",
+  "grader_ids": [
+    "grader.r8_4.claim_attachment_integrity",
+    "grader.end_state.deterministic"
+  ]
+}

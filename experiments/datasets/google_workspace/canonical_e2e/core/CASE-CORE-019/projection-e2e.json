@@ -11,7 +11,7 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "expected_goal": "Google 조회나 Draft 계획 전에 예상 소요시간을 사용자에게 확인한다.",
+    "expected_goal": "Calendar Event와 고객 안내 Draft를 계획하기 전에 워크숍 예상 소요시간을 사용자에게 확인한다.",
     "completion_criteria": [
       "화요일 오후 선호와 고객 워크숍 목적을 보존한다.",
       "소요시간을 임의로 추정하지 않는다.",

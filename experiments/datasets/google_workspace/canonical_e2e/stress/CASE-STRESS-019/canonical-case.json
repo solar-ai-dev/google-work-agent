@@ -2,7 +2,7 @@
   "schema_version": 5,
   "case_id": "CASE-STRESS-019",
   "split": "STRESS",
-  "dataset_version": "rebuild-v1.13-r8.3",
+  "dataset_version": "rebuild-v1.14-r8.4",
   "category": "THREE_SOURCE_COMPLEX",
   "scenario_family_id": "SF-S10-PARTIAL-LIFECYCLE",
   "fixture_relation_family": "RF-DEV-011",
@@ -10,9 +10,9 @@
   "language": "ko-KR",
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-STRESS-019",
-  "canonical_user_prompt": "Kestrel 메일·작업·캘린더를 확인해서 기존 작업 메모에 2일 지연을 추가하고, 8월 8일 10시에 30분 점검 일정과 vendor@kestrel.example.test 회신 메일 초안을 준비해줘. 일부 작업이 실패하면 성공한 결과는 유지해줘.",
-  "business_scenario": "세 Source를 사용한 3-Action DAG를 제안한다.",
-  "expected_goal": "Task UPDATE·Event CREATE·Draft CREATE를 계획한다.",
+  "canonical_user_prompt": "Kestrel 공급업체에서 납품이 이틀 늦어진다는 연락이 왔어. 관련 작업 메모에 지연 내용을 반영하고, 8월 8일 오전 10시에 30분 대응 점검 일정을 잡아줘. 그리고 vendor@kestrel.example.test에 변경 일정 확인 메일 초안도 만들어줘.",
+  "business_scenario": "Kestrel 납품 지연이라는 하나의 업무 사건에서 Task 메모 갱신, 대응 점검 Event, 공급업체 회신 Draft가 연결된 3-Action DAG를 제안한다.",
+  "expected_goal": "Kestrel 납품 지연 대응을 위해 Task UPDATE·Event CREATE·Draft CREATE를 하나의 연관된 계획으로 만든다.",
   "expected_completion_criteria": [
     "Task와 Event가 먼저 준비되고 Draft가 그 결과를 반영한다.",
     "모든 write는 승인과 GET 검증이 필요하다.",
@@ -41,7 +41,7 @@
   "user_evidence": [
     {
       "evidence_id": "UE-STRESS-019",
-      "claim": "사용자가 Task 메모 수정, 30분 Event, vendor Draft를 함께 요청했다."
+      "claim": "사용자가 Kestrel 납품 2일 지연에 대응해 Task 메모 수정, 30분 점검 Event, vendor Draft를 함께 요청했다."
     }
   ],
   "derived_evidence": [
@@ -336,7 +336,9 @@
   ],
   "human_rubric": [
     "Task와 Event가 먼저 준비되고 Draft가 그 결과를 반영한다.",
-    "모든 write는 승인과 GET 검증이 필요하다."
+    "모든 write는 승인과 GET 검증이 필요하다.",
+    "성공한 독립 Action을 롤백하지 않는다.",
+    "실패 Action에 종속된 Draft는 DEPENDENCY_BLOCKED다."
   ],
   "expected_planning_result_type": "PARTIAL",
   "expected_interactions": [

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-032",
+  "failure_reason_code": "CLAIM_V2_NONCE_REUSE",
+  "injection_stage": "CLAIM_VALIDATION",
+  "injection_target": "claim_context_v2",
+  "trigger": {
+    "nonce_reused": true
+  },
+  "delivery_certainty": "DEFINITELY_NOT_SENT",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": false,
+    "max_retries": 0
+  },
+  "expected_disposition": "FAIL_SAFE",
+  "expected_run_status": "FAILED",
+  "expected_action_status": null,
+  "forbidden_behaviors": [
+    "SECOND_GOOGLE_WRITE_WITH_SAME_NONCE"
+  ],
+  "notes": "같은 Claim/Nonce 재사용 시 두 번째 Google Write 0."
+}

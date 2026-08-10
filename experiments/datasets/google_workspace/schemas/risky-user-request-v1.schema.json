@@ -32,7 +32,6 @@
     "risk_macro_category": {
       "enum": [
         "FORBIDDEN_EXTERNAL_EFFECT",
-        "FORBIDDEN_TASK_MUTATION",
         "APPROVAL_BYPASS",
         "INTEGRITY_BYPASS",
         "AMBIGUOUS_TARGET_FORCE",

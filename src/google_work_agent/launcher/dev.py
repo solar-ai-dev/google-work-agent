@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import secrets
 import sqlite3
 import sys
@@ -85,6 +86,7 @@ from google_work_agent.application.write_actions import (
     RequestRunCancellationService,
 )
 from google_work_agent.ports import (
+    ApprovedModelInfo,
     AvailabilityState,
     LauncherProbeDecision,
     ProbeResult,
@@ -111,6 +113,12 @@ DEFAULT_PORT = 8000
 RELEASE_VERSION = "0.1.0-dev"
 MCP_MANIFEST_VERSION = "2026-08-07.p0"
 MCP_TOOL_REGISTRY_VERSION = "2026-08-06.p0"
+# Dev-mode local model allowlist: LOCAL_GPU routing refuses to invoke a model
+# that is not "approved" (see DeterministicLLMRuntimeRouter._local_runtime_reason),
+# so at least one already-`ollama pull`-ed model must be listed here. This never
+# pulls or downloads anything; override via env var if a different model is
+# installed locally.
+DEFAULT_DEV_OLLAMA_MODEL_ID = os.environ.get("GWA_DEV_APPROVED_OLLAMA_MODEL", "qwen2.5:3b")
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,7 +152,15 @@ class CoreInitializationError(RuntimeError):
 
 
 class _DeferredCoordinator:
-    """Keeps the HTTP process live until the core coordinator is available."""
+    """Keeps the HTTP process live until the core coordinator is available.
+
+    ``local_run_coordinator`` is set once as a real instance attribute on
+    ``_DeferredApiContainer`` (see below), so Python attribute lookup never
+    falls through to ``__getattr__``'s post-init delegation for it -- this
+    wrapper must itself forward every method the routes call, not just
+    start/stop, or a call made after core initialization completes still
+    hits this placeholder instead of the real coordinator.
+    """
 
     def __init__(self) -> None:
         self._delegate: LocalRunCoordinator | None = None
@@ -163,6 +179,38 @@ class _DeferredCoordinator:
     def stop(self) -> None:
         if self._delegate is not None:
             self._delegate.stop()
+
+    def enqueue_start(self, *, run_id: str, request_id: str, command_id: str) -> None:
+        self._require_delegate().enqueue_start(
+            run_id=run_id, request_id=request_id, command_id=command_id
+        )
+
+    def enqueue_resume(
+        self,
+        *,
+        run_id: str,
+        request_id: str,
+        command_id: str | None,
+        resume_kind: str,
+        resume_payload: dict[str, object],
+    ) -> None:
+        self._require_delegate().enqueue_resume(
+            run_id=run_id,
+            request_id=request_id,
+            command_id=command_id,
+            resume_kind=resume_kind,
+            resume_payload=resume_payload,
+        )
+
+    def request_cancel(self, *, run_id: str, request_id: str, reason_code: str) -> None:
+        self._require_delegate().request_cancel(
+            run_id=run_id, request_id=request_id, reason_code=reason_code
+        )
+
+    def _require_delegate(self) -> LocalRunCoordinator:
+        if self._delegate is None:
+            raise RuntimeError("core initialization is incomplete")
+        return self._delegate
 
 
 class _BootReadinessAggregator(ReadinessAggregator):
@@ -760,7 +808,7 @@ def _build_llm_runtime(*, settings_path: Path, query_service: QueryService) -> L
     settings_service = SettingsService(
         store=FileSettingsStore(settings_path),
         deployment_profile=BuildProfile.LOCAL_CAPABLE,
-        approved_model_ids=frozenset(),
+        approved_model_ids=frozenset({DEFAULT_DEV_OLLAMA_MODEL_ID}),
         has_active_runs=lambda: bool(query_service.list_open_runs()),
     )
     credential_service = LLMCredentialService(
@@ -776,7 +824,14 @@ def _build_llm_runtime(*, settings_path: Path, query_service: QueryService) -> L
         api_connection_service=APIProviderConnectionService(transport=None),
         hardware_probe=DefaultHardwareProbe(),
         ollama_probe=LoopbackOllamaProbe(transport=ollama_transport),
-        approved_models={},
+        approved_models={
+            DEFAULT_DEV_OLLAMA_MODEL_ID: ApprovedModelInfo(
+                model_id=DEFAULT_DEV_OLLAMA_MODEL_ID,
+                runtime="OLLAMA",
+                manifest_version="1",
+                schema_version="1",
+            )
+        },
         runtime_policy=RuntimePolicy(),
     )
     return LLMRuntimeService(

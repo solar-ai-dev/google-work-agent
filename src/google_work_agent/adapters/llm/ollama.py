@@ -73,16 +73,17 @@ class OllamaHTTPClient(OllamaTransport):
     def probe(self, *, endpoint: str, model_id: str | None, timeout_seconds: int) -> ProbeResult:
         _validate_loopback_endpoint(endpoint)
         try:
-            version = _post_json(
+            # Ollama's /api/version and /api/tags are read-only GET endpoints;
+            # POSTing to them returns 405 (confirmed against a live Ollama
+            # instance), which this probe was misreporting as OLLAMA_UNAVAILABLE.
+            version = _get_json(
                 endpoint=endpoint,
                 path="/api/version",
-                payload={},
                 timeout_seconds=timeout_seconds,
             )
-            models = _post_json(
+            models = _get_json(
                 endpoint=endpoint,
                 path="/api/tags",
-                payload={},
                 timeout_seconds=timeout_seconds,
             )
         except TimeoutError:
@@ -159,6 +160,28 @@ class OllamaHTTPClient(OllamaTransport):
             latency_ms=_optional_int(response.get("total_duration")) or 0,
             estimated_cost_usd=None,
         )
+
+
+def _get_json(
+    *,
+    endpoint: str,
+    path: str,
+    timeout_seconds: int,
+) -> dict[str, object]:
+    url = endpoint.rstrip("/") + path
+    request = Request(url, headers={"Accept": "application/json"}, method="GET")
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("invalid Ollama response")
+            return cast(dict[str, object], payload)
+    except TimeoutError:
+        raise
+    except HTTPError:
+        raise
+    except URLError:
+        raise
 
 
 def _post_json(

@@ -13,7 +13,7 @@
   "agent_invocation_count": 0,
   "prompt_slot_id": "e06b.b1.integrated.initial",
   "prompt_version": "0.8.0",
-  "prompt_semantic_bundle_version": "semantic-r8.3-v1",
+  "prompt_semantic_bundle_version": "semantic-r8.4-v1",
   "output_ref": null,
   "failure_reason_codes": [],
   "retry_kind": null,

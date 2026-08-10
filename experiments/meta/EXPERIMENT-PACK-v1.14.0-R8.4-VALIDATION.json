@@ -1,0 +1,22 @@
+{
+  "validation_id": "R8.4-STATIC-INTEGRITY-v1.14",
+  "checks": 14192,
+  "issue_count": 0,
+  "warning_count": 0,
+  "stats": {
+    "json_files": 5742,
+    "canonical_cases": 92,
+    "projections": 736,
+    "canonical_prompt_rows": 80,
+    "paraphrase_rows": 40,
+    "prompt_slots": 45,
+    "failure_variants": 46,
+    "fault_profiles": 40,
+    "fault_items": 40,
+    "experiment_manifests": 28,
+    "grader_ids_used": 61
+  },
+  "issues": [],
+  "warnings": [],
+  "result": "PASS"
+}

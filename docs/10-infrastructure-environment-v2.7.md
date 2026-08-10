@@ -246,7 +246,7 @@ Service는 MCP Child 시작 시 Tool Manifest Version과 함께 Process Memory�
 
 ## 17. Schema·Tool Startup 계약
 - Domain DB Schema 목표는 v1.4이며 `0001` v1.2 baseline → `0002_action_effect_send_delete.sql` v1.3 → `0003_action_cancelled.sql` v1.4 순서로 적용한다.
-- Startup Tool Registry 검증은 승인형 `gmail_send`, Task 완료 UPDATE, `calendar_delete_event`, 참석자 UPDATE를 허용하고 Gmail 원문 삭제·Task 삭제·반복 Event 전체 일괄 수정은 차단한다.
+- Startup Tool Registry 검증은 승인형 `gmail_send`, Task 완료 UPDATE, `tasks_delete_task`, `calendar_delete_event`, 참석자 UPDATE를 허용하고 Gmail 원문 삭제·반복 Event 전체 일괄 수정은 차단한다.
 - Migration 후 `PRAGMA foreign_key_check`와 Tool Schema Version 검증을 통과해야 Write를 허용한다.
 
 ## R8.4 Attachment Staging Runtime

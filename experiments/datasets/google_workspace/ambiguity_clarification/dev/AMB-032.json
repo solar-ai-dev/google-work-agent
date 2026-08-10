@@ -5,7 +5,7 @@
   "ambiguity_family_id": "AMB-F08-RECIPIENT-SCOPE",
   "user_request": "이 사람에게 회신해줘",
   "conversation_context": [
-    "선택 Thread에 발신자 1명만 존재: owner@a.test"
+    "Assistant: 현재 선택한 Gmail Thread에는 회신 대상이 될 수 있는 발신자 owner@a.test 한 명만 있습니다."
   ],
   "available_candidates": [],
   "gold": {

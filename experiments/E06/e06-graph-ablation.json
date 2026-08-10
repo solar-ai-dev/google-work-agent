@@ -7,14 +7,14 @@
   "purpose": "Compare single, three-stage, and six-role graph structures under identical model/prompt/policy/retrieval.",
   "independent_variable": "GRAPH_PROFILE_ONLY",
   "fixed_dimensions": {
-    "dataset_version": "rebuild-v1.13-r8.3",
-    "prompt_bundle_version": "0.8.2-r8.3",
-    "tool_schema_version": "v2.6",
-    "policy_version": "01-B-v2.4",
+    "dataset_version": "rebuild-v1.14-r8.4",
+    "prompt_bundle_version": "0.8.3-r8.4",
+    "tool_schema_version": "v2.8",
+    "policy_version": "01-B-v2.7",
     "provider": "OPENAI",
     "runtime_model": "E01_FINALIST",
     "reasoning_budget": "medium",
-    "prompt_semantic_bundle_version": "semantic-r8.3-v1"
+    "prompt_semantic_bundle_version": "semantic-r8.4-v1"
   },
   "dataset_selection_ref": "experiments/selections/SEL-E06-GRAPH-CORE60.json",
   "candidate_config_refs": [
@@ -22,12 +22,12 @@
     "experiments/candidates/cand-e06-three.template.json",
     "experiments/candidates/cand-e06-six.template.json"
   ],
-  "grader_registry_ref": "experiments/graders/grader-registry-v0.4.json",
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.5.json",
   "trial_policy": {
-    "dev_trials_per_item": 1,
+    "dev_trials_per_item": 2,
     "holdout_trials_per_item": 0,
     "repeatability_trials_for_finalist": 3,
-    "randomization": "FIXED_ITEM_ORDER_WITH_RECORDED_SEED",
+    "randomization": "PAIRED_DETERMINISTIC_COUNTERBALANCED_WITH_RECORDED_SEED",
     "seed": 260807
   },
   "budget_policy": {
@@ -74,5 +74,15 @@
     "experiments/E06/e06a-native-architecture-ablation.json",
     "experiments/E06/e06b-controlled-post-retrieval.json"
   ],
-  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.1.json"
+  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.2.json",
+  "hypothesis": "Agent-subgraph decomposition should improve or preserve business-task success; topology complexity is justified only by measured quality/process benefit.",
+  "stop_conditions": [
+    "Stop candidate on any safety hard-gate failure or semantic-responsibility parity violation."
+  ],
+  "adoption_criteria": [
+    "Primary=BTS paired comparison",
+    "No hard-gate failure",
+    "If BTS statistically/operationally equivalent choose lower cost then lower p95 latency",
+    "If evidence is inconclusive record DEFERRED rather than force a winner"
+  ]
 }

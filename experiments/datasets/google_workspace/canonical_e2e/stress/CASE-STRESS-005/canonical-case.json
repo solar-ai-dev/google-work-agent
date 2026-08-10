@@ -2,7 +2,7 @@
   "schema_version": 5,
   "case_id": "CASE-STRESS-005",
   "split": "STRESS",
-  "dataset_version": "rebuild-v1.13-r8.3",
+  "dataset_version": "rebuild-v1.14-r8.4",
   "category": "THREE_SOURCE_COMPLEX",
   "scenario_family_id": "SF-S3-LLM-RUNTIME",
   "fixture_relation_family": "RF-DEV-001",
@@ -179,7 +179,8 @@
   ],
   "human_rubric": [
     "최종 출고 8/19, Task 기한 8/16·17, 인쇄소 슬롯 8/13을 연결한다.",
-    "새 write Action을 만들지 않는다."
+    "새 write Action을 만들지 않는다.",
+    "AUTO 기술 실패 시 외부 전송 동의가 있는 경우 API fallback은 최대 1회다."
   ],
   "expected_planning_result_type": "ANALYSIS",
   "expected_interactions": [],

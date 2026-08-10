@@ -2,7 +2,7 @@
   "schema_version": 5,
   "case_id": "CASE-STRESS-009",
   "split": "STRESS",
-  "dataset_version": "rebuild-v1.13-r8.3",
+  "dataset_version": "rebuild-v1.14-r8.4",
   "category": "SOURCE_SELECTION_READ",
   "scenario_family_id": "SF-S5-LOWCONF-BUDGET",
   "fixture_relation_family": "RF-DEV-012",
@@ -116,7 +116,10 @@
   "human_rubric": [
     "첫 Lumen Query 0건을 기록한다.",
     "Aurora Migration 별칭으로 제약을 수정한다.",
-    "8월 22일 22시를 답한다."
+    "8월 22일 22시를 답한다.",
+    "최대 2회 Additional Acquisition 이후 중단한다.",
+    "같은 Query를 무변경 반복하지 않는다.",
+    "확인하지 못한 시작 시간은 추측하지 않는다."
   ],
   "expected_planning_result_type": "PARTIAL",
   "expected_interactions": [],

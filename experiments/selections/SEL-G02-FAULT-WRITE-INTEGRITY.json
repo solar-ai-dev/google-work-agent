@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "selection_id": "SEL-G02-FAULT-WRITE-INTEGRITY",
-  "layer": "fault_safety+policy_boundary+canonical_stress",
+  "layer": "fault_safety+policy_boundary+canonical_stress+r8_4_integrity",
   "split": "DEV",
   "locked": true,
-  "item_count": 64,
+  "item_count": 86,
   "items": [
     {
       "evaluation_item_id": "FSI-001",
@@ -453,7 +453,161 @@
       "target_node_id": null,
       "failure_reason_code": null,
       "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-025",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-025.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-026",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-026.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-027",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-027.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-028",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-028.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-029",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-029.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-030",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-030.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-031",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-031.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-032",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-032.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-033",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-033.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-034",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-034.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-035",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-035.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-036",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-036.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-037",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-037.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-038",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-038.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-039",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-039.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "FSI-040",
+      "path": "experiments/datasets/google_workspace/fault_safety/evaluation_items/FSI-040.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "R84I-001",
+      "path": "experiments/datasets/google_workspace/r8_4_integrity/R84I-001.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "R84I-002",
+      "path": "experiments/datasets/google_workspace/r8_4_integrity/R84I-002.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "R84I-003",
+      "path": "experiments/datasets/google_workspace/r8_4_integrity/R84I-003.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "R84I-004",
+      "path": "experiments/datasets/google_workspace/r8_4_integrity/R84I-004.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "R84I-005",
+      "path": "experiments/datasets/google_workspace/r8_4_integrity/R84I-005.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
+    },
+    {
+      "evaluation_item_id": "R84I-006",
+      "path": "experiments/datasets/google_workspace/r8_4_integrity/R84I-006.json",
+      "target_node_id": null,
+      "failure_reason_code": null,
+      "retry_kind": null
     }
   ],
-  "selection_hash": "7a51bc7c7c0cf836496c966055eaa9b350d7a0f5686b6dde1c1a0da5a218f274"
+  "selection_hash": "4c47203f3cf6b9b8fe73f6762c2eb0ce8a4b3b7a72aafa136b6bce2a74dc4cad"
 }

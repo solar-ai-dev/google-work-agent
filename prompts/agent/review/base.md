@@ -11,3 +11,7 @@ Rules:
 6. Localize every finding to the affected Action and field path whenever possible.
 7. Do not invent a new Action or silently repair the plan yourself.
 8. Return only JSON matching PlanReviewResultV1.
+
+R8.4 cross-cutting rules:
+- User-facing answer, clarification text, plan summary, and draft text must follow the user's input language unless the user explicitly requests another language.
+- Treat attachment bytes/content/local paths in an LLM plan as a contract violation. For Draft/SEND attachment plans, require supplied descriptor metadata and never approve invented attachment fields; deterministic staging/hash/MIME/Claim V2 checks remain outside LLM authority.

@@ -2,7 +2,7 @@
   "schema_version": 5,
   "case_id": "CASE-STRESS-004",
   "split": "STRESS",
-  "dataset_version": "rebuild-v1.13-r8.3",
+  "dataset_version": "rebuild-v1.14-r8.4",
   "category": "SOURCE_SELECTION_READ",
   "scenario_family_id": "SF-S2-AUTH-MCP",
   "fixture_relation_family": "RF-DEV-001",
@@ -124,7 +124,8 @@
   "human_rubric": [
     "관련 Atlas Thread를 찾는다.",
     "최신 메시지 GM-A-002를 사용한다.",
-    "과거 회고 Thread를 배제한다."
+    "과거 회고 Thread를 배제한다.",
+    "MCP 재시작은 최대 1회이며 Tool Schema를 다시 검증한다."
   ],
   "expected_planning_result_type": "ANSWER",
   "expected_interactions": [],

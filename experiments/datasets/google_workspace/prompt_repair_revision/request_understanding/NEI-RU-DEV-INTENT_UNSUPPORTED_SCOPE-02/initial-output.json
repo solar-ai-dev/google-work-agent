@@ -3,21 +3,21 @@
   "result": "COMPLETE",
   "entry_mode": "RESOURCE_SELECTED",
   "requested_outcome": "ACTION_PLAN",
-  "goal": "Google Task 삭제 요청을 금지 범위로 식별하고 차단한다.",
+  "goal": "Gmail Message·Thread 원문 삭제 요청을 금지 범위로 식별하고 차단한다.",
   "completion_criteria": [
-    "TASK_DELETE를 unsupported scope로 기록한다",
+    "GMAIL_THREAD_DELETE를 unsupported scope로 기록한다",
     "금지 Tool을 제안하지 않는다"
   ],
   "constraints": {
     "selected_resource_ids": [
-      "TSK-R-001"
+      "GTH-A-001"
     ],
     "requested_forbidden_actions": [
-      "TASK_DELETE",
-      "TASK_DELETE"
+      "GMAIL_THREAD_DELETE",
+      "GMAIL_THREAD_DELETE"
     ],
     "sources": [
-      "TASKS"
+      "GMAIL"
     ]
   },
   "ambiguities": [],

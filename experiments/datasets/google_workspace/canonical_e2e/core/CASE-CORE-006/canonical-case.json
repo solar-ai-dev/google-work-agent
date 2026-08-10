@@ -2,7 +2,7 @@
   "schema_version": 5,
   "case_id": "CASE-CORE-006",
   "split": "CORE",
-  "dataset_version": "rebuild-v1.13-r8.3",
+  "dataset_version": "rebuild-v1.14-r8.4",
   "category": "SOURCE_SELECTION_READ",
   "scenario_family_id": "SF-C1-AGENT-SEARCH-READ",
   "fixture_relation_family": "RF-DEV-001",

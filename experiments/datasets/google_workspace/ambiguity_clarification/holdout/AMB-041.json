@@ -5,7 +5,8 @@
   "ambiguity_family_id": "AMB-F11-REFERENCE",
   "user_request": "그거 처리해줘",
   "conversation_context": [
-    "직전 대화에 Task와 Gmail Thread 둘 다 언급됨"
+    "사용자: Atlas QR 작업과 Atlas 출고 메일을 함께 보고 있어.",
+    "Assistant: Task와 Gmail Thread 두 항목이 모두 현재 Context에 남아 있습니다."
   ],
   "available_candidates": [
     {

@@ -5,7 +5,8 @@
   "ambiguity_family_id": "AMB-F09-REPLY-DRAFT-SEMANTICS",
   "user_request": "이 메일에 회신해줘",
   "conversation_context": [
-    "선택 Gmail Thread 존재"
+    "사용자: 이 공급업체 메일을 선택했어.",
+    "Assistant: 선택된 Gmail Thread가 현재 작업 Context로 연결되어 있습니다."
   ],
   "available_candidates": [],
   "gold": {
