@@ -234,7 +234,7 @@ Domain Status는 `CANCELLED`, UI 결과는 `result_kind=PARTIAL`로 표시한다
 
 Timeout·5xx·MCP 종료를 일괄 `NOT_SENT`로 분류하지 않는다. 결과를 찾지 못했다는 이유만으로 같은 Write를 즉시 다시 보내지 않는다.
 
-## 24. 취소 Runbook 보완
+## 24. 취소 Runbook 세부 규칙
 
 - 취소 Command의 Version/Receipt 충돌이면 어떤 child state도 변경하지 않는다.
 - `CANCEL_REQUESTED` 이후 새 Claim·Write를 시작하지 않는다.
@@ -243,7 +243,7 @@ Timeout·5xx·MCP 종료를 일괄 `NOT_SENT`로 분류하지 않는다. 결과�
 - `UNKNOWN_RESULT`가 남아 있으면 Run을 `RECOVERY_REQUIRED`로 두며 확인 후 취소를 마무리한다.
 - 이미 성공한 Write는 유지하고 사용자 결과는 `PARTIAL`로 표시할 수 있다.
 
-## R8.4 Claim·Attachment 운영 대응
+## Claim·Attachment 운영 대응
 
 - `CLAIM_ARGUMENTS_MISMATCH`, Instance mismatch, Nonce reuse는 안전 거절이며 같은 Claim 재시도를 하지 않는다. Domain/Approval/Attempt 상태를 다시 읽고 필요 시 새 실행 준비를 수행한다.
 - Gmail 수신 첨부파일 다운로드 실패는 Message/Attachment ID, Google 연결 상태, 파일 크기 제한을 확인하고 READ 경로만 재시도한다. LLM Retry로 해결하지 않는다.

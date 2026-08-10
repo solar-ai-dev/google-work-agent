@@ -1,6 +1,6 @@
 # 13. Google Work Agent · 평가 · 실험 설계서
 
-> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `03 Architecture v3.0`, `05 Retrieval v2.6`, `06 Workflow v6.1`, `07 Interface v3.0`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `12 Test v3.5`, `15 Agent Capability·Failure·Prompt v1.5`를 기준으로 한다.
+> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `03 Architecture v3.0`, `05 Retrieval v2.6`, `06 Workflow v6.1`, `07 Interface v2.10`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `12 Test v3.5`, `15 Agent Capability·Failure·Prompt v1.5`를 기준으로 한다.
 >
 > **상태:** Draft v3.2 · **기준일:** 2026-08-10 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
 
@@ -1107,7 +1107,7 @@ Clarification 평가는 `clarify_required`와 `clarify_not_required`를 모두 �
 - `RequireRecovery`·`ResolveRecovery` 외 Recovery 직접 Repository 상태 변경 0.
 이 지표는 LLM 품질 평균과 합산하지 않는다.
 
-## R8.4 평가 범위 경계
+## Claim V2·Attachment 평가 범위 경계
 
 - 첨부파일 bytes 자체는 Model·Prompt·Retrieval 품질 비교 입력으로 사용하지 않는다.
 - Attachment I/O 무결성은 `12`의 결정적 Product Regression과 `G02 Fault·Recovery·Write Integrity`가 소유한다.

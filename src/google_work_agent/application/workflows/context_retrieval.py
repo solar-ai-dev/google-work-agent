@@ -160,11 +160,11 @@ EVIDENCE_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
                     "additionalProperties": False,
                     "properties": {
                         "schema_version": {"type": "integer", "enum": [1]},
-                        "evidence_id": {"type": "string"},
-                        "resource_handle": {"type": "string"},
-                        "segment_id": {"type": "string"},
-                        "kind": {"type": "string"},
-                        "excerpt": {"type": "string"},
+                        "evidence_id": {"type": "string", "minLength": 1},
+                        "resource_handle": {"type": "string", "minLength": 1},
+                        "segment_id": {"type": "string", "minLength": 1},
+                        "kind": {"type": "string", "minLength": 1},
+                        "excerpt": {"type": "string", "minLength": 1},
                         "locator": {"type": ["object", "null"]},
                         "reason_codes": {"type": "array", "items": {"type": "string"}},
                     },
@@ -426,6 +426,7 @@ class ContextRetrievalAgent:
                 status=sufficiency_result["status"],
                 missing_slots=sufficiency_result["missing_slots"],
                 context_bundle=context_bundle,
+                evidence_drafts=evidence_drafts,
             ),
             "sufficiency": dict(sufficiency_result["sufficiency"]),
             "llm_provider_result": llm_provider_result,
@@ -757,6 +758,7 @@ def _build_additional_acquisition_request(
     status: ContextStatusValue,
     missing_slots: list[str],
     context_bundle: ContextBundleV1,
+    evidence_drafts: list[EvidenceDraftV1],
 ) -> AdditionalAcquisitionRequestV1 | None:
     if status != ContextResult.NEEDS_MORE_DATA.value:
         return None
@@ -767,8 +769,20 @@ def _build_additional_acquisition_request(
         "missing_slots": list(missing_slots),
         "missing_information": list(context_bundle["missing_information"]),
         "evidence_refs": list(context_bundle["evidence_refs"]),
-        "reason_codes": [],
+        "reason_codes": _merged_evidence_reason_codes(evidence_drafts),
     }
+
+
+def _merged_evidence_reason_codes(evidence_drafts: list[EvidenceDraftV1]) -> list[str]:
+    seen: set[str] = set()
+    merged: list[str] = []
+    for draft in evidence_drafts:
+        for code in draft["reason_codes"]:
+            if code in seen:
+                continue
+            seen.add(code)
+            merged.append(code)
+    return merged
 
 
 def _validate_context_result_invariant(result: ContextRetrievalResultV1) -> None:

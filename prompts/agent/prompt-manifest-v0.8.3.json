@@ -34,15 +34,15 @@
         "prompts/agent/r8.4/specialist/acquisition/base.md",
         "prompts/agent/acquisition/plan_sources.md"
       ],
-      "content_hash": "825154e73ab9843c3ed35feacc338c1a01610a7651c73fdeae44577a8836ed96",
+      "content_hash": "8babc03e98a230584ee92c0ab902327c6096d866e4288963f8007a50025fc56b",
       "assembled_path": "prompts/agent/assembled-r8.4/acquisition.plan_sources.md",
-      "assembled_hash": "825154e73ab9843c3ed35feacc338c1a01610a7651c73fdeae44577a8836ed96",
+      "assembled_hash": "8babc03e98a230584ee92c0ab902327c6096d866e4288963f8007a50025fc56b",
       "supported_failure_reason_codes": [],
       "activated_from_gate_result": {
-        "gate_run_id": "20260810T104729Z-ollama-qwen2.5-3b-f4c7a315",
+        "gate_run_id": "20260810T143504Z-ollama-qwen2.5-3b-831fa230",
         "provider": "ollama",
         "model_id": "qwen2.5:3b",
-        "activated_at": "2026-08-10T10:53:49Z"
+        "activated_at": "2026-08-10T14:35:17Z"
       }
     },
     {
@@ -126,10 +126,16 @@
         "prompts/agent/r8.4/specialist/work_analysis/base.md",
         "prompts/agent/work_analysis/analyze.md"
       ],
-      "content_hash": "54a47f145514f8e4a2b7c784733b65d9997e9b577c6628b39f27dd5c3284a311",
+      "content_hash": "1b9386ef1706571c1216510a55e341bb5c72bf72042435d1378c8e9beb6e34c3",
       "assembled_path": "prompts/agent/assembled-r8.4/analysis.analyze.md",
-      "assembled_hash": "54a47f145514f8e4a2b7c784733b65d9997e9b577c6628b39f27dd5c3284a311",
-      "supported_failure_reason_codes": []
+      "assembled_hash": "1b9386ef1706571c1216510a55e341bb5c72bf72042435d1378c8e9beb6e34c3",
+      "supported_failure_reason_codes": [],
+      "activated_from_gate_result": {
+        "gate_run_id": "20260810T144631Z-ollama-qwen2.5-3b-570e8909",
+        "provider": "ollama",
+        "model_id": "qwen2.5:3b",
+        "activated_at": "2026-08-10T14:46:43Z"
+      }
     },
     {
       "slot_id": "analysis.reassess",
@@ -209,15 +215,15 @@
         "prompts/agent/r8.4/specialist/context_retriever/base.md",
         "prompts/agent/context_retriever/assess_sufficiency.md"
       ],
-      "content_hash": "4b2e2653c17f73d77aed1a6463db1f94d24db4f458a16bff1c0d7b2cfc0b9749",
+      "content_hash": "47ccc77221fc4fb99137b3d62b1273dc990ff9cd793dd6fc71b16616592477ae",
       "assembled_path": "prompts/agent/assembled-r8.4/context.assess_sufficiency.md",
-      "assembled_hash": "4b2e2653c17f73d77aed1a6463db1f94d24db4f458a16bff1c0d7b2cfc0b9749",
+      "assembled_hash": "47ccc77221fc4fb99137b3d62b1273dc990ff9cd793dd6fc71b16616592477ae",
       "supported_failure_reason_codes": [],
       "activated_from_gate_result": {
-        "gate_run_id": "20260810T104729Z-ollama-qwen2.5-3b-f4c7a315",
+        "gate_run_id": "20260810T154458Z-ollama-qwen2.5-3b-59029c8c",
         "provider": "ollama",
         "model_id": "qwen2.5:3b",
-        "activated_at": "2026-08-10T10:53:49Z"
+        "activated_at": "2026-08-10T15:45:09Z"
       }
     },
     {
@@ -293,15 +299,15 @@
         "prompts/agent/r8.4/specialist/context_retriever/base.md",
         "prompts/agent/context_retriever/select_evidence.md"
       ],
-      "content_hash": "f00311634a13a0c821b7cf5f590be506fe3659d544218b36f62b5577d8cbebe6",
+      "content_hash": "b7c45a2c3468a55fbec9dc5831ea51fcac0853b48b8d1dfb1ef792291a2fe4a0",
       "assembled_path": "prompts/agent/assembled-r8.4/context.select_evidence.md",
-      "assembled_hash": "f00311634a13a0c821b7cf5f590be506fe3659d544218b36f62b5577d8cbebe6",
+      "assembled_hash": "b7c45a2c3468a55fbec9dc5831ea51fcac0853b48b8d1dfb1ef792291a2fe4a0",
       "supported_failure_reason_codes": [],
       "activated_from_gate_result": {
-        "gate_run_id": "20260810T104729Z-ollama-qwen2.5-3b-f4c7a315",
+        "gate_run_id": "20260810T153828Z-ollama-qwen2.5-3b-2cebc9df",
         "provider": "ollama",
         "model_id": "qwen2.5:3b",
-        "activated_at": "2026-08-10T10:53:49Z"
+        "activated_at": "2026-08-10T15:38:44Z"
       }
     },
     {
@@ -599,7 +605,7 @@
       "slot_id": "planning.revise_plan",
       "prompt_id": "planning.revise_plan",
       "prompt_version": "0.8.3",
-      "activation_status": "DRAFT",
+      "activation_status": "RUNTIME_ACTIVE",
       "agent_role": "planning",
       "subgraph_name": "planning",
       "node_name": "revise_plan",
@@ -628,7 +634,13 @@
         "PLAN_WRONG_EFFECT_TYPE",
         "PLAN_WRONG_TARGET",
         "PLAN_WRONG_TOOL"
-      ]
+      ],
+      "activated_from_gate_result": {
+        "gate_run_id": "20260810T130816Z-ollama-qwen2.5-3b-171d3301",
+        "provider": "ollama",
+        "model_id": "qwen2.5:3b",
+        "activated_at": "2026-08-10T13:08:25Z"
+      }
     },
     {
       "slot_id": "profile.single.reason_plan.initial",
@@ -979,7 +991,7 @@
       "slot_id": "request_understanding.clarify",
       "prompt_id": "request_understanding.clarify",
       "prompt_version": "0.8.3",
-      "activation_status": "DRAFT",
+      "activation_status": "RUNTIME_ACTIVE",
       "agent_role": "request_understanding",
       "subgraph_name": "request_understanding",
       "node_name": "clarify",
@@ -993,10 +1005,16 @@
         "prompts/agent/r8.4/specialist/request_understanding/base.md",
         "prompts/agent/request_understanding/clarify.md"
       ],
-      "content_hash": "4ac4ffa9f007aa93477b02ca2ca24ed698838e3e035d3511d9e5a6d51b195e9d",
+      "content_hash": "f2942b6af25cc675b03b56e8909784ca161c8507a1348704de1ef4c2a79e07e4",
       "assembled_path": "prompts/agent/assembled-r8.4/request_understanding.clarify.md",
-      "assembled_hash": "4ac4ffa9f007aa93477b02ca2ca24ed698838e3e035d3511d9e5a6d51b195e9d",
-      "supported_failure_reason_codes": []
+      "assembled_hash": "f2942b6af25cc675b03b56e8909784ca161c8507a1348704de1ef4c2a79e07e4",
+      "supported_failure_reason_codes": [],
+      "activated_from_gate_result": {
+        "gate_run_id": "20260810T130816Z-ollama-qwen2.5-3b-171d3301",
+        "provider": "ollama",
+        "model_id": "qwen2.5:3b",
+        "activated_at": "2026-08-10T13:08:25Z"
+      }
     },
     {
       "slot_id": "request_understanding.classify",
@@ -1016,15 +1034,15 @@
         "prompts/agent/r8.4/specialist/request_understanding/base.md",
         "prompts/agent/request_understanding/classify.md"
       ],
-      "content_hash": "64a5ab38d519cdb9d43b74d891ecac8e738c725985e681573b88e4497fa6d97f",
+      "content_hash": "041853c2eb96b8d67e36830e3816c3eb18124415a150a0c719cfc48fa23da123",
       "assembled_path": "prompts/agent/assembled-r8.4/request_understanding.classify.md",
-      "assembled_hash": "64a5ab38d519cdb9d43b74d891ecac8e738c725985e681573b88e4497fa6d97f",
+      "assembled_hash": "041853c2eb96b8d67e36830e3816c3eb18124415a150a0c719cfc48fa23da123",
       "supported_failure_reason_codes": [],
       "activated_from_gate_result": {
-        "gate_run_id": "20260810T105614Z-ollama-qwen2.5-3b-df7e657c",
+        "gate_run_id": "20260810T141955Z-ollama-qwen2.5-3b-efa61779",
         "provider": "ollama",
         "model_id": "qwen2.5:3b",
-        "activated_at": "2026-08-10T10:56:25Z"
+        "activated_at": "2026-08-10T14:20:09Z"
       }
     },
     {

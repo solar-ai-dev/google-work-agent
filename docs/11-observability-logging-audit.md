@@ -392,7 +392,7 @@ contradiction_introduced?
 - E06-A는 Profile의 실제 native 비용을 측정한다. E06-B는 `CONTEXT_READY_V1`의 동일 `context_snapshot_id`에서 post-retrieval decomposition 차이를 비교하며 Google Read 호출은 0이어야 한다.
 - 평가 실행은 `evaluation_environment_hash`로 model/runtime parameter, hardware profile, concurrency, timeout, fixture, Tool Schema, Policy, Prompt semantic bundle, Graph Profile을 함께 잠근다.
 
-## R8.4 Claim·Attachment 관측 계약
+## Claim·Attachment 관측 계약
 
 기록 가능:
 ```text

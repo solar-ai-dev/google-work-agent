@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "request_text": "선택 Task의 메모를 수정한다.",
+  "request_intent": {
+    "schema_version": 2,
+    "goal": {
+      "summary": "선택 Task의 메모를 수정한다.",
+      "user_visible_objective": "TSK-X의 메모를 갱신한다."
+    },
+    "completion_criteria": [
+      "요청된 작업이 정확한 대상에 반영된다."
+    ],
+    "semantic_constraints": {
+      "topics": [],
+      "people": [],
+      "time": [],
+      "sources": [
+        {
+          "source": "TASKS",
+          "mention": "Task",
+          "confidence": "HIGH"
+        }
+      ],
+      "status_or_state": [],
+      "negative_constraints": [],
+      "policy_or_safety_constraints": []
+    },
+    "ambiguity": {
+      "is_ambiguous": false,
+      "items": []
+    },
+    "unsupported_scope": {
+      "is_unsupported": false,
+      "reason_code": null,
+      "explanation": null
+    }
+  },
+  "plan_draft": {
+    "schema_version": 2,
+    "status": "PLAN_READY",
+    "plan_id": "PLAN-RP-DRAFT",
+    "summary": "선택 Task의 메모를 수정한다.",
+    "objective": "TSK-X의 메모를 갱신한다.",
+    "actions": [
+      {
+        "schema_version": 2,
+        "action_id": "A1",
+        "position": 1,
+        "effect": "UPDATE",
+        "tool_name": "tasks_update_task",
+        "arguments": {
+          "task_id": "TSK-Y",
+          "notes": "검토 완료"
+        },
+        "expected": {
+          "task_id": "TSK-Y",
+          "notes": "검토 완료"
+        },
+        "evidence_refs": [
+          "EVD-RP-1"
+        ],
+        "resource_refs": [
+          "TSK-Y"
+        ],
+        "target_resource_ref_id": "TSK-Y",
+        "depends_on_action_ids": [],
+        "user_visible_reason": "사용자가 선택한 Task의 메모를 갱신합니다."
+      }
+    ],
+    "evidence_refs": [
+      "EVD-RP-1"
+    ],
+    "resource_refs": [
+      {
+        "resource_handle": "TSK-X",
+        "source": "TASKS"
+      }
+    ],
+    "confirmation": null
+  },
+  "review_summary": "Action A1의 대상이 사용자가 선택한 TSK-X가 아니라 TSK-Y로 되어 있습니다.",
+  "review_issues": [
+    {
+      "schema_version": 2,
+      "issue_id": "ISS-1",
+      "kind": "PLAN_WRONG_TARGET",
+      "message": "Action A1의 대상이 사용자가 선택한 TSK-X가 아니라 TSK-Y로 되어 있습니다.",
+      "affected_action_ids": [
+        "A1"
+      ],
+      "affected_field_paths": [
+        "/actions/0/target_resource_ref_id",
+        "/actions/0/arguments/task_id"
+      ],
+      "evidence_refs": [],
+      "resource_refs": [],
+      "reason_codes": [
+        "PLAN_WRONG_TARGET"
+      ]
+    }
+  ],
+  "context_status": "SUFFICIENT",
+  "context_bundle": {
+    "schema_version": 1,
+    "resource_refs": [
+      {
+        "resource_handle": "TSK-X",
+        "source": "TASKS"
+      }
+    ],
+    "segment_refs": [
+      {
+        "segment_id": "SEG-RP-1",
+        "resource_handle": "TSK-X"
+      }
+    ],
+    "evidence_refs": [
+      "EVD-RP-1"
+    ],
+    "normalized_context": [],
+    "missing_information": [],
+    "ambiguity": null
+  },
+  "evidence_drafts": [
+    {
+      "schema_version": 1,
+      "evidence_id": "EVD-RP-1",
+      "resource_handle": "TSK-X",
+      "segment_id": "SEG-RP-1",
+      "kind": "TASK",
+      "excerpt": "사용자가 선택한 Task는 TSK-X이며 메모를 수정해야 한다.",
+      "locator": null,
+      "reason_codes": []
+    }
+  ],
+  "analysis_result": {
+    "schema_version": 1,
+    "status": "COMPLETE",
+    "summary": "선택된 Task 관련 근거가 충분히 확인되었다.",
+    "findings": [],
+    "missing_information": [],
+    "confirmation": null,
+    "blockers": [],
+    "evidence_refs": [
+      "EVD-RP-1"
+    ],
+    "resource_refs": [
+      {
+        "resource_handle": "TSK-X",
+        "source": "TASKS"
+      }
+    ],
+    "segment_refs": [],
+    "additional_acquisition_request": null
+  },
+  "source_content_is_untrusted": true
+}

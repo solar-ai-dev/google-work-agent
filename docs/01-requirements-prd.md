@@ -1,6 +1,6 @@
 # 01. Google Work Agent 요구사항 정의서 · PRD
 
-> **문서 기준:** 2026-08-10 R8.4 Claim V2·Attachment·Task 시간 의미 설계 결정을 제품 목표·범위의 기준으로 한다. 문서 간 충돌은 §1.1의 권위·책임 소유 규칙으로 판정하며, PRD가 다른 Concern의 전문 권위 계약을 임의로 덮어쓰지 않는다.
+> **문서 기준:** 2026-08-10 Claim V2·Attachment·Task 날짜 의미 설계 결정을 제품 목표·범위의 기준으로 한다. 문서 간 충돌은 §1.1의 권위·책임 소유 규칙으로 판정하며, PRD가 다른 Concern의 전문 권위 계약을 임의로 덮어쓰지 않는다.
 >
 > **상태:** Draft v2.8 · **기준일:** 2026-08-10 · **대상:** P0 MVP
 
@@ -469,7 +469,7 @@ Domain 상태 전이·SQLite·Command Receipt
 ### 19.2 사이드바 목록
 
 - Gmail은 최근 수신 순, Tasks는 미완료·예정일 임박 우선, Calendar는 가까운 예정 일정 순으로 표시한다.
-- 목록은 페이지당 10~20개를 조회하며 P0 기본값은 20개로 한다.
+- Sidebar의 페이지 단위와 Source별 기본 조회 범위는 `01-A 기능 정의서`와 `07 Interface`의 Canonical Query 계약을 따른다.
 - 다음 페이지 이동 시 Google API에서 새 목록을 조회한다.
 - 이미 조회한 페이지는 React Client Session Cache에서 재사용하고 SQLite에는 영구 저장하지 않는다.
 - 페이지 이동 자체는 이미 조회한 페이지에 대한 반복 API 호출을 발생시키지 않아야 한다.
@@ -568,13 +568,13 @@ Domain 상태 전이·SQLite·Command Receipt
 ## 승인형 Write·Clarification 계약
 - Gmail 실제 전송은 승인 필수 `SEND` Effect로 지원한다.
 - 정확한 Task 완료 상태 변경은 승인 필수 `UPDATE`다.
-- 정확한 Calendar Event 삭제는 승인 필수 `DELETE`다.
+- 정확한 Google Task 삭제와 Calendar Event 삭제는 승인 필수 `DELETE`다.
 - Calendar 참석자 추가·수정은 승인 필수 `UPDATE`다.
 - 사용자가 중복 사실을 인지하고 동일 Resource 추가 생성을 명시적으로 요구한 경우 재확인·승인 후 허용할 수 있다.
 - 모호성은 차단이 아니라 `NEEDS_CONFIRMATION → clarify → same Run/Thread resume`를 기본으로 한다.
 - 전체 Gmail Mailbox·장기간 무제한 원문·모든 Workspace Source 전체 조회는 데이터 최소화 정책에 따라 BLOCK한다.
 
-## R8.4 Claim V2·Gmail 첨부파일 범위
+## Claim V2·Gmail 첨부파일 범위
 
 ### 제품 범위 추가
 - Gmail Message 상세에서 첨부파일 Metadata를 확인하고 사용자가 선택한 첨부파일을 다운로드할 수 있어야 한다.

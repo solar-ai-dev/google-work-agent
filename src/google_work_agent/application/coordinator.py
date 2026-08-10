@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
 from queue import Full, Queue
@@ -166,6 +167,17 @@ class LocalRunCoordinator:
             try:
                 self._process_item(item)
             except Exception as error:
+                # Last-resort net for failures _process_item itself could not
+                # attribute to a run (e.g. get_run_execution_context itself
+                # raising). The common case -- workflow_runtime.start/resume/
+                # etc. raising -- is now caught inside _process_item, which
+                # has expected_version in scope to persist FAILED via
+                # fail_run. Without that, prior behavior only published a
+                # transient SSE event and left the run's domain status
+                # (e.g. ANALYZING) stuck forever: the UI polls GET /runs/{id}
+                # rather than SSE, so it never saw the failure, and every
+                # later run was blocked by the has_active_runs() guard.
+                traceback.print_exc()
                 self._publish(
                     build_projection_event(
                         run_id=item.run_id,
@@ -194,51 +206,83 @@ class LocalRunCoordinator:
             api_contract_version=self._api_contract_version,
         )
         expected_version = context.version
+        if item.kind == "start" and context.status == RunStatus.RECOVERY_REQUIRED.value:
+            return
         if item.kind == "start":
-            if context.status == RunStatus.RECOVERY_REQUIRED.value:
-                return
             expected_version = self._ensure_analysis_started(context.run_id)
-            result = self._workflow_runtime.start(
-                WorkflowStartRequest(
-                    run_id=context.run_id,
-                    conversation_id=context.conversation_id,
-                    workflow_key=context.workflow_key,
-                    entry_mode=context.entry_mode,
-                    requested_mode=context.requested_mode,
-                    request_text=context.request_text,
-                    selected_resource_ids=context.selected_resource_ids,
-                    correlation=correlation,
-                    selected_resources=context.selected_resources,
+        try:
+            if item.kind == "start":
+                result = self._workflow_runtime.start(
+                    WorkflowStartRequest(
+                        run_id=context.run_id,
+                        conversation_id=context.conversation_id,
+                        workflow_key=context.workflow_key,
+                        entry_mode=context.entry_mode,
+                        requested_mode=context.requested_mode,
+                        request_text=context.request_text,
+                        selected_resource_ids=context.selected_resource_ids,
+                        correlation=correlation,
+                        selected_resources=context.selected_resources,
+                    )
                 )
-            )
-        elif item.kind == "resume":
-            result = self._workflow_runtime.resume(
-                WorkflowResumeRequest(
-                    run_id=context.run_id,
-                    workflow_key=context.workflow_key,
-                    resume_kind=item.resume_kind or "manual",
-                    resume_payload=item.resume_payload or {},
-                    correlation=correlation,
+            elif item.kind == "resume":
+                result = self._workflow_runtime.resume(
+                    WorkflowResumeRequest(
+                        run_id=context.run_id,
+                        workflow_key=context.workflow_key,
+                        resume_kind=item.resume_kind or "manual",
+                        resume_payload=item.resume_payload or {},
+                        correlation=correlation,
+                    )
                 )
-            )
-        elif item.kind == "cancel":
-            result = self._workflow_runtime.request_cancel(
-                WorkflowCancelRequest(
-                    run_id=context.run_id,
-                    workflow_key=context.workflow_key,
-                    reason_code=item.reason_code or "user_requested",
+            elif item.kind == "cancel":
+                result = self._workflow_runtime.request_cancel(
+                    WorkflowCancelRequest(
+                        run_id=context.run_id,
+                        workflow_key=context.workflow_key,
+                        reason_code=item.reason_code or "user_requested",
+                    )
                 )
-            )
-        else:
-            result = self._workflow_runtime.recover_open_run(
-                WorkflowRecoveryRequest(
-                    run_id=context.run_id,
-                    workflow_key=context.workflow_key,
-                    domain_status=context.status,
-                    domain_version=context.version,
-                    correlation=correlation,
+            else:
+                result = self._workflow_runtime.recover_open_run(
+                    WorkflowRecoveryRequest(
+                        run_id=context.run_id,
+                        workflow_key=context.workflow_key,
+                        domain_status=context.status,
+                        domain_version=context.version,
+                        correlation=correlation,
+                    )
                 )
+        except Exception as error:
+            # A raising workflow_runtime call (e.g. LLMInvocationError from
+            # an unrepaired schema-invalid structured output) must still
+            # move the run to a terminal domain state. Swallowing it here
+            # and leaving the run non-terminal forever both hides the
+            # failure from the UI (which polls GET /runs/{id}, not the
+            # transient SSE stream) and permanently blocks every later run
+            # via the has_active_runs() guard.
+            #
+            # expected_version was captured before workflow_runtime.start()
+            # ran. The graph itself commits its own domain transitions
+            # (e.g. CREATED -> ANALYZING -> RETRIEVING) as it progresses
+            # through nodes, so by the time a later node raises, the run's
+            # real current version has moved past expected_version --
+            # calling fail_run with the stale value hits VERSION_CONFLICT
+            # and silently no-ops (fail_run reports a conflict rather than
+            # raising), leaving the run stuck exactly like before this
+            # fix. Re-fetch the actual current version first.
+            traceback.print_exc()
+            current_context = self._query_service.get_run_execution_context(context.run_id)
+            current_version = (
+                current_context.version if current_context is not None else expected_version
             )
+            self._handle_result(
+                context.run_id,
+                WorkflowOutcome.FAILED,
+                {"error_code": "INTERNAL_ERROR", "message": str(error)[:200]},
+                current_version,
+            )
+            return
         self._handle_result(context.run_id, result.outcome, result.payload, expected_version)
 
     def _ensure_analysis_started(self, run_id: str) -> int:

@@ -168,7 +168,7 @@ Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credentia
 - Verification `MISMATCH` Recovery는 `ACCEPT_PARTIAL | CREATE_CORRECTIVE_PLAN`만 허용하며, 교정 Write는 새 승인 경계를 통과한다.
 - dispatch 이후 Timeout·5xx·connection loss는 미전달이 보장되지 않으면 `UNKNOWN_RESULT`로 처리한다.
 
-## R8.4 ClaimContextV2·Gmail 첨부파일 보안 경계
+## ClaimContextV2·Gmail 첨부파일 보안 경계
 
 ### ClaimContextV2
 - HMAC-SHA-256, `claim_version=2`, 기본 TTL 30초·최대 60초, 1회용 Nonce.

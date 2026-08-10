@@ -1,6 +1,6 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `02 UI·UX v2.8`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.6`, `07 Interface v3.0`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `02 UI·UX v2.8`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.6`, `07 Interface v2.10`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
 > **상태:** Draft v6.1 · **DB Schema:** v1.4 · **대상:** P0 MVP
 >
@@ -440,7 +440,7 @@ trace_context: TraceContextV1
 
 ## 17. Agent Failure·Prompt·Budget 계약
 
-이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.3`를 적용한다.
+이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.5`를 적용한다.
 
 ### 24.1 Failure Record
 
@@ -506,7 +506,7 @@ Prompt는 Base Role Contract, Node Purpose, Failure-specific Block, Allowed Chan
 
 ## 18. 승인형 Effect · Clarification
 - Planning Effect는 `READ | CREATE | UPDATE | SEND | DELETE`다.
-- SEND는 Gmail 실제 전송, DELETE는 Calendar Event 삭제, Task 완료·Calendar 참석자 변경은 UPDATE다.
+- SEND는 Gmail 실제 전송, DELETE는 정확한 Google Task 삭제와 Calendar Event 삭제, Task 완료·Calendar 참석자 변경은 UPDATE다.
 - 승인 후 Tool·Effect·Arguments·Target을 LLM이 변경하지 않는다.
 - `UNKNOWN_RESULT`의 SEND/DELETE 자동 재실행은 금지한다.
 
@@ -545,7 +545,7 @@ budget exhausted + Write 필수 Target/Argument/Evidence 부족
 - `PARTIAL`은 근거가 있는 Read-only 응답의 축약 완료이며 Write 필수 정보 부족을 우회하는 수단이 아니다.
 - `NEEDS_CONFIRMATION`은 같은 Run·Thread의 typed Interrupt로 재개한다.
 
-## R8.4 Attachment Agent 경계
+## Attachment Agent 경계
 
 - 첨부파일 기능을 별도 Agent Capability로 만들지 않는다.
 - Agent는 파일명·MIME Type·크기·Attachment/Stage Descriptor 같은 Metadata만 사용할 수 있다.

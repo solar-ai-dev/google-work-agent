@@ -684,6 +684,7 @@ request_id
 resource_id?
 next_page_token?
 items?
+total_count?
 metadata
 ```
 
@@ -696,12 +697,12 @@ metadata
 | `gmail_update_draft` | draft_id, mutable fields + claim context | DraftMetadata | gmail.compose | 30s | 전달 불명 시 금지 |
 | `gmail_get_draft` | draft_id | DraftDetail | gmail.compose | 30s | Read 1회 |
 | `tasks_list_tasklists` | page_token?, page_size | TaskListMetadata[] | tasks | 30s | Read 1회 |
-| `tasks_list_tasks` | tasklist_id, filter, page_token?, page_size | TaskMetadata[] | tasks | 30s | Read 1회 |
+| `tasks_list_tasks` | tasklist_id, filter, page_token?, page_size | TaskMetadata[] + exact `total_count` when requested by Sidebar | tasks | 30s | Read 1회 |
 | `tasks_get_task` | tasklist_id, task_id | TaskDetail | tasks | 30s | Read 1회 |
 | `tasks_create_task` | tasklist_id, title, notes?, due? + claim context | TaskMetadata | tasks | 30s | 전달 불명 시 금지 |
 | `tasks_update_task` | tasklist_id, task_id, 허용 필드 + claim context | TaskMetadata | tasks | 30s | 전달 불명 시 금지 |
 | `calendar_list_calendars` | page_token?, page_size | CalendarMetadata[] | calendarlist.readonly | 30s | Read 1회 |
-| `calendar_list_events` | calendar_id, time_min, time_max, query?, page_token? | EventMetadata[] | calendar.events | 30s | Read 1회 |
+| `calendar_list_events` | calendar_id, time_min, time_max, query?, page_token? | EventMetadata[] + exact `total_count` when requested by Sidebar | calendar.events | 30s | Read 1회 |
 | `calendar_query_freebusy` | calendar_ids<=20, time_min, time_max | BusyInterval[] | calendar.events.freebusy | 30s | Read 1회 |
 | `calendar_get_event` | calendar_id, event_id | EventDetail | calendar.events | 30s | Read 1회 |
 | `calendar_create_event` | calendar_id, title, start, end, description? + claim context | EventMetadata | calendar.events | 30s | 전달 불명 시 금지 |
@@ -711,6 +712,14 @@ metadata
 - 날짜·시간은 RFC3339와 명시 Timezone을 사용한다.
 - Write Tool의 `claim context`는 Action·Approval·Attempt·Hash·Token을 포함한다.
 - `tasks_create_task`의 raw `due?`는 Google Adapter 경계에서만 `scheduled_date`와 대응한다. `business_deadline`·작업 시간은 새 Task Tool Argument로 추가하지 않으며, 업무 마감 의미 보존은 승인된 `notes`와 Evidence·Approval Projection을 따른다.
+
+### 27.1 Sidebar Query Projection 계약
+
+- Sidebar `page_size` 기본값은 **10**이다. Agent Retrieval `RETRIEVAL_PAGE_SIZE=20`과 별도다.
+- Tasks Sidebar 기본 범위는 **미완료 Task 전체**다. 완료 Task는 사용자가 완료 상태 필터를 명시한 경우에만 기본 범위에 포함한다.
+- Calendar Sidebar 기본 범위는 사용자 Timezone의 현재 시각을 `time_min`, 그 시각부터 **90일 후**를 `time_max`로 사용한다. 사용자 지정 기간이 있으면 지정 범위를 우선한다.
+- Sidebar 응답의 `total_count`는 현재 Source·검색·필터 범위 전체의 정확한 수일 때만 채운다. Tasks와 Calendar는 Sidebar count 표시를 위해 exact `total_count`를 제공한다. Gmail Provider의 `resultSizeEstimate` 같은 추정치는 exact `total_count`로 승격하지 않는다.
+- `total_count` 계산을 위해 Frontend가 모든 Page를 순회하지 않는다. Count 계산 책임은 Local API/Application Query Adapter에 있다.
 
 ## 28. Verification·Recovery 계약
 - CREATE·UPDATE: GET_COMPARE.
@@ -759,7 +768,7 @@ SENT_RESPONSE_LOST
 
 Exception class 하나만으로 `NOT_SENT`를 추론하지 않는다. `UNKNOWN_RESULT`에서는 기존 결과 GET/Search만 허용하며 새 Attempt·blind resend를 금지한다.
 
-## R8.4 ClaimContextV2 계약
+## ClaimContextV2 계약
 
 ### Signed Claim Context
 

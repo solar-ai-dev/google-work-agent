@@ -146,9 +146,11 @@
 - **상태:** P0
 - **사용자 목적:** Gmail·Tasks·Calendar의 현재 항목을 목록으로 탐색한다.
 - **입력:** Source, 검색·필터 조건, Page Token.
-- **처리:** 페이지당 10~20개를 Google API에서 조회하며 P0 기본값은 20개로 한다.
+- **처리:** Sidebar UI는 페이지당 **10개**를 요청·표시한다. Agent Retrieval의 `RETRIEVAL_PAGE_SIZE=20`과 분리한다.
+- **Source 기본 범위:** Tasks는 **미완료 Task 전체**를 탐색 대상으로 하며, Calendar는 사용자 Timezone의 현재 시각부터 **향후 90일** Event를 기본 범위로 한다. 사용자가 검색·필터·Calendar를 지정하면 그 범위를 우선한다.
 - **정렬:** Gmail 최근 수신 순, Tasks 미완료·예정일 임박 우선, Calendar 가까운 예정 일정 순.
-- **출력:** 목록 Metadata, 다음 Page Token, 마지막 조회 시각.
+- **출력:** 목록 Metadata, 다음 Page Token, 마지막 조회 시각, 서버가 정확히 계산할 수 있는 경우 `total_count`.
+- **Count 규칙:** Tasks의 `total_count`는 현재 필터에서의 미완료 Task 전체 수, Calendar의 `total_count`는 현재 Calendar·필터에서 향후 90일 범위의 Event 전체 수다. Gmail은 Provider가 정확한 count를 보장하지 않는 경우 추정값을 exact count로 표시하지 않는다.
 - **완료 조건:** 사용자가 원본 전체를 로컬 DB에 저장하지 않고 최신 목록을 탐색할 수 있다.
 
 ### FN-015 Frontend 페이지 메모리 캐시
@@ -505,7 +507,7 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 
 ---
 
-## 19. Local Command·Connection 보완 기능
+## 19. Local Command·Connection 기능
 
 > 문서 권위는 `01 PRD §1.1`의 Concern Owner 규칙을 따른다. 이 절은 기능 동작만 정의하며 안전·Domain·Tool 계약을 완화하지 않는다.
 
@@ -552,8 +554,8 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 ### 승인형 Write
 - `SEND`: Gmail 실제 전송.
 - `UPDATE`: Task 완료, Calendar 참석자 변경 포함.
-- `DELETE`: Calendar Event 삭제.
-- Gmail Message·Thread 원문 삭제는 OUT 유지. Google Task 삭제는 승인형 `DELETE`로 지원한다.
+- `DELETE`: 정확한 Google Task 삭제와 Calendar Event 삭제.
+- Gmail Message·Thread 원문 삭제는 OUT을 유지한다.
 ### FN-115 Agent Subgraph 실행 계약
 
 - **상태:** P0
@@ -562,13 +564,12 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 - **상태 수명:** Local State는 해당 invocation이 끝나면 장기 기억으로 승격하지 않는다. Run 재개에 필요한 공식 결과만 Main Graph Checkpoint에 남긴다.
 - **완료 조건:** Agent 간 직접 호출 0, Local State의 Domain 사실 승격 0, bounded loop 상한 준수.
 
-## v2.7 Frontend 구현 전 Canonical 보완
-
-이 절은 v2.7에서 Frontend UI 계약을 구체화하며, 기존 기능 정의 중 이 절과 상충하는 화면 표현·UI 페이지 단위는 이 절을 우선한다. 제품 범위, 정책, REST/SSE 및 Workflow 계약은 변경하지 않는다.
+## 20. Frontend Sidebar·Resource 선택 기능 계약
 
 ### Sidebar 목록과 숫자 페이지
 
 - Sidebar UI의 기본 요청·표시 단위는 **10개**다. `RETRIEVAL_PAGE_SIZE=20`은 Agent Retrieval Budget이며 Sidebar UI 값이 아니다.
+- Tasks 기본 범위는 **미완료 Task 전체**, Calendar 기본 Upcoming 범위는 **현재부터 향후 90일**이다.
 - Google Page Token API를 유지한다. React Session Memory는 조회 조건별 `pageNumber → request page token / result / next page token`을 연결해 `< 1 2 3 4 5 >` 형식의 숫자 페이지를 제공한다.
 - 미조회 페이지는 앞 페이지의 next token으로 순차 획득하고, 조회 완료 페이지는 cache에서 표시한다. offset Backend나 전체 목록 선조회·집계는 요구하지 않는다.
 - 검색·필터·정렬·Source·Google 계정 변경 또는 수동 새로고침 시 관련 page mapping을 비우고 1페이지부터 조회한다. cache와 page 번호는 Domain authority나 영속 상태가 아니다.
@@ -589,9 +590,7 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 - Settings/Diagnostics는 Drawer 또는 Dialog이며, Main에는 사용자 이해에 필요한 Google 연결 상태와 진행 상태만 표시한다. Runtime/Model/Node/SSE 등 개발자용 상세 문자열은 Settings/Diagnostics에서만 제공한다.
 - Browser 기반 P0에서는 minimize/maximize/close를 제품 Window Control 기능으로 정의하지 않는다.
 
-## v2.8 Calendar·Tasks Sidebar 및 Viewer 보완
-
-이 절은 v2.8의 Sidebar 탐색·Viewer Empty State 계약이며, 앞선 Sidebar 화면 표현과 상충하면 이 절을 우선한다. API, 정책, Workflow, Domain 상태 권위는 변경하지 않는다.
+## 21. Calendar·Tasks Sidebar와 Viewer 기능 계약
 
 ### Source별 Sidebar 목록
 
@@ -599,16 +598,14 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 - Tasks와 Calendar row에는 priority, 임의 category·Task List 이름, 임의 색상 dot·marker·status badge, 내부 Google ID, Page Token을 생성하거나 표시하지 않는다.
 - Calendar Event compact row는 **Event 제목 → 시간 범위** 순서다. 같은 날 시간 Event는 `YYYY년 M월 D일 (요일) 오전/오후 h:mm - 오전/오후 h:mm` 형식으로 연·월·일·요일·시작 시간·종료 시간을 표시하고 날짜는 한 번만 표시한다. 날짜가 다르면 시작일과 종료일을 각각 식별 가능하게 표시한다. All-day Event는 `YYYY년 M월 D일 (요일) · 하루 종일` 형식이다.
 - Calendar Sidebar에는 `시작`, `종료` label을 표시하지 않는다. 중앙 Viewer의 Event 상세는 제공된 `시작`, `종료` 필드를 유지한다. 선택 상태는 기존 Source row와 같은 background/focus styling으로만 나타낸다.
-- `calendar_list_events`의 `time_max`가 필요한 Upcoming 기간 정책은 이 UI 표기 계약에서 결정하지 않는다. 명시된 제품 정책 전에는 임의 기간을 생성하거나 적용하지 않는다.
+- `calendar_list_events`의 기본 Upcoming 범위는 사용자 Timezone 기준 현재부터 **향후 90일**이며, Interface가 `time_min`·`time_max`를 생성한다. 사용자 지정 기간이 있으면 그 범위를 우선한다.
 
 ### Source별 Resource Viewer Empty State
 
 - 중앙 Viewer 제목은 모든 Source에서 `자료 상세`다. Focus가 없을 때 Gmail은 `왼쪽 목록에서 메일을 선택하면 상세 내용을 확인할 수 있습니다.`, Tasks는 `왼쪽 목록에서 태스크를 선택하면 상세 내용을 확인할 수 있습니다.`, Calendar는 `왼쪽 목록에서 일정을 선택하면 상세 내용을 확인할 수 있습니다.`를 표시한다.
 - Source 전환은 이전 Source의 Focus와 상세 표시를 제거한 뒤 새 Source의 Empty State 또는 새 Focus 상세를 표시한다.
 
-## v2.9 Google Tasks 날짜·상태 의미
-
-이 절은 Google Tasks의 제품 의미를 소유한다. 기존 Task의 `기한` 또는 `due`가 실제 업무 마감과 동일하다고 해석한 표현과 상충하면 이 절을 우선한다. Google Write 승인·Claim·Verification과 Domain 상태 권위는 변경하지 않는다.
+## 22. Google Tasks 날짜·상태 의미
 
 ### 예정일과 업무 마감
 
@@ -625,7 +622,7 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 - 완료는 Google Task 실제 status가 `completed`일 때만 표시한다. Provider가 완료 날짜를 제공하면 사용자 친화적인 `완료일`로 표시할 수 있다.
 - 목록·상세에는 raw enum, RFC3339 raw `due`, 내부 `due` 필드명, API에 없는 작업 시간·업무 마감을 표시하지 않는다. React는 사용자용 Local API Projection을 소비하며 Provider 의미의 최종 정규화를 담당하지 않는다.
 
-## R8.4 Gmail 첨부파일 기능
+## 23. Gmail 첨부파일 기능
 
 ### FN-021A Gmail 첨부파일 조회·다운로드
 - **상태:** P0

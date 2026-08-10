@@ -232,7 +232,7 @@ evaluation_item_id      실제 Runner 실행 단위
 
 ## 17. QueryAttempt·Confidence·재검색 계약
 
-이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.4`를 적용하며, 기존 Retrieval 계약을 대체하지 않고 검색 시도와 저신뢰 처리의 관측·평가 계약을 보강한다.
+이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.5`를 적용하며, 기존 Retrieval 계약을 대체하지 않고 검색 시도와 저신뢰 처리의 관측·평가 계약을 보강한다.
 
 ### 17.1 QueryAttempt
 
@@ -324,7 +324,7 @@ class SufficiencyIssue:
 
 LLM confidence 숫자 하나만으로 안전 Route를 결정하지 않는다. `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE`은 동일한 Guard와 동일한 Budget 의미를 사용한다.
 
-## R8.4 Gmail Attachment Retrieval 경계
+## Gmail Attachment Retrieval 경계
 
 - Gmail Message 상세의 첨부파일은 `filename`, `mime_type`, `size_bytes`, Google `attachment_id` Metadata까지만 Retrieval 후보 정보로 사용할 수 있다.
 - `get_gmail_attachment(message_id, attachment_id)`는 사용자 다운로드 또는 결정적 파일 전달 요청에서만 실행한다.

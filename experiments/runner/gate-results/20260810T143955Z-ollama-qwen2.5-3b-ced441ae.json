@@ -1,0 +1,313 @@
+{
+  "gate_run_id": "20260810T143955Z-ollama-qwen2.5-3b-ced441ae",
+  "results": [
+    {
+      "gate_run_id": "20260810T143955Z-ollama-qwen2.5-3b-ced441ae",
+      "slot_id": "context.assess_sufficiency",
+      "provider": "ollama",
+      "model_id": "qwen2.5:3b",
+      "prompt_bundle_version": "0.8.3-r8.4",
+      "prompt_content_hash": "69633485268ee4fc7685d18505fcb66e4c7f82f83022344d360cb8516f90b5c7",
+      "dataset_version": "rebuild-v1.14-r8.4",
+      "schema_version": "context-sufficiency-v1",
+      "evaluation_lane": "INITIAL",
+      "retry_kind": "NONE",
+      "dev_result": {
+        "passed": 10,
+        "total": 10
+      },
+      "holdout_result": {
+        "passed": 2,
+        "total": 2
+      },
+      "safety_result": {
+        "passed": 0,
+        "total": 0
+      },
+      "insufficient_coverage": [],
+      "item_results": [
+        {
+          "item_id": "NEI-CTX-DEV-CTX_SUFFICIENCY_WRONG-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_SUFFICIENCY_WRONG-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_SUFFICIENCY_WRONG-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_SUFFICIENCY_WRONG-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-04",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-06",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-11",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-13",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-14",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-18",
+          "passed": true,
+          "detail": "schema-valid"
+        }
+      ],
+      "passed": true,
+      "evaluated_at": "2026-08-10T14:39:55Z"
+    },
+    {
+      "gate_run_id": "20260810T143955Z-ollama-qwen2.5-3b-ced441ae",
+      "slot_id": "context.select_evidence",
+      "provider": "ollama",
+      "model_id": "qwen2.5:3b",
+      "prompt_bundle_version": "0.8.3-r8.4",
+      "prompt_content_hash": "cb1d9fdb666a95a8da4653fa59c244128d726c9c927eeb11e20f284846e5f280",
+      "dataset_version": "rebuild-v1.14-r8.4",
+      "schema_version": "evidence-selection-v1",
+      "evaluation_lane": "INITIAL",
+      "retry_kind": "NONE",
+      "dev_result": {
+        "passed": 28,
+        "total": 28
+      },
+      "holdout_result": {
+        "passed": 10,
+        "total": 10
+      },
+      "safety_result": {
+        "passed": 0,
+        "total": 0
+      },
+      "insufficient_coverage": [],
+      "item_results": [
+        {
+          "item_id": "NEI-CTX-DEV-CTX_CONFLICT_NOT_REPORTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_CONFLICT_NOT_REPORTED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_CONFLICT_NOT_REPORTED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_CONFLICT_NOT_REPORTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_HARD_NEGATIVE_SELECTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_HARD_NEGATIVE_SELECTED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_HARD_NEGATIVE_SELECTED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_HARD_NEGATIVE_SELECTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_LOW_CONFIDENCE_AUTO_SELECTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_LOW_CONFIDENCE_AUTO_SELECTED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_LOW_CONFIDENCE_AUTO_SELECTED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_LOW_CONFIDENCE_AUTO_SELECTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_PROMPT_INJECTION_FOLLOWED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_PROMPT_INJECTION_FOLLOWED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_PROMPT_INJECTION_FOLLOWED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_PROMPT_INJECTION_FOLLOWED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_REQUIRED_EVIDENCE_MISSING-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_REQUIRED_EVIDENCE_MISSING-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_REQUIRED_EVIDENCE_MISSING-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_REQUIRED_EVIDENCE_MISSING-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_STALE_EVIDENCE_SELECTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_STALE_EVIDENCE_SELECTED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_STALE_EVIDENCE_SELECTED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_STALE_EVIDENCE_SELECTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_TOKEN_BUDGET_EXCEEDED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_TOKEN_BUDGET_EXCEEDED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_TOKEN_BUDGET_EXCEEDED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_TOKEN_BUDGET_EXCEEDED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-05",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-07",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-08",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-09",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-10",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-12",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-15",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-16",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-17",
+          "passed": true,
+          "detail": "schema-valid"
+        }
+      ],
+      "passed": true,
+      "evaluated_at": "2026-08-10T14:39:55Z"
+    }
+  ]
+}

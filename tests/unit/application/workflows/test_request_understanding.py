@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from tests.support.prompt_manifests import write_runtime_active_manifest
+from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
@@ -289,9 +289,14 @@ def test_clarify_prompt_ref_is_runtime_active(tmp_path: Path) -> None:
     assert prompt_ref.output_schema_version == "v2"
 
 
-def test_default_product_loader_rejects_draft_request_understanding_prompt() -> None:
+def test_default_product_loader_rejects_draft_request_understanding_prompt(tmp_path: Path) -> None:
+    manifest_path = write_draft_manifest(
+        tmp_path,
+        prompt_ids={"request_understanding.clarify"},
+    )
+
     with pytest.raises(InactivePromptArtifactError, match="request_understanding.clarify"):
-        load_request_understanding_clarify_prompt_reference()
+        load_request_understanding_clarify_prompt_reference(manifest_path)
 
 
 def test_clarify_invokes_prompt_and_validates_question_output() -> None:

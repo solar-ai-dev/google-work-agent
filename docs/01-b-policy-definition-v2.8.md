@@ -529,7 +529,7 @@ Google Workspace API는 사용자 PC의 로컬 MCP Server가 사용자 OAuth Cre
 - Gmail은 최근 수신 순으로 표시한다.
 - Tasks는 미완료와 예정일 임박 항목을 우선 표시한다.
 - Calendar는 현재 이후의 가까운 예정 일정부터 표시한다.
-- 페이지당 10~20개를 조회하며 P0 기본값은 20개다.
+- Sidebar의 페이지 단위와 Source별 기본 조회 범위는 안전 정책이 아니라 `01-A 기능 정의서`와 `07 Interface`가 소유한다.
 - 다음 페이지 이동 시 새 Page Token으로 Google API를 호출한다.
 
 ### POL-SRC-004 페이지 메모리 캐시
@@ -823,7 +823,7 @@ LOCAL_CAPABLE Release는 검증된 Ollama Version, Model ID, Model Hash와 Runti
 - 시간 `overlap`은 곧바로 업무 `conflict`가 아니다. `NESTED_RELATED`, `TRUE_BUSY_CONFLICT`, `TENTATIVE`, `FREE_OR_TRANSPARENT`, `UNKNOWN_RELATION`을 구분한다.
 - 모호성은 실제 발견 단계에서 `NEEDS_CONFIRMATION`으로 보내며 후보가 존재하면 후보·차이·선택지를 제공한다.
 
-## R8.4 승인 인자·첨부파일 정책
+## 승인 인자·첨부파일 정책
 
 ### Claim V2
 1. Approval Snapshot은 사용자 의미를 갖는 Canonical Business Arguments와 `approval_arguments_hash`를 고정한다.

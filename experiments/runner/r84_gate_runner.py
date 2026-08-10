@@ -182,7 +182,9 @@ from google_work_agent.application.workflows.prompt_registry import (  # noqa: E
     resolve_instruction_text,
 )
 from google_work_agent.application.workflows.request_understanding import (  # noqa: E402
+    CLARIFICATION_QUESTION_OUTPUT_SCHEMA,
     REQUEST_INTENT_OUTPUT_SCHEMA,
+    validate_clarification_question_v1,
     validate_request_intent_v1,
 )
 from google_work_agent.application.workflows.solution_planning import (  # noqa: E402
@@ -225,12 +227,20 @@ GATE_RESULTS_DIR = REPO_ROOT / "experiments" / "runner" / "gate-results"
 # (see module docstring for exactly why, per node).
 NODE_SCHEMAS: dict[str, tuple[Any, Any]] = {
     "request_understanding.classify": (REQUEST_INTENT_OUTPUT_SCHEMA, validate_request_intent_v1),
+    "request_understanding.clarify": (
+        CLARIFICATION_QUESTION_OUTPUT_SCHEMA,
+        validate_clarification_question_v1,
+    ),
     "acquisition.plan_sources": (SOURCE_FETCH_PLAN_OUTPUT_SCHEMA, validate_source_fetch_plans_v1),
     "context.assess_sufficiency": (SUFFICIENCY_OUTPUT_SCHEMA, validate_sufficiency_output_v1),
     "context.select_evidence": (EVIDENCE_SELECTION_OUTPUT_SCHEMA, None),
     "analysis.analyze": (WORK_ANALYSIS_OUTPUT_SCHEMA, None),
     "planning.answer_only": (ANSWER_DRAFT_OUTPUT_SCHEMA, None),
     "planning.draft_plan": (ACTION_PLAN_DRAFT_OUTPUT_SCHEMA, None),
+    # validate_action_plan_draft_v1 requires a mandatory analysis_result kwarg
+    # not reconstructable from a bare Gate item -- same reasoning as
+    # planning.draft_plan above (see module docstring point 2).
+    "planning.revise_plan": (ACTION_PLAN_DRAFT_OUTPUT_SCHEMA, None),
     "review.inspect": (PLAN_REVIEW_OUTPUT_SCHEMA, None),
     "review.recheck": (PLAN_REVIEW_OUTPUT_SCHEMA, None),
 }
