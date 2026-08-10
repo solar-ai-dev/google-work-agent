@@ -1036,7 +1036,15 @@ def _task_write_body(payload: dict[str, object], *, title_required: bool) -> dic
             notes = f"{notes}\n\n{marker}" if notes else marker
         if notes:
             body["notes"] = notes
-    if "due" in payload:
+    if "scheduled_date" in payload:
+        scheduled_date = _optional_text(payload.get("scheduled_date"))
+        if scheduled_date:
+            body["due"] = scheduled_date
+        elif not title_required:
+            # An approved update may intentionally remove a prior scheduled date.
+            body["due"] = None
+    elif "due" in payload:
+        # Legacy raw Provider-boundary payloads remain compatible.
         due = _optional_text(payload.get("due"))
         if due:
             body["due"] = due

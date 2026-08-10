@@ -28,6 +28,15 @@ class _Gateway:
         assert page_size == 10
         return ResourcePage(items=(self.snapshot,), next_page_token="page-2")
 
+    def list_tasks(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourcePage:
+        return ResourcePage(items=(self.snapshot,), next_page_token=None)
+
 
 class _DetailGateway:
     def get_thread_detail(self, *, thread_id: str) -> GmailThreadDetail:
@@ -104,8 +113,9 @@ class _CalendarGateway:
 
 
 class _TaskGateway:
-    def __init__(self) -> None:
+    def __init__(self, *, task_payload: dict[str, object] | None = None) -> None:
         self.calls: list[tuple[str, dict[str, object]]] = []
+        self.task_payload = task_payload
 
     def list_task_lists(self, *, page_token: str | None, page_size: int) -> ResourcePage:
         self.calls.append(("list_task_lists", {"page_token": page_token, "page_size": page_size}))
@@ -152,7 +162,7 @@ class _TaskGateway:
                     related_resource_ids=(task_list_id,),
                     version="1",
                     recovery_fingerprint=None,
-                    payload={
+                    payload=self.task_payload or {
                         "title": "후속 조치",
                         "due": "2026-08-12T09:00:00+09:00",
                         "status": "needsAction",
@@ -248,9 +258,31 @@ def test_tasks_sidebar_uses_configured_default_task_list_for_actual_tasks() -> N
     assert page.items[0].resource_type == "task"
     assert page.items[0].title == "후속 조치"
     assert page.items[0].metadata == {
-        "due": "2026-08-12T09:00:00+09:00",
-        "status": "needsAction",
+        "scheduled_date": "2026-08-12",
+        "task_status": "incomplete",
     }
+
+
+def test_task_projection_keeps_provider_calendar_date_without_timezone_conversion() -> None:
+    snapshot = ResourceSnapshot(
+        fixture_snapshot_id="task-completed",
+        resource_type=ResourceType.TASK,
+        resource_id="task-completed",
+        parent_id="task-list-default",
+        related_resource_ids=("task-list-default",),
+        version="1",
+        recovery_fingerprint=None,
+        payload={
+            "title": "완료 작업",
+            "due": "2026-08-11T00:00:00.000Z",
+            "status": "completed",
+        },
+    )
+    service = ResourceQueryService(gateway=_Gateway(snapshot))
+
+    item = service.list_tasks(task_list_id="task-list-default", page_token=None, page_size=10).items[0]
+
+    assert item.metadata == {"task_status": "completed", "scheduled_date": "2026-08-11"}
 
 
 def test_tasks_sidebar_resolves_first_actual_task_list_before_listing_tasks() -> None:

@@ -224,9 +224,7 @@ def _display_text(snapshot: ResourceSnapshot) -> tuple[str, str | None]:
     if snapshot.resource_type is ResourceType.TASK_LIST:
         return str(payload.get("title", snapshot.resource_id)), _optional_text(payload.get("notes"))
     if snapshot.resource_type is ResourceType.TASK:
-        return str(payload.get("title", snapshot.resource_id)), _optional_text(
-            payload.get("status")
-        )
+        return str(payload.get("title", snapshot.resource_id)), None
     if snapshot.resource_type is ResourceType.CALENDAR:
         return str(payload.get("summary", snapshot.resource_id)), _optional_text(
             payload.get("time_zone")
@@ -242,6 +240,15 @@ def _display_text(snapshot: ResourceSnapshot) -> tuple[str, str | None]:
 
 def _metadata_from_snapshot(snapshot: ResourceSnapshot) -> dict[str, object]:
     payload = snapshot.payload
+    if snapshot.resource_type is ResourceType.TASK:
+        metadata: dict[str, object] = {}
+        task_status = _task_status_projection(payload.get("status"))
+        if task_status is not None:
+            metadata["task_status"] = task_status
+        scheduled_date = _scheduled_date_projection(payload.get("due"))
+        if scheduled_date is not None:
+            metadata["scheduled_date"] = scheduled_date
+        return metadata
     safe_keys = {
         ResourceType.GMAIL_THREAD: (
             "participants",
@@ -255,12 +262,32 @@ def _metadata_from_snapshot(snapshot: ResourceSnapshot) -> dict[str, object]:
         ResourceType.GMAIL_MESSAGE: ("from", "to", "received_at"),
         ResourceType.GMAIL_DRAFT: ("to", "cc"),
         ResourceType.TASK_LIST: ("kind",),
-        ResourceType.TASK: ("due", "status"),
         ResourceType.CALENDAR: ("time_zone",),
         ResourceType.CALENDAR_EVENT: ("start", "end"),
         ResourceType.CALENDAR_FREEBUSY: ("intervals",),
     }[snapshot.resource_type]
     return {key: value for key, value in payload.items() if key in safe_keys and value is not None}
+
+
+def _task_status_projection(value: object) -> str | None:
+    status = _optional_text(value)
+    if status == "needsAction":
+        return "incomplete"
+    if status == "completed":
+        return "completed"
+    return None
+
+
+def _scheduled_date_projection(value: object) -> str | None:
+    due = _optional_text(value)
+    if due is None or len(due) < 10:
+        return None
+    candidate = due[:10]
+    try:
+        datetime.fromisoformat(f"{candidate}T00:00:00")
+    except ValueError:
+        return None
+    return candidate
 
 
 def _google_link(snapshot: ResourceSnapshot) -> str:

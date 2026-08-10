@@ -292,7 +292,7 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
 
   const selectControl = await screen.findByRole("checkbox", { name: /선택/ });
   await user.click(selectControl);
-  await user.type(screen.getByRole("textbox", { name: "선택한 자료에 대해 질문하거나 업무를 요청하세요" }), "선택 자료를 정리해 줘");
+  await user.type(screen.getByRole("textbox", { name: "선택한 메일에 대해 질문하거나 업무를 요청하세요..." }), "선택 자료를 정리해 줘");
   await user.click(screen.getByRole("button", { name: "보내기" }));
 
   await waitFor(() =>
@@ -1149,8 +1149,9 @@ test("automatically loads Tasks and Calendar when their source tabs become activ
   await screen.findByText("첫 번째 자료");
   await user.click(screen.getByRole("tab", { name: /태스크/ }));
   expect(await screen.findByText("후속 조치")).toBeInTheDocument();
-  expect(screen.getByText("2026-08-12T09:00:00+09:00")).toBeInTheDocument();
-  expect(screen.queryByText("높음")).not.toBeInTheDocument();
+  expect(screen.getByText("8월 12일 (수)")).toBeInTheDocument();
+  expect(screen.queryByText("needsAction")).not.toBeInTheDocument();
+  expect(screen.queryByText("2026-08-12T09:00:00+09:00")).not.toBeInTheDocument();
   await user.click(screen.getByRole("tab", { name: /캘린더/ }));
   expect(await screen.findByText("프로젝트 검토")).toBeInTheDocument();
   expect(screen.getByText("2026년 8월 10일 (월) 오전 9:00 - 오전 10:00")).toBeInTheDocument();
@@ -1270,12 +1271,67 @@ test("resource viewer empty state follows the active source and clears the previ
 
   await user.click(screen.getByRole("button", { name: /프로젝트 검토/ }));
   expect(screen.getByRole("heading", { name: "프로젝트 검토" })).toBeInTheDocument();
-  expect(screen.getByText("시작")).toBeInTheDocument();
-  expect(screen.getByText("종료")).toBeInTheDocument();
+  expect(screen.getByText("시작 시간")).toBeInTheDocument();
+  expect(screen.getByText("종료 시간")).toBeInTheDocument();
+  expect(screen.queryByText("2026-08-10T09:00:00+09:00")).not.toBeInTheDocument();
 
   await user.click(screen.getByRole("tab", { name: /태스크/ }));
   expect(await screen.findByText("왼쪽 목록에서 태스크를 선택하면 상세 내용을 확인할 수 있습니다.")).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "프로젝트 검토" })).not.toBeInTheDocument();
+});
+
+test("source tabs expose their search, composer, and Calendar section labels", async () => {
+  const user = userEvent.setup();
+  installUiContractFetch();
+  render(<App />);
+
+  expect(await screen.findByRole("textbox", { name: "메일 검색" })).toHaveAttribute(
+    "placeholder",
+    "검색 (제목, 보낸사람, 내용)",
+  );
+  expect(screen.getByRole("textbox", { name: "선택한 메일에 대해 질문하거나 업무를 요청하세요..." })).toBeInTheDocument();
+
+  await user.click(screen.getByRole("tab", { name: /태스크/ }));
+  expect(await screen.findByRole("textbox", { name: "작업 검색" })).toHaveAttribute("placeholder", "작업 검색");
+  expect(screen.getByRole("textbox", { name: "선택한 태스크에 대해 질문하거나 업무를 요청하세요..." })).toBeInTheDocument();
+
+  await user.click(screen.getByRole("tab", { name: /캘린더/ }));
+  expect(await screen.findByText("예정된 일정")).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "일정 검색" })).toHaveAttribute("placeholder", "일정 검색");
+  expect(screen.getByRole("textbox", { name: "선택한 일정에 대해 질문하거나 업무를 요청하세요..." })).toBeInTheDocument();
+});
+
+test("Tasks UI renders normalized status and scheduled date without raw provider values", async () => {
+  const user = userEvent.setup();
+  installUiContractFetch({
+    taskMetadata: { task_status: "incomplete", scheduled_date: "2000-01-01" },
+  });
+  render(<App />);
+
+  await user.click(await screen.findByRole("tab", { name: /태스크/ }));
+  const row = await screen.findByRole("button", { name: /후속 조치/ });
+  expect(screen.getByText("1월 1일 (토)")).toBeInTheDocument();
+  await user.click(row);
+
+  expect(await screen.findByText("미완료 · 예정일 지남")).toBeInTheDocument();
+  expect(screen.getByText("예정일")).toBeInTheDocument();
+  expect(screen.getByText("2000년 1월 1일 (토)")).toBeInTheDocument();
+  expect(screen.queryByText("needsAction")).not.toBeInTheDocument();
+  expect(screen.queryByText("2000-01-01T00:00:00.000Z")).not.toBeInTheDocument();
+  expect(screen.queryByText("마감일")).not.toBeInTheDocument();
+});
+
+test("completed Tasks do not show the past scheduled-date helper", async () => {
+  const user = userEvent.setup();
+  installUiContractFetch({
+    taskMetadata: { task_status: "completed", scheduled_date: "2000-01-01" },
+  });
+  render(<App />);
+
+  await user.click(await screen.findByRole("tab", { name: /태스크/ }));
+  await user.click(await screen.findByRole("button", { name: /후속 조치/ }));
+  expect(await screen.findByText("완료")).toBeInTheDocument();
+  expect(screen.queryByText("예정일 지남")).not.toBeInTheDocument();
 });
 
 test("Calendar rows use compact timed and all-day time labels", async () => {
@@ -1371,7 +1427,7 @@ test("TST-UI-206 keeps focus separate from multiple selected resources and sends
   expect(screen.getByRole("heading", { name: "두 번째 자료" })).toBeInTheDocument();
   expect(screen.getByText("요청에 사용할 자료 2개")).toBeInTheDocument();
   expect(screen.getByText("첫 번째 자료 · 두 번째 자료")).toBeInTheDocument();
-  await user.type(screen.getByRole("textbox", { name: "선택한 자료에 대해 질문하거나 업무를 요청하세요" }), "선택 자료 정리");
+  await user.type(screen.getByRole("textbox", { name: "선택한 메일에 대해 질문하거나 업무를 요청하세요..." }), "선택 자료 정리");
   await user.click(screen.getByRole("button", { name: "보내기" }));
   const start = requests.find((request) => request.path === "/api/v1/runs");
   const body = JSON.parse(String(start?.init?.body)) as { entry_mode: string; selected_resource_ids: string[] };
@@ -1389,7 +1445,7 @@ test("TST-UI-207 uses AGENT_SEARCH without selection and quick action does not w
 
   await screen.findByText("첫 번째 자료");
   expect(screen.queryByText(/요청에 사용할 자료/)).not.toBeInTheDocument();
-  await user.type(screen.getByRole("textbox", { name: "무엇을 도와드릴까요?" }), "메일을 찾아줘");
+  await user.type(screen.getByRole("textbox", { name: "선택한 메일에 대해 질문하거나 업무를 요청하세요..." }), "메일을 찾아줘");
   await user.click(screen.getByRole("button", { name: "보내기" }));
   const start = requests.find((request) => request.path === "/api/v1/runs");
   expect(JSON.parse(String(start?.init?.body))).toMatchObject({ entry_mode: "AGENT_SEARCH" });
@@ -1676,16 +1732,16 @@ test("TST-UI-211 shows loading, empty, error, focus, and disabled pagination sta
 
   await screen.findByText("표시할 자료가 없습니다.");
   expect(screen.getByRole("button", { name: "이전" })).toBeDisabled();
-  expect(screen.getByRole("textbox", { name: "무엇을 도와드릴까요?" })).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "선택한 메일에 대해 질문하거나 업무를 요청하세요..." })).toBeInTheDocument();
 });
 
 test("composer exposes one prompt, has no clear button, and retains the send control", async () => {
   installUiContractFetch();
   render(<App />);
 
-  const composer = await screen.findByRole("textbox", { name: "무엇을 도와드릴까요?" });
-  expect(composer).toHaveAttribute("placeholder", "무엇을 도와드릴까요?");
-  expect(screen.queryByText("무엇을 도와드릴까요?")).not.toBeInTheDocument();
+  const composer = await screen.findByRole("textbox", { name: "선택한 메일에 대해 질문하거나 업무를 요청하세요..." });
+  expect(composer).toHaveAttribute("placeholder", "선택한 메일에 대해 질문하거나 업무를 요청하세요...");
+  expect(screen.queryByText("선택한 메일에 대해 질문하거나 업무를 요청하세요...")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "입력 지우기" })).not.toBeInTheDocument();
   const send = screen.getByRole("button", { name: "보내기" });
   expect(send).toHaveAttribute("title", "보내기");
@@ -1736,6 +1792,7 @@ function installUiContractFetch(options: {
   resource?: Partial<ReturnType<typeof gmailThread>>;
   resultKind?: string;
   status?: string;
+  taskMetadata?: Record<string, unknown>;
   twoItems?: boolean;
 } = {}): Array<{ path: string; init?: RequestInit }> {
   const requests: Array<{ path: string; init?: RequestInit }> = [];
@@ -1804,7 +1861,7 @@ function installUiContractFetch(options: {
           link_url: null,
           version: "1",
           related_resource_ids: ["task-list-default"],
-          metadata: { due: "2026-08-12T09:00:00+09:00", status: "needsAction", priority: "높음" },
+          metadata: options.taskMetadata ?? { task_status: "incomplete", scheduled_date: "2026-08-12" },
         }],
         next_page_token: null,
         api_contract_version: "1",

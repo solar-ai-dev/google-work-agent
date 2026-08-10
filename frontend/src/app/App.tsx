@@ -181,6 +181,7 @@ export function App(): JSX.Element {
   const [runSnapshot, setRunSnapshot] = useState<RunSnapshot | null>(null);
   const [runContext, setRunContext] = useState<RunContext | null>(null);
   const [composerText, setComposerText] = useState("");
+  const [sidebarFilter, setSidebarFilter] = useState("");
   const [busyCommand, setBusyCommand] = useState<string | null>(null);
   const [googleConnectPending, setGoogleConnectPending] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
@@ -218,9 +219,19 @@ export function App(): JSX.Element {
       .filter((title): title is string => Boolean(title)),
     [resourceState.items, selectedResourceIds],
   );
-  const composerPrompt = selectedResourceIds.length > 0
-    ? "선택한 자료에 대해 질문하거나 업무를 요청하세요"
-    : "무엇을 도와드릴까요?";
+  const composerPrompt = resourceComposerPrompt(resourceState.tab);
+  const visibleResourceItems = useMemo(() => {
+    if (resourceState.tab === "gmail" || !sidebarFilter.trim()) {
+      return resourceState.items;
+    }
+    const normalizedFilter = sidebarFilter.trim().toLocaleLowerCase("ko-KR");
+    return resourceState.items.filter((item) => {
+      const presentation = resourcePresentation(item);
+      return [presentation.title, presentation.secondary, presentation.snippet, presentation.time]
+        .filter((value): value is string => Boolean(value))
+        .some((value) => value.toLocaleLowerCase("ko-KR").includes(normalizedFilter));
+    });
+  }, [resourceState.items, resourceState.tab, sidebarFilter]);
   const showRunHeader = runSnapshot !== null;
   const subscriptionRef = useRef<(() => void) | null>(null);
   const subscriptionRunIdRef = useRef<string | null>(null);
@@ -823,6 +834,7 @@ export function App(): JSX.Element {
                     aria-selected={resourceState.tab === tab}
                     onClick={() => {
                       invalidateResourceRequest();
+                      setSidebarFilter("");
                       setResourceState((current) => ({
                         ...current,
                         tab,
@@ -872,37 +884,41 @@ export function App(): JSX.Element {
                 ↻
               </button>
             </div>
-            {resourceState.tab === "gmail" ? (
-              <label className="search-field resource-search">
-                <span className="muted">검색</span>
+            <label className="resource-search">
+                <span className="resource-search-icon" aria-hidden="true">⌕</span>
                 <input
-                  placeholder="제목, 보낸사람, 내용"
-                  value={resourceState.query}
+                  aria-label={resourceSearchLabel(resourceState.tab)}
+                  placeholder={resourceSearchPlaceholder(resourceState.tab)}
+                  value={resourceState.tab === "gmail" ? resourceState.query : sidebarFilter}
                   onChange={(event) => {
-                    invalidateResourceRequest();
-                    setResourceState((current) => ({
-                      ...current,
-                      query: event.target.value,
-                      pageIndex: 0,
-                      pageItems: [],
-                      pageTokens: [null],
-                    }));
+                    if (resourceState.tab === "gmail") {
+                      invalidateResourceRequest();
+                      setResourceState((current) => ({
+                        ...current,
+                        query: event.target.value,
+                        pageIndex: 0,
+                        pageItems: [],
+                        pageTokens: [null],
+                      }));
+                      return;
+                    }
+                    setSidebarFilter(event.target.value);
                   }}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") {
+                    if (resourceState.tab === "gmail" && event.key === "Enter") {
                       void loadResources("gmail", 0);
                     }
                   }}
                 />
-              </label>
-            ) : null}
+            </label>
+            {resourceState.tab === "calendar" ? <h2 className="sidebar-section-title">예정된 일정</h2> : null}
             {resourceState.loading ? <p className="muted" aria-live="polite">자료를 불러오는 중입니다.</p> : null}
             {resourceState.error ? <p className="status-bad">{resourceState.error}</p> : null}
-            {!resourceState.loading && !resourceState.error && resourceState.items.length === 0 ? (
+            {!resourceState.loading && !resourceState.error && visibleResourceItems.length === 0 ? (
               <p className="muted">표시할 자료가 없습니다.</p>
             ) : null}
             <ul className="resource-list" aria-label="Google 업무 자료">
-              {resourceState.items.map((item) => {
+              {visibleResourceItems.map((item) => {
                 const selected = resourceState.selectedIds.includes(item.resource_id);
                 const focused = resourceState.focusItem?.resource_id === item.resource_id;
                 const presentation = resourcePresentation(item);
@@ -995,10 +1011,8 @@ export function App(): JSX.Element {
           ) : null}
           <div className="panel-body">
             <section className="resource-viewer" aria-label="선택 자료 상세">
-              <div className="section-heading">
-                <strong>자료 상세</strong>
-                {resourceState.focusItem ? (
-                  <div className="viewer-actions">
+              {resourceState.focusItem ? (
+                <div className="viewer-actions viewer-actions-floating">
                     {hasCanonicalGoogleUrl(
                       gmailDetail.detail?.resource_id === resourceState.focusItem.resource_id
                         ? gmailDetail.detail.canonical_url
@@ -1044,9 +1058,10 @@ export function App(): JSX.Element {
                         →
                       </button>
                     ) : null}
-                  </div>
-                ) : null}
-              </div>
+                </div>
+              ) : (
+                <div className="section-heading"><strong>자료 상세</strong></div>
+              )}
               {resourceState.focusItem ? (
                 resourceState.focusItem.resource_type === "gmail_thread" ? (
                   <GmailDetailViewer
@@ -1821,7 +1836,7 @@ function resourcePresentation(item: ResourceItem): {
       title,
       secondary: null,
       snippet: null,
-      time: firstPresentationValue(metadata, ["due"]),
+      time: formatTaskDate(firstPresentationValue(metadata, ["scheduled_date"]), false),
     };
   }
   const secondary = source === "gmail"
@@ -1850,6 +1865,29 @@ function formatCalendarEventRange(start: string | null, end: string | null): str
   const endLabel = endDate ? formatCalendarEventDateTime(endDate) : null;
   if (startLabel && endLabel) return `${startLabel} - ${endLabel}`;
   return startLabel ?? endLabel;
+}
+
+function formatTaskDate(value: string | null, detailed: boolean): string | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  const dateLabel = date.toLocaleDateString("ko-KR", detailed
+    ? { year: "numeric", month: "long", day: "numeric" }
+    : { month: "long", day: "numeric" });
+  const weekday = date.toLocaleDateString("ko-KR", { weekday: "short" });
+  return `${dateLabel} (${weekday})`;
+}
+
+function taskStatusLabel(value: string | null): string | null {
+  if (value === "incomplete") return "미완료";
+  if (value === "completed") return "완료";
+  return null;
+}
+
+function isPastScheduledDate(value: string | null, now = new Date()): boolean {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return value < today;
 }
 
 function isAllDayCalendarValue(value: string | null): boolean {
@@ -1892,6 +1930,39 @@ function isSameCalendarDate(left: Date, right: Date): boolean {
   return left.getFullYear() === right.getFullYear()
     && left.getMonth() === right.getMonth()
     && left.getDate() === right.getDate();
+}
+
+function resourceSearchPlaceholder(tab: ResourceTab): string {
+  switch (tab) {
+    case "tasks":
+      return "작업 검색";
+    case "calendar":
+      return "일정 검색";
+    default:
+      return "검색 (제목, 보낸사람, 내용)";
+  }
+}
+
+function resourceSearchLabel(tab: ResourceTab): string {
+  switch (tab) {
+    case "tasks":
+      return "작업 검색";
+    case "calendar":
+      return "일정 검색";
+    default:
+      return "메일 검색";
+  }
+}
+
+function resourceComposerPrompt(tab: ResourceTab): string {
+  switch (tab) {
+    case "tasks":
+      return "선택한 태스크에 대해 질문하거나 업무를 요청하세요...";
+    case "calendar":
+      return "선택한 일정에 대해 질문하거나 업무를 요청하세요...";
+    default:
+      return "선택한 메일에 대해 질문하거나 업무를 요청하세요...";
+  }
 }
 
 function resourceViewerEmptyMessage(tab: ResourceTab): string {
@@ -1956,7 +2027,40 @@ function formatFileSize(sizeBytes: number): string {
 
 function viewerMetadataEntries(item: ResourceItem): Array<[string, string]> {
   const metadata = item.metadata;
-  const fields: Array<[string, string[]]> = item.source.toLowerCase() === "gmail"
+  const source = item.source.toLowerCase();
+  if (source === "tasks" && item.resource_type === "task") {
+    const taskStatus = taskStatusLabel(firstPresentationValue(metadata, ["task_status"]));
+    const scheduledDate = firstPresentationValue(metadata, ["scheduled_date"]);
+    const status = taskStatus === "미완료" && isPastScheduledDate(scheduledDate)
+      ? "미완료 · 예정일 지남"
+      : taskStatus;
+    const entries: Array<[string, string]> = [];
+    if (status) entries.push(["상태", status]);
+    const date = formatTaskDate(scheduledDate, true);
+    if (date) entries.push(["예정일", date]);
+    const notes = firstPresentationValue(metadata, ["notes"]);
+    if (notes) entries.push(["내용", notes]);
+    return entries;
+  }
+  if (source === "calendar" && item.resource_type === "calendar_event") {
+    const start = userFacingValue(metadata.start);
+    const end = userFacingValue(metadata.end);
+    if (isAllDayCalendarValue(start)) {
+      const date = formatCalendarEventDate(start);
+      return date ? [["날짜", date]] : [];
+    }
+    const entries: Array<[string, string]> = [];
+    const startLabel = formatCalendarEventDate(start);
+    const endLabel = formatCalendarEventDate(end);
+    if (startLabel) entries.push(["시작 시간", startLabel]);
+    if (endLabel) entries.push(["종료 시간", endLabel]);
+    const calendarName = firstPresentationValue(metadata, ["calendar_name", "calendar_display_name"]);
+    if (calendarName) entries.push(["캘린더", calendarName]);
+    const description = firstPresentationValue(metadata, ["description", "notes", "body", "snippet"]);
+    if (description) entries.push(["내용", description]);
+    return entries;
+  }
+  const fields: Array<[string, string[]]> = source === "gmail"
     ? [
         ["보낸사람", ["sender", "from", "sender_name", "from_name", "display_name", "participants"]],
         ["이메일", ["sender_email", "from_email", "email"]],
