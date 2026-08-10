@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
+from email.utils import parseaddr
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import cast
@@ -378,6 +379,11 @@ def _gmail_search_threads(
     items = []
     for thread in _object_list(payload.get("threads")):
         thread_id = _required_response_text(thread, "id")
+        metadata = _gmail_thread_list_metadata(
+            state=state,
+            thread_id=thread_id,
+            list_snippet=_optional_text(thread.get("snippet")),
+        )
         items.append(
             _snapshot(
                 "gmail_thread",
@@ -385,10 +391,34 @@ def _gmail_search_threads(
                 None,
                 (),
                 thread.get("historyId"),
-                {"snippet": _optional_text(thread.get("snippet"))},
+                metadata,
             )
         )
     return {"items": items, "next_page_token": _optional_text(payload.get("nextPageToken"))}
+
+
+def _gmail_thread_list_metadata(
+    *,
+    state: _WorkspaceState,
+    thread_id: str,
+    list_snippet: str | None,
+) -> dict[str, object]:
+    payload = _google_api(
+        state,
+        f"https://gmail.googleapis.com/gmail/v1/users/me/threads/{quote(thread_id, safe='')}",
+        {"format": "metadata"},
+    )
+    messages = _object_list(payload.get("messages"))
+    headers = _headers(messages[0]) if messages else {}
+    sender_name, sender_email = _email_identity(headers.get("from"))
+    return {
+        "sender_name": sender_name,
+        "sender_email": sender_email,
+        "subject": _optional_text(headers.get("subject")),
+        "received_at": _optional_text(headers.get("date"))
+        or _first_message_internal_date(messages),
+        "snippet": list_snippet or _optional_text(payload.get("snippet")),
+    }
 
 
 def _gmail_get_thread(state: _WorkspaceState, arguments: dict[str, object]) -> dict[str, object]:
@@ -1494,6 +1524,19 @@ def _headers(message: dict[str, object]) -> dict[str, str]:
         for item in _object_list(payload.get("headers"))
         if item.get("name") and item.get("value")
     }
+
+
+def _email_identity(value: str | None) -> tuple[str | None, str | None]:
+    if value is None:
+        return None, None
+    name, email = parseaddr(value)
+    return _optional_text(name), _optional_text(email)
+
+
+def _first_message_internal_date(messages: list[dict[str, object]]) -> str | None:
+    if not messages:
+        return None
+    return _optional_text(messages[0].get("internalDate"))
 
 
 def _control_call(state: _WorkspaceState, *, method: str) -> dict[str, object]:

@@ -11,13 +11,31 @@ from google_work_agent.mcp.settings import GoogleOAuthSettings
 from google_work_agent.ports import TimeRange
 
 
-def test_gmail_list_maps_google_metadata_without_detail_calls(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_gmail_list_enriches_current_page_thread_metadata(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     calls: list[tuple[str, dict[str, str] | None]] = []
 
     def google_api(
         _state: server._WorkspaceState, url: str, params: dict[str, str] | None = None
     ) -> dict[str, object]:
         calls.append((url, params))
+        if url.endswith("/threads/thread-1"):
+            return {
+                "historyId": "8",
+                "snippet": "Detail preview",
+                "messages": [
+                    {
+                        "id": "message-1",
+                        "internalDate": "1748055300000",
+                        "payload": {
+                            "headers": [
+                                {"name": "From", "value": "Kim Daeri <kim.daeri@example.com>"},
+                                {"name": "Subject", "value": "Q2 campaign follow-up"},
+                                {"name": "Date", "value": "Sat, 24 May 2025 09:15:00 +0900"},
+                            ]
+                        },
+                    }
+                ],
+            }
         return {
             "threads": [{"id": "thread-1", "historyId": "7", "snippet": "Preview"}],
             "nextPageToken": "next-1",
@@ -41,15 +59,105 @@ def test_gmail_list_maps_google_metadata_without_detail_calls(monkeypatch) -> No
             "related_resource_ids": [],
             "version": "7",
             "recovery_fingerprint": None,
-            "payload": {"snippet": "Preview"},
+            "payload": {
+                "sender_name": "Kim Daeri",
+                "sender_email": "kim.daeri@example.com",
+                "subject": "Q2 campaign follow-up",
+                "received_at": "Sat, 24 May 2025 09:15:00 +0900",
+                "snippet": "Preview",
+            },
         }
     ]
     assert calls == [
         (
             "https://gmail.googleapis.com/gmail/v1/users/me/threads",
             {"maxResults": "20", "q": "label:inbox"},
-        )
+        ),
+        (
+            "https://gmail.googleapis.com/gmail/v1/users/me/threads/thread-1",
+            {"format": "metadata"},
+        ),
     ]
+
+
+def test_gmail_list_does_not_use_thread_id_as_subject_fallback(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def google_api(
+        _state: server._WorkspaceState, url: str, _params: dict[str, str] | None = None
+    ) -> dict[str, object]:
+        if url.endswith("/threads/thread-1"):
+            return {"messages": [{"id": "message-1", "payload": {"headers": []}}]}
+        return {"threads": [{"id": "thread-1", "historyId": "7"}]}
+
+    monkeypatch.setattr(server, "_google_api", google_api)
+
+    payload = server._tool_call(
+        _state(),
+        tool_name="gmail_search_threads",
+        arguments={"query": "", "page_size": 20, "page_token": None},
+    )
+
+    item = cast(dict[str, object], cast(list[object], payload["items"])[0])
+    assert item["resource_id"] == "thread-1"
+    assert item["payload"] == {}
+
+
+def test_gmail_detail_tool_contracts_are_unchanged(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    responses = [
+        {
+            "historyId": "9",
+            "snippet": "Thread preview",
+            "messages": [
+                {
+                    "id": "message-1",
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": "pm@example.com"},
+                            {"name": "To", "value": "user@example.com"},
+                            {"name": "Subject", "value": "Project sync"},
+                        ]
+                    },
+                }
+            ],
+        },
+        {
+            "id": "message-1",
+            "threadId": "thread-1",
+            "historyId": "10",
+            "snippet": "Message preview",
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "pm@example.com"},
+                    {"name": "To", "value": "user@example.com"},
+                    {"name": "Subject", "value": "Project sync"},
+                    {"name": "Date", "value": "Sat, 24 May 2025 09:15:00 +0900"},
+                ]
+            },
+        },
+    ]
+
+    def google_api(
+        _state: server._WorkspaceState, _url: str, _params: dict[str, str] | None = None
+    ) -> dict[str, object]:
+        return cast(dict[str, object], responses.pop(0))
+
+    monkeypatch.setattr(server, "_google_api", google_api)
+
+    thread = server._gmail_get_thread(_state(), {"thread_id": "thread-1"})
+    message = server._gmail_get_message(_state(), {"message_id": "message-1"})
+
+    assert cast(dict[str, object], cast(dict[str, object], thread["item"])["payload"]) == {
+        "subject": "Project sync",
+        "snippet": "Thread preview",
+        "participants": ["pm@example.com", "user@example.com"],
+        "message_ids": ["message-1"],
+    }
+    assert cast(dict[str, object], cast(dict[str, object], message["item"])["payload"]) == {
+        "subject": "Project sync",
+        "snippet": "Message preview",
+        "from": "pm@example.com",
+        "to": "user@example.com",
+        "received_at": "Sat, 24 May 2025 09:15:00 +0900",
+    }
 
 
 def test_tasks_and_calendar_details_map_to_canonical_snapshots(monkeypatch) -> None:  # type: ignore[no-untyped-def]

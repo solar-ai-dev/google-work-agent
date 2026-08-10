@@ -26,6 +26,11 @@ class ResourceListItem:
     version: str
     related_resource_ids: tuple[str, ...]
     metadata: dict[str, object]
+    sender_name: str | None
+    sender_email: str | None
+    subject: str | None
+    received_at: str | None
+    snippet: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +121,7 @@ def _validated_page_size(page_size: int) -> int:
 
 def _resource_item_from_snapshot(snapshot: ResourceSnapshot) -> ResourceListItem:
     title, subtitle = _display_text(snapshot)
+    metadata = _metadata_from_snapshot(snapshot)
     return ResourceListItem(
         source=_source_for_type(snapshot.resource_type),
         resource_type=snapshot.resource_type.value,
@@ -126,7 +132,12 @@ def _resource_item_from_snapshot(snapshot: ResourceSnapshot) -> ResourceListItem
         link_url=_google_link(snapshot),
         version=snapshot.version,
         related_resource_ids=tuple(snapshot.related_resource_ids),
-        metadata=_metadata_from_snapshot(snapshot),
+        metadata=metadata,
+        sender_name=_optional_text(metadata.get("sender_name")),
+        sender_email=_optional_text(metadata.get("sender_email")),
+        subject=_optional_text(metadata.get("subject")),
+        received_at=_optional_text(metadata.get("received_at")),
+        snippet=_optional_text(metadata.get("snippet")),
     )
 
 
@@ -145,9 +156,7 @@ def _source_for_type(resource_type: ResourceType) -> str:
 def _display_text(snapshot: ResourceSnapshot) -> tuple[str, str | None]:
     payload = snapshot.payload
     if snapshot.resource_type is ResourceType.GMAIL_THREAD:
-        return str(payload.get("subject", snapshot.resource_id)), _optional_text(
-            payload.get("snippet")
-        )
+        return _optional_text(payload.get("subject")) or "", _optional_text(payload.get("snippet"))
     if snapshot.resource_type is ResourceType.GMAIL_DRAFT:
         return str(payload.get("subject", snapshot.resource_id)), _optional_text(
             payload.get("body")
@@ -174,7 +183,15 @@ def _display_text(snapshot: ResourceSnapshot) -> tuple[str, str | None]:
 def _metadata_from_snapshot(snapshot: ResourceSnapshot) -> dict[str, object]:
     payload = snapshot.payload
     safe_keys = {
-        ResourceType.GMAIL_THREAD: ("participants", "message_ids"),
+        ResourceType.GMAIL_THREAD: (
+            "participants",
+            "message_ids",
+            "sender_name",
+            "sender_email",
+            "subject",
+            "received_at",
+            "snippet",
+        ),
         ResourceType.GMAIL_MESSAGE: ("from", "to", "received_at"),
         ResourceType.GMAIL_DRAFT: ("to", "cc"),
         ResourceType.TASK_LIST: ("kind",),
