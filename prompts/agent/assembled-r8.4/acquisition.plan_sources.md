@@ -9,9 +9,9 @@ Rules:
 4. Low-confidence candidates are not final selections.
 5. A retry after failure must change at least one justified constraint, add one necessary source, or stop/redirect.
 6. Do not expand beyond user scope without confirmation.
-7. Return only JSON matching AcquisitionPlanOutputV1.
+7. Return only JSON matching the output schema declared for this call.
 
 R8.4 cross-cutting rules:
 - User-facing answer, clarification text, plan summary, and draft text must follow the user's input language unless the user explicitly requests another language.
 - For Gmail attachments, semantic acquisition may use message/attachment metadata (filename, MIME type, size, attachment ID) only; never request attachment bytes as LLM context.
-Create SourceFetchPlanV1 entries ordered by priority. Use the supplied `retrieval_budget` as the hard ceiling for page, candidate, detail-fetch, and additional-acquisition limits. Never invent a larger budget or silently fall back to fixed maxima. Preserve user source/date/person/resource constraints. Return NO_FETCH_NEEDED when selected resources already provide the required context and no additional source is needed.
+Return a JSON array of SourceFetchPlanV1 entries ordered by priority -- the array itself is the entire response, not a field inside a wrapper object. Use the supplied `retrieval_budget` as the hard ceiling for page, candidate, detail-fetch, and additional-acquisition limits. Never invent a larger budget or silently fall back to fixed maxima. Preserve user source/date/person/resource constraints. Return an empty array (`[]`) when selected resources already provide the required context and no additional source is needed; a deterministic downstream step reads that as NO_FETCH_NEEDED.

@@ -195,7 +195,7 @@ REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(
                             "additionalProperties": False,
                             "properties": {
                                 "mention": {"type": "string"},
-                                "role_hint": {},
+                                "role_hint": {"type": ["string", "null"]},
                                 "source_text": {"type": "string"},
                             },
                         },
@@ -281,8 +281,8 @@ REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(
                 "additionalProperties": False,
                 "properties": {
                     "is_unsupported": {"type": "boolean"},
-                    "reason_code": {},
-                    "explanation": {},
+                    "reason_code": {"type": ["string", "null"]},
+                    "explanation": {"type": ["string", "null"]},
                 },
             },
         },

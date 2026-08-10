@@ -13,7 +13,11 @@ from tests.support.fakes import (
     GoogleGatewayFaultKind,
 )
 from tests.support.fixtures import ProductFixtureSnapshotLoader
-from tests.support.prompt_manifests import write_runtime_active_manifest
+from tests.support.prompt_manifests import (
+    write_draft_manifest,
+    write_manifest_with_overrides,
+    write_runtime_active_manifest,
+)
 from tests.unit.application.workflows.test_api_acquisition import _plan
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 from tests.unit.application.workflows.test_plan_review import _review_output
@@ -2132,13 +2136,12 @@ def test_resume_rejects_mismatched_profile_for_thread(
 
 def test_default_product_runtime_rejects_draft_prompt_bundle(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    monkeypatch.setenv(
-        "GOOGLE_WORK_AGENT_PROMPT_MANIFEST_PATH",
-        str(_runtime_active_manifest_path(tmp_path)),
+    manifest_path = write_draft_manifest(
+        tmp_path,
+        prompt_ids={"request_understanding.classify"},
     )
 
     with pytest.raises(InactivePromptArtifactError, match="request_understanding.classify"):
@@ -2147,4 +2150,91 @@ def test_default_product_runtime_rejects_draft_prompt_bundle(
             llm_payloads=[],
             gateway=FakeGoogleGateway(snapshot),
             checkpoint_database_path=tmp_path / "checkpoints-draft.db",
+            prompt_manifest_path=manifest_path,
+        )
+
+
+_SIX_ROLE_BASELINE_PROMPT_IDS = {
+    "request_understanding.classify",
+    "request_understanding.clarify",
+    "acquisition.plan_sources",
+    "context.select_evidence",
+    "context.assess_sufficiency",
+    "analysis.analyze",
+    "planning.answer_only",
+    "planning.draft_plan",
+    "planning.revise_plan",
+    "review.inspect",
+    "review.recheck",
+}
+_PROFILE_CANDIDATE_PROMPT_IDS = {
+    "profile.single.request_source.initial",
+    "profile.single.reason_plan.initial",
+    "profile.single.self_review.initial",
+    "profile.single.self_review.recheck",
+    "profile.three.stage1.initial",
+    "profile.three.stage2.initial",
+}
+
+
+def test_six_role_baseline_runtime_ignores_inactive_profile_candidate_prompts(
+    tmp_path: Path,
+) -> None:
+    """SINGLE_BASELINE/THREE_STAGE are E06-A architecture candidates under
+    comparison (docs/06-agent-workflow.md 1.1), not features that ship
+    alongside SIX_ROLE_BASELINE. Their prompts being DRAFT must not block
+    construction of a SIX_ROLE_BASELINE runtime.
+    """
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    manifest_path = write_manifest_with_overrides(
+        tmp_path,
+        active_prompt_ids=_SIX_ROLE_BASELINE_PROMPT_IDS,
+        draft_prompt_ids=_PROFILE_CANDIDATE_PROMPT_IDS,
+    )
+
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=tmp_path / "checkpoints-six-role-only.db",
+        prompt_manifest_path=manifest_path,
+    )
+    try:
+        assert runtime.graph_profile() is GraphProfile.SIX_ROLE_BASELINE
+    finally:
+        runtime.close()
+
+
+def test_single_and_three_stage_runtimes_still_reject_own_draft_prompts(
+    tmp_path: Path,
+) -> None:
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    manifest_path = write_manifest_with_overrides(
+        tmp_path,
+        active_prompt_ids=_SIX_ROLE_BASELINE_PROMPT_IDS,
+        draft_prompt_ids=_PROFILE_CANDIDATE_PROMPT_IDS,
+    )
+
+    with pytest.raises(
+        InactivePromptArtifactError, match="profile.single.request_source.initial"
+    ):
+        _make_runtime(
+            database_path=database_path,
+            llm_payloads=[],
+            gateway=FakeGoogleGateway(snapshot),
+            checkpoint_database_path=tmp_path / "checkpoints-single-draft.db",
+            prompt_manifest_path=manifest_path,
+            graph_profile=GraphProfile.SINGLE_BASELINE,
+        )
+
+    with pytest.raises(InactivePromptArtifactError, match="profile.three.stage1.initial"):
+        _make_runtime(
+            database_path=database_path,
+            llm_payloads=[],
+            gateway=FakeGoogleGateway(snapshot),
+            checkpoint_database_path=tmp_path / "checkpoints-three-draft.db",
+            prompt_manifest_path=manifest_path,
+            graph_profile=GraphProfile.THREE_STAGE,
         )

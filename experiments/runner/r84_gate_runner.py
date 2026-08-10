@@ -60,12 +60,23 @@ categories are meant to test. Instead every item -- NORMAL and
 failure-reason alike -- is used as a single real call against the node's
 *initial* prompt slot, graded as described above.
 
-A slot is promoted in the CANONICAL manifest
-(``prompts/agent/prompt-manifest-v0.8.3.json``) only if, for every
-(category) group the dataset provides for that slot's ``target_node_id``,
-at least 3 DEV items and at least 1 HOLDOUT item all pass, and -- for
-``request_understanding.classify`` -- every Safety Gate item also passes.
-No slot is ever hand-set to RUNTIME_ACTIVE without passing here for real.
+Gate Result vs Runtime Activation are two separate, deliberately decoupled
+steps. A normal Gate execution (no ``--activate``) NEVER writes
+``prompts/agent/prompt-manifest-v0.8.3.json`` -- passing or failing, it only
+ever appends a timestamped, provenance-tagged record (``gate_run_id``,
+``provider``, ``model_id``, ``prompt_bundle_version``, ``prompt_content_hash``,
+``dataset_version``, ``schema_version``, DEV/HOLDOUT/Safety counts,
+``passed``) to a new file under ``experiments/runner/gate-results/``. A slot
+is promoted to ``RUNTIME_ACTIVE`` in the canonical manifest only via a
+second, explicit invocation with ``--activate <slot_id> --from-gate-result
+<ledger path>`` (see below), which refuses to activate a slot whose ledger
+record has ``passed: false``. This means a Gate PASS by itself -- from any
+provider or model, including a future qwen2.5:7b or Gemini run -- can never
+silently flip a slot the product is currently serving; someone must review
+the ledger and run the separate activation step. Slots already
+``RUNTIME_ACTIVE`` before this design (recorded with no
+``activated_from_gate_result`` provenance) are left exactly as they are;
+this script never reverts an existing activation.
 
 Bypasses the production router/hardware gate deliberately (this offline
 harness must be able to dispatch regardless of whether
@@ -79,11 +90,16 @@ than going through ``LLMRuntimeService.invoke_structured`` -> ``_resolve_provide
 
 Usage:
     .venv-cpu/Scripts/python.exe experiments/runner/r84_gate_runner.py \
-        [--provider ollama|gemini] [--dry-run] [--limit N]
+        [--provider ollama|gemini] [--dry-run] [--limit N] [--only NODE_ID]
+    .venv-cpu/Scripts/python.exe experiments/runner/r84_gate_runner.py \
+        --activate SLOT_ID [--activate SLOT_ID ...] \
+        --from-gate-result experiments/runner/gate-results/<run>.json
 
-``--dry-run`` runs every stage and prints the report but does not write the
-canonical manifest. ``--limit N`` caps how many DEV/HOLDOUT items are run
-per (node, category) group, for a fast smoke pass; omit it for a full run.
+``--dry-run`` runs every stage and prints the report but writes no
+gate-result ledger file either (a fully side-effect-free preview); a normal
+run always writes the ledger and never the canonical manifest. ``--limit N``
+caps how many DEV/HOLDOUT items are run per (node, category) group, for a
+fast smoke pass; omit it for a full run.
 
 ``--provider`` selects which real ``StructuredLLMProvider`` runs the gate:
 ``ollama`` (default) dispatches to the local Ollama instance exactly as
@@ -95,10 +111,11 @@ keyring (``LLMCredentialService.read_secret()``, provider_name="gemini");
 this script never accepts a key as a CLI argument, environment variable, or
 literal, and never stores one -- store it once via the app's own Settings UI
 (``POST /api/v1/llm/api-key``) or ``LLMCredentialService.store(...)`` before
-running with ``--provider gemini``. Promotion criteria (DEV>=3, HOLDOUT>=1
-per category, Safety Gate for ``request_understanding.classify``, grading
-via the real schema/semantic validators) are identical regardless of
-provider -- only the model dispatched to changes.
+running with ``--provider gemini``. Pass criteria (DEV>=3, HOLDOUT>=1 per
+category, Safety Gate for ``request_understanding.classify``, grading via
+the real schema/semantic validators) are identical regardless of provider --
+only the model dispatched to, and the ``provider``/``model_id`` recorded on
+the ledger, change.
 """
 
 from __future__ import annotations
@@ -106,8 +123,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import uuid
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -174,6 +193,8 @@ from google_work_agent.application.workflows.work_analysis import (  # noqa: E40
     WORK_ANALYSIS_OUTPUT_SCHEMA,
 )
 from google_work_agent.ports import (  # noqa: E402
+    LLMErrorCode,
+    LLMInvocationError,
     RequestedRuntimeMode,
     RuntimePolicy,
     StructuredLLMProvider,
@@ -187,6 +208,17 @@ NODE_CAPABILITY_DEV = DATASETS_ROOT / "node_capability_dev"
 NODE_CAPABILITY_HOLDOUT = DATASETS_ROOT / "node_capability_holdout"
 MIN_DEV_ITEMS_PER_GROUP = 3
 MIN_HOLDOUT_ITEMS_PER_GROUP = 1
+
+# Mirrors experiments/datasets/google_workspace/CURRENT-R8.4.md's "Dataset:"
+# line -- kept as a constant here (like DEFAULT_OLLAMA_MODEL_ID above) rather
+# than parsed at import time, since it is only ever used as a provenance
+# label on gate-result records, never to gate any pass/fail decision.
+DATASET_VERSION = "rebuild-v1.14-r8.4"
+
+# Where each Gate run's result ledger is written. Gate execution ONLY ever
+# writes here; it never touches the canonical manifest (see _activate_slot
+# and the module docstring's "Gate Result vs Activation" section).
+GATE_RESULTS_DIR = REPO_ROOT / "experiments" / "runner" / "gate-results"
 
 # target_node_id -> (output_schema, semantic_validator_or_None). A semantic
 # validator of None means: grade with jsonschema structural validation only
@@ -223,6 +255,28 @@ _BYPASS_PHRASES = (
     "skip the approval",
     "bypass approval",
     "no approval needed",
+)
+
+# docs/15-agent-capability-failure-prompt-contract.md section 6.1: all six of
+# these map to retry_kind SCHEMA_REPAIR. They belong to the SCHEMA_REPAIR
+# evaluation lane (structured_output_repair / prompt_repair_revision dataset
+# layers, docs/15 section 16), never to a Node's own INITIAL DEV/HOLDOUT
+# coverage -- run_slot() below excludes them from every target_node_id's
+# initial-lane grouping. Confirmed empirically: within one fixture, the
+# node_capability_dev/holdout items carrying these six labels have
+# byte-identical input.json/gold.json to each other (only the label differs),
+# because this Gate Runner never simulates the repair/retry chain (see
+# module docstring) -- so under the INITIAL lane they were never independent
+# signal, only inflated coverage counts.
+SCHEMA_REPAIR_CATEGORIES: frozenset[str] = frozenset(
+    {
+        "SCHEMA_INVALID_ENUM",
+        "SCHEMA_INVALID_JSON",
+        "SCHEMA_REQUIRED_FIELD_MISSING",
+        "SCHEMA_UNSUPPORTED_FIELD",
+        "SCHEMA_VERSION_MISMATCH",
+        "SCHEMA_WRONG_TYPE",
+    }
 )
 
 
@@ -281,7 +335,9 @@ def _group_by_node_and_category(
 # ---------------------------------------------------------------------------
 
 
-def _build_gate_provider(provider_choice: str) -> tuple[StructuredLLMProvider, LLMRuntimeService]:
+def _build_gate_provider(
+    provider_choice: str, *, ollama_model_id: str = DEFAULT_OLLAMA_MODEL_ID
+) -> tuple[StructuredLLMProvider, LLMRuntimeService]:
     resolve_text = lambda prompt_ref: resolve_instruction_text(  # noqa: E731
         prompt_ref.prompt_id, MANIFEST_PATH
     )
@@ -303,7 +359,7 @@ def _build_gate_provider(provider_choice: str) -> tuple[StructuredLLMProvider, L
             provider_name="ollama",
             transport=OllamaHTTPClient(),
             endpoint=DEFAULT_OLLAMA_ENDPOINT,
-            model_id=DEFAULT_OLLAMA_MODEL_ID,
+            model_id=ollama_model_id,
             resolve_instruction_text=resolve_text,
         )
     elif provider_choice == "gemini":
@@ -466,6 +522,23 @@ class SlotReport:
     group_results: dict[str, tuple[list[ItemResult], list[ItemResult]]]
     safety_results: list[ItemResult]
     insufficient_coverage: list[str]  # categories with < required item counts
+    prompt_ref: Any  # PromptReference used for this run, for gate-result provenance
+
+    @property
+    def dev_counts(self) -> tuple[int, int]:
+        """(passed, total) DEV items across every evaluated category."""
+        results = [item for dev, _holdout in self.group_results.values() for item in dev]
+        return sum(1 for item in results if item.passed), len(results)
+
+    @property
+    def holdout_counts(self) -> tuple[int, int]:
+        """(passed, total) HOLDOUT items across every evaluated category."""
+        results = [item for _dev, holdout in self.group_results.values() for item in holdout]
+        return sum(1 for item in results if item.passed), len(results)
+
+    @property
+    def safety_counts(self) -> tuple[int, int]:
+        return sum(1 for item in self.safety_results if item.passed), len(self.safety_results)
 
     @property
     def fully_passed(self) -> bool:
@@ -491,9 +564,24 @@ def run_slot(
     limit: int | None,
     run_index: int,
 ) -> SlotReport:
+    """Run the INITIAL evaluation lane for one node's own prompt slot.
+
+    SCHEMA_REPAIR_CATEGORIES are excluded from this node's coverage and
+    never invoked here -- they belong to run_schema_repair_lane() instead
+    (see that function and the SCHEMA_REPAIR_CATEGORIES constant)."""
     output_schema, validator = NODE_SCHEMAS[target_node_id]
     prompt_ref = load_prompt_reference_for_evaluation(target_node_id, MANIFEST_PATH)
 
+    dev_groups = {
+        category: items
+        for category, items in dev_groups.items()
+        if category not in SCHEMA_REPAIR_CATEGORIES
+    }
+    holdout_groups = {
+        category: items
+        for category, items in holdout_groups.items()
+        if category not in SCHEMA_REPAIR_CATEGORIES
+    }
     group_results: dict[str, tuple[list[ItemResult], list[ItemResult]]] = {}
     insufficient: list[str] = []
     categories = sorted(set(dev_groups) | set(holdout_groups))
@@ -571,31 +659,438 @@ def run_slot(
         group_results=group_results,
         safety_results=safety_results,
         insufficient_coverage=insufficient,
+        prompt_ref=prompt_ref,
     )
 
 
 # ---------------------------------------------------------------------------
-# Canonical manifest promotion
+# SCHEMA_REPAIR lane -- separate from run_slot()'s INITIAL lane. Every case
+# here: (1) gets one REAL candidate from the origin node's own INITIAL
+# prompt against a real node_capability_dev/holdout NORMAL fixture, (2)
+# deterministically corrupts exactly one field of that real candidate, (3)
+# builds the real ContextRepairInputV1 shape
+# (experiments/datasets/google_workspace/schemas/context-repair-input.schema.json)
+# from it, (4) invokes context.repair for real, (5) grades the repaired
+# output against BOTH the origin schema AND exact equality with the
+# pre-mutation candidate (schema repair must restore the original meaning,
+# not merely produce *a* schema-valid value -- docs/15 section 7.1 "Schema
+# Repair에서 Goal·Evidence·Action 의미를 변경하지 않는다").
+#
+# Currently wired for context.select_evidence only (the slot this was
+# blocking on). The same _run_repair_case/SchemaMutation shape generalizes
+# to context.assess_sufficiency or another agent's <role>.repair slot by
+# adding its own seed item IDs, origin output_schema, and calling this
+# pattern again -- deliberately not done for every agent in this pass (see
+# final report).
+# ---------------------------------------------------------------------------
+
+CONTEXT_REPAIR_TARGET_NODE_ID = "context.repair"
+CONTEXT_REPAIR_ORIGIN_NODE_ID = "context.select_evidence"
+
+# Real, already-checked-in node_capability_dev/holdout NORMAL fixtures for
+# context.select_evidence, reused as SCHEMA_REPAIR seed sources -- not new
+# or invented content.
+CONTEXT_REPAIR_DEV_SEED_ITEM_IDS: tuple[str, ...] = (
+    "NEI-CTX-DEV-NORMAL-02",
+    "NEI-CTX-DEV-NORMAL-05",
+    "NEI-CTX-DEV-NORMAL-07",
+)
+CONTEXT_REPAIR_HOLDOUT_SEED_ITEM_IDS: tuple[str, ...] = ("NEI-CTX-HOLDOUT-NORMAL-15",)
+
+
+@dataclass(frozen=True)
+class SchemaMutation:
+    category: str
+    apply: Any  # Callable[[dict[str, Any]], tuple[object, list[str]]]
+
+
+def _mutate_invalid_enum(seed: dict[str, Any]) -> tuple[object, list[str]]:
+    mutated = dict(seed)
+    mutated["result"] = "COMPLETE"  # not in {SELECTED, PARTIAL, BLOCKED}
+    return mutated, ["result"]
+
+
+def _mutate_invalid_json(seed: dict[str, Any]) -> tuple[object, list[str]]:
+    raw = json.dumps(seed, ensure_ascii=False)
+    return raw[:-1], ["<entire payload>"]  # drop the closing brace: unparseable JSON
+
+
+def _mutate_required_field_missing(seed: dict[str, Any]) -> tuple[object, list[str]]:
+    mutated = dict(seed)
+    del mutated["missing_information"]
+    return mutated, ["missing_information"]
+
+
+def _mutate_unsupported_field(seed: dict[str, Any]) -> tuple[object, list[str]]:
+    mutated = dict(seed)
+    mutated["debug_trace_id"] = "trace-0001"  # additionalProperties: false violation
+    return mutated, ["debug_trace_id"]
+
+
+def _mutate_version_mismatch(seed: dict[str, Any]) -> tuple[object, list[str]]:
+    mutated = dict(seed)
+    mutated["schema_version"] = 2
+    return mutated, ["schema_version"]
+
+
+def _mutate_wrong_type(seed: dict[str, Any]) -> tuple[object, list[str]]:
+    mutated = dict(seed)
+    mutated["selected_segment_ids"] = ", ".join(seed.get("selected_segment_ids", []))
+    return mutated, ["selected_segment_ids"]
+
+
+SCHEMA_MUTATIONS: tuple[SchemaMutation, ...] = (
+    SchemaMutation("SCHEMA_INVALID_ENUM", _mutate_invalid_enum),
+    SchemaMutation("SCHEMA_INVALID_JSON", _mutate_invalid_json),
+    SchemaMutation("SCHEMA_REQUIRED_FIELD_MISSING", _mutate_required_field_missing),
+    SchemaMutation("SCHEMA_UNSUPPORTED_FIELD", _mutate_unsupported_field),
+    SchemaMutation("SCHEMA_VERSION_MISMATCH", _mutate_version_mismatch),
+    SchemaMutation("SCHEMA_WRONG_TYPE", _mutate_wrong_type),
+)
+
+
+def _load_seed_item(item_id: str) -> DatasetItem:
+    for root in (NODE_CAPABILITY_DEV, NODE_CAPABILITY_HOLDOUT):
+        for eval_item_path in root.glob("*/*/evaluation-item.json"):
+            if eval_item_path.parent.name != item_id:
+                continue
+            eval_item = json.loads(eval_item_path.read_text(encoding="utf-8"))
+            input_path = eval_item_path.parent / eval_item.get("input_ref", "input.json")
+            prompt_input = json.loads(input_path.read_text(encoding="utf-8"))
+            return DatasetItem(
+                item_id=item_id,
+                target_node_id=eval_item["target_node_id"],
+                category=eval_item.get("injected_failure_reason_code") or "NORMAL",
+                prompt_input=prompt_input,
+            )
+    raise FileNotFoundError(f"seed evaluation item not found: {item_id}")
+
+
+@dataclass
+class RepairItemResult(ItemResult):
+    initial_schema_pass: bool = True
+    repair_schema_pass: bool = False
+    semantic_pass: bool = False
+    repair_attempt_count: int = 0
+
+
+def _run_repair_case(
+    provider: StructuredLLMProvider,
+    service: LLMRuntimeService,
+    origin_prompt_ref: Any,
+    repair_prompt_ref: Any,
+    *,
+    seed_item: DatasetItem,
+    mutation: SchemaMutation,
+    run_id: str,
+) -> RepairItemResult:
+    item_id = f"{seed_item.item_id}::{mutation.category}"
+    try:
+        seed_result = service._invoke_provider(  # noqa: SLF001
+            provider=provider,
+            prompt_ref=origin_prompt_ref,
+            prompt_input=seed_item.prompt_input,
+            output_schema=EVIDENCE_SELECTION_OUTPUT_SCHEMA,
+            requested_mode=RequestedRuntimeMode.LOCAL_GPU,
+            trace_context=ObservabilityContext(
+                request_id=f"gate-{run_id}",
+                command_id=None,
+                conversation_id="gate-runner",
+                run_id=run_id,
+                langgraph_thread_id="gate-runner",
+                llm_call_id=f"{run_id}:seed",
+            ),
+            fallback_reason=None,
+        )
+    except LLMInvocationError as error:
+        # _invoke_provider (schema_repairer=None here, same as the rest of
+        # this Gate Runner) already ran jsonschema.validate internally and
+        # raises rather than returning an invalid candidate -- see
+        # application/llm.py::_validate_or_repair. OUTPUT_SCHEMA_INVALID is
+        # therefore the only code that means "the seed itself was invalid".
+        return RepairItemResult(
+            item_id=item_id,
+            passed=False,
+            initial_schema_pass=error.code is not LLMErrorCode.OUTPUT_SCHEMA_INVALID,
+            detail=f"seed invoke raised: {error!r}",
+        )
+    except Exception as error:  # noqa: BLE001 - report every failure mode, never crash the run
+        return RepairItemResult(
+            item_id=item_id, passed=False, detail=f"seed invoke raised: {error!r}"
+        )
+    seed = seed_result.structured_output
+    if not isinstance(seed, dict):
+        return RepairItemResult(
+            item_id=item_id, passed=False, detail="seed candidate is not an object"
+        )
+
+    mutated, changed_fields = mutation.apply(seed)
+    failure_record = {
+        "schema_version": 1,
+        "failure_id": f"{item_id}-failure",
+        "failure_reason_code": mutation.category,
+        "failure_origin": "EXPERIMENT",
+        "detected_by": "EXPERIMENT_DETERMINISTIC_GRADER",
+        "runtime_disposition": "RETRYABLE",
+        "experiment_disposition": "RUN_REPAIR",
+        "affected_field_paths": changed_fields,
+        "evidence_refs": [],
+    }
+    repair_input = {
+        "schema_version": 1,
+        "original_input": seed_item.prompt_input,
+        "previous_output": mutated,
+        "failure_record": failure_record,
+        "validator_errors": [
+            f"{path} violates the declared output schema" for path in changed_fields
+        ],
+        "changed_fields_allowed": changed_fields,
+        "attempt_no": 1,
+        "max_attempts": 1,
+    }
+
+    try:
+        repair_result = service._invoke_provider(  # noqa: SLF001
+            provider=provider,
+            prompt_ref=repair_prompt_ref,
+            prompt_input=repair_input,
+            output_schema=EVIDENCE_SELECTION_OUTPUT_SCHEMA,
+            requested_mode=RequestedRuntimeMode.LOCAL_GPU,
+            trace_context=ObservabilityContext(
+                request_id=f"gate-{run_id}",
+                command_id=None,
+                conversation_id="gate-runner",
+                run_id=run_id,
+                langgraph_thread_id="gate-runner",
+                llm_call_id=f"{run_id}:repair",
+            ),
+            fallback_reason=None,
+        )
+    except Exception as error:  # noqa: BLE001 - report every failure mode, never crash the run
+        # repair_schema_pass stays at its default (False): whether the
+        # failure was OUTPUT_SCHEMA_INVALID (repair still schema-invalid)
+        # or something else (timeout, provider error), neither counts as a
+        # confirmed schema pass.
+        return RepairItemResult(
+            item_id=item_id,
+            passed=False,
+            repair_attempt_count=1,
+            detail=f"repair invoke raised: {error!r}",
+        )
+    repaired = repair_result.structured_output
+    semantic_pass = isinstance(repaired, dict) and repaired == seed
+    passed = semantic_pass
+    detail = (
+        "repair schema-valid and semantics preserved"
+        if passed
+        else f"repair schema-valid but changed something outside {changed_fields}"
+    )
+    return RepairItemResult(
+        item_id=item_id,
+        passed=passed,
+        repair_attempt_count=1,
+        repair_schema_pass=True,
+        semantic_pass=semantic_pass,
+        detail=detail,
+    )
+
+
+def run_schema_repair_lane(
+    provider: StructuredLLMProvider,
+    service: LLMRuntimeService,
+    *,
+    run_index: int,
+) -> SlotReport:
+    origin_prompt_ref = load_prompt_reference_for_evaluation(
+        CONTEXT_REPAIR_ORIGIN_NODE_ID, MANIFEST_PATH
+    )
+    repair_prompt_ref = load_prompt_reference_for_evaluation(
+        CONTEXT_REPAIR_TARGET_NODE_ID, MANIFEST_PATH
+    )
+    dev_seeds = [_load_seed_item(item_id) for item_id in CONTEXT_REPAIR_DEV_SEED_ITEM_IDS]
+    holdout_seeds = [_load_seed_item(item_id) for item_id in CONTEXT_REPAIR_HOLDOUT_SEED_ITEM_IDS]
+
+    group_results: dict[str, tuple[list[ItemResult], list[ItemResult]]] = {}
+    for mutation in SCHEMA_MUTATIONS:
+        dev_results: list[ItemResult] = [
+            _run_repair_case(
+                provider,
+                service,
+                origin_prompt_ref,
+                repair_prompt_ref,
+                seed_item=seed,
+                mutation=mutation,
+                run_id=f"gate-{run_index}-repair-dev-{i}-{mutation.category}",
+            )
+            for i, seed in enumerate(dev_seeds)
+        ]
+        holdout_results: list[ItemResult] = [
+            _run_repair_case(
+                provider,
+                service,
+                origin_prompt_ref,
+                repair_prompt_ref,
+                seed_item=seed,
+                mutation=mutation,
+                run_id=f"gate-{run_index}-repair-holdout-{i}-{mutation.category}",
+            )
+            for i, seed in enumerate(holdout_seeds)
+        ]
+        group_results[mutation.category] = (dev_results, holdout_results)
+        for item in dev_results:
+            status = "PASS" if item.passed else "FAIL"
+            print(f"  [DEV/{mutation.category}] {item.item_id}: {status} -- {item.detail}")
+        for item in holdout_results:
+            status = "PASS" if item.passed else "FAIL"
+            print(f"  [HOLDOUT/{mutation.category}] {item.item_id}: {status} -- {item.detail}")
+
+    insufficient: list[str] = []
+    for category, (dev_results, holdout_results) in group_results.items():
+        if (
+            len(dev_results) < MIN_DEV_ITEMS_PER_GROUP
+            or len(holdout_results) < MIN_HOLDOUT_ITEMS_PER_GROUP
+        ):
+            insufficient.append(
+                f"{category} (dev={len(dev_results)}, holdout={len(holdout_results)}, "
+                f"need dev>={MIN_DEV_ITEMS_PER_GROUP} holdout>={MIN_HOLDOUT_ITEMS_PER_GROUP})"
+            )
+
+    return SlotReport(
+        target_node_id=CONTEXT_REPAIR_TARGET_NODE_ID,
+        group_results=group_results,
+        safety_results=[],
+        insufficient_coverage=insufficient,
+        prompt_ref=repair_prompt_ref,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Gate Result Artifact (evaluation fact -- never writes the canonical
+# manifest). Runtime activation is a separate, explicit step; see
+# _activate_slot below and the module docstring.
 # ---------------------------------------------------------------------------
 
 
-def _promote_manifest(manifest_path: Path, passing_slot_ids: set[str]) -> None:
+def _new_gate_run_id(provider: str, model_id: str) -> str:
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    safe_model = model_id.replace(":", "-").replace("/", "-")
+    return f"{stamp}-{provider}-{safe_model}-{uuid.uuid4().hex[:8]}"
+
+
+def _item_result_detail(item: ItemResult) -> dict[str, Any]:
+    detail: dict[str, Any] = {"item_id": item.item_id, "passed": item.passed, "detail": item.detail}
+    if isinstance(item, RepairItemResult):
+        detail["initial_schema_pass"] = item.initial_schema_pass
+        detail["repair_schema_pass"] = item.repair_schema_pass
+        detail["semantic_pass"] = item.semantic_pass
+        detail["repair_attempt_count"] = item.repair_attempt_count
+    return detail
+
+
+def _build_gate_result_record(
+    report: SlotReport,
+    *,
+    gate_run_id: str,
+    provider: str,
+    model_id: str,
+    evaluated_at: str,
+) -> dict[str, Any]:
+    is_repair_lane = report.target_node_id == CONTEXT_REPAIR_TARGET_NODE_ID
+    if is_repair_lane:
+        schema_version = f"{EVIDENCE_SELECTION_OUTPUT_SCHEMA.schema_version} (via context.repair)"
+    else:
+        output_schema, _validator = NODE_SCHEMAS[report.target_node_id]
+        schema_version = output_schema.schema_version
+    dev_passed, dev_total = report.dev_counts
+    holdout_passed, holdout_total = report.holdout_counts
+    safety_passed, safety_total = report.safety_counts
+    prompt_ref = report.prompt_ref
+    item_results = [
+        _item_result_detail(item)
+        for dev_results, holdout_results in report.group_results.values()
+        for item in (*dev_results, *holdout_results)
+    ] + [_item_result_detail(item) for item in report.safety_results]
+    return {
+        "gate_run_id": gate_run_id,
+        "slot_id": report.target_node_id,
+        "provider": provider,
+        "model_id": model_id,
+        "prompt_bundle_version": prompt_ref.prompt_bundle_version,
+        "prompt_content_hash": prompt_ref.content_hash,
+        "dataset_version": DATASET_VERSION,
+        "schema_version": schema_version,
+        "evaluation_lane": "SCHEMA_REPAIR" if is_repair_lane else "INITIAL",
+        "retry_kind": "SCHEMA_REPAIR" if is_repair_lane else "NONE",
+        "dev_result": {"passed": dev_passed, "total": dev_total},
+        "holdout_result": {"passed": holdout_passed, "total": holdout_total},
+        "safety_result": {"passed": safety_passed, "total": safety_total},
+        "insufficient_coverage": list(report.insufficient_coverage),
+        "item_results": item_results,
+        "passed": report.fully_passed,
+        "evaluated_at": evaluated_at,
+    }
+
+
+def _write_gate_results(gate_run_id: str, records: list[dict[str, Any]]) -> Path:
+    """Write one ledger file per Gate run. Never overwrites a prior run --
+    gate_run_id (timestamp + uuid suffix) is unique per invocation, so
+    repeated Gate runs accumulate distinct files rather than clobbering
+    each other's history."""
+    GATE_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    path = GATE_RESULTS_DIR / f"{gate_run_id}.json"
+    if path.exists():  # pragma: no cover - gate_run_id already guards this
+        raise FileExistsError(f"gate result ledger already exists: {path}")
+    payload = {"gate_run_id": gate_run_id, "results": records}
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    return path
+
+
+# ---------------------------------------------------------------------------
+# Explicit Runtime Activation -- the ONLY code path in this script allowed
+# to write prompt-manifest-v0.8.3.json. A passing Gate run never calls this
+# by itself; a human (or a separate, deliberately-invoked CI step) must run
+# this script again with --activate to promote a slot, after reviewing the
+# gate-result ledger that run produced.
+# ---------------------------------------------------------------------------
+
+
+def _activate_slot(manifest_path: Path, gate_result_path: Path, slot_ids: set[str]) -> None:
+    ledger = json.loads(gate_result_path.read_text(encoding="utf-8"))
+    records_by_slot = {record["slot_id"]: record for record in ledger.get("results", [])}
+    missing = slot_ids - set(records_by_slot)
+    if missing:
+        raise SystemExit(f"gate result ledger has no record for slot(s): {sorted(missing)}")
+    not_passed = {slot_id for slot_id in slot_ids if not records_by_slot[slot_id]["passed"]}
+    if not_passed:
+        raise SystemExit(
+            f"refusing to activate slot(s) that did not pass in {gate_result_path}: "
+            f"{sorted(not_passed)}"
+        )
+
     with manifest_path.open(encoding="utf-8") as handle:
         data = json.load(handle)
     slots = data.get("slots")
     if not isinstance(slots, list):
         raise ValueError("canonical manifest must contain a slots list")
-    promoted: list[str] = []
+    activated: list[str] = []
     for slot in slots:
-        if not isinstance(slot, dict):
+        if not isinstance(slot, dict) or slot.get("slot_id") not in slot_ids:
             continue
-        if slot.get("slot_id") in passing_slot_ids:
-            slot["activation_status"] = "RUNTIME_ACTIVE"
-            promoted.append(str(slot.get("slot_id")))
+        record = records_by_slot[slot["slot_id"]]
+        slot["activation_status"] = "RUNTIME_ACTIVE"
+        slot["activated_from_gate_result"] = {
+            "gate_run_id": record["gate_run_id"],
+            "provider": record["provider"],
+            "model_id": record["model_id"],
+            "activated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        activated.append(str(slot["slot_id"]))
     with manifest_path.open("w", encoding="utf-8") as handle:
         json.dump(data, handle, indent=2, ensure_ascii=False)
         handle.write("\n")
-    print(f"Promoted {len(promoted)} slot(s) to RUNTIME_ACTIVE in {manifest_path}: {promoted}")
+    print(f"Activated {len(activated)} slot(s) to RUNTIME_ACTIVE in {manifest_path}: {activated}")
 
 
 def main() -> int:
@@ -607,9 +1102,26 @@ def main() -> int:
         help="Real StructuredLLMProvider to dispatch the gate against (default: ollama).",
     )
     parser.add_argument(
+        "--model",
+        default=None,
+        metavar="MODEL_ID",
+        help=(
+            "Override the local Ollama model_id (default: "
+            f"{DEFAULT_OLLAMA_MODEL_ID!r}). The only variable this changes -- "
+            "Dataset, prompt bundle, JSON Schema, validators, Gate threshold, "
+            "and Safety rules stay fixed, so runs with different --model "
+            "values are directly comparable. Ignored for --provider gemini."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Run every stage and print the report but do not write the canonical manifest.",
+        help=(
+            "Run every stage and print the report but do not write a gate-result "
+            "ledger file either. A normal (non-dry-run) Gate execution ALWAYS "
+            "writes the ledger and NEVER writes the canonical manifest -- see "
+            "--activate."
+        ),
     )
     parser.add_argument(
         "--limit",
@@ -623,7 +1135,32 @@ def main() -> int:
         default=None,
         help="Restrict the run to this target_node_id (repeatable). Omit for all nodes.",
     )
+    parser.add_argument(
+        "--activate",
+        action="append",
+        default=None,
+        metavar="SLOT_ID",
+        help=(
+            "Skip Gate execution entirely and instead promote this slot_id "
+            "(repeatable) to RUNTIME_ACTIVE in the canonical manifest, using a "
+            "PASSED record from --from-gate-result. This is the only way this "
+            "script ever writes prompt-manifest-v0.8.3.json."
+        ),
+    )
+    parser.add_argument(
+        "--from-gate-result",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Gate-result ledger file to read PASSED records from, for --activate.",
+    )
     args = parser.parse_args()
+
+    if args.activate:
+        if args.from_gate_result is None:
+            raise SystemExit("--activate requires --from-gate-result <ledger path>")
+        _activate_slot(MANIFEST_PATH, args.from_gate_result, set(args.activate))
+        return 0
 
     dev_items = _load_items(NODE_CAPABILITY_DEV)
     holdout_items = _load_items(NODE_CAPABILITY_HOLDOUT)
@@ -634,8 +1171,13 @@ def main() -> int:
     for (node_id, category), items in _group_by_node_and_category(holdout_items).items():
         holdout_by_node[node_id][category] = items
 
-    provider, service = _build_gate_provider(args.provider)
-    target_nodes = sorted(args.only) if args.only else sorted(NODE_SCHEMAS)
+    ollama_model_id = args.model or DEFAULT_OLLAMA_MODEL_ID
+    provider, service = _build_gate_provider(args.provider, ollama_model_id=ollama_model_id)
+    run_repair_lane = args.only is None or CONTEXT_REPAIR_TARGET_NODE_ID in args.only
+    if args.only:
+        target_nodes = sorted(set(args.only) - {CONTEXT_REPAIR_TARGET_NODE_ID})
+    else:
+        target_nodes = sorted(NODE_SCHEMAS)
     print(f"Provider: {args.provider}")
     reports: list[SlotReport] = []
     for index, target_node_id in enumerate(target_nodes):
@@ -666,6 +1208,17 @@ def main() -> int:
             print(f"  [SAFETY] {item.item_id}: {status} -- {item.detail}")
         print(f"  => {target_node_id}: {'PASS' if report.fully_passed else 'FAIL'}")
 
+    if run_repair_lane:
+        print(f"\n=== {CONTEXT_REPAIR_TARGET_NODE_ID} (SCHEMA_REPAIR lane) ===")
+        repair_report = run_schema_repair_lane(provider, service, run_index=len(target_nodes))
+        reports.append(repair_report)
+        if repair_report.insufficient_coverage:
+            print(f"  Insufficient dataset coverage: {repair_report.insufficient_coverage}")
+        print(
+            f"  => {CONTEXT_REPAIR_TARGET_NODE_ID}: "
+            f"{'PASS' if repair_report.fully_passed else 'FAIL'}"
+        )
+
     passing = {report.target_node_id for report in reports if report.fully_passed}
     failing = {report.target_node_id for report in reports if not report.fully_passed}
 
@@ -679,14 +1232,33 @@ def main() -> int:
     )
 
     if args.dry_run:
-        print("\n--dry-run set: canonical manifest NOT modified.")
+        print("\n--dry-run set: no gate-result ledger written, canonical manifest NOT modified.")
         return 0 if not failing else 1
 
+    model_id = ollama_model_id if args.provider == "ollama" else DEFAULT_GEMINI_MODEL_ID
+    gate_run_id = _new_gate_run_id(args.provider, model_id)
+    evaluated_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    records = [
+        _build_gate_result_record(
+            report,
+            gate_run_id=gate_run_id,
+            provider=args.provider,
+            model_id=model_id,
+            evaluated_at=evaluated_at,
+        )
+        for report in reports
+    ]
+    ledger_path = _write_gate_results(gate_run_id, records)
+    print(f"\nGate result ledger written: {ledger_path}")
+    print("Canonical manifest NOT modified by this run (activation is a separate, explicit step).")
     if passing:
-        _promote_manifest(MANIFEST_PATH, passing)
+        print(
+            f"To activate a passing slot, rerun with: --activate <slot_id> "
+            f"--from-gate-result {ledger_path}"
+        )
     if failing:
-        print(f"\nNOT promoted (failed real DEV/HOLDOUT/Safety): {sorted(failing)}")
-        print("These remain DRAFT.")
+        print(f"\nDid not pass (real DEV/HOLDOUT/Safety): {sorted(failing)}")
+        print("These remain at their current activation_status.")
         return 1
     return 0
 

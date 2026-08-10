@@ -377,9 +377,9 @@ def test_multi_source_request_acquires_each_planned_source() -> None:
     runtime.queued.append(
         _llm_result(
             [
-                _plan("GMAIL", {"query": "김대리"}, priority=0),
-                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=1),
-                _plan("TASKS", {"task_list_id": "task-list-default"}, priority=2),
+                _plan("GMAIL", {"query": "김대리"}, priority=1),
+                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=2),
+                _plan("TASKS", {"task_list_id": "task-list-default"}, priority=3),
             ]
         )
     )
@@ -535,8 +535,8 @@ def test_partial_acquisition_when_one_source_succeeds_and_one_fails() -> None:
     runtime.queued.append(
         _llm_result(
             [
-                _plan("GMAIL", {"query": "김대리"}, priority=0),
-                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=1),
+                _plan("GMAIL", {"query": "김대리"}, priority=1),
+                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=2),
             ]
         )
     )
@@ -589,11 +589,11 @@ def test_optional_source_failure_with_required_success_returns_partial() -> None
     runtime.queued.append(
         _llm_result(
             [
-                _plan("GMAIL", {"query": "김대리"}, priority=0),
+                _plan("GMAIL", {"query": "김대리"}, priority=1),
                 _plan(
                     "CALENDAR",
                     {"calendar_id": "calendar-primary"},
-                    priority=1,
+                    priority=2,
                     required=False,
                 ),
             ]
@@ -615,11 +615,11 @@ def test_required_source_failure_with_optional_success_returns_partial() -> None
     runtime.queued.append(
         _llm_result(
             [
-                _plan("GMAIL", {"query": "김대리"}, priority=0),
+                _plan("GMAIL", {"query": "김대리"}, priority=1),
                 _plan(
                     "CALENDAR",
                     {"calendar_id": "calendar-primary"},
-                    priority=1,
+                    priority=2,
                     required=False,
                 ),
             ]
@@ -655,8 +655,8 @@ def test_required_auth_overrides_usable_partial_data() -> None:
     runtime.queued.append(
         _llm_result(
             [
-                _plan("GMAIL", {"query": "김대리"}, priority=0),
-                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=1),
+                _plan("GMAIL", {"query": "김대리"}, priority=1),
+                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=2),
             ]
         )
     )
@@ -690,8 +690,8 @@ def test_usable_data_with_rate_limit_returns_partial() -> None:
     runtime.queued.append(
         _llm_result(
             [
-                _plan("GMAIL", {"query": "김대리"}, priority=0),
-                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=1),
+                _plan("GMAIL", {"query": "김대리"}, priority=1),
+                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=2),
             ]
         )
     )
@@ -728,8 +728,8 @@ def test_usable_data_with_budget_exhaustion_returns_partial() -> None:
     runtime.queued.append(
         _llm_result(
             [
-                _plan("GMAIL", {"query": "김대리"}, priority=0),
-                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=1, page_size=99),
+                _plan("GMAIL", {"query": "김대리"}, priority=1),
+                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=2, page_size=99),
             ]
         )
     )
@@ -752,9 +752,9 @@ def test_no_usable_data_with_mixed_failures_returns_auth_required_first() -> Non
     runtime.queued.append(
         _llm_result(
             [
-                _plan("GMAIL", {"query": "김대리"}, priority=0),
-                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=1),
-                _plan("TASKS", {"task_list_id": "task-list-default"}, priority=2),
+                _plan("GMAIL", {"query": "김대리"}, priority=1),
+                _plan("CALENDAR", {"calendar_id": "calendar-primary"}, priority=2),
+                _plan("TASKS", {"task_list_id": "task-list-default"}, priority=3),
             ]
         )
     )
@@ -1013,7 +1013,7 @@ def _plan(
     source: SourceName,
     constraints: dict[str, object],
     *,
-    priority: int = 0,
+    priority: int = 1,
     reason_codes: list[str] | None = None,
     page_size: int = 10,
     required: bool = True,
