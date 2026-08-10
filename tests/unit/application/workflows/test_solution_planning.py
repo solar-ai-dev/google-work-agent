@@ -641,25 +641,25 @@ def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
     revise_plan_prompt = load_solution_planning_revise_plan_prompt_reference(manifest_path)
 
     assert answer_prompt.prompt_id == "planning.answer_only"
-    assert answer_prompt.prompt_version == "0.8.2"
+    assert answer_prompt.prompt_version == "0.8.3"
     assert answer_prompt.content_hash
     assert answer_prompt.node_state == "INITIAL"
     assert answer_prompt.output_schema_version == "v2"
 
     assert plan_prompt.prompt_id == "planning.draft_plan"
-    assert plan_prompt.prompt_version == "0.8.2"
+    assert plan_prompt.prompt_version == "0.8.3"
     assert plan_prompt.content_hash
     assert plan_prompt.node_state == "INITIAL"
     assert plan_prompt.output_schema_version == "v2"
 
     assert revise_prompt.prompt_id == "planning.revise_plan"
-    assert revise_prompt.prompt_version == "0.8.2"
+    assert revise_prompt.prompt_version == "0.8.3"
     assert revise_prompt.content_hash
     assert revise_prompt.node_state == "SEMANTIC_REVISION"
     assert revise_prompt.output_schema_version == "v2"
 
     assert revise_plan_prompt.prompt_id == "planning.revise_plan"
-    assert revise_plan_prompt.prompt_version == "0.8.2"
+    assert revise_plan_prompt.prompt_version == "0.8.3"
     assert revise_plan_prompt.content_hash
     assert revise_plan_prompt.node_state == "SEMANTIC_REVISION"
     assert revise_plan_prompt.output_schema_version == "v2"

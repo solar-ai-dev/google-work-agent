@@ -346,7 +346,7 @@ def test_analyze_prompt_ref_is_runtime_active(tmp_path: Path) -> None:
     prompt_ref = load_work_analysis_analyze_prompt_reference(manifest_path)
 
     assert prompt_ref.prompt_id == "analysis.analyze"
-    assert prompt_ref.prompt_version == "0.8.2"
+    assert prompt_ref.prompt_version == "0.8.3"
     assert prompt_ref.content_hash
     assert prompt_ref.node_state == "INITIAL"
 

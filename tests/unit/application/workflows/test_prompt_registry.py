@@ -13,6 +13,7 @@ from google_work_agent.application.workflows.contracts import PROMPT_SELECTION_K
 from google_work_agent.application.workflows.prompt_registry import (
     InactivePromptArtifactError,
     default_prompt_manifest_path,
+    discover_canonical_prompt_manifest_path,
     load_prompt_reference,
 )
 
@@ -26,7 +27,33 @@ def test_default_prompt_manifest_path_uses_canonical_r83_bundle(
     )
 
     assert default_prompt_manifest_path() == canonical_prompt_manifest_path()
-    assert default_prompt_manifest_path().name == "prompt-manifest-v0.8.2.json"
+    assert default_prompt_manifest_path().name == "prompt-manifest-v0.8.3.json"
+
+
+def test_discover_canonical_prompt_manifest_path_picks_highest_semver(tmp_path: Path) -> None:
+    (tmp_path / "prompt-manifest-v0.8.2.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "prompt-manifest-v0.8.3.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "prompt-manifest-v0.8.10.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "README.md").write_text("not a manifest", encoding="utf-8")
+    (tmp_path / "profile-semantic-responsibility-map-v1.json").write_text("{}", encoding="utf-8")
+
+    selected = discover_canonical_prompt_manifest_path(tmp_path)
+
+    assert selected.name == "prompt-manifest-v0.8.10.json"
+
+
+def test_discover_canonical_prompt_manifest_path_requires_a_directory(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="not available"):
+        discover_canonical_prompt_manifest_path(tmp_path / "does-not-exist")
+
+
+def test_discover_canonical_prompt_manifest_path_requires_a_versioned_manifest(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "README.md").write_text("not a manifest", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError, match="no prompt-manifest"):
+        discover_canonical_prompt_manifest_path(tmp_path)
 
 
 def test_load_prompt_reference_succeeds_for_runtime_active_slot(tmp_path: Path) -> None:

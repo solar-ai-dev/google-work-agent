@@ -749,6 +749,118 @@ def test_calendar_delete_event_dispatches_with_valid_claim(monkeypatch) -> None:
     assert calls == ["DELETE"]
 
 
+def test_tasks_delete_task_dispatches_with_valid_claim(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls: list[str] = []
+
+    def google_api_call(
+        _state: server._WorkspaceState,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, str] | None = None,
+        body: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        calls.append(method)
+        assert body is None
+        return {}
+
+    monkeypatch.setattr(server, "_google_api_call", google_api_call)
+    state = _state()
+    claim = _build_claim(
+        state=state,
+        tool_name="tasks_delete_task",
+        execution_arguments={"task_list_id": "task-list-default", "task_id": "task-1"},
+    )
+
+    result = server._tool_call(
+        state,
+        tool_name="tasks_delete_task",
+        arguments={
+            "task_list_id": "task-list-default",
+            "task_id": "task-1",
+            "claim_context": claim,
+        },
+    )
+
+    item = cast(dict[str, object], result["item"])
+    assert item["resource_id"] == "task-1"
+    assert item["payload"] == {"status": "deleted"}
+    assert calls == ["DELETE"]
+
+
+def test_tasks_delete_task_nonce_reuse_dispatches_at_most_once(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls: list[str] = []
+
+    def google_api_call(
+        _state: server._WorkspaceState,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, str] | None = None,
+        body: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        calls.append(method)
+        return {}
+
+    monkeypatch.setattr(server, "_google_api_call", google_api_call)
+    state = _state()
+    claim = _build_claim(
+        state=state,
+        tool_name="tasks_delete_task",
+        execution_arguments={"task_list_id": "task-list-default", "task_id": "task-1"},
+    )
+
+    first = server._tool_call(
+        state,
+        tool_name="tasks_delete_task",
+        arguments={
+            "task_list_id": "task-list-default",
+            "task_id": "task-1",
+            "claim_context": claim,
+        },
+    )
+    assert cast(dict[str, object], first["item"])["resource_id"] == "task-1"
+    assert len(calls) == 1
+
+    with pytest.raises(server._WorkspaceToolError) as exc_info:
+        server._tool_call(
+            state,
+            tool_name="tasks_delete_task",
+            arguments={
+                "task_list_id": "task-list-default",
+                "task_id": "task-1",
+                "claim_context": claim,
+            },
+        )
+
+    assert exc_info.value.safe_code == "CLAIM_TOKEN_REUSED"
+    assert len(calls) == 1
+
+
+def test_tasks_delete_task_claim_rejection_dispatches_zero_calls(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
+    state = _state()
+    claim = _build_claim(
+        state=state,
+        tool_name="tasks_update_task",  # wrong tool binding on purpose
+        execution_arguments={"task_list_id": "task-list-default", "task_id": "task-1"},
+    )
+
+    with pytest.raises(server._WorkspaceToolError) as exc_info:
+        server._tool_call(
+            state,
+            tool_name="tasks_delete_task",
+            arguments={
+                "task_list_id": "task-list-default",
+                "task_id": "task-1",
+                "claim_context": claim,
+            },
+        )
+
+    assert exc_info.value.safe_code == "CLAIM_TOOL_MISMATCH"
+    assert exc_info.value.dispatch_started is False
+
+
 def test_calendar_create_event_claim_rejection_dispatches_zero_calls(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
     state = _state()

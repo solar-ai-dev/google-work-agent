@@ -1131,6 +1131,257 @@ def test_calendar_delete_preflight_rejects_target_version_change(
     assert fixture_gateway.count_calls("delete_calendar_event") == 0
 
 
+def test_task_delete_uses_preflight_claim_get_absent_and_verification(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _insert_task_delete_reference(write_database)
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="task-delete",
+        tool_name="tasks_delete_task",
+        arguments={"task_list_id": "task-list-default", "task_id": "task-followup"},
+        expected={"resource_type": "task", "resource_id": "task-followup", "absent": True},
+        target_resource_ref_id="resource-task-followup",
+    )
+    approved = _approve_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="task-delete",
+    )
+    PreflightWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+    )(action_id="action-task-delete")
+    claimed = _claim_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="task-delete",
+        expected_version=approved.action_version,
+    )
+    executed = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )(action_id="action-task-delete", claim_token=claimed.claim_token or "")
+    stored = StoreWriteActionSuccessService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        StoreWriteActionSuccessCommand(
+            command_id="store-task-delete",
+            request_hash="d3" * 32,
+            action_id="action-task-delete",
+            attempt_id="attempt-task-delete",
+            expected_action_version=claimed.action_version,
+            expected_attempt_version=0,
+            snapshot=executed.snapshot,
+        )
+    )
+    verified = VerifyWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )(
+        VerifyWriteActionCommand(
+            command_id="verify-task-delete",
+            request_hash="d4" * 32,
+            action_id="action-task-delete",
+            attempt_id="attempt-task-delete",
+            expected_action_version=stored.action_version,
+            verification_id="verification-task-delete",
+        )
+    )
+
+    assert verified.action_status == "VERIFIED"
+    assert fixture_gateway.count_calls("delete_task") == 1
+    assert fixture_gateway.count_calls("get_task") == 1
+
+
+def test_task_delete_preflight_rejects_ambiguous_target_without_persisted_reference(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="task-delete-ambiguous",
+        tool_name="tasks_delete_task",
+        arguments={"task_list_id": "task-list-default", "task_id": "task-followup"},
+        expected={"resource_type": "task", "resource_id": "task-followup", "absent": True},
+        target_resource_ref_id=None,
+        evidence_count=2,
+    )
+    _approve_effect_action(
+        write_database=write_database, clock=clock, suffix="task-delete-ambiguous"
+    )
+
+    with pytest.raises(PolicyViolationError, match="persisted target reference"):
+        PreflightWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=fixture_gateway,
+        )(action_id="action-task-delete-ambiguous")
+
+    assert fixture_gateway.count_calls("delete_task") == 0
+
+
+def test_task_delete_preflight_rejects_target_version_change(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _insert_task_delete_reference(write_database, version="99")
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="task-delete-stale",
+        tool_name="tasks_delete_task",
+        arguments={"task_list_id": "task-list-default", "task_id": "task-followup"},
+        expected={"resource_type": "task", "resource_id": "task-followup", "absent": True},
+        target_resource_ref_id="resource-task-followup",
+    )
+    _approve_effect_action(write_database=write_database, clock=clock, suffix="task-delete-stale")
+
+    with pytest.raises(PolicyViolationError, match="target version mismatch"):
+        PreflightWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=fixture_gateway,
+        )(action_id="action-task-delete-stale")
+
+    assert fixture_gateway.count_calls("delete_task") == 0
+
+
+def test_unknown_task_delete_recovers_from_target_absence_without_redelete(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _insert_task_delete_reference(write_database)
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-task-delete",
+        tool_name="tasks_delete_task",
+        arguments={"task_list_id": "task-list-default", "task_id": "task-followup"},
+        expected={"resource_type": "task", "resource_id": "task-followup", "absent": True},
+        target_resource_ref_id="resource-task-followup",
+    )
+    approved = _approve_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-task-delete",
+    )
+    claimed = _claim_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-task-delete",
+        expected_version=approved.action_version,
+    )
+    fixture_gateway.queue_fault(
+        operation="delete_task",
+        fault=GoogleGatewayFault(GoogleGatewayFaultKind.TIMEOUT_AFTER_DELIVERY),
+    )
+    execute_service = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )
+
+    with pytest.raises(GoogleWorkspaceGatewayError) as error_info:
+        execute_service(
+            action_id="action-recover-task-delete",
+            claim_token=claimed.claim_token or "",
+        )
+    _mark_effect_unknown(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-task-delete",
+        error=error_info.value,
+    )
+
+    recovered = RecoverUnknownDeleteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )(
+        RecoverUnknownDeleteActionCommand(
+            command_id="recover-task-delete-1",
+            request_hash="f2" * 32,
+            action_id="action-recover-task-delete",
+            attempt_id="attempt-recover-task-delete",
+            expected_action_version=3,
+            expected_attempt_version=1,
+        )
+    )
+
+    assert recovered.action_status == "EXECUTED"
+    assert fixture_gateway.count_calls("delete_task") == 1
+
+
+def test_unknown_task_delete_with_present_target_requires_reapproval_not_redelete(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _insert_task_delete_reference(write_database)
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-task-delete-present",
+        tool_name="tasks_delete_task",
+        arguments={"task_list_id": "task-list-default", "task_id": "task-followup"},
+        expected={"resource_type": "task", "resource_id": "task-followup", "absent": True},
+        target_resource_ref_id="resource-task-followup",
+    )
+    approved = _approve_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-task-delete-present",
+    )
+    _claim_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-task-delete-present",
+        expected_version=approved.action_version,
+    )
+    _mark_effect_unknown(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-task-delete-present",
+        error=GoogleWorkspaceGatewayError(
+            code=GoogleWorkspaceErrorCode.TIMEOUT,
+            message="delivery uncertain",
+            delivered=True,
+            mutated=False,
+        ),
+    )
+
+    recovered = RecoverUnknownDeleteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )(
+        RecoverUnknownDeleteActionCommand(
+            command_id="recover-task-delete-present-1",
+            request_hash="f3" * 32,
+            action_id="action-recover-task-delete-present",
+            attempt_id="attempt-recover-task-delete-present",
+            expected_action_version=3,
+            expected_attempt_version=1,
+        )
+    )
+
+    assert recovered.result_code == ResultCode.RECOVERY_REQUIRED.value
+    assert fixture_gateway.count_calls("delete_task") == 0
+
+
 def test_unknown_gmail_send_recovers_by_fingerprint_without_resending(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
@@ -2244,6 +2495,7 @@ def _prepare_effect_write_plan(
     arguments: dict[str, object],
     expected: dict[str, object],
     target_resource_ref_id: str | None = None,
+    evidence_count: int = 1,
 ) -> None:
     save_service = SaveWritePlanService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
@@ -2253,6 +2505,7 @@ def _prepare_effect_write_plan(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )
+    evidence_ids = tuple(f"evidence-{suffix}-{index}" for index in range(evidence_count))
     saved = save_service(
         SaveWritePlanCommand(
             command_id=f"save-{suffix}",
@@ -2269,17 +2522,18 @@ def _prepare_effect_write_plan(
                     tool_name=tool_name,
                     arguments=arguments,
                     expected=expected,
-                    evidence_ids=(f"evidence-{suffix}",),
+                    evidence_ids=evidence_ids,
                     target_resource_ref_id=target_resource_ref_id,
                 ),
             ),
-            evidence=(
+            evidence=tuple(
                 WriteEvidenceDraft(
-                    evidence_id=f"evidence-{suffix}",
+                    evidence_id=evidence_id,
                     origin_type=EvidenceOriginType.DERIVED,
                     kind="USER_REQUEST",
                     excerpt=f"prepare {tool_name} effect",
-                ),
+                )
+                for evidence_id in evidence_ids
             ),
         )
     )
@@ -2384,6 +2638,30 @@ def _insert_calendar_event_reference(write_database: Path, *, version: str = "7"
                 '{"end":"2026-11-01T09:00:00-07:00","event_kind":"focusTime",'
                 '"start":"2026-11-01T08:00:00-07:00","status":"confirmed",'
                 '"title":"Focus block","transparency":"busy"}',
+            ),
+        )
+    finally:
+        connection.close()
+
+
+def _insert_task_delete_reference(write_database: Path, *, version: str = "4") -> None:
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute(
+            """
+            INSERT INTO resource_refs (
+                id, run_id, source, resource_type, resource_id, parent_resource_id,
+                canonical_url, title, event_time_ms, version_token, metadata_json, captured_at_ms
+            ) VALUES (
+                'resource-task-followup', 'run-1', 'TASKS', 'TASK',
+                'task-followup', 'task-list-default', NULL, 'Reply to project sync',
+                NULL, ?, ?, 1000
+            );
+            """,
+            (
+                version,
+                '{"due":"2026-08-07","notes":"Reference the Thursday summary.",'
+                '"status":"needsAction","title":"Reply to project sync"}',
             ),
         )
     finally:

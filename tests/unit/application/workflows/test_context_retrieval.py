@@ -376,7 +376,7 @@ def test_assess_sufficiency_prompt_ref_is_runtime_active(tmp_path: Path) -> None
     prompt_ref = load_context_assess_sufficiency_prompt_reference(manifest_path)
 
     assert prompt_ref.prompt_id == "context.assess_sufficiency"
-    assert prompt_ref.prompt_version == "0.8.2"
+    assert prompt_ref.prompt_version == "0.8.3"
     assert prompt_ref.node_state == "INITIAL"
     assert prompt_ref.content_hash
 

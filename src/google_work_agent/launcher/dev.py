@@ -79,7 +79,10 @@ from google_work_agent.application.start_run import (
     ResumeRunService,
     StartRunService,
 )
-from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
+from google_work_agent.application.workflows.prompt_registry import (
+    InactivePromptArtifactError,
+    default_prompt_manifest_path,
+)
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
     PrepareWriteRetryService,
@@ -578,7 +581,7 @@ def build_container(
     database_path = root / "google-work-agent.sqlite3"
     checkpoint_database_path = root / "langgraph-checkpoints.sqlite3"
     mcp_manifest_path = _write_mcp_manifest(root)
-    prompt_manifest_path = PROJECT_ROOT / "prompts" / "agent" / "prompt-manifest-v0.8.2.json"
+    prompt_manifest_path = default_prompt_manifest_path()
     clock = SystemClock()
     id_generator = UUIDIdGenerator()
     service_instance_id = service_instance_id or f"dev-{uuid.uuid4()}"

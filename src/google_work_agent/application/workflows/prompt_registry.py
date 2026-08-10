@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -12,13 +13,56 @@ DEFAULT_INPUT_SCHEMA_VERSION = "agent-node-input-v0.1"
 DEFAULT_OUTPUT_SCHEMA_VERSION = "agent-node-output-v0.1"
 RUNTIME_ACTIVE_STATUS = "RUNTIME_ACTIVE"
 
+_MANIFEST_FILENAME_PATTERN = re.compile(r"^prompt-manifest-v(\d+)\.(\d+)\.(\d+)\.json$")
+
 
 class InactivePromptArtifactError(RuntimeError):
     """Raised when a prompt slot exists but is not approved for product runtime."""
 
 
 def default_prompt_manifest_path() -> Path:
-    return Path(__file__).resolve().parents[4] / "prompts" / "agent" / "prompt-manifest-v0.8.2.json"
+    return discover_canonical_prompt_manifest_path(
+        Path(__file__).resolve().parents[4] / "prompts" / "agent"
+    )
+
+
+def discover_canonical_prompt_manifest_path(prompts_agent_dir: Path) -> Path:
+    """Select the single current prompt manifest from ``prompts/agent``.
+
+    Mirrors ``adapters.persistence.migration.discover_migrations``: the
+    prompt bundle is a versioned, directory-discovered artifact (see
+    ``prompts/agent/README.md``'s "Current: ..." pointer) rather than one
+    filename hardcoded into the runtime, so this keeps tracking whichever
+    ``prompt-manifest-vX.Y.Z.json`` the prompt pack currently ships without
+    a code change every time the bundle version is bumped.
+    """
+
+    if not prompts_agent_dir.exists() or not prompts_agent_dir.is_dir():
+        raise FileNotFoundError(f"prompt manifest directory is not available: {prompts_agent_dir}")
+
+    candidates: list[tuple[tuple[int, int, int], Path]] = []
+    for path in sorted(prompts_agent_dir.iterdir()):
+        if not path.is_file():
+            continue
+        match = _MANIFEST_FILENAME_PATTERN.match(path.name)
+        if match is None:
+            continue
+        version = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        candidates.append((version, path))
+
+    if not candidates:
+        raise FileNotFoundError(
+            f"no prompt-manifest-vX.Y.Z.json file found in: {prompts_agent_dir}"
+        )
+
+    highest_version = max(version for version, _path in candidates)
+    matching_paths = [path for version, path in candidates if version == highest_version]
+    if len(matching_paths) > 1:
+        raise ValueError(
+            f"ambiguous canonical prompt manifest, multiple files share version "
+            f"{highest_version}: {sorted(path.name for path in matching_paths)}"
+        )
+    return matching_paths[0]
 
 
 def load_prompt_reference(prompt_id: str, manifest_path: Path | None = None) -> PromptReference:

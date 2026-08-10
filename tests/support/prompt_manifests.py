@@ -4,9 +4,15 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
+from google_work_agent.application.workflows.prompt_registry import (
+    discover_canonical_prompt_manifest_path,
+)
+
 
 def canonical_prompt_manifest_path() -> Path:
-    return Path(__file__).resolve().parents[2] / "prompts" / "agent" / "prompt-manifest-v0.8.2.json"
+    return discover_canonical_prompt_manifest_path(
+        Path(__file__).resolve().parents[2] / "prompts" / "agent"
+    )
 
 
 def write_runtime_active_manifest(

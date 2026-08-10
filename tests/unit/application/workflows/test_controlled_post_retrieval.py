@@ -160,7 +160,7 @@ def test_e06_candidates_keep_semantic_bundle_and_responsibility_parity() -> None
     ]
 
     assert {candidate["prompt_semantic_bundle_version"] for candidate in candidates} == {
-        "semantic-r8.3-v1"
+        "semantic-r8.4-v1"
     }
     assert {
         _nested_mapping(candidate, "graph_profile_spec")["semantic_responsibility_map_version"]

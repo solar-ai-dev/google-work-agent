@@ -482,13 +482,13 @@ def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
     recheck_prompt = load_plan_review_recheck_prompt_reference(manifest_path)
 
     assert inspect_prompt.prompt_id == "review.inspect"
-    assert inspect_prompt.prompt_version == "0.8.2"
+    assert inspect_prompt.prompt_version == "0.8.3"
     assert inspect_prompt.content_hash
     assert inspect_prompt.node_state == "INITIAL"
     assert inspect_prompt.output_schema_version == "v2"
 
     assert recheck_prompt.prompt_id == "review.recheck"
-    assert recheck_prompt.prompt_version == "0.8.2"
+    assert recheck_prompt.prompt_version == "0.8.3"
     assert recheck_prompt.content_hash
     assert recheck_prompt.node_state == "RECHECK"
     assert recheck_prompt.output_schema_version == "v2"

@@ -283,7 +283,7 @@ def test_clarify_prompt_ref_is_runtime_active(tmp_path: Path) -> None:
     prompt_ref = load_request_understanding_clarify_prompt_reference(manifest_path)
 
     assert prompt_ref.prompt_id == "request_understanding.clarify"
-    assert prompt_ref.prompt_version == "0.8.2"
+    assert prompt_ref.prompt_version == "0.8.3"
     assert prompt_ref.content_hash
     assert prompt_ref.node_state == "CLARIFY"
     assert prompt_ref.output_schema_version == "v2"
