@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from typing import Protocol, cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -35,17 +35,37 @@ class OllamaTransport(Protocol):
         prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
         timeout_seconds: int,
+        instruction_text: str,
     ) -> ProviderResponsePayload:
         raise NotImplementedError
 
 
+def _no_instruction_text(prompt_ref: PromptReference) -> str:
+    del prompt_ref
+    return ""
+
+
 @dataclass(frozen=True, slots=True)
 class OllamaStructuredLLMProvider(StructuredLLMProvider):
+    """Dispatches one structured Ollama call.
+
+    ``resolve_instruction_text`` is called here, immediately before dispatch,
+    and its result lives only as a local variable for the duration of this
+    call -- it is never attached to ``prompt_ref`` (which flows into
+    ``AgentLocalStateV1``/trace_context/LangGraph checkpoints via
+    ``prompt_ref_to_mapping``) or returned to any caller. This keeps the
+    assembled prompt text out of Trace/Checkpoint storage per
+    docs/00-CODE-AGENT-START-HERE.md section 4.
+    """
+
     provider_name: str
     transport: OllamaTransport
     endpoint: str
     model_id: str
     runtime: ActualRuntime = ActualRuntime.LOCAL_GPU
+    resolve_instruction_text: Callable[[PromptReference], str] = field(
+        default=_no_instruction_text
+    )
 
     def invoke_structured(
         self,
@@ -57,6 +77,7 @@ class OllamaStructuredLLMProvider(StructuredLLMProvider):
         api_key: str | None,
     ) -> ProviderResponsePayload:
         del api_key
+        instruction_text = self.resolve_instruction_text(prompt_ref)
         return self.transport.invoke_structured(
             endpoint=self.endpoint,
             model_id=self.model_id,
@@ -64,6 +85,7 @@ class OllamaStructuredLLMProvider(StructuredLLMProvider):
             prompt_input=prompt_input,
             output_schema=output_schema,
             timeout_seconds=runtime_policy.local_timeout_seconds,
+            instruction_text=instruction_text,
         )
 
 
@@ -127,6 +149,7 @@ class OllamaHTTPClient(OllamaTransport):
         prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
         timeout_seconds: int,
+        instruction_text: str,
     ) -> ProviderResponsePayload:
         _validate_loopback_endpoint(endpoint)
         response = _post_json(
@@ -134,6 +157,7 @@ class OllamaHTTPClient(OllamaTransport):
             path="/api/generate",
             payload={
                 "model": model_id,
+                "system": instruction_text,
                 "prompt": json.dumps(
                     {
                         "prompt_ref": {

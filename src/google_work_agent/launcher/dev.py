@@ -22,10 +22,12 @@ from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublishe
 from google_work_agent.adapters.keyring import OSKeyringSecretStore
 from google_work_agent.adapters.langgraph import LangGraphWorkflowRuntime
 from google_work_agent.adapters.llm import (
+    DEFAULT_GEMINI_MODEL_ID,
     APIProviderConnectionService,
     ApiStructuredLLMProvider,
     DefaultHardwareProbe,
     DeterministicLLMRuntimeRouter,
+    GeminiHTTPClient,
     LLMCredentialService,
     LLMRuntimeStatusService,
     LoopbackOllamaProbe,
@@ -82,6 +84,7 @@ from google_work_agent.application.start_run import (
 from google_work_agent.application.workflows.prompt_registry import (
     InactivePromptArtifactError,
     default_prompt_manifest_path,
+    resolve_instruction_text,
 )
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
@@ -90,10 +93,7 @@ from google_work_agent.application.write_actions import (
 )
 from google_work_agent.ports import (
     ApprovedModelInfo,
-    AvailabilityState,
     LauncherProbeDecision,
-    ProbeResult,
-    ProviderResponsePayload,
     ReadinessAggregator,
     ReadinessCheckResult,
     ReadinessReport,
@@ -541,29 +541,6 @@ class _PromptInactiveWorkflowRuntime:
         )
 
 
-class _UnavailableApiProviderTransport:
-    """Explicit boundary until a real external API-provider adapter is configured."""
-
-    def probe(self, *, api_key: str, timeout_seconds: int) -> ProbeResult:
-        del api_key, timeout_seconds
-        return ProbeResult(
-            availability=AvailabilityState.NOT_CONFIGURED,
-            safe_error_code="API_PROVIDER_NOT_CONFIGURED",
-        )
-
-    def invoke_structured(
-        self,
-        *,
-        prompt_ref: object,
-        prompt_input: object,
-        output_schema: object,
-        timeout_seconds: int,
-        api_key: str,
-    ) -> ProviderResponsePayload:
-        del prompt_ref, prompt_input, output_schema, timeout_seconds, api_key
-        raise RuntimeError("External API-provider transport is not configured.")
-
-
 def build_container(
     *,
     host: str = DEFAULT_HOST,
@@ -630,6 +607,7 @@ def build_container(
         llm_runtime = _build_llm_runtime(
             settings_path=root / "settings" / "app-settings.json",
             query_service=query_service,
+            prompt_manifest_path=prompt_manifest_path,
         )
     except RuntimeError as error:
         transport.close()
@@ -807,7 +785,12 @@ def _close_container(container: ApiContainer) -> None:
             callback()
 
 
-def _build_llm_runtime(*, settings_path: Path, query_service: QueryService) -> LLMRuntimeService:
+def _build_llm_runtime(
+    *,
+    settings_path: Path,
+    query_service: QueryService,
+    prompt_manifest_path: Path,
+) -> LLMRuntimeService:
     settings_service = SettingsService(
         store=FileSettingsStore(settings_path),
         deployment_profile=BuildProfile.LOCAL_CAPABLE,
@@ -815,16 +798,17 @@ def _build_llm_runtime(*, settings_path: Path, query_service: QueryService) -> L
         has_active_runs=lambda: bool(query_service.list_open_runs()),
     )
     credential_service = LLMCredentialService(
-        provider_name="unconfigured",
+        provider_name="gemini",
         environment="DEVELOPMENT",
         keyring_store=OSKeyringSecretStore(),
         session_store=SessionMemorySecretStore(),
     )
     ollama_transport = OllamaHTTPClient()
+    gemini_transport = GeminiHTTPClient()
     status_service = LLMRuntimeStatusService(
         build_profile=BuildProfile.LOCAL_CAPABLE.value,
         credential_service=credential_service,
-        api_connection_service=APIProviderConnectionService(transport=None),
+        api_connection_service=APIProviderConnectionService(transport=gemini_transport),
         hardware_probe=DefaultHardwareProbe(),
         ollama_probe=LoopbackOllamaProbe(transport=ollama_transport),
         approved_models={
@@ -842,15 +826,21 @@ def _build_llm_runtime(*, settings_path: Path, query_service: QueryService) -> L
         status_service=status_service,
         credential_service=credential_service,
         api_provider=ApiStructuredLLMProvider(
-            provider_name="unconfigured",
-            transport=_UnavailableApiProviderTransport(),
-            model="unconfigured",
+            provider_name="gemini",
+            transport=gemini_transport,
+            model=DEFAULT_GEMINI_MODEL_ID,
+            resolve_instruction_text=lambda prompt_ref: resolve_instruction_text(
+                prompt_ref.prompt_id, prompt_manifest_path
+            ),
         ),
         ollama_provider_factory=lambda model, settings: OllamaStructuredLLMProvider(
             provider_name="ollama",
             transport=ollama_transport,
             endpoint=settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
+            resolve_instruction_text=lambda prompt_ref: resolve_instruction_text(
+                prompt_ref.prompt_id, prompt_manifest_path
+            ),
         ),
         router=DeterministicLLMRuntimeRouter(),
         runtime_policy=RuntimePolicy(),

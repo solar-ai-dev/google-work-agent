@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from tests.support.prompt_manifests import write_runtime_active_manifest
+from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
@@ -665,9 +665,10 @@ def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
     assert revise_plan_prompt.output_schema_version == "v2"
 
 
-def test_default_product_loader_rejects_draft_planning_prompts() -> None:
+def test_default_product_loader_rejects_draft_planning_prompts(tmp_path: Path) -> None:
+    manifest_path = write_draft_manifest(tmp_path, prompt_ids={"planning.answer_only"})
     with pytest.raises(InactivePromptArtifactError, match="planning.answer_only"):
-        load_solution_planning_answer_only_prompt_reference()
+        load_solution_planning_answer_only_prompt_reference(manifest_path)
 
 
 def test_solution_planning_exports_are_available() -> None:

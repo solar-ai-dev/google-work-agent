@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from tests.support.fakes import (
     FakeAPIProviderTransport,
@@ -26,6 +26,7 @@ from google_work_agent.application.llm import LLMRuntimeService
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.ports import (
     ActualRuntime,
+    HardwareCapabilityStatus,
     LLMErrorCode,
     LLMInvocationError,
     OutputSchemaDefinition,
@@ -72,12 +73,13 @@ def _status_service(
     credential_service: LLMCredentialService,
     api_transport: FakeAPIProviderTransport,
     ollama_transport: FakeOllamaTransport,
+    hardware_probe: FakeHardwareProbe | None = None,
 ) -> LLMRuntimeStatusService:
     return LLMRuntimeStatusService(
         build_profile=build_profile,
         credential_service=credential_service,
         api_connection_service=APIProviderConnectionService(api_transport),
-        hardware_probe=FakeHardwareProbe(),
+        hardware_probe=hardware_probe or FakeHardwareProbe(),
         ollama_probe=type(
             "_Probe",
             (),
@@ -282,6 +284,73 @@ def test_local_gpu_mode_never_falls_back_to_api() -> None:
     else:
         raise AssertionError("expected local failure")
     assert len([call for call in api_transport.invocations if call["kind"] == "invoke"]) == 0
+
+
+def test_local_gpu_blocked_when_hardware_not_validated() -> None:
+    """LOCAL_GPU must only dispatch on a validated GPU (not merely approved+configured).
+
+    Previously the router always set primary_runtime=LOCAL_GPU regardless of
+    hardware_capability.capability_status, and _resolve_provider never
+    checked it either -- NOT_VALIDATED hardware silently reached Ollama.
+    """
+    api_transport = FakeAPIProviderTransport()
+    ollama_transport = FakeOllamaTransport()
+    credential_service = LLMCredentialService(
+        provider_name="generic",
+        environment="DEVELOPMENT",
+        keyring_store=FakeKeyring(),
+        session_store=SessionMemorySecretStore(),
+    )
+    settings = AppSettings(
+        deployment_profile="LOCAL_CAPABLE",
+        requested_runtime_mode="LOCAL_GPU",
+        external_llm_consent=False,
+        ollama_endpoint="http://127.0.0.1:11434",
+        approved_model_id=approved_model().model_id,
+    )
+    not_validated_probe = FakeHardwareProbe(
+        capability=replace(
+            FakeHardwareProbe().capability,
+            capability_status=HardwareCapabilityStatus.NOT_VALIDATED,
+        )
+    )
+    service = LLMRuntimeService(
+        settings_service=lambda: settings,
+        status_service=_status_service(
+            build_profile="LOCAL_CAPABLE",
+            credential_service=credential_service,
+            api_transport=api_transport,
+            ollama_transport=ollama_transport,
+            hardware_probe=not_validated_probe,
+        ),
+        credential_service=credential_service,
+        api_provider=ApiStructuredLLMProvider(
+            provider_name="generic-api",
+            transport=api_transport,
+            model="api-model",
+        ),
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
+            provider_name="ollama",
+            transport=ollama_transport,
+            endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
+            model_id=model.model_id,
+        ),
+        router=DeterministicLLMRuntimeRouter(),
+        runtime_policy=RuntimePolicy(),
+    )
+
+    try:
+        service.invoke_structured(
+            prompt_ref=PROMPT_REF,
+            prompt_input={"topic": "hello"},
+            output_schema=OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(run_id="run-1", llm_call_id="llm-hw-1"),
+        )
+    except LLMInvocationError as error:
+        assert error.code is LLMErrorCode.LOCAL_UNAVAILABLE
+    else:
+        raise AssertionError("expected local dispatch to be blocked by unvalidated hardware")
+    assert len([call for call in ollama_transport.invocations if call["kind"] == "invoke"]) == 0
 
 
 def test_schema_repair_is_limited_to_one_attempt() -> None:

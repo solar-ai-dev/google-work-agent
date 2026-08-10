@@ -26,6 +26,7 @@ from google_work_agent.ports import (
     ApprovedModelInfo,
     AvailabilityState,
     HardwareCapability,
+    HardwareCapabilityStatus,
     LLMErrorCode,
     LLMInvocationError,
     OutputSchemaDefinition,
@@ -155,6 +156,7 @@ class LLMRuntimeService:
         api_provider_summary = cast(dict[str, object], status["api_provider"])
         ollama_summary = cast(dict[str, object], status["ollama"])
         approved_model = self.status_service.approved_models.get(settings.approved_model_id or "")
+        hardware_capability = _hardware_from_dict(ollama_summary["hardware_capability"])
         decision = self.router.decide(
             RouteDecisionInput(
                 build_profile=settings.deployment_profile,
@@ -162,7 +164,7 @@ class LLMRuntimeService:
                 external_llm_consent=settings.external_llm_consent,
                 api_credential_state=self.credential_service.describe_state(),
                 api_probe=_probe_from_dict(api_provider_summary),
-                hardware_capability=_hardware_from_dict(ollama_summary["hardware_capability"]),
+                hardware_capability=hardware_capability,
                 ollama_probe=_probe_from_dict(ollama_summary),
                 approved_model=approved_model,
             )
@@ -190,6 +192,7 @@ class LLMRuntimeService:
             runtime=decision.primary_runtime,
             settings=settings,
             approved_model=approved_model,
+            hardware_capability=hardware_capability,
         )
         try:
             return self._invoke_provider(
@@ -230,6 +233,7 @@ class LLMRuntimeService:
                 runtime=ActualRuntime.API_LLM,
                 settings=settings,
                 approved_model=approved_model,
+                hardware_capability=hardware_capability,
             )
             result = self._invoke_provider(
                 provider=api_provider,
@@ -262,6 +266,7 @@ class LLMRuntimeService:
         runtime: ActualRuntime,
         settings: AppSettings,
         approved_model: ApprovedModelInfo | None,
+        hardware_capability: HardwareCapability,
     ) -> StructuredLLMProvider:
         if runtime is ActualRuntime.API_LLM:
             if not settings.external_llm_consent:
@@ -275,6 +280,11 @@ class LLMRuntimeService:
                     "LLM API key is not configured",
                 )
             return self.api_provider
+        if hardware_capability.capability_status is not HardwareCapabilityStatus.VALIDATED:
+            raise LLMInvocationError(
+                LLMErrorCode.LOCAL_UNAVAILABLE,
+                "local hardware capability is not validated for LOCAL_GPU",
+            )
         if approved_model is None:
             raise LLMInvocationError(
                 LLMErrorCode.MODEL_NOT_APPROVED,

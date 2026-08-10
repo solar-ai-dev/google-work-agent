@@ -16,8 +16,13 @@ from urllib.request import Request
 
 import pytest
 
-from google_work_agent.adapters.llm.ollama import OllamaHTTPClient
-from google_work_agent.ports import AvailabilityState, OutputSchemaDefinition, PromptReference
+from google_work_agent.adapters.llm.ollama import OllamaHTTPClient, OllamaStructuredLLMProvider
+from google_work_agent.ports import (
+    AvailabilityState,
+    OutputSchemaDefinition,
+    PromptReference,
+    RuntimePolicy,
+)
 
 
 class _HTTPResponse:
@@ -125,8 +130,75 @@ def test_invoke_structured_still_posts_to_generate(monkeypatch: pytest.MonkeyPat
         prompt_input={},
         output_schema=OutputSchemaDefinition(schema_version="1", json_schema={}),
         timeout_seconds=5,
+        instruction_text="You are a test assistant.",
     )
 
     assert len(captured) == 1
     assert captured[0].get_method() == "POST"
     assert captured[0].full_url == "http://127.0.0.1:11434/api/generate"
+    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    assert sent_body["system"] == "You are a test assistant."
+
+
+def test_provider_resolves_instruction_text_only_as_a_local_call_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``PromptReference`` must never carry instruction text.
+
+    ``prompt_ref_to_mapping`` (adapters/langgraph/agent_kernel.py) is the
+    only path that turns a PromptReference into persisted AgentLocalState /
+    trace_context / LangGraph checkpoint data, and it enumerates safe fields
+    explicitly. Keeping instruction text off the PromptReference dataclass
+    entirely -- resolved fresh as a local variable right before dispatch --
+    means there is no field for a future edit to that mapping to
+    accidentally start leaking.
+    """
+
+    prompt_ref = PromptReference(
+        prompt_bundle_version="test-bundle",
+        prompt_id="a.b",
+        prompt_version="1",
+        content_hash="hash",
+        agent_role="test_role",
+        subgraph_name="a",
+        node_name="b",
+        node_state="BASELINE",
+        purpose="test",
+        input_schema_version="v1",
+        output_schema_version="v1",
+    )
+    assert not hasattr(prompt_ref, "instruction_text")
+
+    captured: list[Request] = []
+    resolve_calls: list[str] = []
+
+    def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
+        del timeout
+        captured.append(request)
+        return _HTTPResponse(json.dumps({"response": "{}", "model": "qwen2.5:3b"}).encode("utf-8"))
+
+    monkeypatch.setattr("google_work_agent.adapters.llm.ollama.urlopen", fake_urlopen)
+
+    def resolve_instruction_text(ref: PromptReference) -> str:
+        resolve_calls.append(ref.prompt_id)
+        return "Resolved instructions for " + ref.prompt_id
+
+    provider = OllamaStructuredLLMProvider(
+        provider_name="ollama",
+        transport=OllamaHTTPClient(),
+        endpoint="http://127.0.0.1:11434",
+        model_id="qwen2.5:3b",
+        resolve_instruction_text=resolve_instruction_text,
+    )
+
+    provider.invoke_structured(
+        prompt_ref=prompt_ref,
+        prompt_input={},
+        output_schema=OutputSchemaDefinition(schema_version="1", json_schema={}),
+        runtime_policy=RuntimePolicy(),
+        api_key=None,
+    )
+
+    assert resolve_calls == ["a.b"]
+    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    assert sent_body["system"] == "Resolved instructions for a.b"

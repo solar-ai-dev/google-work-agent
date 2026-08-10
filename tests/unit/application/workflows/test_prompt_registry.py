@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from tests.support.prompt_manifests import (
     canonical_prompt_manifest_path,
+    write_draft_manifest,
     write_runtime_active_manifest,
 )
 
@@ -70,9 +71,12 @@ def test_load_prompt_reference_succeeds_for_runtime_active_slot(tmp_path: Path) 
     assert prompt_ref.output_schema_version == "v2"
 
 
-def test_load_prompt_reference_distinguishes_missing_from_inactive_artifact() -> None:
-    with pytest.raises(InactivePromptArtifactError, match="planning.revise_plan"):
-        load_prompt_reference("planning.revise_plan", canonical_prompt_manifest_path())
+def test_load_prompt_reference_distinguishes_missing_from_inactive_artifact(
+    tmp_path: Path,
+) -> None:
+    draft_manifest_path = write_draft_manifest(tmp_path, prompt_ids={"planning.draft_plan"})
+    with pytest.raises(InactivePromptArtifactError, match="planning.draft_plan"):
+        load_prompt_reference("planning.draft_plan", draft_manifest_path)
 
     with pytest.raises(LookupError, match="planning.missing_slot"):
         load_prompt_reference("planning.missing_slot", canonical_prompt_manifest_path())
