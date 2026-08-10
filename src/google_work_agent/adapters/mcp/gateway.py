@@ -10,6 +10,8 @@ from google_work_agent.ports import (
     FreeBusyCalendar,
     FreeBusyInterval,
     GmailAttachmentBytes,
+    GmailAttachmentMetadata,
+    GmailThreadDetail,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
@@ -51,6 +53,52 @@ class MCPGmailAttachmentGateway:
             size_bytes=int(cast(int, payload["size_bytes"])),
             sha256=str(payload["sha256"]),
             data=urlsafe_b64decode(raw_value + padding),
+        )
+
+
+class MCPGmailUiReadGateway:
+    """UI-only Gmail detail gateway kept outside the Agent tool port."""
+
+    def __init__(self, *, transport: MCPTransport) -> None:
+        self._transport = transport
+
+    def get_thread_detail(self, *, thread_id: str) -> GmailThreadDetail:
+        try:
+            payload = self._transport.call_tool(
+                tool_name="gmail_get_ui_thread_detail",
+                arguments={"thread_id": thread_id},
+            ).payload
+        except MCPTransportError as error:
+            raise _google_error_from_transport(error) from error
+        values = cast(dict[str, object], payload)
+        attachments = tuple(
+            GmailAttachmentMetadata(
+                message_id=str(item["message_id"]),
+                attachment_id=str(item["attachment_id"]),
+                filename=str(item["filename"]),
+                mime_type=str(item["mime_type"]),
+                size_bytes=(
+                    int(cast(int, item["size_bytes"]))
+                    if isinstance(item.get("size_bytes"), int)
+                    else None
+                ),
+            )
+            for item in cast(list[dict[str, object]], values.get("attachments", []))
+        )
+        return GmailThreadDetail(
+            thread_id=str(values["thread_id"]),
+            message_id=str(values["message_id"]),
+            sender_name=_optional_string(values.get("sender_name")),
+            sender_email=_optional_string(values.get("sender_email")),
+            recipients=tuple(
+                str(item) for item in cast(list[object], values.get("recipients", []))
+            ),
+            cc=tuple(str(item) for item in cast(list[object], values.get("cc", []))),
+            subject=_optional_string(values.get("subject")),
+            received_at=_optional_string(values.get("received_at")),
+            body=_optional_string(values.get("body")),
+            attachments=attachments,
+            version=str(values.get("version", "")),
         )
 
 

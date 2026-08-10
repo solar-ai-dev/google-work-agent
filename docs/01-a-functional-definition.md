@@ -1,6 +1,6 @@
 # 01-A. Google Work Agent 기능 정의서
 
-> **상태:** Draft v2.6 · **기준일:** 2026-08-09
+> **상태:** Draft v2.7 · **기준일:** 2026-08-10
 
 ## 1. 문서 목적
 
@@ -561,6 +561,33 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 - **출력:** Versioned Typed Result와 disposition만 Parent Graph에 반환한다.
 - **상태 수명:** Local State는 해당 invocation이 끝나면 장기 기억으로 승격하지 않는다. Run 재개에 필요한 공식 결과만 Main Graph Checkpoint에 남긴다.
 - **완료 조건:** Agent 간 직접 호출 0, Local State의 Domain 사실 승격 0, bounded loop 상한 준수.
+
+## v2.7 Frontend 구현 전 Canonical 보완
+
+이 절은 v2.7에서 Frontend UI 계약을 구체화하며, 기존 기능 정의 중 이 절과 상충하는 화면 표현·UI 페이지 단위는 이 절을 우선한다. 제품 범위, 정책, REST/SSE 및 Workflow 계약은 변경하지 않는다.
+
+### Sidebar 목록과 숫자 페이지
+
+- Sidebar UI의 기본 요청·표시 단위는 **10개**다. `RETRIEVAL_PAGE_SIZE=20`은 Agent Retrieval Budget이며 Sidebar UI 값이 아니다.
+- Google Page Token API를 유지한다. React Session Memory는 조회 조건별 `pageNumber → request page token / result / next page token`을 연결해 `< 1 2 3 4 5 >` 형식의 숫자 페이지를 제공한다.
+- 미조회 페이지는 앞 페이지의 next token으로 순차 획득하고, 조회 완료 페이지는 cache에서 표시한다. offset Backend나 전체 목록 선조회·집계는 요구하지 않는다.
+- 검색·필터·정렬·Source·Google 계정 변경 또는 수동 새로고침 시 관련 page mapping을 비우고 1페이지부터 조회한다. cache와 page 번호는 Domain authority나 영속 상태가 아니다.
+- 목록 기본 표현은 Card가 아닌 keyboard-navigable compact list row다. 제목, 제공되는 발신자/소유자, 시간·상태, snippet을 2~3줄로 표시하고 긴 문자열은 ellipsis 처리한다.
+
+### Resource 선택과 Viewer
+
+- Viewer의 **Focus Resource**와 Agent Context의 **선택 Resource 집합**을 분리한다. 행을 열면 Focus를 갱신하고, 기존 다중 선택 기능은 보존한다.
+- `RESOURCE_SELECTED`는 선택 Resource ID로 최신 상세를 조회하는 진입 방식이다. 해당 Resource를 다시 검색해 찾지 않고, 추가 Source 검색은 요청 수행에 필요할 때만 확장한다.
+- `AGENT_SEARCH`는 Resource를 먼저 선택하지 않은 자연어 요청의 진입 방식이다. Source 및 검색 조건은 Workflow가 결정한다.
+- Quick Action은 선택 Resource와 사용자 의도를 Agent 요청으로 전달할 뿐 Google Write를 직접 실행하지 않는다. Write는 기존 Approval 흐름을 따른다.
+- Viewer와 목록에는 현재 REST/SSE Projection이 제공하는 제목·metadata·상세 필드만 표시한다. count, 전체 본문, 첨부파일 상세, 최근 실행, 승인 상세를 Frontend가 추정·생성·집계하지 않는다.
+
+### Main UI 보조 기능
+
+- 대화 선택은 중앙 Conversation을 복원한다. 대화 목록은 Resource type으로 분류하지 않으며 Source icon은 보조 표식일 뿐 대화의 분류 기준이 아니다.
+- Recent Execution은 실제 Projection이 있을 때만 표시하고, 없으면 숨기거나 Empty State를 보인다. Fake history를 만들지 않는다.
+- Settings/Diagnostics는 Drawer 또는 Dialog이며, Main에는 사용자 이해에 필요한 Google 연결 상태와 진행 상태만 표시한다. Runtime/Model/Node/SSE 등 개발자용 상세 문자열은 Settings/Diagnostics에서만 제공한다.
+- Browser 기반 P0에서는 minimize/maximize/close를 제품 Window Control 기능으로 정의하지 않는다.
 
 ## R8.4 Gmail 첨부파일 기능
 

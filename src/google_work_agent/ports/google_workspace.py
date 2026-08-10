@@ -46,6 +46,41 @@ class ResourcePage:
 
 
 @dataclass(frozen=True, slots=True)
+class GmailAttachmentMetadata:
+    """Safe metadata for one attachment in the UI-only Gmail detail view."""
+
+    message_id: str
+    attachment_id: str
+    filename: str
+    mime_type: str
+    size_bytes: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class GmailThreadDetail:
+    """UI-only projection of the latest message in one Gmail thread."""
+
+    thread_id: str
+    message_id: str
+    sender_name: str | None
+    sender_email: str | None
+    recipients: tuple[str, ...]
+    cc: tuple[str, ...]
+    subject: str | None
+    received_at: str | None
+    body: str | None
+    attachments: tuple[GmailAttachmentMetadata, ...]
+    version: str
+
+
+class GmailUiReadGateway(Protocol):
+    """Narrow Gmail read port used only by the local UI projection."""
+
+    def get_thread_detail(self, *, thread_id: str) -> GmailThreadDetail:
+        """Return the latest message detail for one Gmail thread."""
+
+
+@dataclass(frozen=True, slots=True)
 class FreeBusyInterval:
     """One busy interval returned by the gateway."""
 

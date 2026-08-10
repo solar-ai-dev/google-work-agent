@@ -1,6 +1,6 @@
 # 02. Google Work Agent UI · UX 설계서
 
-> **상태:** Draft v2.4 · **기준일:** 2026-08-09 · **대상:** P0 MVP
+> **상태:** Draft v2.6 · **기준일:** 2026-08-10 · **대상:** P0 MVP
 
 > **핵심 UX 원칙:** 사용자는 최소한의 행동으로 최대한의 결과를 얻어야 한다. 사용자가 이미 보고 있는 항목과 작업 흐름 안에서 다음 행동을 수행할 수 있어야 하며, 불필요한 화면 이동·재입력·반복 승인은 UX 실패로 본다.
 
@@ -207,7 +207,7 @@ Context 검토, 계획, 승인, 실행, 검증, 복구는 별도 페이지가 �
 
 ### 8.2 연결 상태
 
-상태 Icon을 누르면 다음 항목을 간단히 보여준다.
+상세 상태를 여는 기능이 있을 때만 상태 Control을 사용하며, 열리는 화면은 다음 항목을 간단히 보여준다.
 
 - Local Agent API
 - Event Stream
@@ -218,7 +218,7 @@ Context 검토, 계획, 승인, 실행, 검증, 복구는 별도 페이지가 �
 - Local 모델
 - 마지막 검사 시간
 
-정상 상태는 화면을 차지하지 않고 Icon으로만 표시하며, 경고나 오류가 있을 때만 Badge와 해결 Action을 보여준다.
+정상 Google 연결은 Header 정중앙의 비대화형 compact chip으로 표시한다. chip은 green status dot과 `Google 연결됨` 문구, 충분한 padding과 높이를 가지며 button semantics를 사용하지 않는다. 경고나 오류가 있을 때만 Badge와 해결 Action을 보여준다.
 
 ## 9. UI-005 왼쪽 Google 서비스 패널
 
@@ -294,7 +294,9 @@ Gmail·Tasks·Calendar를 확인하는 동시에 현재 항목에서 바로 Agen
 
 - 사용자는 하나 또는 여러 개의 Gmail·Task·Event를 선택할 수 있다.
 - 한 개를 클릭하면 Preview와 해당 Resource에서 수행할 수 있는 빠른 Agent Action을 표시한다.
-- 여러 개를 선택하면 `선택 항목으로 요청`, `채팅에 추가`, `선택 해제` Action Bar를 표시한다.
+- Row click은 Focus Resource와 Preview만 갱신하고, checkbox는 별도의 다중 선택 Context 집합만 변경한다. Focus 변경은 기존 선택 집합을 변경하지 않는다.
+- 선택 Resource가 하나 이상이면 Composer 가까이에 선택 수와 사용자 의미 label을 compact하게 표시한다. 별도의 `선택 항목으로 요청`, `채팅에 추가`, `선택 해제` Action Bar는 표시하지 않는다.
+- Composer 전송은 선택 집합이 있으면 중복 없는 전체 Resource ID를 `RESOURCE_SELECTED` Context로 전달하고, 선택 집합이 없으면 `AGENT_SEARCH`로 시작한다.
 - 선택된 Resource의 ID, Source, 제목과 최소 Metadata를 중앙 채팅의 Context로 전달한다.
 - 사용자가 이미 선택한 사람·날짜·제목을 채팅에서 다시 입력하도록 요구하지 않는다.
 
@@ -781,6 +783,51 @@ Local Storage에는 Secret, Approval Token 원문, Gmail 전체 원문, 실행 �
 3. 디자인팀 김 대리 — 시안 검토
 어느 김 대리 건인가요?
 ```
+
+## 29. v2.6 Main UI Canonical 보완
+
+이 절은 v2.6의 구현 기준 화면 명세이며, 앞선 UI-003~UI-008 중 이 절과 상충하는 시각 표현과 Sidebar UI 페이지 단위는 이 절을 우선한다. API, 정책, Workflow, Domain 상태 권위는 바꾸지 않는다.
+
+### 29.1 Desktop 정보 구조
+
+```text
+Header: Google Work Agent | Google 연결 상태 | 현재 계정 | 설정
+Left:   Google 업무 자료 (메일·Tasks·Calendar, 검색/필터, Resource List, 숫자 페이지)
+Center: 선택 Resource Detail Viewer → Agent Conversation → Inline Status/Approval → Chat Input
+Right:  Conversation (새 대화·검색·목록) → Recent Execution
+```
+
+- Center가 주 작업 공간이며 Dashboard나 개발자 Runtime 상태를 우선하지 않는다.
+- Header는 제품명, 사용자 이해가 가능한 Google 연결 상태, 현재 계정, Settings만 기본 노출한다. `WAITING_APPROVAL`, node 이름, profile(`SINGLE/THREE/SIX`), `API_LLM`, `LOCAL_GPU`, `MCP READY`, `SSE CONNECTED` 같은 개발·Runtime 문자열은 Main에서 숨기고 Settings/Diagnostics로 옮긴다.
+- Browser P0에서 창 최소화·최대화·닫기 표식은 시각 장식이나 제품 Window Control 기능으로 정의하지 않는다.
+
+### 29.2 Left Resource Panel
+
+- 탭은 메일, Tasks, Calendar이며 검색/필터와 수동 새로고침을 제공한다. 목록은 compact row, selected/hover/focus/disabled 상태와 키보드 탐색을 제공한다.
+- 기본 UI page size는 10이다. Page Token 기반 API를 React Session Memory의 page number mapping으로 연결해 숫자 페이지를 제공한다. Agent Retrieval 20과 혼용하지 않는다.
+- count badge는 서버 Projection이 실제 count를 제공할 때만 표시한다. Frontend 전체 페이지 순회·hard code count는 금지한다.
+- 행을 선택하면 Center 상단 Viewer에 제공 가능한 Resource 상세를 표시한다. Gmail sender/recipient/subject/received time/body/attachment metadata, Task title/status/due/list/notes, Calendar title/start/end/attendees/location/description/calendar는 제공된 필드만 표시한다. 누락값의 추정·생성은 금지한다.
+- Focus Resource와 다중 선택 Resource 집합을 분리한다. Focus는 Viewer용이며 다중 선택은 기존 Agent Context 기능을 보존한다.
+
+### 29.3 Center Conversation과 Approval
+
+- Chat은 `Viewer → Conversation → Inline 상태/Action/Approval → Input` 순서다. 사용자에게는 업무 단계와 다음 행동을 보이고 Agent node/profile/prompt는 표시하지 않는다.
+- Quick Action은 Agent 요청의 Entry Point다. 직접 Google Write를 실행하지 않는다.
+- Write Approval은 compact inline card다. `확인`, `수정`, `건너뛰기` 버튼은 기존 `approve`, `modify`, `reject` Command에 연결한다. Action/Tool, Target, 변경 요약, Evidence, Risk, Expected Result는 실제 Projection이 존재하는 값만 Summary + detail expand에 표시한다.
+- pending/submitting/completed 상태에서는 중복 클릭을 막고, timeout 또는 SSE 단절은 Write 실패로 단정하지 않는다. Snapshot 재조회 또는 cursor 재구독으로 복구한다.
+
+### 29.4 Right Panel, Settings, 반응형
+
+- Conversation은 새 대화, 검색, 목록을 제공하고 선택 시 Center를 복원한다. Resource type은 Conversation의 분류 기준이 아니다.
+- Recent Execution은 실제 Projection이 있을 때만 표시하며, 없으면 숨기거나 Empty State를 표시한다. Fake history는 금지한다.
+- Settings/Diagnostics는 Drawer/Dialog다. 기존 사용자 설정과 Runtime/Model 진단을 구분해 보존한다.
+- Desktop은 3 panel이다. 폭이 줄면 Right를 먼저 collapse하고, 이후 Left는 collapse 또는 overlay로 전환한다. Center와 Chat Input, Approval action은 항상 접근 가능해야 한다.
+
+### 29.5 공통 상태와 접근성
+
+- 모든 주요 영역은 Loading, Empty, Error, Selected, Hover, Focus, Disabled, Submitting, Approval pending, Completed 상태를 사용자 행동과 함께 명시적으로 표현한다.
+- 색만으로 상태를 구분하지 않고 icon/문구를 함께 사용한다. 키보드로 탭, 목록, 대화, 승인, 취소, 입력을 사용할 수 있어야 하며 focus가 명확해야 한다.
+- 오류는 원인, 현재 상태, 다음 행동을 제시한다. 민감 정보·secret·개발 Runtime 상세를 Main에 노출하지 않는다.
 
 ## R8.4 Gmail 첨부파일 UX
 

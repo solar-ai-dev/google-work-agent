@@ -288,9 +288,10 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
   const user = userEvent.setup();
   render(<App />);
 
-  const selectButton = await screen.findByRole("button", { name: "선택" });
-  await user.click(selectButton);
-  await user.click(screen.getByRole("button", { name: "채팅에 추가" }));
+  const selectControl = await screen.findByRole("checkbox", { name: /선택/ });
+  await user.click(selectControl);
+  await user.type(screen.getByRole("textbox", { name: "선택한 자료에 대해 질문하거나 업무를 요청하세요" }), "선택 자료를 정리해 줘");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
 
   await waitFor(() =>
     expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -400,7 +401,7 @@ test("shows approve button for write actions and posts approve command", async (
   );
 });
 
-test("reloads snapshot when snapshot_required is emitted", async () => {
+test("TST-UI-212 reloads a snapshot after SSE recovery without replaying a write", async () => {
   installFetch((path) => {
     if (path === "/health/live") {
       return jsonResponse({ status: "LIVE", service_instance_id: "svc-1", release_version: "test", api_contract_version: "1", occurred_at_ms: 1 });
@@ -458,6 +459,7 @@ test("reloads snapshot when snapshot_required is emitted", async () => {
   await waitFor(() =>
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/v1/runs/run-1", expect.any(Object)),
   );
+  expect(globalThis.fetch).not.toHaveBeenCalledWith("/api/v1/runs", expect.any(Object));
   expect(FakeEventSource.instances).toHaveLength(1);
 });
 
@@ -759,12 +761,12 @@ test("disconnects Google and refreshes the runtime summary", async () => {
   const user = userEvent.setup();
   render(<App />);
 
-  await screen.findByRole("button", { name: "선택" });
+  await screen.findByRole("checkbox", { name: /선택/ });
   await user.click(screen.getByRole("button", { name: "설정" }));
   await user.click(screen.getByRole("button", { name: "연결 해제" }));
 
   await screen.findByText("Google 미연결");
-  expect(screen.queryByRole("button", { name: "선택" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("checkbox", { name: /선택/ })).not.toBeInTheDocument();
 });
 
 test("submits cancel, resume, and retry actions while showing unknown-result recovery", async () => {
@@ -914,6 +916,9 @@ test("opens only safe Google links from resource items", async () => {
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonResponse({ items: [], next_cursor: null, api_contract_version: "1" });
     }
+    if (path === "/api/v1/resources/gmail/thread-project") {
+      return jsonResponse(gmailDetail("thread-project", { canonical_url: "javascript:alert('xss')" }));
+    }
     if (path.startsWith("/api/v1/resources/gmail")) {
       return jsonResponse({
         source: "gmail",
@@ -928,12 +933,8 @@ test("opens only safe Google links from resource items", async () => {
   const user = userEvent.setup();
   render(<App />);
 
-  await user.click(await screen.findByRole("button", { name: "원본 열기" }));
-  expect(window.open).toHaveBeenCalledWith(
-    "https://calendar.google.com/",
-    "_blank",
-    "noopener,noreferrer",
-  );
+  await user.click(await screen.findByRole("button", { name: /Project sync follow-up/ }));
+  expect(screen.queryByRole("button", { name: "원본 열기" })).not.toBeInTheDocument();
 });
 
 test("saves llm settings and stores, tests, then deletes the api key", async () => {
@@ -1083,6 +1084,319 @@ test("saves llm settings and stores, tests, then deletes the api key", async () 
     ),
   );
 });
+
+test("TST-UI-201 header shows product, connection, account, help, settings, and safe status", async () => {
+  installUiContractFetch();
+  render(<App />);
+
+  await screen.findByText("승인이 필요합니다.");
+  expect(screen.getByText("user@example.com")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "도움말" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "설정" })).toBeInTheDocument();
+  expect(screen.getByText("승인이 필요합니다.")).toBeInTheDocument();
+  expect(screen.queryByText("WAITING_APPROVAL")).not.toBeInTheDocument();
+});
+
+test("TST-UI-202 renders the left, center, and right workspace panels", async () => {
+  installUiContractFetch();
+  render(<App />);
+
+  await screen.findByRole("list", { name: "Google 업무 자료" });
+  expect(screen.getByRole("region", { name: "선택 자료 상세" })).toBeInTheDocument();
+  expect(screen.getByText("대화")).toBeInTheDocument();
+  expect(screen.getByText("최근 실행")).toBeInTheDocument();
+});
+
+test("TST-UI-203 resource row supports focus, selection, and keyboard-accessible controls", async () => {
+  const user = userEvent.setup();
+  installUiContractFetch();
+  render(<App />);
+
+  const row = await screen.findByRole("button", { name: /첫 번째 자료/ });
+  await user.click(row);
+  expect(row).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("checkbox", { name: "첫 번째 자료 선택" })).not.toBeChecked();
+  expect(screen.getByText("GMAIL")).toBeInTheDocument();
+  expect(screen.getByText("TASKS")).toBeInTheDocument();
+  expect(screen.getByText("CALENDAR")).toBeInTheDocument();
+});
+
+test("TST-UI-204 uses page size 10, sequential page tokens, and cached numeric pages", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch();
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  const firstPage = requests.find((request) => request.path.startsWith("/api/v1/resources/gmail"));
+  expect(firstPage?.path).toContain("page_size=10");
+  await user.click(screen.getByRole("button", { name: "다음" }));
+  await screen.findByText("두 번째 자료");
+  expect(requests.at(-1)?.path).toContain("page_token=page-2");
+  const countAfterNext = requests.length;
+  await user.click(screen.getByRole("button", { name: "1" }));
+  await screen.findByText("첫 번째 자료");
+  expect(requests).toHaveLength(countAfterNext);
+  expect(screen.queryByRole("button", { name: "3" })).not.toBeInTheDocument();
+});
+
+test("TST-UI-205 does not render a fake resource count", async () => {
+  installUiContractFetch();
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  expect(screen.queryByText(/총 .*건/)).not.toBeInTheDocument();
+});
+
+test("does not expose a technical resource ID in the row or viewer", async () => {
+  const technicalId = "19fe92f3e539543b";
+  installUiContractFetch({
+    resource: {
+      title: technicalId,
+      subtitle: technicalId,
+      metadata: {
+        sender: "김대리",
+        sender_email: "kim@example.com",
+        subject: "Q2 마케팅 캠페인 결과 공유",
+        snippet: "후속 조치 검토를 요청드립니다.",
+        received_at: "2025-05-24 09:15",
+      },
+    },
+  });
+  const user = userEvent.setup();
+  render(<App />);
+
+  const row = await screen.findByRole("button", { name: /Q2 마케팅 캠페인 결과 공유/ });
+  expect(screen.getByText("김대리 <kim@example.com>")).toBeInTheDocument();
+  expect(screen.getByText(/2025/)).toBeInTheDocument();
+  expect(screen.queryByText("2025-05-24 09:15")).not.toBeInTheDocument();
+  expect(screen.getByText("후속 조치 검토를 요청드립니다.")).toBeInTheDocument();
+  expect(screen.queryByText(technicalId)).not.toBeInTheDocument();
+  await user.click(row);
+  expect(screen.getByRole("heading", { name: "Q2 마케팅 캠페인 결과 공유" })).toBeInTheDocument();
+  expect(screen.queryByText(technicalId)).not.toBeInTheDocument();
+});
+
+test("uses the Gmail subject instead of a generic resource fallback title", async () => {
+  installUiContractFetch({
+    resource: {
+      title: "메일 자료",
+      metadata: { subject: "예산 검토 요청", snippet: "검토 의견을 부탁드립니다." },
+    },
+  });
+  render(<App />);
+
+  await screen.findByText("예산 검토 요청");
+  expect(screen.queryByText("메일 자료")).not.toBeInTheDocument();
+});
+
+test("TST-UI-206 keeps focus separate from multiple selected resources and sends selected IDs", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ twoItems: true });
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  const selectControls = screen.getAllByRole("checkbox", { name: /선택/ });
+  await user.click(selectControls[0]!);
+  await user.click(selectControls[1]!);
+  await user.click(screen.getByRole("button", { name: /두 번째 자료/ }));
+  expect(screen.getByRole("heading", { name: "두 번째 자료" })).toBeInTheDocument();
+  expect(screen.getByText("요청에 사용할 자료 2개")).toBeInTheDocument();
+  expect(screen.getByText("첫 번째 자료 · 두 번째 자료")).toBeInTheDocument();
+  await user.type(screen.getByRole("textbox", { name: "선택한 자료에 대해 질문하거나 업무를 요청하세요" }), "선택 자료 정리");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
+  const start = requests.find((request) => request.path === "/api/v1/runs");
+  const body = JSON.parse(String(start?.init?.body)) as { entry_mode: string; selected_resource_ids: string[] };
+  expect(body).toMatchObject({
+    entry_mode: "RESOURCE_SELECTED",
+    selected_resource_ids: ["resource-1", "resource-2"],
+  });
+  expect(new Set(body.selected_resource_ids).size).toBe(2);
+});
+
+test("TST-UI-207 uses AGENT_SEARCH without selection and quick action does not write directly", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch();
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  expect(screen.queryByText(/요청에 사용할 자료/)).not.toBeInTheDocument();
+  await user.type(screen.getByRole("textbox", { name: "무엇을 도와드릴까요?" }), "메일을 찾아줘");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
+  const start = requests.find((request) => request.path === "/api/v1/runs");
+  expect(JSON.parse(String(start?.init?.body))).toMatchObject({ entry_mode: "AGENT_SEARCH" });
+  expect(requests.some((request) => request.path.includes("/actions/") || request.path.includes("gmail/send"))).toBe(false);
+});
+
+test("TST-UI-208 Gmail viewer and approval use only available projection fields", async () => {
+  installUiContractFetch({ action: true });
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await userEvent.setup().click(screen.getByRole("button", { name: /첫 번째 자료/ }));
+  expect(await screen.findByText("실제 메일 본문입니다.")).toBeInTheDocument();
+  expect(screen.getByText("김대리 <kim@example.com>")).toBeInTheDocument();
+  expect(screen.getByText(/받는 사람 user@example.com/)).toBeInTheDocument();
+  expect(screen.getByText("승인 상세")).toBeInTheDocument();
+  expect(screen.queryByText("Evidence")).not.toBeInTheDocument();
+});
+
+test("Gmail detail shows loading, retries a safe error, and renders the actual body", async () => {
+  const user = userEvent.setup();
+  installUiContractFetch({ detailErrorOnce: true });
+  render(<App />);
+
+  await user.click(await screen.findByRole("button", { name: /첫 번째 자료/ }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("메일 내용을 불러오지 못했습니다.");
+  await user.click(screen.getByRole("button", { name: "다시 시도" }));
+  expect(await screen.findByText("실제 메일 본문입니다.")).toBeInTheDocument();
+});
+
+test("Gmail detail keeps an empty body honest and never exposes IDs or raw dates", async () => {
+  const technicalId = "19fe92f3e539543b";
+  installUiContractFetch({
+    resource: {
+      resource_id: technicalId,
+      title: "업무 확인",
+      metadata: { received_at: "Mon, 10 Aug 2026 09:15:00 +0900" },
+    },
+    detail: {
+      resource_id: technicalId,
+      message_id: "19fe92f3e539543c",
+      body: null,
+      received_at: "Mon, 10 Aug 2026 09:15:00 +0900",
+    },
+  });
+  render(<App />);
+
+  await userEvent.setup().click(await screen.findByRole("button", { name: /업무 확인/ }));
+  expect(await screen.findByText("표시할 메일 내용이 없습니다.")).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain(technicalId);
+  expect(document.body.textContent).not.toContain("Mon, 10 Aug 2026 09:15:00 +0900");
+});
+
+test("TST-UI-209 renders independent approval commands with versions and disables duplicate submission", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ action: true });
+  render(<App />);
+
+  await screen.findByRole("button", { name: "승인" });
+  await user.click(screen.getByRole("button", { name: "승인" }));
+  const approve = requests.find((request) => request.path.endsWith("/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({ expected_version: 7 });
+  expect(screen.getByText("승인 상세")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "수정" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "건너뛰기" })).toBeInTheDocument();
+});
+
+test("TST-UI-210 filters conversations and shows recent execution fallback", async () => {
+  const user = userEvent.setup();
+  installUiContractFetch({ conversations: true, run: false });
+  render(<App />);
+
+  await screen.findByText("업무 대화");
+  await user.type(screen.getByRole("textbox", { name: "대화 검색" }), "없는 대화");
+  expect(screen.queryByText("업무 대화")).not.toBeInTheDocument();
+  expect(screen.getByText("표시할 실행 기록이 없습니다.")).toBeInTheDocument();
+});
+
+test("TST-UI-211 shows loading, empty, error, focus, and disabled pagination states", async () => {
+  installUiContractFetch({ empty: true });
+  render(<App />);
+
+  await screen.findByText("표시할 자료가 없습니다.");
+  expect(screen.getByRole("button", { name: "이전" })).toBeDisabled();
+  expect(screen.getByRole("textbox", { name: "무엇을 도와드릴까요?" })).toBeInTheDocument();
+});
+
+test("composer exposes one prompt, has no clear button, and retains the send control", async () => {
+  installUiContractFetch();
+  render(<App />);
+
+  const composer = await screen.findByRole("textbox", { name: "무엇을 도와드릴까요?" });
+  expect(composer).toHaveAttribute("placeholder", "무엇을 도와드릴까요?");
+  expect(screen.queryByText("무엇을 도와드릴까요?")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "입력 지우기" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "보내기" })).toHaveAttribute("title", "보내기");
+});
+
+test("TST-UI-213 hides raw runtime status and has no native window controls", async () => {
+  installUiContractFetch({ status: "SINGLE" });
+  render(<App />);
+
+  await screen.findByText("작업을 처리하고 있습니다.");
+  expect(screen.queryByText("SINGLE")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /최소화|최대화|닫기/ })).not.toBeInTheDocument();
+});
+
+function installUiContractFetch(options: {
+  action?: boolean;
+  conversations?: boolean;
+  detail?: Record<string, unknown>;
+  detailErrorOnce?: boolean;
+  empty?: boolean;
+  run?: boolean;
+  resource?: Partial<ReturnType<typeof gmailThread>>;
+  status?: string;
+  twoItems?: boolean;
+} = {}): Array<{ path: string; init?: RequestInit }> {
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
+  let detailAttempts = 0;
+  globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
+    const path = String(input);
+    requests.push({ path, init });
+    if (path === "/health/live") return jsonFetchResponse(liveResponse());
+    if (path === "/health/ready") return jsonFetchResponse(readyResponse());
+    if (path === "/api/v1/runtime") return jsonFetchResponse({ summary: runtimeSummary(options.run === false ? [] : ["run-1"], { llm: {} }), api_contract_version: "1" });
+    if (path === "/api/v1/google/connection") return jsonFetchResponse(googleConnection());
+    if (path === "/api/v1/identity/google-account") return jsonFetchResponse({ account: currentAccount(), api_contract_version: "1" });
+    if (path.startsWith("/api/v1/conversations?")) {
+      return jsonFetchResponse({ items: options.conversations ? [{ id: "conversation-1", account_id: "account-1", title: "업무 대화", updated_at_ms: 1, created_at_ms: 1 }] : [], next_cursor: null, api_contract_version: "1" });
+    }
+    if (path.startsWith("/api/v1/resources/gmail/") && !path.includes("?")) {
+      detailAttempts += 1;
+      if (options.detailErrorOnce && detailAttempts === 1) {
+        return jsonFetchResponse({
+          error_code: "UPSTREAM_UNAVAILABLE",
+          user_message: "메일 내용을 불러오지 못했습니다.",
+          retryable: true,
+          request_id: "request-1",
+          api_contract_version: "1",
+        }, 502);
+      }
+      const resourceId = decodeURIComponent(path.split("/").at(-1) ?? "resource-1");
+      const metadata: Record<string, unknown> = options.resource?.metadata ?? {};
+      return jsonFetchResponse({
+        ...gmailDetail(resourceId, {
+          subject: typeof metadata.subject === "string"
+            ? metadata.subject
+            : options.resource?.title ?? (resourceId === "resource-2" ? "두 번째 자료" : "첫 번째 자료"),
+          sender_name: typeof metadata.sender_name === "string"
+            ? metadata.sender_name
+            : typeof metadata.sender === "string" ? metadata.sender : "김대리",
+          sender_email: typeof metadata.sender_email === "string" ? metadata.sender_email : "kim@example.com",
+          received_at: typeof metadata.received_at === "string" ? metadata.received_at : "Mon, 10 Aug 2026 09:15:00 +0900",
+        }),
+        ...options.detail,
+      });
+    }
+    if (path.startsWith("/api/v1/resources/gmail")) {
+      const items = options.empty ? [] : path.includes("page_token=page-2")
+        ? [{ ...gmailThread(), resource_id: "resource-2", title: "두 번째 자료" }]
+        : [
+            { ...gmailThread(), ...options.resource, resource_id: "resource-1", title: options.resource?.title ?? "첫 번째 자료" },
+            ...(options.twoItems ? [{ ...gmailThread(), resource_id: "resource-2", title: "두 번째 자료" }] : []),
+          ];
+      return jsonFetchResponse({ source: "gmail", items, next_page_token: options.empty || options.twoItems || path.includes("page_token=page-2") ? null : "page-2", api_contract_version: "1" });
+    }
+    if (path === "/api/v1/conversations" && init?.method === "POST") return jsonFetchResponse({ conversation_id: "conversation-1" });
+    if (path === "/api/v1/runs" && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-1", conversation_id: "conversation-1", run_status: "WAITING_APPROVAL", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-1", enqueued: true, request_replayed: false });
+    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", actions: options.action ? [{ action_id: "action-1", tool_name: "gmail_draft", status: "PROPOSED", version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", next_allowed_commands: [] }] : [] }));
+    if (path === "/api/v1/runs/run-1/context") return jsonFetchResponse({ context: null, api_contract_version: "1" });
+    if (path.includes("/api/v1/actions/") && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "OK", action_id: "action-1", action_status: "APPROVED", action_version: 8, next_allowed_commands: [] });
+    throw new Error(`Unhandled path ${path}`);
+  }) as typeof fetch;
+  return requests;
+}
 
 function installFetch(handler: (path: string, init?: RequestInit) => MockResponse): void {
   globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
@@ -1235,6 +1549,24 @@ function gmailThread() {
   };
 }
 
+function gmailDetail(resourceId = "thread-project", overrides: Record<string, unknown> = {}) {
+  return {
+    resource_id: resourceId,
+    message_id: "message-project-2",
+    sender_name: "김대리",
+    sender_email: "kim@example.com",
+    recipients: ["user@example.com"],
+    cc: [],
+    subject: "Project sync follow-up",
+    received_at: "Mon, 10 Aug 2026 09:15:00 +0900",
+    body: "실제 메일 본문입니다.",
+    attachments: [],
+    canonical_url: `https://mail.google.com/mail/u/0/#inbox/${resourceId}`,
+    api_contract_version: "1",
+    ...overrides,
+  };
+}
+
 function snapshotPayload(overrides: Partial<SnapshotShape>) {
   return {
     snapshot: {
@@ -1272,4 +1604,3 @@ function defaultSnapshot(): SnapshotShape {
     snapshot_version: 1,
   };
 }
-

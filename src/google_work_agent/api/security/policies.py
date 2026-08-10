@@ -195,6 +195,11 @@ DEFAULT_ENDPOINT_POLICY_REGISTRY = EndpointPolicyRegistry(
         ),
         EndpointRule.create(
             methods=("GET",),
+            template="/api/v1/resources/gmail/{resource_id}",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("GET",),
             template="/api/v1/resources/tasks",
             policy=EndpointPolicy.API_SESSION_REQUIRED,
         ),

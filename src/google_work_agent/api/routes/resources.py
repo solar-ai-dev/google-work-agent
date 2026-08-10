@@ -2,7 +2,7 @@
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, Header, Query, Request
+from fastapi import APIRouter, Header, Path, Query, Request
 
 from google_work_agent.api.dependencies import (
     enforce_access,
@@ -10,7 +10,10 @@ from google_work_agent.api.dependencies import (
     get_container,
 )
 from google_work_agent.api.errors import ApiError
-from google_work_agent.api.schemas.resources import ResourceListResponse
+from google_work_agent.api.schemas.resources import (
+    GmailResourceDetailResponse,
+    ResourceListResponse,
+)
 from google_work_agent.ports import (
     EndpointPolicy,
     GoogleWorkspaceErrorCode,
@@ -52,6 +55,46 @@ def list_gmail_resources(
         source=page.source,
         items=[asdict(item) for item in page.items],
         next_page_token=page.next_page_token,
+        api_contract_version=container.api_contract_version,
+    )
+
+
+@router.get("/gmail/{resource_id}", response_model=GmailResourceDetailResponse)
+def get_gmail_resource_detail(
+    request: Request,
+    resource_id: str = Path(min_length=1, max_length=2048),
+    x_api_contract_version: str | None = Header(default=None),
+) -> GmailResourceDetailResponse:
+    container = get_container(request)
+    enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
+    enforce_api_contract_version(
+        container=container,
+        request_id=request.state.request_id,
+        request_version=x_api_contract_version,
+    )
+    service = container.resource_query_service
+    if service is None:
+        raise ApiError(
+            error_code="SERVICE_BUSY",
+            user_message="Resource provider is not configured.",
+            status_code=503,
+            request_id=request.state.request_id,
+            detail_code="RESOURCE_QUERY_UNAVAILABLE",
+        )
+    try:
+        detail = service.get_gmail_thread_detail(resource_id=resource_id)
+    except RuntimeError as error:
+        raise ApiError(
+            error_code="SERVICE_BUSY",
+            user_message="Gmail detail provider is not configured.",
+            status_code=503,
+            request_id=request.state.request_id,
+            detail_code="GMAIL_DETAIL_QUERY_UNAVAILABLE",
+        ) from error
+    except GoogleWorkspaceGatewayError as error:
+        _raise_resource_error(error, request_id=request.state.request_id)
+    return GmailResourceDetailResponse(
+        **asdict(detail),
         api_contract_version=container.api_contract_version,
     )
 

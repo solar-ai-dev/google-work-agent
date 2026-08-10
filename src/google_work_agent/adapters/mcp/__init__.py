@@ -1,6 +1,6 @@
 """MCP child-process adapters."""
 
-from google_work_agent.adapters.mcp.gateway import MCPGoogleWorkspaceGateway
+from google_work_agent.adapters.mcp.gateway import MCPGmailUiReadGateway, MCPGoogleWorkspaceGateway
 from google_work_agent.adapters.mcp.oauth import MCPGoogleOAuthCredentialProvider
 from google_work_agent.adapters.mcp.runtime import MCPRuntimeStatusProvider
 from google_work_agent.adapters.mcp.transport import (
@@ -18,6 +18,7 @@ from google_work_agent.adapters.mcp.transport import (
 __all__ = [
     "MCPArtifactConfig",
     "MCPGoogleOAuthCredentialProvider",
+    "MCPGmailUiReadGateway",
     "MCPGoogleWorkspaceGateway",
     "MCPManifestTool",
     "MCPProcessStatus",

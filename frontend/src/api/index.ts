@@ -6,6 +6,7 @@ import {
   type CurrentGoogleAccountResponse,
   type GoogleConnectionResponse,
   type GoogleOAuthStartResponse,
+  type GmailResourceDetailResponse,
   type LatestConversationRunResponse,
   type LLMApiKeyResponse,
   type LLMConnectionResponse,
@@ -283,16 +284,28 @@ export function prepareRetry(payload: {
   });
 }
 
-export function listGmailResources(query: string, pageToken?: string | null): Promise<ResourceListResponse> {
-  const search = new URLSearchParams({ query, page_size: "20" });
+export function listGmailResources(
+  query: string,
+  pageToken?: string | null,
+  pageSize = 10,
+): Promise<ResourceListResponse> {
+  const search = new URLSearchParams({ query, page_size: String(pageSize) });
   if (pageToken) {
     search.set("page_token", pageToken);
   }
   return requestJson(`/api/v1/resources/gmail?${search.toString()}`);
 }
 
-export function listTaskResources(taskListId?: string | null, pageToken?: string | null): Promise<ResourceListResponse> {
-  const search = new URLSearchParams({ page_size: "20" });
+export function getGmailResourceDetail(resourceId: string): Promise<GmailResourceDetailResponse> {
+  return requestJson(`/api/v1/resources/gmail/${encodeURIComponent(resourceId)}`);
+}
+
+export function listTaskResources(
+  taskListId?: string | null,
+  pageToken?: string | null,
+  pageSize = 10,
+): Promise<ResourceListResponse> {
+  const search = new URLSearchParams({ page_size: String(pageSize) });
   if (taskListId) {
     search.set("task_list_id", taskListId);
   }
@@ -302,8 +315,12 @@ export function listTaskResources(taskListId?: string | null, pageToken?: string
   return requestJson(`/api/v1/resources/tasks?${search.toString()}`);
 }
 
-export function listCalendarResources(calendarId?: string | null, pageToken?: string | null): Promise<ResourceListResponse> {
-  const search = new URLSearchParams({ page_size: "20" });
+export function listCalendarResources(
+  calendarId?: string | null,
+  pageToken?: string | null,
+  pageSize = 10,
+): Promise<ResourceListResponse> {
+  const search = new URLSearchParams({ page_size: String(pageSize) });
   if (calendarId) {
     search.set("calendar_id", calendarId);
   }

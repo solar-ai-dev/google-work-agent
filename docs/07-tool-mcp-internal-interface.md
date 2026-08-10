@@ -4,8 +4,8 @@
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.8
-- **기준일:** 2026-08-09
+- **상태:** Draft v2.9
+- **기준일:** 2026-08-10
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
 
@@ -70,7 +70,14 @@ Windows Installer
 | Retry | `POST /api/v1/actions/{action_id}/prepare-retry` | 실패한 Write를 `MODIFIED`로 전환해 새 승인 준비 |
 | Control | `POST /api/v1/runs/{run_id}/cancel\|resume` | 취소 요청·안전 지점 재개 |
 | Resource | `GET /api/v1/resources/gmail\|tasks\|calendar` | Sidebar 목록·검색·Page Token 조회 |
+| Gmail Detail | `GET /api/v1/resources/gmail/{resource_id}` | Local Session으로 Gmail Thread의 최신 Message UI 상세 조회 |
 | Event | `GET /api/v1/runs/{run_id}/events` | SSE 진행 Projection |
+
+#### Gmail UI Detail Projection
+
+`GET /api/v1/resources/gmail/{resource_id}`는 Sidebar의 `gmail_thread` ID를 받아 해당 Thread에서 `internalDate` 기준 최신 Message 1개를 표시한다. 응답은 `resource_id`, `message_id`, `sender_name`, `sender_email`, `recipients`, `cc`, `subject`, `received_at`, `body`, `attachments`, `canonical_url`을 포함한다. 본문은 `text/plain`을 우선하고 HTML만 있으면 안전한 readable text로 변환하며 raw HTML을 Browser에 전달하지 않는다.
+
+이 Endpoint는 UI 전용 Application Query다. `gmail_get_thread`, `gmail_get_message`, Agent Context, Retrieval Workflow와 `selected_resources` 계약을 변경하지 않는다.
 
 ### 3.3 상태 변경 API 입력 소유권
 

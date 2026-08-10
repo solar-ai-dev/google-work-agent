@@ -253,12 +253,40 @@ export type ResourceItem = {
   version: string;
   related_resource_ids: string[];
   metadata: Record<string, unknown>;
+  sender_name?: string | null;
+  sender_email?: string | null;
+  subject?: string | null;
+  received_at?: string | null;
+  snippet?: string | null;
 };
 
 export type ResourceListResponse = {
   source: string;
   items: ResourceItem[];
   next_page_token: string | null;
+  api_contract_version: string;
+};
+
+export type GmailAttachmentMetadata = {
+  message_id: string;
+  attachment_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number | null;
+};
+
+export type GmailResourceDetailResponse = {
+  resource_id: string;
+  message_id: string;
+  sender_name: string | null;
+  sender_email: string | null;
+  recipients: string[];
+  cc: string[];
+  subject: string | null;
+  received_at: string | null;
+  body: string | null;
+  attachments: GmailAttachmentMetadata[];
+  canonical_url: string;
   api_contract_version: string;
 };
 

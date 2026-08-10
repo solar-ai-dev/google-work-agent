@@ -37,6 +37,7 @@ from google_work_agent.adapters.llm import (
 )
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
+    MCPGmailUiReadGateway,
     MCPGoogleOAuthCredentialProvider,
     MCPGoogleWorkspaceGateway,
     MCPRuntimeStatusProvider,
@@ -719,7 +720,10 @@ def build_container(
             now_ms=clock.now_ms,
         ),
         disconnect_google_service=DisconnectGoogleService(provider=google_provider),
-        resource_query_service=ResourceQueryService(gateway=gateway),
+        resource_query_service=ResourceQueryService(
+            gateway=gateway,
+            gmail_detail_gateway=MCPGmailUiReadGateway(transport=transport),
+        ),
         get_llm_connection_service=GetLLMConnectionService(
             runtime_status_service=llm_runtime.status_service,
             settings_service=llm_runtime.settings_service,

@@ -203,17 +203,22 @@ describe("api index wrappers", () => {
       },
       {
         call: () => api.listGmailResources("follow up", "page-1"),
-        path: "/api/v1/resources/gmail?query=follow+up&page_size=20&page_token=page-1",
+        path: "/api/v1/resources/gmail?query=follow+up&page_size=10&page_token=page-1",
+        method: "GET",
+      },
+      {
+        call: () => api.getGmailResourceDetail("thread/1"),
+        path: "/api/v1/resources/gmail/thread%2F1",
         method: "GET",
       },
       {
         call: () => api.listTaskResources("list-1", "page-2"),
-        path: "/api/v1/resources/tasks?page_size=20&task_list_id=list-1&page_token=page-2",
+        path: "/api/v1/resources/tasks?page_size=10&task_list_id=list-1&page_token=page-2",
         method: "GET",
       },
       {
         call: () => api.listCalendarResources("calendar-1", "page-3"),
-        path: "/api/v1/resources/calendar?page_size=20&calendar_id=calendar-1&page_token=page-3",
+        path: "/api/v1/resources/calendar?page_size=10&calendar_id=calendar-1&page_token=page-3",
         method: "GET",
       },
     ];
