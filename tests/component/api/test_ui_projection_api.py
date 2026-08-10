@@ -161,6 +161,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         resource_query_service=ResourceQueryService(
             gateway=gateway,
             gmail_detail_gateway=gateway,
+            default_calendar_id_provider=lambda: "calendar-primary",
         ),
     )
 
@@ -215,7 +216,18 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
 
         tasks = client.get("/api/v1/resources/tasks?page_size=20", headers=headers)
         assert tasks.status_code == 200
-        assert tasks.json()["items"][0]["resource_type"] == "task_list"
+        assert tasks.json()["items"][0]["resource_type"] == "task"
+
+        calendar = client.get(
+            "/api/v1/resources/calendar?page_size=10&time_min=2026-08-10T00%3A00%3A00Z",
+            headers=headers,
+        )
+        assert calendar.status_code == 200
+        assert calendar.json()["items"]
+        assert all(item["resource_type"] == "calendar_event" for item in calendar.json()["items"])
+        calendar_item = calendar.json()["items"][0]
+        assert calendar_item["title"]
+        assert {"start", "end"}.issubset(calendar_item["metadata"])
 
         created = client.post(
             "/api/v1/conversations",

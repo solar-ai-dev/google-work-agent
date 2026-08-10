@@ -1,6 +1,6 @@
 # 02. Google Work Agent UI · UX 설계서
 
-> **상태:** Draft v2.6 · **기준일:** 2026-08-10 · **대상:** P0 MVP
+> **상태:** Draft v2.7 · **기준일:** 2026-08-10 · **대상:** P0 MVP
 
 > **핵심 UX 원칙:** 사용자는 최소한의 행동으로 최대한의 결과를 얻어야 한다. 사용자가 이미 보고 있는 항목과 작업 흐름 안에서 다음 행동을 수행할 수 있어야 하며, 불필요한 화면 이동·재입력·반복 승인은 UX 실패로 본다.
 
@@ -828,6 +828,29 @@ Right:  Conversation (새 대화·검색·목록) → Recent Execution
 - 모든 주요 영역은 Loading, Empty, Error, Selected, Hover, Focus, Disabled, Submitting, Approval pending, Completed 상태를 사용자 행동과 함께 명시적으로 표현한다.
 - 색만으로 상태를 구분하지 않고 icon/문구를 함께 사용한다. 키보드로 탭, 목록, 대화, 승인, 취소, 입력을 사용할 수 있어야 하며 focus가 명확해야 한다.
 - 오류는 원인, 현재 상태, 다음 행동을 제시한다. 민감 정보·secret·개발 Runtime 상세를 Main에 노출하지 않는다.
+
+## 30. v2.7 Calendar·Tasks Sidebar 및 Viewer Empty State
+
+이 절은 v2.7의 Source별 Sidebar·Viewer 화면 명세다. 앞선 Sidebar 시각 표현과 상충하면 이 절을 우선하며, 실제 REST Projection과 기존 Focus·다중 선택·Page Token 계약은 변경하지 않는다.
+
+### 30.1 Calendar Sidebar
+
+- Event row는 제목 아래에 시간 범위를 표시한다. 같은 날 시간 Event는 `YYYY년 M월 D일 (요일) 오전/오후 h:mm - 오전/오후 h:mm`이며 연도·월·일·요일·시작 시간·종료 시간을 모두 표시하되 날짜는 한 번만 쓴다.
+- 날짜가 다른 Event는 시작일과 종료일을 각각 식별할 수 있도록 표시한다. All-day Event는 `YYYY년 M월 D일 (요일) · 하루 종일`이다.
+- Sidebar에는 `시작`, `종료` label을 표시하지 않는다. 중앙 Resource Viewer에는 제공된 `시작`, `종료` 상세 필드를 유지한다.
+- 실제 Event Projection에 없는 색상 dot·원형 marker·priority·category·status badge·내부 Google ID·Page Token을 추가하지 않는다. 선택 Event는 기존 row의 background/focus styling만 사용한다.
+- Upcoming 조회 기간의 `time_max` 값은 별도 제품 정책 결정 사항이다. 이 UI 명세는 30일·60일·90일·월말·연말 등 임의 범위를 정의하지 않는다.
+
+### 30.2 Tasks Sidebar
+
+- Tasks는 실제 Google Workspace Source이며 기본 compact row는 **Task 제목 → 기한** 순서다. 제목, 메모, 기한, Task List, 완료 상태 중 실제 Projection이 제공한 값만 사용한다.
+- Task List는 실제 반환 값일 때만 보조로 표시할 수 있으며, priority, 가짜 category·Task List 이름·색상 dot는 표시하지 않는다.
+- 목록 정렬은 미완료·기한 임박 우선의 기존 계약을 유지한다.
+
+### 30.3 Resource Viewer Empty State
+
+- 중앙 Viewer 제목은 `자료 상세`로 Source 공통이다. Focus가 없을 때 메일은 `왼쪽 목록에서 메일을 선택하면 상세 내용을 확인할 수 있습니다.`, Tasks는 `왼쪽 목록에서 태스크를 선택하면 상세 내용을 확인할 수 있습니다.`, Calendar는 `왼쪽 목록에서 일정을 선택하면 상세 내용을 확인할 수 있습니다.`를 표시한다.
+- Source 전환 시 이전 Source의 Focus 및 상세 정보는 남지 않는다. 새 Source의 Empty State를 먼저 표시하고, 행 Focus 후 해당 Source의 실제 Projection 상세만 표시한다.
 
 ## R8.4 Gmail 첨부파일 UX
 

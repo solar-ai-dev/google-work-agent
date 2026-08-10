@@ -313,6 +313,9 @@ class FakeGoogleGateway:
         calendar_id: str,
         page_token: str | None,
         page_size: int,
+        time_min: str | None = None,
+        single_events: bool = False,
+        order_by: str | None = None,
     ) -> ResourcePage:
         operation = "list_calendar_events"
         self._check_fault(operation=operation, can_mutate=False)
@@ -321,13 +324,20 @@ class FakeGoogleGateway:
             for resource in self._sorted_resources(ResourceType.CALENDAR_EVENT)
             if resource.parent_id == calendar_id
         ]
+        arguments: dict[str, object] = {
+            "calendar_id": calendar_id,
+            "page_token": page_token,
+            "page_size": page_size,
+        }
+        if time_min is not None:
+            arguments["time_min"] = time_min
+        if single_events:
+            arguments["single_events"] = True
+        if order_by is not None:
+            arguments["order_by"] = order_by
         return self._paginate(
             operation=operation,
-            arguments={
-                "calendar_id": calendar_id,
-                "page_token": page_token,
-                "page_size": page_size,
-            },
+            arguments=arguments,
             items=events,
             page_token=page_token,
             page_size=page_size,

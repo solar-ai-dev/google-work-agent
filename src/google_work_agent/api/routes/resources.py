@@ -143,6 +143,7 @@ def list_task_resources(
 def list_calendar_resources(
     request: Request,
     calendar_id: str | None = Query(default=None),
+    time_min: str | None = Query(default=None, min_length=1, max_length=64),
     page_token: str | None = Query(default=None),
     page_size: int = Query(default=20, ge=1, le=50),
     x_api_contract_version: str | None = Header(default=None),
@@ -166,6 +167,7 @@ def list_calendar_resources(
     try:
         page = service.list_calendar_resources(
             calendar_id=calendar_id,
+            time_min=time_min,
             page_token=page_token,
             page_size=page_size,
         )

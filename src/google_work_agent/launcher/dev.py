@@ -724,6 +724,8 @@ def build_container(
         resource_query_service=ResourceQueryService(
             gateway=gateway,
             gmail_detail_gateway=MCPGmailUiReadGateway(transport=transport),
+            default_calendar_id_provider=lambda: llm_runtime.settings_service().default_calendar_id,
+            default_tasklist_id_provider=lambda: llm_runtime.settings_service().default_tasklist_id,
         ),
         get_llm_connection_service=GetLLMConnectionService(
             runtime_status_service=llm_runtime.status_service,
