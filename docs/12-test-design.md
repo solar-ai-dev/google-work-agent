@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.7`, `01-A v2.7`, `01-B v2.7`, `02 UI·UX v2.6`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.5`, `06 Workflow v6.0`, `07 Interface v2.8`, `08 Sequence v3.1`, `09 Security v2.5`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `15 Agent Capability·Failure·Prompt v1.5`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.7`, `01-A v2.8`, `01-B v2.7`, `02 UI·UX v2.7`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.5`, `06 Workflow v6.0`, `07 Interface v2.9`, `08 Sequence v3.1`, `09 Security v2.5`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `15 Agent Capability·Failure·Prompt v1.5`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v3.3 · **기준일:** 2026-08-10 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.4 · **기준일:** 2026-08-10 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -433,9 +433,9 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 - MCP process exit에서 dispatch 여부 불명 → `UNKNOWN_RESULT`.
 - 모든 UNKNOWN_RESULT case에서 새 Attempt·blind resend 0.
 
-## 22. v3.3 Frontend Main UI 추적 계약
+## 22. v3.4 Frontend Main UI 추적 계약
 
-이 절의 테스트는 `01-A v2.7`, `02 UI·UX v2.6`의 Frontend 구현 계약을 추적한다. 기존 Safety, Verification Diff, `UNKNOWN_RESULT`, Recovery, Chrome/Edge, Sanitization 회귀를 대체하거나 제거하지 않는다.
+이 절의 테스트는 `01-A v2.8`, `02 UI·UX v2.7`의 Frontend 구현 계약을 추적한다. 기존 Safety, Verification Diff, `UNKNOWN_RESULT`, Recovery, Chrome/Edge, Sanitization 회귀를 대체하거나 제거하지 않는다.
 
 | Test ID | 계층 | 검증 계약 |
 |---|---|---|
@@ -452,6 +452,13 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 | `TST-UI-211` | Component | Loading/Empty/Error, keyboard, focus, disabled, 반응형 Right→Left collapse, Chat Input과 Approval 접근성을 검증한다. |
 | `TST-UI-212` | Integration | refresh, SSE disconnect/reconnect, cursor/snapshot 복구가 Domain 실패 또는 Write 재실행으로 오인되지 않음을 검증한다. |
 | `TST-UI-213` | Regression | Browser P0에서 native Window Control을 기능으로 호출하지 않고 Settings/Diagnostics와 기존 사용자 설정을 보존함을 검증한다. |
+
+### Calendar·Tasks·Viewer 보완
+
+- Calendar Sidebar는 실제 Event 제목과 같은 날/날짜가 다른 시간 범위, All-day 형식을 검증한다. 같은 날 시간 Event에는 연도·월·일·요일·시작/종료 시간이 있고 `시작`·`종료` label은 없으며, All-day Event에는 연도·월·일·요일과 `하루 종일`이 있다.
+- Calendar 중앙 Viewer에는 실제 Projection의 `시작`, `종료` 필드가 남아 있음을 검증한다.
+- Tasks Sidebar는 실제 Google Task Projection의 제목·기한을 렌더링하고, Projection에 없는 priority·category·가짜 Task List를 표시하지 않음을 검증한다.
+- Viewer Empty State는 Gmail·Tasks·Calendar 각각의 안내 문구를 검증하며, Source 전환 뒤 이전 Source 상세가 남지 않음을 검증한다.
 
 ### UI Fixture 원칙
 

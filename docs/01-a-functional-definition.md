@@ -1,6 +1,6 @@
 # 01-A. Google Work Agent 기능 정의서
 
-> **상태:** Draft v2.7 · **기준일:** 2026-08-10
+> **상태:** Draft v2.8 · **기준일:** 2026-08-10
 
 ## 1. 문서 목적
 
@@ -588,6 +588,23 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 - Recent Execution은 실제 Projection이 있을 때만 표시하고, 없으면 숨기거나 Empty State를 보인다. Fake history를 만들지 않는다.
 - Settings/Diagnostics는 Drawer 또는 Dialog이며, Main에는 사용자 이해에 필요한 Google 연결 상태와 진행 상태만 표시한다. Runtime/Model/Node/SSE 등 개발자용 상세 문자열은 Settings/Diagnostics에서만 제공한다.
 - Browser 기반 P0에서는 minimize/maximize/close를 제품 Window Control 기능으로 정의하지 않는다.
+
+## v2.8 Calendar·Tasks Sidebar 및 Viewer 보완
+
+이 절은 v2.8의 Sidebar 탐색·Viewer Empty State 계약이며, 앞선 Sidebar 화면 표현과 상충하면 이 절을 우선한다. API, 정책, Workflow, Domain 상태 권위는 변경하지 않는다.
+
+### Source별 Sidebar 목록
+
+- Tasks는 실제 Google Workspace Source다. 지원 Projection은 제목, 메모, 기한, Task List, 완료 상태이며, 기본 compact row는 **Task 제목 → 기한** 순서로 표시한다. Task List는 실제 반환된 값만 보조 정보로 사용할 수 있다. 정렬은 미완료·기한 임박 우선 의미를 유지한다.
+- Tasks와 Calendar row에는 priority, 임의 category·Task List 이름, 임의 색상 dot·marker·status badge, 내부 Google ID, Page Token을 생성하거나 표시하지 않는다.
+- Calendar Event compact row는 **Event 제목 → 시간 범위** 순서다. 같은 날 시간 Event는 `YYYY년 M월 D일 (요일) 오전/오후 h:mm - 오전/오후 h:mm` 형식으로 연·월·일·요일·시작 시간·종료 시간을 표시하고 날짜는 한 번만 표시한다. 날짜가 다르면 시작일과 종료일을 각각 식별 가능하게 표시한다. All-day Event는 `YYYY년 M월 D일 (요일) · 하루 종일` 형식이다.
+- Calendar Sidebar에는 `시작`, `종료` label을 표시하지 않는다. 중앙 Viewer의 Event 상세는 제공된 `시작`, `종료` 필드를 유지한다. 선택 상태는 기존 Source row와 같은 background/focus styling으로만 나타낸다.
+- `calendar_list_events`의 `time_max`가 필요한 Upcoming 기간 정책은 이 UI 표기 계약에서 결정하지 않는다. 명시된 제품 정책 전에는 임의 기간을 생성하거나 적용하지 않는다.
+
+### Source별 Resource Viewer Empty State
+
+- 중앙 Viewer 제목은 모든 Source에서 `자료 상세`다. Focus가 없을 때 Gmail은 `왼쪽 목록에서 메일을 선택하면 상세 내용을 확인할 수 있습니다.`, Tasks는 `왼쪽 목록에서 태스크를 선택하면 상세 내용을 확인할 수 있습니다.`, Calendar는 `왼쪽 목록에서 일정을 선택하면 상세 내용을 확인할 수 있습니다.`를 표시한다.
+- Source 전환은 이전 Source의 Focus와 상세 표시를 제거한 뒤 새 Source의 Empty State 또는 새 Focus 상세를 표시한다.
 
 ## R8.4 Gmail 첨부파일 기능
 
