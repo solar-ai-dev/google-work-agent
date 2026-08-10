@@ -43,11 +43,15 @@
       "EV-NOISE-FWD007-1",
       "EV-NOISE-FWD007-2",
       "EV-NOISE-FWD007-3"
+    ],
+    "gmail_attachments": [
+      "ATT-G-001"
     ]
   },
   "tags": [
     "external_recipient",
     "draft",
-    "policy_boundary"
+    "policy_boundary",
+    "gmail_attachment"
   ]
 }

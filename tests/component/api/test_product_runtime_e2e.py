@@ -186,6 +186,24 @@ def _calendar_update_plan() -> ActionPlanDraftV1:
     return plan
 
 
+def _task_delete_plan() -> ActionPlanDraftV1:
+    plan = _write_plan_output()
+    plan["actions"][0].update(
+        {
+            "effect": "DELETE",
+            "tool_name": "tasks_delete_task",
+            "arguments": {"task_list_id": "task-list-default", "task_id": "task-followup"},
+            "expected": {
+                "resource_type": "task",
+                "resource_id": "task-followup",
+                "absent": True,
+            },
+            "target_resource_ref_id": "task:task-followup",
+        }
+    )
+    return plan
+
+
 @pytest.mark.parametrize(
     ("plan_factory", "calendar_context", "write_operation", "verification_operation"),
     [
@@ -193,6 +211,7 @@ def _calendar_update_plan() -> ActionPlanDraftV1:
         (_send_write_plan_output, False, "send_gmail", "get_gmail_message"),
         (_write_plan_output, False, "create_task", "get_task"),
         (_task_update_plan, False, "update_task", "get_task"),
+        (_task_delete_plan, False, "delete_task", "get_task"),
         (_calendar_create_plan, False, "create_calendar_event", "get_calendar_event"),
         (_calendar_update_plan, True, "update_calendar_event", "get_calendar_event"),
         (_delete_write_plan_output, True, "delete_calendar_event", "get_calendar_event"),

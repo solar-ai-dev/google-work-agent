@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "R84I-003",
+  "category": "ATTACHMENT_STAGE",
+  "source_case_id": "CASE-CORE-054",
+  "fixture_snapshot_id": "FW-D-007",
+  "business_process": "Grove 캠페인 결과 CSV를 답장 Draft에 첨부하기 전에 Local Service가 파일을 staging하고 검증된 Descriptor만 Action/Approval 경계로 전달한다.",
+  "user_request": "이 Grove 결과 파일을 답장 초안에 첨부할 수 있게 준비해줘.",
+  "input_mode": "R8_4_DETERMINISTIC_CONTRACT",
+  "input_contract": {
+    "local_upload_fixture_path": "experiments/datasets/google_workspace/fixtures/attachments/grove-campaign-results.csv",
+    "expected_descriptor": {
+      "staged_attachment_id": "STAGE-GROVE-001",
+      "filename": "grove-campaign-results.csv",
+      "mime_type": "text/csv",
+      "size_bytes": 36,
+      "sha256": "f86b52b9a4123aa8003d29eb17c64b2037260a18f2ae1a75c5ae82560ead4a7c"
+    }
+  },
+  "gold": {
+    "required_events": [
+      "ATTACHMENT_STAGED",
+      "ATTACHMENT_DESCRIPTOR_ISSUED"
+    ],
+    "forbidden_events": [
+      "LOCAL_PATH_IN_ACTION_ARGUMENTS",
+      "ATTACHMENT_BYTES_IN_LLM",
+      "ATTACHMENT_BYTES_IN_SQLITE"
+    ],
+    "expected_contract": {
+      "descriptor": {
+        "staged_attachment_id": "STAGE-GROVE-001",
+        "filename": "grove-campaign-results.csv",
+        "mime_type": "text/csv",
+        "size_bytes": 36,
+        "sha256": "f86b52b9a4123aa8003d29eb17c64b2037260a18f2ae1a75c5ae82560ead4a7c"
+      },
+      "raw_bytes_in_action": false,
+      "raw_local_path_in_action": false
+    }
+  },
+  "scoring_role": "HARD_GATE",
+  "grader_ids": [
+    "grader.r8_4.claim_attachment_integrity",
+    "grader.end_state.deterministic"
+  ]
+}

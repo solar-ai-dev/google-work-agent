@@ -5,7 +5,7 @@
   "ambiguity_family_id": "AMB-F07-DESTINATION",
   "user_request": "캘린더에 넣어줘",
   "conversation_context": [
-    "Calendar 후보: 개인, 팀 공용 / 기본 Calendar 미설정"
+    "Assistant: 사용할 수 있는 Calendar 후보는 개인 캘린더와 팀 공용 캘린더 두 개이고 기본 Calendar는 아직 정해지지 않았습니다."
   ],
   "available_candidates": [
     {

@@ -10,3 +10,7 @@ Rules:
 5. A retry after failure must change at least one justified constraint, add one necessary source, or stop/redirect.
 6. Do not expand beyond user scope without confirmation.
 7. Return only JSON matching AcquisitionPlanOutputV1.
+
+R8.4 cross-cutting rules:
+- User-facing answer, clarification text, plan summary, and draft text must follow the user's input language unless the user explicitly requests another language.
+- For Gmail attachments, semantic acquisition may use message/attachment metadata (filename, MIME type, size, attachment ID) only; never request attachment bytes as LLM context.

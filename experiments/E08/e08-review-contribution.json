@@ -7,26 +7,26 @@
   "purpose": "Measure review error detection and benign pass rate versus no-review path.",
   "independent_variable": "REVIEW_STAGE_ONLY",
   "fixed_dimensions": {
-    "dataset_version": "rebuild-v1.13-r8.3",
-    "prompt_bundle_version": "0.8.2-r8.3",
-    "tool_schema_version": "v2.6",
-    "policy_version": "01-B-v2.4",
+    "dataset_version": "rebuild-v1.14-r8.4",
+    "prompt_bundle_version": "0.8.3-r8.4",
+    "tool_schema_version": "v2.8",
+    "policy_version": "01-B-v2.7",
     "provider": "OPENAI",
     "runtime_model": "E01_FINALIST",
     "reasoning_budget": "medium",
-    "prompt_semantic_bundle_version": "semantic-r8.3-v1"
+    "prompt_semantic_bundle_version": "semantic-r8.4-v1"
   },
   "dataset_selection_ref": "experiments/selections/SEL-E08-REVIEW-CHALLENGE-BENIGN.json",
   "candidate_config_refs": [
     "experiments/candidates/cand-e08-noreview.template.json",
     "experiments/candidates/cand-e08-review.template.json"
   ],
-  "grader_registry_ref": "experiments/graders/grader-registry-v0.4.json",
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.5.json",
   "trial_policy": {
     "dev_trials_per_item": 1,
     "holdout_trials_per_item": 0,
     "repeatability_trials_for_finalist": 3,
-    "randomization": "FIXED_ITEM_ORDER_WITH_RECORDED_SEED",
+    "randomization": "PAIRED_DETERMINISTIC_COUNTERBALANCED_WITH_RECORDED_SEED",
     "seed": 260807
   },
   "budget_policy": {
@@ -73,5 +73,15 @@
   "notes": [
     "R8.2 applicability: current candidate pair is a SIX_ROLE controlled diagnostic. If E06-A selects SINGLE or THREE as product finalist, rerun the equivalent routing/review ablation on that finalist topology before FINALIST_CONFIG_FROZEN."
   ],
-  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.1.json"
+  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.2.json",
+  "hypothesis": "Review should catch material plan defects more often than it falsely blocks correct plans.",
+  "stop_conditions": [
+    "Stop review candidate on safety regression or unacceptable false-block behavior."
+  ],
+  "adoption_criteria": [
+    "Material defect catch rate improves",
+    "False PASS decreases",
+    "False BLOCK stays within declared review floor",
+    "No safety regression"
+  ]
 }

@@ -3,12 +3,12 @@
   "candidate_id": "CAND-E06B-B2-STAGED",
   "candidate_kind": "BASELINE_TEMPLATE",
   "runnable": false,
-  "dataset_version": "rebuild-v1.13-r8.3",
+  "dataset_version": "rebuild-v1.14-r8.4",
   "graph_version": "E06B_B2_STAGED",
-  "prompt_bundle_version": "0.8.2-r8.3",
+  "prompt_bundle_version": "0.8.3-r8.4",
   "agent_schema_version": "v1",
-  "tool_schema_version": "v2.6",
-  "policy_version": "01-B-v2.4",
+  "tool_schema_version": "v2.8",
+  "policy_version": "01-B-v2.7",
   "retrieval_config_version": "CONTEXT_READY_V1_REPLAY",
   "runtime": {
     "runtime_mode": "API_LLM",
@@ -42,7 +42,7 @@
     "runtime.model_version"
   ],
   "candidate_config_hash": "17d28e0c3a7bc38672b515d82bd9eb54b011946f7076ca0075b9ff881568944b",
-  "prompt_semantic_bundle_version": "semantic-r8.3-v1",
+  "prompt_semantic_bundle_version": "semantic-r8.4-v1",
   "graph_profile_spec": {
     "profile_id": "E06B_B2_STAGED",
     "nominal_agent_subgraph_count": 2,
@@ -66,6 +66,6 @@
     "google_timeout_seconds": 30,
     "runner_version": "1.11.0-r8.2",
     "hardware_profile_id": "API_HOSTED_OR_UNRESOLVED",
-    "evaluation_environment_hash": "302af7f500bbccbaf5fec7a9ab23402f3061bf1bf60db548553101b1043357e4"
+    "evaluation_environment_hash": "ae13d6d716a6d11bfb7aeeb898d01107950bb60b850f815bb9c4d2379792b5d2"
   }
 }

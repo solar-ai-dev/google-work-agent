@@ -1,0 +1,14 @@
+{
+  "validation_id": "R8.4-SEMANTIC-GOLD-SCORING-v1.14",
+  "checks": 7680,
+  "issue_count": 0,
+  "warning_count": 0,
+  "stats": {
+    "prompt_like_fields": 639,
+    "numeric_score_fields": 4,
+    "r8_4_positive_items": 6
+  },
+  "issues": [],
+  "warnings": [],
+  "result": "PASS"
+}

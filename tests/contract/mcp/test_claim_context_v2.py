@@ -250,6 +250,40 @@ def test_calendar_delete_claim_reused_is_rejected_with_zero_google_calls(tmp_pat
         transport.close()
 
 
+def test_tasks_delete_claim_reused_is_rejected_with_zero_google_calls(tmp_path: Path) -> None:
+    transport = _start_transport(tmp_path, service_instance_id="svc-claim-tasks-delete")
+    gateway = MCPGoogleWorkspaceGateway(transport=transport)
+    try:
+        execution_arguments = {"task_list_id": "list-1", "task_id": "task-1"}
+        claim_context = gateway.prepare_claim_context(
+            claim_payload=_claim_payload(
+                service_instance_id=transport.service_instance_id, nonce="nonce-tasks-delete-1"
+            ),
+            tool_name="tasks_delete_task",
+            approval_arguments_hash=calculate_canonical_json_hash(execution_arguments),
+            execution_arguments_hash=calculate_canonical_json_hash(execution_arguments),
+        )
+
+        # No OAuth credential is configured, so the first attempt fails with
+        # AUTH_EXPIRED after passing claim validation and consuming the nonce.
+        with pytest.raises(GoogleWorkspaceGatewayError) as first_error:
+            gateway.delete_task(
+                task_list_id="list-1", task_id="task-1", claim_context=claim_context
+            )
+        assert first_error.value.code is GoogleWorkspaceErrorCode.AUTH_EXPIRED
+
+        # Replaying the same claim context must be rejected before any
+        # further Google dispatch, proving the nonce cannot be reused.
+        with pytest.raises(GoogleWorkspaceGatewayError) as second_error:
+            gateway.delete_task(
+                task_list_id="list-1", task_id="task-1", claim_context=claim_context
+            )
+        assert second_error.value.delivery_certainty is DeliveryCertainty.NOT_SENT
+        assert second_error.value.code is GoogleWorkspaceErrorCode.PERMISSION_DENIED
+    finally:
+        transport.close()
+
+
 def test_wrong_execution_arguments_are_rejected_with_zero_google_calls(tmp_path: Path) -> None:
     transport = _start_transport(tmp_path, service_instance_id="svc-claim-mismatch")
     gateway = MCPGoogleWorkspaceGateway(transport=transport)

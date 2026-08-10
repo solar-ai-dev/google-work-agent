@@ -5,7 +5,8 @@
   "ambiguity_family_id": "AMB-F04-LOW-INFO-ACTION-WITH-CONTEXT",
   "user_request": "정리해서 진행해줘",
   "conversation_context": [
-    "직전 user: 세 Task를 하나의 체크리스트 Task로 합쳐 새 Task를 만들자"
+    "사용자: Atlas 준비 작업 세 개를 하나의 체크리스트 작업으로 합쳐서 새 작업으로 만들자.",
+    "Assistant: 세 작업을 묶은 새 체크리스트 Task 계획을 준비했습니다."
   ],
   "available_candidates": [],
   "gold": {

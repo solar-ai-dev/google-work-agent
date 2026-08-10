@@ -1,8 +1,8 @@
-# User Prompt Catalog v1.10.0 / R8.2
+# User Prompt Catalog — R8.4
 
-- `canonical-core-stress-v1.10.0.jsonl`: Core 60 + Stress 20 canonical user prompts.
-- `canonical-holdout-locked-v1.10.0.jsonl`: locked Holdout 12 catalog. **Prompt tuning input으로 사용 금지**.
-- 두 catalog을 합치면 Canonical User Prompt는 92개다.
-- `finalist-paraphrases-v1.10.0.jsonl`: Finalist Core20 × 2 robustness variants. 각 Case는 한국어 1개 + 영어 1개로 구성해 제품의 ko/en 입력 계약을 점검한다.
-- Source of truth for Gold remains the canonical case / paraphrase dataset files.
-- Holdout는 catalog가 존재하더라도 `LOCKED_HOLDOUT`이며 DEV Prompt·Threshold 튜닝에 노출하지 않는다.
+Source of truth는 Canonical Case와 Paraphrase JSON이다. Catalog는 **수동 편집하지 않고 재생성**한다.
+
+- Canonical Core+Stress: `canonical-core-stress-v1.14-r8.4.jsonl` (80 rows)
+- Finalist paraphrases: `finalist-paraphrases-v1.14-r8.4.jsonl` (40 rows)
+- G00 필수: 동일 ID의 text/language/case_id/split/hash parity가 모두 일치해야 한다.
+- Catalog drift가 1건이라도 있으면 실험 시작 금지.

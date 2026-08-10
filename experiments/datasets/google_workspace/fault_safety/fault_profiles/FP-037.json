@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-037",
+  "failure_reason_code": "ATTACHMENT_STAGE_TAMPERED",
+  "injection_stage": "PREFLIGHT",
+  "injection_target": "staged_attachment",
+  "trigger": {
+    "tampered_after_approval": true
+  },
+  "delivery_certainty": "NOT_APPLICABLE",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": false,
+    "max_retries": 0
+  },
+  "expected_disposition": "UI_RECOVER",
+  "expected_run_status": "WAITING_APPROVAL",
+  "expected_action_status": "MODIFIED",
+  "forbidden_behaviors": [
+    "EXECUTE_WITH_TAMPERED_ATTACHMENT",
+    "REUSE_OLD_APPROVAL"
+  ],
+  "notes": "승인 후 Staging 파일 변조 시 기존 Approval 실행 0, 파일 재선택→Action 수정→새 Approval."
+}

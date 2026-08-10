@@ -116,7 +116,6 @@ Graph Profile의 독립변수는 **Agent Subgraph 분해 수준**이다. `SINGLE
 - 원격 MCP Server
 - CPU 기반 로컬 LLM 추론
 - Gmail Message·Thread 원문 삭제
-- Google Task 삭제
 - 승인 없이 외부로 영향을 주는 Google Write
 - 반복 Event 전체 일괄 수정
 - 실시간 메일 감시 및 백그라운드 자동 실행

@@ -5,7 +5,8 @@
   "ambiguity_family_id": "AMB-F04-LOW-INFO-ACTION-WITH-CONTEXT",
   "user_request": "그대로 진행해줘",
   "conversation_context": [
-    "직전 assistant: Atlas Task를 8/15로 변경하는 계획을 보여줌"
+    "사용자: Atlas QR 작업 기한을 8월 15일로 바꿔줘.",
+    "Assistant: 기존 Atlas QR 작업을 수정하는 계획을 준비했고, 아직 승인 전입니다."
   ],
   "available_candidates": [],
   "gold": {

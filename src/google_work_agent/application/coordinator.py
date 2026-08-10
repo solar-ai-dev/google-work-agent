@@ -193,9 +193,11 @@ class LocalRunCoordinator:
             command_id=item.command_id,
             api_contract_version=self._api_contract_version,
         )
+        expected_version = context.version
         if item.kind == "start":
             if context.status == RunStatus.RECOVERY_REQUIRED.value:
                 return
+            expected_version = self._ensure_analysis_started(context.run_id)
             result = self._workflow_runtime.start(
                 WorkflowStartRequest(
                     run_id=context.run_id,
@@ -237,13 +239,42 @@ class LocalRunCoordinator:
                     correlation=correlation,
                 )
             )
-        self._handle_result(context.run_id, result.outcome, result.payload)
+        self._handle_result(context.run_id, result.outcome, result.payload, expected_version)
+
+    def _ensure_analysis_started(self, run_id: str) -> int:
+        """Guarantee a run has left CREATED before any outcome is recorded against it.
+
+        CREATED only ever transitions via START_ANALYSIS
+        (domain/transitions.py); FAIL_RUN is valid only from
+        ANALYZING/RETRIEVING/PLANNING. Every real graph node already performs
+        this exact guarded transition as its own first action (see
+        adapters/langgraph/runtime.py::_transition_run); placeholder runtimes
+        such as ``_PromptInactiveWorkflowRuntime`` never touch the domain
+        store at all, which is what let a FAILED outcome try -- and silently
+        fail -- to persist against a run still sitting in CREATED.
+        """
+        with self._unit_of_work_factory() as unit_of_work:
+            run = unit_of_work.runs.get_by_id(run_id)
+            if run is None:
+                raise LookupError(f"run not found: {run_id}")
+            if run.status is not RunStatus.CREATED:
+                return run.version
+            result = unit_of_work.runs.start_analysis(
+                run_id,
+                expected_version=run.version,
+                finished_at_ms=None,
+            )
+            if result.applied:
+                unit_of_work.commit()
+                return result.current_version
+            return run.version
 
     def _handle_result(
         self,
         run_id: str,
         outcome: WorkflowOutcome,
         payload: dict[str, object],
+        expected_version: int,
     ) -> None:
         if outcome in {
             WorkflowOutcome.CHECKPOINT_MISSING,
@@ -261,6 +292,19 @@ class LocalRunCoordinator:
                 )
             )
             return
+        if outcome is WorkflowOutcome.FAILED:
+            # Prior behavior only published this as an SSE event; the run's
+            # persisted domain status stayed CREATED/ANALYZING forever (the
+            # UI polls GET /runs/{id}, not SSE, so it never saw the failure).
+            # The Domain Store, not the transient event stream, must hold
+            # the fact that the run failed.
+            with self._unit_of_work_factory() as unit_of_work:
+                unit_of_work.runs.fail_run(
+                    run_id,
+                    expected_version=expected_version,
+                    finished_at_ms=self._now_ms(),
+                )
+                unit_of_work.commit()
         event_type = {
             WorkflowOutcome.ACCEPTED: _accepted_event_type(payload),
             WorkflowOutcome.ALREADY_RUNNING: "phase_changed",

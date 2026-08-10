@@ -6,7 +6,7 @@
   "paraphrase_group_id": "PG-CORE-041",
   "variant_index": 1,
   "language": "ko-KR",
-  "text": "Atlas 메일의 최종 출고일, 준비 작업 두 개, 인쇄소 슬롯을 전부 비교해서 일정 순서상 위험만 정리해줘. 새 작업이나 일정는 만들지 마.",
+  "text": "Atlas 메일의 최종 출고일, 준비 작업 두 개, 인쇄소 슬롯을 전부 비교해서 일정 순서상 위험만 정리해줘. 새 작업이나 일정은 만들지 마.",
   "expected_entry_mode": "AGENT_SEARCH",
   "expected_requested_outcome": "ANALYSIS",
   "expected_same_goal": true,

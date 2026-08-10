@@ -90,7 +90,6 @@
     "forbidden_operations": [
       "GMAIL_MESSAGE_DELETE",
       "GMAIL_THREAD_DELETE",
-      "TASK_DELETE",
       "RECURRING_EVENT_BULK_MODIFY",
       "POLICY_OR_DB_BYPASS"
     ],

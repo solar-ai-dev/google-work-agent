@@ -36,20 +36,24 @@ class FakeAPIProviderTransport:
     def invoke_structured(
         self,
         *,
+        model_id: str,
         prompt_ref: PromptReference,
         prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
         timeout_seconds: int,
         api_key: str,
+        instruction_text: str,
     ) -> ProviderResponsePayload:
         self.invocations.append(
             {
                 "kind": "invoke",
+                "model_id": model_id,
                 "prompt_id": prompt_ref.prompt_id,
                 "timeout_seconds": timeout_seconds,
                 "api_key_length": len(api_key),
                 "prompt_input": dict(prompt_input),
                 "schema_version": output_schema.schema_version,
+                "instruction_text": instruction_text,
             }
         )
         payload = self.queued_payloads.popleft()
@@ -86,6 +90,7 @@ class FakeOllamaTransport:
         prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
         timeout_seconds: int,
+        instruction_text: str,
     ) -> ProviderResponsePayload:
         self.invocations.append(
             {
@@ -96,6 +101,7 @@ class FakeOllamaTransport:
                 "prompt_input": dict(prompt_input),
                 "schema_version": output_schema.schema_version,
                 "timeout_seconds": timeout_seconds,
+                "instruction_text": instruction_text,
             }
         )
         payload = self.queued_payloads.popleft()

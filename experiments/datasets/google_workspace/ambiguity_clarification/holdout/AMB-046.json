@@ -5,7 +5,8 @@
   "ambiguity_family_id": "AMB-F12-CALENDAR-RELATION",
   "user_request": "워크샵 중간에 고객 미팅도 넣어줘",
   "conversation_context": [
-    "고객 미팅이 워크샵 프로그램인지 근거 없음"
+    "사용자: 1~3일 Fjord 고객 워크숍 일정이 있어.",
+    "Assistant: 별도의 고객 미팅이 워크숍 프로그램에 포함된 활동인지 확인할 근거는 아직 없습니다."
   ],
   "available_candidates": [],
   "gold": {

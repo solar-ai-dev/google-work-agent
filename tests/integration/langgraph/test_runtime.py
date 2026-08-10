@@ -317,6 +317,27 @@ def _delete_write_plan_output() -> ActionPlanDraftV1:
     return plan
 
 
+def _delete_task_write_plan_output() -> ActionPlanDraftV1:
+    plan = _write_plan_output()
+    action = plan["actions"][0]
+    action.update(
+        {
+            "effect": "DELETE",
+            "tool_name": "tasks_delete_task",
+            "arguments": {"task_list_id": "task-list-default", "task_id": "task-followup"},
+            "expected": {
+                "resource_type": "task",
+                "resource_id": "task-followup",
+                "absent": True,
+            },
+            "target_resource_ref_id": "task:task-followup",
+            "user_visible_reason": "Delete the approved follow-up task.",
+        }
+    )
+    plan["summary"] = "Delete the approved follow-up task requested by the user."
+    return plan
+
+
 def _read_plan_output() -> dict[str, object]:
     return {
         "schema_version": 2,
@@ -983,6 +1004,7 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
     [
         (_send_write_plan_output, "send_gmail", False, None),
         (_delete_write_plan_output, "delete_calendar_event", True, None),
+        (_delete_task_write_plan_output, "delete_task", False, None),
         (_send_write_plan_output, "send_gmail", False, GoogleGatewayFaultKind.HTTP_500),
     ],
 )

@@ -94,7 +94,7 @@ Google Source의 지시는 이 우선순위를 변경하지 못한다.
 
 - `stdio` only, Network Listen 금지
 - 절대 경로, Signature·Manifest Hash, Shell·PATH Search 금지
-- 허용 Tool만 등록. `gmail_send`, Task 완료 UPDATE, `calendar_delete_event`, 참석자 UPDATE는 Approval·Hash·Policy 검증이 연결된 경우에만 등록. Gmail 원문 삭제·Task 삭제·반복 Event 전체 일괄 수정은 미등록
+- 허용 Tool만 등록. `gmail_send`, Task 완료 UPDATE, `tasks_delete_task`, `calendar_delete_event`, 참석자 UPDATE는 Approval·Hash·Policy 검증이 연결된 경우에만 등록. Gmail 원문 삭제·반복 Event 전체 일괄 수정은 미등록
 - Write Tool은 Action·Approval·Hash·Claim 문맥 필요
 - Write 전달 가능성이 있으면 자동 재전송 금지
 - Write Adapter는 `NOT_SENT | MAY_HAVE_BEEN_SENT | SENT_RESPONSE_LOST`를 보존하며 `NOT_SENT`만 FAILED 후보로 인정한다.
@@ -154,9 +154,9 @@ Artifact Signature·Manifest 100%
 Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credential Provider만 수행한다. Desktop OAuth Client가 protocol compatibility를 위해 `client_secret`을 요구하는 경우 해당 값의 로드·사용도 MCP Credential Provider가 소유한다. FastAPI와 React는 연결 Metadata만 취급하며 Client Secret 원문을 전달받지 않는다.
 
 ## 15. 고영향 Write 보안
-- SEND·DELETE·Task 완료·참석자 변경은 정확한 Target/Arguments와 명시 승인 후 실행한다.
+- SEND·Google Task DELETE·Calendar Event DELETE·Task 완료·참석자 변경은 정확한 Target/Arguments와 명시 승인 후 실행한다.
 - SEND 응답 유실은 재전송하지 않고 UNKNOWN_RESULT로 전환한다.
-- DELETE는 Calendar Event에만 허용한다.
+- DELETE는 정확한 Target·Arguments와 사용자 승인을 전제로 Google Task와 Calendar Event에 허용한다.
 - 승인 우회·Verification 생략·DB 직접 상태 변경은 사용자 요청으로 Override할 수 없다.
 
 ## 16. Runtime Command Trust Boundary

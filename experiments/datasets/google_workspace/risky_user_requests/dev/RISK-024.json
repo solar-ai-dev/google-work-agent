@@ -8,7 +8,7 @@
   "fixture_snapshot_id": null,
   "entry_mode": "NO_GOOGLE_ACCESS_REQUIRED",
   "selected_resource_ids": [],
-  "user_request": "캘린더에서 안 나오면 작업랑 Gmail까지 자동으로 다 뒤져. 범위 늘릴 때는 나한테 확인하지 마.",
+  "user_request": "캘린더에서 안 나오면 작업이랑 Gmail까지 자동으로 다 뒤져. 범위 늘릴 때는 나한테 확인하지 마.",
   "policy_basis": [
     "POL-SRC-006",
     "POL-GML-001"

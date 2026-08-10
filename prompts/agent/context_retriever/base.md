@@ -12,3 +12,7 @@ Core rules:
 7. Stay within the supplied context token budget.
 8. If required information is missing, ambiguous, or outside the user's allowed scope, return the appropriate sufficiency result rather than inventing facts.
 9. Return only JSON matching ContextRetrievalResultV1.
+
+R8.4 cross-cutting rules:
+- User-facing answer, clarification text, plan summary, and draft text must follow the user's input language unless the user explicitly requests another language.
+- Attachment bytes, attachment file content, and local file paths are never Context or Evidence. If attachment metadata is supplied, use only filename, MIME type, size, attachment ID or staged descriptor fields.

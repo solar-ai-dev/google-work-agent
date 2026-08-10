@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import secrets
 import sqlite3
 import sys
@@ -21,10 +22,12 @@ from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublishe
 from google_work_agent.adapters.keyring import OSKeyringSecretStore
 from google_work_agent.adapters.langgraph import LangGraphWorkflowRuntime
 from google_work_agent.adapters.llm import (
+    DEFAULT_GEMINI_MODEL_ID,
     APIProviderConnectionService,
     ApiStructuredLLMProvider,
     DefaultHardwareProbe,
     DeterministicLLMRuntimeRouter,
+    GeminiHTTPClient,
     LLMCredentialService,
     LLMRuntimeStatusService,
     LoopbackOllamaProbe,
@@ -78,17 +81,19 @@ from google_work_agent.application.start_run import (
     ResumeRunService,
     StartRunService,
 )
-from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
+from google_work_agent.application.workflows.prompt_registry import (
+    InactivePromptArtifactError,
+    default_prompt_manifest_path,
+    resolve_instruction_text,
+)
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
 from google_work_agent.ports import (
-    AvailabilityState,
+    ApprovedModelInfo,
     LauncherProbeDecision,
-    ProbeResult,
-    ProviderResponsePayload,
     ReadinessAggregator,
     ReadinessCheckResult,
     ReadinessReport,
@@ -111,6 +116,12 @@ DEFAULT_PORT = 8000
 RELEASE_VERSION = "0.1.0-dev"
 MCP_MANIFEST_VERSION = "2026-08-07.p0"
 MCP_TOOL_REGISTRY_VERSION = "2026-08-06.p0"
+# Dev-mode local model allowlist: LOCAL_GPU routing refuses to invoke a model
+# that is not "approved" (see DeterministicLLMRuntimeRouter._local_runtime_reason),
+# so at least one already-`ollama pull`-ed model must be listed here. This never
+# pulls or downloads anything; override via env var if a different model is
+# installed locally.
+DEFAULT_DEV_OLLAMA_MODEL_ID = os.environ.get("GWA_DEV_APPROVED_OLLAMA_MODEL", "qwen2.5:3b")
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,7 +155,15 @@ class CoreInitializationError(RuntimeError):
 
 
 class _DeferredCoordinator:
-    """Keeps the HTTP process live until the core coordinator is available."""
+    """Keeps the HTTP process live until the core coordinator is available.
+
+    ``local_run_coordinator`` is set once as a real instance attribute on
+    ``_DeferredApiContainer`` (see below), so Python attribute lookup never
+    falls through to ``__getattr__``'s post-init delegation for it -- this
+    wrapper must itself forward every method the routes call, not just
+    start/stop, or a call made after core initialization completes still
+    hits this placeholder instead of the real coordinator.
+    """
 
     def __init__(self) -> None:
         self._delegate: LocalRunCoordinator | None = None
@@ -163,6 +182,38 @@ class _DeferredCoordinator:
     def stop(self) -> None:
         if self._delegate is not None:
             self._delegate.stop()
+
+    def enqueue_start(self, *, run_id: str, request_id: str, command_id: str) -> None:
+        self._require_delegate().enqueue_start(
+            run_id=run_id, request_id=request_id, command_id=command_id
+        )
+
+    def enqueue_resume(
+        self,
+        *,
+        run_id: str,
+        request_id: str,
+        command_id: str | None,
+        resume_kind: str,
+        resume_payload: dict[str, object],
+    ) -> None:
+        self._require_delegate().enqueue_resume(
+            run_id=run_id,
+            request_id=request_id,
+            command_id=command_id,
+            resume_kind=resume_kind,
+            resume_payload=resume_payload,
+        )
+
+    def request_cancel(self, *, run_id: str, request_id: str, reason_code: str) -> None:
+        self._require_delegate().request_cancel(
+            run_id=run_id, request_id=request_id, reason_code=reason_code
+        )
+
+    def _require_delegate(self) -> LocalRunCoordinator:
+        if self._delegate is None:
+            raise RuntimeError("core initialization is incomplete")
+        return self._delegate
 
 
 class _BootReadinessAggregator(ReadinessAggregator):
@@ -490,29 +541,6 @@ class _PromptInactiveWorkflowRuntime:
         )
 
 
-class _UnavailableApiProviderTransport:
-    """Explicit boundary until a real external API-provider adapter is configured."""
-
-    def probe(self, *, api_key: str, timeout_seconds: int) -> ProbeResult:
-        del api_key, timeout_seconds
-        return ProbeResult(
-            availability=AvailabilityState.NOT_CONFIGURED,
-            safe_error_code="API_PROVIDER_NOT_CONFIGURED",
-        )
-
-    def invoke_structured(
-        self,
-        *,
-        prompt_ref: object,
-        prompt_input: object,
-        output_schema: object,
-        timeout_seconds: int,
-        api_key: str,
-    ) -> ProviderResponsePayload:
-        del prompt_ref, prompt_input, output_schema, timeout_seconds, api_key
-        raise RuntimeError("External API-provider transport is not configured.")
-
-
 def build_container(
     *,
     host: str = DEFAULT_HOST,
@@ -530,7 +558,7 @@ def build_container(
     database_path = root / "google-work-agent.sqlite3"
     checkpoint_database_path = root / "langgraph-checkpoints.sqlite3"
     mcp_manifest_path = _write_mcp_manifest(root)
-    prompt_manifest_path = PROJECT_ROOT / "prompts" / "agent" / "prompt-manifest-v0.8.2.json"
+    prompt_manifest_path = default_prompt_manifest_path()
     clock = SystemClock()
     id_generator = UUIDIdGenerator()
     service_instance_id = service_instance_id or f"dev-{uuid.uuid4()}"
@@ -579,6 +607,7 @@ def build_container(
         llm_runtime = _build_llm_runtime(
             settings_path=root / "settings" / "app-settings.json",
             query_service=query_service,
+            prompt_manifest_path=prompt_manifest_path,
         )
     except RuntimeError as error:
         transport.close()
@@ -756,27 +785,40 @@ def _close_container(container: ApiContainer) -> None:
             callback()
 
 
-def _build_llm_runtime(*, settings_path: Path, query_service: QueryService) -> LLMRuntimeService:
+def _build_llm_runtime(
+    *,
+    settings_path: Path,
+    query_service: QueryService,
+    prompt_manifest_path: Path,
+) -> LLMRuntimeService:
     settings_service = SettingsService(
         store=FileSettingsStore(settings_path),
         deployment_profile=BuildProfile.LOCAL_CAPABLE,
-        approved_model_ids=frozenset(),
+        approved_model_ids=frozenset({DEFAULT_DEV_OLLAMA_MODEL_ID}),
         has_active_runs=lambda: bool(query_service.list_open_runs()),
     )
     credential_service = LLMCredentialService(
-        provider_name="unconfigured",
+        provider_name="gemini",
         environment="DEVELOPMENT",
         keyring_store=OSKeyringSecretStore(),
         session_store=SessionMemorySecretStore(),
     )
     ollama_transport = OllamaHTTPClient()
+    gemini_transport = GeminiHTTPClient()
     status_service = LLMRuntimeStatusService(
         build_profile=BuildProfile.LOCAL_CAPABLE.value,
         credential_service=credential_service,
-        api_connection_service=APIProviderConnectionService(transport=None),
+        api_connection_service=APIProviderConnectionService(transport=gemini_transport),
         hardware_probe=DefaultHardwareProbe(),
         ollama_probe=LoopbackOllamaProbe(transport=ollama_transport),
-        approved_models={},
+        approved_models={
+            DEFAULT_DEV_OLLAMA_MODEL_ID: ApprovedModelInfo(
+                model_id=DEFAULT_DEV_OLLAMA_MODEL_ID,
+                runtime="OLLAMA",
+                manifest_version="1",
+                schema_version="1",
+            )
+        },
         runtime_policy=RuntimePolicy(),
     )
     return LLMRuntimeService(
@@ -784,15 +826,21 @@ def _build_llm_runtime(*, settings_path: Path, query_service: QueryService) -> L
         status_service=status_service,
         credential_service=credential_service,
         api_provider=ApiStructuredLLMProvider(
-            provider_name="unconfigured",
-            transport=_UnavailableApiProviderTransport(),
-            model="unconfigured",
+            provider_name="gemini",
+            transport=gemini_transport,
+            model=DEFAULT_GEMINI_MODEL_ID,
+            resolve_instruction_text=lambda prompt_ref: resolve_instruction_text(
+                prompt_ref.prompt_id, prompt_manifest_path
+            ),
         ),
         ollama_provider_factory=lambda model, settings: OllamaStructuredLLMProvider(
             provider_name="ollama",
             transport=ollama_transport,
             endpoint=settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
+            resolve_instruction_text=lambda prompt_ref: resolve_instruction_text(
+                prompt_ref.prompt_id, prompt_manifest_path
+            ),
         ),
         router=DeterministicLLMRuntimeRouter(),
         runtime_policy=RuntimePolicy(),

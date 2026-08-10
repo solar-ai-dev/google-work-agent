@@ -2,7 +2,7 @@
   "schema_version": 5,
   "case_id": "CASE-STRESS-020",
   "split": "STRESS",
-  "dataset_version": "rebuild-v1.13-r8.3",
+  "dataset_version": "rebuild-v1.14-r8.4",
   "category": "THREE_SOURCE_COMPLEX",
   "scenario_family_id": "SF-S10-PARTIAL-LIFECYCLE",
   "fixture_relation_family": "RF-DEV-001",
@@ -308,7 +308,9 @@
   "human_rubric": [
     "세 Source를 확인한다.",
     "Event와 Draft를 두 Action으로 만든다.",
-    "Draft는 Event에 의존한다."
+    "Draft는 Event에 의존한다.",
+    "이미 VERIFIED된 Event는 유지한다.",
+    "아직 시작하지 않은 Draft는 실행하지 않는다."
   ],
   "expected_planning_result_type": "PARTIAL",
   "expected_interactions": [

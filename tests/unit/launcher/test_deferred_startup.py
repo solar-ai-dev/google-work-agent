@@ -9,6 +9,7 @@ from typing import NoReturn, cast
 import pytest
 from fastapi.testclient import TestClient
 
+from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.runtime import SafeModeController
 from google_work_agent.api import ApiContainer, create_app
 from google_work_agent.launcher.dev import (
@@ -101,6 +102,65 @@ def test_initializing_window_is_live_blocked_then_becomes_ready(tmp_path: Path) 
 
         release.set()
         assert _wait_for_ready(client, headers) == "READY"
+
+
+def test_start_run_reaches_the_real_coordinator_once_core_initialization_completes(
+    tmp_path: Path,
+) -> None:
+    """Regression test: POST /api/v1/runs used to return 503 SERVICE_BUSY with
+    detail_code=AttributeError even after core initialization finished,
+    because `local_run_coordinator` never delegated enqueue_start to the
+    real, now-bound LocalRunCoordinator (see _DeferredCoordinator)."""
+
+    runtime_root = tmp_path / "runtime"
+    runtime_root.mkdir(parents=True)
+    database_path = runtime_root / "google-work-agent.sqlite3"
+    connection = connect_sqlite(database_path)
+    try:
+        apply_migrations(connection)
+        connection.execute(
+            """
+            INSERT INTO google_accounts (id, email, display_name, connected_at_ms)
+            VALUES ('account-1', 'user@example.com', 'User', 1);
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO conversations (id, account_id, title, created_at_ms, updated_at_ms)
+            VALUES ('conversation-1', 'account-1', 'Existing conversation', 1, 1);
+            """
+        )
+    finally:
+        connection.close()
+
+    container = _shell(
+        core_builder=lambda **kwargs: build_container(runtime_root=runtime_root, **kwargs)
+    )
+    with TestClient(create_app(cast(ApiContainer, container))) as client:
+        headers = _headers()
+        _bootstrap(client, headers)
+        assert _wait_for_ready(client, headers) == "READY"
+
+        response = client.post(
+            "/api/v1/runs",
+            headers=headers,
+            json={
+                "api_contract_version": "1",
+                "command_id": "start-command-1",
+                "conversation_id": "conversation-1",
+                "user_message_id": "message-1",
+                "run_id": "run-1",
+                "workflow_key": "workflow-run-1",
+                "request_text": "hello",
+                "entry_mode": "AGENT_SEARCH",
+                "selected_resource_ids": [],
+                "selected_resources": [],
+                "requested_mode": "AUTO",
+            },
+        )
+
+        assert response.status_code == 202, response.json()
+        assert response.json().get("detail_code") != "AttributeError"
 
 
 def test_shutdown_awaits_inflight_initialization_and_closes_late_core(tmp_path: Path) -> None:

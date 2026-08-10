@@ -2,7 +2,7 @@
   "schema_version": 5,
   "case_id": "CASE-STRESS-010",
   "split": "STRESS",
-  "dataset_version": "rebuild-v1.13-r8.3",
+  "dataset_version": "rebuild-v1.14-r8.4",
   "category": "SOURCE_SELECTION_READ",
   "scenario_family_id": "SF-S5-LOWCONF-BUDGET",
   "fixture_relation_family": "RF-DEV-004",
@@ -103,7 +103,9 @@
   "human_rubric": [
     "Delta 관련 후보를 검색한다.",
     "상위 후보 점수 차가 작으면 사용자 확인을 요청한다.",
-    "포장 시안 Hard Negative를 배제한다."
+    "포장 시안 Hard Negative를 배제한다.",
+    "추가 수집 2회 후에도 후보 신뢰도 차가 작으면 확인 질문한다.",
+    "저신뢰 후보를 자동 확정하지 않는다."
   ],
   "expected_planning_result_type": "NOT_REACHED",
   "expected_interactions": [
