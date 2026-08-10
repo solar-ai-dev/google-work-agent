@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+from email.utils import parseaddr
 from enum import StrEnum
 from typing import cast
 
 from google_work_agent.ports import (
     FreeBusyCalendar,
     FreeBusyInterval,
+    GmailAttachmentMetadata,
+    GmailThreadDetail,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
     ResourcePage,
@@ -104,6 +107,49 @@ class FakeGoogleGateway:
 
     def get_gmail_thread(self, *, thread_id: str) -> ResourceSnapshot:
         return self._read_one("get_gmail_thread", ResourceType.GMAIL_THREAD, thread_id)
+
+    def get_thread_detail(self, *, thread_id: str) -> GmailThreadDetail:
+        thread = self._read_one("get_gmail_ui_thread_detail", ResourceType.GMAIL_THREAD, thread_id)
+        message_ids = tuple(
+            str(value) for value in thread.payload.get("message_ids", thread.related_resource_ids)
+        )
+        if not message_ids:
+            raise LookupError(f"thread has no messages: {thread_id}")
+        message = self._resources[(ResourceType.GMAIL_MESSAGE, message_ids[-1])]
+        sender_value = str(message.payload.get("from", ""))
+        sender_name, sender_email = parseaddr(sender_value)
+        recipients_value = message.payload.get("to", [])
+        recipients = (
+            tuple(str(value) for value in recipients_value)
+            if isinstance(recipients_value, list)
+            else (str(recipients_value),)
+        )
+        attachments = tuple(
+            GmailAttachmentMetadata(
+                message_id=message.resource_id,
+                attachment_id=str(item["attachment_id"]),
+                filename=str(item["filename"]),
+                mime_type=str(item["mime_type"]),
+                size_bytes=int(item["size_bytes"]),
+            )
+            for item in message.payload.get("attachments", [])
+            if isinstance(item, dict)
+            and {"attachment_id", "filename", "mime_type", "size_bytes"} <= item.keys()
+        )
+        return GmailThreadDetail(
+            thread_id=thread_id,
+            message_id=message.resource_id,
+            sender_name=sender_name or None,
+            sender_email=sender_email or None,
+            recipients=recipients,
+            cc=(),
+            subject=str(message.payload.get("subject") or thread.payload.get("subject") or "")
+            or None,
+            received_at=str(message.payload.get("received_at") or "") or None,
+            body=str(message.payload.get("body") or "") or None,
+            attachments=attachments,
+            version=thread.version,
+        )
 
     def get_gmail_message(self, *, message_id: str) -> ResourceSnapshot:
         return self._read_one("get_gmail_message", ResourceType.GMAIL_MESSAGE, message_id)

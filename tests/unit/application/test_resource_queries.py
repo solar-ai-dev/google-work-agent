@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from google_work_agent.application.resource_queries import ResourceQueryService
-from google_work_agent.ports import ResourcePage, ResourceSnapshot, ResourceType
+from google_work_agent.ports import (
+    GmailAttachmentMetadata,
+    GmailThreadDetail,
+    ResourcePage,
+    ResourceSnapshot,
+    ResourceType,
+)
 
 
 class _Gateway:
@@ -19,6 +25,32 @@ class _Gateway:
         assert page_token == "page-1"
         assert page_size == 10
         return ResourcePage(items=(self.snapshot,), next_page_token="page-2")
+
+
+class _DetailGateway:
+    def get_thread_detail(self, *, thread_id: str) -> GmailThreadDetail:
+        assert thread_id == "thread-1"
+        return GmailThreadDetail(
+            thread_id=thread_id,
+            message_id="message-2",
+            sender_name="Kim Daeri",
+            sender_email="kim.daeri@example.com",
+            recipients=("user@example.com",),
+            cc=("team@example.com",),
+            subject="Q2 campaign follow-up",
+            received_at="Mon, 10 Aug 2026 09:15:00 +0900",
+            body="Actual message body",
+            attachments=(
+                GmailAttachmentMetadata(
+                    message_id="message-2",
+                    attachment_id="attachment-1",
+                    filename="report.pdf",
+                    mime_type="application/pdf",
+                    size_bytes=2048,
+                ),
+            ),
+            version="8",
+        )
 
 
 def test_gmail_list_projection_exposes_metadata_for_frontend() -> None:
@@ -63,6 +95,23 @@ def test_gmail_list_projection_does_not_use_resource_id_as_title_fallback() -> N
     assert item.title == ""
     assert item.subject is None
     assert item.metadata == {}
+
+
+def test_gmail_detail_projection_is_ui_only_and_preserves_thread_identity() -> None:
+    service = ResourceQueryService(
+        gateway=_Gateway(_snapshot(payload={})),
+        gmail_detail_gateway=_DetailGateway(),
+    )
+
+    detail = service.get_gmail_thread_detail(resource_id="thread-1")
+
+    assert detail.resource_id == "thread-1"
+    assert detail.message_id == "message-2"
+    assert detail.sender_name == "Kim Daeri"
+    assert detail.recipients == ("user@example.com",)
+    assert detail.body == "Actual message body"
+    assert detail.canonical_url.endswith("/#inbox/thread-1")
+    assert detail.attachments[0].attachment_id == "attachment-1"
 
 
 def _snapshot(*, payload: dict[str, object]) -> ResourceSnapshot:

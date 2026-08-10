@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import base64
 from typing import cast
 
 import pytest
 from tests.support.fakes.mcp_transport import FakeMCPTransport
 
-from google_work_agent.adapters.mcp import MCPGoogleWorkspaceGateway
+from google_work_agent.adapters.mcp import MCPGmailUiReadGateway, MCPGoogleWorkspaceGateway
 from google_work_agent.mcp import server
 from google_work_agent.mcp.settings import GoogleOAuthSettings
 from google_work_agent.ports import TimeRange
@@ -158,6 +159,154 @@ def test_gmail_detail_tool_contracts_are_unchanged(monkeypatch) -> None:  # type
         "to": "user@example.com",
         "received_at": "Sat, 24 May 2025 09:15:00 +0900",
     }
+
+
+def test_gmail_ui_detail_uses_latest_message_and_plain_body(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def google_api(
+        _state: server._WorkspaceState, _url: str, params: dict[str, str] | None = None
+    ) -> dict[str, object]:
+        assert params == {"format": "full"}
+        return {
+            "historyId": "12",
+            "messages": [
+                _gmail_message("message-old", "1000", "Old body"),
+                _gmail_message(
+                    "message-new",
+                    "2000",
+                    "Latest body",
+                    parts=[
+                        {
+                            "mimeType": "application/pdf",
+                            "filename": "report.pdf",
+                            "body": {"attachmentId": "attachment-1", "size": 2048},
+                        }
+                    ],
+                ),
+            ],
+        }
+
+    monkeypatch.setattr(server, "_google_api", google_api)
+
+    detail = server._tool_call(
+        _state(),
+        tool_name="gmail_get_ui_thread_detail",
+        arguments={"thread_id": "thread-1"},
+    )
+
+    assert detail == {
+        "thread_id": "thread-1",
+        "message_id": "message-new",
+        "sender_name": "Kim Daeri",
+        "sender_email": "kim.daeri@example.com",
+        "recipients": ["User <user@example.com>"],
+        "cc": ["team@example.com"],
+        "subject": "Project update",
+        "received_at": "Mon, 10 Aug 2026 09:15:00 +0900",
+        "body": "Latest body",
+        "attachments": [
+            {
+                "message_id": "message-new",
+                "attachment_id": "attachment-1",
+                "filename": "report.pdf",
+                "mime_type": "application/pdf",
+                "size_bytes": 2048,
+            }
+        ],
+        "version": "12",
+    }
+
+
+def test_gmail_ui_detail_converts_nested_html_when_plain_is_missing(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    html = (
+        "<html><style>hidden</style><body><p>Hello <strong>team</strong>.</p>"
+        "<script>bad()</script><div>Next line</div></body></html>"
+    )
+    message = _gmail_message("message-1", "2000", None)
+    cast(dict[str, object], message["payload"])["mimeType"] = "multipart/mixed"
+    cast(dict[str, object], message["payload"])["body"] = {}
+    cast(dict[str, object], message["payload"])["parts"] = [
+        {
+            "mimeType": "multipart/alternative",
+            "body": {},
+            "parts": [
+                {
+                    "mimeType": "text/html",
+                    "body": {"data": _gmail_b64(html)},
+                }
+            ],
+        }
+    ]
+
+    monkeypatch.setattr(server, "_google_api", lambda *_args, **_kwargs: {"messages": [message]})
+
+    detail = server._gmail_get_ui_thread_detail(_state(), {"thread_id": "thread-1"})
+
+    assert detail["body"] == "Hello team.\nNext line"
+    assert "hidden" not in str(detail["body"])
+    assert "bad" not in str(detail["body"])
+
+
+def test_gmail_ui_detail_allows_missing_or_malformed_body(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    message = _gmail_message("message-1", "2000", None)
+    cast(dict[str, object], message["payload"])["body"] = {"data": "%%%"}
+    monkeypatch.setattr(server, "_google_api", lambda *_args, **_kwargs: {"messages": [message]})
+
+    detail = server._gmail_get_ui_thread_detail(_state(), {"thread_id": "thread-1"})
+
+    assert "body" not in detail or detail["body"] is None
+
+
+def test_gmail_ui_gateway_maps_the_additive_detail_payload() -> None:
+    transport = FakeMCPTransport()
+    transport.queue_response(
+        {
+            "thread_id": "thread-1",
+            "message_id": "message-1",
+            "sender_name": "Kim Daeri",
+            "sender_email": "kim@example.com",
+            "recipients": ["user@example.com"],
+            "cc": [],
+            "subject": "Project update",
+            "received_at": "Mon, 10 Aug 2026 09:15:00 +0900",
+            "body": "Actual body",
+            "attachments": [],
+            "version": "12",
+        }
+    )
+
+    detail = MCPGmailUiReadGateway(transport=transport).get_thread_detail(thread_id="thread-1")
+
+    assert detail.thread_id == "thread-1"
+    assert detail.message_id == "message-1"
+    assert detail.body == "Actual body"
+    assert transport.call_log[0].tool_name == "gmail_get_ui_thread_detail"
+
+
+def _gmail_message(
+    message_id: str,
+    internal_date: str,
+    body: str | None,
+    *,
+    parts: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "mimeType": "text/plain",
+        "headers": [
+            {"name": "From", "value": "Kim Daeri <kim.daeri@example.com>"},
+            {"name": "To", "value": "User <user@example.com>"},
+            {"name": "Cc", "value": "team@example.com"},
+            {"name": "Subject", "value": "Project update"},
+            {"name": "Date", "value": "Mon, 10 Aug 2026 09:15:00 +0900"},
+        ],
+        "body": {"data": _gmail_b64(body)} if body is not None else {},
+    }
+    if parts:
+        payload["parts"] = parts
+    return {"id": message_id, "internalDate": internal_date, "payload": payload}
+
+
+def _gmail_b64(value: str) -> str:
+    return base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=")
 
 
 def test_tasks_and_calendar_details_map_to_canonical_snapshots(monkeypatch) -> None:  # type: ignore[no-untyped-def]

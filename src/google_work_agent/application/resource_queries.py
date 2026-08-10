@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from urllib.parse import quote
 
 from google_work_agent.ports import (
+    GmailAttachmentMetadata,
+    GmailUiReadGateway,
     GoogleWorkspaceGateway,
     ResourceSnapshot,
     ResourceType,
@@ -40,11 +42,51 @@ class ResourceListPage:
     next_page_token: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class GmailResourceDetail:
+    resource_id: str
+    message_id: str
+    sender_name: str | None
+    sender_email: str | None
+    recipients: tuple[str, ...]
+    cc: tuple[str, ...]
+    subject: str | None
+    received_at: str | None
+    body: str | None
+    attachments: tuple[GmailAttachmentMetadata, ...]
+    canonical_url: str
+
+
 class ResourceQueryService:
     """UI-facing Google Workspace queries over the gateway."""
 
-    def __init__(self, *, gateway: GoogleWorkspaceGateway) -> None:
+    def __init__(
+        self,
+        *,
+        gateway: GoogleWorkspaceGateway,
+        gmail_detail_gateway: GmailUiReadGateway | None = None,
+    ) -> None:
         self._gateway = gateway
+        self._gmail_detail_gateway = gmail_detail_gateway
+
+    def get_gmail_thread_detail(self, *, resource_id: str) -> GmailResourceDetail:
+        if self._gmail_detail_gateway is None:
+            raise RuntimeError("Gmail detail provider is not configured")
+        detail = self._gmail_detail_gateway.get_thread_detail(thread_id=resource_id)
+        canonical_resource_id = quote(detail.thread_id, safe="")
+        return GmailResourceDetail(
+            resource_id=detail.thread_id,
+            message_id=detail.message_id,
+            sender_name=detail.sender_name,
+            sender_email=detail.sender_email,
+            recipients=detail.recipients,
+            cc=detail.cc,
+            subject=detail.subject,
+            received_at=detail.received_at,
+            body=detail.body,
+            attachments=detail.attachments,
+            canonical_url=f"https://mail.google.com/mail/u/0/#inbox/{canonical_resource_id}",
+        )
 
     def list_gmail_threads(
         self,

@@ -15,9 +15,11 @@ import threading
 import time
 from dataclasses import dataclass
 from email import policy
+from email.header import decode_header, make_header
 from email.message import EmailMessage
 from email.parser import BytesParser
-from email.utils import parseaddr
+from email.utils import getaddresses, parseaddr
+from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import cast
@@ -341,6 +343,7 @@ def _tool_call(
 ) -> dict[str, object]:
     tools = {
         "gmail_search_threads": _gmail_search_threads,
+        "gmail_get_ui_thread_detail": _gmail_get_ui_thread_detail,
         "gmail_get_thread": _gmail_get_thread,
         "gmail_get_message": _gmail_get_message,
         "gmail_get_draft": _gmail_get_draft,
@@ -418,6 +421,40 @@ def _gmail_thread_list_metadata(
         "received_at": _optional_text(headers.get("date"))
         or _first_message_internal_date(messages),
         "snippet": list_snippet or _optional_text(payload.get("snippet")),
+    }
+
+
+def _gmail_get_ui_thread_detail(
+    state: _WorkspaceState, arguments: dict[str, object]
+) -> dict[str, object]:
+    thread_id = _text_argument(arguments, "thread_id", maximum=2048)
+    payload = _google_api(
+        state,
+        f"https://gmail.googleapis.com/gmail/v1/users/me/threads/{quote(thread_id, safe='')}",
+        {"format": "full"},
+    )
+    messages = _object_list(payload.get("messages"))
+    if not messages:
+        raise _WorkspaceToolError("NOT_FOUND")
+    message = _latest_gmail_message(messages)
+    message_id = _required_response_text(message, "id")
+    headers = _headers(message)
+    sender_name, sender_email = _email_identity(_decoded_header(headers.get("from")))
+    recipients = _email_addresses(_decoded_header(headers.get("to")))
+    cc = _email_addresses(_decoded_header(headers.get("cc")))
+    return {
+        "thread_id": thread_id,
+        "message_id": message_id,
+        "sender_name": sender_name,
+        "sender_email": sender_email,
+        "recipients": list(recipients),
+        "cc": list(cc),
+        "subject": _decoded_header(headers.get("subject")),
+        "received_at": _optional_text(headers.get("date"))
+        or _optional_text(message.get("internalDate")),
+        "body": _gmail_message_body(message),
+        "attachments": _gmail_attachment_metadata(message),
+        "version": _optional_text(payload.get("historyId")) or "",
     }
 
 
@@ -1524,6 +1561,148 @@ def _headers(message: dict[str, object]) -> dict[str, str]:
         for item in _object_list(payload.get("headers"))
         if item.get("name") and item.get("value")
     }
+
+
+def _latest_gmail_message(messages: list[dict[str, object]]) -> dict[str, object]:
+    def sort_key(indexed: tuple[int, dict[str, object]]) -> tuple[int, int]:
+        index, message = indexed
+        internal_date = _optional_text(message.get("internalDate"))
+        return (int(internal_date) if internal_date and internal_date.isdigit() else -1, index)
+
+    return max(enumerate(messages), key=sort_key)[1]
+
+
+def _decoded_header(value: str | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        return _optional_text(str(make_header(decode_header(value))))
+    except (LookupError, UnicodeError):
+        return _optional_text(value)
+
+
+def _email_addresses(value: str | None) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    addresses = []
+    for name, email in getaddresses([value]):
+        normalized_email = _optional_text(email)
+        if normalized_email is None:
+            continue
+        normalized_name = _optional_text(name)
+        addresses.append(
+            f"{normalized_name} <{normalized_email}>" if normalized_name else normalized_email
+        )
+    return tuple(addresses)
+
+
+def _gmail_message_body(message: dict[str, object]) -> str | None:
+    payload = cast(dict[str, object], message.get("payload") or {})
+    plain_parts: list[str] = []
+    html_parts: list[str] = []
+    _collect_gmail_body_parts(payload, plain_parts=plain_parts, html_parts=html_parts)
+    if plain_parts:
+        return _optional_text("\n\n".join(plain_parts))
+    if html_parts:
+        parser = _ReadableHtmlParser()
+        parser.feed("\n".join(html_parts))
+        parser.close()
+        return parser.readable_text()
+    return None
+
+
+def _collect_gmail_body_parts(
+    part: dict[str, object], *, plain_parts: list[str], html_parts: list[str]
+) -> None:
+    mime_type = (_optional_text(part.get("mimeType")) or "").lower()
+    filename = _optional_text(part.get("filename"))
+    body = cast(dict[str, object], part.get("body") or {})
+    data = _optional_text(body.get("data"))
+    if filename is None and data is not None and mime_type in {"text/plain", "text/html"}:
+        decoded = _decode_gmail_text(data, charset=_gmail_part_charset(part))
+        if decoded:
+            (plain_parts if mime_type == "text/plain" else html_parts).append(decoded)
+    for child in _object_list(part.get("parts")):
+        _collect_gmail_body_parts(child, plain_parts=plain_parts, html_parts=html_parts)
+
+
+def _decode_gmail_text(data: str, *, charset: str | None) -> str | None:
+    try:
+        raw = _b64url_decode(data)
+    except (ValueError, binascii.Error):
+        return None
+    try:
+        return _optional_text(raw.decode(charset or "utf-8", errors="replace"))
+    except LookupError:
+        return _optional_text(raw.decode("utf-8", errors="replace"))
+
+
+def _gmail_part_charset(part: dict[str, object]) -> str | None:
+    headers = {
+        str(item.get("name", "")).lower(): str(item.get("value", ""))
+        for item in _object_list(part.get("headers"))
+        if item.get("name") and item.get("value")
+    }
+    content_type = headers.get("content-type", "")
+    match = re.search(r"charset\s*=\s*[\"']?([^;\"'\s]+)", content_type, flags=re.IGNORECASE)
+    return match.group(1) if match else None
+
+
+def _gmail_attachment_metadata(message: dict[str, object]) -> list[dict[str, object]]:
+    message_id = _required_response_text(message, "id")
+    payload = cast(dict[str, object], message.get("payload") or {})
+    results: list[dict[str, object]] = []
+
+    def visit(part: dict[str, object]) -> None:
+        body = cast(dict[str, object], part.get("body") or {})
+        filename = _decoded_header(_optional_text(part.get("filename")))
+        attachment_id = _optional_text(body.get("attachmentId"))
+        if filename is not None and attachment_id is not None:
+            size = body.get("size")
+            results.append(
+                {
+                    "message_id": message_id,
+                    "attachment_id": attachment_id,
+                    "filename": filename,
+                    "mime_type": _optional_text(part.get("mimeType")) or "application/octet-stream",
+                    "size_bytes": size if isinstance(size, int) and size >= 0 else None,
+                }
+            )
+        for child in _object_list(part.get("parts")):
+            visit(child)
+
+    visit(payload)
+    return results
+
+
+class _ReadableHtmlParser(HTMLParser):
+    _BLOCK_TAGS = {"br", "div", "p", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._chunks: list[str] = []
+        self._ignored_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        del attrs
+        if tag in {"script", "style"}:
+            self._ignored_depth += 1
+        elif not self._ignored_depth and tag in self._BLOCK_TAGS:
+            self._chunks.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style"} and self._ignored_depth:
+            self._ignored_depth -= 1
+        elif not self._ignored_depth and tag in self._BLOCK_TAGS:
+            self._chunks.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self._ignored_depth:
+            self._chunks.append(data)
+
+    def readable_text(self) -> str | None:
+        lines = [" ".join(line.split()) for line in "".join(self._chunks).splitlines()]
+        return _optional_text("\n".join(line for line in lines if line))
 
 
 def _email_identity(value: str | None) -> tuple[str | None, str | None]:
