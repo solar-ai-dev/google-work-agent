@@ -137,6 +137,7 @@ from google_work_agent.ports import (
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     PlanRecord,
+    PromptReference,
     ResourceRefRecord,
     ResourceSource,
     StoredResourceType,
@@ -346,28 +347,42 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             llm_runtime=llm_runtime,
             manifest_path=prompt_manifest_path,
         )
-        self._single_request_source_prompt_ref = (
-            load_profile_single_request_source_prompt_reference(prompt_manifest_path)
-        )
-        self._single_reason_plan_prompt_ref = load_profile_single_reason_plan_prompt_reference(
-            prompt_manifest_path
-        )
-        self._three_stage1_prompt_ref = load_profile_three_stage1_prompt_reference(
-            prompt_manifest_path
-        )
-        self._three_stage2_prompt_ref = load_profile_three_stage2_prompt_reference(
-            prompt_manifest_path
-        )
-        self._single_review = PlanReviewAgent(
-            llm_runtime=llm_runtime,
-            inspect_prompt_ref=load_profile_single_self_review_prompt_reference(
+        # Each non-default graph_profile (SINGLE_BASELINE, THREE_STAGE) is an
+        # E06-A architecture-candidate under comparison, not a feature that
+        # ships alongside SIX_ROLE_BASELINE (docs/06-agent-workflow.md 1.1,
+        # 1.3). Loading a profile's prompt refs/subgraph -- and therefore
+        # requiring its RUNTIME_ACTIVE prompts -- only when that profile is
+        # the one actually selected keeps an inactive candidate profile's
+        # prompts from blocking the product (SIX_ROLE_BASELINE) runtime.
+        self._single_request_source_prompt_ref: PromptReference | None = None
+        self._single_reason_plan_prompt_ref: PromptReference | None = None
+        self._single_review: PlanReviewAgent | None = None
+        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
+            self._single_request_source_prompt_ref = (
+                load_profile_single_request_source_prompt_reference(prompt_manifest_path)
+            )
+            self._single_reason_plan_prompt_ref = load_profile_single_reason_plan_prompt_reference(
                 prompt_manifest_path
-            ),
-            recheck_prompt_ref=load_profile_single_self_review_recheck_prompt_reference(
+            )
+            self._single_review = PlanReviewAgent(
+                llm_runtime=llm_runtime,
+                inspect_prompt_ref=load_profile_single_self_review_prompt_reference(
+                    prompt_manifest_path
+                ),
+                recheck_prompt_ref=load_profile_single_self_review_recheck_prompt_reference(
+                    prompt_manifest_path
+                ),
+                manifest_path=prompt_manifest_path,
+            )
+        self._three_stage1_prompt_ref: PromptReference | None = None
+        self._three_stage2_prompt_ref: PromptReference | None = None
+        if self._graph_profile is GraphProfile.THREE_STAGE:
+            self._three_stage1_prompt_ref = load_profile_three_stage1_prompt_reference(
                 prompt_manifest_path
-            ),
-            manifest_path=prompt_manifest_path,
-        )
+            )
+            self._three_stage2_prompt_ref = load_profile_three_stage2_prompt_reference(
+                prompt_manifest_path
+            )
         self._domain_validation = DomainValidationService()
 
         self._complete_answer_only = CompleteAnswerOnlyRunService(
@@ -487,10 +502,16 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._analysis_subgraph = self._build_analysis_subgraph()
         self._planning_subgraph = self._build_planning_subgraph()
         self._review_subgraph = self._build_review_subgraph()
-        self._three_stage_one_subgraph = self._build_three_stage_one_subgraph()
-        self._three_stage_two_subgraph = self._build_three_stage_two_subgraph()
-        self._three_stage_review_subgraph = self._build_three_stage_review_subgraph()
-        self._single_workflow_subgraph = self._build_single_workflow_subgraph()
+        self._three_stage_one_subgraph: Any = None
+        self._three_stage_two_subgraph: Any = None
+        self._three_stage_review_subgraph: Any = None
+        if self._graph_profile is GraphProfile.THREE_STAGE:
+            self._three_stage_one_subgraph = self._build_three_stage_one_subgraph()
+            self._three_stage_two_subgraph = self._build_three_stage_two_subgraph()
+            self._three_stage_review_subgraph = self._build_three_stage_review_subgraph()
+        self._single_workflow_subgraph: Any = None
+        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
+            self._single_workflow_subgraph = self._build_single_workflow_subgraph()
         self._native_agent_subgraphs = self._native_subgraphs_for_profile()
         self._topology = self._topology_for_profile()
         self._graph = self._build_graph()
@@ -1880,6 +1901,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         }
 
     def _three_stage_one_request_source_node(self, state: GraphState) -> GraphState:
+        assert self._three_stage1_prompt_ref is not None
         request = self._request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         llm_result = self._request_understanding._llm_runtime.invoke_structured(
@@ -2099,6 +2121,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         }
 
     def _three_stage_two_reason_plan_node(self, state: GraphState) -> GraphState:
+        assert self._three_stage2_prompt_ref is not None
         request = self._request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         llm_result = self._request_understanding._llm_runtime.invoke_structured(
@@ -2382,6 +2405,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         }
 
     def _single_workflow_request_source_node(self, state: GraphState) -> GraphState:
+        assert self._single_request_source_prompt_ref is not None
         request = self._request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         llm_result = self._request_understanding._llm_runtime.invoke_structured(
@@ -2469,6 +2493,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         }
 
     def _single_workflow_reason_plan_node(self, state: GraphState) -> GraphState:
+        assert self._single_reason_plan_prompt_ref is not None
         request = self._request_from_state(state)
         self._transition_run(request.run_id, "begin_planning")
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
@@ -2505,6 +2530,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         }
 
     def _single_workflow_self_review_node(self, state: GraphState) -> GraphState:
+        assert self._single_review is not None
         request = self._request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         output = state[PROFILE_REASON_PLAN_OUTPUT_KEY]
@@ -2583,6 +2609,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         }
 
     def _single_workflow_finalize_node(self, state: GraphState) -> GraphState:
+        assert self._single_review is not None
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         if state.get("plan_review") is None:
             prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]

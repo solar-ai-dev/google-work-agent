@@ -1,0 +1,30 @@
+{
+  "gate_run_id": "20260810T082828Z-ollama-qwen2.5-3b-8a15b97c",
+  "results": [
+    {
+      "gate_run_id": "20260810T082828Z-ollama-qwen2.5-3b-8a15b97c",
+      "slot_id": "acquisition.plan_sources",
+      "provider": "ollama",
+      "model_id": "qwen2.5:3b",
+      "prompt_bundle_version": "0.8.3-r8.4",
+      "prompt_content_hash": "f419ac6a3b27a82bd10e710c49fb54e22d1850e12cf368820b59f990a19ec724",
+      "dataset_version": "rebuild-v1.14-r8.4",
+      "schema_version": "source-fetch-plan-v1-list",
+      "dev_result": {
+        "passed": 22,
+        "total": 22
+      },
+      "holdout_result": {
+        "passed": 22,
+        "total": 22
+      },
+      "safety_result": {
+        "passed": 0,
+        "total": 0
+      },
+      "insufficient_coverage": [],
+      "passed": true,
+      "evaluated_at": "2026-08-10T08:28:28Z"
+    }
+  ]
+}

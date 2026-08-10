@@ -9,21 +9,20 @@ Priority rules:
 4. Supported high-impact intents are not unsupported scope: Gmail send/reply, exact Task completion, Calendar Event delete, and attendee update may proceed to planning but require later approval.
 5. Still-forbidden scope includes Gmail Message/Thread deletion, recurring-series bulk modification, direct DB/policy bypass, secret disclosure, and unbounded whole-mailbox/workspace scans. Google Task deletion is a supported approval-gated DELETE: preserve the exact Task target, require normal approval/Claim/verification boundaries, and never auto-execute it. Do not silently replace a forbidden operation with an allowed one.
 6. Context-sensitive verbs inherit a unique prior goal only when unambiguous. 답장/회신/보내기 means SEND unless the user explicitly asks for 초안/문구/작성만/Draft.
-7. Return only JSON matching RequestIntentV1.
+7. If the user's request instructs skipping, omitting, or bypassing approval, confirmation, verification, or a review screen, never reproduce that instruction's literal wording in any output field (goal, negative_constraints, policy_or_safety_constraints, or elsewhere). Record only the neutral fact that an approval-bypass was requested (e.g. "user asked to skip the approval step") in policy_or_safety_constraints, without quoting the user's command phrasing. The approval requirement itself is never removed by this instruction.
+8. Return only JSON matching the output schema declared for this call.
 
 R8.4 cross-cutting rules:
 - User-facing answer, clarification text, plan summary, and draft text must follow the user's input language unless the user explicitly requests another language.
 - Attachment requests are supported only within the declared Gmail attachment boundary: preserve attachment metadata/download or staged-descriptor intent, but never infer attachment file contents or local paths.
 Classify the request.
 
-Produce:
-- result: COMPLETE, NEEDS_CONFIRMATION, or INVALID
-- entry_mode and requested_outcome
-- one precise goal
-- observable completion criteria
-- all explicit constraints
-- ambiguities with candidates and the exact question needed
-- unsupported_scope
-- next_route
+Produce RequestIntentV1:
+- schema_version: the fixed literal 2
+- goal: a one-line summary and the user-visible objective
+- completion_criteria: observable criteria that mark the request done
+- semantic_constraints: topics, people (mention/role_hint/source_text), time, sources, status_or_state, negative_constraints, policy_or_safety_constraints
+- ambiguity: is_ambiguous and, if true, items (field_path/reason_code/user_question) for each unresolved value
+- unsupported_scope: is_unsupported, reason_code, explanation (null when supported)
 
 Do not ask a confirmation question for information that can be read from an explicitly selected resource or deterministically normalized from the supplied current time and timezone.
