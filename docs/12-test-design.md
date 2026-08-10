@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.7`, `01-A v2.8`, `01-B v2.7`, `02 UI·UX v2.7`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.5`, `06 Workflow v6.0`, `07 Interface v2.9`, `08 Sequence v3.1`, `09 Security v2.5`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `15 Agent Capability·Failure·Prompt v1.5`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `02 UI·UX v2.8`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.6`, `06 Workflow v6.1`, `07 Interface v3.0`, `08 Sequence v3.2`, `09 Security v2.5`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `15 Agent Capability·Failure·Prompt v1.5`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v3.4 · **기준일:** 2026-08-10 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.5 · **기준일:** 2026-08-10 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -85,7 +85,7 @@ DeterministicGrader
 필수 경계:
 
 - Gmail 긴 Thread·외부 주소·Prompt Injection
-- Task 중복·유사·기한 없음·기한 임박
+- Task 중복·유사·예정일 없음·예정일 임박·업무 마감 분리
 - Calendar Busy·Tentative·Free·OOO·Focus·DST
 - Write 정상·정규화 차이·Mismatch
 - 401·403·404·409·429·5xx·Timeout·응답 유실
@@ -457,8 +457,18 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 
 - Calendar Sidebar는 실제 Event 제목과 같은 날/날짜가 다른 시간 범위, All-day 형식을 검증한다. 같은 날 시간 Event에는 연도·월·일·요일·시작/종료 시간이 있고 `시작`·`종료` label은 없으며, All-day Event에는 연도·월·일·요일과 `하루 종일`이 있다.
 - Calendar 중앙 Viewer에는 실제 Projection의 `시작`, `종료` 필드가 남아 있음을 검증한다.
-- Tasks Sidebar는 실제 Google Task Projection의 제목·기한을 렌더링하고, Projection에 없는 priority·category·가짜 Task List를 표시하지 않음을 검증한다.
+- Tasks Sidebar는 실제 Google Task Projection의 제목·예정일을 렌더링하고, Projection에 없는 priority·category·가짜 Task List를 표시하지 않음을 검증한다.
 - Viewer Empty State는 Gmail·Tasks·Calendar 각각의 안내 문구를 검증하며, Source 전환 뒤 이전 Source 상세가 남지 않음을 검증한다.
+
+### Google Tasks 날짜·상태 의미 회귀
+
+1. Provider `needsAction`은 UI `미완료`, `completed`는 UI `완료`이며 raw enum 노출은 0이다.
+2. `due=2026-08-11T00:00:00Z`는 `scheduled_date=2026-08-11` 및 사용자 UI `예정일`로 정규화한다. raw timestamp와 `마감일` 표현은 0이다.
+3. 미완료 Task의 예정일이 지나도 Provider·Domain 완료 상태는 변하지 않으며 UI 보조 문구 `예정일 지남`만 허용한다.
+4. 메일의 `8월 12일까지 제출` + Task 생성 요청은 `business_deadline=8/12`, `scheduled_date` 없음, Google `due` 자동 생성 0을 검증한다. 업무 마감 보존이 필요하면 승인된 notes·Evidence·Approval Projection을 검증한다.
+5. `8월 11일에 처리`는 `scheduled_date=8/11`, Google `due=8/11`을 검증한다. `11일에 처리하고 12일까지 제출`은 두 값을 분리해 검증한다.
+6. 시간대 지정 요청에서 Tasks API가 정확한 시간 구간을 설정했다고 성공 선언하는 경우는 0이다. Calendar Event 대안은 별도 승인형 Write인지 검증한다.
+7. Task 완료 상태 변경은 정확한 대상·승인형 `UPDATE`이며 예정일 경과로 자동 완료되지 않음을 검증한다.
 
 ### UI Fixture 원칙
 

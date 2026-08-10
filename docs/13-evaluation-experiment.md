@@ -1,8 +1,8 @@
 # 13. Google Work Agent · 평가 · 실험 설계서
 
-> **문서 기준:** `01 PRD v2.7`, `01-A v2.6`, `01-B v2.7`, `03 Architecture v3.0`, `05 Retrieval v2.5`, `06 Workflow v6.0`, `07 Interface v2.8`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `12 Test v3.1`, `15 Agent Capability·Failure·Prompt v1.5`를 기준으로 한다.
+> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `03 Architecture v3.0`, `05 Retrieval v2.6`, `06 Workflow v6.1`, `07 Interface v3.0`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `12 Test v3.5`, `15 Agent Capability·Failure·Prompt v1.5`를 기준으로 한다.
 >
-> **상태:** Draft v3.1 · **기준일:** 2026-08-09 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
+> **상태:** Draft v3.2 · **기준일:** 2026-08-10 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
 
 ## 먼저 읽기 — 이 문서가 결정하는 것
 
@@ -620,6 +620,7 @@ DELETE -> GET_ABSENT  / GET_TARGET
 - Required와 Forbidden·Hard Negative가 겹치지 않게 자동 검사한다.
 - Source 본문에는 평가 라벨·정답 유도 문구·정책 설명을 넣지 않는다.
 - 실제 업무 요청에서 사용자가 명시한 값과 Fixture에서 확인해야 할 값을 구분한다. 사용자 명시값을 다시 “확인받아야 할 모호성”으로 만들지 않는다.
+- Google Task 평가에서 `scheduled_date`와 `business_deadline`을 분리한다. 기존 Dataset·Gold가 Task `due`를 deadline으로 표기·채점한다면 즉시 수정하지 않고 Dataset Issue로 기록해 Migration/Gold regeneration 후 새 Dataset Version으로 승격한다. 올바르게 예정일로 판단한 후보를 기존 deadline Gold로 실패 처리하지 않는다.
 
 ## 9. G00 Dataset·Grader Integrity
 
