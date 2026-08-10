@@ -1,6 +1,6 @@
 # 01-A. Google Work Agent 기능 정의서
 
-> **상태:** Draft v2.8 · **기준일:** 2026-08-10
+> **상태:** Draft v2.9 · **기준일:** 2026-08-10
 
 ## 1. 문서 목적
 
@@ -147,7 +147,7 @@
 - **사용자 목적:** Gmail·Tasks·Calendar의 현재 항목을 목록으로 탐색한다.
 - **입력:** Source, 검색·필터 조건, Page Token.
 - **처리:** 페이지당 10~20개를 Google API에서 조회하며 P0 기본값은 20개로 한다.
-- **정렬:** Gmail 최근 수신 순, Tasks 미완료·기한 임박 우선, Calendar 가까운 예정 일정 순.
+- **정렬:** Gmail 최근 수신 순, Tasks 미완료·예정일 임박 우선, Calendar 가까운 예정 일정 순.
 - **출력:** 목록 Metadata, 다음 Page Token, 마지막 조회 시각.
 - **완료 조건:** 사용자가 원본 전체를 로컬 DB에 저장하지 않고 최신 목록을 탐색할 수 있다.
 
@@ -205,7 +205,7 @@
 ### FN-022 Tasks 검색·조회
 
 - **상태:** P0
-- **입력:** Task List, 상태, 기한, Keyword.
+- **입력:** Task List, 상태, 예정일, Keyword.
 - **처리:** 기본·선택 List의 미완료 Task를 조회하고 정규화한다.
 - **출력:** Task WorkItem.
 
@@ -257,7 +257,7 @@
 ### FN-031 Task 중복 검사
 
 - **상태:** P0
-- **처리:** 제목·사람·Thread·기한·상태를 비교한다.
+- **처리:** 제목·사람·Thread·예정일·상태를 비교한다. 실제 업무 마감은 관련 Evidence에 있을 때만 별도 비교한다.
 - **출력:** 중복 차단, 중복 경고, 신규 허용.
 
 ### FN-032 Calendar 충돌 검사
@@ -269,7 +269,7 @@
 ### FN-033 업무 가능성 판단
 
 - **상태:** P0
-- **입력:** 마감, 예상 소요시간, 가용 Slot, 사용자 업무 시간.
+- **입력:** Evidence 또는 사용자 요청에서 확인한 업무 마감, 예상 소요시간, 가용 Slot, 사용자 업무 시간.
 - **출력:** 가능, 위험, 불가능 및 근거.
 - **예외:** 예상 시간이 없으면 Event를 자동 제안하지 않고 확인 질문을 한다.
 
@@ -297,7 +297,7 @@
 ### FN-043 Task 제안
 
 - **상태:** P0
-- **출력:** 제목, 메모, 기한, Task List.
+- **출력:** 제목, 메모, 예정일(`scheduled_date`), Task List. 실제 업무 마감(`business_deadline`)은 Google Task 예정일로 자동 변환하지 않으며, 필요한 경우 notes와 Evidence·Approval Summary에 업무 마감 의미로 보존한다.
 - **제한:** 정확한 Task 완료 상태 변경과 Task 삭제는 사용자 승인 후 허용한다. Task 삭제는 `DELETE`로 처리하고 실행 후 대상 부재를 검증한다.
 
 ### FN-044 작업 Event 제안
@@ -321,7 +321,7 @@
 ### FN-052 Action 수정
 
 - **상태:** P0
-- **수정 가능:** Draft 수신자·CC·제목·본문, Task 제목·메모·기한, Event 제목·시간·설명.
+- **수정 가능:** Draft 수신자·CC·제목·본문, Task 제목·메모·예정일, Event 제목·시간·설명.
 - **처리:** 수정 후 Schema·Policy·중복·충돌을 다시 검사한다.
 
 ### FN-053 Action 거절
@@ -595,7 +595,7 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 
 ### Source별 Sidebar 목록
 
-- Tasks는 실제 Google Workspace Source다. 지원 Projection은 제목, 메모, 기한, Task List, 완료 상태이며, 기본 compact row는 **Task 제목 → 기한** 순서로 표시한다. Task List는 실제 반환된 값만 보조 정보로 사용할 수 있다. 정렬은 미완료·기한 임박 우선 의미를 유지한다.
+- Tasks는 실제 Google Workspace Source다. 지원 Projection은 제목, 메모, 예정일, Task List, 완료 상태이며, 기본 compact row는 **Task 제목 → 예정일** 순서로 표시한다. Task List는 실제 반환된 값만 보조 정보로 사용할 수 있다. 정렬은 미완료·예정일 임박 우선 의미를 유지한다.
 - Tasks와 Calendar row에는 priority, 임의 category·Task List 이름, 임의 색상 dot·marker·status badge, 내부 Google ID, Page Token을 생성하거나 표시하지 않는다.
 - Calendar Event compact row는 **Event 제목 → 시간 범위** 순서다. 같은 날 시간 Event는 `YYYY년 M월 D일 (요일) 오전/오후 h:mm - 오전/오후 h:mm` 형식으로 연·월·일·요일·시작 시간·종료 시간을 표시하고 날짜는 한 번만 표시한다. 날짜가 다르면 시작일과 종료일을 각각 식별 가능하게 표시한다. All-day Event는 `YYYY년 M월 D일 (요일) · 하루 종일` 형식이다.
 - Calendar Sidebar에는 `시작`, `종료` label을 표시하지 않는다. 중앙 Viewer의 Event 상세는 제공된 `시작`, `종료` 필드를 유지한다. 선택 상태는 기존 Source row와 같은 background/focus styling으로만 나타낸다.
@@ -605,6 +605,25 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 
 - 중앙 Viewer 제목은 모든 Source에서 `자료 상세`다. Focus가 없을 때 Gmail은 `왼쪽 목록에서 메일을 선택하면 상세 내용을 확인할 수 있습니다.`, Tasks는 `왼쪽 목록에서 태스크를 선택하면 상세 내용을 확인할 수 있습니다.`, Calendar는 `왼쪽 목록에서 일정을 선택하면 상세 내용을 확인할 수 있습니다.`를 표시한다.
 - Source 전환은 이전 Source의 Focus와 상세 표시를 제거한 뒤 새 Source의 Empty State 또는 새 Focus 상세를 표시한다.
+
+## v2.9 Google Tasks 날짜·상태 의미
+
+이 절은 Google Tasks의 제품 의미를 소유한다. 기존 Task의 `기한` 또는 `due`가 실제 업무 마감과 동일하다고 해석한 표현과 상충하면 이 절을 우선한다. Google Write 승인·Claim·Verification과 Domain 상태 권위는 변경하지 않는다.
+
+### 예정일과 업무 마감
+
+- `scheduled_date`는 사용자가 Task를 수행할 예정인 날짜다. Google Tasks API Adapter의 `due`와 대응하며 READ/WRITE 가능하다. 시간 정보를 생성·추론하지 않는다.
+- `business_deadline`은 업무 자체가 완료되어야 하는 실제 마감이다. Gmail 본문, 사용자 요청, Evidence에서 인식할 수 있으나 Google Tasks API의 `due`와 동일시하지 않는다.
+- 업무 마감만 있는 요청은 `scheduled_date`를 만들거나 Google `due`를 채우지 않는다. 필요한 경우 `notes`에 `업무 마감: YYYY년 M월 D일`처럼 의미를 보존하고 Evidence·Approval Summary에도 근거를 남긴다.
+- 수행 예정일과 업무 마감이 모두 명시되면 각각 보존한다. 예를 들어 11일 수행·12일 제출은 `scheduled_date=11일`, `business_deadline=12일`이며 Google `due`에는 11일만 사용한다.
+- 시간대가 지정된 Task 요청은 현재 Google Tasks API가 정확한 시간 구간을 구조화해 설정했다고 성공 처리하지 않는다. 날짜 예정일만 제안하거나, 정확한 시간 예약이 필요하면 승인형 Calendar Event 대안을 사용자에게 제시한다. 사용자 동의 없이 Event를 추가하지 않는다.
+
+### 상태와 사용자 Projection
+
+- Provider raw `needsAction`은 제품 상태 `NEEDS_ACTION`, UI 문구 `미완료`로 정규화한다. raw `completed`는 `COMPLETED`, UI 문구 `완료`로 정규화한다.
+- 예정일 경과는 상태 전이가 아니다. `scheduled_date`가 지났고 상태가 미완료이면 UI 보조 문구 `예정일 지남`만 사용할 수 있으며, `기한 초과`·`마감 초과` 또는 자동 완료로 표현하지 않는다.
+- 완료는 Google Task 실제 status가 `completed`일 때만 표시한다. Provider가 완료 날짜를 제공하면 사용자 친화적인 `완료일`로 표시할 수 있다.
+- 목록·상세에는 raw enum, RFC3339 raw `due`, 내부 `due` 필드명, API에 없는 작업 시간·업무 마감을 표시하지 않는다. React는 사용자용 Local API Projection을 소비하며 Provider 의미의 최종 정규화를 담당하지 않는다.
 
 ## R8.4 Gmail 첨부파일 기능
 

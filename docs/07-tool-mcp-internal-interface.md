@@ -1,10 +1,10 @@
 # 07. Google Work Agent · Tool · MCP · 내부 인터페이스 명세서
 
-> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v6.0`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, MCP Tool, Python 내부 인터페이스 계약을 정의한다.
+> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v6.1`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, MCP Tool, Python 내부 인터페이스 계약을 정의한다.
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.9
+- **상태:** Draft v2.10
 - **기준일:** 2026-08-10
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
@@ -259,6 +259,8 @@ tasks_delete_task
 ```
 
 `tasks_update_task`는 승인된 완료 상태 변경을 지원한다. `tasks_delete_task`는 정확한 Task ID를 대상으로 하는 승인형 `DELETE`이며 Claim V2 검증 후 실행하고 `GET_ABSENT`로 대상 부재를 검증한다.
+
+Google Tasks Adapter의 raw `due`는 제품 내부 `scheduled_date`의 Provider 매핑값이다. 현재 Tool Schema의 `due?` 표기는 Google API 경계의 raw argument이며, Local API·Application·UI Projection은 `scheduled_date`와 정규화된 `task_status`를 소비하도록 후속 구현에서 정합해야 한다. `business_deadline`은 Google Task Write의 구조화 Argument가 아니며 `due`로 자동 매핑하지 않는다. Task 시간 구간도 현재 Tool 계약의 필드가 아니다.
 
 ## 9. Calendar Tool
 
@@ -708,6 +710,7 @@ metadata
 - 모든 ID·Page Token은 길이 1..2048, 제어문자 금지.
 - 날짜·시간은 RFC3339와 명시 Timezone을 사용한다.
 - Write Tool의 `claim context`는 Action·Approval·Attempt·Hash·Token을 포함한다.
+- `tasks_create_task`의 raw `due?`는 Google Adapter 경계에서만 `scheduled_date`와 대응한다. `business_deadline`·작업 시간은 새 Task Tool Argument로 추가하지 않으며, 업무 마감 의미 보존은 승인된 `notes`와 Evidence·Approval Projection을 따른다.
 
 ## 28. Verification·Recovery 계약
 - CREATE·UPDATE: GET_COMPARE.

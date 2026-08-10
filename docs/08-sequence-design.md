@@ -1,8 +1,8 @@
 # 08. Google Work Agent · 시퀀스 설계서
 
-> **문서 기준:** `01. 요구사항 정의서·PRD v2.7`, `01-A. 기능 정의서 v2.7`, `01-B. 정책 정의서 v2.7`, `02. UI·UX 설계서 v2.5`, `03. 시스템 아키텍처 설계서 v3.0`, `04. 도메인·데이터베이스 설계서 Draft v1.12`, `05. Context·Retrieval 설계서 Draft v2.5`, `06. Agent·Workflow 설계서 Draft v6.0`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v2.8`, Domain 상태 전이 계약 v1.4를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
+> **문서 기준:** `01. 요구사항 정의서·PRD v2.8`, `01-A. 기능 정의서 v2.9`, `01-B. 정책 정의서 v2.8`, `02. UI·UX 설계서 v2.8`, `03. 시스템 아키텍처 설계서 v3.0`, `04. 도메인·데이터베이스 설계서 Draft v1.12`, `05. Context·Retrieval 설계서 Draft v2.6`, `06. Agent·Workflow 설계서 Draft v6.1`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v3.0`, Domain 상태 전이 계약 v1.4를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
 
-> **상태:** Draft v3.1 · **기준일:** 2026-08-09  
+> **상태:** Draft v3.2 · **기준일:** 2026-08-10
 > **대상:** P0 MVP  
 > **구조:** 결정적 Supervisor + 1/3/6 Agent Subgraph Profile + 결정적 실행·검증 Engine  
 > **상태 기준:** SQLite Domain Store가 승인·실행·검증 사실의 기준점이며 LangGraph Checkpoint는 재개 위치, SSE는 UI Projection이다.
@@ -464,6 +464,29 @@ sequenceDiagram
 ```
 
 외부 Write와 GET 수행 중 DB Transaction을 유지하지 않는다.
+
+### 11.1 Google Task 날짜·시간 의미
+
+```text
+Gmail·사용자 요청에서 업무 마감만 확인
+→ Request Understanding: business_deadline 후보
+→ Task scheduled_date 없음
+→ Plan: notes·Evidence·Approval Summary에 업무 마감 보존 제안
+→ 사용자 Approval
+→ tasks_create_task(due 없음)
+→ GET Verification: 제목·notes·예정일 부재 비교
+
+사용자가 수행 예정일도 명시
+→ Request Understanding: scheduled_date 후보
+→ 승인된 tasks_create_task(due = scheduled_date)
+→ GET Verification: 예정일 비교
+
+정확한 시간 구간 요청
+→ Tasks 시간 설정 성공 선언 금지
+→ 날짜 예정일 또는 별도 승인형 Calendar Event 대안 제시
+```
+
+Provider `needsAction`·`completed`는 Local API Projection에서 사용자 상태 `미완료`·`완료`로 정규화한다. 예정일 경과는 상태 전이나 자동 완료 시퀀스를 만들지 않는다.
 
 ## 12. 일부 승인과 Action DAG
 

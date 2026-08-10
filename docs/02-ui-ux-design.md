@@ -1,6 +1,6 @@
 # 02. Google Work Agent UI · UX 설계서
 
-> **상태:** Draft v2.7 · **기준일:** 2026-08-10 · **대상:** P0 MVP
+> **상태:** Draft v2.8 · **기준일:** 2026-08-10 · **대상:** P0 MVP
 
 > **핵심 UX 원칙:** 사용자는 최소한의 행동으로 최대한의 결과를 얻어야 한다. 사용자가 이미 보고 있는 항목과 작업 흐름 안에서 다음 행동을 수행할 수 있어야 하며, 불필요한 화면 이동·재입력·반복 승인은 UX 실패로 본다.
 
@@ -254,7 +254,7 @@ Gmail·Tasks·Calendar를 확인하는 동시에 현재 항목에서 바로 Agen
 
 - `일정 제안`
 - `관련 메일 찾기`
-- `마감 위험 확인`
+- `관련 마감 확인`
 - `채팅에 추가`
 
 #### Calendar Card Action
@@ -278,7 +278,7 @@ Gmail·Tasks·Calendar를 확인하는 동시에 현재 항목에서 바로 Agen
 ### 9.5 Source별 기본 정렬
 
 - Gmail: 최근 수신 메일부터 표시
-- Tasks: 미완료 우선, 기한 임박 순, 기한 없는 Task 순
+- Tasks: 미완료 우선, 예정일 임박 순, 예정일 없는 Task 순
 - Calendar: 현재 이후의 가장 가까운 일정부터 표시
 - 과거 Calendar 조회에서는 최근 과거 일정부터 표시
 
@@ -517,7 +517,7 @@ Gmail 2개 · Tasks 1개 · Calendar 3개
 수정 가능한 필드:
 
 - Gmail Draft: 수신자, CC, 제목, 본문
-- Task: 제목, 메모, 기한, Task List
+- Task: 제목, 메모, 예정일, Task List
 - Calendar Event: 제목, 시작, 종료, 설명, Calendar
 
 ## 16. 실행과 검증 UX
@@ -806,7 +806,7 @@ Right:  Conversation (새 대화·검색·목록) → Recent Execution
 - 탭은 메일, Tasks, Calendar이며 검색/필터와 수동 새로고침을 제공한다. 목록은 compact row, selected/hover/focus/disabled 상태와 키보드 탐색을 제공한다.
 - 기본 UI page size는 10이다. Page Token 기반 API를 React Session Memory의 page number mapping으로 연결해 숫자 페이지를 제공한다. Agent Retrieval 20과 혼용하지 않는다.
 - count badge는 서버 Projection이 실제 count를 제공할 때만 표시한다. Frontend 전체 페이지 순회·hard code count는 금지한다.
-- 행을 선택하면 Center 상단 Viewer에 제공 가능한 Resource 상세를 표시한다. Gmail sender/recipient/subject/received time/body/attachment metadata, Task title/status/due/list/notes, Calendar title/start/end/attendees/location/description/calendar는 제공된 필드만 표시한다. 누락값의 추정·생성은 금지한다.
+- 행을 선택하면 Center 상단 Viewer에 제공 가능한 Resource 상세를 표시한다. Gmail sender/recipient/subject/received time/body/attachment metadata, Task title/task_status/scheduled_date/list/notes, Calendar title/start/end/attendees/location/description/calendar는 제공된 필드만 표시한다. 누락값의 추정·생성은 금지한다.
 - Focus Resource와 다중 선택 Resource 집합을 분리한다. Focus는 Viewer용이며 다중 선택은 기존 Agent Context 기능을 보존한다.
 
 ### 29.3 Center Conversation과 Approval
@@ -843,9 +843,12 @@ Right:  Conversation (새 대화·검색·목록) → Recent Execution
 
 ### 30.2 Tasks Sidebar
 
-- Tasks는 실제 Google Workspace Source이며 기본 compact row는 **Task 제목 → 기한** 순서다. 제목, 메모, 기한, Task List, 완료 상태 중 실제 Projection이 제공한 값만 사용한다.
+- Tasks는 실제 Google Workspace Source이며 기본 compact row는 **Task 제목 → 예정일** 순서다. 제목, 메모, 예정일, Task List, 완료 상태 중 실제 Projection이 제공한 값만 사용한다.
 - Task List는 실제 반환 값일 때만 보조로 표시할 수 있으며, priority, 가짜 category·Task List 이름·색상 dot는 표시하지 않는다.
-- 목록 정렬은 미완료·기한 임박 우선의 기존 계약을 유지한다.
+- 목록 정렬은 미완료·예정일 임박 우선의 기존 계약을 유지한다.
+- Local API Projection은 Provider `needsAction`을 `미완료`, `completed`를 `완료`로 정규화한다. raw enum과 RFC3339 raw `due`는 UI에 노출하지 않는다.
+- Google `due`는 UI에서 `예정일`로만 표시한다. 예정일이 없으면 날짜 영역을 비우거나 생략하며, API에 없는 작업 시간·업무 마감일을 생성하지 않는다.
+- 미완료 Task의 예정일이 지났을 때만 보조 문구 `예정일 지남`을 표시할 수 있다. 이는 상태를 완료로 바꾸지 않으며 `기한 초과`·`마감 초과`로 표현하지 않는다. Provider가 제공한 완료 날짜는 `완료일`로 표시할 수 있다.
 
 ### 30.3 Resource Viewer Empty State
 

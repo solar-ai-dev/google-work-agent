@@ -1,6 +1,6 @@
 # 01-B. Google Work Agent 정책 정의서
 
-> **상태:** Draft v2.7 · **기준일:** 2026-08-09
+> **상태:** Draft v2.8 · **기준일:** 2026-08-10
 
 ## 0. 사람이 먼저 볼 핵심 정책
 
@@ -86,7 +86,7 @@
 - 변경 전·후 값
 - 대상 Google Resource
 - 근거 Evidence
-- 중복·충돌·마감 위험
+- 중복·충돌·Evidence 기반 업무 마감 위험
 - 예상 실행 결과
 
 ### POL-APP-004 승인 무결성
@@ -171,10 +171,17 @@ Task 생성 전에 기존 미완료 Task를 검사한다.
 
 - 제목
 - 메모
-- 기한
+- 예정일
 - 대상 Task List
 
 Task 완료 상태 변경과 Task 삭제는 정확한 Task 대상과 사용자 승인 후 허용한다. Task 삭제는 `DELETE` Effect로 처리하고 실행 후 대상 부재를 재조회해 검증한다.
+
+### POL-TSK-004 날짜·상태 의미와 금지
+
+- Google Task `due`는 제품 내부 `scheduled_date`에만 대응하는 예정일이다. 이를 실제 업무 `business_deadline`으로 표현·판단·검증하지 않는다.
+- Gmail·사용자 요청·Evidence에서 확인한 `business_deadline`을 `scheduled_date` 또는 Google `due`로 자동 변환하지 않는다. Task 생성에서 의미 보존이 필요하면 승인된 notes와 Evidence·Approval Summary를 사용한다.
+- API에 없는 deadline 또는 작업 시간을 추정해 Task Write Argument에 만들지 않는다. 정확한 시간 예약은 승인형 Calendar Event 대안을 사용자에게 제시할 수 있으나 자동 생성하지 않는다.
+- Provider raw status는 UI에 직접 노출하지 않는다. 예정일 경과는 실제 완료 상태를 변경하지 않으며, Task 완료는 정확한 대상·사용자 승인형 `UPDATE`만 허용한다.
 
 ## 9. Calendar 정책
 
@@ -183,7 +190,7 @@ Task 완료 상태 변경과 Task 삭제는 정확한 Task 대상과 사용자 �
 작업 Event 생성에는 다음이 필요하다.
 
 - 예상 소요시간
-- 기한 또는 배치 기준
+- 업무 마감 또는 배치 기준
 - 대상 Calendar
 - 충돌 검사 결과
 
@@ -386,7 +393,7 @@ System Policy, 사용자 요청, Source Context를 Prompt에서 명확히 분리
 
 - expected와 actual을 필드별 비교
 - 공백·줄바꿈·Timezone·초 단위는 정규화 가능
-- 대상, 제목, 본문 의미, 기한, 시작·종료 시간 등 핵심 값 차이는 MISMATCH
+- 대상, 제목, 본문 의미, Task 예정일, Event 시작·종료 시간 등 핵심 값 차이는 MISMATCH다. 실제 업무 마감은 Google Task `due` 비교값으로 대체하지 않는다.
 
 ### POL-VER-003 불일치 처리
 
@@ -520,7 +527,7 @@ Google Workspace API는 사용자 PC의 로컬 MCP Server가 사용자 OAuth Cre
 ### POL-SRC-003 사이드바 목록
 
 - Gmail은 최근 수신 순으로 표시한다.
-- Tasks는 미완료와 기한 임박 항목을 우선 표시한다.
+- Tasks는 미완료와 예정일 임박 항목을 우선 표시한다.
 - Calendar는 현재 이후의 가까운 예정 일정부터 표시한다.
 - 페이지당 10~20개를 조회하며 P0 기본값은 20개다.
 - 다음 페이지 이동 시 새 Page Token으로 Google API를 호출한다.

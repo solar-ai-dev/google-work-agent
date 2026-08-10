@@ -1,6 +1,6 @@
 # Google Work Agent — 5분 개요
 
-> **기준일:** 2026-08-09 · **R8.4 Claim V2·Attachment Canonical** · **공식 원본:** Notion · **이 파일:** Repository Export Snapshot
+> **기준일:** 2026-08-10 · **R8.4 Claim V2·Attachment·Task 시간 의미 Canonical** · **공식 원본:** Notion · **이 파일:** Repository Export Snapshot
 
 ## 제품 흐름
 
@@ -41,21 +41,21 @@
 
 | 문서 | 버전 |
 |---|---:|
-| PRD | v2.7 |
-| Functional | v2.6 |
-| Policy | v2.7 |
-| UI·UX | v2.4 |
+| PRD | v2.8 |
+| Functional | v2.9 |
+| Policy | v2.8 |
+| UI·UX | v2.8 |
 | Architecture | v3.0 |
 | Domain·DB | v1.12 |
-| Retrieval | v2.5 |
-| Workflow | v6.0 |
-| Interface | v2.8 |
-| Sequence | v3.1 |
+| Retrieval | v2.6 |
+| Workflow | v6.1 |
+| Interface | v2.10 |
+| Sequence | v3.2 |
 | Security | v2.5 |
 | Infrastructure | v2.7 |
 | Observability | v2.9 |
-| Test | v3.1 |
-| Evaluation | v3.1 |
+| Test | v3.5 |
+| Evaluation | v3.2 |
 | Operations | v2.5 |
 | Agent Capability·Failure·Prompt | v1.5 |
 | Domain DB Schema | v1.4 |

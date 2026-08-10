@@ -1,8 +1,8 @@
 # 01. Google Work Agent 요구사항 정의서 · PRD
 
-> **문서 기준:** 2026-08-09 R8.4 Claim V2·Attachment 설계 결정을 제품 목표·범위의 기준으로 한다. 문서 간 충돌은 §1.1의 권위·책임 소유 규칙으로 판정하며, PRD가 다른 Concern의 전문 권위 계약을 임의로 덮어쓰지 않는다.
+> **문서 기준:** 2026-08-10 R8.4 Claim V2·Attachment·Task 시간 의미 설계 결정을 제품 목표·범위의 기준으로 한다. 문서 간 충돌은 §1.1의 권위·책임 소유 규칙으로 판정하며, PRD가 다른 Concern의 전문 권위 계약을 임의로 덮어쓰지 않는다.
 >
-> **상태:** Draft v2.7 · **기준일:** 2026-08-09 · **대상:** P0 MVP
+> **상태:** Draft v2.8 · **기준일:** 2026-08-10 · **대상:** P0 MVP
 
 ## 0. 한눈에 보기
 
@@ -79,7 +79,7 @@ Graph Profile의 독립변수는 **Agent Subgraph 분해 수준**이다. `SINGLE
 ## 4. 해결할 문제
 
 1. 메일 요청이 Task로 전환되지 않아 업무가 누락된다.
-2. Task 마감과 Calendar 가용 시간이 별도로 관리되어 실제 수행 가능성을 판단하기 어렵다.
+2. Task 예정일, Gmail·사용자 요청의 업무 마감, Calendar 가용 시간이 분리되어 실제 수행 가능성을 판단하기 어렵다.
 3. 같은 업무가 메일, Task, 일정에 중복 생성된다.
 4. 일정 충돌을 확인하지 않고 회신 Draft나 작업 Event를 만들 수 있다.
 5. 일반 LLM은 사용자가 승인하지 않은 쓰기 동작을 수행하거나 근거 없이 계획을 만들 수 있다.
@@ -90,7 +90,7 @@ Graph Profile의 독립변수는 **Agent Subgraph 분해 수준**이다. `SINGLE
 - 자연어 요청에서 목표와 완료 조건을 추출한다.
 - 요청에 필요한 Gmail·Tasks·Calendar Source를 동적으로 선택한다.
 - Source-native 검색으로 근거를 수집하고 Evidence를 구성한다.
-- 업무 간 관계, 중복, 충돌, 마감 위험을 판단한다.
+- 업무 간 관계, 중복, 충돌, Evidence 기반 업무 마감 위험을 판단한다.
 - 사용자가 검토할 수 있는 Action Plan을 생성한다.
 - 승인된 Action만 MCP Tool로 실행한다.
 - 모든 쓰기 결과를 재조회하여 검증한다.
@@ -142,9 +142,9 @@ Graph Profile의 독립변수는 **Agent Subgraph 분해 수준**이다. `SINGLE
 
 사용자가 회의 또는 후속 메일을 기준으로 해야 할 일을 요청하면 Agent가 관련 Event와 Thread를 연결하고 누락된 Task와 후속 Draft를 제안한다.
 
-### UC-03 이번 주 마감 위험 분석
+### UC-03 이번 주 업무 마감 위험 분석
 
-Agent가 미완료 Task, 관련 메일, Calendar 가용 시간을 분석해 수행 가능·위험·불가능으로 구분하고 재배치 또는 조정 Draft를 제안한다.
+Agent가 미완료 Task의 예정일, 관련 메일·사용자 요청의 실제 업무 마감, Calendar 가용 시간을 구분해 수행 가능·위험·불가능으로 분석하고 재배치 또는 조정 Draft를 제안한다. Google Task의 예정일만으로 실제 업무 마감을 추정하지 않는다.
 
 ### UC-04 읽기 전용 탐색
 
@@ -199,7 +199,7 @@ Agent가 미완료 Task, 관련 메일, Calendar 가용 시간을 분석해 수�
 |---|---|---|
 | FR-030 | Agent는 메일·Task·Event의 관계를 Evidence 기반으로 연결해야 한다. | 각 연결에 근거 Resource가 포함된다. |
 | FR-031 | Agent는 Task 중복과 Calendar 충돌을 검사해야 한다. | 차단 또는 경고 사유가 사용자에게 표시된다. |
-| FR-032 | Agent는 업무 가능성을 가능·위험·불가능으로 분류해야 한다. | 마감, 예상 시간, 가용 Slot 근거를 제시한다. |
+| FR-032 | Agent는 업무 가능성을 가능·위험·불가능으로 분류해야 한다. | 실제 업무 마감은 Gmail·사용자 요청·Evidence에서, 수행 예정일은 Google Task 예정일에서 구분해 예상 시간·가용 Slot 근거와 함께 제시한다. |
 | FR-033 | Agent는 Action을 DAG로 생성해야 한다. | 종속·독립 Action이 구분된다. |
 | FR-034 | Action은 Tool, Arguments, Evidence, Risk, Expected Result를 포함해야 한다. | 승인 화면에서 모든 필드를 검토할 수 있다. |
 
@@ -468,7 +468,7 @@ Domain 상태 전이·SQLite·Command Receipt
 
 ### 19.2 사이드바 목록
 
-- Gmail은 최근 수신 순, Tasks는 미완료·기한 임박 우선, Calendar는 가까운 예정 일정 순으로 표시한다.
+- Gmail은 최근 수신 순, Tasks는 미완료·예정일 임박 우선, Calendar는 가까운 예정 일정 순으로 표시한다.
 - 목록은 페이지당 10~20개를 조회하며 P0 기본값은 20개로 한다.
 - 다음 페이지 이동 시 Google API에서 새 목록을 조회한다.
 - 이미 조회한 페이지는 React Client Session Cache에서 재사용하고 SQLite에는 영구 저장하지 않는다.

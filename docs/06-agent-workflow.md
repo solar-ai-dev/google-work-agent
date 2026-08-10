@@ -1,8 +1,8 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.7`, `01-A v2.6`, `01-B v2.7`, `02 UI·UX v2.4`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.5`, `07 Interface v2.8`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `02 UI·UX v2.8`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.6`, `07 Interface v3.0`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v6.0 · **DB Schema:** v1.4 · **대상:** P0 MVP
+> **상태:** Draft v6.1 · **DB Schema:** v1.4 · **대상:** P0 MVP
 >
 > 결정적 Supervisor + 최대 6개 전문 Agent Subgraph Baseline + 결정적 실행·검증 Engine을 사용한다. 각 Agent Subgraph는 invocation 범위 Local State와 bounded validation·repair/revision loop를 가지며 Typed Result만 Main Graph에 반환한다. Agent별 장기 Memory는 없고 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -132,7 +132,14 @@ class AgentLocalState:
 | 실행 Engine | 승인 인자 Claim·MCP Write | LLM 재계획 |
 | 검증·복구 | Google GET·Comparator·Recovery | LLM 성공 판정 |
 
-## 2.1 전문 Agent Subgraph 설계
+### 2.1 Tasks 시간 의미
+
+- Request Understanding은 `~까지`를 실제 업무 `business_deadline` 후보로, `~에 하다`를 Task `scheduled_date` 후보로 구분해 구조화한다. 이는 문자열 규칙을 하드코딩하는 요구가 아니라 RequestIntent·Analysis·Planning의 의미 계약이다.
+- 두 값이 함께 있으면 자동으로 같게 만들지 않는다. 업무 마감만 확인되면 Task 예정일이나 Google `due`를 생성하지 않으며, 필요한 의미 보존은 notes·Evidence·Approval Summary에 제안한다.
+- 정확한 시간 구간이 필요한 요청은 Tasks API가 시간을 설정했다고 성공 선언하지 않는다. Planning은 날짜 예정일 또는 승인형 Calendar Event 대안을 제시하고, Event 생성은 별도 Action·Approval을 따른다.
+- Work Analysis는 예정일 경과를 완료로 해석하지 않는다. 완료 상태는 실제 Provider status이며 Policy·Domain·Verification이 최종 판정한다.
+
+## 2.2 전문 Agent Subgraph 설계
 
 | Agent Subgraph | 핵심 내부 Node | Local Loop | Parent 반환 |
 |---|---|---|---|

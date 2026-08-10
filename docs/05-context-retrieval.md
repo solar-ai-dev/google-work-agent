@@ -1,6 +1,6 @@
 # 05. Google Work Agent · Context · Retrieval 설계서
 
-> **상태:** Draft v2.5 · **기준일:** 2026-08-09 · **대상:** P0 MVP
+> **상태:** Draft v2.6 · **기준일:** 2026-08-10 · **대상:** P0 MVP
 >
 > API 탐색·수집 Agent와 Context Retriever Agent를 분리한다. Google 원본을 요청 시점에 검색하고 Metadata로 후보를 줄인 뒤 필요한 상세만 읽는다.
 
@@ -129,8 +129,14 @@ class ContextRetrievalResult:
 ## 8. Source 전략
 
 - Gmail: Thread 검색 → 참여자·제목·시각·Snippet 필터 → 상위 Thread 상세 → Message 시간순 정리
-- Tasks: Task List 결정 → 미완료 목록 → 기한·상태·Keyword 필터 → 필요한 상세
+- Tasks: Task List 결정 → 미완료 목록 → 예정일·상태·Keyword 필터 → 필요한 상세
 - Calendar: Calendar 결정 → 기간 Event 목록 → 필요한 상세 → 필요할 때 FreeBusy 1회
+
+### Tasks 시간 의미
+
+- Google Task `due`는 Retrieval·WorkItem에서 `scheduled_date`로 정규화한다. 날짜만 후보·정렬·필터에 사용하며 시간 정보를 추론하지 않는다.
+- 실제 업무 `business_deadline`은 Gmail·사용자 요청·Evidence에서 확인한 경우에만 별도 Evidence로 사용한다. Task `due`를 업무 마감 Evidence로 승격하거나 둘을 자동 동일시하지 않는다.
+- 예정일 경과는 Provider 완료 상태의 근거가 아니다. 완료 여부는 실제 Task status에서만 가져온다.
 
 ## 9. 후보 점수 초기값
 
