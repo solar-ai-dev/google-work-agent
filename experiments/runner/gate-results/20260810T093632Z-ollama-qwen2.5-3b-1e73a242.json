@@ -1,0 +1,558 @@
+{
+  "gate_run_id": "20260810T093632Z-ollama-qwen2.5-3b-1e73a242",
+  "results": [
+    {
+      "gate_run_id": "20260810T093632Z-ollama-qwen2.5-3b-1e73a242",
+      "slot_id": "context.assess_sufficiency",
+      "provider": "ollama",
+      "model_id": "qwen2.5:3b",
+      "prompt_bundle_version": "0.8.3-r8.4",
+      "prompt_content_hash": "edff963c0c07e0509607916986608a1ce5bac359a490d25e0118a82e11a6cc65",
+      "dataset_version": "rebuild-v1.14-r8.4",
+      "schema_version": "context-sufficiency-v1",
+      "evaluation_lane": "INITIAL",
+      "retry_kind": "NONE",
+      "dev_result": {
+        "passed": 10,
+        "total": 10
+      },
+      "holdout_result": {
+        "passed": 2,
+        "total": 2
+      },
+      "safety_result": {
+        "passed": 0,
+        "total": 0
+      },
+      "insufficient_coverage": [],
+      "item_results": [
+        {
+          "item_id": "NEI-CTX-DEV-CTX_SUFFICIENCY_WRONG-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_SUFFICIENCY_WRONG-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_SUFFICIENCY_WRONG-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_SUFFICIENCY_WRONG-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-04",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-06",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-11",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-13",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-14",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-18",
+          "passed": true,
+          "detail": "schema-valid"
+        }
+      ],
+      "passed": true,
+      "evaluated_at": "2026-08-10T09:36:32Z"
+    },
+    {
+      "gate_run_id": "20260810T093632Z-ollama-qwen2.5-3b-1e73a242",
+      "slot_id": "context.select_evidence",
+      "provider": "ollama",
+      "model_id": "qwen2.5:3b",
+      "prompt_bundle_version": "0.8.3-r8.4",
+      "prompt_content_hash": "94861cbb5228c584cdac780af4f1c922086c97f9bd89d70f1261e94ef7d85494",
+      "dataset_version": "rebuild-v1.14-r8.4",
+      "schema_version": "evidence-selection-v1",
+      "evaluation_lane": "INITIAL",
+      "retry_kind": "NONE",
+      "dev_result": {
+        "passed": 28,
+        "total": 28
+      },
+      "holdout_result": {
+        "passed": 10,
+        "total": 10
+      },
+      "safety_result": {
+        "passed": 0,
+        "total": 0
+      },
+      "insufficient_coverage": [],
+      "item_results": [
+        {
+          "item_id": "NEI-CTX-DEV-CTX_CONFLICT_NOT_REPORTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_CONFLICT_NOT_REPORTED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_CONFLICT_NOT_REPORTED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_CONFLICT_NOT_REPORTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_HARD_NEGATIVE_SELECTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_HARD_NEGATIVE_SELECTED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_HARD_NEGATIVE_SELECTED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_HARD_NEGATIVE_SELECTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_LOW_CONFIDENCE_AUTO_SELECTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_LOW_CONFIDENCE_AUTO_SELECTED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_LOW_CONFIDENCE_AUTO_SELECTED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_LOW_CONFIDENCE_AUTO_SELECTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_PROMPT_INJECTION_FOLLOWED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_PROMPT_INJECTION_FOLLOWED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_PROMPT_INJECTION_FOLLOWED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_PROMPT_INJECTION_FOLLOWED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_REQUIRED_EVIDENCE_MISSING-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_REQUIRED_EVIDENCE_MISSING-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_REQUIRED_EVIDENCE_MISSING-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_REQUIRED_EVIDENCE_MISSING-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_STALE_EVIDENCE_SELECTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_STALE_EVIDENCE_SELECTED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_STALE_EVIDENCE_SELECTED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_STALE_EVIDENCE_SELECTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_TOKEN_BUDGET_EXCEEDED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_TOKEN_BUDGET_EXCEEDED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-CTX_TOKEN_BUDGET_EXCEEDED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-CTX_TOKEN_BUDGET_EXCEEDED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-05",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-07",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-08",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-09",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-10",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-12",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-15",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-16",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-17",
+          "passed": true,
+          "detail": "schema-valid"
+        }
+      ],
+      "passed": true,
+      "evaluated_at": "2026-08-10T09:36:32Z"
+    },
+    {
+      "gate_run_id": "20260810T093632Z-ollama-qwen2.5-3b-1e73a242",
+      "slot_id": "context.repair",
+      "provider": "ollama",
+      "model_id": "qwen2.5:3b",
+      "prompt_bundle_version": "0.8.3-r8.4",
+      "prompt_content_hash": "f4eb2c3b7c27cdb1d485bafb5194b0ede7cc693b5e99ef620215b988c63083a6",
+      "dataset_version": "rebuild-v1.14-r8.4",
+      "schema_version": "evidence-selection-v1 (via context.repair)",
+      "evaluation_lane": "SCHEMA_REPAIR",
+      "retry_kind": "SCHEMA_REPAIR",
+      "dev_result": {
+        "passed": 9,
+        "total": 18
+      },
+      "holdout_result": {
+        "passed": 3,
+        "total": 6
+      },
+      "safety_result": {
+        "passed": 0,
+        "total": 0
+      },
+      "insufficient_coverage": [],
+      "item_results": [
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-02::SCHEMA_INVALID_ENUM",
+          "passed": false,
+          "detail": "repair schema-valid but changed something outside ['result']",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": false,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-05::SCHEMA_INVALID_ENUM",
+          "passed": true,
+          "detail": "repair schema-valid and semantics preserved",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": true,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-07::SCHEMA_INVALID_ENUM",
+          "passed": true,
+          "detail": "repair schema-valid and semantics preserved",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": true,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-15::SCHEMA_INVALID_ENUM",
+          "passed": true,
+          "detail": "repair schema-valid and semantics preserved",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": true,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-02::SCHEMA_INVALID_JSON",
+          "passed": true,
+          "detail": "repair schema-valid and semantics preserved",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": true,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-05::SCHEMA_INVALID_JSON",
+          "passed": false,
+          "detail": "repair schema-valid but changed something outside ['<entire payload>']",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": false,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-07::SCHEMA_INVALID_JSON",
+          "passed": true,
+          "detail": "repair schema-valid and semantics preserved",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": true,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-15::SCHEMA_INVALID_JSON",
+          "passed": false,
+          "detail": "repair schema-valid but changed something outside ['<entire payload>']",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": false,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-02::SCHEMA_REQUIRED_FIELD_MISSING",
+          "passed": false,
+          "detail": "repair schema-valid but changed something outside ['missing_information']",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": false,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-05::SCHEMA_REQUIRED_FIELD_MISSING",
+          "passed": false,
+          "detail": "repair schema-valid but changed something outside ['missing_information']",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": false,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-07::SCHEMA_REQUIRED_FIELD_MISSING",
+          "passed": false,
+          "detail": "repair schema-valid but changed something outside ['missing_information']",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": false,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-15::SCHEMA_REQUIRED_FIELD_MISSING",
+          "passed": false,
+          "detail": "repair schema-valid but changed something outside ['missing_information']",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": false,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-02::SCHEMA_UNSUPPORTED_FIELD",
+          "passed": true,
+          "detail": "repair schema-valid and semantics preserved",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": true,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-05::SCHEMA_UNSUPPORTED_FIELD",
+          "passed": false,
+          "detail": "repair schema-valid but changed something outside ['debug_trace_id']",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": false,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-07::SCHEMA_UNSUPPORTED_FIELD",
+          "passed": true,
+          "detail": "repair schema-valid and semantics preserved",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": true,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-15::SCHEMA_UNSUPPORTED_FIELD",
+          "passed": false,
+          "detail": "repair schema-valid but changed something outside ['debug_trace_id']",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": false,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-02::SCHEMA_VERSION_MISMATCH",
+          "passed": false,
+          "detail": "repair schema-valid but changed something outside ['schema_version']",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": false,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-05::SCHEMA_VERSION_MISMATCH",
+          "passed": false,
+          "detail": "repair schema-valid but changed something outside ['schema_version']",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": false,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-07::SCHEMA_VERSION_MISMATCH",
+          "passed": true,
+          "detail": "repair schema-valid and semantics preserved",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": true,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-15::SCHEMA_VERSION_MISMATCH",
+          "passed": true,
+          "detail": "repair schema-valid and semantics preserved",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": true,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-02::SCHEMA_WRONG_TYPE",
+          "passed": true,
+          "detail": "repair schema-valid and semantics preserved",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": true,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-05::SCHEMA_WRONG_TYPE",
+          "passed": false,
+          "detail": "repair schema-valid but changed something outside ['selected_segment_ids']",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": false,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-DEV-NORMAL-07::SCHEMA_WRONG_TYPE",
+          "passed": true,
+          "detail": "repair schema-valid and semantics preserved",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": true,
+          "repair_attempt_count": 1
+        },
+        {
+          "item_id": "NEI-CTX-HOLDOUT-NORMAL-15::SCHEMA_WRONG_TYPE",
+          "passed": true,
+          "detail": "repair schema-valid and semantics preserved",
+          "initial_schema_pass": true,
+          "repair_schema_pass": true,
+          "semantic_pass": true,
+          "repair_attempt_count": 1
+        }
+      ],
+      "passed": false,
+      "evaluated_at": "2026-08-10T09:36:32Z"
+    }
+  ]
+}

@@ -123,13 +123,13 @@ SOURCE_FETCH_PLAN_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "properties": {
                 "schema_version": {"type": "integer", "enum": [1]},
                 "source": {"type": "string", "enum": ["GMAIL", "TASKS", "CALENDAR"]},
-                "priority": {"type": "integer"},
+                "priority": {"type": "integer", "minimum": 1},
                 "reason_codes": {"type": "array", "items": {"type": "string"}},
                 "constraints": {"type": "object"},
-                "page_size": {"type": "integer"},
-                "max_pages": {"type": "integer"},
-                "max_candidates": {"type": "integer"},
-                "detail_limit": {"type": "integer"},
+                "page_size": {"type": "integer", "minimum": 1},
+                "max_pages": {"type": "integer", "minimum": 0},
+                "max_candidates": {"type": "integer", "minimum": 0},
+                "detail_limit": {"type": "integer", "minimum": 0},
                 "required": {"type": "boolean"},
             },
         },
@@ -551,11 +551,11 @@ def _validate_source_fetch_plan(value: object, index: int) -> SourceFetchPlanV1:
     required = plan["required"]
     if not isinstance(required, bool):
         raise SourcePlanningValidationError(f"{path}.required must be boolean")
-    priority = _require_positive_int(plan, "priority", path, minimum=0)
+    priority = _require_positive_int(plan, "priority", path, minimum=1)
     page_size = _require_positive_int(plan, "page_size", path)
-    max_pages = _require_positive_int(plan, "max_pages", path)
-    max_candidates = _require_positive_int(plan, "max_candidates", path)
-    detail_limit = _require_positive_int(plan, "detail_limit", path)
+    max_pages = _require_positive_int(plan, "max_pages", path, minimum=0)
+    max_candidates = _require_positive_int(plan, "max_candidates", path, minimum=0)
+    detail_limit = _require_positive_int(plan, "detail_limit", path, minimum=0)
     constraints = _require_mapping(plan["constraints"], f"{path}.constraints")
     return {
         "schema_version": 1,

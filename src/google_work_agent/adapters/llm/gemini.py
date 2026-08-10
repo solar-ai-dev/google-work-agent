@@ -37,7 +37,12 @@ from google_work_agent.ports import (
 )
 
 DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
-DEFAULT_GEMINI_MODEL_ID = "gemini-2.5-flash"
+# "gemini-2.5-flash" still exists in GET /v1beta/models but returns 404 on
+# :generateContent for this project ("no longer available to new users").
+# "-latest" is Google's own forward-compatible alias for exactly this
+# deprecation pattern, verified live against the real API (2026-08-10):
+# a direct :generateContent call returned 200 with a normal candidate.
+DEFAULT_GEMINI_MODEL_ID = "gemini-flash-latest"
 _MIN_RETRY_DELAY_SECONDS = 1.0
 _MAX_RETRY_DELAY_SECONDS = 60.0
 

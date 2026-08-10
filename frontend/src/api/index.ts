@@ -57,7 +57,7 @@ export function patchSettings(payload: {
 }): Promise<SettingsResponse> {
   return requestJson("/api/v1/settings", {
     method: "PATCH",
-    body: { ...payload, api_contract_version: API_CONTRACT_VERSION },
+    body: payload,
   });
 }
 

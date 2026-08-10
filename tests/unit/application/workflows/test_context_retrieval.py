@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 import pytest
-from tests.support.prompt_manifests import write_runtime_active_manifest
+from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
@@ -382,9 +382,14 @@ def test_assess_sufficiency_prompt_ref_is_runtime_active(tmp_path: Path) -> None
     assert prompt_ref.content_hash
 
 
-def test_default_product_loader_rejects_draft_context_prompt() -> None:
+def test_default_product_loader_rejects_draft_context_prompt(tmp_path: Path) -> None:
+    manifest_path = write_draft_manifest(
+        tmp_path,
+        prompt_ids={"context.select_evidence"},
+    )
+
     with pytest.raises(InactivePromptArtifactError, match="context.select_evidence"):
-        load_context_select_evidence_prompt_reference()
+        load_context_select_evidence_prompt_reference(manifest_path)
 
 
 def test_context_retrieval_exports_do_not_change_existing_workflow_contracts() -> None:

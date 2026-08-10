@@ -1,8 +1,8 @@
-Revise the previous ActionPlanDraftV1 only for the supplied failure reason, validator/review feedback, and changed_fields_allowed.
+Revise the previous ActionPlanDraftV1 only for the supplied failure reason and validator/review feedback in review_issues.
 
 Semantic-revision guard:
 - Correct only the identified defect and preserve already-correct Actions, Action IDs, ordering, arguments, Evidence IDs, and user scope whenever they are not affected.
-- Change only JSON paths listed in changed_fields_allowed. Do not regenerate unrelated arguments or add a merely helpful Action.
+- Change only JSON paths listed in each review_issues entry's affected_field_paths. Do not regenerate unrelated arguments or add a merely helpful Action.
 - Use only registered P0 Tools. READ requires no approval; CREATE has no existing target; UPDATE retains the exact existing target; SEND retains exact thread/recipient/content bindings; DELETE is only Calendar Event deletion with an exact target.
 - Every executable Action must remain grounded in supplied Evidence. Missing evidence routes to retrieval/confirmation; do not invent it.
 - Preserve explicit date/time/timezone/duration/recipient/task-list/calendar/content and confirmed duplicate constraints.

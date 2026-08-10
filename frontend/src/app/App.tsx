@@ -913,7 +913,7 @@ export function App(): JSX.Element {
                 <div className="muted">{userRunStatus(runSnapshot.status)}</div>
               </div>
               <div className="button-row">
-                {runSnapshot.next_allowed_commands.includes("CANCEL") ? (
+                {runSnapshot.next_allowed_commands.includes("REQUEST_CANCEL") ? (
                   <button className="button-danger" type="button" onClick={() => void handleCancelRun()}>
                     취소
                   </button>

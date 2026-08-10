@@ -1849,7 +1849,7 @@ function defaultSnapshot(): SnapshotShape {
     execution_status: { action_count: 1, terminal_action_count: 0 },
     verification_summary: { verified_count: 0, mismatch_count: 0 },
     recovery_summary: { unknown_result_action_count: 0 },
-    next_allowed_commands: ["RESUME", "CANCEL"],
+    next_allowed_commands: ["RESUME", "REQUEST_CANCEL"],
     snapshot_version: 1,
   };
 }

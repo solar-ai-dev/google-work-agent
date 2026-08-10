@@ -75,6 +75,7 @@ from google_work_agent.application.llm import (
 )
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.resource_queries import ResourceQueryService
+from google_work_agent.application.settings import GetSettingsService, PatchSettingsService
 from google_work_agent.application.start_run import (
     CreateConversationService,
     ModifyWriteActionService,
@@ -605,7 +606,7 @@ def build_container(
         runtime_status_provider=runtime_status_provider,
     )
     try:
-        llm_runtime = _build_llm_runtime(
+        llm_runtime, settings_service = _build_llm_runtime(
             settings_path=root / "settings" / "app-settings.json",
             query_service=query_service,
             prompt_manifest_path=prompt_manifest_path,
@@ -730,6 +731,8 @@ def build_container(
             runtime_status_service=llm_runtime.status_service,
             settings_service=llm_runtime.settings_service,
         ),
+        get_settings_service=GetSettingsService(service=settings_service),
+        patch_settings_service=PatchSettingsService(service=settings_service),
         store_llm_api_key_service=StoreLLMApiKeyService(
             credential_service=llm_runtime.credential_service,
         ),
@@ -796,7 +799,7 @@ def _build_llm_runtime(
     settings_path: Path,
     query_service: QueryService,
     prompt_manifest_path: Path,
-) -> LLMRuntimeService:
+) -> tuple[LLMRuntimeService, SettingsService]:
     settings_service = SettingsService(
         store=FileSettingsStore(settings_path),
         deployment_profile=BuildProfile.LOCAL_CAPABLE,
@@ -827,7 +830,7 @@ def _build_llm_runtime(
         },
         runtime_policy=RuntimePolicy(),
     )
-    return LLMRuntimeService(
+    llm_runtime = LLMRuntimeService(
         settings_service=settings_service.get,
         status_service=status_service,
         credential_service=credential_service,
@@ -851,6 +854,7 @@ def _build_llm_runtime(
         router=DeterministicLLMRuntimeRouter(),
         runtime_policy=RuntimePolicy(),
     )
+    return llm_runtime, settings_service
 
 
 def _write_mcp_manifest(runtime_root: Path) -> Path:

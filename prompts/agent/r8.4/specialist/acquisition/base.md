@@ -9,7 +9,7 @@ Rules:
 4. Low-confidence candidates are not final selections.
 5. A retry after failure must change at least one justified constraint, add one necessary source, or stop/redirect.
 6. Do not expand beyond user scope without confirmation.
-7. Return only JSON matching AcquisitionPlanOutputV1.
+7. Return only JSON matching the output schema declared for this call.
 
 R8.4 cross-cutting rules:
 - User-facing answer, clarification text, plan summary, and draft text must follow the user's input language unless the user explicitly requests another language.

@@ -1,0 +1,37 @@
+{
+  "gate_run_id": "20260810T082852Z-ollama-qwen2.5-3b-5aa0319d",
+  "results": [
+    {
+      "gate_run_id": "20260810T082852Z-ollama-qwen2.5-3b-5aa0319d",
+      "slot_id": "context.assess_sufficiency",
+      "provider": "ollama",
+      "model_id": "qwen2.5:3b",
+      "prompt_bundle_version": "0.8.3-r8.4",
+      "prompt_content_hash": "edff963c0c07e0509607916986608a1ce5bac359a490d25e0118a82e11a6cc65",
+      "dataset_version": "rebuild-v1.14-r8.4",
+      "schema_version": "context-sufficiency-v1",
+      "dev_result": {
+        "passed": 2,
+        "total": 2
+      },
+      "holdout_result": {
+        "passed": 2,
+        "total": 2
+      },
+      "safety_result": {
+        "passed": 0,
+        "total": 0
+      },
+      "insufficient_coverage": [
+        "SCHEMA_INVALID_ENUM (dev=1, holdout=0, need dev>=3 holdout>=1)",
+        "SCHEMA_INVALID_JSON (dev=1, holdout=0, need dev>=3 holdout>=1)",
+        "SCHEMA_REQUIRED_FIELD_MISSING (dev=1, holdout=0, need dev>=3 holdout>=1)",
+        "SCHEMA_UNSUPPORTED_FIELD (dev=1, holdout=0, need dev>=3 holdout>=1)",
+        "SCHEMA_VERSION_MISMATCH (dev=1, holdout=0, need dev>=3 holdout>=1)",
+        "SCHEMA_WRONG_TYPE (dev=1, holdout=0, need dev>=3 holdout>=1)"
+      ],
+      "passed": false,
+      "evaluated_at": "2026-08-10T08:28:52Z"
+    }
+  ]
+}
