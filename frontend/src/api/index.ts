@@ -319,6 +319,7 @@ export function listCalendarResources(
   calendarId?: string | null,
   pageToken?: string | null,
   pageSize = 10,
+  timeMin?: string | null,
 ): Promise<ResourceListResponse> {
   const search = new URLSearchParams({ page_size: String(pageSize) });
   if (calendarId) {
@@ -326,6 +327,9 @@ export function listCalendarResources(
   }
   if (pageToken) {
     search.set("page_token", pageToken);
+  }
+  if (timeMin) {
+    search.set("time_min", timeMin);
   }
   return requestJson(`/api/v1/resources/calendar?${search.toString()}`);
 }

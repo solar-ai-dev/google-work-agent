@@ -110,7 +110,7 @@ button {
 
 .shell-grid {
   display: grid;
-  grid-template-columns: minmax(25rem, 28%) minmax(42rem, 1fr) minmax(23rem, 26%);
+  grid-template-columns: minmax(22rem, 26%) minmax(38rem, 1fr) minmax(20rem, 24%);
   min-height: 0;
   background: var(--panel);
 }
@@ -141,7 +141,7 @@ button {
 
 .panel-body {
   min-height: 0;
-  padding: 1rem 1.5rem;
+  padding: 0.85rem 1.25rem;
   display: grid;
   gap: 0.75rem;
   overflow: auto;
@@ -175,7 +175,7 @@ main.panel .panel-body {
 
 main.panel .panel-header {
   min-height: 0;
-  padding: 0.55rem 1.5rem 0;
+  padding: 0.45rem 1.25rem 0;
   border-bottom: 0;
 }
 
@@ -199,13 +199,13 @@ main.panel .panel-header > div:first-child .muted {
   border: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--border), transparent 35%);
   border-radius: 0;
-  padding: 0.9rem 0.45rem;
+  padding: 0.72rem 0.45rem;
   background: transparent;
 }
 
 .resource-item {
   position: relative;
-  padding-left: 2.45rem;
+  padding-left: 2.25rem;
 }
 
 .resource-item.selected,
@@ -216,7 +216,7 @@ main.panel .panel-header > div:first-child .muted {
 
 .resource-item:hover,
 .conversation-item:hover { background: color-mix(in srgb, var(--panel), var(--panel-strong) 38%); }
-.resource-item.focused { outline: 2px solid color-mix(in srgb, var(--accent), transparent 45%); outline-offset: -2px; }
+.resource-item.focused { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent), transparent 20%); background: color-mix(in srgb, var(--panel), var(--accent) 4%); }
 .resource-list,
 .conversation-list {
   flex: 1 1 auto;
@@ -228,14 +228,14 @@ main.panel .panel-header > div:first-child .muted {
 .row-mail-meta { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; min-width: 0; }
 .row-mail-meta .row-sender { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-mail-meta .row-meta { flex: 0 0 auto; }
-.row-title { font-size: 0.97rem; font-weight: 650; letter-spacing: -0.01em; }
+.row-title { font-size: 0.92rem; font-weight: 650; letter-spacing: -0.01em; }
 .row-sender { color: var(--text); font-size: 0.84rem; font-weight: 620; }
 .row-secondary { color: var(--muted); font-size: 0.83rem; }
 .row-snippet { color: var(--muted); font-size: 0.8rem; }
 .row-meta { color: var(--muted); font-size: 0.75rem; }
 .resource-select-control {
   position: absolute;
-  top: 1rem;
+  top: 0.78rem;
   left: 0.45rem;
   display: grid;
   place-items: center;
@@ -254,20 +254,21 @@ main.panel .panel-header > div:first-child .muted {
 
 .resource-viewer {
   flex: 1 1 auto;
-  min-height: 12rem;
+  min-height: 11rem;
   overflow: auto;
-  border: 1px solid color-mix(in srgb, var(--border), transparent 34%);
-  border-radius: 0.7rem;
-  padding: 1rem 1.15rem;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border), transparent 30%);
+  border-radius: 0;
+  padding: 0.35rem 0 1rem;
   background: var(--panel);
 }
-.resource-viewer h2 { font-size: 1.3rem; letter-spacing: -0.02em; margin: 0.75rem 0 0; }
+.resource-viewer h2 { font-size: 1.3rem; letter-spacing: -0.02em; margin: 0.6rem 0 0; }
 .section-heading { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
 .viewer-actions { display: flex; align-items: center; gap: 0.35rem; }
 .viewer-state { display: grid; place-items: start; gap: 0.75rem; min-height: 8rem; align-content: center; color: var(--muted); }
 .viewer-state p { margin: 0; }
-.gmail-detail { display: grid; gap: 1.25rem; padding-top: 0.75rem; }
-.gmail-detail-header { display: grid; gap: 1rem; padding-bottom: 1rem; border-bottom: 1px solid color-mix(in srgb, var(--border), transparent 35%); }
+.gmail-detail { display: grid; gap: 1rem; padding-top: 0.55rem; }
+.gmail-detail-header { display: grid; gap: 0.8rem; padding-bottom: 0.9rem; border-bottom: 1px solid color-mix(in srgb, var(--border), transparent 35%); }
 .gmail-detail-header h2 { margin: 0; font-size: 1.28rem; line-height: 1.35; }
 .gmail-detail-sender { display: grid; gap: 0.3rem; min-width: 0; }
 .gmail-detail-sender > strong { overflow-wrap: anywhere; }
@@ -318,7 +319,7 @@ main.panel .panel-header > div:first-child .muted {
   flex: 0 0 auto;
   min-height: 0;
   display: block;
-  overflow: visible;
+  overflow: auto;
   border: 0;
 }
 
@@ -351,7 +352,7 @@ main.panel .panel-header > div:first-child .muted {
 }
 
 .agent-workspace .info-card {
-  padding: 0.9rem 0;
+  padding: 0.72rem 0;
 }
 
 .user-request-card {
@@ -362,23 +363,39 @@ main.panel .panel-header > div:first-child .muted {
 
 .composer-dock {
   flex: 0 0 auto;
-  display: grid;
-  gap: 0.65rem;
-  margin-top: auto;
+  margin-top: 0.15rem;
   padding: 0.8rem 0 0;
-  border-top: 1px solid color-mix(in srgb, var(--border), transparent 20%);
+  border-top: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
 
-.composer-field { display: grid; gap: 0.45rem; }
-.composer-context { display: grid; gap: 0.2rem; color: var(--muted); font-size: 0.82rem; }
+.composer-surface {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--panel), var(--bg) 35%);
+}
+.composer-surface:focus-within {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 40%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
+}
+.composer-context { display: grid; gap: 0.2rem; padding: 0.72rem 0.9rem 0; color: var(--muted); font-size: 0.82rem; }
 .composer-context strong { color: var(--text); font-size: 0.86rem; }
 .composer-context span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.composer-actions { justify-content: flex-end; }
-.composer-actions .icon-button { width: 2.5rem; padding: 0; }
-.composer-actions .button-primary.icon-button { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+.composer-send {
+  position: absolute;
+  right: 0.7rem;
+  bottom: 0.7rem;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
 
 .conversation-summary { all: unset; cursor: pointer; display: grid; gap: 0.3rem; width: 100%; min-width: 0; }
 .conversation-summary strong, .conversation-summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -421,12 +438,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 .composer {
   width: 100%;
-  min-height: 5.5rem;
-  resize: vertical;
-  border: 1px solid var(--border);
-  border-radius: 0.65rem;
-  padding: 0.8rem 0.9rem;
-  background: color-mix(in srgb, var(--panel), var(--bg) 35%);
+  min-height: 6.5rem;
+  resize: none;
+  border: 0;
+  border-radius: 0.8rem;
+  padding: 0.85rem 3.4rem 2.8rem 0.9rem;
+  background: transparent;
   color: var(--text);
 }
 

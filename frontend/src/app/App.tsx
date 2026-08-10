@@ -69,6 +69,7 @@ type ResourceState = {
   selectedIds: string[];
   focusItem: ResourceItem | null;
   parentId: string | null;
+  calendarTimeMin: string | null;
   loading: boolean;
   error: string | null;
 };
@@ -83,6 +84,20 @@ type GmailDetailState = {
   status: "idle" | "loading" | "ready" | "error";
   detail: GmailResourceDetailResponse | null;
   error: string | null;
+};
+
+type ResourceRequestIdentity = {
+  tab: ResourceTab;
+  parentId: string | null;
+  query: string;
+  pageIndex: number;
+  pageToken: string | null;
+  calendarTimeMin: string | null;
+};
+
+type ResourceLoadOptions = {
+  force?: boolean;
+  calendarTimeMin?: string | null;
 };
 
 const resourceCache = new Map<string, { items: ResourceItem[]; nextPageToken: string | null }>();
@@ -130,6 +145,7 @@ export function App(): JSX.Element {
     selectedIds: [],
     focusItem: null,
     parentId: null,
+    calendarTimeMin: null,
     loading: false,
     error: null,
   });
@@ -147,9 +163,21 @@ export function App(): JSX.Element {
   const composerPrompt = selectedResourceIds.length > 0
     ? "선택한 자료에 대해 질문하거나 업무를 요청하세요"
     : "무엇을 도와드릴까요?";
+  const showRunHeader = runSnapshot !== null;
   const subscriptionRef = useRef<(() => void) | null>(null);
   const subscriptionRunIdRef = useRef<string | null>(null);
   const startupPromiseRef = useRef<Promise<void> | null>(null);
+  const resourceRequestRef = useRef<{ generation: number; identity: ResourceRequestIdentity | null }>({
+    generation: 0,
+    identity: null,
+  });
+
+  const invalidateResourceRequest = useCallback((): void => {
+    resourceRequestRef.current = {
+      generation: resourceRequestRef.current.generation + 1,
+      identity: null,
+    };
+  }, []);
 
   const refreshConversations = useCallback(async (accountId: string): Promise<void> => {
     const response = await listConversations(accountId);
@@ -235,10 +263,31 @@ export function App(): JSX.Element {
     setGmailDetail({ resourceId: null, status: "idle", detail: null, error: null });
   }, [loadGmailDetail, resourceState.focusItem]);
 
-  const loadResources = useCallback(async (tab: ResourceTab, pageIndex: number): Promise<void> => {
+  const loadResources = useCallback(async (
+    tab: ResourceTab,
+    pageIndex: number,
+    options: ResourceLoadOptions = {},
+  ): Promise<void> => {
     const pageToken = resourceState.pageTokens[pageIndex] ?? null;
+    const calendarTimeMin = tab === "calendar"
+      ? options.calendarTimeMin ?? resourceState.calendarTimeMin
+      : null;
+    const identity: ResourceRequestIdentity = {
+      tab,
+      parentId: resourceState.parentId,
+      query: resourceState.query.trim().toLowerCase(),
+      pageIndex,
+      pageToken,
+      calendarTimeMin,
+    };
+    const generation = resourceRequestRef.current.generation + 1;
+    resourceRequestRef.current = { generation, identity };
+    const isCurrentRequest = (): boolean => {
+      const current = resourceRequestRef.current;
+      return current.generation === generation && sameResourceRequestIdentity(current.identity, identity);
+    };
     const knownPage = resourceState.pageItems[pageIndex];
-    if (knownPage) {
+    if (!options.force && knownPage) {
       setResourceState((current) => ({
         ...current,
         items: knownPage,
@@ -253,11 +302,12 @@ export function App(): JSX.Element {
       currentAccount?.account_id ?? "anon",
       tab,
       resourceState.parentId ?? "",
-      resourceState.query.trim().toLowerCase(),
+      identity.query,
+      calendarTimeMin ?? "",
       pageToken ?? "",
     ].join("|");
     const cached = resourceCache.get(cacheKey);
-    if (cached) {
+    if (!options.force && cached) {
       setResourceState((current) => ({
         ...current,
         items: cached.items,
@@ -276,8 +326,11 @@ export function App(): JSX.Element {
           ? await listGmailResources(resourceState.query, pageToken)
           : tab === "tasks"
             ? await listTaskResources(resourceState.parentId, pageToken)
-            : await listCalendarResources(resourceState.parentId, pageToken);
+            : await listCalendarResources(resourceState.parentId, pageToken, 10, calendarTimeMin);
       resourceCache.set(cacheKey, { items: response.items, nextPageToken: response.next_page_token });
+      if (!isCurrentRequest()) {
+        return;
+      }
       setResourceState((current) => ({
         ...current,
         items: response.items,
@@ -288,13 +341,16 @@ export function App(): JSX.Element {
         loading: false,
       }));
     } catch (error) {
+      if (!isCurrentRequest()) {
+        return;
+      }
       setResourceState((current) => ({
         ...current,
         loading: false,
         error: error instanceof ApiClientError ? error.message : "리소스를 불러오지 못했습니다.",
       }));
     }
-  }, [currentAccount?.account_id, resourceState.pageItems, resourceState.pageTokens, resourceState.parentId, resourceState.query]);
+  }, [currentAccount?.account_id, resourceState.calendarTimeMin, resourceState.pageItems, resourceState.pageTokens, resourceState.parentId, resourceState.query]);
 
   const runStartup = useCallback(async (): Promise<void> => {
     // Preserve the one-time fragment in invocation-local memory before awaits.
@@ -337,7 +393,6 @@ export function App(): JSX.Element {
         message: "UI를 준비했습니다.",
         checks: ready.checks,
       });
-      await loadResources("gmail", 0);
       const openRunId = runtimeResponse.summary.open_run_ids[0];
       if (openRunId) {
         await selectRun(openRunId);
@@ -352,7 +407,7 @@ export function App(): JSX.Element {
         error: message,
       });
     }
-  }, [loadResources, refreshConversations, selectRun]);
+  }, [refreshConversations, selectRun]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -375,11 +430,12 @@ export function App(): JSX.Element {
   }, [runStartup]);
 
   useEffect(() => {
-    if (startup.status !== "ready" || !currentAccount || resourceState.pageItems.length > 0) {
+    const currentPage = resourceState.pageItems[resourceState.pageIndex];
+    if (startup.status !== "ready" || !google?.connected || currentPage) {
       return;
     }
-    void loadResources(resourceState.tab, 0);
-  }, [currentAccount, loadResources, resourceState.pageItems.length, resourceState.parentId, resourceState.tab, startup.status]);
+    void loadResources(resourceState.tab, resourceState.pageIndex);
+  }, [google?.connected, loadResources, resourceState.pageIndex, resourceState.pageItems, resourceState.tab, startup.status]);
 
   async function selectConversation(conversationId: string): Promise<void> {
     setSelectedConversationId(conversationId);
@@ -595,8 +651,10 @@ export function App(): JSX.Element {
   }
 
   async function handleGoogleDisconnect(): Promise<void> {
+    invalidateResourceRequest();
     await disconnectGoogle();
     resourceCache.clear();
+    setGoogle((current) => current ? { ...current, connected: false } : current);
     setCurrentAccount(null);
     setResourceState((current) => ({
       ...current,
@@ -699,17 +757,25 @@ export function App(): JSX.Element {
                     type="button"
                     role="tab"
                     aria-selected={resourceState.tab === tab}
-                    onClick={() => setResourceState((current) => ({
-                      ...current,
-                      tab,
-                      items: [],
-                      nextPageToken: null,
-                      pageIndex: 0,
-                      pageItems: [],
-                      pageTokens: [null],
-                      parentId: null,
-                      focusItem: null,
-                    }))}
+                    onClick={() => {
+                      invalidateResourceRequest();
+                      setResourceState((current) => ({
+                        ...current,
+                        tab,
+                        items: [],
+                        nextPageToken: null,
+                        pageIndex: 0,
+                        pageItems: [],
+                        pageTokens: [null],
+                        parentId: null,
+                        focusItem: null,
+                        calendarTimeMin: tab === "calendar"
+                          ? current.calendarTimeMin ?? new Date().toISOString()
+                          : current.calendarTimeMin,
+                        loading: false,
+                        error: null,
+                      }));
+                    }}
                   >
                     <span className="resource-tab-icon" aria-hidden="true">{resourceTabIcon(tab)}</span>
                     <span>{resourceTabLabel(tab)}</span>
@@ -720,12 +786,23 @@ export function App(): JSX.Element {
               <button
                 className="icon-button"
                 type="button"
-                aria-label="새로고침"
+                aria-label="현재 목록 새로고침"
                 title="새로고침"
                 onClick={() => {
-                  resourceCache.clear();
-                  setResourceState((current) => ({ ...current, pageIndex: 0, pageItems: [], pageTokens: [null] }));
-                  void loadResources(resourceState.tab, 0);
+                  const calendarTimeMin = resourceState.tab === "calendar"
+                    ? new Date().toISOString()
+                    : resourceState.calendarTimeMin;
+                  setResourceState((current) => ({
+                    ...current,
+                    nextPageToken: null,
+                    pageIndex: 0,
+                    pageItems: [current.items],
+                    pageTokens: [null],
+                    calendarTimeMin,
+                    loading: false,
+                    error: null,
+                  }));
+                  void loadResources(resourceState.tab, 0, { force: true, calendarTimeMin });
                 }}
               >
                 ↻
@@ -737,13 +814,16 @@ export function App(): JSX.Element {
                 <input
                   placeholder="제목, 보낸사람, 내용"
                   value={resourceState.query}
-                  onChange={(event) => setResourceState((current) => ({
-                    ...current,
-                    query: event.target.value,
-                    pageIndex: 0,
-                    pageItems: [],
-                    pageTokens: [null],
-                  }))}
+                  onChange={(event) => {
+                    invalidateResourceRequest();
+                    setResourceState((current) => ({
+                      ...current,
+                      query: event.target.value,
+                      pageIndex: 0,
+                      pageItems: [],
+                      pageTokens: [null],
+                    }));
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       void loadResources("gmail", 0);
@@ -826,28 +906,30 @@ export function App(): JSX.Element {
         </aside>
 
         <main className="panel">
-          <div className="panel-header">
-            <div>
-              <strong>{selectedConversationId ? "대화 진행" : "새 요청"}</strong>
-              <div className="muted">{userRunStatus(runSnapshot?.status)}</div>
+          {showRunHeader ? (
+            <div className="panel-header run-header">
+              <div>
+                <strong>{selectedConversationId ? "대화 진행" : "새 요청"}</strong>
+                <div className="muted">{userRunStatus(runSnapshot.status)}</div>
+              </div>
+              <div className="button-row">
+                {runSnapshot.next_allowed_commands.includes("CANCEL") ? (
+                  <button className="button-danger" type="button" onClick={() => void handleCancelRun()}>
+                    취소
+                  </button>
+                ) : null}
+                {runSnapshot.next_allowed_commands.includes("RESUME") ? (
+                  <button className="button-secondary" type="button" onClick={() => void handleResumeRun()}>
+                    재개
+                  </button>
+                ) : null}
+              </div>
             </div>
-            <div className="button-row">
-              {runSnapshot?.next_allowed_commands.includes("CANCEL") ? (
-                <button className="button-danger" type="button" onClick={() => void handleCancelRun()}>
-                  취소
-                </button>
-              ) : null}
-              {runSnapshot?.next_allowed_commands.includes("RESUME") ? (
-                <button className="button-secondary" type="button" onClick={() => void handleResumeRun()}>
-                  재개
-                </button>
-              ) : null}
-            </div>
-          </div>
+          ) : null}
           <div className="panel-body">
             <section className="resource-viewer" aria-label="선택 자료 상세">
               <div className="section-heading">
-                <strong>{resourceState.focusItem?.resource_type === "gmail_thread" ? "메일" : "자료 상세"}</strong>
+                <strong>자료 상세</strong>
                 {resourceState.focusItem ? (
                   <div className="viewer-actions">
                     {hasCanonicalGoogleUrl(
@@ -879,15 +961,18 @@ export function App(): JSX.Element {
                         type="button"
                         aria-label="하위 자료 보기"
                         title="하위 자료 보기"
-                        onClick={() => setResourceState((current) => ({
-                          ...current,
-                          parentId: resourceState.focusItem!.resource_id,
-                          items: [],
-                          nextPageToken: null,
-                          pageIndex: 0,
-                          pageItems: [],
-                          pageTokens: [null],
-                        }))}
+                        onClick={() => {
+                          invalidateResourceRequest();
+                          setResourceState((current) => ({
+                            ...current,
+                            parentId: resourceState.focusItem!.resource_id,
+                            items: [],
+                            nextPageToken: null,
+                            pageIndex: 0,
+                            pageItems: [],
+                            pageTokens: [null],
+                          }));
+                        }}
                       >
                         →
                       </button>
@@ -917,7 +1002,7 @@ export function App(): JSX.Element {
                     ) : <p className="muted">현재 목록에서 제공된 상세 정보가 없습니다.</p>}
                   </>
                 )
-              ) : <p className="muted">왼쪽 목록에서 메일을 선택하면 내용을 확인할 수 있습니다.</p>}
+              ) : <p className="muted">{resourceViewerEmptyMessage(resourceState.tab)}</p>}
             </section>
             <section className="agent-workspace" aria-label="에이전트 대화">
               <section className="card-list">
@@ -1072,34 +1157,32 @@ export function App(): JSX.Element {
             </section>
 
             <div className="composer-dock">
-            {selectedResourceIds.length > 0 ? (
-              <div className="composer-context" aria-live="polite">
-                <strong>요청에 사용할 자료 {selectedResourceIds.length}개</strong>
-                {selectedResourceLabels.length > 0 ? (
-                  <span>{selectedResourceLabels.join(" · ")}</span>
+              <div className="composer-surface">
+                {selectedResourceIds.length > 0 ? (
+                  <div className="composer-context" aria-live="polite">
+                    <strong>요청에 사용할 자료 {selectedResourceIds.length}개</strong>
+                    {selectedResourceLabels.length > 0 ? (
+                      <span>{selectedResourceLabels.join(" · ")}</span>
+                    ) : null}
+                  </div>
                 ) : null}
+                <textarea
+                  className="composer"
+                  aria-label={composerPrompt}
+                  placeholder={composerPrompt}
+                  value={composerText}
+                  onChange={(event) => setComposerText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void handleStartRun();
+                    }
+                  }}
+                />
+                <button className="button-primary icon-button composer-send" type="button" aria-label="보내기" title="보내기" disabled={busyCommand === "start-run"} onClick={() => void handleStartRun()}>
+                  <span aria-hidden="true">➤</span>
+                </button>
               </div>
-            ) : null}
-            <label className="composer-field">
-              <textarea
-                className="composer"
-                aria-label={composerPrompt}
-                placeholder={composerPrompt}
-                value={composerText}
-                onChange={(event) => setComposerText(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void handleStartRun();
-                  }
-                }}
-              />
-            </label>
-            <div className="button-row composer-actions">
-              <button className="button-primary icon-button" type="button" aria-label="보내기" title="보내기" disabled={busyCommand === "start-run"} onClick={() => void handleStartRun()}>
-                <span aria-hidden="true">➤</span>
-              </button>
-            </div>
             </div>
           </div>
         </main>
@@ -1486,6 +1569,19 @@ function userRunStatus(status: string | undefined): string {
   }
 }
 
+function sameResourceRequestIdentity(
+  left: ResourceRequestIdentity | null,
+  right: ResourceRequestIdentity,
+): boolean {
+  return left !== null
+    && left.tab === right.tab
+    && left.parentId === right.parentId
+    && left.query === right.query
+    && left.pageIndex === right.pageIndex
+    && left.pageToken === right.pageToken
+    && left.calendarTimeMin === right.calendarTimeMin;
+}
+
 function GmailDetailViewer({
   state,
   onRetry,
@@ -1566,6 +1662,24 @@ function resourcePresentation(item: ResourceItem): {
   const subtitle = userFacingValue(item.subtitle);
   const itemTitle = userFacingValue(item.title);
   const title = isGenericResourceTitle(itemTitle, source) ? userFacingValue(subject) : itemTitle ?? userFacingValue(subject);
+  if (source === "calendar" && item.resource_type === "calendar_event") {
+    const start = userFacingValue(metadata.start);
+    const end = userFacingValue(metadata.end);
+    return {
+      title,
+      secondary: formatCalendarEventRange(start, end),
+      snippet: null,
+      time: null,
+    };
+  }
+  if (source === "tasks" && item.resource_type === "task") {
+    return {
+      title,
+      secondary: null,
+      snippet: null,
+      time: firstPresentationValue(metadata, ["due"]),
+    };
+  }
   const secondary = source === "gmail"
     ? formatMailboxIdentity(sender, email)
     : sender ?? subtitle;
@@ -1576,6 +1690,75 @@ function resourcePresentation(item: ResourceItem): {
     ?? firstPresentationValue(metadata, ["received_at", "received_at_ms", "date", "updated_at", "updated_at_ms", "due", "start"]);
   const time = source === "gmail" ? formatSidebarDate(rawTime) : rawTime;
   return { title, secondary, snippet, time };
+}
+
+function formatCalendarEventRange(start: string | null, end: string | null): string | null {
+  if (isAllDayCalendarValue(start)) {
+    const startLabel = formatCalendarEventDate(start);
+    return startLabel ? `${startLabel} · 하루 종일` : null;
+  }
+  const startDate = parsedResourceDate(start);
+  const endDate = parsedResourceDate(end);
+  if (startDate && endDate && isSameCalendarDate(startDate, endDate)) {
+    return `${formatCalendarEventDateTime(startDate)} - ${formatCalendarEventClock(endDate)}`;
+  }
+  const startLabel = startDate ? formatCalendarEventDateTime(startDate) : null;
+  const endLabel = endDate ? formatCalendarEventDateTime(endDate) : null;
+  if (startLabel && endLabel) return `${startLabel} - ${endLabel}`;
+  return startLabel ?? endLabel;
+}
+
+function isAllDayCalendarValue(value: string | null): boolean {
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+}
+
+function formatCalendarEventDate(value: string | null): string | null {
+  if (!value) return null;
+  if (isAllDayCalendarValue(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    return formatCalendarEventDateLabel(new Date(year, month - 1, day));
+  }
+  const date = parsedResourceDate(value);
+  return date ? formatCalendarEventDateTime(date) : null;
+}
+
+function formatCalendarEventDateTime(date: Date): string {
+  return `${formatCalendarEventDateLabel(date)} ${formatCalendarEventClock(date)}`;
+}
+
+function formatCalendarEventDateLabel(date: Date): string {
+  const dateLabel = date.toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const weekday = date.toLocaleDateString("ko-KR", { weekday: "short" });
+  return `${dateLabel} (${weekday})`;
+}
+
+function formatCalendarEventClock(date: Date): string {
+  return date.toLocaleTimeString("ko-KR", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function isSameCalendarDate(left: Date, right: Date): boolean {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
+}
+
+function resourceViewerEmptyMessage(tab: ResourceTab): string {
+  switch (tab) {
+    case "tasks":
+      return "왼쪽 목록에서 태스크를 선택하면 상세 내용을 확인할 수 있습니다.";
+    case "calendar":
+      return "왼쪽 목록에서 일정을 선택하면 상세 내용을 확인할 수 있습니다.";
+    default:
+      return "왼쪽 목록에서 메일을 선택하면 상세 내용을 확인할 수 있습니다.";
+  }
 }
 
 function formatMailboxIdentity(name: string | null, email: string | null): string | null {

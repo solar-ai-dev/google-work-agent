@@ -217,8 +217,13 @@ describe("api index wrappers", () => {
         method: "GET",
       },
       {
-        call: () => api.listCalendarResources("calendar-1", "page-3"),
-        path: "/api/v1/resources/calendar?page_size=10&calendar_id=calendar-1&page_token=page-3",
+        call: () => api.listCalendarResources(
+          "calendar-1",
+          "page-3",
+          10,
+          "2026-08-10T00:00:00Z",
+        ),
+        path: "/api/v1/resources/calendar?page_size=10&calendar_id=calendar-1&page_token=page-3&time_min=2026-08-10T00%3A00%3A00Z",
         method: "GET",
       },
     ];
