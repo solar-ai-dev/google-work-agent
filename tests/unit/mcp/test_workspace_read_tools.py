@@ -356,6 +356,111 @@ def test_tasks_and_calendar_details_map_to_canonical_snapshots(monkeypatch) -> N
     assert cast(dict[str, object], event_item["payload"])["start"] == "2026-08-10T09:00:00+09:00"
 
 
+def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_dates(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    captured: dict[str, object] = {}
+
+    def google_api(
+        _state: server._WorkspaceState,
+        url: str,
+        params: dict[str, str] | None = None,
+    ) -> dict[str, object]:
+        captured["url"] = url
+        captured["params"] = params
+        return {
+            "items": [
+                {
+                    "id": "recurring-instance-1",
+                    "summary": "Daily stand-up",
+                    "start": {"dateTime": "2026-08-10T09:00:00+09:00"},
+                    "end": {"dateTime": "2026-08-10T09:30:00+09:00"},
+                    "recurringEventId": "recurring-series-1",
+                },
+                {
+                    "id": "all-day-1",
+                    "summary": "Company day",
+                    "start": {"date": "2026-08-11"},
+                    "end": {"date": "2026-08-12"},
+                },
+            ],
+            "nextPageToken": "events-page-2",
+        }
+
+    monkeypatch.setattr(server, "_google_api", google_api)
+
+    result = server._calendar_list_events(
+        _state(),
+        {
+            "calendar_id": "work@example.com",
+            "time_min": "2026-08-10T00:00:00Z",
+            "single_events": True,
+            "order_by": "startTime",
+            "page_size": 10,
+            "page_token": "events-page-1",
+        },
+    )
+
+    assert captured == {
+        "url": "https://www.googleapis.com/calendar/v3/calendars/work%40example.com/events",
+        "params": {
+            "maxResults": "10",
+            "pageToken": "events-page-1",
+            "timeMin": "2026-08-10T00:00:00Z",
+            "singleEvents": "true",
+            "orderBy": "startTime",
+        },
+    }
+    items = cast(list[dict[str, object]], result["items"])
+    recurring_payload = cast(dict[str, object], items[0]["payload"])
+    all_day_payload = cast(dict[str, object], items[1]["payload"])
+    assert recurring_payload["title"] == "Daily stand-up"
+    assert recurring_payload["start"] == "2026-08-10T09:00:00+09:00"
+    assert recurring_payload["end"] == "2026-08-10T09:30:00+09:00"
+    assert all_day_payload["start"] == "2026-08-11"
+    assert all_day_payload["end"] == "2026-08-12"
+    assert result["next_page_token"] == "events-page-2"
+
+
+def test_gateway_forwards_calendar_event_list_options_to_mcp() -> None:
+    transport = FakeMCPTransport()
+    transport.queue_response({"items": [], "next_page_token": None})
+
+    MCPGoogleWorkspaceGateway(transport=transport).list_calendar_events(
+        calendar_id="primary",
+        time_min="2026-08-10T00:00:00Z",
+        single_events=True,
+        order_by="startTime",
+        page_size=10,
+        page_token="events-page-1",
+    )
+
+    assert transport.call_log[0].tool_name == "calendar_list_events"
+    assert transport.call_log[0].arguments == {
+        "calendar_id": "primary",
+        "page_token": "events-page-1",
+        "page_size": 10,
+        "time_min": "2026-08-10T00:00:00Z",
+        "order_by": "startTime",
+        "single_events": True,
+    }
+
+
+def test_event_snapshot_preserves_resource_id_as_the_untitled_event_fallback() -> None:
+    snapshot = server._event_snapshot(
+        {
+            "id": "untitled-event-1",
+            "start": {"date": "2026-08-11"},
+            "end": {"date": "2026-08-12"},
+        },
+        "primary",
+    )
+
+    payload = cast(dict[str, object], snapshot["payload"])
+    assert snapshot["resource_id"] == "untitled-event-1"
+    assert payload["title"] == "untitled-event-1"
+
+
 def test_read_tool_input_rejects_invalid_page_token(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(server, "_google_api", lambda *_args, **_kwargs: {})
 

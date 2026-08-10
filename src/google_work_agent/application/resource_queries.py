@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 from google_work_agent.ports import (
@@ -65,9 +67,15 @@ class ResourceQueryService:
         *,
         gateway: GoogleWorkspaceGateway,
         gmail_detail_gateway: GmailUiReadGateway | None = None,
+        default_calendar_id_provider: Callable[[], str | None] | None = None,
+        default_tasklist_id_provider: Callable[[], str | None] | None = None,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self._gateway = gateway
         self._gmail_detail_gateway = gmail_detail_gateway
+        self._default_calendar_id_provider = default_calendar_id_provider
+        self._default_tasklist_id_provider = default_tasklist_id_provider
+        self._now = now or (lambda: datetime.now(UTC))
 
     def get_gmail_thread_detail(self, *, resource_id: str) -> GmailResourceDetail:
         if self._gmail_detail_gateway is None:
@@ -113,17 +121,20 @@ class ResourceQueryService:
         page_token: str | None,
         page_size: int,
     ) -> ResourceListPage:
-        if task_list_id is None:
-            page = self._gateway.list_task_lists(
-                page_token=page_token,
-                page_size=_validated_page_size(page_size),
-            )
-        else:
-            page = self._gateway.list_tasks(
-                task_list_id=task_list_id,
-                page_token=page_token,
-                page_size=_validated_page_size(page_size),
-            )
+        configured_task_list_id = (
+            self._default_tasklist_id_provider() if self._default_tasklist_id_provider else None
+        )
+        resolved_task_list_id = task_list_id or configured_task_list_id
+        if resolved_task_list_id is None:
+            task_lists = self._gateway.list_task_lists(page_token=None, page_size=1)
+            if not task_lists.items:
+                return ResourceListPage(source="tasks", items=(), next_page_token=None)
+            resolved_task_list_id = task_lists.items[0].resource_id
+        page = self._gateway.list_tasks(
+            task_list_id=resolved_task_list_id,
+            page_token=page_token,
+            page_size=_validated_page_size(page_size),
+        )
         return ResourceListPage(
             source="tasks",
             items=tuple(_resource_item_from_snapshot(item) for item in page.items),
@@ -134,20 +145,23 @@ class ResourceQueryService:
         self,
         *,
         calendar_id: str | None,
+        time_min: str | None,
         page_token: str | None,
         page_size: int,
     ) -> ResourceListPage:
-        if calendar_id is None:
-            page = self._gateway.list_calendars(
-                page_token=page_token,
-                page_size=_validated_page_size(page_size),
-            )
-        else:
-            page = self._gateway.list_calendar_events(
-                calendar_id=calendar_id,
-                page_token=page_token,
-                page_size=_validated_page_size(page_size),
-            )
+        configured_calendar_id = (
+            self._default_calendar_id_provider() if self._default_calendar_id_provider else None
+        )
+        resolved_calendar_id = calendar_id or configured_calendar_id or "primary"
+        resolved_time_min = time_min or self._now().astimezone(UTC).isoformat(timespec="seconds")
+        page = self._gateway.list_calendar_events(
+            calendar_id=resolved_calendar_id,
+            page_token=page_token,
+            page_size=_validated_page_size(page_size),
+            time_min=resolved_time_min,
+            single_events=True,
+            order_by="startTime",
+        )
         return ResourceListPage(
             source="calendar",
             items=tuple(_resource_item_from_snapshot(item) for item in page.items),
@@ -218,7 +232,11 @@ def _display_text(snapshot: ResourceSnapshot) -> tuple[str, str | None]:
             payload.get("time_zone")
         )
     if snapshot.resource_type is ResourceType.CALENDAR_EVENT:
-        return str(payload.get("title", snapshot.resource_id)), _optional_text(payload.get("start"))
+        title = _optional_text(payload.get("title"))
+        return (
+            "" if title == snapshot.resource_id else title or "",
+            _optional_text(payload.get("start")),
+        )
     return snapshot.resource_id, None
 
 

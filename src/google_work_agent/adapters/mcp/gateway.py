@@ -288,10 +288,24 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
         calendar_id: str,
         page_token: str | None,
         page_size: int,
+        time_min: str | None = None,
+        single_events: bool = False,
+        order_by: str | None = None,
     ) -> ResourcePage:
+        arguments: dict[str, object] = {
+            "calendar_id": calendar_id,
+            "page_token": page_token,
+            "page_size": page_size,
+        }
+        if time_min is not None:
+            arguments["time_min"] = time_min
+        if order_by is not None:
+            arguments["order_by"] = order_by
+        if single_events:
+            arguments["single_events"] = True
         return self._page(
             "calendar_list_events",
-            {"calendar_id": calendar_id, "page_token": page_token, "page_size": page_size},
+            arguments,
         )
 
     def query_freebusy(
