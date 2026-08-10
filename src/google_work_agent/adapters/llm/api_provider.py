@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from google_work_agent.ports import (
@@ -27,21 +27,40 @@ class APIProviderTransport(Protocol):
     def invoke_structured(
         self,
         *,
+        model_id: str,
         prompt_ref: PromptReference,
         prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
         timeout_seconds: int,
         api_key: str,
+        instruction_text: str,
     ) -> ProviderResponsePayload:
         raise NotImplementedError
 
 
+def _no_instruction_text(prompt_ref: PromptReference) -> str:
+    del prompt_ref
+    return ""
+
+
 @dataclass(frozen=True, slots=True)
 class ApiStructuredLLMProvider(StructuredLLMProvider):
+    """Dispatches one structured external-API call.
+
+    ``resolve_instruction_text`` is called here, immediately before dispatch,
+    and its result lives only as a local variable for the duration of this
+    call -- mirrors ``OllamaStructuredLLMProvider`` so the assembled prompt
+    text never reaches ``prompt_ref``/Trace/Checkpoint storage (see
+    docs/00-CODE-AGENT-START-HERE.md section 4).
+    """
+
     provider_name: str
     transport: APIProviderTransport
     model: str
     runtime: ActualRuntime = ActualRuntime.API_LLM
+    resolve_instruction_text: Callable[[PromptReference], str] = field(
+        default=_no_instruction_text
+    )
 
     def invoke_structured(
         self,
@@ -54,12 +73,15 @@ class ApiStructuredLLMProvider(StructuredLLMProvider):
     ) -> ProviderResponsePayload:
         if not api_key:
             raise ValueError("API key is required")
+        instruction_text = self.resolve_instruction_text(prompt_ref)
         payload = self.transport.invoke_structured(
+            model_id=self.model,
             prompt_ref=prompt_ref,
             prompt_input=prompt_input,
             output_schema=output_schema,
             timeout_seconds=runtime_policy.api_timeout_seconds,
             api_key=api_key,
+            instruction_text=instruction_text,
         )
         return ProviderResponsePayload(
             content=payload.content,

@@ -356,6 +356,7 @@ def _tool_call(
         "tasks_get_task": _tasks_get_task,
         "tasks_create_task": _tasks_create_task,
         "tasks_update_task": _tasks_update_task,
+        "tasks_delete_task": _tasks_delete_task,
         "calendar_list_calendars": _calendar_list_calendars,
         "calendar_list_events": _calendar_list_events,
         "calendar_get_event": _calendar_get_event,
@@ -981,6 +982,34 @@ def _tasks_update_task(state: _WorkspaceState, arguments: dict[str, object]) -> 
         body=body,
     )
     return {"item": _task_snapshot(response, task_list_id)}
+
+
+def _tasks_delete_task(state: _WorkspaceState, arguments: dict[str, object]) -> dict[str, object]:
+    task_list_id = _text_argument(arguments, "task_list_id", maximum=2048)
+    task_id = _text_argument(arguments, "task_id", maximum=2048)
+    _validate_claim_context(
+        state,
+        tool_name="tasks_delete_task",
+        claim_context=arguments.get("claim_context"),
+        execution_arguments=_execution_arguments(arguments),
+    )
+    task_list_path = quote(task_list_id, safe="")
+    task_path = quote(task_id, safe="")
+    _google_api_call(
+        state,
+        "DELETE",
+        f"https://tasks.googleapis.com/tasks/v1/lists/{task_list_path}/tasks/{task_path}",
+    )
+    return {
+        "item": _snapshot(
+            "task",
+            task_id,
+            task_list_id,
+            (task_list_id,),
+            "deleted",
+            {"status": "deleted"},
+        )
+    }
 
 
 def _task_write_body(payload: dict[str, object], *, title_required: bool) -> dict[str, object]:

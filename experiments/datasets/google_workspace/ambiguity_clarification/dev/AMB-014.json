@@ -5,8 +5,8 @@
   "ambiguity_family_id": "AMB-F04-LOW-INFO-ACTION-WITH-CONTEXT",
   "user_request": "그거 시작해줘",
   "conversation_context": [
-    "직전 user: 오늘 3시에 30분 회의 일정 만들어줘",
-    "직전 assistant: 일정 계획 준비 완료"
+    "사용자: 오늘 오후 3시에 30분 내부 검토 회의를 만들어줘.",
+    "Assistant: 15:00~15:30 일정 생성 계획을 준비했고, 아직 승인 전입니다."
   ],
   "available_candidates": [],
   "gold": {

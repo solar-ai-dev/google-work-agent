@@ -5,7 +5,8 @@
   "ambiguity_family_id": "AMB-F11-REFERENCE",
   "user_request": "저거 일정에 넣어줘",
   "conversation_context": [
-    "직전 대화에 업무 후보 두 개 존재"
+    "사용자: 오늘 처리할 후보로 Atlas 점검과 Echo 법무 검토 두 건을 보고 있어.",
+    "Assistant: 두 업무 후보가 모두 선택 가능한 상태입니다."
   ],
   "available_candidates": [
     {

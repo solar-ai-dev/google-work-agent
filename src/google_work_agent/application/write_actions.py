@@ -77,6 +77,15 @@ CLAIM_TOKEN_VERSION = "v1"
 VERIFICATION_NORMALIZER_VERSION = "2026-08-06.p0"
 DEFAULT_APPROVAL_TTL_MS = 30_000
 
+# GET_ABSENT delete tools: tool_name -> (resource type, argument holding the
+# target resource id, argument holding the parent/container id). The
+# calendar and task GET_ABSENT verification and GET_TARGET recovery paths
+# both key off this same mapping.
+_DELETE_TOOL_TARGETS: dict[str, tuple[ResourceType, str, str]] = {
+    "calendar_delete_event": (ResourceType.CALENDAR_EVENT, "event_id", "calendar_id"),
+    "tasks_delete_task": (ResourceType.TASK, "task_id", "task_list_id"),
+}
+
 
 @dataclass(frozen=True, slots=True)
 class WriteEvidenceDraft:
@@ -1164,6 +1173,16 @@ class PreflightWriteActionService:
                 expected_resource_type=ResourceType.CALENDAR_EVENT,
                 expected_parent_id=calendar_id,
             )
+        if action.tool_name == "tasks_delete_task":
+            task_list_id = _required_argument_string(arguments, "task_list_id")
+            task_id = _required_argument_string(arguments, "task_id")
+            task = self._gateway.get_task(task_list_id=task_list_id, task_id=task_id)
+            _validate_preflight_target(
+                snapshot=task,
+                target_ref=target_ref,
+                expected_resource_type=ResourceType.TASK,
+                expected_parent_id=task_list_id,
+            )
 
 
 class StoreWriteActionSuccessService:
@@ -1528,7 +1547,7 @@ class VerifyWriteActionService:
             )
 
         delete_target_absent = False
-        if action.tool_name == "calendar_delete_event":
+        if action.tool_name in _DELETE_TOOL_TARGETS:
             try:
                 actual_snapshot = _load_verification_snapshot(
                     gateway=self._gateway,
@@ -1594,11 +1613,14 @@ class VerifyWriteActionService:
                 return response
 
             expected = loads(action.expected_json)
-            if action.tool_name == "calendar_delete_event":
-                actual_projection = {
-                    "resource_type": ResourceType.CALENDAR_EVENT.value,
+            if action.tool_name in _DELETE_TOOL_TARGETS:
+                delete_resource_type, delete_id_field, _delete_parent_field = _DELETE_TOOL_TARGETS[
+                    action.tool_name
+                ]
+                actual_projection: dict[str, object] = {
+                    "resource_type": delete_resource_type.value,
                     "resource_id": _required_argument_string(
-                        _dict_argument(loads(action.arguments_json)), "event_id"
+                        _dict_argument(loads(action.arguments_json)), delete_id_field
                     ),
                     "absent": delete_target_absent,
                 }
@@ -2066,14 +2088,14 @@ class RecoverUnknownDeleteActionService:
         with self._unit_of_work_factory() as unit_of_work:
             action = _require_action(unit_of_work, command.action_id)
             attempt = _require_attempt(unit_of_work, command.attempt_id)
-            if action.tool_name != "calendar_delete_event":
-                raise PolicyViolationError("delete recovery requires calendar_delete_event")
+            if action.tool_name not in _DELETE_TOOL_TARGETS:
+                raise PolicyViolationError(
+                    f"delete recovery requires a registered GET_ABSENT delete tool, "
+                    f"got: {action.tool_name}"
+                )
             arguments = _dict_argument(loads(action.arguments_json))
         try:
-            self._gateway.get_calendar_event(
-                calendar_id=_required_argument_string(arguments, "calendar_id"),
-                event_id=_required_argument_string(arguments, "event_id"),
-            )
+            self._get_delete_target(tool_name=action.tool_name, arguments=arguments)
         except LookupError:
             return self._recover_absent_target(command=command, action=action, attempt=attempt)
         except GoogleWorkspaceGatewayError as error:
@@ -2091,6 +2113,21 @@ class RecoverUnknownDeleteActionService:
             conflict_detail="delete target is still present; blind re-delete is forbidden",
         )
 
+    def _get_delete_target(
+        self, *, tool_name: str, arguments: dict[str, object]
+    ) -> ResourceSnapshot:
+        if tool_name == "calendar_delete_event":
+            return self._gateway.get_calendar_event(
+                calendar_id=_required_argument_string(arguments, "calendar_id"),
+                event_id=_required_argument_string(arguments, "event_id"),
+            )
+        if tool_name == "tasks_delete_task":
+            return self._gateway.get_task(
+                task_list_id=_required_argument_string(arguments, "task_list_id"),
+                task_id=_required_argument_string(arguments, "task_id"),
+            )
+        raise LookupError(f"unsupported delete recovery tool: {tool_name}")
+
     def _recover_absent_target(
         self,
         *,
@@ -2099,12 +2136,14 @@ class RecoverUnknownDeleteActionService:
         attempt: ExecutionAttemptRecord,
     ) -> WriteActionResponse:
         arguments = _dict_argument(loads(action.arguments_json))
+        resource_type, id_field, parent_field = _DELETE_TOOL_TARGETS[action.tool_name]
+        parent_id = _required_argument_string(arguments, parent_field)
         snapshot = ResourceSnapshot(
             fixture_snapshot_id="recovery-absence",
-            resource_type=ResourceType.CALENDAR_EVENT,
-            resource_id=_required_argument_string(arguments, "event_id"),
-            parent_id=_required_argument_string(arguments, "calendar_id"),
-            related_resource_ids=(_required_argument_string(arguments, "calendar_id"),),
+            resource_type=resource_type,
+            resource_id=_required_argument_string(arguments, id_field),
+            parent_id=parent_id,
+            related_resource_ids=(parent_id,),
             version="deleted",
             recovery_fingerprint=None,
             payload={"deleted": True},
@@ -2928,6 +2967,11 @@ def _build_final_dispatch_arguments(
             "calendar_id": _required_argument_string(arguments, "calendar_id"),
             "event_id": _required_argument_string(arguments, "event_id"),
         }
+    if tool_name == "tasks_delete_task":
+        return {
+            "task_list_id": _required_argument_string(arguments, "task_list_id"),
+            "task_id": _required_argument_string(arguments, "task_id"),
+        }
     payload = _dict_argument(arguments.get("payload"))
     payload_with_recovery = dict(payload)
     if recovery_fingerprint is not None and tool_name in {
@@ -2986,6 +3030,12 @@ def _dispatch_write_action(
         return gateway.delete_calendar_event(
             calendar_id=cast(str, final_arguments["calendar_id"]),
             event_id=cast(str, final_arguments["event_id"]),
+            claim_context=claim_context,
+        )
+    if tool_name == "tasks_delete_task":
+        return gateway.delete_task(
+            task_list_id=cast(str, final_arguments["task_list_id"]),
+            task_id=cast(str, final_arguments["task_id"]),
             claim_context=claim_context,
         )
     if tool_name == "gmail_create_draft":
@@ -3075,6 +3125,10 @@ def _load_verification_snapshot(
         calendar_id = str(arguments["calendar_id"])
         event_id = str(arguments["event_id"])
         return gateway.get_calendar_event(calendar_id=calendar_id, event_id=event_id)
+    if action.tool_name == "tasks_delete_task":
+        task_list_id = str(arguments["task_list_id"])
+        task_id = str(arguments["task_id"])
+        return gateway.get_task(task_list_id=task_list_id, task_id=task_id)
     raise LookupError(f"unsupported verification tool: {action.tool_name}")
 
 
@@ -3502,6 +3556,8 @@ def _validate_preflight_target(
     if target_ref is None:
         if expected_resource_type is ResourceType.CALENDAR_EVENT:
             raise PolicyViolationError("calendar delete requires a persisted target reference")
+        if expected_resource_type is ResourceType.TASK:
+            raise PolicyViolationError("task delete requires a persisted target reference")
         return
     if target_ref.resource_id != snapshot.resource_id:
         raise PolicyViolationError("preflight target identity mismatch")

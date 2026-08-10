@@ -5,7 +5,8 @@
   "ambiguity_family_id": "AMB-F11-REFERENCE",
   "user_request": "이걸로 해줘",
   "conversation_context": [
-    "사용자가 직전에 후보 2번을 선택함"
+    "Assistant: Atlas 점검과 Echo 법무 검토 중 선택을 요청했습니다.",
+    "사용자: 두 번째 Echo 법무 검토로 할게."
   ],
   "available_candidates": [],
   "gold": {

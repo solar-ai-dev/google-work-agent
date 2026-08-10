@@ -69,7 +69,12 @@ class FileSettingsStore:
     def __init__(self, path: Path) -> None:
         self._path = path
 
-    def load(self, *, deployment_profile: BuildProfile) -> AppSettings:
+    def load(
+        self,
+        *,
+        deployment_profile: BuildProfile,
+        approved_model_ids: frozenset[str] | None = None,
+    ) -> AppSettings:
         if not self._path.exists():
             settings = AppSettings(deployment_profile=deployment_profile.value)
             self.save(settings)
@@ -83,7 +88,11 @@ class FileSettingsStore:
         _reject_secret_keys(payload)
         _reject_unknown_fields(payload)
         settings = _settings_from_dict(payload)
-        validate_settings(settings=settings, deployment_profile=deployment_profile)
+        validate_settings(
+            settings=settings,
+            deployment_profile=deployment_profile,
+            approved_model_ids=approved_model_ids,
+        )
         return settings
 
     def save(self, settings: AppSettings) -> None:
@@ -115,7 +124,10 @@ class SettingsService:
         self._has_active_runs = has_active_runs
 
     def get(self) -> AppSettings:
-        return self._store.load(deployment_profile=self._deployment_profile)
+        return self._store.load(
+            deployment_profile=self._deployment_profile,
+            approved_model_ids=self._approved_model_ids,
+        )
 
     def patch(self, patch: SettingsPatch) -> AppSettings:
         current = self.get()
@@ -188,9 +200,8 @@ def validate_settings(
             _validate_loopback_url(settings.ollama_endpoint)
     elif settings.ollama_endpoint is not None:
         raise ValueError("ollama_endpoint is only allowed for LOCAL_CAPABLE")
-    if (
-        settings.approved_model_id is not None
-        and (not approved_model_ids or settings.approved_model_id not in approved_model_ids)
+    if settings.approved_model_id is not None and (
+        not approved_model_ids or settings.approved_model_id not in approved_model_ids
     ):
         raise ValueError("approved_model_id is not allowed")
 

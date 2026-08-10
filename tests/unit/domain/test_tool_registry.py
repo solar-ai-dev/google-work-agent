@@ -28,6 +28,7 @@ def test_p0_tool_registry_contains_only_allowed_tools() -> None:
         "gmail_send",
         "gmail_update_draft",
         "tasks_create_task",
+        "tasks_delete_task",
         "tasks_get_task",
         "tasks_list_tasklists",
         "tasks_list_tasks",
@@ -77,12 +78,21 @@ def test_write_tool_registry_contract_matches_policy() -> None:
     assert delete_entry.retryable is False
 
 
+def test_task_delete_tool_registry_contract_matches_policy() -> None:
+    entry = build_p0_tool_registry().require("tasks_delete_task")
+
+    assert entry.effect_type is EffectType.DELETE
+    assert entry.approval_requirement is ApprovalRequirement.REQUIRED
+    assert entry.verification_policy is VerificationPolicy.GET_ABSENT
+    assert entry.recovery_policy is RecoveryPolicy.GET_TARGET
+    assert entry.retryable is False
+
+
 def test_unregistered_tool_lookup_fails() -> None:
     registry = build_p0_tool_registry()
 
     for tool_name in (
         "gmail_delete_message",
-        "tasks_delete_task",
         "calendar_delete_series",
     ):
         try:

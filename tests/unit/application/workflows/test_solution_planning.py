@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from tests.support.prompt_manifests import write_runtime_active_manifest
+from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
@@ -641,33 +641,34 @@ def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
     revise_plan_prompt = load_solution_planning_revise_plan_prompt_reference(manifest_path)
 
     assert answer_prompt.prompt_id == "planning.answer_only"
-    assert answer_prompt.prompt_version == "0.8.2"
+    assert answer_prompt.prompt_version == "0.8.3"
     assert answer_prompt.content_hash
     assert answer_prompt.node_state == "INITIAL"
     assert answer_prompt.output_schema_version == "v2"
 
     assert plan_prompt.prompt_id == "planning.draft_plan"
-    assert plan_prompt.prompt_version == "0.8.2"
+    assert plan_prompt.prompt_version == "0.8.3"
     assert plan_prompt.content_hash
     assert plan_prompt.node_state == "INITIAL"
     assert plan_prompt.output_schema_version == "v2"
 
     assert revise_prompt.prompt_id == "planning.revise_plan"
-    assert revise_prompt.prompt_version == "0.8.2"
+    assert revise_prompt.prompt_version == "0.8.3"
     assert revise_prompt.content_hash
     assert revise_prompt.node_state == "SEMANTIC_REVISION"
     assert revise_prompt.output_schema_version == "v2"
 
     assert revise_plan_prompt.prompt_id == "planning.revise_plan"
-    assert revise_plan_prompt.prompt_version == "0.8.2"
+    assert revise_plan_prompt.prompt_version == "0.8.3"
     assert revise_plan_prompt.content_hash
     assert revise_plan_prompt.node_state == "SEMANTIC_REVISION"
     assert revise_plan_prompt.output_schema_version == "v2"
 
 
-def test_default_product_loader_rejects_draft_planning_prompts() -> None:
+def test_default_product_loader_rejects_draft_planning_prompts(tmp_path: Path) -> None:
+    manifest_path = write_draft_manifest(tmp_path, prompt_ids={"planning.answer_only"})
     with pytest.raises(InactivePromptArtifactError, match="planning.answer_only"):
-        load_solution_planning_answer_only_prompt_reference()
+        load_solution_planning_answer_only_prompt_reference(manifest_path)
 
 
 def test_solution_planning_exports_are_available() -> None:

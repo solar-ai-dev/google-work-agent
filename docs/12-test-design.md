@@ -358,7 +358,8 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 - SEND: Approval Hash 일치 + Sent Lookup + UNKNOWN_RESULT 자동 재전송 0.
 - DELETE: Calendar Event만 허용 + GET_ABSENT 확인.
 - Task 완료·Calendar 참석자 변경: 정확한 Target과 승인된 UPDATE.
-- Gmail 원문 삭제·Task 삭제·반복 Event 전체 일괄 수정: Tool 제안/실행 0.
+- Gmail 원문 삭제·반복 Event 전체 일괄 수정: Tool 제안/실행 0.
+- Google Task DELETE: 정확한 Task Target → 승인 → Claim V2 → `tasks_delete_task` → `GET_ABSENT` Verification. 승인/Claim/검증 우회 0.
 - `ClarificationQuestionV1`: 후보·차이·선택지·same-thread Resume.
 - 문맥으로 해결된 요청과 `답장해줘` SEND 의도에 불필요 Clarification 0.
 - 전체 Mailbox/무제한 Workspace 조회는 API 호출 전에 BLOCK.

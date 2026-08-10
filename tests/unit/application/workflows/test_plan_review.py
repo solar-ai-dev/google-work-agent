@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from tests.support.prompt_manifests import write_runtime_active_manifest
+from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
@@ -482,21 +482,22 @@ def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
     recheck_prompt = load_plan_review_recheck_prompt_reference(manifest_path)
 
     assert inspect_prompt.prompt_id == "review.inspect"
-    assert inspect_prompt.prompt_version == "0.8.2"
+    assert inspect_prompt.prompt_version == "0.8.3"
     assert inspect_prompt.content_hash
     assert inspect_prompt.node_state == "INITIAL"
     assert inspect_prompt.output_schema_version == "v2"
 
     assert recheck_prompt.prompt_id == "review.recheck"
-    assert recheck_prompt.prompt_version == "0.8.2"
+    assert recheck_prompt.prompt_version == "0.8.3"
     assert recheck_prompt.content_hash
     assert recheck_prompt.node_state == "RECHECK"
     assert recheck_prompt.output_schema_version == "v2"
 
 
-def test_default_product_loader_rejects_draft_review_prompt() -> None:
+def test_default_product_loader_rejects_draft_review_prompt(tmp_path: Path) -> None:
+    manifest_path = write_draft_manifest(tmp_path, prompt_ids={"review.inspect"})
     with pytest.raises(InactivePromptArtifactError, match="review.inspect"):
-        load_plan_review_inspect_prompt_reference()
+        load_plan_review_inspect_prompt_reference(manifest_path)
 
 
 def test_plan_review_source_has_no_google_mcp_or_completion_calls() -> None:

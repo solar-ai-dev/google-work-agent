@@ -240,7 +240,7 @@ P0 고정 매핑:
 | SEND | REQUIRED | SENT_LOOKUP | MESSAGE_SEARCH |
 | DELETE | REQUIRED | GET_ABSENT | GET_TARGET |
 
-`SEND`는 Gmail 실제 전송, `DELETE`는 P0에서 Calendar Event 삭제에만 사용한다. Task 완료와 Calendar 참석자 변경은 `UPDATE`다. Gmail 원문 삭제·Task 삭제·반복 Event 전체 일괄 수정은 Tool Allowlist에서 금지한다. 분석은 LangGraph Node와 Trace이며 실행 Action으로 저장하지 않는다.
+`SEND`는 Gmail 실제 전송, `DELETE`는 P0에서 Google Task 삭제와 Calendar Event 삭제에 사용한다. Task 완료와 Calendar 참석자 변경은 `UPDATE`다. Gmail Message·Thread 원문 삭제와 반복 Event 전체 일괄 수정은 Tool Allowlist에서 금지한다. 분석은 LangGraph Node와 Trace이며 실행 Action으로 저장하지 않는다.
 
 Tool Registry가 정책의 원본이며 Plan 생성 시 값을 Action Row에 Snapshot한다.
 

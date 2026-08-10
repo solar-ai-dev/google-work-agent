@@ -276,6 +276,21 @@ class FakeGoogleGateway:
             raise LookupError(f"task {task_id} does not belong to task list {task_list_id}")
         return task
 
+    def delete_task(
+        self,
+        *,
+        task_list_id: str,
+        task_id: str,
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        del claim_context
+        return self._delete_one(
+            "delete_task",
+            ResourceType.TASK,
+            task_id,
+            parent_id=task_list_id,
+        )
+
     def list_calendars(
         self,
         *,

@@ -18,7 +18,10 @@
     "trial_policy",
     "budget_policy",
     "preconditions",
-    "result_artifacts"
+    "result_artifacts",
+    "hypothesis",
+    "stop_conditions",
+    "adoption_criteria"
   ],
   "properties": {
     "schema_version": {
@@ -53,7 +56,8 @@
         "PREPARED_BLOCKED",
         "READY",
         "LOCKED_HOLDOUT",
-        "ANALYSIS_ONLY"
+        "ANALYSIS_ONLY",
+        "SUPERSEDED_DO_NOT_RUN"
       ]
     },
     "purpose": {
@@ -114,6 +118,53 @@
       "additionalProperties": {
         "type": "number"
       }
+    },
+    "hypothesis": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stop_conditions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "adoption_criteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "scoring_contract_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "required_checks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "superseded_by": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      ]
     }
   }
 }

@@ -255,9 +255,10 @@ tasks_list_tasks
 tasks_get_task
 tasks_create_task
 tasks_update_task
+tasks_delete_task
 ```
 
-`tasks_update_task`는 승인된 완료 상태 변경을 지원한다. Task 삭제 Tool은 등록하지 않는다.
+`tasks_update_task`는 승인된 완료 상태 변경을 지원한다. `tasks_delete_task`는 정확한 Task ID를 대상으로 하는 승인형 `DELETE`이며 Claim V2 검증 후 실행하고 `GET_ABSENT`로 대상 부재를 검증한다.
 
 ## 9. Calendar Tool
 

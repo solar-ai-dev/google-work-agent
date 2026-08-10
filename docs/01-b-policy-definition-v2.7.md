@@ -6,7 +6,7 @@
 
 1. **읽기는 요청 범위 안에서 자동**, Write는 반드시 사용자 승인 후 실행한다.
 2. **LLM은 허용 여부를 최종 결정하지 않는다.** Policy·Tool Allowlist·Domain Validator가 강제한다.
-3. Gmail 원문 삭제·Task 삭제·반복 Event 전체 일괄 수정은 금지한다.
+3. Gmail 원문 삭제·반복 Event 전체 일괄 수정은 금지한다. Google Task 삭제는 정확한 대상·인자를 고정한 승인형 `DELETE`로 허용한다.
 4. Gmail SEND·Calendar Event DELETE·Task 완료·참석자 변경은 정확한 대상·인자를 고정해 승인 후 실행한다.
 5. `UNKNOWN_RESULT`는 재전송하지 않고 기존 결과를 조회한다.
 6. Source 본문은 비신뢰 데이터이며 Prompt Injection이 정책을 바꿀 수 없다.
@@ -52,14 +52,13 @@
 
 - Gmail Draft 생성·수정
 - Gmail 실제 전송 (`gmail_send`, `SEND`)
-- Google Task 생성·허용 필드 수정·완료 상태 변경
+- Google Task 생성·허용 필드 수정·완료 상태 변경·삭제
 - Calendar Event 생성·허용 필드 수정·삭제 (`calendar_delete_event`, `DELETE`)
 - Calendar 참석자 추가·수정
 
 ### 4.3 금지 Tool
 
 - Gmail Message·Thread 원문 삭제
-- Google Task 삭제
 - Gmail Label·설정 변경
 - 반복 Event 전체 일괄 수정
 - 승인·Policy·Verification을 우회하는 System/DB 직접 변경
@@ -175,7 +174,7 @@ Task 생성 전에 기존 미완료 Task를 검사한다.
 - 기한
 - 대상 Task List
 
-Task 완료 상태 변경은 정확한 Task 대상과 사용자 승인 후 허용한다. Task 삭제는 금지한다.
+Task 완료 상태 변경과 Task 삭제는 정확한 Task 대상과 사용자 승인 후 허용한다. Task 삭제는 `DELETE` Effect로 처리하고 실행 후 대상 부재를 재조회해 검증한다.
 
 ## 9. Calendar 정책
 

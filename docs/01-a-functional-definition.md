@@ -298,7 +298,7 @@
 
 - **상태:** P0
 - **출력:** 제목, 메모, 기한, Task List.
-- **제한:** Task 삭제는 지원하지 않는다. 정확한 Task 완료 상태 변경은 승인 후 허용한다.
+- **제한:** 정확한 Task 완료 상태 변경과 Task 삭제는 사용자 승인 후 허용한다. Task 삭제는 `DELETE`로 처리하고 실행 후 대상 부재를 검증한다.
 
 ### FN-044 작업 Event 제안
 
@@ -426,8 +426,8 @@
 | ID | 기능 | 상태 |
 |---|---|---|
 | P0-WRITE-001 | Gmail 승인형 전송 | P0 |
-| OUT-002 | Gmail Message·Thread 원문 삭제 · Google Task 삭제 | OUT |
-| P0-WRITE-002 | Calendar Event 승인형 삭제 | P0 |
+| OUT-002 | Gmail Message·Thread 원문 삭제 | OUT |
+| P0-WRITE-002 | Google Task·Calendar Event 승인형 삭제 | P0 |
 | P0-WRITE-003 | Calendar 참석자 승인형 추가·수정 | P0 |
 | OUT-004 | CPU Local LLM | OUT |
 | OUT-005 | 원격 SaaS·멀티 사용자·외부 공개 API | OUT |
@@ -553,7 +553,7 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 - `SEND`: Gmail 실제 전송.
 - `UPDATE`: Task 완료, Calendar 참석자 변경 포함.
 - `DELETE`: Calendar Event 삭제.
-- Gmail 원문 삭제와 Task 삭제는 OUT 유지.
+- Gmail Message·Thread 원문 삭제는 OUT 유지. Google Task 삭제는 승인형 `DELETE`로 지원한다.
 ### FN-115 Agent Subgraph 실행 계약
 
 - **상태:** P0

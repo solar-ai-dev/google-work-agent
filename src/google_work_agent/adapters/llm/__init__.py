@@ -10,6 +10,11 @@ from google_work_agent.adapters.llm.credentials import (
     LLMCredentialService,
     SessionMemorySecretStore,
 )
+from google_work_agent.adapters.llm.gemini import (
+    DEFAULT_GEMINI_BASE_URL,
+    DEFAULT_GEMINI_MODEL_ID,
+    GeminiHTTPClient,
+)
 from google_work_agent.adapters.llm.ollama import (
     OllamaHTTPClient,
     OllamaStructuredLLMProvider,
@@ -28,8 +33,11 @@ __all__ = [
     "APIProviderTransport",
     "ApiStructuredLLMProvider",
     "CredentialStorageMode",
+    "DEFAULT_GEMINI_BASE_URL",
+    "DEFAULT_GEMINI_MODEL_ID",
     "DefaultHardwareProbe",
     "DeterministicLLMRuntimeRouter",
+    "GeminiHTTPClient",
     "LLMCredentialService",
     "LLMRuntimeStatusService",
     "LoopbackOllamaProbe",

@@ -16,7 +16,17 @@
           ],
           "cc": [],
           "sent_at": "2026-08-05T01:00:00Z",
-          "body": "안녕하세요.\n오늘 기준으로 확인된 내용을 전달드립니다.\n\n캠페인 전환율은 4.8%였습니다.\n\n관련 일정이나 담당 변경이 있으면 이 메일에 회신 부탁드립니다.\n감사합니다."
+          "body": "안녕하세요.\n오늘 기준으로 확인된 내용을 전달드립니다.\n\n캠페인 전환율은 4.8%였습니다.\n\n관련 일정이나 담당 변경이 있으면 이 메일에 회신 부탁드립니다.\n감사합니다.",
+          "attachments": [
+            {
+              "attachment_id": "ATT-G-001",
+              "filename": "grove-campaign-results.csv",
+              "mime_type": "text/csv",
+              "size_bytes": 36,
+              "fixture_id": "ATTACH-FIX-GROVE-001",
+              "sha256": "f86b52b9a4123aa8003d29eb17c64b2037260a18f2ae1a75c5ae82560ead4a7c"
+            }
+          ]
         }
       ]
     },

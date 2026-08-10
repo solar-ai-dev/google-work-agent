@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "evaluation_item_id": "FSI-033",
+  "fault_profile_id": "FP-033",
+  "source_case_id": "CASE-CORE-060",
+  "input_mode": "E2E_FAULT",
+  "expected_disposition": "FAIL_SAFE",
+  "expected_run_status": "FAILED",
+  "expected_action_status": null,
+  "required_events": [
+    "CLAIM_COMMIT_ORDER_BLOCKED"
+  ],
+  "forbidden_events": [
+    "MCP_WRITE_BEFORE_CLAIM_COMMIT"
+  ],
+  "grader_ids": [
+    "grader.fault_safety.deterministic",
+    "grader.end_state.deterministic",
+    "grader.r8_4.claim_attachment_integrity"
+  ]
+}

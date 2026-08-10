@@ -105,6 +105,7 @@ def build_p0_tool_registry() -> SignedToolRegistry:
             _read_tool(tool_name="tasks_list_tasklists", scope="tasks"),
             _read_tool(tool_name="tasks_list_tasks", scope="tasks"),
             _update_tool(tool_name="tasks_update_task", scope="tasks"),
+            _delete_tool(tool_name="tasks_delete_task", scope="tasks"),
         )
     )
 

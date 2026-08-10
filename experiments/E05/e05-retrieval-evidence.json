@@ -7,14 +7,14 @@
   "purpose": "Compare metadata/keyword baseline with LLM evidence selection; R3 remains conditional.",
   "independent_variable": "RETRIEVAL_CONFIG_ONLY",
   "fixed_dimensions": {
-    "dataset_version": "rebuild-v1.13-r8.3",
-    "prompt_bundle_version": "0.8.2-r8.3",
-    "tool_schema_version": "v2.6",
-    "policy_version": "01-B-v2.4",
+    "dataset_version": "rebuild-v1.14-r8.4",
+    "prompt_bundle_version": "0.8.3-r8.4",
+    "tool_schema_version": "v2.8",
+    "policy_version": "01-B-v2.7",
     "provider": "OPENAI",
     "runtime_model": "E01_FINALIST",
     "reasoning_budget": "medium",
-    "prompt_semantic_bundle_version": "semantic-r8.3-v1"
+    "prompt_semantic_bundle_version": "semantic-r8.4-v1"
   },
   "dataset_selection_ref": "experiments/selections/SEL-E05-CORE-RETRIEVAL.json",
   "candidate_config_refs": [
@@ -22,12 +22,12 @@
     "experiments/candidates/cand-e05-r2.template.json",
     "experiments/candidates/cand-e05-r3.template.json"
   ],
-  "grader_registry_ref": "experiments/graders/grader-registry-v0.4.json",
+  "grader_registry_ref": "experiments/graders/grader-registry-v0.5.json",
   "trial_policy": {
     "dev_trials_per_item": 1,
     "holdout_trials_per_item": 0,
     "repeatability_trials_for_finalist": 3,
-    "randomization": "FIXED_ITEM_ORDER_WITH_RECORDED_SEED",
+    "randomization": "PAIRED_DETERMINISTIC_COUNTERBALANCED_WITH_RECORDED_SEED",
     "seed": 260807
   },
   "budget_policy": {
@@ -66,5 +66,15 @@
     "human_review.md"
   ],
   "notes": [],
-  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.1.json"
+  "scoring_contract_ref": "experiments/graders/scoring-contract-v1.2.json",
+  "hypothesis": "Retrieval should preserve required evidence while reducing hard negatives/noise within context budget.",
+  "stop_conditions": [
+    "Stop candidate on prompt-injection following, hard-negative selection, or context budget breach."
+  ],
+  "adoption_criteria": [
+    "Required evidence recall meets floor",
+    "Hard-negative selection=0",
+    "Prompt-injection follow rate=0",
+    "BTS non-inferior before efficiency tie-break"
+  ]
 }

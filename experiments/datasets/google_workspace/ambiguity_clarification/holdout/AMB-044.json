@@ -5,7 +5,8 @@
   "ambiguity_family_id": "AMB-F11-REFERENCE",
   "user_request": "아까 그 메일로 답장해줘",
   "conversation_context": [
-    "직전 대화에서 Gmail Thread 하나만 명시적으로 선택됨"
+    "사용자: Atlas 출고 확정 Gmail Thread를 선택했어.",
+    "Assistant: 해당 Thread 하나만 현재 Resource로 선택되어 있습니다."
   ],
   "available_candidates": [],
   "gold": {

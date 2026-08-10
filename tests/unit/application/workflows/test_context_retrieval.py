@@ -23,6 +23,7 @@ from google_work_agent.application.workflows import (
     WorkflowPhase,
     build_context_clarification_question,
     load_context_assess_sufficiency_prompt_reference,
+    load_context_select_evidence_prompt_reference,
 )
 from google_work_agent.application.workflows.context_retrieval import ContextStatusValue
 from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
@@ -376,14 +377,14 @@ def test_assess_sufficiency_prompt_ref_is_runtime_active(tmp_path: Path) -> None
     prompt_ref = load_context_assess_sufficiency_prompt_reference(manifest_path)
 
     assert prompt_ref.prompt_id == "context.assess_sufficiency"
-    assert prompt_ref.prompt_version == "0.8.2"
+    assert prompt_ref.prompt_version == "0.8.3"
     assert prompt_ref.node_state == "INITIAL"
     assert prompt_ref.content_hash
 
 
 def test_default_product_loader_rejects_draft_context_prompt() -> None:
-    with pytest.raises(InactivePromptArtifactError, match="context.assess_sufficiency"):
-        load_context_assess_sufficiency_prompt_reference()
+    with pytest.raises(InactivePromptArtifactError, match="context.select_evidence"):
+        load_context_select_evidence_prompt_reference()
 
 
 def test_context_retrieval_exports_do_not_change_existing_workflow_contracts() -> None:

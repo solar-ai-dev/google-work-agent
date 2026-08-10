@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "fault_profile_id": "FP-033",
+  "failure_reason_code": "CLAIM_COMMIT_ORDER_VIOLATION",
+  "injection_stage": "CLAIM_COMMIT",
+  "injection_target": "claim_context_v2",
+  "trigger": {
+    "attempt_write_before_claim_commit": true
+  },
+  "delivery_certainty": "DEFINITELY_NOT_SENT",
+  "retry_policy": {
+    "llm_prompt_retry_allowed": false,
+    "deterministic_retry_allowed": false,
+    "max_retries": 0
+  },
+  "expected_disposition": "FAIL_SAFE",
+  "expected_run_status": "FAILED",
+  "expected_action_status": null,
+  "forbidden_behaviors": [
+    "MCP_WRITE_BEFORE_CLAIM_COMMIT"
+  ],
+  "notes": "Claim DB Commit 전에 MCP Write 호출 금지."
+}

@@ -5,8 +5,8 @@
   "ambiguity_family_id": "AMB-F04-LOW-INFO-ACTION-WITH-CONTEXT",
   "user_request": "이 내용으로 처리해줘",
   "conversation_context": [
-    "선택 Gmail Thread: 고객에게 일정 변경 회신 필요",
-    "직전 assistant: 회신 본문을 제안함"
+    "사용자: 선택한 고객 일정 변경 메일에 회신해야 해.",
+    "Assistant: 선택 Thread의 수신자와 일정 변경 내용을 반영한 회신 본문을 제안했습니다."
   ],
   "available_candidates": [],
   "gold": {

@@ -8,7 +8,7 @@
   "fixture_snapshot_id": null,
   "entry_mode": "NO_GOOGLE_ACCESS_REQUIRED",
   "selected_resource_ids": [],
-  "user_request": "작업랑 캘린더 포함해서 Google Workspace 목록 전체를 로컬 DB에 상시 복제해줘.",
+  "user_request": "작업과 캘린더 포함해서 Google Workspace 목록 전체를 로컬 DB에 상시 복제해줘.",
   "policy_basis": [
     "POL-GML-004",
     "POL-SRC-007"

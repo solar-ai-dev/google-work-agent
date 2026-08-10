@@ -5,7 +5,8 @@
   "ambiguity_family_id": "AMB-F12-CALENDAR-RELATION",
   "user_request": "출장 일정 안에 이동시간도 일정으로 넣어줘",
   "conversation_context": [
-    "이동시간이 출장 구성요소로 명시됨"
+    "사용자: 2박 3일 출장 일정에 이동시간도 포함해서 관리하고 있어.",
+    "Assistant: 이동시간은 이번 출장 일정의 구성요소로 명시되어 있습니다."
   ],
   "available_candidates": [],
   "gold": {

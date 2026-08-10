@@ -11,7 +11,7 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "expected_goal": "Task UPDATE·Event CREATE·Draft CREATE를 계획한다.",
+    "expected_goal": "Kestrel 납품 지연 대응을 위해 Task UPDATE·Event CREATE·Draft CREATE를 하나의 연관된 계획으로 만든다.",
     "completion_criteria": [
       "Task와 Event가 먼저 준비되고 Draft가 그 결과를 반영한다.",
       "모든 write는 승인과 GET 검증이 필요하다.",

@@ -5,7 +5,8 @@
   "ambiguity_family_id": "AMB-F08-RECIPIENT-SCOPE",
   "user_request": "팀에 공유해줘",
   "conversation_context": [
-    "최근 대화에 팀 정의 없음"
+    "사용자: Atlas 출시 준비 상황을 팀에 공유해야 해.",
+    "Assistant: 현재 대화에는 어떤 사람들을 “팀”으로 볼지 정의된 정보가 없습니다."
   ],
   "available_candidates": [],
   "gold": {

@@ -304,6 +304,15 @@ class GoogleWorkspaceGateway(Protocol):
     ) -> ResourceSnapshot:
         """Delete one approved non-recurring Calendar event."""
 
+    def delete_task(
+        self,
+        *,
+        task_list_id: str,
+        task_id: str,
+        claim_context: dict[str, JsonValue] | None = None,
+    ) -> ResourceSnapshot:
+        """Delete one approved Google Task."""
+
     def search_by_recovery_fingerprint(
         self,
         *,

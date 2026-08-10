@@ -260,6 +260,22 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
             },
         )
 
+    def delete_task(
+        self,
+        *,
+        task_list_id: str,
+        task_id: str,
+        claim_context: dict[str, Any] | None = None,
+    ) -> ResourceSnapshot:
+        return self._snapshot(
+            "tasks_delete_task",
+            {
+                "task_list_id": task_list_id,
+                "task_id": task_id,
+                "claim_context": claim_context,
+            },
+        )
+
     def list_calendars(self, *, page_token: str | None, page_size: int) -> ResourcePage:
         return self._page(
             "calendar_list_calendars",
