@@ -694,12 +694,10 @@ def _revoke_stale_dependent_approvals(
     gap blocking `refresh_expired_action`), so cancelling or re-approving it
     is left to the user via the existing CancelPendingAction/PROPOSED path.
 
-    This is currently unreachable in production: SaveWritePlanService never
-    populates `action_dependencies` for WRITE actions today, so
-    `list_dependents` always returns an empty tuple. It is kept in place, and
-    covered by a test that seeds a dependency row directly, so the safety
-    invariant already holds the moment WRITE-action dependency tracking is
-    added by whichever GAP implements it.
+    SaveWritePlanService now populates `action_dependencies` for WRITE
+    actions (GAP-F3 prerequisite: WRITE Action Dependency Persistence), so
+    `list_dependents` returns real edges once a plan with
+    `depends_on_action_ids` has been saved.
     """
 
     for dependent_id in unit_of_work.action_dependencies.list_dependents(modified_action_id):

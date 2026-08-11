@@ -106,6 +106,7 @@ class WriteActionDraft:
     arguments: dict[str, object]
     expected: dict[str, object]
     evidence_ids: tuple[str, ...]
+    depends_on_action_ids: tuple[str, ...] = ()
     target_resource_ref_id: str | None = None
 
 
@@ -499,6 +500,11 @@ class SaveWritePlanService:
                         updated_at_ms=now_ms,
                     )
                 )
+                for depends_on_action_id in action.depends_on_action_ids:
+                    unit_of_work.action_dependencies.add(
+                        action_id=action.action_id,
+                        depends_on_action_id=depends_on_action_id,
+                    )
                 for evidence_id in action.evidence_ids:
                     if evidence_id not in evidence_by_id:
                         raise LookupError(f"evidence not found for action link: {evidence_id}")

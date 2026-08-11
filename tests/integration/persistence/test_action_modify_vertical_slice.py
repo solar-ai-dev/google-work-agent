@@ -542,10 +542,10 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
     """08-sequence-design.md/03-system-architecture.md require Modify to
     trigger dependency re-review; a full Supervisor re-plan does not exist
     yet (separate GAP), but a stale dependent must never stay claimable on
-    its old Approval. WRITE plans do not populate `action_dependencies`
-    today, so this test seeds the edge directly to prove the safety net
-    itself is correct and ready for whichever GAP wires real dependency
-    tracking into SaveWritePlanService.
+    its old Approval. The dependency edge below is saved through the real
+    `SaveWritePlanService` (`WriteActionDraft.depends_on_action_ids`), not
+    seeded directly, proving the safety net is reachable through the actual
+    production WRITE plan path.
     """
 
     clock = FakeClock(initial_ms=1_000)
@@ -569,7 +569,9 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
         service_instance_id="modify-svc-dep",
     )
 
-    def _draft(action_id: str, position: int) -> WriteActionDraft:
+    def _draft(
+        action_id: str, position: int, *, depends_on_action_ids: tuple[str, ...] = ()
+    ) -> WriteActionDraft:
         return WriteActionDraft(
             action_id=action_id,
             position=position,
@@ -577,6 +579,7 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
             arguments={"task_list_id": "task-list-default", "payload": dict(_TASK_PAYLOAD)},
             expected={"resource_type": "task", "resource_id": None, "payload": dict(_TASK_PAYLOAD)},
             evidence_ids=(f"evidence-{action_id}",),
+            depends_on_action_ids=depends_on_action_ids,
         )
 
     save_response = save_service(
@@ -588,7 +591,10 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
             revision_no=1,
             summary_text="upstream and dependent task",
             expected_run_version=0,
-            actions=(_draft("action-upstream", 1), _draft("action-dependent", 2)),
+            actions=(
+                _draft("action-upstream", 1),
+                _draft("action-dependent", 2, depends_on_action_ids=("action-upstream",)),
+            ),
             evidence=(
                 WriteEvidenceDraft(
                     evidence_id="evidence-action-upstream",
@@ -619,10 +625,9 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
     assert publish_response.applied is True
 
     with unit_of_work_factory() as unit_of_work:
-        unit_of_work.action_dependencies.add(
-            action_id="action-dependent", depends_on_action_id="action-upstream"
+        assert unit_of_work.action_dependencies.list_dependencies("action-dependent") == (
+            "action-upstream",
         )
-        unit_of_work.commit()
 
     for action_id, approval_id in (
         ("action-upstream", "approval-upstream"),
