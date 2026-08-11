@@ -1189,13 +1189,42 @@ class SQLiteActionRepository:
         *,
         expected_version: int,
         updated_at_ms: int,
+        arguments_json: str,
+        arguments_hash: str,
     ) -> CommandResult[ActionStatus, ActionCommand]:
-        return self._transition_write_action(
-            action_id,
+        current = self.get_by_id(action_id)
+        if current is None:
+            raise LookupError(f"action not found: {action_id}")
+        result = transition_action(
+            ActionStatus(current.status),
             command=ActionCommand.MODIFY_ACTION,
+            current_version=current.version,
             expected_version=expected_version,
-            updated_at_ms=updated_at_ms,
+            effect_type=EffectType(current.effect_type),
         )
+        if not result.applied:
+            return result
+        cursor = self._connection.execute(
+            """
+            UPDATE actions
+            SET status = ?, version = ?, updated_at_ms = ?, arguments_json = ?, arguments_hash = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (
+                result.current_status.value,
+                result.current_version,
+                updated_at_ms,
+                arguments_json,
+                arguments_hash,
+                action_id,
+                current.version,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError(
+                "write action modify transition affected an unexpected row count"
+            )
+        return result
 
     def claim_execution(
         self,

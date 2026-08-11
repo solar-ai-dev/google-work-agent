@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "user_request": "Schedule a work block tomorrow afternoon.",
+  "entry_context": {
+    "entry_mode_hint": "AGENT_SEARCH",
+    "selected_resource_ids": []
+  },
+  "conversation_context": [],
+  "current_time": "2026-08-11T14:09:00+09:00",
+  "timezone": "Asia/Seoul",
+  "allowed_sources": [
+    "CALENDAR"
+  ]
+}

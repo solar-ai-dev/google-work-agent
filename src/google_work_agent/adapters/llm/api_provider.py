@@ -34,6 +34,7 @@ class APIProviderTransport(Protocol):
         timeout_seconds: int,
         api_key: str,
         instruction_text: str,
+        sampling_temperature: float | None = None,
     ) -> ProviderResponsePayload:
         raise NotImplementedError
 
@@ -74,6 +75,12 @@ class ApiStructuredLLMProvider(StructuredLLMProvider):
         if not api_key:
             raise ValueError("API key is required")
         instruction_text = self.resolve_instruction_text(prompt_ref)
+        # docs/15 section 9.5 (Runtime Prompt Activation Gate): only
+        # sampling_temperature is forwarded here. runtime_policy.sampling_seed
+        # is intentionally NOT passed to this transport -- this repository's
+        # Gemini adapter contract (adapters/llm/gemini.py) does not confirm
+        # seed support in the generateContent API it calls, and an
+        # unconfirmed field must not be sent (see docs/15 section 9.5).
         payload = self.transport.invoke_structured(
             model_id=self.model,
             prompt_ref=prompt_ref,
@@ -82,6 +89,7 @@ class ApiStructuredLLMProvider(StructuredLLMProvider):
             timeout_seconds=runtime_policy.api_timeout_seconds,
             api_key=api_key,
             instruction_text=instruction_text,
+            sampling_temperature=runtime_policy.sampling_temperature,
         )
         return ProviderResponsePayload(
             content=payload.content,

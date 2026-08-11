@@ -42,6 +42,8 @@ from google_work_agent.application.run_terminal import (
     derive_finalize_intent,
 )
 from google_work_agent.application.start_run import (
+    ModifyWriteActionCommand,
+    ModifyWriteActionService,
     RejectWriteActionCommand,
     RejectWriteActionService,
 )
@@ -134,6 +136,8 @@ __all__ = [
     "StartGoogleOAuthService",
     "RejectWriteActionCommand",
     "RejectWriteActionService",
+    "ModifyWriteActionCommand",
+    "ModifyWriteActionService",
     "ApproveWriteActionCommand",
     "ApproveWriteActionService",
     "ClaimWriteActionCommand",

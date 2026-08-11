@@ -217,6 +217,22 @@ MIN_HOLDOUT_ITEMS_PER_GROUP = 1
 # label on gate-result records, never to gate any pass/fail decision.
 DATASET_VERSION = "rebuild-v1.14-r8.4"
 
+# docs/15 section 9.5 (Runtime Prompt Activation Gate): the Node Prompt Gate
+# runs under fixed sampling conditions -- a single named constant here,
+# rather than a magic number repeated at each call site, so the exact value
+# actually used is traceable from one place and from the ledger's
+# `runtime_parameters` provenance (see _build_gate_result_record). This
+# narrows sampling variance on a best-effort basis; it is not a guarantee of
+# bit-identical, fully deterministic output (see
+# RuntimePolicy.sampling_temperature/sampling_seed docstring in ports/llm.py).
+# GATE_SAMPLING_SEED is only ever wired to the Ollama provider (see
+# _build_gate_provider) -- adapters/llm/api_provider.py deliberately does not
+# forward sampling_seed to the Gemini transport because this repository's
+# Gemini adapter contract does not confirm the generateContent API supports
+# it, and an unconfirmed field must not be sent.
+GATE_SAMPLING_TEMPERATURE = 0.0
+GATE_SAMPLING_SEED = 7
+
 # Where each Gate run's result ledger is written. Gate execution ONLY ever
 # writes here; it never touches the canonical manifest (see _activate_slot
 # and the module docstring's "Gate Result vs Activation" section).
@@ -404,7 +420,11 @@ def _build_gate_provider(
         api_provider=provider if provider_choice == "gemini" else None,  # type: ignore[arg-type]
         ollama_provider_factory=lambda model, settings: provider,  # unused
         router=None,  # type: ignore[arg-type]
-        runtime_policy=RuntimePolicy(local_timeout_seconds=180),
+        runtime_policy=RuntimePolicy(
+            local_timeout_seconds=180,
+            sampling_temperature=GATE_SAMPLING_TEMPERATURE,
+            sampling_seed=GATE_SAMPLING_SEED if provider_choice == "ollama" else None,
+        ),
         event_recorder=NullLLMEventRecorder(),
     )
     return provider, service
@@ -1006,6 +1026,7 @@ def _build_gate_result_record(
     provider: str,
     model_id: str,
     evaluated_at: str,
+    runtime_parameters: dict[str, object],
 ) -> dict[str, Any]:
     is_repair_lane = report.target_node_id == CONTEXT_REPAIR_TARGET_NODE_ID
     if is_repair_lane:
@@ -1033,6 +1054,10 @@ def _build_gate_result_record(
         "schema_version": schema_version,
         "evaluation_lane": "SCHEMA_REPAIR" if is_repair_lane else "INITIAL",
         "retry_kind": "SCHEMA_REPAIR" if is_repair_lane else "NONE",
+        # docs/15 section 9.5: fixed Sampling condition provenance (see
+        # GATE_SAMPLING_TEMPERATURE/GATE_SAMPLING_SEED). Additive field --
+        # ledger records written before this change simply omit it.
+        "runtime_parameters": dict(runtime_parameters),
         "dev_result": {"passed": dev_passed, "total": dev_total},
         "holdout_result": {"passed": holdout_passed, "total": holdout_total},
         "safety_result": {"passed": safety_passed, "total": safety_total},
@@ -1250,6 +1275,9 @@ def main() -> int:
     model_id = ollama_model_id if args.provider == "ollama" else DEFAULT_GEMINI_MODEL_ID
     gate_run_id = _new_gate_run_id(args.provider, model_id)
     evaluated_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    runtime_parameters: dict[str, object] = {"sampling_temperature": GATE_SAMPLING_TEMPERATURE}
+    if args.provider == "ollama":
+        runtime_parameters["sampling_seed"] = GATE_SAMPLING_SEED
     records = [
         _build_gate_result_record(
             report,
@@ -1257,6 +1285,7 @@ def main() -> int:
             provider=args.provider,
             model_id=model_id,
             evaluated_at=evaluated_at,
+            runtime_parameters=runtime_parameters,
         )
         for report in reports
     ]

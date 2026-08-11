@@ -46,7 +46,12 @@ def test_server_request_hash_is_canonical_and_semantic() -> None:
         ),
         (
             ModifyActionRequestV2,
-            {"command_id": "cmd", "expected_version": 1, "api_contract_version": VERSION},
+            {
+                "command_id": "cmd",
+                "expected_version": 1,
+                "arguments_patch": {"title": "Updated title"},
+                "api_contract_version": VERSION,
+            },
         ),
         (
             RejectActionRequestV2,

@@ -8,11 +8,11 @@ from typing import cast
 import pytest
 from fastapi.testclient import TestClient
 from tests.integration.langgraph.test_runtime import (
+    _action_required_intent,
     _analysis_output,
     _calendar_analysis_output,
     _calendar_intent,
     _calendar_selection_output,
-    _clear_intent,
     _delete_write_plan_output,
     _make_runtime,
     _review_output,
@@ -242,7 +242,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         ]
         if calendar_context
         else [
-            _clear_intent(),
+            _action_required_intent(),
             [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),

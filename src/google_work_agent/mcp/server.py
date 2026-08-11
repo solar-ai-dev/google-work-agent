@@ -488,11 +488,19 @@ def _gmail_get_thread(state: _WorkspaceState, arguments: dict[str, object]) -> d
 
 
 def _gmail_get_message(state: _WorkspaceState, arguments: dict[str, object]) -> dict[str, object]:
+    """Return one Gmail message snapshot including its actual body text.
+
+    Agent Retrieval acquisition (unlike the Sidebar UI detail endpoint) reads
+    this tool's payload directly into SourceSegment/Evidence text, so it must
+    fetch ``format=full`` and extract the real body -- ``format=metadata``
+    only returns headers and would leave Gmail evidence bodyless.
+    """
+
     message_id = _text_argument(arguments, "message_id", maximum=2048)
     payload = _google_api(
         state,
         f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{quote(message_id, safe='')}",
-        {"format": "metadata"},
+        {"format": "full"},
     )
     headers = _headers(payload)
     return {
@@ -508,6 +516,8 @@ def _gmail_get_message(state: _WorkspaceState, arguments: dict[str, object]) -> 
                 "from": headers.get("from"),
                 "to": headers.get("to"),
                 "received_at": headers.get("date"),
+                "body": _gmail_message_body(payload),
+                "attachments": _gmail_attachment_metadata(payload),
             },
         )
     }

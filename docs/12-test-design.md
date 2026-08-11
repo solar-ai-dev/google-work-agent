@@ -350,6 +350,8 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 
 모든 적용 가능한 Failure Reason은 최소 `DEV 3 + HOLDOUT 1` Item을 가진다. `ORACLE`, `LIVE`, `MUTATED` 결과는 같은 집계로 합치지 않는다.
 
+Gate는 고정 Sampling 조건에서 Item당 1회 평가한다. Temperature는 Gate Configuration에서 명시적으로 고정하고, Seed는 Provider가 지원함이 확인된 경우에만 고정한다. 이는 완전한 bit-identical Determinism을 보장하지 않는 best-effort 재현성이며, 반복 Trial 기반 Threshold PASS로 대체하지 않는다. 반복 Trial 평균·분산·Bootstrap Confidence Interval·Trial Consistency 평가는 `13` Evaluation 소관이다.
+
 
 ## 19. 정합성 회귀 Gate
 - Google/MCP/LLM Stub 호출 순간 SQLite Write Transaction이 열려 있지 않아야 한다.

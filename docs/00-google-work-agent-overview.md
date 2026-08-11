@@ -48,7 +48,7 @@
 | Architecture | v3.0 |
 | Domain·DB | v1.12 |
 | Retrieval | v2.6 |
-| Workflow | v6.1 |
+| Workflow | v6.2 |
 | Interface | v2.10 |
 | Sequence | v3.2 |
 | Security | v2.5 |

@@ -137,7 +137,14 @@ def _clear_intent() -> RequestIntentV1:
             "reason_code": None,
             "explanation": None,
         },
+        "response_disposition": "ANSWER_ONLY",
     }
+
+
+def _action_required_intent() -> RequestIntentV1:
+    payload = _clear_intent()
+    payload["response_disposition"] = "ACTION_REQUIRED"
+    return payload
 
 
 def _ambiguous_intent() -> RequestIntentV1:
@@ -485,7 +492,7 @@ def _source_plan_output(result: str = "PLAN_READY") -> dict[str, object]:
 
 
 def _calendar_intent() -> RequestIntentV1:
-    intent = _clear_intent()
+    intent = _action_required_intent()
     intent["semantic_constraints"]["sources"] = [
         {"source": "CALENDAR", "mention": "calendar", "confidence": "HIGH"}
     ]
@@ -820,7 +827,7 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=[
-            _clear_intent(),
+            _action_required_intent(),
             [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
@@ -900,7 +907,7 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=[
-            _clear_intent(),
+            _action_required_intent(),
             [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
@@ -1037,7 +1044,7 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
         ]
         if calendar_context
         else [
-            _clear_intent(),
+            _action_required_intent(),
             [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
@@ -1117,7 +1124,7 @@ def test_langgraph_runtime_executes_read_only_plan_to_terminal(
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=[
-            _clear_intent(),
+            _action_required_intent(),
             [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
@@ -1648,7 +1655,7 @@ def test_agent_subgraphs_do_not_issue_google_writes_before_approval(
     gateway = FakeGoogleGateway(snapshot)
     llm_payloads = (
         [
-            _clear_intent(),
+            _action_required_intent(),
             [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
@@ -2240,3 +2247,85 @@ def test_single_and_three_stage_runtimes_still_reject_own_draft_prompts(
             prompt_manifest_path=manifest_path,
             graph_profile=GraphProfile.THREE_STAGE,
         )
+
+
+# GAP-F1: response_disposition (RequestIntentV1), not a keyword scan over
+# request_text, decides the SIX_ROLE_BASELINE Planning subgraph's mode. Every
+# (request_text, response_disposition) pair below is asserted purely by
+# response_disposition -- including cases whose request_text carries an old
+# trigger word ("delete"/"list") paired with the opposite disposition, to
+# prove request_text is no longer consulted at all.
+_ANSWER_ONLY_SEMANTIC_CASES: tuple[tuple[str, str], ...] = (
+    ("korean-schedule-lookup", "오늘 일정 알려줘"),
+    ("korean-incomplete-tasks-summary", "미완료 업무 정리해줘. 새 항목은 만들지 마."),
+    ("korean-recent-project-mail-summary", "최근 프로젝트 관련 메일 요약해줘"),
+    ("trigger-word-trap", "Please list and delete nothing, just tell me what's going on."),
+)
+_ACTION_REQUIRED_SEMANTIC_CASES: tuple[tuple[str, str], ...] = (
+    ("korean-draft-reply", "이 메일에 답장 초안 만들어줘"),
+    ("korean-create-report-task", "내일 보고서 작성 할 일 만들어줘"),
+    ("korean-schedule-work-block", "내일 오후에 작업 일정 잡아줘"),
+    ("korean-delete-task", "이 할 일 삭제해줘"),
+    ("english-draft-reply", "Draft a reply to this email."),
+    ("english-create-task", "Create a task for tomorrow."),
+    ("english-schedule-work-block", "Schedule a work block tomorrow afternoon."),
+    ("english-delete-task", "Delete this task."),
+    ("no-trigger-word-trap", "Please make sure this happens by end of day tomorrow."),
+)
+
+
+def _planning_mode_runtime(tmp_path: Path) -> LangGraphWorkflowRuntime:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    return _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=tmp_path / "checkpoints-planning-mode.db",
+        prompt_manifest_path=manifest_path,
+    )
+
+
+@pytest.mark.parametrize(
+    ("case_id", "request_text"),
+    _ANSWER_ONLY_SEMANTIC_CASES,
+    ids=[case_id for case_id, _ in _ANSWER_ONLY_SEMANTIC_CASES],
+)
+def test_planning_mode_answer_only_semantic_cases_ignore_request_text(
+    tmp_path: Path, case_id: str, request_text: str
+) -> None:
+    del case_id
+    runtime = _planning_mode_runtime(tmp_path)
+    intent = _clear_intent()
+    intent["response_disposition"] = "ANSWER_ONLY"
+    assert runtime._planning_mode_from_request_intent(intent) == "answer_only"
+    runtime.close()
+
+
+@pytest.mark.parametrize(
+    ("case_id", "request_text"),
+    _ACTION_REQUIRED_SEMANTIC_CASES,
+    ids=[case_id for case_id, _ in _ACTION_REQUIRED_SEMANTIC_CASES],
+)
+def test_planning_mode_action_required_semantic_cases_ignore_request_text(
+    tmp_path: Path, case_id: str, request_text: str
+) -> None:
+    del case_id
+    runtime = _planning_mode_runtime(tmp_path)
+    intent = _action_required_intent()
+    assert runtime._planning_mode_from_request_intent(intent) == "draft_plan"
+    runtime.close()
+
+
+def test_planning_mode_falls_back_to_answer_only_when_disposition_absent(
+    tmp_path: Path,
+) -> None:
+    """A classify output that predates response_disposition (or a profile
+    that never sets it) never fabricates an Action Plan the user did not
+    ask for -- it falls back to answer_only rather than guessing."""
+    runtime = _planning_mode_runtime(tmp_path)
+    intent = _clear_intent()
+    del intent["response_disposition"]
+    assert runtime._planning_mode_from_request_intent(intent) == "answer_only"
+    runtime.close()

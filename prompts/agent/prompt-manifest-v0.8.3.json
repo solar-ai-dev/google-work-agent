@@ -19,7 +19,7 @@
     {
       "slot_id": "acquisition.plan_sources",
       "prompt_id": "acquisition.plan_sources",
-      "prompt_version": "0.8.3",
+      "prompt_version": "0.8.5",
       "activation_status": "RUNTIME_ACTIVE",
       "agent_role": "acquisition",
       "subgraph_name": "acquisition",
@@ -34,15 +34,15 @@
         "prompts/agent/r8.4/specialist/acquisition/base.md",
         "prompts/agent/acquisition/plan_sources.md"
       ],
-      "content_hash": "8babc03e98a230584ee92c0ab902327c6096d866e4288963f8007a50025fc56b",
+      "content_hash": "e67267268e8f5d4a03107fd7ccbd44b957909a4347c50b63633a47576395685b",
       "assembled_path": "prompts/agent/assembled-r8.4/acquisition.plan_sources.md",
-      "assembled_hash": "8babc03e98a230584ee92c0ab902327c6096d866e4288963f8007a50025fc56b",
+      "assembled_hash": "e67267268e8f5d4a03107fd7ccbd44b957909a4347c50b63633a47576395685b",
       "supported_failure_reason_codes": [],
       "activated_from_gate_result": {
-        "gate_run_id": "20260810T143504Z-ollama-qwen2.5-3b-831fa230",
+        "gate_run_id": "20260811T082349Z-ollama-qwen2.5-3b-cc7dd1f5",
         "provider": "ollama",
         "model_id": "qwen2.5:3b",
-        "activated_at": "2026-08-10T14:35:17Z"
+        "activated_at": "2026-08-11T08:24:03Z"
       }
     },
     {
@@ -1071,7 +1071,7 @@
     {
       "slot_id": "request_understanding.classify",
       "prompt_id": "request_understanding.classify",
-      "prompt_version": "0.8.3",
+      "prompt_version": "0.8.5",
       "activation_status": "RUNTIME_ACTIVE",
       "agent_role": "request_understanding",
       "subgraph_name": "request_understanding",
@@ -1086,15 +1086,15 @@
         "prompts/agent/r8.4/specialist/request_understanding/base.md",
         "prompts/agent/request_understanding/classify.md"
       ],
-      "content_hash": "041853c2eb96b8d67e36830e3816c3eb18124415a150a0c719cfc48fa23da123",
+      "content_hash": "38715e8b323c6a334a2aa3e20ac5f1a6747b11e408edcb7f5ee23f44fd4ebcdb",
       "assembled_path": "prompts/agent/assembled-r8.4/request_understanding.classify.md",
-      "assembled_hash": "041853c2eb96b8d67e36830e3816c3eb18124415a150a0c719cfc48fa23da123",
+      "assembled_hash": "38715e8b323c6a334a2aa3e20ac5f1a6747b11e408edcb7f5ee23f44fd4ebcdb",
       "supported_failure_reason_codes": [],
       "activated_from_gate_result": {
-        "gate_run_id": "20260810T141955Z-ollama-qwen2.5-3b-efa61779",
+        "gate_run_id": "20260811T044439Z-ollama-qwen2.5-3b-2687a73f",
         "provider": "ollama",
         "model_id": "qwen2.5:3b",
-        "activated_at": "2026-08-10T14:20:09Z"
+        "activated_at": "2026-08-11T05:37:40Z"
       }
     },
     {

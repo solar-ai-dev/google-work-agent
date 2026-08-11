@@ -2,7 +2,7 @@
 
 > **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `02 UI·UX v2.8`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.6`, `07 Interface v2.10`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v6.1 · **DB Schema:** v1.4 · **대상:** P0 MVP
+> **상태:** Draft v6.2 · **DB Schema:** v1.4 · **대상:** P0 MVP
 >
 > 결정적 Supervisor + 최대 6개 전문 Agent Subgraph Baseline + 결정적 실행·검증 Engine을 사용한다. 각 Agent Subgraph는 invocation 범위 Local State와 bounded validation·repair/revision loop를 가지며 Typed Result만 Main Graph에 반환한다. Agent별 장기 Memory는 없고 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -166,6 +166,16 @@ B3_SPECIALIZED= Analysis Agent + Planning Agent + Review Agent 3개
 ```
 
 E06-B 결과를 `SINGLE/THREE/SIX` 전체 제품 비용으로 해석하지 않는다. 제품 후보 선택은 E06-A가 소유하고 E06-B는 전문화·Handoff 원인 분석용이다.
+
+## 2.3 Answer-only / Action Plan Routing 계약
+
+`planning.answer_only`와 `planning.draft_plan`은 서로 다른 Output Schema를 가진 별도 Prompt Slot이므로(§7 Prompt Registry), LLM 호출 전에 어느 Slot을 쓸지 결정하는 계약이 필요하다. 이 결정은 `request_text` 문자열의 Keyword substring 매칭으로 하지 않는다.
+
+- `RequestIntentV1`은 `request_understanding.classify`가 생성하는 `response_disposition` 필드(`ANSWER_ONLY | ACTION_REQUIRED`)를 가질 수 있다. 사용자가 실제로 무엇을 요청했는지(정보·요약·분석인지, Gmail·Task·Calendar Resource의 생성·수정·전송·삭제인지)를 자연어 의미로 분류하며, 언어(한국어·영어 등)나 문자열 Keyword로 분류하지 않는다.
+- 이 필드는 `SIX_ROLE_BASELINE`의 독립 `planning` Agent Subgraph에서만 소비한다. `planning` 진입 시점에 결정적 코드가 `response_disposition`을 읽어 `planning.answer_only` 또는 `planning.draft_plan` 중 호출할 Prompt Slot을 고른다. 이 매핑 코드 자체가 LLM 자유 텍스트로 Edge를 선택하지 않는 결정적 코드다.
+- `SINGLE_BASELINE`(`profile.single.reason_plan.initial`)과 `THREE_STAGE`(`profile.three.stage2.initial`)는 이 필드를 소비하지 않는다. 두 Profile은 Analysis와 Planning을 한 번의 fused LLM 호출로 묶고, 그 호출 자체의 Typed Output(`status: ANSWER_ONLY | PLAN_READY | NEEDS_CONFIRMATION | BLOCKED`, `answer_draft`/`plan_draft` 중 정확히 하나)이 Answer/Plan 여부를 결정하므로 사전 Slot 선택이 필요 없다. 따라서 `RequestIntentV1`에서 `response_disposition`은 optional이며, 값이 없어도 두 Profile의 정합성에는 영향이 없다.
+- `response_disposition`이 없거나(예: `RUNTIME_ACTIVE` 상태의 `request_understanding.classify`가 이 필드를 아직 채우지 않는 이전 Prompt Version인 경우) 값을 신뢰할 수 없는 경우, `SIX_ROLE_BASELINE`은 `answer_only`로만 fallback한다. Write가 필요한 요청을 억지로 만들어내지 않고, 대신 사용자가 다시 명확히 요청하도록 남겨두는 쪽이 안전하다.
+- 요청 자체의 대상·범위가 불명확해 `ANSWER_ONLY`/`ACTION_REQUIRED` 중 무엇인지 판단할 수 없으면 `request_understanding.classify`는 `ambiguity.is_ambiguous=true`로 응답하고, 이는 Planning 진입 이전에 `WAITING_CONFIRMATION`으로 처리된다(§13 Interrupt). `response_disposition` 자체가 이 모호성 처리 경로를 대체하지 않는다.
 
 ## 3. Graph State
 
