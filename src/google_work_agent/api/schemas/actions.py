@@ -10,6 +10,7 @@ class ApproveActionRequestV2(ContractVersionedRequest):
     expected_version: int
     ttl_ms: int = 30000
     duplicate_acknowledged: bool = False
+    calendar_conflict_acknowledged: bool = False
 
 
 class ModifyActionRequestV2(ContractVersionedRequest):

@@ -70,6 +70,7 @@ class _CalendarGateway:
         page_token: str | None,
         page_size: int,
         time_min: str | None = None,
+        time_max: str | None = None,
         single_events: bool = False,
         order_by: str | None = None,
     ) -> ResourcePage:

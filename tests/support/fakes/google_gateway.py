@@ -314,6 +314,7 @@ class FakeGoogleGateway:
         page_token: str | None,
         page_size: int,
         time_min: str | None = None,
+        time_max: str | None = None,
         single_events: bool = False,
         order_by: str | None = None,
     ) -> ResourcePage:
@@ -331,6 +332,8 @@ class FakeGoogleGateway:
         }
         if time_min is not None:
             arguments["time_min"] = time_min
+        if time_max is not None:
+            arguments["time_max"] = time_max
         if single_events:
             arguments["single_events"] = True
         if order_by is not None:

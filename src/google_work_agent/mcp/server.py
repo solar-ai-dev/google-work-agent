@@ -1082,6 +1082,9 @@ def _calendar_list_events(
     time_min = arguments.get("time_min")
     if time_min is not None:
         params["timeMin"] = _text_value(time_min, maximum=64)
+    time_max = arguments.get("time_max")
+    if time_max is not None:
+        params["timeMax"] = _text_value(time_max, maximum=64)
     single_events = arguments.get("single_events")
     if single_events is not None:
         if not isinstance(single_events, bool):
@@ -1414,6 +1417,14 @@ def _event_snapshot(item: dict[str, object], calendar_id: str) -> dict[str, obje
     event_id = _required_response_text(item, "id")
     start = cast(dict[str, object], item.get("start") or {})
     end = cast(dict[str, object], item.get("end") or {})
+    self_response_status = next(
+        (
+            _optional_text(attendee.get("responseStatus"))
+            for attendee in _object_list(item.get("attendees"))
+            if attendee.get("self") is True
+        ),
+        None,
+    )
     return _snapshot(
         "calendar_event",
         event_id,
@@ -1425,6 +1436,7 @@ def _event_snapshot(item: dict[str, object], calendar_id: str) -> dict[str, obje
             "status": _optional_text(item.get("status")),
             "transparency": _optional_text(item.get("transparency")),
             "event_kind": _optional_text(item.get("eventType")),
+            "self_response_status": self_response_status,
             "start": _optional_text(start.get("dateTime")) or _optional_text(start.get("date")),
             "end": _optional_text(end.get("dateTime")) or _optional_text(end.get("date")),
         },

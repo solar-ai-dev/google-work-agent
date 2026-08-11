@@ -6,6 +6,16 @@ from google_work_agent.domain.action_risk import (
     normalize_action_risk,
     parse_action_risk_json,
 )
+from google_work_agent.domain.calendar_conflict import (
+    CalendarConflictDecision,
+    CalendarConflictFreshness,
+    CalendarConflictResult,
+    CalendarEventCandidate,
+    CalendarInterval,
+    CalendarWorkHours,
+    evaluate_calendar_conflict,
+    intervals_overlap,
+)
 from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
@@ -69,6 +79,12 @@ __all__ = [
     "ApprovalRequirement",
     "ApprovalStatus",
     "CommandHashMismatchError",
+    "CalendarConflictDecision",
+    "CalendarConflictFreshness",
+    "CalendarConflictResult",
+    "CalendarEventCandidate",
+    "CalendarInterval",
+    "CalendarWorkHours",
     "CommandResult",
     "DEFAULT_POLICY_VERSION",
     "DEFAULT_TOOL_SCHEMA_VERSION",
@@ -99,6 +115,8 @@ __all__ = [
     "canonicalize_action_risk",
     "canonicalize_json_value",
     "evaluate_task_duplicate",
+    "evaluate_calendar_conflict",
+    "intervals_overlap",
     "next_allowed_action_commands",
     "next_allowed_run_commands",
     "normalize_scheduled_date",

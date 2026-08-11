@@ -113,8 +113,27 @@ function taskDuplicateDecision(risk: Record<string, unknown>): TaskDuplicateDeci
     : null;
 }
 
+type CalendarConflictDecision = "NO_CONFLICT" | "WARNING" | "HARD_CONFLICT";
+
+function calendarConflictDecision(
+  risk: Record<string, unknown>,
+): CalendarConflictDecision | null {
+  const conflict = risk.calendar_conflict;
+  if (!conflict || typeof conflict !== "object") {
+    return null;
+  }
+  const decision = (conflict as { decision?: unknown }).decision;
+  return decision === "NO_CONFLICT" ||
+    decision === "WARNING" ||
+    decision === "HARD_CONFLICT"
+    ? decision
+    : null;
+}
+
 function hasOtherRisk(risk: Record<string, unknown>): boolean {
-  return Object.keys(risk).some((key) => key !== "duplicate");
+  return Object.keys(risk).some(
+    (key) => key !== "duplicate" && key !== "calendar_conflict",
+  );
 }
 
 type ResourceLoadOptions = {
@@ -517,6 +536,7 @@ export function App(): JSX.Element {
   async function handleApprove(
     action: RunAction,
     duplicateAcknowledged = false,
+    calendarConflictAcknowledged = false,
   ): Promise<void> {
     if (!runSnapshot || !currentAccount?.account_id || busyCommand) {
       return;
@@ -529,6 +549,7 @@ export function App(): JSX.Element {
         command_id: commandId,
         expected_version: action.version,
         duplicate_acknowledged: duplicateAcknowledged,
+        calendar_conflict_acknowledged: calendarConflictAcknowledged,
       });
       await selectRun(runSnapshot.run_id);
     } finally {
@@ -1086,6 +1107,10 @@ export function App(): JSX.Element {
                 const duplicateNeedsAcknowledgement =
                   duplicateDecision === "SIMILAR_CANDIDATE" ||
                   duplicateDecision === "CLEAR_DUPLICATE";
+                const conflictDecision = calendarConflictDecision(action.risk);
+                const conflictNeedsAcknowledgement =
+                  conflictDecision === "WARNING" ||
+                  conflictDecision === "HARD_CONFLICT";
                 return (
                   <article key={action.action_id} className="info-card">
                     <div className="inline-row" style={{ justifyContent: "space-between" }}>
@@ -1102,6 +1127,14 @@ export function App(): JSX.Element {
                       <p className="status-warn">
                         동일한 작업이 이미 있습니다. 기존 작업을 확인한 뒤 계속해 주세요.
                       </p>
+                    ) : null}
+                    {conflictDecision === "WARNING" ? (
+                      <p className="status-warn">
+                        겹칠 가능성이 있거나 업무 시간 밖의 일정입니다.
+                      </p>
+                    ) : null}
+                    {conflictDecision === "HARD_CONFLICT" ? (
+                      <p className="status-warn">해당 시간에 기존 일정이 있습니다.</p>
                     ) : null}
                     {hasOtherRisk(action.risk) ? (
                       <p className="status-warn">
@@ -1127,10 +1160,18 @@ export function App(): JSX.Element {
                           type="button"
                           disabled={busyCommand === `approve-${action.action_id}`}
                           onClick={() =>
-                            void handleApprove(action, duplicateNeedsAcknowledgement)
+                            void handleApprove(
+                              action,
+                              duplicateNeedsAcknowledgement,
+                              conflictNeedsAcknowledgement,
+                            )
                           }
                         >
-                          {duplicateDecision === "CLEAR_DUPLICATE"
+                          {conflictDecision === "HARD_CONFLICT"
+                            ? "충돌을 알고도 진행"
+                            : conflictDecision === "WARNING"
+                              ? "확인하고 승인"
+                              : duplicateDecision === "CLEAR_DUPLICATE"
                             ? "그래도 새로 만들기"
                             : duplicateDecision === "SIMILAR_CANDIDATE"
                               ? "확인하고 승인"

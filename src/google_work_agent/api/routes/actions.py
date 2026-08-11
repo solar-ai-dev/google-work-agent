@@ -64,6 +64,7 @@ def approve(
             ),
             ttl_ms=payload.ttl_ms,
             duplicate_acknowledged=payload.duplicate_acknowledged,
+            calendar_conflict_acknowledged=payload.calendar_conflict_acknowledged,
         )
     )
     if result.applied:

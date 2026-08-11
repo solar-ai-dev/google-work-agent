@@ -228,6 +228,7 @@ export function approveAction(payload: {
   expected_version: number;
   ttl_ms?: number;
   duplicate_acknowledged?: boolean;
+  calendar_conflict_acknowledged?: boolean;
 }): Promise<ActionCommandResponse> {
   return requestJson(`/api/v1/actions/${encodeURIComponent(payload.action_id)}/approve`, {
     method: "POST",
@@ -236,6 +237,8 @@ export function approveAction(payload: {
       expected_version: payload.expected_version,
       ttl_ms: payload.ttl_ms ?? 30000,
       duplicate_acknowledged: payload.duplicate_acknowledged ?? false,
+      calendar_conflict_acknowledged:
+        payload.calendar_conflict_acknowledged ?? false,
       api_contract_version: API_CONTRACT_VERSION,
     },
   });

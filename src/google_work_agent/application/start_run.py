@@ -8,6 +8,13 @@ from dataclasses import asdict, dataclass, field
 from json import dumps, loads
 from typing import cast
 
+from google_work_agent.application.calendar_conflicts import (
+    CALENDAR_CONFLICT_TOOLS,
+    CalendarConflictGateway,
+    CalendarConflictValidator,
+    calendar_conflict_authority,
+    merge_calendar_conflict_risk,
+)
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     TaskDuplicateValidator,
@@ -18,6 +25,7 @@ from google_work_agent.application.task_duplicates import (
 from google_work_agent.domain import (
     ActionCommand,
     ActionStatus,
+    CalendarWorkHours,
     CommandResult,
     EffectType,
     EvidencePolicyInput,
@@ -408,16 +416,27 @@ class ModifyWriteActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: TaskListGateway,
+        gateway: TaskListGateway | CalendarConflictGateway,
+        work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
         self._registry = build_p0_tool_registry()
-        self._task_duplicates = TaskDuplicateValidator(gateway=gateway, now_ms=now_ms)
+        self._task_duplicates = TaskDuplicateValidator(
+            gateway=cast(TaskListGateway, gateway), now_ms=now_ms
+        )
+        self._calendar_conflicts = CalendarConflictValidator(
+            gateway=cast(CalendarConflictGateway, gateway),
+            now_ms=now_ms,
+            work_hours_provider=work_hours_provider
+            or (lambda: CalendarWorkHours(timezone="Asia/Seoul")),
+        )
 
     def __call__(self, command: ModifyWriteActionCommand) -> dict[str, object]:
         fresh_duplicate_risk: dict[str, object] | None = None
         duplicate_arguments: dict[str, object] | None = None
+        fresh_calendar_risk: dict[str, object] | None = None
+        calendar_arguments: dict[str, object] | None = None
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
@@ -447,10 +466,24 @@ class ModifyWriteActionService:
                     )
                     if calculate_canonical_json_hash(proposed) != snapshot.arguments_hash:
                         duplicate_arguments = proposed
+            if (
+                snapshot.tool_name in CALENDAR_CONFLICT_TOOLS
+                and snapshot.status in _MODIFIABLE_ACTION_STATUSES
+                and snapshot.version == command.expected_version
+            ):
+                entry = self._registry.require(snapshot.tool_name)
+                if not (set(command.arguments_patch) - entry.modify_patchable_fields):
+                    proposed = _apply_arguments_patch(
+                        loads(snapshot.arguments_json), command.arguments_patch
+                    )
+                    if calculate_canonical_json_hash(proposed) != snapshot.arguments_hash:
+                        calendar_arguments = proposed
 
         # Phase 2: the Google read is deliberately outside every UnitOfWork.
         if duplicate_arguments is not None:
             fresh_duplicate_risk = self._task_duplicates.fresh_risk(duplicate_arguments)
+        if calendar_arguments is not None:
+            fresh_calendar_risk = self._calendar_conflicts.fresh_risk(calendar_arguments)
 
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -574,14 +607,13 @@ class ModifyWriteActionService:
                 )
             )
 
-            # FN-031 risk was refreshed outside this transaction. FN-032
-            # Calendar conflict validation remains intentionally separate.
-
             updated_risk = (
                 merge_duplicate_risk(action.risk, fresh_duplicate_risk)
                 if fresh_duplicate_risk is not None
                 else action.risk
             )
+            if fresh_calendar_risk is not None:
+                updated_risk = merge_calendar_conflict_risk(updated_risk, fresh_calendar_risk)
             result = unit_of_work.actions.modify_write(
                 action.id,
                 expected_version=command.expected_version,
@@ -665,6 +697,33 @@ class ModifyWriteActionService:
                         metadata={
                             "decision": authority[0],
                             "matched_count": len(authority[1]),
+                            "freshness": "FRESH_GOOGLE_GET",
+                        },
+                        created_at_ms=now_ms,
+                    )
+                )
+            calendar_authority = (
+                calendar_conflict_authority(updated_risk)
+                if fresh_calendar_risk is not None
+                else None
+            )
+            if calendar_authority is not None:
+                risk_value = updated_risk.get("calendar_conflict")
+                unit_of_work.audits.add(
+                    _modify_audit_event(
+                        run_id=run_id,
+                        action_id=action.id,
+                        event_type="CALENDAR_CONFLICT_CHECKED",
+                        outcome="FRESH_GOOGLE_GET",
+                        metadata={
+                            "action_id": action.id,
+                            "decision": calendar_authority[0],
+                            "matched_resource_ids": list(calendar_authority[1]),
+                            "reason_codes": (
+                                risk_value.get("reason_codes", [])
+                                if isinstance(risk_value, dict)
+                                else []
+                            ),
                             "freshness": "FRESH_GOOGLE_GET",
                         },
                         created_at_ms=now_ms,

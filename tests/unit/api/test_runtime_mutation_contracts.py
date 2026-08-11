@@ -105,6 +105,12 @@ def test_approve_accepts_only_duplicate_acknowledgement_not_duplicate_facts() ->
         "api_contract_version": VERSION,
     }
     assert ApproveActionRequestV2.model_validate(payload).duplicate_acknowledged is True
+    assert (
+        ApproveActionRequestV2.model_validate(
+            {**payload, "calendar_conflict_acknowledged": True}
+        ).calendar_conflict_acknowledged
+        is True
+    )
     with pytest.raises(ValidationError):
         ApproveActionRequestV2.model_validate(
             {**payload, "matched_resource_ids": ["client-controlled"]}

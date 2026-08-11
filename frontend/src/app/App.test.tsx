@@ -1500,6 +1500,73 @@ test("NOT_DUPLICATE shows no warning and uses ordinary approval", async () => {
   });
 });
 
+test("Calendar WARNING requires explicit acknowledgement without exposing authority fields", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    action: true,
+    actionRisk: {
+      calendar_conflict: {
+        decision: "WARNING",
+        matched_resource_ids: ["calendar-private-1"],
+        reason_codes: ["OUTSIDE_WORK_HOURS"],
+      },
+    },
+  });
+  render(<App />);
+
+  expect(
+    await screen.findByText("겹칠 가능성이 있거나 업무 시간 밖의 일정입니다."),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "확인하고 승인" }));
+  const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
+    calendar_conflict_acknowledged: true,
+  });
+  expect(document.body.textContent).not.toContain("calendar-private-1");
+  expect(document.body.textContent).not.toContain("OUTSIDE_WORK_HOURS");
+});
+
+test("Calendar HARD_CONFLICT offers an explicit override", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    action: true,
+    actionRisk: {
+      calendar_conflict: {
+        decision: "HARD_CONFLICT",
+        matched_resource_ids: ["calendar-private-2"],
+      },
+    },
+  });
+  render(<App />);
+
+  expect(await screen.findByText("해당 시간에 기존 일정이 있습니다.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "충돌을 알고도 진행" }));
+  const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
+    calendar_conflict_acknowledged: true,
+  });
+  expect(document.body.textContent).not.toContain("calendar-private-2");
+});
+
+test("Calendar NO_CONFLICT shows ordinary approval", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    action: true,
+    actionRisk: {
+      calendar_conflict: { decision: "NO_CONFLICT", matched_resource_ids: [] },
+    },
+  });
+  render(<App />);
+
+  await user.click(await screen.findByRole("button", { name: "승인" }));
+  expect(screen.queryByText(/기존 일정/)).not.toBeInTheDocument();
+  const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
+    calendar_conflict_acknowledged: false,
+  });
+});
+
 test("Gmail detail shows loading, retries a safe error, and renders the actual body", async () => {
   const user = userEvent.setup();
   installUiContractFetch({ detailErrorOnce: true });

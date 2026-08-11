@@ -14,6 +14,16 @@ from hmac import new as hmac_new
 from json import dumps, loads
 from typing import Protocol, cast
 
+from google_work_agent.application.calendar_conflicts import (
+    CALENDAR_CONFLICT_TOOLS,
+    CalendarConflictValidator,
+    approval_calendar_conflict_authority,
+    approval_source_snapshot_for_calendar_conflict,
+    calendar_conflict_authority,
+    calendar_conflict_change_requires_reapproval,
+    merge_calendar_conflict_risk,
+    require_calendar_conflict_acknowledgement,
+)
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     TaskDuplicateValidator,
@@ -29,6 +39,8 @@ from google_work_agent.domain import (
     ActionStatus,
     ApprovalIntegrityInput,
     ApprovalStatus,
+    CalendarConflictDecision,
+    CalendarWorkHours,
     CommandResult,
     EffectType,
     EvidencePolicyInput,
@@ -160,6 +172,7 @@ class ApproveWriteActionCommand:
     idempotency_key: str
     ttl_ms: int = DEFAULT_APPROVAL_TTL_MS
     duplicate_acknowledged: bool = False
+    calendar_conflict_acknowledged: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -753,6 +766,7 @@ class ApproveWriteActionService:
             entry = self._registry.require(action.tool_name)
             approval_source_snapshot = command.source_snapshot
             duplicate_decision = None
+            calendar_decision = None
             if action.tool_name == TASK_CREATE_TOOL and action.version == command.expected_version:
                 try:
                     duplicate_decision = require_duplicate_acknowledgement(
@@ -805,6 +819,59 @@ class ApproveWriteActionService:
                     **approval_source_snapshot_for_task_duplicate(
                         risk=action.risk,
                         acknowledged=command.duplicate_acknowledged,
+                    ),
+                }
+            if (
+                action.tool_name in CALENDAR_CONFLICT_TOOLS
+                and action.version == command.expected_version
+            ):
+                try:
+                    calendar_decision = require_calendar_conflict_acknowledgement(
+                        risk=action.risk,
+                        acknowledged=command.calendar_conflict_acknowledged,
+                    )
+                except PolicyViolationError as error:
+                    plan = _require_plan(unit_of_work, action.plan_id)
+                    response = WriteActionResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=tuple(
+                            item.value
+                            for item in next_allowed_action_commands(
+                                ActionStatus(action.status),
+                                effect_type=EffectType(action.effect_type),
+                            )
+                        ),
+                        conflict_detail=str(error),
+                    )
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=action.id,
+                            event_type="CALENDAR_CONFLICT_APPROVAL_BLOCKED",
+                            outcome=ResultCode.STATE_CONFLICT.value,
+                            metadata={
+                                "command_id": command.command_id,
+                                **_calendar_conflict_audit_metadata(
+                                    risk=action.risk, action_id=action.id
+                                ),
+                            },
+                            created_at_ms=now_ms,
+                        )
+                    )
+                    _finish_json_receipt(
+                        unit_of_work, command.command_id, response, action.version, now_ms
+                    )
+                    unit_of_work.commit()
+                    return response
+                approval_source_snapshot = {
+                    **approval_source_snapshot,
+                    **approval_source_snapshot_for_calendar_conflict(
+                        risk=action.risk,
+                        acknowledged=command.calendar_conflict_acknowledged,
                     ),
                 }
             approval_result = unit_of_work.actions.approve_write(
@@ -895,6 +962,26 @@ class ApproveWriteActionService:
                         metadata={
                             "approval_id": approval.id,
                             "decision": duplicate_decision.value,
+                        },
+                        created_at_ms=now_ms,
+                    )
+                )
+            if (
+                action.tool_name in CALENDAR_CONFLICT_TOOLS
+                and calendar_decision is not None
+                and calendar_decision is not CalendarConflictDecision.NO_CONFLICT
+            ):
+                unit_of_work.audits.add(
+                    _audit_event(
+                        run_id=plan.run_id,
+                        action_id=action.id,
+                        event_type="CALENDAR_CONFLICT_OVERRIDE_ACKNOWLEDGED",
+                        outcome=ResultCode.TRANSITION_APPLIED.value,
+                        metadata={
+                            "approval_id": approval.id,
+                            **_calendar_conflict_audit_metadata(
+                                risk=action.risk, action_id=action.id
+                            ),
                         },
                         created_at_ms=now_ms,
                     )
@@ -1031,6 +1118,34 @@ class ClaimWriteActionService:
                 current_source_snapshot = {
                     **command.source_snapshot,
                     "task_duplicate": task_duplicate_snapshot,
+                }
+            if action.tool_name in CALENDAR_CONFLICT_TOOLS:
+                stored_approval_snapshot = _dict_argument(loads(approval.source_snapshot_json))
+                if calendar_conflict_change_requires_reapproval(
+                    approved=approval_calendar_conflict_authority(stored_approval_snapshot),
+                    current=calendar_conflict_authority(action.risk),
+                ):
+                    response = WriteActionResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=(),
+                        conflict_detail="calendar conflict risk changed after approval",
+                    )
+                    _finish_json_receipt(
+                        unit_of_work,
+                        command.command_id,
+                        response,
+                        action.version,
+                        now_ms,
+                    )
+                    unit_of_work.commit()
+                    return response
+                current_source_snapshot = {
+                    **command.source_snapshot,
+                    "calendar_conflict": stored_approval_snapshot.get("calendar_conflict"),
                 }
             try:
                 validate_approval_integrity(
@@ -1281,12 +1396,19 @@ class PreflightWriteActionService:
         unit_of_work_factory: Callable[[], UnitOfWork],
         gateway: GoogleWorkspaceGateway,
         now_ms: Callable[[], int] | None = None,
+        work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._gateway = gateway
         self._now_ms = now_ms or (lambda: time.time_ns() // 1_000_000)
         self._registry = build_p0_tool_registry()
         self._task_duplicates = TaskDuplicateValidator(gateway=gateway, now_ms=self._now_ms)
+        self._calendar_conflicts = CalendarConflictValidator(
+            gateway=gateway,
+            now_ms=self._now_ms,
+            work_hours_provider=work_hours_provider
+            or (lambda: CalendarWorkHours(timezone="Asia/Seoul")),
+        )
 
     def __call__(self, *, action_id: str) -> None:
         with self._unit_of_work_factory() as unit_of_work:
@@ -1412,6 +1534,94 @@ class PreflightWriteActionService:
             if must_reapprove:
                 raise PolicyViolationError(
                     "task duplicate result changed; acknowledgement and reapproval are required"
+                )
+            return
+
+        if action.tool_name in CALENDAR_CONFLICT_TOOLS:
+            try:
+                fresh_conflict_risk = self._calendar_conflicts.fresh_risk(arguments)
+            except Exception as error:
+                with self._unit_of_work_factory() as unit_of_work:
+                    current = _require_action(unit_of_work, action_id)
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=action_id,
+                            event_type="CALENDAR_CONFLICT_PREFLIGHT_BLOCKED",
+                            outcome="FAIL_CLOSED",
+                            metadata={
+                                "action_version": current.version,
+                                "safe_error_code": (
+                                    error.code.value
+                                    if isinstance(error, GoogleWorkspaceGatewayError)
+                                    else type(error).__name__
+                                ),
+                            },
+                            created_at_ms=self._now_ms(),
+                        )
+                    )
+                    unit_of_work.commit()
+                raise
+
+            must_reapprove = False
+            with self._unit_of_work_factory() as unit_of_work:
+                current = _require_action(unit_of_work, action_id)
+                current_approval = unit_of_work.approvals.get_active_by_action(action_id)
+                if (
+                    current.status != ActionStatus.APPROVED.value
+                    or current.version != action_version
+                    or current.arguments_hash != arguments_hash
+                    or current_approval is None
+                    or current_approval.id != approval_id
+                ):
+                    raise PolicyViolationError(
+                        "write action changed during calendar conflict preflight"
+                    )
+                merged_risk = merge_calendar_conflict_risk(current.risk, fresh_conflict_risk)
+                must_reapprove = calendar_conflict_change_requires_reapproval(
+                    approved=approval_calendar_conflict_authority(approval_snapshot),
+                    current=calendar_conflict_authority(merged_risk),
+                )
+                now_ms = self._now_ms()
+                if must_reapprove:
+                    result = unit_of_work.actions.modify_write(
+                        current.id,
+                        expected_version=current.version,
+                        updated_at_ms=now_ms,
+                        arguments_json=current.arguments_json,
+                        arguments_hash=current.arguments_hash,
+                        risk=merged_risk,
+                    )
+                    if not result.applied:
+                        raise PolicyViolationError(
+                            "write action changed during calendar conflict preflight"
+                        )
+                    unit_of_work.approvals.revoke_active_by_action(current.id)
+                else:
+                    unit_of_work.actions.update_risk_snapshot(
+                        current.id,
+                        expected_version=current.version,
+                        updated_at_ms=now_ms,
+                        risk=merged_risk,
+                    )
+                unit_of_work.audits.add(
+                    _audit_event(
+                        run_id=plan.run_id,
+                        action_id=current.id,
+                        event_type="CALENDAR_CONFLICT_CHECKED",
+                        outcome="REAPPROVAL_REQUIRED" if must_reapprove else "ALLOWED",
+                        metadata={
+                            **_calendar_conflict_audit_metadata(
+                                risk=merged_risk, action_id=current.id
+                            ),
+                        },
+                        created_at_ms=now_ms,
+                    )
+                )
+                unit_of_work.commit()
+            if must_reapprove:
+                raise PolicyViolationError(
+                    "calendar conflict result changed; acknowledgement and reapproval are required"
                 )
             return
 
@@ -3884,6 +4094,20 @@ def _dict_argument(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         raise TypeError("expected a dict payload")
     return {str(key): cast(object, item) for key, item in value.items()}
+
+
+def _calendar_conflict_audit_metadata(
+    *, risk: dict[str, object], action_id: str
+) -> dict[str, object]:
+    authority = calendar_conflict_authority(risk) or ("UNKNOWN", ())
+    value = risk.get("calendar_conflict")
+    return {
+        "action_id": action_id,
+        "decision": authority[0],
+        "matched_resource_ids": list(authority[1]),
+        "reason_codes": value.get("reason_codes", []) if isinstance(value, dict) else [],
+        "freshness": value.get("freshness", "UNKNOWN") if isinstance(value, dict) else "UNKNOWN",
+    }
 
 
 def _required_argument_string(arguments: dict[str, object], key: str) -> str:

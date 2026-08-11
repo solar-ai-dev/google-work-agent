@@ -289,6 +289,7 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
         page_token: str | None,
         page_size: int,
         time_min: str | None = None,
+        time_max: str | None = None,
         single_events: bool = False,
         order_by: str | None = None,
     ) -> ResourcePage:
@@ -299,6 +300,8 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
         }
         if time_min is not None:
             arguments["time_min"] = time_min
+        if time_max is not None:
+            arguments["time_max"] = time_max
         if order_by is not None:
             arguments["order_by"] = order_by
         if single_events:

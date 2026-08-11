@@ -94,6 +94,7 @@ from google_work_agent.application.write_actions import (
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
+from google_work_agent.domain import CalendarWorkHours
 from google_work_agent.ports import (
     ApprovedModelInfo,
     LauncherProbeDecision,
@@ -630,6 +631,12 @@ def build_container(
             checkpoint_database_path=checkpoint_database_path,
             prompt_manifest_path=prompt_manifest_path,
             timezone_provider=lambda: settings_service.get().timezone,
+            work_hours_provider=lambda: CalendarWorkHours(
+                timezone=settings_service.get().timezone,
+                days=settings_service.get().work_hours.days,
+                start=settings_service.get().work_hours.start,
+                end=settings_service.get().work_hours.end,
+            ),
         )
     except InactivePromptArtifactError:
         prompt_active = False
@@ -681,6 +688,12 @@ def build_container(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
             gateway=gateway,
+            work_hours_provider=lambda: CalendarWorkHours(
+                timezone=settings_service.get().timezone,
+                days=settings_service.get().work_hours.days,
+                start=settings_service.get().work_hours.start,
+                end=settings_service.get().work_hours.end,
+            ),
         ),
         reject_action_service=RejectWriteActionService(
             unit_of_work_factory=unit_of_work_factory,

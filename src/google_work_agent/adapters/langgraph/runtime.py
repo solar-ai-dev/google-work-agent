@@ -71,6 +71,10 @@ from google_work_agent.application import (
     WriteEvidenceDraft,
     derive_finalize_intent,
 )
+from google_work_agent.application.calendar_conflicts import (
+    CALENDAR_CONFLICT_TOOLS,
+    evidence_calendar_conflict_risk,
+)
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
@@ -134,7 +138,13 @@ from google_work_agent.application.write_actions import (
     ClaimWriteActionService,
     ExecuteWriteActionService,
 )
-from google_work_agent.domain import ActionStatus, PolicyViolationError, ResultCode, RunStatus
+from google_work_agent.domain import (
+    ActionStatus,
+    CalendarWorkHours,
+    PolicyViolationError,
+    ResultCode,
+    RunStatus,
+)
 from google_work_agent.ports import (
     DeliveryCertainty,
     EvidenceOriginType,
@@ -312,6 +322,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path: Path | None = None,
         timezone_provider: Callable[[], str] | None = None,
+        work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._gateway = gateway
@@ -321,6 +332,9 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._service_instance_id = service_instance_id
         self._checkpoint_database_path = checkpoint_database_path
         self._graph_profile = graph_profile
+        self._work_hours_provider = work_hours_provider or (
+            lambda: CalendarWorkHours(timezone=(timezone_provider or (lambda: "Asia/Seoul"))())
+        )
         self._cancel_signal_lock = Lock()
         self._cancel_signals: set[str] = set()
         self._checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -458,6 +472,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             unit_of_work_factory=unit_of_work_factory,
             gateway=gateway,
             now_ms=now_ms,
+            work_hours_provider=self._work_hours_provider,
         )
         self._execute_write = ExecuteWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
@@ -2994,8 +3009,12 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             return self._execute_read_only_plan(state, plan_id, actions)
 
         with self._unit_of_work_factory() as unit_of_work:
-            unit_of_work.runs.set_verifying(cast(str, state["run_id"]))
-            unit_of_work.commit()
+            run = unit_of_work.runs.get_by_id(cast(str, state["run_id"]))
+            if run is None:
+                raise LookupError(f"run not found: {state['run_id']}")
+            if run.status != RunStatus.VERIFYING:
+                unit_of_work.runs.set_verifying(cast(str, state["run_id"]))
+                unit_of_work.commit()
         verification_statuses: list[str] = []
         for action in actions:
             if self._should_stop_for_cancel(run_id):
@@ -3020,6 +3039,25 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             try:
                 self._preflight_write(action_id=action.id)
             except (GoogleWorkspaceGatewayError, LookupError, PolicyViolationError) as error:
+                refreshed = next(
+                    (item for item in self._list_actions(plan_id) if item.id == action.id),
+                    None,
+                )
+                if refreshed is not None and refreshed.status == ActionStatus.MODIFIED.value:
+                    _ = interrupt(
+                        {
+                            "interrupt_kind": "APPROVAL",
+                            "run_id": run_id,
+                            "plan_id": plan_id,
+                            "action_id": action.id,
+                            "reason": "PREFLIGHT_REAPPROVAL_REQUIRED",
+                        }
+                    )
+                    return {
+                        **state,
+                        "__target__": "action_execution",
+                        "workflow_phase": WorkflowPhase.PREFLIGHT.value,
+                    }
                 return {
                     **state,
                     "__target__": "end",
@@ -3715,6 +3753,15 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                         checked_at_ms=self._now_ms(),
                     )
                     if action["tool_name"] == TASK_CREATE_TOOL
+                    else evidence_calendar_conflict_risk(
+                        arguments=action["arguments"],
+                        acquisition_result=_require_state_value(
+                            state["acquisition_result"], "acquisition_result"
+                        ),
+                        checked_at_ms=self._now_ms(),
+                        work_hours=self._work_hours_provider(),
+                    )
+                    if action["tool_name"] in CALENDAR_CONFLICT_TOOLS
                     else {}
                 ),
             )
