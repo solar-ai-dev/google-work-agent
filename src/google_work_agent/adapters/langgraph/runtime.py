@@ -306,6 +306,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         checkpoint_database_path: Path,
         graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path: Path | None = None,
+        timezone_provider: Callable[[], str] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._gateway = gateway
@@ -330,6 +331,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             llm_runtime=llm_runtime,
             gateway=gateway,
             manifest_path=prompt_manifest_path,
+            now_ms=now_ms,
+            timezone_provider=timezone_provider,
         )
         self._context = ContextRetrievalAgent(
             llm_runtime=llm_runtime,
@@ -976,6 +979,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         result = self._acquisition.acquire(
             plans=planning_output["source_fetch_plans"],
             request=request,
+            request_intent=state.get("request_intent"),
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "READ_COMPLETE"
@@ -1983,6 +1987,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         result = self._acquisition.acquire(
             plans=state["source_fetch_plans"],
             request=request,
+            request_intent=state.get("request_intent"),
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "READ_COMPLETE"
@@ -2473,6 +2478,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         result = self._acquisition.acquire(
             plans=state["source_fetch_plans"],
             request=request,
+            request_intent=state.get("request_intent"),
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "READ_COMPLETE"
@@ -2820,6 +2826,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         result = self._acquisition.acquire(
             plans=state["source_fetch_plans"],
             request=request,
+            request_intent=state.get("request_intent"),
         )
         decision = route_supervisor(
             phase=WorkflowPhase.API_ACQUISITION,

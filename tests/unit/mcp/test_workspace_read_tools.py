@@ -102,9 +102,12 @@ def test_gmail_list_does_not_use_thread_id_as_subject_fallback(monkeypatch) -> N
     assert item["payload"] == {}
 
 
-def test_gmail_detail_tool_contracts_are_unchanged(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    responses = [
-        {
+def test_gmail_thread_detail_tool_contract_is_unchanged(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def google_api(
+        _state: server._WorkspaceState, _url: str, params: dict[str, str] | None = None
+    ) -> dict[str, object]:
+        assert params == {"format": "metadata"}
+        return {
             "historyId": "9",
             "snippet": "Thread preview",
             "messages": [
@@ -119,8 +122,75 @@ def test_gmail_detail_tool_contracts_are_unchanged(monkeypatch) -> None:  # type
                     },
                 }
             ],
-        },
-        {
+        }
+
+    monkeypatch.setattr(server, "_google_api", google_api)
+
+    thread = server._gmail_get_thread(_state(), {"thread_id": "thread-1"})
+
+    assert cast(dict[str, object], cast(dict[str, object], thread["item"])["payload"]) == {
+        "subject": "Project sync",
+        "snippet": "Thread preview",
+        "participants": ["pm@example.com", "user@example.com"],
+        "message_ids": ["message-1"],
+    }
+
+
+def test_gmail_message_detail_fetches_full_format_and_includes_body(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """GAP-F6: Agent Retrieval reads the message body through this tool, so it
+    must request ``format=full`` (not ``metadata``) and extract real body text
+    -- the same extraction the Sidebar UI detail endpoint already used."""
+
+    def google_api(
+        _state: server._WorkspaceState, _url: str, params: dict[str, str] | None = None
+    ) -> dict[str, object]:
+        assert params == {"format": "full"}
+        message = _gmail_message(
+            "message-1",
+            "2000",
+            "Actual message body",
+            parts=[
+                {
+                    "mimeType": "application/pdf",
+                    "filename": "report.pdf",
+                    "body": {"attachmentId": "attachment-1", "size": 2048},
+                }
+            ],
+        )
+        message["threadId"] = "thread-1"
+        message["historyId"] = "10"
+        message["snippet"] = "Message preview"
+        return message
+
+    monkeypatch.setattr(server, "_google_api", google_api)
+
+    message = server._gmail_get_message(_state(), {"message_id": "message-1"})
+
+    assert cast(dict[str, object], cast(dict[str, object], message["item"])["payload"]) == {
+        "subject": "Project update",
+        "snippet": "Message preview",
+        "from": "Kim Daeri <kim.daeri@example.com>",
+        "to": "User <user@example.com>",
+        "received_at": "Mon, 10 Aug 2026 09:15:00 +0900",
+        "body": "Actual message body",
+        "attachments": [
+            {
+                "message_id": "message-1",
+                "attachment_id": "attachment-1",
+                "filename": "report.pdf",
+                "mime_type": "application/pdf",
+                "size_bytes": 2048,
+            }
+        ],
+    }
+    assert cast(dict[str, object], message["item"])["parent_id"] == "thread-1"
+
+
+def test_gmail_message_detail_omits_body_and_attachments_when_absent(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def google_api(
+        _state: server._WorkspaceState, _url: str, _params: dict[str, str] | None = None
+    ) -> dict[str, object]:
+        return {
             "id": "message-1",
             "threadId": "thread-1",
             "historyId": "10",
@@ -133,31 +203,19 @@ def test_gmail_detail_tool_contracts_are_unchanged(monkeypatch) -> None:  # type
                     {"name": "Date", "value": "Sat, 24 May 2025 09:15:00 +0900"},
                 ]
             },
-        },
-    ]
-
-    def google_api(
-        _state: server._WorkspaceState, _url: str, _params: dict[str, str] | None = None
-    ) -> dict[str, object]:
-        return cast(dict[str, object], responses.pop(0))
+        }
 
     monkeypatch.setattr(server, "_google_api", google_api)
 
-    thread = server._gmail_get_thread(_state(), {"thread_id": "thread-1"})
     message = server._gmail_get_message(_state(), {"message_id": "message-1"})
 
-    assert cast(dict[str, object], cast(dict[str, object], thread["item"])["payload"]) == {
-        "subject": "Project sync",
-        "snippet": "Thread preview",
-        "participants": ["pm@example.com", "user@example.com"],
-        "message_ids": ["message-1"],
-    }
     assert cast(dict[str, object], cast(dict[str, object], message["item"])["payload"]) == {
         "subject": "Project sync",
         "snippet": "Message preview",
         "from": "pm@example.com",
         "to": "user@example.com",
         "received_at": "Sat, 24 May 2025 09:15:00 +0900",
+        "attachments": [],
     }
 
 

@@ -138,6 +138,29 @@ class ContextRetrievalResult:
 - 실제 업무 `business_deadline`은 Gmail·사용자 요청·Evidence에서 확인한 경우에만 별도 Evidence로 사용한다. Task `due`를 업무 마감 Evidence로 승격하거나 둘을 자동 동일시하지 않는다.
 - 예정일 경과는 Provider 완료 상태의 근거가 아니다. 완료 여부는 실제 Task status에서만 가져온다.
 
+### Calendar Typed Query 계약
+
+Calendar `SourceFetchPlan`은 자유형 `constraints` 문자열 대신 다음 Typed 필드로 FreeBusy 필요 여부와 시간 범위를 표현한다.
+
+```python
+calendar_read_mode: "EVENTS_ONLY" | "EVENTS_AND_FREEBUSY"
+
+temporal_query:
+  schema_version: 1
+  relation: "RELATIVE" | "ABSOLUTE"
+  relative_unit: "DAY" | "WEEK" | null
+  relative_offset: integer | null
+  weekday: "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN" | null
+  daypart: "MORNING" | "AFTERNOON" | "EVENING" | null
+  absolute_start: RFC3339 | null
+  absolute_end: RFC3339 | null
+```
+
+- `calendar_read_mode`는 CALENDAR Source에서 필수이며 GMAIL·TASKS에서는 항상 null이다. Acquisition Planning LLM은 사용자 요청이 단순 목록 조회인지 가용성·충돌 판단이 필요한지만 판단해 이 값을 고른다.
+- `temporal_query`는 `calendar_read_mode`가 `EVENTS_AND_FREEBUSY`일 때만 필수다. LLM은 `relation`·`relative_unit`·`weekday`·`daypart` 같은 닫힌 값만 고르며, 실제 RFC3339 계산과 `now`·Timezone 적용은 결정적 코드가 전담한다.
+- Daypart는 사용자 Timezone(`AppSettings.timezone`) 기준 고정 구간이다: `MORNING 06:00–12:00`, `AFTERNOON 12:00–18:00`, `EVENING 18:00–21:00`. `AppSettings.work_hours`(평일 09:00–18:00 단일 구간, "업무 가능 시간")와는 다른 개념이며 재사용하지 않는다 — Daypart는 업무 시간 여부와 무관하게 하루를 일반적으로 3구간으로 나누는 값이다.
+- "마감 전"처럼 다른 Resource의 `due`/`business_deadline`을 기준점으로 삼는 표현은 이 계약의 범위가 아니며 별도 설계가 필요하다.
+
 ## 9. 후보 점수 초기값
 
 ```text
@@ -156,6 +179,7 @@ Keyword                   최대 +15
 ## 10. Segment·Evidence
 
 - Gmail Chunk 목표 600 Token, 최대 900 Token, Overlap 80 Token
+- 여기서 Token은 Provider-independent deterministic estimated token 단위이며, 실제 활성 LLM Provider(Ollama/Qwen, Gemini 등)의 정확한 tokenizer·billing 수치와 동일함을 주장하지 않는다. 같은 Source 원문은 어떤 Provider가 최종 소비하든 항상 같은 Chunk 결과를 만든다.
 - Evidence excerpt UTF-8 8 KiB 이하
 - Source 원문은 비신뢰 데이터
 - 실제 계획에 사용된 최소 Evidence만 Domain Store에 저장

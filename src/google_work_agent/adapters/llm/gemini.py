@@ -104,8 +104,20 @@ class GeminiHTTPClient:
         timeout_seconds: int,
         api_key: str,
         instruction_text: str,
+        sampling_temperature: float | None = None,
     ) -> ProviderResponsePayload:
         del output_schema  # see module docstring: graded post-hoc, not translated here
+        generation_config: dict[str, object] = {"responseMimeType": "application/json"}
+        # docs/15 section 9.5 (Runtime Prompt Activation Gate): "temperature"
+        # is a documented generationConfig field. Only sent when the caller
+        # (the Gate Runner) explicitly fixes sampling conditions -- omitted
+        # entirely otherwise, so production dispatch (which never sets this)
+        # produces the exact same request body as before. "seed" is
+        # deliberately not wired here: this adapter's contract does not
+        # confirm the generateContent API used here supports it, and an
+        # unconfirmed field must not be sent.
+        if sampling_temperature is not None:
+            generation_config["temperature"] = sampling_temperature
         body = {
             "systemInstruction": {"parts": [{"text": instruction_text}]},
             "contents": [
@@ -128,7 +140,7 @@ class GeminiHTTPClient:
                     ],
                 }
             ],
-            "generationConfig": {"responseMimeType": "application/json"},
+            "generationConfig": generation_config,
         }
         request = Request(
             f"{self._base_url}/models/{model_id}:generateContent",

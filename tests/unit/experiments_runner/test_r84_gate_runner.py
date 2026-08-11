@@ -103,6 +103,61 @@ def _payload(content: object) -> ProviderResponsePayload:
 
 
 # ---------------------------------------------------------------------------
+# Gate-only fixed sampling policy (docs/15 section 9.5)
+# ---------------------------------------------------------------------------
+
+
+def test_gate_provider_uses_fixed_sampling_policy_not_production_default() -> None:
+    """The Gate Runner must fix sampling conditions for its own calls only.
+
+    Production callers (launcher/dev.py) always construct a bare
+    ``RuntimePolicy()`` -- sampling_temperature/sampling_seed stay ``None``
+    there. This pins that the Gate Runner's own ``RuntimePolicy`` is
+    different: it explicitly sets the Gate-only constants.
+    """
+
+    _provider, service = gate_runner._build_gate_provider("ollama")
+
+    assert service.runtime_policy.sampling_temperature == gate_runner.GATE_SAMPLING_TEMPERATURE
+    assert service.runtime_policy.sampling_seed == gate_runner.GATE_SAMPLING_SEED
+    # production default, for contrast -- must stay untouched by this change
+    assert RuntimePolicy().sampling_temperature is None
+    assert RuntimePolicy().sampling_seed is None
+
+
+def test_ledger_record_carries_sampling_provenance() -> None:
+    report = gate_runner.SlotReport(
+        target_node_id="acquisition.plan_sources",
+        group_results={
+            "NORMAL": (
+                [gate_runner.ItemResult(item_id="i1", passed=True, detail="ok")],
+                [gate_runner.ItemResult(item_id="i2", passed=True, detail="ok")],
+            )
+        },
+        safety_results=[],
+        insufficient_coverage=[],
+        prompt_ref=_prompt_ref("acquisition.plan_sources"),
+    )
+
+    record = gate_runner._build_gate_result_record(
+        report,
+        gate_run_id="run-1",
+        provider="ollama",
+        model_id="qwen2.5:3b",
+        evaluated_at="2026-08-10T00:00:00Z",
+        runtime_parameters={
+            "sampling_temperature": gate_runner.GATE_SAMPLING_TEMPERATURE,
+            "sampling_seed": gate_runner.GATE_SAMPLING_SEED,
+        },
+    )
+
+    assert record["runtime_parameters"] == {
+        "sampling_temperature": 0.0,
+        "sampling_seed": 7,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Mutation determinism and correctness
 # ---------------------------------------------------------------------------
 
@@ -349,12 +404,14 @@ def test_ledger_record_marks_initial_lane_correctly() -> None:
         provider="ollama",
         model_id="qwen2.5:3b",
         evaluated_at="2026-08-10T00:00:00Z",
+        runtime_parameters={"sampling_temperature": 0.0, "sampling_seed": 7},
     )
 
     assert record["evaluation_lane"] == "INITIAL"
     assert record["retry_kind"] == "NONE"
     assert record["passed"] is True
     assert len(record["item_results"]) == 2
+    assert record["runtime_parameters"] == {"sampling_temperature": 0.0, "sampling_seed": 7}
 
 
 def test_ledger_record_marks_schema_repair_lane_correctly() -> None:
@@ -395,6 +452,7 @@ def test_ledger_record_marks_schema_repair_lane_correctly() -> None:
         provider="ollama",
         model_id="qwen2.5:3b",
         evaluated_at="2026-08-10T00:00:00Z",
+        runtime_parameters={"sampling_temperature": 0.0, "sampling_seed": 7},
     )
 
     assert record["evaluation_lane"] == "SCHEMA_REPAIR"
