@@ -1,6 +1,6 @@
 # 13. Google Work Agent · 평가 · 실험 설계서
 
-> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `03 Architecture v3.0`, `05 Retrieval v2.6`, `06 Workflow v6.1`, `07 Interface v2.10`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `12 Test v3.5`, `15 Agent Capability·Failure·Prompt v1.5`를 기준으로 한다.
+> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `03 Architecture v3.0`, `05 Retrieval v2.6`, `06 Workflow v6.2`, `07 Interface v2.10`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `12 Test v3.5`, `15 Agent Capability·Failure·Prompt v1.5`를 기준으로 한다.
 >
 > **상태:** Draft v3.2 · **기준일:** 2026-08-10 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
 

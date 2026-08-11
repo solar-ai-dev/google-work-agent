@@ -223,7 +223,7 @@ Plan 수정은 기존 Revision을 덮어쓰지 않고 새 `revision_no`를 추�
 - 현재 Tool Arguments: `arguments_json`
 - Canonical SHA-256: `arguments_hash`
 - 실행 후 기대값: `expected_json`
-- 중복·충돌·마감 위험: `risk_json`
+- 중복·충돌·Evidence 기반 업무 마감·일정 위험: `risk_json`
 - 동시 수정 제어: `version`
 - 효과 유형: `effect_type`
 - 승인 요구: `approval_requirement`
