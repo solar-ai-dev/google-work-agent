@@ -375,6 +375,7 @@ class SaveReadOnlyPlanService:
                         arguments_json=canonicalize_json_value(action.arguments),
                         arguments_hash=calculate_canonical_json_hash(action.arguments),
                         expected_json=canonicalize_json_value(action.expected),
+                        risk={},
                         version=0,
                         created_at_ms=now_ms,
                         updated_at_ms=now_ms,

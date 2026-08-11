@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from hashlib import sha256
 from hmac import compare_digest
@@ -29,8 +29,10 @@ from google_work_agent.domain import (
     VerificationStatus,
     build_p0_tool_registry,
     calculate_canonical_json_hash,
+    canonicalize_action_risk,
     canonicalize_json_value,
     next_allowed_action_commands,
+    normalize_action_risk,
     validate_approval_integrity,
     validate_evidence_policy,
 )
@@ -108,6 +110,8 @@ class WriteActionDraft:
     evidence_ids: tuple[str, ...]
     depends_on_action_ids: tuple[str, ...] = ()
     target_resource_ref_id: str | None = None
+    # Only deterministic Domain/Application validators may populate this field.
+    risk: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -495,6 +499,7 @@ class SaveWritePlanService:
                         arguments_json=canonicalize_json_value(action.arguments),
                         arguments_hash=calculate_canonical_json_hash(action.arguments),
                         expected_json=canonicalize_json_value(action.expected),
+                        risk=normalize_action_risk(action.risk),
                         version=0,
                         created_at_ms=now_ms,
                         updated_at_ms=now_ms,
@@ -2997,6 +3002,7 @@ def _validate_write_plan(
         raise ValueError("write plan requires at least one action")
     evidence_count = len(command.evidence)
     for action in command.actions:
+        canonicalize_action_risk(action.risk)
         entry = registry.require(action.tool_name)
         if entry.effect_type is EffectType.READ:
             raise ValueError(f"write plan cannot contain read-only tool: {action.tool_name}")

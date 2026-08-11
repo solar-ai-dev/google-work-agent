@@ -9,6 +9,7 @@ from google_work_agent.adapters.readiness.composite import (
     StaticRuntimeStatusProvider,
 )
 from google_work_agent.api import ApiContainer, create_app
+from google_work_agent.application.queries import ActionSnapshot, RunSnapshot
 from google_work_agent.application.start_run import ResumeRunResponse
 from google_work_agent.application.write_actions import WriteRunResponse
 from google_work_agent.ports import (
@@ -279,6 +280,54 @@ def test_cancel_route_returns_partial_result_projection() -> None:
 
     assert response.status_code == 200
     assert response.json()["result_kind"] == "PARTIAL"
+
+
+def test_run_snapshot_rest_projection_includes_structured_action_risk() -> None:
+    container, _ = _build_container(_AllowGuard())
+    risk: dict[str, object] = {"validator": {"outcome": "WARNING"}}
+    snapshot = RunSnapshot(
+        run_id="run-1",
+        conversation_id="conversation-1",
+        status="WAITING_APPROVAL",
+        version=1,
+        entry_mode="AGENT_SEARCH",
+        requested_mode="AUTO",
+        actual_runtime="API_LLM",
+        started_at_ms=1,
+        finished_at_ms=None,
+        active_plan={"plan_id": "plan-1"},
+        actions=(
+            ActionSnapshot(
+                action_id="action-1",
+                tool_name="tasks_create_task",
+                status="PROPOSED",
+                version=0,
+                effect_type="CREATE",
+                approval_required=True,
+                verification_policy="GET_COMPARE",
+                risk=risk,
+                next_allowed_commands=("APPROVE",),
+            ),
+        ),
+        approvals=(),
+        execution_status={"action_count": 1, "terminal_action_count": 0},
+        verification_summary={"verified_count": 0, "mismatch_count": 0},
+        recovery_summary={"unknown_result_action_count": 0},
+        result_kind=None,
+        next_allowed_commands=("REQUEST_CANCEL",),
+        snapshot_version=1,
+    )
+
+    class _RunQueryStub(_QueryStub):
+        def get_run_snapshot(self, run_id: str) -> RunSnapshot | None:
+            return snapshot if run_id == "run-1" else None
+
+    container = replace(container, query_service=_RunQueryStub())
+    with TestClient(create_app(container)) as client:
+        response = client.get("/api/v1/runs/run-1")
+
+    assert response.status_code == 200
+    assert response.json()["snapshot"]["actions"][0]["risk"] == risk
 
 
 def test_runtime_mutation_routes_reject_browser_authority_and_arbitrary_resume() -> None:

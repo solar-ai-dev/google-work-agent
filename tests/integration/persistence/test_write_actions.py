@@ -55,7 +55,13 @@ from google_work_agent.application.write_actions import (
     classify_write_delivery,
     is_reauth_required_error,
 )
-from google_work_agent.domain import PolicyViolationError, ResultCode, RunCommand, RunStatus
+from google_work_agent.domain import (
+    InvariantViolationError,
+    PolicyViolationError,
+    ResultCode,
+    RunCommand,
+    RunStatus,
+)
 from google_work_agent.ports import (
     EvidenceOriginType,
     GoogleWorkspaceErrorCode,
@@ -2696,8 +2702,147 @@ def test_reauth_core_command_marks_run_without_langgraph_dependency(
     assert response.run_status == "REAUTH_REQUIRED"
 
 
+def test_action_risk_defaults_to_empty_object_on_insert(write_database: Path) -> None:
+    _prepare_write_plan(
+        write_database=write_database,
+        clock=FakeClock(1000),
+        suffix="risk-default",
+    )
+
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        action = unit_of_work.actions.get_by_id("action-risk-default")
+        listed = unit_of_work.actions.list_by_plan("plan-risk-default")
+
+    assert action is not None
+    assert action.risk == {}
+    assert listed[0].risk == {}
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute(
+            "SELECT risk_json FROM actions WHERE id = 'action-risk-default';"
+        ).fetchone()
+        assert str(row["risk_json"]) == "{}"
+    finally:
+        connection.close()
+
+
+def test_action_risk_round_trips_through_repository_and_run_snapshot(
+    write_database: Path,
+) -> None:
+    risk = {"z": ["경고", {"matched": True}], "a": 1}
+    _prepare_write_plan(
+        write_database=write_database,
+        clock=FakeClock(1000),
+        suffix="risk-roundtrip",
+        risk=risk,
+    )
+
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        action = unit_of_work.actions.get_by_id("action-risk-roundtrip")
+        listed = unit_of_work.actions.list_by_plan("plan-risk-roundtrip")
+        ready = unit_of_work.actions.list_ready_actions("plan-risk-roundtrip")
+
+    assert action is not None
+    assert action.risk == risk
+    assert listed[0].risk == risk
+    assert ready[0].risk == risk
+    snapshot = QueryService(
+        database_path=write_database,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    ).get_run_snapshot("run-1")
+    assert snapshot is not None
+    assert snapshot.actions[0].risk == risk
+
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute(
+            "SELECT risk_json FROM actions WHERE id = 'action-risk-roundtrip';"
+        ).fetchone()
+        assert str(row["risk_json"]) == '{"a":1,"z":["경고",{"matched":true}]}'
+    finally:
+        connection.close()
+
+
+def test_action_risk_over_16_kib_is_rejected_before_plan_persistence(
+    write_database: Path,
+) -> None:
+    service = SaveWritePlanService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=FakeClock(1000).now_ms,
+    )
+    with pytest.raises(InvariantViolationError, match="16 KiB"):
+        service(
+            SaveWritePlanCommand(
+                command_id="save-risk-large",
+                request_hash="91" * 32,
+                plan_id="plan-risk-large",
+                run_id="run-1",
+                revision_no=1,
+                summary_text="oversized risk",
+                expected_run_version=0,
+                actions=(
+                    WriteActionDraft(
+                        action_id="action-risk-large",
+                        position=1,
+                        tool_name="tasks_create_task",
+                        arguments={
+                            "task_list_id": "task-list-default",
+                            "payload": {"title": "Risk limit"},
+                        },
+                        expected={},
+                        evidence_ids=("evidence-risk-large",),
+                        risk={"detail": "x" * (16 * 1024)},
+                    ),
+                ),
+                evidence=(
+                    WriteEvidenceDraft(
+                        evidence_id="evidence-risk-large",
+                        origin_type=EvidenceOriginType.DERIVED,
+                        kind="USER_REQUEST",
+                        excerpt="Create a task.",
+                    ),
+                ),
+            )
+        )
+
+    connection = connect_sqlite(write_database)
+    try:
+        assert connection.execute("SELECT COUNT(*) FROM plans;").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM actions;").fetchone()[0] == 0
+    finally:
+        connection.close()
+
+
+def test_repository_rejects_corrupt_persisted_action_risk(write_database: Path) -> None:
+    _prepare_write_plan(
+        write_database=write_database,
+        clock=FakeClock(1000),
+        suffix="risk-corrupt",
+    )
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute("PRAGMA ignore_check_constraints = ON;")
+        connection.execute(
+            "UPDATE actions SET risk_json = 'not-json' WHERE id = 'action-risk-corrupt';"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    with (
+        sqlite_unit_of_work_factory(write_database)() as unit_of_work,
+        pytest.raises(InvariantViolationError, match="not valid JSON"),
+    ):
+        unit_of_work.actions.get_by_id("action-risk-corrupt")
+
+
 def _prepare_write_plan(
-    *, write_database: Path, clock: FakeClock, suffix: str, run_id: str = "run-1"
+    *,
+    write_database: Path,
+    clock: FakeClock,
+    suffix: str,
+    run_id: str = "run-1",
+    risk: dict[str, object] | None = None,
 ) -> None:
     if run_id != "run-1":
         connection = connect_sqlite(write_database)
@@ -2757,6 +2902,7 @@ def _prepare_write_plan(
                     arguments={"task_list_id": "task-list-default", "payload": payload},
                     expected=expected,
                     evidence_ids=(f"evidence-{suffix}",),
+                    risk={} if risk is None else risk,
                 ),
             ),
             evidence=(

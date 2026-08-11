@@ -140,6 +140,7 @@ export type RunAction = {
   effect_type: string;
   approval_required: boolean;
   verification_policy: string;
+  risk: Record<string, unknown>;
   next_allowed_commands: string[];
 };
 

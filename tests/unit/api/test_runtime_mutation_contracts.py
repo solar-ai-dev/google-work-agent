@@ -88,6 +88,8 @@ def test_versioned_mutation_schemas_accept_only_client_authority_fields(
         "idempotency_key",
         "approved_by_account_id",
         "claim_token",
+        "risk",
+        "risk_json",
     ):
         with pytest.raises(ValidationError):
             schema.model_validate({**payload, forbidden: "browser-value"})

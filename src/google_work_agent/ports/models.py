@@ -179,6 +179,7 @@ class ActionRecord:
     arguments_json: str
     arguments_hash: str
     expected_json: str
+    risk: dict[str, object]
     version: int
     created_at_ms: int
     updated_at_ms: int

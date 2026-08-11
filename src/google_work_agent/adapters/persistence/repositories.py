@@ -22,6 +22,8 @@ from google_work_agent.domain import (
     RunCommand,
     RunStatus,
     VerificationStatus,
+    canonicalize_action_risk,
+    parse_action_risk_json,
     transition_action,
     transition_run,
 )
@@ -1054,8 +1056,8 @@ class SQLiteActionRepository:
             """
             SELECT id, plan_id, position, tool_name, effect_type, approval_requirement,
                    verification_policy, recovery_policy, target_resource_ref_id, status,
-                   arguments_json, arguments_hash, expected_json, version, created_at_ms,
-                   updated_at_ms
+                   arguments_json, arguments_hash, expected_json, risk_json, version,
+                   created_at_ms, updated_at_ms
             FROM actions
             WHERE id = ?;
             """,
@@ -1075,9 +1077,10 @@ class SQLiteActionRepository:
             INSERT INTO actions (
                 id, plan_id, position, tool_name, effect_type, approval_requirement,
                 verification_policy, recovery_policy, target_resource_ref_id, status,
-                arguments_json, arguments_hash, expected_json, version, created_at_ms, updated_at_ms
+                arguments_json, arguments_hash, expected_json, risk_json, version,
+                created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 action.id,
@@ -1093,6 +1096,7 @@ class SQLiteActionRepository:
                 action.arguments_json,
                 action.arguments_hash,
                 action.expected_json,
+                canonicalize_action_risk(action.risk),
                 action.version,
                 action.created_at_ms,
                 action.updated_at_ms,
@@ -1431,8 +1435,8 @@ class SQLiteActionRepository:
             """
             SELECT id, plan_id, position, tool_name, effect_type, approval_requirement,
                    verification_policy, recovery_policy, target_resource_ref_id, status,
-                   arguments_json, arguments_hash, expected_json, version, created_at_ms,
-                   updated_at_ms
+                   arguments_json, arguments_hash, expected_json, risk_json, version,
+                   created_at_ms, updated_at_ms
             FROM actions
             WHERE plan_id = ?
             ORDER BY position ASC;
@@ -1447,7 +1451,7 @@ class SQLiteActionRepository:
             SELECT a.id, a.plan_id, a.position, a.tool_name, a.effect_type,
                    a.approval_requirement, a.verification_policy, a.recovery_policy,
                    a.target_resource_ref_id, a.status, a.arguments_json, a.arguments_hash,
-                   a.expected_json, a.version, a.created_at_ms, a.updated_at_ms
+                   a.expected_json, a.risk_json, a.version, a.created_at_ms, a.updated_at_ms
             FROM actions AS a
             WHERE a.plan_id = ?
               AND a.status = 'PROPOSED'
@@ -2364,6 +2368,7 @@ def _action_record_from_row(row: sqlite3.Row) -> ActionRecord:
         arguments_json=str(row["arguments_json"]),
         arguments_hash=str(row["arguments_hash"]),
         expected_json=str(row["expected_json"]),
+        risk=parse_action_risk_json(str(row["risk_json"])),
         version=int(row["version"]),
         created_at_ms=int(row["created_at_ms"]),
         updated_at_ms=int(row["updated_at_ms"]),

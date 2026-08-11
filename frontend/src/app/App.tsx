@@ -1065,6 +1065,11 @@ export function App(): JSX.Element {
                     <div className="muted">
                       {action.effect_type} / {action.verification_policy}
                     </div>
+                    {Object.keys(action.risk).length > 0 ? (
+                      <p className="status-warn">
+                        서버 검증에서 확인된 위험 정보가 있습니다. 승인 전에 확인해 주세요.
+                      </p>
+                    ) : null}
                     <details>
                       <summary>승인 상세</summary>
                       <dl className="metadata-list">

@@ -15,6 +15,7 @@ from google_work_agent.domain import (
     RunStatus,
     next_allowed_action_commands,
     next_allowed_run_commands,
+    parse_action_risk_json,
 )
 from google_work_agent.ports import RuntimeStatusProvider, RuntimeSummary, SelectedResourceRef
 
@@ -45,6 +46,7 @@ class ActionSnapshot:
     effect_type: str
     approval_required: bool
     verification_policy: str
+    risk: dict[str, object]
     next_allowed_commands: tuple[str, ...]
 
 
@@ -200,7 +202,7 @@ class QueryService:
                 action_rows = connection.execute(
                     """
                     SELECT id, tool_name, status, version, effect_type,
-                           approval_requirement, verification_policy
+                           approval_requirement, verification_policy, risk_json
                     FROM actions
                     WHERE plan_id = ?
                     ORDER BY position ASC, id ASC;
@@ -571,6 +573,7 @@ def _action_snapshot_from_row(row: Row) -> ActionSnapshot:
         effect_type=effect_type.value,
         approval_required=str(row["approval_requirement"]) == "REQUIRED",
         verification_policy=str(row["verification_policy"]),
+        risk=parse_action_risk_json(str(row["risk_json"])),
         next_allowed_commands=tuple(
             item.value for item in next_allowed_action_commands(status, effect_type=effect_type)
         ),

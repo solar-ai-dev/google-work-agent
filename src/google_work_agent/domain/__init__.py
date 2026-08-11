@@ -1,5 +1,11 @@
 """Domain and policy core package."""
 
+from google_work_agent.domain.action_risk import (
+    MAX_ACTION_RISK_JSON_BYTES,
+    canonicalize_action_risk,
+    normalize_action_risk,
+    parse_action_risk_json,
+)
 from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
@@ -64,6 +70,7 @@ __all__ = [
     "ExecutionAttemptStatus",
     "InvalidTransitionError",
     "InvariantViolationError",
+    "MAX_ACTION_RISK_JSON_BYTES",
     "PolicyViolationError",
     "RecoveryPolicy",
     "ResultCode",
@@ -76,9 +83,12 @@ __all__ = [
     "VersionConflictError",
     "build_p0_tool_registry",
     "calculate_canonical_json_hash",
+    "canonicalize_action_risk",
     "canonicalize_json_value",
     "next_allowed_action_commands",
     "next_allowed_run_commands",
+    "normalize_action_risk",
+    "parse_action_risk_json",
     "transition_action",
     "transition_run",
     "validate_approval_integrity",

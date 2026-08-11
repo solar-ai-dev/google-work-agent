@@ -35,6 +35,7 @@ type SnapshotShape = {
     effect_type: string;
     approval_required: boolean;
     verification_policy: string;
+    risk?: Record<string, unknown>;
     next_allowed_commands: string[];
   }>;
   approvals: Array<{
@@ -1408,6 +1409,29 @@ test("TST-UI-208 Gmail viewer and approval use only available projection fields"
   expect(screen.queryByText("Evidence")).not.toBeInTheDocument();
 });
 
+test("Action risk follows the SSE-refreshed snapshot without rendering raw JSON", async () => {
+  const options: Parameters<typeof installUiContractFetch>[0] = {
+    action: true,
+    actionRisk: {},
+  };
+  installUiContractFetch(options);
+  render(<App />);
+
+  await screen.findByText("승인 상세");
+  expect(screen.queryByText(/서버 검증에서 확인된 위험 정보/)).not.toBeInTheDocument();
+
+  options.actionRisk = {
+    duplicate: { outcome: "WARNING", candidate_resource_ids: ["task-sensitive-1"] },
+  };
+  FakeEventSource.instances[0]?.emit("action_status", { action_id: "action-1" });
+
+  expect(
+    await screen.findByText("서버 검증에서 확인된 위험 정보가 있습니다. 승인 전에 확인해 주세요."),
+  ).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("task-sensitive-1");
+  expect(document.body.textContent).not.toContain("candidate_resource_ids");
+});
+
 test("Gmail detail shows loading, retries a safe error, and renders the actual body", async () => {
   const user = userEvent.setup();
   installUiContractFetch({ detailErrorOnce: true });
@@ -1520,6 +1544,7 @@ test("shows a partial-result notice after a run is cancelled", async () => {
 
 function installUiContractFetch(options: {
   action?: boolean;
+  actionRisk?: Record<string, unknown>;
   conversations?: boolean;
   calendarEvents?: Record<string, unknown>[];
   detail?: Record<string, unknown>;
@@ -1610,7 +1635,7 @@ function installUiContractFetch(options: {
     }
     if (path === "/api/v1/conversations" && init?.method === "POST") return jsonFetchResponse({ conversation_id: "conversation-1" });
     if (path === "/api/v1/runs" && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-1", conversation_id: "conversation-1", run_status: "WAITING_APPROVAL", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-1", enqueued: true, request_replayed: false });
-    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: "gmail_draft", status: "PROPOSED", version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", next_allowed_commands: [] }] : [] }));
+    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: "gmail_draft", status: "PROPOSED", version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", risk: options.actionRisk ?? {}, next_allowed_commands: [] }] : [] }));
     if (path === "/api/v1/runs/run-1/context") return jsonFetchResponse({ context: null, api_contract_version: "1" });
     if (path.includes("/api/v1/actions/") && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "OK", action_id: "action-1", action_status: "APPROVED", action_version: 8, next_allowed_commands: [] });
     throw new Error(`Unhandled path ${path}`);
@@ -1828,10 +1853,14 @@ function gmailDetail(resourceId = "thread-project", overrides: Record<string, un
 }
 
 function snapshotPayload(overrides: Partial<SnapshotShape>) {
+  const snapshot = {
+    ...defaultSnapshot(),
+    ...overrides,
+  };
   return {
     snapshot: {
-      ...defaultSnapshot(),
-      ...overrides,
+      ...snapshot,
+      actions: snapshot.actions.map((action) => ({ ...action, risk: action.risk ?? {} })),
     },
     api_contract_version: "1",
   };
