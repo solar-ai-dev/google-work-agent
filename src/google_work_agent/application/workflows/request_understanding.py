@@ -99,6 +99,20 @@ class RequestIntentUnsupportedScopeV1(TypedDict):
     explanation: str | None
 
 
+RequestIntentResponseDispositionValue = Literal["ANSWER_ONLY", "ACTION_REQUIRED"]
+"""Deterministic planning-mode signal produced by request_understanding.classify.
+
+Selects whether the Planning stage calls ``planning.answer_only`` or
+``planning.draft_plan`` (docs/06-agent-workflow.md Node Registry). Optional
+(``NotRequired``) rather than added to ``REQUEST_INTENT_SCHEMA_VERSION``'s
+required set: profiles other than SIX_ROLE_BASELINE (SINGLE_BASELINE's
+``profile.single.reason_plan.initial``, THREE_STAGE's
+``profile.three.stage2.initial``) already decide ANSWER_ONLY vs PLAN_READY
+inside their own fused planning output and never consult this field, so
+their embedded ``RequestIntentV1`` payloads are not required to carry it.
+"""
+
+
 class RequestIntentV1(TypedDict):
     schema_version: Required[Literal[2]]
     goal: RequestIntentGoalV1
@@ -106,6 +120,7 @@ class RequestIntentV1(TypedDict):
     semantic_constraints: RequestIntentSemanticConstraintsV1
     ambiguity: RequestIntentAmbiguityV1
     unsupported_scope: RequestIntentUnsupportedScopeV1
+    response_disposition: NotRequired[RequestIntentResponseDispositionValue]
 
 
 class ClarificationQuestionV1(TypedDict):
@@ -149,6 +164,7 @@ REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "semantic_constraints",
             "ambiguity",
             "unsupported_scope",
+            "response_disposition",
         ],
         "additionalProperties": False,
         "properties": {
@@ -285,6 +301,10 @@ REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(
                     "reason_code": {"type": ["string", "null"]},
                     "explanation": {"type": ["string", "null"]},
                 },
+            },
+            "response_disposition": {
+                "type": "string",
+                "enum": ["ANSWER_ONLY", "ACTION_REQUIRED"],
             },
         },
     },
@@ -432,12 +452,15 @@ class RequestUnderstandingAgent:
         }
 
 
+_RESPONSE_DISPOSITION_VALUES = {"ANSWER_ONLY", "ACTION_REQUIRED"}
+
+
 def validate_request_intent_v1(value: object) -> RequestIntentV1:
     root = _require_mapping(value, "$")
-    _require_exact_keys(
+    _require_allowed_keys(
         root,
         "$",
-        {
+        required={
             "schema_version",
             "goal",
             "completion_criteria",
@@ -445,6 +468,7 @@ def validate_request_intent_v1(value: object) -> RequestIntentV1:
             "ambiguity",
             "unsupported_scope",
         },
+        optional={"response_disposition"},
     )
     schema_version = _require_int(root, "schema_version", "$")
     if schema_version != REQUEST_INTENT_SCHEMA_VERSION:
@@ -456,7 +480,7 @@ def validate_request_intent_v1(value: object) -> RequestIntentV1:
     semantic_constraints = _validate_semantic_constraints(root["semantic_constraints"])
     ambiguity = _validate_ambiguity(root["ambiguity"])
     unsupported_scope = _validate_unsupported_scope(root["unsupported_scope"])
-    return RequestIntentV1(
+    result = RequestIntentV1(
         schema_version=REQUEST_INTENT_SCHEMA_VERSION,
         goal=goal,
         completion_criteria=completion_criteria,
@@ -464,6 +488,14 @@ def validate_request_intent_v1(value: object) -> RequestIntentV1:
         ambiguity=ambiguity,
         unsupported_scope=unsupported_scope,
     )
+    if "response_disposition" in root:
+        response_disposition = _require_string(root, "response_disposition", "$")
+        if response_disposition not in _RESPONSE_DISPOSITION_VALUES:
+            raise RequestUnderstandingValidationError("$.response_disposition is invalid")
+        result["response_disposition"] = cast(
+            RequestIntentResponseDispositionValue, response_disposition
+        )
+    return result
 
 
 def validate_clarification_question_v1(value: object) -> ClarificationQuestionV1:
@@ -943,6 +975,24 @@ def _require_exact_keys(value: dict[str, object], path: str, keys: set[str]) -> 
     actual = set(value)
     missing = keys - actual
     extra = actual - keys
+    if missing:
+        raise RequestUnderstandingValidationError(
+            f"{path} is missing required fields: {sorted(missing)}"
+        )
+    if extra:
+        raise RequestUnderstandingValidationError(f"{path} has unsupported fields: {sorted(extra)}")
+
+
+def _require_allowed_keys(
+    value: dict[str, object],
+    path: str,
+    *,
+    required: set[str],
+    optional: set[str],
+) -> None:
+    actual = set(value)
+    missing = required - actual
+    extra = actual - required - optional
     if missing:
         raise RequestUnderstandingValidationError(
             f"{path} is missing required fields: {sorted(missing)}"

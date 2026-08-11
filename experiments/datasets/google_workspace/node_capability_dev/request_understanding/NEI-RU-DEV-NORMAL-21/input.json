@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "user_request": "이 할 일 삭제해줘",
+  "entry_context": {
+    "entry_mode_hint": "RESOURCE_SELECTED",
+    "selected_resource_ids": [
+      "TSK-001"
+    ]
+  },
+  "conversation_context": [],
+  "current_time": "2026-08-11T14:09:00+09:00",
+  "timezone": "Asia/Seoul",
+  "allowed_sources": [
+    "TASKS"
+  ]
+}
