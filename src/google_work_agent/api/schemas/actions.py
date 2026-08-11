@@ -1,5 +1,7 @@
 """Action route schemas."""
 
+from pydantic import Field
+
 from .common import ApiModel, ContractVersionedRequest
 
 
@@ -12,6 +14,11 @@ class ApproveActionRequestV2(ContractVersionedRequest):
 class ModifyActionRequestV2(ContractVersionedRequest):
     command_id: str
     expected_version: int
+    # Business argument field names to change, scoped per-tool by the server's
+    # Tool Registry (see build_p0_tool_registry). The client never supplies a
+    # full Canonical Arguments payload, a hash, or any approval/claim metadata
+    # -- those remain server-generated authority values.
+    arguments_patch: dict[str, object] = Field(default_factory=dict)
 
 
 class RejectActionRequestV2(ContractVersionedRequest):

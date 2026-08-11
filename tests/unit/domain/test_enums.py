@@ -97,6 +97,7 @@ def test_other_enum_values_match_contract() -> None:
         "VERSION_CONFLICT",
         "DUPLICATE_COMMAND",
         "RECOVERY_REQUIRED",
+        "SCHEMA_VIOLATION",
     )
 
 
