@@ -88,6 +88,68 @@ def test_task_delete_tool_registry_contract_matches_policy() -> None:
     assert entry.retryable is False
 
 
+def test_modify_patchable_fields_match_fn_052_exactly() -> None:
+    """FN-052 (01-a-functional-definition.md) fixes: Draft 수신자·CC·제목·본문,
+    Task 제목·메모·예정일, Event 제목·시간·설명 -- and nothing else. This must
+    stay narrower than what each tool's MCP dispatch call otherwise accepts
+    (e.g. bcc/thread_id/attachments, Task status, Event attendees).
+    """
+
+    registry = build_p0_tool_registry()
+
+    assert registry.require("gmail_create_draft").modify_patchable_fields == {
+        "to",
+        "cc",
+        "subject",
+        "body",
+    }
+    assert registry.require("gmail_update_draft").modify_patchable_fields == {
+        "to",
+        "cc",
+        "subject",
+        "body",
+    }
+    assert registry.require("tasks_create_task").modify_patchable_fields == {
+        "title",
+        "notes",
+        "due",
+    }
+    assert registry.require("tasks_update_task").modify_patchable_fields == {
+        "title",
+        "notes",
+        "due",
+    }
+    assert registry.require("calendar_create_event").modify_patchable_fields == {
+        "title",
+        "start",
+        "end",
+        "description",
+    }
+    assert registry.require("calendar_update_event").modify_patchable_fields == {
+        "title",
+        "start",
+        "end",
+        "description",
+    }
+
+    # Target-only tools have no FN-052-authorized business field.
+    for tool_name in ("gmail_send", "calendar_delete_event", "tasks_delete_task"):
+        assert registry.require(tool_name).modify_patchable_fields == frozenset()
+
+    # Fields the underlying MCP dispatch accepts but FN-052 does not
+    # authorize for user Modify must stay excluded.
+    excluded = {"bcc", "thread_id", "attachments", "status", "attendees"}
+    for tool_name in (
+        "gmail_create_draft",
+        "gmail_update_draft",
+        "tasks_create_task",
+        "tasks_update_task",
+        "calendar_create_event",
+        "calendar_update_event",
+    ):
+        assert registry.require(tool_name).modify_patchable_fields.isdisjoint(excluded)
+
+
 def test_unregistered_tool_lookup_fails() -> None:
     registry = build_p0_tool_registry()
 

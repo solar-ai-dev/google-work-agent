@@ -364,8 +364,10 @@ class ActionRepository(Protocol):
         *,
         expected_version: int,
         updated_at_ms: int,
+        arguments_json: str,
+        arguments_hash: str,
     ) -> CommandResult[ActionStatus, ActionCommand]:
-        """Transition a write action into MODIFIED."""
+        """Transition a write action into MODIFIED and replace its arguments."""
 
     def claim_execution(
         self,

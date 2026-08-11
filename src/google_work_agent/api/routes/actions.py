@@ -134,6 +134,7 @@ def modify(
             ),
             action_id=action_id,
             expected_version=payload.expected_version,
+            arguments_patch=dict(payload.arguments_patch),
         )
     )
     response.status_code = http_status_for_result_code(str(result["result_code"]))
