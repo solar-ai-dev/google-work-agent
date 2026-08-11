@@ -3621,6 +3621,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 arguments=action["arguments"],
                 expected=action["expected"],
                 evidence_ids=tuple(action["evidence_refs"]),
+                depends_on_action_ids=tuple(action.get("depends_on_action_ids", [])),
                 target_resource_ref_id=self._resolve_target_resource_ref_id(
                     run_id=run_id,
                     resource_handle=action.get("target_resource_ref_id"),
