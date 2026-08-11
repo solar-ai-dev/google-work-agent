@@ -301,6 +301,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         modify_action_service=ModifyWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
+            gateway=gateway,
         ),
         reject_action_service=RejectWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
@@ -380,7 +381,8 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
                 (SELECT COUNT(*) FROM trace_events WHERE action_id = 'action-1');
             """
         ).fetchone()
-        assert tuple(counts) == (1, 1, 1, 4, 4)
+        expected_audit_count = 6 if write_operation == "create_task" else 4
+        assert tuple(counts) == (1, 1, 1, expected_audit_count, 4)
     finally:
         connection.close()
 

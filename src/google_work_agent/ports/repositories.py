@@ -366,8 +366,19 @@ class ActionRepository(Protocol):
         updated_at_ms: int,
         arguments_json: str,
         arguments_hash: str,
+        risk: dict[str, object],
     ) -> CommandResult[ActionStatus, ActionCommand]:
-        """Transition a write action into MODIFIED and replace its arguments."""
+        """Transition to MODIFIED and atomically replace arguments and risk."""
+
+    def update_risk_snapshot(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+        risk: dict[str, object],
+    ) -> None:
+        """Replace server-owned risk without changing lifecycle status/version."""
 
     def claim_execution(
         self,

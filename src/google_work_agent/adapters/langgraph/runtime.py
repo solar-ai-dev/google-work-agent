@@ -72,6 +72,10 @@ from google_work_agent.application import (
     derive_finalize_intent,
 )
 from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.application.task_duplicates import (
+    TASK_CREATE_TOOL,
+    evidence_duplicate_risk,
+)
 from google_work_agent.application.workflows import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
@@ -453,6 +457,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._preflight_write = PreflightWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             gateway=gateway,
+            now_ms=now_ms,
         )
         self._execute_write = ExecuteWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
@@ -3700,6 +3705,17 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                     acquisition_result=_require_state_value(
                         state["acquisition_result"], "acquisition_result"
                     ),
+                ),
+                risk=(
+                    evidence_duplicate_risk(
+                        arguments=action["arguments"],
+                        acquisition_result=_require_state_value(
+                            state["acquisition_result"], "acquisition_result"
+                        ),
+                        checked_at_ms=self._now_ms(),
+                    )
+                    if action["tool_name"] == TASK_CREATE_TOOL
+                    else {}
                 ),
             )
             for action in plan_draft["actions"]

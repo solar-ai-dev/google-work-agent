@@ -95,6 +95,28 @@ type ResourceRequestIdentity = {
   calendarTimeMin: string | null;
 };
 
+type TaskDuplicateDecision =
+  | "NOT_DUPLICATE"
+  | "SIMILAR_CANDIDATE"
+  | "CLEAR_DUPLICATE";
+
+function taskDuplicateDecision(risk: Record<string, unknown>): TaskDuplicateDecision | null {
+  const duplicate = risk.duplicate;
+  if (!duplicate || typeof duplicate !== "object") {
+    return null;
+  }
+  const decision = (duplicate as { decision?: unknown }).decision;
+  return decision === "NOT_DUPLICATE" ||
+    decision === "SIMILAR_CANDIDATE" ||
+    decision === "CLEAR_DUPLICATE"
+    ? decision
+    : null;
+}
+
+function hasOtherRisk(risk: Record<string, unknown>): boolean {
+  return Object.keys(risk).some((key) => key !== "duplicate");
+}
+
 type ResourceLoadOptions = {
   force?: boolean;
   calendarTimeMin?: string | null;
@@ -492,7 +514,10 @@ export function App(): JSX.Element {
     }
   }
 
-  async function handleApprove(action: RunAction): Promise<void> {
+  async function handleApprove(
+    action: RunAction,
+    duplicateAcknowledged = false,
+  ): Promise<void> {
     if (!runSnapshot || !currentAccount?.account_id || busyCommand) {
       return;
     }
@@ -503,6 +528,7 @@ export function App(): JSX.Element {
         action_id: action.action_id,
         command_id: commandId,
         expected_version: action.version,
+        duplicate_acknowledged: duplicateAcknowledged,
       });
       await selectRun(runSnapshot.run_id);
     } finally {
@@ -1056,6 +1082,10 @@ export function App(): JSX.Element {
                 const approval = runSnapshot.approvals.find((item) => item.action_id === action.action_id);
                 const waitingApproval =
                   action.approval_required && ["PROPOSED", "MODIFIED"].includes(action.status);
+                const duplicateDecision = taskDuplicateDecision(action.risk);
+                const duplicateNeedsAcknowledgement =
+                  duplicateDecision === "SIMILAR_CANDIDATE" ||
+                  duplicateDecision === "CLEAR_DUPLICATE";
                 return (
                   <article key={action.action_id} className="info-card">
                     <div className="inline-row" style={{ justifyContent: "space-between" }}>
@@ -1065,7 +1095,15 @@ export function App(): JSX.Element {
                     <div className="muted">
                       {action.effect_type} / {action.verification_policy}
                     </div>
-                    {Object.keys(action.risk).length > 0 ? (
+                    {duplicateDecision === "SIMILAR_CANDIDATE" ? (
+                      <p className="status-warn">비슷한 기존 작업이 있습니다.</p>
+                    ) : null}
+                    {duplicateDecision === "CLEAR_DUPLICATE" ? (
+                      <p className="status-warn">
+                        동일한 작업이 이미 있습니다. 기존 작업을 확인한 뒤 계속해 주세요.
+                      </p>
+                    ) : null}
+                    {hasOtherRisk(action.risk) ? (
                       <p className="status-warn">
                         서버 검증에서 확인된 위험 정보가 있습니다. 승인 전에 확인해 주세요.
                       </p>
@@ -1088,9 +1126,15 @@ export function App(): JSX.Element {
                           className="button-primary"
                           type="button"
                           disabled={busyCommand === `approve-${action.action_id}`}
-                          onClick={() => void handleApprove(action)}
+                          onClick={() =>
+                            void handleApprove(action, duplicateNeedsAcknowledgement)
+                          }
                         >
-                          승인
+                          {duplicateDecision === "CLEAR_DUPLICATE"
+                            ? "그래도 새로 만들기"
+                            : duplicateDecision === "SIMILAR_CANDIDATE"
+                              ? "확인하고 승인"
+                              : "승인"}
                         </button>
                         <button
                           className="button-secondary"

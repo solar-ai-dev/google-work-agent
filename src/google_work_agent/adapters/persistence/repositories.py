@@ -1195,6 +1195,7 @@ class SQLiteActionRepository:
         updated_at_ms: int,
         arguments_json: str,
         arguments_hash: str,
+        risk: dict[str, object],
     ) -> CommandResult[ActionStatus, ActionCommand]:
         current = self.get_by_id(action_id)
         if current is None:
@@ -1211,7 +1212,8 @@ class SQLiteActionRepository:
         cursor = self._connection.execute(
             """
             UPDATE actions
-            SET status = ?, version = ?, updated_at_ms = ?, arguments_json = ?, arguments_hash = ?
+            SET status = ?, version = ?, updated_at_ms = ?, arguments_json = ?, arguments_hash = ?,
+                risk_json = ?
             WHERE id = ? AND version = ?;
             """,
             (
@@ -1220,6 +1222,7 @@ class SQLiteActionRepository:
                 updated_at_ms,
                 arguments_json,
                 arguments_hash,
+                canonicalize_action_risk(risk),
                 action_id,
                 current.version,
             ),
@@ -1229,6 +1232,30 @@ class SQLiteActionRepository:
                 "write action modify transition affected an unexpected row count"
             )
         return result
+
+    def update_risk_snapshot(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+        risk: dict[str, object],
+    ) -> None:
+        cursor = self._connection.execute(
+            """
+            UPDATE actions
+            SET risk_json = ?, updated_at_ms = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (
+                canonicalize_action_risk(risk),
+                updated_at_ms,
+                action_id,
+                expected_version,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("action risk update affected an unexpected row count")
 
     def claim_execution(
         self,

@@ -680,6 +680,7 @@ def build_container(
         modify_action_service=ModifyWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
+            gateway=gateway,
         ),
         reject_action_service=RejectWriteActionService(
             unit_of_work_factory=unit_of_work_factory,

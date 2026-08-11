@@ -9,6 +9,7 @@ class ApproveActionRequestV2(ContractVersionedRequest):
     command_id: str
     expected_version: int
     ttl_ms: int = 30000
+    duplicate_acknowledged: bool = False
 
 
 class ModifyActionRequestV2(ContractVersionedRequest):

@@ -1,5 +1,6 @@
 import sqlite3
 from collections.abc import Mapping
+from json import loads
 from pathlib import Path
 
 import pytest
@@ -66,7 +67,9 @@ from google_work_agent.ports import (
     EvidenceOriginType,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
+    ResourcePage,
     ResourceSnapshot,
+    ResourceType,
 )
 from tests.support.fakes import (
     FakeClock,
@@ -2834,6 +2837,303 @@ def test_repository_rejects_corrupt_persisted_action_risk(write_database: Path) 
         pytest.raises(InvariantViolationError, match="not valid JSON"),
     ):
         unit_of_work.actions.get_by_id("action-risk-corrupt")
+
+
+def _duplicate_risk(
+    decision: str,
+    *,
+    matched_ids: tuple[str, ...] = (),
+    freshness: str = "EVIDENCE_ONLY",
+) -> dict[str, object]:
+    return {
+        "duplicate": {
+            "decision": decision,
+            "matched_resource_ids": list(matched_ids),
+            "reason_codes": [
+                "NO_MATCHING_INCOMPLETE_TASK"
+                if decision == "NOT_DUPLICATE"
+                else "TITLE_EXACT_DATE_EXACT"
+                if decision == "CLEAR_DUPLICATE"
+                else "TITLE_EXACT_DATE_DIFFERENT"
+            ],
+            "checked_at_ms": 1000,
+            "freshness": freshness,
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    ("decision", "acknowledged", "expected_applied"),
+    [
+        ("NOT_DUPLICATE", False, True),
+        ("SIMILAR_CANDIDATE", False, False),
+        ("SIMILAR_CANDIDATE", True, True),
+        ("CLEAR_DUPLICATE", False, False),
+        ("CLEAR_DUPLICATE", True, True),
+    ],
+)
+def test_task_duplicate_approval_matrix(
+    write_database: Path,
+    decision: str,
+    acknowledged: bool,
+    expected_applied: bool,
+) -> None:
+    clock = FakeClock(1000)
+    matched_ids = () if decision == "NOT_DUPLICATE" else ("existing-task",)
+    _prepare_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="dup-approval",
+        risk=_duplicate_risk(decision, matched_ids=matched_ids),
+    )
+    service = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+
+    response = service(
+        ApproveWriteActionCommand(
+            command_id="approve-duplicate",
+            request_hash="fa" * 32,
+            action_id="action-dup-approval",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-duplicate",
+            idempotency_key="fb" * 32,
+            duplicate_acknowledged=acknowledged,
+        )
+    )
+
+    assert response.applied is expected_applied
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        approvals = unit_of_work.approvals.list_by_action("action-dup-approval")
+    assert len(approvals) == int(expected_applied)
+    if approvals:
+        snapshot = loads(approvals[0].source_snapshot_json)
+        assert snapshot["task_duplicate"]["risk"]["matched_resource_ids"] == list(matched_ids)
+        assert "client-forged" not in approvals[0].source_snapshot_json
+
+
+def test_task_duplicate_approval_replay_does_not_duplicate_override_audit(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="dup-replay",
+        risk=_duplicate_risk("CLEAR_DUPLICATE", matched_ids=("existing-task",)),
+    )
+    service = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    command = ApproveWriteActionCommand(
+        command_id="approve-duplicate-replay",
+        request_hash="fc" * 32,
+        action_id="action-dup-replay",
+        expected_version=0,
+        approved_by_account_id="account-1",
+        approved_by_display="User",
+        source_snapshot={},
+        approval_id="approval-duplicate-replay",
+        idempotency_key="fd" * 32,
+        duplicate_acknowledged=True,
+    )
+
+    assert service(command) == service(command)
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        events = unit_of_work.audits.list_by_aggregate(
+            run_id="run-1", action_id="action-dup-replay"
+        )
+    assert sum(event.event_type == "TASK_DUPLICATE_OVERRIDE_ACKNOWLEDGED" for event in events) == 1
+
+
+class _TaskDuplicatePreflightGateway:
+    def __init__(
+        self,
+        *,
+        database_path: Path,
+        tasks: tuple[ResourceSnapshot, ...] = (),
+        error: Exception | None = None,
+    ) -> None:
+        self.database_path = database_path
+        self.tasks = tasks
+        self.error = error
+        self.calls = 0
+
+    def list_tasks(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourcePage:
+        del task_list_id, page_token, page_size
+        _assert_can_open_sqlite_write_transaction(self.database_path)
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        return ResourcePage(items=self.tasks, next_page_token=None)
+
+
+def _duplicate_task(resource_id: str, *, title: str) -> ResourceSnapshot:
+    return ResourceSnapshot(
+        fixture_snapshot_id=resource_id,
+        resource_type=ResourceType.TASK,
+        resource_id=resource_id,
+        parent_id="task-list-default",
+        related_resource_ids=("task-list-default",),
+        version="1",
+        recovery_fingerprint=None,
+        payload={"title": title, "status": "needsAction"},
+    )
+
+
+def _approve_preflight_action(
+    *, write_database: Path, clock: FakeClock, suffix: str, risk: dict[str, object]
+) -> None:
+    _prepare_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix=suffix,
+        risk=risk,
+    )
+    response = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        ApproveWriteActionCommand(
+            command_id=f"approve-{suffix}",
+            request_hash="fe" * 32,
+            action_id=f"action-{suffix}",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id=f"approval-{suffix}",
+            idempotency_key="ff" * 32,
+            duplicate_acknowledged=True,
+        )
+    )
+    assert response.applied is True
+
+
+def test_task_duplicate_preflight_new_match_revokes_stale_approval(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = "fresh-new"
+    _approve_preflight_action(
+        write_database=write_database,
+        clock=clock,
+        suffix=suffix,
+        risk=_duplicate_risk("NOT_DUPLICATE"),
+    )
+    gateway = _TaskDuplicatePreflightGateway(
+        database_path=write_database,
+        tasks=(_duplicate_task("new-task", title=f"title-{suffix}"),),
+    )
+
+    with pytest.raises(PolicyViolationError, match="reapproval"):
+        PreflightWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=gateway,  # type: ignore[arg-type]
+            now_ms=clock.now_ms,
+        )(action_id=f"action-{suffix}")
+
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        action = unit_of_work.actions.get_by_id(f"action-{suffix}")
+        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
+    assert action is not None
+    assert action.status == "MODIFIED"
+    assert action.version == 2
+    assert action.risk["duplicate"]["freshness"] == "FRESH_GOOGLE_GET"  # type: ignore[index]
+    assert approval is None
+
+
+def test_task_duplicate_preflight_same_acknowledged_match_allows_claim(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = "fresh-same"
+    risk = _duplicate_risk("CLEAR_DUPLICATE", matched_ids=("existing-task",))
+    _approve_preflight_action(
+        write_database=write_database,
+        clock=clock,
+        suffix=suffix,
+        risk=risk,
+    )
+    gateway = _TaskDuplicatePreflightGateway(
+        database_path=write_database,
+        tasks=(_duplicate_task("existing-task", title=f"title-{suffix}"),),
+    )
+
+    PreflightWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=gateway,  # type: ignore[arg-type]
+        now_ms=clock.now_ms,
+    )(action_id=f"action-{suffix}")
+
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        action = unit_of_work.actions.get_by_id(f"action-{suffix}")
+        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
+    assert action is not None
+    assert action.status == "APPROVED"
+    assert action.version == 1
+    assert action.risk["duplicate"]["freshness"] == "FRESH_GOOGLE_GET"  # type: ignore[index]
+    assert approval is not None
+    claim = ClaimWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        signing_secret="duplicate-preflight-secret",
+        service_instance_id="duplicate-preflight-service",
+    )(
+        ClaimWriteActionCommand(
+            command_id="claim-fresh-same",
+            request_hash="ab" * 32,
+            action_id=f"action-{suffix}",
+            expected_version=1,
+            source_snapshot={},
+            attempt_id="attempt-fresh-same",
+            nonce="nonce-fresh-same",
+        )
+    )
+    assert claim.applied is True
+
+
+def test_task_duplicate_preflight_source_failure_is_fail_closed(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = "fresh-fail"
+    _approve_preflight_action(
+        write_database=write_database,
+        clock=clock,
+        suffix=suffix,
+        risk=_duplicate_risk("NOT_DUPLICATE"),
+    )
+    gateway = _TaskDuplicatePreflightGateway(
+        database_path=write_database,
+        error=TimeoutError("source unavailable"),
+    )
+
+    with pytest.raises(TimeoutError, match="source unavailable"):
+        PreflightWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=gateway,  # type: ignore[arg-type]
+            now_ms=clock.now_ms,
+        )(action_id=f"action-{suffix}")
+
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        action = unit_of_work.actions.get_by_id(f"action-{suffix}")
+        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
+        events = unit_of_work.audits.list_by_aggregate(run_id="run-1", action_id=f"action-{suffix}")
+    assert action is not None and action.status == "APPROVED" and action.version == 1
+    assert approval is not None
+    assert any(event.event_type == "TASK_DUPLICATE_PREFLIGHT_BLOCKED" for event in events)
 
 
 def _prepare_write_plan(

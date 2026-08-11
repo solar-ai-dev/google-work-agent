@@ -5,6 +5,7 @@ PROPOSED/APPROVED edits, Approval revoke, Tool Schema field allowlisting,
 version conflict, command replay, and Canonical Arguments hash integrity.
 """
 
+from json import loads
 from pathlib import Path
 
 import pytest
@@ -34,10 +35,30 @@ from google_work_agent.domain import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
 )
-from google_work_agent.ports import EvidenceOriginType
+from google_work_agent.ports import (
+    EvidenceOriginType,
+    ResourcePage,
+    ResourceSnapshot,
+    ResourceType,
+)
 from tests.support.fakes import FakeClock
 
 _TASK_PAYLOAD = {"title": "Send summary", "notes": "draft notes"}
+
+
+class _EmptyTaskListGateway:
+    def list_tasks(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourcePage:
+        del task_list_id, page_token, page_size
+        return ResourcePage(items=(), next_page_token=None)
+
+
+_EMPTY_TASK_LIST_GATEWAY = _EmptyTaskListGateway()
 
 
 @pytest.fixture()
@@ -139,7 +160,9 @@ def test_proposed_action_modify_applies_patch_and_updates_hash(modify_database: 
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
     )
     modify_service = ModifyWriteActionService(
-        unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        gateway=_EMPTY_TASK_LIST_GATEWAY,
     )
 
     result = modify_service(
@@ -178,7 +201,9 @@ def test_approved_action_modify_revokes_active_approval(modify_database: Path) -
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
     modify_service = ModifyWriteActionService(
-        unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        gateway=_EMPTY_TASK_LIST_GATEWAY,
     )
     claim_service = ClaimWriteActionService(
         unit_of_work_factory=unit_of_work_factory,
@@ -239,6 +264,153 @@ def test_approved_action_modify_revokes_active_approval(modify_database: Path) -
     assert blocked_claim.result_code == ResultCode.STATE_CONFLICT.value
 
 
+class _ModifyDuplicateGateway:
+    def __init__(
+        self,
+        *,
+        database_path: Path,
+        tasks: tuple[ResourceSnapshot, ...] = (),
+        error: Exception | None = None,
+    ) -> None:
+        self.database_path = database_path
+        self.tasks = tasks
+        self.error = error
+        self.calls = 0
+
+    def list_tasks(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourcePage:
+        del task_list_id, page_token, page_size
+        connection = connect_sqlite(self.database_path)
+        try:
+            connection.execute("BEGIN IMMEDIATE;")
+            connection.execute("ROLLBACK;")
+        finally:
+            connection.close()
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        return ResourcePage(items=self.tasks, next_page_token=None)
+
+
+def _existing_task(resource_id: str, *, title: str, due: str | None = None) -> ResourceSnapshot:
+    payload: dict[str, object] = {"title": title, "status": "needsAction"}
+    if due is not None:
+        payload["due"] = due
+    return ResourceSnapshot(
+        fixture_snapshot_id=resource_id,
+        resource_type=ResourceType.TASK,
+        resource_id=resource_id,
+        parent_id="task-list-default",
+        related_resource_ids=("task-list-default",),
+        version="1",
+        recovery_fingerprint=None,
+        payload=payload,
+    )
+
+
+def test_task_modify_rechecks_duplicates_and_persists_arguments_with_risk_atomically(
+    modify_database: Path,
+) -> None:
+    clock = FakeClock(initial_ms=1_000)
+    unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
+    _save_and_publish_task_action(
+        database_path=modify_database,
+        clock=clock,
+        action_id="action-fresh-modify",
+        plan_id="plan-fresh-modify",
+    )
+    gateway = _ModifyDuplicateGateway(
+        database_path=modify_database,
+        tasks=(_existing_task("existing-task", title="Updated title"),),
+    )
+
+    result = ModifyWriteActionService(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        gateway=gateway,
+    )(
+        ModifyWriteActionCommand(
+            command_id="modify-fresh-1",
+            request_hash="e1" * 32,
+            action_id="action-fresh-modify",
+            expected_version=0,
+            arguments_patch={"title": "Updated title"},
+        )
+    )
+
+    assert result["applied"] is True
+    assert gateway.calls == 1
+    with unit_of_work_factory() as unit_of_work:
+        action = unit_of_work.actions.get_by_id("action-fresh-modify")
+    assert action is not None
+    assert loads(action.arguments_json)["payload"]["title"] == "Updated title"
+    assert action.risk["duplicate"]["decision"] == "CLEAR_DUPLICATE"  # type: ignore[index]
+    assert action.risk["duplicate"]["freshness"] == "FRESH_GOOGLE_GET"  # type: ignore[index]
+
+
+def test_task_modify_source_failure_changes_no_action_or_approval(
+    modify_database: Path,
+) -> None:
+    clock = FakeClock(initial_ms=1_000)
+    unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
+    _save_and_publish_task_action(
+        database_path=modify_database,
+        clock=clock,
+        action_id="action-failed-modify",
+        plan_id="plan-failed-modify",
+    )
+    approve = ApproveWriteActionService(
+        unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
+    )
+    assert approve(
+        ApproveWriteActionCommand(
+            command_id="approve-before-failed-modify",
+            request_hash="e2" * 32,
+            action_id="action-failed-modify",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-before-failed-modify",
+            idempotency_key="e3" * 32,
+        )
+    ).applied
+    gateway = _ModifyDuplicateGateway(
+        database_path=modify_database,
+        error=TimeoutError("tasks source unavailable"),
+    )
+
+    with pytest.raises(TimeoutError, match="source unavailable"):
+        ModifyWriteActionService(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
+            gateway=gateway,
+        )(
+            ModifyWriteActionCommand(
+                command_id="modify-failed-source",
+                request_hash="e4" * 32,
+                action_id="action-failed-modify",
+                expected_version=1,
+                arguments_patch={"title": "Updated title"},
+            )
+        )
+
+    with unit_of_work_factory() as unit_of_work:
+        action = unit_of_work.actions.get_by_id("action-failed-modify")
+        approval = unit_of_work.approvals.get_active_by_action("action-failed-modify")
+        receipt = unit_of_work.command_receipts.get_by_command_id("modify-failed-source")
+    assert action is not None
+    assert action.status == "APPROVED" and action.version == 1
+    assert loads(action.arguments_json)["payload"]["title"] == "Send summary"
+    assert approval is not None
+    assert receipt is None
+
+
 def test_modify_rejects_a_field_the_tool_schema_does_not_allow(modify_database: Path) -> None:
     clock = FakeClock(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
@@ -246,7 +418,9 @@ def test_modify_rejects_a_field_the_tool_schema_does_not_allow(modify_database: 
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
     )
     modify_service = ModifyWriteActionService(
-        unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        gateway=_EMPTY_TASK_LIST_GATEWAY,
     )
 
     result = modify_service(
@@ -285,7 +459,9 @@ def test_modify_version_conflict_changes_nothing(modify_database: Path) -> None:
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
     )
     modify_service = ModifyWriteActionService(
-        unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        gateway=_EMPTY_TASK_LIST_GATEWAY,
     )
 
     result = modify_service(
@@ -317,7 +493,9 @@ def test_modify_command_replay_returns_the_cached_result_without_reapplying(
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
     )
     modify_service = ModifyWriteActionService(
-        unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        gateway=_EMPTY_TASK_LIST_GATEWAY,
     )
 
     command = ModifyWriteActionCommand(
@@ -362,7 +540,9 @@ def test_modify_records_an_action_modified_audit_event(modify_database: Path) ->
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
     )
     modify_service = ModifyWriteActionService(
-        unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        gateway=_EMPTY_TASK_LIST_GATEWAY,
     )
 
     result = modify_service(
@@ -406,7 +586,9 @@ def test_failed_action_is_not_modifiable_through_this_endpoint(modify_database: 
         unit_of_work.commit()
 
     modify_service = ModifyWriteActionService(
-        unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        gateway=_EMPTY_TASK_LIST_GATEWAY,
     )
     result = modify_service(
         ModifyWriteActionCommand(
@@ -435,7 +617,9 @@ def test_empty_patch_on_proposed_action_applies_nothing(modify_database: Path) -
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
     )
     modify_service = ModifyWriteActionService(
-        unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        gateway=_EMPTY_TASK_LIST_GATEWAY,
     )
 
     result = modify_service(
@@ -475,7 +659,9 @@ def test_semantically_identical_patch_on_approved_action_does_not_revoke_approva
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
     modify_service = ModifyWriteActionService(
-        unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        gateway=_EMPTY_TASK_LIST_GATEWAY,
     )
 
     approve_response = approve_service(
@@ -560,7 +746,9 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
     modify_service = ModifyWriteActionService(
-        unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        gateway=_EMPTY_TASK_LIST_GATEWAY,
     )
     claim_service = ClaimWriteActionService(
         unit_of_work_factory=unit_of_work_factory,

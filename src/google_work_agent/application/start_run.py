@@ -8,6 +8,13 @@ from dataclasses import asdict, dataclass, field
 from json import dumps, loads
 from typing import cast
 
+from google_work_agent.application.task_duplicates import (
+    TASK_CREATE_TOOL,
+    TaskDuplicateValidator,
+    TaskListGateway,
+    duplicate_authority,
+    merge_duplicate_risk,
+)
 from google_work_agent.domain import (
     ActionCommand,
     ActionStatus,
@@ -388,9 +395,9 @@ class ModifyWriteActionService:
     intentionally narrower than a tool's raw MCP dispatch capability; (2) a
     no-op patch (empty, or equal to the current Canonical Arguments) applies
     nothing and must not revoke an ACTIVE Approval; (3) Schema and Policy are
-    re-checked (field allowlist + ``validate_evidence_policy``), while
-    Duplicate/Conflict re-validation (FN-031/FN-032) has no deterministic
-    validator yet and is marked, not faked, at its call seam; (4) direct
+    re-checked (field allowlist + ``validate_evidence_policy``); (3) Task
+    duplicate validation is refreshed outside the write transaction while
+    Calendar conflict validation remains a separate FN-032 gap; (4) direct
     dependents of the modified action that are already APPROVED have their
     ACTIVE Approval revoked too, so a stale dependent Approval can never
     authorize a Claim -- see ``_revoke_stale_dependent_approvals``.
@@ -401,12 +408,50 @@ class ModifyWriteActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
+        gateway: TaskListGateway,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
         self._registry = build_p0_tool_registry()
+        self._task_duplicates = TaskDuplicateValidator(gateway=gateway, now_ms=now_ms)
 
     def __call__(self, command: ModifyWriteActionCommand) -> dict[str, object]:
+        fresh_duplicate_risk: dict[str, object] | None = None
+        duplicate_arguments: dict[str, object] | None = None
+        with self._unit_of_work_factory() as unit_of_work:
+            existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+            if existing is not None:
+                return cast(
+                    dict[str, object],
+                    asdict(
+                        cast(
+                            _ActionMutationResponse,
+                            _resolve_json_receipt(
+                                receipt=existing,
+                                request_hash=command.request_hash,
+                                response_type=_ActionMutationResponse,
+                            ),
+                        )
+                    ),
+                )
+            snapshot = _require_action(unit_of_work, command.action_id)
+            if (
+                snapshot.tool_name == TASK_CREATE_TOOL
+                and snapshot.status in _MODIFIABLE_ACTION_STATUSES
+                and snapshot.version == command.expected_version
+            ):
+                entry = self._registry.require(snapshot.tool_name)
+                if not (set(command.arguments_patch) - entry.modify_patchable_fields):
+                    proposed = _apply_arguments_patch(
+                        loads(snapshot.arguments_json), command.arguments_patch
+                    )
+                    if calculate_canonical_json_hash(proposed) != snapshot.arguments_hash:
+                        duplicate_arguments = proposed
+
+        # Phase 2: the Google read is deliberately outside every UnitOfWork.
+        if duplicate_arguments is not None:
+            fresh_duplicate_risk = self._task_duplicates.fresh_risk(duplicate_arguments)
+
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
@@ -529,19 +574,21 @@ class ModifyWriteActionService:
                 )
             )
 
-            # FN-052 also requires re-checking Duplicate (FN-031) and Conflict
-            # (FN-032) against `new_arguments` here, before persisting. No
-            # deterministic FN-031/FN-032 validator exists in this codebase
-            # yet (GAP-F3 prerequisite) -- this is the exact seam to call it
-            # from once it lands. Do not approximate it with an LLM judgment
-            # or a string heuristic in the meantime.
+            # FN-031 risk was refreshed outside this transaction. FN-032
+            # Calendar conflict validation remains intentionally separate.
 
+            updated_risk = (
+                merge_duplicate_risk(action.risk, fresh_duplicate_risk)
+                if fresh_duplicate_risk is not None
+                else action.risk
+            )
             result = unit_of_work.actions.modify_write(
                 action.id,
                 expected_version=command.expected_version,
                 updated_at_ms=now_ms,
                 arguments_json=canonicalize_json_value(new_arguments),
                 arguments_hash=calculate_canonical_json_hash(new_arguments),
+                risk=updated_risk,
             )
             if not result.applied:
                 return self._finish(
@@ -605,6 +652,24 @@ class ModifyWriteActionService:
                     created_at_ms=now_ms,
                 )
             )
+            authority = (
+                duplicate_authority(updated_risk) if fresh_duplicate_risk is not None else None
+            )
+            if authority is not None:
+                unit_of_work.audits.add(
+                    _modify_audit_event(
+                        run_id=run_id,
+                        action_id=action.id,
+                        event_type="TASK_DUPLICATE_CHECKED",
+                        outcome="FRESH_GOOGLE_GET",
+                        metadata={
+                            "decision": authority[0],
+                            "matched_count": len(authority[1]),
+                            "freshness": "FRESH_GOOGLE_GET",
+                        },
+                        created_at_ms=now_ms,
+                    )
+                )
             return self._finish(unit_of_work, command=command, now_ms=now_ms, response=response)
 
     @staticmethod

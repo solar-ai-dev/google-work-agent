@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -13,6 +14,16 @@ from hmac import new as hmac_new
 from json import dumps, loads
 from typing import Protocol, cast
 
+from google_work_agent.application.task_duplicates import (
+    TASK_CREATE_TOOL,
+    TaskDuplicateValidator,
+    approval_duplicate_authority,
+    approval_source_snapshot_for_task_duplicate,
+    duplicate_authority,
+    duplicate_change_requires_reapproval,
+    merge_duplicate_risk,
+    require_duplicate_acknowledgement,
+)
 from google_work_agent.domain import (
     ActionCommand,
     ActionStatus,
@@ -148,6 +159,7 @@ class ApproveWriteActionCommand:
     approval_id: str
     idempotency_key: str
     ttl_ms: int = DEFAULT_APPROVAL_TTL_MS
+    duplicate_acknowledged: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -505,6 +517,26 @@ class SaveWritePlanService:
                         updated_at_ms=now_ms,
                     )
                 )
+                authority = (
+                    duplicate_authority(action.risk)
+                    if action.tool_name == TASK_CREATE_TOOL
+                    else None
+                )
+                if authority is not None:
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=command.run_id,
+                            action_id=action.action_id,
+                            event_type="TASK_DUPLICATE_CHECKED",
+                            outcome="EVIDENCE_ONLY",
+                            metadata={
+                                "decision": authority[0],
+                                "matched_count": len(authority[1]),
+                                "freshness": "EVIDENCE_ONLY",
+                            },
+                            created_at_ms=now_ms,
+                        )
+                    )
                 for depends_on_action_id in action.depends_on_action_ids:
                     unit_of_work.action_dependencies.add(
                         action_id=action.action_id,
@@ -719,6 +751,62 @@ class ApproveWriteActionService:
             )
             action = _require_action(unit_of_work, command.action_id)
             entry = self._registry.require(action.tool_name)
+            approval_source_snapshot = command.source_snapshot
+            duplicate_decision = None
+            if action.tool_name == TASK_CREATE_TOOL and action.version == command.expected_version:
+                try:
+                    duplicate_decision = require_duplicate_acknowledgement(
+                        risk=action.risk,
+                        acknowledged=command.duplicate_acknowledged,
+                    )
+                except PolicyViolationError as error:
+                    plan = _require_plan(unit_of_work, action.plan_id)
+                    response = WriteActionResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=tuple(
+                            item.value
+                            for item in next_allowed_action_commands(
+                                ActionStatus(action.status),
+                                effect_type=EffectType(action.effect_type),
+                            )
+                        ),
+                        conflict_detail=str(error),
+                    )
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=action.id,
+                            event_type="TASK_DUPLICATE_APPROVAL_BLOCKED",
+                            outcome=ResultCode.STATE_CONFLICT.value,
+                            metadata={
+                                "command_id": command.command_id,
+                                "decision": (duplicate_authority(action.risk) or ("UNKNOWN", ()))[
+                                    0
+                                ],
+                            },
+                            created_at_ms=now_ms,
+                        )
+                    )
+                    _finish_json_receipt(
+                        unit_of_work,
+                        command.command_id,
+                        response,
+                        action.version,
+                        now_ms,
+                    )
+                    unit_of_work.commit()
+                    return response
+                approval_source_snapshot = {
+                    **command.source_snapshot,
+                    **approval_source_snapshot_for_task_duplicate(
+                        risk=action.risk,
+                        acknowledged=command.duplicate_acknowledged,
+                    ),
+                }
             approval_result = unit_of_work.actions.approve_write(
                 action.id,
                 expected_version=command.expected_version,
@@ -749,15 +837,15 @@ class ApproveWriteActionService:
                 approved_by_display=command.approved_by_display,
                 arguments_snapshot_json=action.arguments_json,
                 canonical_arguments_hash=action.arguments_hash,
-                source_snapshot_json=canonicalize_json_value(command.source_snapshot),
-                source_snapshot_hash=calculate_canonical_json_hash(command.source_snapshot),
+                source_snapshot_json=canonicalize_json_value(approval_source_snapshot),
+                source_snapshot_hash=calculate_canonical_json_hash(approval_source_snapshot),
                 policy_version=entry.registry_version,
                 tool_schema_version=entry.input_schema_version,
                 idempotency_key=command.idempotency_key,
                 recovery_fingerprint=calculate_recovery_fingerprint(
                     tool_name=action.tool_name,
                     arguments_hash=action.arguments_hash,
-                    source_snapshot_hash=calculate_canonical_json_hash(command.source_snapshot),
+                    source_snapshot_hash=calculate_canonical_json_hash(approval_source_snapshot),
                 ),
                 approved_at_ms=now_ms,
                 expires_at_ms=now_ms + min(command.ttl_ms, 60_000),
@@ -793,6 +881,24 @@ class ApproveWriteActionService:
                     created_at_ms=now_ms,
                 )
             )
+            if (
+                action.tool_name == TASK_CREATE_TOOL
+                and duplicate_decision is not None
+                and duplicate_decision.value != "NOT_DUPLICATE"
+            ):
+                unit_of_work.audits.add(
+                    _audit_event(
+                        run_id=plan.run_id,
+                        action_id=action.id,
+                        event_type="TASK_DUPLICATE_OVERRIDE_ACKNOWLEDGED",
+                        outcome=ResultCode.TRANSITION_APPLIED.value,
+                        metadata={
+                            "approval_id": approval.id,
+                            "decision": duplicate_decision.value,
+                        },
+                        created_at_ms=now_ms,
+                    )
+                )
             response = WriteActionResponse(
                 applied=True,
                 result_code=ResultCode.TRANSITION_APPLIED.value,
@@ -894,6 +1000,38 @@ class ClaimWriteActionService:
                 return response
 
             entry = self._registry.require(action.tool_name)
+            current_source_snapshot = command.source_snapshot
+            if action.tool_name == TASK_CREATE_TOOL:
+                stored_approval_snapshot = _dict_argument(loads(approval.source_snapshot_json))
+                if duplicate_change_requires_reapproval(
+                    approved=approval_duplicate_authority(stored_approval_snapshot),
+                    current=duplicate_authority(action.risk),
+                ):
+                    response = WriteActionResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=(),
+                        conflict_detail="task duplicate risk changed after approval",
+                    )
+                    _finish_json_receipt(
+                        unit_of_work,
+                        command.command_id,
+                        response,
+                        action.version,
+                        now_ms,
+                    )
+                    unit_of_work.commit()
+                    return response
+                # Task duplicate authority is server-owned. Claim never
+                # accepts a client projection in place of the Approval snapshot.
+                task_duplicate_snapshot = stored_approval_snapshot.get("task_duplicate")
+                current_source_snapshot = {
+                    **command.source_snapshot,
+                    "task_duplicate": task_duplicate_snapshot,
+                }
             try:
                 validate_approval_integrity(
                     ApprovalIntegrityInput(
@@ -901,7 +1039,7 @@ class ClaimWriteActionService:
                         current_arguments_hash=action.arguments_hash,
                         approval_source_snapshot_hash=approval.source_snapshot_hash,
                         current_source_snapshot_hash=calculate_canonical_json_hash(
-                            command.source_snapshot
+                            current_source_snapshot
                         ),
                         approval_action_version=approval.action_version,
                         current_action_version=action.version,
@@ -1138,11 +1276,17 @@ class PreflightWriteActionService:
     """Read the approved target immediately before the claim transaction."""
 
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], gateway: GoogleWorkspaceGateway
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        gateway: GoogleWorkspaceGateway,
+        now_ms: Callable[[], int] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._gateway = gateway
+        self._now_ms = now_ms or (lambda: time.time_ns() // 1_000_000)
         self._registry = build_p0_tool_registry()
+        self._task_duplicates = TaskDuplicateValidator(gateway=gateway, now_ms=self._now_ms)
 
     def __call__(self, *, action_id: str) -> None:
         with self._unit_of_work_factory() as unit_of_work:
@@ -1151,11 +1295,125 @@ class PreflightWriteActionService:
                 raise PolicyViolationError("write preflight requires an approved action")
             self._registry.require(action.tool_name)
             arguments = _dict_argument(loads(action.arguments_json))
+            action_version = action.version
+            arguments_hash = action.arguments_hash
+            plan = _require_plan(unit_of_work, action.plan_id)
+            approval = unit_of_work.approvals.get_active_by_action(action.id)
+            if approval is None:
+                raise PolicyViolationError("write preflight requires an active approval")
+            approval_id = approval.id
+            approval_snapshot = _dict_argument(loads(approval.source_snapshot_json))
             target_ref = (
                 None
                 if action.target_resource_ref_id is None
                 else unit_of_work.resource_refs.get_by_id(action.target_resource_ref_id)
             )
+
+        if action.tool_name == TASK_CREATE_TOOL:
+            try:
+                fresh_duplicate_risk = self._task_duplicates.fresh_risk(arguments)
+            except Exception as error:
+                with self._unit_of_work_factory() as unit_of_work:
+                    current = _require_action(unit_of_work, action_id)
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=action_id,
+                            event_type="TASK_DUPLICATE_PREFLIGHT_BLOCKED",
+                            outcome="FAIL_CLOSED",
+                            metadata={
+                                "action_version": current.version,
+                                "safe_error_code": (
+                                    error.code.value
+                                    if isinstance(error, GoogleWorkspaceGatewayError)
+                                    else type(error).__name__
+                                ),
+                            },
+                            created_at_ms=self._now_ms(),
+                        )
+                    )
+                    unit_of_work.commit()
+                raise
+
+            must_reapprove = False
+            with self._unit_of_work_factory() as unit_of_work:
+                current = _require_action(unit_of_work, action_id)
+                current_approval = unit_of_work.approvals.get_active_by_action(action_id)
+                if (
+                    current.status != ActionStatus.APPROVED.value
+                    or current.version != action_version
+                    or current.arguments_hash != arguments_hash
+                    or current_approval is None
+                    or current_approval.id != approval_id
+                ):
+                    raise PolicyViolationError(
+                        "write action changed during task duplicate preflight"
+                    )
+                merged_risk = merge_duplicate_risk(current.risk, fresh_duplicate_risk)
+                must_reapprove = duplicate_change_requires_reapproval(
+                    approved=approval_duplicate_authority(approval_snapshot),
+                    current=duplicate_authority(merged_risk),
+                )
+                now_ms = self._now_ms()
+                if must_reapprove:
+                    result = unit_of_work.actions.modify_write(
+                        current.id,
+                        expected_version=current.version,
+                        updated_at_ms=now_ms,
+                        arguments_json=current.arguments_json,
+                        arguments_hash=current.arguments_hash,
+                        risk=merged_risk,
+                    )
+                    if not result.applied:
+                        raise PolicyViolationError(
+                            "write action changed during task duplicate preflight"
+                        )
+                    unit_of_work.approvals.revoke_active_by_action(current.id)
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=current.id,
+                            event_type="TASK_DUPLICATE_PREFLIGHT_BLOCKED",
+                            outcome="REAPPROVAL_REQUIRED",
+                            metadata={
+                                "decision": (duplicate_authority(merged_risk) or ("UNKNOWN", ()))[
+                                    0
+                                ],
+                                "matched_count": len(
+                                    (duplicate_authority(merged_risk) or ("UNKNOWN", ()))[1]
+                                ),
+                            },
+                            created_at_ms=now_ms,
+                        )
+                    )
+                else:
+                    unit_of_work.actions.update_risk_snapshot(
+                        current.id,
+                        expected_version=current.version,
+                        updated_at_ms=now_ms,
+                        risk=merged_risk,
+                    )
+                authority = duplicate_authority(merged_risk) or ("UNKNOWN", ())
+                unit_of_work.audits.add(
+                    _audit_event(
+                        run_id=plan.run_id,
+                        action_id=current.id,
+                        event_type="TASK_DUPLICATE_CHECKED",
+                        outcome=("BLOCKED" if must_reapprove else "ALLOWED"),
+                        metadata={
+                            "decision": authority[0],
+                            "matched_count": len(authority[1]),
+                            "freshness": "FRESH_GOOGLE_GET",
+                        },
+                        created_at_ms=now_ms,
+                    )
+                )
+                unit_of_work.commit()
+            if must_reapprove:
+                raise PolicyViolationError(
+                    "task duplicate result changed; acknowledgement and reapproval are required"
+                )
+            return
 
         if action.tool_name == "gmail_send":
             draft_id = _required_argument_string(arguments, "draft_id")

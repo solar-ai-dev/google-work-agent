@@ -1421,7 +1421,7 @@ test("Action risk follows the SSE-refreshed snapshot without rendering raw JSON"
   expect(screen.queryByText(/서버 검증에서 확인된 위험 정보/)).not.toBeInTheDocument();
 
   options.actionRisk = {
-    duplicate: { outcome: "WARNING", candidate_resource_ids: ["task-sensitive-1"] },
+    schedule: { outcome: "WARNING", candidate_resource_ids: ["task-sensitive-1"] },
   };
   FakeEventSource.instances[0]?.emit("action_status", { action_id: "action-1" });
 
@@ -1430,6 +1430,74 @@ test("Action risk follows the SSE-refreshed snapshot without rendering raw JSON"
   ).toBeInTheDocument();
   expect(document.body.textContent).not.toContain("task-sensitive-1");
   expect(document.body.textContent).not.toContain("candidate_resource_ids");
+});
+
+test("similar Task duplicate requires an acknowledgement without exposing resource IDs", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    action: true,
+    actionRisk: {
+      duplicate: {
+        decision: "SIMILAR_CANDIDATE",
+        matched_resource_ids: ["task-private-1"],
+      },
+    },
+  });
+  render(<App />);
+
+  expect(await screen.findByText("비슷한 기존 작업이 있습니다.")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "확인하고 승인" }));
+
+  const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
+    duplicate_acknowledged: true,
+  });
+  expect(document.body.textContent).not.toContain("task-private-1");
+});
+
+test("clear Task duplicate is blocked by default and offers an explicit override", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    action: true,
+    actionRisk: {
+      duplicate: {
+        decision: "CLEAR_DUPLICATE",
+        matched_resource_ids: ["task-private-2"],
+      },
+    },
+  });
+  render(<App />);
+
+  expect(await screen.findByText(/동일한 작업이 이미 있습니다/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "그래도 새로 만들기" }));
+
+  const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
+    duplicate_acknowledged: true,
+  });
+  expect(document.body.textContent).not.toContain("task-private-2");
+});
+
+test("NOT_DUPLICATE shows no warning and uses ordinary approval", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    action: true,
+    actionRisk: {
+      duplicate: {
+        decision: "NOT_DUPLICATE",
+        matched_resource_ids: [],
+      },
+    },
+  });
+  render(<App />);
+
+  await user.click(await screen.findByRole("button", { name: "승인" }));
+  expect(screen.queryByText(/기존 작업이 있습니다/)).not.toBeInTheDocument();
+  const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
+    duplicate_acknowledged: false,
+  });
 });
 
 test("Gmail detail shows loading, retries a safe error, and renders the actual body", async () => {

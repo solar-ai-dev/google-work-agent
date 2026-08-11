@@ -90,9 +90,25 @@ def test_versioned_mutation_schemas_accept_only_client_authority_fields(
         "claim_token",
         "risk",
         "risk_json",
+        "matched_resource_ids",
+        "duplicate_decision",
     ):
         with pytest.raises(ValidationError):
             schema.model_validate({**payload, forbidden: "browser-value"})
+
+
+def test_approve_accepts_only_duplicate_acknowledgement_not_duplicate_facts() -> None:
+    payload = {
+        "command_id": "approve-duplicate",
+        "expected_version": 1,
+        "duplicate_acknowledged": True,
+        "api_contract_version": VERSION,
+    }
+    assert ApproveActionRequestV2.model_validate(payload).duplicate_acknowledged is True
+    with pytest.raises(ValidationError):
+        ApproveActionRequestV2.model_validate(
+            {**payload, "matched_resource_ids": ["client-controlled"]}
+        )
 
 
 def test_confirmation_response_is_typed_and_mutually_exclusive() -> None:

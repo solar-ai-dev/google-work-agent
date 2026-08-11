@@ -63,6 +63,7 @@ def approve(
                 payload={"action_id": action_id, "command_id": payload.command_id},
             ),
             ttl_ms=payload.ttl_ms,
+            duplicate_acknowledged=payload.duplicate_acknowledged,
         )
     )
     if result.applied:
