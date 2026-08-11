@@ -7,6 +7,7 @@ from collections.abc import Callable, Hashable
 from hashlib import sha256
 from json import dumps
 from pathlib import Path
+from threading import Lock
 from typing import Any, Final, Literal, NotRequired, TypedDict, cast
 
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -316,6 +317,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._service_instance_id = service_instance_id
         self._checkpoint_database_path = checkpoint_database_path
         self._graph_profile = graph_profile
+        self._cancel_signal_lock = Lock()
+        self._cancel_signals: set[str] = set()
         self._checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
         self._checkpoint_connection = sqlite3.connect(
             self._checkpoint_database_path,
@@ -551,6 +554,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
 
     def request_cancel(self, request: WorkflowCancelRequest) -> WorkflowInvocationResult:
+        with self._cancel_signal_lock:
+            self._cancel_signals.add(request.run_id)
         return WorkflowInvocationResult(
             run_id=request.run_id,
             workflow_key=request.workflow_key,
@@ -2970,6 +2975,14 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         }
 
     def _action_execution_node(self, state: GraphState) -> GraphState:
+        run_id = cast(str, state["run_id"])
+        if self._should_stop_for_cancel(run_id):
+            return {
+                **state,
+                "__target__": "end",
+                "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
+                "execution_summary": {"result": "CANCEL_REQUESTED"},
+            }
         plan_id = self._required_string(state.get("approved_plan_id"), "approved_plan_id")
         actions = self._list_actions(plan_id)
         if actions and all(action.effect_type == "READ" for action in actions):
@@ -2980,6 +2993,14 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             unit_of_work.commit()
         verification_statuses: list[str] = []
         for action in actions:
+            if self._should_stop_for_cancel(run_id):
+                return {
+                    **state,
+                    "__target__": "end",
+                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
+                    "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
+                    "verification_summary": {"action_statuses": verification_statuses},
+                }
             if action.status in {
                 ActionStatus.VERIFIED.value,
                 ActionStatus.MISMATCH.value,
@@ -3004,6 +3025,14 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                         "safe_error_code": type(error).__name__,
                     },
                 }
+            if self._should_stop_for_cancel(run_id):
+                return {
+                    **state,
+                    "__target__": "end",
+                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
+                    "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
+                    "verification_summary": {"action_statuses": verification_statuses},
+                }
             claim_response = self._claim_write(
                 ClaimWriteActionCommand(
                     command_id=self._id_factory(),
@@ -3021,6 +3050,29 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 or claim_response.attempt_id is None
             ):
                 continue
+            if self._should_stop_for_cancel(run_id):
+                self._mark_write_failed(
+                    MarkWriteActionFailedCommand(
+                        command_id=self._id_factory(),
+                        request_hash=self._request_hash(
+                            {"kind": "cancel_before_write", "action_id": action.id}
+                        ),
+                        action_id=action.id,
+                        attempt_id=self._required_string(claim_response.attempt_id, "attempt_id"),
+                        expected_action_version=claim_response.action_version,
+                        expected_attempt_version=0,
+                        error_code="CANCEL_REQUESTED",
+                        error_detail="write was not sent because cancellation was requested",
+                    )
+                )
+                verification_statuses.append(ActionStatus.FAILED.value)
+                return {
+                    **state,
+                    "__target__": "end",
+                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
+                    "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
+                    "verification_summary": {"action_statuses": verification_statuses},
+                }
             try:
                 executed = self._execute_write(
                     action_id=action.id,
@@ -3114,10 +3166,19 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 )
             )
             verification_statuses.append(verified.action_status)
+            if self._should_stop_for_cancel(run_id):
+                return {
+                    **state,
+                    "__target__": "end",
+                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
+                    "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
+                    "verification_summary": {"action_statuses": verification_statuses},
+                }
         if (
             actions
             and verification_statuses
             and all(status == ActionStatus.VERIFIED.value for status in verification_statuses)
+            and not self._has_persisted_cancel_intent(run_id)
         ):
             self._complete_write_run(
                 CompleteWriteRunCommand(
@@ -3304,6 +3365,9 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         }
 
     def _route_next_node(self, state: GraphState) -> str:
+        run_id = state.get("run_id")
+        if isinstance(run_id, str) and self._should_stop_for_cancel(run_id):
+            return "end"
         return cast(str, state.get("__target__", "end"))
 
     def _merge_decision(
@@ -3570,6 +3634,14 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             outcome = WorkflowOutcome.ACCEPTED
         else:
             outcome = WorkflowOutcome.ACCEPTED
+        if run_status in {
+            RunStatus.COMPLETED.value,
+            RunStatus.BLOCKED.value,
+            RunStatus.FAILED.value,
+            RunStatus.CANCELLED.value,
+        }:
+            with self._cancel_signal_lock:
+                self._cancel_signals.discard(run_id)
         return WorkflowInvocationResult(
             run_id=run_id,
             workflow_key=workflow_key,
@@ -3934,6 +4006,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             return max(attempts, key=lambda item: (item.attempt_no, item.started_at_ms)).id
 
     def _complete_write_run_if_verified(self, plan_id: str, run_id: str) -> None:
+        if self._has_persisted_cancel_intent(run_id):
+            return
         actions = self._list_actions(plan_id)
         if not actions or not all(
             action.status == ActionStatus.VERIFIED.value for action in actions
@@ -3951,6 +4025,33 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
         if not response.applied and response.result_code != ResultCode.STATE_CONFLICT.value:
             raise RuntimeError(f"recovered write completion failed: {response.result_code}")
+
+    def _should_stop_for_cancel(self, run_id: str) -> bool:
+        with self._cancel_signal_lock:
+            if run_id in self._cancel_signals:
+                return True
+        return self._current_run_status(
+            run_id
+        ) == RunStatus.CANCEL_REQUESTED.value or self._has_persisted_cancel_intent(run_id)
+
+    def _has_persisted_cancel_intent(self, run_id: str) -> bool:
+        with self._unit_of_work_factory() as unit_of_work:
+            cursor: int | None = None
+            while True:
+                events = unit_of_work.audits.list_by_aggregate(
+                    run_id=run_id,
+                    cursor_after=cursor,
+                    limit=100,
+                )
+                if any(
+                    event.event_type == "RUN_CANCELLATION_REQUESTED"
+                    and event.outcome == ResultCode.TRANSITION_APPLIED.value
+                    for event in events
+                ):
+                    return True
+                if len(events) < 100:
+                    return False
+                cursor = events[-1].id
 
     def _latest_unknown_action(self, run_id: str) -> tuple[ActionRecord, str, int] | None:
         with self._unit_of_work_factory() as unit_of_work:

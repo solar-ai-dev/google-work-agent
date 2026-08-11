@@ -911,6 +911,9 @@ export function App(): JSX.Element {
               <div>
                 <strong>{selectedConversationId ? "대화 진행" : "새 요청"}</strong>
                 <div className="muted">{userRunStatus(runSnapshot.status)}</div>
+                {runSnapshot.result_kind === "PARTIAL" ? (
+                  <div className="status-warn">일부 작업은 완료되었고 나머지는 취소되었습니다.</div>
+                ) : null}
               </div>
               <div className="button-row">
                 {runSnapshot.next_allowed_commands.includes("REQUEST_CANCEL") ? (

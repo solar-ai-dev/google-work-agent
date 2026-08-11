@@ -9,8 +9,12 @@ from queue import Full, Queue
 from threading import Event, Lock, Thread
 
 from google_work_agent.application.projections import build_projection_event
-from google_work_agent.application.queries import QueryService
-from google_work_agent.domain import RunStatus
+from google_work_agent.application.queries import QueryService, RunExecutionContext
+from google_work_agent.application.write_actions import (
+    FinalizeRunCancellationCommand,
+    WriteRunResponse,
+)
+from google_work_agent.domain import RunStatus, calculate_canonical_json_hash
 from google_work_agent.ports import (
     PendingProjectionEvent,
     RunEventPublisher,
@@ -56,6 +60,9 @@ class LocalRunCoordinator:
         now_ms: Callable[[], int],
         api_contract_version: str,
         capacity: int = 32,
+        finalize_cancel_service: Callable[[FinalizeRunCancellationCommand], WriteRunResponse]
+        | None = None,
+        id_factory: Callable[[], str] | None = None,
     ) -> None:
         if capacity < 1:
             raise ValueError("capacity must be positive")
@@ -65,8 +72,11 @@ class LocalRunCoordinator:
         self._event_publisher = event_publisher
         self._now_ms = now_ms
         self._api_contract_version = api_contract_version
+        self._finalize_cancel_service = finalize_cancel_service
+        self._id_factory = id_factory
         self._queue: Queue[_QueueItem | None] = Queue(maxsize=capacity)
         self._queued_or_running: set[str] = set()
+        self._pending_items: dict[str, _QueueItem] = {}
         self._lock = Lock()
         self._stop_event = Event()
         self._thread: Thread | None = None
@@ -135,21 +145,53 @@ class LocalRunCoordinator:
         )
 
     def request_cancel(self, *, run_id: str, request_id: str, reason_code: str) -> None:
-        self._enqueue(
-            _QueueItem(
-                kind="cancel",
-                run_id=run_id,
-                request_id=request_id,
-                command_id=None,
+        context = self._query_service.get_run_execution_context(run_id)
+        if context is None or context.status in {
+            RunStatus.COMPLETED.value,
+            RunStatus.CANCELLED.value,
+            RunStatus.FAILED.value,
+        }:
+            return
+        signal_result = self._workflow_runtime.request_cancel(
+            WorkflowCancelRequest(
+                run_id=context.run_id,
+                workflow_key=context.workflow_key,
                 reason_code=reason_code,
             )
         )
+        self._handle_result(
+            run_id,
+            signal_result.outcome,
+            signal_result.payload,
+            context.version,
+        )
+        item = _QueueItem(
+            kind="cancel",
+            run_id=run_id,
+            request_id=request_id,
+            command_id=None,
+            reason_code=reason_code,
+        )
+        with self._lock:
+            if run_id in self._queued_or_running:
+                self._pending_items[run_id] = item
+                return
+            self._queued_or_running.add(run_id)
+        try:
+            self._queue.put_nowait(item)
+        except Full as error:
+            with self._lock:
+                self._queued_or_running.discard(run_id)
+            raise QueueBusyError() from error
 
     def _enqueue(self, item: _QueueItem) -> None:
         if self._stop_event.is_set():
             raise QueueBusyError("coordinator is shut down")
         with self._lock:
             if item.run_id in self._queued_or_running:
+                pending = self._pending_items.get(item.run_id)
+                if item.kind == "resume" and (pending is None or pending.kind != "cancel"):
+                    self._pending_items[item.run_id] = item
                 return
             self._queued_or_running.add(item.run_id)
         try:
@@ -164,31 +206,30 @@ class LocalRunCoordinator:
             item = self._queue.get()
             if item is None:
                 break
-            try:
-                self._process_item(item)
-            except Exception as error:
-                # Last-resort net for failures _process_item itself could not
-                # attribute to a run (e.g. get_run_execution_context itself
-                # raising). The common case -- workflow_runtime.start/resume/
-                # etc. raising -- is now caught inside _process_item, which
-                # has expected_version in scope to persist FAILED via
-                # fail_run. Without that, prior behavior only published a
-                # transient SSE event and left the run's domain status
-                # (e.g. ANALYZING) stuck forever: the UI polls GET /runs/{id}
-                # rather than SSE, so it never saw the failure, and every
-                # later run was blocked by the has_active_runs() guard.
-                traceback.print_exc()
-                self._publish(
-                    build_projection_event(
-                        run_id=item.run_id,
-                        occurred_at_ms=self._now_ms(),
-                        event_type="error",
-                        payload={"error_code": "INTERNAL_ERROR", "message": str(error)[:200]},
+            while item is not None:
+                try:
+                    self._process_item(item)
+                except Exception as error:
+                    # Last-resort net for failures _process_item itself could not
+                    # attribute to a run (e.g. get_run_execution_context itself
+                    # raising).
+                    traceback.print_exc()
+                    self._publish(
+                        build_projection_event(
+                            run_id=item.run_id,
+                            occurred_at_ms=self._now_ms(),
+                            event_type="error",
+                            payload={
+                                "error_code": "INTERNAL_ERROR",
+                                "message": str(error)[:200],
+                            },
+                        )
                     )
-                )
-            finally:
                 with self._lock:
-                    self._queued_or_running.discard(item.run_id)
+                    pending_item = self._pending_items.pop(item.run_id, None)
+                    if pending_item is None:
+                        self._queued_or_running.discard(item.run_id)
+                item = pending_item
 
     def _process_item(self, item: _QueueItem) -> None:
         context = self._query_service.get_run_execution_context(item.run_id)
@@ -199,6 +240,9 @@ class LocalRunCoordinator:
             RunStatus.CANCELLED.value,
             RunStatus.FAILED.value,
         }:
+            return
+        if item.kind == "cancel":
+            self._continue_cancellation(item=item, recover_if_needed=True)
             return
         correlation = WorkflowCorrelationContext(
             request_id=item.request_id,
@@ -233,14 +277,6 @@ class LocalRunCoordinator:
                         resume_kind=item.resume_kind or "manual",
                         resume_payload=item.resume_payload or {},
                         correlation=correlation,
-                    )
-                )
-            elif item.kind == "cancel":
-                result = self._workflow_runtime.request_cancel(
-                    WorkflowCancelRequest(
-                        run_id=context.run_id,
-                        workflow_key=context.workflow_key,
-                        reason_code=item.reason_code or "user_requested",
                     )
                 )
             else:
@@ -284,6 +320,102 @@ class LocalRunCoordinator:
             )
             return
         self._handle_result(context.run_id, result.outcome, result.payload, expected_version)
+        if item.kind == "recover" and self._has_cancel_intent(context.run_id):
+            self._continue_cancellation(item=item, recover_if_needed=False)
+
+    def _continue_cancellation(self, *, item: _QueueItem, recover_if_needed: bool) -> None:
+        if self._finalize_cancel_service is None or self._id_factory is None:
+            return
+        context = self._query_service.get_run_execution_context(item.run_id)
+        if context is None or context.status in {
+            RunStatus.COMPLETED.value,
+            RunStatus.CANCELLED.value,
+            RunStatus.FAILED.value,
+        }:
+            return
+
+        if context.status == RunStatus.RECOVERY_REQUIRED.value:
+            if not recover_if_needed:
+                return
+            self._recover_for_cancellation(item=item, context=context)
+            self._continue_cancellation(item=item, recover_if_needed=False)
+            return
+
+        if context.status == RunStatus.VERIFYING.value and not self._has_cancel_intent(item.run_id):
+            return
+        if context.status not in {
+            RunStatus.CANCEL_REQUESTED.value,
+            RunStatus.VERIFYING.value,
+        }:
+            return
+        response = self._finalize_cancel_service(
+            FinalizeRunCancellationCommand(
+                command_id=self._id_factory(),
+                request_hash=calculate_canonical_json_hash(
+                    {"kind": "finalize_cancel", "run_id": item.run_id}
+                ),
+                run_id=item.run_id,
+                expected_run_version=context.version,
+            )
+        )
+        self._publish_cancel_response(response)
+        if response.run_status in {
+            RunStatus.RECOVERY_REQUIRED.value,
+            RunStatus.VERIFYING.value,
+        }:
+            updated_context = self._query_service.get_run_execution_context(item.run_id)
+            if updated_context is None:
+                return
+            self._recover_for_cancellation(item=item, context=updated_context)
+            self._continue_cancellation(item=item, recover_if_needed=False)
+
+    def _recover_for_cancellation(self, *, item: _QueueItem, context: RunExecutionContext) -> None:
+        run_context = context
+        result = self._workflow_runtime.recover_open_run(
+            WorkflowRecoveryRequest(
+                run_id=run_context.run_id,
+                workflow_key=run_context.workflow_key,
+                domain_status=run_context.status,
+                domain_version=run_context.version,
+                correlation=WorkflowCorrelationContext(
+                    request_id=item.request_id,
+                    command_id=None,
+                    api_contract_version=self._api_contract_version,
+                ),
+            )
+        )
+        self._handle_result(
+            run_context.run_id,
+            result.outcome,
+            result.payload,
+            run_context.version,
+        )
+
+    def _has_cancel_intent(self, run_id: str) -> bool:
+        checker = getattr(self._query_service, "has_cancel_intent", None)
+        return bool(checker is not None and checker(run_id))
+
+    def _publish_cancel_response(self, response: WriteRunResponse) -> None:
+        event_type = (
+            "completed"
+            if response.run_status == RunStatus.CANCELLED.value
+            else "recovery_required"
+            if response.run_status == RunStatus.RECOVERY_REQUIRED.value
+            else "run_status"
+        )
+        self._publish(
+            build_projection_event(
+                run_id=response.run_id,
+                occurred_at_ms=self._now_ms(),
+                event_type=event_type,
+                payload={
+                    "result_code": response.result_code,
+                    "run_status": response.run_status,
+                    "run_version": response.run_version,
+                    "result_kind": response.result_kind,
+                },
+            )
+        )
 
     def _ensure_analysis_started(self, run_id: str) -> int:
         """Guarantee a run has left CREATED before any outcome is recorded against it.

@@ -90,6 +90,7 @@ from google_work_agent.application.workflows.prompt_registry import (
 )
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
+    FinalizeRunCancellationService,
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
@@ -634,6 +635,14 @@ def build_container(
         prompt_active = False
         workflow_runtime = _PromptInactiveWorkflowRuntime()
     event_publisher = InMemoryRunEventPublisher(service_instance_id=service_instance_id)
+    request_cancel_service = RequestRunCancellationService(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+    )
+    finalize_cancel_service = FinalizeRunCancellationService(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+    )
     coordinator = LocalRunCoordinator(
         query_service=query_service,
         unit_of_work_factory=unit_of_work_factory,
@@ -641,6 +650,8 @@ def build_container(
         event_publisher=event_publisher,
         now_ms=clock.now_ms,
         api_contract_version=API_CONTRACT_VERSION,
+        finalize_cancel_service=finalize_cancel_service,
+        id_factory=id_generator.next_id,
     )
     session_manager = InMemoryLocalSessionManager()
     grant_store = InMemoryBootstrapGrantStore()
@@ -678,10 +689,7 @@ def build_container(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
-        cancel_run_service=RequestRunCancellationService(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=clock.now_ms,
-        ),
+        cancel_run_service=request_cancel_service,
         resume_run_service=ResumeRunService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,

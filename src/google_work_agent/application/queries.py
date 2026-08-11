@@ -65,6 +65,7 @@ class RunSnapshot:
     execution_status: dict[str, object]
     verification_summary: dict[str, object]
     recovery_summary: dict[str, object]
+    result_kind: str | None
     next_allowed_commands: tuple[str, ...]
     snapshot_version: int
 
@@ -283,9 +284,11 @@ class QueryService:
                     ActionStatus.MISMATCH.value,
                     ActionStatus.BLOCKED.value,
                     ActionStatus.DEPENDENCY_BLOCKED.value,
+                    ActionStatus.CANCELLED.value,
                 }
             ),
         }
+        result_kind = _cancel_result_kind(run_status=run_status, actions=actions)
         return RunSnapshot(
             run_id=str(run_row["id"]),
             conversation_id=str(run_row["conversation_id"]),
@@ -306,11 +309,28 @@ class QueryService:
             execution_status=execution_status,
             verification_summary=verification_summary,
             recovery_summary={"unknown_result_action_count": recovery_count},
+            result_kind=result_kind,
             next_allowed_commands=tuple(
                 item.value for item in next_allowed_run_commands(run_status)
             ),
             snapshot_version=1,
         )
+
+    def has_cancel_intent(self, run_id: str) -> bool:
+        """Return whether the accepted cancellation intent is durably recorded."""
+        with connect_sqlite(self._database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT 1
+                FROM audit_events
+                WHERE run_id = ?
+                  AND event_type = 'RUN_CANCELLATION_REQUESTED'
+                  AND outcome = 'TRANSITION_APPLIED'
+                LIMIT 1;
+                """,
+                (run_id,),
+            ).fetchone()
+        return row is not None
 
     def get_run_execution_context(self, run_id: str) -> RunExecutionContext | None:
         with connect_sqlite(self._database_path) as connection:
@@ -495,6 +515,16 @@ def _validated_page_size(page_size: int) -> int:
     if page_size > MAX_PAGE_SIZE:
         raise ValueError(f"page_size must be <= {MAX_PAGE_SIZE}")
     return page_size
+
+
+def _cancel_result_kind(
+    *, run_status: RunStatus, actions: tuple[ActionSnapshot, ...]
+) -> str | None:
+    if run_status is not RunStatus.CANCELLED:
+        return None
+    has_success = any(action.status == ActionStatus.VERIFIED.value for action in actions)
+    has_cancelled = any(action.status == ActionStatus.CANCELLED.value for action in actions)
+    return "PARTIAL" if has_success and has_cancelled else "CANCELLED"
 
 
 def _google_account_id_for_email(email: str) -> str:

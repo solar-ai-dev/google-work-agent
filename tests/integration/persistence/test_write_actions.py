@@ -49,6 +49,7 @@ from google_work_agent.application import (
     WriteActionResponse,
     WriteEvidenceDraft,
 )
+from google_work_agent.application.queries import QueryService
 from google_work_agent.application.write_actions import (
     DeliveryCertainty,
     classify_write_delivery,
@@ -1909,6 +1910,7 @@ def test_cancel_version_and_hash_conflicts_are_atomic_and_replay_is_idempotent(
         )
     )
     assert conflict.result_code == ResultCode.VERSION_CONFLICT.value
+    assert _cancel_marker_count(write_database) == 0
     assert _cancel_child_snapshot(write_database) == (
         "WAITING_APPROVAL",
         1,
@@ -1938,6 +1940,7 @@ def test_cancel_version_and_hash_conflicts_are_atomic_and_replay_is_idempotent(
 
     assert first == replay
     assert hash_conflict.result_code == ResultCode.DUPLICATE_COMMAND.value
+    assert _cancel_marker_count(write_database) == 1
     assert _cancel_child_snapshot(write_database) == snapshot
 
 
@@ -2037,6 +2040,12 @@ def test_executed_cancel_moves_run_to_verifying_without_cancelling_result(
             snapshot=executed.snapshot,
         )
     )
+    _insert_action_sibling(
+        database_path=write_database,
+        source_action_id="action-cancel-executed",
+        sibling_action_id="action-cancel-executed-sibling",
+        status="CANCELLED",
+    )
     RequestRunCancellationService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
@@ -2061,7 +2070,13 @@ def test_executed_cancel_moves_run_to_verifying_without_cancelling_result(
     )
 
     assert finalized.run_status == "VERIFYING"
-    assert finalized.result_kind == "PARTIAL"
+    assert finalized.result_kind is None
+    snapshot = QueryService(
+        database_path=write_database,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    ).get_run_snapshot("run-1")
+    assert snapshot is not None
+    assert snapshot.result_kind is None
     connection = connect_sqlite(write_database)
     try:
         row = connection.execute(
@@ -2170,6 +2185,13 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
 
     assert finalized.run_status == "CANCELLED"
     assert finalized.result_kind == "PARTIAL"
+    snapshot = QueryService(
+        database_path=write_database,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    ).get_run_snapshot("run-1")
+    assert snapshot is not None
+    assert snapshot.result_kind == "PARTIAL"
+    assert snapshot.execution_status["terminal_action_count"] == 2
     connection = connect_sqlite(write_database)
     try:
         rows = connection.execute(
@@ -2212,6 +2234,12 @@ def test_unknown_result_cancel_enters_recovery_without_blind_retry(
             error_detail="dispatch outcome unknown",
         )
     )
+    _insert_action_sibling(
+        database_path=write_database,
+        source_action_id="action-cancel-unknown",
+        sibling_action_id="action-cancel-unknown-sibling",
+        status="CANCELLED",
+    )
     RequestRunCancellationService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
@@ -2236,12 +2264,382 @@ def test_unknown_result_cancel_enters_recovery_without_blind_retry(
     )
 
     assert finalized.run_status == "RECOVERY_REQUIRED"
+    snapshot = QueryService(
+        database_path=write_database,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    ).get_run_snapshot("run-1")
+    assert snapshot is not None
+    assert snapshot.result_kind is None
     connection = connect_sqlite(write_database)
     try:
         counts = connection.execute(
             "SELECT COUNT(*), COUNT(DISTINCT id) FROM execution_attempts;"
         ).fetchone()
         assert tuple(counts) == (1, 1)
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("terminal_status", ("MISMATCH", "FAILED"))
+def test_non_success_terminal_action_with_cancelled_sibling_is_not_partial(
+    write_database: Path,
+    terminal_status: str,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = f"cancel-{terminal_status.lower()}"
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix=suffix)
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute(
+            "UPDATE actions SET status = ? WHERE id = ?;",
+            (terminal_status, f"action-{suffix}"),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    _insert_action_sibling(
+        database_path=write_database,
+        source_action_id=f"action-{suffix}",
+        sibling_action_id=f"action-{suffix}-pending",
+        status="PROPOSED",
+    )
+
+    result = RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        RequestRunCancellationCommand(
+            command_id=f"request-{suffix}",
+            request_hash="ab" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert result.run_status == "CANCELLED"
+    assert result.result_kind == "CANCELLED"
+    snapshot = QueryService(
+        database_path=write_database,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    ).get_run_snapshot("run-1")
+    assert snapshot is not None
+    assert snapshot.result_kind == "CANCELLED"
+    assert {action.status for action in snapshot.actions} == {terminal_status, "CANCELLED"}
+
+
+def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_domain_commands(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    claimed = _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="cancel-recovery",
+    )
+    fixture_gateway.queue_fault(
+        operation="create_task",
+        fault=GoogleGatewayFault(GoogleGatewayFaultKind.TIMEOUT_AFTER_DELIVERY),
+    )
+    with pytest.raises(GoogleWorkspaceGatewayError) as error_info:
+        ExecuteWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=fixture_gateway,
+            now_ms=clock.now_ms,
+            signing_secret="phase-e-secret",
+            service_instance_id="write-svc-1",
+        )(
+            action_id="action-cancel-recovery",
+            claim_token=claimed.claim_token or "",
+        )
+    MarkWriteActionUnknownResultService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        MarkWriteActionUnknownResultCommand(
+            command_id="unknown-cancel-recovery",
+            request_hash="bc" * 32,
+            action_id="action-cancel-recovery",
+            attempt_id="attempt-cancel-recovery",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            error_code=error_info.value.code.value,
+            error_detail=str(error_info.value),
+        )
+    )
+    _insert_action_sibling(
+        database_path=write_database,
+        source_action_id="action-cancel-recovery",
+        sibling_action_id="action-cancel-recovery-pending",
+        status="PROPOSED",
+    )
+    cancellation_requested = RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        RequestRunCancellationCommand(
+            command_id="request-cancel-recovery",
+            request_hash="bd" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+    assert cancellation_requested.run_status == "CANCEL_REQUESTED"
+    assert _cancel_marker_count(write_database) == 1
+    recovery_required = FinalizeRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-cancel-recovery-1",
+            request_hash="be" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+    assert recovery_required.run_status == "RECOVERY_REQUIRED"
+
+    recovered = RecoverUnknownCreateActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )(
+        RecoverUnknownCreateActionCommand(
+            command_id="recover-cancel-recovery",
+            request_hash="bf" * 32,
+            action_id="action-cancel-recovery",
+            attempt_id="attempt-cancel-recovery",
+            expected_action_version=3,
+            expected_attempt_version=1,
+        )
+    )
+    assert recovered.action_status == "EXECUTED"
+    verified = VerifyWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )(
+        VerifyWriteActionCommand(
+            command_id="verify-cancel-recovery",
+            request_hash="ca" * 32,
+            action_id="action-cancel-recovery",
+            attempt_id="attempt-cancel-recovery",
+            expected_action_version=recovered.action_version,
+            verification_id="verification-cancel-recovery",
+        )
+    )
+    assert verified.action_status == "VERIFIED"
+
+    finalized = FinalizeRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-cancel-recovery-2",
+            request_hash="cb" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert finalized.run_status == "CANCELLED"
+    assert finalized.result_kind == "PARTIAL"
+    assert _cancel_marker_count(write_database) == 1
+    assert fixture_gateway.count_calls("create_task") == 1
+    connection = connect_sqlite(write_database)
+    try:
+        rows = connection.execute("SELECT id, status FROM actions ORDER BY position;").fetchall()
+        assert [tuple(row) for row in rows] == [
+            ("action-cancel-recovery", "VERIFIED"),
+            ("action-cancel-recovery-pending", "CANCELLED"),
+        ]
+    finally:
+        connection.close()
+
+
+def test_recovery_without_successful_cancel_marker_cannot_finalize_cancel(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix="no-cancel-marker")
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute("UPDATE runs SET status = 'RECOVERY_REQUIRED' WHERE id = 'run-1';")
+        connection.commit()
+    finally:
+        connection.close()
+
+    result = FinalizeRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-without-marker",
+            request_hash="cc" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert result.applied is False
+    assert result.result_code == ResultCode.STATE_CONFLICT.value
+    assert result.run_status == "RECOVERY_REQUIRED"
+    assert _cancel_marker_count(write_database) == 0
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute(
+            "SELECT (SELECT status FROM plans), (SELECT status FROM actions);"
+        ).fetchone()
+        assert tuple(row) == ("WAITING_APPROVAL", "PROPOSED")
+    finally:
+        connection.close()
+
+
+def test_failed_cancel_audit_marker_does_not_authorize_verifying_continuation(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix="failed-marker")
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute("UPDATE runs SET status = 'VERIFYING' WHERE id = 'run-1';")
+        connection.execute(
+            """
+            INSERT INTO audit_events (
+                account_id, run_id, action_id, actor_type, actor_id, actor_display,
+                event_type, outcome, metadata_json, created_at_ms
+            )
+            VALUES (
+                'account-1', 'run-1', NULL, 'USER', 'account-1', 'User',
+                'RUN_CANCELLATION_REQUESTED', 'VERSION_CONFLICT', '{}', 1000
+            );
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    query_service = QueryService(
+        database_path=write_database,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    )
+    assert query_service.has_cancel_intent("run-1") is False
+    result = FinalizeRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-failed-marker",
+            request_hash="cf" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert result.applied is False
+    assert result.result_code == ResultCode.STATE_CONFLICT.value
+    assert result.run_status == "VERIFYING"
+    connection = connect_sqlite(write_database)
+    try:
+        assert connection.execute("SELECT status FROM actions;").fetchone()[0] == "PROPOSED"
+    finally:
+        connection.close()
+
+
+def test_cancel_marker_does_not_bypass_current_run_domain_guard(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="cancel-guard",
+    )
+    RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        RequestRunCancellationCommand(
+            command_id="request-cancel-guard",
+            request_hash="cd" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute("UPDATE runs SET status = 'REAUTH_REQUIRED' WHERE id = 'run-1';")
+        connection.commit()
+    finally:
+        connection.close()
+
+    result = FinalizeRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-cancel-guard",
+            request_hash="ce" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert result.applied is False
+    assert result.result_code == ResultCode.STATE_CONFLICT.value
+    assert result.run_status == "REAUTH_REQUIRED"
+    assert _cancel_marker_count(write_database) == 1
+    connection = connect_sqlite(write_database)
+    try:
+        assert connection.execute("SELECT status FROM actions;").fetchone()[0] == "EXECUTING"
+    finally:
+        connection.close()
+
+
+def _insert_action_sibling(
+    *,
+    database_path: Path,
+    source_action_id: str,
+    sibling_action_id: str,
+    status: str,
+) -> None:
+    connection = connect_sqlite(database_path)
+    try:
+        connection.execute(
+            """
+            INSERT INTO actions (
+                id, plan_id, position, tool_name, effect_type, approval_requirement,
+                verification_policy, recovery_policy, target_resource_ref_id, status,
+                arguments_json, arguments_hash, expected_json, risk_json, version,
+                created_at_ms, updated_at_ms
+            )
+            SELECT
+                ?, plan_id, 2, tool_name, effect_type, approval_requirement,
+                verification_policy, recovery_policy, target_resource_ref_id, ?,
+                arguments_json, arguments_hash, expected_json, risk_json, 0,
+                created_at_ms, updated_at_ms
+            FROM actions WHERE id = ?;
+            """,
+            (sibling_action_id, status, source_action_id),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _cancel_marker_count(database_path: Path) -> int:
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM audit_events
+            WHERE run_id = 'run-1'
+              AND event_type = 'RUN_CANCELLATION_REQUESTED'
+              AND outcome = 'TRANSITION_APPLIED';
+            """
+        ).fetchone()
+        return int(row[0])
     finally:
         connection.close()
 

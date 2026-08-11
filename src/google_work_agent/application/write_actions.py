@@ -2517,6 +2517,69 @@ class FinalizeRunCancellationService:
                 )
                 unit_of_work.commit()
                 return response
+            finalize_expected_version = command.expected_run_version
+            if run.status is RunStatus.VERIFYING:
+                if not _has_successful_cancel_marker(unit_of_work, run.id):
+                    response = WriteRunResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        run_id=run.id,
+                        run_status=run.status.value,
+                        run_version=run.version,
+                        plan_id=plan.id,
+                        plan_status=plan.status.value,
+                        conflict_detail=(
+                            "verification can continue cancellation only after a successful "
+                            "cancel request"
+                        ),
+                    )
+                    _finish_json_receipt(
+                        unit_of_work, command.command_id, response, run.version, now_ms
+                    )
+                    unit_of_work.commit()
+                    return response
+                continued_cancel = unit_of_work.runs.request_cancel(
+                    run.id,
+                    expected_version=run.version,
+                )
+                if not continued_cancel.applied:
+                    response = WriteRunResponse(
+                        applied=False,
+                        result_code=continued_cancel.result_code.value,
+                        run_id=run.id,
+                        run_status=continued_cancel.current_status.value,
+                        run_version=continued_cancel.current_version,
+                        plan_id=plan.id,
+                        plan_status=plan.status.value,
+                        conflict_detail=continued_cancel.conflict_detail,
+                    )
+                    _finish_json_receipt(
+                        unit_of_work,
+                        command.command_id,
+                        response,
+                        continued_cancel.current_version,
+                        now_ms,
+                    )
+                    unit_of_work.commit()
+                    return response
+                finalize_expected_version = continued_cancel.current_version
+                run = _require_run(unit_of_work, command.run_id)
+            elif run.status is not RunStatus.CANCEL_REQUESTED:
+                response = WriteRunResponse(
+                    applied=False,
+                    result_code=ResultCode.STATE_CONFLICT.value,
+                    run_id=run.id,
+                    run_status=run.status.value,
+                    run_version=run.version,
+                    plan_id=plan.id,
+                    plan_status=plan.status.value,
+                    conflict_detail="cancellation finalization requires cancel-requested state",
+                )
+                _finish_json_receipt(
+                    unit_of_work, command.command_id, response, run.version, now_ms
+                )
+                unit_of_work.commit()
+                return response
             if any(action.status == ActionStatus.UNKNOWN_RESULT.value for action in actions):
                 recovery_run = unit_of_work.runs.set_recovery_required(run.id)
                 response = WriteRunResponse(
@@ -2551,21 +2614,20 @@ class FinalizeRunCancellationService:
                     run_version=updated_run.version,
                     plan_id=plan.id,
                     plan_status=plan.status.value,
-                    result_kind="PARTIAL",
                 )
             else:
-                final_result = unit_of_work.runs.finalize_cancel(
-                    run.id,
-                    expected_version=command.expected_run_version,
-                    finished_at_ms=now_ms,
-                )
-                if not final_result.applied:
-                    raise RuntimeError("validated cancellation finalization was not applied")
                 _cancel_pending_actions(
                     unit_of_work=unit_of_work,
                     plan_id=plan.id,
                     updated_at_ms=now_ms,
                 )
+                final_result = unit_of_work.runs.finalize_cancel(
+                    run.id,
+                    expected_version=finalize_expected_version,
+                    finished_at_ms=now_ms,
+                )
+                if not final_result.applied:
+                    raise RuntimeError("validated cancellation finalization was not applied")
                 unit_of_work.plans.cancel(plan.id)
                 response = WriteRunResponse(
                     applied=True,
@@ -3503,6 +3565,25 @@ def _cancel_pending_actions(*, unit_of_work: UnitOfWork, plan_id: str, updated_a
         )
         if not result.applied:
             raise RuntimeError(f"pending action cancellation failed: {action.id}")
+
+
+def _has_successful_cancel_marker(unit_of_work: UnitOfWork, run_id: str) -> bool:
+    cursor: int | None = None
+    while True:
+        events = unit_of_work.audits.list_by_aggregate(
+            run_id=run_id,
+            cursor_after=cursor,
+            limit=100,
+        )
+        if any(
+            event.event_type == "RUN_CANCELLATION_REQUESTED"
+            and event.outcome == ResultCode.TRANSITION_APPLIED.value
+            for event in events
+        ):
+            return True
+        if len(events) < 100:
+            return False
+        cursor = events[-1].id
 
 
 def _finish_recovery_response(

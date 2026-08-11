@@ -47,6 +47,7 @@ type SnapshotShape = {
   execution_status: { action_count: number; terminal_action_count: number };
   verification_summary: { verified_count: number; mismatch_count: number };
   recovery_summary: { unknown_result_action_count: number };
+  result_kind?: string | null;
   next_allowed_commands: string[];
   snapshot_version: number;
 };
@@ -1508,6 +1509,15 @@ test("TST-UI-213 hides raw runtime status and has no native window controls", as
   expect(screen.queryByRole("button", { name: /최소화|최대화|닫기/ })).not.toBeInTheDocument();
 });
 
+test("shows a partial-result notice after a run is cancelled", async () => {
+  installUiContractFetch({ status: "CANCELLED", resultKind: "PARTIAL" });
+  render(<App />);
+
+  expect(
+    await screen.findByText("일부 작업은 완료되었고 나머지는 취소되었습니다."),
+  ).toBeInTheDocument();
+});
+
 function installUiContractFetch(options: {
   action?: boolean;
   conversations?: boolean;
@@ -1519,6 +1529,7 @@ function installUiContractFetch(options: {
   gmailListResponse?: Promise<Response>;
   run?: boolean;
   resource?: Partial<ReturnType<typeof gmailThread>>;
+  resultKind?: string;
   status?: string;
   twoItems?: boolean;
 } = {}): Array<{ path: string; init?: RequestInit }> {
@@ -1599,7 +1610,7 @@ function installUiContractFetch(options: {
     }
     if (path === "/api/v1/conversations" && init?.method === "POST") return jsonFetchResponse({ conversation_id: "conversation-1" });
     if (path === "/api/v1/runs" && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-1", conversation_id: "conversation-1", run_status: "WAITING_APPROVAL", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-1", enqueued: true, request_replayed: false });
-    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", actions: options.action ? [{ action_id: "action-1", tool_name: "gmail_draft", status: "PROPOSED", version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", next_allowed_commands: [] }] : [] }));
+    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: "gmail_draft", status: "PROPOSED", version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", next_allowed_commands: [] }] : [] }));
     if (path === "/api/v1/runs/run-1/context") return jsonFetchResponse({ context: null, api_contract_version: "1" });
     if (path.includes("/api/v1/actions/") && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "OK", action_id: "action-1", action_status: "APPROVED", action_version: 8, next_allowed_commands: [] });
     throw new Error(`Unhandled path ${path}`);

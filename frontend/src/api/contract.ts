@@ -181,6 +181,7 @@ export type RunSnapshot = {
   recovery_summary: {
     unknown_result_action_count: number;
   };
+  result_kind?: string | null;
   next_allowed_commands: string[];
   snapshot_version: number;
 };
@@ -240,6 +241,7 @@ export type RunCommandResponse = {
   should_enqueue?: boolean | null;
   request_replayed?: boolean | null;
   conflict_detail?: string | null;
+  result_kind?: string | null;
 };
 
 export type ResourceItem = {

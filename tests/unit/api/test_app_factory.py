@@ -251,6 +251,36 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
     }
 
 
+def test_cancel_route_returns_partial_result_projection() -> None:
+    container, _ = _build_container(_AllowGuard())
+
+    def cancel_service(_command: object) -> WriteRunResponse:
+        return WriteRunResponse(
+            applied=True,
+            result_code="TRANSITION_APPLIED",
+            run_id="run-1",
+            run_status="CANCELLED",
+            run_version=4,
+            plan_id="plan-1",
+            plan_status="CANCELLED",
+            result_kind="PARTIAL",
+        )
+
+    container = replace(container, cancel_run_service=cancel_service)
+    with TestClient(create_app(container)) as client:
+        response = client.post(
+            "/api/v1/runs/run-1/cancel",
+            json={
+                "command_id": "cancel-1",
+                "expected_run_version": 3,
+                "api_contract_version": "1",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result_kind"] == "PARTIAL"
+
+
 def test_runtime_mutation_routes_reject_browser_authority_and_arbitrary_resume() -> None:
     container, _ = _build_container(_AllowGuard())
     with TestClient(create_app(container)) as client:
