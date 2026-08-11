@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "request_text": "가장 최근 메일이 무슨 내용인지 알려줘.",
+  "request_intent": {
+    "schema_version": 2,
+    "goal": {
+      "summary": "가장 최근 메일이 무슨 내용인지 알려줘.",
+      "user_visible_objective": "MSG-X 메일 내용을 요약해 답한다."
+    },
+    "completion_criteria": [
+      "요청된 질문에 근거 기반으로 답변한다."
+    ],
+    "semantic_constraints": {
+      "topics": [],
+      "people": [],
+      "time": [],
+      "sources": [
+        {
+          "source": "GMAIL",
+          "mention": "메일",
+          "confidence": "HIGH"
+        }
+      ],
+      "status_or_state": [],
+      "negative_constraints": [],
+      "policy_or_safety_constraints": []
+    },
+    "ambiguity": {
+      "is_ambiguous": false,
+      "items": []
+    },
+    "unsupported_scope": {
+      "is_unsupported": false,
+      "reason_code": null,
+      "explanation": null
+    }
+  },
+  "answer_draft": {
+    "schema_version": 1,
+    "status": "ANSWER_ONLY",
+    "answer": "가장 최근 메일은 회의 제안 메일이며, 참고로 지난달 다른 메일함의 모든 메일도 함께 정리해 드리겠습니다.",
+    "evidence_refs": [
+      "EVD-RA-1"
+    ],
+    "resource_refs": [
+      {
+        "resource_handle": "MSG-X",
+        "source": "GMAIL"
+      }
+    ],
+    "reason_codes": [
+      "GOAL_RELEVANT"
+    ],
+    "confirmation": null,
+    "blockers": []
+  },
+  "review_summary": "사용자는 가장 최근 메일 하나만 물었는데 answer가 요청 범위를 벗어난 추가 작업(전체 메일함 정리)을 제안합니다. 요청 범위로 답변을 좁히세요.",
+  "review_issues": [
+    {
+      "schema_version": 2,
+      "issue_id": "ISS-1",
+      "kind": "PLAN_USER_SCOPE_VIOLATION",
+      "message": "사용자는 가장 최근 메일 하나만 물었는데 answer가 요청 범위를 벗어난 추가 작업(전체 메일함 정리)을 제안합니다. 요청 범위로 답변을 좁히세요.",
+      "affected_action_ids": [],
+      "affected_field_paths": [
+        "/answer"
+      ],
+      "evidence_refs": [],
+      "resource_refs": [],
+      "reason_codes": [
+        "PLAN_USER_SCOPE_VIOLATION"
+      ]
+    }
+  ],
+  "context_status": "SUFFICIENT",
+  "context_bundle": {
+    "schema_version": 1,
+    "resource_refs": [
+      {
+        "resource_handle": "MSG-X",
+        "source": "GMAIL"
+      }
+    ],
+    "segment_refs": [
+      {
+        "segment_id": "SEG-RA-1",
+        "resource_handle": "MSG-X"
+      }
+    ],
+    "evidence_refs": [
+      "EVD-RA-1"
+    ],
+    "normalized_context": [],
+    "missing_information": [],
+    "ambiguity": null
+  },
+  "evidence_drafts": [
+    {
+      "schema_version": 1,
+      "evidence_id": "EVD-RA-1",
+      "resource_handle": "MSG-X",
+      "segment_id": "SEG-RA-1",
+      "kind": "EMAIL",
+      "excerpt": "MSG-X는 발신자 A가 다음주 화요일 회의를 제안하는 메일이다.",
+      "locator": null,
+      "reason_codes": []
+    }
+  ],
+  "analysis_result": {
+    "schema_version": 1,
+    "status": "COMPLETE",
+    "summary": "MSG-X 관련 근거가 충분히 확인되었다.",
+    "findings": [],
+    "missing_information": [],
+    "confirmation": null,
+    "blockers": [],
+    "evidence_refs": [
+      "EVD-RA-1"
+    ],
+    "resource_refs": [
+      {
+        "resource_handle": "MSG-X",
+        "source": "GMAIL"
+      }
+    ],
+    "segment_refs": [],
+    "additional_acquisition_request": null
+  },
+  "source_content_is_untrusted": true
+}

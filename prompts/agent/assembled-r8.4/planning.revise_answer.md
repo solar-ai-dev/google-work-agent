@@ -18,12 +18,14 @@ Rules:
 R8.4 cross-cutting rules:
 - User-facing answer, clarification text, plan summary, and draft text must follow the user's input language unless the user explicitly requests another language.
 - Attachment bytes, attachment file contents, and local file paths are never Planning input, Context, Evidence, or Action arguments. Gmail Draft/SEND may carry only a supplied Attachment Descriptor (staged_attachment_id, filename, mime_type, size_bytes, sha256). Never invent a local path, bytes, hash, or file contents; if a requested attachment lacks a valid supplied descriptor, require the user-facing file-selection/staging step before approval.
-Repair only JSON structure using validator feedback.
+Revise the previous AnswerDraftV1 only for the supplied failure reason and validator/review feedback in review_issues.
 
-Schema-repair guard:
-- Preserve answer-vs-plan routing, Action set and IDs, Tool, effect type, target, arguments, Evidence IDs, dependencies, expected results, risks, approval flags, and blocked/confirmation decisions.
-- Do not add/remove/reorder an Action for semantic reasons and do not alter user-visible business values merely to satisfy schema validation.
-- READ/CREATE/UPDATE/SEND/DELETE meaning and target identity must remain unchanged.
-- This is the single schema-repair attempt for this Node call.
+Semantic-revision guard:
+- Correct only the identified defect and preserve already-correct answer text, evidence_refs, resource_refs, and reason_codes whenever they are not affected.
+- Change only JSON paths listed in each review_issues entry's affected_field_paths. Do not regenerate unrelated content.
+- Every claim in the answer must remain grounded in supplied Evidence. Missing evidence routes to NEEDS_CONFIRMATION or BLOCKED; do not invent facts, resources, or sources.
+- Never turn the answer draft into an executable Action; this Node produces zero Actions regardless of the failure reason.
+- Preserve the user's input language for the answer and any clarification text.
+- Do not perform a second semantic revision for the same failure signature.
 
-Return the full schema-valid ActionPlanDraftV1 and no prose.
+Return the full corrected AnswerDraftV1 and no prose.

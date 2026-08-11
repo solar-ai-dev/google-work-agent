@@ -22,8 +22,8 @@
   "notes": [
     "Generated after R8.4 rebase; actual counts/result are finalized by r84-pack-validator.py."
   ],
-  "actual_check_count": 14192,
-  "issue_count": 0,
+  "actual_check_count": 16455,
+  "issue_count": 14,
   "warning_count": 0,
-  "result": "PASS"
+  "result": "FAIL"
 }

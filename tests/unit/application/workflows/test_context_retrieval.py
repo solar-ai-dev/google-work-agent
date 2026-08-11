@@ -63,6 +63,19 @@ SUFFICIENCY_PROMPT_REF = PromptReference(
     input_schema_version="agent-node-input-v0.1",
     output_schema_version="agent-node-output-v0.1",
 )
+SELECT_REVISION_PROMPT_REF = PromptReference(
+    prompt_bundle_version="agent-r4-v0.1-baseline",
+    prompt_id="context.select_evidence.semantic_revision",
+    prompt_version="v0.1",
+    content_hash="hash",
+    agent_role="context_retriever",
+    subgraph_name="context",
+    node_name="select_evidence",
+    node_state="SEMANTIC_REVISION",
+    purpose="semantic_revision",
+    input_schema_version="agent-node-input-v0.1",
+    output_schema_version="agent-node-output-v0.1",
+)
 
 
 class LLMCall(TypedDict):
@@ -162,36 +175,72 @@ def test_stage5_inline_resources_are_context_input_without_cache_resolver() -> N
     assert segments[0]["resource_handle"] == ("gmail_thread:thread-kim")
 
 
-def test_selection_rejects_missing_segment_reference() -> None:
+def test_selection_falls_back_deterministically_when_revision_also_invalid() -> None:
+    """Bounded SEMANTIC_REVISION retry (docs/15 section 8.1): one repair attempt,
+    then a deterministic empty-selection fallback -- never a second LLM judgment
+    call, never a raised exception that crashes the node."""
     runtime = FakeLLMRuntime()
     runtime.queued.append(_llm_result(_selection_output(["seg-missing"])))
+    runtime.queued.append(_llm_result(_selection_output(["seg-still-missing"])))
+    runtime.queued.append(_llm_result(_sufficiency_output("NEEDS_MORE_DATA")))
     agent = _agent(runtime)
 
-    with pytest.raises(ContextRetrievalValidationError, match="selected segment does not exist"):
-        agent.retrieve(
-            request_intent=_intent(),
-            acquisition_result=_acquisition_result(),
-            request=_request(),
-        )
+    result = agent.retrieve(
+        request_intent=_intent(),
+        acquisition_result=_acquisition_result(),
+        request=_request(),
+    )
 
-    assert len(runtime.calls) == 1
+    assert result["selected_segment_ids"] == []
+    assert result["evidence_drafts"] == []
+    assert len(runtime.calls) == 3  # select_evidence + semantic_revision + assess_sufficiency
+    assert runtime.calls[1]["prompt_ref"].prompt_id == "context.select_evidence.semantic_revision"
+    assert runtime.calls[1]["prompt_input"]["previous_output"] == _selection_output(["seg-missing"])
+    failure_reason = str(runtime.calls[1]["prompt_input"]["failure_reason"])
+    assert "selected segment does not exist" in failure_reason
 
 
-def test_selection_rejects_evidence_for_unselected_segment() -> None:
+def test_selection_rejects_evidence_for_unselected_segment_after_failed_revision() -> None:
     runtime = FakeLLMRuntime()
     output = _selection_output(["seg-1"])
     output["evidence_drafts"] = [_evidence("evidence-1", "seg-2", resource_handle="task:task-1")]
     runtime.queued.append(_llm_result(output))
+    runtime.queued.append(_llm_result(output))
+    runtime.queued.append(_llm_result(_sufficiency_output("NEEDS_MORE_DATA")))
     agent = _agent(runtime)
 
-    with pytest.raises(ContextRetrievalValidationError, match="unselected segment"):
-        agent.retrieve(
-            request_intent=_intent(),
-            acquisition_result=_acquisition_result(include_task=True),
-            request=_request(),
-        )
+    result = agent.retrieve(
+        request_intent=_intent(),
+        acquisition_result=_acquisition_result(include_task=True),
+        request=_request(),
+    )
 
-    assert len(runtime.calls) == 1
+    assert result["selected_segment_ids"] == []
+    assert result["evidence_drafts"] == []
+    assert len(runtime.calls) == 3
+    assert runtime.calls[1]["prompt_ref"].prompt_id == "context.select_evidence.semantic_revision"
+
+
+def test_selection_semantic_revision_recovers_corrected_output() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result(_selection_output(["seg-missing"])))
+    runtime.queued.append(_llm_result(_selection_output(["seg-1"])))
+    runtime.queued.append(_llm_result(_sufficiency_output("SUFFICIENT")))
+    agent = _agent(runtime)
+
+    result = agent.retrieve(
+        request_intent=_intent(),
+        acquisition_result=_acquisition_result(),
+        request=_request(),
+    )
+
+    assert result["selected_segment_ids"] == ["seg-1"]
+    assert len(runtime.calls) == 3
+    assert [call["prompt_ref"].prompt_id for call in runtime.calls] == [
+        "context.select_evidence",
+        "context.select_evidence.semantic_revision",
+        "context.assess_sufficiency",
+    ]
 
 
 def test_sufficiency_rejects_invalid_context_result_enum() -> None:
@@ -412,6 +461,7 @@ def _agent(
         llm_runtime=runtime,
         select_prompt_ref=SELECT_PROMPT_REF,
         sufficiency_prompt_ref=SUFFICIENCY_PROMPT_REF,
+        select_revision_prompt_ref=SELECT_REVISION_PROMPT_REF,
         context_budget=context_budget or ContextBudget(),
     )
 

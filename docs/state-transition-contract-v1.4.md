@@ -30,9 +30,11 @@
 | ResumeConfirmation | WAITING_CONFIRMATION → Checkpoint 허용 Phase |
 | PublishPlan | PLANNING → WAITING_APPROVAL 또는 EXECUTING |
 | CompleteAnswerOnlyRun | ANALYZING·RETRIEVING·PLANNING → COMPLETED |
+| BeginVerification | WAITING_APPROVAL·EXECUTING·CANCEL_REQUESTED → VERIFYING. 승인형 Write는 Domain Run이 EXECUTING을 거치지 않고 WAITING_APPROVAL에 머무르므로 이 경로가 실제 지배적 경로다. CANCEL_REQUESTED에서는 취소 확정 전 이미 EXECUTED된 결과의 재확인용 |
+| CompleteWriteRun | VERIFYING → COMPLETED |
 | RequestCancel | 비Terminal → CANCEL_REQUESTED. 성공 후 새 Claim·Write 금지 |
 | FinalizeCancel | CANCEL_REQUESTED → CANCELLED. in-flight 결과가 모두 확정되어야 함 |
-| RequireReauth | 안전한 비Terminal → REAUTH_REQUIRED |
+| RequireReauth | RETRIEVING·WAITING_APPROVAL·EXECUTING → REAUTH_REQUIRED |
 | ResumeAfterReauth | REAUTH_REQUIRED → Checkpoint 허용 Phase |
 | RequireRecovery | 비Terminal → RECOVERY_REQUIRED |
 | ResolveRecovery(verification-recheck) | RECOVERY_REQUIRED → VERIFYING |

@@ -367,14 +367,10 @@ def test_workflow_runtime_raising_after_internal_transition_still_persists_faile
     deadline = time.time() + 2
     connection = connect_sqlite(database_path)
     try:
-        row = connection.execute(
-            "SELECT status FROM runs WHERE id = 'run-1';"
-        ).fetchone()
+        row = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()
         while row is not None and row[0] != "FAILED" and time.time() < deadline:
             time.sleep(0.01)
-            row = connection.execute(
-                "SELECT status FROM runs WHERE id = 'run-1';"
-            ).fetchone()
+            row = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()
     finally:
         connection.close()
     coordinator.stop()

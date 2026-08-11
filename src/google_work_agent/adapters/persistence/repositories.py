@@ -650,11 +650,20 @@ class SQLiteRunRepository:
         return updated
 
     def set_reauth_required(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
-        return self._force_status(
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = self.require_reauth(
             run_id,
-            status=RunStatus.REAUTH_REQUIRED,
+            expected_version=current.version,
             finished_at_ms=finished_at_ms,
         )
+        if not result.applied:
+            raise sqlite3.IntegrityError(f"run require-reauth failed: {result.conflict_detail}")
+        updated = self.get_by_id(run_id)
+        if updated is None:
+            raise LookupError(f"run not found after reauth update: {run_id}")
+        return updated
 
     def set_verifying(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
         current = self.get_by_id(run_id)
@@ -675,11 +684,19 @@ class SQLiteRunRepository:
             if updated is None:
                 raise LookupError(f"run not found after recovery resolution: {run_id}")
             return updated
-        return self._force_status(
-            run_id,
-            status=RunStatus.VERIFYING,
+        result = self._transition_run(
+            run_id=run_id,
+            expected_version=current.version,
+            command=RunCommand.BEGIN_VERIFICATION,
             finished_at_ms=finished_at_ms,
+            error_message="run begin-verification affected an unexpected row count",
         )
+        if not result.applied:
+            raise sqlite3.IntegrityError(f"run begin-verification failed: {result.conflict_detail}")
+        updated = self.get_by_id(run_id)
+        if updated is None:
+            raise LookupError(f"run not found after verification transition: {run_id}")
+        return updated
 
     def _apply_run_transition(
         self,
@@ -731,31 +748,6 @@ class SQLiteRunRepository:
             error_message=error_message,
         )
         return result
-
-    def _force_status(
-        self,
-        run_id: str,
-        *,
-        status: RunStatus,
-        finished_at_ms: int | None,
-    ) -> RunRecord:
-        current = self.get_by_id(run_id)
-        if current is None:
-            raise LookupError(f"run not found: {run_id}")
-        cursor = self._connection.execute(
-            """
-            UPDATE runs
-            SET status = ?, version = version + 1, finished_at_ms = ?
-            WHERE id = ? AND version = ?;
-            """,
-            (status.value, finished_at_ms, run_id, current.version),
-        )
-        if cursor.rowcount != 1:
-            raise sqlite3.IntegrityError("run force-status affected an unexpected row count")
-        updated = self.get_by_id(run_id)
-        if updated is None:
-            raise LookupError(f"run not found after status update: {run_id}")
-        return updated
 
 
 class SQLiteMessageRepository:

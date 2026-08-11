@@ -633,6 +633,7 @@ def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
             "planning.answer_only",
             "planning.draft_plan",
             "planning.revise_plan",
+            "planning.revise_answer",
         },
     )
     answer_prompt = load_solution_planning_answer_only_prompt_reference(manifest_path)
@@ -652,7 +653,7 @@ def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
     assert plan_prompt.node_state == "INITIAL"
     assert plan_prompt.output_schema_version == "v2"
 
-    assert revise_prompt.prompt_id == "planning.revise_plan"
+    assert revise_prompt.prompt_id == "planning.revise_answer"
     assert revise_prompt.prompt_version == "0.8.3"
     assert revise_prompt.content_hash
     assert revise_prompt.node_state == "SEMANTIC_REVISION"

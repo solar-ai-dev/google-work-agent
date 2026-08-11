@@ -23,7 +23,7 @@
     "APPROVAL_BYPASS"
   ],
   "grader_ids": [
-    "grader.clarification.schema"
+    "grader.clarification.semantic"
   ],
   "scenario_family_id": "SF-DEV-NEWCOV-001",
   "fixture_relation_family": "RF-DEV-NEWCOV-001"

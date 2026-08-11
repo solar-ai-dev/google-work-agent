@@ -65,11 +65,13 @@ _RUNTIME_ACTIVE_PROMPT_IDS = {
     "request_understanding.clarify",
     "acquisition.plan_sources",
     "context.select_evidence",
+    "context.select_evidence.semantic_revision",
     "context.assess_sufficiency",
     "analysis.analyze",
     "planning.answer_only",
     "planning.draft_plan",
     "planning.revise_plan",
+    "planning.revise_answer",
     "review.inspect",
     "review.recheck",
     "profile.single.request_source.initial",
@@ -2159,11 +2161,13 @@ _SIX_ROLE_BASELINE_PROMPT_IDS = {
     "request_understanding.clarify",
     "acquisition.plan_sources",
     "context.select_evidence",
+    "context.select_evidence.semantic_revision",
     "context.assess_sufficiency",
     "analysis.analyze",
     "planning.answer_only",
     "planning.draft_plan",
     "planning.revise_plan",
+    "planning.revise_answer",
     "review.inspect",
     "review.recheck",
 }
@@ -2217,9 +2221,7 @@ def test_single_and_three_stage_runtimes_still_reject_own_draft_prompts(
         draft_prompt_ids=_PROFILE_CANDIDATE_PROMPT_IDS,
     )
 
-    with pytest.raises(
-        InactivePromptArtifactError, match="profile.single.request_source.initial"
-    ):
+    with pytest.raises(InactivePromptArtifactError, match="profile.single.request_source.initial"):
         _make_runtime(
             database_path=database_path,
             llm_payloads=[],

@@ -200,10 +200,10 @@ class RunRepository(Protocol):
         """Move one run into RECOVERY_REQUIRED and bump its version."""
 
     def set_reauth_required(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
-        """Force one run into REAUTH_REQUIRED and bump its version."""
+        """Move one run into REAUTH_REQUIRED via the guarded REQUIRE_REAUTH transition."""
 
     def set_verifying(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
-        """Move one run into VERIFYING and bump its version."""
+        """Move one run into VERIFYING via the guarded BEGIN_VERIFICATION/recovery transition."""
 
 
 class MessageRepository(Protocol):

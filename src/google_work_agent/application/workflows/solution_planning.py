@@ -89,6 +89,41 @@ class ActionPlanDraftV1(TypedDict):
 ANSWER_DRAFT_SCHEMA_VERSION: Final = 1
 ACTION_PLAN_DRAFT_SCHEMA_VERSION: Final = 2
 ACTION_DRAFT_SCHEMA_VERSION: Final = 2
+_ACTION_DRAFT_ITEM_SCHEMA: Final = {
+    "type": "object",
+    "required": [
+        "schema_version",
+        "action_id",
+        "position",
+        "effect",
+        "tool_name",
+        "arguments",
+        "expected",
+        "evidence_refs",
+        "resource_refs",
+        "target_resource_ref_id",
+        "depends_on_action_ids",
+        "user_visible_reason",
+    ],
+    "additionalProperties": False,
+    "properties": {
+        "schema_version": {"type": "integer", "enum": [ACTION_DRAFT_SCHEMA_VERSION]},
+        "action_id": {"type": "string", "minLength": 1},
+        "position": {"type": "integer", "minimum": 1},
+        "effect": {
+            "type": "string",
+            "enum": ["READ", "CREATE", "UPDATE", "SEND", "DELETE"],
+        },
+        "tool_name": {"type": "string", "minLength": 1},
+        "arguments": {"type": "object"},
+        "expected": {"type": "object"},
+        "evidence_refs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "resource_refs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "target_resource_ref_id": {"type": ["string", "null"]},
+        "depends_on_action_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "user_visible_reason": {"type": "string", "minLength": 1},
+    },
+}
 ANSWER_DRAFT_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="answer-draft-v1",
     json_schema={
@@ -144,7 +179,7 @@ ACTION_PLAN_DRAFT_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "plan_id": {"type": "string"},
             "summary": {"type": "string"},
             "objective": {"type": "string"},
-            "actions": {"type": "array", "items": {"type": "object"}},
+            "actions": {"type": "array", "items": _ACTION_DRAFT_ITEM_SCHEMA},
             "evidence_refs": {"type": "array", "items": {"type": "string"}},
             "resource_refs": {"type": "array", "items": {"type": "object"}},
             "confirmation": {},
@@ -671,7 +706,7 @@ def load_solution_planning_revise_answer_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "planning.revise_plan",
+        "planning.revise_answer",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 
