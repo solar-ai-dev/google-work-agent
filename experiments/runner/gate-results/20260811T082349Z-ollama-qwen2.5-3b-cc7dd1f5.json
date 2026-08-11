@@ -1,0 +1,428 @@
+{
+  "gate_run_id": "20260811T082349Z-ollama-qwen2.5-3b-cc7dd1f5",
+  "results": [
+    {
+      "gate_run_id": "20260811T082349Z-ollama-qwen2.5-3b-cc7dd1f5",
+      "slot_id": "acquisition.plan_sources",
+      "provider": "ollama",
+      "model_id": "qwen2.5:3b",
+      "prompt_bundle_version": "0.8.3-r8.4",
+      "prompt_content_hash": "e67267268e8f5d4a03107fd7ccbd44b957909a4347c50b63633a47576395685b",
+      "dataset_version": "rebuild-v1.14-r8.4",
+      "schema_version": "source-fetch-plan-v2-list",
+      "evaluation_lane": "INITIAL",
+      "retry_kind": "NONE",
+      "runtime_parameters": {
+        "sampling_temperature": 0.0,
+        "sampling_seed": 7
+      },
+      "dev_result": {
+        "passed": 59,
+        "total": 59
+      },
+      "holdout_result": {
+        "passed": 19,
+        "total": 19
+      },
+      "safety_result": {
+        "passed": 0,
+        "total": 0
+      },
+      "insufficient_coverage": [],
+      "item_results": [
+        {
+          "item_id": "NEI-ACQ-DEV-ACQ_FORBIDDEN_SOURCE_INCLUDED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-ACQ_FORBIDDEN_SOURCE_INCLUDED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-ACQ_FORBIDDEN_SOURCE_INCLUDED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-ACQ_FORBIDDEN_SOURCE_INCLUDED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-ACQ_NO_FETCH_MISCLASSIFIED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-ACQ_NO_FETCH_MISCLASSIFIED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-ACQ_NO_FETCH_MISCLASSIFIED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-ACQ_NO_FETCH_MISCLASSIFIED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-ACQ_REQUIRED_SOURCE_MISSING-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-ACQ_REQUIRED_SOURCE_MISSING-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-ACQ_REQUIRED_SOURCE_MISSING-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-ACQ_REQUIRED_SOURCE_MISSING-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-04",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-05",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-06",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-07",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-08",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-09",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-10",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-11",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-12",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-13",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-NORMAL-14",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-NORMAL-101",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-NORMAL-102",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-NORMAL-103",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-NORMAL-104",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_AUTH_REQUIRED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-QUERY_AUTH_REQUIRED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_BUDGET_EXHAUSTED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-QUERY_BUDGET_EXHAUSTED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_DETAIL_FETCH_FAILED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-QUERY_DETAIL_FETCH_FAILED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_LOW_CONFIDENCE_RESULTS-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-QUERY_LOW_CONFIDENCE_RESULTS-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_NO_RESULTS-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_NO_RESULTS-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_NO_RESULTS-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-QUERY_NO_RESULTS-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_PROVIDER_FAILED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-QUERY_PROVIDER_FAILED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_RATE_LIMITED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_RATE_LIMITED-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_RATE_LIMITED-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-QUERY_RATE_LIMITED-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_REPEATED_WITHOUT_CHANGE-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-QUERY_REPEATED_WITHOUT_CHANGE-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_TOO_BROAD-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_TOO_BROAD-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_TOO_BROAD-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-QUERY_TOO_BROAD-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_TOO_NARROW-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_TOO_NARROW-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_TOO_NARROW-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-QUERY_TOO_NARROW-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-01",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-02",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-DEV-QUERY_USER_CONSTRAINT_MISSING-03",
+          "passed": true,
+          "detail": "schema-valid"
+        },
+        {
+          "item_id": "NEI-ACQ-HOLDOUT-QUERY_USER_CONSTRAINT_MISSING-01",
+          "passed": true,
+          "detail": "schema-valid"
+        }
+      ],
+      "passed": true,
+      "evaluated_at": "2026-08-11T08:23:49Z"
+    }
+  ]
+}

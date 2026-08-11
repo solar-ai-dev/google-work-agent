@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import TypedDict
 
 from google_work_agent.application.observability import ObservabilityContext
@@ -11,10 +12,16 @@ from google_work_agent.application.workflows import (
     ApiAcquisitionResult,
     ApiDiscoveryAcquisitionAgent,
     ApiPlanningResult,
+    CalendarReadMode,
+    Daypart,
+    RelativeUnit,
     RequestIntentV1,
     RetrievalBudget,
     SourceFetchPlanV1,
     SourcePlanningValidationError,
+    TemporalQueryV1,
+    TemporalRelation,
+    Weekday,
     WorkflowPhase,
     build_source_planning_clarification_question,
     validate_acquisition_result_v1,
@@ -128,6 +135,8 @@ class RecordingGoogleGateway:
                 title="이번 주 회의",
             )
         }
+        self.gmail_messages: dict[str, ResourceSnapshot] = {}
+        self.freebusy: dict[str, tuple[FreeBusyCalendar, ...]] = {}
 
     def queue_fault(self, operation: str, code: GoogleWorkspaceErrorCode) -> None:
         self.faults[operation] = GoogleWorkspaceGatewayError(
@@ -162,7 +171,9 @@ class RecordingGoogleGateway:
         return self.gmail_threads[thread_id]
 
     def get_gmail_message(self, *, message_id: str) -> ResourceSnapshot:
-        raise NotImplementedError
+        self._maybe_fault("get_gmail_message")
+        self.calls.append(("get_gmail_message", {"message_id": message_id}))
+        return self.gmail_messages[message_id]
 
     def create_gmail_draft(
         self,
@@ -273,8 +284,18 @@ class RecordingGoogleGateway:
         calendar_ids: tuple[str, ...],
         time_range: TimeRange,
     ) -> tuple[FreeBusyCalendar, ...]:
-        del calendar_ids, time_range
-        raise NotImplementedError
+        self._maybe_fault("query_freebusy")
+        self.calls.append(
+            (
+                "query_freebusy",
+                {
+                    "calendar_ids": list(calendar_ids),
+                    "time_min": time_range.start,
+                    "time_max": time_range.end,
+                },
+            )
+        )
+        return self.freebusy.get(calendar_ids[0], ())
 
     def get_calendar_event(self, *, calendar_id: str, event_id: str) -> ResourceSnapshot:
         self._maybe_fault("get_calendar_event")
@@ -455,6 +476,118 @@ def test_resource_selected_uses_direct_get_and_does_not_search() -> None:
         }
     ]
     assert "selected_resource_ids" not in planning["source_fetch_plans"][0]
+
+
+def test_resource_selected_gmail_thread_expands_to_message_bodies() -> None:
+    """GAP-F6: RESOURCE_SELECTED Thread selection must not stop at metadata --
+    docs/05 section 7 requires selected-ID detail GET to reach Context the
+    same way AGENT_SEARCH candidates do, so the selected Thread's messages
+    are expanded through the same Agent Read Port helper (never the
+    Sidebar-only UI detail endpoint)."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result([_plan("GMAIL", {}, reason_codes=["RESOURCE_SELECTED_DIRECT_GET"])])
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.gmail_threads["thread-kim"].payload["message_ids"] = ["message-1", "message-2"]
+    gateway.gmail_messages["message-1"] = _snapshot(
+        ResourceType.GMAIL_MESSAGE, "message-1", parent_id="thread-kim", title="첫 메일"
+    )
+    gateway.gmail_messages["message-2"] = _snapshot(
+        ResourceType.GMAIL_MESSAGE, "message-2", parent_id="thread-kim", title="답장"
+    )
+    agent = _agent(runtime=runtime, gateway=gateway)
+    request = _request(
+        entry_mode="RESOURCE_SELECTED",
+        selected_resource_ids=("thread-kim",),
+        selected_resources=(
+            SelectedResourceRef(source="GMAIL", resource_type="THREAD", resource_id="thread-kim"),
+        ),
+    )
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=request)
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=request)
+
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert [name for name, _args in gateway.calls] == [
+        "get_gmail_thread",
+        "get_gmail_message",
+        "get_gmail_message",
+    ]
+    assert acquisition["resource_handles"] == [
+        "gmail_thread:thread-kim",
+        "gmail_message:message-1",
+        "gmail_message:message-2",
+    ]
+
+
+def test_resource_selected_gmail_thread_is_force_included_when_detail_budget_is_zero() -> None:
+    """The selected Thread itself must never be dropped for budget reasons
+    (force-include contract); only the follow-on message expansion is
+    budget-gated."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan(
+                    "GMAIL",
+                    {},
+                    reason_codes=["RESOURCE_SELECTED_DIRECT_GET"],
+                    detail_limit=0,
+                )
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.gmail_threads["thread-kim"].payload["message_ids"] = ["message-1"]
+    gateway.gmail_messages["message-1"] = _snapshot(
+        ResourceType.GMAIL_MESSAGE, "message-1", parent_id="thread-kim", title="첫 메일"
+    )
+    agent = _agent(
+        runtime=runtime,
+        gateway=gateway,
+        retrieval_budget=RetrievalBudget(max_sources=1, max_details_per_source=0),
+    )
+    request = _request(
+        entry_mode="RESOURCE_SELECTED",
+        selected_resource_ids=("thread-kim",),
+        selected_resources=(
+            SelectedResourceRef(source="GMAIL", resource_type="THREAD", resource_id="thread-kim"),
+        ),
+    )
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=request)
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=request)
+
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert [name for name, _args in gateway.calls] == ["get_gmail_thread"]
+    assert acquisition["resource_handles"] == ["gmail_thread:thread-kim"]
+
+
+def test_resource_selected_gmail_message_returns_body_directly() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result([_plan("GMAIL", {}, reason_codes=["RESOURCE_SELECTED_DIRECT_GET"])])
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.gmail_messages["message-1"] = _snapshot(
+        ResourceType.GMAIL_MESSAGE, "message-1", parent_id="thread-kim", title="첫 메일"
+    )
+    agent = _agent(runtime=runtime, gateway=gateway)
+    request = _request(
+        entry_mode="RESOURCE_SELECTED",
+        selected_resource_ids=("message-1",),
+        selected_resources=(
+            SelectedResourceRef(source="GMAIL", resource_type="MESSAGE", resource_id="message-1"),
+        ),
+    )
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=request)
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=request)
+
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert [name for name, _args in gateway.calls] == ["get_gmail_message"]
+    assert acquisition["resource_handles"] == ["gmail_message:message-1"]
 
 
 def test_resource_selected_uses_task_parent_identity_without_default() -> None:
@@ -940,17 +1073,474 @@ def test_acquisition_payload_does_not_include_stage6_outputs() -> None:
     assert "score" not in acquisition["source_summaries"][0]
 
 
+def test_gmail_thread_messages_are_fetched_for_body_text() -> None:
+    """GAP-F6: candidate narrowing (search -> detail_limit threads) already
+    existed; this locks in the missing second hop -- each detail-fetched
+    thread's messages are read too, in thread order, so Evidence gets real
+    body text instead of only thread-level subject/snippet."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "김대리"})]))
+    gateway = RecordingGoogleGateway()
+    gateway.gmail_threads["thread-kim"].payload["message_ids"] = ["message-1", "message-2"]
+    gateway.gmail_messages["message-1"] = _snapshot(
+        ResourceType.GMAIL_MESSAGE,
+        "message-1",
+        parent_id="thread-kim",
+        title="첫 메일",
+    )
+    gateway.gmail_messages["message-2"] = _snapshot(
+        ResourceType.GMAIL_MESSAGE,
+        "message-2",
+        parent_id="thread-kim",
+        title="답장",
+    )
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert [name for name, _args in gateway.calls] == [
+        "search_gmail_threads",
+        "get_gmail_thread",
+        "get_gmail_message",
+        "get_gmail_message",
+    ]
+    assert acquisition["resource_handles"] == [
+        "gmail_thread:thread-kim",
+        "gmail_message:message-1",
+        "gmail_message:message-2",
+    ]
+
+
+def test_gmail_thread_with_no_messages_does_not_call_get_gmail_message() -> None:
+    """A thread whose metadata carries no message_ids (e.g. thread-finance in
+    the product fixtures) must not attempt a message detail GET."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "김대리"})]))
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert [name for name, _args in gateway.calls] == ["search_gmail_threads", "get_gmail_thread"]
+
+
+def test_gmail_message_fetch_failure_does_not_abort_the_thread() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "김대리"})]))
+    gateway = RecordingGoogleGateway()
+    gateway.gmail_threads["thread-kim"].payload["message_ids"] = ["message-1", "message-2"]
+    gateway.gmail_messages["message-1"] = _snapshot(
+        ResourceType.GMAIL_MESSAGE, "message-1", parent_id="thread-kim", title="첫 메일"
+    )
+    gateway.gmail_messages["message-2"] = _snapshot(
+        ResourceType.GMAIL_MESSAGE, "message-2", parent_id="thread-kim", title="답장"
+    )
+    gateway.queue_fault("get_gmail_message", GoogleWorkspaceErrorCode.NOT_FOUND)
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert acquisition["resource_handles"] == [
+        "gmail_thread:thread-kim",
+        "gmail_message:message-2",
+    ]
+
+
+def test_gmail_message_fetch_stops_when_detail_budget_is_exhausted() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "김대리"}, detail_limit=2)]))
+    gateway = RecordingGoogleGateway()
+    gateway.gmail_threads["thread-kim"].payload["message_ids"] = ["message-1", "message-2"]
+    gateway.gmail_messages["message-1"] = _snapshot(
+        ResourceType.GMAIL_MESSAGE, "message-1", parent_id="thread-kim", title="첫 메일"
+    )
+    gateway.gmail_messages["message-2"] = _snapshot(
+        ResourceType.GMAIL_MESSAGE, "message-2", parent_id="thread-kim", title="답장"
+    )
+    # 1 source * 2 details = a total budget of 2 detail-fetches: the thread
+    # itself plus exactly one message, leaving the second message unfetched.
+    agent = _agent(
+        runtime=runtime,
+        gateway=gateway,
+        retrieval_budget=RetrievalBudget(max_sources=1, max_details_per_source=2),
+    )
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert [name for name, _args in gateway.calls] == [
+        "search_gmail_threads",
+        "get_gmail_thread",
+        "get_gmail_message",
+    ]
+    assert acquisition["resource_handles"] == [
+        "gmail_thread:thread-kim",
+        "gmail_message:message-1",
+    ]
+
+
+# GAP-F7 Runtime test matrix (A-H). Each scenario is named after the
+# completion report's lettered requirement so the mapping stays traceable.
+
+
+def test_scenario_a_simple_listing_is_events_only_and_skips_freebusy() -> None:
+    """A: "내일 일정 알려줘" -> typed EVENTS_ONLY -> FreeBusy 0."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan(
+                    "CALENDAR",
+                    {"calendar_id": "calendar-primary"},
+                    calendar_read_mode="EVENTS_ONLY",
+                    temporal_query=_temporal_query(relative_unit="DAY", relative_offset=1),
+                )
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    call_names = [name for name, _args in gateway.calls]
+    assert "query_freebusy" not in call_names
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+
+
+def test_scenario_b_tomorrow_afternoon_resolves_range_and_calls_freebusy_once() -> None:
+    """B: "내일 오후에 가능한 시간 찾아줘" -> EVENTS_AND_FREEBUSY, DAY+1, AFTERNOON
+    -> deterministic TimeRange in Asia/Seoul -> FreeBusy 1."""
+    now_ms = _epoch_ms("2026-08-11T10:00:00+09:00")  # Tuesday
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan(
+                    "CALENDAR",
+                    {"calendar_id": "calendar-primary"},
+                    calendar_read_mode="EVENTS_AND_FREEBUSY",
+                    temporal_query=_temporal_query(
+                        relative_unit="DAY",
+                        relative_offset=1,
+                        daypart="AFTERNOON",
+                    ),
+                )
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.freebusy["calendar-primary"] = ()
+    agent = _agent(runtime=runtime, gateway=gateway, now_ms=now_ms, timezone="Asia/Seoul")
+
+    planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    freebusy_calls = [args for name, args in gateway.calls if name == "query_freebusy"]
+    assert len(freebusy_calls) == 1
+    assert freebusy_calls[0]["time_min"] == "2026-08-12T12:00:00+09:00"
+    assert freebusy_calls[0]["time_max"] == "2026-08-12T18:00:00+09:00"
+    assert any(
+        handle.startswith("calendar_freebusy:") for handle in acquisition["resource_handles"]
+    )
+
+
+def test_scenario_c_this_week_availability_spans_the_full_local_week() -> None:
+    """C: "이번 주에 빈 시간 찾아줘" -> EVENTS_AND_FREEBUSY, WEEK+0 -> current
+    timezone week range -> FreeBusy 1."""
+    now_ms = _epoch_ms("2026-08-11T10:00:00+09:00")
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan(
+                    "CALENDAR",
+                    {"calendar_id": "calendar-primary"},
+                    calendar_read_mode="EVENTS_AND_FREEBUSY",
+                    temporal_query=_temporal_query(relative_unit="WEEK", relative_offset=0),
+                )
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.freebusy["calendar-primary"] = ()
+    agent = _agent(runtime=runtime, gateway=gateway, now_ms=now_ms, timezone="Asia/Seoul")
+
+    planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    freebusy_calls = [args for name, args in gateway.calls if name == "query_freebusy"]
+    assert len(freebusy_calls) == 1
+    start = datetime.fromisoformat(str(freebusy_calls[0]["time_min"]))
+    end = datetime.fromisoformat(str(freebusy_calls[0]["time_max"]))
+    assert start.weekday() == 0  # Monday-anchored week
+    assert (end - start) == timedelta(days=7)
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+
+
+def test_scenario_d_friday_listing_is_events_only_and_skips_freebusy() -> None:
+    """D: "금요일 일정 알려줘" -> EVENTS_ONLY -> FreeBusy 0."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan(
+                    "CALENDAR",
+                    {"calendar_id": "calendar-primary"},
+                    calendar_read_mode="EVENTS_ONLY",
+                    temporal_query=_temporal_query(
+                        relative_unit="WEEK", relative_offset=0, weekday="FRI"
+                    ),
+                )
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    call_names = [name for name, _args in gateway.calls]
+    assert "query_freebusy" not in call_names
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+
+
+def test_scenario_e_availability_keyword_in_text_does_not_override_typed_events_only() -> None:
+    """E (keyword trap): request text says "available" but the typed plan is
+    EVENTS_ONLY -> FreeBusy 0. Confirms the gate reads only the typed field,
+    never request text."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan(
+                    "CALENDAR",
+                    {"calendar_id": "calendar-primary"},
+                    calendar_read_mode="EVENTS_ONLY",
+                )
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+    request = _request(request_text="Is Kim available tomorrow? Just list events.")
+
+    planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=request)
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=request)
+
+    call_names = [name for name, _args in gateway.calls]
+    assert "query_freebusy" not in call_names
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+
+
+def test_scenario_f_no_availability_wording_still_calls_freebusy_when_typed_mode_requires_it() -> (
+    None
+):
+    """F (reverse trap): request text has no availability wording, but the
+    typed plan is EVENTS_AND_FREEBUSY -> FreeBusy 1 anyway."""
+    now_ms = _epoch_ms("2026-08-11T10:00:00+09:00")
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan(
+                    "CALENDAR",
+                    {"calendar_id": "calendar-primary"},
+                    calendar_read_mode="EVENTS_AND_FREEBUSY",
+                    temporal_query=_temporal_query(relative_unit="DAY", relative_offset=0),
+                )
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.freebusy["calendar-primary"] = ()
+    agent = _agent(runtime=runtime, gateway=gateway, now_ms=now_ms)
+    request = _request(request_text="회의 목록 좀 줘.")
+
+    planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=request)
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=request)
+
+    call_names = [name for name, _args in gateway.calls]
+    assert call_names.count("query_freebusy") == 1
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+
+
+def test_scenario_g_invalid_temporal_proposal_skips_google_and_flags_deterministically() -> None:
+    """G: a structurally valid but semantically invalid temporal_query
+    (ABSOLUTE end before start) -> Google FreeBusy call 0, and a
+    deterministic failure signal surfaces in missing_slots instead of a
+    silent no-op."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan(
+                    "CALENDAR",
+                    {"calendar_id": "calendar-primary"},
+                    calendar_read_mode="EVENTS_AND_FREEBUSY",
+                    temporal_query=_temporal_query(
+                        relation="ABSOLUTE",
+                        absolute_start="2026-08-13T00:00:00-07:00",
+                        absolute_end="2026-08-12T00:00:00-07:00",
+                    ),
+                )
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    call_names = [name for name, _args in gateway.calls]
+    assert "query_freebusy" not in call_names
+    assert "CALENDAR:INVALID_TEMPORAL_QUERY" in acquisition["missing_slots"]
+    assert acquisition["source_summaries"][0]["status"] == ApiAcquisitionResult.COMPLETE.value
+
+
+def test_scenario_h_seoul_timezone_date_boundary() -> None:
+    """H: a request just after local midnight in Asia/Seoul must resolve
+    "tomorrow" using the Seoul calendar day, not a UTC day boundary."""
+    # 2026-08-12T00:30:00+09:00 is still 2026-08-11T15:30:00Z -- if the
+    # resolver used UTC dates instead of the configured timezone, "tomorrow"
+    # would land on the wrong day.
+    now_ms = _epoch_ms("2026-08-12T00:30:00+09:00")
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan(
+                    "CALENDAR",
+                    {"calendar_id": "calendar-primary"},
+                    calendar_read_mode="EVENTS_AND_FREEBUSY",
+                    temporal_query=_temporal_query(relative_unit="DAY", relative_offset=1),
+                )
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.freebusy["calendar-primary"] = ()
+    agent = _agent(runtime=runtime, gateway=gateway, now_ms=now_ms, timezone="Asia/Seoul")
+
+    planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    freebusy_calls = [args for name, args in gateway.calls if name == "query_freebusy"]
+    assert len(freebusy_calls) == 1
+    assert str(freebusy_calls[0]["time_min"]).startswith("2026-08-13T00:00:00")
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+
+
+def test_temporal_query_resolution_handles_dst_timezone_without_error() -> None:
+    """DST sanity check: a WEEK-relative query in a DST-observing timezone
+    (America/New_York) must still resolve to a valid, well-formed TimeRange
+    -- ZoneInfo arithmetic itself must not error or silently misalign
+    across a DST transition."""
+    from google_work_agent.application.workflows.api_acquisition import _resolve_temporal_query
+
+    # 2026-03-08 is the US DST spring-forward date; a WEEK query anchored a
+    # few days before it exercises ZoneInfo across the transition.
+    now_ms = _epoch_ms("2026-03-05T10:00:00-05:00")
+    query = _temporal_query(relative_unit="WEEK", relative_offset=0)
+
+    time_range = _resolve_temporal_query(
+        temporal_query=query, now_ms=now_ms, timezone="America/New_York"
+    )
+
+    assert time_range is not None
+    start = datetime.fromisoformat(time_range.start)
+    end = datetime.fromisoformat(time_range.end)
+    assert start.weekday() == 0
+    assert end > start
+
+
+def test_calendar_freebusy_skipped_when_calendar_cannot_be_resolved() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result(
+            [
+                _plan(
+                    "CALENDAR",
+                    {},
+                    calendar_read_mode="EVENTS_AND_FREEBUSY",
+                    temporal_query=_temporal_query(relative_unit="DAY", relative_offset=1),
+                )
+            ]
+        )
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.calendars = {}
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    call_names = [name for name, _args in gateway.calls]
+    assert call_names == ["list_calendars"]
+    assert "query_freebusy" not in call_names
+    assert acquisition["resource_handles"] == []
+
+
+def test_gap_acq_status_required_source_with_zero_resources_still_reports_complete() -> None:
+    """Pins a pre-existing (not F4/F6/F7-introduced) Acquisition contract gap
+    surfaced while testing GAP-F7's "missing required Calendar" path: when a
+    required source resolves to zero resources without raising (calendar_id
+    cannot be determined, or a search legitimately finds nothing), the
+    per-source and overall AcquisitionResult.status is unconditionally
+    COMPLETE -- indistinguishable from "required data legitimately absent"
+    vs. "search found nothing," and from "we can determine calendar_id but
+    it's simply empty" vs. "we could not even identify which calendar to
+    read." This test intentionally documents current behavior (it does NOT
+    assert this is correct) -- see the GAP-F4/F6/F7 completion report for
+    why no code change was made here: Acquisition COMPLETE appears to encode
+    "the Read finished without a transport error," while insufficient-data
+    escalation is a downstream Context Retrieval sufficiency judgement
+    (docs/05 section 18.2), and changing this status semantic would affect
+    every source (Gmail/Tasks too), which is out of this Retrieval slice's
+    scope."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result([_plan("CALENDAR", {}, reason_codes=["SOURCE_REQUIRED"], required=True)])
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.calendars = {}
+    agent = _agent(runtime=runtime, gateway=gateway)
+
+    planning = agent.plan_sources(request_intent=_intent(source="CALENDAR"), request=_request())
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=_request())
+
+    assert planning["source_fetch_plans"][0]["required"] is True
+    assert acquisition["resource_handles"] == []
+    assert acquisition["source_summaries"][0]["resource_count"] == 0
+    assert acquisition["source_summaries"][0]["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert acquisition["missing_slots"] == []
+
+
 def _agent(
     *,
     runtime: FakeLLMRuntime,
     gateway: RecordingGoogleGateway,
     retrieval_budget: RetrievalBudget = DEFAULT_TEST_RETRIEVAL_BUDGET,
+    now_ms: int | None = None,
+    timezone: str = "Asia/Seoul",
 ) -> ApiDiscoveryAcquisitionAgent:
     return ApiDiscoveryAcquisitionAgent(
         llm_runtime=runtime,
         gateway=gateway,
         prompt_ref=PROMPT_REF,
         retrieval_budget=retrieval_budget,
+        now_ms=(lambda: now_ms) if now_ms is not None else None,
+        timezone_provider=lambda: timezone,
     )
 
 
@@ -959,6 +1549,7 @@ def _request(
     entry_mode: str = "AGENT_SEARCH",
     selected_resource_ids: tuple[str, ...] = (),
     selected_resources: tuple[SelectedResourceRef, ...] = (),
+    request_text: str = "김대리 메일 찾아줘.",
 ) -> WorkflowStartRequest:
     return WorkflowStartRequest(
         run_id="run-1",
@@ -966,7 +1557,7 @@ def _request(
         workflow_key="thread-1",
         entry_mode=entry_mode,
         requested_mode="AUTO",
-        request_text="김대리 메일 찾아줘.",
+        request_text=request_text,
         selected_resource_ids=selected_resource_ids,
         correlation=WorkflowCorrelationContext(
             request_id="request-1",
@@ -1017,9 +1608,18 @@ def _plan(
     reason_codes: list[str] | None = None,
     page_size: int = 10,
     required: bool = True,
+    detail_limit: int = 5,
+    calendar_read_mode: CalendarReadMode | None = None,
+    temporal_query: TemporalQueryV1 | None = None,
 ) -> SourceFetchPlanV1:
+    # CALENDAR plans must carry a non-null calendar_read_mode; tests that
+    # don't care about FreeBusy gating get a harmless EVENTS_ONLY default so
+    # they don't all need to spell it out.
+    resolved_read_mode = calendar_read_mode
+    if source == "CALENDAR" and resolved_read_mode is None:
+        resolved_read_mode = "EVENTS_ONLY"
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "source": source,
         "priority": priority,
         "reason_codes": reason_codes or ["SOURCE_REQUIRED"],
@@ -1027,9 +1627,37 @@ def _plan(
         "page_size": page_size,
         "max_pages": 1,
         "max_candidates": 10,
-        "detail_limit": 5,
+        "detail_limit": detail_limit,
         "required": required,
+        "calendar_read_mode": resolved_read_mode,
+        "temporal_query": temporal_query,
     }
+
+
+def _temporal_query(
+    *,
+    relation: TemporalRelation = "RELATIVE",
+    relative_unit: RelativeUnit | None = None,
+    relative_offset: int | None = None,
+    weekday: Weekday | None = None,
+    daypart: Daypart | None = None,
+    absolute_start: str | None = None,
+    absolute_end: str | None = None,
+) -> TemporalQueryV1:
+    return {
+        "schema_version": 1,
+        "relation": relation,
+        "relative_unit": relative_unit,
+        "relative_offset": relative_offset,
+        "weekday": weekday,
+        "daypart": daypart,
+        "absolute_start": absolute_start,
+        "absolute_end": absolute_end,
+    }
+
+
+def _epoch_ms(iso: str) -> int:
+    return int(datetime.fromisoformat(iso).timestamp() * 1000)
 
 
 def _llm_result(payload: object) -> StructuredLLMResult:

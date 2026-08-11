@@ -490,6 +490,8 @@ DRAFT
 
 검증되지 않은 Prompt는 Artifact로 존재할 수 있으나 Runtime에서 선택할 수 없다.
 
+Node DEV·Node HOLDOUT·Safety Gate는 고정 Sampling 조건에서 Item당 1회 평가한다(`12` 18.2). Temperature는 Gate Configuration에서 명시적으로 고정하고, Seed는 Provider가 지원함이 확인된 경우에만 고정한다 — 완전한 bit-identical Determinism을 보장하는 것은 아니며 best-effort 재현성이다. 반복 Trial Consistency·평균·분산·Bootstrap Confidence Interval 평가는 `13` Evaluation 소관이며 Gate로 옮기지 않는다.
+
 ---
 
 ## 10. Prompt Execution Record

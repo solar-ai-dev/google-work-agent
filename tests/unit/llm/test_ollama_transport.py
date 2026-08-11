@@ -140,6 +140,168 @@ def test_invoke_structured_still_posts_to_generate(monkeypatch: pytest.MonkeyPat
     assert sent_body["system"] == "You are a test assistant."
 
 
+def _prompt_ref_for_sampling_tests() -> PromptReference:
+    return PromptReference(
+        prompt_bundle_version="test-bundle",
+        prompt_id="a.b",
+        prompt_version="1",
+        content_hash="hash",
+        agent_role="test_role",
+        subgraph_name="a",
+        node_name="b",
+        node_state="BASELINE",
+        purpose="test",
+        input_schema_version="v1",
+        output_schema_version="v1",
+    )
+
+
+def test_invoke_structured_omits_options_when_sampling_is_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """docs/15 section 9.5: production dispatch (sampling_temperature/seed
+    both None) must produce the exact same payload as before this change --
+    no "options" key at all."""
+    captured: list[Request] = []
+
+    def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
+        del timeout
+        captured.append(request)
+        return _HTTPResponse(json.dumps({"response": "{}", "model": "qwen2.5:3b"}).encode("utf-8"))
+
+    monkeypatch.setattr("google_work_agent.adapters.llm.ollama.urlopen", fake_urlopen)
+
+    OllamaHTTPClient().invoke_structured(
+        endpoint="http://127.0.0.1:11434",
+        model_id="qwen2.5:3b",
+        prompt_ref=_prompt_ref_for_sampling_tests(),
+        prompt_input={},
+        output_schema=OutputSchemaDefinition(schema_version="1", json_schema={}),
+        timeout_seconds=5,
+        instruction_text="You are a test assistant.",
+    )
+
+    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    assert "options" not in sent_body
+
+
+def test_invoke_structured_sends_fixed_temperature_when_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[Request] = []
+
+    def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
+        del timeout
+        captured.append(request)
+        return _HTTPResponse(json.dumps({"response": "{}", "model": "qwen2.5:3b"}).encode("utf-8"))
+
+    monkeypatch.setattr("google_work_agent.adapters.llm.ollama.urlopen", fake_urlopen)
+
+    OllamaHTTPClient().invoke_structured(
+        endpoint="http://127.0.0.1:11434",
+        model_id="qwen2.5:3b",
+        prompt_ref=_prompt_ref_for_sampling_tests(),
+        prompt_input={},
+        output_schema=OutputSchemaDefinition(schema_version="1", json_schema={}),
+        timeout_seconds=5,
+        instruction_text="You are a test assistant.",
+        sampling_temperature=0.0,
+    )
+
+    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    assert sent_body["options"] == {"temperature": 0.0}
+
+
+def test_invoke_structured_sends_fixed_seed_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[Request] = []
+
+    def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
+        del timeout
+        captured.append(request)
+        return _HTTPResponse(json.dumps({"response": "{}", "model": "qwen2.5:3b"}).encode("utf-8"))
+
+    monkeypatch.setattr("google_work_agent.adapters.llm.ollama.urlopen", fake_urlopen)
+
+    OllamaHTTPClient().invoke_structured(
+        endpoint="http://127.0.0.1:11434",
+        model_id="qwen2.5:3b",
+        prompt_ref=_prompt_ref_for_sampling_tests(),
+        prompt_input={},
+        output_schema=OutputSchemaDefinition(schema_version="1", json_schema={}),
+        timeout_seconds=5,
+        instruction_text="You are a test assistant.",
+        sampling_temperature=0.0,
+        sampling_seed=7,
+    )
+
+    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    assert sent_body["options"] == {"temperature": 0.0, "seed": 7}
+
+
+def test_provider_forwards_runtime_policy_sampling_fields_to_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[Request] = []
+
+    def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
+        del timeout
+        captured.append(request)
+        return _HTTPResponse(json.dumps({"response": "{}", "model": "qwen2.5:3b"}).encode("utf-8"))
+
+    monkeypatch.setattr("google_work_agent.adapters.llm.ollama.urlopen", fake_urlopen)
+
+    provider = OllamaStructuredLLMProvider(
+        provider_name="ollama",
+        transport=OllamaHTTPClient(),
+        endpoint="http://127.0.0.1:11434",
+        model_id="qwen2.5:3b",
+    )
+
+    provider.invoke_structured(
+        prompt_ref=_prompt_ref_for_sampling_tests(),
+        prompt_input={},
+        output_schema=OutputSchemaDefinition(schema_version="1", json_schema={}),
+        runtime_policy=RuntimePolicy(sampling_temperature=0.0, sampling_seed=7),
+        api_key=None,
+    )
+
+    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    assert sent_body["options"] == {"temperature": 0.0, "seed": 7}
+
+
+def test_provider_omits_options_when_runtime_policy_leaves_sampling_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pins the production path: a bare ``RuntimePolicy()`` (what
+    launcher/dev.py always constructs) must never add an "options" key."""
+    captured: list[Request] = []
+
+    def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
+        del timeout
+        captured.append(request)
+        return _HTTPResponse(json.dumps({"response": "{}", "model": "qwen2.5:3b"}).encode("utf-8"))
+
+    monkeypatch.setattr("google_work_agent.adapters.llm.ollama.urlopen", fake_urlopen)
+
+    provider = OllamaStructuredLLMProvider(
+        provider_name="ollama",
+        transport=OllamaHTTPClient(),
+        endpoint="http://127.0.0.1:11434",
+        model_id="qwen2.5:3b",
+    )
+
+    provider.invoke_structured(
+        prompt_ref=_prompt_ref_for_sampling_tests(),
+        prompt_input={},
+        output_schema=OutputSchemaDefinition(schema_version="1", json_schema={}),
+        runtime_policy=RuntimePolicy(),
+        api_key=None,
+    )
+
+    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    assert "options" not in sent_body
+
+
 def test_provider_resolves_instruction_text_only_as_a_local_call_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

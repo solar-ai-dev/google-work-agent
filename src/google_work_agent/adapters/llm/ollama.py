@@ -36,6 +36,8 @@ class OllamaTransport(Protocol):
         output_schema: OutputSchemaDefinition,
         timeout_seconds: int,
         instruction_text: str,
+        sampling_temperature: float | None = None,
+        sampling_seed: int | None = None,
     ) -> ProviderResponsePayload:
         raise NotImplementedError
 
@@ -86,6 +88,8 @@ class OllamaStructuredLLMProvider(StructuredLLMProvider):
             output_schema=output_schema,
             timeout_seconds=runtime_policy.local_timeout_seconds,
             instruction_text=instruction_text,
+            sampling_temperature=runtime_policy.sampling_temperature,
+            sampling_seed=runtime_policy.sampling_seed,
         )
 
 
@@ -150,28 +154,43 @@ class OllamaHTTPClient(OllamaTransport):
         output_schema: OutputSchemaDefinition,
         timeout_seconds: int,
         instruction_text: str,
+        sampling_temperature: float | None = None,
+        sampling_seed: int | None = None,
     ) -> ProviderResponsePayload:
         _validate_loopback_endpoint(endpoint)
+        payload: dict[str, object] = {
+            "model": model_id,
+            "system": instruction_text,
+            "prompt": json.dumps(
+                {
+                    "prompt_ref": {
+                        "prompt_id": prompt_ref.prompt_id,
+                        "prompt_version": prompt_ref.prompt_version,
+                        "content_hash": prompt_ref.content_hash,
+                    },
+                    "input": prompt_input,
+                },
+                sort_keys=True,
+            ),
+            "stream": False,
+            "format": dict(output_schema.json_schema),
+        }
+        # docs/15 section 9.5 (Runtime Prompt Activation Gate): "options" is
+        # Ollama's documented /api/generate sampling-parameter object. Only
+        # sent when the caller (the Gate Runner) explicitly fixes sampling
+        # conditions -- omitted entirely otherwise, so production dispatch
+        # (which never sets these) produces the exact same payload as before.
+        options: dict[str, object] = {}
+        if sampling_temperature is not None:
+            options["temperature"] = sampling_temperature
+        if sampling_seed is not None:
+            options["seed"] = sampling_seed
+        if options:
+            payload["options"] = options
         response = _post_json(
             endpoint=endpoint,
             path="/api/generate",
-            payload={
-                "model": model_id,
-                "system": instruction_text,
-                "prompt": json.dumps(
-                    {
-                        "prompt_ref": {
-                            "prompt_id": prompt_ref.prompt_id,
-                            "prompt_version": prompt_ref.prompt_version,
-                            "content_hash": prompt_ref.content_hash,
-                        },
-                        "input": prompt_input,
-                    },
-                    sort_keys=True,
-                ),
-                "stream": False,
-                "format": dict(output_schema.json_schema),
-            },
+            payload=payload,
             timeout_seconds=timeout_seconds,
         )
         content = response.get("response", "{}")

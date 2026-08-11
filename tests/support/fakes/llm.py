@@ -43,6 +43,7 @@ class FakeAPIProviderTransport:
         timeout_seconds: int,
         api_key: str,
         instruction_text: str,
+        sampling_temperature: float | None = None,
     ) -> ProviderResponsePayload:
         self.invocations.append(
             {
@@ -54,6 +55,7 @@ class FakeAPIProviderTransport:
                 "prompt_input": dict(prompt_input),
                 "schema_version": output_schema.schema_version,
                 "instruction_text": instruction_text,
+                "sampling_temperature": sampling_temperature,
             }
         )
         payload = self.queued_payloads.popleft()
@@ -91,6 +93,8 @@ class FakeOllamaTransport:
         output_schema: OutputSchemaDefinition,
         timeout_seconds: int,
         instruction_text: str,
+        sampling_temperature: float | None = None,
+        sampling_seed: int | None = None,
     ) -> ProviderResponsePayload:
         self.invocations.append(
             {
@@ -102,6 +106,8 @@ class FakeOllamaTransport:
                 "schema_version": output_schema.schema_version,
                 "timeout_seconds": timeout_seconds,
                 "instruction_text": instruction_text,
+                "sampling_temperature": sampling_temperature,
+                "sampling_seed": sampling_seed,
             }
         )
         payload = self.queued_payloads.popleft()
