@@ -709,7 +709,6 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "source_planning": self._source_planning_node,
             "api_acquisition": self._api_acquisition_node,
             "context_retrieval": self._context_retrieval_node,
-            "solution_planning": self._solution_planning_node,
             "plan_review": self._plan_review_node,
             "domain_validation": self._domain_validation_node,
             "stage_one": self._three_stage_one_subgraph,
@@ -1516,8 +1515,9 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _planning_subgraph_init_node(self, state: GraphState) -> GraphState:
         invocation_id = self._id_factory()
         review = state["plan_review"]
-        request = self._request_from_state(state)
-        mode = "draft_plan" if self._should_draft_plan(request.request_text) else "answer_only"
+        request_intent = _require_state_value(state["request_intent"], "request_intent")
+        analysis_result = _require_state_value(state["analysis_result"], "analysis_result")
+        mode = self._planning_mode_from_request_intent(request_intent)
         if review is not None and review.get("status") == ReviewResult.REVISE.value:
             mode = "revise_answer" if state.get("answer_draft") is not None else "revise_plan"
         prompt_ref = {
@@ -1531,10 +1531,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             invocation_id=invocation_id,
             node_state="INITIALIZED",
             input_projection={
-                "request_intent": _require_state_value(state["request_intent"], "request_intent"),
-                "analysis_result": _require_state_value(
-                    state["analysis_result"], "analysis_result"
-                ),
+                "request_intent": request_intent,
+                "analysis_result": analysis_result,
                 "mode": mode,
             },
             prompt_ref=prompt_ref,
@@ -2861,62 +2859,6 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
         return self._merge_decision(state, self._analysis.build_state_update(result), decision)
 
-    def _solution_planning_node(self, state: GraphState) -> GraphState:
-        request = self._request_from_state(state)
-        review = state["plan_review"]
-        result: AnswerDraftV1 | ActionPlanDraftV1
-        if review is not None and review.get("status") == ReviewResult.REVISE.value:
-            if state.get("answer_draft") is not None:
-                result = self._planning.revise_answer(
-                    request_intent=_require_state_value(state["request_intent"], "request_intent"),
-                    answer_draft=_require_state_value(state["answer_draft"], "answer_draft"),
-                    review_issues=[dict(issue) for issue in review["issues"]],
-                    review_summary=review.get("summary"),
-                    context_result=_require_state_value(state["context_result"], "context_result"),
-                    analysis_result=_require_state_value(
-                        state["analysis_result"], "analysis_result"
-                    ),
-                    request=request,
-                )
-                state_update = self._planning.build_answer_state_update(result)
-            else:
-                result = self._planning.revise_plan(
-                    request_intent=_require_state_value(state["request_intent"], "request_intent"),
-                    plan_draft=_require_state_value(state["plan_draft"], "plan_draft"),
-                    review_issues=[dict(issue) for issue in review["issues"]],
-                    review_summary=review.get("summary"),
-                    context_result=_require_state_value(state["context_result"], "context_result"),
-                    analysis_result=_require_state_value(
-                        state["analysis_result"], "analysis_result"
-                    ),
-                    request=request,
-                )
-                state_update = self._planning.build_plan_state_update(result)
-        else:
-            analysis_result = _require_state_value(state["analysis_result"], "analysis_result")
-            if self._should_draft_plan(request.request_text):
-                result = self._planning.draft_plan(
-                    request_intent=_require_state_value(state["request_intent"], "request_intent"),
-                    context_result=_require_state_value(state["context_result"], "context_result"),
-                    analysis_result=analysis_result,
-                    request=request,
-                )
-                state_update = self._planning.build_plan_state_update(result)
-            else:
-                result = self._planning.answer_only(
-                    request_intent=_require_state_value(state["request_intent"], "request_intent"),
-                    context_result=_require_state_value(state["context_result"], "context_result"),
-                    analysis_result=analysis_result,
-                    request=request,
-                )
-                state_update = self._planning.build_answer_state_update(result)
-        decision = route_supervisor(
-            phase=WorkflowPhase.SOLUTION_PLANNING,
-            state=cast(MultiAgentGraphState, state),
-            result=result,
-        )
-        return self._merge_decision(state, state_update, decision)
-
     def _plan_review_node(self, state: GraphState) -> GraphState:
         request = self._request_from_state(state)
         review = state["plan_review"]
@@ -4046,21 +3988,27 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _request_hash(self, payload: dict[str, object]) -> str:
         return sha256(dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
-    def _should_draft_plan(self, request_text: str) -> bool:
-        lowered = request_text.lower()
-        return any(
-            token in lowered
-            for token in (
-                "create",
-                "update",
-                "send",
-                "delete",
-                "read",
-                "summarize",
-                "show",
-                "list",
-                "find",
-                "get",
-                "search",
-            )
+    def _planning_mode_from_request_intent(self, request_intent: RequestIntentV1) -> str:
+        """Deterministic answer_only/draft_plan selection (GAP-F1).
+
+        Reads the ``response_disposition`` typed field produced by
+        ``request_understanding.classify`` instead of matching keyword
+        substrings against ``request_text`` -- the previous approach silently
+        misrouted any request whose natural-language phrasing (in particular
+        Korean) did not contain one of a fixed English token list. The field
+        is optional on ``RequestIntentV1`` (see its definition) because only
+        SIX_ROLE_BASELINE's standalone Planning subgraph needs this upfront
+        choice between the two mutually exclusive ``planning.answer_only`` /
+        ``planning.draft_plan`` prompt slots; SINGLE_BASELINE and THREE_STAGE
+        decide ANSWER_ONLY vs PLAN_READY inside one fused planning call. When
+        the field is absent -- an older classify prompt version that predates
+        this field, or a profile that never sets it -- this falls back to
+        ``answer_only`` rather than guessing an action the user did not ask
+        for (docs/01-b-policy-definition-v2.8.md POL-EVD-003 / "Answer-only에서
+        불필요한 Action을 생성하지 않는다").
+        """
+        return (
+            "draft_plan"
+            if request_intent.get("response_disposition") == "ACTION_REQUIRED"
+            else "answer_only"
         )
