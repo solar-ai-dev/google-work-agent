@@ -314,7 +314,7 @@
       "slot_id": "context.select_evidence.semantic_revision",
       "prompt_id": "context.select_evidence.semantic_revision",
       "prompt_version": "0.8.3",
-      "activation_status": "DRAFT",
+      "activation_status": "RUNTIME_ACTIVE",
       "agent_role": "context_retriever",
       "subgraph_name": "context_retriever",
       "node_name": "select_evidence",
@@ -339,7 +339,13 @@
         "CTX_REQUIRED_EVIDENCE_MISSING",
         "CTX_STALE_EVIDENCE_SELECTED",
         "CTX_TOKEN_BUDGET_EXCEEDED"
-      ]
+      ],
+      "activated_from_gate_result": {
+        "gate_run_id": "20260810T173817Z-ollama-qwen2.5-3b-24e75be3",
+        "provider": "ollama",
+        "model_id": "qwen2.5:3b",
+        "activated_at": "2026-08-10T17:38:30Z"
+      }
     },
     {
       "slot_id": "e06b.b1.analysis_planning.initial",
@@ -543,10 +549,16 @@
         "prompts/agent/r8.4/specialist/planning/base.md",
         "prompts/agent/planning/answer_only.md"
       ],
-      "content_hash": "33673516a5dcfbe93077e5569b553943030af9ff0530b3f45b3de28e4f20d666",
+      "content_hash": "90abc81ffbc01f2d4d6cfe9bf71e55d3b889d6ecb0f4f1cc93ef2207b3d0463c",
       "assembled_path": "prompts/agent/assembled-r8.4/planning.answer_only.md",
-      "assembled_hash": "33673516a5dcfbe93077e5569b553943030af9ff0530b3f45b3de28e4f20d666",
-      "supported_failure_reason_codes": []
+      "assembled_hash": "90abc81ffbc01f2d4d6cfe9bf71e55d3b889d6ecb0f4f1cc93ef2207b3d0463c",
+      "supported_failure_reason_codes": [],
+      "activated_from_gate_result": {
+        "gate_run_id": "20260810T170538Z-ollama-qwen2.5-3b-7a650725",
+        "provider": "ollama",
+        "model_id": "qwen2.5:3b",
+        "activated_at": "2026-08-10T17:06:00Z"
+      }
     },
     {
       "slot_id": "planning.draft_plan",
@@ -566,10 +578,16 @@
         "prompts/agent/r8.4/specialist/planning/base.md",
         "prompts/agent/planning/draft_plan.md"
       ],
-      "content_hash": "b29a6c430aab7ac0dea77e0b814b9868c89e16df9778bc16da06c0169be3af38",
+      "content_hash": "f3c1a35aaacd465bd7b80439ef689553a1f597ad4ace866471cd00db03fbac11",
       "assembled_path": "prompts/agent/assembled-r8.4/planning.draft_plan.md",
-      "assembled_hash": "b29a6c430aab7ac0dea77e0b814b9868c89e16df9778bc16da06c0169be3af38",
-      "supported_failure_reason_codes": []
+      "assembled_hash": "f3c1a35aaacd465bd7b80439ef689553a1f597ad4ace866471cd00db03fbac11",
+      "supported_failure_reason_codes": [],
+      "activated_from_gate_result": {
+        "gate_run_id": "20260810T173718Z-ollama-qwen2.5-3b-576ebd3b",
+        "provider": "ollama",
+        "model_id": "qwen2.5:3b",
+        "activated_at": "2026-08-10T17:37:34Z"
+      }
     },
     {
       "slot_id": "planning.repair",
@@ -589,9 +607,9 @@
         "prompts/agent/r8.4/specialist/planning/base.md",
         "prompts/agent/planning/repair.md"
       ],
-      "content_hash": "bb19427d7e1999d44ccf476e948ee6a8789f546c47f4d40fcf94f6c3eddfe234",
+      "content_hash": "44567868c0266074dd7035d8a44378060c31924440c6201bf37c975dfb17a829",
       "assembled_path": "prompts/agent/assembled-r8.4/planning.repair.md",
-      "assembled_hash": "bb19427d7e1999d44ccf476e948ee6a8789f546c47f4d40fcf94f6c3eddfe234",
+      "assembled_hash": "44567868c0266074dd7035d8a44378060c31924440c6201bf37c975dfb17a829",
       "supported_failure_reason_codes": [
         "SCHEMA_INVALID_JSON",
         "SCHEMA_REQUIRED_FIELD_MISSING",
@@ -619,9 +637,9 @@
         "prompts/agent/r8.4/specialist/planning/base.md",
         "prompts/agent/planning/revise_plan.md"
       ],
-      "content_hash": "2eae882625afca83d827972d6e2361f2900ded9dd2387aa7bbe7c40e5a365fcf",
+      "content_hash": "33e30607edcb6bb16b39b3cd051852b9cb0f8a8115e56961328591910905b267",
       "assembled_path": "prompts/agent/assembled-r8.4/planning.revise_plan.md",
-      "assembled_hash": "2eae882625afca83d827972d6e2361f2900ded9dd2387aa7bbe7c40e5a365fcf",
+      "assembled_hash": "33e30607edcb6bb16b39b3cd051852b9cb0f8a8115e56961328591910905b267",
       "supported_failure_reason_codes": [
         "PLAN_ANSWER_ONLY_MISROUTED",
         "PLAN_ARGUMENT_CONSTRAINT_VIOLATION",
@@ -636,10 +654,44 @@
         "PLAN_WRONG_TOOL"
       ],
       "activated_from_gate_result": {
-        "gate_run_id": "20260810T130816Z-ollama-qwen2.5-3b-171d3301",
+        "gate_run_id": "20260810T170538Z-ollama-qwen2.5-3b-7a650725",
         "provider": "ollama",
         "model_id": "qwen2.5:3b",
-        "activated_at": "2026-08-10T13:08:25Z"
+        "activated_at": "2026-08-10T17:06:00Z"
+      }
+    },
+    {
+      "slot_id": "planning.revise_answer",
+      "prompt_id": "planning.revise_answer",
+      "prompt_version": "0.8.3",
+      "activation_status": "RUNTIME_ACTIVE",
+      "agent_role": "planning",
+      "subgraph_name": "planning",
+      "node_name": "revise_answer",
+      "node_state": "SEMANTIC_REVISION",
+      "purpose": "revise_answer",
+      "input_schema": "experiments/datasets/google_workspace/schemas/planning-revision-input.schema.json",
+      "input_schema_version": "v1",
+      "output_schema": "experiments/datasets/google_workspace/schemas/action-plan-draft.schema.json",
+      "output_schema_version": "v2",
+      "files": [
+        "prompts/agent/r8.4/specialist/planning/base.md",
+        "prompts/agent/planning/revise_answer.md"
+      ],
+      "content_hash": "5251a901e70e9032cef88b8160c814f2da1f031ad6f3826808fba1ca76ed8fb0",
+      "assembled_path": "prompts/agent/assembled-r8.4/planning.revise_answer.md",
+      "assembled_hash": "5251a901e70e9032cef88b8160c814f2da1f031ad6f3826808fba1ca76ed8fb0",
+      "supported_failure_reason_codes": [
+        "PLAN_ANSWER_ONLY_MISROUTED",
+        "PLAN_POLICY_RISK",
+        "PLAN_REQUIRED_EVIDENCE_MISSING",
+        "PLAN_USER_SCOPE_VIOLATION"
+      ],
+      "activated_from_gate_result": {
+        "gate_run_id": "20260810T173749Z-ollama-qwen2.5-3b-de9e2da1",
+        "provider": "ollama",
+        "model_id": "qwen2.5:3b",
+        "activated_at": "2026-08-10T17:38:03Z"
       }
     },
     {

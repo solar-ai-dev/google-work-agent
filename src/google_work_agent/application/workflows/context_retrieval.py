@@ -228,6 +228,7 @@ class ContextRetrievalAgent:
         llm_runtime: StructuredLLMRuntime,
         select_prompt_ref: PromptReference | None = None,
         sufficiency_prompt_ref: PromptReference | None = None,
+        select_revision_prompt_ref: PromptReference | None = None,
         context_budget: ContextBudget = DEFAULT_CONTEXT_BUDGET,
         manifest_path: Path | None = None,
     ) -> None:
@@ -238,6 +239,10 @@ class ContextRetrievalAgent:
         self._sufficiency_prompt_ref = (
             sufficiency_prompt_ref
             or load_context_assess_sufficiency_prompt_reference(manifest_path)
+        )
+        self._select_revision_prompt_ref = (
+            select_revision_prompt_ref
+            or load_context_select_evidence_semantic_revision_prompt_reference(manifest_path)
         )
         self._context_budget = context_budget
 
@@ -347,11 +352,73 @@ class ContextRetrievalAgent:
                 llm_call_id=f"{request.run_id}:context.select_evidence",
             ),
         )
-        return validate_evidence_selection_output_v1(
-            llm_result.structured_output,
-            segments=segments,
-            context_budget=self._context_budget,
+        try:
+            return validate_evidence_selection_output_v1(
+                llm_result.structured_output,
+                segments=segments,
+                context_budget=self._context_budget,
+            )
+        except ContextRetrievalValidationError as error:
+            return self._revise_selection_once(
+                request_intent=request_intent,
+                acquisition_result=acquisition_result,
+                request=request,
+                segments=segments,
+                previous_output=llm_result.structured_output,
+                failure_detail=str(error),
+            )
+
+    def _revise_selection_once(
+        self,
+        *,
+        request_intent: RequestIntentV1,
+        acquisition_result: AcquisitionResultV1,
+        request: WorkflowStartRequest,
+        segments: list[_SourceSegment],
+        previous_output: object,
+        failure_detail: str,
+    ) -> EvidenceSelectionOutputV1:
+        """Bounded SEMANTIC_REVISION retry (docs/15 section 8.1: max 1 per Node per
+        Failure Signature). The initial validator already rejected the output as
+        SEMANTIC_INVALID; this never widens what counts as valid, it only gives the
+        model one chance to re-ground its selection in the actually-supplied
+        segments. If the revision also fails validation, a deterministic empty
+        selection is returned -- the LLM never gets a second judgment call."""
+        revision_result = self._llm_runtime.invoke_structured(
+            prompt_ref=self._select_revision_prompt_ref,
+            prompt_input={
+                "request_intent": request_intent,
+                "acquisition_status": acquisition_result["status"],
+                "acquisition_missing_slots": list(acquisition_result["missing_slots"]),
+                "source_content_is_untrusted": True,
+                "segments": [_segment_prompt_projection(segment) for segment in segments],
+                "context_budget": _budget_projection(self._context_budget),
+                "previous_output": previous_output,
+                "failure_reason": failure_detail,
+                "changed_fields_allowed": [
+                    "$.selected_segment_ids",
+                    "$.evidence_drafts",
+                    "$.excluded_resource_handles",
+                ],
+            },
+            output_schema=EVIDENCE_SELECTION_OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(
+                request_id=request.correlation.request_id,
+                command_id=request.correlation.command_id,
+                conversation_id=request.conversation_id,
+                run_id=request.run_id,
+                langgraph_thread_id=request.workflow_key,
+                llm_call_id=f"{request.run_id}:context.select_evidence.semantic_revision",
+            ),
         )
+        try:
+            return validate_evidence_selection_output_v1(
+                revision_result.structured_output,
+                segments=segments,
+                context_budget=self._context_budget,
+            )
+        except ContextRetrievalValidationError:
+            return _blocked_empty_selection()
 
     def assess_sufficiency(
         self,
@@ -477,6 +544,27 @@ class ContextRetrievalAgent:
             ),
             evidence_drafts,
         )
+
+
+def _blocked_empty_selection() -> EvidenceSelectionOutputV1:
+    """Deterministic fallback once the bounded SEMANTIC_REVISION retry is exhausted.
+
+    Trivially schema- and semantically-valid (empty lists are always a valid
+    subset of the supplied segments), so it never re-enters LLM judgment --
+    downstream sufficiency/supervisor routing treats it as insufficient context
+    and proceeds through the normal RETRIEVE_MORE/BLOCKED guard instead of the
+    node crashing.
+    """
+
+    return {
+        "schema_version": 1,
+        "result": "BLOCKED",
+        "selected_segment_ids": [],
+        "evidence_drafts": [],
+        "excluded_resource_handles": [],
+        "missing_information": ["context_selection_semantic_revision_failed"],
+        "ambiguity": None,
+    }
 
 
 def validate_evidence_selection_output_v1(
@@ -628,6 +716,15 @@ def load_context_assess_sufficiency_prompt_reference(
 ) -> PromptReference:
     return _load_registry_prompt_reference(
         "context.assess_sufficiency",
+        manifest_path or _registry_default_prompt_manifest_path(),
+    )
+
+
+def load_context_select_evidence_semantic_revision_prompt_reference(
+    manifest_path: Path | None = None,
+) -> PromptReference:
+    return _load_registry_prompt_reference(
+        "context.select_evidence.semantic_revision",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 

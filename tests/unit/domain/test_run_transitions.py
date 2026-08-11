@@ -49,6 +49,11 @@ from google_work_agent.domain import (
         (RunStatus.EXECUTING, RunCommand.REQUEST_CANCEL, RunStatus.CANCEL_REQUESTED),
         (RunStatus.CANCEL_REQUESTED, RunCommand.FINALIZE_CANCEL, RunStatus.CANCELLED),
         (RunStatus.RETRIEVING, RunCommand.REQUIRE_REAUTH, RunStatus.REAUTH_REQUIRED),
+        (RunStatus.WAITING_APPROVAL, RunCommand.REQUIRE_REAUTH, RunStatus.REAUTH_REQUIRED),
+        (RunStatus.EXECUTING, RunCommand.REQUIRE_REAUTH, RunStatus.REAUTH_REQUIRED),
+        (RunStatus.EXECUTING, RunCommand.BEGIN_VERIFICATION, RunStatus.VERIFYING),
+        (RunStatus.WAITING_APPROVAL, RunCommand.BEGIN_VERIFICATION, RunStatus.VERIFYING),
+        (RunStatus.CANCEL_REQUESTED, RunCommand.BEGIN_VERIFICATION, RunStatus.VERIFYING),
         (RunStatus.EXECUTING, RunCommand.REQUIRE_RECOVERY, RunStatus.RECOVERY_REQUIRED),
         (RunStatus.RECOVERY_REQUIRED, RunCommand.RESOLVE_RECOVERY, RunStatus.VERIFYING),
     ),
@@ -263,9 +268,22 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
         ),
         (
             RunStatus.WAITING_APPROVAL,
-            (RunCommand.REQUEST_CANCEL, RunCommand.REQUIRE_RECOVERY),
+            (
+                RunCommand.BEGIN_VERIFICATION,
+                RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_REAUTH,
+                RunCommand.REQUIRE_RECOVERY,
+            ),
         ),
-        (RunStatus.EXECUTING, (RunCommand.REQUEST_CANCEL, RunCommand.REQUIRE_RECOVERY)),
+        (
+            RunStatus.EXECUTING,
+            (
+                RunCommand.BEGIN_VERIFICATION,
+                RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_REAUTH,
+                RunCommand.REQUIRE_RECOVERY,
+            ),
+        ),
         (
             RunStatus.VERIFYING,
             (
@@ -276,7 +294,11 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
         ),
         (
             RunStatus.CANCEL_REQUESTED,
-            (RunCommand.FINALIZE_CANCEL, RunCommand.REQUIRE_RECOVERY),
+            (
+                RunCommand.BEGIN_VERIFICATION,
+                RunCommand.FINALIZE_CANCEL,
+                RunCommand.REQUIRE_RECOVERY,
+            ),
         ),
         (RunStatus.COMPLETED, ()),
         (RunStatus.CANCELLED, ()),

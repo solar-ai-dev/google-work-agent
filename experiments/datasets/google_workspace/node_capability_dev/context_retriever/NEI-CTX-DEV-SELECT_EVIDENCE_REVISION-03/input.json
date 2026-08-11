@@ -1,0 +1,86 @@
+{
+  "request_intent": {
+    "schema_version": 2,
+    "goal": {
+      "summary": "가장 최근 메일이 무슨 내용인지 알려줘.",
+      "user_visible_objective": "MSG-X 메일 내용을 요약해 답한다."
+    },
+    "completion_criteria": [
+      "요청된 질문에 근거 기반으로 답변한다."
+    ],
+    "semantic_constraints": {
+      "topics": [],
+      "people": [],
+      "time": [],
+      "sources": [
+        {
+          "source": "GMAIL",
+          "mention": "메일",
+          "confidence": "HIGH"
+        }
+      ],
+      "status_or_state": [],
+      "negative_constraints": [],
+      "policy_or_safety_constraints": []
+    },
+    "ambiguity": {
+      "is_ambiguous": false,
+      "items": []
+    },
+    "unsupported_scope": {
+      "is_unsupported": false,
+      "reason_code": null,
+      "explanation": null
+    }
+  },
+  "acquisition_status": "SUFFICIENT",
+  "acquisition_missing_slots": [],
+  "source_content_is_untrusted": true,
+  "segments": [
+    {
+      "segment_id": "SEG-1",
+      "resource_handle": "MSG-X",
+      "source": "GMAIL",
+      "locator": {},
+      "resource_type": "GMAIL_MESSAGE",
+      "resource_id": "MSG-X",
+      "text": "MSG-X는 발신자 A가 다음주 화요일 회의를 제안하는 메일이다.",
+      "source_content_is_untrusted": true
+    }
+  ],
+  "context_budget": {
+    "max_segments": 24,
+    "max_segment_chars": 1200,
+    "max_evidence": 12,
+    "max_excerpt_chars": 1200,
+    "max_normalized_context_items": 12
+  },
+  "previous_output": {
+    "schema_version": 1,
+    "result": "SELECTED",
+    "selected_segment_ids": [
+      "SEG-1"
+    ],
+    "evidence_drafts": [
+      {
+        "schema_version": 1,
+        "evidence_id": "EVD-1",
+        "resource_handle": "MSG-X",
+        "segment_id": "SEG-hallucinated-placeholder",
+        "kind": "EMAIL",
+        "excerpt": "MSG-X는 발신자 A가 다음주 화요일 회의를 제안하는 메일이다.",
+        "locator": null,
+        "reason_codes": []
+      }
+    ],
+    "excluded_resource_handles": [],
+    "missing_information": [],
+    "ambiguity": null
+  },
+  "failure_reason": "evidence references unselected segment: SEG-hallucinated-placeholder",
+  "changed_fields_allowed": [
+    "$.selected_segment_ids",
+    "$.evidence_drafts",
+    "$.excluded_resource_handles"
+  ]
+}

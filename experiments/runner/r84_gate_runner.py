@@ -234,6 +234,7 @@ NODE_SCHEMAS: dict[str, tuple[Any, Any]] = {
     "acquisition.plan_sources": (SOURCE_FETCH_PLAN_OUTPUT_SCHEMA, validate_source_fetch_plans_v1),
     "context.assess_sufficiency": (SUFFICIENCY_OUTPUT_SCHEMA, validate_sufficiency_output_v1),
     "context.select_evidence": (EVIDENCE_SELECTION_OUTPUT_SCHEMA, None),
+    "context.select_evidence.semantic_revision": (EVIDENCE_SELECTION_OUTPUT_SCHEMA, None),
     "analysis.analyze": (WORK_ANALYSIS_OUTPUT_SCHEMA, None),
     "planning.answer_only": (ANSWER_DRAFT_OUTPUT_SCHEMA, None),
     "planning.draft_plan": (ACTION_PLAN_DRAFT_OUTPUT_SCHEMA, None),
@@ -241,6 +242,7 @@ NODE_SCHEMAS: dict[str, tuple[Any, Any]] = {
     # not reconstructable from a bare Gate item -- same reasoning as
     # planning.draft_plan above (see module docstring point 2).
     "planning.revise_plan": (ACTION_PLAN_DRAFT_OUTPUT_SCHEMA, None),
+    "planning.revise_answer": (ANSWER_DRAFT_OUTPUT_SCHEMA, None),
     "review.inspect": (PLAN_REVIEW_OUTPUT_SCHEMA, None),
     "review.recheck": (PLAN_REVIEW_OUTPUT_SCHEMA, None),
 }
