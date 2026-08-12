@@ -45,6 +45,7 @@ from google_work_agent.adapters.mcp import (
     build_manifest_payload,
     calculate_file_sha256,
 )
+from google_work_agent.adapters.mcp.gateway import MCPGmailAttachmentGateway
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.runtime import (
@@ -52,6 +53,10 @@ from google_work_agent.adapters.runtime import (
     FileSettingsStore,
     SafeModeController,
     SettingsService,
+)
+from google_work_agent.adapters.runtime.attachment_staging import (
+    ATTACHMENT_STAGING_DIR_ENV,
+    LocalAttachmentStaging,
 )
 from google_work_agent.api import API_CONTRACT_VERSION, ApiContainer, create_app
 from google_work_agent.api.security import (
@@ -64,6 +69,10 @@ from google_work_agent.application import (
     DisconnectGoogleService,
     GetGoogleConnectionService,
     StartGoogleOAuthService,
+)
+from google_work_agent.application.attachments import (
+    GetGmailAttachmentService,
+    StageAttachmentService,
 )
 from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.llm import (
@@ -566,6 +575,12 @@ def build_container(
     clock = SystemClock()
     id_generator = UUIDIdGenerator()
     service_instance_id = service_instance_id or f"dev-{uuid.uuid4()}"
+    attachment_staging_dir = root / "attachments" / "staging"
+    attachment_staging = LocalAttachmentStaging(
+        staging_dir=attachment_staging_dir,
+        now_ms=clock.now_ms,
+    )
+    attachment_staging.cleanup_expired()
 
     try:
         with connect_sqlite(database_path) as connection:
@@ -589,7 +604,9 @@ def build_container(
                 environment="DEVELOPMENT",
                 service_instance_id=service_instance_id,
                 working_directory=str(PROJECT_ROOT),
-                extra_environment=None,
+                extra_environment={
+                    ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir),
+                },
             )
         )
     except MCPTransportError as error:
@@ -750,6 +767,10 @@ def build_container(
             default_calendar_id_provider=lambda: llm_runtime.settings_service().default_calendar_id,
             default_tasklist_id_provider=lambda: llm_runtime.settings_service().default_tasklist_id,
         ),
+        get_gmail_attachment_service=GetGmailAttachmentService(
+            gateway=MCPGmailAttachmentGateway(transport=transport),
+        ),
+        stage_attachment_service=StageAttachmentService(staging=attachment_staging),
         get_llm_connection_service=GetLLMConnectionService(
             runtime_status_service=llm_runtime.status_service,
             settings_service=llm_runtime.settings_service,

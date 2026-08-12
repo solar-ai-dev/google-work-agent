@@ -30,6 +30,7 @@ from urllib.request import Request, urlopen
 from google_work_agent.adapters.keyring import OSKeyringSecretStore
 from google_work_agent.adapters.mcp.transport import MANIFEST_MESSAGE_LIMIT_BYTES, PROTOCOL_VERSION
 from google_work_agent.adapters.runtime.attachment_staging import (
+    ATTACHMENT_STAGING_DIR_ENV,
     AttachmentDescriptor,
     AttachmentStagingError,
     LocalAttachmentStaging,
@@ -80,7 +81,6 @@ RECOVERY_MARKER_PREFIX = chr(0x200B) + "gwa-recovery-fingerprint:"
 # fit inside MANIFEST_MESSAGE_LIMIT_BYTES on the stdio transport. Base64
 # inflates raw bytes by ~4/3; this leaves headroom for JSON/envelope overhead.
 MAX_ATTACHMENT_READ_BYTES = int(MANIFEST_MESSAGE_LIMIT_BYTES * 0.7 / 1.35)
-ATTACHMENT_STAGING_DIR_ENV = "GWA_ATTACHMENT_STAGING_DIR"
 
 
 @dataclass(frozen=True, slots=True)

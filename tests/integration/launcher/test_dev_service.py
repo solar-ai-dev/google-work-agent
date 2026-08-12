@@ -13,16 +13,31 @@ from urllib.request import urlopen
 from fastapi.testclient import TestClient
 from uvicorn import Config, Server
 
+from google_work_agent.adapters.runtime.attachment_staging import ATTACHMENT_STAGING_DIR_ENV
 from google_work_agent.api import create_app
 from google_work_agent.launcher.dev import DevelopmentReadinessAggregator, build_container
 
 
 def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "runtime"
     container = build_container(
-        runtime_root=tmp_path / "runtime",
+        runtime_root=runtime_root,
         bootstrap_secret="test-bootstrap",
     )
     container = replace(container, client_address_resolver=lambda _request: "127.0.0.1")
+
+    assert container.get_gmail_attachment_service is not None
+    assert container.stage_attachment_service is not None
+    descriptor = container.stage_attachment_service(
+        data=b"attachment-content",
+        filename="report.txt",
+        mime_type="text/plain",
+    )
+    staging_dir = runtime_root / "attachments" / "staging"
+    assert (staging_dir / f"{descriptor.staged_attachment_id}.bin").is_file()
+    assert container.readiness_aggregator.transport._config.extra_environment == {  # noqa: SLF001
+        ATTACHMENT_STAGING_DIR_ENV: str(staging_dir.resolve()),
+    }
 
     with TestClient(create_app(container), base_url="http://127.0.0.1:8000") as client:
         live = client.get("/health/live")

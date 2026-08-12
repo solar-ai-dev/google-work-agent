@@ -27,6 +27,7 @@ from typing import cast
 STAGING_TTL_MS = 15 * 60 * 1000
 MAX_STAGED_FILE_BYTES = 8 * 1024 * 1024
 _ID_ALPHABET_BYTES = 24
+ATTACHMENT_STAGING_DIR_ENV = "GWA_ATTACHMENT_STAGING_DIR"
 
 
 def _default_now_ms() -> int:
