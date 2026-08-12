@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -31,14 +31,23 @@ from google_work_agent.application.workflows import (
     resolve_review_target,
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
+    validate_plan_review_result_v1,
+)
+from google_work_agent.application.workflows.plan_review import (
+    _review_tool_call_to_result_v1,
+    _shortlisted_policy_review_context_v1,
 )
 from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
+from google_work_agent.domain import build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
+    LLMToolCall,
     OutputSchemaDefinition,
     PromptReference,
     RequestedRuntimeMode,
     StructuredLLMResult,
+    ToolCallProviderResponse,
+    ToolDefinition,
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
@@ -83,6 +92,7 @@ class FakeLLMRuntime:
         prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
         trace_context: ObservabilityContext,
+        semantic_validate: Callable[[object], object] | None = None,
     ) -> StructuredLLMResult:
         self.calls.append(
             {
@@ -90,6 +100,34 @@ class FakeLLMRuntime:
                 "prompt_input": dict(prompt_input),
                 "output_schema": output_schema,
                 "trace_context": trace_context,
+                "semantic_validate": semantic_validate,
+            }
+        )
+        result = self.queued.popleft()
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    def invoke_tool_call(
+        self,
+        *,
+        prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object],
+        tools: Sequence[object],
+        mapper: Callable[[object], object],
+        output_schema: OutputSchemaDefinition,
+        trace_context: ObservabilityContext,
+        semantic_validate: Callable[[object], object] | None = None,
+    ) -> StructuredLLMResult:
+        self.calls.append(
+            {
+                "prompt_ref": prompt_ref,
+                "prompt_input": dict(prompt_input),
+                "tools": tools,
+                "mapper": mapper,
+                "output_schema": output_schema,
+                "trace_context": trace_context,
+                "semantic_validate": semantic_validate,
             }
         )
         result = self.queued.popleft()
@@ -125,6 +163,38 @@ def test_policy_review_context_projection_is_deterministic() -> None:
         and tool["approval_requirement"] == "REQUIRED"
         for tool in first["tool_policies"]
     )
+
+
+def test_shortlisted_policy_review_context_keeps_only_plan_referenced_tools() -> None:
+    """Contract for Native Tool-Calling's prompt_input size, not review judgment:
+    the full P0 tool_policies block (~19 tools) empirically breaks qwen2.5:7b
+    tool-calling reliability, but Rule 1 only needs the tools the draft under
+    review actually references. tool_registry stays the source of truth --
+    this only narrows which entries are echoed, from a real probe."""
+    plan_draft = _plan_draft()
+    referenced_tool_names = {action["tool_name"] for action in plan_draft["actions"]}
+
+    shortlisted = _shortlisted_policy_review_context_v1(
+        tool_registry=build_p0_tool_registry(),
+        target_kind="PLAN",
+        draft=plan_draft,
+    )
+
+    assert {policy["tool_name"] for policy in shortlisted["tool_policies"]} == referenced_tool_names
+    assert shortlisted["schema_version"] == build_policy_review_context_v1()["schema_version"]
+    assert shortlisted["evidence_policy"] == build_policy_review_context_v1()["evidence_policy"]
+
+
+def test_shortlisted_policy_review_context_is_empty_for_answer_target() -> None:
+    answer_draft = _answer_draft()
+
+    shortlisted = _shortlisted_policy_review_context_v1(
+        tool_registry=build_p0_tool_registry(),
+        target_kind="ANSWER",
+        draft=answer_draft,
+    )
+
+    assert shortlisted["tool_policies"] == []
 
 
 def test_resolve_review_target_accepts_answer_or_plan_only() -> None:
@@ -173,6 +243,231 @@ def test_resolve_review_target_rejects_both_or_missing_before_llm_call() -> None
         )
 
     assert runtime.calls == []
+
+
+def test_invoke_inspect_llm_wires_semantic_validate_to_validate_plan_review_result_v1() -> None:
+    """Regression for the D-2-class repair-boundary gap: invoke_inspect_llm
+    must pass validate_plan_review_result_v1 as semantic_validate."""
+    runtime = FakeLLMRuntime()
+    answer_draft = _answer_draft()
+    runtime.queued.append(_llm_result(_review_output(ReviewResult.PASS.value)))
+    agent = _agent(runtime)
+
+    agent.inspect(
+        request_intent=_intent(),
+        context_result=_context_result(),
+        analysis_result=_analysis_result(),
+        answer_draft=answer_draft,
+        plan_draft=None,
+        request=_request(),
+    )
+
+    semantic_validate = cast("Callable[[object], object]", runtime.calls[0]["semantic_validate"])
+    assert semantic_validate is not None
+    passed = cast("dict[str, object]", semantic_validate(_review_output(ReviewResult.PASS.value)))
+    assert passed["status"] == ReviewResult.PASS.value
+    invalid = _review_output(ReviewResult.PASS.value)
+    invalid["status"] = "NOT_A_REAL_STATUS"
+    with pytest.raises(PlanReviewValidationError):
+        semantic_validate(invalid)
+
+
+def test_invoke_recheck_llm_wires_semantic_validate_with_recheck_allowed_statuses() -> None:
+    """recheck() only allows PASS/BLOCK -- its semantic_validate must reject a
+    REVISE output that invoke_inspect_llm's own semantic_validate would
+    accept, proving the two wirings are not accidentally interchangeable."""
+    runtime = FakeLLMRuntime()
+    answer_draft = _answer_draft()
+    runtime.queued.append(_llm_result(_review_output(ReviewResult.PASS.value)))
+    agent = _agent(runtime)
+
+    agent.recheck(
+        request_intent=_intent(),
+        context_result=_context_result(),
+        analysis_result=_analysis_result(),
+        answer_draft=answer_draft,
+        plan_draft=None,
+        request=_request(),
+    )
+
+    semantic_validate = cast("Callable[[object], object]", runtime.calls[0]["semantic_validate"])
+    assert semantic_validate is not None
+    passed = cast("dict[str, object]", semantic_validate(_review_output(ReviewResult.PASS.value)))
+    assert passed["status"] == ReviewResult.PASS.value
+    revise_only_valid_for_inspect = _review_output(
+        ReviewResult.REVISE.value, issues=[_review_issue()]
+    )
+    with pytest.raises(PlanReviewValidationError):
+        semantic_validate(revise_only_valid_for_inspect)
+
+
+def test_invoke_inspect_llm_offers_all_five_review_functions() -> None:
+    runtime = FakeLLMRuntime()
+    answer_draft = _answer_draft()
+    runtime.queued.append(_llm_result(_review_output(ReviewResult.PASS.value)))
+    agent = _agent(runtime)
+
+    agent.invoke_inspect_llm(
+        request_intent=_intent(),
+        context_result=_context_result(),
+        analysis_result=_analysis_result(),
+        answer_draft=answer_draft,
+        plan_draft=None,
+        request=_request(),
+    )
+
+    tools = cast("tuple[ToolDefinition, ...]", runtime.calls[0]["tools"])
+    assert {tool.name for tool in tools} == {
+        "review_pass",
+        "review_revise",
+        "review_retrieve_more",
+        "review_confirm",
+        "review_block",
+    }
+    assert runtime.calls[0]["mapper"] is _review_tool_call_to_result_v1
+
+
+def test_invoke_recheck_llm_offers_only_pass_and_block_functions() -> None:
+    """recheck()'s allowed_statuses={PASS, BLOCK} contract must also constrain
+    which functions the model can even choose from -- not just which status
+    values validate_plan_review_result_v1 accepts after the fact."""
+    runtime = FakeLLMRuntime()
+    answer_draft = _answer_draft()
+    runtime.queued.append(_llm_result(_review_output(ReviewResult.PASS.value)))
+    agent = _agent(runtime)
+
+    agent.invoke_recheck_llm(
+        request_intent=_intent(),
+        context_result=_context_result(),
+        analysis_result=_analysis_result(),
+        answer_draft=answer_draft,
+        plan_draft=None,
+        request=_request(),
+    )
+
+    tools = cast("tuple[ToolDefinition, ...]", runtime.calls[0]["tools"])
+    assert {tool.name for tool in tools} == {"review_pass", "review_block"}
+
+
+def test_review_tool_call_mapper_rejects_zero_tool_calls() -> None:
+    with pytest.raises(ValueError, match="expected exactly one review tool call, got 0"):
+        _review_tool_call_to_result_v1(ToolCallProviderResponse(
+            calls=(), model="m", provider_request_id=None,
+            input_tokens=None, output_tokens=None, latency_ms=0,
+        ))
+
+
+def test_review_tool_call_mapper_rejects_multiple_tool_calls() -> None:
+    call = LLMToolCall(name="review_pass", arguments={"summary": "ok"})
+    with pytest.raises(ValueError, match="expected exactly one review tool call, got 2"):
+        _review_tool_call_to_result_v1(ToolCallProviderResponse(
+            calls=(call, call), model="m", provider_request_id=None,
+            input_tokens=None, output_tokens=None, latency_ms=0,
+        ))
+
+
+def test_review_tool_call_mapper_rejects_unknown_function() -> None:
+    call = LLMToolCall(name="review_maybe", arguments={"summary": "ok"})
+    with pytest.raises(ValueError, match="unknown review function: review_maybe"):
+        _review_tool_call_to_result_v1(ToolCallProviderResponse(
+            calls=(call,), model="m", provider_request_id=None,
+            input_tokens=None, output_tokens=None, latency_ms=0,
+        ))
+
+
+def test_review_tool_call_mapper_rejects_missing_summary() -> None:
+    call = LLMToolCall(name="review_pass", arguments={})
+    with pytest.raises(ValueError, match="arguments.summary must be a string"):
+        _review_tool_call_to_result_v1(ToolCallProviderResponse(
+            calls=(call,), model="m", provider_request_id=None,
+            input_tokens=None, output_tokens=None, latency_ms=0,
+        ))
+
+
+def test_review_pass_tool_call_cannot_express_confirmation() -> None:
+    """The structural guarantee this whole redesign exists for: review_pass's
+    parameter schema has no confirmation field, so status=PASS with a
+    populated confirmation is not just validator-rejected, it is
+    unrepresentable by the mapper in the first place."""
+    call = LLMToolCall(name="review_pass", arguments={"summary": "ok", "confirmation": {"x": 1}})
+
+    result = _review_tool_call_to_result_v1(ToolCallProviderResponse(
+        calls=(call,), model="m", provider_request_id=None,
+        input_tokens=None, output_tokens=None, latency_ms=0,
+    ))
+
+    assert result["status"] == ReviewResult.PASS.value
+    assert result["confirmation"] is None
+    assert result["issues"] == []
+    assert result["blockers"] == []
+    validated = validate_plan_review_result_v1(
+        result,
+        target_kind="ANSWER",
+        analysis_result=_analysis_result(),
+        answer_draft=_answer_draft(),
+        plan_draft=None,
+    )
+    assert validated["status"] == ReviewResult.PASS.value
+
+
+_MAPPER_TEST_ISSUE: dict[str, object] = {
+    "issue_id": "issue-1",
+    "kind": "MISSING_GOAL_COVERAGE",
+    "message": "Mention the pending task context in the draft.",
+    "affected_action_ids": [],
+    "affected_field_paths": ["$.answer"],
+    "evidence_refs": ["evidence-2"],
+    "resource_refs": ["gmail_thread:thread-kim"],
+    "reason_codes": ["EVIDENCE_SUPPORTED"],
+}
+
+
+@pytest.mark.parametrize(
+    ("function_name", "arguments"),
+    [
+        ("review_pass", {"summary": "Looks correct."}),
+        (
+            "review_revise",
+            {"summary": "Needs a fix.", "issues": [_MAPPER_TEST_ISSUE]},
+        ),
+        (
+            "review_retrieve_more",
+            {"summary": "Missing evidence.", "issues": [_MAPPER_TEST_ISSUE]},
+        ),
+        (
+            "review_confirm",
+            {"summary": "Needs a choice.", "confirmation": {"question": "Which one?"}},
+        ),
+        ("review_block", {"summary": "Not allowed.", "blockers": ["prohibited"]}),
+    ],
+)
+def test_review_tool_call_mapper_produces_valid_result_for_each_function(
+    function_name: str, arguments: dict[str, object]
+) -> None:
+    call = LLMToolCall(name=function_name, arguments=arguments)
+
+    result = _review_tool_call_to_result_v1(ToolCallProviderResponse(
+        calls=(call,), model="m", provider_request_id=None,
+        input_tokens=None, output_tokens=None, latency_ms=0,
+    ))
+
+    validated = validate_plan_review_result_v1(
+        result,
+        target_kind="ANSWER",
+        analysis_result=_analysis_result(),
+        answer_draft=_answer_draft(),
+        plan_draft=None,
+    )
+    assert validated["status"] == _REVIEW_FUNCTION_TO_STATUS_FOR_TEST[function_name]
+
+
+_REVIEW_FUNCTION_TO_STATUS_FOR_TEST = {
+    "review_pass": ReviewResult.PASS.value,
+    "review_revise": ReviewResult.REVISE.value,
+    "review_retrieve_more": ReviewResult.RETRIEVE_MORE.value,
+    "review_confirm": ReviewResult.CONFIRM.value,
+    "review_block": ReviewResult.BLOCK.value,
+}
 
 
 def test_inspect_accepts_all_answer_review_results() -> None:
@@ -233,7 +528,13 @@ def test_inspect_accepts_all_answer_review_results() -> None:
         assert result["additional_acquisition_request"] == expected_request
         assert prompt_input["review_target"] == "ANSWER"
         assert prompt_input["draft"] == answer_draft
-        assert prompt_input["policy_review_context"] == build_policy_review_context_v1()
+        # ANSWER-target reviews shortlist tool_policies to the draft's
+        # referenced tools (none, for an answer draft) -- see
+        # _shortlisted_policy_review_context_v1's docstring for why.
+        assert prompt_input["policy_review_context"] == {
+            **build_policy_review_context_v1(),
+            "tool_policies": [],
+        }
         assert prompt_input["source_content_is_untrusted"] is True
         assert state_update["workflow_phase"] == WorkflowPhase.PLAN_REVIEW.value
         assert state_update["plan_review"] == result

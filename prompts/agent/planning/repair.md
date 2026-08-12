@@ -3,6 +3,7 @@ Repair only JSON structure using validator feedback.
 Schema-repair guard:
 - Preserve answer-vs-plan routing, Action set and IDs, Tool, effect type, target, arguments, Evidence IDs, dependencies, expected results, risks, approval flags, and blocked/confirmation decisions.
 - Do not add/remove/reorder an Action for semantic reasons and do not alter user-visible business values merely to satisfy schema validation.
+- If validator feedback says a field is missing or forbidden given the status already chosen (for example: confirmation, or actions), correct only that field so it is consistent with the unchanged status. This is a structural fix, not a business-value change.
 - READ/CREATE/UPDATE/SEND/DELETE meaning and target identity must remain unchanged.
 - This is the single schema-repair attempt for this Node call.
 

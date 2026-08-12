@@ -461,6 +461,7 @@ class ContextRetrievalAgent:
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:context.assess_sufficiency",
             ),
+            semantic_validate=validate_sufficiency_output_v1,
         )
         return validate_sufficiency_output_v1(llm_result.structured_output), _provider_summary(
             llm_result

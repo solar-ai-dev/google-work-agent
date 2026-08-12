@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Final, Literal, NotRequired, Required, TypedDict, cast
 
@@ -147,9 +148,19 @@ ANSWER_DRAFT_OUTPUT_SCHEMA = OutputSchemaDefinition(
             },
             "answer": {"type": "string"},
             "evidence_refs": {"type": "array", "items": {"type": "string"}},
-            "resource_refs": {"type": "array", "items": {"type": "object"}},
+            # Echoed context_bundle entries -- see _validated_resource_ref_objects
+            # below, which only requires resource_handle and tolerates extra
+            # fields, so additionalProperties stays permissive here.
+            "resource_refs": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["resource_handle"],
+                    "properties": {"resource_handle": {"type": "string"}},
+                },
+            },
             "reason_codes": {"type": "array", "items": {"type": "string"}},
-            "confirmation": {},
+            "confirmation": {"type": ["object", "null"]},
             "blockers": {"type": "array", "items": {"type": "string"}},
         },
     },
@@ -181,11 +192,53 @@ ACTION_PLAN_DRAFT_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "objective": {"type": "string"},
             "actions": {"type": "array", "items": _ACTION_DRAFT_ITEM_SCHEMA},
             "evidence_refs": {"type": "array", "items": {"type": "string"}},
-            "resource_refs": {"type": "array", "items": {"type": "object"}},
-            "confirmation": {},
+            # Echoed context_bundle entries -- see _validated_resource_ref_objects
+            # below, which only requires resource_handle and tolerates extra
+            # fields, so additionalProperties stays permissive here.
+            "resource_refs": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["resource_handle"],
+                    "properties": {"resource_handle": {"type": "string"}},
+                },
+            },
+            "confirmation": {"type": ["object", "null"]},
         },
     },
 )
+
+
+def _action_plan_draft_output_schema_for_registry(
+    tool_registry: SignedToolRegistry,
+) -> OutputSchemaDefinition:
+    """Invocation-scoped variant of ``ACTION_PLAN_DRAFT_OUTPUT_SCHEMA``.
+
+    Constrains ``actions[].tool_name`` to the tool names actually present in
+    ``tool_registry`` at call time, instead of a hardcoded P0 enum baked into
+    the shared module-level schema constant -- which would silently break
+    ``SolutionPlanningAgent``'s existing support for per-instance custom
+    ``tool_registry`` injection (a different registry would then contain
+    "unregistered" tool names the schema itself forbids). The base
+    ``ACTION_PLAN_DRAFT_OUTPUT_SCHEMA`` constant is left untouched for
+    callers that only need the generic (registry-agnostic) contract, e.g.
+    ``controlled_post_retrieval.py``'s Gold evaluation dispatch and
+    ``r84_gate_runner.py``'s static Gate dataset mapping.
+    """
+
+    tool_names = sorted(entry.tool_name for entry in tool_registry.list_entries())
+    base_schema = dict(ACTION_PLAN_DRAFT_OUTPUT_SCHEMA.json_schema)
+    json_schema: dict[str, object] = copy.deepcopy(base_schema)
+    properties = cast("dict[str, object]", json_schema["properties"])
+    actions_schema = cast("dict[str, object]", properties["actions"])
+    action_item_schema = cast("dict[str, object]", actions_schema["items"])
+    action_item_properties = cast("dict[str, object]", action_item_schema["properties"])
+    action_item_properties["tool_name"] = {"type": "string", "enum": tool_names}
+    return OutputSchemaDefinition(
+        schema_version=ACTION_PLAN_DRAFT_OUTPUT_SCHEMA.schema_version,
+        json_schema=json_schema,
+    )
+
 
 _ANSWER_RESULT_VALUES = {
     PlanningResult.ANSWER_ONLY.value,
@@ -306,6 +359,9 @@ class SolutionPlanningAgent:
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:planning.answer_only",
             ),
+            semantic_validate=lambda candidate: validate_answer_draft_v1(
+                candidate, analysis_result=analysis_result
+            ),
         )
 
     def build_answer_output_from_llm_result(
@@ -359,7 +415,7 @@ class SolutionPlanningAgent:
                 "analysis_result": analysis_result,
                 "source_content_is_untrusted": True,
             },
-            output_schema=ACTION_PLAN_DRAFT_OUTPUT_SCHEMA,
+            output_schema=_action_plan_draft_output_schema_for_registry(self._tool_registry),
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,
                 command_id=request.correlation.command_id,
@@ -367,6 +423,9 @@ class SolutionPlanningAgent:
                 run_id=request.run_id,
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:planning.draft_plan",
+            ),
+            semantic_validate=lambda candidate: validate_action_plan_draft_v1(
+                candidate, analysis_result=analysis_result, tool_registry=self._tool_registry
             ),
         )
 
@@ -753,7 +812,9 @@ def _validate_action_draft(
     tool_name = _require_string(action, "tool_name", path)
     entry = registry.get(tool_name)
     if entry is None:
-        raise SolutionPlanningValidationError(f"tool not registered: {tool_name}")
+        raise SolutionPlanningValidationError(
+            f"{path}.tool_name tool not registered: {tool_name}"
+        )
     effect = _require_string(action, "effect", path)
     if effect not in _ACTION_EFFECT_VALUES:
         raise SolutionPlanningValidationError(f"{path}.effect is invalid")
@@ -868,27 +929,39 @@ def _validate_answer_draft_invariant(result: AnswerDraftV1) -> None:
     status = PlanningResult(result["status"])
     if status is PlanningResult.ANSWER_ONLY:
         if result["confirmation"] is not None:
-            raise SolutionPlanningValidationError("ANSWER_ONLY must not include confirmation")
+            raise SolutionPlanningValidationError(
+                "$.confirmation ANSWER_ONLY must not include confirmation"
+            )
         if result["blockers"]:
-            raise SolutionPlanningValidationError("ANSWER_ONLY must not include blockers")
+            raise SolutionPlanningValidationError(
+                "$.blockers ANSWER_ONLY must not include blockers"
+            )
     if status is PlanningResult.NEEDS_CONFIRMATION and result["confirmation"] is None:
-        raise SolutionPlanningValidationError("NEEDS_CONFIRMATION requires confirmation")
+        raise SolutionPlanningValidationError(
+            "$.confirmation NEEDS_CONFIRMATION requires confirmation"
+        )
     if status is PlanningResult.BLOCKED and not result["blockers"]:
-        raise SolutionPlanningValidationError("BLOCKED requires blockers")
+        raise SolutionPlanningValidationError("$.blockers BLOCKED requires blockers")
 
 
 def _validate_action_plan_invariant(result: ActionPlanDraftV1) -> None:
     status = PlanningResult(result["status"])
     if status is PlanningResult.PLAN_READY:
         if not result["actions"]:
-            raise SolutionPlanningValidationError("PLAN_READY requires at least one action")
+            raise SolutionPlanningValidationError(
+                "$.actions PLAN_READY requires at least one action"
+            )
         if result["confirmation"] is not None:
-            raise SolutionPlanningValidationError("PLAN_READY must not include confirmation")
+            raise SolutionPlanningValidationError(
+                "$.confirmation PLAN_READY must not include confirmation"
+            )
     if status is PlanningResult.NEEDS_CONFIRMATION and result["confirmation"] is None:
-        raise SolutionPlanningValidationError("NEEDS_CONFIRMATION requires confirmation")
+        raise SolutionPlanningValidationError(
+            "$.confirmation NEEDS_CONFIRMATION requires confirmation"
+        )
     if status is not PlanningResult.PLAN_READY and result["actions"]:
         raise SolutionPlanningValidationError(
-            "non-PLAN_READY planning results must not include action drafts"
+            "$.actions non-PLAN_READY planning results must not include action drafts"
         )
 
 

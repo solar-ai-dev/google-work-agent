@@ -37,6 +37,8 @@ from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
     StructuredLLMResult,
+    ToolCallProviderResponse,
+    ToolDefinition,
     WorkflowStartRequest,
 )
 
@@ -157,8 +159,14 @@ PLAN_REVIEW_OUTPUT_SCHEMA = OutputSchemaDefinition(
                     },
                 },
             },
-            "confirmation": {},
+            "confirmation": {"type": ["object", "null"]},
             "blockers": {"type": "array", "items": {"type": "string"}},
+            # additional_acquisition_request is not produced by the LLM: the
+            # server always overwrites it via _build_additional_acquisition_request
+            # below, using status/issues already validated separately. Its
+            # raw LLM-provided value is discarded either way, so this stays
+            # deliberately unconstrained rather than adding a schema-shape
+            # failure mode for a value nothing ever reads.
             "additional_acquisition_request": {},
         },
     },
@@ -166,6 +174,176 @@ PLAN_REVIEW_OUTPUT_SCHEMA = OutputSchemaDefinition(
 
 _INSPECT_ALLOWED_STATUSES = frozenset(item.value for item in ReviewResult)
 _RECHECK_ALLOWED_STATUSES = frozenset({ReviewResult.PASS.value, ReviewResult.BLOCK.value})
+
+_REVIEW_ISSUE_PARAMETER_SCHEMA: Final = {
+    "type": "object",
+    "properties": {
+        "issue_id": {"type": "string"},
+        "kind": {"type": "string"},
+        "message": {"type": "string"},
+        "affected_action_ids": {"type": "array", "items": {"type": "string"}},
+        "affected_field_paths": {"type": "array", "items": {"type": "string"}},
+        "evidence_refs": {"type": "array", "items": {"type": "string"}},
+        "resource_refs": {"type": "array", "items": {"type": "string"}},
+        "reason_codes": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": [
+        "issue_id",
+        "kind",
+        "message",
+        "affected_action_ids",
+        "affected_field_paths",
+        "evidence_refs",
+        "resource_refs",
+        "reason_codes",
+    ],
+}
+
+# Native Tool-Calling discriminated functions for review.inspect/review.recheck.
+# The function NAME is the status discriminator -- status is never an
+# argument, so e.g. review_pass has no confirmation parameter at all and
+# "PASS + confirmation" cannot be expressed, let alone generated.
+REVIEW_PASS_TOOL: Final = ToolDefinition(
+    name="review_pass",
+    description=(
+        "The plan/answer fully satisfies user scope, evidence grounding, "
+        "Tool/effect/target correctness, argument constraints, and DAG "
+        "integrity. Has no issues, no confirmation, and no blockers."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {"summary": {"type": "string"}},
+        "required": ["summary"],
+    },
+)
+REVIEW_REVISE_TOOL: Final = ToolDefinition(
+    name="review_revise",
+    description="Local plan/answer errors exist that Planning can correct from existing evidence.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "issues": {"type": "array", "items": _REVIEW_ISSUE_PARAMETER_SCHEMA},
+        },
+        "required": ["summary", "issues"],
+    },
+)
+REVIEW_RETRIEVE_MORE_TOOL: Final = ToolDefinition(
+    name="review_retrieve_more",
+    description="Required evidence is absent and cannot be repaired from the current context.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "issues": {"type": "array", "items": _REVIEW_ISSUE_PARAMETER_SCHEMA},
+        },
+        "required": ["summary", "issues"],
+    },
+)
+REVIEW_CONFIRM_TOOL: Final = ToolDefinition(
+    name="review_confirm",
+    description=(
+        "The user must choose among meaningful targets or supply a required "
+        "value before this can proceed."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "confirmation": {"type": "object"},
+        },
+        "required": ["summary", "confirmation"],
+    },
+)
+REVIEW_BLOCK_TOOL: Final = ToolDefinition(
+    name="review_block",
+    description=(
+        "The requested operation is truly prohibited, or the same semantic "
+        "failure has exhausted its revision budget."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "blockers": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["summary", "blockers"],
+    },
+)
+_REVIEW_FUNCTION_TO_STATUS: Final = {
+    "review_pass": ReviewResult.PASS.value,
+    "review_revise": ReviewResult.REVISE.value,
+    "review_retrieve_more": ReviewResult.RETRIEVE_MORE.value,
+    "review_confirm": ReviewResult.CONFIRM.value,
+    "review_block": ReviewResult.BLOCK.value,
+}
+REVIEW_INSPECT_TOOLS: Final = (
+    REVIEW_PASS_TOOL,
+    REVIEW_REVISE_TOOL,
+    REVIEW_RETRIEVE_MORE_TOOL,
+    REVIEW_CONFIRM_TOOL,
+    REVIEW_BLOCK_TOOL,
+)
+REVIEW_RECHECK_TOOLS: Final = (REVIEW_PASS_TOOL, REVIEW_BLOCK_TOOL)
+
+
+def _review_tool_call_to_result_v1(response: ToolCallProviderResponse) -> dict[str, object]:
+    """Deterministic Application-layer mapping: native tool call -> ``PlanReviewResultV1``.
+
+    The Ollama adapter never sees this function -- it only returns generic
+    ``name``/``arguments`` pairs. Raises ``ValueError`` for every invalid
+    tool-call shape (0 calls, 2+ calls, unknown function, malformed
+    arguments); the runtime treats that exactly like a shape failure and
+    shares the same one-attempt repair budget.
+    """
+    if len(response.calls) != 1:
+        raise ValueError(f"expected exactly one review tool call, got {len(response.calls)}")
+    call = response.calls[0]
+    status = _REVIEW_FUNCTION_TO_STATUS.get(call.name)
+    if status is None:
+        raise ValueError(f"unknown review function: {call.name}")
+    arguments = call.arguments
+    summary = arguments.get("summary")
+    if not isinstance(summary, str):
+        raise ValueError(f"{call.name} arguments.summary must be a string")
+
+    issues: list[dict[str, object]] = []
+    if call.name in ("review_revise", "review_retrieve_more"):
+        raw_issues = arguments.get("issues")
+        if not isinstance(raw_issues, list):
+            raise ValueError(f"{call.name} arguments.issues must be a list")
+        for raw_issue in raw_issues:
+            if not isinstance(raw_issue, dict):
+                raise ValueError(f"{call.name} arguments.issues item must be an object")
+            issues.append({"schema_version": REVIEW_ISSUE_SCHEMA_VERSION, **raw_issue})
+
+    confirmation: dict[str, object] | None = None
+    if call.name == "review_confirm":
+        raw_confirmation = arguments.get("confirmation")
+        if not isinstance(raw_confirmation, dict):
+            raise ValueError("review_confirm arguments.confirmation must be an object")
+        confirmation = dict(raw_confirmation)
+
+    blockers: list[str] = []
+    if call.name == "review_block":
+        raw_blockers = arguments.get("blockers")
+        if not isinstance(raw_blockers, list) or not all(
+            isinstance(item, str) for item in raw_blockers
+        ):
+            raise ValueError("review_block arguments.blockers must be a list of strings")
+        blockers = list(raw_blockers)
+
+    return {
+        "schema_version": PLAN_REVIEW_SCHEMA_VERSION,
+        "status": status,
+        "summary": summary,
+        "issues": issues,
+        "confirmation": confirmation,
+        "blockers": blockers,
+        # Always server-computed later, exactly like the free-JSON path (see
+        # PLAN_REVIEW_OUTPUT_SCHEMA's additional_acquisition_request comment).
+        "additional_acquisition_request": None,
+    }
 
 
 class PlanReviewValidationError(ValueError):
@@ -250,7 +428,7 @@ class PlanReviewAgent:
             answer_draft=answer_draft,
             plan_draft=plan_draft,
         )
-        return self._llm_runtime.invoke_structured(
+        return self._llm_runtime.invoke_tool_call(
             prompt_ref=self._inspect_prompt_ref,
             prompt_input=_build_review_prompt_input(
                 request=request,
@@ -260,9 +438,13 @@ class PlanReviewAgent:
                 draft=draft,
                 target_kind=target_kind,
                 policy_review_context=policy_review_context
-                or build_policy_review_context_v1(tool_registry=self._tool_registry),
+                or _shortlisted_policy_review_context_v1(
+                    tool_registry=self._tool_registry, target_kind=target_kind, draft=draft
+                ),
                 deterministic_action_risks=deterministic_action_risks,
             ),
+            tools=REVIEW_INSPECT_TOOLS,
+            mapper=_review_tool_call_to_result_v1,
             output_schema=PLAN_REVIEW_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,
@@ -271,6 +453,13 @@ class PlanReviewAgent:
                 run_id=request.run_id,
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:review.inspect",
+            ),
+            semantic_validate=lambda candidate: validate_plan_review_result_v1(
+                candidate,
+                target_kind=target_kind,
+                analysis_result=analysis_result,
+                answer_draft=answer_draft,
+                plan_draft=plan_draft,
             ),
         )
 
@@ -324,7 +513,7 @@ class PlanReviewAgent:
             answer_draft=answer_draft,
             plan_draft=plan_draft,
         )
-        return self._llm_runtime.invoke_structured(
+        return self._llm_runtime.invoke_tool_call(
             prompt_ref=self._recheck_prompt_ref,
             prompt_input=_build_review_prompt_input(
                 request=request,
@@ -334,9 +523,13 @@ class PlanReviewAgent:
                 draft=draft,
                 target_kind=target_kind,
                 policy_review_context=policy_review_context
-                or build_policy_review_context_v1(tool_registry=self._tool_registry),
+                or _shortlisted_policy_review_context_v1(
+                    tool_registry=self._tool_registry, target_kind=target_kind, draft=draft
+                ),
                 deterministic_action_risks=deterministic_action_risks,
             ),
+            tools=REVIEW_RECHECK_TOOLS,
+            mapper=_review_tool_call_to_result_v1,
             output_schema=PLAN_REVIEW_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,
@@ -345,6 +538,14 @@ class PlanReviewAgent:
                 run_id=request.run_id,
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:review.recheck",
+            ),
+            semantic_validate=lambda candidate: validate_plan_review_result_v1(
+                candidate,
+                target_kind=target_kind,
+                analysis_result=analysis_result,
+                answer_draft=answer_draft,
+                plan_draft=plan_draft,
+                allowed_statuses=_RECHECK_ALLOWED_STATUSES,
             ),
         )
 
@@ -422,6 +623,44 @@ def build_policy_review_context_v1(
                 "explicit_resource_relation",
             ],
         },
+    }
+
+
+def _shortlisted_policy_review_context_v1(
+    *,
+    tool_registry: SignedToolRegistry,
+    target_kind: ReviewTargetValue,
+    draft: AnswerDraftV1 | ActionPlanDraftV1,
+) -> PolicyReviewContextV1:
+    """Deterministic, registry-derived ``tool_policies`` shortlist for review.inspect/recheck.
+
+    ``build_policy_review_context_v1`` always includes every registered
+    tool's full policy summary (all P0 tools today), which the free-JSON
+    ``invoke_structured`` path tolerates fine but which overwhelms native
+    Tool Calling: empirically, qwen2.5:7b reliably calls a review function
+    with a shortlisted ~1-3 tool policy list, but reliably calls *no*
+    function at all once the full ~19-tool policy block is present in the
+    same turn (confirmed via isolated real-model probes). Only the tools
+    actually referenced by the draft under review are relevant to Rule 1's
+    "Tool/effect/target correctness" check, so nothing the reviewer needs
+    is dropped -- the source of truth is still ``tool_registry.list_entries()``,
+    never a hardcoded tool-name list, and the deterministic
+    ``validate_plan_review_result_v1``/registry checks are unaffected either
+    way since they run in Python against the real registry regardless of
+    what subset the model saw.
+    """
+    referenced_tool_names: set[str] = set()
+    if target_kind == "PLAN":
+        for action in cast(ActionPlanDraftV1, draft)["actions"]:
+            referenced_tool_names.add(action["tool_name"])
+    full_context = build_policy_review_context_v1(tool_registry=tool_registry)
+    return {
+        **full_context,
+        "tool_policies": [
+            policy
+            for policy in full_context["tool_policies"]
+            if policy["tool_name"] in referenced_tool_names
+        ],
     }
 
 
@@ -659,27 +898,30 @@ def _validate_plan_review_invariant(
         raise PlanReviewValidationError("review result is not allowed for this node")
     if status is ReviewResult.PASS:
         if result["issues"]:
-            raise PlanReviewValidationError("PASS must not include issues")
+            raise PlanReviewValidationError("$.issues PASS must not include issues")
         if result["confirmation"] is not None:
-            raise PlanReviewValidationError("PASS must not include confirmation")
+            raise PlanReviewValidationError("$.confirmation PASS must not include confirmation")
         if result["blockers"]:
-            raise PlanReviewValidationError("PASS must not include blockers")
+            raise PlanReviewValidationError("$.blockers PASS must not include blockers")
     if status is ReviewResult.REVISE and not result["issues"]:
-        raise PlanReviewValidationError("REVISE requires issues")
+        raise PlanReviewValidationError("$.issues REVISE requires issues")
     if status is ReviewResult.RETRIEVE_MORE and not result["issues"]:
-        raise PlanReviewValidationError("RETRIEVE_MORE requires issues")
+        raise PlanReviewValidationError("$.issues RETRIEVE_MORE requires issues")
     if status is ReviewResult.CONFIRM and result["confirmation"] is None:
-        raise PlanReviewValidationError("CONFIRM requires confirmation")
+        raise PlanReviewValidationError("$.confirmation CONFIRM requires confirmation")
     if status is ReviewResult.BLOCK and not result["blockers"]:
-        raise PlanReviewValidationError("BLOCK requires blockers")
+        raise PlanReviewValidationError("$.blockers BLOCK requires blockers")
     if status is ReviewResult.RETRIEVE_MORE and result["additional_acquisition_request"] is None:
-        raise PlanReviewValidationError("RETRIEVE_MORE requires additional_acquisition_request")
+        raise PlanReviewValidationError(
+            "$.additional_acquisition_request RETRIEVE_MORE requires "
+            "additional_acquisition_request"
+        )
     if (
         status is not ReviewResult.RETRIEVE_MORE
         and result["additional_acquisition_request"] is not None
     ):
         raise PlanReviewValidationError(
-            "additional_acquisition_request is only allowed for RETRIEVE_MORE"
+            "$.additional_acquisition_request is only allowed for RETRIEVE_MORE"
         )
     if target_kind == "ANSWER":
         for issue in result["issues"]:

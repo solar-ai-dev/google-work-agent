@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol, cast
 from urllib.error import HTTPError, URLError
@@ -13,12 +13,16 @@ from urllib.request import Request, urlopen
 from google_work_agent.ports import (
     ActualRuntime,
     AvailabilityState,
+    LLMToolCall,
     OutputSchemaDefinition,
     ProbeResult,
     PromptReference,
     ProviderResponsePayload,
     RuntimePolicy,
     StructuredLLMProvider,
+    ToolCallingLLMProvider,
+    ToolCallProviderResponse,
+    ToolDefinition,
 )
 
 
@@ -41,6 +45,21 @@ class OllamaTransport(Protocol):
     ) -> ProviderResponsePayload:
         raise NotImplementedError
 
+    def invoke_tool_call(
+        self,
+        *,
+        endpoint: str,
+        model_id: str,
+        prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object],
+        tools: Sequence[ToolDefinition],
+        timeout_seconds: int,
+        instruction_text: str,
+        sampling_temperature: float | None = None,
+        sampling_seed: int | None = None,
+    ) -> ToolCallProviderResponse:
+        raise NotImplementedError
+
 
 def _no_instruction_text(prompt_ref: PromptReference) -> str:
     del prompt_ref
@@ -48,7 +67,7 @@ def _no_instruction_text(prompt_ref: PromptReference) -> str:
 
 
 @dataclass(frozen=True, slots=True)
-class OllamaStructuredLLMProvider(StructuredLLMProvider):
+class OllamaStructuredLLMProvider(StructuredLLMProvider, ToolCallingLLMProvider):
     """Dispatches one structured Ollama call.
 
     ``resolve_instruction_text`` is called here, immediately before dispatch,
@@ -86,6 +105,29 @@ class OllamaStructuredLLMProvider(StructuredLLMProvider):
             prompt_ref=prompt_ref,
             prompt_input=prompt_input,
             output_schema=output_schema,
+            timeout_seconds=runtime_policy.local_timeout_seconds,
+            instruction_text=instruction_text,
+            sampling_temperature=runtime_policy.sampling_temperature,
+            sampling_seed=runtime_policy.sampling_seed,
+        )
+
+    def invoke_tool_call(
+        self,
+        *,
+        prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object],
+        tools: Sequence[ToolDefinition],
+        runtime_policy: RuntimePolicy,
+        api_key: str | None,
+    ) -> ToolCallProviderResponse:
+        del api_key
+        instruction_text = self.resolve_instruction_text(prompt_ref)
+        return self.transport.invoke_tool_call(
+            endpoint=self.endpoint,
+            model_id=self.model_id,
+            prompt_ref=prompt_ref,
+            prompt_input=prompt_input,
+            tools=tools,
             timeout_seconds=runtime_policy.local_timeout_seconds,
             instruction_text=instruction_text,
             sampling_temperature=runtime_policy.sampling_temperature,
@@ -204,6 +246,99 @@ class OllamaHTTPClient(OllamaTransport):
             estimated_cost_usd=None,
         )
 
+    def invoke_tool_call(
+        self,
+        *,
+        endpoint: str,
+        model_id: str,
+        prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object],
+        tools: Sequence[ToolDefinition],
+        timeout_seconds: int,
+        instruction_text: str,
+        sampling_temperature: float | None = None,
+        sampling_seed: int | None = None,
+    ) -> ToolCallProviderResponse:
+        """Dispatch one native tool-calling turn via Ollama's ``/api/chat``.
+
+        Domain-agnostic by design: this only knows ``ToolDefinition``'s
+        generic name/description/parameters shape and returns raw
+        ``LLMToolCall`` name+arguments pairs -- it never interprets what a
+        tool name means. Deterministic mapping to a Node's Typed Result is
+        the calling Agent's responsibility, not this transport's.
+        """
+        _validate_loopback_endpoint(endpoint)
+        payload: dict[str, object] = {
+            "model": model_id,
+            "messages": [
+                {"role": "system", "content": instruction_text},
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "prompt_ref": {
+                                "prompt_id": prompt_ref.prompt_id,
+                                "prompt_version": prompt_ref.prompt_version,
+                                "content_hash": prompt_ref.content_hash,
+                            },
+                            "input": prompt_input,
+                        },
+                        sort_keys=True,
+                    ),
+                },
+            ],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": dict(tool.parameters),
+                    },
+                }
+                for tool in tools
+            ],
+            "stream": False,
+        }
+        options: dict[str, object] = {}
+        if sampling_temperature is not None:
+            options["temperature"] = sampling_temperature
+        if sampling_seed is not None:
+            options["seed"] = sampling_seed
+        if options:
+            payload["options"] = options
+        response = _post_json(
+            endpoint=endpoint,
+            path="/api/chat",
+            payload=payload,
+            timeout_seconds=timeout_seconds,
+        )
+        message = response.get("message", {})
+        raw_calls = message.get("tool_calls", []) if isinstance(message, dict) else []
+        calls = tuple(
+            LLMToolCall(
+                name=str(function.get("name", "")),
+                arguments=cast(
+                    "Mapping[str, object]",
+                    function.get("arguments")
+                    if isinstance(function.get("arguments"), dict)
+                    else {},
+                ),
+                call_id=_optional_str(call.get("id")),
+            )
+            for call in raw_calls
+            if isinstance(call, dict) and isinstance(function := call.get("function"), dict)
+        )
+        return ToolCallProviderResponse(
+            calls=calls,
+            model=str(response.get("model", model_id)),
+            provider_request_id=None,
+            input_tokens=_optional_int(response.get("prompt_eval_count")),
+            output_tokens=_optional_int(response.get("eval_count")),
+            latency_ms=_optional_int(response.get("total_duration")) or 0,
+            estimated_cost_usd=None,
+        )
+
 
 def _get_json(
     *,
@@ -272,3 +407,7 @@ def _optional_int(value: object) -> int | None:
         return int(str(value))
     except (TypeError, ValueError):
         return None
+
+
+def _optional_str(value: object) -> str | None:
+    return None if value is None else str(value)

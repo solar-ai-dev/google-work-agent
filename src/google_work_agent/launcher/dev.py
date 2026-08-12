@@ -79,6 +79,7 @@ from google_work_agent.application.llm import (
     DeleteLLMApiKeyService,
     GetLLMConnectionService,
     LLMRuntimeService,
+    PromptRepairSchemaRepairer,
     StoreLLMApiKeyService,
     TestLLMConnectionService,
 )
@@ -599,7 +600,13 @@ def build_container(
                 expected_protocol_version=MCP_MANIFEST_VERSION,
                 expected_tool_registry_version=MCP_TOOL_REGISTRY_VERSION,
                 startup_timeout_ms=5_000,
-                request_timeout_ms=10_000,
+                # docs/07-tool-mcp-internal-interface.md's per-tool Timeout
+                # column specifies 30s for every MCP READ/WRITE tool; this
+                # transport-level budget must be at least that large or
+                # multi-message acquisition (search + several detail fetches)
+                # times out before any single tool call's own 30s budget is
+                # reached.
+                request_timeout_ms=30_000,
                 max_restart_count=1,
                 environment="DEVELOPMENT",
                 service_instance_id=service_instance_id,
@@ -897,6 +904,7 @@ def _build_llm_runtime(
         ),
         router=DeterministicLLMRuntimeRouter(),
         runtime_policy=RuntimePolicy(),
+        schema_repairer=PromptRepairSchemaRepairer(manifest_path=prompt_manifest_path),
     )
     return llm_runtime, settings_service
 

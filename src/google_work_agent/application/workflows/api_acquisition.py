@@ -344,6 +344,7 @@ class ApiDiscoveryAcquisitionAgent:
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:acquisition.plan_sources",
             ),
+            semantic_validate=validate_source_fetch_plans_v1,
         )
 
     def build_planning_output_from_llm_result(
@@ -398,6 +399,12 @@ class ApiDiscoveryAcquisitionAgent:
                 )
             except GoogleWorkspaceGatewayError as error:
                 mapped = _map_gateway_error(error)
+                print(
+                    f"[acquisition GATEWAY_ERROR] run_id={request.run_id} "
+                    f"source={plan['source']} code={error.code.value} mapped={mapped} "
+                    f"error={error}",
+                    flush=True,
+                )
                 source_summaries.append(
                     _failed_source_summary(
                         plan=plan,
@@ -408,6 +415,12 @@ class ApiDiscoveryAcquisitionAgent:
                 missing_slots.append(f"{plan['source']}:{error.code.value}")
                 continue
             except Exception as error:
+                print(
+                    f"[acquisition RUNTIME_FAILURE] run_id={request.run_id} "
+                    f"source={plan['source']} error_type={type(error).__name__} "
+                    f"error={error}",
+                    flush=True,
+                )
                 source_summaries.append(
                     _failed_source_summary(
                         plan=plan,

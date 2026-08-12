@@ -1,10 +1,10 @@
 {
   "validation_id": "R8.4-STATIC-INTEGRITY-v1.14",
-  "checks": 14288,
-  "issue_count": 3,
+  "checks": 16497,
+  "issue_count": 14,
   "warning_count": 0,
   "stats": {
-    "json_files": 5828,
+    "json_files": 8049,
     "canonical_cases": 92,
     "projections": 736,
     "canonical_prompt_rows": 80,
@@ -18,18 +18,73 @@
   },
   "issues": [
     {
-      "code": "ASSEMBLED_HASH_MISMATCH",
-      "path": "prompts/agent/assembled-r8.4/acquisition.plan_sources.md",
-      "detail": "f42db7611b6d04e79237f97a6faacb6c37d5e5510a47b25aa0f063f6efb6bd09 vs e67267268e8f5d4a03107fd7ccbd44b957909a4347c50b63633a47576395685b"
+      "code": "JSON_PARSE",
+      "path": "frontend\\node_modules\\call-bind-apply-helpers\\tsconfig.json",
+      "detail": "Expecting property name enclosed in double quotes: line 5 column 2 (char 79)"
+    },
+    {
+      "code": "JSON_PARSE",
+      "path": "frontend\\node_modules\\dunder-proto\\tsconfig.json",
+      "detail": "Expecting property name enclosed in double quotes: line 5 column 2 (char 79)"
+    },
+    {
+      "code": "JSON_PARSE",
+      "path": "frontend\\node_modules\\es-define-property\\tsconfig.json",
+      "detail": "Expecting property name enclosed in double quotes: line 5 column 2 (char 79)"
+    },
+    {
+      "code": "JSON_PARSE",
+      "path": "frontend\\node_modules\\es-errors\\tsconfig.json",
+      "detail": "Expecting property name enclosed in double quotes: line 3 column 3 (char 26)"
+    },
+    {
+      "code": "JSON_PARSE",
+      "path": "frontend\\node_modules\\es-object-atoms\\tsconfig.json",
+      "detail": "Expecting property name enclosed in double quotes: line 6 column 2 (char 107)"
+    },
+    {
+      "code": "JSON_PARSE",
+      "path": "frontend\\node_modules\\es-set-tostringtag\\tsconfig.json",
+      "detail": "Expecting property name enclosed in double quotes: line 5 column 2 (char 79)"
+    },
+    {
+      "code": "JSON_PARSE",
+      "path": "frontend\\node_modules\\get-proto\\tsconfig.json",
+      "detail": "Expecting property name enclosed in double quotes: line 4 column 3 (char 58)"
+    },
+    {
+      "code": "JSON_PARSE",
+      "path": "frontend\\node_modules\\gopd\\tsconfig.json",
+      "detail": "Expecting property name enclosed in double quotes: line 5 column 2 (char 79)"
+    },
+    {
+      "code": "JSON_PARSE",
+      "path": "frontend\\node_modules\\has-symbols\\tsconfig.json",
+      "detail": "Expecting property name enclosed in double quotes: line 6 column 2 (char 108)"
+    },
+    {
+      "code": "JSON_PARSE",
+      "path": "frontend\\node_modules\\has-tostringtag\\tsconfig.json",
+      "detail": "Expecting property name enclosed in double quotes: line 3 column 5 (char 29)"
+    },
+    {
+      "code": "JSON_PARSE",
+      "path": "frontend\\node_modules\\hasown\\tsconfig.json",
+      "detail": "Expecting value: line 5 column 3 (char 68)"
+    },
+    {
+      "code": "JSON_PARSE",
+      "path": "frontend\\node_modules\\math-intrinsics\\tsconfig.json",
+      "detail": "Expecting property name enclosed in double quotes: line 3 column 1 (char 34)"
     },
     {
       "code": "DATASET_SECTION_COUNT_DRIFT",
-      "path": "experiments/datasets/google_workspace/manifests/dataset-build-manifest-v1.14.json",
+      "path": "experiments\\datasets\\google_workspace\\manifests\\dataset-build-manifest-v1.14.json",
       "detail": "node_capability_dev: declared={'file_count': 1972, 'json_count': 1953, 'jsonl_count': 0, 'jsonl_rows': 0} actual={'file_count': 2012, 'json_count': 1993, 'jsonl_count': 0, 'jsonl_rows': 0}"
     },
     {
       "code": "DATASET_SECTION_COUNT_DRIFT",
-      "path": "experiments/datasets/google_workspace/manifests/dataset-build-manifest-v1.14.json",
+      "path": "experiments\\datasets\\google_workspace\\manifests\\dataset-build-manifest-v1.14.json",
       "detail": "node_capability_holdout: declared={'file_count': 630, 'json_count': 623, 'jsonl_count': 0, 'jsonl_rows': 0} actual={'file_count': 646, 'json_count': 639, 'jsonl_count': 0, 'jsonl_rows': 0}"
     }
   ],

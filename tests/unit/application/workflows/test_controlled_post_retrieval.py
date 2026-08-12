@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -63,7 +63,9 @@ class FakeLLMRuntime:
         prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
         trace_context: ObservabilityContext,
+        semantic_validate: Callable[[object], object] | None = None,
     ) -> StructuredLLMResult:
+        del semantic_validate
         self.calls.append(
             {
                 "prompt_ref": prompt_ref,

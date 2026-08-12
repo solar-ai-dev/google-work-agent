@@ -109,13 +109,83 @@ WORK_ANALYSIS_OUTPUT_SCHEMA = OutputSchemaDefinition(
                 "enum": ["COMPLETE", "NEEDS_MORE_DATA", "NEEDS_CONFIRMATION", "BLOCKED"],
             },
             "summary": {"type": "string"},
-            "findings": {"type": "array", "items": {"type": "object"}},
+            # Nested finding shape mirrors AnalysisFindingV1 exactly (required
+            # field names + kind enum) rather than a bare {"type": "object"}:
+            # without this, Ollama's structured-output constraint gave the
+            # model zero guidance on the finding's internal field names,
+            # confirmed empirically to produce foreign shapes like
+            # {"finding": ..., "source": ..., "confidence": ...} instead of
+            # finding_id/kind/statement/evidence_refs/... (Node Contract
+            # Stability Runner, qwen2.5:7b). UNSUPPORTED_INFERENCE is
+            # deliberately excluded from the enum -- _PROHIBITED_FINDING_KINDS
+            # below already rejects it; omitting it from the constrained
+            # decoder's own choices is strictly safer, not narrower semantics.
+            "findings": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": [
+                        "schema_version",
+                        "finding_id",
+                        "kind",
+                        "statement",
+                        "evidence_refs",
+                        "resource_refs",
+                        "segment_refs",
+                        "related_resource_handles",
+                        "reason_codes",
+                    ],
+                    "additionalProperties": False,
+                    "properties": {
+                        "schema_version": {"type": "integer", "enum": [1]},
+                        "finding_id": {"type": "string"},
+                        "kind": {
+                            "type": "string",
+                            "enum": [
+                                "FACT",
+                                "RELATIONSHIP",
+                                "MISSING_INFORMATION",
+                                "DUPLICATE_CANDIDATE",
+                                "CONFLICT",
+                                "SCHEDULE_RISK",
+                                "EVIDENCE_GAP",
+                            ],
+                        },
+                        "statement": {"type": "string"},
+                        "evidence_refs": {"type": "array", "items": {"type": "string"}},
+                        "resource_refs": {"type": "array", "items": {"type": "string"}},
+                        "segment_refs": {"type": "array", "items": {"type": "string"}},
+                        "related_resource_handles": {"type": "array", "items": {"type": "string"}},
+                        "reason_codes": {"type": "array", "items": {"type": "string"}},
+                    },
+                },
+            },
             "missing_information": {"type": "array", "items": {"type": "string"}},
-            "confirmation": {},
+            "confirmation": {"type": ["object", "null"]},
             "blockers": {"type": "array", "items": {"type": "string"}},
             "evidence_refs": {"type": "array", "items": {"type": "string"}},
-            "resource_refs": {"type": "array", "items": {"type": "object"}},
-            "segment_refs": {"type": "array", "items": {"type": "object"}},
+            # resource_refs/segment_refs items are context_bundle entries the
+            # model echoes back (see _validated_resource_ref_objects/
+            # _validated_segment_ref_objects below, which only require
+            # resource_handle/segment_id and tolerate extra fields) --
+            # additionalProperties stays permissive here, unlike findings[]
+            # above, which is a closed, model-authored contract.
+            "resource_refs": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["resource_handle"],
+                    "properties": {"resource_handle": {"type": "string"}},
+                },
+            },
+            "segment_refs": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["segment_id"],
+                    "properties": {"segment_id": {"type": "string"}},
+                },
+            },
             "schedule_constraints": {
                 "type": "object",
                 "required": [
@@ -221,6 +291,9 @@ class WorkAnalysisAgent:
                 run_id=request.run_id,
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:analysis.analyze",
+            ),
+            semantic_validate=lambda candidate: validate_work_analysis_result_v1(
+                candidate, context_result=context_result
             ),
         )
 
@@ -474,31 +547,43 @@ def _validate_result_invariant(result: WorkAnalysisResultV1) -> None:
         and schedule["expected_duration_minutes"] is None
         and status is not AnalysisResult.NEEDS_CONFIRMATION
     ):
-        raise WorkAnalysisValidationError("missing expected duration requires NEEDS_CONFIRMATION")
+        raise WorkAnalysisValidationError(
+            "$.schedule_constraints.expected_duration_minutes missing expected duration "
+            "requires NEEDS_CONFIRMATION"
+        )
     if status is AnalysisResult.COMPLETE:
         if result["missing_information"]:
-            raise WorkAnalysisValidationError("COMPLETE must not include missing_information")
+            raise WorkAnalysisValidationError(
+                "$.missing_information COMPLETE must not include missing_information"
+            )
         if result["confirmation"] is not None:
-            raise WorkAnalysisValidationError("COMPLETE must not include confirmation")
+            raise WorkAnalysisValidationError(
+                "$.confirmation COMPLETE must not include confirmation"
+            )
         if result["blockers"]:
-            raise WorkAnalysisValidationError("COMPLETE must not include blockers")
+            raise WorkAnalysisValidationError("$.blockers COMPLETE must not include blockers")
     if status is AnalysisResult.NEEDS_MORE_DATA and not result["missing_information"]:
-        raise WorkAnalysisValidationError("NEEDS_MORE_DATA requires missing_information")
+        raise WorkAnalysisValidationError(
+            "$.missing_information NEEDS_MORE_DATA requires missing_information"
+        )
     if status is AnalysisResult.NEEDS_CONFIRMATION and result["confirmation"] is None:
-        raise WorkAnalysisValidationError("NEEDS_CONFIRMATION requires confirmation")
+        raise WorkAnalysisValidationError("$.confirmation NEEDS_CONFIRMATION requires confirmation")
     if status is AnalysisResult.BLOCKED and not result["blockers"]:
-        raise WorkAnalysisValidationError("BLOCKED requires blockers")
+        raise WorkAnalysisValidationError("$.blockers BLOCKED requires blockers")
     if (
         status is AnalysisResult.NEEDS_MORE_DATA
         and result["additional_acquisition_request"] is None
     ):
-        raise WorkAnalysisValidationError("NEEDS_MORE_DATA requires additional_acquisition_request")
+        raise WorkAnalysisValidationError(
+            "$.additional_acquisition_request NEEDS_MORE_DATA requires "
+            "additional_acquisition_request"
+        )
     if (
         status is not AnalysisResult.NEEDS_MORE_DATA
         and result["additional_acquisition_request"] is not None
     ):
         raise WorkAnalysisValidationError(
-            "additional_acquisition_request is only allowed for NEEDS_MORE_DATA"
+            "$.additional_acquisition_request is only allowed for NEEDS_MORE_DATA"
         )
 
 

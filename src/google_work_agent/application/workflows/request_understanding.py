@@ -398,6 +398,7 @@ class RequestUnderstandingAgent:
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:request_understanding.classify",
             ),
+            semantic_validate=validate_request_intent_v1,
         )
 
     def build_output_from_llm_result(
