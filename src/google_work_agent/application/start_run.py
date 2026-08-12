@@ -391,7 +391,9 @@ class StartRunService:
             return response
 
 
-_MODIFIABLE_ACTION_STATUSES = frozenset({ActionStatus.PROPOSED.value, ActionStatus.APPROVED.value})
+_MODIFIABLE_ACTION_STATUSES = frozenset(
+    {ActionStatus.PROPOSED.value, ActionStatus.MODIFIED.value, ActionStatus.APPROVED.value}
+)
 
 
 class ModifyWriteActionService:
@@ -399,7 +401,7 @@ class ModifyWriteActionService:
     and revoke any Approval it invalidates.
 
     Scope is deliberately narrower than the bare domain transition table:
-    only ``PROPOSED`` and ``APPROVED`` write actions may be content-edited
+    only ``PROPOSED``, ``MODIFIED`` and ``APPROVED`` write actions may be content-edited
     here. ``FAILED`` retries go through ``prepare_write_retry`` and
     ``EXPIRED`` refresh is a separate, not-yet-implemented
     ``refresh_expired_action`` command -- both keep their own contracts
@@ -554,7 +556,7 @@ class ModifyWriteActionService:
                             )
                         ),
                         conflict_detail=(
-                            "modify_action requires a PROPOSED or APPROVED write action; "
+                            "modify_action requires a PROPOSED, MODIFIED or APPROVED write action; "
                             "use prepare-retry for FAILED actions"
                         ),
                     ),
@@ -675,6 +677,7 @@ class ModifyWriteActionService:
             # action was PROPOSED and had no Approval yet.
             revoked_approval_ids = unit_of_work.approvals.revoke_active_by_action(action.id)
             run_id = _run_id_for_action(unit_of_work, action.id)
+            review_version = unit_of_work.plans.require_review(action.plan_id)
             _revoke_stale_dependent_approvals(
                 unit_of_work=unit_of_work,
                 modified_action_id=action.id,
@@ -689,7 +692,11 @@ class ModifyWriteActionService:
                 action_id=action.id,
                 action_status=result.current_status.value,
                 action_version=result.current_version,
-                next_allowed_commands=tuple(item.value for item in result.next_allowed_commands),
+                next_allowed_commands=tuple(
+                    item.value
+                    for item in result.next_allowed_commands
+                    if item is not ActionCommand.APPROVE_ACTION
+                ),
             )
             unit_of_work.traces.add(
                 TraceEventRecord(
@@ -710,6 +717,8 @@ class ModifyWriteActionService:
                     metadata={
                         "command_id": command.command_id,
                         "revoked_approval_ids": list(revoked_approval_ids),
+                        "plan_id": action.plan_id,
+                        "review_version": review_version,
                     },
                     created_at_ms=now_ms,
                 )

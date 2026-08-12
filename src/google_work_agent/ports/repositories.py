@@ -79,6 +79,15 @@ class RunRepository(Protocol):
     ) -> CommandResult[RunStatus, RunCommand]:
         """Transition one run into PLANNING."""
 
+    def replan(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        """Move a waiting-approval run back to PLANNING for a new revision."""
+
     def request_confirmation(
         self,
         run_id: str,
@@ -269,6 +278,18 @@ class PlanRepository(Protocol):
 
     def insert_draft(self, plan: PlanRecord) -> None:
         """Persist a new draft plan."""
+
+    def require_review(self, plan_id: str) -> int:
+        """Invalidate the prior review and return the new review generation."""
+
+    def store_review_result(
+        self,
+        plan_id: str,
+        *,
+        expected_review_version: int,
+        review_status: str,
+    ) -> bool:
+        """Store a review result only for the generation that was reviewed."""
 
     def activate(self, plan_id: str) -> None:
         """Promote a draft plan to ACTIVE."""

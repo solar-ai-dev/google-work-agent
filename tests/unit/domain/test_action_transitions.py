@@ -375,7 +375,14 @@ def test_next_allowed_read_action_commands(
                 ActionCommand.REJECT_ACTION,
             ),
         ),
-        (ActionStatus.MODIFIED, (ActionCommand.APPROVE_ACTION, ActionCommand.REJECT_ACTION)),
+        (
+            ActionStatus.MODIFIED,
+            (
+                ActionCommand.APPROVE_ACTION,
+                ActionCommand.MODIFY_ACTION,
+                ActionCommand.REJECT_ACTION,
+            ),
+        ),
         (
             ActionStatus.APPROVED,
             (

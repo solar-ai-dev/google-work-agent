@@ -528,6 +528,10 @@ sequenceDiagram
 
 ### 13.1 사용자 수정
 
+Action 수정이 실제 Canonical Arguments를 변경하면 기존 Approval을 revoke한 뒤 같은 Transaction에서 Plan Review를 `REQUIRED`로 무효화한다. Commit 이후 기존 Profile의 Plan Review를 다시 실행하고, 최신 `review_version`에 대한 Review PASS와 Domain Validation이 모두 성공한 경우에만 새 Approval을 허용한다. Review 중 후속 Modify가 발생하면 이전 Review 결과는 version conflict로 폐기한다.
+
+재검토가 `REVISE` 또는 `RETRIEVE_MORE`이면 기존 Plan을 `SUPERSEDED`로 전이하고 Run을 `PLANNING`으로 되돌린 후 기존 Planning/Acquisition 경로를 재사용한다. 후속 PASS는 기존 Plan의 gate를 열지 않고 새 revision을 저장하며 새 Action에 대해 Approval을 다시 받아야 한다. `BLOCK`은 Run을 `BLOCKED`로 종료한다.
+
 ```mermaid
 sequenceDiagram
     autonumber

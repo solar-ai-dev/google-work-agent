@@ -37,6 +37,7 @@ from google_work_agent.domain import (
 )
 from google_work_agent.ports import (
     EvidenceOriginType,
+    PlanReviewStatus,
     ResourcePage,
     ResourceSnapshot,
     ResourceType,
@@ -179,6 +180,9 @@ def test_proposed_action_modify_applies_patch_and_updates_hash(modify_database: 
     assert result["result_code"] == ResultCode.TRANSITION_APPLIED.value
     assert result["action_status"] == "MODIFIED"
     assert result["action_version"] == 1
+    next_allowed_commands = result["next_allowed_commands"]
+    assert isinstance(next_allowed_commands, tuple)
+    assert "APPROVE_ACTION" not in next_allowed_commands
 
     with unit_of_work_factory() as unit_of_work:
         action = unit_of_work.actions.get_by_id("action-1")
@@ -189,6 +193,123 @@ def test_proposed_action_modify_applies_patch_and_updates_hash(modify_database: 
     }
     assert action.arguments_json == canonicalize_json_value(expected_arguments)
     assert action.arguments_hash == calculate_canonical_json_hash(expected_arguments)
+
+    with unit_of_work_factory() as unit_of_work:
+        plan = unit_of_work.plans.get_by_id("plan-1")
+    assert plan is not None
+    assert plan.review_status is PlanReviewStatus.REQUIRED
+    assert plan.review_version == 1
+
+
+def test_modify_blocks_approval_until_current_review_generation_passes(
+    modify_database: Path,
+) -> None:
+    clock = FakeClock(initial_ms=1_000)
+    unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
+    _save_and_publish_task_action(
+        database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
+    )
+    modified = ModifyWriteActionService(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        gateway=_EMPTY_TASK_LIST_GATEWAY,
+    )(
+        ModifyWriteActionCommand(
+            command_id="modify-review-gate",
+            request_hash="c1" * 32,
+            action_id="action-1",
+            expected_version=0,
+            arguments_patch={"title": "Reviewed title"},
+        )
+    )
+    assert modified["applied"] is True
+
+    approve_service = ApproveWriteActionService(
+        unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
+    )
+    blocked = approve_service(
+        ApproveWriteActionCommand(
+            command_id="approve-before-review",
+            request_hash="c2" * 32,
+            action_id="action-1",
+            expected_version=1,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-before-review",
+            idempotency_key="c3" * 32,
+        )
+    )
+    assert blocked.applied is False
+    assert blocked.conflict_detail == ("plan review must pass after the latest action modification")
+
+    with unit_of_work_factory() as unit_of_work:
+        assert unit_of_work.plans.store_review_result(
+            "plan-1",
+            expected_review_version=1,
+            review_status=PlanReviewStatus.PASSED.value,
+        )
+        unit_of_work.commit()
+
+    approved = approve_service(
+        ApproveWriteActionCommand(
+            command_id="approve-after-review",
+            request_hash="c4" * 32,
+            action_id="action-1",
+            expected_version=1,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-after-review",
+            idempotency_key="c5" * 32,
+        )
+    )
+    assert approved.applied is True
+
+
+def test_second_modify_rejects_first_generation_review_result(modify_database: Path) -> None:
+    clock = FakeClock(initial_ms=1_000)
+    unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
+    _save_and_publish_task_action(
+        database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
+    )
+    modify_service = ModifyWriteActionService(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        gateway=_EMPTY_TASK_LIST_GATEWAY,
+    )
+    first = modify_service(
+        ModifyWriteActionCommand(
+            command_id="modify-generation-1",
+            request_hash="d1" * 32,
+            action_id="action-1",
+            expected_version=0,
+            arguments_patch={"title": "First edit"},
+        )
+    )
+    second = modify_service(
+        ModifyWriteActionCommand(
+            command_id="modify-generation-2",
+            request_hash="d2" * 32,
+            action_id="action-1",
+            expected_version=1,
+            arguments_patch={"title": "Second edit"},
+        )
+    )
+    assert first["applied"] is True
+    assert second["applied"] is True
+
+    with unit_of_work_factory() as unit_of_work:
+        stale_applied = unit_of_work.plans.store_review_result(
+            "plan-1",
+            expected_review_version=1,
+            review_status=PlanReviewStatus.PASSED.value,
+        )
+        plan = unit_of_work.plans.get_by_id("plan-1")
+    assert stale_applied is False
+    assert plan is not None
+    assert plan.review_status is PlanReviewStatus.REQUIRED
+    assert plan.review_version == 2
 
 
 def test_approved_action_modify_revokes_active_approval(modify_database: Path) -> None:

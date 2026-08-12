@@ -49,6 +49,10 @@
 |---|---|
 | ApproveAction | PROPOSED·MODIFIED → APPROVED |
 | ModifyAction | PROPOSED·APPROVED·EXPIRED·FAILED → MODIFIED |
+
+Write Action은 Review 대기 중 추가 수정할 수 있으며 `MODIFIED → MODIFIED`로 version을 증가시킨다. 실제 인자 변경은 ACTIVE Approval revoke와 Plan `review_status=REQUIRED`, `review_version+1`을 같은 Transaction에서 적용한다. 최신 Review와 Domain Validation이 완료되기 전에는 ApproveAction을 허용하지 않는다.
+
+Modify 재검토의 `REVISE`/`RETRIEVE_MORE`는 내부 `WAITING_APPROVAL → PLANNING` 재계획 전이와 기존 Plan `SUPERSEDED`를 같은 Transaction에서 적용한다. 새 revision은 새 Plan·Action·Evidence 식별자를 사용한다. `BLOCK`은 `WAITING_APPROVAL → BLOCKED`로 전이한다.
 | RejectAction | PROPOSED·MODIFIED → REJECTED |
 | CancelPendingAction | PROPOSED·MODIFIED·APPROVED·EXPIRED → CANCELLED; ACTIVE Approval REVOKED; 새 Attempt·Verification 0 |
 | ExpireApproval | APPROVED → EXPIRED |

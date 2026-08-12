@@ -42,6 +42,7 @@ from google_work_agent.ports import (
     PersistedAuditEventRecord,
     PersistedTraceEventRecord,
     PlanRecord,
+    PlanReviewStatus,
     PlanStatus,
     ResourceRefRecord,
     ResourceSource,
@@ -196,6 +197,21 @@ class SQLiteRunRepository:
             command=RunCommand.BEGIN_PLANNING,
             finished_at_ms=finished_at_ms,
             error_message="run begin_planning affected an unexpected row count",
+        )
+
+    def replan(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        return self._transition_run(
+            run_id=run_id,
+            expected_version=expected_version,
+            command=RunCommand.REPLAN,
+            finished_at_ms=finished_at_ms,
+            error_message="run replan affected an unexpected row count",
         )
 
     def request_confirmation(
@@ -927,7 +943,8 @@ class SQLitePlanRepository:
     def get_by_id(self, plan_id: str) -> PlanRecord | None:
         row = self._connection.execute(
             """
-            SELECT id, run_id, revision_no, status, summary_text, created_at_ms
+            SELECT id, run_id, revision_no, status, summary_text, created_at_ms,
+                   review_status, review_version
             FROM plans
             WHERE id = ?;
             """,
@@ -942,13 +959,18 @@ class SQLitePlanRepository:
             status=PlanStatus(str(row["status"])),
             summary_text=None if row["summary_text"] is None else str(row["summary_text"]),
             created_at_ms=int(row["created_at_ms"]),
+            review_status=PlanReviewStatus(str(row["review_status"])),
+            review_version=int(row["review_version"]),
         )
 
     def insert_draft(self, plan: PlanRecord) -> None:
         self._connection.execute(
             """
-            INSERT INTO plans (id, run_id, revision_no, status, summary_text, created_at_ms)
-            VALUES (?, ?, ?, ?, ?, ?);
+            INSERT INTO plans (
+                id, run_id, revision_no, status, summary_text, created_at_ms,
+                review_status, review_version
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 plan.id,
@@ -957,8 +979,47 @@ class SQLitePlanRepository:
                 plan.status.value,
                 plan.summary_text,
                 plan.created_at_ms,
+                plan.review_status.value,
+                plan.review_version,
             ),
         )
+
+    def require_review(self, plan_id: str) -> int:
+        cursor = self._connection.execute(
+            """
+            UPDATE plans
+            SET review_status = 'REQUIRED', review_version = review_version + 1
+            WHERE id = ? AND status IN ('WAITING_APPROVAL', 'ACTIVE');
+            """,
+            (plan_id,),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError(
+                "plan review invalidation affected an unexpected row count"
+            )
+        row = self._connection.execute(
+            "SELECT review_version FROM plans WHERE id = ?;", (plan_id,)
+        ).fetchone()
+        return int(row["review_version"])
+
+    def store_review_result(
+        self,
+        plan_id: str,
+        *,
+        expected_review_version: int,
+        review_status: str,
+    ) -> bool:
+        cursor = self._connection.execute(
+            """
+            UPDATE plans
+            SET review_status = ?
+            WHERE id = ? AND review_version = ? AND review_status <> 'PASSED';
+            """,
+            (review_status, plan_id, expected_review_version),
+        )
+        if cursor.rowcount > 1:
+            raise sqlite3.IntegrityError("plan review result affected an unexpected row count")
+        return cursor.rowcount == 1
 
     def activate(self, plan_id: str) -> None:
         cursor = self._connection.execute(
@@ -1025,7 +1086,8 @@ class SQLitePlanRepository:
     def list_by_run(self, run_id: str) -> tuple[PlanRecord, ...]:
         rows = self._connection.execute(
             """
-            SELECT id, run_id, revision_no, status, summary_text, created_at_ms
+            SELECT id, run_id, revision_no, status, summary_text, created_at_ms,
+                   review_status, review_version
             FROM plans
             WHERE run_id = ?
             ORDER BY revision_no ASC;
@@ -1040,6 +1102,8 @@ class SQLitePlanRepository:
                 status=PlanStatus(str(row["status"])),
                 summary_text=None if row["summary_text"] is None else str(row["summary_text"]),
                 created_at_ms=int(row["created_at_ms"]),
+                review_status=PlanReviewStatus(str(row["review_status"])),
+                review_version=int(row["review_version"]),
             )
             for row in rows
         )

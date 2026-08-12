@@ -10,6 +10,7 @@ from sqlite3 import Row
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.domain import (
+    ActionCommand,
     ActionStatus,
     EffectType,
     RunStatus,
@@ -183,7 +184,7 @@ class QueryService:
                 return None
             plan_row = connection.execute(
                 """
-                SELECT id, revision_no, status, summary_text, created_at_ms
+                SELECT id, revision_no, status, summary_text, created_at_ms, review_status
                 FROM plans
                 WHERE run_id = ?
                 ORDER BY revision_no DESC, id DESC
@@ -209,7 +210,13 @@ class QueryService:
                     """,
                     (str(plan_row["id"]),),
                 ).fetchall()
-                actions = tuple(_action_snapshot_from_row(row) for row in action_rows)
+                actions = tuple(
+                    _action_snapshot_from_row(
+                        row,
+                        approval_allowed=str(plan_row["review_status"]) == "PASSED",
+                    )
+                    for row in action_rows
+                )
                 recovery_count = sum(
                     1 for action in actions if action.status == ActionStatus.UNKNOWN_RESULT.value
                 )
@@ -562,7 +569,7 @@ def _conversation_item_from_row(row: Row) -> ConversationListItem:
     )
 
 
-def _action_snapshot_from_row(row: Row) -> ActionSnapshot:
+def _action_snapshot_from_row(row: Row, *, approval_allowed: bool = True) -> ActionSnapshot:
     status = ActionStatus(str(row["status"]))
     effect_type = EffectType(str(row["effect_type"]))
     return ActionSnapshot(
@@ -575,6 +582,8 @@ def _action_snapshot_from_row(row: Row) -> ActionSnapshot:
         verification_policy=str(row["verification_policy"]),
         risk=parse_action_risk_json(str(row["risk_json"])),
         next_allowed_commands=tuple(
-            item.value for item in next_allowed_action_commands(status, effect_type=effect_type)
+            item.value
+            for item in next_allowed_action_commands(status, effect_type=effect_type)
+            if approval_allowed or item is not ActionCommand.APPROVE_ACTION
         ),
     )

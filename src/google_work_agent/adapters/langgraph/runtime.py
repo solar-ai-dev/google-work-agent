@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable, Hashable
+from copy import deepcopy
 from hashlib import sha256
-from json import dumps
+from json import dumps, loads
 from pathlib import Path
 from threading import Lock
 from typing import Any, Final, Literal, NotRequired, TypedDict, cast
@@ -153,6 +154,7 @@ from google_work_agent.ports import (
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     PlanRecord,
+    PlanReviewStatus,
     PromptReference,
     ResourceRefRecord,
     ResourceSource,
@@ -177,6 +179,10 @@ class ParentGraphState(MultiAgentGraphState):
     __request__: WorkflowStartRequest
     __target__: str
     __logical_target__: str
+    __modify_review_plan_id__: NotRequired[str | None]
+    __modify_review_version__: NotRequired[int | None]
+    __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
+    __replan_from_plan_id__: NotRequired[str]
 
 
 class GraphState(TypedDict):
@@ -209,6 +215,10 @@ class GraphState(TypedDict):
     __request__: WorkflowStartRequest
     __target__: str
     __logical_target__: str
+    __modify_review_plan_id__: NotRequired[str | None]
+    __modify_review_version__: NotRequired[int | None]
+    __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
+    __replan_from_plan_id__: NotRequired[str]
     __request_agent_local__: NotRequired[AgentLocalStateV1]
     __request_output__: NotRequired[RequestUnderstandingOutputV1]
     __acquisition_agent_local__: NotRequired[AgentLocalStateV1]
@@ -627,6 +637,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         graph.add_node("domain_validation", self._domain_validation_node)
         graph.add_node("waiting_confirmation", self._waiting_confirmation_node)
         graph.add_node("waiting_approval", self._waiting_approval_node)
+        graph.add_node("modify_review", self._modify_review_node)
         graph.add_node("action_execution", self._action_execution_node)
         graph.add_node("recovery", self._recovery_node)
         graph.add_node("finalize", self._finalize_node)
@@ -636,6 +647,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "domain_validation",
             "waiting_confirmation",
             "waiting_approval",
+            "modify_review",
             "action_execution",
             "recovery",
             "finalize",
@@ -648,6 +660,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "domain_validation": "domain_validation",
             "waiting_confirmation": "waiting_confirmation",
             "waiting_approval": "waiting_approval",
+            "modify_review": "modify_review",
             "action_execution": "action_execution",
             "recovery": "recovery",
             "finalize": "finalize",
@@ -1797,6 +1810,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 answer_draft=state["answer_draft"],
                 plan_draft=state["plan_draft"],
                 request=request,
+                deterministic_action_risks=state.get("__modify_review_risks__"),
             )
             result = self._review.build_output_from_llm_result(
                 llm_result,
@@ -1814,6 +1828,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 answer_draft=state["answer_draft"],
                 plan_draft=state["plan_draft"],
                 request=request,
+                deterministic_action_risks=state.get("__modify_review_risks__"),
             )
             result = self._review.build_output_from_llm_result(
                 llm_result,
@@ -2583,6 +2598,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             answer_draft=answer_draft,
             plan_draft=plan_draft,
             request=request,
+            deterministic_action_risks=state.get("__modify_review_risks__"),
         )
         review_result = self._single_review.build_output_from_llm_result(
             llm_result,
@@ -2931,7 +2947,26 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             state=cast(MultiAgentGraphState, state),
             result=result,
         )
-        if result["result"] == DomainValidationResult.REQUIRE_APPROVAL.value:
+        is_modify_review = state.get("__modify_review_plan_id__") is not None
+        if is_modify_review:
+            review_status = (
+                PlanReviewStatus.PASSED
+                if result["result"] == DomainValidationResult.REQUIRE_APPROVAL.value
+                else PlanReviewStatus.BLOCKED
+            )
+            if not self._store_modify_review_result(state, review_status):
+                return {
+                    **state,
+                    "__target__": "end",
+                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                }
+            if review_status is PlanReviewStatus.PASSED:
+                decision["target"] = SupervisorTarget.WAITING_APPROVAL.value
+                decision["state_update"] = {
+                    **decision["state_update"],
+                    "approved_plan_id": state["__modify_review_plan_id__"],
+                }
+        elif result["result"] == DomainValidationResult.REQUIRE_APPROVAL.value:
             plan_id = self._persist_write_plan(state, plan_draft)
             decision["target"] = SupervisorTarget.WAITING_APPROVAL.value
             decision["state_update"] = {
@@ -2988,12 +3023,188 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "run_id": state["run_id"],
             "plan_id": plan_id,
         }
-        _ = interrupt(payload)
+        resume_payload = interrupt(payload)
+        if (
+            isinstance(resume_payload, dict)
+            and resume_payload.get("resume_kind") == "MODIFY_REVIEW"
+        ):
+            return self._prepare_modify_review_state(
+                state,
+                plan_id=self._required_string(resume_payload.get("plan_id"), "plan_id"),
+                review_version=int(resume_payload.get("review_version", -1)),
+            )
         return {
             **state,
             "__target__": "action_execution",
             "workflow_phase": WorkflowPhase.PREFLIGHT.value,
         }
+
+    def _prepare_modify_review_state(
+        self,
+        state: GraphState,
+        *,
+        plan_id: str,
+        review_version: int,
+    ) -> GraphState:
+        with self._unit_of_work_factory() as unit_of_work:
+            plan = unit_of_work.plans.get_by_id(plan_id)
+            if plan is None:
+                raise LookupError(f"plan not found: {plan_id}")
+            if (
+                plan.review_status is not PlanReviewStatus.REQUIRED
+                or plan.review_version != review_version
+            ):
+                return {
+                    **state,
+                    "__target__": "end",
+                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                }
+            actions = unit_of_work.actions.list_by_plan(plan_id)
+            dependencies = {
+                action.id: unit_of_work.action_dependencies.list_dependencies(action.id)
+                for action in actions
+            }
+
+        draft = deepcopy(_require_state_value(state["plan_draft"], "plan_draft"))
+        persisted = {action.id: action for action in actions}
+        for action_draft in draft["actions"]:
+            action = persisted.get(action_draft["action_id"])
+            if action is None:
+                raise LookupError(f"persisted action not found: {action_draft['action_id']}")
+            action_draft["arguments"] = cast(dict[str, object], loads(action.arguments_json))
+            action_draft["expected"] = cast(dict[str, object], loads(action.expected_json))
+            action_draft["depends_on_action_ids"] = list(dependencies[action.id])
+
+        return {
+            **state,
+            "plan_draft": draft,
+            "plan_review": None,
+            "approved_plan_id": plan_id,
+            "__modify_review_plan_id__": plan_id,
+            "__modify_review_version__": review_version,
+            "__modify_review_risks__": {action.id: action.risk for action in actions},
+            "__target__": "modify_review",
+            "__logical_target__": self._modify_review_profile_target(),
+            "workflow_phase": WorkflowPhase.PLAN_REVIEW.value,
+        }
+
+    def _modify_review_node(self, state: GraphState) -> GraphState:
+        if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE:
+            reviewed = cast(GraphState, self._review_subgraph.invoke(state))
+        elif self._graph_profile is GraphProfile.THREE_STAGE:
+            reviewed = cast(GraphState, self._three_stage_review_subgraph.invoke(state))
+        else:
+            assert self._single_review is not None
+            request = self._request_from_state(state)
+            result = self._single_review.inspect(
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                context_result=_require_state_value(state["context_result"], "context_result"),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                answer_draft=None,
+                plan_draft=_require_state_value(state["plan_draft"], "plan_draft"),
+                request=request,
+                deterministic_action_risks=state.get("__modify_review_risks__"),
+            )
+            decision = route_supervisor(
+                phase=WorkflowPhase.PLAN_REVIEW,
+                state=cast(MultiAgentGraphState, state),
+                result=result,
+            )
+            reviewed = self._merge_decision(
+                state, self._single_review.build_state_update(result), decision
+            )
+
+        reviewed = {
+            **reviewed,
+            "__modify_review_plan_id__": state["__modify_review_plan_id__"],
+            "__modify_review_version__": state["__modify_review_version__"],
+            "__modify_review_risks__": state["__modify_review_risks__"],
+        }
+
+        review = _require_state_value(reviewed["plan_review"], "plan_review")
+        if review["status"] == ReviewResult.PASS.value:
+            return reviewed
+        if not self._store_modify_review_result(reviewed, self._review_status(review)):
+            return {
+                **reviewed,
+                "__target__": "end",
+                "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+            }
+        if review["status"] in {
+            ReviewResult.REVISE.value,
+            ReviewResult.RETRIEVE_MORE.value,
+        }:
+            if not self._begin_modify_replan(reviewed, self._review_status(review)):
+                return {
+                    **reviewed,
+                    "__target__": "end",
+                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                }
+            reviewed = cast(GraphState, dict(reviewed))
+            reviewed["__replan_from_plan_id__"] = cast(str, reviewed["__modify_review_plan_id__"])
+            reviewed["__modify_review_plan_id__"] = None
+            reviewed["__modify_review_version__"] = None
+            reviewed["__modify_review_risks__"] = None
+        return reviewed
+
+    def _modify_review_profile_target(self) -> str:
+        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
+            return "single_workflow"
+        if self._graph_profile is GraphProfile.THREE_STAGE:
+            return "stage_three"
+        return "review"
+
+    @staticmethod
+    def _review_status(review: PlanReviewResultV1) -> PlanReviewStatus:
+        return {
+            ReviewResult.REVISE.value: PlanReviewStatus.REVISE,
+            ReviewResult.RETRIEVE_MORE.value: PlanReviewStatus.RETRIEVE_MORE,
+            ReviewResult.CONFIRM.value: PlanReviewStatus.REQUIRED,
+            ReviewResult.BLOCK.value: PlanReviewStatus.BLOCKED,
+        }[review["status"]]
+
+    def _store_modify_review_result(
+        self, state: GraphState, review_status: PlanReviewStatus
+    ) -> bool:
+        plan_id = state.get("__modify_review_plan_id__")
+        review_version = state.get("__modify_review_version__")
+        if plan_id is None or review_version is None:
+            return False
+        with self._unit_of_work_factory() as unit_of_work:
+            applied = unit_of_work.plans.store_review_result(
+                plan_id,
+                expected_review_version=review_version,
+                review_status=review_status.value,
+            )
+            if applied:
+                unit_of_work.commit()
+            return applied
+
+    def _begin_modify_replan(self, state: GraphState, review_status: PlanReviewStatus) -> bool:
+        plan_id = state.get("__modify_review_plan_id__")
+        review_version = state.get("__modify_review_version__")
+        if plan_id is None or review_version is None:
+            return False
+        with self._unit_of_work_factory() as unit_of_work:
+            plan = unit_of_work.plans.get_by_id(plan_id)
+            if (
+                plan is None
+                or plan.review_version != review_version
+                or plan.review_status is not review_status
+            ):
+                return False
+            run = unit_of_work.runs.get_by_id(plan.run_id)
+            if run is None:
+                return False
+            transitioned = unit_of_work.runs.replan(
+                run.id,
+                expected_version=run.version,
+            )
+            if not transitioned.applied:
+                return False
+            unit_of_work.plans.supersede(plan.id)
+            unit_of_work.commit()
+            return True
 
     def _action_execution_node(self, state: GraphState) -> GraphState:
         run_id = cast(str, state["run_id"])
@@ -3713,6 +3924,25 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         run_id = state["run_id"]
         run_version = self._current_run_version(run_id)
+        replan_from_plan_id = state.get("__replan_from_plan_id__")
+        revision_no = 1
+        plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
+        action_id_map = {
+            action["action_id"]: action["action_id"] for action in plan_draft["actions"]
+        }
+        evidence_id_map = {evidence_id: evidence_id for evidence_id in plan_draft["evidence_refs"]}
+        if replan_from_plan_id is not None:
+            plans = self._plans_for_run(run_id)
+            if not any(plan.id == replan_from_plan_id for plan in plans):
+                raise LookupError(f"replan source not found: {replan_from_plan_id}")
+            revision_no = max(plan.revision_no for plan in plans) + 1
+            plan_id = self._id_factory()
+            action_id_map = {
+                action["action_id"]: self._id_factory() for action in plan_draft["actions"]
+            }
+            evidence_id_map = {
+                evidence_id: self._id_factory() for evidence_id in plan_draft["evidence_refs"]
+            }
         context_result = _require_state_value(state["context_result"], "context_result")
         evidence_drafts = {item["evidence_id"]: item for item in context_result["evidence_drafts"]}
         mapped_evidence = []
@@ -3720,7 +3950,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             item = evidence_drafts[evidence_id]
             mapped_evidence.append(
                 WriteEvidenceDraft(
-                    evidence_id=evidence_id,
+                    evidence_id=evidence_id_map[evidence_id],
                     origin_type=EvidenceOriginType.DERIVED,
                     kind=item["kind"],
                     excerpt=item["excerpt"],
@@ -3731,13 +3961,15 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             )
         mapped_actions = tuple(
             WriteActionDraft(
-                action_id=action["action_id"],
+                action_id=action_id_map[action["action_id"]],
                 position=action["position"],
                 tool_name=action["tool_name"],
                 arguments=action["arguments"],
                 expected=action["expected"],
-                evidence_ids=tuple(action["evidence_refs"]),
-                depends_on_action_ids=tuple(action.get("depends_on_action_ids", [])),
+                evidence_ids=tuple(evidence_id_map[item] for item in action["evidence_refs"]),
+                depends_on_action_ids=tuple(
+                    action_id_map[item] for item in action.get("depends_on_action_ids", [])
+                ),
                 target_resource_ref_id=self._resolve_target_resource_ref_id(
                     run_id=run_id,
                     resource_handle=action.get("target_resource_ref_id"),
@@ -3761,14 +3993,13 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             )
             for action in plan_draft["actions"]
         )
-        plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
         save_response = self._save_write_plan(
             SaveWritePlanCommand(
                 command_id=self._id_factory(),
                 request_hash=self._request_hash({"kind": "save_write_plan", "plan_id": plan_id}),
                 plan_id=plan_id,
                 run_id=run_id,
-                revision_no=1,
+                revision_no=revision_no,
                 summary_text=self._required_string(plan_draft.get("summary"), "summary"),
                 expected_run_version=run_version,
                 actions=mapped_actions,

@@ -82,6 +82,7 @@ from google_work_agent.ports import (
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     PlanRecord,
+    PlanReviewStatus,
     PlanStatus,
     ResourceRefRecord,
     ResourceSnapshot,
@@ -773,6 +774,42 @@ class ApproveWriteActionService:
             )
             action = _require_action(unit_of_work, command.action_id)
             entry = self._registry.require(action.tool_name)
+            plan = _require_plan(unit_of_work, action.plan_id)
+            if plan.review_status is not PlanReviewStatus.PASSED:
+                response = WriteActionResponse(
+                    applied=False,
+                    result_code=ResultCode.STATE_CONFLICT.value,
+                    action_id=action.id,
+                    action_status=action.status,
+                    action_version=action.version,
+                    next_allowed_commands=tuple(
+                        item.value
+                        for item in next_allowed_action_commands(
+                            ActionStatus(action.status),
+                            effect_type=EffectType(action.effect_type),
+                        )
+                    ),
+                    conflict_detail="plan review must pass after the latest action modification",
+                )
+                unit_of_work.audits.add(
+                    _audit_event(
+                        run_id=plan.run_id,
+                        action_id=action.id,
+                        event_type="PLAN_REVIEW_APPROVAL_BLOCKED",
+                        outcome=ResultCode.STATE_CONFLICT.value,
+                        metadata={
+                            "command_id": command.command_id,
+                            "review_status": plan.review_status.value,
+                            "review_version": plan.review_version,
+                        },
+                        created_at_ms=now_ms,
+                    )
+                )
+                _finish_json_receipt(
+                    unit_of_work, command.command_id, response, action.version, now_ms
+                )
+                unit_of_work.commit()
+                return response
             approval_source_snapshot = command.source_snapshot
             duplicate_decision = None
             calendar_decision = None

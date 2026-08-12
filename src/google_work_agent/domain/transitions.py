@@ -54,6 +54,8 @@ RUN_TRANSITIONS: dict[tuple[RunStatus, RunCommand], RunStatus] = {
     (RunStatus.ANALYZING, RunCommand.FAIL_RUN): RunStatus.FAILED,
     (RunStatus.RETRIEVING, RunCommand.FAIL_RUN): RunStatus.FAILED,
     (RunStatus.PLANNING, RunCommand.FAIL_RUN): RunStatus.FAILED,
+    (RunStatus.WAITING_APPROVAL, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
+    (RunStatus.WAITING_APPROVAL, RunCommand.REPLAN): RunStatus.PLANNING,
     (RunStatus.ANALYZING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.RETRIEVING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.PLANNING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
@@ -93,6 +95,7 @@ WRITE_ACTION_TRANSITIONS: dict[tuple[ActionStatus, ActionCommand], ActionStatus]
     (ActionStatus.MODIFIED, ActionCommand.APPROVE_ACTION): ActionStatus.APPROVED,
     (ActionStatus.PROPOSED, ActionCommand.MODIFY_ACTION): ActionStatus.MODIFIED,
     (ActionStatus.APPROVED, ActionCommand.MODIFY_ACTION): ActionStatus.MODIFIED,
+    (ActionStatus.MODIFIED, ActionCommand.MODIFY_ACTION): ActionStatus.MODIFIED,
     (ActionStatus.EXPIRED, ActionCommand.MODIFY_ACTION): ActionStatus.MODIFIED,
     (ActionStatus.FAILED, ActionCommand.MODIFY_ACTION): ActionStatus.MODIFIED,
     (ActionStatus.PROPOSED, ActionCommand.REJECT_ACTION): ActionStatus.REJECTED,
@@ -120,11 +123,14 @@ def next_allowed_run_commands(current_status: RunStatus) -> tuple[RunCommand, ..
     commands = [
         command
         for command in RUN_COMMAND_ORDER
-        if (current_status, command) in RUN_TRANSITIONS
-        or _is_publish_plan_candidate(current_status, command)
-        or _is_cancel_candidate(current_status, command)
-        or _is_require_recovery_candidate(current_status, command)
-        or _is_resolve_recovery_candidate(current_status, command)
+        if command is not RunCommand.REPLAN
+        and (
+            (current_status, command) in RUN_TRANSITIONS
+            or _is_publish_plan_candidate(current_status, command)
+            or _is_cancel_candidate(current_status, command)
+            or _is_require_recovery_candidate(current_status, command)
+            or _is_resolve_recovery_candidate(current_status, command)
+        )
     ]
     return tuple(dict.fromkeys(commands))
 

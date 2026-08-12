@@ -946,6 +946,16 @@ RECOVERY_REQUIRED
 
 ## 25.5 Plan 상태 전이
 
+### Action Modify 이후 Plan 재검토 Gate
+
+- Persisted Write Plan은 `review_status`와 단조 증가하는 `review_version`을 가진다.
+- 최초 저장되는 Plan은 기존 Planning→Review PASS를 통과했으므로 `PASSED`다.
+- Action Modify와 같은 Transaction에서 Plan은 `REQUIRED`가 되고 `review_version`이 증가한다.
+- `review_status != PASSED`인 동안 새 Approval 생성은 금지한다.
+- 재검토 결과는 시작 시 읽은 `review_version`과 현재 값이 같을 때만 저장한다. Review 중 다른 Modify가 발생하면 오래된 결과는 적용하지 않는다.
+- LLM Review는 DB Write Transaction 밖에서 실행하며, PASS도 최신 Domain Validation 이후에만 `PASSED`로 확정한다.
+- `REVISE`/`RETRIEVE_MORE`는 기존 Plan을 `SUPERSEDED`로 닫고 Run을 `PLANNING`으로 되돌린 뒤, 새 Plan·Action·Evidence ID와 증가한 `revision_no`로 저장한다. 이전 Action과 Approval은 재사용하지 않는다.
+
 | 현재 | Event | Guard | 다음 | 규칙 |
 |---|---|---|---|---|
 | DRAFT | RequestApproval | Action·Evidence·DAG 유효 | WAITING_APPROVAL | 기존 Revision 수정 금지 |

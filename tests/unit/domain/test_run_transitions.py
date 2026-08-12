@@ -39,6 +39,8 @@ from google_work_agent.domain import (
         (RunStatus.ANALYZING, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
         (RunStatus.RETRIEVING, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
         (RunStatus.PLANNING, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
+        (RunStatus.WAITING_APPROVAL, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
+        (RunStatus.WAITING_APPROVAL, RunCommand.REPLAN, RunStatus.PLANNING),
         (RunStatus.ANALYZING, RunCommand.FAIL_RUN, RunStatus.FAILED),
         (RunStatus.RETRIEVING, RunCommand.FAIL_RUN, RunStatus.FAILED),
         (RunStatus.PLANNING, RunCommand.FAIL_RUN, RunStatus.FAILED),
@@ -270,6 +272,7 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
             RunStatus.WAITING_APPROVAL,
             (
                 RunCommand.BEGIN_VERIFICATION,
+                RunCommand.BLOCK_RUN,
                 RunCommand.REQUEST_CANCEL,
                 RunCommand.REQUIRE_REAUTH,
                 RunCommand.REQUIRE_RECOVERY,
