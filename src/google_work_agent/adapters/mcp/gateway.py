@@ -151,10 +151,16 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
         query: str,
         page_token: str | None,
         page_size: int,
+        include_thread_metadata: bool = True,
     ) -> ResourcePage:
         return self._page(
             "gmail_search_threads",
-            {"query": query, "page_token": page_token, "page_size": page_size},
+            {
+                "query": query,
+                "page_token": page_token,
+                "page_size": page_size,
+                "include_thread_metadata": include_thread_metadata,
+            },
         )
 
     def get_gmail_thread(self, *, thread_id: str) -> ResourceSnapshot:
@@ -217,10 +223,20 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
         task_list_id: str,
         page_token: str | None,
         page_size: int,
+        show_completed: bool = False,
+        show_hidden: bool = False,
+        show_deleted: bool = False,
     ) -> ResourcePage:
         return self._page(
             "tasks_list_tasks",
-            {"task_list_id": task_list_id, "page_token": page_token, "page_size": page_size},
+            {
+                "task_list_id": task_list_id,
+                "page_token": page_token,
+                "page_size": page_size,
+                "show_completed": show_completed,
+                "show_hidden": show_hidden,
+                "show_deleted": show_deleted,
+            },
         )
 
     def get_task(self, *, task_list_id: str, task_id: str) -> ResourceSnapshot:

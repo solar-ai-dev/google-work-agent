@@ -24,6 +24,9 @@ from google_work_agent.application.workflows.request_understanding import (
     RequestIntentV1,
     build_clarification_question_v1,
 )
+from google_work_agent.application.workflows.task_write_semantics import (
+    normalize_task_write_arguments,
+)
 from google_work_agent.application.workflows.work_analysis import WorkAnalysisResultV1
 from google_work_agent.domain import (
     EffectType,
@@ -807,13 +810,19 @@ def _validate_action_draft(
         )
     except PolicyViolationError as error:
         raise SolutionPlanningValidationError(str(error)) from error
+    try:
+        arguments = normalize_task_write_arguments(
+            tool_name, _require_mapping(action["arguments"], f"{path}.arguments")
+        )
+    except ValueError as error:
+        raise SolutionPlanningValidationError(str(error)) from error
     return {
         "schema_version": ACTION_DRAFT_SCHEMA_VERSION,
         "action_id": _require_string(action, "action_id", path),
         "position": _require_int(action, "position", path),
         "effect": cast(ActionEffectValue, effect),
         "tool_name": tool_name,
-        "arguments": _require_mapping(action["arguments"], f"{path}.arguments"),
+        "arguments": arguments,
         "expected": _require_mapping(action["expected"], f"{path}.expected"),
         "evidence_refs": evidence_refs,
         "resource_refs": resource_refs,

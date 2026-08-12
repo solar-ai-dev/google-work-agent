@@ -37,7 +37,7 @@ LangGraph Checkpoint 내부 Schema, Tool별 JSON Schema, Google API 원본 Schem
 |---|---|---|
 | DB-001 | P0는 SQLite 파일 하나를 사용 | Domain과 Checkpoint를 함께 Backup·Restore하며 단일 사용자 부하에 충분하다. |
 | DB-002 | Domain과 Checkpoint는 논리적으로 분리 | Checkpoint는 Workflow 재개, Domain은 승인·실행 사실의 기준점이다. |
-| DB-003 | Google 목록과 Page Token은 React Client Session Cache에 둔다 | Google 전체 데이터를 로컬에 복제하지 않는다. |
+| DB-003 | Google Sidebar 목록과 Local API continuation은 React Client Session Cache에 둔다 | Google 전체 데이터를 로컬에 복제하지 않는다. Tasks 기본 Browse batch와 명시적 날짜순 materialization 결과도 별도 React Client Session Cache에만 둔다. |
 | DB-004 | 실제 사용 Resource와 최소 Evidence만 저장 | 대화 복구·승인 근거를 유지하면서 원문 저장을 최소화한다. |
 | DB-005 | 핵심 관계와 상태는 정규화한다 | Join, Constraint와 상태 전이를 DB에서 검증한다. |
 | DB-006 | 가변 Arguments와 불변 Snapshot만 JSON으로 저장한다 | Tool별 구조 변화와 승인 당시 값을 보존한다. |
@@ -66,7 +66,8 @@ LangGraph Checkpoint 내부 Schema, Tool별 JSON Schema, Google API 원본 Schem
 | Conversation·Run·Plan·Action | SQLite Domain Table |
 | Approval·Execution·Verification | SQLite Domain Table |
 | LangGraph State·Interrupt | 같은 SQLite 파일의 Library 관리 Table |
-| Google Sidebar 목록·Page Token | React Client Session Cache |
+| Google Sidebar 목록·Local API continuation | React Client Session Cache |
+| Tasks Sidebar Browse batch·page mapping | React Client Session Cache, account·task_list_id·검색/filter·sort·provider token/batch 범위 |
 | Agent 검색 중간 후보·전체 원문 | 현재 Run 메모리 |
 | 실제 사용 Resource·Evidence excerpt | SQLite Domain Table |
 | OAuth Token·API Key | OS Keyring 또는 Local Agent Process Memory |
@@ -537,7 +538,8 @@ P0 초기값:
 
 | 경로 | 초기값 |
 |---|---:|
-| Google Sidebar 목록 | 10개 |
+| Google Sidebar UI 표시 | 20개 |
+| Tasks Sidebar Provider browse batch | 최대 100개 Task metadata (UI 표시는 20개) |
 | Conversation·Message Page | 20개 |
 | 내부 ID Batch Query | 최대 50개 |
 | Plan·Action·Evidence Batch Write | 최대 50 Row |
@@ -548,14 +550,16 @@ P0 초기값:
 
 ### 14.1 Google Source
 
-Google API가 반환하는 Opaque Page Token을 사용한다.
+Google Provider pagination은 source 내부 구현으로 사용하고, Local Resource API는 Client에 opaque continuation token만 제공한다.
 
 ```text
 목록 API
-→ items + nextPageToken
+→ items + Local API opaque continuation token
 → React Client Session Cache
-→ 다음 페이지에 pageToken 사용
+→ 다음 요청에 token을 그대로 사용
 ```
+
+Tasks 기본 Browse는 configured/default Task List의 `show_completed=false` Provider 반환 순을 유지한다. `tasks.list` 최대 100개 metadata batch와 continuation·UI 20개 page mapping은 React Client Session Cache에만 둔다. 100개와 next token을 받으면 초기에는 5개 UI page만 알고, 알려진 마지막 page를 요청할 때만 다음 batch를 append한다. terminal batch 도달 뒤 누적 수로 exact total과 마지막 page를 확정하며, 초기 exact count를 위해 전체 scope를 순회하지 않는다. 사용자가 예정일 정렬을 명시한 경우에만 전체 결과를 materialize하여 예정일 오름차순·예정일 없는 Task 후순위를 적용하고, 그 결과는 기본 Browse cache와 분리한다. Refresh·계정/Task List·scope·검색/filter/sort 변경·session 종료는 관련 cache를 무효화한다. raw bearer/session token은 cache key나 Application에 전달하지 않으며 SQLite·영속 cache에 저장하지 않는다.
 
 ### 14.2 Local DB
 

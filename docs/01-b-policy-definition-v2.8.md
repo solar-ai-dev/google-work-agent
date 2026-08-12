@@ -527,17 +527,17 @@ Google Workspace API는 사용자 PC의 로컬 MCP Server가 사용자 OAuth Cre
 ### POL-SRC-003 사이드바 목록
 
 - Gmail은 최근 수신 순으로 표시한다.
-- Tasks는 미완료와 예정일 임박 항목을 우선 표시한다.
+- Tasks 기본 목록은 configured/default Task List의 미완료 항목을 Google Tasks Provider 반환 순으로 표시한다. 사용자가 예정일 정렬을 명시한 경우에만 전체 materialization 뒤 예정일 오름차순·예정일 없는 항목 후순위를 적용한다.
 - Calendar는 현재 이후의 가까운 예정 일정부터 표시한다.
 - Sidebar의 페이지 단위와 Source별 기본 조회 범위는 안전 정책이 아니라 `01-A 기능 정의서`와 `07 Interface`가 소유한다.
-- 다음 페이지 이동 시 새 Page Token으로 Google API를 호출한다.
+- Tasks는 `tasks.list(show_completed=false, page_size<=100)` batch를 UI 20개 page로 나누고, 알려진 마지막 UI page를 요청할 때만 다음 Page Token으로 Google API를 호출한다. 초기 exact count를 위해 Page Token 끝까지 순회하지 않는다.
 
 ### POL-SRC-004 페이지 메모리 캐시
 
-- 이미 조회한 목록 페이지와 Page Token은 React Client Session Cache에 유지한다.
+- 이미 조회한 목록 페이지, Provider batch와 Page Token은 React Client Session Cache에 유지한다.
 - 동일 Google 계정, Source, 검색·필터, 정렬, Page Token 조합이 같으면 메모리 결과를 재사용한다.
 - 페이지 이동만으로 이미 조회한 페이지를 다시 호출하지 않는다.
-- UI 세션 종료, Google 계정 변경, 해당 Source 수동 새로고침 시 관련 Cache를 폐기한다.
+- UI 세션 종료, Google 계정·scope·검색/필터/정렬 변경, 해당 Source 수동 새로고침 시 관련 Cache를 폐기한다.
 - 사이드바 페이지 Cache는 SQLite에 영구 저장하지 않는다.
 
 ### POL-SRC-005 직접 선택
@@ -567,7 +567,7 @@ SQLite에는 실제 Run에서 사용된 Resource ID, Source, 원본 링크, 최�
 
 ### POL-SRC-009 수동 새로고침
 
-사용자가 Source의 새로고침을 실행하면 해당 Source의 목록 Cache와 Page Token을 폐기하고 첫 페이지를 최신 데이터로 다시 조회한다.
+사용자가 Source의 새로고침을 실행하면 해당 Source의 목록 Cache와 Page Token을 폐기하고 첫 페이지를 최신 데이터로 다시 조회한다. Tasks는 첫 batch가 terminal이면 exact total을 표시하고, 다음 token이 있으면 확인된 최소 수에 `+`를 붙여 표시하며, terminal batch 뒤 누적 수로 exact total을 확정한다.
 
 ## 23. Secure & Resilient 시스템 정책
 

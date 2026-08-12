@@ -12,6 +12,7 @@ import {
   type LLMConnectionResponse,
   type LiveResponse,
   type ReadyResponse,
+  type ResourceCountResponse,
   type ResourceListResponse,
   type RunCommandResponse,
   type RunContextResponse,
@@ -294,11 +295,15 @@ export function prepareRetry(payload: {
 export function listGmailResources(
   query: string,
   pageToken?: string | null,
-  pageSize = 10,
+  pageSize = 20,
+  includeThreadMetadata = true,
 ): Promise<ResourceListResponse> {
   const search = new URLSearchParams({ query, page_size: String(pageSize) });
   if (pageToken) {
     search.set("page_token", pageToken);
+  }
+  if (!includeThreadMetadata) {
+    search.set("include_thread_metadata", "false");
   }
   return requestJson(`/api/v1/resources/gmail?${search.toString()}`);
 }
@@ -310,7 +315,9 @@ export function getGmailResourceDetail(resourceId: string): Promise<GmailResourc
 export function listTaskResources(
   taskListId?: string | null,
   pageToken?: string | null,
-  pageSize = 10,
+  pageSize = 100,
+  refresh = false,
+  statusScope: "incomplete" | "completed" = "incomplete",
 ): Promise<ResourceListResponse> {
   const search = new URLSearchParams({ page_size: String(pageSize) });
   if (taskListId) {
@@ -319,14 +326,17 @@ export function listTaskResources(
   if (pageToken) {
     search.set("page_token", pageToken);
   }
+  if (refresh) search.set("refresh", "true");
+  if (statusScope === "completed") search.set("status_scope", statusScope);
   return requestJson(`/api/v1/resources/tasks?${search.toString()}`);
 }
 
 export function listCalendarResources(
   calendarId?: string | null,
   pageToken?: string | null,
-  pageSize = 10,
+  pageSize = 100,
   timeMin?: string | null,
+  timeMax?: string | null,
 ): Promise<ResourceListResponse> {
   const search = new URLSearchParams({ page_size: String(pageSize) });
   if (calendarId) {
@@ -338,5 +348,28 @@ export function listCalendarResources(
   if (timeMin) {
     search.set("time_min", timeMin);
   }
+  if (timeMax) {
+    search.set("time_max", timeMax);
+  }
   return requestJson(`/api/v1/resources/calendar?${search.toString()}`);
+}
+
+export function getResourceCount(
+  source: "gmail" | "tasks" | "calendar",
+  options: {
+    query?: string | null;
+    taskListId?: string | null;
+    calendarId?: string | null;
+    timeMin?: string | null;
+    timeMax?: string | null;
+  } = {},
+): Promise<ResourceCountResponse> {
+  const search = new URLSearchParams();
+  if (options.query) search.set("query", options.query);
+  if (options.taskListId) search.set("task_list_id", options.taskListId);
+  if (options.calendarId) search.set("calendar_id", options.calendarId);
+  if (options.timeMin) search.set("time_min", options.timeMin);
+  if (options.timeMax) search.set("time_max", options.timeMax);
+  const suffix = search.size ? `?${search.toString()}` : "";
+  return requestJson(`/api/v1/resources/${source}/count${suffix}`);
 }

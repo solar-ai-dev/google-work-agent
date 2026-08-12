@@ -150,7 +150,7 @@ P0 실행 계약:
 
 - Conversation당 Open Run 최대 1개
 - 전체 LLM Run 동시성 1
-- Google Read 동시성 최대 3
+- Google Read 동시성 최대 3. 하나의 MCP Read invocation 내부에서 발생하는 Google Provider Read도 이 공통 budget에 포함한다.
 - Google Write 동시성 1
 - Run Queue는 메모리 기반이며 실행 사실의 기준점은 `runs`와 Checkpoint다.
 - Service 재시작 시 Open Run과 Checkpoint를 조회해 명시적 Resume 또는 `RECOVERY_REQUIRED`로 전환한다.
@@ -1351,6 +1351,7 @@ React
 
 - MCP Credential Provider만 Authorization Code를 Token으로 교환하고 Refresh Token을 읽고 쓴다.
 - FastAPI는 `account_id`, `email`, `granted_scopes`, `connection_status`, `reauth_required`만 받는다.
+- Resource Browse/Count route는 기존 Local Session 검증을 통과한 뒤 `LocalSessionRecord.digest`를 opaque local session identity로, 현재 연결 계정의 기존 `account_id`를 active Google account identity로만 Application에 전달할 수 있다. raw session cookie/token과 OAuth access token은 Application snapshot scope에 전달하지 않는다.
 - Access Token은 MCP Process Memory에만 둔다.
 
 ## 31.3 Agent·MCP 호출 경계

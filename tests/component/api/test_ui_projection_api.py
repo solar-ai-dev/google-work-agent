@@ -1,5 +1,4 @@
 from pathlib import Path
-
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClock, FakeGoogleGateway, FakeWorkflowRuntime
 from tests.support.fixtures import ProductFixtureSnapshotLoader
@@ -35,9 +34,10 @@ from google_work_agent.ports import (
     ReadinessCheckResult,
     ReadinessReport,
     ReadinessState,
+    ResourceSnapshot,
+    ResourceType,
     RuntimeSummary,
 )
-
 
 def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path: Path) -> None:
     database_path = tmp_path / "ui-projections.db"
@@ -53,6 +53,20 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
     fixture_root = Path(__file__).resolve().parents[2] / "fixtures" / "product"
     snapshot = ProductFixtureSnapshotLoader(fixture_root).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
+    gateway._resources[(ResourceType.TASK, "task-completed")] = ResourceSnapshot(
+        fixture_snapshot_id="task-completed",
+        resource_type=ResourceType.TASK,
+        resource_id="task-completed",
+        parent_id="task-list-default",
+        related_resource_ids=("task-list-default",),
+        version="1",
+        recovery_fingerprint=None,
+        payload={
+            "title": "완료 업무",
+            "status": "completed",
+            "completed": "2026-08-13T00:30:00.000Z",
+        },
+    )
     clock = FakeClock(1_000)
     runtime = FakeWorkflowRuntime()
     publisher = InMemoryRunEventPublisher(service_instance_id="svc-ui", capacity_per_run=8)
@@ -193,6 +207,11 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         assert gmail.status_code == 200
         assert gmail.json()["items"][0]["resource_id"] == "thread-project"
 
+        gmail_count = client.get("/api/v1/resources/gmail/count", headers=headers)
+        assert gmail_count.status_code == 200
+        assert gmail_count.json()["source"] == "gmail"
+        assert gmail_count.json()["total_count"] == 2
+
         gmail_detail = client.get("/api/v1/resources/gmail/thread-project", headers=headers)
         assert gmail_detail.status_code == 200
         assert gmail_detail.json() == {
@@ -216,9 +235,22 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         tasks = client.get("/api/v1/resources/tasks?page_size=20", headers=headers)
         assert tasks.status_code == 200
         assert tasks.json()["items"][0]["resource_type"] == "task"
+        assert tasks.json()["items"][0]["title"] == "Pay contractor invoice"
+
+        completed_tasks = client.get(
+            "/api/v1/resources/tasks?page_size=20&status_scope=completed",
+            headers=headers,
+        )
+        assert completed_tasks.status_code == 200
+        completed_item = next(item for item in completed_tasks.json()["items"] if item["resource_id"] == "task-completed")
+        assert completed_item["metadata"]["completed_at"] == "2026-08-13T00:30:00.000Z"
+
+        tasks_count = client.get("/api/v1/resources/tasks/count", headers=headers)
+        assert tasks_count.status_code == 200
+        assert tasks_count.json()["total_count"] == 2
 
         calendar = client.get(
-            "/api/v1/resources/calendar?page_size=10&time_min=2026-08-10T00%3A00%3A00Z",
+            "/api/v1/resources/calendar?page_size=10&time_min=2026-08-10T00%3A00%3A00Z&time_max=2026-11-08T00%3A00%3A00Z",
             headers=headers,
         )
         assert calendar.status_code == 200
@@ -227,6 +259,16 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         calendar_item = calendar.json()["items"][0]
         assert calendar_item["title"]
         assert {"start", "end"}.issubset(calendar_item["metadata"])
+
+        calendar_count = client.get(
+            "/api/v1/resources/calendar/count?time_min=2026-08-10T00%3A00%3A00Z&time_max=2026-11-08T00%3A00%3A00Z",
+            headers=headers,
+        )
+        assert calendar_count.status_code == 200
+        assert calendar_count.json()["total_count"] == len(calendar.json()["items"])
+
+        unsupported_count = client.get("/api/v1/resources/drive/count", headers=headers)
+        assert unsupported_count.status_code == 404
 
         created = client.post(
             "/api/v1/conversations",

@@ -270,6 +270,12 @@ export type ResourceListResponse = {
   api_contract_version: string;
 };
 
+export type ResourceCountResponse = {
+  source: string;
+  total_count: number;
+  api_contract_version: string;
+};
+
 export type GmailAttachmentMetadata = {
   message_id: string;
   attachment_id: string;
