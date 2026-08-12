@@ -36,6 +36,8 @@ from google_work_agent.application import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
     ClaimWriteActionCommand,
+    RejectWriteActionCommand,
+    RejectWriteActionService,
     StoreWriteActionSuccessCommand,
 )
 from google_work_agent.application.workflows import (
@@ -2329,3 +2331,444 @@ def test_planning_mode_falls_back_to_answer_only_when_disposition_absent(
     del intent["response_disposition"]
     assert runtime._planning_mode_from_request_intent(intent) == "answer_only"
     runtime.close()
+
+
+@pytest.mark.parametrize(
+    ("source", "constraints", "expected_operation"),
+    [
+        ("GMAIL", {}, "search_gmail_threads"),
+        ("CALENDAR", {"calendar_id": "calendar-primary"}, "list_calendar_events"),
+        ("TASKS", {"task_list_id": "task-list-default"}, "list_tasks"),
+    ],
+)
+def test_edge_request_to_acquisition_to_context_preserves_typed_state(
+    tmp_path: Path,
+    source: Literal["GMAIL", "CALENDAR", "TASKS"],
+    constraints: dict[str, object],
+    expected_operation: str,
+) -> None:
+    root = tmp_path / source.lower()
+    root.mkdir()
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    intent = _clear_intent()
+    intent["semantic_constraints"]["sources"] = [
+        {"source": source, "mention": source.lower(), "confidence": "HIGH"}
+    ]
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(root),
+        llm_payloads=[intent, [_plan(source, constraints)]],
+        gateway=gateway,
+        checkpoint_database_path=root / "checkpoints.db",
+        prompt_manifest_path=_runtime_active_manifest_path(root),
+    )
+
+    try:
+        initial = runtime._initial_state(_start_request())  # noqa: SLF001
+        understood = runtime._request_subgraph.invoke(initial)  # noqa: SLF001
+        assert understood["request_intent"] == intent
+        assert understood["__target__"] == "acquisition"
+
+        acquired = runtime._acquisition_subgraph.invoke(understood)  # noqa: SLF001
+        assert acquired["__target__"] == "context_retriever"
+        assert acquired["source_fetch_plans"][0]["source"] == source
+        assert acquired["acquisition_result"]["status"] in {"COMPLETE", "PARTIAL"}
+        assert gateway.count_calls(expected_operation) >= 1
+    finally:
+        runtime.close()
+
+
+def test_edge_answer_only_no_fetch_skips_google_and_builds_typed_result(
+    tmp_path: Path,
+) -> None:
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(tmp_path),
+        llm_payloads=[_clear_intent(), []],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-no-fetch-edge.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        understood = runtime._request_subgraph.invoke(  # noqa: SLF001
+            runtime._initial_state(_start_request())  # noqa: SLF001
+        )
+        acquired = runtime._acquisition_subgraph.invoke(understood)  # noqa: SLF001
+        assert acquired["__target__"] == "context_retriever"
+        assert acquired["source_fetch_plans"] == []
+        assert acquired["acquisition_result"]["status"] == "COMPLETE"
+        assert acquired["acquisition_result"]["source_summaries"] == []
+        assert gateway.call_log == []
+    finally:
+        runtime.close()
+
+
+def test_edge_acquisition_failure_never_routes_to_context_as_success(tmp_path: Path) -> None:
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    gateway.queue_fault(
+        operation="list_tasks",
+        fault=GoogleGatewayFault(GoogleGatewayFaultKind.HTTP_500),
+    )
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(tmp_path),
+        llm_payloads=[[_plan("TASKS", {"task_list_id": "task-list-default"})]],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-acquisition-failure-edge.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        state["request_intent"] = _clear_intent()
+        result = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
+        assert result["acquisition_result"]["status"] == "FAILED"
+        assert result["__target__"] == "finalize"
+        assert result["workflow_phase"] == "FINALIZE"
+        assert result["context_result"] is None
+    finally:
+        runtime.close()
+
+
+def test_edge_partial_acquisition_preserves_result_and_routes_to_context(tmp_path: Path) -> None:
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    gateway.queue_fault(
+        operation="search_gmail_threads",
+        fault=GoogleGatewayFault(GoogleGatewayFaultKind.HTTP_500),
+    )
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(tmp_path),
+        llm_payloads=[
+            [
+                _plan("TASKS", {"task_list_id": "task-list-default"}),
+                _plan("GMAIL", {}),
+            ]
+        ],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-acquisition-partial-edge.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        state["request_intent"] = _clear_intent()
+        result = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
+        assert result["acquisition_result"]["status"] == "PARTIAL"
+        assert result["__target__"] == "context_retriever"
+        assert len(result["acquisition_result"]["source_summaries"]) == 2
+    finally:
+        runtime.close()
+
+
+def test_edge_required_confirmation_stops_before_acquisition(tmp_path: Path) -> None:
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(tmp_path),
+        llm_payloads=[_ambiguous_intent()],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-confirm-edge.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        result = runtime._request_subgraph.invoke(  # noqa: SLF001
+            runtime._initial_state(_start_request())  # noqa: SLF001
+        )
+        assert result["__target__"] == "waiting_confirmation"
+        assert result["workflow_phase"] == "WAITING_CONFIRMATION"
+        assert result["user_interrupt"]["origin_target"] == "request_understanding.classify"
+        assert gateway.call_log == []
+    finally:
+        runtime.close()
+
+
+def test_chain_context_analysis_planning_review_preserves_typed_outputs(
+    tmp_path: Path,
+) -> None:
+    llm_runtime = _QueuedLLMRuntime(
+        [
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _answer_output(),
+            _review_output("PASS"),
+        ]
+    )
+    runtime = LangGraphWorkflowRuntime(
+        unit_of_work_factory=sqlite_unit_of_work_factory(_seed_runtime_database(tmp_path)),
+        llm_runtime=llm_runtime,
+        gateway=FakeGoogleGateway(
+            ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+        ),
+        now_ms=FakeClock(1000).now_ms,
+        id_factory=DeterministicUUID(prefix="edge").next_id,
+        signing_secret="edge-secret",
+        service_instance_id="edge-service",
+        checkpoint_database_path=tmp_path / "checkpoints-chain-b.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        state["request_intent"] = _clear_intent()
+        acquired = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
+        context = runtime._context_subgraph.invoke(acquired)  # noqa: SLF001
+        assert context["__target__"] == "work_analysis"
+        assert context["context_result"]["evidence_drafts"][0]["evidence_id"] == "evidence-1"
+
+        analysis = runtime._analysis_subgraph.invoke(context)  # noqa: SLF001
+        assert analysis["__target__"] == "planning"
+        assert analysis["analysis_result"]["findings"][0]["finding_id"] == "finding-1"
+
+        planned = runtime._planning_subgraph.invoke(analysis)  # noqa: SLF001
+        assert planned["__target__"] == "review"
+        assert planned["answer_draft"]["evidence_refs"] == ["evidence-1"]
+
+        reviewed = runtime._review_subgraph.invoke(planned)  # noqa: SLF001
+        assert reviewed["__target__"] == "finalize"
+        assert reviewed["plan_review"]["status"] == "PASS"
+        planning_input = llm_runtime.calls[4]["prompt_input"]
+        assert isinstance(planning_input, dict)
+        assert planning_input["analysis_result"]["findings"][0]["finding_id"] == "finding-1"
+    finally:
+        runtime.close()
+
+
+def test_edge_analysis_confirmation_never_enters_planning(tmp_path: Path) -> None:
+    output = _analysis_output()
+    output["status"] = "NEEDS_CONFIRMATION"
+    output["confirmation"] = {
+        "reason_code": "ANALYSIS_RELATIONSHIP_AMBIGUITY",
+        "question": "Which task should be primary?",
+    }
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(tmp_path),
+        llm_payloads=[output],
+        gateway=FakeGoogleGateway(
+            ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+        ),
+        checkpoint_database_path=tmp_path / "checkpoints-analysis-confirm-edge.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        state["request_intent"] = _clear_intent()
+        state["context_result"] = _context_result()
+        result = runtime._analysis_subgraph.invoke(state)  # noqa: SLF001
+        assert result["__target__"] == "waiting_confirmation"
+        assert result["analysis_result"]["status"] == "NEEDS_CONFIRMATION"
+        assert result["plan_draft"] is None
+        assert result["answer_draft"] is None
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize(
+    ("profile", "profile_nodes"),
+    [
+        (
+            GraphProfile.SIX_ROLE_BASELINE,
+            {
+                "request_understanding",
+                "acquisition",
+                "context_retriever",
+                "work_analysis",
+                "planning",
+                "review",
+            },
+        ),
+        (GraphProfile.THREE_STAGE, {"stage_one", "stage_two", "stage_three"}),
+        (GraphProfile.SINGLE_BASELINE, {"single_workflow"}),
+    ],
+)
+def test_compiled_graph_registers_profile_and_shared_nodes(
+    tmp_path: Path,
+    profile: GraphProfile,
+    profile_nodes: set[str],
+) -> None:
+    root = tmp_path / profile.value.lower()
+    root.mkdir()
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(root),
+        llm_payloads=[],
+        gateway=FakeGoogleGateway(
+            ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+        ),
+        checkpoint_database_path=root / "checkpoints-topology-edge.db",
+        graph_profile=profile,
+        prompt_manifest_path=_runtime_active_manifest_path(root),
+    )
+
+    try:
+        graph = runtime._graph.get_graph()  # noqa: SLF001
+        shared = {
+            "domain_validation",
+            "waiting_confirmation",
+            "waiting_approval",
+            "action_execution",
+            "recovery",
+            "finalize",
+        }
+        assert profile_nodes | shared <= set(graph.nodes)
+        assert any(edge.target == "action_execution" for edge in graph.edges)
+        assert any(edge.source == "action_execution" for edge in graph.edges)
+    finally:
+        runtime.close()
+
+
+def test_edge_rejected_approval_never_enters_preflight_or_claim(tmp_path: Path) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-rejected-edge.db",
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        preflight_reads_before_resume = gateway.count_calls("list_tasks")
+        rejected = RejectWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            now_ms=lambda: 1000,
+        )(
+            RejectWriteActionCommand(
+                command_id="reject-edge",
+                request_hash="c" * 64,
+                action_id="action-1",
+                expected_version=0,
+            )
+        )
+        assert rejected["applied"] is True
+
+        runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="APPROVAL",
+                resume_payload={"approved": False},
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-reject-edge",
+                    command_id="command-reject-edge",
+                    api_contract_version="1",
+                ),
+            )
+        )
+
+        connection = connect_sqlite(database_path)
+        try:
+            action_status = connection.execute(
+                "SELECT status FROM actions WHERE id = 'action-1';"
+            ).fetchone()[0]
+            attempt_count = connection.execute(
+                "SELECT COUNT(*) FROM execution_attempts;"
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        assert action_status == "REJECTED"
+        assert gateway.count_calls("list_tasks") == preflight_reads_before_resume
+        assert gateway.count_calls("create_task") == 0
+        assert attempt_count == 0
+    finally:
+        runtime.close()
+
+
+def test_edge_preflight_google_read_failure_blocks_claim_and_write(tmp_path: Path) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-preflight-failure-edge.db",
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        approved = ApproveWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            now_ms=lambda: 1000,
+        )(
+            ApproveWriteActionCommand(
+                command_id="approve-preflight-failure-edge",
+                request_hash="d" * 64,
+                action_id="action-1",
+                expected_version=0,
+                approved_by_account_id="account-1",
+                approved_by_display="User",
+                source_snapshot={},
+                approval_id="approval-preflight-failure-edge",
+                idempotency_key="e" * 64,
+            )
+        )
+        assert approved.applied is True
+        gateway.queue_fault(
+            operation="list_tasks",
+            fault=GoogleGatewayFault(GoogleGatewayFaultKind.HTTP_500),
+        )
+
+        runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="APPROVAL",
+                resume_payload={"approved": True},
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-preflight-failure-edge",
+                    command_id="command-preflight-failure-edge",
+                    api_contract_version="1",
+                ),
+            )
+        )
+
+        connection = connect_sqlite(database_path)
+        try:
+            action_status = connection.execute(
+                "SELECT status FROM actions WHERE id = 'action-1';"
+            ).fetchone()[0]
+            attempt_count = connection.execute(
+                "SELECT COUNT(*) FROM execution_attempts;"
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        assert action_status == "APPROVED"
+        assert gateway.count_calls("create_task") == 0
+        assert attempt_count == 0
+    finally:
+        runtime.close()
