@@ -297,6 +297,25 @@ def _event_candidate(
     )
 
 
+def calendar_event_candidate(
+    snapshot: ResourceSnapshot, *, calendar_id: str, timezone: str
+) -> CalendarEventCandidate:
+    """Normalize one Calendar Event through the shared FN-032 boundary."""
+
+    return _event_candidate(snapshot, calendar_id=calendar_id, timezone=timezone)
+
+
+def calendar_event_candidate_from_values(
+    *, event_id: str, calendar_id: str, payload: Mapping[str, object], timezone: str
+) -> CalendarEventCandidate:
+    return _event_candidate_from_values(
+        event_id=event_id,
+        calendar_id=calendar_id,
+        payload=payload,
+        timezone=timezone,
+    )
+
+
 def _event_candidate_from_values(
     *, event_id: str, calendar_id: str, payload: Mapping[str, object], timezone: str
 ) -> CalendarEventCandidate:
@@ -328,6 +347,12 @@ def _freebusy_intervals(
     )
 
 
+def calendar_freebusy_intervals(
+    calendars: tuple[FreeBusyCalendar, ...], *, calendar_id: str
+) -> tuple[CalendarInterval, ...]:
+    return _freebusy_intervals(calendars, calendar_id=calendar_id)
+
+
 def _freebusy_payload_intervals(payload: Mapping[str, object]) -> list[CalendarInterval]:
     values = payload.get("busy_intervals")
     if not isinstance(values, list):
@@ -348,6 +373,12 @@ def _freebusy_payload_intervals(payload: Mapping[str, object]) -> list[CalendarI
     return result
 
 
+def calendar_freebusy_payload_intervals(
+    payload: Mapping[str, object],
+) -> tuple[CalendarInterval, ...]:
+    return tuple(_freebusy_payload_intervals(payload))
+
+
 def _residual_freebusy(
     freebusy: tuple[CalendarInterval, ...],
     *,
@@ -359,6 +390,14 @@ def _residual_freebusy(
     return tuple(
         interval for interval in freebusy if (interval.start, interval.end) not in known_intervals
     )
+
+
+def residual_calendar_freebusy(
+    freebusy: tuple[CalendarInterval, ...],
+    *,
+    events: tuple[CalendarEventCandidate, ...],
+) -> tuple[CalendarInterval, ...]:
+    return _residual_freebusy(freebusy, events=events)
 
 
 def _parse_calendar_datetime(value: object, *, timezone: str) -> datetime:
@@ -423,7 +462,12 @@ __all__ = [
     "calendar_conflict_authority",
     "calendar_conflict_change_requires_reapproval",
     "calendar_conflict_input",
+    "calendar_event_candidate",
+    "calendar_event_candidate_from_values",
+    "calendar_freebusy_intervals",
+    "calendar_freebusy_payload_intervals",
     "evidence_calendar_conflict_risk",
     "merge_calendar_conflict_risk",
     "require_calendar_conflict_acknowledgement",
+    "residual_calendar_freebusy",
 ]

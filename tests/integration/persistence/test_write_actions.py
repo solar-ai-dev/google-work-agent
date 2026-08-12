@@ -57,6 +57,7 @@ from google_work_agent.application.write_actions import (
     is_reauth_required_error,
 )
 from google_work_agent.domain import (
+    CalendarWorkHours,
     InvariantViolationError,
     PolicyViolationError,
     ResultCode,
@@ -65,11 +66,13 @@ from google_work_agent.domain import (
 )
 from google_work_agent.ports import (
     EvidenceOriginType,
+    FreeBusyCalendar,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
     ResourcePage,
     ResourceSnapshot,
     ResourceType,
+    TimeRange,
 )
 from tests.support.fakes import (
     FakeClock,
@@ -3134,6 +3137,247 @@ def test_task_duplicate_preflight_source_failure_is_fail_closed(
     assert action is not None and action.status == "APPROVED" and action.version == 1
     assert approval is not None
     assert any(event.event_type == "TASK_DUPLICATE_PREFLIGHT_BLOCKED" for event in events)
+
+
+class _FeasibilityPreflightGateway:
+    def __init__(
+        self, *, busy_event: ResourceSnapshot | None = None, error: Exception | None = None
+    ) -> None:
+        self.busy_event = busy_event
+        self.error = error
+
+    def list_calendar_events(self, **kwargs: object) -> ResourcePage:
+        if self.error is not None and str(kwargs.get("time_max", "")).endswith("18:00:00+09:00"):
+            raise self.error
+        is_horizon = str(kwargs.get("time_max", "")).endswith("18:00:00+09:00")
+        items = (self.busy_event,) if is_horizon and self.busy_event is not None else ()
+        return ResourcePage(items=items, next_page_token=None)
+
+    def query_freebusy(
+        self, *, calendar_ids: tuple[str, ...], time_range: TimeRange
+    ) -> tuple[FreeBusyCalendar, ...]:
+        del time_range
+        return (FreeBusyCalendar(calendar_id=calendar_ids[0], intervals=()),)
+
+
+def _feasibility_risk(decision: str, *, best_minutes: int) -> dict[str, object]:
+    return {
+        "calendar_conflict": {
+            "decision": "NO_CONFLICT",
+            "matched_resource_ids": [],
+            "reason_codes": ["NO_CONFLICT"],
+            "checked_at_ms": 1000,
+            "freshness": "EVIDENCE_ONLY",
+        },
+        "feasibility_input": {
+            "business_deadline": "1970-01-01",
+            "business_deadline_source": "USER",
+            "required_duration_minutes": 120,
+            "duration_source": "EXPLICIT_ESTIMATE",
+        },
+        "feasibility": {
+            "decision": decision,
+            "reason_codes": [
+                "CLEAN_SLOT_AVAILABLE" if decision == "FEASIBLE" else "NO_CONTIGUOUS_SLOT"
+            ],
+            "business_deadline": "1970-01-01",
+            "derived_cutoff": "1970-01-01T18:00:00+09:00",
+            "required_duration_minutes": 120,
+            "best_clean_slot_minutes": best_minutes,
+            "best_warning_slot_minutes": best_minutes,
+            "checked_at_ms": 1000,
+            "freshness": "EVIDENCE_ONLY",
+        },
+    }
+
+
+def _prepare_calendar_feasibility_action(
+    *, write_database: Path, clock: FakeClock, suffix: str, risk: dict[str, object]
+) -> WriteActionResponse:
+    payload = {
+        "summary": "work block",
+        "start": "1970-01-01T09:00:00+09:00",
+        "end": "1970-01-01T10:00:00+09:00",
+    }
+    save = SaveWritePlanService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database), now_ms=clock.now_ms
+    )
+    publish = PublishWritePlanService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database), now_ms=clock.now_ms
+    )
+    save(
+        SaveWritePlanCommand(
+            command_id=f"save-{suffix}",
+            request_hash="a1" * 32,
+            plan_id=f"plan-{suffix}",
+            run_id="run-1",
+            revision_no=1,
+            summary_text="calendar feasibility",
+            expected_run_version=0,
+            actions=(
+                WriteActionDraft(
+                    action_id=f"action-{suffix}",
+                    position=1,
+                    tool_name="calendar_create_event",
+                    arguments={"calendar_id": "primary", "payload": payload},
+                    expected={
+                        "resource_type": "calendar_event",
+                        "resource_id": None,
+                        "payload": payload,
+                    },
+                    evidence_ids=(f"evidence-{suffix}",),
+                    risk=risk,
+                ),
+            ),
+            evidence=(
+                WriteEvidenceDraft(
+                    evidence_id=f"evidence-{suffix}",
+                    origin_type=EvidenceOriginType.DERIVED,
+                    kind="USER_REQUEST",
+                    excerpt="calendar feasibility",
+                ),
+            ),
+        )
+    )
+    publish(
+        PublishWritePlanCommand(
+            command_id=f"publish-{suffix}",
+            request_hash="a2" * 32,
+            plan_id=f"plan-{suffix}",
+            run_id="run-1",
+            expected_run_version=0,
+        )
+    )
+    approved = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database), now_ms=clock.now_ms
+    )(
+        ApproveWriteActionCommand(
+            command_id=f"approve-{suffix}",
+            request_hash="a3" * 32,
+            action_id=f"action-{suffix}",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id=f"approval-{suffix}",
+            idempotency_key="a4" * 32,
+        )
+    )
+    return approved
+
+
+def test_infeasible_action_cannot_be_approved(write_database: Path) -> None:
+    clock = FakeClock(1000)
+    suffix = "feasibility-blocked"
+    response = _prepare_calendar_feasibility_action(
+        write_database=write_database,
+        clock=clock,
+        suffix=suffix,
+        risk=_feasibility_risk("INFEASIBLE", best_minutes=60),
+    )
+    assert response.applied is False
+    assert response.conflict_detail == "work is infeasible before the business deadline"
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
+        events = unit_of_work.audits.list_by_aggregate(run_id="run-1", action_id=f"action-{suffix}")
+    assert approval is None
+    assert any(event.event_type == "FEASIBILITY_APPROVAL_BLOCKED" for event in events)
+
+
+def test_feasibility_preflight_change_revokes_approval_before_claim(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = "feasibility-change"
+    assert (
+        _prepare_calendar_feasibility_action(
+            write_database=write_database,
+            clock=clock,
+            suffix=suffix,
+            risk=_feasibility_risk("FEASIBLE", best_minutes=540),
+        ).applied
+        is True
+    )
+    busy = ResourceSnapshot(
+        fixture_snapshot_id="busy",
+        resource_type=ResourceType.CALENDAR_EVENT,
+        resource_id="busy",
+        parent_id="primary",
+        related_resource_ids=("primary",),
+        version="1",
+        recovery_fingerprint=None,
+        payload={
+            "start": "1970-01-01T10:00:00+09:00",
+            "end": "1970-01-01T18:00:00+09:00",
+        },
+    )
+
+    with pytest.raises(PolicyViolationError, match="reapproval"):
+        PreflightWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=_FeasibilityPreflightGateway(busy_event=busy),  # type: ignore[arg-type]
+            now_ms=clock.now_ms,
+            work_hours_provider=lambda: CalendarWorkHours(timezone="Asia/Seoul"),
+        )(action_id=f"action-{suffix}")
+
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        action = unit_of_work.actions.get_by_id(f"action-{suffix}")
+        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
+    connection = connect_sqlite(write_database)
+    try:
+        attempt_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM execution_attempts AS attempt
+            JOIN approvals AS approval ON approval.id = attempt.approval_id
+            WHERE approval.action_id = ?
+            """,
+            (f"action-{suffix}",),
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert action is not None and action.status == "MODIFIED"
+    assert action.risk["feasibility"]["decision"] == "INFEASIBLE"  # type: ignore[index]
+    assert approval is None
+    assert attempt_count == 0
+
+
+def test_feasibility_preflight_same_snapshot_allows_claim(write_database: Path) -> None:
+    clock = FakeClock(1000)
+    suffix = "feasibility-same"
+    assert (
+        _prepare_calendar_feasibility_action(
+            write_database=write_database,
+            clock=clock,
+            suffix=suffix,
+            risk=_feasibility_risk("FEASIBLE", best_minutes=539),
+        ).applied
+        is True
+    )
+    PreflightWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=_FeasibilityPreflightGateway(),  # type: ignore[arg-type]
+        now_ms=clock.now_ms,
+        work_hours_provider=lambda: CalendarWorkHours(timezone="Asia/Seoul"),
+    )(action_id=f"action-{suffix}")
+
+    response = ClaimWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        signing_secret="feasibility-secret",
+        service_instance_id="feasibility-service",
+    )(
+        ClaimWriteActionCommand(
+            command_id=f"claim-{suffix}",
+            request_hash="a5" * 32,
+            action_id=f"action-{suffix}",
+            expected_version=1,
+            source_snapshot={},
+            attempt_id=f"attempt-{suffix}",
+            nonce=f"nonce-{suffix}",
+        )
+    )
+    assert response.applied is True
 
 
 def _prepare_write_plan(

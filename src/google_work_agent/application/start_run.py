@@ -15,6 +15,13 @@ from google_work_agent.application.calendar_conflicts import (
     calendar_conflict_authority,
     merge_calendar_conflict_risk,
 )
+from google_work_agent.application.feasibility import (
+    FeasibilityGateway,
+    FeasibilityValidator,
+    feasibility_authority,
+    merge_feasibility_risk,
+    refresh_feasibility_input_for_arguments,
+)
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     TaskDuplicateValidator,
@@ -431,12 +438,20 @@ class ModifyWriteActionService:
             work_hours_provider=work_hours_provider
             or (lambda: CalendarWorkHours(timezone="Asia/Seoul")),
         )
+        self._feasibility = FeasibilityValidator(
+            gateway=cast(FeasibilityGateway, gateway),
+            now_ms=now_ms,
+            work_hours_provider=work_hours_provider
+            or (lambda: CalendarWorkHours(timezone="Asia/Seoul")),
+        )
 
     def __call__(self, command: ModifyWriteActionCommand) -> dict[str, object]:
         fresh_duplicate_risk: dict[str, object] | None = None
         duplicate_arguments: dict[str, object] | None = None
         fresh_calendar_risk: dict[str, object] | None = None
         calendar_arguments: dict[str, object] | None = None
+        feasibility_seed_risk: dict[str, object] | None = None
+        fresh_feasibility_risk: dict[str, object] | None = None
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
@@ -478,12 +493,19 @@ class ModifyWriteActionService:
                     )
                     if calculate_canonical_json_hash(proposed) != snapshot.arguments_hash:
                         calendar_arguments = proposed
+                        feasibility_seed_risk = refresh_feasibility_input_for_arguments(
+                            risk=snapshot.risk, arguments=proposed
+                        )
 
         # Phase 2: the Google read is deliberately outside every UnitOfWork.
         if duplicate_arguments is not None:
             fresh_duplicate_risk = self._task_duplicates.fresh_risk(duplicate_arguments)
         if calendar_arguments is not None:
             fresh_calendar_risk = self._calendar_conflicts.fresh_risk(calendar_arguments)
+            if feasibility_seed_risk is not None:
+                fresh_feasibility_risk = self._feasibility.fresh_risk(
+                    arguments=calendar_arguments, risk=feasibility_seed_risk
+                )
 
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -614,6 +636,14 @@ class ModifyWriteActionService:
             )
             if fresh_calendar_risk is not None:
                 updated_risk = merge_calendar_conflict_risk(updated_risk, fresh_calendar_risk)
+            if feasibility_seed_risk is not None:
+                updated_risk = feasibility_seed_risk
+                if fresh_duplicate_risk is not None:
+                    updated_risk = merge_duplicate_risk(updated_risk, fresh_duplicate_risk)
+                if fresh_calendar_risk is not None:
+                    updated_risk = merge_calendar_conflict_risk(updated_risk, fresh_calendar_risk)
+            if fresh_feasibility_risk is not None:
+                updated_risk = merge_feasibility_risk(updated_risk, fresh_feasibility_risk)
             result = unit_of_work.actions.modify_write(
                 action.id,
                 expected_version=command.expected_version,
@@ -723,6 +753,32 @@ class ModifyWriteActionService:
                                 risk_value.get("reason_codes", [])
                                 if isinstance(risk_value, dict)
                                 else []
+                            ),
+                            "freshness": "FRESH_GOOGLE_GET",
+                        },
+                        created_at_ms=now_ms,
+                    )
+                )
+            feasibility = (
+                feasibility_authority(updated_risk) if fresh_feasibility_risk is not None else None
+            )
+            if feasibility is not None:
+                value = updated_risk.get("feasibility")
+                unit_of_work.audits.add(
+                    _modify_audit_event(
+                        run_id=run_id,
+                        action_id=action.id,
+                        event_type="FEASIBILITY_CHECKED",
+                        outcome="FRESH_GOOGLE_GET",
+                        metadata={
+                            "decision": feasibility[0],
+                            "reason_codes": (
+                                value.get("reason_codes", []) if isinstance(value, dict) else []
+                            ),
+                            "required_duration": (
+                                value.get("required_duration_minutes")
+                                if isinstance(value, dict)
+                                else None
                             ),
                             "freshness": "FRESH_GOOGLE_GET",
                         },

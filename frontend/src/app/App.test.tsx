@@ -1432,6 +1432,34 @@ test("Action risk follows the SSE-refreshed snapshot without rendering raw JSON"
   expect(document.body.textContent).not.toContain("candidate_resource_ids");
 });
 
+test.each([
+  ["RISK", "현재 일정 기준으로 가능한 시간이 제한적입니다."],
+  [
+    "INFEASIBLE",
+    "현재 업무 시간과 일정 기준으로 마감 전에 필요한 연속 시간을 확보할 수 없습니다.",
+  ],
+])("feasibility %s renders only the safe projection", async (decision, message) => {
+  installUiContractFetch({
+    action: true,
+    actionRisk: {
+      feasibility_input: { business_deadline: "private-deadline" },
+      feasibility: {
+        decision,
+        reason_codes: ["PRIVATE_REASON"],
+        required_duration_minutes: 120,
+      },
+    },
+  });
+  render(<App />);
+
+  expect(await screen.findByText(message)).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("private-deadline");
+  expect(document.body.textContent).not.toContain("PRIVATE_REASON");
+  if (decision === "INFEASIBLE") {
+    expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
+  }
+});
+
 test("similar Task duplicate requires an acknowledgement without exposing resource IDs", async () => {
   const user = userEvent.setup();
   const requests = installUiContractFetch({

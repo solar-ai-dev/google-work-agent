@@ -19,6 +19,12 @@ class CalendarConflictFreshness(StrEnum):
     FRESH_GOOGLE_GET = "FRESH_GOOGLE_GET"
 
 
+class CalendarIntervalKind(StrEnum):
+    EXCLUDED = "EXCLUDED"
+    WARNING = "WARNING"
+    HARD = "HARD"
+
+
 @dataclass(frozen=True, slots=True)
 class CalendarInterval:
     start: datetime
@@ -76,6 +82,22 @@ def intervals_overlap(left: CalendarInterval, right: CalendarInterval) -> bool:
     return left.start < right.end and right.start < left.end
 
 
+def classify_calendar_event(event: CalendarEventCandidate) -> CalendarIntervalKind:
+    status = (event.status or "").casefold()
+    transparency = (event.transparency or "").casefold()
+    response = (event.self_response_status or "").casefold()
+    event_type = (event.event_type or "").casefold()
+    if status == "cancelled" or transparency in {"transparent", "free"}:
+        return CalendarIntervalKind.EXCLUDED
+    if response == "declined":
+        return CalendarIntervalKind.EXCLUDED
+    if response == "tentative" or status == "tentative":
+        return CalendarIntervalKind.WARNING
+    if event_type in {"outofoffice", "focustime"}:
+        return CalendarIntervalKind.HARD
+    return CalendarIntervalKind.HARD
+
+
 def evaluate_calendar_conflict(
     *,
     proposed: CalendarInterval,
@@ -92,13 +114,9 @@ def evaluate_calendar_conflict(
     for event in events:
         if event.event_id == excluded_event_id or not intervals_overlap(proposed, event.interval):
             continue
-        status = (event.status or "").casefold()
-        transparency = (event.transparency or "").casefold()
-        response = (event.self_response_status or "").casefold()
+        classification = classify_calendar_event(event)
         event_type = (event.event_type or "").casefold()
-        if status == "cancelled" or transparency in {"transparent", "free"}:
-            continue
-        if response == "declined":
+        if classification is CalendarIntervalKind.EXCLUDED:
             continue
         if event_type == "outofoffice":
             hard = True
@@ -108,7 +126,7 @@ def evaluate_calendar_conflict(
             hard = True
             matched_ids.add(event.event_id)
             reasons.add("FOCUS_TIME_OVERLAP")
-        elif response == "tentative" or status == "tentative":
+        elif classification is CalendarIntervalKind.WARNING:
             warning = True
             matched_ids.add(event.event_id)
             reasons.add("TENTATIVE_EVENT_OVERLAP")
@@ -157,7 +175,9 @@ __all__ = [
     "CalendarConflictResult",
     "CalendarEventCandidate",
     "CalendarInterval",
+    "CalendarIntervalKind",
     "CalendarWorkHours",
     "evaluate_calendar_conflict",
+    "classify_calendar_event",
     "intervals_overlap",
 ]

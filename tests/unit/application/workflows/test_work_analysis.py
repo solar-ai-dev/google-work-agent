@@ -113,6 +113,45 @@ def test_work_analysis_builds_complete_result_and_state_handoff() -> None:
     assert runtime.calls[0]["output_schema"] == WORK_ANALYSIS_OUTPUT_SCHEMA
 
 
+@pytest.mark.parametrize("source", ["USER", "GMAIL_EVIDENCE"])
+def test_schedule_constraints_accept_only_explicit_business_deadline_sources(
+    source: str,
+) -> None:
+    output = _analysis_output(AnalysisResult.COMPLETE.value)
+    output["schedule_constraints"] = {
+        "business_deadline": "2026-08-14",
+        "business_deadline_source": source,
+        "expected_duration_minutes": 120,
+        "duration_source": "EXPLICIT_ESTIMATE",
+    }
+    result = validate_work_analysis_result_v1(output, context_result=_context_result())
+    assert result["schedule_constraints"]["business_deadline_source"] == source
+
+
+def test_task_due_cannot_be_used_as_business_deadline_source() -> None:
+    output = _analysis_output(AnalysisResult.COMPLETE.value)
+    output["schedule_constraints"] = {
+        "business_deadline": "2026-08-14",
+        "business_deadline_source": "TASK_DUE",
+        "expected_duration_minutes": 120,
+        "duration_source": "EXPLICIT_ESTIMATE",
+    }
+    with pytest.raises(WorkAnalysisValidationError, match="source"):
+        validate_work_analysis_result_v1(output, context_result=_context_result())
+
+
+def test_missing_explicit_duration_requires_confirmation() -> None:
+    output = _analysis_output(AnalysisResult.COMPLETE.value)
+    output["schedule_constraints"] = {
+        "business_deadline": "2026-08-14",
+        "business_deadline_source": "USER",
+        "expected_duration_minutes": None,
+        "duration_source": "EXPLICIT_ESTIMATE",
+    }
+    with pytest.raises(WorkAnalysisValidationError, match="NEEDS_CONFIRMATION"):
+        validate_work_analysis_result_v1(output, context_result=_context_result())
+
+
 def test_analysis_prompt_input_uses_stage6_context_and_marks_source_untrusted() -> None:
     runtime = FakeLLMRuntime()
     runtime.queued.append(_llm_result(_analysis_output(AnalysisResult.COMPLETE.value)))

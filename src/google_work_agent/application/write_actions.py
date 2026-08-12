@@ -24,6 +24,15 @@ from google_work_agent.application.calendar_conflicts import (
     merge_calendar_conflict_risk,
     require_calendar_conflict_acknowledgement,
 )
+from google_work_agent.application.feasibility import (
+    FeasibilityValidator,
+    approval_feasibility_authority,
+    approval_source_snapshot_for_feasibility,
+    feasibility_authority,
+    feasibility_change_requires_reapproval,
+    merge_feasibility_risk,
+    require_feasibility_approval,
+)
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     TaskDuplicateValidator,
@@ -826,6 +835,43 @@ class ApproveWriteActionService:
                 and action.version == command.expected_version
             ):
                 try:
+                    require_feasibility_approval(action.risk)
+                except PolicyViolationError as error:
+                    plan = _require_plan(unit_of_work, action.plan_id)
+                    response = WriteActionResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=tuple(
+                            item.value
+                            for item in next_allowed_action_commands(
+                                ActionStatus(action.status),
+                                effect_type=EffectType(action.effect_type),
+                            )
+                        ),
+                        conflict_detail=str(error),
+                    )
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=action.id,
+                            event_type="FEASIBILITY_APPROVAL_BLOCKED",
+                            outcome=ResultCode.STATE_CONFLICT.value,
+                            metadata={
+                                "command_id": command.command_id,
+                                **_feasibility_audit_metadata(action.risk),
+                            },
+                            created_at_ms=now_ms,
+                        )
+                    )
+                    _finish_json_receipt(
+                        unit_of_work, command.command_id, response, action.version, now_ms
+                    )
+                    unit_of_work.commit()
+                    return response
+                try:
                     calendar_decision = require_calendar_conflict_acknowledgement(
                         risk=action.risk,
                         acknowledged=command.calendar_conflict_acknowledged,
@@ -873,6 +919,7 @@ class ApproveWriteActionService:
                         risk=action.risk,
                         acknowledged=command.calendar_conflict_acknowledged,
                     ),
+                    **approval_source_snapshot_for_feasibility(risk=action.risk),
                 }
             approval_result = unit_of_work.actions.approve_write(
                 action.id,
@@ -1121,6 +1168,24 @@ class ClaimWriteActionService:
                 }
             if action.tool_name in CALENDAR_CONFLICT_TOOLS:
                 stored_approval_snapshot = _dict_argument(loads(approval.source_snapshot_json))
+                if feasibility_change_requires_reapproval(
+                    approved=approval_feasibility_authority(stored_approval_snapshot),
+                    current=feasibility_authority(action.risk),
+                ):
+                    response = WriteActionResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=(),
+                        conflict_detail="feasibility risk changed after approval",
+                    )
+                    _finish_json_receipt(
+                        unit_of_work, command.command_id, response, action.version, now_ms
+                    )
+                    unit_of_work.commit()
+                    return response
                 if calendar_conflict_change_requires_reapproval(
                     approved=approval_calendar_conflict_authority(stored_approval_snapshot),
                     current=calendar_conflict_authority(action.risk),
@@ -1146,6 +1211,7 @@ class ClaimWriteActionService:
                 current_source_snapshot = {
                     **command.source_snapshot,
                     "calendar_conflict": stored_approval_snapshot.get("calendar_conflict"),
+                    "feasibility": stored_approval_snapshot.get("feasibility"),
                 }
             try:
                 validate_approval_integrity(
@@ -1409,6 +1475,12 @@ class PreflightWriteActionService:
             work_hours_provider=work_hours_provider
             or (lambda: CalendarWorkHours(timezone="Asia/Seoul")),
         )
+        self._feasibility = FeasibilityValidator(
+            gateway=gateway,
+            now_ms=self._now_ms,
+            work_hours_provider=work_hours_provider
+            or (lambda: CalendarWorkHours(timezone="Asia/Seoul")),
+        )
 
     def __call__(self, *, action_id: str) -> None:
         with self._unit_of_work_factory() as unit_of_work:
@@ -1540,6 +1612,9 @@ class PreflightWriteActionService:
         if action.tool_name in CALENDAR_CONFLICT_TOOLS:
             try:
                 fresh_conflict_risk = self._calendar_conflicts.fresh_risk(arguments)
+                fresh_feasibility_risk = self._feasibility.fresh_risk(
+                    arguments=arguments, risk=action.risk
+                )
             except Exception as error:
                 with self._unit_of_work_factory() as unit_of_work:
                     current = _require_action(unit_of_work, action_id)
@@ -1578,9 +1653,13 @@ class PreflightWriteActionService:
                         "write action changed during calendar conflict preflight"
                     )
                 merged_risk = merge_calendar_conflict_risk(current.risk, fresh_conflict_risk)
+                merged_risk = merge_feasibility_risk(merged_risk, fresh_feasibility_risk)
                 must_reapprove = calendar_conflict_change_requires_reapproval(
                     approved=approval_calendar_conflict_authority(approval_snapshot),
                     current=calendar_conflict_authority(merged_risk),
+                ) or feasibility_change_requires_reapproval(
+                    approved=approval_feasibility_authority(approval_snapshot),
+                    current=feasibility_authority(merged_risk),
                 )
                 now_ms = self._now_ms()
                 if must_reapprove:
@@ -1618,6 +1697,17 @@ class PreflightWriteActionService:
                         created_at_ms=now_ms,
                     )
                 )
+                if feasibility_authority(merged_risk) is not None:
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=current.id,
+                            event_type="FEASIBILITY_CHECKED",
+                            outcome="REAPPROVAL_REQUIRED" if must_reapprove else "ALLOWED",
+                            metadata=_feasibility_audit_metadata(merged_risk),
+                            created_at_ms=now_ms,
+                        )
+                    )
                 unit_of_work.commit()
             if must_reapprove:
                 raise PolicyViolationError(
@@ -4106,6 +4196,19 @@ def _calendar_conflict_audit_metadata(
         "decision": authority[0],
         "matched_resource_ids": list(authority[1]),
         "reason_codes": value.get("reason_codes", []) if isinstance(value, dict) else [],
+        "freshness": value.get("freshness", "UNKNOWN") if isinstance(value, dict) else "UNKNOWN",
+    }
+
+
+def _feasibility_audit_metadata(risk: dict[str, object]) -> dict[str, object]:
+    value = risk.get("feasibility")
+    authority = feasibility_authority(risk)
+    return {
+        "decision": authority[0] if authority is not None else "UNKNOWN",
+        "reason_codes": value.get("reason_codes", []) if isinstance(value, dict) else [],
+        "required_duration": (
+            value.get("required_duration_minutes") if isinstance(value, dict) else None
+        ),
         "freshness": value.get("freshness", "UNKNOWN") if isinstance(value, dict) else "UNKNOWN",
     }
 

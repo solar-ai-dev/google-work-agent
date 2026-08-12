@@ -75,6 +75,7 @@ from google_work_agent.application.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     evidence_calendar_conflict_risk,
 )
+from google_work_agent.application.feasibility import evidence_feasibility_risk
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
@@ -3753,14 +3754,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                         checked_at_ms=self._now_ms(),
                     )
                     if action["tool_name"] == TASK_CREATE_TOOL
-                    else evidence_calendar_conflict_risk(
-                        arguments=action["arguments"],
-                        acquisition_result=_require_state_value(
-                            state["acquisition_result"], "acquisition_result"
-                        ),
-                        checked_at_ms=self._now_ms(),
-                        work_hours=self._work_hours_provider(),
-                    )
+                    else self._calendar_plan_risk(state=state, action=action)
                     if action["tool_name"] in CALENDAR_CONFLICT_TOOLS
                     else {}
                 ),
@@ -3795,6 +3789,25 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         if not publish_response.applied:
             raise RuntimeError(f"publish_write_plan failed: {publish_response.result_code}")
         return plan_id
+
+    def _calendar_plan_risk(self, *, state: GraphState, action: Any) -> dict[str, object]:
+        arguments = cast(dict[str, object], action["arguments"])
+        acquisition = _require_state_value(state["acquisition_result"], "acquisition_result")
+        checked_at_ms = self._now_ms()
+        conflict = evidence_calendar_conflict_risk(
+            arguments=arguments,
+            acquisition_result=acquisition,
+            checked_at_ms=checked_at_ms,
+            work_hours=self._work_hours_provider(),
+        )
+        feasibility = evidence_feasibility_risk(
+            arguments=arguments,
+            analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+            acquisition_result=acquisition,
+            checked_at_ms=checked_at_ms,
+            work_hours=self._work_hours_provider(),
+        )
+        return {**conflict, **feasibility}
 
     def _resolve_target_resource_ref_id(
         self,

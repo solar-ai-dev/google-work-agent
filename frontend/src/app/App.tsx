@@ -130,9 +130,26 @@ function calendarConflictDecision(
     : null;
 }
 
+type FeasibilityDecision = "FEASIBLE" | "RISK" | "INFEASIBLE";
+
+function feasibilityDecision(risk: Record<string, unknown>): FeasibilityDecision | null {
+  const feasibility = risk.feasibility;
+  if (!feasibility || typeof feasibility !== "object") {
+    return null;
+  }
+  const decision = (feasibility as { decision?: unknown }).decision;
+  return decision === "FEASIBLE" || decision === "RISK" || decision === "INFEASIBLE"
+    ? decision
+    : null;
+}
+
 function hasOtherRisk(risk: Record<string, unknown>): boolean {
   return Object.keys(risk).some(
-    (key) => key !== "duplicate" && key !== "calendar_conflict",
+    (key) =>
+      key !== "duplicate" &&
+      key !== "calendar_conflict" &&
+      key !== "feasibility" &&
+      key !== "feasibility_input",
   );
 }
 
@@ -1101,8 +1118,11 @@ export function App(): JSX.Element {
 
               {runSnapshot?.actions.map((action) => {
                 const approval = runSnapshot.approvals.find((item) => item.action_id === action.action_id);
+                const feasibility = feasibilityDecision(action.risk);
                 const waitingApproval =
-                  action.approval_required && ["PROPOSED", "MODIFIED"].includes(action.status);
+                  action.approval_required &&
+                  feasibility !== "INFEASIBLE" &&
+                  ["PROPOSED", "MODIFIED"].includes(action.status);
                 const duplicateDecision = taskDuplicateDecision(action.risk);
                 const duplicateNeedsAcknowledgement =
                   duplicateDecision === "SIMILAR_CANDIDATE" ||
@@ -1135,6 +1155,17 @@ export function App(): JSX.Element {
                     ) : null}
                     {conflictDecision === "HARD_CONFLICT" ? (
                       <p className="status-warn">해당 시간에 기존 일정이 있습니다.</p>
+                    ) : null}
+                    {feasibility === "RISK" ? (
+                      <p className="status-warn">
+                        현재 일정 기준으로 가능한 시간이 제한적입니다.
+                      </p>
+                    ) : null}
+                    {feasibility === "INFEASIBLE" ? (
+                      <p className="status-warn">
+                        현재 업무 시간과 일정 기준으로 마감 전에 필요한 연속 시간을 확보할 수
+                        없습니다.
+                      </p>
                     ) : null}
                     {hasOtherRisk(action.risk) ? (
                       <p className="status-warn">
