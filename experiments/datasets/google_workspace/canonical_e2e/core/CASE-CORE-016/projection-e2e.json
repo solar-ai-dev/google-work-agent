@@ -13,7 +13,7 @@
   "gold": {
     "expected_goal": "마감 위험을 과장 없이 알리는 Draft를 제안한다.",
     "completion_criteria": [
-      "Busy 시간과 Task 기한을 모두 언급한다.",
+      "Busy 시간과 Task 예정일을 모두 언급한다.",
       "확정 불가능한 완료 시점을 약속하지 않는다."
     ],
     "required_sources": [

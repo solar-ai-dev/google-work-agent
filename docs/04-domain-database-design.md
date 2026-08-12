@@ -946,6 +946,16 @@ RECOVERY_REQUIRED
 
 ## 25.5 Plan 상태 전이
 
+### Action Modify 이후 Plan 재검토 Gate
+
+- Persisted Write Plan은 `review_status`와 단조 증가하는 `review_version`을 가진다.
+- 최초 저장되는 Plan은 기존 Planning→Review PASS를 통과했으므로 `PASSED`다.
+- Action Modify와 같은 Transaction에서 Plan은 `REQUIRED`가 되고 `review_version`이 증가한다.
+- `review_status != PASSED`인 동안 새 Approval 생성은 금지한다.
+- 재검토 결과는 시작 시 읽은 `review_version`과 현재 값이 같을 때만 저장한다. Review 중 다른 Modify가 발생하면 오래된 결과는 적용하지 않는다.
+- LLM Review는 DB Write Transaction 밖에서 실행하며, PASS도 최신 Domain Validation 이후에만 `PASSED`로 확정한다.
+- `REVISE`/`RETRIEVE_MORE`는 기존 Plan을 `SUPERSEDED`로 닫고 Run을 `PLANNING`으로 되돌린 뒤, 새 Plan·Action·Evidence ID와 증가한 `revision_no`로 저장한다. 이전 Action과 Approval은 재사용하지 않는다.
+
 | 현재 | Event | Guard | 다음 | 규칙 |
 |---|---|---|---|---|
 | DRAFT | RequestApproval | Action·Evidence·DAG 유효 | WAITING_APPROVAL | 기존 Revision 수정 금지 |
@@ -962,7 +972,7 @@ Plan COMPLETED는 모든 Action 성공이 아니라 모든 Action 결과 확정�
 |---|---|---|---|---|---|
 | PROPOSED | ModifyAction | 허용 필드·Schema·Policy 유효 | MODIFIED | Hash·Version 갱신, Approval REVOKED | ACTION_MODIFIED |
 | PROPOSED·MODIFIED | ApproveAction | Write·Evidence·중복·충돌·Snapshot 유효 | APPROVED | Approval ACTIVE INSERT | ACTION_APPROVED |
-| PROPOSED·MODIFIED | RejectAction | 사용자 거절 | REJECTED | 종속 Action 재계산 | ACTION_REJECTED |
+| PROPOSED·MODIFIED·APPROVED | RejectAction | 사용자 거절·Version 일치 | REJECTED | ACTIVE Approval REVOKED, 종속 Action 재계산 | ACTION_REJECTED |
 | PROPOSED·MODIFIED | BlockAction | 금지 Tool·Policy 위반 | BLOCKED | 종속 Action 차단 | ACTION_BLOCKED |
 | APPROVED | ExpireApproval | 시간·Source·Policy·Schema 변경 | EXPIRED | Approval EXPIRED | ACTION_APPROVAL_EXPIRED |
 | EXPIRED | RefreshExpiredAction | Version·최신 Source·Policy·Schema·중복·충돌 재검증 | MODIFIED | Hash·expected·risk 최신화, Version 증가 | ACTION_REFRESHED_AFTER_EXPIRY |
@@ -1066,6 +1076,8 @@ NOT_FOUND와 ERROR만으로 Action을 즉시 FAILED로 확정하지 않는다.
 - 선행 UNKNOWN_RESULT·EXECUTING·EXECUTED → 종속 대기
 - 독립 Action은 다른 Branch 실패와 무관하게 실행 가능
 - 선행 결과가 Arguments에 영향을 주면 새 Plan Revision 생성
+- Reject 성공 시 아직 미실행인 직접·간접 종속 `PROPOSED·MODIFIED·APPROVED` Action은 `DEPENDENCY_BLOCKED`가 되고 ACTIVE Approval은 같은 Transaction에서 `REVOKED`된다. 이미 Terminal인 Action은 변경하지 않으며 그 뒤의 DAG 전파도 해당 Terminal 사실을 넘어가지 않는다.
+- Reject 결과로 Plan의 모든 Action이 Terminal이면 기존 revision에서 Plan과 Run을 `COMPLETED`로 확정한다. 독립적인 미완료 Action이 남아 있으면 Plan/Run 상태를 유지한다. Reject는 Run을 `CANCELLED`로 만들지 않는다.
 
 ## 25.11 상위 상태 재계산
 

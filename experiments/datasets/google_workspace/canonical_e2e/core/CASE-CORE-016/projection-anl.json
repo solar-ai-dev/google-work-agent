@@ -12,7 +12,7 @@
   },
   "gold": {
     "completion_criteria": [
-      "Busy 시간과 Task 기한을 모두 언급한다.",
+      "Busy 시간과 Task 예정일을 모두 언급한다.",
       "확정 불가능한 완료 시점을 약속하지 않는다."
     ],
     "tags": [

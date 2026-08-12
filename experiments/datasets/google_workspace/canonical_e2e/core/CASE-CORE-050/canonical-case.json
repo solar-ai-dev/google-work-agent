@@ -150,7 +150,7 @@
       "constraints": {
         "tasklist_id": "TL-WORK",
         "title": "Echo 최종 의견 전달",
-        "due": "2026-08-07T17:30:00+09:00"
+        "notes": "업무 마감: 2026-08-07 17:30 Asia/Seoul"
       }
     },
     {
@@ -216,7 +216,7 @@
       "arguments": {
         "tasklist_id": "TL-WORK",
         "title": "Echo 최종 의견 전달",
-        "due": "2026-08-07T17:30:00+09:00"
+        "notes": "업무 마감: 2026-08-07 17:30 Asia/Seoul"
       },
       "expected": {
         "created": true

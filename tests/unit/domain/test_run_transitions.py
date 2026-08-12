@@ -39,6 +39,8 @@ from google_work_agent.domain import (
         (RunStatus.ANALYZING, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
         (RunStatus.RETRIEVING, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
         (RunStatus.PLANNING, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
+        (RunStatus.WAITING_APPROVAL, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
+        (RunStatus.WAITING_APPROVAL, RunCommand.REPLAN, RunStatus.PLANNING),
         (RunStatus.ANALYZING, RunCommand.FAIL_RUN, RunStatus.FAILED),
         (RunStatus.RETRIEVING, RunCommand.FAIL_RUN, RunStatus.FAILED),
         (RunStatus.PLANNING, RunCommand.FAIL_RUN, RunStatus.FAILED),
@@ -56,6 +58,13 @@ from google_work_agent.domain import (
         (RunStatus.CANCEL_REQUESTED, RunCommand.BEGIN_VERIFICATION, RunStatus.VERIFYING),
         (RunStatus.EXECUTING, RunCommand.REQUIRE_RECOVERY, RunStatus.RECOVERY_REQUIRED),
         (RunStatus.RECOVERY_REQUIRED, RunCommand.RESOLVE_RECOVERY, RunStatus.VERIFYING),
+        (
+            RunStatus.WAITING_APPROVAL,
+            RunCommand.FINALIZE_ACTION_OUTCOMES,
+            RunStatus.COMPLETED,
+        ),
+        (RunStatus.EXECUTING, RunCommand.FINALIZE_ACTION_OUTCOMES, RunStatus.COMPLETED),
+        (RunStatus.VERIFYING, RunCommand.FINALIZE_ACTION_OUTCOMES, RunStatus.COMPLETED),
     ),
 )
 def test_allowed_run_edges(
@@ -270,6 +279,7 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
             RunStatus.WAITING_APPROVAL,
             (
                 RunCommand.BEGIN_VERIFICATION,
+                RunCommand.BLOCK_RUN,
                 RunCommand.REQUEST_CANCEL,
                 RunCommand.REQUIRE_REAUTH,
                 RunCommand.REQUIRE_RECOVERY,

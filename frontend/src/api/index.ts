@@ -227,6 +227,8 @@ export function approveAction(payload: {
   command_id: string;
   expected_version: number;
   ttl_ms?: number;
+  duplicate_acknowledged?: boolean;
+  calendar_conflict_acknowledged?: boolean;
 }): Promise<ActionCommandResponse> {
   return requestJson(`/api/v1/actions/${encodeURIComponent(payload.action_id)}/approve`, {
     method: "POST",
@@ -234,6 +236,9 @@ export function approveAction(payload: {
       command_id: payload.command_id,
       expected_version: payload.expected_version,
       ttl_ms: payload.ttl_ms ?? 30000,
+      duplicate_acknowledged: payload.duplicate_acknowledged ?? false,
+      calendar_conflict_acknowledged:
+        payload.calendar_conflict_acknowledged ?? false,
       api_contract_version: API_CONTRACT_VERSION,
     },
   });
@@ -243,12 +248,14 @@ export function rejectAction(payload: {
   action_id: string;
   command_id: string;
   expected_version: number;
+  reason_code?: string;
 }): Promise<ActionCommandResponse> {
   return requestJson(`/api/v1/actions/${encodeURIComponent(payload.action_id)}/reject`, {
     method: "POST",
     body: {
       command_id: payload.command_id,
       expected_version: payload.expected_version,
+      reason_code: payload.reason_code ?? null,
       api_contract_version: API_CONTRACT_VERSION,
     },
   });

@@ -11,7 +11,7 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "goal": "TSK-A-001의 기한 수정 Action을 제안한다.",
+    "goal": "TSK-A-001의 업무 마감 메모 수정 Action을 제안한다.",
     "requested_outcome": "ACTION_PLAN",
     "expected_request_disposition": "COMPLETE"
   },

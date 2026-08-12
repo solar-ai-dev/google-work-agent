@@ -301,6 +301,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         modify_action_service=ModifyWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
+            gateway=gateway,
         ),
         reject_action_service=RejectWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
@@ -350,19 +351,33 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
             "expected_version": action["version"],
             "ttl_ms": 30_000,
             "api_contract_version": "1",
+            "calendar_conflict_acknowledged": write_operation
+            in {"create_calendar_event", "update_calendar_event"},
         }
         approved = client.post("/api/v1/actions/action-1/approve", json=approval_body)
         assert approved.status_code == 200
+        effective_approval_body = approval_body
+        if write_operation == "create_calendar_event":
+            modified = _wait_for_action_status(client, "MODIFIED")
+            effective_approval_body = {
+                **approval_body,
+                "command_id": "approve-command-2",
+                "expected_version": modified["version"],
+            }
+            reapproved = client.post(
+                "/api/v1/actions/action-1/approve", json=effective_approval_body
+            )
+            assert reapproved.status_code == 200
         completed = _wait_for_snapshot(client, "COMPLETED")
 
         assert _first_action(completed)["status"] == "VERIFIED"
         assert gateway.count_calls(write_operation) == 1
         assert gateway.count_calls(verification_operation) >= reads_before_approval + 1
-        replay = client.post("/api/v1/actions/action-1/approve", json=approval_body)
+        replay = client.post("/api/v1/actions/action-1/approve", json=effective_approval_body)
         assert replay.status_code == 200
         conflict = client.post(
             "/api/v1/actions/action-1/approve",
-            json={**approval_body, "ttl_ms": 60_000},
+            json={**effective_approval_body, "ttl_ms": 60_000},
         )
         assert conflict.status_code == 409
         time.sleep(0.05)
@@ -380,7 +395,20 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
                 (SELECT COUNT(*) FROM trace_events WHERE action_id = 'action-1');
             """
         ).fetchone()
-        assert tuple(counts) == (1, 1, 1, 4, 4)
+        expected_audit_count = 6 if write_operation == "create_task" else 4
+        expected_approval_count = 2 if write_operation == "create_calendar_event" else 1
+        expected_trace_count = 5 if write_operation == "create_calendar_event" else 4
+        if write_operation == "create_calendar_event":
+            expected_audit_count += 4
+        elif write_operation == "update_calendar_event":
+            expected_audit_count += 2
+        assert tuple(counts) == (
+            expected_approval_count,
+            1,
+            1,
+            expected_audit_count,
+            expected_trace_count,
+        )
     finally:
         connection.close()
 
@@ -449,6 +477,20 @@ def _wait_for_snapshot(client: TestClient, expected_status: str) -> dict[str, ob
             return latest
         time.sleep(0.01)
     raise AssertionError(f"run did not reach {expected_status}: {latest}")
+
+
+def _wait_for_action_status(client: TestClient, expected_status: str) -> dict[str, object]:
+    deadline = time.monotonic() + 10
+    latest: dict[str, object] = {}
+    while time.monotonic() < deadline:
+        response = client.get("/api/v1/runs/run-1")
+        assert response.status_code == 200
+        latest = response.json()["snapshot"]
+        action = _first_action(latest)
+        if action["status"] == expected_status:
+            return action
+        time.sleep(0.01)
+    raise AssertionError(f"action did not reach {expected_status}: {latest}")
 
 
 def _first_action(snapshot: dict[str, object]) -> dict[str, object]:

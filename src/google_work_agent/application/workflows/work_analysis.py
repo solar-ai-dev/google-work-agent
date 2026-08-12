@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from pathlib import Path
 from typing import Literal, NotRequired, Required, TypedDict, cast
 
@@ -59,6 +60,13 @@ class AnalysisFindingV1(TypedDict):
     reason_codes: list[str]
 
 
+class FeasibilityScheduleConstraintsV1(TypedDict):
+    business_deadline: str
+    business_deadline_source: Literal["USER", "GMAIL_EVIDENCE"]
+    expected_duration_minutes: int | None
+    duration_source: Literal["EXPLICIT_ESTIMATE", "EVENT_INTERVAL"]
+
+
 class WorkAnalysisResultV1(TypedDict):
     schema_version: Required[Literal[1]]
     status: AnalysisStatusValue
@@ -71,6 +79,7 @@ class WorkAnalysisResultV1(TypedDict):
     resource_refs: list[dict[str, object]]
     segment_refs: list[dict[str, object]]
     additional_acquisition_request: AdditionalAcquisitionRequestV1 | None
+    schedule_constraints: NotRequired[FeasibilityScheduleConstraintsV1]
     llm_provider_result: NotRequired[dict[str, object]]
 
 
@@ -107,6 +116,28 @@ WORK_ANALYSIS_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "evidence_refs": {"type": "array", "items": {"type": "string"}},
             "resource_refs": {"type": "array", "items": {"type": "object"}},
             "segment_refs": {"type": "array", "items": {"type": "object"}},
+            "schedule_constraints": {
+                "type": "object",
+                "required": [
+                    "business_deadline",
+                    "business_deadline_source",
+                    "expected_duration_minutes",
+                    "duration_source",
+                ],
+                "additionalProperties": False,
+                "properties": {
+                    "business_deadline": {"type": "string", "minLength": 1},
+                    "business_deadline_source": {
+                        "type": "string",
+                        "enum": ["USER", "GMAIL_EVIDENCE"],
+                    },
+                    "expected_duration_minutes": {"type": ["integer", "null"]},
+                    "duration_source": {
+                        "type": "string",
+                        "enum": ["EXPLICIT_ESTIMATE", "EVENT_INTERVAL"],
+                    },
+                },
+            },
         },
     },
 )
@@ -245,7 +276,7 @@ def validate_work_analysis_result_v1(
             "resource_refs",
             "segment_refs",
         },
-        optional={"llm_provider_result"},
+        optional={"llm_provider_result", "schedule_constraints"},
     )
     _require_schema_version(root, "$", WORK_ANALYSIS_SCHEMA_VERSION)
     refs = _reference_space(context_result)
@@ -285,8 +316,56 @@ def validate_work_analysis_result_v1(
             root["llm_provider_result"],
             "$.llm_provider_result",
         )
+    if "schedule_constraints" in root:
+        result["schedule_constraints"] = _validate_schedule_constraints(
+            root["schedule_constraints"]
+        )
     _validate_result_invariant(result)
     return result
+
+
+def _validate_schedule_constraints(value: object) -> FeasibilityScheduleConstraintsV1:
+    item = _require_mapping(value, "$.schedule_constraints")
+    _require_allowed_keys(
+        item,
+        "$.schedule_constraints",
+        required={
+            "business_deadline",
+            "business_deadline_source",
+            "expected_duration_minutes",
+            "duration_source",
+        },
+        optional=set(),
+    )
+    deadline = _require_string(item, "business_deadline", "$.schedule_constraints")
+    try:
+        if len(deadline) == 10:
+            date.fromisoformat(deadline)
+        else:
+            parsed_deadline = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+            if parsed_deadline.tzinfo is None or parsed_deadline.utcoffset() is None:
+                raise ValueError
+    except ValueError as error:
+        raise WorkAnalysisValidationError(
+            "business_deadline must be an ISO date or timezone-aware datetime"
+        ) from error
+    source = _require_string(item, "business_deadline_source", "$.schedule_constraints")
+    duration_source = _require_string(item, "duration_source", "$.schedule_constraints")
+    if source not in {"USER", "GMAIL_EVIDENCE"}:
+        raise WorkAnalysisValidationError("business_deadline_source is invalid")
+    if duration_source not in {"EXPLICIT_ESTIMATE", "EVENT_INTERVAL"}:
+        raise WorkAnalysisValidationError("duration_source is invalid")
+    duration = item["expected_duration_minutes"]
+    if duration is not None and (
+        not isinstance(duration, int) or isinstance(duration, bool) or duration <= 0
+    ):
+        raise WorkAnalysisValidationError("expected_duration_minutes must be positive or null")
+    return {
+        "business_deadline": deadline,
+        "business_deadline_source": cast(Literal["USER", "GMAIL_EVIDENCE"], source),
+        "expected_duration_minutes": cast(int | None, duration),
+        "duration_source": cast(Literal["EXPLICIT_ESTIMATE", "EVENT_INTERVAL"], duration_source),
+    }
 
 
 def build_work_analysis_clarification_question(
@@ -388,6 +467,14 @@ def _validate_unique_finding_ids(findings: list[AnalysisFindingV1]) -> None:
 
 def _validate_result_invariant(result: WorkAnalysisResultV1) -> None:
     status = AnalysisResult(result["status"])
+    schedule = result.get("schedule_constraints")
+    if (
+        schedule is not None
+        and schedule["duration_source"] == "EXPLICIT_ESTIMATE"
+        and schedule["expected_duration_minutes"] is None
+        and status is not AnalysisResult.NEEDS_CONFIRMATION
+    ):
+        raise WorkAnalysisValidationError("missing expected duration requires NEEDS_CONFIRMATION")
     if status is AnalysisResult.COMPLETE:
         if result["missing_information"]:
             raise WorkAnalysisValidationError("COMPLETE must not include missing_information")

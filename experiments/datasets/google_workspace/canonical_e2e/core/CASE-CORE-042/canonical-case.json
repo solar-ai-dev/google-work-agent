@@ -11,10 +11,10 @@
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-CORE-042",
   "canonical_user_prompt": "Echo 약관 메일, 검토 작업, 오늘 캘린더를 같이 보고 마감 가능성을 분석해줘.",
-  "business_scenario": "Gmail deadline, Task due, Calendar Busy를 결합한다.",
+  "business_scenario": "Gmail deadline, Task 예정일, Calendar Busy를 결합한다.",
   "expected_goal": "Echo 마감 가능성과 위험을 분석한다.",
   "expected_completion_criteria": [
-    "마감과 Task due를 비교한다.",
+    "마감과 Task 예정일를 비교한다.",
     "Busy 13~15시를 반영한다.",
     "확실하지 않은 완료 보장을 하지 않는다."
   ],
@@ -168,7 +168,7 @@
     "feasibility"
   ],
   "human_rubric": [
-    "마감과 Task due를 비교한다.",
+    "마감과 Task 예정일를 비교한다.",
     "Busy 13~15시를 반영한다.",
     "확실하지 않은 완료 보장을 하지 않는다."
   ],

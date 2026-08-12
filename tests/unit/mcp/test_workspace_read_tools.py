@@ -434,6 +434,14 @@ def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_date
                     "start": {"dateTime": "2026-08-10T09:00:00+09:00"},
                     "end": {"dateTime": "2026-08-10T09:30:00+09:00"},
                     "recurringEventId": "recurring-series-1",
+                    "attendees": [
+                        {"email": "other@example.com", "responseStatus": "accepted"},
+                        {
+                            "email": "me@example.com",
+                            "self": True,
+                            "responseStatus": "tentative",
+                        },
+                    ],
                 },
                 {
                     "id": "all-day-1",
@@ -452,6 +460,7 @@ def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_date
         {
             "calendar_id": "work@example.com",
             "time_min": "2026-08-10T00:00:00Z",
+            "time_max": "2026-08-11T00:00:00Z",
             "single_events": True,
             "order_by": "startTime",
             "page_size": 10,
@@ -465,6 +474,7 @@ def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_date
             "maxResults": "10",
             "pageToken": "events-page-1",
             "timeMin": "2026-08-10T00:00:00Z",
+            "timeMax": "2026-08-11T00:00:00Z",
             "singleEvents": "true",
             "orderBy": "startTime",
         },
@@ -475,6 +485,7 @@ def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_date
     assert recurring_payload["title"] == "Daily stand-up"
     assert recurring_payload["start"] == "2026-08-10T09:00:00+09:00"
     assert recurring_payload["end"] == "2026-08-10T09:30:00+09:00"
+    assert recurring_payload["self_response_status"] == "tentative"
     assert all_day_payload["start"] == "2026-08-11"
     assert all_day_payload["end"] == "2026-08-12"
     assert result["next_page_token"] == "events-page-2"
@@ -487,6 +498,7 @@ def test_gateway_forwards_calendar_event_list_options_to_mcp() -> None:
     MCPGoogleWorkspaceGateway(transport=transport).list_calendar_events(
         calendar_id="primary",
         time_min="2026-08-10T00:00:00Z",
+        time_max="2026-08-11T00:00:00Z",
         single_events=True,
         order_by="startTime",
         page_size=10,
@@ -499,6 +511,7 @@ def test_gateway_forwards_calendar_event_list_options_to_mcp() -> None:
         "page_token": "events-page-1",
         "page_size": 10,
         "time_min": "2026-08-10T00:00:00Z",
+        "time_max": "2026-08-11T00:00:00Z",
         "order_by": "startTime",
         "single_events": True,
     }

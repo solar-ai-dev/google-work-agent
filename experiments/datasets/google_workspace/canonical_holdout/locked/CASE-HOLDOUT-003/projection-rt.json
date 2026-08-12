@@ -59,7 +59,7 @@
             "ops@solstice.example.test"
           ],
           "subject": "Solstice 준비 순서",
-          "body": "카피와 패키지 Task 기한이 인쇄소 슬롯보다 앞서는지 준비 순서를 확인 중입니다."
+          "body": "카피와 패키지 Task 예정일이 인쇄소 슬롯보다 앞서는지 준비 순서를 확인 중입니다."
         }
       },
       {

@@ -54,7 +54,7 @@
       "resource_id": "TSK-K-001",
       "segment_id": "SEG-TSK-K-001",
       "claim": "Kestrel 대체 일정 확인 Task가 진행 중이다.",
-      "excerpt": "제목: Kestrel 대체 일정 확인 / 기한: 2026-08-08T09:00:00Z / 상태: needsAction / 메모: 진행 중",
+      "excerpt": "제목: Kestrel 대체 일정 확인 / 예정일: 2026-08-08T09:00:00Z / 상태: needsAction / 메모: 진행 중",
       "confidence": "HIGH"
     },
     {

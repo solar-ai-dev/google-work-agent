@@ -9,6 +9,8 @@ class ApproveActionRequestV2(ContractVersionedRequest):
     command_id: str
     expected_version: int
     ttl_ms: int = 30000
+    duplicate_acknowledged: bool = False
+    calendar_conflict_acknowledged: bool = False
 
 
 class ModifyActionRequestV2(ContractVersionedRequest):
@@ -24,6 +26,12 @@ class ModifyActionRequestV2(ContractVersionedRequest):
 class RejectActionRequestV2(ContractVersionedRequest):
     command_id: str
     expected_version: int
+    reason_code: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Z][A-Z0-9_]*$",
+    )
 
 
 class PrepareRetryRequestV2(ContractVersionedRequest):

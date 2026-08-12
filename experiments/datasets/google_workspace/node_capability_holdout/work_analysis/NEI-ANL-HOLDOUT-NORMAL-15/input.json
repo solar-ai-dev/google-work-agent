@@ -22,8 +22,8 @@
         "evidence_id": "EVD-SEG-TSK-M-101-2",
         "segment_id": "SEG-TSK-M-101",
         "resource_id": "TSK-M-101",
-        "claim": "Meridian 최종 카피 Task 기한도 8월 18일이다.",
-        "excerpt": "제목: Meridian 최종 카피 / 기한: 2026-08-18T09:00:00Z / 상태: needsAction / 메모: ",
+        "claim": "Meridian 최종 카피 Task 예정일도 8월 18일이다.",
+        "excerpt": "제목: Meridian 최종 카피 / 예정일: 2026-08-18T09:00:00Z / 상태: needsAction / 메모: ",
         "confidence": "HIGH"
       }
     ],

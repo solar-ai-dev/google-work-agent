@@ -20,7 +20,7 @@
       "segment_id": "SEG-TSK-E-001",
       "resource_id": "TSK-E-001",
       "claim": "Echo 약관 1차 검토 Task의 기한은 2026-08-07T06:00:00Z이다.",
-      "excerpt": "제목: Echo 약관 1차 검토 / 기한: 2026-08-07T06:00:00Z / 상태: needsAction / 메모: ",
+      "excerpt": "제목: Echo 약관 1차 검토 / 예정일: 2026-08-07T06:00:00Z / 상태: needsAction / 메모: ",
       "confidence": "HIGH"
     },
     {

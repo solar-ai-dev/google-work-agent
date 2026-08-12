@@ -14,7 +14,7 @@
   "gold_projection_id": "PROJ-CORE-012-ANL",
   "gold": {
     "completion_criteria": [
-      "Task 기한과 Busy Event를 근거로 사용한다.",
+      "Task 예정일과 Busy Event를 근거로 사용한다.",
       "일정 충돌 위험을 숨기지 않는다.",
       "Draft만 생성한다."
     ],

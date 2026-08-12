@@ -264,6 +264,10 @@ class RecordingGoogleGateway:
         calendar_id: str,
         page_token: str | None,
         page_size: int,
+        time_min: str | None = None,
+        time_max: str | None = None,
+        single_events: bool = False,
+        order_by: str | None = None,
     ) -> ResourcePage:
         self._maybe_fault("list_calendar_events")
         self.calls.append(
@@ -273,6 +277,10 @@ class RecordingGoogleGateway:
                     "calendar_id": calendar_id,
                     "page_token": page_token,
                     "page_size": page_size,
+                    "time_min": time_min,
+                    "time_max": time_max,
+                    "single_events": single_events,
+                    "order_by": order_by,
                 },
             )
         )

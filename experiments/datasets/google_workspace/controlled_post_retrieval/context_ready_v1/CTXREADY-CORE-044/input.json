@@ -12,9 +12,9 @@
     "result": "COMPLETE",
     "entry_mode": "AGENT_SEARCH",
     "requested_outcome": "ANSWER",
-    "goal": "인쇄소 슬롯이 Task 기한보다 먼저임을 설명한다.",
+    "goal": "인쇄소 슬롯이 Task 예정일보다 먼저임을 설명한다.",
     "completion_criteria": [
-      "EV-A-001 8/13과 Task due 8/16·17을 비교한다.",
+      "EV-A-001 8/13과 Task 예정일 8/16·17을 비교한다.",
       "Gmail 최종 출고 8/19도 맥락으로 포함한다."
     ],
     "constraints": {
@@ -67,7 +67,7 @@
       "resource_id": "TSK-A-001",
       "segment_id": "SEG-TSK-A-001",
       "claim": "제목: Atlas QR 문구 확정",
-      "excerpt": "제목: Atlas QR 문구 확정 / 기한: 2026-08-16T09:00:00Z / 상태: needsAction / 메모: 담당 지민",
+      "excerpt": "제목: Atlas QR 문구 확정 / 예정일: 2026-08-16T09:00:00Z / 상태: needsAction / 메모: 담당 지민",
       "confidence": "HIGH"
     },
     {
@@ -75,7 +75,7 @@
       "resource_id": "TSK-A-002",
       "segment_id": "SEG-TSK-A-002",
       "claim": "제목: Atlas 알레르기 라벨 검토",
-      "excerpt": "제목: Atlas 알레르기 라벨 검토 / 기한: 2026-08-17T09:00:00Z / 상태: needsAction / 메모: 담당 민지",
+      "excerpt": "제목: Atlas 알레르기 라벨 검토 / 예정일: 2026-08-17T09:00:00Z / 상태: needsAction / 메모: 담당 민지",
       "confidence": "HIGH"
     },
     {

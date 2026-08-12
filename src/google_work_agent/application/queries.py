@@ -10,11 +10,13 @@ from sqlite3 import Row
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.domain import (
+    ActionCommand,
     ActionStatus,
     EffectType,
     RunStatus,
     next_allowed_action_commands,
     next_allowed_run_commands,
+    parse_action_risk_json,
 )
 from google_work_agent.ports import RuntimeStatusProvider, RuntimeSummary, SelectedResourceRef
 
@@ -45,6 +47,7 @@ class ActionSnapshot:
     effect_type: str
     approval_required: bool
     verification_policy: str
+    risk: dict[str, object]
     next_allowed_commands: tuple[str, ...]
 
 
@@ -65,6 +68,7 @@ class RunSnapshot:
     execution_status: dict[str, object]
     verification_summary: dict[str, object]
     recovery_summary: dict[str, object]
+    result_kind: str | None
     next_allowed_commands: tuple[str, ...]
     snapshot_version: int
 
@@ -180,7 +184,7 @@ class QueryService:
                 return None
             plan_row = connection.execute(
                 """
-                SELECT id, revision_no, status, summary_text, created_at_ms
+                SELECT id, revision_no, status, summary_text, created_at_ms, review_status
                 FROM plans
                 WHERE run_id = ?
                 ORDER BY revision_no DESC, id DESC
@@ -199,14 +203,20 @@ class QueryService:
                 action_rows = connection.execute(
                     """
                     SELECT id, tool_name, status, version, effect_type,
-                           approval_requirement, verification_policy
+                           approval_requirement, verification_policy, risk_json
                     FROM actions
                     WHERE plan_id = ?
                     ORDER BY position ASC, id ASC;
                     """,
                     (str(plan_row["id"]),),
                 ).fetchall()
-                actions = tuple(_action_snapshot_from_row(row) for row in action_rows)
+                actions = tuple(
+                    _action_snapshot_from_row(
+                        row,
+                        approval_allowed=str(plan_row["review_status"]) == "PASSED",
+                    )
+                    for row in action_rows
+                )
                 recovery_count = sum(
                     1 for action in actions if action.status == ActionStatus.UNKNOWN_RESULT.value
                 )
@@ -283,9 +293,11 @@ class QueryService:
                     ActionStatus.MISMATCH.value,
                     ActionStatus.BLOCKED.value,
                     ActionStatus.DEPENDENCY_BLOCKED.value,
+                    ActionStatus.CANCELLED.value,
                 }
             ),
         }
+        result_kind = _cancel_result_kind(run_status=run_status, actions=actions)
         return RunSnapshot(
             run_id=str(run_row["id"]),
             conversation_id=str(run_row["conversation_id"]),
@@ -306,11 +318,28 @@ class QueryService:
             execution_status=execution_status,
             verification_summary=verification_summary,
             recovery_summary={"unknown_result_action_count": recovery_count},
+            result_kind=result_kind,
             next_allowed_commands=tuple(
                 item.value for item in next_allowed_run_commands(run_status)
             ),
             snapshot_version=1,
         )
+
+    def has_cancel_intent(self, run_id: str) -> bool:
+        """Return whether the accepted cancellation intent is durably recorded."""
+        with connect_sqlite(self._database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT 1
+                FROM audit_events
+                WHERE run_id = ?
+                  AND event_type = 'RUN_CANCELLATION_REQUESTED'
+                  AND outcome = 'TRANSITION_APPLIED'
+                LIMIT 1;
+                """,
+                (run_id,),
+            ).fetchone()
+        return row is not None
 
     def get_run_execution_context(self, run_id: str) -> RunExecutionContext | None:
         with connect_sqlite(self._database_path) as connection:
@@ -497,6 +526,16 @@ def _validated_page_size(page_size: int) -> int:
     return page_size
 
 
+def _cancel_result_kind(
+    *, run_status: RunStatus, actions: tuple[ActionSnapshot, ...]
+) -> str | None:
+    if run_status is not RunStatus.CANCELLED:
+        return None
+    has_success = any(action.status == ActionStatus.VERIFIED.value for action in actions)
+    has_cancelled = any(action.status == ActionStatus.CANCELLED.value for action in actions)
+    return "PARTIAL" if has_success and has_cancelled else "CANCELLED"
+
+
 def _google_account_id_for_email(email: str) -> str:
     """Deterministic id so re-provisioning the same email is naturally idempotent."""
 
@@ -530,7 +569,7 @@ def _conversation_item_from_row(row: Row) -> ConversationListItem:
     )
 
 
-def _action_snapshot_from_row(row: Row) -> ActionSnapshot:
+def _action_snapshot_from_row(row: Row, *, approval_allowed: bool = True) -> ActionSnapshot:
     status = ActionStatus(str(row["status"]))
     effect_type = EffectType(str(row["effect_type"]))
     return ActionSnapshot(
@@ -541,7 +580,10 @@ def _action_snapshot_from_row(row: Row) -> ActionSnapshot:
         effect_type=effect_type.value,
         approval_required=str(row["approval_requirement"]) == "REQUIRED",
         verification_policy=str(row["verification_policy"]),
+        risk=parse_action_risk_json(str(row["risk_json"])),
         next_allowed_commands=tuple(
-            item.value for item in next_allowed_action_commands(status, effect_type=effect_type)
+            item.value
+            for item in next_allowed_action_commands(status, effect_type=effect_type)
+            if approval_allowed or item is not ActionCommand.APPROVE_ACTION
         ),
     )

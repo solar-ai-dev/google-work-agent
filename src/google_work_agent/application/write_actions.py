@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import threading
+import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from hashlib import sha256
 from hmac import compare_digest
@@ -13,24 +14,60 @@ from hmac import new as hmac_new
 from json import dumps, loads
 from typing import Protocol, cast
 
+from google_work_agent.application.calendar_conflicts import (
+    CALENDAR_CONFLICT_TOOLS,
+    CalendarConflictValidator,
+    approval_calendar_conflict_authority,
+    approval_source_snapshot_for_calendar_conflict,
+    calendar_conflict_authority,
+    calendar_conflict_change_requires_reapproval,
+    merge_calendar_conflict_risk,
+    require_calendar_conflict_acknowledgement,
+)
+from google_work_agent.application.feasibility import (
+    FeasibilityValidator,
+    approval_feasibility_authority,
+    approval_source_snapshot_for_feasibility,
+    feasibility_authority,
+    feasibility_change_requires_reapproval,
+    merge_feasibility_risk,
+    require_feasibility_approval,
+)
+from google_work_agent.application.task_duplicates import (
+    TASK_CREATE_TOOL,
+    TaskDuplicateValidator,
+    approval_duplicate_authority,
+    approval_source_snapshot_for_task_duplicate,
+    duplicate_authority,
+    duplicate_change_requires_reapproval,
+    merge_duplicate_risk,
+    require_duplicate_acknowledgement,
+)
 from google_work_agent.domain import (
     ActionCommand,
     ActionStatus,
     ApprovalIntegrityInput,
     ApprovalStatus,
+    CalendarConflictDecision,
+    CalendarWorkHours,
     CommandResult,
     EffectType,
     EvidencePolicyInput,
     ExecutionAttemptStatus,
     PolicyViolationError,
     ResultCode,
+    RunCommand,
     RunStatus,
     SignedToolRegistry,
     VerificationStatus,
     build_p0_tool_registry,
     calculate_canonical_json_hash,
+    canonicalize_action_risk,
     canonicalize_json_value,
     next_allowed_action_commands,
+    normalize_action_risk,
+    transition_action,
+    transition_run,
     validate_approval_integrity,
     validate_evidence_policy,
 )
@@ -48,6 +85,7 @@ from google_work_agent.ports import (
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     PlanRecord,
+    PlanReviewStatus,
     PlanStatus,
     ResourceRefRecord,
     ResourceSnapshot,
@@ -108,6 +146,8 @@ class WriteActionDraft:
     evidence_ids: tuple[str, ...]
     depends_on_action_ids: tuple[str, ...] = ()
     target_resource_ref_id: str | None = None
+    # Only deterministic Domain/Application validators may populate this field.
+    risk: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +184,8 @@ class ApproveWriteActionCommand:
     approval_id: str
     idempotency_key: str
     ttl_ms: int = DEFAULT_APPROVAL_TTL_MS
+    duplicate_acknowledged: bool = False
+    calendar_conflict_acknowledged: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -495,11 +537,32 @@ class SaveWritePlanService:
                         arguments_json=canonicalize_json_value(action.arguments),
                         arguments_hash=calculate_canonical_json_hash(action.arguments),
                         expected_json=canonicalize_json_value(action.expected),
+                        risk=normalize_action_risk(action.risk),
                         version=0,
                         created_at_ms=now_ms,
                         updated_at_ms=now_ms,
                     )
                 )
+                authority = (
+                    duplicate_authority(action.risk)
+                    if action.tool_name == TASK_CREATE_TOOL
+                    else None
+                )
+                if authority is not None:
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=command.run_id,
+                            action_id=action.action_id,
+                            event_type="TASK_DUPLICATE_CHECKED",
+                            outcome="EVIDENCE_ONLY",
+                            metadata={
+                                "decision": authority[0],
+                                "matched_count": len(authority[1]),
+                                "freshness": "EVIDENCE_ONLY",
+                            },
+                            created_at_ms=now_ms,
+                        )
+                    )
                 for depends_on_action_id in action.depends_on_action_ids:
                     unit_of_work.action_dependencies.add(
                         action_id=action.action_id,
@@ -714,6 +777,190 @@ class ApproveWriteActionService:
             )
             action = _require_action(unit_of_work, command.action_id)
             entry = self._registry.require(action.tool_name)
+            plan = _require_plan(unit_of_work, action.plan_id)
+            if plan.review_status is not PlanReviewStatus.PASSED:
+                response = WriteActionResponse(
+                    applied=False,
+                    result_code=ResultCode.STATE_CONFLICT.value,
+                    action_id=action.id,
+                    action_status=action.status,
+                    action_version=action.version,
+                    next_allowed_commands=tuple(
+                        item.value
+                        for item in next_allowed_action_commands(
+                            ActionStatus(action.status),
+                            effect_type=EffectType(action.effect_type),
+                        )
+                    ),
+                    conflict_detail="plan review must pass after the latest action modification",
+                )
+                unit_of_work.audits.add(
+                    _audit_event(
+                        run_id=plan.run_id,
+                        action_id=action.id,
+                        event_type="PLAN_REVIEW_APPROVAL_BLOCKED",
+                        outcome=ResultCode.STATE_CONFLICT.value,
+                        metadata={
+                            "command_id": command.command_id,
+                            "review_status": plan.review_status.value,
+                            "review_version": plan.review_version,
+                        },
+                        created_at_ms=now_ms,
+                    )
+                )
+                _finish_json_receipt(
+                    unit_of_work, command.command_id, response, action.version, now_ms
+                )
+                unit_of_work.commit()
+                return response
+            approval_source_snapshot = command.source_snapshot
+            duplicate_decision = None
+            calendar_decision = None
+            if action.tool_name == TASK_CREATE_TOOL and action.version == command.expected_version:
+                try:
+                    duplicate_decision = require_duplicate_acknowledgement(
+                        risk=action.risk,
+                        acknowledged=command.duplicate_acknowledged,
+                    )
+                except PolicyViolationError as error:
+                    plan = _require_plan(unit_of_work, action.plan_id)
+                    response = WriteActionResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=tuple(
+                            item.value
+                            for item in next_allowed_action_commands(
+                                ActionStatus(action.status),
+                                effect_type=EffectType(action.effect_type),
+                            )
+                        ),
+                        conflict_detail=str(error),
+                    )
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=action.id,
+                            event_type="TASK_DUPLICATE_APPROVAL_BLOCKED",
+                            outcome=ResultCode.STATE_CONFLICT.value,
+                            metadata={
+                                "command_id": command.command_id,
+                                "decision": (duplicate_authority(action.risk) or ("UNKNOWN", ()))[
+                                    0
+                                ],
+                            },
+                            created_at_ms=now_ms,
+                        )
+                    )
+                    _finish_json_receipt(
+                        unit_of_work,
+                        command.command_id,
+                        response,
+                        action.version,
+                        now_ms,
+                    )
+                    unit_of_work.commit()
+                    return response
+                approval_source_snapshot = {
+                    **command.source_snapshot,
+                    **approval_source_snapshot_for_task_duplicate(
+                        risk=action.risk,
+                        acknowledged=command.duplicate_acknowledged,
+                    ),
+                }
+            if (
+                action.tool_name in CALENDAR_CONFLICT_TOOLS
+                and action.version == command.expected_version
+            ):
+                try:
+                    require_feasibility_approval(action.risk)
+                except PolicyViolationError as error:
+                    plan = _require_plan(unit_of_work, action.plan_id)
+                    response = WriteActionResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=tuple(
+                            item.value
+                            for item in next_allowed_action_commands(
+                                ActionStatus(action.status),
+                                effect_type=EffectType(action.effect_type),
+                            )
+                        ),
+                        conflict_detail=str(error),
+                    )
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=action.id,
+                            event_type="FEASIBILITY_APPROVAL_BLOCKED",
+                            outcome=ResultCode.STATE_CONFLICT.value,
+                            metadata={
+                                "command_id": command.command_id,
+                                **_feasibility_audit_metadata(action.risk),
+                            },
+                            created_at_ms=now_ms,
+                        )
+                    )
+                    _finish_json_receipt(
+                        unit_of_work, command.command_id, response, action.version, now_ms
+                    )
+                    unit_of_work.commit()
+                    return response
+                try:
+                    calendar_decision = require_calendar_conflict_acknowledgement(
+                        risk=action.risk,
+                        acknowledged=command.calendar_conflict_acknowledged,
+                    )
+                except PolicyViolationError as error:
+                    plan = _require_plan(unit_of_work, action.plan_id)
+                    response = WriteActionResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=tuple(
+                            item.value
+                            for item in next_allowed_action_commands(
+                                ActionStatus(action.status),
+                                effect_type=EffectType(action.effect_type),
+                            )
+                        ),
+                        conflict_detail=str(error),
+                    )
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=action.id,
+                            event_type="CALENDAR_CONFLICT_APPROVAL_BLOCKED",
+                            outcome=ResultCode.STATE_CONFLICT.value,
+                            metadata={
+                                "command_id": command.command_id,
+                                **_calendar_conflict_audit_metadata(
+                                    risk=action.risk, action_id=action.id
+                                ),
+                            },
+                            created_at_ms=now_ms,
+                        )
+                    )
+                    _finish_json_receipt(
+                        unit_of_work, command.command_id, response, action.version, now_ms
+                    )
+                    unit_of_work.commit()
+                    return response
+                approval_source_snapshot = {
+                    **approval_source_snapshot,
+                    **approval_source_snapshot_for_calendar_conflict(
+                        risk=action.risk,
+                        acknowledged=command.calendar_conflict_acknowledged,
+                    ),
+                    **approval_source_snapshot_for_feasibility(risk=action.risk),
+                }
             approval_result = unit_of_work.actions.approve_write(
                 action.id,
                 expected_version=command.expected_version,
@@ -744,15 +991,15 @@ class ApproveWriteActionService:
                 approved_by_display=command.approved_by_display,
                 arguments_snapshot_json=action.arguments_json,
                 canonical_arguments_hash=action.arguments_hash,
-                source_snapshot_json=canonicalize_json_value(command.source_snapshot),
-                source_snapshot_hash=calculate_canonical_json_hash(command.source_snapshot),
+                source_snapshot_json=canonicalize_json_value(approval_source_snapshot),
+                source_snapshot_hash=calculate_canonical_json_hash(approval_source_snapshot),
                 policy_version=entry.registry_version,
                 tool_schema_version=entry.input_schema_version,
                 idempotency_key=command.idempotency_key,
                 recovery_fingerprint=calculate_recovery_fingerprint(
                     tool_name=action.tool_name,
                     arguments_hash=action.arguments_hash,
-                    source_snapshot_hash=calculate_canonical_json_hash(command.source_snapshot),
+                    source_snapshot_hash=calculate_canonical_json_hash(approval_source_snapshot),
                 ),
                 approved_at_ms=now_ms,
                 expires_at_ms=now_ms + min(command.ttl_ms, 60_000),
@@ -788,6 +1035,44 @@ class ApproveWriteActionService:
                     created_at_ms=now_ms,
                 )
             )
+            if (
+                action.tool_name == TASK_CREATE_TOOL
+                and duplicate_decision is not None
+                and duplicate_decision.value != "NOT_DUPLICATE"
+            ):
+                unit_of_work.audits.add(
+                    _audit_event(
+                        run_id=plan.run_id,
+                        action_id=action.id,
+                        event_type="TASK_DUPLICATE_OVERRIDE_ACKNOWLEDGED",
+                        outcome=ResultCode.TRANSITION_APPLIED.value,
+                        metadata={
+                            "approval_id": approval.id,
+                            "decision": duplicate_decision.value,
+                        },
+                        created_at_ms=now_ms,
+                    )
+                )
+            if (
+                action.tool_name in CALENDAR_CONFLICT_TOOLS
+                and calendar_decision is not None
+                and calendar_decision is not CalendarConflictDecision.NO_CONFLICT
+            ):
+                unit_of_work.audits.add(
+                    _audit_event(
+                        run_id=plan.run_id,
+                        action_id=action.id,
+                        event_type="CALENDAR_CONFLICT_OVERRIDE_ACKNOWLEDGED",
+                        outcome=ResultCode.TRANSITION_APPLIED.value,
+                        metadata={
+                            "approval_id": approval.id,
+                            **_calendar_conflict_audit_metadata(
+                                risk=action.risk, action_id=action.id
+                            ),
+                        },
+                        created_at_ms=now_ms,
+                    )
+                )
             response = WriteActionResponse(
                 applied=True,
                 result_code=ResultCode.TRANSITION_APPLIED.value,
@@ -889,6 +1174,85 @@ class ClaimWriteActionService:
                 return response
 
             entry = self._registry.require(action.tool_name)
+            current_source_snapshot = command.source_snapshot
+            if action.tool_name == TASK_CREATE_TOOL:
+                stored_approval_snapshot = _dict_argument(loads(approval.source_snapshot_json))
+                if duplicate_change_requires_reapproval(
+                    approved=approval_duplicate_authority(stored_approval_snapshot),
+                    current=duplicate_authority(action.risk),
+                ):
+                    response = WriteActionResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=(),
+                        conflict_detail="task duplicate risk changed after approval",
+                    )
+                    _finish_json_receipt(
+                        unit_of_work,
+                        command.command_id,
+                        response,
+                        action.version,
+                        now_ms,
+                    )
+                    unit_of_work.commit()
+                    return response
+                # Task duplicate authority is server-owned. Claim never
+                # accepts a client projection in place of the Approval snapshot.
+                task_duplicate_snapshot = stored_approval_snapshot.get("task_duplicate")
+                current_source_snapshot = {
+                    **command.source_snapshot,
+                    "task_duplicate": task_duplicate_snapshot,
+                }
+            if action.tool_name in CALENDAR_CONFLICT_TOOLS:
+                stored_approval_snapshot = _dict_argument(loads(approval.source_snapshot_json))
+                if feasibility_change_requires_reapproval(
+                    approved=approval_feasibility_authority(stored_approval_snapshot),
+                    current=feasibility_authority(action.risk),
+                ):
+                    response = WriteActionResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=(),
+                        conflict_detail="feasibility risk changed after approval",
+                    )
+                    _finish_json_receipt(
+                        unit_of_work, command.command_id, response, action.version, now_ms
+                    )
+                    unit_of_work.commit()
+                    return response
+                if calendar_conflict_change_requires_reapproval(
+                    approved=approval_calendar_conflict_authority(stored_approval_snapshot),
+                    current=calendar_conflict_authority(action.risk),
+                ):
+                    response = WriteActionResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=(),
+                        conflict_detail="calendar conflict risk changed after approval",
+                    )
+                    _finish_json_receipt(
+                        unit_of_work,
+                        command.command_id,
+                        response,
+                        action.version,
+                        now_ms,
+                    )
+                    unit_of_work.commit()
+                    return response
+                current_source_snapshot = {
+                    **command.source_snapshot,
+                    "calendar_conflict": stored_approval_snapshot.get("calendar_conflict"),
+                    "feasibility": stored_approval_snapshot.get("feasibility"),
+                }
             try:
                 validate_approval_integrity(
                     ApprovalIntegrityInput(
@@ -896,7 +1260,7 @@ class ClaimWriteActionService:
                         current_arguments_hash=action.arguments_hash,
                         approval_source_snapshot_hash=approval.source_snapshot_hash,
                         current_source_snapshot_hash=calculate_canonical_json_hash(
-                            command.source_snapshot
+                            current_source_snapshot
                         ),
                         approval_action_version=approval.action_version,
                         current_action_version=action.version,
@@ -947,13 +1311,15 @@ class ClaimWriteActionService:
                 unit_of_work.commit()
                 return response
 
-            result = unit_of_work.actions.claim_execution(
-                action.id,
+            preview = transition_action(
+                ActionStatus(action.status),
+                command=ActionCommand.CLAIM_EXECUTION,
+                current_version=action.version,
                 expected_version=command.expected_version,
-                updated_at_ms=now_ms,
+                effect_type=EffectType(action.effect_type),
             )
-            if not result.applied:
-                response = _action_response_from_result(action_id=action.id, result=result)
+            if not preview.applied:
+                response = _action_response_from_result(action_id=action.id, result=preview)
                 _finish_json_receipt(
                     unit_of_work,
                     command.command_id,
@@ -963,6 +1329,15 @@ class ClaimWriteActionService:
                 )
                 unit_of_work.commit()
                 return response
+
+            unit_of_work.approvals.mark_consumed(approval.id, consumed_at_ms=now_ms)
+            result = unit_of_work.actions.claim_execution(
+                action.id,
+                expected_version=command.expected_version,
+                updated_at_ms=now_ms,
+            )
+            if not result.applied:
+                raise RuntimeError("validated write claim transition was not applied")
 
             attempt = ExecutionAttemptRecord(
                 id=command.attempt_id,
@@ -978,7 +1353,6 @@ class ClaimWriteActionService:
                 finished_at_ms=None,
             )
             unit_of_work.execution_attempts.insert_claimed(attempt)
-            unit_of_work.approvals.mark_consumed(approval.id, consumed_at_ms=now_ms)
             claim_token = issue_claim_token(
                 {
                     "version": CLAIM_TOKEN_VERSION,
@@ -1133,11 +1507,30 @@ class PreflightWriteActionService:
     """Read the approved target immediately before the claim transaction."""
 
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], gateway: GoogleWorkspaceGateway
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        gateway: GoogleWorkspaceGateway,
+        now_ms: Callable[[], int] | None = None,
+        work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._gateway = gateway
+        self._now_ms = now_ms or (lambda: time.time_ns() // 1_000_000)
         self._registry = build_p0_tool_registry()
+        self._task_duplicates = TaskDuplicateValidator(gateway=gateway, now_ms=self._now_ms)
+        self._calendar_conflicts = CalendarConflictValidator(
+            gateway=gateway,
+            now_ms=self._now_ms,
+            work_hours_provider=work_hours_provider
+            or (lambda: CalendarWorkHours(timezone="Asia/Seoul")),
+        )
+        self._feasibility = FeasibilityValidator(
+            gateway=gateway,
+            now_ms=self._now_ms,
+            work_hours_provider=work_hours_provider
+            or (lambda: CalendarWorkHours(timezone="Asia/Seoul")),
+        )
 
     def __call__(self, *, action_id: str) -> None:
         with self._unit_of_work_factory() as unit_of_work:
@@ -1146,11 +1539,231 @@ class PreflightWriteActionService:
                 raise PolicyViolationError("write preflight requires an approved action")
             self._registry.require(action.tool_name)
             arguments = _dict_argument(loads(action.arguments_json))
+            action_version = action.version
+            arguments_hash = action.arguments_hash
+            plan = _require_plan(unit_of_work, action.plan_id)
+            approval = unit_of_work.approvals.get_active_by_action(action.id)
+            if approval is None:
+                raise PolicyViolationError("write preflight requires an active approval")
+            approval_id = approval.id
+            approval_snapshot = _dict_argument(loads(approval.source_snapshot_json))
             target_ref = (
                 None
                 if action.target_resource_ref_id is None
                 else unit_of_work.resource_refs.get_by_id(action.target_resource_ref_id)
             )
+
+        if action.tool_name == TASK_CREATE_TOOL:
+            try:
+                fresh_duplicate_risk = self._task_duplicates.fresh_risk(arguments)
+            except Exception as error:
+                with self._unit_of_work_factory() as unit_of_work:
+                    current = _require_action(unit_of_work, action_id)
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=action_id,
+                            event_type="TASK_DUPLICATE_PREFLIGHT_BLOCKED",
+                            outcome="FAIL_CLOSED",
+                            metadata={
+                                "action_version": current.version,
+                                "safe_error_code": (
+                                    error.code.value
+                                    if isinstance(error, GoogleWorkspaceGatewayError)
+                                    else type(error).__name__
+                                ),
+                            },
+                            created_at_ms=self._now_ms(),
+                        )
+                    )
+                    unit_of_work.commit()
+                raise
+
+            must_reapprove = False
+            with self._unit_of_work_factory() as unit_of_work:
+                current = _require_action(unit_of_work, action_id)
+                current_approval = unit_of_work.approvals.get_active_by_action(action_id)
+                if (
+                    current.status != ActionStatus.APPROVED.value
+                    or current.version != action_version
+                    or current.arguments_hash != arguments_hash
+                    or current_approval is None
+                    or current_approval.id != approval_id
+                ):
+                    raise PolicyViolationError(
+                        "write action changed during task duplicate preflight"
+                    )
+                merged_risk = merge_duplicate_risk(current.risk, fresh_duplicate_risk)
+                must_reapprove = duplicate_change_requires_reapproval(
+                    approved=approval_duplicate_authority(approval_snapshot),
+                    current=duplicate_authority(merged_risk),
+                )
+                now_ms = self._now_ms()
+                if must_reapprove:
+                    unit_of_work.approvals.revoke_active_by_action(current.id)
+                    result = unit_of_work.actions.modify_write(
+                        current.id,
+                        expected_version=current.version,
+                        updated_at_ms=now_ms,
+                        arguments_json=current.arguments_json,
+                        arguments_hash=current.arguments_hash,
+                        risk=merged_risk,
+                    )
+                    if not result.applied:
+                        raise PolicyViolationError(
+                            "write action changed during task duplicate preflight"
+                        )
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=current.id,
+                            event_type="TASK_DUPLICATE_PREFLIGHT_BLOCKED",
+                            outcome="REAPPROVAL_REQUIRED",
+                            metadata={
+                                "decision": (duplicate_authority(merged_risk) or ("UNKNOWN", ()))[
+                                    0
+                                ],
+                                "matched_count": len(
+                                    (duplicate_authority(merged_risk) or ("UNKNOWN", ()))[1]
+                                ),
+                            },
+                            created_at_ms=now_ms,
+                        )
+                    )
+                else:
+                    unit_of_work.actions.update_risk_snapshot(
+                        current.id,
+                        expected_version=current.version,
+                        updated_at_ms=now_ms,
+                        risk=merged_risk,
+                    )
+                authority = duplicate_authority(merged_risk) or ("UNKNOWN", ())
+                unit_of_work.audits.add(
+                    _audit_event(
+                        run_id=plan.run_id,
+                        action_id=current.id,
+                        event_type="TASK_DUPLICATE_CHECKED",
+                        outcome=("BLOCKED" if must_reapprove else "ALLOWED"),
+                        metadata={
+                            "decision": authority[0],
+                            "matched_count": len(authority[1]),
+                            "freshness": "FRESH_GOOGLE_GET",
+                        },
+                        created_at_ms=now_ms,
+                    )
+                )
+                unit_of_work.commit()
+            if must_reapprove:
+                raise PolicyViolationError(
+                    "task duplicate result changed; acknowledgement and reapproval are required"
+                )
+            return
+
+        if action.tool_name in CALENDAR_CONFLICT_TOOLS:
+            try:
+                fresh_conflict_risk = self._calendar_conflicts.fresh_risk(arguments)
+                fresh_feasibility_risk = self._feasibility.fresh_risk(
+                    arguments=arguments, risk=action.risk
+                )
+            except Exception as error:
+                with self._unit_of_work_factory() as unit_of_work:
+                    current = _require_action(unit_of_work, action_id)
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=action_id,
+                            event_type="CALENDAR_CONFLICT_PREFLIGHT_BLOCKED",
+                            outcome="FAIL_CLOSED",
+                            metadata={
+                                "action_version": current.version,
+                                "safe_error_code": (
+                                    error.code.value
+                                    if isinstance(error, GoogleWorkspaceGatewayError)
+                                    else type(error).__name__
+                                ),
+                            },
+                            created_at_ms=self._now_ms(),
+                        )
+                    )
+                    unit_of_work.commit()
+                raise
+
+            must_reapprove = False
+            with self._unit_of_work_factory() as unit_of_work:
+                current = _require_action(unit_of_work, action_id)
+                current_approval = unit_of_work.approvals.get_active_by_action(action_id)
+                if (
+                    current.status != ActionStatus.APPROVED.value
+                    or current.version != action_version
+                    or current.arguments_hash != arguments_hash
+                    or current_approval is None
+                    or current_approval.id != approval_id
+                ):
+                    raise PolicyViolationError(
+                        "write action changed during calendar conflict preflight"
+                    )
+                merged_risk = merge_calendar_conflict_risk(current.risk, fresh_conflict_risk)
+                merged_risk = merge_feasibility_risk(merged_risk, fresh_feasibility_risk)
+                must_reapprove = calendar_conflict_change_requires_reapproval(
+                    approved=approval_calendar_conflict_authority(approval_snapshot),
+                    current=calendar_conflict_authority(merged_risk),
+                ) or feasibility_change_requires_reapproval(
+                    approved=approval_feasibility_authority(approval_snapshot),
+                    current=feasibility_authority(merged_risk),
+                )
+                now_ms = self._now_ms()
+                if must_reapprove:
+                    unit_of_work.approvals.revoke_active_by_action(current.id)
+                    result = unit_of_work.actions.modify_write(
+                        current.id,
+                        expected_version=current.version,
+                        updated_at_ms=now_ms,
+                        arguments_json=current.arguments_json,
+                        arguments_hash=current.arguments_hash,
+                        risk=merged_risk,
+                    )
+                    if not result.applied:
+                        raise PolicyViolationError(
+                            "write action changed during calendar conflict preflight"
+                        )
+                else:
+                    unit_of_work.actions.update_risk_snapshot(
+                        current.id,
+                        expected_version=current.version,
+                        updated_at_ms=now_ms,
+                        risk=merged_risk,
+                    )
+                unit_of_work.audits.add(
+                    _audit_event(
+                        run_id=plan.run_id,
+                        action_id=current.id,
+                        event_type="CALENDAR_CONFLICT_CHECKED",
+                        outcome="REAPPROVAL_REQUIRED" if must_reapprove else "ALLOWED",
+                        metadata={
+                            **_calendar_conflict_audit_metadata(
+                                risk=merged_risk, action_id=current.id
+                            ),
+                        },
+                        created_at_ms=now_ms,
+                    )
+                )
+                if feasibility_authority(merged_risk) is not None:
+                    unit_of_work.audits.add(
+                        _audit_event(
+                            run_id=plan.run_id,
+                            action_id=current.id,
+                            event_type="FEASIBILITY_CHECKED",
+                            outcome="REAPPROVAL_REQUIRED" if must_reapprove else "ALLOWED",
+                            metadata=_feasibility_audit_metadata(merged_risk),
+                            created_at_ms=now_ms,
+                        )
+                    )
+                unit_of_work.commit()
+            if must_reapprove:
+                raise PolicyViolationError(
+                    "calendar conflict result changed; acknowledgement and reapproval are required"
+                )
+            return
 
         if action.tool_name == "gmail_send":
             draft_id = _required_argument_string(arguments, "draft_id")
@@ -1648,25 +2261,27 @@ class VerifyWriteActionService:
                 verification_status = (
                     VerificationStatus.VERIFIED if len(diff) == 0 else VerificationStatus.MISMATCH
                 )
-            verification_no = len(unit_of_work.verifications.list_by_attempt(attempt.id)) + 1
-            result = unit_of_work.actions.store_verification(
-                action.id,
+            preview = transition_action(
+                ActionStatus(action.status),
+                command=ActionCommand.STORE_VERIFICATION,
+                current_version=action.version,
                 expected_version=command.expected_action_version,
-                updated_at_ms=now_ms,
-                verification_status=verification_status.value,
+                effect_type=EffectType(action.effect_type),
+                verification_status=verification_status,
             )
-            if not result.applied:
-                response = _action_response_from_result(action_id=action.id, result=result)
+            if not preview.applied:
+                response = _action_response_from_result(action_id=action.id, result=preview)
                 _finish_json_receipt(
                     unit_of_work,
                     command.command_id,
                     response,
-                    result.current_version,
+                    preview.current_version,
                     now_ms,
                 )
                 unit_of_work.commit()
                 return response
 
+            verification_no = len(unit_of_work.verifications.list_by_attempt(attempt.id)) + 1
             verification = VerificationRecord(
                 id=command.verification_id,
                 execution_attempt_id=attempt.id,
@@ -1679,6 +2294,14 @@ class VerifyWriteActionService:
                 verified_at_ms=now_ms,
             )
             unit_of_work.verifications.insert(verification)
+            result = unit_of_work.actions.store_verification(
+                action.id,
+                expected_version=command.expected_action_version,
+                updated_at_ms=now_ms,
+                verification_status=verification_status.value,
+            )
+            if not result.applied:
+                raise RuntimeError("validated verification transition was not applied")
             if verification_status is VerificationStatus.MISMATCH:
                 _propagate_dependency_blocked(
                     unit_of_work=unit_of_work,
@@ -2396,20 +3019,13 @@ class RequestRunCancellationService:
                 for action in actions
             )
             if not has_started_write:
-                for action in actions:
-                    if action.status in {
-                        ActionStatus.PROPOSED.value,
-                        ActionStatus.MODIFIED.value,
-                        ActionStatus.APPROVED.value,
-                        ActionStatus.EXPIRED.value,
-                    }:
-                        if action.status == ActionStatus.APPROVED.value:
-                            unit_of_work.approvals.revoke_active_by_action(action.id)
-                        unit_of_work.actions.cancel_pending(
-                            action.id,
-                            expected_version=action.version,
-                            updated_at_ms=now_ms,
-                        )
+                if plan is not None:
+                    _cancel_pending_actions(
+                        unit_of_work=unit_of_work,
+                        run_id=run.id,
+                        plan_id=plan.id,
+                        updated_at_ms=now_ms,
+                    )
                 if plan is not None:
                     unit_of_work.plans.cancel(plan.id)
                 final_result = unit_of_work.runs.finalize_cancel(
@@ -2517,6 +3133,69 @@ class FinalizeRunCancellationService:
                 )
                 unit_of_work.commit()
                 return response
+            finalize_expected_version = command.expected_run_version
+            if run.status is RunStatus.VERIFYING:
+                if not _has_successful_cancel_marker(unit_of_work, run.id):
+                    response = WriteRunResponse(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        run_id=run.id,
+                        run_status=run.status.value,
+                        run_version=run.version,
+                        plan_id=plan.id,
+                        plan_status=plan.status.value,
+                        conflict_detail=(
+                            "verification can continue cancellation only after a successful "
+                            "cancel request"
+                        ),
+                    )
+                    _finish_json_receipt(
+                        unit_of_work, command.command_id, response, run.version, now_ms
+                    )
+                    unit_of_work.commit()
+                    return response
+                continued_cancel = unit_of_work.runs.request_cancel(
+                    run.id,
+                    expected_version=run.version,
+                )
+                if not continued_cancel.applied:
+                    response = WriteRunResponse(
+                        applied=False,
+                        result_code=continued_cancel.result_code.value,
+                        run_id=run.id,
+                        run_status=continued_cancel.current_status.value,
+                        run_version=continued_cancel.current_version,
+                        plan_id=plan.id,
+                        plan_status=plan.status.value,
+                        conflict_detail=continued_cancel.conflict_detail,
+                    )
+                    _finish_json_receipt(
+                        unit_of_work,
+                        command.command_id,
+                        response,
+                        continued_cancel.current_version,
+                        now_ms,
+                    )
+                    unit_of_work.commit()
+                    return response
+                finalize_expected_version = continued_cancel.current_version
+                run = _require_run(unit_of_work, command.run_id)
+            elif run.status is not RunStatus.CANCEL_REQUESTED:
+                response = WriteRunResponse(
+                    applied=False,
+                    result_code=ResultCode.STATE_CONFLICT.value,
+                    run_id=run.id,
+                    run_status=run.status.value,
+                    run_version=run.version,
+                    plan_id=plan.id,
+                    plan_status=plan.status.value,
+                    conflict_detail="cancellation finalization requires cancel-requested state",
+                )
+                _finish_json_receipt(
+                    unit_of_work, command.command_id, response, run.version, now_ms
+                )
+                unit_of_work.commit()
+                return response
             if any(action.status == ActionStatus.UNKNOWN_RESULT.value for action in actions):
                 recovery_run = unit_of_work.runs.set_recovery_required(run.id)
                 response = WriteRunResponse(
@@ -2551,21 +3230,21 @@ class FinalizeRunCancellationService:
                     run_version=updated_run.version,
                     plan_id=plan.id,
                     plan_status=plan.status.value,
-                    result_kind="PARTIAL",
                 )
             else:
+                _cancel_pending_actions(
+                    unit_of_work=unit_of_work,
+                    run_id=run.id,
+                    plan_id=plan.id,
+                    updated_at_ms=now_ms,
+                )
                 final_result = unit_of_work.runs.finalize_cancel(
                     run.id,
-                    expected_version=command.expected_run_version,
+                    expected_version=finalize_expected_version,
                     finished_at_ms=now_ms,
                 )
                 if not final_result.applied:
                     raise RuntimeError("validated cancellation finalization was not applied")
-                _cancel_pending_actions(
-                    unit_of_work=unit_of_work,
-                    plan_id=plan.id,
-                    updated_at_ms=now_ms,
-                )
                 unit_of_work.plans.cancel(plan.id)
                 response = WriteRunResponse(
                     applied=True,
@@ -2664,22 +3343,23 @@ class ResolveMismatchRecoveryService:
                 if command.resolution_kind is RecoveryResolutionKind.ACCEPT_PARTIAL
                 else RunStatus.PLANNING
             )
-            resolved = unit_of_work.runs.resolve_recovery(
-                run.id,
+            preview = transition_run(
+                run.status,
+                command=RunCommand.RESOLVE_RECOVERY,
+                current_version=run.version,
                 expected_version=command.expected_run_version,
                 recovery_next_status=next_status,
-                finished_at_ms=now_ms if next_status is RunStatus.COMPLETED else None,
             )
-            if not resolved.applied:
+            if not preview.applied:
                 response = WriteRunResponse(
                     applied=False,
-                    result_code=resolved.result_code.value,
+                    result_code=preview.result_code.value,
                     run_id=run.id,
-                    run_status=resolved.current_status.value,
-                    run_version=resolved.current_version,
+                    run_status=preview.current_status.value,
+                    run_version=preview.current_version,
                     plan_id=plan.id,
                     plan_status=plan.status.value,
-                    conflict_detail=resolved.conflict_detail,
+                    conflict_detail=preview.conflict_detail,
                 )
                 return _finish_recovery_response(
                     unit_of_work=unit_of_work,
@@ -2691,6 +3371,7 @@ class ResolveMismatchRecoveryService:
             if command.resolution_kind is RecoveryResolutionKind.ACCEPT_PARTIAL:
                 _cancel_pending_actions(
                     unit_of_work=unit_of_work,
+                    run_id=run.id,
                     plan_id=plan.id,
                     updated_at_ms=now_ms,
                 )
@@ -2701,6 +3382,10 @@ class ResolveMismatchRecoveryService:
             else:
                 if not command.corrective_plan_id:
                     raise ValueError("corrective_plan_id is required for CREATE_CORRECTIVE_PLAN")
+                _revoke_active_approvals_for_plan(
+                    unit_of_work=unit_of_work,
+                    plan_id=plan.id,
+                )
                 unit_of_work.plans.supersede(plan.id)
                 next_revision = (
                     max(item.revision_no for item in unit_of_work.plans.list_by_run(run.id)) + 1
@@ -2717,6 +3402,15 @@ class ResolveMismatchRecoveryService:
                 result_plan = corrective_plan.id
                 result_plan_status = corrective_plan.status.value
                 result_kind = "CORRECTIVE_PLAN_REQUIRED"
+
+            resolved = unit_of_work.runs.resolve_recovery(
+                run.id,
+                expected_version=command.expected_run_version,
+                recovery_next_status=next_status,
+                finished_at_ms=now_ms if next_status is RunStatus.COMPLETED else None,
+            )
+            if not resolved.applied:
+                raise RuntimeError("validated recovery transition was not applied")
 
             unit_of_work.traces.add(
                 TraceEventRecord(
@@ -2935,6 +3629,7 @@ def _validate_write_plan(
         raise ValueError("write plan requires at least one action")
     evidence_count = len(command.evidence)
     for action in command.actions:
+        canonicalize_action_risk(action.risk)
         entry = registry.require(action.tool_name)
         if entry.effect_type is EffectType.READ:
             raise ValueError(f"write plan cannot contain read-only tool: {action.tool_name}")
@@ -3484,7 +4179,14 @@ def classify_write_delivery(error: GoogleWorkspaceGatewayError) -> DeliveryCerta
     return error.delivery_certainty
 
 
-def _cancel_pending_actions(*, unit_of_work: UnitOfWork, plan_id: str, updated_at_ms: int) -> None:
+def _revoke_active_approvals_for_plan(*, unit_of_work: UnitOfWork, plan_id: str) -> None:
+    for action in unit_of_work.actions.list_by_plan(plan_id):
+        unit_of_work.approvals.revoke_active_by_action(action.id)
+
+
+def _cancel_pending_actions(
+    *, unit_of_work: UnitOfWork, run_id: str, plan_id: str, updated_at_ms: int
+) -> None:
     pending_statuses = {
         ActionStatus.PROPOSED.value,
         ActionStatus.MODIFIED.value,
@@ -3503,6 +4205,39 @@ def _cancel_pending_actions(*, unit_of_work: UnitOfWork, plan_id: str, updated_a
         )
         if not result.applied:
             raise RuntimeError(f"pending action cancellation failed: {action.id}")
+        unit_of_work.audits.add(
+            _audit_event(
+                run_id=run_id,
+                action_id=action.id,
+                event_type="ACTION_CANCELLED",
+                outcome=ResultCode.TRANSITION_APPLIED.value,
+                metadata={
+                    "plan_id": plan_id,
+                    "previous_status": action.status,
+                    "new_status": ActionStatus.CANCELLED.value,
+                },
+                created_at_ms=updated_at_ms,
+            )
+        )
+
+
+def _has_successful_cancel_marker(unit_of_work: UnitOfWork, run_id: str) -> bool:
+    cursor: int | None = None
+    while True:
+        events = unit_of_work.audits.list_by_aggregate(
+            run_id=run_id,
+            cursor_after=cursor,
+            limit=100,
+        )
+        if any(
+            event.event_type == "RUN_CANCELLATION_REQUESTED"
+            and event.outcome == ResultCode.TRANSITION_APPLIED.value
+            for event in events
+        ):
+            return True
+        if len(events) < 100:
+            return False
+        cursor = events[-1].id
 
 
 def _finish_recovery_response(
@@ -3539,6 +4274,33 @@ def _dict_argument(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         raise TypeError("expected a dict payload")
     return {str(key): cast(object, item) for key, item in value.items()}
+
+
+def _calendar_conflict_audit_metadata(
+    *, risk: dict[str, object], action_id: str
+) -> dict[str, object]:
+    authority = calendar_conflict_authority(risk) or ("UNKNOWN", ())
+    value = risk.get("calendar_conflict")
+    return {
+        "action_id": action_id,
+        "decision": authority[0],
+        "matched_resource_ids": list(authority[1]),
+        "reason_codes": value.get("reason_codes", []) if isinstance(value, dict) else [],
+        "freshness": value.get("freshness", "UNKNOWN") if isinstance(value, dict) else "UNKNOWN",
+    }
+
+
+def _feasibility_audit_metadata(risk: dict[str, object]) -> dict[str, object]:
+    value = risk.get("feasibility")
+    authority = feasibility_authority(risk)
+    return {
+        "decision": authority[0] if authority is not None else "UNKNOWN",
+        "reason_codes": value.get("reason_codes", []) if isinstance(value, dict) else [],
+        "required_duration": (
+            value.get("required_duration_minutes") if isinstance(value, dict) else None
+        ),
+        "freshness": value.get("freshness", "UNKNOWN") if isinstance(value, dict) else "UNKNOWN",
+    }
 
 
 def _required_argument_string(arguments: dict[str, object], key: str) -> str:
@@ -3617,12 +4379,27 @@ def _propagate_dependency_blocked(
     updated_at_ms: int,
 ) -> None:
     blocked_action_ids: list[str] = []
-    for dependent_action_id in unit_of_work.action_dependencies.list_dependents(action_id):
-        if unit_of_work.actions.mark_dependency_blocked(
-            dependent_action_id,
-            updated_at_ms=updated_at_ms,
-        ):
+    pending = list(unit_of_work.action_dependencies.list_dependents(action_id))
+    visited: set[str] = set()
+    while pending:
+        dependent_action_id = pending.pop(0)
+        if dependent_action_id in visited:
+            continue
+        visited.add(dependent_action_id)
+        dependent = unit_of_work.actions.get_by_id(dependent_action_id)
+        if dependent is not None and dependent.status in {
+            ActionStatus.PROPOSED.value,
+            ActionStatus.MODIFIED.value,
+            ActionStatus.APPROVED.value,
+        }:
+            unit_of_work.approvals.revoke_active_by_action(dependent_action_id)
+            if not unit_of_work.actions.mark_dependency_blocked(
+                dependent_action_id,
+                updated_at_ms=updated_at_ms,
+            ):
+                raise RuntimeError(f"dependency block transition failed: {dependent_action_id}")
             blocked_action_ids.append(dependent_action_id)
+            pending.extend(unit_of_work.action_dependencies.list_dependents(dependent_action_id))
     for blocked_action_id in blocked_action_ids:
         unit_of_work.traces.add(
             TraceEventRecord(

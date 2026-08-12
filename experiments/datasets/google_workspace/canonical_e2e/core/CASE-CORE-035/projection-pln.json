@@ -20,7 +20,7 @@
         "arguments": {
           "tasklist_id": "TL-WORK",
           "title": "Harbor 공급망 패치 확인",
-          "due": "2026-08-10"
+          "notes": "업무 마감: 2026-08-10"
         },
         "expected": {
           "created": true

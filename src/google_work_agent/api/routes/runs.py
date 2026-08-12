@@ -143,7 +143,7 @@ def cancel_run(
             expected_run_version=payload.expected_run_version,
         )
     )
-    if result.applied:
+    if result.applied and result.run_status == "CANCEL_REQUESTED":
         container.local_run_coordinator.request_cancel(
             run_id=run_id,
             request_id=request.state.request_id,
@@ -158,6 +158,7 @@ def cancel_run(
         run_status=result.run_status,
         run_version=result.run_version,
         conflict_detail=result.conflict_detail,
+        result_kind=result.result_kind,
     )
 
 

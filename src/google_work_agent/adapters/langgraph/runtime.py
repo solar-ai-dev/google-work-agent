@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable, Hashable
+from copy import deepcopy
 from hashlib import sha256
-from json import dumps
+from json import dumps, loads
 from pathlib import Path
+from threading import Lock
 from typing import Any, Final, Literal, NotRequired, TypedDict, cast
 
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -70,7 +72,16 @@ from google_work_agent.application import (
     WriteEvidenceDraft,
     derive_finalize_intent,
 )
+from google_work_agent.application.calendar_conflicts import (
+    CALENDAR_CONFLICT_TOOLS,
+    evidence_calendar_conflict_risk,
+)
+from google_work_agent.application.feasibility import evidence_feasibility_risk
 from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.application.task_duplicates import (
+    TASK_CREATE_TOOL,
+    evidence_duplicate_risk,
+)
 from google_work_agent.application.workflows import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
@@ -129,7 +140,13 @@ from google_work_agent.application.write_actions import (
     ClaimWriteActionService,
     ExecuteWriteActionService,
 )
-from google_work_agent.domain import ActionStatus, PolicyViolationError, ResultCode, RunStatus
+from google_work_agent.domain import (
+    ActionStatus,
+    CalendarWorkHours,
+    PolicyViolationError,
+    ResultCode,
+    RunStatus,
+)
 from google_work_agent.ports import (
     DeliveryCertainty,
     EvidenceOriginType,
@@ -137,6 +154,7 @@ from google_work_agent.ports import (
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     PlanRecord,
+    PlanReviewStatus,
     PromptReference,
     ResourceRefRecord,
     ResourceSource,
@@ -161,6 +179,10 @@ class ParentGraphState(MultiAgentGraphState):
     __request__: WorkflowStartRequest
     __target__: str
     __logical_target__: str
+    __modify_review_plan_id__: NotRequired[str | None]
+    __modify_review_version__: NotRequired[int | None]
+    __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
+    __replan_from_plan_id__: NotRequired[str]
 
 
 class GraphState(TypedDict):
@@ -193,6 +215,10 @@ class GraphState(TypedDict):
     __request__: WorkflowStartRequest
     __target__: str
     __logical_target__: str
+    __modify_review_plan_id__: NotRequired[str | None]
+    __modify_review_version__: NotRequired[int | None]
+    __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
+    __replan_from_plan_id__: NotRequired[str]
     __request_agent_local__: NotRequired[AgentLocalStateV1]
     __request_output__: NotRequired[RequestUnderstandingOutputV1]
     __acquisition_agent_local__: NotRequired[AgentLocalStateV1]
@@ -307,6 +333,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path: Path | None = None,
         timezone_provider: Callable[[], str] | None = None,
+        work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._gateway = gateway
@@ -316,6 +343,11 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._service_instance_id = service_instance_id
         self._checkpoint_database_path = checkpoint_database_path
         self._graph_profile = graph_profile
+        self._work_hours_provider = work_hours_provider or (
+            lambda: CalendarWorkHours(timezone=(timezone_provider or (lambda: "Asia/Seoul"))())
+        )
+        self._cancel_signal_lock = Lock()
+        self._cancel_signals: set[str] = set()
         self._checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
         self._checkpoint_connection = sqlite3.connect(
             self._checkpoint_database_path,
@@ -450,6 +482,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._preflight_write = PreflightWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             gateway=gateway,
+            now_ms=now_ms,
+            work_hours_provider=self._work_hours_provider,
         )
         self._execute_write = ExecuteWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
@@ -551,6 +585,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
 
     def request_cancel(self, request: WorkflowCancelRequest) -> WorkflowInvocationResult:
+        with self._cancel_signal_lock:
+            self._cancel_signals.add(request.run_id)
         return WorkflowInvocationResult(
             run_id=request.run_id,
             workflow_key=request.workflow_key,
@@ -601,6 +637,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         graph.add_node("domain_validation", self._domain_validation_node)
         graph.add_node("waiting_confirmation", self._waiting_confirmation_node)
         graph.add_node("waiting_approval", self._waiting_approval_node)
+        graph.add_node("modify_review", self._modify_review_node)
         graph.add_node("action_execution", self._action_execution_node)
         graph.add_node("recovery", self._recovery_node)
         graph.add_node("finalize", self._finalize_node)
@@ -610,6 +647,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "domain_validation",
             "waiting_confirmation",
             "waiting_approval",
+            "modify_review",
             "action_execution",
             "recovery",
             "finalize",
@@ -622,6 +660,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "domain_validation": "domain_validation",
             "waiting_confirmation": "waiting_confirmation",
             "waiting_approval": "waiting_approval",
+            "modify_review": "modify_review",
             "action_execution": "action_execution",
             "recovery": "recovery",
             "finalize": "finalize",
@@ -1771,6 +1810,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 answer_draft=state["answer_draft"],
                 plan_draft=state["plan_draft"],
                 request=request,
+                deterministic_action_risks=state.get("__modify_review_risks__"),
             )
             result = self._review.build_output_from_llm_result(
                 llm_result,
@@ -1788,6 +1828,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 answer_draft=state["answer_draft"],
                 plan_draft=state["plan_draft"],
                 request=request,
+                deterministic_action_risks=state.get("__modify_review_risks__"),
             )
             result = self._review.build_output_from_llm_result(
                 llm_result,
@@ -2557,6 +2598,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             answer_draft=answer_draft,
             plan_draft=plan_draft,
             request=request,
+            deterministic_action_risks=state.get("__modify_review_risks__"),
         )
         review_result = self._single_review.build_output_from_llm_result(
             llm_result,
@@ -2905,7 +2947,26 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             state=cast(MultiAgentGraphState, state),
             result=result,
         )
-        if result["result"] == DomainValidationResult.REQUIRE_APPROVAL.value:
+        is_modify_review = state.get("__modify_review_plan_id__") is not None
+        if is_modify_review:
+            review_status = (
+                PlanReviewStatus.PASSED
+                if result["result"] == DomainValidationResult.REQUIRE_APPROVAL.value
+                else PlanReviewStatus.BLOCKED
+            )
+            if not self._store_modify_review_result(state, review_status):
+                return {
+                    **state,
+                    "__target__": "end",
+                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                }
+            if review_status is PlanReviewStatus.PASSED:
+                decision["target"] = SupervisorTarget.WAITING_APPROVAL.value
+                decision["state_update"] = {
+                    **decision["state_update"],
+                    "approved_plan_id": state["__modify_review_plan_id__"],
+                }
+        elif result["result"] == DomainValidationResult.REQUIRE_APPROVAL.value:
             plan_id = self._persist_write_plan(state, plan_draft)
             decision["target"] = SupervisorTarget.WAITING_APPROVAL.value
             decision["state_update"] = {
@@ -2962,24 +3023,227 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "run_id": state["run_id"],
             "plan_id": plan_id,
         }
-        _ = interrupt(payload)
+        resume_payload = interrupt(payload)
+        if (
+            isinstance(resume_payload, dict)
+            and resume_payload.get("resume_kind") == "MODIFY_REVIEW"
+        ):
+            return self._prepare_modify_review_state(
+                state,
+                plan_id=self._required_string(resume_payload.get("plan_id"), "plan_id"),
+                review_version=int(resume_payload.get("review_version", -1)),
+            )
+        if self._current_run_status(cast(str, state["run_id"])) in {
+            RunStatus.COMPLETED.value,
+            RunStatus.BLOCKED.value,
+            RunStatus.FAILED.value,
+            RunStatus.CANCELLED.value,
+        }:
+            return {**state, "__target__": "end"}
         return {
             **state,
             "__target__": "action_execution",
             "workflow_phase": WorkflowPhase.PREFLIGHT.value,
         }
 
+    def _prepare_modify_review_state(
+        self,
+        state: GraphState,
+        *,
+        plan_id: str,
+        review_version: int,
+    ) -> GraphState:
+        with self._unit_of_work_factory() as unit_of_work:
+            plan = unit_of_work.plans.get_by_id(plan_id)
+            if plan is None:
+                raise LookupError(f"plan not found: {plan_id}")
+            if (
+                plan.review_status is not PlanReviewStatus.REQUIRED
+                or plan.review_version != review_version
+            ):
+                return {
+                    **state,
+                    "__target__": "end",
+                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                }
+            actions = unit_of_work.actions.list_by_plan(plan_id)
+            dependencies = {
+                action.id: unit_of_work.action_dependencies.list_dependencies(action.id)
+                for action in actions
+            }
+
+        draft = deepcopy(_require_state_value(state["plan_draft"], "plan_draft"))
+        persisted = {action.id: action for action in actions}
+        for action_draft in draft["actions"]:
+            action = persisted.get(action_draft["action_id"])
+            if action is None:
+                raise LookupError(f"persisted action not found: {action_draft['action_id']}")
+            action_draft["arguments"] = cast(dict[str, object], loads(action.arguments_json))
+            action_draft["expected"] = cast(dict[str, object], loads(action.expected_json))
+            action_draft["depends_on_action_ids"] = list(dependencies[action.id])
+
+        return {
+            **state,
+            "plan_draft": draft,
+            "plan_review": None,
+            "approved_plan_id": plan_id,
+            "__modify_review_plan_id__": plan_id,
+            "__modify_review_version__": review_version,
+            "__modify_review_risks__": {action.id: action.risk for action in actions},
+            "__target__": "modify_review",
+            "__logical_target__": self._modify_review_profile_target(),
+            "workflow_phase": WorkflowPhase.PLAN_REVIEW.value,
+        }
+
+    def _modify_review_node(self, state: GraphState) -> GraphState:
+        if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE:
+            reviewed = cast(GraphState, self._review_subgraph.invoke(state))
+        elif self._graph_profile is GraphProfile.THREE_STAGE:
+            reviewed = cast(GraphState, self._three_stage_review_subgraph.invoke(state))
+        else:
+            assert self._single_review is not None
+            request = self._request_from_state(state)
+            result = self._single_review.inspect(
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                context_result=_require_state_value(state["context_result"], "context_result"),
+                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                answer_draft=None,
+                plan_draft=_require_state_value(state["plan_draft"], "plan_draft"),
+                request=request,
+                deterministic_action_risks=state.get("__modify_review_risks__"),
+            )
+            decision = route_supervisor(
+                phase=WorkflowPhase.PLAN_REVIEW,
+                state=cast(MultiAgentGraphState, state),
+                result=result,
+            )
+            reviewed = self._merge_decision(
+                state, self._single_review.build_state_update(result), decision
+            )
+
+        reviewed = {
+            **reviewed,
+            "__modify_review_plan_id__": state["__modify_review_plan_id__"],
+            "__modify_review_version__": state["__modify_review_version__"],
+            "__modify_review_risks__": state["__modify_review_risks__"],
+        }
+
+        review = _require_state_value(reviewed["plan_review"], "plan_review")
+        if review["status"] == ReviewResult.PASS.value:
+            return reviewed
+        if not self._store_modify_review_result(reviewed, self._review_status(review)):
+            return {
+                **reviewed,
+                "__target__": "end",
+                "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+            }
+        if review["status"] in {
+            ReviewResult.REVISE.value,
+            ReviewResult.RETRIEVE_MORE.value,
+        }:
+            if not self._begin_modify_replan(reviewed, self._review_status(review)):
+                return {
+                    **reviewed,
+                    "__target__": "end",
+                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                }
+            reviewed = cast(GraphState, dict(reviewed))
+            reviewed["__replan_from_plan_id__"] = cast(str, reviewed["__modify_review_plan_id__"])
+            reviewed["__modify_review_plan_id__"] = None
+            reviewed["__modify_review_version__"] = None
+            reviewed["__modify_review_risks__"] = None
+        return reviewed
+
+    def _modify_review_profile_target(self) -> str:
+        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
+            return "single_workflow"
+        if self._graph_profile is GraphProfile.THREE_STAGE:
+            return "stage_three"
+        return "review"
+
+    @staticmethod
+    def _review_status(review: PlanReviewResultV1) -> PlanReviewStatus:
+        return {
+            ReviewResult.REVISE.value: PlanReviewStatus.REVISE,
+            ReviewResult.RETRIEVE_MORE.value: PlanReviewStatus.RETRIEVE_MORE,
+            ReviewResult.CONFIRM.value: PlanReviewStatus.REQUIRED,
+            ReviewResult.BLOCK.value: PlanReviewStatus.BLOCKED,
+        }[review["status"]]
+
+    def _store_modify_review_result(
+        self, state: GraphState, review_status: PlanReviewStatus
+    ) -> bool:
+        plan_id = state.get("__modify_review_plan_id__")
+        review_version = state.get("__modify_review_version__")
+        if plan_id is None or review_version is None:
+            return False
+        with self._unit_of_work_factory() as unit_of_work:
+            applied = unit_of_work.plans.store_review_result(
+                plan_id,
+                expected_review_version=review_version,
+                review_status=review_status.value,
+            )
+            if applied:
+                unit_of_work.commit()
+            return applied
+
+    def _begin_modify_replan(self, state: GraphState, review_status: PlanReviewStatus) -> bool:
+        plan_id = state.get("__modify_review_plan_id__")
+        review_version = state.get("__modify_review_version__")
+        if plan_id is None or review_version is None:
+            return False
+        with self._unit_of_work_factory() as unit_of_work:
+            plan = unit_of_work.plans.get_by_id(plan_id)
+            if (
+                plan is None
+                or plan.review_version != review_version
+                or plan.review_status is not review_status
+            ):
+                return False
+            run = unit_of_work.runs.get_by_id(plan.run_id)
+            if run is None:
+                return False
+            transitioned = unit_of_work.runs.replan(
+                run.id,
+                expected_version=run.version,
+            )
+            if not transitioned.applied:
+                return False
+            unit_of_work.plans.supersede(plan.id)
+            unit_of_work.commit()
+            return True
+
     def _action_execution_node(self, state: GraphState) -> GraphState:
+        run_id = cast(str, state["run_id"])
+        if self._should_stop_for_cancel(run_id):
+            return {
+                **state,
+                "__target__": "end",
+                "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
+                "execution_summary": {"result": "CANCEL_REQUESTED"},
+            }
         plan_id = self._required_string(state.get("approved_plan_id"), "approved_plan_id")
         actions = self._list_actions(plan_id)
         if actions and all(action.effect_type == "READ" for action in actions):
             return self._execute_read_only_plan(state, plan_id, actions)
 
         with self._unit_of_work_factory() as unit_of_work:
-            unit_of_work.runs.set_verifying(cast(str, state["run_id"]))
-            unit_of_work.commit()
+            run = unit_of_work.runs.get_by_id(cast(str, state["run_id"]))
+            if run is None:
+                raise LookupError(f"run not found: {state['run_id']}")
+            if run.status != RunStatus.VERIFYING:
+                unit_of_work.runs.set_verifying(cast(str, state["run_id"]))
+                unit_of_work.commit()
         verification_statuses: list[str] = []
         for action in actions:
+            if self._should_stop_for_cancel(run_id):
+                return {
+                    **state,
+                    "__target__": "end",
+                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
+                    "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
+                    "verification_summary": {"action_statuses": verification_statuses},
+                }
             if action.status in {
                 ActionStatus.VERIFIED.value,
                 ActionStatus.MISMATCH.value,
@@ -2994,6 +3258,25 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             try:
                 self._preflight_write(action_id=action.id)
             except (GoogleWorkspaceGatewayError, LookupError, PolicyViolationError) as error:
+                refreshed = next(
+                    (item for item in self._list_actions(plan_id) if item.id == action.id),
+                    None,
+                )
+                if refreshed is not None and refreshed.status == ActionStatus.MODIFIED.value:
+                    _ = interrupt(
+                        {
+                            "interrupt_kind": "APPROVAL",
+                            "run_id": run_id,
+                            "plan_id": plan_id,
+                            "action_id": action.id,
+                            "reason": "PREFLIGHT_REAPPROVAL_REQUIRED",
+                        }
+                    )
+                    return {
+                        **state,
+                        "__target__": "action_execution",
+                        "workflow_phase": WorkflowPhase.PREFLIGHT.value,
+                    }
                 return {
                     **state,
                     "__target__": "end",
@@ -3003,6 +3286,14 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                         "action_id": action.id,
                         "safe_error_code": type(error).__name__,
                     },
+                }
+            if self._should_stop_for_cancel(run_id):
+                return {
+                    **state,
+                    "__target__": "end",
+                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
+                    "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
+                    "verification_summary": {"action_statuses": verification_statuses},
                 }
             claim_response = self._claim_write(
                 ClaimWriteActionCommand(
@@ -3021,6 +3312,29 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 or claim_response.attempt_id is None
             ):
                 continue
+            if self._should_stop_for_cancel(run_id):
+                self._mark_write_failed(
+                    MarkWriteActionFailedCommand(
+                        command_id=self._id_factory(),
+                        request_hash=self._request_hash(
+                            {"kind": "cancel_before_write", "action_id": action.id}
+                        ),
+                        action_id=action.id,
+                        attempt_id=self._required_string(claim_response.attempt_id, "attempt_id"),
+                        expected_action_version=claim_response.action_version,
+                        expected_attempt_version=0,
+                        error_code="CANCEL_REQUESTED",
+                        error_detail="write was not sent because cancellation was requested",
+                    )
+                )
+                verification_statuses.append(ActionStatus.FAILED.value)
+                return {
+                    **state,
+                    "__target__": "end",
+                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
+                    "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
+                    "verification_summary": {"action_statuses": verification_statuses},
+                }
             try:
                 executed = self._execute_write(
                     action_id=action.id,
@@ -3114,10 +3428,19 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 )
             )
             verification_statuses.append(verified.action_status)
+            if self._should_stop_for_cancel(run_id):
+                return {
+                    **state,
+                    "__target__": "end",
+                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
+                    "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
+                    "verification_summary": {"action_statuses": verification_statuses},
+                }
         if (
             actions
             and verification_statuses
             and all(status == ActionStatus.VERIFIED.value for status in verification_statuses)
+            and not self._has_persisted_cancel_intent(run_id)
         ):
             self._complete_write_run(
                 CompleteWriteRunCommand(
@@ -3304,6 +3627,9 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         }
 
     def _route_next_node(self, state: GraphState) -> str:
+        run_id = state.get("run_id")
+        if isinstance(run_id, str) and self._should_stop_for_cancel(run_id):
+            return "end"
         return cast(str, state.get("__target__", "end"))
 
     def _merge_decision(
@@ -3570,6 +3896,14 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             outcome = WorkflowOutcome.ACCEPTED
         else:
             outcome = WorkflowOutcome.ACCEPTED
+        if run_status in {
+            RunStatus.COMPLETED.value,
+            RunStatus.BLOCKED.value,
+            RunStatus.FAILED.value,
+            RunStatus.CANCELLED.value,
+        }:
+            with self._cancel_signal_lock:
+                self._cancel_signals.discard(run_id)
         return WorkflowInvocationResult(
             run_id=run_id,
             workflow_key=workflow_key,
@@ -3597,6 +3931,25 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         run_id = state["run_id"]
         run_version = self._current_run_version(run_id)
+        replan_from_plan_id = state.get("__replan_from_plan_id__")
+        revision_no = 1
+        plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
+        action_id_map = {
+            action["action_id"]: action["action_id"] for action in plan_draft["actions"]
+        }
+        evidence_id_map = {evidence_id: evidence_id for evidence_id in plan_draft["evidence_refs"]}
+        if replan_from_plan_id is not None:
+            plans = self._plans_for_run(run_id)
+            if not any(plan.id == replan_from_plan_id for plan in plans):
+                raise LookupError(f"replan source not found: {replan_from_plan_id}")
+            revision_no = max(plan.revision_no for plan in plans) + 1
+            plan_id = self._id_factory()
+            action_id_map = {
+                action["action_id"]: self._id_factory() for action in plan_draft["actions"]
+            }
+            evidence_id_map = {
+                evidence_id: self._id_factory() for evidence_id in plan_draft["evidence_refs"]
+            }
         context_result = _require_state_value(state["context_result"], "context_result")
         evidence_drafts = {item["evidence_id"]: item for item in context_result["evidence_drafts"]}
         mapped_evidence = []
@@ -3604,7 +3957,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             item = evidence_drafts[evidence_id]
             mapped_evidence.append(
                 WriteEvidenceDraft(
-                    evidence_id=evidence_id,
+                    evidence_id=evidence_id_map[evidence_id],
                     origin_type=EvidenceOriginType.DERIVED,
                     kind=item["kind"],
                     excerpt=item["excerpt"],
@@ -3615,13 +3968,15 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             )
         mapped_actions = tuple(
             WriteActionDraft(
-                action_id=action["action_id"],
+                action_id=action_id_map[action["action_id"]],
                 position=action["position"],
                 tool_name=action["tool_name"],
                 arguments=action["arguments"],
                 expected=action["expected"],
-                evidence_ids=tuple(action["evidence_refs"]),
-                depends_on_action_ids=tuple(action.get("depends_on_action_ids", [])),
+                evidence_ids=tuple(evidence_id_map[item] for item in action["evidence_refs"]),
+                depends_on_action_ids=tuple(
+                    action_id_map[item] for item in action.get("depends_on_action_ids", [])
+                ),
                 target_resource_ref_id=self._resolve_target_resource_ref_id(
                     run_id=run_id,
                     resource_handle=action.get("target_resource_ref_id"),
@@ -3629,17 +3984,29 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                         state["acquisition_result"], "acquisition_result"
                     ),
                 ),
+                risk=(
+                    evidence_duplicate_risk(
+                        arguments=action["arguments"],
+                        acquisition_result=_require_state_value(
+                            state["acquisition_result"], "acquisition_result"
+                        ),
+                        checked_at_ms=self._now_ms(),
+                    )
+                    if action["tool_name"] == TASK_CREATE_TOOL
+                    else self._calendar_plan_risk(state=state, action=action)
+                    if action["tool_name"] in CALENDAR_CONFLICT_TOOLS
+                    else {}
+                ),
             )
             for action in plan_draft["actions"]
         )
-        plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
         save_response = self._save_write_plan(
             SaveWritePlanCommand(
                 command_id=self._id_factory(),
                 request_hash=self._request_hash({"kind": "save_write_plan", "plan_id": plan_id}),
                 plan_id=plan_id,
                 run_id=run_id,
-                revision_no=1,
+                revision_no=revision_no,
                 summary_text=self._required_string(plan_draft.get("summary"), "summary"),
                 expected_run_version=run_version,
                 actions=mapped_actions,
@@ -3660,6 +4027,25 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         if not publish_response.applied:
             raise RuntimeError(f"publish_write_plan failed: {publish_response.result_code}")
         return plan_id
+
+    def _calendar_plan_risk(self, *, state: GraphState, action: Any) -> dict[str, object]:
+        arguments = cast(dict[str, object], action["arguments"])
+        acquisition = _require_state_value(state["acquisition_result"], "acquisition_result")
+        checked_at_ms = self._now_ms()
+        conflict = evidence_calendar_conflict_risk(
+            arguments=arguments,
+            acquisition_result=acquisition,
+            checked_at_ms=checked_at_ms,
+            work_hours=self._work_hours_provider(),
+        )
+        feasibility = evidence_feasibility_risk(
+            arguments=arguments,
+            analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+            acquisition_result=acquisition,
+            checked_at_ms=checked_at_ms,
+            work_hours=self._work_hours_provider(),
+        )
+        return {**conflict, **feasibility}
 
     def _resolve_target_resource_ref_id(
         self,
@@ -3934,6 +4320,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             return max(attempts, key=lambda item: (item.attempt_no, item.started_at_ms)).id
 
     def _complete_write_run_if_verified(self, plan_id: str, run_id: str) -> None:
+        if self._has_persisted_cancel_intent(run_id):
+            return
         actions = self._list_actions(plan_id)
         if not actions or not all(
             action.status == ActionStatus.VERIFIED.value for action in actions
@@ -3951,6 +4339,33 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
         if not response.applied and response.result_code != ResultCode.STATE_CONFLICT.value:
             raise RuntimeError(f"recovered write completion failed: {response.result_code}")
+
+    def _should_stop_for_cancel(self, run_id: str) -> bool:
+        with self._cancel_signal_lock:
+            if run_id in self._cancel_signals:
+                return True
+        return self._current_run_status(
+            run_id
+        ) == RunStatus.CANCEL_REQUESTED.value or self._has_persisted_cancel_intent(run_id)
+
+    def _has_persisted_cancel_intent(self, run_id: str) -> bool:
+        with self._unit_of_work_factory() as unit_of_work:
+            cursor: int | None = None
+            while True:
+                events = unit_of_work.audits.list_by_aggregate(
+                    run_id=run_id,
+                    cursor_after=cursor,
+                    limit=100,
+                )
+                if any(
+                    event.event_type == "RUN_CANCELLATION_REQUESTED"
+                    and event.outcome == ResultCode.TRANSITION_APPLIED.value
+                    for event in events
+                ):
+                    return True
+                if len(events) < 100:
+                    return False
+                cursor = events[-1].id
 
     def _latest_unknown_action(self, run_id: str) -> tuple[ActionRecord, str, int] | None:
         with self._unit_of_work_factory() as unit_of_work:

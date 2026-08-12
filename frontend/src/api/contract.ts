@@ -140,6 +140,7 @@ export type RunAction = {
   effect_type: string;
   approval_required: boolean;
   verification_policy: string;
+  risk: Record<string, unknown>;
   next_allowed_commands: string[];
 };
 
@@ -181,6 +182,7 @@ export type RunSnapshot = {
   recovery_summary: {
     unknown_result_action_count: number;
   };
+  result_kind?: string | null;
   next_allowed_commands: string[];
   snapshot_version: number;
 };
@@ -240,6 +242,7 @@ export type RunCommandResponse = {
   should_enqueue?: boolean | null;
   request_replayed?: boolean | null;
   conflict_detail?: string | null;
+  result_kind?: string | null;
 };
 
 export type ResourceItem = {

@@ -13,7 +13,7 @@
   "gold": {
     "expected_goal": "기존 동일 Task가 있음을 알리고 새 Task를 만들지 않는다.",
     "completion_criteria": [
-      "TSK-I-001이 동일 제목·동일 기한의 미완료 Task임을 확인한다.",
+      "TSK-I-001이 동일 제목·동일 예정일의 미완료 Task임을 확인한다.",
       "새 tasks_create_task를 제안하지 않는다."
     ],
     "required_sources": [

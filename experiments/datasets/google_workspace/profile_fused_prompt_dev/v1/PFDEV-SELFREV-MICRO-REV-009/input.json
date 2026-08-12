@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "user_goal": "TSK-A-001의 기한 수정 Action을 제안한다.",
+  "user_goal": "TSK-A-001의 업무 마감 메모 수정 Action을 제안한다.",
   "plan_draft": {
     "schema_version": 1,
     "result": "PLAN_READY",
@@ -13,7 +13,7 @@
         "target_resource_id": "TSK-SIMILAR-NOT-TARGET",
         "arguments": {
           "task_id": "TSK-A-001",
-          "due": "2026-08-15"
+          "notes": "담당 지민\n업무 마감: 2026-08-15"
         },
         "expected": {
           "updated": true

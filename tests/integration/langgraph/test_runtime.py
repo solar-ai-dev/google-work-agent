@@ -36,6 +36,10 @@ from google_work_agent.application import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
     ClaimWriteActionCommand,
+    ModifyWriteActionCommand,
+    ModifyWriteActionService,
+    RejectWriteActionCommand,
+    RejectWriteActionService,
     StoreWriteActionSuccessCommand,
 )
 from google_work_agent.application.workflows import (
@@ -84,11 +88,19 @@ _RUNTIME_ACTIVE_PROMPT_IDS = {
 
 
 class _QueuedLLMRuntime:
-    def __init__(self, payloads: Sequence[object]) -> None:
+    def __init__(
+        self,
+        payloads: Sequence[object],
+        *,
+        before_invoke: Callable[[], None] | None = None,
+    ) -> None:
         self._queued = deque(_llm_result(item) for item in payloads)
         self.calls: list[dict[str, object]] = []
+        self._before_invoke = before_invoke
 
     def invoke_structured(self, **kwargs: object) -> StructuredLLMResult:
+        if self._before_invoke is not None:
+            self._before_invoke()
         self.calls.append(dict(kwargs))
         if not self._queued:
             raise RuntimeError("no queued llm result")
@@ -583,12 +595,13 @@ def _make_runtime(
     checkpoint_database_path: Path,
     graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
     prompt_manifest_path: Path | None = None,
+    before_llm_invoke: Callable[[], None] | None = None,
 ) -> LangGraphWorkflowRuntime:
     clock = FakeClock(1000)
     ids = DeterministicUUID(prefix="runtime")
     return LangGraphWorkflowRuntime(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
-        llm_runtime=_QueuedLLMRuntime(llm_payloads),
+        llm_runtime=_QueuedLLMRuntime(llm_payloads, before_invoke=before_llm_invoke),
         gateway=gateway,
         now_ms=clock.now_ms,
         id_factory=ids.next_id,
@@ -2329,3 +2342,982 @@ def test_planning_mode_falls_back_to_answer_only_when_disposition_absent(
     del intent["response_disposition"]
     assert runtime._planning_mode_from_request_intent(intent) == "answer_only"
     runtime.close()
+
+
+@pytest.mark.parametrize(
+    ("source", "constraints", "expected_operation"),
+    [
+        ("GMAIL", {}, "search_gmail_threads"),
+        ("CALENDAR", {"calendar_id": "calendar-primary"}, "list_calendar_events"),
+        ("TASKS", {"task_list_id": "task-list-default"}, "list_tasks"),
+    ],
+)
+def test_edge_request_to_acquisition_to_context_preserves_typed_state(
+    tmp_path: Path,
+    source: Literal["GMAIL", "CALENDAR", "TASKS"],
+    constraints: dict[str, object],
+    expected_operation: str,
+) -> None:
+    root = tmp_path / source.lower()
+    root.mkdir()
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    intent = _clear_intent()
+    intent["semantic_constraints"]["sources"] = [
+        {"source": source, "mention": source.lower(), "confidence": "HIGH"}
+    ]
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(root),
+        llm_payloads=[intent, [_plan(source, constraints)]],
+        gateway=gateway,
+        checkpoint_database_path=root / "checkpoints.db",
+        prompt_manifest_path=_runtime_active_manifest_path(root),
+    )
+
+    try:
+        initial = runtime._initial_state(_start_request())  # noqa: SLF001
+        understood = runtime._request_subgraph.invoke(initial)  # noqa: SLF001
+        assert understood["request_intent"] == intent
+        assert understood["__target__"] == "acquisition"
+
+        acquired = runtime._acquisition_subgraph.invoke(understood)  # noqa: SLF001
+        assert acquired["__target__"] == "context_retriever"
+        assert acquired["source_fetch_plans"][0]["source"] == source
+        assert acquired["acquisition_result"]["status"] in {"COMPLETE", "PARTIAL"}
+        assert gateway.count_calls(expected_operation) >= 1
+    finally:
+        runtime.close()
+
+
+def test_edge_answer_only_no_fetch_skips_google_and_builds_typed_result(
+    tmp_path: Path,
+) -> None:
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(tmp_path),
+        llm_payloads=[_clear_intent(), []],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-no-fetch-edge.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        understood = runtime._request_subgraph.invoke(  # noqa: SLF001
+            runtime._initial_state(_start_request())  # noqa: SLF001
+        )
+        acquired = runtime._acquisition_subgraph.invoke(understood)  # noqa: SLF001
+        assert acquired["__target__"] == "context_retriever"
+        assert acquired["source_fetch_plans"] == []
+        assert acquired["acquisition_result"]["status"] == "COMPLETE"
+        assert acquired["acquisition_result"]["source_summaries"] == []
+        assert gateway.call_log == []
+    finally:
+        runtime.close()
+
+
+def test_edge_acquisition_failure_never_routes_to_context_as_success(tmp_path: Path) -> None:
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    gateway.queue_fault(
+        operation="list_tasks",
+        fault=GoogleGatewayFault(GoogleGatewayFaultKind.HTTP_500),
+    )
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(tmp_path),
+        llm_payloads=[[_plan("TASKS", {"task_list_id": "task-list-default"})]],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-acquisition-failure-edge.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        state["request_intent"] = _clear_intent()
+        result = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
+        assert result["acquisition_result"]["status"] == "FAILED"
+        assert result["__target__"] == "finalize"
+        assert result["workflow_phase"] == "FINALIZE"
+        assert result["context_result"] is None
+    finally:
+        runtime.close()
+
+
+def test_edge_partial_acquisition_preserves_result_and_routes_to_context(tmp_path: Path) -> None:
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    gateway.queue_fault(
+        operation="search_gmail_threads",
+        fault=GoogleGatewayFault(GoogleGatewayFaultKind.HTTP_500),
+    )
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(tmp_path),
+        llm_payloads=[
+            [
+                _plan("TASKS", {"task_list_id": "task-list-default"}),
+                _plan("GMAIL", {}),
+            ]
+        ],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-acquisition-partial-edge.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        state["request_intent"] = _clear_intent()
+        result = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
+        assert result["acquisition_result"]["status"] == "PARTIAL"
+        assert result["__target__"] == "context_retriever"
+        assert len(result["acquisition_result"]["source_summaries"]) == 2
+    finally:
+        runtime.close()
+
+
+def test_edge_required_confirmation_stops_before_acquisition(tmp_path: Path) -> None:
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(tmp_path),
+        llm_payloads=[_ambiguous_intent()],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-confirm-edge.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        result = runtime._request_subgraph.invoke(  # noqa: SLF001
+            runtime._initial_state(_start_request())  # noqa: SLF001
+        )
+        assert result["__target__"] == "waiting_confirmation"
+        assert result["workflow_phase"] == "WAITING_CONFIRMATION"
+        assert result["user_interrupt"]["origin_target"] == "request_understanding.classify"
+        assert gateway.call_log == []
+    finally:
+        runtime.close()
+
+
+def test_chain_context_analysis_planning_review_preserves_typed_outputs(
+    tmp_path: Path,
+) -> None:
+    llm_runtime = _QueuedLLMRuntime(
+        [
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _answer_output(),
+            _review_output("PASS"),
+        ]
+    )
+    runtime = LangGraphWorkflowRuntime(
+        unit_of_work_factory=sqlite_unit_of_work_factory(_seed_runtime_database(tmp_path)),
+        llm_runtime=llm_runtime,
+        gateway=FakeGoogleGateway(
+            ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+        ),
+        now_ms=FakeClock(1000).now_ms,
+        id_factory=DeterministicUUID(prefix="edge").next_id,
+        signing_secret="edge-secret",
+        service_instance_id="edge-service",
+        checkpoint_database_path=tmp_path / "checkpoints-chain-b.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        state["request_intent"] = _clear_intent()
+        acquired = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
+        context = runtime._context_subgraph.invoke(acquired)  # noqa: SLF001
+        assert context["__target__"] == "work_analysis"
+        assert context["context_result"]["evidence_drafts"][0]["evidence_id"] == "evidence-1"
+
+        analysis = runtime._analysis_subgraph.invoke(context)  # noqa: SLF001
+        assert analysis["__target__"] == "planning"
+        assert analysis["analysis_result"]["findings"][0]["finding_id"] == "finding-1"
+
+        planned = runtime._planning_subgraph.invoke(analysis)  # noqa: SLF001
+        assert planned["__target__"] == "review"
+        assert planned["answer_draft"]["evidence_refs"] == ["evidence-1"]
+
+        reviewed = runtime._review_subgraph.invoke(planned)  # noqa: SLF001
+        assert reviewed["__target__"] == "finalize"
+        assert reviewed["plan_review"]["status"] == "PASS"
+        planning_input = llm_runtime.calls[4]["prompt_input"]
+        assert isinstance(planning_input, dict)
+        assert planning_input["analysis_result"]["findings"][0]["finding_id"] == "finding-1"
+    finally:
+        runtime.close()
+
+
+def test_edge_analysis_confirmation_never_enters_planning(tmp_path: Path) -> None:
+    output = _analysis_output()
+    output["status"] = "NEEDS_CONFIRMATION"
+    output["confirmation"] = {
+        "reason_code": "ANALYSIS_RELATIONSHIP_AMBIGUITY",
+        "question": "Which task should be primary?",
+    }
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(tmp_path),
+        llm_payloads=[output],
+        gateway=FakeGoogleGateway(
+            ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+        ),
+        checkpoint_database_path=tmp_path / "checkpoints-analysis-confirm-edge.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        state["request_intent"] = _clear_intent()
+        state["context_result"] = _context_result()
+        result = runtime._analysis_subgraph.invoke(state)  # noqa: SLF001
+        assert result["__target__"] == "waiting_confirmation"
+        assert result["analysis_result"]["status"] == "NEEDS_CONFIRMATION"
+        assert result["plan_draft"] is None
+        assert result["answer_draft"] is None
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize(
+    ("profile", "profile_nodes"),
+    [
+        (
+            GraphProfile.SIX_ROLE_BASELINE,
+            {
+                "request_understanding",
+                "acquisition",
+                "context_retriever",
+                "work_analysis",
+                "planning",
+                "review",
+            },
+        ),
+        (GraphProfile.THREE_STAGE, {"stage_one", "stage_two", "stage_three"}),
+        (GraphProfile.SINGLE_BASELINE, {"single_workflow"}),
+    ],
+)
+def test_compiled_graph_registers_profile_and_shared_nodes(
+    tmp_path: Path,
+    profile: GraphProfile,
+    profile_nodes: set[str],
+) -> None:
+    root = tmp_path / profile.value.lower()
+    root.mkdir()
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(root),
+        llm_payloads=[],
+        gateway=FakeGoogleGateway(
+            ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+        ),
+        checkpoint_database_path=root / "checkpoints-topology-edge.db",
+        graph_profile=profile,
+        prompt_manifest_path=_runtime_active_manifest_path(root),
+    )
+
+    try:
+        graph = runtime._graph.get_graph()  # noqa: SLF001
+        shared = {
+            "domain_validation",
+            "waiting_confirmation",
+            "waiting_approval",
+            "action_execution",
+            "recovery",
+            "finalize",
+        }
+        assert profile_nodes | shared <= set(graph.nodes)
+        assert any(edge.target == "action_execution" for edge in graph.edges)
+        assert any(edge.source == "action_execution" for edge in graph.edges)
+    finally:
+        runtime.close()
+
+
+def test_edge_rejected_approval_never_enters_preflight_or_claim(tmp_path: Path) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-rejected-edge.db",
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        preflight_reads_before_resume = gateway.count_calls("list_tasks")
+        rejected = RejectWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            now_ms=lambda: 1000,
+        )(
+            RejectWriteActionCommand(
+                command_id="reject-edge",
+                request_hash="c" * 64,
+                action_id="action-1",
+                expected_version=0,
+            )
+        )
+        assert rejected["applied"] is True
+
+        runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="APPROVAL",
+                resume_payload={"approved": False},
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-reject-edge",
+                    command_id="command-reject-edge",
+                    api_contract_version="1",
+                ),
+            )
+        )
+
+        connection = connect_sqlite(database_path)
+        try:
+            action_status = connection.execute(
+                "SELECT status FROM actions WHERE id = 'action-1';"
+            ).fetchone()[0]
+            attempt_count = connection.execute(
+                "SELECT COUNT(*) FROM execution_attempts;"
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        assert action_status == "REJECTED"
+        assert gateway.count_calls("list_tasks") == preflight_reads_before_resume
+        assert gateway.count_calls("create_task") == 0
+        assert attempt_count == 0
+    finally:
+        runtime.close()
+
+
+def test_edge_preflight_google_read_failure_blocks_claim_and_write(tmp_path: Path) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-preflight-failure-edge.db",
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        approved = ApproveWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            now_ms=lambda: 1000,
+        )(
+            ApproveWriteActionCommand(
+                command_id="approve-preflight-failure-edge",
+                request_hash="d" * 64,
+                action_id="action-1",
+                expected_version=0,
+                approved_by_account_id="account-1",
+                approved_by_display="User",
+                source_snapshot={},
+                approval_id="approval-preflight-failure-edge",
+                idempotency_key="e" * 64,
+            )
+        )
+        assert approved.applied is True
+        gateway.queue_fault(
+            operation="list_tasks",
+            fault=GoogleGatewayFault(GoogleGatewayFaultKind.HTTP_500),
+        )
+
+        runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="APPROVAL",
+                resume_payload={"approved": True},
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-preflight-failure-edge",
+                    command_id="command-preflight-failure-edge",
+                    api_contract_version="1",
+                ),
+            )
+        )
+
+        connection = connect_sqlite(database_path)
+        try:
+            action_status = connection.execute(
+                "SELECT status FROM actions WHERE id = 'action-1';"
+            ).fetchone()[0]
+            attempt_count = connection.execute(
+                "SELECT COUNT(*) FROM execution_attempts;"
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        assert action_status == "APPROVED"
+        assert gateway.count_calls("create_task") == 0
+        assert attempt_count == 0
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        GraphProfile.SIX_ROLE_BASELINE,
+        GraphProfile.THREE_STAGE,
+        GraphProfile.SINGLE_BASELINE,
+    ],
+)
+def test_modify_reenters_profile_review_and_pass_reopens_approval(
+    tmp_path: Path, profile: GraphProfile
+) -> None:
+    root = tmp_path / profile.value.lower()
+    root.mkdir()
+    database_path = _seed_runtime_database(root)
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    llm_transaction_checks: list[bool] = []
+
+    def assert_no_sqlite_write_transaction() -> None:
+        connection = connect_sqlite(database_path)
+        try:
+            connection.execute("BEGIN IMMEDIATE;")
+            llm_transaction_checks.append(True)
+            connection.rollback()
+        finally:
+            connection.close()
+
+    initial_payloads = (
+        [
+            _action_required_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ]
+        if profile is GraphProfile.SIX_ROLE_BASELINE
+        else [
+            _profile_request_source_output(),
+            _profile_reason_plan_output("PLAN_READY"),
+            _review_output("PASS"),
+        ]
+    )
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[*initial_payloads, _review_output("PASS")],
+        gateway=gateway,
+        checkpoint_database_path=root / "checkpoints-modify-review.db",
+        graph_profile=profile,
+        prompt_manifest_path=_runtime_active_manifest_path(root),
+        before_llm_invoke=assert_no_sqlite_write_transaction,
+    )
+
+    try:
+        assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        modified = ModifyWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            now_ms=lambda: 1000,
+            gateway=gateway,
+        )(
+            ModifyWriteActionCommand(
+                command_id=f"modify-{profile.value}",
+                request_hash="f" * 64,
+                action_id="action-1",
+                expected_version=0,
+                arguments_patch={"title": "Send reviewed summary"},
+            )
+        )
+        assert modified["applied"] is True
+
+        resumed = runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="MODIFY_REVIEW",
+                resume_payload={
+                    "resume_kind": "MODIFY_REVIEW",
+                    "plan_id": "plan-1",
+                    "review_version": 1,
+                },
+                correlation=WorkflowCorrelationContext(
+                    request_id=f"request-{profile.value}",
+                    command_id=f"resume-{profile.value}",
+                    api_contract_version="1",
+                ),
+            )
+        )
+
+        assert resumed.outcome is WorkflowOutcome.ACCEPTED
+        with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+            plan = unit_of_work.plans.get_by_id("plan-1")
+            action = unit_of_work.actions.get_by_id("action-1")
+        assert plan is not None and plan.review_status.value == "PASSED"
+        assert action is not None and action.status == "MODIFIED"
+        assert llm_transaction_checks
+        assert gateway.count_calls("create_task") == 0
+
+        approved = ApproveWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            now_ms=lambda: 1000,
+        )(
+            ApproveWriteActionCommand(
+                command_id=f"approve-after-review-{profile.value}",
+                request_hash="0" * 64,
+                action_id="action-1",
+                expected_version=1,
+                approved_by_account_id="account-1",
+                approved_by_display="User",
+                source_snapshot={},
+                approval_id=f"approval-after-review-{profile.value}",
+                idempotency_key="9" * 64,
+            )
+        )
+        assert approved.applied is True
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize(
+    (
+        "review_output",
+        "expected_target",
+        "expected_review_status",
+        "expected_plan_status",
+        "expected_run_status",
+    ),
+    [
+        (
+            _review_output(
+                "REVISE",
+                issues=[
+                    {
+                        "schema_version": 2,
+                        "issue_id": "revise-action",
+                        "kind": "MISSING_GOAL_COVERAGE",
+                        "message": "Revise the modified action.",
+                        "affected_action_ids": ["action-1"],
+                        "affected_field_paths": ["$.actions[0].arguments.payload.title"],
+                        "evidence_refs": ["evidence-1"],
+                        "resource_refs": ["task:task-followup"],
+                        "reason_codes": ["EVIDENCE_SUPPORTED"],
+                    }
+                ],
+            ),
+            "planning",
+            "REVISE",
+            "SUPERSEDED",
+            "PLANNING",
+        ),
+        (
+            _review_output(
+                "RETRIEVE_MORE",
+                issues=[
+                    {
+                        "schema_version": 2,
+                        "issue_id": "retrieve-action",
+                        "kind": "MISSING_EVIDENCE",
+                        "message": "Retrieve current task evidence.",
+                        "affected_action_ids": ["action-1"],
+                        "affected_field_paths": ["$.actions[0]"],
+                        "evidence_refs": ["evidence-1"],
+                        "resource_refs": ["task:task-followup"],
+                        "reason_codes": ["EVIDENCE_SUPPORTED"],
+                    }
+                ],
+                additional_acquisition_request={
+                    "schema_version": 1,
+                    "origin_phase": "PLAN_REVIEW",
+                    "reason_code": "REVIEW_MISSING_EVIDENCE",
+                    "missing_information": ["current task evidence"],
+                    "preferred_sources": ["TASKS"],
+                    "query_hints": ["follow-up"],
+                    "time_hints": [],
+                    "resource_hints": ["task:task-followup"],
+                },
+            ),
+            "acquisition",
+            "RETRIEVE_MORE",
+            "SUPERSEDED",
+            "PLANNING",
+        ),
+        (
+            _review_output("BLOCK", blockers=["Modified plan is unsafe."]),
+            "finalize",
+            "BLOCKED",
+            "WAITING_APPROVAL",
+            "WAITING_APPROVAL",
+        ),
+    ],
+)
+def test_modify_review_branches_use_existing_supervisor_routes(
+    tmp_path: Path,
+    review_output: dict[str, object],
+    expected_target: str,
+    expected_review_status: str,
+    expected_plan_status: str,
+    expected_run_status: str,
+) -> None:
+    root = tmp_path / expected_review_status.lower()
+    root.mkdir()
+    database_path = _seed_runtime_database(root)
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+            review_output,
+        ],
+        gateway=gateway,
+        checkpoint_database_path=root / "checkpoints-modify-review-branch.db",
+        prompt_manifest_path=_runtime_active_manifest_path(root),
+    )
+
+    try:
+        assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        modified = ModifyWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            now_ms=lambda: 1000,
+            gateway=gateway,
+        )(
+            ModifyWriteActionCommand(
+                command_id=f"modify-{expected_review_status}",
+                request_hash="1" * 64,
+                action_id="action-1",
+                expected_version=0,
+                arguments_patch={"title": "Branch-reviewed title"},
+            )
+        )
+        assert modified["applied"] is True
+        snapshot = runtime._graph.get_state(  # noqa: SLF001
+            runtime._config_for_thread("thread-1")  # noqa: SLF001
+        )
+        prepared = runtime._prepare_modify_review_state(  # noqa: SLF001
+            snapshot.values,
+            plan_id="plan-1",
+            review_version=1,
+        )
+        reviewed = runtime._modify_review_node(prepared)  # noqa: SLF001
+
+        assert reviewed["__target__"] == expected_target
+        with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+            plan = unit_of_work.plans.get_by_id("plan-1")
+            run = unit_of_work.runs.get_by_id("run-1")
+            approvals = unit_of_work.approvals.list_by_action("action-1")
+        assert plan is not None and plan.review_status.value == expected_review_status
+        assert plan.status.value == expected_plan_status
+        assert run is not None and run.status.value == expected_run_status
+        assert approvals == ()
+        assert gateway.count_calls("create_task") == 0
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize("review_status", ["REVISE", "RETRIEVE_MORE"])
+def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
+    tmp_path: Path, review_status: str
+) -> None:
+    root = tmp_path / review_status.lower()
+    root.mkdir()
+    database_path = _seed_runtime_database(root)
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    issue = {
+        "schema_version": 2,
+        "issue_id": f"{review_status.lower()}-action",
+        "kind": "MISSING_EVIDENCE" if review_status == "RETRIEVE_MORE" else "MISSING_GOAL_COVERAGE",
+        "message": "The modified plan needs another planning pass.",
+        "affected_action_ids": ["action-1"],
+        "affected_field_paths": ["$.actions[0]"],
+        "evidence_refs": ["evidence-1"],
+        "resource_refs": ["task:task-followup"],
+        "reason_codes": ["EVIDENCE_SUPPORTED"],
+    }
+    additional_request = (
+        {
+            "schema_version": 1,
+            "origin_phase": "PLAN_REVIEW",
+            "reason_code": "REVIEW_MISSING_EVIDENCE",
+            "missing_information": ["current task evidence"],
+            "preferred_sources": ["TASKS"],
+            "query_hints": ["follow-up"],
+            "time_hints": [],
+            "resource_hints": ["task:task-followup"],
+        }
+        if review_status == "RETRIEVE_MORE"
+        else None
+    )
+    branch_review = _review_output(
+        review_status,
+        issues=[issue],
+        additional_acquisition_request=additional_request,
+    )
+    continuation = (
+        [
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ]
+        if review_status == "RETRIEVE_MORE"
+        else [_write_plan_output(), _review_output("PASS")]
+    )
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+            branch_review,
+            *continuation,
+        ],
+        gateway=gateway,
+        checkpoint_database_path=root / "checkpoints-modify-review-replan.db",
+        prompt_manifest_path=_runtime_active_manifest_path(root),
+    )
+
+    try:
+        assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        modified = ModifyWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            now_ms=lambda: 1000,
+            gateway=gateway,
+        )(
+            ModifyWriteActionCommand(
+                command_id=f"modify-{review_status.lower()}-chain",
+                request_hash="4" * 64,
+                action_id="action-1",
+                expected_version=0,
+                arguments_patch={"title": "Review branch title"},
+            )
+        )
+        assert modified["applied"] is True
+
+        resumed = runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="MODIFY_REVIEW",
+                resume_payload={
+                    "resume_kind": "MODIFY_REVIEW",
+                    "plan_id": "plan-1",
+                    "review_version": 1,
+                },
+                correlation=WorkflowCorrelationContext(
+                    request_id=f"request-{review_status.lower()}-chain",
+                    command_id=f"resume-{review_status.lower()}-chain",
+                    api_contract_version="1",
+                ),
+            )
+        )
+
+        assert resumed.outcome is WorkflowOutcome.ACCEPTED
+        with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+            plans = unit_of_work.plans.list_by_run("run-1")
+            run = unit_of_work.runs.get_by_id("run-1")
+            old_actions = unit_of_work.actions.list_by_plan("plan-1")
+            new_actions = unit_of_work.actions.list_by_plan(plans[-1].id)
+        assert [(plan.revision_no, plan.status.value) for plan in plans] == [
+            (1, "SUPERSEDED"),
+            (2, "WAITING_APPROVAL"),
+        ]
+        assert run is not None and run.status.value == "WAITING_APPROVAL"
+        assert old_actions[0].status == "MODIFIED"
+        assert new_actions[0].id != "action-1"
+        assert new_actions[0].status == "PROPOSED"
+        assert gateway.count_calls("create_task") == 0
+    finally:
+        runtime.close()
+
+
+def test_modify_review_block_finalizes_without_approval_or_write(tmp_path: Path) -> None:
+    database_path = _seed_runtime_database(tmp_path)
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+            _review_output("BLOCK", blockers=["Modified plan is unsafe."]),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-modify-review-block.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        modified = ModifyWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            now_ms=lambda: 1000,
+            gateway=gateway,
+        )(
+            ModifyWriteActionCommand(
+                command_id="modify-block-chain",
+                request_hash="5" * 64,
+                action_id="action-1",
+                expected_version=0,
+                arguments_patch={"title": "Unsafe branch title"},
+            )
+        )
+        assert modified["applied"] is True
+
+        resumed = runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="MODIFY_REVIEW",
+                resume_payload={
+                    "resume_kind": "MODIFY_REVIEW",
+                    "plan_id": "plan-1",
+                    "review_version": 1,
+                },
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-block-chain",
+                    command_id="resume-block-chain",
+                    api_contract_version="1",
+                ),
+            )
+        )
+
+        assert resumed.outcome is WorkflowOutcome.COMPLETED
+        with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+            run = unit_of_work.runs.get_by_id("run-1")
+            plan = unit_of_work.plans.get_by_id("plan-1")
+            approvals = unit_of_work.approvals.list_by_action("action-1")
+            attempts = [
+                attempt
+                for approval in approvals
+                for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id)
+            ]
+        assert run is not None and run.status.value == "BLOCKED"
+        assert plan is not None and plan.review_status.value == "BLOCKED"
+        assert approvals == ()
+        assert attempts == []
+        assert gateway.count_calls("create_task") == 0
+    finally:
+        runtime.close()
+
+
+def test_modify_during_review_discards_the_stale_llm_result(tmp_path: Path) -> None:
+    database_path = _seed_runtime_database(tmp_path)
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+            _review_output("PASS"),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-stale-modify-review.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+    modify_service = ModifyWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=lambda: 1000,
+        gateway=gateway,
+    )
+
+    try:
+        assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        assert (
+            modify_service(
+                ModifyWriteActionCommand(
+                    command_id="modify-before-review",
+                    request_hash="2" * 64,
+                    action_id="action-1",
+                    expected_version=0,
+                    arguments_patch={"title": "First review title"},
+                )
+            )["applied"]
+            is True
+        )
+        snapshot = runtime._graph.get_state(  # noqa: SLF001
+            runtime._config_for_thread("thread-1")  # noqa: SLF001
+        )
+        first_generation = runtime._prepare_modify_review_state(  # noqa: SLF001
+            snapshot.values,
+            plan_id="plan-1",
+            review_version=1,
+        )
+
+        assert (
+            modify_service(
+                ModifyWriteActionCommand(
+                    command_id="modify-during-review",
+                    request_hash="3" * 64,
+                    action_id="action-1",
+                    expected_version=1,
+                    arguments_patch={"title": "Latest review title"},
+                )
+            )["applied"]
+            is True
+        )
+        stale_review = runtime._modify_review_node(first_generation)  # noqa: SLF001
+        stale_domain_result = runtime._domain_validation_node(stale_review)  # noqa: SLF001
+
+        assert stale_domain_result["__target__"] == "end"
+        assert stale_domain_result["execution_summary"] == {"result": "STALE_MODIFY_REVIEW"}
+        with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+            plan = unit_of_work.plans.get_by_id("plan-1")
+        assert plan is not None and plan.review_status.value == "REQUIRED"
+        assert plan.review_version == 2
+    finally:
+        runtime.close()

@@ -69,10 +69,26 @@ def test_documentation_mirror_matches_runtime_third_migration() -> None:
     assert documentation_mirror == runtime_sql
 
 
+def test_documentation_mirror_matches_runtime_fourth_migration() -> None:
+    runtime_sql = (RUNTIME_MIGRATIONS_DIR / "0004_plan_review_gate.sql").read_bytes()
+    documentation_mirror = (DOCUMENTATION_MIGRATIONS_DIR / "0004_plan_review_gate.sql").read_bytes()
+
+    assert documentation_mirror == runtime_sql
+
+
+def test_documentation_mirror_matches_runtime_fifth_migration() -> None:
+    runtime_sql = (RUNTIME_MIGRATIONS_DIR / "0005_cross_aggregate_invariants.sql").read_bytes()
+    documentation_mirror = (
+        DOCUMENTATION_MIGRATIONS_DIR / "0005_cross_aggregate_invariants.sql"
+    ).read_bytes()
+
+    assert documentation_mirror == runtime_sql
+
+
 def test_package_resource_discovers_initial_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 3
+    assert len(migrations) == 5
     assert migrations[0].version == 1
     assert migrations[0].name == "initial"
     assert migrations[0].checksum == OFFICIAL_NORMALIZED_CHECKSUM
@@ -80,6 +96,10 @@ def test_package_resource_discovers_initial_migration() -> None:
     assert migrations[1].name == "action_effect_send_delete"
     assert migrations[2].version == 3
     assert migrations[2].name == "action_cancelled"
+    assert migrations[3].version == 4
+    assert migrations[3].name == "plan_review_gate"
+    assert migrations[4].version == 5
+    assert migrations[4].name == "cross_aggregate_invariants"
 
 
 def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
@@ -92,34 +112,44 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(first_results) == 3
+        assert len(first_results) == 5
         assert first_results[0].applied is True
         assert first_results[1].applied is True
         assert first_results[2].applied is True
+        assert first_results[3].applied is True
+        assert first_results[4].applied is True
         assert [(row["version"], row["name"]) for row in rows] == [
             (1, "initial"),
             (2, "action_effect_send_delete"),
             (3, "action_cancelled"),
+            (4, "plan_review_gate"),
+            (5, "cross_aggregate_invariants"),
         ]
         assert rows[0]["checksum"] == OFFICIAL_NORMALIZED_CHECKSUM
         assert rows[1]["checksum"] == OFFICIAL_V2_NORMALIZED_CHECKSUM
         assert rows[0]["applied_at_ms"] == 123456789
         assert rows[1]["applied_at_ms"] == 123456789
         assert rows[2]["applied_at_ms"] == 123456789
+        assert rows[3]["applied_at_ms"] == 123456789
+        assert rows[4]["applied_at_ms"] == 123456789
 
         second_results = apply_migrations(connection, now_ms=lambda: 987654321)
         rows = connection.execute(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(second_results) == 3
+        assert len(second_results) == 5
         assert second_results[0].applied is False
         assert second_results[1].applied is False
         assert second_results[2].applied is False
-        assert len(rows) == 3
+        assert second_results[3].applied is False
+        assert second_results[4].applied is False
+        assert len(rows) == 5
         assert rows[0]["applied_at_ms"] == 123456789
         assert rows[1]["applied_at_ms"] == 123456789
         assert rows[2]["applied_at_ms"] == 123456789
+        assert rows[3]["applied_at_ms"] == 123456789
+        assert rows[4]["applied_at_ms"] == 123456789
     finally:
         connection.close()
 
@@ -217,7 +247,7 @@ def test_v1_3_to_v1_4_preserves_rows_effect_contracts_and_foreign_keys(
         results = apply_migrations(connection, now_ms=lambda: 2)
         connection.execute("UPDATE actions SET status = 'CANCELLED' WHERE id = 'action-send';")
 
-        assert [result.applied for result in results] == [False, False, True]
+        assert [result.applied for result in results] == [False, False, True, True, True]
         rows = connection.execute(
             """
             SELECT id, effect_type, verification_policy, recovery_policy, status
@@ -236,6 +266,74 @@ def test_v1_3_to_v1_4_preserves_rows_effect_contracts_and_foreign_keys(
             )
         }
         assert {"ix_actions_plan_status", "ix_actions_recovery"} <= indexes
+    finally:
+        connection.close()
+
+
+def test_cross_aggregate_upgrade_rejects_existing_impossible_snapshot(
+    tmp_path: Path,
+) -> None:
+    upgrade_dir = tmp_path / "upgrade-migrations"
+    upgrade_dir.mkdir()
+    for version in range(1, 5):
+        source = next(RUNTIME_MIGRATIONS_DIR.glob(f"{version:04d}_*.sql"))
+        shutil.copyfile(source, upgrade_dir / source.name)
+
+    connection = connect_sqlite(tmp_path / "invalid-upgrade.db")
+    try:
+        apply_migrations(connection, migrations_dir=upgrade_dir, now_ms=lambda: 1)
+        connection.execute(
+            "INSERT INTO google_accounts VALUES ('account-1', 'u@example.com', NULL, 1, NULL);"
+        )
+        connection.execute(
+            "INSERT INTO conversations VALUES ('conversation-1', 'account-1', 'Test', 1, 1);"
+        )
+        connection.execute(
+            """
+            INSERT INTO runs (
+                id, conversation_id, entry_mode, status, langgraph_thread_id,
+                requested_mode, budget_json, version, started_at_ms, finished_at_ms
+            ) VALUES ('run-1', 'conversation-1', 'AGENT_SEARCH', 'COMPLETED',
+                      'thread-1', 'AUTO', '{}', 1, 1, 2);
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO plans (
+                id, run_id, revision_no, status, created_at_ms, review_status, review_version
+            ) VALUES ('plan-1', 'run-1', 1, 'ACTIVE', 1, 'PASSED', 0);
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO actions (
+                id, plan_id, position, tool_name, effect_type, approval_requirement,
+                verification_policy, recovery_policy, status, arguments_json,
+                arguments_hash, expected_json, version, created_at_ms, updated_at_ms
+            ) VALUES ('action-1', 'plan-1', 1, 'gmail_get_thread', 'READ', 'NONE',
+                      'NONE', 'NONE', 'PROPOSED', '{}', ?, '{}', 0, 1, 1);
+            """,
+            ("a" * 64,),
+        )
+        connection.commit()
+
+        source = RUNTIME_MIGRATIONS_DIR / "0005_cross_aggregate_invariants.sql"
+        shutil.copyfile(source, upgrade_dir / source.name)
+        with pytest.raises(MigrationApplyError):
+            apply_migrations(connection, migrations_dir=upgrade_dir, now_ms=lambda: 2)
+
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM schema_migrations WHERE version = 5;"
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'trg_%';"
+            ).fetchone()[0]
+            == 0
+        )
     finally:
         connection.close()
 

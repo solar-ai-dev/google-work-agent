@@ -2,7 +2,7 @@
   "schema_version": 1,
   "validation_id": "R8.4-SEMANTIC-GOLD-SCORING-v1.14",
   "result": "PASS",
-  "checks": 7680,
+  "checks": 7802,
   "issue_count": 0,
   "warning_count": 0,
   "report_ref": "experiments/meta/EXPERIMENT-PACK-v1.14.0-R8.4-SEMANTIC-AUDIT.json"

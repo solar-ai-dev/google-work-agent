@@ -45,6 +45,7 @@ from google_work_agent.adapters.mcp import (
     build_manifest_payload,
     calculate_file_sha256,
 )
+from google_work_agent.adapters.mcp.gateway import MCPGmailAttachmentGateway
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.runtime import (
@@ -52,6 +53,10 @@ from google_work_agent.adapters.runtime import (
     FileSettingsStore,
     SafeModeController,
     SettingsService,
+)
+from google_work_agent.adapters.runtime.attachment_staging import (
+    ATTACHMENT_STAGING_DIR_ENV,
+    LocalAttachmentStaging,
 )
 from google_work_agent.api import API_CONTRACT_VERSION, ApiContainer, create_app
 from google_work_agent.api.security import (
@@ -64,6 +69,10 @@ from google_work_agent.application import (
     DisconnectGoogleService,
     GetGoogleConnectionService,
     StartGoogleOAuthService,
+)
+from google_work_agent.application.attachments import (
+    GetGmailAttachmentService,
+    StageAttachmentService,
 )
 from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.llm import (
@@ -90,9 +99,11 @@ from google_work_agent.application.workflows.prompt_registry import (
 )
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
+    FinalizeRunCancellationService,
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
+from google_work_agent.domain import CalendarWorkHours
 from google_work_agent.ports import (
     ApprovedModelInfo,
     LauncherProbeDecision,
@@ -564,6 +575,12 @@ def build_container(
     clock = SystemClock()
     id_generator = UUIDIdGenerator()
     service_instance_id = service_instance_id or f"dev-{uuid.uuid4()}"
+    attachment_staging_dir = root / "attachments" / "staging"
+    attachment_staging = LocalAttachmentStaging(
+        staging_dir=attachment_staging_dir,
+        now_ms=clock.now_ms,
+    )
+    attachment_staging.cleanup_expired()
 
     try:
         with connect_sqlite(database_path) as connection:
@@ -587,7 +604,9 @@ def build_container(
                 environment="DEVELOPMENT",
                 service_instance_id=service_instance_id,
                 working_directory=str(PROJECT_ROOT),
-                extra_environment=None,
+                extra_environment={
+                    ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir),
+                },
             )
         )
     except MCPTransportError as error:
@@ -629,11 +648,25 @@ def build_container(
             checkpoint_database_path=checkpoint_database_path,
             prompt_manifest_path=prompt_manifest_path,
             timezone_provider=lambda: settings_service.get().timezone,
+            work_hours_provider=lambda: CalendarWorkHours(
+                timezone=settings_service.get().timezone,
+                days=settings_service.get().work_hours.days,
+                start=settings_service.get().work_hours.start,
+                end=settings_service.get().work_hours.end,
+            ),
         )
     except InactivePromptArtifactError:
         prompt_active = False
         workflow_runtime = _PromptInactiveWorkflowRuntime()
     event_publisher = InMemoryRunEventPublisher(service_instance_id=service_instance_id)
+    request_cancel_service = RequestRunCancellationService(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+    )
+    finalize_cancel_service = FinalizeRunCancellationService(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+    )
     coordinator = LocalRunCoordinator(
         query_service=query_service,
         unit_of_work_factory=unit_of_work_factory,
@@ -641,6 +674,8 @@ def build_container(
         event_publisher=event_publisher,
         now_ms=clock.now_ms,
         api_contract_version=API_CONTRACT_VERSION,
+        finalize_cancel_service=finalize_cancel_service,
+        id_factory=id_generator.next_id,
     )
     session_manager = InMemoryLocalSessionManager()
     grant_store = InMemoryBootstrapGrantStore()
@@ -669,6 +704,13 @@ def build_container(
         modify_action_service=ModifyWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
+            gateway=gateway,
+            work_hours_provider=lambda: CalendarWorkHours(
+                timezone=settings_service.get().timezone,
+                days=settings_service.get().work_hours.days,
+                start=settings_service.get().work_hours.start,
+                end=settings_service.get().work_hours.end,
+            ),
         ),
         reject_action_service=RejectWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
@@ -678,10 +720,7 @@ def build_container(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
-        cancel_run_service=RequestRunCancellationService(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=clock.now_ms,
-        ),
+        cancel_run_service=request_cancel_service,
         resume_run_service=ResumeRunService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -728,6 +767,10 @@ def build_container(
             default_calendar_id_provider=lambda: llm_runtime.settings_service().default_calendar_id,
             default_tasklist_id_provider=lambda: llm_runtime.settings_service().default_tasklist_id,
         ),
+        get_gmail_attachment_service=GetGmailAttachmentService(
+            gateway=MCPGmailAttachmentGateway(transport=transport),
+        ),
+        stage_attachment_service=StageAttachmentService(staging=attachment_staging),
         get_llm_connection_service=GetLLMConnectionService(
             runtime_status_service=llm_runtime.status_service,
             settings_service=llm_runtime.settings_service,

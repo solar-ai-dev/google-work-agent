@@ -10,8 +10,7 @@
       "effect_type": "CREATE",
       "target_resource_id": null,
       "arguments": {
-        "title": "계약 검토",
-        "due": "2026-08-20"
+        "title": "계약 검토"
       },
       "expected": {
         "created": true

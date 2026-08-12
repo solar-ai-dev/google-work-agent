@@ -35,6 +35,7 @@ type SnapshotShape = {
     effect_type: string;
     approval_required: boolean;
     verification_policy: string;
+    risk?: Record<string, unknown>;
     next_allowed_commands: string[];
   }>;
   approvals: Array<{
@@ -47,6 +48,7 @@ type SnapshotShape = {
   execution_status: { action_count: number; terminal_action_count: number };
   verification_summary: { verified_count: number; mismatch_count: number };
   recovery_summary: { unknown_result_action_count: number };
+  result_kind?: string | null;
   next_allowed_commands: string[];
   snapshot_version: number;
 };
@@ -1407,6 +1409,192 @@ test("TST-UI-208 Gmail viewer and approval use only available projection fields"
   expect(screen.queryByText("Evidence")).not.toBeInTheDocument();
 });
 
+test("Action risk follows the SSE-refreshed snapshot without rendering raw JSON", async () => {
+  const options: Parameters<typeof installUiContractFetch>[0] = {
+    action: true,
+    actionRisk: {},
+  };
+  installUiContractFetch(options);
+  render(<App />);
+
+  await screen.findByText("승인 상세");
+  expect(screen.queryByText(/서버 검증에서 확인된 위험 정보/)).not.toBeInTheDocument();
+
+  options.actionRisk = {
+    schedule: { outcome: "WARNING", candidate_resource_ids: ["task-sensitive-1"] },
+  };
+  FakeEventSource.instances[0]?.emit("action_status", { action_id: "action-1" });
+
+  expect(
+    await screen.findByText("서버 검증에서 확인된 위험 정보가 있습니다. 승인 전에 확인해 주세요."),
+  ).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("task-sensitive-1");
+  expect(document.body.textContent).not.toContain("candidate_resource_ids");
+});
+
+test.each([
+  ["RISK", "현재 일정 기준으로 가능한 시간이 제한적입니다."],
+  [
+    "INFEASIBLE",
+    "현재 업무 시간과 일정 기준으로 마감 전에 필요한 연속 시간을 확보할 수 없습니다.",
+  ],
+])("feasibility %s renders only the safe projection", async (decision, message) => {
+  installUiContractFetch({
+    action: true,
+    actionRisk: {
+      feasibility_input: { business_deadline: "private-deadline" },
+      feasibility: {
+        decision,
+        reason_codes: ["PRIVATE_REASON"],
+        required_duration_minutes: 120,
+      },
+    },
+  });
+  render(<App />);
+
+  expect(await screen.findByText(message)).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("private-deadline");
+  expect(document.body.textContent).not.toContain("PRIVATE_REASON");
+  if (decision === "INFEASIBLE") {
+    expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
+  }
+});
+
+test("similar Task duplicate requires an acknowledgement without exposing resource IDs", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    action: true,
+    actionRisk: {
+      duplicate: {
+        decision: "SIMILAR_CANDIDATE",
+        matched_resource_ids: ["task-private-1"],
+      },
+    },
+  });
+  render(<App />);
+
+  expect(await screen.findByText("비슷한 기존 작업이 있습니다.")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "확인하고 승인" }));
+
+  const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
+    duplicate_acknowledged: true,
+  });
+  expect(document.body.textContent).not.toContain("task-private-1");
+});
+
+test("clear Task duplicate is blocked by default and offers an explicit override", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    action: true,
+    actionRisk: {
+      duplicate: {
+        decision: "CLEAR_DUPLICATE",
+        matched_resource_ids: ["task-private-2"],
+      },
+    },
+  });
+  render(<App />);
+
+  expect(await screen.findByText(/동일한 작업이 이미 있습니다/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "그래도 새로 만들기" }));
+
+  const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
+    duplicate_acknowledged: true,
+  });
+  expect(document.body.textContent).not.toContain("task-private-2");
+});
+
+test("NOT_DUPLICATE shows no warning and uses ordinary approval", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    action: true,
+    actionRisk: {
+      duplicate: {
+        decision: "NOT_DUPLICATE",
+        matched_resource_ids: [],
+      },
+    },
+  });
+  render(<App />);
+
+  await user.click(await screen.findByRole("button", { name: "승인" }));
+  expect(screen.queryByText(/기존 작업이 있습니다/)).not.toBeInTheDocument();
+  const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
+    duplicate_acknowledged: false,
+  });
+});
+
+test("Calendar WARNING requires explicit acknowledgement without exposing authority fields", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    action: true,
+    actionRisk: {
+      calendar_conflict: {
+        decision: "WARNING",
+        matched_resource_ids: ["calendar-private-1"],
+        reason_codes: ["OUTSIDE_WORK_HOURS"],
+      },
+    },
+  });
+  render(<App />);
+
+  expect(
+    await screen.findByText("겹칠 가능성이 있거나 업무 시간 밖의 일정입니다."),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "확인하고 승인" }));
+  const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
+    calendar_conflict_acknowledged: true,
+  });
+  expect(document.body.textContent).not.toContain("calendar-private-1");
+  expect(document.body.textContent).not.toContain("OUTSIDE_WORK_HOURS");
+});
+
+test("Calendar HARD_CONFLICT offers an explicit override", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    action: true,
+    actionRisk: {
+      calendar_conflict: {
+        decision: "HARD_CONFLICT",
+        matched_resource_ids: ["calendar-private-2"],
+      },
+    },
+  });
+  render(<App />);
+
+  expect(await screen.findByText("해당 시간에 기존 일정이 있습니다.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "충돌을 알고도 진행" }));
+  const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
+    calendar_conflict_acknowledged: true,
+  });
+  expect(document.body.textContent).not.toContain("calendar-private-2");
+});
+
+test("Calendar NO_CONFLICT shows ordinary approval", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    action: true,
+    actionRisk: {
+      calendar_conflict: { decision: "NO_CONFLICT", matched_resource_ids: [] },
+    },
+  });
+  render(<App />);
+
+  await user.click(await screen.findByRole("button", { name: "승인" }));
+  expect(screen.queryByText(/기존 일정/)).not.toBeInTheDocument();
+  const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
+  expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
+    calendar_conflict_acknowledged: false,
+  });
+});
+
 test("Gmail detail shows loading, retries a safe error, and renders the actual body", async () => {
   const user = userEvent.setup();
   installUiContractFetch({ detailErrorOnce: true });
@@ -1452,7 +1640,23 @@ test("TST-UI-209 renders independent approval commands with versions and disable
   expect(JSON.parse(String(approve?.init?.body))).toMatchObject({ expected_version: 7 });
   expect(screen.getByText("승인 상세")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "수정" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "건너뛰기" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "거절" })).toBeInTheDocument();
+});
+
+test("approved Action can be rejected and refreshes to a non-executable rejected state", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ action: true, actionStatus: "APPROVED" });
+  render(<App />);
+
+  await user.click(await screen.findByRole("button", { name: "거절" }));
+  const reject = requests.find((request) => request.path.endsWith("/reject"));
+  expect(JSON.parse(String(reject?.init?.body))).toMatchObject({
+    expected_version: 7,
+    reason_code: null,
+  });
+  expect(await screen.findByText("REJECTED")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "거절" })).not.toBeInTheDocument();
 });
 
 test("TST-UI-210 filters conversations and shows recent execution fallback", async () => {
@@ -1508,8 +1712,19 @@ test("TST-UI-213 hides raw runtime status and has no native window controls", as
   expect(screen.queryByRole("button", { name: /최소화|최대화|닫기/ })).not.toBeInTheDocument();
 });
 
+test("shows a partial-result notice after a run is cancelled", async () => {
+  installUiContractFetch({ status: "CANCELLED", resultKind: "PARTIAL" });
+  render(<App />);
+
+  expect(
+    await screen.findByText("일부 작업은 완료되었고 나머지는 취소되었습니다."),
+  ).toBeInTheDocument();
+});
+
 function installUiContractFetch(options: {
   action?: boolean;
+  actionStatus?: string;
+  actionRisk?: Record<string, unknown>;
   conversations?: boolean;
   calendarEvents?: Record<string, unknown>[];
   detail?: Record<string, unknown>;
@@ -1519,11 +1734,13 @@ function installUiContractFetch(options: {
   gmailListResponse?: Promise<Response>;
   run?: boolean;
   resource?: Partial<ReturnType<typeof gmailThread>>;
+  resultKind?: string;
   status?: string;
   twoItems?: boolean;
 } = {}): Array<{ path: string; init?: RequestInit }> {
   const requests: Array<{ path: string; init?: RequestInit }> = [];
   let detailAttempts = 0;
+  let actionStatus = options.actionStatus ?? "PROPOSED";
   globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
     const path = String(input);
     requests.push({ path, init });
@@ -1599,9 +1816,12 @@ function installUiContractFetch(options: {
     }
     if (path === "/api/v1/conversations" && init?.method === "POST") return jsonFetchResponse({ conversation_id: "conversation-1" });
     if (path === "/api/v1/runs" && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-1", conversation_id: "conversation-1", run_status: "WAITING_APPROVAL", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-1", enqueued: true, request_replayed: false });
-    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", actions: options.action ? [{ action_id: "action-1", tool_name: "gmail_draft", status: "PROPOSED", version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", next_allowed_commands: [] }] : [] }));
+    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: "gmail_draft", status: actionStatus, version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", risk: options.actionRisk ?? {}, next_allowed_commands: [] }] : [] }));
     if (path === "/api/v1/runs/run-1/context") return jsonFetchResponse({ context: null, api_contract_version: "1" });
-    if (path.includes("/api/v1/actions/") && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "OK", action_id: "action-1", action_status: "APPROVED", action_version: 8, next_allowed_commands: [] });
+    if (path.includes("/api/v1/actions/") && init?.method === "POST") {
+      actionStatus = path.endsWith("/reject") ? "REJECTED" : "APPROVED";
+      return jsonFetchResponse({ applied: true, result_code: "OK", action_id: "action-1", action_status: actionStatus, action_version: 8, next_allowed_commands: [] });
+    }
     throw new Error(`Unhandled path ${path}`);
   }) as typeof fetch;
   return requests;
@@ -1817,10 +2037,14 @@ function gmailDetail(resourceId = "thread-project", overrides: Record<string, un
 }
 
 function snapshotPayload(overrides: Partial<SnapshotShape>) {
+  const snapshot = {
+    ...defaultSnapshot(),
+    ...overrides,
+  };
   return {
     snapshot: {
-      ...defaultSnapshot(),
-      ...overrides,
+      ...snapshot,
+      actions: snapshot.actions.map((action) => ({ ...action, risk: action.risk ?? {} })),
     },
     api_contract_version: "1",
   };

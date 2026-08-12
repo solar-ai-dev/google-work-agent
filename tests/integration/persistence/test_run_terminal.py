@@ -73,6 +73,45 @@ def _set_run_status(database_path: Path, *, status: str, version: int = 0) -> No
         connection.close()
 
 
+def _insert_active_approval(database_path: Path) -> None:
+    connection = connect_sqlite(database_path)
+    try:
+        connection.execute(
+            "INSERT INTO plans (id, run_id, revision_no, status, created_at_ms) "
+            "VALUES ('plan-1', 'run-1', 1, 'WAITING_APPROVAL', 1);"
+        )
+        connection.execute(
+            """
+            INSERT INTO actions (
+                id, plan_id, position, tool_name, effect_type, approval_requirement,
+                verification_policy, recovery_policy, status, arguments_json,
+                arguments_hash, expected_json, version, created_at_ms, updated_at_ms
+            ) VALUES (
+                'action-1', 'plan-1', 1, 'calendar.create', 'CREATE', 'REQUIRED',
+                'GET_COMPARE', 'RESOURCE_SEARCH', 'APPROVED', '{}', ?, '{}', 1, 1, 1
+            );
+            """,
+            ("a" * 64,),
+        )
+        connection.execute(
+            """
+            INSERT INTO approvals (
+                id, action_id, approval_no, action_version, status, approved_by_account_id,
+                arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json,
+                source_snapshot_hash, policy_version, tool_schema_version, idempotency_key,
+                recovery_fingerprint, approved_at_ms, expires_at_ms
+            ) VALUES (
+                'approval-1', 'action-1', 1, 1, 'ACTIVE', 'account-1', '{}', ?, '{}', ?,
+                'p1', 'v1', ?, ?, 1, 2000
+            );
+            """,
+            ("b" * 64, "c" * 64, "d" * 64, "e" * 64),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 @pytest.mark.parametrize(
     (
         "service_factory",
@@ -196,6 +235,73 @@ def test_run_terminal_services_persist_transition_receipt_and_events(
         assert trace["status"] == expected_status
         assert audit["event_type"] == event_type
         assert audit["outcome"] == "TRANSITION_APPLIED"
+    finally:
+        connection.close()
+
+
+def test_block_run_revokes_active_approval_before_terminal_transition(
+    run_terminal_database: Path,
+) -> None:
+    _set_run_status(run_terminal_database, status="WAITING_APPROVAL")
+    _insert_active_approval(run_terminal_database)
+    service = BlockRunService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(run_terminal_database),
+        now_ms=lambda: 1000,
+    )
+
+    response = service(
+        BlockRunCommand(
+            command_id="command-block-active-approval",
+            request_hash="1" * 64,
+            run_id="run-1",
+            expected_version=0,
+            reason_code="POLICY_BLOCKED",
+        )
+    )
+
+    assert response.applied is True
+    connection = connect_sqlite(run_terminal_database)
+    try:
+        assert (
+            connection.execute("SELECT status FROM approvals WHERE id = 'approval-1';").fetchone()[
+                0
+            ]
+            == "REVOKED"
+        )
+    finally:
+        connection.close()
+
+
+def test_block_run_version_conflict_does_not_revoke_active_approval(
+    run_terminal_database: Path,
+) -> None:
+    _set_run_status(run_terminal_database, status="WAITING_APPROVAL")
+    _insert_active_approval(run_terminal_database)
+    service = BlockRunService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(run_terminal_database),
+        now_ms=lambda: 1000,
+    )
+
+    response = service(
+        BlockRunCommand(
+            command_id="command-block-active-approval-conflict",
+            request_hash="2" * 64,
+            run_id="run-1",
+            expected_version=9,
+            reason_code="POLICY_BLOCKED",
+        )
+    )
+
+    assert response.applied is False
+    assert response.result_code == "VERSION_CONFLICT"
+    connection = connect_sqlite(run_terminal_database)
+    try:
+        assert (
+            connection.execute("SELECT status FROM approvals WHERE id = 'approval-1';").fetchone()[
+                0
+            ]
+            == "ACTIVE"
+        )
     finally:
         connection.close()
 

@@ -11,10 +11,10 @@
       "target_resource_id": "TSK-X",
       "arguments": {
         "task_id": "TSK-X",
-        "due": "2026-08-21"
+        "notes": "업무 마감: 2026-08-21"
       },
       "expected": {
-        "due": "2026-08-21"
+        "notes": "업무 마감: 2026-08-21"
       },
       "evidence_ids": [
         "EVD-PL-EF1"

@@ -211,6 +211,7 @@ class PlanReviewAgent:
         plan_draft: ActionPlanDraftV1 | None,
         request: WorkflowStartRequest,
         policy_review_context: PolicyReviewContextV1 | None = None,
+        deterministic_action_risks: dict[str, dict[str, object]] | None = None,
     ) -> PlanReviewResultV1:
         target_kind, draft = resolve_review_target(
             answer_draft=answer_draft,
@@ -224,6 +225,7 @@ class PlanReviewAgent:
             plan_draft=plan_draft,
             request=request,
             policy_review_context=policy_review_context,
+            deterministic_action_risks=deterministic_action_risks,
         )
         return self.build_output_from_llm_result(
             llm_result,
@@ -242,6 +244,7 @@ class PlanReviewAgent:
         plan_draft: ActionPlanDraftV1 | None,
         request: WorkflowStartRequest,
         policy_review_context: PolicyReviewContextV1 | None = None,
+        deterministic_action_risks: dict[str, dict[str, object]] | None = None,
     ) -> StructuredLLMResult:
         target_kind, draft = resolve_review_target(
             answer_draft=answer_draft,
@@ -258,6 +261,7 @@ class PlanReviewAgent:
                 target_kind=target_kind,
                 policy_review_context=policy_review_context
                 or build_policy_review_context_v1(tool_registry=self._tool_registry),
+                deterministic_action_risks=deterministic_action_risks,
             ),
             output_schema=PLAN_REVIEW_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -280,6 +284,7 @@ class PlanReviewAgent:
         plan_draft: ActionPlanDraftV1 | None,
         request: WorkflowStartRequest,
         policy_review_context: PolicyReviewContextV1 | None = None,
+        deterministic_action_risks: dict[str, dict[str, object]] | None = None,
     ) -> PlanReviewResultV1:
         target_kind, draft = resolve_review_target(
             answer_draft=answer_draft,
@@ -293,6 +298,7 @@ class PlanReviewAgent:
             plan_draft=plan_draft,
             request=request,
             policy_review_context=policy_review_context,
+            deterministic_action_risks=deterministic_action_risks,
         )
         return self.build_output_from_llm_result(
             llm_result,
@@ -312,6 +318,7 @@ class PlanReviewAgent:
         plan_draft: ActionPlanDraftV1 | None,
         request: WorkflowStartRequest,
         policy_review_context: PolicyReviewContextV1 | None = None,
+        deterministic_action_risks: dict[str, dict[str, object]] | None = None,
     ) -> StructuredLLMResult:
         target_kind, draft = resolve_review_target(
             answer_draft=answer_draft,
@@ -328,6 +335,7 @@ class PlanReviewAgent:
                 target_kind=target_kind,
                 policy_review_context=policy_review_context
                 or build_policy_review_context_v1(tool_registry=self._tool_registry),
+                deterministic_action_risks=deterministic_action_risks,
             ),
             output_schema=PLAN_REVIEW_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -548,8 +556,9 @@ def _build_review_prompt_input(
     draft: AnswerDraftV1 | ActionPlanDraftV1,
     target_kind: ReviewTargetValue,
     policy_review_context: PolicyReviewContextV1,
+    deterministic_action_risks: dict[str, dict[str, object]] | None = None,
 ) -> JsonObject:
-    return {
+    prompt_input: JsonObject = {
         "request_text": request.request_text,
         "request_intent": request_intent,
         "review_target": target_kind,
@@ -561,6 +570,9 @@ def _build_review_prompt_input(
         "policy_review_context": policy_review_context,
         "source_content_is_untrusted": True,
     }
+    if deterministic_action_risks is not None:
+        prompt_input["deterministic_action_risks"] = deterministic_action_risks
+    return prompt_input
 
 
 def _validate_review_issue(

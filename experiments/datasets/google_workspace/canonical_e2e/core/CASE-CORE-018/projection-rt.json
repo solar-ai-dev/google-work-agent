@@ -59,7 +59,7 @@
             "ops@atlas.example.test"
           ],
           "subject": "Atlas 준비 일정 점검",
-          "body": "인쇄소 슬롯이 QR·라벨 Task 기한보다 앞서 있어 준비 순서 확인이 필요합니다."
+          "body": "인쇄소 슬롯이 QR·라벨 Task 예정일보다 앞서 있어 준비 순서 확인이 필요합니다."
         }
       },
       {

@@ -16,7 +16,7 @@
   "expected_completion_criteria": [
     "Gmail과 인쇄소 Event를 확인한다.",
     "Tasks에서 동일 미완료 Task가 없는지 확인한다.",
-    "사용자 기한을 보존한다."
+    "사용자 업무 마감을 Task 예정일로 자동 변환하지 않고 메모에 보존한다."
   ],
   "requested_outcome": "ACTION_PLAN",
   "selected_resource_ids": [],
@@ -44,7 +44,7 @@
   "user_evidence": [
     {
       "evidence_id": "UE-CORE-031",
-      "claim": "사용자가 Task 제목과 8월 13일 13시 기한을 요청했다."
+      "claim": "사용자가 Task 제목과 8월 13일 13시 업무 마감을 요청했다."
     }
   ],
   "derived_evidence": [
@@ -133,7 +133,7 @@
       "constraints": {
         "tasklist_id": "TL-WORK",
         "title": "Atlas 인쇄소 인계 확인",
-        "due": "2026-08-13T13:00:00+09:00"
+        "notes": "업무 마감: 2026-08-13 13:00 Asia/Seoul"
       }
     },
     {
@@ -156,7 +156,7 @@
       "arguments": {
         "tasklist_id": "TL-WORK",
         "title": "Atlas 인쇄소 인계 확인",
-        "due": "2026-08-13T13:00:00+09:00"
+        "notes": "업무 마감: 2026-08-13 13:00 Asia/Seoul"
       },
       "expected": {
         "created": true
@@ -224,7 +224,7 @@
   "human_rubric": [
     "Gmail과 인쇄소 Event를 확인한다.",
     "Tasks에서 동일 미완료 Task가 없는지 확인한다.",
-    "사용자 기한을 보존한다."
+    "사용자 업무 마감을 Task 예정일로 자동 변환하지 않고 메모에 보존한다."
   ],
   "expected_planning_result_type": "ACTION_PLAN",
   "expected_interactions": [

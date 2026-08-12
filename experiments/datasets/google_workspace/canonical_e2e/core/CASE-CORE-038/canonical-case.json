@@ -11,7 +11,7 @@
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-CORE-038",
   "canonical_user_prompt": "Echo 요청 메일과 오늘 캘린더를 보고 기존 1차 검토 작업 기한을 오늘 오후 5시로 바꿔줘.",
-  "business_scenario": "기존 Echo Task 기한을 UPDATE한다.",
+  "business_scenario": "기존 Echo Task 예정일을 UPDATE한다.",
   "expected_goal": "TSK-E-001 due를 17시로 수정한다.",
   "expected_completion_criteria": [
     "TSK-E-001을 정확한 대상 Resource로 사용한다.",
@@ -133,7 +133,7 @@
       "required": true,
       "constraints": {
         "task_id": "TSK-E-001",
-        "due": "2026-08-07T17:00:00+09:00"
+        "notes": "업무 마감: 2026-08-07 17:00 Asia/Seoul"
       }
     },
     {
@@ -155,7 +155,7 @@
       "target_resource_id": "TSK-E-001",
       "arguments": {
         "task_id": "TSK-E-001",
-        "due": "2026-08-07T17:00:00+09:00"
+        "notes": "업무 마감: 2026-08-07 17:00 Asia/Seoul"
       },
       "expected": {
         "updated": true

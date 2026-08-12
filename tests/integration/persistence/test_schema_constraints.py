@@ -145,6 +145,10 @@ def test_only_one_active_approval_is_allowed_per_action(
         verification_policy="GET_COMPARE",
         recovery_policy="RESOURCE_SEARCH",
     )
+    migrated_connection.execute("UPDATE plans SET status = 'WAITING_APPROVAL' WHERE id = 'plan-1';")
+    migrated_connection.execute(
+        "UPDATE actions SET status = 'APPROVED', version = 1 WHERE id = 'action-approval-1';"
+    )
     migrated_connection.execute(
         """
         INSERT INTO approvals (
@@ -154,7 +158,7 @@ def test_only_one_active_approval_is_allowed_per_action(
             recovery_fingerprint, approved_at_ms, expires_at_ms
         )
         VALUES (
-            'approval-1', 'action-approval-1', 1, 0, 'ACTIVE', 'account-1',
+            'approval-1', 'action-approval-1', 1, 1, 'ACTIVE', 'account-1',
             '{}', ?, '{}', ?, '2026-08-06.p0', 'v1', ?, ?, 100, 200
         );
         """,
@@ -171,7 +175,7 @@ def test_only_one_active_approval_is_allowed_per_action(
                 recovery_fingerprint, approved_at_ms, expires_at_ms
             )
             VALUES (
-                'approval-2', 'action-approval-1', 2, 0, 'ACTIVE', 'account-1',
+                'approval-2', 'action-approval-1', 2, 1, 'ACTIVE', 'account-1',
                 '{}', ?, '{}', ?, '2026-08-06.p0', 'v1', ?, ?, 101, 201
             );
             """,
@@ -191,6 +195,10 @@ def test_only_one_active_execution_attempt_is_allowed_per_approval(
         verification_policy="GET_COMPARE",
         recovery_policy="GET_TARGET",
     )
+    migrated_connection.execute("UPDATE plans SET status = 'WAITING_APPROVAL' WHERE id = 'plan-1';")
+    migrated_connection.execute(
+        "UPDATE actions SET status = 'APPROVED', version = 1 WHERE id = 'action-attempt-1';"
+    )
     migrated_connection.execute(
         """
         INSERT INTO approvals (
@@ -200,11 +208,18 @@ def test_only_one_active_execution_attempt_is_allowed_per_approval(
             recovery_fingerprint, approved_at_ms, expires_at_ms
         )
         VALUES (
-            'approval-attempt-1', 'action-attempt-1', 1, 0, 'ACTIVE', 'account-1',
+            'approval-attempt-1', 'action-attempt-1', 1, 1, 'ACTIVE', 'account-1',
             '{}', ?, '{}', ?, '2026-08-06.p0', 'v1', ?, ?, 100, 200
         );
         """,
         (HASH, HASH, "d" * 64, "e" * 64),
+    )
+    migrated_connection.execute(
+        "UPDATE approvals SET status = 'CONSUMED', consumed_at_ms = 101 "
+        "WHERE id = 'approval-attempt-1';"
+    )
+    migrated_connection.execute(
+        "UPDATE actions SET status = 'EXECUTING', version = 2 WHERE id = 'action-attempt-1';"
     )
     migrated_connection.execute(
         """
@@ -224,6 +239,278 @@ def test_only_one_active_execution_attempt_is_allowed_per_approval(
             VALUES ('attempt-2', 'approval-attempt-1', 2, 'EXECUTING', 101);
             """
         )
+
+
+def test_active_approval_and_action_status_are_enforced_bidirectionally(
+    migrated_connection: sqlite3.Connection,
+) -> None:
+    _insert_plan(migrated_connection)
+    _insert_action(
+        migrated_connection,
+        action_id="action-approval-guard",
+        effect_type="CREATE",
+        approval_requirement="REQUIRED",
+        verification_policy="GET_COMPARE",
+        recovery_policy="RESOURCE_SEARCH",
+    )
+    migrated_connection.execute("UPDATE plans SET status = 'WAITING_APPROVAL' WHERE id = 'plan-1';")
+    migrated_connection.execute(
+        "UPDATE actions SET status = 'REJECTED' WHERE id = 'action-approval-guard';"
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="NFR019_ACTIVE_APPROVAL_ACTION"):
+        _insert_approval(
+            migrated_connection,
+            approval_id="approval-terminal",
+            action_id="action-approval-guard",
+            action_version=0,
+        )
+
+    migrated_connection.execute(
+        "UPDATE actions SET status = 'APPROVED', version = 1 WHERE id = 'action-approval-guard';"
+    )
+    _insert_approval(
+        migrated_connection,
+        approval_id="approval-active",
+        action_id="action-approval-guard",
+        action_version=1,
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="NFR019_PLAN_ACTIVE_APPROVAL"):
+        migrated_connection.execute("UPDATE plans SET status = 'SUPERSEDED' WHERE id = 'plan-1';")
+    with pytest.raises(sqlite3.IntegrityError, match="NFR019_RUN_ACTIVE_APPROVAL"):
+        migrated_connection.execute("UPDATE runs SET status = 'FAILED' WHERE id = 'run-1';")
+    with pytest.raises(sqlite3.IntegrityError, match="NFR019_ACTION_ACTIVE_APPROVAL"):
+        migrated_connection.execute(
+            "UPDATE actions SET status = 'CANCELLED' WHERE id = 'action-approval-guard';"
+        )
+
+    migrated_connection.execute(
+        "UPDATE approvals SET status = 'REVOKED' WHERE id = 'approval-active';"
+    )
+    migrated_connection.execute(
+        "UPDATE actions SET status = 'CANCELLED' WHERE id = 'action-approval-guard';"
+    )
+
+
+def test_run_and_plan_terminal_states_reject_nonterminal_children_both_directions(
+    migrated_connection: sqlite3.Connection,
+) -> None:
+    _insert_plan(migrated_connection)
+    _insert_action(migrated_connection, action_id="action-terminal-parent")
+
+    with pytest.raises(sqlite3.IntegrityError, match="NFR019_RUN_TERMINAL_ACTIONS"):
+        migrated_connection.execute("UPDATE runs SET status = 'COMPLETED' WHERE id = 'run-1';")
+    with pytest.raises(sqlite3.IntegrityError, match="NFR019_PLAN_TERMINAL_ACTIONS"):
+        migrated_connection.execute("UPDATE plans SET status = 'COMPLETED' WHERE id = 'plan-1';")
+
+    migrated_connection.execute(
+        "UPDATE actions SET status = 'REJECTED' WHERE id = 'action-terminal-parent';"
+    )
+    migrated_connection.execute("UPDATE plans SET status = 'COMPLETED' WHERE id = 'plan-1';")
+    migrated_connection.execute("UPDATE runs SET status = 'COMPLETED' WHERE id = 'run-1';")
+
+    with pytest.raises(sqlite3.IntegrityError, match="NFR019_TERMINAL_PARENT_ACTION"):
+        migrated_connection.execute(
+            "UPDATE actions SET status = 'PROPOSED' WHERE id = 'action-terminal-parent';"
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="NFR019_TERMINAL_PARENT_ACTION"):
+        _insert_action(
+            migrated_connection,
+            action_id="action-after-completion",
+            position=2,
+        )
+
+
+def test_cancelled_run_rejects_unknown_result_both_directions(
+    migrated_connection: sqlite3.Connection,
+) -> None:
+    _insert_plan(migrated_connection)
+    _insert_action(
+        migrated_connection,
+        action_id="action-cancel-unknown",
+        effect_type="UPDATE",
+        approval_requirement="REQUIRED",
+        verification_policy="GET_COMPARE",
+        recovery_policy="GET_TARGET",
+    )
+    _claim_write_action(
+        migrated_connection,
+        action_id="action-cancel-unknown",
+        approval_id="approval-cancel-unknown",
+        attempt_id="attempt-cancel-unknown",
+    )
+    migrated_connection.execute(
+        "UPDATE execution_attempts SET status = 'UNKNOWN_RESULT' "
+        "WHERE id = 'attempt-cancel-unknown';"
+    )
+    migrated_connection.execute(
+        "UPDATE actions SET status = 'UNKNOWN_RESULT' WHERE id = 'action-cancel-unknown';"
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="NFR019_RUN_TERMINAL_ACTIONS"):
+        migrated_connection.execute("UPDATE runs SET status = 'CANCELLED' WHERE id = 'run-1';")
+
+    migrated_connection.execute(
+        "UPDATE execution_attempts SET status = 'FAILED' WHERE id = 'attempt-cancel-unknown';"
+    )
+    migrated_connection.execute(
+        "UPDATE actions SET status = 'FAILED' WHERE id = 'action-cancel-unknown';"
+    )
+    migrated_connection.execute("UPDATE plans SET status = 'CANCELLED' WHERE id = 'plan-1';")
+    migrated_connection.execute("UPDATE runs SET status = 'CANCELLED' WHERE id = 'run-1';")
+    with pytest.raises(sqlite3.IntegrityError, match="NFR019_ACTION_ATTEMPT"):
+        migrated_connection.execute(
+            "UPDATE actions SET status = 'UNKNOWN_RESULT' WHERE id = 'action-cancel-unknown';"
+        )
+
+
+def test_superseded_plan_nonterminal_history_does_not_block_run_completion(
+    migrated_connection: sqlite3.Connection,
+) -> None:
+    _insert_plan(migrated_connection)
+    _insert_action(migrated_connection, action_id="action-superseded-history")
+    migrated_connection.execute("UPDATE plans SET status = 'SUPERSEDED' WHERE id = 'plan-1';")
+    migrated_connection.execute("UPDATE runs SET status = 'COMPLETED' WHERE id = 'run-1';")
+
+
+@pytest.mark.parametrize("verification_status", ("VERIFIED", "MISMATCH"))
+def test_write_verification_terminal_fact_is_allowed_with_matching_record(
+    migrated_connection: sqlite3.Connection,
+    verification_status: str,
+) -> None:
+    _insert_plan(migrated_connection)
+    _insert_action(
+        migrated_connection,
+        action_id="action-verification-fact",
+        effect_type="CREATE",
+        approval_requirement="REQUIRED",
+        verification_policy="GET_COMPARE",
+        recovery_policy="RESOURCE_SEARCH",
+    )
+    _claim_write_action(
+        migrated_connection,
+        action_id="action-verification-fact",
+        approval_id="approval-verification-fact",
+        attempt_id="attempt-verification-fact",
+    )
+    migrated_connection.execute(
+        "UPDATE execution_attempts SET status = 'SUCCEEDED' WHERE id = 'attempt-verification-fact';"
+    )
+    migrated_connection.execute(
+        "UPDATE actions SET status = 'EXECUTED', version = 3 WHERE id = 'action-verification-fact';"
+    )
+    migrated_connection.execute(
+        """
+        INSERT INTO verifications (
+            id, execution_attempt_id, verification_no, status, normalizer_version,
+            expected_json, actual_json, diff_json, verified_at_ms
+        ) VALUES (
+            'verification-fact', 'attempt-verification-fact', 1, ?,
+            'v1', '{}', '{}', '[]', 2
+        );
+        """,
+        (verification_status,),
+    )
+    migrated_connection.execute(
+        "UPDATE actions SET status = ?, version = 4 WHERE id = 'action-verification-fact';",
+        (verification_status,),
+    )
+
+    with pytest.raises(sqlite3.IntegrityError, match="NFR019_VERIFICATION_IMMUTABLE"):
+        migrated_connection.execute(
+            "UPDATE verifications SET status = 'ERROR' WHERE id = 'verification-fact';"
+        )
+
+
+def test_write_verification_terminal_status_requires_matching_record(
+    migrated_connection: sqlite3.Connection,
+) -> None:
+    _insert_plan(migrated_connection)
+    _insert_action(
+        migrated_connection,
+        action_id="action-verification-missing",
+        effect_type="CREATE",
+        approval_requirement="REQUIRED",
+        verification_policy="GET_COMPARE",
+        recovery_policy="RESOURCE_SEARCH",
+    )
+    _claim_write_action(
+        migrated_connection,
+        action_id="action-verification-missing",
+        approval_id="approval-verification-missing",
+        attempt_id="attempt-verification-missing",
+    )
+    migrated_connection.execute(
+        "UPDATE execution_attempts SET status = 'SUCCEEDED' "
+        "WHERE id = 'attempt-verification-missing';"
+    )
+    migrated_connection.execute(
+        "UPDATE actions SET status = 'EXECUTED', version = 3 "
+        "WHERE id = 'action-verification-missing';"
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="NFR019_ACTION_VERIFICATION"):
+        migrated_connection.execute(
+            "UPDATE actions SET status = 'VERIFIED' WHERE id = 'action-verification-missing';"
+        )
+
+
+def _insert_approval(
+    connection: sqlite3.Connection,
+    *,
+    approval_id: str,
+    action_id: str,
+    action_version: int,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO approvals (
+            id, action_id, approval_no, action_version, status, approved_by_account_id,
+            arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json,
+            source_snapshot_hash, policy_version, tool_schema_version, idempotency_key,
+            recovery_fingerprint, approved_at_ms, expires_at_ms
+        ) VALUES (?, ?, 1, ?, 'ACTIVE', 'account-1', '{}', ?, '{}', ?, 'p1', 'v1', ?, ?, 1, 2);
+        """,
+        (
+            approval_id,
+            action_id,
+            action_version,
+            HASH,
+            HASH,
+            approval_id.ljust(64, "x")[:64],
+            "f" * 64,
+        ),
+    )
+
+
+def _claim_write_action(
+    connection: sqlite3.Connection,
+    *,
+    action_id: str,
+    approval_id: str,
+    attempt_id: str,
+) -> None:
+    connection.execute("UPDATE plans SET status = 'WAITING_APPROVAL' WHERE id = 'plan-1';")
+    connection.execute(
+        "UPDATE actions SET status = 'APPROVED', version = 1 WHERE id = ?;", (action_id,)
+    )
+    _insert_approval(
+        connection,
+        approval_id=approval_id,
+        action_id=action_id,
+        action_version=1,
+    )
+    connection.execute(
+        "UPDATE approvals SET status = 'CONSUMED', consumed_at_ms = 1 WHERE id = ?;",
+        (approval_id,),
+    )
+    connection.execute(
+        "UPDATE actions SET status = 'EXECUTING', version = 2 WHERE id = ?;", (action_id,)
+    )
+    connection.execute(
+        """
+        INSERT INTO execution_attempts (id, approval_id, attempt_no, status, started_at_ms)
+        VALUES (?, ?, 1, 'CLAIMED', 1);
+        """,
+        (attempt_id, approval_id),
+    )
 
 
 def _insert_account_conversation_and_run(connection: sqlite3.Connection) -> None:
@@ -268,10 +555,10 @@ def _insert_action(
     *,
     action_id: str,
     position: int = 1,
-    effect_type: str,
-    approval_requirement: str,
-    verification_policy: str,
-    recovery_policy: str,
+    effect_type: str = "READ",
+    approval_requirement: str = "NONE",
+    verification_policy: str = "NONE",
+    recovery_policy: str = "NONE",
 ) -> None:
     connection.execute(
         """

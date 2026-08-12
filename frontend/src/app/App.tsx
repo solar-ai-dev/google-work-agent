@@ -95,6 +95,64 @@ type ResourceRequestIdentity = {
   calendarTimeMin: string | null;
 };
 
+type TaskDuplicateDecision =
+  | "NOT_DUPLICATE"
+  | "SIMILAR_CANDIDATE"
+  | "CLEAR_DUPLICATE";
+
+function taskDuplicateDecision(risk: Record<string, unknown>): TaskDuplicateDecision | null {
+  const duplicate = risk.duplicate;
+  if (!duplicate || typeof duplicate !== "object") {
+    return null;
+  }
+  const decision = (duplicate as { decision?: unknown }).decision;
+  return decision === "NOT_DUPLICATE" ||
+    decision === "SIMILAR_CANDIDATE" ||
+    decision === "CLEAR_DUPLICATE"
+    ? decision
+    : null;
+}
+
+type CalendarConflictDecision = "NO_CONFLICT" | "WARNING" | "HARD_CONFLICT";
+
+function calendarConflictDecision(
+  risk: Record<string, unknown>,
+): CalendarConflictDecision | null {
+  const conflict = risk.calendar_conflict;
+  if (!conflict || typeof conflict !== "object") {
+    return null;
+  }
+  const decision = (conflict as { decision?: unknown }).decision;
+  return decision === "NO_CONFLICT" ||
+    decision === "WARNING" ||
+    decision === "HARD_CONFLICT"
+    ? decision
+    : null;
+}
+
+type FeasibilityDecision = "FEASIBLE" | "RISK" | "INFEASIBLE";
+
+function feasibilityDecision(risk: Record<string, unknown>): FeasibilityDecision | null {
+  const feasibility = risk.feasibility;
+  if (!feasibility || typeof feasibility !== "object") {
+    return null;
+  }
+  const decision = (feasibility as { decision?: unknown }).decision;
+  return decision === "FEASIBLE" || decision === "RISK" || decision === "INFEASIBLE"
+    ? decision
+    : null;
+}
+
+function hasOtherRisk(risk: Record<string, unknown>): boolean {
+  return Object.keys(risk).some(
+    (key) =>
+      key !== "duplicate" &&
+      key !== "calendar_conflict" &&
+      key !== "feasibility" &&
+      key !== "feasibility_input",
+  );
+}
+
 type ResourceLoadOptions = {
   force?: boolean;
   calendarTimeMin?: string | null;
@@ -492,7 +550,11 @@ export function App(): JSX.Element {
     }
   }
 
-  async function handleApprove(action: RunAction): Promise<void> {
+  async function handleApprove(
+    action: RunAction,
+    duplicateAcknowledged = false,
+    calendarConflictAcknowledged = false,
+  ): Promise<void> {
     if (!runSnapshot || !currentAccount?.account_id || busyCommand) {
       return;
     }
@@ -503,6 +565,8 @@ export function App(): JSX.Element {
         action_id: action.action_id,
         command_id: commandId,
         expected_version: action.version,
+        duplicate_acknowledged: duplicateAcknowledged,
+        calendar_conflict_acknowledged: calendarConflictAcknowledged,
       });
       await selectRun(runSnapshot.run_id);
     } finally {
@@ -911,6 +975,9 @@ export function App(): JSX.Element {
               <div>
                 <strong>{selectedConversationId ? "대화 진행" : "새 요청"}</strong>
                 <div className="muted">{userRunStatus(runSnapshot.status)}</div>
+                {runSnapshot.result_kind === "PARTIAL" ? (
+                  <div className="status-warn">일부 작업은 완료되었고 나머지는 취소되었습니다.</div>
+                ) : null}
               </div>
               <div className="button-row">
                 {runSnapshot.next_allowed_commands.includes("REQUEST_CANCEL") ? (
@@ -1051,8 +1118,19 @@ export function App(): JSX.Element {
 
               {runSnapshot?.actions.map((action) => {
                 const approval = runSnapshot.approvals.find((item) => item.action_id === action.action_id);
+                const feasibility = feasibilityDecision(action.risk);
                 const waitingApproval =
-                  action.approval_required && ["PROPOSED", "MODIFIED"].includes(action.status);
+                  action.approval_required &&
+                  feasibility !== "INFEASIBLE" &&
+                  ["PROPOSED", "MODIFIED"].includes(action.status);
+                const duplicateDecision = taskDuplicateDecision(action.risk);
+                const duplicateNeedsAcknowledgement =
+                  duplicateDecision === "SIMILAR_CANDIDATE" ||
+                  duplicateDecision === "CLEAR_DUPLICATE";
+                const conflictDecision = calendarConflictDecision(action.risk);
+                const conflictNeedsAcknowledgement =
+                  conflictDecision === "WARNING" ||
+                  conflictDecision === "HARD_CONFLICT";
                 return (
                   <article key={action.action_id} className="info-card">
                     <div className="inline-row" style={{ justifyContent: "space-between" }}>
@@ -1062,6 +1140,38 @@ export function App(): JSX.Element {
                     <div className="muted">
                       {action.effect_type} / {action.verification_policy}
                     </div>
+                    {duplicateDecision === "SIMILAR_CANDIDATE" ? (
+                      <p className="status-warn">비슷한 기존 작업이 있습니다.</p>
+                    ) : null}
+                    {duplicateDecision === "CLEAR_DUPLICATE" ? (
+                      <p className="status-warn">
+                        동일한 작업이 이미 있습니다. 기존 작업을 확인한 뒤 계속해 주세요.
+                      </p>
+                    ) : null}
+                    {conflictDecision === "WARNING" ? (
+                      <p className="status-warn">
+                        겹칠 가능성이 있거나 업무 시간 밖의 일정입니다.
+                      </p>
+                    ) : null}
+                    {conflictDecision === "HARD_CONFLICT" ? (
+                      <p className="status-warn">해당 시간에 기존 일정이 있습니다.</p>
+                    ) : null}
+                    {feasibility === "RISK" ? (
+                      <p className="status-warn">
+                        현재 일정 기준으로 가능한 시간이 제한적입니다.
+                      </p>
+                    ) : null}
+                    {feasibility === "INFEASIBLE" ? (
+                      <p className="status-warn">
+                        현재 업무 시간과 일정 기준으로 마감 전에 필요한 연속 시간을 확보할 수
+                        없습니다.
+                      </p>
+                    ) : null}
+                    {hasOtherRisk(action.risk) ? (
+                      <p className="status-warn">
+                        서버 검증에서 확인된 위험 정보가 있습니다. 승인 전에 확인해 주세요.
+                      </p>
+                    ) : null}
                     <details>
                       <summary>승인 상세</summary>
                       <dl className="metadata-list">
@@ -1080,9 +1190,23 @@ export function App(): JSX.Element {
                           className="button-primary"
                           type="button"
                           disabled={busyCommand === `approve-${action.action_id}`}
-                          onClick={() => void handleApprove(action)}
+                          onClick={() =>
+                            void handleApprove(
+                              action,
+                              duplicateNeedsAcknowledgement,
+                              conflictNeedsAcknowledgement,
+                            )
+                          }
                         >
-                          승인
+                          {conflictDecision === "HARD_CONFLICT"
+                            ? "충돌을 알고도 진행"
+                            : conflictDecision === "WARNING"
+                              ? "확인하고 승인"
+                              : duplicateDecision === "CLEAR_DUPLICATE"
+                            ? "그래도 새로 만들기"
+                            : duplicateDecision === "SIMILAR_CANDIDATE"
+                              ? "확인하고 승인"
+                              : "승인"}
                         </button>
                         <button
                           className="button-secondary"
@@ -1099,6 +1223,26 @@ export function App(): JSX.Element {
                           onClick={() => void handleSimpleAction("reject", action)}
                         >
                           건너뛰기
+                        </button>
+                      </div>
+                    ) : null}
+                    {action.status === "APPROVED" ? (
+                      <div className="button-row">
+                        <button
+                          className="button-secondary"
+                          type="button"
+                          disabled={busyCommand === `modify-${action.action_id}`}
+                          onClick={() => void handleSimpleAction("modify", action)}
+                        >
+                          수정
+                        </button>
+                        <button
+                          className="button-danger"
+                          type="button"
+                          disabled={busyCommand === `reject-${action.action_id}`}
+                          onClick={() => void handleSimpleAction("reject", action)}
+                        >
+                          거절
                         </button>
                       </div>
                     ) : null}

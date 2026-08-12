@@ -2,6 +2,10 @@
 
 ## Command Receipt·API Trust Boundary
 
+- RejectAction same-command replay는 Action·Approval·Dependency·Audit을 추가 변경하지 않는다.
+- RejectAction hash/version conflict는 child mutation과 `ACTION_REJECTED` Audit이 0이다.
+- Reject upstream의 미실행 transitive dependent는 `DEPENDENCY_BLOCKED`, ACTIVE Approval은 `REVOKED`이며 terminal Action은 보존한다.
+
 - `TST-DB-101`: Receipt·Domain·Audit 원자 Commit
 - `TST-API-101`: 같은 ID·같은 서버 계산 Canonical Hash → 기존 결과
 - `TST-API-102`: 같은 ID·다른 Hash → 409, Domain 변경 0

@@ -16,7 +16,7 @@
     "completion_criteria": [
       "Gmail과 인쇄소 Event를 확인한다.",
       "Tasks에서 동일 미완료 Task가 없는지 확인한다.",
-      "사용자 기한을 보존한다."
+      "사용자 업무 마감을 Task 예정일로 자동 변환하지 않고 메모에 보존한다."
     ],
     "constraints": {
       "required_sources": [
@@ -73,7 +73,7 @@
       "evidence_id": "UE-CORE-031",
       "resource_id": null,
       "segment_id": "UE-CORE-031",
-      "claim": "사용자가 Task 제목과 8월 13일 13시 기한을 요청했다.",
+      "claim": "사용자가 Task 제목과 8월 13일 13시 업무 마감을 요청했다.",
       "excerpt": null,
       "confidence": "HIGH"
     },

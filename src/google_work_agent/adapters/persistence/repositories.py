@@ -22,6 +22,8 @@ from google_work_agent.domain import (
     RunCommand,
     RunStatus,
     VerificationStatus,
+    canonicalize_action_risk,
+    parse_action_risk_json,
     transition_action,
     transition_run,
 )
@@ -40,6 +42,7 @@ from google_work_agent.ports import (
     PersistedAuditEventRecord,
     PersistedTraceEventRecord,
     PlanRecord,
+    PlanReviewStatus,
     PlanStatus,
     ResourceRefRecord,
     ResourceSource,
@@ -196,6 +199,21 @@ class SQLiteRunRepository:
             error_message="run begin_planning affected an unexpected row count",
         )
 
+    def replan(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        return self._transition_run(
+            run_id=run_id,
+            expected_version=expected_version,
+            command=RunCommand.REPLAN,
+            finished_at_ms=finished_at_ms,
+            error_message="run replan affected an unexpected row count",
+        )
+
     def request_confirmation(
         self,
         run_id: str,
@@ -285,6 +303,34 @@ class SQLiteRunRepository:
         )
         if cursor.rowcount != 1:
             raise sqlite3.IntegrityError("write run update affected an unexpected row count")
+        return result
+
+    def finalize_action_outcomes(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = transition_run(
+            current.status,
+            command=RunCommand.FINALIZE_ACTION_OUTCOMES,
+            current_version=current.version,
+            expected_version=expected_version,
+        )
+        if not result.applied:
+            return result
+        self._apply_run_transition(
+            run_id=run_id,
+            previous_version=current.version,
+            status=result.current_status,
+            version=result.current_version,
+            finished_at_ms=finished_at_ms,
+            error_message="run action-outcome finalization affected an unexpected row count",
+        )
         return result
 
     def block_run(
@@ -925,7 +971,8 @@ class SQLitePlanRepository:
     def get_by_id(self, plan_id: str) -> PlanRecord | None:
         row = self._connection.execute(
             """
-            SELECT id, run_id, revision_no, status, summary_text, created_at_ms
+            SELECT id, run_id, revision_no, status, summary_text, created_at_ms,
+                   review_status, review_version
             FROM plans
             WHERE id = ?;
             """,
@@ -940,13 +987,18 @@ class SQLitePlanRepository:
             status=PlanStatus(str(row["status"])),
             summary_text=None if row["summary_text"] is None else str(row["summary_text"]),
             created_at_ms=int(row["created_at_ms"]),
+            review_status=PlanReviewStatus(str(row["review_status"])),
+            review_version=int(row["review_version"]),
         )
 
     def insert_draft(self, plan: PlanRecord) -> None:
         self._connection.execute(
             """
-            INSERT INTO plans (id, run_id, revision_no, status, summary_text, created_at_ms)
-            VALUES (?, ?, ?, ?, ?, ?);
+            INSERT INTO plans (
+                id, run_id, revision_no, status, summary_text, created_at_ms,
+                review_status, review_version
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 plan.id,
@@ -955,8 +1007,47 @@ class SQLitePlanRepository:
                 plan.status.value,
                 plan.summary_text,
                 plan.created_at_ms,
+                plan.review_status.value,
+                plan.review_version,
             ),
         )
+
+    def require_review(self, plan_id: str) -> int:
+        cursor = self._connection.execute(
+            """
+            UPDATE plans
+            SET review_status = 'REQUIRED', review_version = review_version + 1
+            WHERE id = ? AND status IN ('WAITING_APPROVAL', 'ACTIVE');
+            """,
+            (plan_id,),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError(
+                "plan review invalidation affected an unexpected row count"
+            )
+        row = self._connection.execute(
+            "SELECT review_version FROM plans WHERE id = ?;", (plan_id,)
+        ).fetchone()
+        return int(row["review_version"])
+
+    def store_review_result(
+        self,
+        plan_id: str,
+        *,
+        expected_review_version: int,
+        review_status: str,
+    ) -> bool:
+        cursor = self._connection.execute(
+            """
+            UPDATE plans
+            SET review_status = ?
+            WHERE id = ? AND review_version = ? AND review_status <> 'PASSED';
+            """,
+            (review_status, plan_id, expected_review_version),
+        )
+        if cursor.rowcount > 1:
+            raise sqlite3.IntegrityError("plan review result affected an unexpected row count")
+        return cursor.rowcount == 1
 
     def activate(self, plan_id: str) -> None:
         cursor = self._connection.execute(
@@ -990,7 +1081,11 @@ class SQLitePlanRepository:
 
     def complete(self, plan_id: str) -> None:
         cursor = self._connection.execute(
-            "UPDATE plans SET status = 'COMPLETED' WHERE id = ? AND status = 'ACTIVE';",
+            """
+            UPDATE plans
+            SET status = 'COMPLETED'
+            WHERE id = ? AND status IN ('WAITING_APPROVAL', 'ACTIVE');
+            """,
             (plan_id,),
         )
         if cursor.rowcount != 1:
@@ -1023,7 +1118,8 @@ class SQLitePlanRepository:
     def list_by_run(self, run_id: str) -> tuple[PlanRecord, ...]:
         rows = self._connection.execute(
             """
-            SELECT id, run_id, revision_no, status, summary_text, created_at_ms
+            SELECT id, run_id, revision_no, status, summary_text, created_at_ms,
+                   review_status, review_version
             FROM plans
             WHERE run_id = ?
             ORDER BY revision_no ASC;
@@ -1038,6 +1134,8 @@ class SQLitePlanRepository:
                 status=PlanStatus(str(row["status"])),
                 summary_text=None if row["summary_text"] is None else str(row["summary_text"]),
                 created_at_ms=int(row["created_at_ms"]),
+                review_status=PlanReviewStatus(str(row["review_status"])),
+                review_version=int(row["review_version"]),
             )
             for row in rows
         )
@@ -1054,8 +1152,8 @@ class SQLiteActionRepository:
             """
             SELECT id, plan_id, position, tool_name, effect_type, approval_requirement,
                    verification_policy, recovery_policy, target_resource_ref_id, status,
-                   arguments_json, arguments_hash, expected_json, version, created_at_ms,
-                   updated_at_ms
+                   arguments_json, arguments_hash, expected_json, risk_json, version,
+                   created_at_ms, updated_at_ms
             FROM actions
             WHERE id = ?;
             """,
@@ -1075,9 +1173,10 @@ class SQLiteActionRepository:
             INSERT INTO actions (
                 id, plan_id, position, tool_name, effect_type, approval_requirement,
                 verification_policy, recovery_policy, target_resource_ref_id, status,
-                arguments_json, arguments_hash, expected_json, version, created_at_ms, updated_at_ms
+                arguments_json, arguments_hash, expected_json, risk_json, version,
+                created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 action.id,
@@ -1093,6 +1192,7 @@ class SQLiteActionRepository:
                 action.arguments_json,
                 action.arguments_hash,
                 action.expected_json,
+                canonicalize_action_risk(action.risk),
                 action.version,
                 action.created_at_ms,
                 action.updated_at_ms,
@@ -1191,6 +1291,7 @@ class SQLiteActionRepository:
         updated_at_ms: int,
         arguments_json: str,
         arguments_hash: str,
+        risk: dict[str, object],
     ) -> CommandResult[ActionStatus, ActionCommand]:
         current = self.get_by_id(action_id)
         if current is None:
@@ -1207,7 +1308,8 @@ class SQLiteActionRepository:
         cursor = self._connection.execute(
             """
             UPDATE actions
-            SET status = ?, version = ?, updated_at_ms = ?, arguments_json = ?, arguments_hash = ?
+            SET status = ?, version = ?, updated_at_ms = ?, arguments_json = ?, arguments_hash = ?,
+                risk_json = ?
             WHERE id = ? AND version = ?;
             """,
             (
@@ -1216,6 +1318,7 @@ class SQLiteActionRepository:
                 updated_at_ms,
                 arguments_json,
                 arguments_hash,
+                canonicalize_action_risk(risk),
                 action_id,
                 current.version,
             ),
@@ -1225,6 +1328,30 @@ class SQLiteActionRepository:
                 "write action modify transition affected an unexpected row count"
             )
         return result
+
+    def update_risk_snapshot(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+        risk: dict[str, object],
+    ) -> None:
+        cursor = self._connection.execute(
+            """
+            UPDATE actions
+            SET risk_json = ?, updated_at_ms = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (
+                canonicalize_action_risk(risk),
+                updated_at_ms,
+                action_id,
+                expected_version,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("action risk update affected an unexpected row count")
 
     def claim_execution(
         self,
@@ -1416,7 +1543,7 @@ class SQLiteActionRepository:
             """
             UPDATE actions
             SET status = 'DEPENDENCY_BLOCKED', version = version + 1, updated_at_ms = ?
-            WHERE id = ? AND status = 'PROPOSED';
+            WHERE id = ? AND status IN ('PROPOSED', 'MODIFIED', 'APPROVED');
             """,
             (updated_at_ms, action_id),
         )
@@ -1431,8 +1558,8 @@ class SQLiteActionRepository:
             """
             SELECT id, plan_id, position, tool_name, effect_type, approval_requirement,
                    verification_policy, recovery_policy, target_resource_ref_id, status,
-                   arguments_json, arguments_hash, expected_json, version, created_at_ms,
-                   updated_at_ms
+                   arguments_json, arguments_hash, expected_json, risk_json, version,
+                   created_at_ms, updated_at_ms
             FROM actions
             WHERE plan_id = ?
             ORDER BY position ASC;
@@ -1447,7 +1574,7 @@ class SQLiteActionRepository:
             SELECT a.id, a.plan_id, a.position, a.tool_name, a.effect_type,
                    a.approval_requirement, a.verification_policy, a.recovery_policy,
                    a.target_resource_ref_id, a.status, a.arguments_json, a.arguments_hash,
-                   a.expected_json, a.version, a.created_at_ms, a.updated_at_ms
+                   a.expected_json, a.risk_json, a.version, a.created_at_ms, a.updated_at_ms
             FROM actions AS a
             WHERE a.plan_id = ?
               AND a.status = 'PROPOSED'
@@ -2364,6 +2491,7 @@ def _action_record_from_row(row: sqlite3.Row) -> ActionRecord:
         arguments_json=str(row["arguments_json"]),
         arguments_hash=str(row["arguments_hash"]),
         expected_json=str(row["expected_json"]),
+        risk=parse_action_risk_json(str(row["risk_json"])),
         version=int(row["version"]),
         created_at_ms=int(row["created_at_ms"]),
         updated_at_ms=int(row["updated_at_ms"]),

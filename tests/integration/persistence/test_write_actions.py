@@ -1,5 +1,6 @@
 import sqlite3
 from collections.abc import Mapping
+from json import loads
 from pathlib import Path
 
 import pytest
@@ -49,17 +50,29 @@ from google_work_agent.application import (
     WriteActionResponse,
     WriteEvidenceDraft,
 )
+from google_work_agent.application.queries import QueryService
 from google_work_agent.application.write_actions import (
     DeliveryCertainty,
     classify_write_delivery,
     is_reauth_required_error,
 )
-from google_work_agent.domain import PolicyViolationError, ResultCode, RunCommand, RunStatus
+from google_work_agent.domain import (
+    CalendarWorkHours,
+    InvariantViolationError,
+    PolicyViolationError,
+    ResultCode,
+    RunCommand,
+    RunStatus,
+)
 from google_work_agent.ports import (
     EvidenceOriginType,
+    FreeBusyCalendar,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
+    ResourcePage,
     ResourceSnapshot,
+    ResourceType,
+    TimeRange,
 )
 from tests.support.fakes import (
     FakeClock,
@@ -713,6 +726,31 @@ def test_corrective_recovery_creates_fresh_plan_revision_without_reusing_facts(
         gateway=fixture_gateway,
         suffix="corrective",
     )
+    _insert_action_sibling(
+        database_path=write_database,
+        source_action_id="action-corrective",
+        sibling_action_id="action-corrective-pending",
+        status="APPROVED",
+    )
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute(
+            """
+            INSERT INTO approvals (
+                id, action_id, approval_no, action_version, status, approved_by_account_id,
+                arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json,
+                source_snapshot_hash, policy_version, tool_schema_version, idempotency_key,
+                recovery_fingerprint, approved_at_ms, expires_at_ms
+            ) VALUES (
+                'approval-corrective-pending', 'action-corrective-pending', 1, 0, 'ACTIVE',
+                'account-1', '{}', ?, '{}', ?, 'p1', 'v1', ?, ?, 1, 3000
+            );
+            """,
+            ("a" * 64, "b" * 64, "c" * 64, "d" * 64),
+        )
+        connection.commit()
+    finally:
+        connection.close()
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=lambda: 2000,
@@ -746,11 +784,15 @@ def test_corrective_recovery_creates_fresh_plan_revision_without_reusing_facts(
                 (SELECT COUNT(*) FROM verifications);
             """
         ).fetchone()
+        pending_approval_status = connection.execute(
+            "SELECT status FROM approvals WHERE id = 'approval-corrective-pending';"
+        ).fetchone()[0]
         assert [tuple(row) for row in plans] == [
             ("plan-corrective", 1, "SUPERSEDED"),
             ("plan-corrective-v2", 2, "DRAFT"),
         ]
-        assert tuple(counts) == (1, 1, 1, 1)
+        assert tuple(counts) == (2, 2, 1, 1)
+        assert pending_approval_status == "REVOKED"
     finally:
         connection.close()
 
@@ -1828,6 +1870,16 @@ def test_waiting_approval_cancel_revokes_approval_and_finalizes_cancelled(
             0,
             0,
         )
+        audit = connection.execute(
+            """
+            SELECT action_id, outcome, metadata_json
+            FROM audit_events
+            WHERE event_type = 'ACTION_CANCELLED';
+            """
+        ).fetchone()
+        assert audit["action_id"] == "action-cancel"
+        assert audit["outcome"] == ResultCode.TRANSITION_APPLIED.value
+        assert loads(audit["metadata_json"])["attributes"]["previous_status"] == "APPROVED"
     finally:
         connection.close()
 
@@ -1909,6 +1961,7 @@ def test_cancel_version_and_hash_conflicts_are_atomic_and_replay_is_idempotent(
         )
     )
     assert conflict.result_code == ResultCode.VERSION_CONFLICT.value
+    assert _cancel_marker_count(write_database) == 0
     assert _cancel_child_snapshot(write_database) == (
         "WAITING_APPROVAL",
         1,
@@ -1938,6 +1991,8 @@ def test_cancel_version_and_hash_conflicts_are_atomic_and_replay_is_idempotent(
 
     assert first == replay
     assert hash_conflict.result_code == ResultCode.DUPLICATE_COMMAND.value
+    assert _cancel_marker_count(write_database) == 1
+    assert _action_cancelled_audit_count(write_database) == 1
     assert _cancel_child_snapshot(write_database) == snapshot
 
 
@@ -2037,6 +2092,12 @@ def test_executed_cancel_moves_run_to_verifying_without_cancelling_result(
             snapshot=executed.snapshot,
         )
     )
+    _insert_action_sibling(
+        database_path=write_database,
+        source_action_id="action-cancel-executed",
+        sibling_action_id="action-cancel-executed-sibling",
+        status="CANCELLED",
+    )
     RequestRunCancellationService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
@@ -2061,7 +2122,13 @@ def test_executed_cancel_moves_run_to_verifying_without_cancelling_result(
     )
 
     assert finalized.run_status == "VERIFYING"
-    assert finalized.result_kind == "PARTIAL"
+    assert finalized.result_kind is None
+    snapshot = QueryService(
+        database_path=write_database,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    ).get_run_snapshot("run-1")
+    assert snapshot is not None
+    assert snapshot.result_kind is None
     connection = connect_sqlite(write_database)
     try:
         row = connection.execute(
@@ -2170,6 +2237,13 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
 
     assert finalized.run_status == "CANCELLED"
     assert finalized.result_kind == "PARTIAL"
+    snapshot = QueryService(
+        database_path=write_database,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    ).get_run_snapshot("run-1")
+    assert snapshot is not None
+    assert snapshot.result_kind == "PARTIAL"
+    assert snapshot.execution_status["terminal_action_count"] == 2
     connection = connect_sqlite(write_database)
     try:
         rows = connection.execute(
@@ -2184,6 +2258,16 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
             ("action-cancel-pending", "CANCELLED"),
         ]
         assert connection.execute("SELECT COUNT(*) FROM verifications;").fetchone()[0] == 1
+        assert (
+            connection.execute(
+                """
+            SELECT COUNT(*) FROM audit_events
+            WHERE event_type = 'ACTION_CANCELLED'
+              AND action_id = 'action-cancel-pending';
+            """
+            ).fetchone()[0]
+            == 1
+        )
     finally:
         connection.close()
 
@@ -2212,6 +2296,12 @@ def test_unknown_result_cancel_enters_recovery_without_blind_retry(
             error_detail="dispatch outcome unknown",
         )
     )
+    _insert_action_sibling(
+        database_path=write_database,
+        source_action_id="action-cancel-unknown",
+        sibling_action_id="action-cancel-unknown-sibling",
+        status="CANCELLED",
+    )
     RequestRunCancellationService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
@@ -2236,12 +2326,461 @@ def test_unknown_result_cancel_enters_recovery_without_blind_retry(
     )
 
     assert finalized.run_status == "RECOVERY_REQUIRED"
+    snapshot = QueryService(
+        database_path=write_database,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    ).get_run_snapshot("run-1")
+    assert snapshot is not None
+    assert snapshot.result_kind is None
     connection = connect_sqlite(write_database)
     try:
         counts = connection.execute(
             "SELECT COUNT(*), COUNT(DISTINCT id) FROM execution_attempts;"
         ).fetchone()
         assert tuple(counts) == (1, 1)
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("terminal_status", ("MISMATCH", "FAILED"))
+def test_non_success_terminal_action_with_cancelled_sibling_is_not_partial(
+    write_database: Path,
+    terminal_status: str,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = f"cancel-{terminal_status.lower()}"
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix=suffix)
+    _seed_write_terminal_status(
+        database_path=write_database,
+        action_id=f"action-{suffix}",
+        terminal_status=terminal_status,
+    )
+    _insert_action_sibling(
+        database_path=write_database,
+        source_action_id=f"action-{suffix}",
+        sibling_action_id=f"action-{suffix}-pending",
+        status="PROPOSED",
+    )
+
+    result = RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        RequestRunCancellationCommand(
+            command_id=f"request-{suffix}",
+            request_hash="ab" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert result.run_status == "CANCELLED"
+    assert result.result_kind == "CANCELLED"
+    snapshot = QueryService(
+        database_path=write_database,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    ).get_run_snapshot("run-1")
+    assert snapshot is not None
+    assert snapshot.result_kind == "CANCELLED"
+    assert {action.status for action in snapshot.actions} == {terminal_status, "CANCELLED"}
+
+
+def _seed_write_terminal_status(
+    *, database_path: Path, action_id: str, terminal_status: str
+) -> None:
+    connection = connect_sqlite(database_path)
+    try:
+        approval_id = f"approval-{action_id}"
+        attempt_id = f"attempt-{action_id}"
+        connection.execute(
+            "UPDATE actions SET status = 'APPROVED', version = 1 WHERE id = ?;", (action_id,)
+        )
+        connection.execute(
+            """
+            INSERT INTO approvals (
+                id, action_id, approval_no, action_version, status, approved_by_account_id,
+                arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json,
+                source_snapshot_hash, policy_version, tool_schema_version, idempotency_key,
+                recovery_fingerprint, approved_at_ms, expires_at_ms
+            ) VALUES (?, ?, 1, 1, 'ACTIVE', 'account-1', '{}', ?, '{}', ?, 'p1', 'v1', ?, ?, 1, 2);
+            """,
+            (
+                approval_id,
+                action_id,
+                "a" * 64,
+                "b" * 64,
+                approval_id.ljust(64, "x")[:64],
+                "c" * 64,
+            ),
+        )
+        connection.execute(
+            "UPDATE approvals SET status = 'CONSUMED', consumed_at_ms = 1 WHERE id = ?;",
+            (approval_id,),
+        )
+        connection.execute(
+            "UPDATE actions SET status = 'EXECUTING', version = 2 WHERE id = ?;", (action_id,)
+        )
+        connection.execute(
+            """
+            INSERT INTO execution_attempts (id, approval_id, attempt_no, status, started_at_ms)
+            VALUES (?, ?, 1, 'CLAIMED', 1);
+            """,
+            (attempt_id, approval_id),
+        )
+        attempt_status = "FAILED" if terminal_status == "FAILED" else "SUCCEEDED"
+        connection.execute(
+            "UPDATE execution_attempts SET status = ? WHERE id = ?;",
+            (attempt_status, attempt_id),
+        )
+        if terminal_status == "FAILED":
+            connection.execute(
+                "UPDATE actions SET status = 'FAILED', version = 3 WHERE id = ?;", (action_id,)
+            )
+        else:
+            connection.execute(
+                "UPDATE actions SET status = 'EXECUTED', version = 3 WHERE id = ?;", (action_id,)
+            )
+            connection.execute(
+                """
+                INSERT INTO verifications (
+                    id, execution_attempt_id, verification_no, status, normalizer_version,
+                    expected_json, actual_json, diff_json, verified_at_ms
+                ) VALUES (?, ?, 1, 'MISMATCH', 'v1', '{}', '{}', '[]', 2);
+                """,
+                (f"verification-{action_id}", attempt_id),
+            )
+            connection.execute(
+                "UPDATE actions SET status = 'MISMATCH', version = 4 WHERE id = ?;", (action_id,)
+            )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_domain_commands(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    claimed = _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="cancel-recovery",
+    )
+    fixture_gateway.queue_fault(
+        operation="create_task",
+        fault=GoogleGatewayFault(GoogleGatewayFaultKind.TIMEOUT_AFTER_DELIVERY),
+    )
+    with pytest.raises(GoogleWorkspaceGatewayError) as error_info:
+        ExecuteWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=fixture_gateway,
+            now_ms=clock.now_ms,
+            signing_secret="phase-e-secret",
+            service_instance_id="write-svc-1",
+        )(
+            action_id="action-cancel-recovery",
+            claim_token=claimed.claim_token or "",
+        )
+    MarkWriteActionUnknownResultService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        MarkWriteActionUnknownResultCommand(
+            command_id="unknown-cancel-recovery",
+            request_hash="bc" * 32,
+            action_id="action-cancel-recovery",
+            attempt_id="attempt-cancel-recovery",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            error_code=error_info.value.code.value,
+            error_detail=str(error_info.value),
+        )
+    )
+    _insert_action_sibling(
+        database_path=write_database,
+        source_action_id="action-cancel-recovery",
+        sibling_action_id="action-cancel-recovery-pending",
+        status="PROPOSED",
+    )
+    cancellation_requested = RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        RequestRunCancellationCommand(
+            command_id="request-cancel-recovery",
+            request_hash="bd" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+    assert cancellation_requested.run_status == "CANCEL_REQUESTED"
+    assert _cancel_marker_count(write_database) == 1
+    recovery_required = FinalizeRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-cancel-recovery-1",
+            request_hash="be" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+    assert recovery_required.run_status == "RECOVERY_REQUIRED"
+
+    recovered = RecoverUnknownCreateActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )(
+        RecoverUnknownCreateActionCommand(
+            command_id="recover-cancel-recovery",
+            request_hash="bf" * 32,
+            action_id="action-cancel-recovery",
+            attempt_id="attempt-cancel-recovery",
+            expected_action_version=3,
+            expected_attempt_version=1,
+        )
+    )
+    assert recovered.action_status == "EXECUTED"
+    verified = VerifyWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=fixture_gateway,
+    )(
+        VerifyWriteActionCommand(
+            command_id="verify-cancel-recovery",
+            request_hash="ca" * 32,
+            action_id="action-cancel-recovery",
+            attempt_id="attempt-cancel-recovery",
+            expected_action_version=recovered.action_version,
+            verification_id="verification-cancel-recovery",
+        )
+    )
+    assert verified.action_status == "VERIFIED"
+
+    finalized = FinalizeRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-cancel-recovery-2",
+            request_hash="cb" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert finalized.run_status == "CANCELLED"
+    assert finalized.result_kind == "PARTIAL"
+    assert _cancel_marker_count(write_database) == 1
+    assert fixture_gateway.count_calls("create_task") == 1
+    connection = connect_sqlite(write_database)
+    try:
+        rows = connection.execute("SELECT id, status FROM actions ORDER BY position;").fetchall()
+        assert [tuple(row) for row in rows] == [
+            ("action-cancel-recovery", "VERIFIED"),
+            ("action-cancel-recovery-pending", "CANCELLED"),
+        ]
+    finally:
+        connection.close()
+
+
+def test_recovery_without_successful_cancel_marker_cannot_finalize_cancel(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix="no-cancel-marker")
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute("UPDATE runs SET status = 'RECOVERY_REQUIRED' WHERE id = 'run-1';")
+        connection.commit()
+    finally:
+        connection.close()
+
+    result = FinalizeRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-without-marker",
+            request_hash="cc" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert result.applied is False
+    assert result.result_code == ResultCode.STATE_CONFLICT.value
+    assert result.run_status == "RECOVERY_REQUIRED"
+    assert _cancel_marker_count(write_database) == 0
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute(
+            "SELECT (SELECT status FROM plans), (SELECT status FROM actions);"
+        ).fetchone()
+        assert tuple(row) == ("WAITING_APPROVAL", "PROPOSED")
+    finally:
+        connection.close()
+
+
+def test_failed_cancel_audit_marker_does_not_authorize_verifying_continuation(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix="failed-marker")
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute("UPDATE runs SET status = 'VERIFYING' WHERE id = 'run-1';")
+        connection.execute(
+            """
+            INSERT INTO audit_events (
+                account_id, run_id, action_id, actor_type, actor_id, actor_display,
+                event_type, outcome, metadata_json, created_at_ms
+            )
+            VALUES (
+                'account-1', 'run-1', NULL, 'USER', 'account-1', 'User',
+                'RUN_CANCELLATION_REQUESTED', 'VERSION_CONFLICT', '{}', 1000
+            );
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    query_service = QueryService(
+        database_path=write_database,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    )
+    assert query_service.has_cancel_intent("run-1") is False
+    result = FinalizeRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-failed-marker",
+            request_hash="cf" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert result.applied is False
+    assert result.result_code == ResultCode.STATE_CONFLICT.value
+    assert result.run_status == "VERIFYING"
+    connection = connect_sqlite(write_database)
+    try:
+        assert connection.execute("SELECT status FROM actions;").fetchone()[0] == "PROPOSED"
+    finally:
+        connection.close()
+
+
+def test_cancel_marker_does_not_bypass_current_run_domain_guard(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="cancel-guard",
+    )
+    RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        RequestRunCancellationCommand(
+            command_id="request-cancel-guard",
+            request_hash="cd" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute("UPDATE runs SET status = 'REAUTH_REQUIRED' WHERE id = 'run-1';")
+        connection.commit()
+    finally:
+        connection.close()
+
+    result = FinalizeRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-cancel-guard",
+            request_hash="ce" * 32,
+            run_id="run-1",
+            expected_run_version=_run_version(write_database),
+        )
+    )
+
+    assert result.applied is False
+    assert result.result_code == ResultCode.STATE_CONFLICT.value
+    assert result.run_status == "REAUTH_REQUIRED"
+    assert _cancel_marker_count(write_database) == 1
+    connection = connect_sqlite(write_database)
+    try:
+        assert connection.execute("SELECT status FROM actions;").fetchone()[0] == "EXECUTING"
+    finally:
+        connection.close()
+
+
+def _insert_action_sibling(
+    *,
+    database_path: Path,
+    source_action_id: str,
+    sibling_action_id: str,
+    status: str,
+) -> None:
+    connection = connect_sqlite(database_path)
+    try:
+        connection.execute(
+            """
+            INSERT INTO actions (
+                id, plan_id, position, tool_name, effect_type, approval_requirement,
+                verification_policy, recovery_policy, target_resource_ref_id, status,
+                arguments_json, arguments_hash, expected_json, risk_json, version,
+                created_at_ms, updated_at_ms
+            )
+            SELECT
+                ?, plan_id, 2, tool_name, effect_type, approval_requirement,
+                verification_policy, recovery_policy, target_resource_ref_id, ?,
+                arguments_json, arguments_hash, expected_json, risk_json, 0,
+                created_at_ms, updated_at_ms
+            FROM actions WHERE id = ?;
+            """,
+            (sibling_action_id, status, source_action_id),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _cancel_marker_count(database_path: Path) -> int:
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM audit_events
+            WHERE run_id = 'run-1'
+              AND event_type = 'RUN_CANCELLATION_REQUESTED'
+              AND outcome = 'TRANSITION_APPLIED';
+            """
+        ).fetchone()
+        return int(row[0])
+    finally:
+        connection.close()
+
+
+def _action_cancelled_audit_count(database_path: Path) -> int:
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            "SELECT COUNT(*) FROM audit_events WHERE event_type = 'ACTION_CANCELLED';"
+        ).fetchone()
+        return int(row[0])
     finally:
         connection.close()
 
@@ -2298,8 +2837,685 @@ def test_reauth_core_command_marks_run_without_langgraph_dependency(
     assert response.run_status == "REAUTH_REQUIRED"
 
 
+def test_action_risk_defaults_to_empty_object_on_insert(write_database: Path) -> None:
+    _prepare_write_plan(
+        write_database=write_database,
+        clock=FakeClock(1000),
+        suffix="risk-default",
+    )
+
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        action = unit_of_work.actions.get_by_id("action-risk-default")
+        listed = unit_of_work.actions.list_by_plan("plan-risk-default")
+
+    assert action is not None
+    assert action.risk == {}
+    assert listed[0].risk == {}
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute(
+            "SELECT risk_json FROM actions WHERE id = 'action-risk-default';"
+        ).fetchone()
+        assert str(row["risk_json"]) == "{}"
+    finally:
+        connection.close()
+
+
+def test_action_risk_round_trips_through_repository_and_run_snapshot(
+    write_database: Path,
+) -> None:
+    risk = {"z": ["경고", {"matched": True}], "a": 1}
+    _prepare_write_plan(
+        write_database=write_database,
+        clock=FakeClock(1000),
+        suffix="risk-roundtrip",
+        risk=risk,
+    )
+
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        action = unit_of_work.actions.get_by_id("action-risk-roundtrip")
+        listed = unit_of_work.actions.list_by_plan("plan-risk-roundtrip")
+        ready = unit_of_work.actions.list_ready_actions("plan-risk-roundtrip")
+
+    assert action is not None
+    assert action.risk == risk
+    assert listed[0].risk == risk
+    assert ready[0].risk == risk
+    snapshot = QueryService(
+        database_path=write_database,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    ).get_run_snapshot("run-1")
+    assert snapshot is not None
+    assert snapshot.actions[0].risk == risk
+
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute(
+            "SELECT risk_json FROM actions WHERE id = 'action-risk-roundtrip';"
+        ).fetchone()
+        assert str(row["risk_json"]) == '{"a":1,"z":["경고",{"matched":true}]}'
+    finally:
+        connection.close()
+
+
+def test_action_risk_over_16_kib_is_rejected_before_plan_persistence(
+    write_database: Path,
+) -> None:
+    service = SaveWritePlanService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=FakeClock(1000).now_ms,
+    )
+    with pytest.raises(InvariantViolationError, match="16 KiB"):
+        service(
+            SaveWritePlanCommand(
+                command_id="save-risk-large",
+                request_hash="91" * 32,
+                plan_id="plan-risk-large",
+                run_id="run-1",
+                revision_no=1,
+                summary_text="oversized risk",
+                expected_run_version=0,
+                actions=(
+                    WriteActionDraft(
+                        action_id="action-risk-large",
+                        position=1,
+                        tool_name="tasks_create_task",
+                        arguments={
+                            "task_list_id": "task-list-default",
+                            "payload": {"title": "Risk limit"},
+                        },
+                        expected={},
+                        evidence_ids=("evidence-risk-large",),
+                        risk={"detail": "x" * (16 * 1024)},
+                    ),
+                ),
+                evidence=(
+                    WriteEvidenceDraft(
+                        evidence_id="evidence-risk-large",
+                        origin_type=EvidenceOriginType.DERIVED,
+                        kind="USER_REQUEST",
+                        excerpt="Create a task.",
+                    ),
+                ),
+            )
+        )
+
+    connection = connect_sqlite(write_database)
+    try:
+        assert connection.execute("SELECT COUNT(*) FROM plans;").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM actions;").fetchone()[0] == 0
+    finally:
+        connection.close()
+
+
+def test_repository_rejects_corrupt_persisted_action_risk(write_database: Path) -> None:
+    _prepare_write_plan(
+        write_database=write_database,
+        clock=FakeClock(1000),
+        suffix="risk-corrupt",
+    )
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute("PRAGMA ignore_check_constraints = ON;")
+        connection.execute(
+            "UPDATE actions SET risk_json = 'not-json' WHERE id = 'action-risk-corrupt';"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    with (
+        sqlite_unit_of_work_factory(write_database)() as unit_of_work,
+        pytest.raises(InvariantViolationError, match="not valid JSON"),
+    ):
+        unit_of_work.actions.get_by_id("action-risk-corrupt")
+
+
+def _duplicate_risk(
+    decision: str,
+    *,
+    matched_ids: tuple[str, ...] = (),
+    freshness: str = "EVIDENCE_ONLY",
+) -> dict[str, object]:
+    return {
+        "duplicate": {
+            "decision": decision,
+            "matched_resource_ids": list(matched_ids),
+            "reason_codes": [
+                "NO_MATCHING_INCOMPLETE_TASK"
+                if decision == "NOT_DUPLICATE"
+                else "TITLE_EXACT_DATE_EXACT"
+                if decision == "CLEAR_DUPLICATE"
+                else "TITLE_EXACT_DATE_DIFFERENT"
+            ],
+            "checked_at_ms": 1000,
+            "freshness": freshness,
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    ("decision", "acknowledged", "expected_applied"),
+    [
+        ("NOT_DUPLICATE", False, True),
+        ("SIMILAR_CANDIDATE", False, False),
+        ("SIMILAR_CANDIDATE", True, True),
+        ("CLEAR_DUPLICATE", False, False),
+        ("CLEAR_DUPLICATE", True, True),
+    ],
+)
+def test_task_duplicate_approval_matrix(
+    write_database: Path,
+    decision: str,
+    acknowledged: bool,
+    expected_applied: bool,
+) -> None:
+    clock = FakeClock(1000)
+    matched_ids = () if decision == "NOT_DUPLICATE" else ("existing-task",)
+    _prepare_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="dup-approval",
+        risk=_duplicate_risk(decision, matched_ids=matched_ids),
+    )
+    service = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+
+    response = service(
+        ApproveWriteActionCommand(
+            command_id="approve-duplicate",
+            request_hash="fa" * 32,
+            action_id="action-dup-approval",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-duplicate",
+            idempotency_key="fb" * 32,
+            duplicate_acknowledged=acknowledged,
+        )
+    )
+
+    assert response.applied is expected_applied
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        approvals = unit_of_work.approvals.list_by_action("action-dup-approval")
+    assert len(approvals) == int(expected_applied)
+    if approvals:
+        snapshot = loads(approvals[0].source_snapshot_json)
+        assert snapshot["task_duplicate"]["risk"]["matched_resource_ids"] == list(matched_ids)
+        assert "client-forged" not in approvals[0].source_snapshot_json
+
+
+def test_task_duplicate_approval_replay_does_not_duplicate_override_audit(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="dup-replay",
+        risk=_duplicate_risk("CLEAR_DUPLICATE", matched_ids=("existing-task",)),
+    )
+    service = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    command = ApproveWriteActionCommand(
+        command_id="approve-duplicate-replay",
+        request_hash="fc" * 32,
+        action_id="action-dup-replay",
+        expected_version=0,
+        approved_by_account_id="account-1",
+        approved_by_display="User",
+        source_snapshot={},
+        approval_id="approval-duplicate-replay",
+        idempotency_key="fd" * 32,
+        duplicate_acknowledged=True,
+    )
+
+    assert service(command) == service(command)
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        events = unit_of_work.audits.list_by_aggregate(
+            run_id="run-1", action_id="action-dup-replay"
+        )
+    assert sum(event.event_type == "TASK_DUPLICATE_OVERRIDE_ACKNOWLEDGED" for event in events) == 1
+
+
+class _TaskDuplicatePreflightGateway:
+    def __init__(
+        self,
+        *,
+        database_path: Path,
+        tasks: tuple[ResourceSnapshot, ...] = (),
+        error: Exception | None = None,
+    ) -> None:
+        self.database_path = database_path
+        self.tasks = tasks
+        self.error = error
+        self.calls = 0
+
+    def list_tasks(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourcePage:
+        del task_list_id, page_token, page_size
+        _assert_can_open_sqlite_write_transaction(self.database_path)
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        return ResourcePage(items=self.tasks, next_page_token=None)
+
+
+def _duplicate_task(resource_id: str, *, title: str) -> ResourceSnapshot:
+    return ResourceSnapshot(
+        fixture_snapshot_id=resource_id,
+        resource_type=ResourceType.TASK,
+        resource_id=resource_id,
+        parent_id="task-list-default",
+        related_resource_ids=("task-list-default",),
+        version="1",
+        recovery_fingerprint=None,
+        payload={"title": title, "status": "needsAction"},
+    )
+
+
+def _approve_preflight_action(
+    *, write_database: Path, clock: FakeClock, suffix: str, risk: dict[str, object]
+) -> None:
+    _prepare_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix=suffix,
+        risk=risk,
+    )
+    response = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        ApproveWriteActionCommand(
+            command_id=f"approve-{suffix}",
+            request_hash="fe" * 32,
+            action_id=f"action-{suffix}",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id=f"approval-{suffix}",
+            idempotency_key="ff" * 32,
+            duplicate_acknowledged=True,
+        )
+    )
+    assert response.applied is True
+
+
+def test_task_duplicate_preflight_new_match_revokes_stale_approval(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = "fresh-new"
+    _approve_preflight_action(
+        write_database=write_database,
+        clock=clock,
+        suffix=suffix,
+        risk=_duplicate_risk("NOT_DUPLICATE"),
+    )
+    gateway = _TaskDuplicatePreflightGateway(
+        database_path=write_database,
+        tasks=(_duplicate_task("new-task", title=f"title-{suffix}"),),
+    )
+
+    with pytest.raises(PolicyViolationError, match="reapproval"):
+        PreflightWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=gateway,  # type: ignore[arg-type]
+            now_ms=clock.now_ms,
+        )(action_id=f"action-{suffix}")
+
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        action = unit_of_work.actions.get_by_id(f"action-{suffix}")
+        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
+    assert action is not None
+    assert action.status == "MODIFIED"
+    assert action.version == 2
+    assert action.risk["duplicate"]["freshness"] == "FRESH_GOOGLE_GET"  # type: ignore[index]
+    assert approval is None
+
+
+def test_task_duplicate_preflight_same_acknowledged_match_allows_claim(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = "fresh-same"
+    risk = _duplicate_risk("CLEAR_DUPLICATE", matched_ids=("existing-task",))
+    _approve_preflight_action(
+        write_database=write_database,
+        clock=clock,
+        suffix=suffix,
+        risk=risk,
+    )
+    gateway = _TaskDuplicatePreflightGateway(
+        database_path=write_database,
+        tasks=(_duplicate_task("existing-task", title=f"title-{suffix}"),),
+    )
+
+    PreflightWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=gateway,  # type: ignore[arg-type]
+        now_ms=clock.now_ms,
+    )(action_id=f"action-{suffix}")
+
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        action = unit_of_work.actions.get_by_id(f"action-{suffix}")
+        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
+    assert action is not None
+    assert action.status == "APPROVED"
+    assert action.version == 1
+    assert action.risk["duplicate"]["freshness"] == "FRESH_GOOGLE_GET"  # type: ignore[index]
+    assert approval is not None
+    claim = ClaimWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        signing_secret="duplicate-preflight-secret",
+        service_instance_id="duplicate-preflight-service",
+    )(
+        ClaimWriteActionCommand(
+            command_id="claim-fresh-same",
+            request_hash="ab" * 32,
+            action_id=f"action-{suffix}",
+            expected_version=1,
+            source_snapshot={},
+            attempt_id="attempt-fresh-same",
+            nonce="nonce-fresh-same",
+        )
+    )
+    assert claim.applied is True
+
+
+def test_task_duplicate_preflight_source_failure_is_fail_closed(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = "fresh-fail"
+    _approve_preflight_action(
+        write_database=write_database,
+        clock=clock,
+        suffix=suffix,
+        risk=_duplicate_risk("NOT_DUPLICATE"),
+    )
+    gateway = _TaskDuplicatePreflightGateway(
+        database_path=write_database,
+        error=TimeoutError("source unavailable"),
+    )
+
+    with pytest.raises(TimeoutError, match="source unavailable"):
+        PreflightWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=gateway,  # type: ignore[arg-type]
+            now_ms=clock.now_ms,
+        )(action_id=f"action-{suffix}")
+
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        action = unit_of_work.actions.get_by_id(f"action-{suffix}")
+        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
+        events = unit_of_work.audits.list_by_aggregate(run_id="run-1", action_id=f"action-{suffix}")
+    assert action is not None and action.status == "APPROVED" and action.version == 1
+    assert approval is not None
+    assert any(event.event_type == "TASK_DUPLICATE_PREFLIGHT_BLOCKED" for event in events)
+
+
+class _FeasibilityPreflightGateway:
+    def __init__(
+        self, *, busy_event: ResourceSnapshot | None = None, error: Exception | None = None
+    ) -> None:
+        self.busy_event = busy_event
+        self.error = error
+
+    def list_calendar_events(self, **kwargs: object) -> ResourcePage:
+        if self.error is not None and str(kwargs.get("time_max", "")).endswith("18:00:00+09:00"):
+            raise self.error
+        is_horizon = str(kwargs.get("time_max", "")).endswith("18:00:00+09:00")
+        items = (self.busy_event,) if is_horizon and self.busy_event is not None else ()
+        return ResourcePage(items=items, next_page_token=None)
+
+    def query_freebusy(
+        self, *, calendar_ids: tuple[str, ...], time_range: TimeRange
+    ) -> tuple[FreeBusyCalendar, ...]:
+        del time_range
+        return (FreeBusyCalendar(calendar_id=calendar_ids[0], intervals=()),)
+
+
+def _feasibility_risk(decision: str, *, best_minutes: int) -> dict[str, object]:
+    return {
+        "calendar_conflict": {
+            "decision": "NO_CONFLICT",
+            "matched_resource_ids": [],
+            "reason_codes": ["NO_CONFLICT"],
+            "checked_at_ms": 1000,
+            "freshness": "EVIDENCE_ONLY",
+        },
+        "feasibility_input": {
+            "business_deadline": "1970-01-01",
+            "business_deadline_source": "USER",
+            "required_duration_minutes": 120,
+            "duration_source": "EXPLICIT_ESTIMATE",
+        },
+        "feasibility": {
+            "decision": decision,
+            "reason_codes": [
+                "CLEAN_SLOT_AVAILABLE" if decision == "FEASIBLE" else "NO_CONTIGUOUS_SLOT"
+            ],
+            "business_deadline": "1970-01-01",
+            "derived_cutoff": "1970-01-01T18:00:00+09:00",
+            "required_duration_minutes": 120,
+            "best_clean_slot_minutes": best_minutes,
+            "best_warning_slot_minutes": best_minutes,
+            "checked_at_ms": 1000,
+            "freshness": "EVIDENCE_ONLY",
+        },
+    }
+
+
+def _prepare_calendar_feasibility_action(
+    *, write_database: Path, clock: FakeClock, suffix: str, risk: dict[str, object]
+) -> WriteActionResponse:
+    payload = {
+        "summary": "work block",
+        "start": "1970-01-01T09:00:00+09:00",
+        "end": "1970-01-01T10:00:00+09:00",
+    }
+    save = SaveWritePlanService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database), now_ms=clock.now_ms
+    )
+    publish = PublishWritePlanService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database), now_ms=clock.now_ms
+    )
+    save(
+        SaveWritePlanCommand(
+            command_id=f"save-{suffix}",
+            request_hash="a1" * 32,
+            plan_id=f"plan-{suffix}",
+            run_id="run-1",
+            revision_no=1,
+            summary_text="calendar feasibility",
+            expected_run_version=0,
+            actions=(
+                WriteActionDraft(
+                    action_id=f"action-{suffix}",
+                    position=1,
+                    tool_name="calendar_create_event",
+                    arguments={"calendar_id": "primary", "payload": payload},
+                    expected={
+                        "resource_type": "calendar_event",
+                        "resource_id": None,
+                        "payload": payload,
+                    },
+                    evidence_ids=(f"evidence-{suffix}",),
+                    risk=risk,
+                ),
+            ),
+            evidence=(
+                WriteEvidenceDraft(
+                    evidence_id=f"evidence-{suffix}",
+                    origin_type=EvidenceOriginType.DERIVED,
+                    kind="USER_REQUEST",
+                    excerpt="calendar feasibility",
+                ),
+            ),
+        )
+    )
+    publish(
+        PublishWritePlanCommand(
+            command_id=f"publish-{suffix}",
+            request_hash="a2" * 32,
+            plan_id=f"plan-{suffix}",
+            run_id="run-1",
+            expected_run_version=0,
+        )
+    )
+    approved = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database), now_ms=clock.now_ms
+    )(
+        ApproveWriteActionCommand(
+            command_id=f"approve-{suffix}",
+            request_hash="a3" * 32,
+            action_id=f"action-{suffix}",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id=f"approval-{suffix}",
+            idempotency_key="a4" * 32,
+        )
+    )
+    return approved
+
+
+def test_infeasible_action_cannot_be_approved(write_database: Path) -> None:
+    clock = FakeClock(1000)
+    suffix = "feasibility-blocked"
+    response = _prepare_calendar_feasibility_action(
+        write_database=write_database,
+        clock=clock,
+        suffix=suffix,
+        risk=_feasibility_risk("INFEASIBLE", best_minutes=60),
+    )
+    assert response.applied is False
+    assert response.conflict_detail == "work is infeasible before the business deadline"
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
+        events = unit_of_work.audits.list_by_aggregate(run_id="run-1", action_id=f"action-{suffix}")
+    assert approval is None
+    assert any(event.event_type == "FEASIBILITY_APPROVAL_BLOCKED" for event in events)
+
+
+def test_feasibility_preflight_change_revokes_approval_before_claim(
+    write_database: Path,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = "feasibility-change"
+    assert (
+        _prepare_calendar_feasibility_action(
+            write_database=write_database,
+            clock=clock,
+            suffix=suffix,
+            risk=_feasibility_risk("FEASIBLE", best_minutes=540),
+        ).applied
+        is True
+    )
+    busy = ResourceSnapshot(
+        fixture_snapshot_id="busy",
+        resource_type=ResourceType.CALENDAR_EVENT,
+        resource_id="busy",
+        parent_id="primary",
+        related_resource_ids=("primary",),
+        version="1",
+        recovery_fingerprint=None,
+        payload={
+            "start": "1970-01-01T10:00:00+09:00",
+            "end": "1970-01-01T18:00:00+09:00",
+        },
+    )
+
+    with pytest.raises(PolicyViolationError, match="reapproval"):
+        PreflightWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=_FeasibilityPreflightGateway(busy_event=busy),  # type: ignore[arg-type]
+            now_ms=clock.now_ms,
+            work_hours_provider=lambda: CalendarWorkHours(timezone="Asia/Seoul"),
+        )(action_id=f"action-{suffix}")
+
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        action = unit_of_work.actions.get_by_id(f"action-{suffix}")
+        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
+    connection = connect_sqlite(write_database)
+    try:
+        attempt_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM execution_attempts AS attempt
+            JOIN approvals AS approval ON approval.id = attempt.approval_id
+            WHERE approval.action_id = ?
+            """,
+            (f"action-{suffix}",),
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert action is not None and action.status == "MODIFIED"
+    assert action.risk["feasibility"]["decision"] == "INFEASIBLE"  # type: ignore[index]
+    assert approval is None
+    assert attempt_count == 0
+
+
+def test_feasibility_preflight_same_snapshot_allows_claim(write_database: Path) -> None:
+    clock = FakeClock(1000)
+    suffix = "feasibility-same"
+    assert (
+        _prepare_calendar_feasibility_action(
+            write_database=write_database,
+            clock=clock,
+            suffix=suffix,
+            risk=_feasibility_risk("FEASIBLE", best_minutes=539),
+        ).applied
+        is True
+    )
+    PreflightWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=_FeasibilityPreflightGateway(),  # type: ignore[arg-type]
+        now_ms=clock.now_ms,
+        work_hours_provider=lambda: CalendarWorkHours(timezone="Asia/Seoul"),
+    )(action_id=f"action-{suffix}")
+
+    response = ClaimWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        signing_secret="feasibility-secret",
+        service_instance_id="feasibility-service",
+    )(
+        ClaimWriteActionCommand(
+            command_id=f"claim-{suffix}",
+            request_hash="a5" * 32,
+            action_id=f"action-{suffix}",
+            expected_version=1,
+            source_snapshot={},
+            attempt_id=f"attempt-{suffix}",
+            nonce=f"nonce-{suffix}",
+        )
+    )
+    assert response.applied is True
+
+
 def _prepare_write_plan(
-    *, write_database: Path, clock: FakeClock, suffix: str, run_id: str = "run-1"
+    *,
+    write_database: Path,
+    clock: FakeClock,
+    suffix: str,
+    run_id: str = "run-1",
+    risk: dict[str, object] | None = None,
 ) -> None:
     if run_id != "run-1":
         connection = connect_sqlite(write_database)
@@ -2359,6 +3575,7 @@ def _prepare_write_plan(
                     arguments={"task_list_id": "task-list-default", "payload": payload},
                     expected=expected,
                     evidence_ids=(f"evidence-{suffix}",),
+                    risk={} if risk is None else risk,
                 ),
             ),
             evidence=(

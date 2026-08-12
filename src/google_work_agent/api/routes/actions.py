@@ -21,11 +21,12 @@ from google_work_agent.api.schemas.actions import (
     RejectActionRequestV2,
 )
 from google_work_agent.application.coordinator import QueueBusyError
+from google_work_agent.application.projections import build_snapshot_required_event
 from google_work_agent.application.start_run import (
     ModifyWriteActionCommand,
     RejectWriteActionCommand,
 )
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports import EndpointPolicy, PlanReviewStatus
 
 router = APIRouter(prefix="/api/v1/actions")
 
@@ -63,6 +64,8 @@ def approve(
                 payload={"action_id": action_id, "command_id": payload.command_id},
             ),
             ttl_ms=payload.ttl_ms,
+            duplicate_acknowledged=payload.duplicate_acknowledged,
+            calendar_conflict_acknowledged=payload.calendar_conflict_acknowledged,
         )
     )
     if result.applied:
@@ -137,6 +140,38 @@ def modify(
             arguments_patch=dict(payload.arguments_patch),
         )
     )
+    if bool(result["applied"]):
+        _, run_id = _account_and_run_id_for_action(container, action_id)
+        with container.unit_of_work_factory() as unit_of_work:
+            action = unit_of_work.actions.get_by_id(action_id)
+            if action is None:
+                raise LookupError(f"action not found: {action_id}")
+            plan = unit_of_work.plans.get_by_id(action.plan_id)
+            if plan is None:
+                raise LookupError(f"plan not found: {action.plan_id}")
+        if plan.review_status is PlanReviewStatus.REQUIRED:
+            try:
+                container.local_run_coordinator.enqueue_resume(
+                    run_id=run_id,
+                    request_id=request.state.request_id,
+                    command_id=payload.command_id,
+                    resume_kind="MODIFY_REVIEW",
+                    resume_payload={
+                        "resume_kind": "MODIFY_REVIEW",
+                        "plan_id": plan.id,
+                        "review_version": plan.review_version,
+                    },
+                )
+            except QueueBusyError as error:
+                raise ApiError(
+                    error_code="SERVICE_BUSY",
+                    user_message="The action was modified, but plan review is still queued.",
+                    status_code=503,
+                    request_id=request.state.request_id,
+                    retryable=True,
+                    detail_code=type(error).__name__,
+                    current_state=str(result["action_status"]),
+                ) from error
     response.status_code = http_status_for_result_code(str(result["result_code"]))
     return ActionCommandResponse(
         applied=bool(result["applied"]),
@@ -163,6 +198,7 @@ def reject(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation=RuntimeOperation.APPROVALS)
+    actor_account_id, run_id = _account_and_run_id_for_action(container, action_id)
     result = container.reject_action_service(
         RejectWriteActionCommand(
             command_id=payload.command_id,
@@ -172,8 +208,18 @@ def reject(
             ),
             action_id=action_id,
             expected_version=payload.expected_version,
+            actor_account_id=actor_account_id,
+            reason_code=payload.reason_code,
         )
     )
+    if bool(result["applied"]):
+        container.event_publisher.publish(
+            build_snapshot_required_event(
+                run_id=run_id,
+                occurred_at_ms=container.clock.now_ms(),
+                reason="ACTION_REJECTED",
+            )
+        )
     response.status_code = http_status_for_result_code(str(result["result_code"]))
     return ActionCommandResponse(
         applied=bool(result["applied"]),

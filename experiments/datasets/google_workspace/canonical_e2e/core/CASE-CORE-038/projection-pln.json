@@ -19,7 +19,7 @@
         "target_resource_id": "TSK-E-001",
         "arguments": {
           "task_id": "TSK-E-001",
-          "due": "2026-08-07T17:00:00+09:00"
+          "notes": "업무 마감: 2026-08-07 17:00 Asia/Seoul"
         },
         "expected": {
           "updated": true

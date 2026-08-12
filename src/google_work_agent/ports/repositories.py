@@ -79,6 +79,15 @@ class RunRepository(Protocol):
     ) -> CommandResult[RunStatus, RunCommand]:
         """Transition one run into PLANNING."""
 
+    def replan(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int | None = None,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        """Move a waiting-approval run back to PLANNING for a new revision."""
+
     def request_confirmation(
         self,
         run_id: str,
@@ -105,6 +114,15 @@ class RunRepository(Protocol):
         finished_at_ms: int,
     ) -> CommandResult[RunStatus, RunCommand]:
         """Complete a verified write run once all actions are terminal."""
+
+    def finalize_action_outcomes(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        """Complete a run after all action outcomes are terminal."""
 
     def block_run(
         self,
@@ -270,6 +288,18 @@ class PlanRepository(Protocol):
     def insert_draft(self, plan: PlanRecord) -> None:
         """Persist a new draft plan."""
 
+    def require_review(self, plan_id: str) -> int:
+        """Invalidate the prior review and return the new review generation."""
+
+    def store_review_result(
+        self,
+        plan_id: str,
+        *,
+        expected_review_version: int,
+        review_status: str,
+    ) -> bool:
+        """Store a review result only for the generation that was reviewed."""
+
     def activate(self, plan_id: str) -> None:
         """Promote a draft plan to ACTIVE."""
 
@@ -366,8 +396,19 @@ class ActionRepository(Protocol):
         updated_at_ms: int,
         arguments_json: str,
         arguments_hash: str,
+        risk: dict[str, object],
     ) -> CommandResult[ActionStatus, ActionCommand]:
-        """Transition a write action into MODIFIED and replace its arguments."""
+        """Transition to MODIFIED and atomically replace arguments and risk."""
+
+    def update_risk_snapshot(
+        self,
+        action_id: str,
+        *,
+        expected_version: int,
+        updated_at_ms: int,
+        risk: dict[str, object],
+    ) -> None:
+        """Replace server-owned risk without changing lifecycle status/version."""
 
     def claim_execution(
         self,
@@ -452,7 +493,7 @@ class ActionRepository(Protocol):
         """Transition a write action into VERIFIED or MISMATCH."""
 
     def mark_dependency_blocked(self, action_id: str, *, updated_at_ms: int) -> bool:
-        """Mark one action as dependency blocked when still PROPOSED."""
+        """Block one unexecuted pending action after an upstream terminal failure."""
 
     def list_by_plan(self, plan_id: str) -> tuple[ActionRecord, ...]:
         """Return actions for one plan."""

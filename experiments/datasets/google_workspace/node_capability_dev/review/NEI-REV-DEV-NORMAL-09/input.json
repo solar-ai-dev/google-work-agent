@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "fixture_snapshot_id": "FW-D-001",
-  "user_goal": "법무 검토 Task 생성",
+  "user_goal": "법무 검토 Task 생성 및 업무 마감 의미 보존",
   "evidence": [
     {
       "evidence_id": "EVD-PL-N-TASK",
@@ -25,7 +25,7 @@
         "target_resource_id": null,
         "arguments": {
           "title": "법무 검토",
-          "due": "2026-08-20"
+          "notes": "업무 마감: 2026-08-20"
         },
         "expected": {
           "created": true

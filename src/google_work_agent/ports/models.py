@@ -32,6 +32,16 @@ class PlanStatus(StrEnum):
     COMPLETED = "COMPLETED"
 
 
+class PlanReviewStatus(StrEnum):
+    """Durable review gate for a persisted write-plan revision."""
+
+    PASSED = "PASSED"
+    REQUIRED = "REQUIRED"
+    REVISE = "REVISE"
+    RETRIEVE_MORE = "RETRIEVE_MORE"
+    BLOCKED = "BLOCKED"
+
+
 class ResourceSource(StrEnum):
     """Persisted resource source values."""
 
@@ -160,6 +170,8 @@ class PlanRecord:
     status: PlanStatus
     summary_text: str | None
     created_at_ms: int
+    review_status: PlanReviewStatus = PlanReviewStatus.PASSED
+    review_version: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,6 +191,7 @@ class ActionRecord:
     arguments_json: str
     arguments_hash: str
     expected_json: str
+    risk: dict[str, object]
     version: int
     created_at_ms: int
     updated_at_ms: int

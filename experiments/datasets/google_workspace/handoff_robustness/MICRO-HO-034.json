@@ -22,7 +22,7 @@
         "target_resource_id": "TSK-A-001",
         "arguments": {
           "task_id": "TSK-A-001",
-          "due": "2026-08-15"
+          "notes": "담당 지민\n업무 마감: 2026-08-15"
         },
         "expected": {
           "updated": true

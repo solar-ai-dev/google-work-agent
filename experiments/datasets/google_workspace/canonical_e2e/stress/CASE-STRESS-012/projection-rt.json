@@ -73,7 +73,7 @@
         "required": true,
         "constraints": {
           "task_id": "TSK-A-001",
-          "due": "2026-08-15"
+          "notes": "담당 지민\n업무 마감: 2026-08-15"
         },
         "expected_outcome": "FAILED_BEFORE_SEND"
       },
