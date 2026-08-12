@@ -1841,6 +1841,16 @@ def test_waiting_approval_cancel_revokes_approval_and_finalizes_cancelled(
             0,
             0,
         )
+        audit = connection.execute(
+            """
+            SELECT action_id, outcome, metadata_json
+            FROM audit_events
+            WHERE event_type = 'ACTION_CANCELLED';
+            """
+        ).fetchone()
+        assert audit["action_id"] == "action-cancel"
+        assert audit["outcome"] == ResultCode.TRANSITION_APPLIED.value
+        assert loads(audit["metadata_json"])["attributes"]["previous_status"] == "APPROVED"
     finally:
         connection.close()
 
@@ -1953,6 +1963,7 @@ def test_cancel_version_and_hash_conflicts_are_atomic_and_replay_is_idempotent(
     assert first == replay
     assert hash_conflict.result_code == ResultCode.DUPLICATE_COMMAND.value
     assert _cancel_marker_count(write_database) == 1
+    assert _action_cancelled_audit_count(write_database) == 1
     assert _cancel_child_snapshot(write_database) == snapshot
 
 
@@ -2218,6 +2229,13 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
             ("action-cancel-pending", "CANCELLED"),
         ]
         assert connection.execute("SELECT COUNT(*) FROM verifications;").fetchone()[0] == 1
+        assert connection.execute(
+            """
+            SELECT COUNT(*) FROM audit_events
+            WHERE event_type = 'ACTION_CANCELLED'
+              AND action_id = 'action-cancel-pending';
+            """
+        ).fetchone()[0] == 1
     finally:
         connection.close()
 
@@ -2650,6 +2668,17 @@ def _cancel_marker_count(database_path: Path) -> int:
               AND event_type = 'RUN_CANCELLATION_REQUESTED'
               AND outcome = 'TRANSITION_APPLIED';
             """
+        ).fetchone()
+        return int(row[0])
+    finally:
+        connection.close()
+
+
+def _action_cancelled_audit_count(database_path: Path) -> int:
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            "SELECT COUNT(*) FROM audit_events WHERE event_type = 'ACTION_CANCELLED';"
         ).fetchone()
         return int(row[0])
     finally:

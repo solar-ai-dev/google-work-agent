@@ -2996,20 +2996,13 @@ class RequestRunCancellationService:
                 for action in actions
             )
             if not has_started_write:
-                for action in actions:
-                    if action.status in {
-                        ActionStatus.PROPOSED.value,
-                        ActionStatus.MODIFIED.value,
-                        ActionStatus.APPROVED.value,
-                        ActionStatus.EXPIRED.value,
-                    }:
-                        if action.status == ActionStatus.APPROVED.value:
-                            unit_of_work.approvals.revoke_active_by_action(action.id)
-                        unit_of_work.actions.cancel_pending(
-                            action.id,
-                            expected_version=action.version,
-                            updated_at_ms=now_ms,
-                        )
+                if plan is not None:
+                    _cancel_pending_actions(
+                        unit_of_work=unit_of_work,
+                        run_id=run.id,
+                        plan_id=plan.id,
+                        updated_at_ms=now_ms,
+                    )
                 if plan is not None:
                     unit_of_work.plans.cancel(plan.id)
                 final_result = unit_of_work.runs.finalize_cancel(
@@ -3218,6 +3211,7 @@ class FinalizeRunCancellationService:
             else:
                 _cancel_pending_actions(
                     unit_of_work=unit_of_work,
+                    run_id=run.id,
                     plan_id=plan.id,
                     updated_at_ms=now_ms,
                 )
@@ -3353,6 +3347,7 @@ class ResolveMismatchRecoveryService:
             if command.resolution_kind is RecoveryResolutionKind.ACCEPT_PARTIAL:
                 _cancel_pending_actions(
                     unit_of_work=unit_of_work,
+                    run_id=run.id,
                     plan_id=plan.id,
                     updated_at_ms=now_ms,
                 )
@@ -4147,7 +4142,9 @@ def classify_write_delivery(error: GoogleWorkspaceGatewayError) -> DeliveryCerta
     return error.delivery_certainty
 
 
-def _cancel_pending_actions(*, unit_of_work: UnitOfWork, plan_id: str, updated_at_ms: int) -> None:
+def _cancel_pending_actions(
+    *, unit_of_work: UnitOfWork, run_id: str, plan_id: str, updated_at_ms: int
+) -> None:
     pending_statuses = {
         ActionStatus.PROPOSED.value,
         ActionStatus.MODIFIED.value,
@@ -4166,6 +4163,20 @@ def _cancel_pending_actions(*, unit_of_work: UnitOfWork, plan_id: str, updated_a
         )
         if not result.applied:
             raise RuntimeError(f"pending action cancellation failed: {action.id}")
+        unit_of_work.audits.add(
+            _audit_event(
+                run_id=run_id,
+                action_id=action.id,
+                event_type="ACTION_CANCELLED",
+                outcome=ResultCode.TRANSITION_APPLIED.value,
+                metadata={
+                    "plan_id": plan_id,
+                    "previous_status": action.status,
+                    "new_status": ActionStatus.CANCELLED.value,
+                },
+                created_at_ms=updated_at_ms,
+            )
+        )
 
 
 def _has_successful_cancel_marker(unit_of_work: UnitOfWork, run_id: str) -> bool:
