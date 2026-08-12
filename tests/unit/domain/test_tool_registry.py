@@ -58,6 +58,7 @@ def test_write_tool_registry_contract_matches_policy() -> None:
     assert create_entry.verification_policy is VerificationPolicy.GET_COMPARE
     assert create_entry.recovery_policy is RecoveryPolicy.RESOURCE_SEARCH
     assert create_entry.retryable is False
+    assert send_entry.scope == "gmail.compose"
 
     assert update_entry.effect_type is EffectType.UPDATE
     assert update_entry.approval_requirement is ApprovalRequirement.REQUIRED

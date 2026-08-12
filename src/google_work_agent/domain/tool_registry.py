@@ -131,7 +131,7 @@ def build_p0_tool_registry() -> SignedToolRegistry:
             _read_tool(tool_name="gmail_get_message", scope="gmail.readonly"),
             _read_tool(tool_name="gmail_get_thread", scope="gmail.readonly"),
             _read_tool(tool_name="gmail_search_threads", scope="gmail.readonly"),
-            _send_tool(tool_name="gmail_send", scope="gmail.send"),
+            _send_tool(tool_name="gmail_send", scope="gmail.compose"),
             _update_tool(
                 tool_name="gmail_update_draft",
                 scope="gmail.compose",
