@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import pytest
 
 from google_work_agent.application.resource_queries import ResourceQueryService
 from google_work_agent.ports import (
@@ -15,6 +16,7 @@ from google_work_agent.ports import (
 class _Gateway:
     def __init__(self, snapshot: ResourceSnapshot) -> None:
         self.snapshot = snapshot
+        self.include_thread_metadata: bool | None = None
 
     def search_gmail_threads(
         self,
@@ -22,7 +24,9 @@ class _Gateway:
         query: str,
         page_token: str | None,
         page_size: int,
+        include_thread_metadata: bool = True,
     ) -> ResourcePage:
+        self.include_thread_metadata = include_thread_metadata
         assert query == "project"
         assert page_token == "page-1"
         assert page_size == 10
@@ -34,6 +38,9 @@ class _Gateway:
         task_list_id: str,
         page_token: str | None,
         page_size: int,
+        show_completed: bool = False,
+        show_hidden: bool = False,
+        show_deleted: bool = False,
     ) -> ResourcePage:
         return ResourcePage(items=(self.snapshot,), next_page_token=None)
 
@@ -88,6 +95,7 @@ class _CalendarGateway:
             "page_token": page_token,
             "page_size": page_size,
             "time_min": time_min,
+            "time_max": time_max,
             "single_events": single_events,
             "order_by": order_by,
         }
@@ -141,6 +149,9 @@ class _TaskGateway:
         task_list_id: str,
         page_token: str | None,
         page_size: int,
+        show_completed: bool = False,
+        show_hidden: bool = False,
+        show_deleted: bool = False,
     ) -> ResourcePage:
         self.calls.append(
             (
@@ -149,6 +160,7 @@ class _TaskGateway:
                     "task_list_id": task_list_id,
                     "page_token": page_token,
                     "page_size": page_size,
+                    "show_completed": show_completed,
                 },
             )
         )
@@ -170,7 +182,7 @@ class _TaskGateway:
                     },
                 ),
             ),
-            next_page_token="tasks-next",
+            next_page_token=None,
         )
 
 
@@ -205,6 +217,20 @@ def test_gmail_list_projection_exposes_metadata_for_frontend() -> None:
         "received_at": "Sat, 24 May 2025 09:15:00 +0900",
         "snippet": "Please review the campaign result.",
     }
+
+
+def test_gmail_list_projection_forwards_lightweight_metadata_option() -> None:
+    gateway = _Gateway(_snapshot(payload={}))
+    service = ResourceQueryService(gateway=gateway)
+
+    service.list_gmail_threads(
+        query="project",
+        page_token="page-1",
+        page_size=10,
+        include_thread_metadata=False,
+    )
+
+    assert gateway.include_thread_metadata is False
 
 
 def test_gmail_list_projection_does_not_use_resource_id_as_title_fallback() -> None:
@@ -242,19 +268,20 @@ def test_tasks_sidebar_uses_configured_default_task_list_for_actual_tasks() -> N
         default_tasklist_id_provider=lambda: "configured-task-list",
     )
 
-    page = service.list_tasks(task_list_id=None, page_token="tasks-page-1", page_size=10)
+    page = service.list_tasks(task_list_id=None, page_token=None, page_size=10)
 
     assert gateway.calls == [
         (
             "list_tasks",
             {
                 "task_list_id": "configured-task-list",
-                "page_token": "tasks-page-1",
-                "page_size": 10,
+                "page_token": None,
+                "page_size": 100,
+                "show_completed": False,
             },
         )
     ]
-    assert page.next_page_token == "tasks-next"
+    assert page.next_page_token is None
     assert page.items[0].resource_type == "task"
     assert page.items[0].title == "후속 조치"
     assert page.items[0].metadata == {
@@ -276,20 +303,41 @@ def test_task_projection_keeps_provider_calendar_date_without_timezone_conversio
             "title": "완료 작업",
             "due": "2026-08-11T00:00:00.000Z",
             "status": "completed",
+            "completed": "2026-08-13T00:30:00.000Z",
         },
     )
     service = ResourceQueryService(gateway=_Gateway(snapshot))
 
     item = service.list_tasks(task_list_id="task-list-default", page_token=None, page_size=10).items[0]
 
-    assert item.metadata == {"task_status": "completed", "scheduled_date": "2026-08-11"}
+    assert item.title == "완료 작업"
+    assert item.metadata == {
+        "task_status": "completed",
+        "scheduled_date": "2026-08-11",
+        "completed_at": "2026-08-13T00:30:00.000Z",
+    }
+
+
+def test_task_projection_preserves_a_provider_title() -> None:
+    gateway = _TaskGateway(task_payload={
+        "title": "GWA-DEADLINE-ONLY-TEST",
+        "due": "2026-08-12T00:00:00.000Z",
+        "status": "needsAction",
+    })
+    service = ResourceQueryService(gateway=gateway)
+
+    item = service.list_tasks(task_list_id="task-list-default", page_token=None, page_size=100).items[0]
+
+    assert item.resource_id == "task-1"
+    assert item.title == "GWA-DEADLINE-ONLY-TEST"
+    assert item.metadata == {"task_status": "incomplete", "scheduled_date": "2026-08-12"}
 
 
 def test_tasks_sidebar_resolves_first_actual_task_list_before_listing_tasks() -> None:
     gateway = _TaskGateway()
     service = ResourceQueryService(gateway=gateway, default_tasklist_id_provider=lambda: None)
 
-    page = service.list_tasks(task_list_id=None, page_token="tasks-page-1", page_size=10)
+    page = service.list_tasks(task_list_id=None, page_token=None, page_size=10)
 
     assert gateway.calls == [
         ("list_task_lists", {"page_token": None, "page_size": 1}),
@@ -297,8 +345,9 @@ def test_tasks_sidebar_resolves_first_actual_task_list_before_listing_tasks() ->
             "list_tasks",
             {
                 "task_list_id": "task-list-default",
-                "page_token": "tasks-page-1",
-                "page_size": 10,
+                "page_token": None,
+                "page_size": 100,
+                "show_completed": False,
             },
         ),
     ]
@@ -316,6 +365,7 @@ def test_calendar_sidebar_queries_upcoming_events_from_configured_default_calend
     page = service.list_calendar_resources(
         calendar_id=None,
         time_min=None,
+        time_max=None,
         page_token="events-page-1",
         page_size=10,
     )
@@ -325,6 +375,7 @@ def test_calendar_sidebar_queries_upcoming_events_from_configured_default_calend
         "page_token": "events-page-1",
         "page_size": 10,
         "time_min": "2026-08-10T00:00:00+00:00",
+        "time_max": "2026-11-08T00:00:00+00:00",
         "single_events": True,
         "order_by": "startTime",
     }
@@ -348,6 +399,7 @@ def test_calendar_sidebar_uses_primary_when_default_calendar_is_not_configured()
     service.list_calendar_resources(
         calendar_id=None,
         time_min="2026-08-10T01:00:00Z",
+        time_max="2026-11-08T01:00:00Z",
         page_token=None,
         page_size=10,
     )
@@ -367,12 +419,195 @@ def test_calendar_ui_projection_hides_snapshot_id_title_fallback() -> None:
     page = service.list_calendar_resources(
         calendar_id="primary",
         time_min="2026-08-10T01:00:00Z",
+        time_max="2026-11-08T01:00:00Z",
         page_token=None,
         page_size=10,
     )
 
     assert page.items[0].resource_id == "event-1"
     assert page.items[0].title == ""
+
+
+def test_exact_counts_traverse_all_pages_with_source_scopes() -> None:
+    snapshot = _snapshot(payload={})
+
+    class Gateway:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, dict[str, object]]] = []
+
+        def search_gmail_threads(self, **kwargs: object) -> ResourcePage:
+            self.calls.append(("gmail", kwargs))
+            return ResourcePage(items=(snapshot,), next_page_token=None)
+
+        def list_tasks(self, **kwargs: object) -> ResourcePage:
+            self.calls.append(("tasks", kwargs))
+            return ResourcePage(items=(snapshot, snapshot), next_page_token=None)
+
+        def list_calendar_events(self, **kwargs: object) -> ResourcePage:
+            self.calls.append(("calendar", kwargs))
+            return ResourcePage(items=(snapshot, snapshot, snapshot), next_page_token=None)
+
+    gateway = Gateway()
+    service = ResourceQueryService(
+        gateway=gateway,  # type: ignore[arg-type]
+        default_tasklist_id_provider=lambda: "task-list-default",
+        now=lambda: datetime(2026, 8, 10, 0, 0, tzinfo=UTC),
+    )
+
+    assert service.count_gmail_threads().total_count == 1
+    assert service.count_tasks(task_list_id=None).total_count == 2
+    assert service.count_calendar_resources(
+        calendar_id="primary",
+        time_min="2026-08-10T00:00:00Z",
+        time_max="2026-11-08T00:00:00Z",
+    ).total_count == 3
+    assert gateway.calls == [
+        ("gmail", {
+            "query": "in:inbox category:primary",
+            "page_token": None,
+            "page_size": 100,
+            "include_thread_metadata": False,
+        }),
+        ("tasks", {
+            "task_list_id": "task-list-default",
+            "page_token": None,
+            "page_size": 100,
+            "show_completed": False,
+        }),
+        ("calendar", {
+            "calendar_id": "primary",
+            "page_token": None,
+            "page_size": 100,
+            "time_min": "2026-08-10T00:00:00Z",
+            "time_max": "2026-11-08T00:00:00Z",
+            "single_events": True,
+            "order_by": "startTime",
+        }),
+    ]
+
+
+def test_gmail_count_traverses_all_provider_pages() -> None:
+    snapshot = _snapshot(payload={"snippet": "메일"})
+
+    class Gateway:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def search_gmail_threads(self, **kwargs: object) -> ResourcePage:
+            self.calls.append(kwargs)
+            page_token = kwargs["page_token"]
+            if page_token is None:
+                return ResourcePage(items=(snapshot,) * 100, next_page_token="page-2")
+            if page_token == "page-2":
+                return ResourcePage(items=(snapshot,) * 100, next_page_token="page-3")
+            return ResourcePage(items=(snapshot,) * 37, next_page_token=None)
+
+    gateway = Gateway()
+    service = ResourceQueryService(gateway=gateway)  # type: ignore[arg-type]
+
+    assert service.count_gmail_threads(query="from:kim@example.com").total_count == 237
+    assert gateway.calls == [
+        {"query": "from:kim@example.com", "page_token": None, "page_size": 100, "include_thread_metadata": False},
+        {"query": "from:kim@example.com", "page_token": "page-2", "page_size": 100, "include_thread_metadata": False},
+        {"query": "from:kim@example.com", "page_token": "page-3", "page_size": 100, "include_thread_metadata": False},
+    ]
+
+
+def test_count_does_not_return_partial_total_when_a_later_page_fails() -> None:
+    snapshot = _snapshot(payload={"snippet": "메일"})
+
+    class Gateway:
+        def search_gmail_threads(self, **kwargs: object) -> ResourcePage:
+            if kwargs["page_token"] is None:
+                return ResourcePage(items=(snapshot,), next_page_token="next")
+            raise RuntimeError("provider unavailable")
+
+    service = ResourceQueryService(gateway=Gateway())  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        service.count_gmail_threads()
+
+
+class _PagedTaskGateway:
+    def __init__(self, pages: dict[str | None, ResourcePage]) -> None:
+        self.pages = pages
+        self.calls: list[dict[str, object]] = []
+
+    def list_tasks(self, **kwargs: object) -> ResourcePage:
+        self.calls.append(kwargs)
+        return self.pages[kwargs["page_token"] if isinstance(kwargs["page_token"], str) else None]
+
+
+def _task(index: int, due: str | None) -> ResourceSnapshot:
+    return ResourceSnapshot(
+        fixture_snapshot_id=f"task-{index}", resource_type=ResourceType.TASK,
+        resource_id=f"task-{index}", parent_id="list", related_resource_ids=("list",),
+        version="1", recovery_fingerprint=None,
+        payload={"title": f"Task {index}", "due": due, "status": "needsAction"},
+    )
+
+
+def test_tasks_completed_scope_forwards_all_provider_visibility_flags() -> None:
+    task = ResourceSnapshot(
+        fixture_snapshot_id="done-1", resource_type=ResourceType.TASK, resource_id="done-1",
+        parent_id="list", related_resource_ids=("list",), version="1", recovery_fingerprint=None,
+        payload={"title": "완료 업무", "status": "completed"},
+    )
+    gateway = _PagedTaskGateway({None: ResourcePage(items=(task,), next_page_token=None)})
+    service = ResourceQueryService(gateway=gateway)
+
+    page = service.list_tasks(task_list_id="list", page_token=None, page_size=100, status_scope="completed")
+
+    assert page.items[0].metadata["task_status"] == "completed"
+    assert gateway.calls == [{"task_list_id": "list", "page_token": None, "page_size": 100, "show_completed": True, "show_hidden": True, "show_deleted": False}]
+
+
+def test_tasks_browse_keeps_provider_order_and_does_not_traverse_past_first_batch() -> None:
+    tasks = tuple(_task(index, f"2026-08-{(100 - index) % 28 + 1:02d}T00:00:00Z") for index in range(100))
+    gateway = _PagedTaskGateway({None: ResourcePage(tasks, "provider-page-2")})
+
+    page = ResourceQueryService(gateway=gateway).list_tasks(task_list_id="list", page_token=None, page_size=100)
+
+    assert [item.resource_id for item in page.items] == [task.resource_id for task in tasks]
+    assert page.next_page_token == "provider-page-2"
+    assert gateway.calls == [{"task_list_id": "list", "page_token": None, "page_size": 100, "show_completed": False, "show_hidden": False, "show_deleted": False}]
+
+
+def test_tasks_browse_returns_terminal_41_items_without_snapshot_cursor() -> None:
+    tasks = tuple(_task(index, None) for index in range(41))
+    gateway = _PagedTaskGateway({None: ResourcePage(tasks, None)})
+
+    page = ResourceQueryService(gateway=gateway).list_tasks(task_list_id="list", page_token=None, page_size=100)
+
+    assert len(page.items) == 41
+    assert page.next_page_token is None
+    assert [item.resource_id for item in page.items] == [task.resource_id for task in tasks]
+
+
+@pytest.mark.parametrize("item_count", [0, 1, 20, 21, 41, 100])
+def test_tasks_browse_keeps_terminal_provider_batch_sizes(item_count: int) -> None:
+    tasks = tuple(_task(index, None) for index in range(item_count))
+    gateway = _PagedTaskGateway({None: ResourcePage(tasks, None)})
+
+    page = ResourceQueryService(gateway=gateway).list_tasks(task_list_id="list", page_token=None, page_size=100)
+
+    assert len(page.items) == item_count
+    assert page.next_page_token is None
+    assert gateway.calls[0]["page_size"] == 100
+
+
+def test_tasks_browse_uses_provider_next_page_token_for_later_batch() -> None:
+    first = tuple(_task(index, None) for index in range(100))
+    second = tuple(_task(index, None) for index in range(100, 141))
+    gateway = _PagedTaskGateway({None: ResourcePage(first, "p2"), "p2": ResourcePage(second, None)})
+    service = ResourceQueryService(gateway=gateway)
+
+    first_page = service.list_tasks(task_list_id="list", page_token=None, page_size=100)
+    second_page = service.list_tasks(task_list_id="list", page_token=first_page.next_page_token, page_size=100)
+
+    assert [len(first_page.items), len(second_page.items)] == [100, 41]
+    assert second_page.next_page_token is None
+    assert [call["page_token"] for call in gateway.calls] == [None, "p2"]
 
 
 def _snapshot(*, payload: dict[str, object]) -> ResourceSnapshot:

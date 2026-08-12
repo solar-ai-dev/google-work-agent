@@ -468,7 +468,7 @@ Domain 상태 전이·SQLite·Command Receipt
 
 ### 19.2 사이드바 목록
 
-- Gmail은 최근 수신 순, Tasks는 미완료·예정일 임박 우선, Calendar는 가까운 예정 일정 순으로 표시한다.
+- Gmail은 최근 수신 순, Tasks는 configured/default Task List의 미완료 Task를 기본적으로 Google Tasks Provider 반환 순으로, Calendar Month View의 선택 날짜 Event 목록은 `startTime` 순으로 표시한다. Calendar 월력은 visible grid range 전체를 materialize하며 UI pagination을 사용하지 않는다. Tasks는 Provider batch 최대 100개를 UI 20개 page로 나누고 nextPageToken 기반 lazy continuation을 사용한다. 사용자가 날짜순을 선택한 경우에만 전체 미완료 Task를 materialize하여 `scheduled_date` 오름차순·날짜 없는 Task 후순위로 정렬하며, 이 결과는 별도 React Client Session Cache에 둔다.
 - Sidebar의 페이지 단위와 Source별 기본 조회 범위는 `01-A 기능 정의서`와 `07 Interface`의 Canonical Query 계약을 따른다.
 - 다음 페이지 이동 시 Google API에서 새 목록을 조회한다.
 - 이미 조회한 페이지는 React Client Session Cache에서 재사용하고 SQLite에는 영구 저장하지 않는다.

@@ -1,4 +1,4 @@
-﻿import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -97,6 +97,10 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   window.history.replaceState(null, "", "/");
 });
+
+async function selectCalendarDate(user: ReturnType<typeof userEvent.setup>, date: string, count = 1): Promise<void> {
+  await user.click(await screen.findByRole("button", { name: `${date} 일정 ${count}개` }));
+}
 
 test("captures the bootstrap fragment before asynchronous startup checks", async () => {
   window.history.replaceState(null, "", "/#bootstrap_secret=secret-1&service_instance_id=svc-1");
@@ -1123,22 +1127,36 @@ test("TST-UI-203 resource row supports focus, selection, and keyboard-accessible
   expect(screen.getByText("CALENDAR")).toBeInTheDocument();
 });
 
-test("TST-UI-204 uses page size 10, sequential page tokens, and cached numeric pages", async () => {
-  const user = userEvent.setup();
+test("TST-UI-204 requests a 100-item batch and keeps the provider token separate from UI pages", async () => {
   const requests = installUiContractFetch();
   render(<App />);
 
   await screen.findByText("첫 번째 자료");
-  const firstPage = requests.find((request) => request.path.startsWith("/api/v1/resources/gmail"));
-  expect(firstPage?.path).toContain("page_size=10");
-  await user.click(screen.getByRole("button", { name: "다음" }));
-  await screen.findByText("두 번째 자료");
-  expect(requests.at(-1)?.path).toContain("page_token=page-2");
-  const countAfterNext = requests.length;
-  await user.click(screen.getByRole("button", { name: "1" }));
+  const firstPage = requests.find((request) => request.path.startsWith("/api/v1/resources/gmail?"));
+  expect(firstPage?.path).toContain("page_size=20");
+  expect(screen.getByRole("button", { name: "1" })).toBeInTheDocument();
+});
+
+test("shows the Gmail exact count in the active tab instead of below the search field", async () => {
+  installUiContractFetch({ gmailCount: 189 });
+  render(<App />);
+
   await screen.findByText("첫 번째 자료");
-  expect(requests).toHaveLength(countAfterNext);
-  expect(screen.queryByRole("button", { name: "3" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("tab", { name: /메일.*189/ })).toBeInTheDocument();
+  expect(screen.getByText("189")).toHaveClass("resource-tab-count");
+});
+
+test("removes the loading status element after Gmail list loading completes", async () => {
+  const delayedGmail = deferred<Response>();
+  installUiContractFetch({ gmailListResponse: delayedGmail.promise });
+  render(<App />);
+
+  expect(await screen.findByText("자료를 불러오는 중입니다.")).toBeInTheDocument();
+  delayedGmail.resolve(jsonFetchResponse({ source: "gmail", items: [gmailThread()], next_page_token: null, api_contract_version: "1" }));
+  await waitFor(() => {
+    expect(screen.queryByText("자료를 불러오는 중입니다.")).not.toBeInTheDocument();
+  });
+  expect(document.querySelector(".resource-load-status")).toBeNull();
 });
 
 test("automatically loads Tasks and Calendar when their source tabs become active", async () => {
@@ -1153,13 +1171,444 @@ test("automatically loads Tasks and Calendar when their source tabs become activ
   expect(screen.queryByText("needsAction")).not.toBeInTheDocument();
   expect(screen.queryByText("2026-08-12T09:00:00+09:00")).not.toBeInTheDocument();
   await user.click(screen.getByRole("tab", { name: /캘린더/ }));
+  await screen.findByLabelText("월간 일정");
+  await selectCalendarDate(user, "2026-08-10");
   expect(await screen.findByText("프로젝트 검토")).toBeInTheDocument();
-  expect(screen.getByText("2026년 8월 10일 (월) 오전 9:00 - 오전 10:00")).toBeInTheDocument();
+  expect(screen.getByText("09:00")).toBeInTheDocument();
   expect(screen.queryByText("캘린더 목록")).not.toBeInTheDocument();
 
-  expect(requests.some((request) => request.path.startsWith("/api/v1/resources/tasks?page_size=10"))).toBe(true);
-  const calendarRequest = requests.find((request) => request.path.startsWith("/api/v1/resources/calendar?page_size=10"));
+  expect(requests.some((request) => request.path.startsWith("/api/v1/resources/tasks?page_size=100"))).toBe(true);
+  const calendarRequest = requests.find((request) => request.path.startsWith("/api/v1/resources/calendar?page_size=100"));
   expect(calendarRequest?.path).toContain("time_min=");
+  expect(calendarRequest?.path).toContain("time_max=");
+});
+
+test("keeps Gmail and Tasks counts when the Calendar tab changes", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ gmailCount: 186, taskBatchSizes: [10] });
+  render(<App />);
+
+  await screen.findByRole("tab", { name: /메일.*186/ });
+  await user.click(screen.getByRole("tab", { name: /태스크/ }));
+  await screen.findByText("할 일 1");
+  expect(screen.getByRole("tab", { name: /메일.*186/ })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /태스크.*10/ })).toBeInTheDocument();
+  expect(screen.queryByText(/^태스크 10$/)).not.toBeInTheDocument();
+  expect(requests.some((request) => request.path === "/api/v1/resources/tasks/count")).toBe(false);
+
+  await user.click(screen.getByRole("tab", { name: /캘린더/ }));
+  await selectCalendarDate(user, "2026-08-10");
+  await screen.findByText("프로젝트 검토");
+  expect(screen.getByRole("tab", { name: /캘린더/ })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /메일.*186/ })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /태스크.*10/ })).toBeInTheDocument();
+
+  await user.click(screen.getByRole("tab", { name: /메일.*186/ }));
+  expect(await screen.findByText("첫 번째 자료")).toBeInTheDocument();
+  expect(requests.filter((request) => request.path === "/api/v1/resources/gmail/count").length).toBe(1);
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar/count")).length).toBe(0);
+});
+
+test("preloads Gmail and Tasks counts without preloading inactive source lists", async () => {
+  const requests = installUiContractFetch({ gmailCount: 189, taskBatchSizes: [100, 21] });
+  render(<App />);
+
+  await screen.findByRole("tab", { name: /메일.*189/ });
+  expect(await screen.findByRole("tab", { name: /태스크.*100\+/ })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /캘린더/ })).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(1);
+  expect(requests.some((request) => request.path === "/api/v1/resources/tasks/count")).toBe(false);
+  expect(requests.some((request) => request.path.startsWith("/api/v1/resources/calendar/count"))).toBe(false);
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar?page_size=100")).length).toBe(0);
+});
+
+test("reveals initial source counts together only after every preload settles", async () => {
+  const gmailCount = deferred<Response>();
+  const taskBatch = deferred<Response>();
+  const requests = installUiContractFetch({
+    gmailCountResponse: gmailCount.promise,
+    taskListResponse: taskBatch.promise,
+  });
+  render(<App />);
+
+  await waitFor(() => expect(requests.filter((request) => request.path === "/api/v1/resources/gmail/count")).toHaveLength(1));
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(1);
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar/count")).length).toBe(0);
+
+  gmailCount.resolve(jsonFetchResponse({ source: "gmail", total_count: 189, api_contract_version: "1" }));
+  taskBatch.resolve(jsonFetchResponse({
+    source: "tasks",
+    items: [{ source: "tasks", resource_type: "task", resource_id: "task-1", parent_id: "task-list-default", title: "할 일 1", subtitle: null, link_url: null, version: "1", related_resource_ids: [], metadata: {} }],
+    next_page_token: null,
+    api_contract_version: "1",
+  }));
+  await Promise.resolve();
+  expect(screen.queryByRole("tab", { name: /메일.*189/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: /태스크.*1/ })).not.toBeInTheDocument();
+
+  expect(await screen.findByRole("tab", { name: /메일.*189/ })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /태스크.*1/ })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /캘린더/ })).toBeInTheDocument();
+});
+
+test("keeps successful initial counts when another preload request fails", async () => {
+  const gmailCount = deferred<Response>();
+  const requests = installUiContractFetch({
+    gmailCountResponse: gmailCount.promise,
+    taskBatchSizes: [10],
+  });
+  render(<App />);
+
+  await waitFor(() => expect(requests.filter((request) => request.path === "/api/v1/resources/gmail/count")).toHaveLength(1));
+  gmailCount.reject(new Error("count unavailable"));
+
+  expect(await screen.findByRole("tab", { name: /태스크.*10/ })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /캘린더/ })).toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: /메일.*\d/ })).not.toBeInTheDocument();
+  expect(requests.some((request) => request.path === "/api/v1/resources/tasks/count")).toBe(false);
+});
+
+test("preloads Gmail and Tasks counts even when the initial account identity is unavailable", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ accountAbsent: true, gmailCount: 189, taskBatchSizes: [10] });
+  render(<App />);
+
+  expect(await screen.findByRole("tab", { name: /메일.*189/ })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /태스크.*10/ })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /캘린더/ })).toBeInTheDocument();
+  expect(requests.filter((request) => request.path === "/api/v1/resources/gmail/count")).toHaveLength(1);
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(1);
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar/count")).length).toBe(0);
+  expect(requests.some((request) => request.path === "/api/v1/resources/tasks/count")).toBe(false);
+
+  await user.click(screen.getByRole("tab", { name: /태스크.*10/ }));
+  expect(await screen.findByText("할 일 1")).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(1);
+});
+
+test("Tasks eagerly materializes completed rows and opens the exact count from cache", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    taskBatchSizes: [2],
+    completedTaskResponses: [
+      {
+        items: [
+          { source: "tasks", resource_type: "task", resource_id: "done-1", parent_id: "task-list-default", title: "완료 업무", subtitle: null, link_url: "https://tasks.google.com/", version: "1", related_resource_ids: [], metadata: { task_status: "completed", completed_at: "2026-08-13T00:30:00.000Z" } },
+          { source: "tasks", resource_type: "task", resource_id: "mixed-1", parent_id: "task-list-default", title: "섞인 미완료", subtitle: null, link_url: "https://tasks.google.com/", version: "1", related_resource_ids: [], metadata: { task_status: "incomplete" } },
+        ],
+        nextPageToken: "completed-page-2",
+      },
+      {
+        items: [
+          { source: "tasks", resource_type: "task", resource_id: "done-2", parent_id: "task-list-default", title: "완료 업무 2", subtitle: null, link_url: "https://tasks.google.com/", version: "1", related_resource_ids: [], metadata: { task_status: "completed", completed_at: "invalid" } },
+          { source: "tasks", resource_type: "task", resource_id: "done-1", parent_id: "task-list-default", title: "완료 업무", subtitle: null, link_url: "https://tasks.google.com/", version: "1", related_resource_ids: [], metadata: { task_status: "completed", completed_at: "2026-08-13T00:30:00.000Z" } },
+        ],
+      },
+    ],
+  });
+  render(<App />);
+  await waitFor(() => expect(requests.filter((request) => request.path.includes("status_scope=completed"))).toHaveLength(2));
+  await user.click(await screen.findByRole("tab", { name: /태스크/ }));
+  expect(await screen.findByRole("button", { name: "완료됨(2) ▸" })).toBeInTheDocument();
+  const incompleteList = screen.getByRole("list", { name: "Google 업무 자료" });
+  const completedSection = screen.getByLabelText("완료됨");
+  const pagination = screen.getByRole("navigation", { name: "자료 페이지" });
+  expect(incompleteList.compareDocumentPosition(completedSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(completedSection.compareDocumentPosition(pagination) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(requests.some((request) => request.path.includes("page_token=completed-page-2"))).toBe(true);
+  const completedCallsBeforeOpen = requests.filter((request) => request.path.includes("status_scope=completed")).length;
+    await user.click(screen.getByRole("button", { name: "완료됨(2) ▸" }));
+    expect(await screen.findByText("✓ 완료 업무")).toBeInTheDocument();
+    expect(screen.getByText("완료일: 8월 13일 (목)")).toBeInTheDocument();
+    expect(screen.getAllByText(/완료일:/)).toHaveLength(1);
+    expect(screen.queryByText("✓ 섞인 미완료")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "완료됨(2) ▾" })).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.includes("status_scope=completed"))).toHaveLength(completedCallsBeforeOpen);
+});
+
+test("Tasks completed refresh replaces the terminal cache and client-side more makes no request", async () => {
+  const user = userEvent.setup();
+  const completed = (id: string, title = id): Record<string, unknown> => ({
+    source: "tasks", resource_type: "task", resource_id: id, parent_id: "task-list-default", title,
+    subtitle: null, link_url: null, version: "1", related_resource_ids: [], metadata: { task_status: "completed" },
+  });
+  const initial = Array.from({ length: 22 }, (_, index) => completed(`done-${index + 1}`, `완료 ${index + 1}`));
+  const requests = installUiContractFetch({
+    taskBatchSizes: [2],
+    completedTaskResponses: [
+      { items: initial },
+      { items: [completed("done-a", "완료 A"), completed("done-b", "완료 B"), completed("done-c", "완료 C"), completed("done-c", "완료 C")] },
+      { items: [completed("done-a", "완료 A"), completed("done-b", "완료 B"), completed("done-c", "완료 C")] },
+      { items: [completed("done-a", "완료 A"), completed("done-c", "완료 C")] },
+    ],
+  });
+  render(<App />);
+  await user.click(await screen.findByRole("tab", { name: /태스크/ }));
+  await user.click(await screen.findByRole("button", { name: "완료됨(22) ▸" }));
+  expect(await screen.findByText("✓ 완료 20")).toBeInTheDocument();
+  expect(screen.queryByText("✓ 완료 21")).not.toBeInTheDocument();
+  const callsBeforeMore = requests.filter((request) => request.path.includes("status_scope=completed")).length;
+  await user.click(screen.getByRole("button", { name: "더 보기" }));
+  expect(await screen.findByText("✓ 완료 22")).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.includes("status_scope=completed"))).toHaveLength(callsBeforeMore);
+
+  await user.click(screen.getByRole("button", { name: "현재 목록 새로고침" }));
+  expect(await screen.findByRole("button", { name: "완료됨(3) ▾" })).toBeInTheDocument();
+  expect(screen.getAllByText(/✓ 완료 [ABC]/)).toHaveLength(3);
+  await user.click(screen.getByRole("button", { name: "현재 목록 새로고침" }));
+  expect(await screen.findByRole("button", { name: "완료됨(3) ▾" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "현재 목록 새로고침" }));
+  expect(await screen.findByRole("button", { name: "완료됨(2) ▾" })).toBeInTheDocument();
+  expect(screen.queryByText("✓ 완료 B")).not.toBeInTheDocument();
+});
+
+test("Tasks completed materialization failure preserves incomplete Tasks without a fake completed count", async () => {
+  const user = userEvent.setup();
+  installUiContractFetch({ taskBatchSizes: [2], completedTaskErrors: [true] });
+  render(<App />);
+
+  await user.click(await screen.findByRole("tab", { name: /태스크/ }));
+  expect(await screen.findByText("할 일 1")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "완료됨 ▸" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "완료됨(0) ▸" })).not.toBeInTheDocument();
+});
+
+test("keeps Gmail DOM isolated when a stale Tasks preload resolves after a source switch", async () => {
+  const user = userEvent.setup();
+  const pendingTasks = deferred<Response>();
+  const requests = installUiContractFetch({ taskListResponse: pendingTasks.promise });
+  render(<App />);
+
+  await waitFor(() => expect(
+    requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")),
+  ).toHaveLength(1));
+  await user.click(await screen.findByRole("tab", { name: /태스크/ }));
+  await user.click(screen.getByRole("tab", { name: /메일/ }));
+  expect(await screen.findByText("첫 번째 자료")).toBeInTheDocument();
+
+  pendingTasks.resolve(taskListResponse(1));
+  await Promise.resolve();
+  expect(screen.getByRole("tab", { name: /메일/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.queryByText("할 일 1")).not.toBeInTheDocument();
+  expect(document.querySelector(".task-date-section")).toBeNull();
+  expect(document.querySelector(".task-resource-item")).toBeNull();
+});
+
+test("keeps Gmail DOM unchanged when completed background materialization settles", async () => {
+  const completedResponse = deferred<Response>();
+  const requests = installUiContractFetch({ completedTaskResponse: completedResponse.promise });
+  render(<App />);
+
+  expect(await screen.findByText("첫 번째 자료")).toBeInTheDocument();
+  await waitFor(() => expect(requests.some((request) => request.path.includes("status_scope=completed"))).toBe(true));
+  completedResponse.resolve(jsonFetchResponse({
+    source: "tasks",
+    items: [{ source: "tasks", resource_type: "task", resource_id: "done-1", parent_id: "task-list-default", title: "완료 업무", subtitle: null, link_url: null, version: "1", related_resource_ids: [], metadata: { task_status: "completed" } }],
+    next_page_token: null,
+    api_contract_version: "1",
+  }));
+  await Promise.resolve();
+
+  expect(screen.getByText("첫 번째 자료")).toBeInTheDocument();
+  expect(document.querySelector(".task-date-section")).toBeNull();
+  expect(document.querySelector(".task-resource-item")).toBeNull();
+});
+
+test("Tasks terminal provider batch uses 20-item UI pages and confirms the exact total locally", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ taskBatchSizes: [41] });
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await user.click(screen.getByRole("tab", { name: /태스크/ }));
+  expect(await screen.findByText("할 일 1")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "1" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "2" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "3" })).toBeInTheDocument();
+  expect(requests.some((request) => request.path === "/api/v1/resources/tasks/count")).toBe(false);
+
+  await user.click(await screen.findByRole("button", { name: "3" }));
+  expect(await screen.findByText("할 일 41")).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(1);
+});
+
+test("Tasks fetches the next provider batch only at the known last UI page", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ taskBatchSizes: [100, 41] });
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await user.click(screen.getByRole("tab", { name: /태스크/ }));
+  expect(await screen.findByText("할 일 1")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /태스크.*100\+/ })).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "5" })).toHaveLength(1);
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(1);
+
+  await user.click(screen.getByRole("button", { name: "4" }));
+  expect(await screen.findByText("할 일 61")).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(1);
+
+  await user.click(screen.getByRole("button", { name: "5" }));
+  expect(await screen.findByText("할 일 81")).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.includes("/api/v1/resources/tasks?page_size=100&page_token=tasks-page-2")).length).toBe(1);
+  expect(screen.getByRole("button", { name: "7" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /태스크.*141/ })).toBeInTheDocument();
+});
+
+test("Tasks date sort menu materializes every provider batch into a separate cache", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    taskBatchSizes: [2, 2],
+    taskDues: ["2026-08-12", null, "2026-08-10", "2026-08-11"],
+  });
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await user.click(screen.getByRole("tab", { name: /태스크/ }));
+  expect(await screen.findByText("할 일 1")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "태스크 정렬 메뉴" }));
+  expect(screen.getByRole("menu", { name: "정렬 기준" })).toBeInTheDocument();
+  await user.click(screen.getByRole("menuitemradio", { name: "날짜순" }));
+
+  await waitFor(() => expect(
+    requests.filter((request) => request.path.includes("/api/v1/resources/tasks?page_size=100&page_token=tasks-page-2")).length,
+  ).toBe(1));
+  const titles = [...document.querySelectorAll(".resource-list .row-title")].map((element) => element.textContent);
+  expect(titles).toEqual(["할 일 3", "할 일 4", "할 일 1", "할 일 2"]);
+});
+
+test("Tasks date sort menu sorts a terminal 22-item batch without another API request", async () => {
+  const user = userEvent.setup();
+  const taskDues = Array.from({ length: 22 }, (_, index) => `2026-08-${String(index + 2).padStart(2, "0")}`);
+  taskDues[21] = "2026-08-01";
+  const requests = installUiContractFetch({ taskBatchSizes: [22], taskDues });
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await user.click(screen.getByRole("tab", { name: /태스크/ }));
+  expect(await screen.findByText("할 일 1")).toBeInTheDocument();
+  const taskRequestsBeforeSort = requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length;
+
+  await user.click(screen.getByRole("button", { name: "태스크 정렬 메뉴" }));
+  expect(screen.getByRole("menuitemradio", { name: "기본 순서" })).toHaveAttribute("aria-checked", "true");
+  expect(screen.queryByRole("combobox", { name: "할 일 정렬" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("textbox", { name: "작업 검색" }));
+  expect(screen.queryByRole("menu", { name: "정렬 기준" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "태스크 정렬 메뉴" }));
+  await user.click(screen.getByRole("menuitemradio", { name: "날짜순" }));
+  expect(await screen.findByText("할 일 22")).toBeInTheDocument();
+  expect(screen.queryByRole("menu", { name: "정렬 기준" })).not.toBeInTheDocument();
+  expect([...document.querySelectorAll(".resource-list .row-title")].map((element) => element.textContent)[0]).toBe("할 일 22");
+  expect(screen.getByRole("button", { name: "2" })).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(taskRequestsBeforeSort);
+
+  await user.click(screen.getByRole("button", { name: "2" }));
+  expect(await screen.findByText("할 일 21")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "1" }));
+  await user.click(screen.getByRole("button", { name: "태스크 정렬 메뉴" }));
+  await user.click(screen.getByRole("menuitemradio", { name: "기본 순서" }));
+  expect(await screen.findByText("할 일 1")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "태스크 정렬 메뉴" }));
+  await user.click(screen.getByRole("menuitemradio", { name: "날짜순" }));
+  expect(await screen.findByText("할 일 22")).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(taskRequestsBeforeSort);
+});
+
+test("Tasks 4xx failure does not retry the same browse request indefinitely", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ taskError: true });
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await user.click(screen.getByRole("tab", { name: /태스크/ }));
+  expect(await screen.findByText("요청이 올바르지 않습니다.")).toBeInTheDocument();
+  await new Promise((resolve) => window.setTimeout(resolve, 20));
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(2);
+});
+
+test("Tasks date sort groups the current UI page without changing provider-order rows or requests", async () => {
+  const user = userEvent.setup();
+  const today = new Date();
+  const dateKey = (offset: number): string => {
+    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  };
+  const dateLabel = (offset: number): string => {
+    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+    return `${date.toLocaleDateString("ko-KR", { month: "long", day: "numeric" })} (${date.toLocaleDateString("ko-KR", { weekday: "short" })})`;
+  };
+  const longTitle = "아주 길고 긴 업무 제목이 날짜 영역을 밀어내지 않아야 합니다";
+  const requests = installUiContractFetch({
+    taskBatchSizes: [7],
+    taskDues: [null, dateKey(20), dateKey(3), dateKey(1), dateKey(0), dateKey(-1), dateKey(-2)],
+    taskTitles: ["날짜 없음 업무", "9월 업무", "8월 업무", "내일 업무", "오늘 업무", longTitle, "이틀 전 업무"],
+  });
+  render(<App />);
+
+  await user.click(await screen.findByRole("tab", { name: /태스크/ }));
+  expect([...document.querySelectorAll(".resource-list .row-title")].map((element) => element.textContent))
+    .toEqual(["날짜 없음 업무", "9월 업무", "8월 업무", "내일 업무", "오늘 업무", longTitle, "이틀 전 업무"]);
+  expect(document.querySelectorAll(".task-date-section")).toHaveLength(0);
+  expect(screen.getByText(longTitle).closest(".task-row-main")).not.toBeNull();
+  expect(screen.getByText(dateLabel(-1)).closest(".task-row-date")).not.toBeNull();
+  const requestsBeforeSort = requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length;
+
+  await user.click(screen.getByRole("button", { name: "태스크 정렬 메뉴" }));
+  await user.click(screen.getByRole("menuitemradio", { name: "날짜순" }));
+
+  expect(await screen.findByLabelText("지난 날짜")).toBeInTheDocument();
+  expect(document.querySelector(".resource-list")).toHaveClass("task-date-sorted");
+  expect(document.querySelectorAll(".task-date-sorted .task-resource-item")).toHaveLength(7);
+  expect(document.querySelectorAll(".task-date-section-divider")).toHaveLength(5);
+  expect(screen.getByLabelText("오늘")).toBeInTheDocument();
+  expect(screen.getByLabelText("내일")).toBeInTheDocument();
+  expect(screen.getByLabelText(dateLabel(3))).toBeInTheDocument();
+  expect(screen.getByLabelText(dateLabel(20))).toBeInTheDocument();
+  expect(screen.getByLabelText("날짜 없음")).toBeInTheDocument();
+  expect([...document.querySelectorAll(".resource-list .row-title")].map((element) => element.textContent))
+    .toEqual(["이틀 전 업무", longTitle, "오늘 업무", "내일 업무", "8월 업무", "9월 업무", "날짜 없음 업무"]);
+  expect(screen.getByText("1일 지남")).toBeInTheDocument();
+  expect(screen.getByText("2일 지남")).toBeInTheDocument();
+  expect(screen.queryByText(dateLabel(-1))).not.toBeInTheDocument();
+  expect(screen.queryByText(dateLabel(0))).not.toBeInTheDocument();
+  expect(screen.queryByText(dateLabel(1))).not.toBeInTheDocument();
+  expect(screen.queryAllByText(dateLabel(3))).toHaveLength(1);
+  expect(screen.queryAllByText(dateLabel(20))).toHaveLength(1);
+  expect(screen.queryByText("예정일 지남")).not.toBeInTheDocument();
+  expect(screen.queryByText("마감일 지남")).not.toBeInTheDocument();
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(requestsBeforeSort);
+
+  await user.click(screen.getByRole("button", { name: "태스크 정렬 메뉴" }));
+  await user.click(screen.getByRole("menuitemradio", { name: "기본 순서" }));
+  expect(await screen.findByText("날짜 없음 업무")).toBeInTheDocument();
+  expect(document.querySelector(".resource-list")).not.toHaveClass("task-date-sorted");
+  expect(document.querySelectorAll(".task-date-section")).toHaveLength(0);
+  expect(document.querySelectorAll(".task-date-section-divider")).toHaveLength(0);
+  expect([...document.querySelectorAll(".resource-list .row-title")].map((element) => element.textContent))
+    .toEqual(["날짜 없음 업무", "9월 업무", "8월 업무", "내일 업무", "오늘 업무", longTitle, "이틀 전 업무"]);
+});
+
+test("Tasks keep provider titles in both sort modes and retain the fallback for blank titles", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({
+    taskBatchSizes: [2],
+    taskTitles: ["GWA-DEADLINE-ONLY-TEST", ""],
+  });
+  render(<App />);
+
+  await user.click(await screen.findByRole("tab", { name: /태스크/ }));
+  expect(await screen.findByText("GWA-DEADLINE-ONLY-TEST")).toBeInTheDocument();
+  expect(screen.getByText("제목 정보 없음")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "태스크 정렬 메뉴" }));
+  await user.click(screen.getByRole("menuitemradio", { name: "날짜순" }));
+  expect(await screen.findByText("GWA-DEADLINE-ONLY-TEST")).toBeInTheDocument();
+
+  const taskCallsBeforeRefresh = requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length;
+  await user.click(screen.getByRole("button", { name: "현재 목록 새로고침" }));
+  expect(await screen.findByText("GWA-DEADLINE-ONLY-TEST")).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(taskCallsBeforeRefresh + 1);
 });
 
 test("reuses a source-specific cache entry when returning to an already loaded source", async () => {
@@ -1175,7 +1624,198 @@ test("reuses a source-specific cache entry when returning to an already loaded s
   expect(await screen.findByText("첫 번째 자료")).toBeInTheDocument();
 
   expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/gmail?")).length).toBe(gmailCallsBefore);
-  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?")).length).toBe(1);
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(1);
+});
+
+test("restores the cached Gmail next-page token after re-entering the source", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ gmailBatch: true, gmailCount: 40 });
+  render(<App />);
+
+  await screen.findByText("자료 1");
+  const gmailCallsBefore = requests.filter((request) => request.path.startsWith("/api/v1/resources/gmail?")).length;
+  await user.click(screen.getByRole("tab", { name: /태스크/ }));
+  await screen.findByText("후속 조치");
+  await user.click(screen.getByRole("tab", { name: /메일/ }));
+  expect(await screen.findByText("자료 1")).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "다음" })).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/gmail?")).length).toBe(gmailCallsBefore);
+
+  await user.click(screen.getByRole("button", { name: "다음" }));
+  expect(await screen.findByText("자료 21")).toBeInTheDocument();
+  expect(requests.at(-1)?.path).toContain("page_size=20");
+  expect(requests.at(-1)?.path).toContain("page_token=page-2");
+});
+
+test("uses list-only Gmail requests for unvisited intermediate pages and hydrates the target page", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ gmailBatch: true, gmailCount: 80 });
+  render(<App />);
+
+  await screen.findByText("자료 1");
+  await user.click(await screen.findByRole("button", { name: "4" }));
+  expect(await screen.findByText("자료 61")).toBeInTheDocument();
+
+  const gmailRequests = requests.filter((request) => request.path.startsWith("/api/v1/resources/gmail?"));
+  expect(gmailRequests.map((request) => request.path)).toEqual(expect.arrayContaining([
+    expect.stringContaining("page_token=page-3&include_thread_metadata=false"),
+    expect.stringContaining("page_token=page-4"),
+  ]));
+  expect(gmailRequests.find((request) => request.path.includes("page_token=page-2"))?.path)
+    .not.toContain("include_thread_metadata=false");
+  expect(gmailRequests.find((request) => request.path.includes("page_token=page-4"))?.path)
+    .not.toContain("include_thread_metadata=false");
+
+  const callsBeforeSelectingIntermediate = gmailRequests.length;
+  await user.click(screen.getByRole("button", { name: "2" }));
+  expect(await screen.findByText("자료 21")).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/gmail?")).length)
+    .toBe(callsBeforeSelectingIntermediate + 1);
+});
+
+test("selects the requested Gmail page during loading and restores the last loaded page on failure", async () => {
+  const user = userEvent.setup();
+  const pageFive = deferred<Response>();
+  const requests = installUiContractFetch({ gmailBatch: true, gmailCount: 100, gmailPageResponses: { "page-5": pageFive.promise } });
+  render(<App />);
+
+  await screen.findByText("자료 1");
+  await user.click(await screen.findByRole("button", { name: "3" }));
+  expect(await screen.findByText("자료 41")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "5" }));
+  expect(screen.getByRole("button", { name: "5" })).toHaveClass("button-primary");
+  expect(screen.getByText("5페이지를 불러오는 중입니다.")).toBeInTheDocument();
+  expect(screen.getByText("자료 41")).toBeInTheDocument();
+
+  pageFive.resolve(jsonFetchResponse({ error_code: "UPSTREAM_UNAVAILABLE", user_message: "메일을 불러오지 못했습니다.", retryable: true, request_id: "request-1", api_contract_version: "1" }, 502));
+  expect(await screen.findByText("메일을 불러오지 못했습니다.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "3" })).toHaveClass("button-primary");
+  expect(screen.getByText("자료 41")).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.includes("page_token=page-5")).length).toBe(1);
+});
+
+test("keeps the loaded Gmail page visible until the requested page succeeds", async () => {
+  const user = userEvent.setup();
+  const pageFive = deferred<Response>();
+  const requests = installUiContractFetch({ gmailBatch: true, gmailCount: 100, gmailPageResponses: { "page-5": pageFive.promise } });
+  render(<App />);
+
+  await screen.findByText("자료 1");
+  await user.click(await screen.findByRole("button", { name: "3" }));
+  expect(await screen.findByText("자료 41")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "5" }));
+  expect(screen.getByRole("button", { name: "5" })).toHaveClass("button-primary");
+  expect(screen.getByText("5페이지를 불러오는 중입니다.")).toBeInTheDocument();
+  expect(screen.getByText("자료 41")).toBeInTheDocument();
+
+  pageFive.resolve(gmailPageResponse(5, 100));
+  expect(await screen.findByText("자료 81")).toBeInTheDocument();
+  expect(screen.queryByText("5페이지를 불러오는 중입니다.")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "5" })).toHaveClass("button-primary");
+  expect(requests.filter((request) => request.path.includes("page_token=page-5")).length).toBe(1);
+});
+
+test("shows a cached Gmail page immediately without another request", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ gmailBatch: true, gmailCount: 100 });
+  render(<App />);
+
+  await screen.findByText("자료 1");
+  await user.click(await screen.findByRole("button", { name: "5" }));
+  expect(await screen.findByText("자료 81")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "3" }));
+  expect(await screen.findByText("자료 41")).toBeInTheDocument();
+  const requestsBeforeCachedPage = requests.length;
+  await user.click(screen.getByRole("button", { name: "5" }));
+  expect(await screen.findByText("자료 81")).toBeInTheDocument();
+  expect(screen.queryByText("5페이지를 불러오는 중입니다.")).not.toBeInTheDocument();
+  expect(requests).toHaveLength(requestsBeforeCachedPage);
+});
+
+test("prefetches only the next Gmail page and reuses it on navigation", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ gmailBatch: true, gmailCount: 80 });
+  render(<App />);
+
+  await screen.findByText("자료 1");
+  await waitFor(() => expect(requests.filter((request) => request.path.includes("page_token=page-2")).length).toBe(1));
+  expect(requests.some((request) => request.path.includes("page_token=page-3"))).toBe(false);
+
+  await user.click(screen.getByRole("button", { name: "2" }));
+  expect(await screen.findByText("자료 21")).toBeInTheDocument();
+  expect(screen.queryByText("2페이지를 불러오는 중입니다.")).not.toBeInTheDocument();
+  expect(requests.filter((request) => request.path.includes("page_token=page-2")).length).toBe(1);
+  await waitFor(() => expect(requests.filter((request) => request.path.includes("page_token=page-3")).length).toBe(1));
+});
+
+test("reuses an in-flight Gmail prefetch when the user selects that page", async () => {
+  const user = userEvent.setup();
+  const pageTwo = deferred<Response>();
+  const requests = installUiContractFetch({ gmailBatch: true, gmailCount: 80, gmailPageResponses: { "page-2": pageTwo.promise } });
+  render(<App />);
+
+  await screen.findByText("자료 1");
+  await waitFor(() => expect(requests.filter((request) => request.path.includes("page_token=page-2")).length).toBe(1));
+  await user.click(screen.getByRole("button", { name: "2" }));
+  expect(screen.getByRole("button", { name: "2" })).toHaveClass("button-primary");
+  expect(screen.getByText("2페이지를 불러오는 중입니다.")).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.includes("page_token=page-2")).length).toBe(1);
+
+  pageTwo.resolve(gmailPageResponse(2, 80));
+  expect(await screen.findByText("자료 21")).toBeInTheDocument();
+});
+
+test("keeps the latest Gmail page intent when an earlier prefetch resolves later", async () => {
+  const user = userEvent.setup();
+  const pageTwo = deferred<Response>();
+  const pageThree = deferred<Response>();
+  const requests = installUiContractFetch({
+    gmailBatch: true,
+    gmailCount: 80,
+    gmailPageResponses: { "page-2": pageTwo.promise, "page-3": pageThree.promise },
+  });
+  render(<App />);
+
+  await screen.findByText("자료 1");
+  await waitFor(() => expect(requests.filter((request) => request.path.includes("page_token=page-2")).length).toBe(1));
+  await user.click(screen.getByRole("button", { name: "2" }));
+  expect(screen.getByRole("button", { name: "2" })).toHaveClass("button-primary");
+  await user.click(screen.getByRole("button", { name: "3" }));
+  expect(screen.getByRole("button", { name: "3" })).toHaveClass("button-primary");
+
+  pageTwo.resolve(gmailPageResponse(2, 80));
+  await waitFor(() => expect(requests.filter((request) => request.path.includes("page_token=page-3")).length).toBe(1));
+  expect(screen.getByRole("button", { name: "3" })).toHaveClass("button-primary");
+  expect(screen.getByText("자료 1")).toBeInTheDocument();
+
+  pageThree.resolve(gmailPageResponse(3, 80));
+  expect(await screen.findByText("자료 41")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "3" })).toHaveClass("button-primary");
+});
+
+test("does not retry a failed Gmail count while the source scope is unchanged", async () => {
+  const requests = installUiContractFetch({ gmailCountError: true });
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await waitFor(() => expect(requests.filter((request) => request.path === "/api/v1/resources/gmail/count")).toHaveLength(1));
+  await new Promise((resolve) => window.setTimeout(resolve, 50));
+  expect(requests.filter((request) => request.path === "/api/v1/resources/gmail/count")).toHaveLength(1);
+});
+
+test("debounces Gmail search input into one browse request", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch();
+  render(<App />);
+
+  const input = await screen.findByRole("textbox", { name: "메일 검색" });
+  const initialBrowseCalls = requests.filter((request) => request.path.startsWith("/api/v1/resources/gmail?")).length;
+  await user.type(input, "project");
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/gmail?")).length).toBe(initialBrowseCalls);
+  await waitFor(() => expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/gmail?")).length).toBe(initialBrowseCalls + 1));
+  expect(requests.at(-1)?.path).toContain("query=project");
 });
 
 test("reuses the Calendar event cache when returning to Calendar", async () => {
@@ -1185,13 +1825,14 @@ test("reuses the Calendar event cache when returning to Calendar", async () => {
 
   await screen.findByText("첫 번째 자료");
   await user.click(screen.getByRole("tab", { name: /캘린더/ }));
+  await selectCalendarDate(user, "2026-08-10");
   await screen.findByText("프로젝트 검토");
   await user.click(screen.getByRole("tab", { name: /태스크/ }));
   await screen.findByText("후속 조치");
   await user.click(screen.getByRole("tab", { name: /캘린더/ }));
   expect(await screen.findByText("프로젝트 검토")).toBeInTheDocument();
 
-  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar?")).length).toBe(1);
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar?")).length).toBe(3);
 });
 
 test("does not let a delayed previous source response replace the active source", async () => {
@@ -1234,8 +1875,8 @@ test("refresh bypasses the known page and re-requests only the active source", a
   await user.click(screen.getByRole("button", { name: "현재 목록 새로고침" }));
   await waitFor(() => expect(
     requests.filter((request) => request.path.startsWith("/api/v1/resources/gmail?")).length,
-  ).toBe(gmailCallsBefore + 1));
-  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?")).length).toBe(0);
+  ).toBe(gmailCallsBefore + 2));
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(1);
   expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar?")).length).toBe(0);
 });
 
@@ -1246,14 +1887,89 @@ test("Calendar refresh re-requests events without loading calendar containers", 
 
   await screen.findByText("첫 번째 자료");
   await user.click(screen.getByRole("tab", { name: /캘린더/ }));
-  await screen.findByText("프로젝트 검토");
+  await screen.findByLabelText("월간 일정");
   const callsBefore = requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar?")).length;
   await user.click(screen.getByRole("button", { name: "현재 목록 새로고침" }));
 
   await waitFor(() => expect(
     requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar?")).length,
   ).toBe(callsBefore + 1));
+  expect(requests.some((request) => request.path.startsWith("/api/v1/resources/calendar/count"))).toBe(false);
   expect(screen.queryByText("캘린더 목록")).not.toBeInTheDocument();
+});
+
+test("Tasks refresh keeps stale UI until a fresh provider result replaces its cache", async () => {
+  const user = userEvent.setup();
+  const refreshedTasks = deferred<Response>();
+  const requests = installUiContractFetch({
+    taskBatchSizes: [23],
+    taskRefreshResponse: refreshedTasks.promise,
+  });
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await user.click(screen.getByRole("tab", { name: /태스크/ }));
+  expect(await screen.findByText("할 일 1")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /태스크.*23/ })).toBeInTheDocument();
+  const taskCallsBeforeRefresh = requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length;
+
+  await user.click(screen.getByRole("button", { name: "현재 목록 새로고침" }));
+  await waitFor(() => expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(taskCallsBeforeRefresh + 1));
+  expect(requests.at(-1)?.path).toContain("refresh=true");
+  expect(screen.getByRole("tab", { name: /태스크.*23/ })).toBeInTheDocument();
+  expect(screen.getByText("할 일 1")).toBeInTheDocument();
+
+  refreshedTasks.resolve(taskListResponse(22, 2));
+  expect(await screen.findByRole("tab", { name: /태스크.*22/ })).toBeInTheDocument();
+  expect(screen.queryByText("할 일 1")).not.toBeInTheDocument();
+  expect(requests.some((request) => request.path === "/api/v1/resources/tasks/count")).toBe(false);
+});
+
+test("Tasks refresh failure keeps the existing count and provider-order list", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ taskBatchSizes: [23], taskRefreshError: true });
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await user.click(screen.getByRole("tab", { name: /태스크/ }));
+  expect(await screen.findByText("할 일 1")).toBeInTheDocument();
+  const taskCallsBeforeRefresh = requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length;
+
+  await user.click(screen.getByRole("button", { name: "현재 목록 새로고침" }));
+  expect(await screen.findByText("태스크를 불러오지 못했습니다.")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /태스크.*23/ })).toBeInTheDocument();
+  expect(screen.getByText("할 일 1")).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(taskCallsBeforeRefresh + 1);
+});
+
+test("Tasks date-sort refresh invalidates its cached result and rebuilds it from a fresh batch", async () => {
+  const user = userEvent.setup();
+  const taskDues = Array.from({ length: 22 }, (_, index) => `2026-08-${String(index + 2).padStart(2, "0")}`);
+  taskDues[21] = "2026-08-01";
+  const requests = installUiContractFetch({
+    taskBatchSizes: [22],
+    taskDues,
+    taskRefreshBatchSize: 21,
+  });
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await user.click(screen.getByRole("tab", { name: /태스크/ }));
+  await user.click(screen.getByRole("button", { name: "태스크 정렬 메뉴" }));
+  await user.click(screen.getByRole("menuitemradio", { name: "날짜순" }));
+  expect(await screen.findByRole("tab", { name: /태스크.*22/ })).toBeInTheDocument();
+  expect(screen.getByText("할 일 22")).toBeInTheDocument();
+  const callsBeforeRefresh = requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length;
+
+  await user.click(screen.getByRole("button", { name: "현재 목록 새로고침" }));
+
+  await waitFor(() => expect(
+    requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length,
+  ).toBe(callsBeforeRefresh + 1));
+  expect(requests.at(-1)?.path).toContain("refresh=true");
+  expect(await screen.findByRole("tab", { name: /태스크.*21/ })).toBeInTheDocument();
+  expect(screen.queryByText("할 일 22")).not.toBeInTheDocument();
+  expect(requests.some((request) => request.path === "/api/v1/resources/tasks/count")).toBe(false);
 });
 
 test("resource viewer empty state follows the active source and clears the previous focus", async () => {
@@ -1269,6 +1985,7 @@ test("resource viewer empty state follows the active source and clears the previ
   expect(await screen.findByText("왼쪽 목록에서 일정을 선택하면 상세 내용을 확인할 수 있습니다.")).toBeInTheDocument();
   expect(screen.queryByText("실제 메일 본문입니다.")).not.toBeInTheDocument();
 
+  await selectCalendarDate(user, "2026-08-10");
   await user.click(screen.getByRole("button", { name: /프로젝트 검토/ }));
   expect(screen.getByRole("heading", { name: "프로젝트 검토" })).toBeInTheDocument();
   expect(screen.getByText("시작 시간")).toBeInTheDocument();
@@ -1296,7 +2013,7 @@ test("source tabs expose their search, composer, and Calendar section labels", a
   expect(screen.getByRole("textbox", { name: "선택한 태스크에 대해 질문하거나 업무를 요청하세요..." })).toBeInTheDocument();
 
   await user.click(screen.getByRole("tab", { name: /캘린더/ }));
-  expect(await screen.findByText("예정된 일정")).toBeInTheDocument();
+  expect(await screen.findByLabelText("월간 일정")).toBeInTheDocument();
   expect(screen.getByRole("textbox", { name: "일정 검색" })).toHaveAttribute("placeholder", "일정 검색");
   expect(screen.getByRole("textbox", { name: "선택한 일정에 대해 질문하거나 업무를 요청하세요..." })).toBeInTheDocument();
 });
@@ -1313,15 +2030,16 @@ test("Tasks UI renders normalized status and scheduled date without raw provider
   expect(screen.getByText("1월 1일 (토)")).toBeInTheDocument();
   await user.click(row);
 
-  expect(await screen.findByText("미완료 · 예정일 지남")).toBeInTheDocument();
+  expect(await screen.findByText("미완료")).toBeInTheDocument();
   expect(screen.getByText("예정일")).toBeInTheDocument();
   expect(screen.getByText("2000년 1월 1일 (토)")).toBeInTheDocument();
   expect(screen.queryByText("needsAction")).not.toBeInTheDocument();
   expect(screen.queryByText("2000-01-01T00:00:00.000Z")).not.toBeInTheDocument();
   expect(screen.queryByText("마감일")).not.toBeInTheDocument();
+  expect(screen.queryByText("예정일 지남")).not.toBeInTheDocument();
 });
 
-test("completed Tasks do not show the past scheduled-date helper", async () => {
+test("completed Tasks display their normalized status", async () => {
   const user = userEvent.setup();
   installUiContractFetch({
     taskMetadata: { task_status: "completed", scheduled_date: "2000-01-01" },
@@ -1359,9 +2077,119 @@ test("Calendar rows use compact timed and all-day time labels", async () => {
   render(<App />);
 
   await user.click(await screen.findByRole("tab", { name: /캘린더/ }));
-  expect(await screen.findByText("2026년 8월 11일 (화) 오후 3:00 - 오후 4:00")).toBeInTheDocument();
-  expect(screen.getByText("2026년 8월 12일 (수) · 하루 종일")).toBeInTheDocument();
-  expect(screen.queryByText(/시작 .*종료/)).not.toBeInTheDocument();
+  await selectCalendarDate(user, "2026-08-11");
+  expect(await screen.findByText("15:00")).toBeInTheDocument();
+  expect(screen.getByText("디자인 리뷰 미팅")).toBeInTheDocument();
+  await selectCalendarDate(user, "2026-08-12");
+  expect(screen.getByText("종일")).toBeInTheDocument();
+  expect(screen.getByText("연차")).toBeInTheDocument();
+});
+
+test("Calendar Month View materializes provider pages, keeps date selection client-side, and reuses a visited month", async () => {
+  const user = userEvent.setup();
+  const firstPage = calendarEventResponse([calendarEventItem()], "calendar-page-2");
+  const secondPage = calendarEventResponse([
+    calendarEventItem({ resource_id: "event-2", title: "두 번째 일정" }),
+  ]);
+  const requests = installUiContractFetch({ calendarPageResponses: [
+    jsonFetchResponse(firstPage),
+    jsonFetchResponse(secondPage),
+  ] });
+  render(<App />);
+
+  await user.click(await screen.findByRole("tab", { name: /캘린더/ }));
+  await screen.findByLabelText("월간 일정");
+  await waitFor(() => expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar?")).length).toBeGreaterThanOrEqual(4));
+  const calendarRequests = requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar?"));
+  expect(calendarRequests[0]?.path).toContain("page_size=100");
+  expect(calendarRequests[0]?.path).toContain("time_min=");
+  expect(calendarRequests[0]?.path).toContain("time_max=");
+  expect(calendarRequests[1]?.path).toContain("page_token=calendar-page-2");
+
+  const callsBeforeSelection = calendarRequests.length;
+  await selectCalendarDate(user, "2026-08-10", 2);
+  expect(await screen.findByText("두 번째 일정")).toBeInTheDocument();
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar?")).length).toBe(callsBeforeSelection);
+
+  await user.click(screen.getByRole("button", { name: "다음 달" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "다음 달" })).toBeInTheDocument());
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar?")).length).toBe(callsBeforeSelection + 1);
+  await user.click(screen.getByRole("button", { name: "이전 달" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "다음 달" })).toBeInTheDocument());
+  expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/calendar?")).length).toBe(callsBeforeSelection + 1);
+});
+
+test("Calendar Month View keeps only the latest month response and reuses adjacent prefetch", async () => {
+  const user = userEvent.setup();
+  const september = deferred<Response>();
+  const october = deferred<Response>();
+  const requests = installUiContractFetch({
+    calendarResponseForPath: (path) => {
+      const timeMin = new URL(`http://local${path}`).searchParams.get("time_min") ?? "";
+      if (timeMin.includes("-08-29")) return september.promise;
+      if (timeMin.includes("-09-26")) return october.promise;
+      return jsonFetchResponse(calendarEventResponse());
+    },
+  });
+  render(<App />);
+
+  await user.click(await screen.findByRole("tab", { name: /캘린더/ }));
+  await screen.findByLabelText("월간 일정");
+  await waitFor(() => expect(requests.some((request) => request.path.includes("-06-27"))).toBe(true));
+  await waitFor(() => expect(requests.some((request) => request.path.includes("-08-29"))).toBe(true));
+  expect(requests.some((request) => request.path.includes("-09-26"))).toBe(false);
+
+  await user.click(screen.getByRole("button", { name: "다음 달" }));
+  await user.click(screen.getByRole("button", { name: "다음 달" }));
+  await waitFor(() => expect(requests.filter((request) => request.path.includes("-09-26"))).toHaveLength(1));
+  october.resolve(jsonFetchResponse(calendarEventResponse([
+    calendarEventItem({ resource_id: "october", title: "10월 일정", metadata: { start: "2026-10-01T09:00:00+09:00", end: "2026-10-01T10:00:00+09:00" } }),
+  ])));
+  await screen.findByText("10월 일정");
+
+  september.resolve(jsonFetchResponse(calendarEventResponse([
+    calendarEventItem({ resource_id: "september", title: "9월 일정", metadata: { start: "2026-09-01T09:00:00+09:00", end: "2026-09-01T10:00:00+09:00" } }),
+  ])));
+  await waitFor(() => expect(screen.getByText("10월 일정")).toBeInTheDocument());
+  expect(screen.queryByText("9월 일정")).not.toBeInTheDocument();
+  expect(requests.filter((request) => request.path.includes("-08-29"))).toHaveLength(1);
+});
+
+test("Calendar refresh ignores an older generation after a newer refresh completes", async () => {
+  const user = userEvent.setup();
+  const firstRefresh = deferred<Response>();
+  const secondRefresh = deferred<Response>();
+  let augustRequests = 0;
+  const requests = installUiContractFetch({
+    calendarResponseForPath: (path) => {
+      const timeMin = new URL(`http://local${path}`).searchParams.get("time_min") ?? "";
+      if (!timeMin.includes("-07-25")) return jsonFetchResponse(calendarEventResponse());
+      augustRequests += 1;
+      if (augustRequests === 2) return firstRefresh.promise;
+      if (augustRequests === 3) return secondRefresh.promise;
+      return jsonFetchResponse(calendarEventResponse());
+    },
+  });
+  render(<App />);
+
+  await user.click(await screen.findByRole("tab", { name: /캘린더/ }));
+  await screen.findByLabelText("월간 일정");
+  const refresh = screen.getByRole("button", { name: "현재 목록 새로고침" });
+  await user.click(refresh);
+  await user.click(refresh);
+  await waitFor(() => expect(augustRequests).toBe(3));
+
+  secondRefresh.resolve(jsonFetchResponse(calendarEventResponse([
+    calendarEventItem({ resource_id: "fresh", title: "최신 일정", metadata: { start: "2026-08-10T09:00:00+09:00", end: "2026-08-10T10:00:00+09:00" } }),
+  ])));
+  await selectCalendarDate(user, "2026-08-10");
+  await screen.findByText("최신 일정");
+  firstRefresh.resolve(jsonFetchResponse(calendarEventResponse([
+    calendarEventItem({ resource_id: "stale", title: "오래된 일정", metadata: { start: "2026-08-10T09:00:00+09:00", end: "2026-08-10T10:00:00+09:00" } }),
+  ])));
+  await waitFor(() => expect(screen.getByText("최신 일정")).toBeInTheDocument());
+  expect(screen.queryByText("오래된 일정")).not.toBeInTheDocument();
+  expect(requests.filter((request) => request.path.includes("-07-25"))).toHaveLength(3);
 });
 
 test("TST-UI-205 does not render a fake resource count", async () => {
@@ -1781,23 +2609,48 @@ function installUiContractFetch(options: {
   action?: boolean;
   actionStatus?: string;
   actionRisk?: Record<string, unknown>;
+  accountAbsent?: boolean;
   conversations?: boolean;
   calendarEvents?: Record<string, unknown>[];
+  calendarPageResponses?: Response[];
+  calendarResponseForPath?: (path: string) => Response | Promise<Response>;
   detail?: Record<string, unknown>;
   detailErrorOnce?: boolean;
   empty?: boolean;
   calendarListResponse?: Promise<Response>;
   gmailListResponse?: Promise<Response>;
+  gmailBatch?: boolean;
+  gmailPageResponses?: Record<string, Promise<Response>>;
+  gmailCount?: number;
+  gmailCountError?: boolean;
+  gmailCountResponse?: Promise<Response>;
   run?: boolean;
   resource?: Partial<ReturnType<typeof gmailThread>>;
   resultKind?: string;
   status?: string;
+  taskBatchSizes?: number[];
+  taskTitles?: Array<string | null>;
+  taskRefreshBatchSize?: number;
+  taskRefreshError?: boolean;
+  taskRefreshResponse?: Promise<Response>;
+  taskDues?: Array<string | null>;
+  taskError?: boolean;
+  taskListResponse?: Promise<Response>;
   taskMetadata?: Record<string, unknown>;
+  completedTaskResponses?: Array<{
+    items: Record<string, unknown>[];
+    nextPageToken?: string | null;
+  }>;
+  completedTaskErrors?: boolean[];
+  completedTaskResponse?: Promise<Response>;
   twoItems?: boolean;
 } = {}): Array<{ path: string; init?: RequestInit }> {
   const requests: Array<{ path: string; init?: RequestInit }> = [];
+  let calendarResponseIndex = 0;
   let detailAttempts = 0;
   let actionStatus = options.actionStatus ?? "PROPOSED";
+  let firstTaskPageRequests = 0;
+  let completedTaskResponseIndex = 0;
   globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
     const path = String(input);
     requests.push({ path, init });
@@ -1805,11 +2658,12 @@ function installUiContractFetch(options: {
     if (path === "/health/ready") return jsonFetchResponse(readyResponse());
     if (path === "/api/v1/runtime") return jsonFetchResponse({ summary: runtimeSummary(options.run === false ? [] : ["run-1"], { llm: {} }), api_contract_version: "1" });
     if (path === "/api/v1/google/connection") return jsonFetchResponse(googleConnection());
-    if (path === "/api/v1/identity/google-account") return jsonFetchResponse({ account: currentAccount(), api_contract_version: "1" });
+    if (path === "/api/v1/identity/google-account") return jsonFetchResponse({ account: options.accountAbsent ? null : currentAccount(), api_contract_version: "1" });
+    if (path === "/api/v1/settings") return jsonFetchResponse({ settings: settingsPayload(), api_contract_version: "1" });
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonFetchResponse({ items: options.conversations ? [{ id: "conversation-1", account_id: "account-1", title: "업무 대화", updated_at_ms: 1, created_at_ms: 1 }] : [], next_cursor: null, api_contract_version: "1" });
     }
-    if (path.startsWith("/api/v1/resources/gmail/") && !path.includes("?")) {
+    if (path.startsWith("/api/v1/resources/gmail/") && !path.includes("?") && !path.endsWith("/count")) {
       detailAttempts += 1;
       if (options.detailErrorOnce && detailAttempts === 1) {
         return jsonFetchResponse({
@@ -1836,9 +2690,58 @@ function installUiContractFetch(options: {
         ...options.detail,
       });
     }
+    if (path === "/api/v1/resources/gmail/count") {
+      if (options.gmailCountResponse) return options.gmailCountResponse;
+      if (options.gmailCountError) {
+        return jsonFetchResponse({
+          error_code: "UPSTREAM_UNAVAILABLE",
+          user_message: "메일 수를 불러오지 못했습니다.",
+          retryable: true,
+          request_id: "request-1",
+          api_contract_version: "1",
+        }, 504);
+      }
+      return jsonFetchResponse({ source: "gmail", total_count: options.gmailCount ?? 2, api_contract_version: "1" });
+    }
+    if (path === "/api/v1/resources/tasks/count") {
+      return jsonFetchResponse({ source: "tasks", total_count: 1, api_contract_version: "1" });
+    }
     if (path.startsWith("/api/v1/resources/gmail")) {
+      const gmailPageToken = new URL(`http://local${path}`).searchParams.get("page_token") ?? "first";
+      if (options.gmailPageResponses?.[gmailPageToken]) return options.gmailPageResponses[gmailPageToken];
       if (options.gmailListResponse) {
         return options.gmailListResponse;
+      }
+      if (options.gmailBatch) {
+        if (options.gmailCount) {
+          const pageToken = path.match(/page_token=page-(\d+)/);
+          const pageNumber = pageToken ? Number(pageToken[1]) : 1;
+          const start = (pageNumber - 1) * 20;
+          const items = Array.from({ length: 20 }, (_, index) => ({
+            ...gmailThread(),
+            resource_id: `resource-${start + index + 1}`,
+            title: `자료 ${start + index + 1}`,
+          }));
+          return jsonFetchResponse({
+            source: "gmail",
+            items,
+            next_page_token: pageNumber * 20 < options.gmailCount ? `page-${pageNumber + 1}` : null,
+            api_contract_version: "1",
+          });
+        }
+        const items = path.includes("page_token=page-2")
+          ? [{ ...gmailThread(), resource_id: "resource-101", title: "두 번째 batch 자료" }]
+          : Array.from({ length: 20 }, (_, index) => ({
+              ...gmailThread(),
+              resource_id: `resource-${index + 1}`,
+              title: `자료 ${index + 1}`,
+            }));
+        return jsonFetchResponse({
+          source: "gmail",
+          items,
+          next_page_token: path.includes("page_token=page-2") ? null : "page-2",
+          api_contract_version: "1",
+        });
       }
       const items = options.empty ? [] : path.includes("page_token=page-2")
         ? [{ ...gmailThread(), resource_id: "resource-2", title: "두 번째 자료" }]
@@ -1849,26 +2752,74 @@ function installUiContractFetch(options: {
       return jsonFetchResponse({ source: "gmail", items, next_page_token: options.empty || options.twoItems || path.includes("page_token=page-2") ? null : "page-2", api_contract_version: "1" });
     }
     if (path.startsWith("/api/v1/resources/tasks")) {
+      if (path.includes("status_scope=completed")) {
+        const responseIndex = completedTaskResponseIndex++;
+        if (options.completedTaskErrors?.[responseIndex]) throw new Error("completed tasks unavailable");
+        if (options.completedTaskResponse && responseIndex === 0) return options.completedTaskResponse;
+        const response = options.completedTaskResponses?.[responseIndex] ?? { items: [], nextPageToken: null };
+        return jsonFetchResponse({ source: "tasks", items: response.items, next_page_token: response.nextPageToken ?? null, api_contract_version: "1" });
+      }
+      if (options.taskListResponse) return options.taskListResponse;
+      if (options.taskError) {
+        return jsonFetchResponse({
+          error_code: "INVALID_ARGUMENT",
+          user_message: "요청이 올바르지 않습니다.",
+          retryable: false,
+          request_id: "request-1",
+          api_contract_version: "1",
+        }, 422);
+      }
+      const pageToken = new URL(`http://local${path}`).searchParams.get("page_token");
+      if (pageToken === null) firstTaskPageRequests += 1;
+      if (pageToken === null && firstTaskPageRequests > 1 && options.taskRefreshResponse) {
+        return options.taskRefreshResponse;
+      }
+      if (options.taskRefreshError && pageToken === null && firstTaskPageRequests > 1) {
+        return jsonFetchResponse({
+          error_code: "UPSTREAM_UNAVAILABLE",
+          user_message: "태스크를 불러오지 못했습니다.",
+          retryable: true,
+          request_id: "request-1",
+          api_contract_version: "1",
+        }, 502);
+      }
+      const batchIndex = pageToken === null ? 0 : Number(pageToken.replace("tasks-page-", "")) - 1;
+      const batchSizes = options.taskBatchSizes ?? [1];
+      const start = batchSizes.slice(0, batchIndex).reduce((sum, size) => sum + size, 0);
+      const size = pageToken === null && firstTaskPageRequests > 1 && options.taskRefreshBatchSize !== undefined
+        ? options.taskRefreshBatchSize
+        : batchSizes[batchIndex] ?? 0;
       return jsonFetchResponse({
         source: "tasks",
-        items: [{
+        items: Array.from({ length: size }, (_, index) => ({
           source: "tasks",
           resource_type: "task",
-          resource_id: "task-1",
+          resource_id: `task-${start + index + 1}`,
           parent_id: "task-list-default",
-          title: "후속 조치",
+          title: options.taskTitles && start + index < options.taskTitles.length
+            ? options.taskTitles[start + index]
+            : (options.taskBatchSizes ? `할 일 ${start + index + 1}` : "후속 조치"),
           subtitle: null,
           link_url: null,
           version: "1",
           related_resource_ids: ["task-list-default"],
-          metadata: options.taskMetadata ?? { task_status: "incomplete", scheduled_date: "2026-08-12" },
-        }],
-        next_page_token: null,
+          metadata: options.taskMetadata ?? {
+            task_status: "incomplete",
+            scheduled_date: options.taskDues && start + index < options.taskDues.length
+              ? options.taskDues[start + index]
+              : "2026-08-12",
+          },
+        })),
+        next_page_token: batchIndex + 1 < batchSizes.length ? `tasks-page-${batchIndex + 2}` : null,
         api_contract_version: "1",
       });
     }
     if (path.startsWith("/api/v1/resources/calendar")) {
       if (options.calendarListResponse) return options.calendarListResponse;
+      if (options.calendarResponseForPath) return options.calendarResponseForPath(path);
+      const calendarPageResponse = options.calendarPageResponses?.[calendarResponseIndex];
+      calendarResponseIndex += 1;
+      if (calendarPageResponse) return calendarPageResponse;
       return jsonFetchResponse(calendarEventResponse(options.calendarEvents));
     }
     if (path === "/api/v1/conversations" && init?.method === "POST") return jsonFetchResponse({ conversation_id: "conversation-1" });
@@ -1884,11 +2835,14 @@ function installUiContractFetch(options: {
   return requests;
 }
 
-function calendarEventResponse(items = [calendarEventItem()]): Record<string, unknown> {
+function calendarEventResponse(
+  items = [calendarEventItem()],
+  nextPageToken: string | null = null,
+): Record<string, unknown> {
   return {
     source: "calendar",
     items,
-    next_page_token: null,
+    next_page_token: nextPageToken,
     api_contract_version: "1",
   };
 }
@@ -1938,13 +2892,50 @@ function jsonFetchResponse(json: unknown, status = 200): Response {
   });
 }
 
-function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+function gmailPageResponse(pageNumber: number, totalCount: number): Response {
+  const start = (pageNumber - 1) * 20;
+  return jsonFetchResponse({
+    source: "gmail",
+    items: Array.from({ length: 20 }, (_, index) => ({
+      ...gmailThread(),
+      resource_id: `resource-${start + index + 1}`,
+      title: `자료 ${start + index + 1}`,
+    })),
+    next_page_token: pageNumber * 20 < totalCount ? `page-${pageNumber + 1}` : null,
+    api_contract_version: "1",
+  });
+}
+
+function taskListResponse(count: number, start = 1): Response {
+  return jsonFetchResponse({
+    source: "tasks",
+    items: Array.from({ length: count }, (_, index) => ({
+      source: "tasks",
+      resource_type: "task",
+      resource_id: `task-${start + index}`,
+      parent_id: "task-list-default",
+      title: `할 일 ${start + index}`,
+      subtitle: null,
+      link_url: null,
+      version: "1",
+      related_resource_ids: ["task-list-default"],
+      metadata: { task_status: "incomplete", scheduled_date: "2026-08-12" },
+    })),
+    next_page_token: null,
+    api_contract_version: "1",
+  });
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void } {
   let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
   return {
-    promise: new Promise<T>((next) => {
+    promise: new Promise<T>((next, fail) => {
       resolve = next;
+      reject = fail;
     }),
     resolve,
+    reject,
   };
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   approveAction,
   bootstrapSession,
@@ -10,6 +10,7 @@ import {
   getCurrentAccount,
   getGoogleConnection,
   getGmailResourceDetail,
+  getResourceCount,
   getLLMConnection,
   getLatestConversationRun,
   getLive,
@@ -39,6 +40,7 @@ import type {
   GoogleConnectionResponse,
   GmailResourceDetailResponse,
   ResourceItem,
+  ResourceListResponse,
   RunAction,
   RunContext,
   RunSnapshot,
@@ -47,6 +49,7 @@ import type {
 } from "../api/contract";
 import { ApiClientError } from "../api/client";
 import { subscribeRunEvents } from "../api/sse";
+import { CalendarMonthView, calendarMonthRange, calendarRangeBoundary, configuredDateKey } from "./CalendarMonthView";
 
 type StartupState = {
   phase: string;
@@ -57,21 +60,55 @@ type StartupState = {
 };
 
 type ResourceTab = "gmail" | "tasks" | "calendar";
+type CountTab = Exclude<ResourceTab, "calendar">;
+type TaskSort = "provider" | "scheduled_date";
+type SourceCount = { value: number; exact: boolean } | null;
+type CompletedTasksState = {
+  expanded: boolean;
+  initialized: boolean;
+  items: ResourceItem[];
+  pageIndex: number;
+  loading: boolean;
+  error: string | null;
+};
 
 type ResourceState = {
   tab: ResourceTab;
   query: string;
   items: ResourceItem[];
+  gmailPages: Record<number, GmailPageCacheEntry>;
   nextPageToken: string | null;
   pageIndex: number;
-  pageItems: ResourceItem[][];
-  pageTokens: Array<string | null>;
+  lastLoadedPageIndex: number;
+  loaded: boolean;
   selectedIds: string[];
   focusItem: ResourceItem | null;
   parentId: string | null;
   calendarTimeMin: string | null;
+  calendarTimeMax: string | null;
+  taskSort: TaskSort;
+  totalCount: number | null;
+  countLoading: boolean;
   loading: boolean;
   error: string | null;
+};
+
+type GmailPageCacheEntry = {
+  pageToken: string | null;
+  nextPageToken: string | null;
+  items: ResourceItem[] | null;
+};
+
+type GmailProviderPage = {
+  response: ResourceListResponse;
+  includesMetadata: boolean;
+};
+
+type ResourceCacheEntry = {
+  items: ResourceItem[];
+  nextPageToken: string | null;
+  totalCount: number | null;
+  gmailPages?: Record<number, GmailPageCacheEntry>;
 };
 
 type PendingConfirmation = {
@@ -91,8 +128,10 @@ type ResourceRequestIdentity = {
   parentId: string | null;
   query: string;
   pageIndex: number;
-  pageToken: string | null;
   calendarTimeMin: string | null;
+  calendarTimeMax: string | null;
+  taskSort: TaskSort;
+  taskFilter: string;
 };
 
 type TaskDuplicateDecision =
@@ -156,9 +195,27 @@ function hasOtherRisk(risk: Record<string, unknown>): boolean {
 type ResourceLoadOptions = {
   force?: boolean;
   calendarTimeMin?: string | null;
+  calendarTimeMax?: string | null;
 };
 
-const resourceCache = new Map<string, { items: ResourceItem[]; nextPageToken: string | null }>();
+type ResourceCountLoadOptions = {
+  force?: boolean;
+  publish?: boolean;
+};
+
+type CalendarMonthRequestInput = {
+  cacheKey: string;
+  parentId: string | null;
+  timeMin: string;
+  timeMax: string;
+};
+
+const resourceCache = new Map<string, ResourceCacheEntry>();
+const resourceCountCache = new Map<string, number | null>();
+const SIDEBAR_VISIBLE_PAGE_SIZE = 20;
+const GMAIL_BROWSE_SIZE = 20;
+const TASKS_BROWSE_SIZE = 100;
+const CALENDAR_BROWSE_SIZE = 100;
 
 const THEME_KEY = "gwa.theme";
 const SETTINGS_KEY = "gwa.settings";
@@ -175,6 +232,14 @@ export function App(): JSX.Element {
   const [runtime, setRuntime] = useState<RuntimeSummary | null>(null);
   const [google, setGoogle] = useState<GoogleConnectionResponse | null>(null);
   const [currentAccount, setCurrentAccount] = useState<CurrentGoogleAccountResponse["account"]>(null);
+  const [calendarTimezone, setCalendarTimezone] = useState("Asia/Seoul");
+  const [calendarMonthAnchor, setCalendarMonthAnchor] = useState<string | null>(null);
+  const [calendarSelectedDate, setCalendarSelectedDate] = useState<string | null>(null);
+  const [calendarMonthItems, setCalendarMonthItems] = useState<ResourceItem[]>([]);
+  const [calendarMonthLoading, setCalendarMonthLoading] = useState(false);
+  const [calendarMonthError, setCalendarMonthError] = useState<string | null>(null);
+  const [gmailSearchInput, setGmailSearchInput] = useState("");
+  const [taskSortMenuOpen, setTaskSortMenuOpen] = useState(false);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [conversationQuery, setConversationQuery] = useState("");
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
@@ -197,32 +262,53 @@ export function App(): JSX.Element {
     tab: "gmail",
     query: "",
     items: [],
+    gmailPages: {},
     nextPageToken: null,
     pageIndex: 0,
-    pageItems: [],
-    pageTokens: [null],
+    lastLoadedPageIndex: 0,
+    loaded: false,
     selectedIds: [],
     focusItem: null,
     parentId: null,
     calendarTimeMin: null,
+    calendarTimeMax: null,
+    taskSort: "provider",
+    totalCount: null,
+    countLoading: false,
     loading: false,
     error: null,
+  });
+  const [resourceCounts, setResourceCounts] = useState<Record<CountTab, SourceCount>>({
+    gmail: null,
+    tasks: null,
+  });
+  const [completedTasks, setCompletedTasks] = useState<CompletedTasksState>({
+    expanded: false, initialized: false, items: [], pageIndex: 0, loading: false, error: null,
   });
   const selectedResourceIds = useMemo(
     () => [...new Set(resourceState.selectedIds)],
     [resourceState.selectedIds],
   );
   const selectedResourceLabels = useMemo(
-    () => resourceState.items
+    () => resourceItemsForSelection(resourceState)
       .filter((item) => selectedResourceIds.includes(item.resource_id))
       .map((item) => resourcePresentation(item).title)
       .filter((title): title is string => Boolean(title)),
-    [resourceState.items, selectedResourceIds],
+    [resourceState, selectedResourceIds],
   );
   const composerPrompt = resourceComposerPrompt(resourceState.tab);
   const visibleResourceItems = useMemo(() => {
-    if (resourceState.tab === "gmail" || !sidebarFilter.trim()) {
-      return resourceState.items;
+    if (resourceState.tab === "gmail") {
+      const visiblePageIndex = resourceState.loading
+        ? resourceState.lastLoadedPageIndex
+        : resourceState.pageIndex;
+      return resourceState.gmailPages[visiblePageIndex]?.items ?? [];
+    }
+    if (!sidebarFilter.trim()) {
+      return resourceState.items.slice(
+        resourceState.pageIndex * SIDEBAR_VISIBLE_PAGE_SIZE,
+        (resourceState.pageIndex + 1) * SIDEBAR_VISIBLE_PAGE_SIZE,
+      );
     }
     const normalizedFilter = sidebarFilter.trim().toLocaleLowerCase("ko-KR");
     return resourceState.items.filter((item) => {
@@ -230,8 +316,21 @@ export function App(): JSX.Element {
       return [presentation.title, presentation.secondary, presentation.snippet, presentation.time]
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLocaleLowerCase("ko-KR").includes(normalizedFilter));
-    });
-  }, [resourceState.items, resourceState.tab, sidebarFilter]);
+    }).slice(
+      resourceState.pageIndex * SIDEBAR_VISIBLE_PAGE_SIZE,
+      (resourceState.pageIndex + 1) * SIDEBAR_VISIBLE_PAGE_SIZE,
+    );
+  }, [resourceState.gmailPages, resourceState.items, resourceState.lastLoadedPageIndex, resourceState.loading, resourceState.pageIndex, resourceState.tab, sidebarFilter]);
+  const visibleTaskSections = useMemo(() => (
+    resourceState.tab === "tasks" && resourceState.taskSort === "scheduled_date"
+      ? groupTasksByScheduledDate(visibleResourceItems)
+      : null
+  ), [resourceState.tab, resourceState.taskSort, visibleResourceItems]);
+  const resourceLoadingMessage = resourceState.tab === "gmail"
+    && resourceState.loading
+    && resourceState.pageIndex !== resourceState.lastLoadedPageIndex
+    ? `${resourceState.pageIndex + 1}페이지를 불러오는 중입니다.`
+    : "자료를 불러오는 중입니다.";
   const showRunHeader = runSnapshot !== null;
   const subscriptionRef = useRef<(() => void) | null>(null);
   const subscriptionRunIdRef = useRef<string | null>(null);
@@ -240,6 +339,47 @@ export function App(): JSX.Element {
     generation: 0,
     identity: null,
   });
+  const countsPreloadedRef = useRef(false);
+  const previousTaskFilterRef = useRef(sidebarFilter);
+  const taskPreloadRef = useRef<Promise<SourceCount> | null>(null);
+  const taskCacheGenerationRef = useRef(0);
+  const taskSortLoadKeysRef = useRef(new Set<string>());
+  const completedRequestGenerationRef = useRef(0);
+  const taskSortMenuRef = useRef<HTMLDivElement | null>(null);
+  const gmailInFlightRef = useRef(new Map<string, {
+    includesMetadata: boolean;
+    promise: Promise<GmailProviderPage>;
+  }>());
+  const calendarMonthRequestRef = useRef({ generation: 0, cacheKey: "" });
+  const calendarMonthCacheGenerationRef = useRef(new Map<string, number>());
+  const calendarMonthInFlightRef = useRef(new Map<string, Promise<ResourceItem[]>>());
+
+  const requestGmailPage = useCallback(async (
+    cacheKey: string,
+    query: string,
+    pageToken: string | null,
+    includeThreadMetadata: boolean,
+  ): Promise<GmailProviderPage> => {
+    const inFlightKey = `${cacheKey}|${pageToken ?? "first"}`;
+    const inFlight = gmailInFlightRef.current.get(inFlightKey);
+    if (inFlight) {
+      const result = await inFlight.promise;
+      if (!includeThreadMetadata || result.includesMetadata) {
+        return result;
+      }
+      return requestGmailPage(cacheKey, query, pageToken, true);
+    }
+    const promise = listGmailResources(query, pageToken, GMAIL_BROWSE_SIZE, includeThreadMetadata)
+      .then((response) => ({ response, includesMetadata: includeThreadMetadata }));
+    gmailInFlightRef.current.set(inFlightKey, { includesMetadata: includeThreadMetadata, promise });
+    try {
+      return await promise;
+    } finally {
+      if (gmailInFlightRef.current.get(inFlightKey)?.promise === promise) {
+        gmailInFlightRef.current.delete(inFlightKey);
+      }
+    }
+  }, []);
 
   const invalidateResourceRequest = useCallback((): void => {
     resourceRequestRef.current = {
@@ -247,6 +387,19 @@ export function App(): JSX.Element {
       identity: null,
     };
   }, []);
+
+  useEffect(() => {
+    if (!taskSortMenuOpen) {
+      return;
+    }
+    const closeOnOutsidePointer = (event: MouseEvent): void => {
+      if (!taskSortMenuRef.current?.contains(event.target as Node)) {
+        setTaskSortMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", closeOnOutsidePointer);
+    return () => document.removeEventListener("mousedown", closeOnOutsidePointer);
+  }, [taskSortMenuOpen]);
 
   const refreshConversations = useCallback(async (accountId: string): Promise<void> => {
     const response = await listConversations(accountId);
@@ -337,17 +490,21 @@ export function App(): JSX.Element {
     pageIndex: number,
     options: ResourceLoadOptions = {},
   ): Promise<void> => {
-    const pageToken = resourceState.pageTokens[pageIndex] ?? null;
     const calendarTimeMin = tab === "calendar"
       ? options.calendarTimeMin ?? resourceState.calendarTimeMin
+      : null;
+    const calendarTimeMax = tab === "calendar"
+      ? options.calendarTimeMax ?? resourceState.calendarTimeMax
       : null;
     const identity: ResourceRequestIdentity = {
       tab,
       parentId: resourceState.parentId,
       query: resourceState.query.trim().toLowerCase(),
       pageIndex,
-      pageToken,
-      calendarTimeMin,
+      calendarTimeMin: tab === "calendar" ? calendarTimeMin : null,
+      calendarTimeMax: tab === "calendar" ? calendarTimeMax : null,
+      taskSort: resourceState.taskSort,
+      taskFilter: tab === "tasks" ? sidebarFilter.trim().toLowerCase() : "",
     };
     const generation = resourceRequestRef.current.generation + 1;
     resourceRequestRef.current = { generation, identity };
@@ -355,60 +512,328 @@ export function App(): JSX.Element {
       const current = resourceRequestRef.current;
       return current.generation === generation && sameResourceRequestIdentity(current.identity, identity);
     };
-    const knownPage = resourceState.pageItems[pageIndex];
-    if (!options.force && knownPage) {
+    const cacheKey = resourceCacheKey({
+      accountId: currentAccount?.account_id ?? "anon",
+      tab,
+      parentId: resourceState.parentId,
+      query: identity.query,
+      calendarTimeMin: tab === "calendar" ? calendarTimeMin : null,
+      calendarTimeMax: tab === "calendar" ? calendarTimeMax : null,
+      taskSort: resourceState.taskSort,
+      taskFilter: tab === "tasks" ? sidebarFilter.trim().toLowerCase() : "",
+    });
+    const cached = resourceCache.get(cacheKey);
+    if (tab === "tasks" && !options.force && cached === undefined && taskPreloadRef.current !== null) {
+      await taskPreloadRef.current;
+      if (!isCurrentRequest()) {
+        return;
+      }
+      const preloaded = resourceCache.get(cacheKey);
+      if (preloaded) {
+        setResourceState((current) => ({
+          ...current,
+          items: preloaded.items,
+          nextPageToken: preloaded.nextPageToken,
+          totalCount: preloaded.totalCount,
+          pageIndex,
+          loaded: true,
+          loading: false,
+          error: null,
+        }));
+        return;
+      }
+    }
+    const cachedGmailPages = !options.force && cached?.gmailPages
+      ? cached.gmailPages
+      : resourceState.gmailPages;
+    if (tab === "gmail") {
+      const prefetchNextGmailPage = (pages: Record<number, GmailPageCacheEntry>, loadedPageIndex: number): void => {
+        const nextPageIndex = loadedPageIndex + 1;
+        const loadedPage = pages[loadedPageIndex];
+        if (loadedPage?.nextPageToken === null || pages[nextPageIndex]?.items) {
+          return;
+        }
+        void requestGmailPage(cacheKey, resourceState.query, loadedPage.nextPageToken, true)
+          .then(({ response }) => {
+            const currentCache = resourceCache.get(cacheKey);
+            const currentPages = { ...(currentCache?.gmailPages ?? pages) };
+            if (currentPages[nextPageIndex]?.items) {
+              return;
+            }
+            currentPages[nextPageIndex] = {
+              pageToken: loadedPage.nextPageToken,
+              nextPageToken: response.next_page_token,
+              items: response.items,
+            };
+            resourceCache.set(cacheKey, {
+              items: gmailMetadataItems(currentPages),
+              nextPageToken: response.next_page_token,
+              totalCount: null,
+              gmailPages: currentPages,
+            });
+          })
+          .catch(() => {
+            // Prefetch failures do not affect the currently displayed Gmail page.
+          });
+      };
+      const cachedPage = !options.force ? cachedGmailPages[pageIndex] : undefined;
+      if (cachedPage?.items) {
+        setResourceState((current) => ({
+          ...current,
+          items: gmailMetadataItems(cachedGmailPages),
+          gmailPages: cachedGmailPages,
+          nextPageToken: cachedPage.nextPageToken,
+          pageIndex,
+          lastLoadedPageIndex: pageIndex,
+          loaded: true,
+          loading: false,
+          error: null,
+        }));
+        prefetchNextGmailPage(cachedGmailPages, pageIndex);
+        return;
+      }
+      setResourceState((current) => ({ ...current, pageIndex, loading: true, error: null }));
+      try {
+        const nextGmailPages = options.force ? {} : { ...cachedGmailPages };
+        for (let currentPageIndex = 0; currentPageIndex <= pageIndex; currentPageIndex += 1) {
+          const knownPage = nextGmailPages[currentPageIndex];
+          if (knownPage) {
+            if (currentPageIndex === pageIndex && knownPage.items === null) {
+              const { response } = await requestGmailPage(
+                cacheKey,
+                resourceState.query,
+                knownPage.pageToken,
+                true,
+              );
+              nextGmailPages[currentPageIndex] = {
+                ...knownPage,
+                items: response.items,
+                nextPageToken: response.next_page_token,
+              };
+            }
+            continue;
+          }
+          const pageToken = currentPageIndex === 0
+            ? null
+            : nextGmailPages[currentPageIndex - 1]?.nextPageToken;
+          if (currentPageIndex > 0 && pageToken === null) {
+            break;
+          }
+          if (pageToken !== null && Object.values(nextGmailPages).some((page) => page.pageToken === pageToken)) {
+            throw new Error("Gmail page token repeated during pagination traversal.");
+          }
+          const includeThreadMetadata = currentPageIndex === pageIndex;
+          const { response, includesMetadata } = await requestGmailPage(
+            cacheKey,
+            resourceState.query,
+            pageToken,
+            includeThreadMetadata,
+          );
+          nextGmailPages[currentPageIndex] = {
+            pageToken,
+            nextPageToken: response.next_page_token,
+            items: includesMetadata ? response.items : null,
+          };
+        }
+        const targetPage = nextGmailPages[pageIndex];
+        if (!targetPage?.items) {
+          if (isCurrentRequest()) {
+            setResourceState((current) => ({ ...current, loading: false, error: null }));
+          }
+          return;
+        }
+        const gmailItems = gmailMetadataItems(nextGmailPages);
+        resourceCache.set(cacheKey, {
+          items: gmailItems,
+          nextPageToken: targetPage.nextPageToken,
+          totalCount: null,
+          gmailPages: nextGmailPages,
+        });
+        if (!isCurrentRequest()) {
+          return;
+        }
+        setResourceState((current) => ({
+          ...current,
+          items: gmailItems,
+          gmailPages: nextGmailPages,
+          nextPageToken: targetPage.nextPageToken,
+          pageIndex,
+          lastLoadedPageIndex: pageIndex,
+          loaded: true,
+          loading: false,
+        }));
+        prefetchNextGmailPage(nextGmailPages, pageIndex);
+        return;
+      } catch (error) {
+        if (!isCurrentRequest()) {
+          return;
+        }
+        setResourceState((current) => ({
+          ...current,
+          pageIndex: current.lastLoadedPageIndex,
+          loading: false,
+          error: error instanceof ApiClientError ? error.message : "리소스를 불러오지 못했습니다.",
+        }));
+        return;
+      }
+    }
+    const cachedItems = !options.force && cached ? cached.items : resourceState.items;
+    const cachedNextPageToken = !options.force && cached
+      ? cached.nextPageToken
+      : resourceState.nextPageToken;
+    const isKnownLastTasksPage = tab === "tasks"
+      && cachedNextPageToken !== null
+      && pageIndex === totalPageCount(null, cachedItems.length) - 1;
+    if (tab === "tasks" && resourceState.taskSort === "scheduled_date") {
+      if (!options.force && cached && cached.nextPageToken === null) {
+        setResourceState((current) => ({
+          ...current,
+          items: cached.items,
+          nextPageToken: null,
+          totalCount: cached.totalCount,
+          pageIndex,
+          loaded: true,
+          loading: false,
+          error: null,
+        }));
+        return;
+      }
+      const defaultTaskCache = !options.force ? resourceCache.get(resourceCacheKey({
+        accountId: currentAccount?.account_id ?? "anon",
+        tab: "tasks",
+        parentId: resourceState.parentId,
+        query: "",
+        calendarTimeMin: null,
+        calendarTimeMax: null,
+        taskSort: "provider",
+        taskFilter: sidebarFilter.trim().toLowerCase(),
+      })) : undefined;
+      if (defaultTaskCache?.nextPageToken === null) {
+        const nextItems = sortTasksByScheduledDate(defaultTaskCache.items);
+        resourceCache.set(cacheKey, { items: nextItems, nextPageToken: null, totalCount: nextItems.length });
+        setResourceState((current) => ({
+          ...current,
+          items: nextItems,
+          nextPageToken: null,
+          totalCount: nextItems.length,
+          pageIndex,
+          loaded: true,
+          loading: false,
+          error: null,
+        }));
+        return;
+      }
+      if (taskSortLoadKeysRef.current.has(cacheKey)) {
+        return;
+      }
+      taskSortLoadKeysRef.current.add(cacheKey);
+      setResourceState((current) => ({ ...current, loading: true, error: null }));
+      try {
+        const defaultTaskCache = resourceCache.get(resourceCacheKey({
+          accountId: currentAccount?.account_id ?? "anon",
+          tab: "tasks",
+          parentId: resourceState.parentId,
+          query: "",
+          calendarTimeMin: null,
+          calendarTimeMax: null,
+          taskSort: "provider",
+          taskFilter: sidebarFilter.trim().toLowerCase(),
+        }));
+        let nextItems = options.force ? [] : defaultTaskCache?.items ?? cachedItems;
+        let nextPageToken = options.force ? null : defaultTaskCache?.nextPageToken ?? cachedNextPageToken;
+        do {
+          const response = await listTaskResources(
+            resourceState.parentId,
+            nextPageToken,
+            TASKS_BROWSE_SIZE,
+            Boolean(options.force && nextPageToken === null),
+          );
+          nextItems = [...nextItems, ...response.items];
+          nextPageToken = response.next_page_token;
+        } while (nextPageToken !== null);
+        nextItems = sortTasksByScheduledDate(nextItems);
+        resourceCache.set(cacheKey, { items: nextItems, nextPageToken: null, totalCount: nextItems.length });
+        if (!isCurrentRequest()) return;
+        setResourceState((current) => ({
+          ...current,
+          items: nextItems,
+          nextPageToken: null,
+          totalCount: nextItems.length,
+          pageIndex,
+          loaded: true,
+          loading: false,
+        }));
+        setResourceCounts((current) => ({
+          ...current,
+          tasks: { value: nextItems.length, exact: true },
+        }));
+      } catch (error) {
+        if (!isCurrentRequest()) return;
+        setResourceState((current) => ({
+          ...current,
+          loading: false,
+          error: error instanceof ApiClientError ? error.message : "리소스를 불러오지 못했습니다.",
+        }));
+      } finally {
+        taskSortLoadKeysRef.current.delete(cacheKey);
+      }
+      return;
+    }
+    if (!options.force && cachedItems.length > pageIndex * SIDEBAR_VISIBLE_PAGE_SIZE && !isKnownLastTasksPage) {
       setResourceState((current) => ({
         ...current,
-        items: knownPage,
-        nextPageToken: current.pageTokens[pageIndex + 1] ?? null,
+        items: cachedItems,
+        nextPageToken: cachedNextPageToken,
+        totalCount: cached?.totalCount ?? current.totalCount,
         pageIndex,
+        loaded: true,
         loading: false,
         error: null,
       }));
       return;
     }
-    const cacheKey = [
-      currentAccount?.account_id ?? "anon",
-      tab,
-      resourceState.parentId ?? "",
-      identity.query,
-      calendarTimeMin ?? "",
-      pageToken ?? "",
-    ].join("|");
-    const cached = resourceCache.get(cacheKey);
-    if (!options.force && cached) {
-      setResourceState((current) => ({
-        ...current,
-        items: cached.items,
-        nextPageToken: cached.nextPageToken,
-        pageIndex,
-        pageItems: Object.assign([...current.pageItems], { [pageIndex]: cached.items }),
-        loading: false,
-        error: null,
-      }));
+    if (!options.force && cachedItems.length > 0 && cachedNextPageToken === null) {
       return;
     }
     setResourceState((current) => ({ ...current, loading: true, error: null }));
     try {
-      const response =
-        tab === "gmail"
-          ? await listGmailResources(resourceState.query, pageToken)
-          : tab === "tasks"
-            ? await listTaskResources(resourceState.parentId, pageToken)
-            : await listCalendarResources(resourceState.parentId, pageToken, 10, calendarTimeMin);
-      resourceCache.set(cacheKey, { items: response.items, nextPageToken: response.next_page_token });
+      let nextItems = options.force ? [] : cachedItems;
+      let nextPageToken = options.force ? null : cachedNextPageToken;
+      {
+        const response = tab === "tasks"
+            ? await listTaskResources(resourceState.parentId, nextPageToken, TASKS_BROWSE_SIZE, Boolean(options.force && pageIndex === 0))
+            : await listCalendarResources(
+              resourceState.parentId,
+              nextPageToken,
+              CALENDAR_BROWSE_SIZE,
+              calendarTimeMin,
+              calendarTimeMax,
+            );
+        nextItems = options.force || cachedItems.length === 0
+          ? response.items
+          : [...cachedItems, ...response.items];
+        nextPageToken = response.next_page_token;
+      }
+      const totalCount = tab === "tasks" && nextPageToken === null ? nextItems.length : null;
+      resourceCache.set(cacheKey, { items: nextItems, nextPageToken, totalCount });
       if (!isCurrentRequest()) {
         return;
       }
       setResourceState((current) => ({
         ...current,
-        items: response.items,
-        nextPageToken: response.next_page_token,
+        items: nextItems,
+        nextPageToken,
+        totalCount,
         pageIndex,
-        pageItems: Object.assign([...current.pageItems], { [pageIndex]: response.items }),
-        pageTokens: Object.assign([...current.pageTokens], { [pageIndex + 1]: response.next_page_token }),
+        loaded: true,
         loading: false,
       }));
+      if (tab === "tasks") {
+        setResourceCounts((current) => ({
+          ...current,
+          tasks: { value: nextItems.length, exact: nextPageToken === null },
+        }));
+      }
     } catch (error) {
       if (!isCurrentRequest()) {
         return;
@@ -419,12 +844,254 @@ export function App(): JSX.Element {
         error: error instanceof ApiClientError ? error.message : "리소스를 불러오지 못했습니다.",
       }));
     }
-  }, [currentAccount?.account_id, resourceState.calendarTimeMin, resourceState.pageItems, resourceState.pageTokens, resourceState.parentId, resourceState.query]);
+  }, [currentAccount?.account_id, requestGmailPage, resourceState.calendarTimeMax, resourceState.calendarTimeMin, resourceState.gmailPages, resourceState.items, resourceState.nextPageToken, resourceState.parentId, resourceState.query, resourceState.taskSort, sidebarFilter]);
+
+  const loadResourceCount = useCallback(async (
+    tab: "gmail",
+    options: ResourceCountLoadOptions = {},
+  ): Promise<SourceCount> => {
+    const publish = options.publish !== false;
+    const cacheKey = resourceCacheKey({
+      accountId: currentAccount?.account_id ?? "anon",
+      tab,
+      parentId: resourceState.parentId,
+      query: resourceState.query.trim().toLowerCase(),
+      calendarTimeMin: null,
+      calendarTimeMax: null,
+    });
+    if (!options.force && resourceCountCache.has(cacheKey)) {
+      const cachedCount = resourceCountCache.get(cacheKey) ?? null;
+      const count = cachedCount === null ? null : { value: cachedCount, exact: true };
+      if (publish) {
+        setResourceCounts((current) => ({ ...current, [tab]: count }));
+        setResourceState((current) => current.totalCount === cachedCount && !current.countLoading
+          ? current
+          : { ...current, totalCount: cachedCount, countLoading: false });
+      }
+      return count;
+    }
+    if (publish) {
+      setResourceState((current) => ({ ...current, totalCount: null, countLoading: true }));
+    }
+    try {
+      const response = await getResourceCount(tab, {
+        query: resourceState.query,
+        taskListId: null,
+        calendarId: null,
+        timeMin: null,
+        timeMax: null,
+      });
+      resourceCountCache.set(cacheKey, response.total_count);
+      const count = { value: response.total_count, exact: true };
+      if (publish) {
+        setResourceCounts((current) => ({ ...current, [tab]: count }));
+        setResourceState((current) => current.tab === tab
+          ? { ...current, totalCount: response.total_count, countLoading: false }
+          : current);
+      }
+      return count;
+    } catch {
+      resourceCountCache.set(cacheKey, null);
+      if (publish) {
+        setResourceCounts((current) => ({ ...current, [tab]: null }));
+        setResourceState((current) => current.tab === tab
+          ? { ...current, totalCount: null, countLoading: false }
+          : current);
+      }
+      return null;
+    }
+  }, [currentAccount?.account_id, resourceState.parentId, resourceState.query]);
+
+  const calendarMonthRequestInput = useCallback((monthAnchor: string): CalendarMonthRequestInput => {
+    const range = calendarMonthRange(monthAnchor);
+    const timeMin = calendarRangeBoundary(range.gridStart, calendarTimezone);
+    const timeMax = calendarRangeBoundary(range.gridEnd, calendarTimezone);
+    const cacheKey = resourceCacheKey({
+      accountId: currentAccount?.account_id ?? "anon",
+      tab: "calendar",
+      parentId: resourceState.parentId,
+      query: "",
+      calendarTimeMin: timeMin,
+      calendarTimeMax: timeMax,
+    });
+    return { cacheKey, parentId: resourceState.parentId, timeMin, timeMax };
+  }, [calendarTimezone, currentAccount?.account_id, resourceState.parentId]);
+
+  const requestCalendarMonth = useCallback((input: CalendarMonthRequestInput, force = false): Promise<ResourceItem[]> => {
+    const cacheGeneration = force
+      ? (calendarMonthCacheGenerationRef.current.get(input.cacheKey) ?? 0) + 1
+      : (calendarMonthCacheGenerationRef.current.get(input.cacheKey) ?? 0);
+    calendarMonthCacheGenerationRef.current.set(input.cacheKey, cacheGeneration);
+    if (force) resourceCache.delete(input.cacheKey);
+    const inFlightKey = `${input.cacheKey}|${cacheGeneration}`;
+    const existing = calendarMonthInFlightRef.current.get(inFlightKey);
+    if (existing) return existing;
+
+    const request = (async (): Promise<ResourceItem[]> => {
+      let items: ResourceItem[] = [];
+      let pageToken: string | null = null;
+      do {
+        const response = await listCalendarResources(
+          input.parentId,
+          pageToken,
+          CALENDAR_BROWSE_SIZE,
+          input.timeMin,
+          input.timeMax,
+        );
+        items = [...items, ...response.items];
+        pageToken = response.next_page_token;
+      } while (pageToken !== null);
+      if (calendarMonthCacheGenerationRef.current.get(input.cacheKey) === cacheGeneration) {
+        resourceCache.set(input.cacheKey, { items, nextPageToken: null, totalCount: items.length });
+      }
+      return items;
+    })();
+    calendarMonthInFlightRef.current.set(inFlightKey, request);
+    const clearInFlight = (): void => {
+      if (calendarMonthInFlightRef.current.get(inFlightKey) === request) {
+        calendarMonthInFlightRef.current.delete(inFlightKey);
+      }
+    };
+    void request.then(clearInFlight, clearInFlight);
+    return request;
+  }, []);
+
+  const prefetchAdjacentCalendarMonths = useCallback((monthAnchor: string): void => {
+    for (const offset of [-1, 1]) {
+      const input = calendarMonthRequestInput(shiftMonth(monthAnchor, offset));
+      if (resourceCache.get(input.cacheKey)?.nextPageToken === null) continue;
+      void requestCalendarMonth(input).catch(() => undefined);
+    }
+  }, [calendarMonthRequestInput, requestCalendarMonth]);
+
+  const loadCalendarMonth = useCallback(async (monthAnchor: string, force = false): Promise<void> => {
+    const input = calendarMonthRequestInput(monthAnchor);
+    const generation = calendarMonthRequestRef.current.generation + 1;
+    calendarMonthRequestRef.current = { generation, cacheKey: input.cacheKey };
+    const isCurrentRequest = (): boolean => (
+      calendarMonthRequestRef.current.generation === generation
+      && calendarMonthRequestRef.current.cacheKey === input.cacheKey
+    );
+    const cached = !force ? resourceCache.get(input.cacheKey) : undefined;
+    if (cached?.nextPageToken === null) {
+      setCalendarMonthItems(cached.items);
+      setCalendarMonthLoading(false);
+      setCalendarMonthError(null);
+      prefetchAdjacentCalendarMonths(monthAnchor);
+      return;
+    }
+    setCalendarMonthLoading(true);
+    setCalendarMonthError(null);
+    try {
+      const items = await requestCalendarMonth(input, force);
+      if (!isCurrentRequest()) return;
+      setCalendarMonthItems(items);
+      setCalendarMonthLoading(false);
+      setCalendarMonthError(null);
+      prefetchAdjacentCalendarMonths(monthAnchor);
+    } catch (error) {
+      if (!isCurrentRequest()) return;
+      setCalendarMonthLoading(false);
+      setCalendarMonthError(error instanceof ApiClientError ? error.message : "일정을 불러오지 못했습니다.");
+    }
+  }, [calendarMonthRequestInput, prefetchAdjacentCalendarMonths, requestCalendarMonth]);
+
+  const loadCompletedTasks = useCallback(async (force = false): Promise<void> => {
+    const current = completedTasks;
+    if (!force && current.initialized) {
+      return;
+    }
+    let items: ResourceItem[] = [];
+    let pageToken: string | null = null;
+    const generation = completedRequestGenerationRef.current + 1;
+    completedRequestGenerationRef.current = generation;
+    setCompletedTasks((state) => ({ ...state, loading: true, error: null }));
+    try {
+      do {
+        const response = await listTaskResources(
+          resourceState.parentId,
+          pageToken,
+          TASKS_BROWSE_SIZE,
+          force && pageToken === null,
+          "completed",
+        );
+        items = uniqueResourceItems([...items, ...response.items.filter((item) => item.metadata.task_status === "completed")]);
+        pageToken = response.next_page_token;
+      } while (pageToken !== null);
+      if (completedRequestGenerationRef.current !== generation) return;
+      setCompletedTasks((state) => ({
+        ...state,
+        initialized: true,
+        items,
+        pageIndex: 0,
+        loading: false,
+        error: null,
+      }));
+    } catch (error) {
+      if (completedRequestGenerationRef.current !== generation) return;
+      setCompletedTasks((state) => ({ ...state, loading: false, error: error instanceof ApiClientError ? error.message : "완료된 할 일을 불러오지 못했습니다." }));
+    }
+  }, [completedTasks, resourceState.parentId]);
+
+  const preloadSidebarCounts = useCallback(async (): Promise<void> => {
+    if (countsPreloadedRef.current) {
+      return;
+    }
+    countsPreloadedRef.current = true;
+    const taskCacheKey = resourceCacheKey({
+      accountId: currentAccount?.account_id ?? "anon",
+      tab: "tasks",
+      parentId: null,
+      query: "",
+      calendarTimeMin: null,
+      calendarTimeMax: null,
+      taskSort: "provider",
+      taskFilter: "",
+    });
+    const preloadTasks = async (): Promise<SourceCount> => {
+      const cacheGeneration = taskCacheGenerationRef.current;
+      const cached = resourceCache.get(taskCacheKey);
+      if (cached) {
+        return { value: cached.items.length, exact: cached.nextPageToken === null };
+      }
+      try {
+        const response = await listTaskResources(null, null, TASKS_BROWSE_SIZE);
+        if (taskCacheGenerationRef.current === cacheGeneration) {
+          resourceCache.set(taskCacheKey, {
+            items: response.items,
+            nextPageToken: response.next_page_token,
+            totalCount: response.next_page_token === null ? response.items.length : null,
+          });
+        }
+        return { value: response.items.length, exact: response.next_page_token === null };
+      } catch {
+        return null;
+      }
+    };
+    taskPreloadRef.current = preloadTasks();
+    void loadCompletedTasks();
+    const [gmail, tasks] = await Promise.allSettled([
+      loadResourceCount("gmail", { publish: false }),
+      taskPreloadRef.current,
+    ]);
+    setResourceCounts((current) => ({
+      ...current,
+      gmail: gmail.status === "fulfilled" ? gmail.value : null,
+      tasks: tasks.status === "fulfilled" ? tasks.value : null,
+    }));
+  }, [currentAccount?.account_id, loadCompletedTasks, loadResourceCount]);
 
   const runStartup = useCallback(async (): Promise<void> => {
     // Preserve the one-time fragment in invocation-local memory before awaits.
     const bootstrapFragment = readBootstrapFragment(window.location.hash);
     resourceCache.clear();
+    taskCacheGenerationRef.current += 1;
+    completedRequestGenerationRef.current += 1;
+    resourceCountCache.clear();
+    countsPreloadedRef.current = false;
+    taskPreloadRef.current = null;
+    setCompletedTasks({ expanded: false, initialized: false, items: [], pageIndex: 0, loading: false, error: null });
+    setResourceCounts({ gmail: null, tasks: null });
     setStartup({
       phase: "checks",
       status: "loading",
@@ -445,14 +1112,19 @@ export function App(): JSX.Element {
         window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
       }
       setStartup((current) => ({ ...current, phase: "runtime", message: "런타임 상태를 읽고 있습니다." }));
-      const [runtimeResponse, googleResponse, accountResponse] = await Promise.all([
+      const [runtimeResponse, googleResponse, accountResponse, settingsResponse] = await Promise.all([
         getRuntime(),
         getGoogleConnection(),
         getCurrentAccount(),
+        getSettings().catch(() => null),
       ]);
       setRuntime(runtimeResponse.summary);
       setGoogle(googleResponse);
       setCurrentAccount(accountResponse.account);
+      const configuredTimezone = settingsResponse === null ? null : asRecord(settingsResponse.settings).timezone;
+      if (typeof configuredTimezone === "string" && configuredTimezone) {
+        setCalendarTimezone(configuredTimezone);
+      }
       if (accountResponse.account?.account_id) {
         await refreshConversations(accountResponse.account.account_id);
       }
@@ -499,12 +1171,80 @@ export function App(): JSX.Element {
   }, [runStartup]);
 
   useEffect(() => {
-    const currentPage = resourceState.pageItems[resourceState.pageIndex];
-    if (startup.status !== "ready" || !google?.connected || currentPage) {
+    if (resourceState.tab !== "gmail" || gmailSearchInput === resourceState.query) {
       return;
     }
-    void loadResources(resourceState.tab, resourceState.pageIndex);
-  }, [google?.connected, loadResources, resourceState.pageIndex, resourceState.pageItems, resourceState.tab, startup.status]);
+    const timer = window.setTimeout(() => {
+      invalidateResourceRequest();
+      setResourceState((current) => ({
+        ...current,
+        query: gmailSearchInput,
+        items: [],
+        gmailPages: {},
+        nextPageToken: null,
+        pageIndex: 0,
+        lastLoadedPageIndex: 0,
+        loaded: false,
+        totalCount: null,
+      }));
+      setResourceCounts((current) => ({ ...current, gmail: null }));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [gmailSearchInput, invalidateResourceRequest, resourceState.query, resourceState.tab]);
+
+  useEffect(() => {
+    if (resourceState.tab !== "tasks") {
+      previousTaskFilterRef.current = sidebarFilter;
+      return;
+    }
+    if (previousTaskFilterRef.current === sidebarFilter) {
+      return;
+    }
+    previousTaskFilterRef.current = sidebarFilter;
+    invalidateResourceRequest();
+    setResourceState((current) => ({
+      ...current,
+      items: [],
+      nextPageToken: null,
+      pageIndex: 0,
+      lastLoadedPageIndex: 0,
+      loaded: false,
+      totalCount: null,
+      loading: false,
+      error: null,
+    }));
+    setResourceCounts((current) => ({ ...current, tasks: null }));
+  }, [invalidateResourceRequest, resourceState.tab, sidebarFilter]);
+
+  useEffect(() => {
+    if (startup.status === "ready" && google?.connected) {
+      void preloadSidebarCounts();
+    }
+  }, [google?.connected, preloadSidebarCounts, startup.status]);
+
+  useEffect(() => {
+    if (startup.status !== "ready" || !google?.connected || resourceState.tab !== "calendar") return;
+    const monthAnchor = calendarMonthAnchor ?? configuredDateKey(new Date(), calendarTimezone).slice(0, 7);
+    if (calendarMonthAnchor === null) {
+      setCalendarMonthAnchor(monthAnchor);
+      setCalendarSelectedDate(configuredDateKey(new Date(), calendarTimezone));
+      return;
+    }
+    void loadCalendarMonth(monthAnchor);
+  }, [calendarMonthAnchor, calendarTimezone, google?.connected, loadCalendarMonth, resourceState.tab, startup.status]);
+
+  useEffect(() => {
+    if (startup.status !== "ready" || !google?.connected || resourceState.tab === "calendar") {
+      return;
+    }
+    if (!resourceState.loaded && !resourceState.loading && resourceState.error === null) {
+      void loadResources(resourceState.tab, resourceState.pageIndex);
+      return;
+    }
+    if (resourceState.tab === "gmail" && resourceState.loaded && !resourceState.countLoading) {
+      void loadResourceCount("gmail");
+    }
+  }, [google?.connected, loadResourceCount, loadResources, resourceState.countLoading, resourceState.error, resourceState.loaded, resourceState.loading, resourceState.pageIndex, resourceState.tab, startup.status]);
 
   async function selectConversation(conversationId: string): Promise<void> {
     setSelectedConversationId(conversationId);
@@ -729,17 +1469,26 @@ export function App(): JSX.Element {
     invalidateResourceRequest();
     await disconnectGoogle();
     resourceCache.clear();
+    taskCacheGenerationRef.current += 1;
+    completedRequestGenerationRef.current += 1;
+    resourceCountCache.clear();
+    countsPreloadedRef.current = false;
+    taskPreloadRef.current = null;
+    setCompletedTasks({ expanded: false, initialized: false, items: [], pageIndex: 0, loading: false, error: null });
+    setResourceCounts({ gmail: null, tasks: null });
     setGoogle((current) => current ? { ...current, connected: false } : current);
     setCurrentAccount(null);
     setResourceState((current) => ({
       ...current,
       items: [],
+      gmailPages: {},
       nextPageToken: null,
       pageIndex: 0,
-      pageItems: [],
-      pageTokens: [null],
+      loaded: false,
       selectedIds: [],
       focusItem: null,
+      totalCount: null,
+      countLoading: false,
     }));
     await refreshRuntimeSummary();
   }
@@ -834,27 +1583,38 @@ export function App(): JSX.Element {
                     aria-selected={resourceState.tab === tab}
                     onClick={() => {
                       invalidateResourceRequest();
+                      setTaskSortMenuOpen(false);
                       setSidebarFilter("");
+                      const calendarWindow = tab === "calendar" && resourceState.calendarTimeMin === null
+                        ? newCalendarWindow()
+                        : null;
                       setResourceState((current) => ({
                         ...current,
                         tab,
                         items: [],
+                        gmailPages: {},
                         nextPageToken: null,
                         pageIndex: 0,
-                        pageItems: [],
-                        pageTokens: [null],
+                        lastLoadedPageIndex: 0,
+                        loaded: false,
                         parentId: null,
                         focusItem: null,
-                        calendarTimeMin: tab === "calendar"
-                          ? current.calendarTimeMin ?? new Date().toISOString()
-                          : current.calendarTimeMin,
+                        calendarTimeMin: calendarWindow?.timeMin ?? current.calendarTimeMin,
+                        calendarTimeMax: calendarWindow?.timeMax ?? current.calendarTimeMax,
+                        totalCount: null,
+                        countLoading: false,
                         loading: false,
                         error: null,
                       }));
                     }}
                   >
                     <span className="resource-tab-icon" aria-hidden="true">{resourceTabIcon(tab)}</span>
-                    <span>{resourceTabLabel(tab)}</span>
+                    <span className="resource-tab-label">{resourceTabLabel(tab)}</span>
+                    {tab !== "calendar" ? (
+                      <span className="resource-tab-count">
+                        {formatSourceCount(resourceCounts[tab])}
+                      </span>
+                    ) : null}
                     <span className="sr-only">{tab.toUpperCase()}</span>
                   </button>
                 ))}
@@ -865,65 +1625,146 @@ export function App(): JSX.Element {
                 aria-label="현재 목록 새로고침"
                 title="새로고침"
                 onClick={() => {
-                  const calendarTimeMin = resourceState.tab === "calendar"
-                    ? new Date().toISOString()
-                    : resourceState.calendarTimeMin;
-                  setResourceState((current) => ({
-                    ...current,
-                    nextPageToken: null,
-                    pageIndex: 0,
-                    pageItems: [current.items],
-                    pageTokens: [null],
-                    calendarTimeMin,
-                    loading: false,
-                    error: null,
-                  }));
-                  void loadResources(resourceState.tab, 0, { force: true, calendarTimeMin });
+                  const activeTab = resourceState.tab;
+                  if (activeTab === "calendar") {
+                    if (calendarMonthAnchor) void loadCalendarMonth(calendarMonthAnchor, true);
+                    return;
+                  }
+                  const calendarTimeMin = resourceState.calendarTimeMin;
+                  const calendarTimeMax = resourceState.calendarTimeMax;
+                  const cacheIdentity = {
+                    accountId: currentAccount?.account_id ?? "anon",
+                    tab: activeTab,
+                    parentId: resourceState.parentId,
+                    query: activeTab === "gmail" ? resourceState.query.trim().toLowerCase() : "",
+                    calendarTimeMin: null,
+                    calendarTimeMax: null,
+                    taskFilter: activeTab === "tasks" ? sidebarFilter.trim().toLowerCase() : "",
+                  };
+                  if (activeTab === "tasks") {
+                    taskCacheGenerationRef.current += 1;
+                    taskPreloadRef.current = null;
+                    for (const taskSort of ["provider", "scheduled_date"] as const) {
+                      resourceCache.delete(resourceCacheKey({ ...cacheIdentity, taskSort }));
+                    }
+                    void loadCompletedTasks(true);
+                  } else {
+                    resourceCache.delete(resourceCacheKey({ ...cacheIdentity, taskSort: resourceState.taskSort }));
+                  }
+                  resourceCountCache.delete(resourceCacheKey({ ...cacheIdentity, taskSort: resourceState.taskSort }));
+                  void loadResources(activeTab, 0, { force: true, calendarTimeMin, calendarTimeMax });
                 }}
               >
                 ↻
               </button>
             </div>
-            <label className="resource-search">
+            <div className="resource-search-row">
+              <label className="resource-search">
                 <span className="resource-search-icon" aria-hidden="true">⌕</span>
                 <input
                   aria-label={resourceSearchLabel(resourceState.tab)}
                   placeholder={resourceSearchPlaceholder(resourceState.tab)}
-                  value={resourceState.tab === "gmail" ? resourceState.query : sidebarFilter}
+                  value={resourceState.tab === "gmail" ? gmailSearchInput : sidebarFilter}
                   onChange={(event) => {
                     if (resourceState.tab === "gmail") {
-                      invalidateResourceRequest();
-                      setResourceState((current) => ({
-                        ...current,
-                        query: event.target.value,
-                        pageIndex: 0,
-                        pageItems: [],
-                        pageTokens: [null],
-                      }));
+                      setGmailSearchInput(event.target.value);
                       return;
                     }
                     setSidebarFilter(event.target.value);
                   }}
-                  onKeyDown={(event) => {
-                    if (resourceState.tab === "gmail" && event.key === "Enter") {
-                      void loadResources("gmail", 0);
-                    }
-                  }}
                 />
-            </label>
-            {resourceState.tab === "calendar" ? <h2 className="sidebar-section-title">예정된 일정</h2> : null}
-            {resourceState.loading ? <p className="muted" aria-live="polite">자료를 불러오는 중입니다.</p> : null}
-            {resourceState.error ? <p className="status-bad">{resourceState.error}</p> : null}
-            {!resourceState.loading && !resourceState.error && visibleResourceItems.length === 0 ? (
+              </label>
+              {resourceState.tab === "tasks" ? (
+                <div className="task-sort-menu" ref={taskSortMenuRef}>
+                  <button
+                    aria-label="태스크 정렬 메뉴"
+                    aria-expanded={taskSortMenuOpen}
+                    aria-haspopup="menu"
+                    className="icon-button"
+                    type="button"
+                    onClick={() => setTaskSortMenuOpen((current) => !current)}
+                  >
+                    ⋮
+                  </button>
+                  {taskSortMenuOpen ? (
+                    <div className="task-sort-popover" role="menu" aria-label="정렬 기준">
+                      <p>정렬 기준</p>
+                      {(["provider", "scheduled_date"] as const).map((taskSort) => (
+                        <button
+                          key={taskSort}
+                          className="task-sort-option"
+                          role="menuitemradio"
+                          aria-checked={resourceState.taskSort === taskSort}
+                          type="button"
+                          onClick={() => {
+                            setTaskSortMenuOpen(false);
+                            if (resourceState.taskSort === taskSort) {
+                              return;
+                            }
+                            invalidateResourceRequest();
+                            setResourceState((current) => ({
+                              ...current,
+                              taskSort,
+                              pageIndex: 0,
+                              loaded: false,
+                              totalCount: null,
+                              loading: false,
+                              error: null,
+                            }));
+                          }}
+                        >
+                          <span aria-hidden="true">{resourceState.taskSort === taskSort ? "✓" : ""}</span>
+                          {taskSort === "provider" ? "기본 순서" : "날짜순"}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            {resourceState.tab === "calendar" && calendarMonthAnchor && calendarSelectedDate ? (
+              <CalendarMonthView
+                monthAnchor={calendarMonthAnchor}
+                timezone={calendarTimezone}
+                items={calendarMonthItems}
+                selectedDate={calendarSelectedDate}
+                loading={calendarMonthLoading}
+                error={calendarMonthError}
+                onPreviousMonth={() => {
+                  const previous = shiftMonth(calendarMonthAnchor, -1);
+                  setCalendarMonthAnchor(previous);
+                  setCalendarSelectedDate(`${previous}-01`);
+                }}
+                onNextMonth={() => {
+                  const next = shiftMonth(calendarMonthAnchor, 1);
+                  setCalendarMonthAnchor(next);
+                  setCalendarSelectedDate(`${next}-01`);
+                }}
+                onSelectDate={setCalendarSelectedDate}
+                onSelectEvent={(item) => setResourceState((current) => ({ ...current, focusItem: item }))}
+              />
+            ) : null}
+            {resourceState.tab !== "calendar" && resourceState.loading ? (
+              <div className="resource-load-status" aria-live="polite">
+                <p className="muted">{resourceLoadingMessage}</p>
+              </div>
+            ) : null}
+            {resourceState.tab !== "calendar" && resourceState.error ? <p className="status-bad">{resourceState.error}</p> : null}
+            {resourceState.tab !== "calendar" && !resourceState.loading && !resourceState.error && visibleResourceItems.length === 0 ? (
               <p className="muted">표시할 자료가 없습니다.</p>
             ) : null}
-            <ul className="resource-list" aria-label="Google 업무 자료">
-              {visibleResourceItems.map((item) => {
-                const selected = resourceState.selectedIds.includes(item.resource_id);
-                const focused = resourceState.focusItem?.resource_id === item.resource_id;
-                const presentation = resourcePresentation(item);
+            {resourceState.tab !== "calendar" ? <><ul className={`resource-list ${visibleTaskSections ? "task-date-sorted" : ""}`} aria-label="Google 업무 자료">
+              {(() => {
+                const renderResourceItem = (item: ResourceItem): JSX.Element => {
+                  const selected = resourceState.selectedIds.includes(item.resource_id);
+                  const focused = resourceState.focusItem?.resource_id === item.resource_id;
+                  const presentation = resourcePresentation(item);
+                  const isTaskDateSort = resourceState.tab === "tasks" && resourceState.taskSort === "scheduled_date";
+                  const pastDays = isTaskDateSort
+                    ? pastScheduledDays(item)
+                    : null;
                 return (
-                  <li key={item.resource_id} className={`resource-item ${selected ? "selected" : ""} ${focused ? "focused" : ""}`}>
+                  <li key={item.resource_id} className={`resource-item ${item.source.toLowerCase() === "tasks" ? "task-resource-item" : ""} ${selected ? "selected" : ""} ${focused ? "focused" : ""}`}>
                     <label className="resource-select-control" title="선택 항목에 포함">
                       <input
                         type="checkbox"
@@ -956,32 +1797,93 @@ export function App(): JSX.Element {
                         </>
                       ) : (
                         <>
-                          <strong className="row-title">{presentation.title ?? "제목 정보 없음"}</strong>
+                          {item.source.toLowerCase() === "tasks" ? (
+                            <span className="task-row-main">
+                              <strong className="row-title">{presentation.title ?? "제목 정보 없음"}</strong>
+                              {(!isTaskDateSort && presentation.time) || pastDays !== null ? (
+                                <span className="row-meta task-row-date">
+                                  {pastDays !== null ? `${pastDays}일 지남` : presentation.time}
+                                </span>
+                              ) : null}
+                            </span>
+                          ) : (
+                            <strong className="row-title">{presentation.title ?? "제목 정보 없음"}</strong>
+                          )}
                           {presentation.secondary ? <span className="row-secondary">{presentation.secondary}</span> : null}
                           {presentation.snippet ? <span className="row-snippet">{presentation.snippet}</span> : null}
-                          {presentation.time ? <span className="row-meta">{presentation.time}</span> : null}
+                          {item.source.toLowerCase() !== "tasks" && presentation.time ? <span className="row-meta">{presentation.time}</span> : null}
                         </>
                       )}
                     </button>
                   </li>
                 );
-              })}
+                };
+                return visibleTaskSections
+                  ? visibleTaskSections.map((section, index) => (
+                  <Fragment key={`${section.key}-${index}`}>
+                    <li className={`task-date-section ${index > 0 ? "task-date-section-divider" : ""}`} aria-label={section.label}>{section.label}</li>
+                    {section.items.map((item) => renderResourceItem(item))}
+                  </Fragment>
+                  ))
+                  : visibleResourceItems.map((item) => renderResourceItem(item));
+              })()}
             </ul>
+            {resourceState.tab === "tasks" ? (
+              <section className="completed-tasks" aria-label="완료됨">
+                <button
+                  className="completed-tasks-toggle"
+                  type="button"
+                  aria-expanded={completedTasks.expanded}
+                  onClick={() => {
+                    if (completedTasks.expanded) {
+                      setCompletedTasks((current) => ({ ...current, expanded: false }));
+                    } else {
+                      setCompletedTasks((current) => ({ ...current, expanded: true }));
+                    }
+                  }}
+                >
+                  완료됨{completedTasks.initialized ? `(${completedTasks.items.length})` : ""} {completedTasks.expanded ? "▾" : "▸"}
+                </button>
+                {completedTasks.expanded ? (
+                  <div className="completed-tasks-content">
+                    {completedTasks.loading ? <p className="muted">완료됨 로딩 중</p> : null}
+                    {completedTasks.error ? <p className="status-bad">{completedTasks.error}</p> : null}
+                    {!completedTasks.loading && !completedTasks.error && completedTasks.initialized && completedTasks.items.length === 0 ? <p className="muted">완료된 할 일이 없습니다.</p> : null}
+                    {completedTasks.items.slice(0, (completedTasks.pageIndex + 1) * SIDEBAR_VISIBLE_PAGE_SIZE).map((item) => {
+                      const completedAt = formatCompletedTaskDate(
+                        firstPresentationValue(item.metadata, ["completed_at"]),
+                        calendarTimezone,
+                      );
+                      return (
+                        <button key={item.resource_id} className="completed-task-row" type="button" onClick={() => setResourceState((current) => ({ ...current, focusItem: item }))}>
+                          <span className="completed-task-title">✓ {resourcePresentation(item).title ?? "제목 정보 없음"}</span>
+                          {completedAt ? <span className="completed-task-date">완료일: {completedAt}</span> : null}
+                        </button>
+                      );
+                    })}
+                    {!completedTasks.loading && !completedTasks.error && completedTasks.items.length > (completedTasks.pageIndex + 1) * SIDEBAR_VISIBLE_PAGE_SIZE ? (
+                      <button className="button-secondary" type="button" onClick={() => setCompletedTasks((current) => ({ ...current, pageIndex: current.pageIndex + 1 }))}>더 보기</button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
             <nav className="pagination" aria-label="자료 페이지">
-              <button className="button-secondary" type="button" disabled={resourceState.pageIndex === 0} onClick={() => void loadResources(resourceState.tab, resourceState.pageIndex - 1)}>
+              <button className="button-secondary" type="button" disabled={(resourceState.loading && resourceState.tab !== "gmail") || resourceState.pageIndex === 0} onClick={() => void loadResources(resourceState.tab, resourceState.pageIndex - 1)}>
                 이전
               </button>
-              {resourceState.pageItems.map((_, index) => (
-                <button key={index} className={index === resourceState.pageIndex ? "button-primary" : "button-secondary"} type="button" onClick={() => void loadResources(resourceState.tab, index)}>
+              {paginationPageIndexes(resourceState.pageIndex, resourceState.totalCount, resourceState.items.length).map((index) => (
+                <button key={index} className={index === resourceState.pageIndex ? "button-primary" : "button-secondary"} type="button" disabled={resourceState.loading && resourceState.tab !== "gmail"} onClick={() => void loadResources(resourceState.tab, index)}>
                   {index + 1}
                 </button>
               ))}
-              {resourceState.pageTokens[resourceState.pageIndex + 1] ? (
-                <button className="button-secondary" type="button" onClick={() => void loadResources(resourceState.tab, resourceState.pageIndex + 1)}>
+              {resourceState.pageIndex + 1 < totalPageCount(resourceState.totalCount, resourceState.items.length) || (resourceState.totalCount === null && resourceState.nextPageToken) ? (
+                <button className="button-secondary" type="button" disabled={resourceState.loading && resourceState.tab !== "gmail"} onClick={() => void loadResources(resourceState.tab, resourceState.pageIndex + 1)}>
                   다음
                 </button>
               ) : null}
             </nav>
+            </> : null}
           </div>
         </aside>
 
@@ -1048,10 +1950,11 @@ export function App(): JSX.Element {
                             ...current,
                             parentId: resourceState.focusItem!.resource_id,
                             items: [],
+                            gmailPages: {},
                             nextPageToken: null,
                             pageIndex: 0,
-                            pageItems: [],
-                            pageTokens: [null],
+                            loaded: false,
+                            totalCount: null,
                           }));
                         }}
                       >
@@ -1737,8 +2640,150 @@ function sameResourceRequestIdentity(
     && left.parentId === right.parentId
     && left.query === right.query
     && left.pageIndex === right.pageIndex
-    && left.pageToken === right.pageToken
-    && left.calendarTimeMin === right.calendarTimeMin;
+    && left.calendarTimeMin === right.calendarTimeMin
+    && left.calendarTimeMax === right.calendarTimeMax
+    && left.taskSort === right.taskSort
+    && left.taskFilter === right.taskFilter;
+}
+
+function resourceCacheKey(identity: {
+  accountId: string;
+  tab: ResourceTab;
+  parentId: string | null;
+  query: string;
+  calendarTimeMin: string | null;
+  calendarTimeMax: string | null;
+  taskSort?: TaskSort;
+  taskFilter?: string;
+}): string {
+  return [
+    identity.accountId,
+    identity.tab,
+    identity.parentId ?? "",
+    identity.query,
+    identity.calendarTimeMin ?? "",
+    identity.calendarTimeMax ?? "",
+    identity.taskSort ?? "",
+    identity.taskFilter ?? "",
+  ].join("|");
+}
+
+function newCalendarWindow(): { timeMin: string; timeMax: string } {
+  const timeMin = new Date();
+  return {
+    timeMin: timeMin.toISOString(),
+    timeMax: new Date(timeMin.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
+function shiftMonth(monthAnchor: string, offset: number): string {
+  const [year, month] = monthAnchor.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1 + offset, 1));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function totalPageCount(totalCount: number | null, loadedItemCount: number): number {
+  return Math.ceil((totalCount ?? loadedItemCount) / SIDEBAR_VISIBLE_PAGE_SIZE);
+}
+
+function formatSourceCount(count: SourceCount): string {
+  if (count === null) return "";
+  return `${count.value}${count.exact ? "" : "+"}`;
+}
+
+function paginationPageIndexes(currentPage: number, totalCount: number | null, loadedItemCount: number): number[] {
+  const pageCount = totalPageCount(totalCount, loadedItemCount);
+  const first = Math.max(0, Math.min(currentPage - 2, pageCount - 5));
+  return Array.from({ length: Math.min(5, pageCount) }, (_, index) => first + index);
+}
+
+function sortTasksByScheduledDate(items: ResourceItem[]): ResourceItem[] {
+  return [...new Map(items.map((item) => [item.resource_id, item])).values()].sort((left, right) => {
+    const leftDate = taskScheduledDate(left);
+    const rightDate = taskScheduledDate(right);
+    if (leftDate === null) return rightDate === null ? 0 : 1;
+    if (rightDate === null) return -1;
+    return localCalendarDayNumber(leftDate) - localCalendarDayNumber(rightDate);
+  });
+}
+
+function uniqueResourceItems(items: ResourceItem[]): ResourceItem[] {
+  return [...new Map(items.map((item) => [item.resource_id, item])).values()];
+}
+
+function groupTasksByScheduledDate(items: ResourceItem[], now = new Date()): Array<{
+  key: string;
+  label: string;
+  items: ResourceItem[];
+}> {
+  const today = localDateKey(now);
+  const tomorrowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const tomorrow = localDateKey(tomorrowDate);
+  return items.reduce<Array<{ key: string; label: string; items: ResourceItem[] }>>((sections, item) => {
+    const scheduledDate = taskScheduledDate(item);
+    const taskStatus = firstPresentationValue(item.metadata, ["task_status"]);
+    const key = taskDateSectionKey(scheduledDate, taskStatus, today, tomorrow);
+    const label = taskDateSectionLabel(scheduledDate, key);
+    const previous = sections.at(-1);
+    if (previous?.key === key) {
+      previous.items.push(item);
+      return sections;
+    }
+    sections.push({ key, label, items: [item] });
+    return sections;
+  }, []);
+}
+
+function taskDateSectionKey(
+  scheduledDate: string | null,
+  taskStatus: string | null,
+  today: string,
+  tomorrow: string,
+): string {
+  if (!scheduledDate) return "no-date";
+  if (scheduledDate < today && taskStatus !== "completed") return "past";
+  if (scheduledDate === today) return "today";
+  if (scheduledDate === tomorrow) return "tomorrow";
+  return `date:${scheduledDate}`;
+}
+
+function taskDateSectionLabel(scheduledDate: string | null, key: string): string {
+  if (key === "past") return "지난 날짜";
+  if (key === "today") return "오늘";
+  if (key === "tomorrow") return "내일";
+  if (key === "no-date") return "날짜 없음";
+  return formatTaskDate(scheduledDate, false) ?? "날짜 없음";
+}
+
+function localDateKey(value: Date): string {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function taskScheduledDate(item: ResourceItem): string | null {
+  const value = firstPresentationValue(item.metadata, ["scheduled_date"]);
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function localCalendarDayNumber(value: string): number {
+  const [year, month, day] = value.split("-").map(Number);
+  return Date.UTC(year, month - 1, day) / (24 * 60 * 60 * 1000);
+}
+
+function pastScheduledDays(item: ResourceItem, now = new Date()): number | null {
+  const scheduledDate = taskScheduledDate(item);
+  if (!scheduledDate || firstPresentationValue(item.metadata, ["task_status"]) === "completed") return null;
+  const difference = localCalendarDayNumber(localDateKey(now)) - localCalendarDayNumber(scheduledDate);
+  return difference > 0 ? difference : null;
+}
+
+function gmailMetadataItems(gmailPages: Record<number, GmailPageCacheEntry>): ResourceItem[] {
+  return Object.values(gmailPages).flatMap((page) => page.items ?? []);
+}
+
+function resourceItemsForSelection(resourceState: ResourceState): ResourceItem[] {
+  return resourceState.tab === "gmail"
+    ? gmailMetadataItems(resourceState.gmailPages)
+    : resourceState.items;
 }
 
 function GmailDetailViewer({
@@ -1819,7 +2864,7 @@ function resourcePresentation(item: ResourceItem): {
   const subject = userFacingValue(item.subject)
     ?? firstPresentationValue(metadata, ["subject", "title", "summary", "name"]);
   const subtitle = userFacingValue(item.subtitle);
-  const itemTitle = userFacingValue(item.title);
+  const itemTitle = resourceTitleValue(item.title, source);
   const title = isGenericResourceTitle(itemTitle, source) ? userFacingValue(subject) : itemTitle ?? userFacingValue(subject);
   if (source === "calendar" && item.resource_type === "calendar_event") {
     const start = userFacingValue(metadata.start);
@@ -1878,16 +2923,22 @@ function formatTaskDate(value: string | null, detailed: boolean): string | null 
   return `${dateLabel} (${weekday})`;
 }
 
+function formatCompletedTaskDate(value: string | null, timezone: string): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("ko-KR", {
+    timeZone: timezone,
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  });
+}
+
 function taskStatusLabel(value: string | null): string | null {
   if (value === "incomplete") return "미완료";
   if (value === "completed") return "완료";
   return null;
-}
-
-function isPastScheduledDate(value: string | null, now = new Date()): boolean {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  return value < today;
 }
 
 function isAllDayCalendarValue(value: string | null): boolean {
@@ -2031,11 +3082,8 @@ function viewerMetadataEntries(item: ResourceItem): Array<[string, string]> {
   if (source === "tasks" && item.resource_type === "task") {
     const taskStatus = taskStatusLabel(firstPresentationValue(metadata, ["task_status"]));
     const scheduledDate = firstPresentationValue(metadata, ["scheduled_date"]);
-    const status = taskStatus === "미완료" && isPastScheduledDate(scheduledDate)
-      ? "미완료 · 예정일 지남"
-      : taskStatus;
     const entries: Array<[string, string]> = [];
-    if (status) entries.push(["상태", status]);
+    if (taskStatus) entries.push(["상태", taskStatus]);
     const date = formatTaskDate(scheduledDate, true);
     if (date) entries.push(["예정일", date]);
     const notes = firstPresentationValue(metadata, ["notes"]);
@@ -2104,6 +3152,14 @@ function userFacingValue(value: unknown): string | null {
     return values.length ? values.join(", ") : null;
   }
   return null;
+}
+
+function resourceTitleValue(value: unknown, source: string): string | null {
+  if (source === "tasks" && typeof value === "string") {
+    const text = value.trim();
+    return text || null;
+  }
+  return userFacingValue(value);
 }
 
 function isTechnicalIdentifier(value: string): boolean {

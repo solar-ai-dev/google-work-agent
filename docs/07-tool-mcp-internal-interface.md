@@ -697,7 +697,7 @@ metadata
 | `gmail_update_draft` | draft_id, mutable fields + claim context | DraftMetadata | gmail.compose | 30s | 전달 불명 시 금지 |
 | `gmail_get_draft` | draft_id | DraftDetail | gmail.compose | 30s | Read 1회 |
 | `tasks_list_tasklists` | page_token?, page_size | TaskListMetadata[] | tasks | 30s | Read 1회 |
-| `tasks_list_tasks` | tasklist_id, filter, page_token?, page_size | TaskMetadata[] + exact `total_count` when requested by Sidebar | tasks | 30s | Read 1회 |
+| `tasks_list_tasks` | tasklist_id, filter, page_token?, page_size | TaskMetadata[] + nextPageToken | tasks | 30s | Read 1회 |
 | `tasks_get_task` | tasklist_id, task_id | TaskDetail | tasks | 30s | Read 1회 |
 | `tasks_create_task` | tasklist_id, title, notes?, due? + claim context | TaskMetadata | tasks | 30s | 전달 불명 시 금지 |
 | `tasks_update_task` | tasklist_id, task_id, 허용 필드 + claim context | TaskMetadata | tasks | 30s | 전달 불명 시 금지 |
@@ -715,11 +715,56 @@ metadata
 
 ### 27.1 Sidebar Query Projection 계약
 
-- Sidebar `page_size` 기본값은 **10**이다. Agent Retrieval `RETRIEVAL_PAGE_SIZE=20`과 별도다.
-- Tasks Sidebar 기본 범위는 **미완료 Task 전체**다. 완료 Task는 사용자가 완료 상태 필터를 명시한 경우에만 기본 범위에 포함한다.
-- Calendar Sidebar 기본 범위는 사용자 Timezone의 현재 시각을 `time_min`, 그 시각부터 **90일 후**를 `time_max`로 사용한다. 사용자 지정 기간이 있으면 지정 범위를 우선한다.
-- Sidebar 응답의 `total_count`는 현재 Source·검색·필터 범위 전체의 정확한 수일 때만 채운다. Tasks와 Calendar는 Sidebar count 표시를 위해 exact `total_count`를 제공한다. Gmail Provider의 `resultSizeEstimate` 같은 추정치는 exact `total_count`로 승격하지 않는다.
-- `total_count` 계산을 위해 Frontend가 모든 Page를 순회하지 않는다. Count 계산 책임은 Local API/Application Query Adapter에 있다.
+- Gmail·Tasks의 UI 표시 단위는 `SIDEBAR_PAGE_SIZE=20`이며 Agent Retrieval `RETRIEVAL_PAGE_SIZE=20`과 별도다. Calendar Month View는 visible grid range 전체를 materialize하고 UI pagination을 쓰지 않는다. Gmail intermediate page는 metadata 없이 다음 token만 조회하고 target page만 metadata를 조회한다. Tasks는 Provider batch 최대 100개를 React Client Session Cache에 받아 UI 20개 page로 나눈다. Provider Page Token은 UI page number가 아니다.
+- Gmail 기본 Sidebar scope는 `INBOX + PRIMARY` Thread이며 검색은 Primary 제한 없이 일반 Gmail mailbox를 대상으로 하고 Spam·Trash는 제외한다. Tasks는 configured/default Task List의 미완료 Task 전체이다. Calendar Sidebar Month View는 선택된 `monthAnchor`의 explicit visible grid range `singleEvents=true` Event instance를 사용하며, 사용자 Timezone의 `[time_min, time_min + 90일)` Upcoming 범위는 bounded Browse와 Calendar badge exact count의 기본 scope로 유지한다.
+- `total_count`는 정의된 Source scope 전체의 exact total일 때만 사용한다. `loaded_count`와 `visible_count`는 별도이며 count 계산 실패·timeout·Provider estimate(`resultSizeEstimate` 등)는 numeric total로 표시하지 않는다. Gmail count는 Thread 기준이며 검색 query마다 Source badge count를 재계산하지 않는다. Tasks 기본 incomplete Browse는 terminal batch 전에는 exact `total_count`를 반환하지 않지만, 첫 batch에 다음 token이 있으면 확인된 최소 수에 `+`를 붙여 표시할 수 있다. `태스크 N`은 미완료 전체 수이며 completed·deleted를 포함하지 않는다.
+- Provider가 같은 scope의 authoritative exact total을 주지 않으면 Gmail·Calendar Count Read는 Page Token 끝까지 필요한 최소 metadata만 순회하여 계산할 수 있다. Gmail count를 위해 Message body·attachment·불필요한 detail을 읽지 않으며 Frontend는 모든 Page를 순회하지 않는다. Tasks 기본 Browse는 exact count만을 위해 전체 Page Token traversal을 시작하지 않고 terminal batch 도달 뒤 누적 수를 exact total로 확정한다.
+
+### 27.2 Sidebar Exact Count Read 계약 (OPTION C)
+
+Sidebar Browse Read와 Exact Count Read는 Gmail·Calendar에서 별도 Local API/Application Read다. Browse는 count 완료를 기다리지 않으며, 기존 `GET /api/v1/resources/gmail|tasks|calendar`의 `ResourceListResponse`는 `source`, `items`, `next_page_token`, `api_contract_version`만 유지한다. `next_page_token`은 Client 관점의 opaque Local API continuation token이며 Frontend는 해석하지 않고 다음 Local API 요청에 그대로 전달한다. Gmail Browse는 `page_size=20`이고, intermediate page는 `include_thread_metadata=false`로 token-only 조회하며 target page만 metadata를 조회한다. Tasks 기본 Browse는 `page_size<=100` Provider batch를 React Client Session Cache에 저장해 UI 20개 page로 나눈다. Provider raw token 자체는 public Local API 의미로 보장하지 않는다.
+
+Exact Count Read는 `GET /api/v1/resources/{source}/count`다. `{source}`는 `gmail`, `tasks`, `calendar`만 허용하며, 지원하지 않는 source는 기존 Local API 오류 형식의 `404 NOT_FOUND`로 처리한다. Gmail detail route와 충돌하지 않도록 count static route는 `GET /api/v1/resources/gmail/{resource_id}`보다 먼저 등록한다. 모든 Count Read는 기존 Resource route와 같이 `API_SESSION_REQUIRED`와 `X-API-Contract-Version` 검증을 적용하며, account ID는 request parameter로 받지 않고 Local API session/연결 계정 문맥에서 해석한다.
+
+| Source | Request query | Count scope |
+|---|---|---|
+| `gmail` | 없음. search query를 받지 않는다. | 현재 계정의 `INBOX + PRIMARY` exact Thread total |
+| `tasks` | 기본 Sidebar에서 호출하지 않음 | terminal Browse batch 도달 뒤 누적 미완료 Task 수로만 exact total 확정 |
+| `calendar` | `calendar_id?`, `time_min?`, `time_max?` | 지정했거나 default Calendar의 `[time_min, time_max)` `singleEvents=true` Event instance exact total |
+
+Calendar `time_min`과 `time_max`는 함께 지정하거나 함께 생략한다. 생략 시 Application이 사용자 timezone 기준 현재 시각과 그 시각부터 90일 후를 생성한다. Calendar Month View는 선택된 `monthAnchor`의 explicit visible grid window만 Browse에 전달하며, Calendar badge Count는 기존 Upcoming window를 유지한다. 같은 scope의 Browse와 Count를 함께 시작할 때만 Frontend는 동일한 명시 window를 두 Read에 전달하여 cache identity를 일치시킨다.
+
+성공 응답은 기존 `ResourceListResponse` 명명 규칙을 따르는 `ResourceCountResponse`이며 다음 shape만 가진다.
+
+```json
+{
+  "source": "gmail",
+  "total_count": 234,
+  "api_contract_version": "1"
+}
+```
+
+`total_count`는 정의된 source scope 전체의 exact count일 때만 존재한다. 계산 중 오류·timeout·provider estimate·partial traversal이면 성공 응답을 만들지 않고 기존 Local API 오류 형식으로 종료한다. partial numeric total, `loaded_count`, `visible_count` 또는 count progress는 이 endpoint에서 반환하지 않는다. 따라서 Count 오류는 독립 호출의 실패일 뿐 Browse 응답·상태를 실패시키지 않는다.
+
+Frontend는 Sidebar 최초 진입에서 active Source와 무관하게 Gmail·Calendar Count Read와 Tasks 첫 Browse batch를 독립 시작하고, count loading/unavailable 동안 목록을 유지하며 numeric badge를 생략한다. Tasks 기본 Browse는 별도 exact Count Read를 시작하지 않는다. Tasks 첫 batch가 terminal이면 exact total을, 다음 token이 있으면 확인된 최소 수와 `+`를 표시하며 terminal batch 뒤 누적 exact total을 확정한다. 이 첫 batch는 Tasks 첫 목록 진입에서 React Client Session Cache로 재사용한다. Browse cache는 account·source·default/parent container·검색/filter·sort·provider batch cursor 기준이다. Refresh와 account·scope·검색/filter/sort 변경은 관련 cache를 무효화한다. Gmail 검색 변경은 Browse cache만 바꾸며 기본 Primary Count cache와 badge를 바꾸지 않는다. Agent Run SSE는 Count Read에 사용하지 않는다.
+
+Tasks 기본 Browse는 configured/default Task List에 `show_completed=false`, `page_size<=100`으로 요청하고 `TaskMetadata[]`와 `nextPageToken`만 받는다. 100개와 next token을 받은 초기 결과는 UI 1..5 page로만 공개하고, 사용자가 알려진 마지막 UI page를 요청할 때만 다음 100개 batch를 append한다. terminal batch 도달 뒤 누적 수로 exact total과 마지막 UI page를 확정한다. 목록 행에는 `tasks.list` metadata를 사용하며 `tasks.get`은 focus/선택 상세 조회에만 사용한다. 기본 정렬은 Provider 반환 순이다. 사용자가 예정일 정렬을 명시한 경우에만 전체 결과를 materialize하여 예정일 오름차순·예정일 없는 Task 후순위로 정렬하고, materialized result는 기본 Browse cache와 분리한다. cache는 SQLite·Application 영속 메모리에 복제하지 않는다.
+
+`GET /api/v1/resources/tasks`는 `status_scope=incomplete|completed`를 지원하며 기본은 `incomplete`다. incomplete scope는 `show_completed=false`, `show_hidden=false`, `show_deleted=false`로 요청한다. Tasks 데이터 준비 시 completed scope는 `show_completed=true`, `show_hidden=true`, `show_deleted=false`, `page_size<=100`으로 시작해 Provider terminal까지 순차 Read한다. `show_completed=true`은 completed-only filter가 아니므로 Adapter/MCP/Application은 mixed Provider page 중 `task_status=completed`만 completed cache에 보관하고, 한 generation 안에서 `resource_id` 기준으로 dedupe한다. terminal materialization 결과는 exact completed count와 completed row cache를 함께 만든다. `완료됨(N)` section의 열기/닫기와 `더 보기`는 API Read가 아니며, `더 보기`는 terminal cache의 다음 20개 UI page를 표시한다. completed와 incomplete cache key는 account·task list·status scope·show_completed·show_hidden·show_deleted·provider continuation을 구분한다.
+
+Tasks Refresh는 두 status scope cache를 무효화하고 접힘/펼침과 무관하게 모두 fresh Read한다. completed fresh Read는 빈 generation accumulator에서 시작하며 terminal 성공 시 previous completed cache를 unique fresh dataset으로 atomic replace한다. MCP Task snapshot은 Google raw `completed` RFC3339 timestamp를 payload에 보존하고 Application은 이를 `completed_at` metadata로 전달한다. Frontend는 configured AppSettings timezone에서만 완료일을 표시하며 값이 없거나 유효하지 않으면 fallback을 만들지 않는다.
+
+Resource route는 기존 `API_SESSION_REQUIRED` 검증 뒤 HTTP Request 자체나 raw session token을 Application에 넘기지 않는다. Frontend는 active Google `account_id`, source·container·검색/filter·sort·provider batch identity를 React Client Session Cache key로 사용한다. 다른 account·Task List·scope·검색/filter/sort·Refresh generation의 cached page는 재사용하지 않는다. session validation을 통과하지 못한 요청은 기존 security layer에서 차단되고, UI session 종료 시 Client Session Cache는 폐기한다. raw token 보관, Application runtime snapshot, SQLite·영속 cache는 사용하지 않는다.
+
+Gateway Port와 Adapter/MCP는 새 tool을 만들지 않고 기존 list capability를 다음처럼 최소 확장한다.
+
+- `gmail_search_threads` / `search_gmail_threads`는 count traversal과 intermediate pagination에서 per-thread metadata hydration을 끄는 optional behavior를 지원한다. 이 경우 list 응답의 Thread ID·list metadata·next token만 사용하고 `_gmail_thread_list_metadata`, Thread detail, body, attachment를 N회 호출하지 않는다. Target Browse metadata hydration은 `format=metadata`, `metadataHeaders`의 `From`·`Subject`·`Date`, `fields=messages(internalDate,payload/headers),snippet`만 요청한다. 하나의 MCP Read invocation 내부 Provider Read도 Google Read concurrency budget에 포함한다. required metadata hydration 중 하나 이상의 Provider Read가 실패하면 해당 Gmail page Read 전체를 실패 처리하며 partial page, placeholder, 실패 thread 생략 응답은 만들지 않는다.
+- `tasks_list_tasks` / `list_tasks`는 status scope에 따라 incomplete의 `show_completed=false`, `show_hidden=false`, `show_deleted=false` 또는 completed section의 `show_completed=true`, `show_hidden=true`, `show_deleted=false`를 Google request에 명시적으로 전달한다.
+- `calendar_list_events` / `list_calendar_events`는 `time_max` argument를 받아 `timeMax`로 전달한다. Count와 Browse 모두 같은 `[time_min, time_max)`, `singleEvents=true`를 사용한다. 두 값이 생략되면 Application의 공통 resolver가 `AppSettings.timezone` 기준 현재 시각과 그 시각부터 90일 후를 생성한다.
+
+### 27.3 구현 CONTRACT_MISMATCH
+
+Gmail scope·intermediate list-only, Tasks incomplete filter·lazy batch browse, Calendar `time_max`와 공통 calendar window resolver는 이 문서의 계약을 따른다. 현재 구현이 Tasks eager snapshot·초기 exact count·기본 전역 정렬을 사용한다면 이 계약과의 `CONTRACT_MISMATCH`이며 다음 구현 작업에서 해소한다.
 
 ## 28. Verification·Recovery 계약
 - CREATE·UPDATE: GET_COMPARE.
@@ -821,3 +866,6 @@ sha256
 - 발신 bytes는 Local Staging에서 읽고 MIME message를 조립한다.
 - Draft CREATE/UPDATE·SEND의 Canonical Business Arguments에는 Attachment Descriptor를 포함하고, 실제 bytes의 size/SHA-256을 실행 직전 재검증한다.
 - Browser가 임의 Local Path를 MCP Argument로 지정할 수 없다.
+### Gmail Sidebar Pagination Metadata Contract
+
+`GET /api/v1/resources/gmail` accepts `include_thread_metadata` as an optional query parameter with a default of `true`. The frontend may send `false` only while traversing an unvisited intermediate UI page to obtain thread IDs and the next opaque continuation token. The visible target page keeps the default and receives Sidebar metadata. Gmail Browse remains `page_size=20`; Count is unchanged.

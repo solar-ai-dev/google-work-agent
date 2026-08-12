@@ -13,10 +13,10 @@ from google_work_agent.ports import TimeRange
 
 
 def test_gmail_list_enriches_current_page_thread_metadata(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    calls: list[tuple[str, dict[str, str] | None]] = []
+    calls: list[tuple[str, dict[str, str | list[str]] | None]] = []
 
     def google_api(
-        _state: server._WorkspaceState, url: str, params: dict[str, str] | None = None
+        _state: server._WorkspaceState, url: str, params: dict[str, str | list[str]] | None = None
     ) -> dict[str, object]:
         calls.append((url, params))
         if url.endswith("/threads/thread-1"):
@@ -76,9 +76,65 @@ def test_gmail_list_enriches_current_page_thread_metadata(monkeypatch) -> None: 
         ),
         (
             "https://gmail.googleapis.com/gmail/v1/users/me/threads/thread-1",
-            {"format": "metadata"},
+            {
+                "format": "metadata",
+                "metadataHeaders": ["From", "Subject", "Date"],
+                "fields": "messages(internalDate,payload/headers),snippet",
+            },
         ),
     ]
+
+
+def test_gmail_metadata_hydration_uses_three_workers_and_preserves_provider_order(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    thread_ids = [f"thread-{index}" for index in range(20)]
+
+    def google_api(
+        _state: server._WorkspaceState, _url: str, _params: dict[str, str | list[str]] | None = None
+    ) -> dict[str, object]:
+        return {"threads": [{"id": thread_id, "historyId": str(index)} for index, thread_id in enumerate(thread_ids)]}
+
+    def metadata(*, state: server._WorkspaceState, thread_id: str, list_snippet: str | None) -> dict[str, object]:
+        del state, list_snippet
+        return {"subject": f"Subject {thread_id}"}
+
+    monkeypatch.setattr(server, "_google_api", google_api)
+    monkeypatch.setattr(server, "_gmail_thread_list_metadata", metadata)
+
+    payload = server._tool_call(
+        _state(),
+        tool_name="gmail_search_threads",
+        arguments={"query": "label:inbox", "page_size": 20, "page_token": None},
+    )
+
+    items = cast(list[dict[str, object]], payload["items"])
+    assert server.GMAIL_METADATA_HYDRATION_MAX_WORKERS == 3
+    assert [item["resource_id"] for item in items] == thread_ids
+    assert [cast(dict[str, object], item["payload"])["subject"] for item in items] == [
+        f"Subject {thread_id}" for thread_id in thread_ids
+    ]
+
+
+def test_gmail_metadata_hydration_failure_fails_the_whole_page(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def google_api(
+        _state: server._WorkspaceState, _url: str, _params: dict[str, str | list[str]] | None = None
+    ) -> dict[str, object]:
+        return {"threads": [{"id": "thread-1"}, {"id": "thread-2"}]}
+
+    def metadata(*, state: server._WorkspaceState, thread_id: str, list_snippet: str | None) -> dict[str, object]:
+        del state, list_snippet
+        if thread_id == "thread-2":
+            raise server._WorkspaceToolError("TIMEOUT")
+        return {"subject": "First"}
+
+    monkeypatch.setattr(server, "_google_api", google_api)
+    monkeypatch.setattr(server, "_gmail_thread_list_metadata", metadata)
+
+    with pytest.raises(server._WorkspaceToolError, match="TIMEOUT"):
+        server._tool_call(
+            _state(),
+            tool_name="gmail_search_threads",
+            arguments={"query": "label:inbox", "page_size": 20, "page_token": None},
+        )
 
 
 def test_gmail_list_does_not_use_thread_id_as_subject_fallback(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -100,6 +156,41 @@ def test_gmail_list_does_not_use_thread_id_as_subject_fallback(monkeypatch) -> N
     item = cast(dict[str, object], cast(list[object], payload["items"])[0])
     assert item["resource_id"] == "thread-1"
     assert item["payload"] == {}
+
+
+def test_gmail_count_traversal_skips_per_thread_metadata_hydration(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls: list[tuple[str, dict[str, str] | None]] = []
+
+    def google_api(
+        _state: server._WorkspaceState, url: str, _params: dict[str, str] | None = None
+    ) -> dict[str, object]:
+        calls.append((url, _params))
+        return {"threads": [{"id": "thread-1", "historyId": "7", "snippet": "Preview"}]}
+
+    monkeypatch.setattr(server, "_google_api", google_api)
+
+    payload = server._tool_call(
+        _state(),
+        tool_name="gmail_search_threads",
+        arguments={
+            "query": "in:inbox category:primary",
+            "page_size": 100,
+            "page_token": None,
+            "include_thread_metadata": False,
+        },
+    )
+
+    assert calls == [
+        (
+            "https://gmail.googleapis.com/gmail/v1/users/me/threads",
+            {
+                "maxResults": "100",
+                "q": "in:inbox category:primary",
+                "fields": "threads/id,nextPageToken",
+            },
+        )
+    ]
+    assert cast(dict[str, object], cast(list[object], payload["items"])[0])["payload"] == {}
 
 
 def test_gmail_thread_detail_tool_contract_is_unchanged(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -375,6 +466,7 @@ def test_tasks_and_calendar_details_map_to_canonical_snapshots(monkeypatch) -> N
             "notes": "Call customer",
             "due": "2026-08-10T00:00:00.000Z",
             "status": "needsAction",
+            "completed": "2026-08-13T00:30:00.000Z",
             "updated": "2026-08-09T00:00:00.000Z",
         },
         {
@@ -409,7 +501,9 @@ def test_tasks_and_calendar_details_map_to_canonical_snapshots(monkeypatch) -> N
     task_item = cast(dict[str, object], task["item"])
     event_item = cast(dict[str, object], event["item"])
     assert task_item["parent_id"] == "list-1"
+    assert cast(dict[str, object], task_item["payload"])["title"] == "Follow up"
     assert cast(dict[str, object], task_item["payload"])["status"] == "needsAction"
+    assert cast(dict[str, object], task_item["payload"])["completed"] == "2026-08-13T00:30:00.000Z"
     assert event_item["parent_id"] == "primary"
     assert cast(dict[str, object], event_item["payload"])["start"] == "2026-08-10T09:00:00+09:00"
 
@@ -460,7 +554,7 @@ def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_date
         {
             "calendar_id": "work@example.com",
             "time_min": "2026-08-10T00:00:00Z",
-            "time_max": "2026-08-11T00:00:00Z",
+            "time_max": "2026-11-08T00:00:00Z",
             "single_events": True,
             "order_by": "startTime",
             "page_size": 10,
@@ -474,7 +568,7 @@ def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_date
             "maxResults": "10",
             "pageToken": "events-page-1",
             "timeMin": "2026-08-10T00:00:00Z",
-            "timeMax": "2026-08-11T00:00:00Z",
+            "timeMax": "2026-11-08T00:00:00Z",
             "singleEvents": "true",
             "orderBy": "startTime",
         },
@@ -498,7 +592,7 @@ def test_gateway_forwards_calendar_event_list_options_to_mcp() -> None:
     MCPGoogleWorkspaceGateway(transport=transport).list_calendar_events(
         calendar_id="primary",
         time_min="2026-08-10T00:00:00Z",
-        time_max="2026-08-11T00:00:00Z",
+        time_max="2026-11-08T00:00:00Z",
         single_events=True,
         order_by="startTime",
         page_size=10,
@@ -511,7 +605,7 @@ def test_gateway_forwards_calendar_event_list_options_to_mcp() -> None:
         "page_token": "events-page-1",
         "page_size": 10,
         "time_min": "2026-08-10T00:00:00Z",
-        "time_max": "2026-08-11T00:00:00Z",
+        "time_max": "2026-11-08T00:00:00Z",
         "order_by": "startTime",
         "single_events": True,
     }
