@@ -54,7 +54,7 @@
         "constraints": {
           "tasklist_id": "TL-WORK",
           "title": "Grove 후속 분석",
-          "due": "2026-08-12"
+          "notes": "업무 마감: 2026-08-12"
         }
       },
       {

@@ -13,7 +13,7 @@
   "gold": {
     "expected_goal": "Task·Calendar 순서 위험을 Draft로 제안한다.",
     "completion_criteria": [
-      "인쇄소 슬롯 8/13과 Task 기한 8/16·17을 대조한다.",
+      "인쇄소 슬롯 8/13과 Task 예정일 8/16·17을 대조한다.",
       "위험을 사실로만 표현한다."
     ],
     "required_sources": [
@@ -64,7 +64,7 @@
             "ops@atlas.example.test"
           ],
           "subject": "Atlas 준비 일정 점검",
-          "body": "인쇄소 슬롯이 QR·라벨 Task 기한보다 앞서 있어 준비 순서 확인이 필요합니다."
+          "body": "인쇄소 슬롯이 QR·라벨 Task 예정일보다 앞서 있어 준비 순서 확인이 필요합니다."
         },
         "expected": {
           "draft_created": true

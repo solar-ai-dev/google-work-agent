@@ -11,10 +11,10 @@
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-CORE-012",
   "canonical_user_prompt": "Echo 법무 작업과 오늘 일정 상태를 보고 legal@echo.example.test에 진행 상황 초안을 만들어줘.",
-  "business_scenario": "Task 기한과 Busy Calendar를 근거로 회신 Draft를 준비한다.",
+  "business_scenario": "Task 예정일과 Busy Calendar를 근거로 회신 Draft를 준비한다.",
   "expected_goal": "Echo 법무 진행 위험을 설명하는 Draft를 제안한다.",
   "expected_completion_criteria": [
-    "Task 기한과 Busy Event를 근거로 사용한다.",
+    "Task 예정일과 Busy Event를 근거로 사용한다.",
     "일정 충돌 위험을 숨기지 않는다.",
     "Draft만 생성한다."
   ],
@@ -200,7 +200,7 @@
     "sf-c2-status-draft"
   ],
   "human_rubric": [
-    "Task 기한과 Busy Event를 근거로 사용한다.",
+    "Task 예정일과 Busy Event를 근거로 사용한다.",
     "일정 충돌 위험을 숨기지 않는다.",
     "Draft만 생성한다."
   ],

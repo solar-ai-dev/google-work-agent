@@ -14,7 +14,7 @@
     "requested_outcome": "ACTION_PLAN",
     "goal": "기한 전 가용 Slot을 이용한 Event를 제안한다.",
     "completion_criteria": [
-      "출고·Task 기한을 시간 상한으로 사용한다.",
+      "출고 업무 마감과 Task 예정일을 구분하고, Task 예정일을 실제 업무 마감으로 동일시하지 않는다.",
       "Calendar FreeBusy로 가용 Slot을 결정한다."
     ],
     "constraints": {
@@ -68,7 +68,7 @@
       "resource_id": "TSK-A-001",
       "segment_id": "SEG-TSK-A-001",
       "claim": "제목: Atlas QR 문구 확정",
-      "excerpt": "제목: Atlas QR 문구 확정 / 기한: 2026-08-16T09:00:00Z / 상태: needsAction / 메모: 담당 지민",
+      "excerpt": "제목: Atlas QR 문구 확정 / 예정일: 2026-08-16T09:00:00Z / 상태: needsAction / 메모: 담당 지민",
       "confidence": "HIGH"
     },
     {
@@ -76,7 +76,7 @@
       "resource_id": "TSK-A-002",
       "segment_id": "SEG-TSK-A-002",
       "claim": "제목: Atlas 알레르기 라벨 검토",
-      "excerpt": "제목: Atlas 알레르기 라벨 검토 / 기한: 2026-08-17T09:00:00Z / 상태: needsAction / 메모: 담당 민지",
+      "excerpt": "제목: Atlas 알레르기 라벨 검토 / 예정일: 2026-08-17T09:00:00Z / 상태: needsAction / 메모: 담당 민지",
       "confidence": "HIGH"
     },
     {

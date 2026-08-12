@@ -64,7 +64,7 @@
         "arguments": {
           "tasklist_id": "TL-WORK",
           "title": "Echo 약관 최종 검토",
-          "due": "2026-08-07T17:00:00+09:00"
+          "notes": "업무 마감: 2026-08-07 17:00 Asia/Seoul"
         },
         "expected": {
           "created": true

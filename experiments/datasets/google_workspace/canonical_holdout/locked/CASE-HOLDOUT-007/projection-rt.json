@@ -64,7 +64,7 @@
         "constraints": {
           "tasklist_id": "TL-WORK",
           "title": "Willow 사전 공유 확인",
-          "due": "2026-08-18T12:00:00+09:00"
+          "notes": "업무 마감: 2026-08-18 12:00 Asia/Seoul"
         }
       },
       {

@@ -11,7 +11,7 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "goal": "인쇄소 슬롯이 Task 기한보다 먼저임을 설명한다.",
+    "goal": "인쇄소 슬롯이 Task 예정일보다 먼저임을 설명한다.",
     "requested_outcome": "ANSWER",
     "expected_request_disposition": "COMPLETE"
   },

@@ -58,7 +58,7 @@
             "manager@team.example.test"
           ],
           "subject": "Echo 약관 검토 상태",
-          "body": "검토 Task 기한과 오늘 일정 제약을 함께 공유드립니다."
+          "body": "검토 Task 예정일과 오늘 일정 제약을 함께 공유드립니다."
         }
       },
       {

@@ -11,10 +11,10 @@
   "entry_mode": "AGENT_SEARCH",
   "user_prompt_id": "UP-CORE-018",
   "canonical_user_prompt": "Atlas 작업 기한과 인쇄소 슬롯 순서를 보고 ops@atlas.example.test에 일정 위험 메일 초안을 만들어줘.",
-  "business_scenario": "인쇄소 슬롯이 Task 기한보다 먼저인 일정 순서를 지적한다.",
+  "business_scenario": "인쇄소 슬롯이 Task 예정일보다 먼저인 일정 순서를 지적한다.",
   "expected_goal": "Task·Calendar 순서 위험을 Draft로 제안한다.",
   "expected_completion_criteria": [
-    "인쇄소 슬롯 8/13과 Task 기한 8/16·17을 대조한다.",
+    "인쇄소 슬롯 8/13과 Task 예정일 8/16·17을 대조한다.",
     "위험을 사실로만 표현한다."
   ],
   "requested_outcome": "ACTION_PLAN",
@@ -110,7 +110,7 @@
           "ops@atlas.example.test"
         ],
         "subject": "Atlas 준비 일정 점검",
-        "body": "인쇄소 슬롯이 QR·라벨 Task 기한보다 앞서 있어 준비 순서 확인이 필요합니다."
+        "body": "인쇄소 슬롯이 QR·라벨 Task 예정일보다 앞서 있어 준비 순서 확인이 필요합니다."
       }
     },
     {
@@ -135,7 +135,7 @@
           "ops@atlas.example.test"
         ],
         "subject": "Atlas 준비 일정 점검",
-        "body": "인쇄소 슬롯이 QR·라벨 Task 기한보다 앞서 있어 준비 순서 확인이 필요합니다."
+        "body": "인쇄소 슬롯이 QR·라벨 Task 예정일보다 앞서 있어 준비 순서 확인이 필요합니다."
       },
       "expected": {
         "draft_created": true
@@ -203,7 +203,7 @@
     "sf-c2-schedule-risk-draft"
   ],
   "human_rubric": [
-    "인쇄소 슬롯 8/13과 Task 기한 8/16·17을 대조한다.",
+    "인쇄소 슬롯 8/13과 Task 예정일 8/16·17을 대조한다.",
     "위험을 사실로만 표현한다."
   ],
   "expected_planning_result_type": "ACTION_PLAN",

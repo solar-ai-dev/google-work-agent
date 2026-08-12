@@ -14,7 +14,7 @@
     "completion_criteria": [
       "Gmail과 인쇄소 Event를 확인한다.",
       "Tasks에서 동일 미완료 Task가 없는지 확인한다.",
-      "사용자 기한을 보존한다."
+      "사용자 업무 마감을 Task 예정일로 자동 변환하지 않고 메모에 보존한다."
     ],
     "tags": [
       "calendar_gmail_to_tasks",

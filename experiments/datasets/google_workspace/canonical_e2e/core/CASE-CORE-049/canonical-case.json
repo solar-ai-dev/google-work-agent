@@ -156,7 +156,7 @@
       "constraints": {
         "tasklist_id": "TL-WORK",
         "title": "Atlas 인쇄소 인계 확인",
-        "due": "2026-08-13T13:00:00+09:00"
+        "notes": "업무 마감: 2026-08-13 13:00 Asia/Seoul"
       }
     },
     {
@@ -222,7 +222,7 @@
       "arguments": {
         "tasklist_id": "TL-WORK",
         "title": "Atlas 인쇄소 인계 확인",
-        "due": "2026-08-13T13:00:00+09:00"
+        "notes": "업무 마감: 2026-08-13 13:00 Asia/Seoul"
       },
       "expected": {
         "created": true

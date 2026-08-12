@@ -11,7 +11,7 @@
       "target_resource_id": null,
       "arguments": {
         "title": "법무 검토",
-        "due": "2026-08-20"
+        "notes": "업무 마감: 2026-08-20"
       },
       "expected": {
         "created": true

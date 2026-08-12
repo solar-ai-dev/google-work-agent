@@ -11,9 +11,9 @@
     "entry_mode": "AGENT_SEARCH"
   },
   "gold": {
-    "expected_goal": "인쇄소 슬롯이 Task 기한보다 먼저임을 설명한다.",
+    "expected_goal": "인쇄소 슬롯이 Task 예정일보다 먼저임을 설명한다.",
     "completion_criteria": [
-      "EV-A-001 8/13과 Task due 8/16·17을 비교한다.",
+      "EV-A-001 8/13과 Task 예정일 8/16·17을 비교한다.",
       "Gmail 최종 출고 8/19도 맥락으로 포함한다."
     ],
     "required_sources": [

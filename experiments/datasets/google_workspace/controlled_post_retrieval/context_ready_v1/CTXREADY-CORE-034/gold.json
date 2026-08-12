@@ -14,7 +14,7 @@
         "arguments": {
           "tasklist_id": "TL-WORK",
           "title": "Kestrel 공급업체 후속 확인",
-          "due": "2026-08-08"
+          "notes": "업무 마감: 2026-08-08"
         },
         "expected": {
           "created": true

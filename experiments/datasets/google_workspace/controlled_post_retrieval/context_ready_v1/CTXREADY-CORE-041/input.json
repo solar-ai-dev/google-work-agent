@@ -14,7 +14,7 @@
     "requested_outcome": "ANALYSIS",
     "goal": "Atlas 준비 순서 위험을 분석한다.",
     "completion_criteria": [
-      "최종 출고 8/19, Task 기한 8/16·17, 인쇄소 슬롯 8/13을 연결한다.",
+      "최종 출고 8/19, Task 예정일 8/16·17, 인쇄소 슬롯 8/13을 연결한다.",
       "새 write Action을 만들지 않는다."
     ],
     "constraints": {
@@ -67,7 +67,7 @@
       "resource_id": "TSK-A-001",
       "segment_id": "SEG-TSK-A-001",
       "claim": "제목: Atlas QR 문구 확정",
-      "excerpt": "제목: Atlas QR 문구 확정 / 기한: 2026-08-16T09:00:00Z / 상태: needsAction / 메모: 담당 지민",
+      "excerpt": "제목: Atlas QR 문구 확정 / 예정일: 2026-08-16T09:00:00Z / 상태: needsAction / 메모: 담당 지민",
       "confidence": "HIGH"
     },
     {
@@ -75,7 +75,7 @@
       "resource_id": "TSK-A-002",
       "segment_id": "SEG-TSK-A-002",
       "claim": "제목: Atlas 알레르기 라벨 검토",
-      "excerpt": "제목: Atlas 알레르기 라벨 검토 / 기한: 2026-08-17T09:00:00Z / 상태: needsAction / 메모: 담당 민지",
+      "excerpt": "제목: Atlas 알레르기 라벨 검토 / 예정일: 2026-08-17T09:00:00Z / 상태: needsAction / 메모: 담당 민지",
       "confidence": "HIGH"
     },
     {

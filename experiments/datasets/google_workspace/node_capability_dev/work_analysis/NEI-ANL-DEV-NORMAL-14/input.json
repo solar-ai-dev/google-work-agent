@@ -14,7 +14,7 @@
         "segment_id": "SEG-TSK-R-001",
         "resource_id": "TSK-R-001",
         "claim": "제목: Raven 이전 작업",
-        "excerpt": "제목: Raven 이전 작업 / 기한: 2026-08-05T09:00:00Z / 상태: needsAction / 메모: ",
+        "excerpt": "제목: Raven 이전 작업 / 예정일: 2026-08-05T09:00:00Z / 상태: needsAction / 메모: ",
         "confidence": "HIGH"
       }
     ],

@@ -12,7 +12,7 @@
   },
   "gold": {
     "completion_criteria": [
-      "TSK-I-001이 동일 제목·동일 기한의 미완료 Task임을 확인한다.",
+      "TSK-I-001이 동일 제목·동일 예정일의 미완료 Task임을 확인한다.",
       "새 tasks_create_task를 제안하지 않는다."
     ],
     "tags": [

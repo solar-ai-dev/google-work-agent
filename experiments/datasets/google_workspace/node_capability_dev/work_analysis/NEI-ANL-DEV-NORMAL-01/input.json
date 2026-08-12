@@ -25,7 +25,7 @@
         "segment_id": "SEG-TSK-A-001",
         "resource_id": "TSK-A-001",
         "claim": "제목: Atlas QR 문구 확정",
-        "excerpt": "제목: Atlas QR 문구 확정 / 기한: 2026-08-16T09:00:00Z / 상태: needsAction / 메모: 담당 지민",
+        "excerpt": "제목: Atlas QR 문구 확정 / 예정일: 2026-08-16T09:00:00Z / 상태: needsAction / 메모: 담당 지민",
         "confidence": "HIGH"
       },
       {
@@ -33,7 +33,7 @@
         "segment_id": "SEG-TSK-A-002",
         "resource_id": "TSK-A-002",
         "claim": "제목: Atlas 알레르기 라벨 검토",
-        "excerpt": "제목: Atlas 알레르기 라벨 검토 / 기한: 2026-08-17T09:00:00Z / 상태: needsAction / 메모: 담당 민지",
+        "excerpt": "제목: Atlas 알레르기 라벨 검토 / 예정일: 2026-08-17T09:00:00Z / 상태: needsAction / 메모: 담당 민지",
         "confidence": "HIGH"
       },
       {

@@ -40,7 +40,7 @@
   "user_evidence": [
     {
       "evidence_id": "UE-HOLDOUT-007",
-      "claim": "사용자가 8월 18일 정오 기한 Task를 요청했다."
+      "claim": "사용자가 8월 18일 정오 업무 마감이 있는 Task를 요청했다."
     }
   ],
   "derived_evidence": [
@@ -129,7 +129,7 @@
       "constraints": {
         "tasklist_id": "TL-WORK",
         "title": "Willow 사전 공유 확인",
-        "due": "2026-08-18T12:00:00+09:00"
+        "notes": "업무 마감: 2026-08-18 12:00 Asia/Seoul"
       }
     },
     {
@@ -152,7 +152,7 @@
       "arguments": {
         "tasklist_id": "TL-WORK",
         "title": "Willow 사전 공유 확인",
-        "due": "2026-08-18T12:00:00+09:00"
+        "notes": "업무 마감: 2026-08-18 12:00 Asia/Seoul"
       },
       "expected": {
         "created": true
