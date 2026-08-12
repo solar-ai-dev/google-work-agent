@@ -17,7 +17,13 @@ from google_work_agent.application.workflows import (
     WorkflowPhase,
     validate_finalize_intent_v1,
 )
-from google_work_agent.domain import ResultCode, RunStatus, next_allowed_run_commands
+from google_work_agent.domain import (
+    ResultCode,
+    RunCommand,
+    RunStatus,
+    next_allowed_run_commands,
+    transition_run,
+)
 from google_work_agent.ports import (
     AuditEventRecord,
     CommandReceiptRecord,
@@ -314,6 +320,20 @@ def _apply_run_transition(
             "expected_version": expected_version,
             "finished_at_ms": completed_at_ms if persist_finished_at_ms else None,
         }
+        preview_command = {
+            RunStatus.FAILED: RunCommand.FAIL_RUN,
+            RunStatus.BLOCKED: RunCommand.BLOCK_RUN,
+        }.get(target_status)
+        if (
+            preview_command is not None
+            and transition_run(
+                run.status,
+                command=preview_command,
+                current_version=run.version,
+                expected_version=expected_version,
+            ).applied
+        ):
+            _revoke_active_approvals_for_run(unit_of_work=unit_of_work, run_id=run_id)
         result = repository_method(run_id, **kwargs)
         response = RunTransitionResponse(
             applied=bool(result.applied),
@@ -489,6 +509,12 @@ def _require_conversation(unit_of_work: UnitOfWork, conversation_id: str) -> Con
     if conversation is None:
         raise LookupError(f"conversation not found: {conversation_id}")
     return conversation
+
+
+def _revoke_active_approvals_for_run(*, unit_of_work: UnitOfWork, run_id: str) -> None:
+    for plan in unit_of_work.plans.list_by_run(run_id):
+        for action in unit_of_work.actions.list_by_plan(plan.id):
+            unit_of_work.approvals.revoke_active_by_action(action.id)
 
 
 def _mapping_or_none(value: object) -> dict[str, object] | None:

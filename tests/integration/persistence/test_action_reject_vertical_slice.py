@@ -218,15 +218,18 @@ def test_reject_forbidden_statuses_mutate_nothing(modify_database: Path, status:
         action_id="action-1",
         plan_id="plan-1",
     )
-    with connect_sqlite(modify_database) as connection:
-        connection.execute("UPDATE actions SET status = ? WHERE id = 'action-1';", (status,))
+    version = _advance_action_for_reject_guard(
+        database_path=modify_database,
+        action_id="action-1",
+        status=status,
+    )
 
     result = _service(modify_database, clock)(
         RejectWriteActionCommand(
             command_id=f"reject-forbidden-{status}",
             request_hash=f"forbidden-{status}".ljust(64, "0"),
             action_id="action-1",
-            expected_version=0,
+            expected_version=version,
         )
     )
 
@@ -235,7 +238,7 @@ def test_reject_forbidden_statuses_mutate_nothing(modify_database: Path, status:
     with sqlite_unit_of_work_factory(modify_database)() as unit_of_work:
         action = unit_of_work.actions.get_by_id("action-1")
         audits = unit_of_work.audits.list_by_aggregate(run_id="run-1", cursor_after=None, limit=100)
-    assert action is not None and action.status == status and action.version == 0
+    assert action is not None and action.status == status and action.version == version
     assert [event for event in audits if event.event_type == "ACTION_REJECTED"] == []
 
 
@@ -492,11 +495,11 @@ def test_reject_preserves_verified_actions(
             expected_run_version=0,
         )
     ).applied
-    with connect_sqlite(modify_database) as connection:
-        connection.execute(
-            "UPDATE actions SET status = 'VERIFIED' WHERE id = ?;",
-            (preserved_action_id,),
-        )
+    preserved_version = _advance_action_for_reject_guard(
+        database_path=modify_database,
+        action_id=preserved_action_id,
+        status="VERIFIED",
+    )
 
     result = _service(modify_database, clock)(
         RejectWriteActionCommand(
@@ -510,7 +513,81 @@ def test_reject_preserves_verified_actions(
     assert result["applied"] is True
     with factory() as unit_of_work:
         preserved = unit_of_work.actions.get_by_id(preserved_action_id)
-    assert preserved is not None and preserved.status == "VERIFIED" and preserved.version == 0
+    assert (
+        preserved is not None
+        and preserved.status == "VERIFIED"
+        and preserved.version == preserved_version
+    )
+
+
+def _advance_action_for_reject_guard(*, database_path: Path, action_id: str, status: str) -> int:
+    with connect_sqlite(database_path) as connection:
+        if status == "REJECTED":
+            connection.execute("UPDATE actions SET status = 'REJECTED' WHERE id = ?;", (action_id,))
+            return 0
+
+        connection.execute(
+            "UPDATE actions SET status = 'APPROVED', version = 1 WHERE id = ?;", (action_id,)
+        )
+        connection.execute(
+            """
+            INSERT INTO approvals (
+                id, action_id, approval_no, action_version, status, approved_by_account_id,
+                arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json,
+                source_snapshot_hash, policy_version, tool_schema_version, idempotency_key,
+                recovery_fingerprint, approved_at_ms, expires_at_ms
+            ) VALUES (?, ?, 1, 1, 'ACTIVE', 'account-1', '{}', ?, '{}', ?, 'p1', 'v1', ?, ?, 1, 2);
+            """,
+            (
+                f"approval-{action_id}",
+                action_id,
+                "a" * 64,
+                "b" * 64,
+                (f"idempotency-{action_id}").ljust(64, "x")[:64],
+                "c" * 64,
+            ),
+        )
+        connection.execute(
+            "UPDATE approvals SET status = 'CONSUMED', consumed_at_ms = 1 WHERE action_id = ?;",
+            (action_id,),
+        )
+        connection.execute(
+            "UPDATE actions SET status = 'EXECUTING', version = 2 WHERE id = ?;", (action_id,)
+        )
+        connection.execute(
+            """
+            INSERT INTO execution_attempts (id, approval_id, attempt_no, status, started_at_ms)
+            VALUES (?, ?, 1, 'CLAIMED', 1);
+            """,
+            (f"attempt-{action_id}", f"approval-{action_id}"),
+        )
+        if status == "EXECUTING":
+            return 2
+        attempt_status = "UNKNOWN_RESULT" if status == "UNKNOWN_RESULT" else "SUCCEEDED"
+        connection.execute(
+            "UPDATE execution_attempts SET status = ? WHERE id = ?;",
+            (attempt_status, f"attempt-{action_id}"),
+        )
+        next_status = "UNKNOWN_RESULT" if status == "UNKNOWN_RESULT" else "EXECUTED"
+        connection.execute(
+            "UPDATE actions SET status = ?, version = 3 WHERE id = ?;",
+            (next_status, action_id),
+        )
+        if status in {"UNKNOWN_RESULT", "EXECUTED"}:
+            return 3
+        connection.execute(
+            """
+            INSERT INTO verifications (
+                id, execution_attempt_id, verification_no, status, normalizer_version,
+                expected_json, actual_json, diff_json, verified_at_ms
+            ) VALUES (?, ?, 1, ?, 'v1', '{}', '{}', '[]', 2);
+            """,
+            (f"verification-{action_id}", f"attempt-{action_id}", status),
+        )
+        connection.execute(
+            "UPDATE actions SET status = ?, version = 4 WHERE id = ?;", (status, action_id)
+        )
+        return 4
 
 
 def test_reject_audit_failure_rolls_back_domain_mutation(modify_database: Path) -> None:

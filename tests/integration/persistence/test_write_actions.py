@@ -726,6 +726,31 @@ def test_corrective_recovery_creates_fresh_plan_revision_without_reusing_facts(
         gateway=fixture_gateway,
         suffix="corrective",
     )
+    _insert_action_sibling(
+        database_path=write_database,
+        source_action_id="action-corrective",
+        sibling_action_id="action-corrective-pending",
+        status="APPROVED",
+    )
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute(
+            """
+            INSERT INTO approvals (
+                id, action_id, approval_no, action_version, status, approved_by_account_id,
+                arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json,
+                source_snapshot_hash, policy_version, tool_schema_version, idempotency_key,
+                recovery_fingerprint, approved_at_ms, expires_at_ms
+            ) VALUES (
+                'approval-corrective-pending', 'action-corrective-pending', 1, 0, 'ACTIVE',
+                'account-1', '{}', ?, '{}', ?, 'p1', 'v1', ?, ?, 1, 3000
+            );
+            """,
+            ("a" * 64, "b" * 64, "c" * 64, "d" * 64),
+        )
+        connection.commit()
+    finally:
+        connection.close()
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=lambda: 2000,
@@ -759,11 +784,15 @@ def test_corrective_recovery_creates_fresh_plan_revision_without_reusing_facts(
                 (SELECT COUNT(*) FROM verifications);
             """
         ).fetchone()
+        pending_approval_status = connection.execute(
+            "SELECT status FROM approvals WHERE id = 'approval-corrective-pending';"
+        ).fetchone()[0]
         assert [tuple(row) for row in plans] == [
             ("plan-corrective", 1, "SUPERSEDED"),
             ("plan-corrective-v2", 2, "DRAFT"),
         ]
-        assert tuple(counts) == (1, 1, 1, 1)
+        assert tuple(counts) == (2, 2, 1, 1)
+        assert pending_approval_status == "REVOKED"
     finally:
         connection.close()
 
@@ -2229,13 +2258,16 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
             ("action-cancel-pending", "CANCELLED"),
         ]
         assert connection.execute("SELECT COUNT(*) FROM verifications;").fetchone()[0] == 1
-        assert connection.execute(
-            """
+        assert (
+            connection.execute(
+                """
             SELECT COUNT(*) FROM audit_events
             WHERE event_type = 'ACTION_CANCELLED'
               AND action_id = 'action-cancel-pending';
             """
-        ).fetchone()[0] == 1
+            ).fetchone()[0]
+            == 1
+        )
     finally:
         connection.close()
 
@@ -2318,15 +2350,11 @@ def test_non_success_terminal_action_with_cancelled_sibling_is_not_partial(
     clock = FakeClock(1000)
     suffix = f"cancel-{terminal_status.lower()}"
     _prepare_write_plan(write_database=write_database, clock=clock, suffix=suffix)
-    connection = connect_sqlite(write_database)
-    try:
-        connection.execute(
-            "UPDATE actions SET status = ? WHERE id = ?;",
-            (terminal_status, f"action-{suffix}"),
-        )
-        connection.commit()
-    finally:
-        connection.close()
+    _seed_write_terminal_status(
+        database_path=write_database,
+        action_id=f"action-{suffix}",
+        terminal_status=terminal_status,
+    )
     _insert_action_sibling(
         database_path=write_database,
         source_action_id=f"action-{suffix}",
@@ -2355,6 +2383,78 @@ def test_non_success_terminal_action_with_cancelled_sibling_is_not_partial(
     assert snapshot is not None
     assert snapshot.result_kind == "CANCELLED"
     assert {action.status for action in snapshot.actions} == {terminal_status, "CANCELLED"}
+
+
+def _seed_write_terminal_status(
+    *, database_path: Path, action_id: str, terminal_status: str
+) -> None:
+    connection = connect_sqlite(database_path)
+    try:
+        approval_id = f"approval-{action_id}"
+        attempt_id = f"attempt-{action_id}"
+        connection.execute(
+            "UPDATE actions SET status = 'APPROVED', version = 1 WHERE id = ?;", (action_id,)
+        )
+        connection.execute(
+            """
+            INSERT INTO approvals (
+                id, action_id, approval_no, action_version, status, approved_by_account_id,
+                arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json,
+                source_snapshot_hash, policy_version, tool_schema_version, idempotency_key,
+                recovery_fingerprint, approved_at_ms, expires_at_ms
+            ) VALUES (?, ?, 1, 1, 'ACTIVE', 'account-1', '{}', ?, '{}', ?, 'p1', 'v1', ?, ?, 1, 2);
+            """,
+            (
+                approval_id,
+                action_id,
+                "a" * 64,
+                "b" * 64,
+                approval_id.ljust(64, "x")[:64],
+                "c" * 64,
+            ),
+        )
+        connection.execute(
+            "UPDATE approvals SET status = 'CONSUMED', consumed_at_ms = 1 WHERE id = ?;",
+            (approval_id,),
+        )
+        connection.execute(
+            "UPDATE actions SET status = 'EXECUTING', version = 2 WHERE id = ?;", (action_id,)
+        )
+        connection.execute(
+            """
+            INSERT INTO execution_attempts (id, approval_id, attempt_no, status, started_at_ms)
+            VALUES (?, ?, 1, 'CLAIMED', 1);
+            """,
+            (attempt_id, approval_id),
+        )
+        attempt_status = "FAILED" if terminal_status == "FAILED" else "SUCCEEDED"
+        connection.execute(
+            "UPDATE execution_attempts SET status = ? WHERE id = ?;",
+            (attempt_status, attempt_id),
+        )
+        if terminal_status == "FAILED":
+            connection.execute(
+                "UPDATE actions SET status = 'FAILED', version = 3 WHERE id = ?;", (action_id,)
+            )
+        else:
+            connection.execute(
+                "UPDATE actions SET status = 'EXECUTED', version = 3 WHERE id = ?;", (action_id,)
+            )
+            connection.execute(
+                """
+                INSERT INTO verifications (
+                    id, execution_attempt_id, verification_no, status, normalizer_version,
+                    expected_json, actual_json, diff_json, verified_at_ms
+                ) VALUES (?, ?, 1, 'MISMATCH', 'v1', '{}', '{}', '[]', 2);
+                """,
+                (f"verification-{action_id}", attempt_id),
+            )
+            connection.execute(
+                "UPDATE actions SET status = 'MISMATCH', version = 4 WHERE id = ?;", (action_id,)
+            )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_domain_commands(

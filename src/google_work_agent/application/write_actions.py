@@ -56,6 +56,7 @@ from google_work_agent.domain import (
     ExecutionAttemptStatus,
     PolicyViolationError,
     ResultCode,
+    RunCommand,
     RunStatus,
     SignedToolRegistry,
     VerificationStatus,
@@ -65,6 +66,8 @@ from google_work_agent.domain import (
     canonicalize_json_value,
     next_allowed_action_commands,
     normalize_action_risk,
+    transition_action,
+    transition_run,
     validate_approval_integrity,
     validate_evidence_policy,
 )
@@ -1308,13 +1311,15 @@ class ClaimWriteActionService:
                 unit_of_work.commit()
                 return response
 
-            result = unit_of_work.actions.claim_execution(
-                action.id,
+            preview = transition_action(
+                ActionStatus(action.status),
+                command=ActionCommand.CLAIM_EXECUTION,
+                current_version=action.version,
                 expected_version=command.expected_version,
-                updated_at_ms=now_ms,
+                effect_type=EffectType(action.effect_type),
             )
-            if not result.applied:
-                response = _action_response_from_result(action_id=action.id, result=result)
+            if not preview.applied:
+                response = _action_response_from_result(action_id=action.id, result=preview)
                 _finish_json_receipt(
                     unit_of_work,
                     command.command_id,
@@ -1324,6 +1329,15 @@ class ClaimWriteActionService:
                 )
                 unit_of_work.commit()
                 return response
+
+            unit_of_work.approvals.mark_consumed(approval.id, consumed_at_ms=now_ms)
+            result = unit_of_work.actions.claim_execution(
+                action.id,
+                expected_version=command.expected_version,
+                updated_at_ms=now_ms,
+            )
+            if not result.applied:
+                raise RuntimeError("validated write claim transition was not applied")
 
             attempt = ExecutionAttemptRecord(
                 id=command.attempt_id,
@@ -1339,7 +1353,6 @@ class ClaimWriteActionService:
                 finished_at_ms=None,
             )
             unit_of_work.execution_attempts.insert_claimed(attempt)
-            unit_of_work.approvals.mark_consumed(approval.id, consumed_at_ms=now_ms)
             claim_token = issue_claim_token(
                 {
                     "version": CLAIM_TOKEN_VERSION,
@@ -1587,6 +1600,7 @@ class PreflightWriteActionService:
                 )
                 now_ms = self._now_ms()
                 if must_reapprove:
+                    unit_of_work.approvals.revoke_active_by_action(current.id)
                     result = unit_of_work.actions.modify_write(
                         current.id,
                         expected_version=current.version,
@@ -1599,7 +1613,6 @@ class PreflightWriteActionService:
                         raise PolicyViolationError(
                             "write action changed during task duplicate preflight"
                         )
-                    unit_of_work.approvals.revoke_active_by_action(current.id)
                     unit_of_work.audits.add(
                         _audit_event(
                             run_id=plan.run_id,
@@ -1700,6 +1713,7 @@ class PreflightWriteActionService:
                 )
                 now_ms = self._now_ms()
                 if must_reapprove:
+                    unit_of_work.approvals.revoke_active_by_action(current.id)
                     result = unit_of_work.actions.modify_write(
                         current.id,
                         expected_version=current.version,
@@ -1712,7 +1726,6 @@ class PreflightWriteActionService:
                         raise PolicyViolationError(
                             "write action changed during calendar conflict preflight"
                         )
-                    unit_of_work.approvals.revoke_active_by_action(current.id)
                 else:
                     unit_of_work.actions.update_risk_snapshot(
                         current.id,
@@ -2248,25 +2261,27 @@ class VerifyWriteActionService:
                 verification_status = (
                     VerificationStatus.VERIFIED if len(diff) == 0 else VerificationStatus.MISMATCH
                 )
-            verification_no = len(unit_of_work.verifications.list_by_attempt(attempt.id)) + 1
-            result = unit_of_work.actions.store_verification(
-                action.id,
+            preview = transition_action(
+                ActionStatus(action.status),
+                command=ActionCommand.STORE_VERIFICATION,
+                current_version=action.version,
                 expected_version=command.expected_action_version,
-                updated_at_ms=now_ms,
-                verification_status=verification_status.value,
+                effect_type=EffectType(action.effect_type),
+                verification_status=verification_status,
             )
-            if not result.applied:
-                response = _action_response_from_result(action_id=action.id, result=result)
+            if not preview.applied:
+                response = _action_response_from_result(action_id=action.id, result=preview)
                 _finish_json_receipt(
                     unit_of_work,
                     command.command_id,
                     response,
-                    result.current_version,
+                    preview.current_version,
                     now_ms,
                 )
                 unit_of_work.commit()
                 return response
 
+            verification_no = len(unit_of_work.verifications.list_by_attempt(attempt.id)) + 1
             verification = VerificationRecord(
                 id=command.verification_id,
                 execution_attempt_id=attempt.id,
@@ -2279,6 +2294,14 @@ class VerifyWriteActionService:
                 verified_at_ms=now_ms,
             )
             unit_of_work.verifications.insert(verification)
+            result = unit_of_work.actions.store_verification(
+                action.id,
+                expected_version=command.expected_action_version,
+                updated_at_ms=now_ms,
+                verification_status=verification_status.value,
+            )
+            if not result.applied:
+                raise RuntimeError("validated verification transition was not applied")
             if verification_status is VerificationStatus.MISMATCH:
                 _propagate_dependency_blocked(
                     unit_of_work=unit_of_work,
@@ -3320,22 +3343,23 @@ class ResolveMismatchRecoveryService:
                 if command.resolution_kind is RecoveryResolutionKind.ACCEPT_PARTIAL
                 else RunStatus.PLANNING
             )
-            resolved = unit_of_work.runs.resolve_recovery(
-                run.id,
+            preview = transition_run(
+                run.status,
+                command=RunCommand.RESOLVE_RECOVERY,
+                current_version=run.version,
                 expected_version=command.expected_run_version,
                 recovery_next_status=next_status,
-                finished_at_ms=now_ms if next_status is RunStatus.COMPLETED else None,
             )
-            if not resolved.applied:
+            if not preview.applied:
                 response = WriteRunResponse(
                     applied=False,
-                    result_code=resolved.result_code.value,
+                    result_code=preview.result_code.value,
                     run_id=run.id,
-                    run_status=resolved.current_status.value,
-                    run_version=resolved.current_version,
+                    run_status=preview.current_status.value,
+                    run_version=preview.current_version,
                     plan_id=plan.id,
                     plan_status=plan.status.value,
-                    conflict_detail=resolved.conflict_detail,
+                    conflict_detail=preview.conflict_detail,
                 )
                 return _finish_recovery_response(
                     unit_of_work=unit_of_work,
@@ -3358,6 +3382,10 @@ class ResolveMismatchRecoveryService:
             else:
                 if not command.corrective_plan_id:
                     raise ValueError("corrective_plan_id is required for CREATE_CORRECTIVE_PLAN")
+                _revoke_active_approvals_for_plan(
+                    unit_of_work=unit_of_work,
+                    plan_id=plan.id,
+                )
                 unit_of_work.plans.supersede(plan.id)
                 next_revision = (
                     max(item.revision_no for item in unit_of_work.plans.list_by_run(run.id)) + 1
@@ -3374,6 +3402,15 @@ class ResolveMismatchRecoveryService:
                 result_plan = corrective_plan.id
                 result_plan_status = corrective_plan.status.value
                 result_kind = "CORRECTIVE_PLAN_REQUIRED"
+
+            resolved = unit_of_work.runs.resolve_recovery(
+                run.id,
+                expected_version=command.expected_run_version,
+                recovery_next_status=next_status,
+                finished_at_ms=now_ms if next_status is RunStatus.COMPLETED else None,
+            )
+            if not resolved.applied:
+                raise RuntimeError("validated recovery transition was not applied")
 
             unit_of_work.traces.add(
                 TraceEventRecord(
@@ -4142,6 +4179,11 @@ def classify_write_delivery(error: GoogleWorkspaceGatewayError) -> DeliveryCerta
     return error.delivery_certainty
 
 
+def _revoke_active_approvals_for_plan(*, unit_of_work: UnitOfWork, plan_id: str) -> None:
+    for action in unit_of_work.actions.list_by_plan(plan_id):
+        unit_of_work.approvals.revoke_active_by_action(action.id)
+
+
 def _cancel_pending_actions(
     *, unit_of_work: UnitOfWork, run_id: str, plan_id: str, updated_at_ms: int
 ) -> None:
@@ -4344,11 +4386,18 @@ def _propagate_dependency_blocked(
         if dependent_action_id in visited:
             continue
         visited.add(dependent_action_id)
-        if unit_of_work.actions.mark_dependency_blocked(
-            dependent_action_id,
-            updated_at_ms=updated_at_ms,
-        ):
+        dependent = unit_of_work.actions.get_by_id(dependent_action_id)
+        if dependent is not None and dependent.status in {
+            ActionStatus.PROPOSED.value,
+            ActionStatus.MODIFIED.value,
+            ActionStatus.APPROVED.value,
+        }:
             unit_of_work.approvals.revoke_active_by_action(dependent_action_id)
+            if not unit_of_work.actions.mark_dependency_blocked(
+                dependent_action_id,
+                updated_at_ms=updated_at_ms,
+            ):
+                raise RuntimeError(f"dependency block transition failed: {dependent_action_id}")
             blocked_action_ids.append(dependent_action_id)
             pending.extend(unit_of_work.action_dependencies.list_dependents(dependent_action_id))
     for blocked_action_id in blocked_action_ids:

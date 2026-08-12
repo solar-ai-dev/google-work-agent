@@ -43,6 +43,7 @@ from google_work_agent.domain import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
     next_allowed_action_commands,
+    transition_action,
     validate_evidence_policy,
 )
 from google_work_agent.ports import (
@@ -650,6 +651,16 @@ class ModifyWriteActionService:
                     updated_risk = merge_calendar_conflict_risk(updated_risk, fresh_calendar_risk)
             if fresh_feasibility_risk is not None:
                 updated_risk = merge_feasibility_risk(updated_risk, fresh_feasibility_risk)
+            preview = transition_action(
+                ActionStatus(action.status),
+                command=ActionCommand.MODIFY_ACTION,
+                current_version=action.version,
+                expected_version=command.expected_version,
+                effect_type=EffectType(action.effect_type),
+            )
+            revoked_approval_ids: tuple[str, ...] = ()
+            if preview.applied:
+                revoked_approval_ids = unit_of_work.approvals.revoke_active_by_action(action.id)
             result = unit_of_work.actions.modify_write(
                 action.id,
                 expected_version=command.expected_version,
@@ -679,7 +690,6 @@ class ModifyWriteActionService:
             # A stale ACTIVE Approval must never authorize execution of the
             # arguments it was not issued for. Revoking is a no-op when the
             # action was PROPOSED and had no Approval yet.
-            revoked_approval_ids = unit_of_work.approvals.revoke_active_by_action(action.id)
             run_id = _run_id_for_action(unit_of_work, action.id)
             review_version = unit_of_work.plans.require_review(action.plan_id)
             _revoke_stale_dependent_approvals(
@@ -977,12 +987,18 @@ def _block_rejected_action_dependents(
             continue
         visited.add(dependent_id)
         dependent = unit_of_work.actions.get_by_id(dependent_id)
-        if dependent is None or not unit_of_work.actions.mark_dependency_blocked(
+        if dependent is None or dependent.status not in {
+            ActionStatus.PROPOSED.value,
+            ActionStatus.MODIFIED.value,
+            ActionStatus.APPROVED.value,
+        }:
+            continue
+        revoked_ids = unit_of_work.approvals.revoke_active_by_action(dependent_id)
+        if not unit_of_work.actions.mark_dependency_blocked(
             dependent_id,
             updated_at_ms=now_ms,
         ):
-            continue
-        revoked_ids = unit_of_work.approvals.revoke_active_by_action(dependent_id)
+            raise RuntimeError(f"dependency block transition failed: {dependent_id}")
         blocked_action_ids.append(dependent_id)
         metadata: dict[str, object] = {
             "command_id": command_id,
@@ -1073,6 +1089,16 @@ class RejectWriteActionService:
             run = unit_of_work.runs.get_by_id(plan.run_id)
             if run is None:
                 raise LookupError(f"run not found: {plan.run_id}")
+            preview = transition_action(
+                ActionStatus(action.status),
+                command=ActionCommand.REJECT_ACTION,
+                current_version=action.version,
+                expected_version=command.expected_version,
+                effect_type=EffectType(action.effect_type),
+            )
+            revoked_approval_ids: tuple[str, ...] = ()
+            if preview.applied:
+                revoked_approval_ids = unit_of_work.approvals.revoke_active_by_action(action.id)
             result = unit_of_work.actions.reject_write(
                 action.id,
                 expected_version=command.expected_version,
@@ -1094,7 +1120,6 @@ class RejectWriteActionService:
                 conflict_detail=result.conflict_detail,
             )
             if result.applied:
-                revoked_approval_ids = unit_of_work.approvals.revoke_active_by_action(action.id)
                 blocked_action_ids = _block_rejected_action_dependents(
                     unit_of_work=unit_of_work,
                     rejected_action_id=action.id,

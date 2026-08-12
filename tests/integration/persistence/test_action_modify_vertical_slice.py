@@ -692,14 +692,46 @@ def test_failed_action_is_not_modifiable_through_this_endpoint(modify_database: 
     _save_and_publish_task_action(
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
     )
-    with unit_of_work_factory() as unit_of_work:
-        # Force the action directly into FAILED to exercise the guard without
-        # needing a full claim/execute/mark-failed round trip.
-        unit_of_work.actions.approve_write(
-            "action-1", expected_version=0, updated_at_ms=clock.now_ms()
+    approved = ApproveWriteActionService(
+        unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
+    )(
+        ApproveWriteActionCommand(
+            command_id="approve-failed-modify",
+            request_hash="f1" * 32,
+            action_id="action-1",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-failed-modify",
+            idempotency_key="f2" * 32,
         )
-        unit_of_work.actions.claim_execution(
-            "action-1", expected_version=1, updated_at_ms=clock.now_ms()
+    )
+    assert approved.applied is True
+    claimed = ClaimWriteActionService(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
+        signing_secret="failed-modify-secret",
+        service_instance_id="failed-modify-service",
+    )(
+        ClaimWriteActionCommand(
+            command_id="claim-failed-modify",
+            request_hash="f3" * 32,
+            action_id="action-1",
+            expected_version=1,
+            source_snapshot={},
+            attempt_id="attempt-failed-modify",
+            nonce="nonce-failed-modify",
+        )
+    )
+    assert claimed.applied is True
+    with unit_of_work_factory() as unit_of_work:
+        unit_of_work.execution_attempts.mark_failed(
+            "attempt-failed-modify",
+            expected_version=0,
+            error_code="NOT_SENT",
+            error_detail_json="{}",
+            finished_at_ms=clock.now_ms(),
         )
         unit_of_work.actions.mark_failed(
             "action-1", expected_version=2, updated_at_ms=clock.now_ms()
