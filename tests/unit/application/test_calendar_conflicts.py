@@ -13,6 +13,7 @@ from google_work_agent.application.calendar_conflicts import (
 from google_work_agent.domain import CalendarWorkHours, PolicyViolationError
 from google_work_agent.ports import (
     FreeBusyCalendar,
+    FreeBusyInterval,
     ResourcePage,
     ResourceSnapshot,
     ResourceType,
@@ -90,6 +91,71 @@ def test_fresh_check_scopes_every_page_to_exact_zero_buffer_interval() -> None:
         }
     ]
     assert risk["calendar_conflict"]["freshness"] == "FRESH_GOOGLE_GET"  # type: ignore[index]
+
+
+def test_tentative_event_matching_freebusy_remains_warning() -> None:
+    gateway = Gateway()
+    gateway.pages = [
+        ResourcePage(items=(event("tentative", response="tentative"),), next_page_token=None)
+    ]
+
+    def matching_freebusy(
+        *, calendar_ids: tuple[str, ...], time_range: TimeRange
+    ) -> tuple[FreeBusyCalendar, ...]:
+        del time_range
+        return (
+            FreeBusyCalendar(
+                calendar_id=calendar_ids[0],
+                intervals=(
+                    FreeBusyInterval(
+                        start="2026-08-12T09:30:00+09:00",
+                        end="2026-08-12T10:30:00+09:00",
+                        transparency="opaque",
+                    ),
+                ),
+            ),
+        )
+
+    gateway.query_freebusy = matching_freebusy  # type: ignore[method-assign]
+    risk = CalendarConflictValidator(
+        gateway=gateway,
+        now_ms=lambda: 123,
+        work_hours_provider=lambda: CalendarWorkHours(timezone="Asia/Seoul"),
+    ).fresh_risk(arguments())
+
+    assert risk["calendar_conflict"]["decision"] == "WARNING"  # type: ignore[index]
+
+
+def test_update_self_exclusion_keeps_same_time_other_event_hard() -> None:
+    gateway = Gateway()
+    gateway.pages = [ResourcePage(items=(event("target"), event("other")), next_page_token=None)]
+
+    def matching_freebusy(
+        *, calendar_ids: tuple[str, ...], time_range: TimeRange
+    ) -> tuple[FreeBusyCalendar, ...]:
+        del time_range
+        return (
+            FreeBusyCalendar(
+                calendar_id=calendar_ids[0],
+                intervals=(
+                    FreeBusyInterval(
+                        start="2026-08-12T09:30:00+09:00",
+                        end="2026-08-12T10:30:00+09:00",
+                        transparency="opaque",
+                    ),
+                ),
+            ),
+        )
+
+    gateway.query_freebusy = matching_freebusy  # type: ignore[method-assign]
+    risk = CalendarConflictValidator(
+        gateway=gateway,
+        now_ms=lambda: 123,
+        work_hours_provider=lambda: CalendarWorkHours(timezone="Asia/Seoul"),
+    ).fresh_risk(arguments(event_id="target"))
+
+    assert risk["calendar_conflict"]["decision"] == "HARD_CONFLICT"  # type: ignore[index]
+    assert risk["calendar_conflict"]["matched_resource_ids"] == ["other"]  # type: ignore[index]
 
 
 def test_pagination_cycle_fails_closed() -> None:

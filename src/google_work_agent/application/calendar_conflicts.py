@@ -114,9 +114,7 @@ class CalendarConflictValidator:
             page_token = next_token
         calendars = self._gateway.query_freebusy(calendar_ids=(calendar_id,), time_range=time_range)
         freebusy = _freebusy_intervals(calendars, calendar_id=calendar_id)
-        freebusy = _without_target_freebusy(
-            freebusy, events=tuple(events), excluded_event_id=excluded_event_id
-        )
+        freebusy = _residual_freebusy(freebusy, events=tuple(events))
         return evaluate_calendar_conflict(
             proposed=proposed,
             events=tuple(events),
@@ -186,10 +184,9 @@ def evidence_calendar_conflict_risk(
     return evaluate_calendar_conflict(
         proposed=proposed,
         events=tuple(events),
-        freebusy=_without_target_freebusy(
+        freebusy=_residual_freebusy(
             tuple(freebusy),
             events=tuple(events),
-            excluded_event_id=excluded_event_id,
         ),
         work_hours=work_hours,
         excluded_event_id=excluded_event_id,
@@ -351,21 +348,16 @@ def _freebusy_payload_intervals(payload: Mapping[str, object]) -> list[CalendarI
     return result
 
 
-def _without_target_freebusy(
+def _residual_freebusy(
     freebusy: tuple[CalendarInterval, ...],
     *,
     events: tuple[CalendarEventCandidate, ...],
-    excluded_event_id: str | None,
 ) -> tuple[CalendarInterval, ...]:
-    if excluded_event_id is None:
-        return freebusy
-    target = next((event for event in events if event.event_id == excluded_event_id), None)
-    if target is None:
-        return freebusy
+    """Keep only generic busy intervals not explained by Event metadata."""
+
+    known_intervals = {(event.interval.start, event.interval.end) for event in events}
     return tuple(
-        interval
-        for interval in freebusy
-        if interval.start != target.interval.start or interval.end != target.interval.end
+        interval for interval in freebusy if (interval.start, interval.end) not in known_intervals
     )
 
 
