@@ -248,12 +248,14 @@ export function rejectAction(payload: {
   action_id: string;
   command_id: string;
   expected_version: number;
+  reason_code?: string;
 }): Promise<ActionCommandResponse> {
   return requestJson(`/api/v1/actions/${encodeURIComponent(payload.action_id)}/reject`, {
     method: "POST",
     body: {
       command_id: payload.command_id,
       expected_version: payload.expected_version,
+      reason_code: payload.reason_code ?? null,
       api_contract_version: API_CONTRACT_VERSION,
     },
   });

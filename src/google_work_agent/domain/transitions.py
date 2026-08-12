@@ -60,6 +60,9 @@ RUN_TRANSITIONS: dict[tuple[RunStatus, RunCommand], RunStatus] = {
     (RunStatus.RETRIEVING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.PLANNING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.VERIFYING, RunCommand.COMPLETE_WRITE_RUN): RunStatus.COMPLETED,
+    (RunStatus.WAITING_APPROVAL, RunCommand.FINALIZE_ACTION_OUTCOMES): RunStatus.COMPLETED,
+    (RunStatus.EXECUTING, RunCommand.FINALIZE_ACTION_OUTCOMES): RunStatus.COMPLETED,
+    (RunStatus.VERIFYING, RunCommand.FINALIZE_ACTION_OUTCOMES): RunStatus.COMPLETED,
     (RunStatus.CANCEL_REQUESTED, RunCommand.FINALIZE_CANCEL): RunStatus.CANCELLED,
     (RunStatus.RETRIEVING, RunCommand.REQUIRE_REAUTH): RunStatus.REAUTH_REQUIRED,
     (RunStatus.WAITING_APPROVAL, RunCommand.REQUIRE_REAUTH): RunStatus.REAUTH_REQUIRED,
@@ -100,6 +103,7 @@ WRITE_ACTION_TRANSITIONS: dict[tuple[ActionStatus, ActionCommand], ActionStatus]
     (ActionStatus.FAILED, ActionCommand.MODIFY_ACTION): ActionStatus.MODIFIED,
     (ActionStatus.PROPOSED, ActionCommand.REJECT_ACTION): ActionStatus.REJECTED,
     (ActionStatus.MODIFIED, ActionCommand.REJECT_ACTION): ActionStatus.REJECTED,
+    (ActionStatus.APPROVED, ActionCommand.REJECT_ACTION): ActionStatus.REJECTED,
     (ActionStatus.APPROVED, ActionCommand.EXPIRE_APPROVAL): ActionStatus.EXPIRED,
     (ActionStatus.APPROVED, ActionCommand.CLAIM_EXECUTION): ActionStatus.EXECUTING,
     (ActionStatus.EXECUTING, ActionCommand.STORE_SUCCESS): ActionStatus.EXECUTED,
@@ -123,7 +127,7 @@ def next_allowed_run_commands(current_status: RunStatus) -> tuple[RunCommand, ..
     commands = [
         command
         for command in RUN_COMMAND_ORDER
-        if command is not RunCommand.REPLAN
+        if command not in {RunCommand.REPLAN, RunCommand.FINALIZE_ACTION_OUTCOMES}
         and (
             (current_status, command) in RUN_TRANSITIONS
             or _is_publish_plan_candidate(current_status, command)

@@ -161,6 +161,8 @@ PURGE_COMPLETED
 DIAGNOSTIC_BUNDLE_EXPORTED
 ```
 
+`ACTION_REJECTED`는 성공한 Domain mutation과 같은 UoW에서 기록하며 `run_id`, `plan_id`, `action_id`, `command_id`, actor, 이전/신규 상태, optional `reason_code` 존재 여부와 outcome을 포함한다. Action arguments, Gmail body 등 원문 콘텐츠는 복제하지 않는다. 실패·Version conflict·receipt replay에서는 새 Reject Audit을 만들지 않는다.
+
 안전 Command의 Audit 저장 실패는 Command 실패다. P0 Audit는 Application-level append-only이며 암호학적 Tamper Evidence는 P1 검토다.
 
 ## 7. Sanitization

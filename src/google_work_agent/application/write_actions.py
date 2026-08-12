@@ -4326,12 +4326,20 @@ def _propagate_dependency_blocked(
     updated_at_ms: int,
 ) -> None:
     blocked_action_ids: list[str] = []
-    for dependent_action_id in unit_of_work.action_dependencies.list_dependents(action_id):
+    pending = list(unit_of_work.action_dependencies.list_dependents(action_id))
+    visited: set[str] = set()
+    while pending:
+        dependent_action_id = pending.pop(0)
+        if dependent_action_id in visited:
+            continue
+        visited.add(dependent_action_id)
         if unit_of_work.actions.mark_dependency_blocked(
             dependent_action_id,
             updated_at_ms=updated_at_ms,
         ):
+            unit_of_work.approvals.revoke_active_by_action(dependent_action_id)
             blocked_action_ids.append(dependent_action_id)
+            pending.extend(unit_of_work.action_dependencies.list_dependents(dependent_action_id))
     for blocked_action_id in blocked_action_ids:
         unit_of_work.traces.add(
             TraceEventRecord(

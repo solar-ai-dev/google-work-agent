@@ -1640,7 +1640,23 @@ test("TST-UI-209 renders independent approval commands with versions and disable
   expect(JSON.parse(String(approve?.init?.body))).toMatchObject({ expected_version: 7 });
   expect(screen.getByText("승인 상세")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "수정" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "건너뛰기" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "거절" })).toBeInTheDocument();
+});
+
+test("approved Action can be rejected and refreshes to a non-executable rejected state", async () => {
+  const user = userEvent.setup();
+  const requests = installUiContractFetch({ action: true, actionStatus: "APPROVED" });
+  render(<App />);
+
+  await user.click(await screen.findByRole("button", { name: "거절" }));
+  const reject = requests.find((request) => request.path.endsWith("/reject"));
+  expect(JSON.parse(String(reject?.init?.body))).toMatchObject({
+    expected_version: 7,
+    reason_code: null,
+  });
+  expect(await screen.findByText("REJECTED")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "거절" })).not.toBeInTheDocument();
 });
 
 test("TST-UI-210 filters conversations and shows recent execution fallback", async () => {
@@ -1707,6 +1723,7 @@ test("shows a partial-result notice after a run is cancelled", async () => {
 
 function installUiContractFetch(options: {
   action?: boolean;
+  actionStatus?: string;
   actionRisk?: Record<string, unknown>;
   conversations?: boolean;
   calendarEvents?: Record<string, unknown>[];
@@ -1723,6 +1740,7 @@ function installUiContractFetch(options: {
 } = {}): Array<{ path: string; init?: RequestInit }> {
   const requests: Array<{ path: string; init?: RequestInit }> = [];
   let detailAttempts = 0;
+  let actionStatus = options.actionStatus ?? "PROPOSED";
   globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
     const path = String(input);
     requests.push({ path, init });
@@ -1798,9 +1816,12 @@ function installUiContractFetch(options: {
     }
     if (path === "/api/v1/conversations" && init?.method === "POST") return jsonFetchResponse({ conversation_id: "conversation-1" });
     if (path === "/api/v1/runs" && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-1", conversation_id: "conversation-1", run_status: "WAITING_APPROVAL", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-1", enqueued: true, request_replayed: false });
-    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: "gmail_draft", status: "PROPOSED", version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", risk: options.actionRisk ?? {}, next_allowed_commands: [] }] : [] }));
+    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: "gmail_draft", status: actionStatus, version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", risk: options.actionRisk ?? {}, next_allowed_commands: [] }] : [] }));
     if (path === "/api/v1/runs/run-1/context") return jsonFetchResponse({ context: null, api_contract_version: "1" });
-    if (path.includes("/api/v1/actions/") && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "OK", action_id: "action-1", action_status: "APPROVED", action_version: 8, next_allowed_commands: [] });
+    if (path.includes("/api/v1/actions/") && init?.method === "POST") {
+      actionStatus = path.endsWith("/reject") ? "REJECTED" : "APPROVED";
+      return jsonFetchResponse({ applied: true, result_code: "OK", action_id: "action-1", action_status: actionStatus, action_version: 8, next_allowed_commands: [] });
+    }
     throw new Error(`Unhandled path ${path}`);
   }) as typeof fetch;
   return requests;

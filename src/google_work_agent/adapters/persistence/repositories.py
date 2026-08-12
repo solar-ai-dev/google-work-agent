@@ -305,6 +305,34 @@ class SQLiteRunRepository:
             raise sqlite3.IntegrityError("write run update affected an unexpected row count")
         return result
 
+    def finalize_action_outcomes(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        current = self.get_by_id(run_id)
+        if current is None:
+            raise LookupError(f"run not found: {run_id}")
+        result = transition_run(
+            current.status,
+            command=RunCommand.FINALIZE_ACTION_OUTCOMES,
+            current_version=current.version,
+            expected_version=expected_version,
+        )
+        if not result.applied:
+            return result
+        self._apply_run_transition(
+            run_id=run_id,
+            previous_version=current.version,
+            status=result.current_status,
+            version=result.current_version,
+            finished_at_ms=finished_at_ms,
+            error_message="run action-outcome finalization affected an unexpected row count",
+        )
+        return result
+
     def block_run(
         self,
         run_id: str,
@@ -1053,7 +1081,11 @@ class SQLitePlanRepository:
 
     def complete(self, plan_id: str) -> None:
         cursor = self._connection.execute(
-            "UPDATE plans SET status = 'COMPLETED' WHERE id = ? AND status = 'ACTIVE';",
+            """
+            UPDATE plans
+            SET status = 'COMPLETED'
+            WHERE id = ? AND status IN ('WAITING_APPROVAL', 'ACTIVE');
+            """,
             (plan_id,),
         )
         if cursor.rowcount != 1:
@@ -1511,7 +1543,7 @@ class SQLiteActionRepository:
             """
             UPDATE actions
             SET status = 'DEPENDENCY_BLOCKED', version = version + 1, updated_at_ms = ?
-            WHERE id = ? AND status = 'PROPOSED';
+            WHERE id = ? AND status IN ('PROPOSED', 'MODIFIED', 'APPROVED');
             """,
             (updated_at_ms, action_id),
         )

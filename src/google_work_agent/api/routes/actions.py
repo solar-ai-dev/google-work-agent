@@ -21,6 +21,7 @@ from google_work_agent.api.schemas.actions import (
     RejectActionRequestV2,
 )
 from google_work_agent.application.coordinator import QueueBusyError
+from google_work_agent.application.projections import build_snapshot_required_event
 from google_work_agent.application.start_run import (
     ModifyWriteActionCommand,
     RejectWriteActionCommand,
@@ -197,6 +198,7 @@ def reject(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation=RuntimeOperation.APPROVALS)
+    actor_account_id, run_id = _account_and_run_id_for_action(container, action_id)
     result = container.reject_action_service(
         RejectWriteActionCommand(
             command_id=payload.command_id,
@@ -206,8 +208,18 @@ def reject(
             ),
             action_id=action_id,
             expected_version=payload.expected_version,
+            actor_account_id=actor_account_id,
+            reason_code=payload.reason_code,
         )
     )
+    if bool(result["applied"]):
+        container.event_publisher.publish(
+            build_snapshot_required_event(
+                run_id=run_id,
+                occurred_at_ms=container.clock.now_ms(),
+                reason="ACTION_REJECTED",
+            )
+        )
     response.status_code = http_status_for_result_code(str(result["result_code"]))
     return ActionCommandResponse(
         applied=bool(result["applied"]),

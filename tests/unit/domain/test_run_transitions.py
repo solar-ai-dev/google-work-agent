@@ -58,6 +58,13 @@ from google_work_agent.domain import (
         (RunStatus.CANCEL_REQUESTED, RunCommand.BEGIN_VERIFICATION, RunStatus.VERIFYING),
         (RunStatus.EXECUTING, RunCommand.REQUIRE_RECOVERY, RunStatus.RECOVERY_REQUIRED),
         (RunStatus.RECOVERY_REQUIRED, RunCommand.RESOLVE_RECOVERY, RunStatus.VERIFYING),
+        (
+            RunStatus.WAITING_APPROVAL,
+            RunCommand.FINALIZE_ACTION_OUTCOMES,
+            RunStatus.COMPLETED,
+        ),
+        (RunStatus.EXECUTING, RunCommand.FINALIZE_ACTION_OUTCOMES, RunStatus.COMPLETED),
+        (RunStatus.VERIFYING, RunCommand.FINALIZE_ACTION_OUTCOMES, RunStatus.COMPLETED),
     ),
 )
 def test_allowed_run_edges(

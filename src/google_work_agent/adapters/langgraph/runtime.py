@@ -3033,6 +3033,13 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 plan_id=self._required_string(resume_payload.get("plan_id"), "plan_id"),
                 review_version=int(resume_payload.get("review_version", -1)),
             )
+        if self._current_run_status(cast(str, state["run_id"])) in {
+            RunStatus.COMPLETED.value,
+            RunStatus.BLOCKED.value,
+            RunStatus.FAILED.value,
+            RunStatus.CANCELLED.value,
+        }:
+            return {**state, "__target__": "end"}
         return {
             **state,
             "__target__": "action_execution",

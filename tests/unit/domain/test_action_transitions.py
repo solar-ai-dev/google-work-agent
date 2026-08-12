@@ -387,6 +387,7 @@ def test_next_allowed_read_action_commands(
             ActionStatus.APPROVED,
             (
                 ActionCommand.MODIFY_ACTION,
+                ActionCommand.REJECT_ACTION,
                 ActionCommand.EXPIRE_APPROVAL,
                 ActionCommand.CLAIM_EXECUTION,
             ),

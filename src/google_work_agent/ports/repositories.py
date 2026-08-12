@@ -115,6 +115,15 @@ class RunRepository(Protocol):
     ) -> CommandResult[RunStatus, RunCommand]:
         """Complete a verified write run once all actions are terminal."""
 
+    def finalize_action_outcomes(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        finished_at_ms: int,
+    ) -> CommandResult[RunStatus, RunCommand]:
+        """Complete a run after all action outcomes are terminal."""
+
     def block_run(
         self,
         run_id: str,
@@ -484,7 +493,7 @@ class ActionRepository(Protocol):
         """Transition a write action into VERIFIED or MISMATCH."""
 
     def mark_dependency_blocked(self, action_id: str, *, updated_at_ms: int) -> bool:
-        """Mark one action as dependency blocked when still PROPOSED."""
+        """Block one unexecuted pending action after an upstream terminal failure."""
 
     def list_by_plan(self, plan_id: str) -> tuple[ActionRecord, ...]:
         """Return actions for one plan."""

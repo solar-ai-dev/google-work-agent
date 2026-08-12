@@ -972,7 +972,7 @@ Plan COMPLETED는 모든 Action 성공이 아니라 모든 Action 결과 확정�
 |---|---|---|---|---|---|
 | PROPOSED | ModifyAction | 허용 필드·Schema·Policy 유효 | MODIFIED | Hash·Version 갱신, Approval REVOKED | ACTION_MODIFIED |
 | PROPOSED·MODIFIED | ApproveAction | Write·Evidence·중복·충돌·Snapshot 유효 | APPROVED | Approval ACTIVE INSERT | ACTION_APPROVED |
-| PROPOSED·MODIFIED | RejectAction | 사용자 거절 | REJECTED | 종속 Action 재계산 | ACTION_REJECTED |
+| PROPOSED·MODIFIED·APPROVED | RejectAction | 사용자 거절·Version 일치 | REJECTED | ACTIVE Approval REVOKED, 종속 Action 재계산 | ACTION_REJECTED |
 | PROPOSED·MODIFIED | BlockAction | 금지 Tool·Policy 위반 | BLOCKED | 종속 Action 차단 | ACTION_BLOCKED |
 | APPROVED | ExpireApproval | 시간·Source·Policy·Schema 변경 | EXPIRED | Approval EXPIRED | ACTION_APPROVAL_EXPIRED |
 | EXPIRED | RefreshExpiredAction | Version·최신 Source·Policy·Schema·중복·충돌 재검증 | MODIFIED | Hash·expected·risk 최신화, Version 증가 | ACTION_REFRESHED_AFTER_EXPIRY |
@@ -1076,6 +1076,8 @@ NOT_FOUND와 ERROR만으로 Action을 즉시 FAILED로 확정하지 않는다.
 - 선행 UNKNOWN_RESULT·EXECUTING·EXECUTED → 종속 대기
 - 독립 Action은 다른 Branch 실패와 무관하게 실행 가능
 - 선행 결과가 Arguments에 영향을 주면 새 Plan Revision 생성
+- Reject 성공 시 아직 미실행인 직접·간접 종속 `PROPOSED·MODIFIED·APPROVED` Action은 `DEPENDENCY_BLOCKED`가 되고 ACTIVE Approval은 같은 Transaction에서 `REVOKED`된다. 이미 Terminal인 Action은 변경하지 않으며 그 뒤의 DAG 전파도 해당 Terminal 사실을 넘어가지 않는다.
+- Reject 결과로 Plan의 모든 Action이 Terminal이면 기존 revision에서 Plan과 Run을 `COMPLETED`로 확정한다. 독립적인 미완료 Action이 남아 있으면 Plan/Run 상태를 유지한다. Reject는 Run을 `CANCELLED`로 만들지 않는다.
 
 ## 25.11 상위 상태 재계산
 

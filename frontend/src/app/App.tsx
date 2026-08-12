@@ -1226,6 +1226,26 @@ export function App(): JSX.Element {
                         </button>
                       </div>
                     ) : null}
+                    {action.status === "APPROVED" ? (
+                      <div className="button-row">
+                        <button
+                          className="button-secondary"
+                          type="button"
+                          disabled={busyCommand === `modify-${action.action_id}`}
+                          onClick={() => void handleSimpleAction("modify", action)}
+                        >
+                          수정
+                        </button>
+                        <button
+                          className="button-danger"
+                          type="button"
+                          disabled={busyCommand === `reject-${action.action_id}`}
+                          onClick={() => void handleSimpleAction("reject", action)}
+                        >
+                          거절
+                        </button>
+                      </div>
+                    ) : null}
                     {action.status === "FAILED" ? (
                       <button className="button-secondary" type="button" onClick={() => void handleSimpleAction("retry", action)}>
                         다시 준비

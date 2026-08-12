@@ -20,7 +20,11 @@ from google_work_agent.api.security import (
 )
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.resource_queries import ResourceQueryService
-from google_work_agent.application.start_run import CreateConversationService, StartRunService
+from google_work_agent.application.start_run import (
+    CreateConversationService,
+    RejectWriteActionService,
+    StartRunService,
+)
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
     PrepareWriteRetryService,
@@ -98,15 +102,10 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             "next_allowed_commands": (),
             "conflict_detail": "not seeded",
         },
-        reject_action_service=lambda command: {
-            "applied": False,
-            "result_code": "STATE_CONFLICT",
-            "action_id": command.action_id,
-            "action_status": "UNKNOWN",
-            "action_version": 0,
-            "next_allowed_commands": (),
-            "conflict_detail": "not seeded",
-        },
+        reject_action_service=RejectWriteActionService(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
+        ),
         prepare_retry_service=PrepareWriteRetryService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -267,3 +266,91 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         context = client.get("/api/v1/runs/run-1/context", headers=headers)
         assert context.status_code == 200
         assert context.json()["context"]["request_text"] == "hello"
+
+        with connect_sqlite(database_path) as connection:
+            connection.execute("UPDATE runs SET status = 'WAITING_APPROVAL' WHERE id = 'run-1';")
+            connection.execute(
+                """
+                INSERT INTO plans (
+                    id, run_id, revision_no, status, summary_text, created_at_ms,
+                    review_status, review_version
+                ) VALUES ('plan-1', 'run-1', 1, 'WAITING_APPROVAL', 'Reject plan', 1000,
+                          'PASSED', 0);
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO actions (
+                    id, plan_id, position, tool_name, effect_type, approval_requirement,
+                    verification_policy, recovery_policy, status, arguments_json,
+                    arguments_hash, expected_json, risk_json, version, created_at_ms, updated_at_ms
+                ) VALUES (
+                    'action-1', 'plan-1', 1, 'tasks_create_task', 'CREATE', 'REQUIRED',
+                    'GET_COMPARE', 'RESOURCE_SEARCH', 'PROPOSED', '{}',
+                    '0000000000000000000000000000000000000000000000000000000000000000',
+                    '{}', '{}',
+                    0, 1000, 1000
+                );
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO actions (
+                    id, plan_id, position, tool_name, effect_type, approval_requirement,
+                    verification_policy, recovery_policy, status, arguments_json,
+                    arguments_hash, expected_json, risk_json, version, created_at_ms, updated_at_ms
+                ) VALUES (
+                    'action-2', 'plan-1', 2, 'tasks_create_task', 'CREATE', 'REQUIRED',
+                    'GET_COMPARE', 'RESOURCE_SEARCH', 'PROPOSED', '{}',
+                    '1111111111111111111111111111111111111111111111111111111111111111',
+                    '{}', '{}',
+                    0, 1000, 1000
+                );
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO action_dependencies (action_id, depends_on_action_id)
+                VALUES ('action-2', 'action-1');
+                """
+            )
+
+        unsafe_reason = client.post(
+            "/api/v1/actions/action-1/reject",
+            json={
+                "command_id": "reject-api-unsafe",
+                "expected_version": 0,
+                "reason_code": "raw free text\nbody",
+                "api_contract_version": "1",
+            },
+            headers=headers,
+        )
+        assert unsafe_reason.status_code == 422
+
+        rejected = client.post(
+            "/api/v1/actions/action-1/reject",
+            json={
+                "command_id": "reject-api-1",
+                "expected_version": 0,
+                "reason_code": "USER_DECLINED",
+                "api_contract_version": "1",
+            },
+            headers=headers,
+        )
+        assert rejected.status_code == 200
+        assert rejected.json()["action_status"] == "REJECTED"
+
+        snapshot_response = client.get("/api/v1/runs/run-1", headers=headers)
+        assert snapshot_response.status_code == 200
+        action_statuses = {
+            action["action_id"]: action["status"]
+            for action in snapshot_response.json()["snapshot"]["actions"]
+        }
+        assert action_statuses == {
+            "action-1": "REJECTED",
+            "action-2": "DEPENDENCY_BLOCKED",
+        }
+        assert snapshot_response.json()["snapshot"]["status"] == "COMPLETED"
+        projection_events = publisher.replay(run_id="run-1", after_event_id=None)
+        assert projection_events[-1].event_type == "snapshot_required"
+        assert projection_events[-1].payload == {"reason": "ACTION_REJECTED"}
