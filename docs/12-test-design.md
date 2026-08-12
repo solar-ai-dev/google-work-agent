@@ -1,6 +1,6 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `02 UI·UX v2.8`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.6`, `06 Workflow v6.2`, `07 Interface v2.10`, `08 Sequence v3.2`, `09 Security v2.5`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `15 Agent Capability·Failure·Prompt v1.5`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `02 UI·UX v2.8`, `03 Architecture v3.0`, `04 Database v1.13`, `05 Retrieval v2.6`, `06 Workflow v6.2`, `07 Interface v2.10`, `08 Sequence v3.2`, `09 Security v2.5`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `15 Agent Capability·Failure·Prompt v1.5`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
 > **상태:** Draft v3.5 · **기준일:** 2026-08-10 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 

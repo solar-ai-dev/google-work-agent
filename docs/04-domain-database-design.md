@@ -1,13 +1,13 @@
 # 04. Google Work Agent 도메인 · 데이터베이스 설계서
 
-> **문서 기준:** `01 PRD §1.1`의 Concern Owner 규칙을 따른다. 이 문서는 Domain 상태·영속 사실·DB 불변조건을 소유하며 현재 Canonical DB Schema v1.4와 상태 전이 계약 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD §1.1`의 Concern Owner 규칙을 따른다. 이 문서는 Domain 상태·영속 사실·DB 불변조건을 소유하며 현재 Canonical DB Schema v1.6과 상태 전이 계약 v1.4을 기준으로 한다.
 
 ## 0. 문서 정보
 
 | 항목 | 내용 |
 |---|---|
-| 상태 | Draft v1.12 |
-| 기준일 | 2026-08-09 |
+| 상태 | Draft v1.13 |
+| 기준일 | 2026-08-12 |
 | 대상 | P0 MVP |
 | Database | SQLite |
 | 저장 형태 | 하나의 제품 DB 파일 |
@@ -356,7 +356,7 @@ Run 취소는 `RequestCancel`과 `FinalizeCancellation`이 소유하며, 개별 
 - React의 `command_id`는 네트워크 중복 제출을 식별하지만 Google Write 멱등성의 최종 Key는 Approval의 `idempotency_key`다.
 - SSE Event Cursor와 UI Projection Version은 Domain Table 상태를 대체하지 않는다.
 - REST Timeout, Browser Refresh, Event 누락 후에는 Run·Action Snapshot을 Domain Store에서 다시 조회한다.
-- Canonical Schema v1.4는 상태 변경 Command의 영속 멱등성을 위해 `command_receipts` Table을 두며 Action `CANCELLED`를 허용한다. Request ID와 UI Event 정보는 Trace Metadata이며 `command_id`만 Receipt의 영속 Key로 사용한다.
+- Canonical Schema v1.6은 상태 변경 Command의 영속 멱등성을 위해 `command_receipts` Table을 두며 Action `CANCELLED`를 허용한다. Request ID와 UI Event 정보는 Trace Metadata이며 `command_id`만 Receipt의 영속 Key로 사용한다.
 
 ## 10. Transaction 경계
 
@@ -751,7 +751,7 @@ SQLAlchemy·Alembic은 P0 고정 기술로 강제하지 않는다. 명시적 SQL
 
 - `0001_initial.sql`: Schema v1.2 baseline
 - `0002_action_effect_send_delete.sql`: SEND·DELETE Effect를 추가해 Schema v1.3으로 승격
-- Runtime E2E 계약의 Action `CANCELLED` 반영은 다음 Migration에서 Schema v1.4로 승격한다. Repository Migration 반영 전 Notion Canonical이 더 최신이다.
+- Action `CANCELLED`는 `0003`에서 Schema v1.4로 반영되었다. 이후 `0004`는 durable post-modify Plan Review Gate를 추가해 v1.5로, `0005`는 NFR-019 cross-aggregate invariant를 Trigger로 강제해 현재 Schema v1.6으로 승격한다.
 - Connection 초기화는 `foreign_keys=ON`, WAL, `synchronous=FULL`, `busy_timeout=5000`을 모든 Domain/Checkpointer Connection에 적용
 
 ## 24. DB 구현 필수 계약
@@ -1201,7 +1201,7 @@ WHERE id = :action_id
 
 ## 26. 상태 전이 계약 확장
 
-이 절은 25장의 상태 전이 규칙을 구체화한다. 이 절의 기존 READ 보완은 Schema v1.3에서 추가 Column을 요구하지 않았으며, Runtime E2E의 Action `CANCELLED` 계약 반영 후 현재 Canonical Schema는 v1.4다.
+이 절은 25장의 상태 전이 규칙을 구체화한다. 이 절의 기존 READ 보완은 Schema v1.3에서 추가 Column을 요구하지 않았으며, Runtime E2E의 Action `CANCELLED` 계약은 `0003`에서 v1.4로 반영되었고, `0004`·`0005` 적용 후 현재 Canonical Schema는 v1.6이다.
 
 ## 26.1 만료된 Action 재승인
 
@@ -1311,7 +1311,7 @@ Open Write, 실행 중 READ, UNKNOWN_RESULT, REAUTH_REQUIRED, RECOVERY_REQUIRED�
 - `fail_read_action`
 - `prepare_write_retry`
 
-이 실행 계약 자체는 추가 Column을 요구하지 않는다. 현재 Canonical Schema v1.4의 Action `CANCELLED` CHECK 확장을 따른다.
+이 실행 계약 자체는 추가 Column을 요구하지 않는다. 현재 Canonical Schema v1.6의 Migration chain과 Action `CANCELLED` CHECK를 따른다.
 
 # 29. Command Receipt Aggregate
 
@@ -1354,7 +1354,7 @@ completed_at_ms          INTEGER?
 - 부분 결과는 API·SSE Projection의 `result_kind=PARTIAL`로 표현하며 새로운 Run Status를 만들지 않는다.
 - 새 Approval의 첫 ExecutionAttempt `attempt_no`는 1이다.
 - 실패 재시도 전역 순서는 `approval_no`, `execution_attempt_id`, 시각으로 추적한다.
-- Repository 현재 baseline은 v1.3 = `0001_initial.sql` v1.2 + `0002_action_effect_send_delete.sql`이며, Runtime E2E Canonical은 Action `CANCELLED` Migration 적용 후 v1.4다.
+- Migration 이력은 `0001` v1.2 → `0002` v1.3 → `0003` v1.4 → `0004` v1.5 → `0005` v1.6이며, 현재 Runtime E2E Canonical DB Schema는 v1.6이다.
 
 # 31. 승인형 Effect · Transaction · Recovery 계약
 
@@ -1382,4 +1382,9 @@ Application은 Repository setter로 Run 상태를 직접 변경하지 않는다.
 - 실제 MCP Dispatch Payload의 `execution_arguments_hash`는 Claim 발급 시점의 짧은 수명 실행 무결성 값이다. 별도 Domain DB Column을 추가하지 않는다.
 - 첨부파일 bytes·Staging 파일 원문·Local Path는 SQLite Domain Store에 저장하지 않는다.
 - Action/Approval에는 필요할 때 Attachment Descriptor(`staged_attachment_id`, filename, MIME Type, size, SHA-256)만 포함한다.
-- Schema v1.4는 `0001 v1.2 + 0002 SEND/DELETE + 0003 Action CANCELLED`을 적용한 상태다. 이번 R8.4 Claim/Attachment 변경으로 추가 DB Migration은 필요하지 않다.
+- 현재 Schema v1.6은 `0001 v1.2 + 0002 SEND/DELETE v1.3 + 0003 Action CANCELLED v1.4 + 0004 Plan Review Gate v1.5 + 0005 NFR-019 cross-aggregate invariant v1.6`을 적용한 상태다. Claim V2/Attachment 자체는 별도 DB Column을 요구하지 않는다.
+
+
+## Canonical Migration Chain v1.6
+
+`0001_initial.sql` → `0002_action_effect_send_delete.sql` → `0003_action_cancelled.sql` → `0004_plan_review_gate.sql` → `0005_cross_aggregate_invariants.sql` 순서로 적용한다. `0004`는 Plan의 durable review gate를, `0005`는 NFR-019 cross-aggregate invariant를 SQLite Trigger와 preflight로 강제한다. 적용된 Migration SQL은 checksum 이력 Artifact이므로 소급 수정하지 않는다.

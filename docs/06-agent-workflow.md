@@ -1,8 +1,8 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `02 UI·UX v2.8`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.6`, `07 Interface v2.10`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `02 UI·UX v2.8`, `03 Architecture v3.0`, `04 Database v1.13`, `05 Retrieval v2.6`, `07 Interface v2.10`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v6.2 · **DB Schema:** v1.4 · **대상:** P0 MVP
+> **상태:** Draft v6.2 · **DB Schema:** v1.6 · **대상:** P0 MVP
 >
 > 결정적 Supervisor + 최대 6개 전문 Agent Subgraph Baseline + 결정적 실행·검증 Engine을 사용한다. 각 Agent Subgraph는 invocation 범위 Local State와 bounded validation·repair/revision loop를 가지며 Typed Result만 Main Graph에 반환한다. Agent별 장기 Memory는 없고 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 

@@ -31,20 +31,20 @@ Prompt·Failure 정규화   → 15
 
 - ClaimContextV2: 승인 Business Hash와 실제 Execution Hash 분리, HMAC-SHA-256, TTL, Service/MCP instance binding, one-time nonce, MCP 실제 arguments 재검증.
 - Gmail Attachment: metadata/read/download + Draft/Send attachment. Bytes는 LLM 입력·Evidence·SQLite·Trace에서 제외.
-- DB Schema v1.4: `0001_initial.sql` + `0002_action_effect_send_delete.sql` + `0003_action_cancelled.sql`.
+- DB Schema v1.6: `0001_initial.sql` → `0002_action_effect_send_delete.sql` → `0003_action_cancelled.sql` → `0004_plan_review_gate.sql` → `0005_cross_aggregate_invariants.sql`.
 - Write 순서: `Approval → Claim Commit → MCP/Google Write → Google re-read Verification`.
 - UNKNOWN_RESULT blind resend 금지, MISMATCH 자동 rollback/autofix 금지.
 
 ## WebGPT 25개 구성
 
-구현 체크리스트는 사람이 진행 상황을 관리하는 보조 Artifact라 25개 제한에서 제외하고, 실제 DB v1.4 Constraint를 제공하는 `0003_action_cancelled.sql`을 포함한다.
+25개 업로드 제한에서는 설명·온보딩 성격이 강한 `00-CODE-AGENT-START-HERE.md`, `00-google-work-agent-overview.md`를 제외하고, 실행 가능한 DB v1.6 Constraint를 제공하는 Migration `0001`~`0005`를 모두 포함한다. 구현 체크리스트는 사람이 진행 상황을 관리하는 보조 Artifact라 25개 제한에서 제외한다.
 
-1. `00-CODE-AGENT-START-HERE.md`
-2. `00-PROJECT-SOURCE-GUIDE.md`
-3. `00-google-work-agent-overview.md`
-4. `0001_initial.sql`
-5. `0002_action_effect_send_delete.sql`
-6. `0003_action_cancelled.sql`
+1. `00-PROJECT-SOURCE-GUIDE.md`
+2. `0001_initial.sql`
+3. `0002_action_effect_send_delete.sql`
+4. `0003_action_cancelled.sql`
+5. `0004_plan_review_gate.sql`
+6. `0005_cross_aggregate_invariants.sql`
 7. `01-requirements-prd.md`
 8. `01-a-functional-definition.md`
 9. `01-b-policy-definition-v2.8.md`
@@ -68,10 +68,15 @@ Prompt·Failure 정규화   → 15
 
 ## 전체 문서 교체 Pack
 
-Notion 전체 설계 문서 교체용 Pack은 위 Canonical 25개에 다음 설명 문서 3개를 추가한 **28개**로 구성한다. 설명 문서는 Concern Owner가 아니며, 충돌 시 위 25개 Canonical 계약을 따른다.
+전체 설계·구현 참고 Pack은 위 Canonical 25개에 설명·온보딩 문서 5개를 추가한 **30개**로 구성한다. 추가 문서는 Concern Owner가 아니며, 충돌 시 위 25개 Canonical 계약을 따른다.
 
-26. `00-A-product-design-decisions.md`
-27. `00-B-evaluation-experiment-strategy.md`
-28. `00-C-core-policy-safety-invariants.md`
+26. `00-CODE-AGENT-START-HERE.md`
+27. `00-google-work-agent-overview.md`
+28. `00-A-product-design-decisions.md`
+29. `00-B-evaluation-experiment-strategy.md`
+30. `00-C-core-policy-safety-invariants.md`
+
+`01-IMPLEMENTATION-AND-EXPERIMENT-CHECKLIST.md`는 진행 상황 관리용 보조 Artifact로 별도 포함하며 Canonical 문서 수에는 세지 않는다.
+
 
 적용된 Migration SQL은 이력·checksum Artifact이므로 소급 수정하지 않는다. `0002_action_effect_send_delete.sql`의 Google Task DELETE 금지 주석은 v1.3 생성 시점 이력이다. 현재 DELETE 허용 범위는 `01-B Policy v2.8`과 `07 Interface v2.10`이 소유하며, 정확한 Google Task와 Calendar Event 삭제를 승인형 DELETE로 허용한다.

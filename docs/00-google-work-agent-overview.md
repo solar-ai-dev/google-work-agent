@@ -46,7 +46,7 @@
 | Policy | v2.8 |
 | UI·UX | v2.8 |
 | Architecture | v3.0 |
-| Domain·DB | v1.12 |
+| Domain·DB | v1.13 |
 | Retrieval | v2.6 |
 | Workflow | v6.2 |
 | Interface | v2.10 |
@@ -58,6 +58,6 @@
 | Evaluation | v3.2 |
 | Operations | v2.5 |
 | Agent Capability·Failure·Prompt | v1.5 |
-| Domain DB Schema | v1.4 |
+| Domain DB Schema | v1.6 |
 | Domain State Transition | v1.4 |
 | State Transition Test Matrix | v1.4 |

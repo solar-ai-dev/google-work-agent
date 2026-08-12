@@ -17,6 +17,8 @@
 → 0001_initial.sql
 → 0002_action_effect_send_delete.sql
 → 0003_action_cancelled.sql
+→ 0004_plan_review_gate.sql
+→ 0005_cross_aggregate_invariants.sql
 → state-transition-contract-v1.4.md
 → 06-agent-workflow.md
 → 07-tool-mcp-internal-interface.md
@@ -128,7 +130,7 @@ ruff format --check src tests
 - 활성 기준은 Grader Registry v0.4, Scoring Contract v1.1이다.
 ## 10. Runtime E2E 구현 기준
 
-- Canonical DB target은 v1.4다. 기존 `0001`/`0002`는 이력으로 보존하고 Action `CANCELLED` CHECK 확장은 새 Migration으로 구현한다.
+- Canonical DB target은 v1.6이다. 기존 Migration은 이력으로 보존하며 `0003` Action `CANCELLED`, `0004` durable Plan Review Gate, `0005` NFR-019 cross-aggregate invariant를 순서대로 적용한다.
 - Cancel Command의 Command Receipt/expected_version 판정 전에 Approval·Plan·Action을 변경하지 않는다.
 - Browser 제공 `request_hash`, `approval_id`, idempotency key, source snapshot, actor identity를 authority로 사용하지 않는다.
 - 모든 Profile은 05/06의 동일 insufficient-data Supervisor Guard를 사용한다.
@@ -140,7 +142,7 @@ ruff format --check src tests
 
 코드 수정 전 다음을 구현 기준으로 고정한다.
 
-1. DB Schema v1.4는 `0003_action_cancelled.sql`까지 적용된 상태다. Claim V2/Attachment 때문에 추가 DB Migration을 만들지 않는다.
+1. Canonical DB Schema는 v1.6이며 `0001`→`0002`→`0003`→`0004_plan_review_gate.sql`→`0005_cross_aggregate_invariants.sql`까지 적용한다. `0004`는 post-modify Plan Review Gate를 영속화하고, `0005`는 NFR-019 cross-aggregate invariant를 DB Trigger로 강제한다. Claim V2/Attachment 자체 때문에 별도 Migration을 추가하는 것은 아니다.
 2. `ClaimContextV2`: approval hash와 execution hash 분리, HMAC-SHA-256, TTL, Service/MCP instance binding, 1회 Nonce, MCP 실제 arguments 재해시.
 3. Gmail Attachment READ: metadata/detail → `get_gmail_attachment` → Download Stream. LLM 입력 금지.
 4. Gmail Attachment WRITE: Local stage → Descriptor/SHA-256 → Approval → Claim V2 → MCP bytes 재검증 → MIME Draft/SEND.

@@ -34,9 +34,9 @@
         "prompts/agent/r8.4/specialist/acquisition/base.md",
         "prompts/agent/acquisition/plan_sources.md"
       ],
-      "content_hash": "e67267268e8f5d4a03107fd7ccbd44b957909a4347c50b63633a47576395685b",
+      "content_hash": "8be36fb27ae3f6e1aaa465155bc3e856197fe727d0bd8df51f933dfb7139979f",
       "assembled_path": "prompts/agent/assembled-r8.4/acquisition.plan_sources.md",
-      "assembled_hash": "e67267268e8f5d4a03107fd7ccbd44b957909a4347c50b63633a47576395685b",
+      "assembled_hash": "8be36fb27ae3f6e1aaa465155bc3e856197fe727d0bd8df51f933dfb7139979f",
       "supported_failure_reason_codes": [],
       "activated_from_gate_result": {
         "gate_run_id": "20260811T082349Z-ollama-qwen2.5-3b-cc7dd1f5",
