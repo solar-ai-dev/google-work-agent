@@ -23,6 +23,7 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.subgraph_state import WorkAnalysisLocalState
 from google_work_agent.application.workflows import (
     AgentLocalStateV1,
     GraphStateUpdateV1,
@@ -33,7 +34,7 @@ from google_work_agent.application.workflows import (
     route_supervisor,
 )
 
-MergeDecision = Callable[[GraphState, GraphStateUpdateV1, SupervisorDecisionV1], GraphState]
+MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]
 
 
@@ -56,7 +57,11 @@ class WorkAnalysisSubgraph:
         self._merge_decision = merge_decision
 
     def build(self) -> Any:
-        graph = StateGraph(GraphState, output_schema=ParentGraphState)
+        graph = StateGraph(
+            WorkAnalysisLocalState,
+            input_schema=GraphState,
+            output_schema=ParentGraphState,
+        )
         graph.add_node("init", self._init_node)
         graph.add_node("analyze", self._analyze_node)
         graph.add_node("result_validate", self._result_validate_node)
@@ -68,7 +73,7 @@ class WorkAnalysisSubgraph:
         graph.add_edge("finalize", END)
         return graph.compile(name="work_analysis_subgraph")
 
-    def _init_node(self, state: GraphState) -> GraphState:
+    def _init_node(self, state: WorkAnalysisLocalState) -> WorkAnalysisLocalState:
         request = request_from_state(state)
         self._transition_run(request.run_id, "begin_planning")
         invocation_id = self._id_factory()
@@ -98,7 +103,7 @@ class WorkAnalysisSubgraph:
             ),
         }
 
-    def _analyze_node(self, state: GraphState) -> GraphState:
+    def _analyze_node(self, state: WorkAnalysisLocalState) -> WorkAnalysisLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[ANALYSIS_AGENT_LOCAL_KEY])
         llm_result = self._agent.invoke_analyze_llm(
@@ -132,7 +137,7 @@ class WorkAnalysisSubgraph:
             ),
         }
 
-    def _result_validate_node(self, state: GraphState) -> GraphState:
+    def _result_validate_node(self, state: WorkAnalysisLocalState) -> WorkAnalysisLocalState:
         local_state = cast(AgentLocalStateV1, state[ANALYSIS_AGENT_LOCAL_KEY])
         result = _require_state_value(state["analysis_result"], "analysis_result")
         updated_local = dict(local_state)
@@ -153,7 +158,7 @@ class WorkAnalysisSubgraph:
             ),
         }
 
-    def _finalize_node(self, state: GraphState) -> GraphState:
+    def _finalize_node(self, state: WorkAnalysisLocalState) -> WorkAnalysisLocalState:
         local_state = cast(AgentLocalStateV1, state[ANALYSIS_AGENT_LOCAL_KEY])
         result = _require_state_value(state["analysis_result"], "analysis_result")
         decision = route_supervisor(
@@ -187,4 +192,4 @@ class WorkAnalysisSubgraph:
             decision,
         )
         merged.pop(ANALYSIS_AGENT_LOCAL_KEY, None)
-        return merged
+        return cast(WorkAnalysisLocalState, merged)

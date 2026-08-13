@@ -37,6 +37,11 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.subgraph_state import (
+    ProfileReasonPlanLocalState,
+    ProfileRequestSourceLocalState,
+    ReviewLocalState,
+)
 from google_work_agent.adapters.langgraph.subgraphs.profile_shared import (
     build_no_fetch_acquisition_result,
     planning_result_from_projection,
@@ -67,7 +72,7 @@ from google_work_agent.application.workflows.profile_fused import (
 )
 from google_work_agent.ports import PromptReference
 
-MergeDecision = Callable[[GraphState, GraphStateUpdateV1, SupervisorDecisionV1], GraphState]
+MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]
 
 
@@ -94,7 +99,11 @@ class ThreeStageOneSubgraph:
         self._merge_decision = merge_decision
 
     def build(self) -> Any:
-        graph = StateGraph(GraphState, output_schema=ParentGraphState)
+        graph = StateGraph(
+            ProfileRequestSourceLocalState,
+            input_schema=GraphState,
+            output_schema=ParentGraphState,
+        )
         graph.add_node("init", self._init_node)
         graph.add_node("request_source", self._request_source_node)
         graph.add_node("plan_validate", self._plan_validate_node)
@@ -117,7 +126,7 @@ class ThreeStageOneSubgraph:
         graph.add_edge("finalize", END)
         return graph.compile(name="three_stage_one_subgraph")
 
-    def _init_node(self, state: GraphState) -> GraphState:
+    def _init_node(self, state: ProfileRequestSourceLocalState) -> ProfileRequestSourceLocalState:
         request = request_from_state(state)
         self._transition_run(request.run_id, "start_analysis")
         invocation_id = self._id_factory()
@@ -144,7 +153,9 @@ class ThreeStageOneSubgraph:
             ),
         }
 
-    def _request_source_node(self, state: GraphState) -> GraphState:
+    def _request_source_node(
+        self, state: ProfileRequestSourceLocalState
+    ) -> ProfileRequestSourceLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         llm_result = self._request_understanding_agent._llm_runtime.invoke_structured(
@@ -179,14 +190,16 @@ class ThreeStageOneSubgraph:
             ),
         }
 
-    def _plan_validate_node(self, state: GraphState) -> GraphState:
+    def _plan_validate_node(
+        self, state: ProfileRequestSourceLocalState
+    ) -> ProfileRequestSourceLocalState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
         source_plan = prompt_output["source_plan"]
         updated_local = dict(local_state)
         updated_local["node_state"] = "PLAN_VALIDATED"
         updated_local["typed_result"] = prompt_output
-        next_state: GraphState = {
+        next_state: ProfileRequestSourceLocalState = {
             **state,
             "request_intent": prompt_output["request_intent"],
             "source_fetch_plans": source_plan["source_fetch_plans"],
@@ -205,12 +218,12 @@ class ThreeStageOneSubgraph:
             next_state["acquisition_result"] = build_no_fetch_acquisition_result()
         return next_state
 
-    def _route_plan_validate(self, state: GraphState) -> str:
+    def _route_plan_validate(self, state: ProfileRequestSourceLocalState) -> str:
         prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
         source_plan = prompt_output["source_plan"]
         return "deterministic_read" if source_plan["result"] == "PLAN_READY" else "finalize"
 
-    def _read_node(self, state: GraphState) -> GraphState:
+    def _read_node(self, state: ProfileRequestSourceLocalState) -> ProfileRequestSourceLocalState:
         request = request_from_state(state)
         self._transition_run(request.run_id, "begin_retrieval")
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
@@ -237,7 +250,9 @@ class ThreeStageOneSubgraph:
             ),
         }
 
-    def _result_validate_node(self, state: GraphState) -> GraphState:
+    def _result_validate_node(
+        self, state: ProfileRequestSourceLocalState
+    ) -> ProfileRequestSourceLocalState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         acquisition_result = validate_acquisition_result_v1(state["acquisition_result"])
         updated_local = dict(local_state)
@@ -258,12 +273,14 @@ class ThreeStageOneSubgraph:
             ),
         }
 
-    def _finalize_node(self, state: GraphState) -> GraphState:
+    def _finalize_node(
+        self, state: ProfileRequestSourceLocalState
+    ) -> ProfileRequestSourceLocalState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
         source_plan = prompt_output["source_plan"]
         request_intent = prompt_output["request_intent"]
-        current: GraphState = {
+        current: ProfileRequestSourceLocalState = {
             **state,
             "request_intent": request_intent,
             "trace_context": merge_trace_context(
@@ -326,7 +343,7 @@ class ThreeStageOneSubgraph:
             )
         merged.pop(PROFILE_AGENT_LOCAL_KEY, None)
         merged.pop(PROFILE_REQUEST_SOURCE_OUTPUT_KEY, None)
-        return merged
+        return cast(ProfileRequestSourceLocalState, merged)
 
 
 class ThreeStageTwoSubgraph:
@@ -352,7 +369,11 @@ class ThreeStageTwoSubgraph:
         self._merge_decision = merge_decision
 
     def build(self) -> Any:
-        graph = StateGraph(GraphState, output_schema=ParentGraphState)
+        graph = StateGraph(
+            ProfileReasonPlanLocalState,
+            input_schema=GraphState,
+            output_schema=ParentGraphState,
+        )
         graph.add_node("init", self._init_node)
         graph.add_node("reason_plan", self._reason_plan_node)
         graph.add_node("result_validate", self._result_validate_node)
@@ -364,7 +385,7 @@ class ThreeStageTwoSubgraph:
         graph.add_edge("finalize", END)
         return graph.compile(name="three_stage_two_subgraph")
 
-    def _init_node(self, state: GraphState) -> GraphState:
+    def _init_node(self, state: ProfileReasonPlanLocalState) -> ProfileReasonPlanLocalState:
         request = request_from_state(state)
         self._transition_run(request.run_id, "begin_planning")
         invocation_id = self._id_factory()
@@ -391,7 +412,7 @@ class ThreeStageTwoSubgraph:
             ),
         }
 
-    def _reason_plan_node(self, state: GraphState) -> GraphState:
+    def _reason_plan_node(self, state: ProfileReasonPlanLocalState) -> ProfileReasonPlanLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         llm_result = self._request_understanding_agent._llm_runtime.invoke_structured(
@@ -426,7 +447,9 @@ class ThreeStageTwoSubgraph:
             ),
         }
 
-    def _result_validate_node(self, state: GraphState) -> GraphState:
+    def _result_validate_node(
+        self, state: ProfileReasonPlanLocalState
+    ) -> ProfileReasonPlanLocalState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         output = state[PROFILE_REASON_PLAN_OUTPUT_KEY]
         updated_local = dict(local_state)
@@ -446,7 +469,7 @@ class ThreeStageTwoSubgraph:
             ),
         }
 
-    def _finalize_node(self, state: GraphState) -> GraphState:
+    def _finalize_node(self, state: ProfileReasonPlanLocalState) -> ProfileReasonPlanLocalState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         output = state[PROFILE_REASON_PLAN_OUTPUT_KEY]
         context_result = output["context_result"]
@@ -493,7 +516,7 @@ class ThreeStageTwoSubgraph:
         )
         merged.pop(PROFILE_AGENT_LOCAL_KEY, None)
         merged.pop(PROFILE_REASON_PLAN_OUTPUT_KEY, None)
-        return merged
+        return cast(ProfileReasonPlanLocalState, merged)
 
 
 class ThreeStageReviewSubgraph:
@@ -513,7 +536,11 @@ class ThreeStageReviewSubgraph:
         self._merge_decision = merge_decision
 
     def build(self) -> Any:
-        graph = StateGraph(GraphState, output_schema=ParentGraphState)
+        graph = StateGraph(
+            ReviewLocalState,
+            input_schema=GraphState,
+            output_schema=ParentGraphState,
+        )
         graph.add_node("init", self._init_node)
         graph.add_node("review", self._review_node)
         graph.add_node("result_validate", self._result_validate_node)
@@ -525,7 +552,7 @@ class ThreeStageReviewSubgraph:
         graph.add_edge("finalize", END)
         return graph.compile(name="three_stage_review_subgraph")
 
-    def _init_node(self, state: GraphState) -> GraphState:
+    def _init_node(self, state: ReviewLocalState) -> ReviewLocalState:
         invocation_id = self._id_factory()
         review = state["plan_review"]
         mode = (
@@ -560,7 +587,7 @@ class ThreeStageReviewSubgraph:
             ),
         }
 
-    def _review_node(self, state: GraphState) -> GraphState:
+    def _review_node(self, state: ReviewLocalState) -> ReviewLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
         mode = state[REVIEW_MODE_KEY]
@@ -618,7 +645,7 @@ class ThreeStageReviewSubgraph:
             ),
         }
 
-    def _result_validate_node(self, state: GraphState) -> GraphState:
+    def _result_validate_node(self, state: ReviewLocalState) -> ReviewLocalState:
         local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
         result = _require_state_value(state["plan_review"], "plan_review")
         updated_local = dict(local_state)
@@ -638,7 +665,7 @@ class ThreeStageReviewSubgraph:
             ),
         }
 
-    def _finalize_node(self, state: GraphState) -> GraphState:
+    def _finalize_node(self, state: ReviewLocalState) -> ReviewLocalState:
         local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
         result = _require_state_value(state["plan_review"], "plan_review")
         decision = route_supervisor(
@@ -673,4 +700,4 @@ class ThreeStageReviewSubgraph:
         )
         merged.pop(REVIEW_AGENT_LOCAL_KEY, None)
         merged.pop(REVIEW_MODE_KEY, None)
-        return merged
+        return cast(ReviewLocalState, merged)

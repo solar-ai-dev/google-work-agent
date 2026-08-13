@@ -24,6 +24,7 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.subgraph_state import PlanningLocalState
 from google_work_agent.application.workflows import (
     ActionPlanDraftV1,
     AgentLocalStateV1,
@@ -40,7 +41,7 @@ from google_work_agent.application.workflows import (
     validate_answer_draft_v1,
 )
 
-MergeDecision = Callable[[GraphState, GraphStateUpdateV1, SupervisorDecisionV1], GraphState]
+MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 
 
 def planning_mode_from_request_intent(request_intent: RequestIntentV1) -> str:
@@ -86,7 +87,11 @@ class PlanningSubgraph:
         self._merge_decision = merge_decision
 
     def build(self) -> Any:
-        graph = StateGraph(GraphState, output_schema=ParentGraphState)
+        graph = StateGraph(
+            PlanningLocalState,
+            input_schema=GraphState,
+            output_schema=ParentGraphState,
+        )
         graph.add_node("init", self._init_node)
         graph.add_node("plan", self._plan_node)
         graph.add_node("result_validate", self._result_validate_node)
@@ -98,7 +103,7 @@ class PlanningSubgraph:
         graph.add_edge("finalize", END)
         return graph.compile(name="planning_subgraph")
 
-    def _init_node(self, state: GraphState) -> GraphState:
+    def _init_node(self, state: PlanningLocalState) -> PlanningLocalState:
         invocation_id = self._id_factory()
         review = state["plan_review"]
         request_intent = _require_state_value(state["request_intent"], "request_intent")
@@ -141,7 +146,7 @@ class PlanningSubgraph:
             ),
         }
 
-    def _plan_node(self, state: GraphState) -> GraphState:
+    def _plan_node(self, state: PlanningLocalState) -> PlanningLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
         mode = state[PLANNING_MODE_KEY]
@@ -227,7 +232,7 @@ class PlanningSubgraph:
             ),
         }
 
-    def _result_validate_node(self, state: GraphState) -> GraphState:
+    def _result_validate_node(self, state: PlanningLocalState) -> PlanningLocalState:
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
         result = state["__planning_result__"]
         updated_local = dict(local_state)
@@ -247,7 +252,7 @@ class PlanningSubgraph:
             ),
         }
 
-    def _finalize_node(self, state: GraphState) -> GraphState:
+    def _finalize_node(self, state: PlanningLocalState) -> PlanningLocalState:
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
         mode = state[PLANNING_MODE_KEY]
         result = state["__planning_result__"]
@@ -297,4 +302,4 @@ class PlanningSubgraph:
         merged.pop(PLANNING_AGENT_LOCAL_KEY, None)
         merged.pop(PLANNING_MODE_KEY, None)
         merged.pop("__planning_result__", None)
-        return merged
+        return cast(PlanningLocalState, merged)

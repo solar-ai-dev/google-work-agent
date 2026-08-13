@@ -24,6 +24,7 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.subgraph_state import ReviewLocalState
 from google_work_agent.application.workflows import (
     AgentLocalStateV1,
     GraphStateUpdateV1,
@@ -35,7 +36,7 @@ from google_work_agent.application.workflows import (
     route_supervisor,
 )
 
-MergeDecision = Callable[[GraphState, GraphStateUpdateV1, SupervisorDecisionV1], GraphState]
+MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 
 
 class ReviewSubgraph:
@@ -55,7 +56,11 @@ class ReviewSubgraph:
         self._merge_decision = merge_decision
 
     def build(self) -> Any:
-        graph = StateGraph(GraphState, output_schema=ParentGraphState)
+        graph = StateGraph(
+            ReviewLocalState,
+            input_schema=GraphState,
+            output_schema=ParentGraphState,
+        )
         graph.add_node("init", self._init_node)
         graph.add_node("review", self._review_node)
         graph.add_node("result_validate", self._result_validate_node)
@@ -67,7 +72,7 @@ class ReviewSubgraph:
         graph.add_edge("finalize", END)
         return graph.compile(name="review_subgraph")
 
-    def _init_node(self, state: GraphState) -> GraphState:
+    def _init_node(self, state: ReviewLocalState) -> ReviewLocalState:
         invocation_id = self._id_factory()
         review = state["plan_review"]
         mode = (
@@ -107,7 +112,7 @@ class ReviewSubgraph:
             ),
         }
 
-    def _review_node(self, state: GraphState) -> GraphState:
+    def _review_node(self, state: ReviewLocalState) -> ReviewLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
         mode = state[REVIEW_MODE_KEY]
@@ -167,7 +172,7 @@ class ReviewSubgraph:
             ),
         }
 
-    def _result_validate_node(self, state: GraphState) -> GraphState:
+    def _result_validate_node(self, state: ReviewLocalState) -> ReviewLocalState:
         local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
         result = _require_state_value(state["plan_review"], "plan_review")
         updated_local = dict(local_state)
@@ -188,7 +193,7 @@ class ReviewSubgraph:
             ),
         }
 
-    def _finalize_node(self, state: GraphState) -> GraphState:
+    def _finalize_node(self, state: ReviewLocalState) -> ReviewLocalState:
         local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
         result = _require_state_value(state["plan_review"], "plan_review")
         decision = route_supervisor(
@@ -223,4 +228,4 @@ class ReviewSubgraph:
         )
         merged.pop(REVIEW_AGENT_LOCAL_KEY, None)
         merged.pop(REVIEW_MODE_KEY, None)
-        return merged
+        return cast(ReviewLocalState, merged)

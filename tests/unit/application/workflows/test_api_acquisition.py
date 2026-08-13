@@ -8,6 +8,7 @@ from typing import TypedDict, cast
 
 import pytest
 
+from google_work_agent.adapters.connectors import GoogleWorkspaceConnectorReader
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
     AdditionalAcquisitionRequestV1,
@@ -1570,7 +1571,7 @@ def _agent(
 ) -> ApiDiscoveryAcquisitionAgent:
     return ApiDiscoveryAcquisitionAgent(
         llm_runtime=runtime,
-        gateway=gateway,
+        connector_reader=GoogleWorkspaceConnectorReader(gateway=gateway),
         prompt_ref=PROMPT_REF,
         retrieval_budget=retrieval_budget,
         now_ms=(lambda: now_ms) if now_ms is not None else None,

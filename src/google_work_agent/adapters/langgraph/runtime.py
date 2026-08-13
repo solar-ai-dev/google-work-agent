@@ -15,6 +15,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
+from google_work_agent.adapters.connectors import GoogleWorkspaceConnectorReader
 from google_work_agent.adapters.langgraph.graph_state import (
     GraphState,
     _acquired_resource_by_handle,
@@ -218,7 +219,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
         self._acquisition = ApiDiscoveryAcquisitionAgent(
             llm_runtime=llm_runtime,
-            gateway=gateway,
+            connector_reader=GoogleWorkspaceConnectorReader(gateway=gateway),
             manifest_path=prompt_manifest_path,
             now_ms=now_ms,
             timezone_provider=timezone_provider,

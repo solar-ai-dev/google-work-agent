@@ -26,6 +26,7 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.subgraph_state import AcquisitionLocalState
 from google_work_agent.application.workflows import (
     AdditionalAcquisitionRequestV1,
     AgentLocalStateV1,
@@ -38,7 +39,7 @@ from google_work_agent.application.workflows import (
     validate_acquisition_result_v1,
 )
 
-MergeDecision = Callable[[GraphState, GraphStateUpdateV1, SupervisorDecisionV1], GraphState]
+MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]
 
 
@@ -61,7 +62,11 @@ class AcquisitionSubgraph:
         self._merge_decision = merge_decision
 
     def build(self) -> Any:
-        graph = StateGraph(GraphState, output_schema=ParentGraphState)
+        graph = StateGraph(
+            AcquisitionLocalState,
+            input_schema=GraphState,
+            output_schema=ParentGraphState,
+        )
         graph.add_node("init", self._init_node)
         graph.add_node("plan_sources", self._plan_sources_node)
         graph.add_node("plan_validate", self._plan_validate_node)
@@ -84,7 +89,7 @@ class AcquisitionSubgraph:
         graph.add_edge("finalize", END)
         return graph.compile(name="acquisition_subgraph")
 
-    def _init_node(self, state: GraphState) -> GraphState:
+    def _init_node(self, state: AcquisitionLocalState) -> AcquisitionLocalState:
         request = request_from_state(state)
         self._transition_run(request.run_id, "begin_retrieval")
         additional: AdditionalAcquisitionRequestV1 | None = None
@@ -106,7 +111,7 @@ class AcquisitionSubgraph:
             },
             prompt_ref=self._agent.prompt_ref,
         )
-        next_state: GraphState = {
+        next_state: AcquisitionLocalState = {
             **state,
             ACQUISITION_AGENT_LOCAL_KEY: local_state,
             "trace_context": merge_trace_context(
@@ -123,7 +128,7 @@ class AcquisitionSubgraph:
         }
         return next_state
 
-    def _plan_sources_node(self, state: GraphState) -> GraphState:
+    def _plan_sources_node(self, state: AcquisitionLocalState) -> AcquisitionLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[ACQUISITION_AGENT_LOCAL_KEY])
         additional: AdditionalAcquisitionRequestV1 | None = None
@@ -160,7 +165,7 @@ class AcquisitionSubgraph:
             ),
         }
 
-    def _plan_validate_node(self, state: GraphState) -> GraphState:
+    def _plan_validate_node(self, state: AcquisitionLocalState) -> AcquisitionLocalState:
         local_state = cast(AgentLocalStateV1, state[ACQUISITION_AGENT_LOCAL_KEY])
         planning_output = state[ACQUISITION_PLANNING_OUTPUT_KEY]
         source_fetch_plans = planning_output.get("source_fetch_plans")
@@ -183,11 +188,11 @@ class AcquisitionSubgraph:
             ),
         }
 
-    def _route_plan_validate(self, state: GraphState) -> str:
+    def _route_plan_validate(self, state: AcquisitionLocalState) -> str:
         planning_output = state[ACQUISITION_PLANNING_OUTPUT_KEY]
         return "deterministic_read" if planning_output["result"] == "PLAN_READY" else "finalize"
 
-    def _read_node(self, state: GraphState) -> GraphState:
+    def _read_node(self, state: AcquisitionLocalState) -> AcquisitionLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[ACQUISITION_AGENT_LOCAL_KEY])
         planning_output = state[ACQUISITION_PLANNING_OUTPUT_KEY]
@@ -214,7 +219,7 @@ class AcquisitionSubgraph:
             ),
         }
 
-    def _result_validate_node(self, state: GraphState) -> GraphState:
+    def _result_validate_node(self, state: AcquisitionLocalState) -> AcquisitionLocalState:
         local_state = cast(AgentLocalStateV1, state[ACQUISITION_AGENT_LOCAL_KEY])
         acquisition_result = validate_acquisition_result_v1(state["acquisition_result"])
         updated_local = dict(local_state)
@@ -235,10 +240,10 @@ class AcquisitionSubgraph:
             ),
         }
 
-    def _finalize_node(self, state: GraphState) -> GraphState:
+    def _finalize_node(self, state: AcquisitionLocalState) -> AcquisitionLocalState:
         local_state = cast(AgentLocalStateV1, state[ACQUISITION_AGENT_LOCAL_KEY])
         planning_output = state[ACQUISITION_PLANNING_OUTPUT_KEY]
-        current: GraphState = {
+        current: AcquisitionLocalState = {
             **state,
             "trace_context": merge_trace_context(
                 state,
@@ -296,4 +301,4 @@ class AcquisitionSubgraph:
             )
         merged.pop(ACQUISITION_AGENT_LOCAL_KEY, None)
         merged.pop(ACQUISITION_PLANNING_OUTPUT_KEY, None)
-        return merged
+        return cast(AcquisitionLocalState, merged)

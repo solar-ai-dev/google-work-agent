@@ -24,6 +24,7 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.subgraph_state import ContextRetrievalLocalState
 from google_work_agent.application.workflows import (
     AgentLocalStateV1,
     ContextRetrievalAgent,
@@ -35,7 +36,7 @@ from google_work_agent.application.workflows import (
     validate_context_retrieval_result_v1,
 )
 
-MergeDecision = Callable[[GraphState, GraphStateUpdateV1, SupervisorDecisionV1], GraphState]
+MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 
 
 class ContextRetrieverSubgraph:
@@ -55,7 +56,11 @@ class ContextRetrieverSubgraph:
         self._merge_decision = merge_decision
 
     def build(self) -> Any:
-        graph = StateGraph(GraphState, output_schema=ParentGraphState)
+        graph = StateGraph(
+            ContextRetrievalLocalState,
+            input_schema=GraphState,
+            output_schema=ParentGraphState,
+        )
         graph.add_node("init", self._init_node)
         graph.add_node("select_evidence", self._select_evidence_node)
         graph.add_node("selection_validate", self._selection_validate_node)
@@ -69,7 +74,7 @@ class ContextRetrieverSubgraph:
         graph.add_edge("finalize", END)
         return graph.compile(name="context_retriever_subgraph")
 
-    def _init_node(self, state: GraphState) -> GraphState:
+    def _init_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         invocation_id = self._id_factory()
         local_state = build_agent_local_state(
             agent_role="context_retriever",
@@ -99,7 +104,9 @@ class ContextRetrieverSubgraph:
             ),
         }
 
-    def _select_evidence_node(self, state: GraphState) -> GraphState:
+    def _select_evidence_node(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
         acquisition_result = _require_state_value(state["acquisition_result"], "acquisition_result")
@@ -131,7 +138,9 @@ class ContextRetrieverSubgraph:
             ),
         }
 
-    def _selection_validate_node(self, state: GraphState) -> GraphState:
+    def _selection_validate_node(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalLocalState:
         local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
         selection = state[CONTEXT_SELECTION_OUTPUT_KEY]
         acquisition_result = _require_state_value(state["acquisition_result"], "acquisition_result")
@@ -160,7 +169,9 @@ class ContextRetrieverSubgraph:
             ),
         }
 
-    def _assess_sufficiency_node(self, state: GraphState) -> GraphState:
+    def _assess_sufficiency_node(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
         sufficiency_result, llm_provider_result = self._agent.assess_sufficiency(
@@ -194,7 +205,7 @@ class ContextRetrieverSubgraph:
             ),
         }
 
-    def _finalize_node(self, state: GraphState) -> GraphState:
+    def _finalize_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
         selection = state[CONTEXT_SELECTION_OUTPUT_KEY]
         sufficiency = state[CONTEXT_SUFFICIENCY_OUTPUT_KEY]
@@ -247,4 +258,4 @@ class ContextRetrieverSubgraph:
         merged.pop(CONTEXT_SUFFICIENCY_OUTPUT_KEY, None)
         merged.pop("evidence_drafts", None)
         merged.pop("llm_provider_result", None)
-        return merged
+        return cast(ContextRetrievalLocalState, merged)

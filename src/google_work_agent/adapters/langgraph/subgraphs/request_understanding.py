@@ -20,6 +20,9 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.subgraph_state import (
+    RequestUnderstandingLocalState,
+)
 from google_work_agent.application.workflows import (
     AgentLocalStateV1,
     GraphStateUpdateV1,
@@ -30,7 +33,7 @@ from google_work_agent.application.workflows import (
     route_supervisor,
 )
 
-MergeDecision = Callable[[GraphState, GraphStateUpdateV1, SupervisorDecisionV1], GraphState]
+MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]
 
 
@@ -53,7 +56,11 @@ class RequestUnderstandingSubgraph:
         self._merge_decision = merge_decision
 
     def build(self) -> Any:
-        graph = StateGraph(GraphState, output_schema=ParentGraphState)
+        graph = StateGraph(
+            RequestUnderstandingLocalState,
+            input_schema=GraphState,
+            output_schema=ParentGraphState,
+        )
         graph.add_node("init", self._init_node)
         graph.add_node("classify", self._classify_node)
         graph.add_node("finalize", self._finalize_node)
@@ -63,7 +70,7 @@ class RequestUnderstandingSubgraph:
         graph.add_edge("finalize", END)
         return graph.compile(name="request_understanding_subgraph")
 
-    def _init_node(self, state: GraphState) -> GraphState:
+    def _init_node(self, state: RequestUnderstandingLocalState) -> RequestUnderstandingLocalState:
         request = request_from_state(state)
         self._transition_run(request.run_id, "start_analysis")
         invocation_id = self._id_factory()
@@ -94,7 +101,9 @@ class RequestUnderstandingSubgraph:
             ),
         }
 
-    def _classify_node(self, state: GraphState) -> GraphState:
+    def _classify_node(
+        self, state: RequestUnderstandingLocalState
+    ) -> RequestUnderstandingLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[REQUEST_AGENT_LOCAL_KEY])
         llm_result = self._agent.invoke_classify_llm(request)
@@ -120,7 +129,9 @@ class RequestUnderstandingSubgraph:
             ),
         }
 
-    def _finalize_node(self, state: GraphState) -> GraphState:
+    def _finalize_node(
+        self, state: RequestUnderstandingLocalState
+    ) -> RequestUnderstandingLocalState:
         local_state = cast(AgentLocalStateV1, state[REQUEST_AGENT_LOCAL_KEY])
         request = request_from_state(state)
         output = state[REQUEST_OUTPUT_KEY]
@@ -156,4 +167,4 @@ class RequestUnderstandingSubgraph:
         )
         merged.pop(REQUEST_AGENT_LOCAL_KEY, None)
         merged.pop(REQUEST_OUTPUT_KEY, None)
-        return merged
+        return cast(RequestUnderstandingLocalState, merged)

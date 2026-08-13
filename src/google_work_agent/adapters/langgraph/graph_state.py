@@ -4,11 +4,14 @@ Moved out of ``runtime.py`` (Stage 3 of the LangGraph module cleanup) as a
 pure type/constant/helper module with no behavior change: every definition
 here is unchanged from its previous location, only its module changed.
 """
+# Runtime type names below are retained for LangGraph's inherited TypedDict
+# get_type_hints resolution, even when they are not referenced textually here.
+# ruff: noqa: F401
 
 from __future__ import annotations
 
 from json import dumps
-from typing import Final, Literal, NotRequired, TypedDict, cast
+from typing import Final, NotRequired, cast
 
 from google_work_agent.application.workflows import (
     AcquisitionResultV1,
@@ -29,10 +32,6 @@ from google_work_agent.application.workflows import (
     SufficiencyOutputV1,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.workflows.profile_fused import (
-    ProfileReasonPlanOutputV1,
-    ProfileRequestSourceOutputV1,
-)
 from google_work_agent.ports import (
     ResourceRefRecord,
     ResourceSource,
@@ -51,58 +50,12 @@ class ParentGraphState(MultiAgentGraphState):
     __modify_review_version__: NotRequired[int | None]
     __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
     __replan_from_plan_id__: NotRequired[str]
-
-
-class GraphState(TypedDict):
-    """Executable graph state, including invocation-local subgraph projections."""
-
-    schema_version: Literal[1]
-    run_id: str
-    conversation_id: str
-    thread_id: str
-    workflow_phase: str
-    request_intent: RequestIntentV1 | None
-    source_fetch_plans: list[SourceFetchPlanV1]
-    acquisition_result: AcquisitionResultV1 | None
-    context_result: ContextRetrievalResultV1 | None
-    analysis_result: WorkAnalysisResultV1 | None
-    answer_draft: AnswerDraftV1 | None
-    plan_draft: ActionPlanDraftV1 | None
-    plan_review: PlanReviewResultV1 | None
-    approved_plan_id: str | None
-    execution_summary: dict[str, object] | None
-    verification_summary: dict[str, object] | None
-    finalize_intent: object | None
-    user_interrupt: object | None
-    retry_budget: RunBudgetV1
-    prompt_context: dict[str, object]
-    trace_context: dict[str, object]
     context_bundle: NotRequired[ContextBundleV1]
     evidence_drafts: NotRequired[list[EvidenceDraftV1]]
     llm_provider_result: NotRequired[dict[str, object] | None]
-    __request__: WorkflowStartRequest
-    __target__: str
-    __logical_target__: str
-    __modify_review_plan_id__: NotRequired[str | None]
-    __modify_review_version__: NotRequired[int | None]
-    __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
-    __replan_from_plan_id__: NotRequired[str]
-    __request_agent_local__: NotRequired[AgentLocalStateV1]
-    __request_output__: NotRequired[RequestUnderstandingOutputV1]
-    __acquisition_agent_local__: NotRequired[AgentLocalStateV1]
-    __acquisition_planning_output__: NotRequired[SourcePlanningOutputV1]
-    __context_agent_local__: NotRequired[AgentLocalStateV1]
-    __context_selection_output__: NotRequired[EvidenceSelectionOutputV1]
-    __context_sufficiency_output__: NotRequired[SufficiencyOutputV1]
-    __analysis_agent_local__: NotRequired[AgentLocalStateV1]
-    __planning_agent_local__: NotRequired[AgentLocalStateV1]
-    __planning_mode__: NotRequired[str]
-    __planning_result__: NotRequired[AnswerDraftV1 | ActionPlanDraftV1]
-    __review_agent_local__: NotRequired[AgentLocalStateV1]
-    __review_mode__: NotRequired[str]
-    __profile_agent_local__: NotRequired[AgentLocalStateV1]
-    __profile_request_source_output__: NotRequired[ProfileRequestSourceOutputV1]
-    __profile_reason_plan_output__: NotRequired[ProfileReasonPlanOutputV1]
+
+
+GraphState = ParentGraphState
 
 
 REQUEST_AGENT_LOCAL_KEY: Final = "__request_agent_local__"
