@@ -26,7 +26,7 @@ import type {
 } from "../api/contract";
 import { ApiClientError } from "../api/client";
 import { CalendarPanel, useCalendar } from "../features/calendar";
-import { ConversationView, useConversation } from "../features/conversation";
+import { ConversationSidebar, ConversationView, useConversation } from "../features/conversation";
 import { GmailPanel, useGmail } from "../features/gmail";
 import { SettingsDrawer } from "../features/settings";
 import { TasksPanel, useTasks } from "../features/tasks";
@@ -72,7 +72,6 @@ export function App(): JSX.Element {
   const [google, setGoogle] = useState<GoogleConnectionResponse | null>(null);
   const [currentAccount, setCurrentAccount] = useState<CurrentGoogleAccountResponse["account"]>(null);
   const [calendarTimezone, setCalendarTimezone] = useState("Asia/Seoul");
-  const [conversationQuery, setConversationQuery] = useState("");
   const [sidebarFilter, setSidebarFilter] = useState("");
   const [googleConnectPending, setGoogleConnectPending] = useState(false);
   const [statusLine, setStatusLine] = useState("로컬 API에 연결되어 있습니다.");
@@ -408,12 +407,17 @@ export function App(): JSX.Element {
         <div className="topbar-actions">
           {currentAccount ? <span className="muted">{currentAccount.email}</span> : null}
           <button
-            className="button-secondary"
+            className="icon-button topbar-icon-button"
             type="button"
-            title="자료를 선택하거나 자연어 요청을 입력하면 Agent가 업무를 시작합니다."
+            aria-label="도움말"
+            title="도움말"
             onClick={() => setStatusLine("자료를 선택하거나 자연어 요청을 입력해 업무를 시작할 수 있습니다.")}
           >
-            도움말
+            <svg className="topbar-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="8" />
+              <path d="M9.8 9.3a2.35 2.35 0 0 1 4.55.8c0 1.72-2.35 2.03-2.35 3.55" />
+              <path d="M12 16.45h.01" />
+            </svg>
           </button>
           {!google?.connected ? (
             <button
@@ -425,8 +429,11 @@ export function App(): JSX.Element {
               {googleConnectPending ? "Google 연결 중..." : "Google 연결"}
             </button>
           ) : null}
-          <button className="button-secondary" type="button" onClick={() => setSettingsOpen(true)}>
-            설정
+          <button className="icon-button topbar-icon-button" type="button" aria-label="설정" title="설정" onClick={() => setSettingsOpen(true)}>
+            <svg className="topbar-action-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" />
+            </svg>
           </button>
         </div>
       </header>
@@ -622,39 +629,13 @@ export function App(): JSX.Element {
           </ConversationView>
         </main>
 
-        <aside className="panel conversation-panel">
-          <div className="panel-header">
-            <strong>대화</strong>
-            <button className="button-secondary" type="button" onClick={() => beginConversationProjection(null)}>
-              새 대화
-            </button>
-          </div>
-          <div className="panel-body">
-            <label className="search-field">
-              <span className="muted">대화 검색</span>
-              <input value={conversationQuery} onChange={(event) => setConversationQuery(event.target.value)} />
-            </label>
-            <ul className="conversation-list">
-              {conversations.filter((conversation) => conversation.title.toLowerCase().includes(conversationQuery.trim().toLowerCase())).map((conversation) => (
-                <li key={conversation.id} className={`conversation-item ${selectedConversationId === conversation.id ? "selected" : ""}`}>
-                  <button
-                    type="button"
-                    className="conversation-summary"
-                    onClick={() => void selectConversation(conversation.id)}
-                  >
-                    <strong>{conversation.title}</strong>
-                    <span className="muted">{formatTime(conversation.updated_at_ms)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {conversations.length === 0 ? <p className="muted">아직 대화가 없습니다.</p> : null}
-            <section className="recent-execution">
-              <strong>최근 실행</strong>
-              {runSnapshot ? <p className="muted">현재 대화의 실행 상태는 중앙 작업 공간에서 확인할 수 있습니다.</p> : <p className="muted">표시할 실행 기록이 없습니다.</p>}
-            </section>
-          </div>
-        </aside>
+        <ConversationSidebar
+          conversations={conversations}
+          selectedConversationId={selectedConversationId}
+          hasRunSnapshot={runSnapshot !== null}
+          onBeginConversation={() => beginConversationProjection(null)}
+          onSelectConversation={(conversationId) => void selectConversation(conversationId)}
+        />
       </div>
 
       {settingsOpen ? (

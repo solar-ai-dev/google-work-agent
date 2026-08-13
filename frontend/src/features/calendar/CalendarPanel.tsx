@@ -21,7 +21,10 @@ export function CalendarPanel({
     <>
       <div className="resource-search-row">
         <label className="resource-search">
-          <span className="resource-search-icon" aria-hidden="true">⌕</span>
+          <svg className="search-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="10.5" cy="10.5" r="5.75" />
+            <path d="m15 15 4.25 4.25" />
+          </svg>
           <input aria-label="일정 검색" placeholder="일정 검색" value={filter} onChange={(event) => onFilterChange(event.target.value)} />
         </label>
       </div>
