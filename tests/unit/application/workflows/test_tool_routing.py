@@ -6,7 +6,7 @@ from google_work_agent.application.workflows.api_acquisition import (
     SourcePlanningValidationError,
     validate_source_fetch_plans_for_route,
 )
-from google_work_agent.application.workflows.handoff_contracts import RequestIntentV1
+from google_work_agent.application.workflows.handoff_contracts import RequestIntentV2
 from google_work_agent.application.workflows.tool_routing import (
     ToolRouteCoordinator,
     ToolRouteValidationError,
@@ -23,29 +23,19 @@ def _catalog() -> ConnectorToolCatalog:
     return catalog
 
 
-def _intent(*, resource: str, effect: str, action: bool = True) -> RequestIntentV1:
-    return {  # type: ignore[typeddict-item]
+def _intent(*, resource: str, effect: str) -> RequestIntentV2:
+    return {
         "schema_version": 2,
         "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
-        "goal": {"summary": "goal", "user_visible_objective": "goal"},
-        "completion_criteria": ["done"],
-        "semantic_constraints": {
-            "topics": [],
-            "people": [],
-            "time": [],
-            "sources": [],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
+        "goal": "goal",
+        "completion_conditions": ["done"],
+        "constraints": [],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
-        },
-        "response_disposition": "ACTION_REQUIRED" if action else "ANSWER_ONLY",
-        "requested_effect_hints": [effect],
+        "requested_effect_hints": [effect],  # type: ignore[list-item]
         "requested_resource_hints": [resource],
         "analysis_requirement": "REQUIRED",
     }
@@ -83,7 +73,7 @@ def test_calendar_create_adds_event_calendar_and_freebusy_reads() -> None:
 def test_answer_route_freezes_read_dependencies_and_revision() -> None:
     coordinator = _coordinator()
     first = coordinator.route(
-        request_intent=_intent(resource="GMAIL_THREAD", effect="READ", action=False)
+        request_intent=_intent(resource="GMAIL_THREAD", effect="READ")
     )
     first_plan = first["tool_route_plan"]
     assert first_plan is not None
@@ -93,7 +83,7 @@ def test_answer_route_freezes_read_dependencies_and_revision() -> None:
     assert resources == {"GMAIL_THREAD", "GMAIL_MESSAGE"}
 
     second = coordinator.route(
-        request_intent=_intent(resource="GMAIL_THREAD", effect="READ", action=False),
+        request_intent=_intent(resource="GMAIL_THREAD", effect="READ"),
         previous_plan=first_plan,
     )
     second_plan = second["tool_route_plan"]
@@ -127,7 +117,7 @@ def test_validator_rejects_unknown_schema_version() -> None:
 
 def test_source_planning_cannot_escape_frozen_input_route() -> None:
     result = _coordinator().route(
-        request_intent=_intent(resource="TASK", effect="READ", action=False)
+        request_intent=_intent(resource="TASK", effect="READ")
     )
     plan = result["tool_route_plan"]
     assert plan is not None

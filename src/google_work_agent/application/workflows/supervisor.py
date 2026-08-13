@@ -37,7 +37,7 @@ from google_work_agent.application.workflows.handoff_contracts import (
     ClarificationQuestionV1,
     ContextRetrievalResultV1,
     PlanReviewResultV1,
-    RequestIntentV1,
+    RequestIntentV2,
     RequestUnderstandingOutputV1,
     SourcePlanningOutputV1,
     WorkAnalysisResultV1,
@@ -56,7 +56,6 @@ from google_work_agent.application.workflows.plan_review import (
 from google_work_agent.application.workflows.request_understanding import (
     build_user_interrupt_v1,
     validate_clarification_question_v1,
-    validate_request_intent_v1,
 )
 from google_work_agent.application.workflows.solution_planning import (
     build_solution_planning_clarification_question,
@@ -323,9 +322,7 @@ def _route_tool_routing(
             "reason_code": result["reason_codes"][0]
             if result["reason_codes"]
             else "TOOL_ROUTE_NEEDS_CONFIRMATION",
-            "known_context_summary": _request_intent_from_state(state)["goal"][
-                "user_visible_objective"
-            ],
+            "known_context_summary": _request_intent_from_state(state)["goal"],
             "options": [],
         }
         return _decision(
@@ -891,9 +888,15 @@ def _finalize(
     )
 
 
-def _request_intent_from_state(state: MultiAgentGraphState) -> RequestIntentV1:
-    return validate_request_intent_v1(
-        _require_mapping(state.get("request_intent"), "request_intent")
+def _request_intent_from_state(state: MultiAgentGraphState) -> RequestIntentV2:
+    # validate_request_intent_v2 is the LLM-input-only validator (meta is
+    # intentionally absent from its schema -- see request_understanding.py).
+    # Main State's request_intent is already a materialized RequestIntentV2
+    # with meta attached, so it is trusted and cast here like every other
+    # typed state payload in this module, not re-validated against the
+    # narrower LLM output schema.
+    return cast(
+        RequestIntentV2, _require_mapping(state.get("request_intent"), "request_intent")
     )
 
 
@@ -928,6 +931,10 @@ def _planning_state_update(
 
 
 def _request_invalid_reason_code(output: RequestUnderstandingOutputV1) -> str:
+    # RequestIntentV2 has no unsupported_scope field: Request Understanding
+    # no longer judges product-capability support (Q2-X). INVALID is now
+    # reserved for malformed/unusable classify output, so the only reason
+    # code source is the failure record Request Understanding itself built.
     failure = _mapping_or_none(output.get("failure"))
     if (
         failure is not None
@@ -935,18 +942,6 @@ def _request_invalid_reason_code(output: RequestUnderstandingOutputV1) -> str:
         and failure["reason_code"]
     ):
         return cast(str, failure["reason_code"])
-    request_intent = _mapping_or_none(output.get("request_intent"))
-    unsupported = (
-        None
-        if request_intent is None
-        else _mapping_or_none(request_intent.get("unsupported_scope"))
-    )
-    if (
-        unsupported is not None
-        and isinstance(unsupported.get("reason_code"), str)
-        and unsupported["reason_code"]
-    ):
-        return cast(str, unsupported["reason_code"])
     return "REQUEST_UNDERSTANDING_INVALID"
 
 

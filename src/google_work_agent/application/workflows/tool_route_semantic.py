@@ -18,7 +18,7 @@ from typing import Literal, cast
 
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.handoff_contracts import RequestIntentV1
+from google_work_agent.application.workflows.handoff_contracts import RequestIntentV2
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )
@@ -143,7 +143,7 @@ class ToolRouteAgent:
     def determine_semantic_candidate(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         request: WorkflowStartRequest,
     ) -> SemanticRouteCandidate:
         llm_result = self._llm_runtime.invoke_structured(
@@ -293,7 +293,7 @@ def _normalize_output_resource_type(coarse_resource: str, effect: EffectType) ->
 def _semantic_candidate_from_llm_candidate(
     candidate: Mapping[str, object],
     *,
-    request_intent: RequestIntentV1,
+    request_intent: RequestIntentV2,
 ) -> SemanticRouteCandidate:
     input_resource_types = tuple(
         dict.fromkeys(

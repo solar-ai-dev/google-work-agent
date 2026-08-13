@@ -15,7 +15,7 @@ import pytest
 from tests.support.prompt_manifests import write_runtime_active_manifest
 
 from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.handoff_contracts import RequestIntentV1
+from google_work_agent.application.workflows.handoff_contracts import RequestIntentV2
 from google_work_agent.application.workflows.tool_route_semantic import (
     ToolRouteAgent,
     load_tool_route_determine_io_resources_prompt_reference,
@@ -107,24 +107,18 @@ def _catalog_with_duplicate_task_create() -> ConnectorToolCatalog:
     return catalog
 
 
-def _intent() -> RequestIntentV1:
+def _intent() -> RequestIntentV2:
     return {
         "schema_version": 2,
         "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
-        "goal": {"summary": "goal", "user_visible_objective": "goal"},
-        "completion_criteria": ["done"],
-        "semantic_constraints": {
-            "topics": [],
-            "people": [],
-            "time": [],
-            "sources": [],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
+        "goal": "goal",
+        "completion_conditions": ["done"],
+        "constraints": [],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {"is_unsupported": False, "reason_code": None, "explanation": None},
-        "response_disposition": "ACTION_REQUIRED",
         "requested_effect_hints": [],
         "requested_resource_hints": [],
         "analysis_requirement": "REQUIRED",

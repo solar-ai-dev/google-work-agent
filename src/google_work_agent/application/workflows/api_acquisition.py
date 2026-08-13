@@ -29,7 +29,7 @@ from google_work_agent.application.workflows.handoff_contracts import (
     ClarificationQuestionV1,
     Daypart,
     RelativeUnit,
-    RequestIntentV1,
+    RequestIntentV2,
     SourceFetchPlanV1,
     SourceName,
     SourcePlanningOutputV1,
@@ -255,7 +255,7 @@ class ApiDiscoveryAcquisitionAgent:
     def plan_sources(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         request: WorkflowStartRequest,
         additional_acquisition_request: AdditionalAcquisitionRequestV1 | None = None,
         tool_route_plan: ToolRoutePlanV2 | None = None,
@@ -274,7 +274,7 @@ class ApiDiscoveryAcquisitionAgent:
     def invoke_plan_sources_llm(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         request: WorkflowStartRequest,
         additional_acquisition_request: AdditionalAcquisitionRequestV1 | None = None,
         tool_route_plan: ToolRoutePlanV2 | None = None,
@@ -336,7 +336,7 @@ class ApiDiscoveryAcquisitionAgent:
         *,
         plans: list[SourceFetchPlanV1],
         request: WorkflowStartRequest,
-        request_intent: RequestIntentV1 | None = None,
+        request_intent: RequestIntentV2 | None = None,
         tool_route_plan: ToolRoutePlanV2 | None = None,
     ) -> AcquisitionResultV1:
         remaining = self._retrieval_budget.as_remaining()
@@ -459,7 +459,7 @@ class ApiDiscoveryAcquisitionAgent:
         plan: SourceFetchPlanV1,
         request: WorkflowStartRequest,
         remaining: dict[str, int],
-        request_intent: RequestIntentV1 | None,
+        request_intent: RequestIntentV2 | None,
         tool_route_plan: ToolRoutePlanV2 | None,
     ) -> dict[str, object]:
         del request_intent  # Calendar FreeBusy gating now uses only the
@@ -580,15 +580,14 @@ def load_acquisition_plan_sources_prompt_reference(
 def build_source_planning_clarification_question(
     *,
     output: SourcePlanningOutputV1,
-    request_intent: RequestIntentV1,
+    request_intent: RequestIntentV2,
 ) -> ClarificationQuestionV1:
     clarification = _require_mapping(output["clarification"], "$.clarification")
     return build_clarification_question_v1(
         origin_target="acquisition.plan_sources",
         question=_require_string(clarification, "question", "$.clarification"),
         reason_code=_require_string(clarification, "reason_code", "$.clarification"),
-        known_context_summary=request_intent["goal"]["user_visible_objective"]
-        or request_intent["goal"]["summary"],
+        known_context_summary=request_intent["goal"],
         affected_field_paths=_optional_string_list(clarification.get("affected_field_paths")),
         options=_optional_option_list(clarification.get("options")),
     )
@@ -673,7 +672,7 @@ def _planning_output(
 
 def _plan_query_prompt_input(
     *,
-    request_intent: RequestIntentV1,
+    request_intent: RequestIntentV2,
     request: WorkflowStartRequest,
     retrieval_budget: RetrievalBudget,
     tool_route_plan: ToolRoutePlanV2 | None,

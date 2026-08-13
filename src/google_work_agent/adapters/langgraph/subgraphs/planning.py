@@ -31,7 +31,7 @@ from google_work_agent.application.workflows import (
     AnswerDraftV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
-    RequestIntentV1,
+    RequestIntentV2,
     ReviewResult,
     SolutionPlanningAgent,
     SupervisorDecisionV1,
@@ -49,26 +49,27 @@ from google_work_agent.application.workflows.tool_routing import (
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 
 
+_WRITE_EFFECT_HINTS = frozenset({"CREATE", "UPDATE", "SEND", "DELETE"})
+
+
 def planning_mode_from_request_intent(
-    request_intent: RequestIntentV1,
+    request_intent: RequestIntentV2,
     tool_route_plan: ToolRoutePlanV2 | None = None,
 ) -> str:
     """Deterministic answer_only/draft_plan selection (GAP-F1).
 
-    Reads the ``response_disposition`` typed field produced by
-    ``request_understanding.classify`` instead of matching keyword
-    substrings against ``request_text`` -- the previous approach silently
-    misrouted any request whose natural-language phrasing (in particular
-    Korean) did not contain one of a fixed English token list. The field
-    is optional on ``RequestIntentV1`` (see its definition) because only
-    SIX_ROLE_BASELINE's standalone Planning subgraph needs this upfront
-    choice between the two mutually exclusive ``planning.answer_only`` /
-    ``planning.draft_plan`` prompt slots; SINGLE_BASELINE and THREE_STAGE
-    decide ANSWER_ONLY vs PLAN_READY inside one fused planning call. When
-    the field is absent -- an older classify prompt version that predates
-    this field, or a profile that never sets it -- this falls back to
-    ``answer_only`` rather than guessing an action the user did not ask
-    for (docs/01-b-policy-definition-v2.8.md POL-EVD-003 / "Answer-only에서
+    ``tool_route_plan.output_plan.output_mode`` is the official ANSWER/ACTION
+    authority (Q2-X) -- Tool Route always runs before Planning in the SIX
+    release path, so this is the branch actually taken there. The
+    ``requested_effect_hints``-based fallback below only matters for
+    SINGLE_BASELINE/THREE_STAGE's standalone Planning subgraph invocation,
+    which does not have a ``tool_route_plan`` to consult; RequestIntentV2
+    carries no explicit disposition field (unlike the retired V1
+    ``response_disposition``), so ACTION is inferred the same way Tool
+    Route's own deterministic compatibility path does: any effect hint that
+    isn't a plain READ. Falls back to ``answer_only`` when no write effect
+    is present, rather than guessing an action the user did not ask for
+    (docs/01-b-policy-definition-v2.8.md POL-EVD-003 / "Answer-only에서
     불필요한 Action을 생성하지 않는다").
     """
     if tool_route_plan is not None:
@@ -77,11 +78,11 @@ def planning_mode_from_request_intent(
             if tool_route_plan["output_plan"]["output_mode"] == "ACTION"
             else "answer_only"
         )
-    return (
-        "draft_plan"
-        if request_intent.get("response_disposition") == "ACTION_REQUIRED"
-        else "answer_only"
+    has_write_effect = any(
+        effect in _WRITE_EFFECT_HINTS
+        for effect in request_intent.get("requested_effect_hints", [])
     )
+    return "draft_plan" if has_write_effect else "answer_only"
 
 
 class PlanningSubgraph:

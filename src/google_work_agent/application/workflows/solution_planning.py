@@ -24,7 +24,7 @@ from google_work_agent.application.workflows.handoff_contracts import (
     ClarificationQuestionV1,
     ContextRetrievalResultV1,
     PlanDraftStatusValue,
-    RequestIntentV1,
+    RequestIntentV2,
     WorkAnalysisResultV1,
 )
 from google_work_agent.application.workflows.prompt_registry import (
@@ -304,7 +304,7 @@ class SolutionPlanningAgent:
     def answer_only(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
@@ -323,7 +323,7 @@ class SolutionPlanningAgent:
     def invoke_answer_only_llm(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
@@ -369,7 +369,7 @@ class SolutionPlanningAgent:
     def draft_plan(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
@@ -388,7 +388,7 @@ class SolutionPlanningAgent:
     def invoke_draft_plan_llm(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
@@ -453,7 +453,7 @@ class SolutionPlanningAgent:
     def revise_answer(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         answer_draft: AnswerDraftV1,
         review_issues: list[dict[str, object]],
         review_summary: str | None,
@@ -478,7 +478,7 @@ class SolutionPlanningAgent:
     def invoke_revise_answer_llm(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         answer_draft: AnswerDraftV1,
         review_issues: list[dict[str, object]],
         review_summary: str | None,
@@ -514,7 +514,7 @@ class SolutionPlanningAgent:
     def revise_plan(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         plan_draft: ActionPlanDraftV1,
         review_issues: list[dict[str, object]],
         review_summary: str | None,
@@ -539,7 +539,7 @@ class SolutionPlanningAgent:
     def invoke_revise_plan_llm(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         plan_draft: ActionPlanDraftV1,
         review_issues: list[dict[str, object]],
         review_summary: str | None,
@@ -784,7 +784,7 @@ def _validate_frozen_output_routes(
 def build_solution_planning_clarification_question(
     *,
     result: AnswerDraftV1 | ActionPlanDraftV1,
-    request_intent: RequestIntentV1,
+    request_intent: RequestIntentV2,
 ) -> ClarificationQuestionV1:
     confirmation = _require_mapping(result["confirmation"], "$.confirmation")
     origin_target = "planning.answer_only" if "answer" in result else "planning.draft_plan"
@@ -792,8 +792,7 @@ def build_solution_planning_clarification_question(
         origin_target=origin_target,
         question=_require_string(confirmation, "question", "$.confirmation"),
         reason_code=_require_string(confirmation, "reason_code", "$.confirmation"),
-        known_context_summary=request_intent["goal"]["user_visible_objective"]
-        or request_intent["goal"]["summary"],
+        known_context_summary=request_intent["goal"],
         affected_field_paths=_optional_string_list(confirmation.get("affected_field_paths")),
         options=_optional_option_list(confirmation.get("options")),
     )

@@ -19,7 +19,7 @@ from google_work_agent.application.workflows import (
     CalendarReadMode,
     Daypart,
     RelativeUnit,
-    RequestIntentV1,
+    RequestIntentV2,
     RetrievalBudget,
     SourceFetchPlanV1,
     SourcePlanningValidationError,
@@ -1693,35 +1693,24 @@ def _request(
     )
 
 
-def _intent(*, source: SourceName) -> RequestIntentV1:
+def _intent(*, source: SourceName) -> RequestIntentV2:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "Google Workspace 자료 조회",
-            "user_visible_objective": "요청한 업무 자료 조회",
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "Google Workspace 자료 조회",
+        "completion_conditions": ["필요한 원본 자료를 수집한다."],
+        "constraints": [
+            {"kind": "PERSON", "field": "person", "value": "김대리"},
+            {"kind": "TIME", "field": "time_range", "value": "이번 주"},
+        ],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "completion_criteria": ["필요한 원본 자료를 수집한다."],
-        "semantic_constraints": {
-            "topics": [{"text": "업무 자료", "source_text": "업무 자료"}],
-            "people": [{"mention": "김대리", "role_hint": None, "source_text": "김대리"}],
-            "time": [
-                {
-                    "mention": "이번 주",
-                    "granularity_hint": "RELATIVE",
-                    "source_text": "이번 주",
-                }
-            ],
-            "sources": [{"source": source, "mention": source.lower(), "confidence": "HIGH"}],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
-        },
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": [source],
+        "analysis_requirement": "REQUIRED",
     }
 
 

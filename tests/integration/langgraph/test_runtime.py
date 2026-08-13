@@ -52,7 +52,7 @@ from google_work_agent.application.workflows import (
     AnswerDraftV1,
     ContextRetrievalResultV1,
     EvidenceSelectionOutputV1,
-    RequestIntentV1,
+    RequestIntentV2,
     WorkAnalysisResultV1,
     determine_semantic_routes,
     validate_work_analysis_result_v1,
@@ -135,14 +135,14 @@ class _QueuedLLMRuntime:
             # suite from needing an inserted entry for a call they were
             # never written to expect.
             prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
-            request_intent = cast(RequestIntentV1, prompt_input["request_intent"])
+            request_intent = cast(RequestIntentV2, prompt_input["request_intent"])
             return _llm_result(_synthesize_tool_route_candidate(request_intent))
         if not self._queued:
             raise RuntimeError("no queued llm result")
         return self._queued.popleft()
 
 
-def _synthesize_tool_route_candidate(request_intent: RequestIntentV1) -> dict[str, object]:
+def _synthesize_tool_route_candidate(request_intent: RequestIntentV2) -> dict[str, object]:
     """Fake response for tool_route.determine_io_resources.
 
     Mirrors what ``determine_semantic_routes`` (the deterministic
@@ -188,39 +188,36 @@ def _llm_result(payload: object) -> StructuredLLMResult:
     )
 
 
-def _clear_intent() -> RequestIntentV1:
-    return {
-        "schema_version": 2,
-        "goal": {
-            "summary": "Follow up on the user's Google Workspace request.",
-            "user_visible_objective": "Resolve the user's Google Workspace request.",
+def _clear_intent() -> RequestIntentV2:
+    # No "meta": these fixtures double as raw request_understanding.classify
+    # LLM candidates (fed through validate_request_intent_v2, whose input
+    # schema forbids "meta" -- Application attaches it afterward) as well as
+    # stand-ins for an already-materialized state["request_intent"]. cast
+    # mirrors validate_request_intent_v2's own two-phase-construction
+    # return statement in request_understanding.py.
+    return cast(
+        RequestIntentV2,
+        {
+            "schema_version": 2,
+            "goal": "Resolve the user's Google Workspace request.",
+            "completion_conditions": ["Return a useful answer or plan."],
+            "constraints": [
+                {"kind": "PERSON", "field": "person", "value": "Kim"},
+            ],
+            "ambiguity": {
+                "requires_confirmation": False,
+                "reason_codes": [],
+                "missing_fields": [],
+            },
+            "requested_effect_hints": ["READ"],
+            "requested_resource_hints": ["TASK"],
+            "analysis_requirement": "REQUIRED",
         },
-        "completion_criteria": ["Return a useful answer or plan."],
-        "semantic_constraints": {
-            "topics": [{"text": "follow up", "source_text": "follow up"}],
-            "people": [{"mention": "Kim", "role_hint": None, "source_text": "Kim"}],
-            "time": [],
-            "sources": [{"source": "TASKS", "mention": "tasks", "confidence": "HIGH"}],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
-        },
-        "response_disposition": "ANSWER_ONLY",
-        "requested_effect_hints": ["READ"],
-        "requested_resource_hints": ["TASK"],
-        "analysis_requirement": "REQUIRED",
-    }
+    )
 
 
-def _action_required_intent() -> RequestIntentV1:
+def _action_required_intent() -> RequestIntentV2:
     payload = _clear_intent()
-    payload["response_disposition"] = "ACTION_REQUIRED"
     payload["requested_effect_hints"] = ["CREATE"]
     payload["requested_resource_hints"] = ["TASK"]
     return payload
@@ -231,27 +228,26 @@ def _action_intent(
     resource: str,
     effect: str,
     source: Literal["GMAIL", "TASKS", "CALENDAR"] = "TASKS",
-) -> RequestIntentV1:
+) -> RequestIntentV2:
+    """``source`` selects which context family the caller should acquire
+    retrieval context from (see ``_plan``/``_selection_output`` pairing in
+    call sites) -- RequestIntentV2 has no field for it; it is not written
+    into the returned intent."""
+    del source
     payload = _action_required_intent()
     payload["requested_resource_hints"] = [resource]
-    payload["requested_effect_hints"] = [effect]  # type: ignore[list-item]
-    payload["semantic_constraints"]["sources"] = [
-        {"source": source, "mention": source.lower(), "confidence": "HIGH"}
-    ]
+    payload["requested_effect_hints"] = cast(
+        "list[Literal['READ', 'CREATE', 'UPDATE', 'SEND', 'DELETE']]", [effect]
+    )
     return payload
 
 
-def _ambiguous_intent() -> RequestIntentV1:
+def _ambiguous_intent() -> RequestIntentV2:
     payload = _clear_intent()
     payload["ambiguity"] = {
-        "is_ambiguous": True,
-        "items": [
-            {
-                "field_path": "semantic_constraints.people[0]",
-                "reason_code": "INTENT_AMBIGUITY_MISSED",
-                "user_question": "Which Kim do you mean?",
-            }
-        ],
+        "requires_confirmation": True,
+        "reason_codes": ["INTENT_AMBIGUITY_MISSED"],
+        "missing_fields": ["대상 인물"],
     }
     return payload
 
@@ -388,10 +384,18 @@ def _send_write_plan_output() -> ActionPlanDraftV1:
                     "resource_id": "sent-draft-followup",
                 },
             },
+            "resource_refs": ["gmail_message:message-project-1"],
             "user_visible_reason": "Send the approved Gmail draft.",
         }
     )
     plan["summary"] = "Send the approved Gmail draft requested by the user."
+    plan["resource_refs"] = [
+        {
+            "resource_handle": "gmail_message:message-project-1",
+            "resource_type": "gmail_message",
+            "resource_id": "message-project-1",
+        }
+    ]
     return plan
 
 
@@ -585,15 +589,6 @@ def _source_plan_output(result: str = "PLAN_READY") -> dict[str, object]:
     }
 
 
-def _calendar_intent() -> RequestIntentV1:
-    intent = _action_required_intent()
-    intent["semantic_constraints"]["sources"] = [
-        {"source": "CALENDAR", "mention": "calendar", "confidence": "HIGH"}
-    ]
-    intent["requested_resource_hints"] = ["CALENDAR_EVENT"]
-    return intent
-
-
 def _calendar_selection_output() -> EvidenceSelectionOutputV1:
     return {
         "schema_version": 1,
@@ -632,6 +627,50 @@ def _calendar_analysis_output() -> dict[str, object]:
     ]
     result["segment_refs"] = [
         {"segment_id": "seg-1", "resource_handle": "calendar_event:event-focus"}
+    ]
+    payload: dict[str, object] = dict(result)
+    payload.pop("additional_acquisition_request")
+    return payload
+
+
+def _gmail_selection_output() -> EvidenceSelectionOutputV1:
+    return {
+        "schema_version": 1,
+        "result": "SELECTED",
+        "selected_segment_ids": ["seg-3"],
+        "evidence_drafts": [
+            {
+                "schema_version": 1,
+                "evidence_id": "evidence-1",
+                "resource_handle": "gmail_message:message-project-1",
+                "segment_id": "seg-3",
+                "kind": "excerpt",
+                "excerpt": "Please summarize the open items and draft a calm reply.",
+                "locator": {"kind": "resource_payload"},
+                "reason_codes": ["GOAL_RELEVANT"],
+            }
+        ],
+        "excluded_resource_handles": [],
+        "missing_information": [],
+        "ambiguity": None,
+    }
+
+
+def _gmail_analysis_output() -> dict[str, object]:
+    result = _validated_analysis_result()
+    finding = result["findings"][0]
+    finding["resource_refs"] = ["gmail_message:message-project-1"]
+    finding["related_resource_handles"] = ["gmail_message:message-project-1"]
+    finding["segment_refs"] = ["seg-3"]
+    result["resource_refs"] = [
+        {
+            "resource_handle": "gmail_message:message-project-1",
+            "resource_type": "gmail_message",
+            "resource_id": "message-project-1",
+        }
+    ]
+    result["segment_refs"] = [
+        {"segment_id": "seg-3", "resource_handle": "gmail_message:message-project-1"}
     ]
     payload: dict[str, object] = dict(result)
     payload.pop("additional_acquisition_request")
@@ -817,12 +856,15 @@ _PROFILE_CANDIDATE_PROMPT_IDS = {
 }
 
 
-# GAP-F1: response_disposition (RequestIntentV1), not a keyword scan over
-# request_text, decides the SIX_ROLE_BASELINE Planning subgraph's mode. Every
-# (request_text, response_disposition) pair below is asserted purely by
-# response_disposition -- including cases whose request_text carries an old
-# trigger word ("delete"/"list") paired with the opposite disposition, to
-# prove request_text is no longer consulted at all.
+# GAP-F1 (Q2-X update): requested_effect_hints (RequestIntentV2), not a
+# keyword scan over request_text, decides the SIX_ROLE_BASELINE Planning
+# subgraph's mode -- a write effect (CREATE/UPDATE/SEND/DELETE) means
+# draft_plan, otherwise answer_only. The case names below still carry the
+# request_text that motivated them, but the assertions in
+# test_runtime_state_boundaries.py are driven purely by the constructed
+# intent's effect hints, including cases whose request_text carries an old
+# trigger word ("delete"/"list") paired with the opposite hint, to prove
+# request_text is no longer consulted at all.
 _ANSWER_ONLY_SEMANTIC_CASES: tuple[tuple[str, str], ...] = (
     ("korean-schedule-lookup", "오늘 일정 알려줘"),
     ("korean-incomplete-tasks-summary", "미완료 업무 정리해줘. 새 항목은 만들지 마."),

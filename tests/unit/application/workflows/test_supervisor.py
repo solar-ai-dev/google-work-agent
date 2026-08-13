@@ -17,7 +17,7 @@ from google_work_agent.application.workflows import (
     GraphStateUpdateV1,
     MultiAgentGraphState,
     PlanReviewResultV1,
-    RequestIntentV1,
+    RequestIntentV2,
     ReviewIssueV1,
     RunBudgetV1,
     SupervisorTarget,
@@ -661,7 +661,7 @@ def test_recovery_phase_routes_to_recovery_boundary() -> None:
 def _state(
     *,
     workflow_phase: WorkflowPhase = WorkflowPhase.REQUEST_ANALYSIS,
-    request_intent: RequestIntentV1 | None = None,
+    request_intent: RequestIntentV2 | None = None,
     acquisition_result: AcquisitionResultV1 | None = None,
     context_result: ContextRetrievalResultV1 | None = None,
     analysis_result: WorkAnalysisResultV1 | None = None,
@@ -698,31 +698,17 @@ def _state(
     }
 
 
-def _request_intent() -> RequestIntentV1:
+def _request_intent() -> RequestIntentV2:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "Summarize the latest status.",
-            "user_visible_objective": "Summarize the latest status.",
-        },
-        "completion_criteria": ["Provide the latest status."],
-        "semantic_constraints": {
-            "topics": [],
-            "people": [],
-            "time": [],
-            "sources": [],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "Summarize the latest status.",
+        "completion_conditions": ["Provide the latest status."],
+        "constraints": [],
         "ambiguity": {
-            "is_ambiguous": False,
-            "items": [],
-        },
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
         "requested_effect_hints": ["READ"],
         "requested_resource_hints": ["TASK"],

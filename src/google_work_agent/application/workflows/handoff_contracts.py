@@ -31,7 +31,9 @@ ActionEffectValue = Literal["READ", "CREATE", "UPDATE", "SEND", "DELETE"]
 ReviewStatusValue = Literal["PASS", "REVISE", "RETRIEVE_MORE", "CONFIRM", "BLOCK"]
 RecheckStatusValue = Literal["PASS", "BLOCK"]
 ReviewTargetValue = Literal["ANSWER", "PLAN"]
-RequestIntentResponseDispositionValue = Literal["ANSWER_ONLY", "ACTION_REQUIRED"]
+ConstraintKindValue = Literal[
+    "PERSON", "EMAIL", "DATE", "TIME", "RESOURCE", "SCOPE", "USER_REQUIREMENT"
+]
 
 
 class ClarificationOptionV1(TypedDict):
@@ -39,78 +41,57 @@ class ClarificationOptionV1(TypedDict):
     label: str
 
 
-class RequestIntentGoalV1(TypedDict):
-    summary: str
-    user_visible_objective: str
+class StateArtifactRefV1(TypedDict):
+    """Lineage pointer to one revision of an official State Artifact.
+
+    Canonical (06-agent-workflow.md §2.4). Owned here (not tool_routing.py,
+    its original home): every State Artifact -- RequestIntentV2 included --
+    carries this same lineage shape, so the contract belongs with the other
+    cross-node handoff types, not with one specific consumer's module.
+    """
+
+    artifact_id: str
+    revision: int
 
 
-class RequestIntentTopicConstraintV1(TypedDict):
-    text: str
-    source_text: str
+class StateArtifactMetaV1(TypedDict):
+    artifact_id: str
+    revision: int
+    based_on: list[StateArtifactRefV1]
 
 
-class RequestIntentPeopleConstraintV1(TypedDict):
-    mention: str
-    role_hint: str | None
-    source_text: str
+class ConstraintV1(TypedDict):
+    kind: ConstraintKindValue
+    field: str
+    value: str | list[str]
 
 
-class RequestIntentTimeConstraintV1(TypedDict):
-    mention: str
-    granularity_hint: Literal["DATE", "DATETIME", "RANGE", "RELATIVE", "UNKNOWN"]
-    source_text: str
+class AmbiguityV1(TypedDict):
+    requires_confirmation: bool
+    reason_codes: list[str]
+    missing_fields: list[str]
 
 
-class RequestIntentSourceConstraintV1(TypedDict):
-    source: Literal["GMAIL", "TASKS", "CALENDAR", "UNKNOWN"]
-    mention: str
-    confidence: Literal["HIGH", "MEDIUM", "LOW"]
+class RequestIntentV2(TypedDict):
+    """Canonical Request Understanding output (06-agent-workflow.md §3.1).
 
+    Request Understanding structures user meaning only -- it does not judge
+    whether the product actually supports the requested resource/effect
+    (that capability/policy judgment belongs to Tool Route's Signed Registry
+    binding, which BLOCKs unsupported combinations deterministically) and it
+    does not carry an explicit ANSWER/ACTION disposition (that authority is
+    ToolRoutePlanV2.output_plan.output_mode).
+    """
 
-class RequestIntentStatusConstraintV1(TypedDict):
-    mention: str
-    source_text: str
-
-
-class RequestIntentSemanticConstraintsV1(TypedDict):
-    topics: list[RequestIntentTopicConstraintV1]
-    people: list[RequestIntentPeopleConstraintV1]
-    time: list[RequestIntentTimeConstraintV1]
-    sources: list[RequestIntentSourceConstraintV1]
-    status_or_state: list[RequestIntentStatusConstraintV1]
-    negative_constraints: list[str]
-    policy_or_safety_constraints: list[str]
-
-
-class RequestIntentAmbiguityItemV1(TypedDict):
-    field_path: str
-    reason_code: str
-    user_question: str
-
-
-class RequestIntentAmbiguityV1(TypedDict):
-    is_ambiguous: bool
-    items: list[RequestIntentAmbiguityItemV1]
-
-
-class RequestIntentUnsupportedScopeV1(TypedDict):
-    is_unsupported: bool
-    reason_code: str | None
-    explanation: str | None
-
-
-class RequestIntentV1(TypedDict):
     schema_version: Required[Literal[2]]
-    goal: RequestIntentGoalV1
-    completion_criteria: list[str]
-    semantic_constraints: RequestIntentSemanticConstraintsV1
-    ambiguity: RequestIntentAmbiguityV1
-    unsupported_scope: RequestIntentUnsupportedScopeV1
-    response_disposition: NotRequired[RequestIntentResponseDispositionValue]
-    requested_effect_hints: NotRequired[list[ActionEffectValue]]
-    requested_resource_hints: NotRequired[list[str]]
-    analysis_requirement: NotRequired[Literal["NONE", "REQUIRED"]]
-    meta: NotRequired[dict[str, object]]
+    meta: StateArtifactMetaV1
+    goal: str
+    completion_conditions: list[str]
+    constraints: list[ConstraintV1]
+    requested_effect_hints: list[ActionEffectValue]
+    requested_resource_hints: list[str]
+    analysis_requirement: Literal["NONE", "REQUIRED"]
+    ambiguity: AmbiguityV1
 
 
 class ClarificationQuestionV1(TypedDict):
@@ -133,7 +114,7 @@ class RequestUnderstandingFailureV1(TypedDict):
 class RequestUnderstandingOutputV1(TypedDict):
     schema_version: Required[Literal[1]]
     result: Literal["COMPLETE", "NEEDS_CONFIRMATION", "INVALID"]
-    request_intent: RequestIntentV1 | None
+    request_intent: RequestIntentV2 | None
     clarification: ClarificationQuestionV1 | None
     failure: RequestUnderstandingFailureV1 | None
     validator_codes: list[str]

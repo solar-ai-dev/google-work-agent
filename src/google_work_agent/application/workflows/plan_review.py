@@ -24,7 +24,7 @@ from google_work_agent.application.workflows.handoff_contracts import (
     ContextRetrievalResultV1,
     PlanReviewResultV1,
     PolicyReviewContextV1,
-    RequestIntentV1,
+    RequestIntentV2,
     ReviewIssueV1,
     ReviewStatusValue,
     ReviewTargetValue,
@@ -342,7 +342,7 @@ class PlanReviewAgent:
     def inspect(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         answer_draft: AnswerDraftV1 | None,
@@ -375,7 +375,7 @@ class PlanReviewAgent:
     def invoke_inspect_llm(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         answer_draft: AnswerDraftV1 | None,
@@ -426,7 +426,7 @@ class PlanReviewAgent:
     def recheck(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         answer_draft: AnswerDraftV1 | None,
@@ -460,7 +460,7 @@ class PlanReviewAgent:
     def invoke_recheck_llm(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         answer_draft: AnswerDraftV1 | None,
@@ -708,15 +708,14 @@ def validate_plan_review_result_v1(
 def build_plan_review_clarification_question(
     *,
     result: PlanReviewResultV1,
-    request_intent: RequestIntentV1,
+    request_intent: RequestIntentV2,
 ) -> ClarificationQuestionV1:
     confirmation = _require_mapping(result["confirmation"], "$.confirmation")
     return build_clarification_question_v1(
         origin_target="review.inspect",
         question=_require_string(confirmation, "question", "$.confirmation"),
         reason_code=_require_string(confirmation, "reason_code", "$.confirmation"),
-        known_context_summary=request_intent["goal"]["user_visible_objective"]
-        or request_intent["goal"]["summary"],
+        known_context_summary=request_intent["goal"],
         affected_field_paths=_optional_string_list(confirmation.get("affected_field_paths")),
         options=_optional_option_list(confirmation.get("options")),
     )
@@ -749,7 +748,7 @@ class _ReferenceSpace(TypedDict):
 def _build_review_prompt_input(
     *,
     request: WorkflowStartRequest,
-    request_intent: RequestIntentV1,
+    request_intent: RequestIntentV2,
     context_result: ContextRetrievalResultV1,
     analysis_result: WorkAnalysisResultV1,
     draft: AnswerDraftV1 | ActionPlanDraftV1,

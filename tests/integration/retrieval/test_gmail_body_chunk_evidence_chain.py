@@ -20,7 +20,7 @@ from google_work_agent.application.workflows import (
     ApiAcquisitionResult,
     ApiDiscoveryAcquisitionAgent,
     ContextRetrievalAgent,
-    RequestIntentV1,
+    RequestIntentV2,
     RetrievalBudget,
 )
 from google_work_agent.ports import (
@@ -369,29 +369,21 @@ def test_evidence_selection_uses_only_the_selected_message_segment() -> None:
     )
 
 
-def _intent() -> RequestIntentV1:
+def _intent() -> RequestIntentV2:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "Summarize the project thread",
-            "user_visible_objective": "Summarize the project thread",
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "Summarize the project thread",
+        "completion_conditions": ["Relevant evidence is available."],
+        "constraints": [],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "completion_criteria": ["Relevant evidence is available."],
-        "semantic_constraints": {
-            "topics": [],
-            "people": [],
-            "time": [],
-            "sources": [{"source": "GMAIL", "mention": "mail", "confidence": "HIGH"}],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
-        },
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["GMAIL_THREAD"],
+        "analysis_requirement": "REQUIRED",
     }
 
 

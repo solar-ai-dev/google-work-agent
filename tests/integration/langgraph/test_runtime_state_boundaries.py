@@ -87,7 +87,6 @@ def test_planning_mode_answer_only_semantic_cases_ignore_request_text(
     del case_id
     runtime = _planning_mode_runtime(tmp_path)
     intent = _clear_intent()
-    intent["response_disposition"] = "ANSWER_ONLY"
     assert runtime._planning_mode_from_request_intent(intent) == "answer_only"
     runtime.close()
 
@@ -107,15 +106,16 @@ def test_planning_mode_action_required_semantic_cases_ignore_request_text(
     runtime.close()
 
 
-def test_planning_mode_falls_back_to_answer_only_when_disposition_absent(
+def test_planning_mode_falls_back_to_answer_only_when_no_write_effect_hint_present(
     tmp_path: Path,
 ) -> None:
-    """A classify output that predates response_disposition (or a profile
-    that never sets it) never fabricates an Action Plan the user did not
-    ask for -- it falls back to answer_only rather than guessing."""
+    """A classify output with no write effect hint (requested_effect_hints
+    has no CREATE/UPDATE/SEND/DELETE) never fabricates an Action Plan the
+    user did not ask for -- it falls back to answer_only rather than
+    guessing."""
     runtime = _planning_mode_runtime(tmp_path)
     intent = _clear_intent()
-    del intent["response_disposition"]
+    intent["requested_effect_hints"] = []
     assert runtime._planning_mode_from_request_intent(intent) == "answer_only"
     runtime.close()
 
@@ -140,9 +140,6 @@ def test_edge_request_to_acquisition_to_context_preserves_typed_state(
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     )
     intent = _clear_intent()
-    intent["semantic_constraints"]["sources"] = [
-        {"source": source, "mention": source.lower(), "confidence": "HIGH"}
-    ]
     runtime = _make_runtime(
         database_path=_seed_runtime_database(root),
         llm_payloads=[intent, [_plan(source, constraints)]],

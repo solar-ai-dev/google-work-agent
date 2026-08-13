@@ -25,7 +25,7 @@ from google_work_agent.application.workflows import (
     EvidenceSelectionOutputV1,
     MultiAgentGraphState,
     PlanReviewResultV1,
-    RequestIntentV1,
+    RequestIntentV2,
     RequestUnderstandingOutputV1,
     RunBudgetV1,
     SourceFetchPlanV1,

@@ -14,22 +14,15 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal, Required, TypedDict, cast
 
-from google_work_agent.application.workflows.handoff_contracts import RequestIntentV1
+from google_work_agent.application.workflows.handoff_contracts import (
+    RequestIntentV2,
+    StateArtifactMetaV1,
+    StateArtifactRefV1,
+)
 from google_work_agent.domain import ConnectorToolCatalog, EffectType
 
 ToolRouteEffect = Literal["CREATE", "UPDATE", "SEND", "DELETE"]
 ToolSelector = Callable[..., str]
-
-
-class StateArtifactRefV1(TypedDict):
-    artifact_id: str
-    revision: int
-
-
-class StateArtifactMetaV1(TypedDict):
-    artifact_id: str
-    revision: int
-    based_on: list[StateArtifactRefV1]
 
 
 class InputToolRouteV1(TypedDict):
@@ -205,7 +198,7 @@ class ToolRouteCoordinator:
     def route(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         previous_plan: ToolRoutePlanV2 | None = None,
         semantic_candidate: SemanticRouteCandidate | None = None,
         semantic_candidate_provider: Callable[[], SemanticRouteCandidate] | None = None,
@@ -471,47 +464,51 @@ class ToolRouteCoordinator:
         }
 
 
-def determine_semantic_routes(request_intent: RequestIntentV1) -> SemanticRouteCandidate:
-    """Project request meaning without reading Registry tool identities."""
+_WRITE_EFFECTS = frozenset(
+    {EffectType.CREATE, EffectType.UPDATE, EffectType.SEND, EffectType.DELETE}
+)
+
+
+def determine_semantic_routes(request_intent: RequestIntentV2) -> SemanticRouteCandidate:
+    """Project request meaning without reading Registry tool identities.
+
+    Deterministic compatibility path (tests, non-LLM invocations) --
+    ``ToolRouteAgent.determine_semantic_candidate`` owns this in the release
+    path (Q3). RequestIntentV2 has no ``response_disposition`` field:
+    ACTION vs ANSWER is inferred from whether ``requested_effect_hints``
+    contains a write effect, matching ``ToolRouteEffect``/Tool Route's own
+    output-route vocabulary (READ is never a valid output effect there).
+    RequestIntentV2 also has no ``semantic_constraints.sources`` fallback;
+    ``requested_resource_hints`` is the sole resource-hint field Tool Route
+    reads. ``constraints`` (including ``kind == "RESOURCE"``, which per the
+    PHASE 7.5 candidate schema carries ``selected_resource_ids`` -- specific
+    resource identifiers, not a resource-type/source hint) is general
+    request-understanding structure with no documented Tool Route routing
+    role (06-agent-workflow.md SS3.1/SS5.3); it is intentionally not
+    consulted here.
+    """
 
     resource_hints = tuple(
-        normalize_resource_type(item)
-        for item in request_intent.get("requested_resource_hints", [])
-    )
-    if not resource_hints:
-        resource_hints = tuple(
-            _source_default_resource(item["source"])
-            for item in request_intent["semantic_constraints"]["sources"]
-            if item["source"] != "UNKNOWN"
+        dict.fromkeys(
+            normalize_resource_type(item)
+            for item in request_intent.get("requested_resource_hints", [])
         )
-    resource_hints = tuple(dict.fromkeys(resource_hints))
-    legacy_input_resources = tuple(
-        _source_default_resource(item["source"])
-        for item in request_intent["semantic_constraints"]["sources"]
-        if item["source"] != "UNKNOWN"
     )
     effect_hints = tuple(
         EffectType(item) for item in request_intent.get("requested_effect_hints", [])
     )
-    output_mode: Literal["ANSWER", "ACTION"] = (
-        "ACTION"
-        if request_intent.get("response_disposition") == "ACTION_REQUIRED"
-        else "ANSWER"
-    )
+    write_effect_hints = tuple(effect for effect in effect_hints if effect in _WRITE_EFFECTS)
+    output_mode: Literal["ANSWER", "ACTION"] = "ACTION" if write_effect_hints else "ANSWER"
     if output_mode == "ACTION":
-        if not effect_hints or not resource_hints:
+        if not resource_hints:
             raise ToolRouteValidationError("ACTION route requires resource and effect hints")
-        if len(effect_hints) == 1:
-            output_pairs = tuple((resource, effect_hints[0]) for resource in resource_hints)
-        elif len(effect_hints) == len(resource_hints):
-            output_pairs = tuple(zip(resource_hints, effect_hints, strict=True))
+        if len(write_effect_hints) == 1:
+            output_pairs = tuple((resource, write_effect_hints[0]) for resource in resource_hints)
+        elif len(write_effect_hints) == len(resource_hints):
+            output_pairs = tuple(zip(resource_hints, write_effect_hints, strict=True))
         else:
             raise ToolRouteValidationError("resource/effect hint cardinality is ambiguous")
-        input_resources = legacy_input_resources or tuple(
-            resource
-            for resource, effect in output_pairs
-            if effect in {EffectType.UPDATE, EffectType.SEND, EffectType.DELETE}
-        )
+        input_resources = resource_hints
     else:
         output_pairs = ()
         input_resources = resource_hints
@@ -639,7 +636,7 @@ def output_routes(plan: ToolRoutePlanV2) -> tuple[OutputToolRouteV1, ...]:
     return tuple(output_plan["output_routes"])
 
 
-def _request_intent_ref(request_intent: RequestIntentV1) -> StateArtifactRefV1:
+def _request_intent_ref(request_intent: RequestIntentV2) -> StateArtifactRefV1:
     raw_meta = request_intent.get("meta")
     if not isinstance(raw_meta, Mapping):
         raise ToolRouteValidationError("RequestIntentV2.meta is required")
@@ -663,17 +660,6 @@ def _route_result(
         "workflow_signal": None,
         "reason_codes": reason_codes,
     }
-
-
-def _source_default_resource(source: str) -> str:
-    try:
-        return {
-            "GMAIL": "GMAIL_THREAD",
-            "TASKS": "TASK",
-            "CALENDAR": "CALENDAR_EVENT",
-        }[source]
-    except KeyError as error:
-        raise ToolRouteValidationError(f"unsupported source hint: {source}") from error
 
 
 def normalize_resource_type(value: str) -> str:

@@ -19,7 +19,7 @@ from google_work_agent.application.workflows import (
     ApiAcquisitionResult,
     ApiDiscoveryAcquisitionAgent,
     ContextRetrievalAgent,
-    RequestIntentV1,
+    RequestIntentV2,
 )
 from google_work_agent.ports import (
     OutputSchemaDefinition,
@@ -126,47 +126,39 @@ def _request() -> WorkflowStartRequest:
     )
 
 
-def _availability_intent() -> RequestIntentV1:
+def _availability_intent() -> RequestIntentV2:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "이번 주에 가능한 시간 찾아줘",
-            "user_visible_objective": "이번 주에 가능한 시간 찾아줘",
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "이번 주에 가능한 시간 찾아줘",
+        "completion_conditions": ["빈 시간대를 찾는다."],
+        "constraints": [],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "completion_criteria": ["빈 시간대를 찾는다."],
-        "semantic_constraints": {
-            "topics": [],
-            "people": [],
-            "time": [],
-            "sources": [{"source": "CALENDAR", "mention": "calendar", "confidence": "HIGH"}],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {"is_unsupported": False, "reason_code": None, "explanation": None},
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["CALENDAR_FREEBUSY"],
+        "analysis_requirement": "NONE",
     }
 
 
-def _simple_listing_intent() -> RequestIntentV1:
+def _simple_listing_intent() -> RequestIntentV2:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "내일 일정 알려줘",
-            "user_visible_objective": "내일 일정 알려줘",
+        "meta": {"artifact_id": "intent-2", "revision": 1, "based_on": []},
+        "goal": "내일 일정 알려줘",
+        "completion_conditions": ["오늘 일정 목록을 보여준다."],
+        "constraints": [],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "completion_criteria": ["오늘 일정 목록을 보여준다."],
-        "semantic_constraints": {
-            "topics": [],
-            "people": [],
-            "time": [],
-            "sources": [{"source": "CALENDAR", "mention": "calendar", "confidence": "HIGH"}],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {"is_unsupported": False, "reason_code": None, "explanation": None},
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["CALENDAR_EVENT"],
+        "analysis_requirement": "NONE",
     }
 
 

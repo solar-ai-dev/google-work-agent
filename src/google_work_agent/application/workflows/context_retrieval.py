@@ -48,7 +48,7 @@ from google_work_agent.application.workflows.handoff_contracts import (
     ContextStatusValue,
     EvidenceDraftV1,
     EvidenceSelectionOutputV1,
-    RequestIntentV1,
+    RequestIntentV2,
     SufficiencyOutputV1,
 )
 from google_work_agent.application.workflows.prompt_registry import (
@@ -202,7 +202,7 @@ class ContextRetrievalAgent:
     def retrieve(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         acquisition_result: AcquisitionResultV1,
         request: WorkflowStartRequest,
     ) -> ContextRetrievalResultV1:
@@ -263,7 +263,7 @@ class ContextRetrievalAgent:
     def select_evidence(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         acquisition_result: AcquisitionResultV1,
         request: WorkflowStartRequest,
         segments: list[_SourceSegment],
@@ -307,7 +307,7 @@ class ContextRetrievalAgent:
     def _revise_selection_once(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         acquisition_result: AcquisitionResultV1,
         request: WorkflowStartRequest,
         segments: list[_SourceSegment],
@@ -359,7 +359,7 @@ class ContextRetrievalAgent:
     def assess_sufficiency(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         acquisition_result: AcquisitionResultV1,
         request: WorkflowStartRequest,
         context_bundle: ContextBundleV1,
@@ -623,7 +623,7 @@ def validate_context_retrieval_result_v1(value: object) -> ContextRetrievalResul
 def build_context_clarification_question(
     *,
     result: ContextRetrievalResultV1,
-    request_intent: RequestIntentV1,
+    request_intent: RequestIntentV2,
 ) -> ClarificationQuestionV1:
     ambiguity = _require_mapping(
         result["context_bundle"]["ambiguity"], "$.context_bundle.ambiguity"
@@ -632,8 +632,7 @@ def build_context_clarification_question(
         origin_target="context.assess_sufficiency",
         question=_require_string(ambiguity, "question", "$.context_bundle.ambiguity"),
         reason_code=_require_string(ambiguity, "reason_code", "$.context_bundle.ambiguity"),
-        known_context_summary=request_intent["goal"]["user_visible_objective"]
-        or request_intent["goal"]["summary"],
+        known_context_summary=request_intent["goal"],
         affected_field_paths=_optional_string_list(ambiguity.get("affected_field_paths")),
         options=_optional_option_list(ambiguity.get("options")),
     )

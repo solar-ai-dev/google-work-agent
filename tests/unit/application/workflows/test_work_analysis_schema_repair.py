@@ -39,7 +39,7 @@ from google_work_agent.application.llm import LLMRuntimeService, PromptRepairSch
 from google_work_agent.application.workflows import (
     AnalysisResult,
     ContextRetrievalResultV1,
-    RequestIntentV1,
+    RequestIntentV2,
     WorkAnalysisAgent,
     validate_work_analysis_result_v1,
 )
@@ -77,29 +77,21 @@ def _request() -> WorkflowStartRequest:
     )
 
 
-def _intent() -> RequestIntentV1:
+def _intent() -> RequestIntentV2:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "Analyze risky follow-up work",
-            "user_visible_objective": "Find follow-up risks",
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "Find follow-up risks",
+        "completion_conditions": ["Evidence-backed work analysis is available."],
+        "constraints": [],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "completion_criteria": ["Evidence-backed work analysis is available."],
-        "semantic_constraints": {
-            "topics": [{"text": "follow-up", "source_text": "follow-up"}],
-            "people": [],
-            "time": [],
-            "sources": [{"source": "GMAIL", "mention": "mail", "confidence": "HIGH"}],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
-        },
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["GMAIL_THREAD"],
+        "analysis_requirement": "REQUIRED",
     }
 
 

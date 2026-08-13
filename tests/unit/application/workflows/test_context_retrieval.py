@@ -18,7 +18,7 @@ from google_work_agent.application.workflows import (
     ContextRetrievalValidationError,
     EvidenceDraftV1,
     EvidenceSelectionOutputV1,
-    RequestIntentV1,
+    RequestIntentV2,
     SufficiencyOutputV1,
     WorkflowPhase,
     build_context_clarification_question,
@@ -509,29 +509,23 @@ def _request() -> WorkflowStartRequest:
     )
 
 
-def _intent() -> RequestIntentV1:
+def _intent() -> RequestIntentV2:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "Summarize project updates",
-            "user_visible_objective": "Summarize Kim's project updates",
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "Summarize Kim's project updates",
+        "completion_conditions": ["Relevant evidence is available for work analysis."],
+        "constraints": [
+            {"kind": "PERSON", "field": "person", "value": "Kim"},
+        ],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "completion_criteria": ["Relevant evidence is available for work analysis."],
-        "semantic_constraints": {
-            "topics": [{"text": "project updates", "source_text": "project updates"}],
-            "people": [{"mention": "Kim", "role_hint": None, "source_text": "Kim"}],
-            "time": [],
-            "sources": [{"source": "GMAIL", "mention": "mail", "confidence": "HIGH"}],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
-        },
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["GMAIL_THREAD"],
+        "analysis_requirement": "REQUIRED",
     }
 
 

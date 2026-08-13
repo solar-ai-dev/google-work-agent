@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,6 +13,8 @@ from tests.integration.langgraph.test_runtime import (
     _calendar_analysis_output,
     _calendar_selection_output,
     _delete_write_plan_output,
+    _gmail_analysis_output,
+    _gmail_selection_output,
     _make_runtime,
     _review_output,
     _runtime_active_manifest_path,
@@ -42,7 +44,7 @@ from google_work_agent.application.start_run import (
     ResumeRunService,
     StartRunService,
 )
-from google_work_agent.application.workflows import ActionPlanDraftV1, RequestIntentV1
+from google_work_agent.application.workflows import ActionPlanDraftV1, RequestIntentV2
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
     PrepareWriteRetryService,
@@ -92,8 +94,16 @@ def _gmail_draft_plan() -> ActionPlanDraftV1:
                 "version": "1",
                 "payload": payload,
             },
+            "resource_refs": ["gmail_message:message-project-1"],
         }
     )
+    plan["resource_refs"] = [
+        {
+            "resource_handle": "gmail_message:message-project-1",
+            "resource_type": "gmail_message",
+            "resource_id": "message-project-1",
+        }
+    ]
     return plan
 
 
@@ -149,8 +159,16 @@ def _calendar_create_plan() -> ActionPlanDraftV1:
                 "payload": payload,
             },
             "target_resource_ref_id": None,
+            "resource_refs": ["calendar_event:event-focus"],
         }
     )
+    plan["resource_refs"] = [
+        {
+            "resource_handle": "calendar_event:event-focus",
+            "resource_type": "calendar_event",
+            "resource_id": "event-focus",
+        }
+    ]
     return plan
 
 
@@ -203,7 +221,7 @@ def _task_delete_plan() -> ActionPlanDraftV1:
     return plan
 
 
-def _intent_for_write_operation(write_operation: str) -> RequestIntentV1:
+def _intent_for_write_operation(write_operation: str) -> RequestIntentV2:
     if write_operation == "create_gmail_draft":
         return _action_intent(resource="GMAIL_DRAFT", effect="CREATE")
     if write_operation == "send_gmail":
@@ -228,22 +246,22 @@ def _intent_for_write_operation(write_operation: str) -> RequestIntentV1:
 
 
 @pytest.mark.parametrize(
-    ("plan_factory", "calendar_context", "write_operation", "verification_operation"),
+    ("plan_factory", "context_family", "write_operation", "verification_operation"),
     [
-        (_gmail_draft_plan, False, "create_gmail_draft", "get_gmail_draft"),
-        (_send_write_plan_output, False, "send_gmail", "get_gmail_message"),
-        (_write_plan_output, False, "create_task", "get_task"),
-        (_task_update_plan, False, "update_task", "get_task"),
-        (_task_delete_plan, False, "delete_task", "get_task"),
-        (_calendar_create_plan, False, "create_calendar_event", "get_calendar_event"),
-        (_calendar_update_plan, True, "update_calendar_event", "get_calendar_event"),
-        (_delete_write_plan_output, True, "delete_calendar_event", "get_calendar_event"),
+        (_gmail_draft_plan, "GMAIL", "create_gmail_draft", "get_gmail_draft"),
+        (_send_write_plan_output, "GMAIL", "send_gmail", "get_gmail_message"),
+        (_write_plan_output, "TASKS", "create_task", "get_task"),
+        (_task_update_plan, "TASKS", "update_task", "get_task"),
+        (_task_delete_plan, "TASKS", "delete_task", "get_task"),
+        (_calendar_create_plan, "CALENDAR", "create_calendar_event", "get_calendar_event"),
+        (_calendar_update_plan, "CALENDAR", "update_calendar_event", "get_calendar_event"),
+        (_delete_write_plan_output, "CALENDAR", "delete_calendar_event", "get_calendar_event"),
     ],
 )
 def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
     tmp_path: Path,
     plan_factory: Callable[[], ActionPlanDraftV1],
-    calendar_context: bool,
+    context_family: Literal["TASKS", "GMAIL", "CALENDAR"],
     write_operation: str,
     verification_operation: str,
 ) -> None:
@@ -253,27 +271,33 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
     gateway = FakeGoogleGateway(
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     )
-    llm_payloads = (
-        [
-            _intent_for_write_operation(write_operation),
+    if context_family == "CALENDAR":
+        context_payloads = [
             [_plan("CALENDAR", {"calendar_id": "calendar-primary"})],
             _calendar_selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _calendar_analysis_output(),
-            plan_factory(),
-            _review_output("PASS"),
         ]
-        if calendar_context
-        else [
-            _intent_for_write_operation(write_operation),
+    elif context_family == "GMAIL":
+        context_payloads = [
+            [_plan("GMAIL", {})],
+            _gmail_selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _gmail_analysis_output(),
+        ]
+    else:
+        context_payloads = [
             [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
-            plan_factory(),
-            _review_output("PASS"),
         ]
-    )
+    llm_payloads = [
+        _intent_for_write_operation(write_operation),
+        *context_payloads,
+        plan_factory(),
+        _review_output("PASS"),
+    ]
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=llm_payloads,
@@ -381,17 +405,6 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         approved = client.post("/api/v1/actions/action-1/approve", json=approval_body)
         assert approved.status_code == 200
         effective_approval_body = approval_body
-        if write_operation == "create_calendar_event":
-            modified = _wait_for_action_status(client, "MODIFIED")
-            effective_approval_body = {
-                **approval_body,
-                "command_id": "approve-command-2",
-                "expected_version": modified["version"],
-            }
-            reapproved = client.post(
-                "/api/v1/actions/action-1/approve", json=effective_approval_body
-            )
-            assert reapproved.status_code == 200
         completed = _wait_for_snapshot(client, "COMPLETED")
 
         assert _first_action(completed)["status"] == "VERIFIED"
@@ -420,18 +433,14 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
             """
         ).fetchone()
         expected_audit_count = 6 if write_operation == "create_task" else 4
-        expected_approval_count = 2 if write_operation == "create_calendar_event" else 1
-        expected_trace_count = 5 if write_operation == "create_calendar_event" else 4
-        if write_operation == "create_calendar_event":
-            expected_audit_count += 4
-        elif write_operation == "update_calendar_event":
+        if write_operation in {"create_calendar_event", "update_calendar_event"}:
             expected_audit_count += 2
         assert tuple(counts) == (
-            expected_approval_count,
+            1,
             1,
             1,
             expected_audit_count,
-            expected_trace_count,
+            4,
         )
     finally:
         connection.close()
@@ -501,20 +510,6 @@ def _wait_for_snapshot(client: TestClient, expected_status: str) -> dict[str, ob
             return latest
         time.sleep(0.01)
     raise AssertionError(f"run did not reach {expected_status}: {latest}")
-
-
-def _wait_for_action_status(client: TestClient, expected_status: str) -> dict[str, object]:
-    deadline = time.monotonic() + 10
-    latest: dict[str, object] = {}
-    while time.monotonic() < deadline:
-        response = client.get("/api/v1/runs/run-1")
-        assert response.status_code == 200
-        latest = response.json()["snapshot"]
-        action = _first_action(latest)
-        if action["status"] == expected_status:
-            return action
-        time.sleep(0.01)
-    raise AssertionError(f"action did not reach {expected_status}: {latest}")
 
 
 def _first_action(snapshot: dict[str, object]) -> dict[str, object]:

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
         AnswerDraftV1,
         ContextRetrievalResultV1,
         PlanReviewResultV1,
-        RequestIntentV1,
+        RequestIntentV2,
         SourceFetchPlanV1,
         WorkAnalysisResultV1,
     )
@@ -120,7 +120,7 @@ class MultiAgentGraphState(TypedDict):
     conversation_id: str
     thread_id: str
     workflow_phase: str
-    request_intent: RequestIntentV1 | None
+    request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
     workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
     source_fetch_plans: list[SourceFetchPlanV1]
@@ -144,7 +144,7 @@ class GraphStateUpdateV1(TypedDict, total=False):
     """Typed partial update returned by workflow agents and the supervisor."""
 
     workflow_phase: str
-    request_intent: RequestIntentV1 | None
+    request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
     workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
     source_fetch_plans: list[SourceFetchPlanV1]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from tests.integration.langgraph.test_runtime import (
     FIXTURE_ROOT,
     ActionPlanDraftV1,
@@ -14,7 +16,7 @@ from tests.integration.langgraph.test_runtime import (
     GoogleGatewayFaultKind,
     Path,
     ProductFixtureSnapshotLoader,
-    RequestIntentV1,
+    RequestIntentV2,
     StoreWriteActionSuccessCommand,
     WorkflowCorrelationContext,
     WorkflowOutcome,
@@ -30,6 +32,8 @@ from tests.integration.langgraph.test_runtime import (
     _clear_intent,
     _delete_task_write_plan_output,
     _delete_write_plan_output,
+    _gmail_analysis_output,
+    _gmail_selection_output,
     _make_runtime,
     _plan,
     _read_plan_output,
@@ -417,19 +421,19 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
 
 
 @pytest.mark.parametrize(
-    ("plan_output", "expected_operation", "calendar_context", "recovery_fault", "intent"),
+    ("plan_output", "expected_operation", "context_family", "recovery_fault", "intent"),
     [
         (
             _send_write_plan_output,
             "send_gmail",
-            False,
+            "GMAIL",
             None,
             _action_intent(resource="GMAIL_MESSAGE", effect="SEND"),
         ),
         (
             _delete_write_plan_output,
             "delete_calendar_event",
-            True,
+            "CALENDAR",
             None,
             _action_intent(
                 resource="CALENDAR_EVENT",
@@ -440,14 +444,14 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
         (
             _delete_task_write_plan_output,
             "delete_task",
-            False,
+            "TASKS",
             None,
             _action_intent(resource="TASK", effect="DELETE"),
         ),
         (
             _send_write_plan_output,
             "send_gmail",
-            False,
+            "GMAIL",
             GoogleGatewayFaultKind.HTTP_500,
             _action_intent(resource="GMAIL_MESSAGE", effect="SEND"),
         ),
@@ -457,35 +461,36 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
     tmp_path: Path,
     plan_output: Callable[[], ActionPlanDraftV1],
     expected_operation: str,
-    calendar_context: bool,
+    context_family: Literal["TASKS", "GMAIL", "CALENDAR"],
     recovery_fault: GoogleGatewayFaultKind | None,
-    intent: RequestIntentV1,
+    intent: RequestIntentV2,
 ) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
-    llm_payloads = (
-        [
-            intent,
+    if context_family == "CALENDAR":
+        context_payloads = [
             [_plan("CALENDAR", {"calendar_id": "calendar-primary"})],
             _calendar_selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _calendar_analysis_output(),
-            plan_output(),
-            _review_output("PASS"),
         ]
-        if calendar_context
-        else [
-            intent,
+    elif context_family == "GMAIL":
+        context_payloads = [
+            [_plan("GMAIL", {})],
+            _gmail_selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _gmail_analysis_output(),
+        ]
+    else:
+        context_payloads = [
             [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
-            plan_output(),
-            _review_output("PASS"),
         ]
-    )
+    llm_payloads = [intent, *context_payloads, plan_output(), _review_output("PASS")]
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=llm_payloads,

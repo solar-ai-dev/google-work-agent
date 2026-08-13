@@ -15,7 +15,7 @@ from google_work_agent.application.workflows.handoff_contracts import (
     ActionPlanDraftV1,
     AnswerDraftV1,
     ContextRetrievalResultV1,
-    RequestIntentV1,
+    RequestIntentV2,
     SourcePlanningOutputV1,
     WorkAnalysisResultV1,
 )
@@ -30,7 +30,7 @@ from google_work_agent.application.workflows.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.application.workflows.request_understanding import (
-    validate_request_intent_v1,
+    validate_request_intent_v2,
 )
 from google_work_agent.application.workflows.solution_planning import (
     validate_action_plan_draft_v1,
@@ -51,7 +51,7 @@ class ProfilePlanningProjectionV1(TypedDict):
 
 class ProfileRequestSourceOutputV1(TypedDict):
     schema_version: Required[Literal[2]]
-    request_intent: RequestIntentV1
+    request_intent: RequestIntentV2
     source_plan: SourcePlanningOutputV1
 
 
@@ -199,7 +199,7 @@ def validate_profile_request_source_output_v1(value: object) -> ProfileRequestSo
     root = _require_mapping(value, "$")
     _require_exact_keys(root, "$", {"schema_version", "request_intent", "source_plan"})
     _require_schema_version(root, "$", PROFILE_REQUEST_SOURCE_SCHEMA_VERSION)
-    request_intent = validate_request_intent_v1(root["request_intent"])
+    request_intent = validate_request_intent_v2(root["request_intent"])
     source_plan = _validate_source_planning_output_v1(root["source_plan"])
     return {
         "schema_version": PROFILE_REQUEST_SOURCE_SCHEMA_VERSION,

@@ -19,7 +19,7 @@ from google_work_agent.application.workflows import (
     PlanReviewAgent,
     PlanReviewResultV1,
     PlanReviewValidationError,
-    RequestIntentV1,
+    RequestIntentV2,
     ReviewIssueV1,
     ReviewResult,
     WorkAnalysisResultV1,
@@ -851,29 +851,23 @@ def _request() -> WorkflowStartRequest:
     )
 
 
-def _intent() -> RequestIntentV1:
+def _intent() -> RequestIntentV2:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "Review the next response or action plan",
-            "user_visible_objective": "Handle Kim's follow-up",
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "Handle Kim's follow-up",
+        "completion_conditions": ["Produce a review result only."],
+        "constraints": [
+            {"kind": "PERSON", "field": "person", "value": "Kim"},
+        ],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "completion_criteria": ["Produce a review result only."],
-        "semantic_constraints": {
-            "topics": [{"text": "follow-up", "source_text": "follow-up"}],
-            "people": [{"mention": "Kim", "role_hint": None, "source_text": "Kim"}],
-            "time": [],
-            "sources": [{"source": "GMAIL", "mention": "mail", "confidence": "HIGH"}],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
-        },
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["GMAIL_THREAD"],
+        "analysis_requirement": "REQUIRED",
     }
 
 
