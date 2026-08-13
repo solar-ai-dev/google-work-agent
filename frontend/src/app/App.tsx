@@ -18,7 +18,6 @@ import {
   getRunSnapshot,
   getRuntime,
   getSettings,
-  listCalendarResources,
   listConversations,
   modifyAction,
   patchSettings,
@@ -45,7 +44,7 @@ import type {
 } from "../api/contract";
 import { ApiClientError } from "../api/client";
 import { subscribeRunEvents } from "../api/sse";
-import { CalendarMonthView, calendarMonthRange, calendarRangeBoundary, configuredDateKey } from "./CalendarMonthView";
+import { CalendarPanel, useCalendar } from "../features/calendar";
 import { ConversationView, useConversation } from "../features/conversation";
 import { GmailPanel, useGmail } from "../features/gmail";
 import { TasksPanel, useTasks } from "../features/tasks";
@@ -64,14 +63,6 @@ type ResourceState = {
   selectedIds: string[];
   focusItem: ResourceItem | null;
   parentId: string | null;
-  calendarTimeMin: string | null;
-  calendarTimeMax: string | null;
-};
-
-type ResourceCacheEntry = {
-  items: ResourceItem[];
-  nextPageToken: string | null;
-  totalCount: number | null;
 };
 
 type GmailDetailState = {
@@ -81,16 +72,7 @@ type GmailDetailState = {
   error: string | null;
 };
 
-type CalendarMonthRequestInput = {
-  cacheKey: string;
-  parentId: string | null;
-  timeMin: string;
-  timeMax: string;
-};
-
-const resourceCache = new Map<string, ResourceCacheEntry>();
 const SIDEBAR_VISIBLE_PAGE_SIZE = 20;
-const CALENDAR_BROWSE_SIZE = 100;
 
 const THEME_KEY = "gwa.theme";
 const SETTINGS_KEY = "gwa.settings";
@@ -108,11 +90,6 @@ export function App(): JSX.Element {
   const [google, setGoogle] = useState<GoogleConnectionResponse | null>(null);
   const [currentAccount, setCurrentAccount] = useState<CurrentGoogleAccountResponse["account"]>(null);
   const [calendarTimezone, setCalendarTimezone] = useState("Asia/Seoul");
-  const [calendarMonthAnchor, setCalendarMonthAnchor] = useState<string | null>(null);
-  const [calendarSelectedDate, setCalendarSelectedDate] = useState<string | null>(null);
-  const [calendarMonthItems, setCalendarMonthItems] = useState<ResourceItem[]>([]);
-  const [calendarMonthLoading, setCalendarMonthLoading] = useState(false);
-  const [calendarMonthError, setCalendarMonthError] = useState<string | null>(null);
   const [taskSortMenuOpen, setTaskSortMenuOpen] = useState(false);
   const [conversationQuery, setConversationQuery] = useState("");
   const [sidebarFilter, setSidebarFilter] = useState("");
@@ -129,11 +106,15 @@ export function App(): JSX.Element {
     selectedIds: [],
     focusItem: null,
     parentId: null,
-    calendarTimeMin: null,
-    calendarTimeMax: null,
   });
   const gmail = useGmail({ accountId: currentAccount?.account_id, active: resourceState.tab === "gmail" });
   const tasks = useTasks({ accountId: currentAccount?.account_id, parentId: resourceState.parentId, active: resourceState.tab === "tasks", filter: sidebarFilter });
+  const calendar = useCalendar({
+    accountId: currentAccount?.account_id,
+    calendarId: resourceState.parentId,
+    active: startup.status === "ready" && google?.connected === true && resourceState.tab === "calendar",
+    timezone: calendarTimezone,
+  });
   const selectedResourceIds = useMemo(
     () => [...new Set(resourceState.selectedIds)],
     [resourceState.selectedIds],
@@ -223,9 +204,6 @@ export function App(): JSX.Element {
   };
   const startupPromiseRef = useRef<Promise<void> | null>(null);
   const taskSortMenuRef = useRef<HTMLDivElement | null>(null);
-  const calendarMonthRequestRef = useRef({ generation: 0, cacheKey: "" });
-  const calendarMonthCacheGenerationRef = useRef(new Map<string, number>());
-  const calendarMonthInFlightRef = useRef(new Map<string, Promise<ResourceItem[]>>());
   useEffect(() => {
     if (!taskSortMenuOpen) {
       return;
@@ -275,106 +253,12 @@ export function App(): JSX.Element {
     setGmailDetail({ resourceId: null, status: "idle", detail: null, error: null });
   }, [loadGmailDetail, resourceState.focusItem]);
 
-  const calendarMonthRequestInput = useCallback((monthAnchor: string): CalendarMonthRequestInput => {
-    const range = calendarMonthRange(monthAnchor);
-    const timeMin = calendarRangeBoundary(range.gridStart, calendarTimezone);
-    const timeMax = calendarRangeBoundary(range.gridEnd, calendarTimezone);
-    const cacheKey = resourceCacheKey({
-      accountId: currentAccount?.account_id ?? "anon",
-      tab: "calendar",
-      parentId: resourceState.parentId,
-      query: "",
-      calendarTimeMin: timeMin,
-      calendarTimeMax: timeMax,
-    });
-    return { cacheKey, parentId: resourceState.parentId, timeMin, timeMax };
-  }, [calendarTimezone, currentAccount?.account_id, resourceState.parentId]);
-
-  const requestCalendarMonth = useCallback((input: CalendarMonthRequestInput, force = false): Promise<ResourceItem[]> => {
-    const cacheGeneration = force
-      ? (calendarMonthCacheGenerationRef.current.get(input.cacheKey) ?? 0) + 1
-      : (calendarMonthCacheGenerationRef.current.get(input.cacheKey) ?? 0);
-    calendarMonthCacheGenerationRef.current.set(input.cacheKey, cacheGeneration);
-    if (force) resourceCache.delete(input.cacheKey);
-    const inFlightKey = `${input.cacheKey}|${cacheGeneration}`;
-    const existing = calendarMonthInFlightRef.current.get(inFlightKey);
-    if (existing) return existing;
-
-    const request = (async (): Promise<ResourceItem[]> => {
-      let items: ResourceItem[] = [];
-      let pageToken: string | null = null;
-      do {
-        const response = await listCalendarResources(
-          input.parentId,
-          pageToken,
-          CALENDAR_BROWSE_SIZE,
-          input.timeMin,
-          input.timeMax,
-        );
-        items = [...items, ...response.items];
-        pageToken = response.next_page_token;
-      } while (pageToken !== null);
-      if (calendarMonthCacheGenerationRef.current.get(input.cacheKey) === cacheGeneration) {
-        resourceCache.set(input.cacheKey, { items, nextPageToken: null, totalCount: items.length });
-      }
-      return items;
-    })();
-    calendarMonthInFlightRef.current.set(inFlightKey, request);
-    const clearInFlight = (): void => {
-      if (calendarMonthInFlightRef.current.get(inFlightKey) === request) {
-        calendarMonthInFlightRef.current.delete(inFlightKey);
-      }
-    };
-    void request.then(clearInFlight, clearInFlight);
-    return request;
-  }, []);
-
-  const prefetchAdjacentCalendarMonths = useCallback((monthAnchor: string): void => {
-    for (const offset of [-1, 1]) {
-      const input = calendarMonthRequestInput(shiftMonth(monthAnchor, offset));
-      if (resourceCache.get(input.cacheKey)?.nextPageToken === null) continue;
-      void requestCalendarMonth(input).catch(() => undefined);
-    }
-  }, [calendarMonthRequestInput, requestCalendarMonth]);
-
-  const loadCalendarMonth = useCallback(async (monthAnchor: string, force = false): Promise<void> => {
-    const input = calendarMonthRequestInput(monthAnchor);
-    const generation = calendarMonthRequestRef.current.generation + 1;
-    calendarMonthRequestRef.current = { generation, cacheKey: input.cacheKey };
-    const isCurrentRequest = (): boolean => (
-      calendarMonthRequestRef.current.generation === generation
-      && calendarMonthRequestRef.current.cacheKey === input.cacheKey
-    );
-    const cached = !force ? resourceCache.get(input.cacheKey) : undefined;
-    if (cached?.nextPageToken === null) {
-      setCalendarMonthItems(cached.items);
-      setCalendarMonthLoading(false);
-      setCalendarMonthError(null);
-      prefetchAdjacentCalendarMonths(monthAnchor);
-      return;
-    }
-    setCalendarMonthLoading(true);
-    setCalendarMonthError(null);
-    try {
-      const items = await requestCalendarMonth(input, force);
-      if (!isCurrentRequest()) return;
-      setCalendarMonthItems(items);
-      setCalendarMonthLoading(false);
-      setCalendarMonthError(null);
-      prefetchAdjacentCalendarMonths(monthAnchor);
-    } catch (error) {
-      if (!isCurrentRequest()) return;
-      setCalendarMonthLoading(false);
-      setCalendarMonthError(error instanceof ApiClientError ? error.message : "일정을 불러오지 못했습니다.");
-    }
-  }, [calendarMonthRequestInput, prefetchAdjacentCalendarMonths, requestCalendarMonth]);
-
   const runStartup = useCallback(async (): Promise<void> => {
     // Preserve the one-time fragment in invocation-local memory before awaits.
     const bootstrapFragment = readBootstrapFragment(window.location.hash);
-    resourceCache.clear();
     gmail.reset();
     tasks.reset();
+    calendar.reset();
     setStartup({
       phase: "checks",
       status: "loading",
@@ -434,7 +318,7 @@ export function App(): JSX.Element {
         error: message,
       });
     }
-  }, [refreshConversations, selectRun]);
+  }, [calendar.reset, refreshConversations, selectRun]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -458,17 +342,6 @@ export function App(): JSX.Element {
       void tasks.loadCompleted();
     }
   }, [gmail.loadCount, google?.connected, startup.status, tasks.loadCompleted, tasks.preload]);
-
-  useEffect(() => {
-    if (startup.status !== "ready" || !google?.connected || resourceState.tab !== "calendar") return;
-    const monthAnchor = calendarMonthAnchor ?? configuredDateKey(new Date(), calendarTimezone).slice(0, 7);
-    if (calendarMonthAnchor === null) {
-      setCalendarMonthAnchor(monthAnchor);
-      setCalendarSelectedDate(configuredDateKey(new Date(), calendarTimezone));
-      return;
-    }
-    void loadCalendarMonth(monthAnchor);
-  }, [calendarMonthAnchor, calendarTimezone, google?.connected, loadCalendarMonth, resourceState.tab, startup.status]);
 
   useEffect(() => {
     if (startup.status !== "ready" || !google?.connected || resourceState.tab !== "gmail") return;
@@ -729,9 +602,9 @@ export function App(): JSX.Element {
 
   async function handleGoogleDisconnect(): Promise<void> {
     await disconnectGoogle();
-    resourceCache.clear();
     gmail.reset();
     tasks.reset();
+    calendar.reset();
     setGoogle((current) => current ? { ...current, connected: false } : current);
     setCurrentAccount(null);
     setResourceState((current) => ({
@@ -841,16 +714,11 @@ export function App(): JSX.Element {
                     onClick={() => {
                       setTaskSortMenuOpen(false);
                       setSidebarFilter("");
-                      const calendarWindow = tab === "calendar" && resourceState.calendarTimeMin === null
-                        ? newCalendarWindow()
-                        : null;
                       setResourceState((current) => ({
                         ...current,
                         tab,
                         parentId: null,
                         focusItem: null,
-                        calendarTimeMin: calendarWindow?.timeMin ?? current.calendarTimeMin,
-                        calendarTimeMax: calendarWindow?.timeMax ?? current.calendarTimeMax,
                       }));
                     }}
                   >
@@ -881,22 +749,9 @@ export function App(): JSX.Element {
                     return;
                   }
                   if (activeTab === "calendar") {
-                    if (calendarMonthAnchor) void loadCalendarMonth(calendarMonthAnchor, true);
+                    void calendar.refresh();
                     return;
                   }
-                  const calendarTimeMin = resourceState.calendarTimeMin;
-                  const calendarTimeMax = resourceState.calendarTimeMax;
-                  const cacheIdentity = {
-                    accountId: currentAccount?.account_id ?? "anon",
-                    tab: activeTab,
-                    parentId: resourceState.parentId,
-                    query: "",
-                    calendarTimeMin: null,
-                    calendarTimeMax: null,
-                    taskFilter: "",
-                  };
-                  resourceCache.delete(resourceCacheKey(cacheIdentity));
-                  if (activeTab === "calendar" && calendarMonthAnchor) void loadCalendarMonth(calendarMonthAnchor, true);
                 }}
               >
                 ↻
@@ -950,36 +805,15 @@ export function App(): JSX.Element {
                 formatCompletedAt={(item) => formatCompletedTaskDate(firstPresentationValue(item.metadata, ["completed_at"]), calendarTimezone)}
               />
             ) : null}
-            {resourceState.tab === "calendar" ? <>
-              <div className="resource-search-row">
-                <label className="resource-search">
-                  <span className="resource-search-icon" aria-hidden="true">⌕</span>
-                  <input aria-label="일정 검색" placeholder="일정 검색" value={sidebarFilter} onChange={(event) => setSidebarFilter(event.target.value)} />
-                </label>
-              </div>
-              {calendarMonthAnchor && calendarSelectedDate ? (
-                <CalendarMonthView
-                  monthAnchor={calendarMonthAnchor}
-                  timezone={calendarTimezone}
-                  items={calendarMonthItems}
-                  selectedDate={calendarSelectedDate}
-                  loading={calendarMonthLoading}
-                  error={calendarMonthError}
-                  onPreviousMonth={() => {
-                    const previous = shiftMonth(calendarMonthAnchor, -1);
-                    setCalendarMonthAnchor(previous);
-                    setCalendarSelectedDate(`${previous}-01`);
-                  }}
-                  onNextMonth={() => {
-                    const next = shiftMonth(calendarMonthAnchor, 1);
-                    setCalendarMonthAnchor(next);
-                    setCalendarSelectedDate(`${next}-01`);
-                  }}
-                  onSelectDate={setCalendarSelectedDate}
-                  onSelectEvent={(item) => setResourceState((current) => ({ ...current, focusItem: item }))}
-                />
-              ) : null}
-            </> : null}
+            {resourceState.tab === "calendar" ? (
+              <CalendarPanel
+                calendar={calendar}
+                timezone={calendarTimezone}
+                filter={sidebarFilter}
+                onFilterChange={setSidebarFilter}
+                onFocusEvent={(item) => setResourceState((current) => ({ ...current, focusItem: item }))}
+              />
+            ) : null}
           </div>
         </aside>
 
@@ -1414,38 +1248,6 @@ function readBootstrapFragment(hash: string): { bootstrap_secret: string; servic
 
 function formatTime(value: number): string {
   return new Date(value).toLocaleString("ko-KR", { hour12: false });
-}
-
-function resourceCacheKey(identity: {
-  accountId: string;
-  tab: ResourceTab;
-  parentId: string | null;
-  query: string;
-  calendarTimeMin: string | null;
-  calendarTimeMax: string | null;
-}): string {
-  return [
-    identity.accountId,
-    identity.tab,
-    identity.parentId ?? "",
-    identity.query,
-    identity.calendarTimeMin ?? "",
-    identity.calendarTimeMax ?? "",
-  ].join("|");
-}
-
-function newCalendarWindow(): { timeMin: string; timeMax: string } {
-  const timeMin = new Date();
-  return {
-    timeMin: timeMin.toISOString(),
-    timeMax: new Date(timeMin.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString(),
-  };
-}
-
-function shiftMonth(monthAnchor: string, offset: number): string {
-  const [year, month] = monthAnchor.split("-").map(Number);
-  const shifted = new Date(Date.UTC(year, month - 1 + offset, 1));
-  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 function totalPageCount(totalCount: number | null, loadedItemCount: number): number {
