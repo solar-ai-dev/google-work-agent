@@ -1,16 +1,16 @@
 # 05. Google Work Agent · Context · Retrieval 설계서
 
-> **상태:** Draft v2.10 · **기준일:** 2026-08-13 · **대상:** P0 MVP
+> **상태:** Draft v2.11 · **기준일:** 2026-08-13 · **대상:** P0 MVP
 >
 > Retrieval은 `ToolRoutePlanV2.input_plan.input_routes`를 입력으로 받는 하나의 LangGraph Subgraph다. Tool Route는 Main Graph에서 이미 확정되어 있으며 Retrieval은 Tool 종류를 다시 선택하지 않는다. Subgraph 내부에서 Query 계획 → 결정적 Read → Normalize/Segment → Run-scoped RAG → Evidence → Sufficiency를 수행하고 `RetrievalResultV1`과 필요한 Typed `WorkflowSignalV1`만 Parent에 반환한다.
 
 ## 1. 목적
 
-Gmail·Tasks·Calendar에서 필요한 자료를 최소 호출로 수집하고, 가져온 자료를 그대로 다음 LLM에 전달하지 않고 **관련 Segment를 RAG로 검색·정렬하여 Evidence만 선별**한다. 영구 Vector Index는 P0 필수가 아니며 Run-scoped Retrieval/Reranking을 기본 구조로 사용한다.
+고정된 Connector IN Route에서 필요한 자료를 최소 호출로 수집하고, 가져온 자료를 그대로 다음 LLM에 전달하지 않고 **관련 Segment를 RAG로 검색·정렬하여 Evidence만 선별**한다. 영구 Vector Index는 P0 필수가 아니며 Run-scoped Retrieval/Reranking을 기본 구조로 사용한다. P0 첫 Connector는 `google_workspace`이며 Source 전략은 Gmail·Tasks·Calendar에 대해 구체화한다.
 
 ## 2. 확정 결정
 
-- `CTX-001`: 요청 시점 Google 원본 연합 검색
+- `CTX-001`: 요청 시점 Connector 원본 연합 검색
 - `CTX-002`: IN/OUT Tool Route 선택은 Retrieval 이전 `Tool Route Subgraph`가 소유
 - `CTX-003`:
 
@@ -65,7 +65,7 @@ class RetrievalStateV1:
 - `request_intent`, `input_routes`는 Parent Projection이며 Retrieval이 수정하지 않는다.
 - `query_plan`, `query_attempts`, `read_result_handles`, `segment_handles`, `rag_candidates`는 Local State다.
 - Parent에는 `RetrievalResultV1`만 병합한다.
-- 실제 Google 원문은 Run Retrieval Cache Handle로 참조하고 Main State·Prompt·Trace에 복제하지 않는다.
+- 실제 Connector 원문은 Run Retrieval Cache Handle로 참조하고 Main State·Prompt·Trace에 복제하지 않는다.
 
 ## 5. Node별 책임
 

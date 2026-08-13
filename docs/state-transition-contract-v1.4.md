@@ -122,4 +122,4 @@ Modify 재검토의 `REVISE`/`RETRIEVE_MORE`는 내부 `WAITING_APPROVAL → PLA
 
 ## ClaimContextV2 실행권 검증 경계
 
-`ClaimExecution`의 Domain 상태 전이 의미와 v1.4 Command 결과는 유지한다. `ClaimContextV2`는 Claim Commit **이후 외부 MCP Write 직전**의 실행권 전달·인자 무결성 계약이며 새로운 Action/Run 상태를 추가하지 않는다. 상세 필드와 서명 규칙은 `07 Interface v2.10`, 보안 규칙은 `09 Security v2.5`가 소유한다.
+`ClaimExecution`의 Domain 상태 전이 의미와 v1.4 Command 결과는 유지한다. `ClaimContextV2`는 Claim Commit **이후 외부 MCP Write 직전**의 실행권 전달·인자 무결성 계약이며 새로운 Action/Run 상태를 추가하지 않는다. 상세 필드와 서명 규칙은 `07 Interface v2.17`, 보안 규칙은 `09 Security v2.10`가 소유한다.

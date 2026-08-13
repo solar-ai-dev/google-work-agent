@@ -1,8 +1,8 @@
 # 13. Google Work Agent · 평가 · 실험 설계서
 
-> **문서 기준:** `01 PRD v2.9`, `01-A v2.15`, `01-B v2.10`, `03 Architecture v3.4`, `05 Retrieval v2.10`, `06 Workflow v7.5`, `07 Interface v2.16`, `10 Infrastructure v2.8`, `11 Observability v2.11`, `12 Test v3.12`, `15 Agent Capability·Failure·Prompt v1.10`를 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `03 Architecture v3.5`, `05 Retrieval v2.11`, `06 Workflow v7.6`, `07 Interface v2.17`, `10 Infrastructure v2.9`, `11 Observability v2.12`, `12 Test v3.13`, `15 Agent Capability·Failure·Prompt v1.11`를 기준으로 한다.
 >
-> **상태:** Draft v3.8 · **기준일:** 2026-08-13 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
+> **상태:** Draft v3.9 · **기준일:** 2026-08-13 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
 
 ## 먼저 읽기 — 이 문서가 결정하는 것
 
@@ -62,7 +62,7 @@
 - Retrieval 실험에서는 `ToolRoutePlanV2`을 고정하고 Retrieval Query·Read·RAG만 비교한다.
 - Node 단독 실험은 Gold Upstream 입력을 사용하고, Handoff 실험은 실제 Upstream 출력을 사용한다.
 - LLM Judge는 의미 품질의 보조 지표이며 Safety·Tool·Argument·End-state 판정의 기준점이 아니다.
-- 실제 사용자 Gmail·Tasks·Calendar 데이터는 평가셋에 포함하지 않는다.
+- 실제 사용자 Connector 데이터는 평가셋에 포함하지 않는다. P0 Google Workspace의 Gmail·Tasks·Calendar도 합성 Fixture만 사용한다.
 - 평균뿐 아니라 Case별 실패, 반복 안정성, 비용, p50·p95 Latency를 함께 본다.
 - 후보 결과를 보고 Gold를 임의 변경하지 않는다.
 - 실험 후보와 Raw Result는 제품 배포 Artifact에 포함하지 않는다.
@@ -75,9 +75,9 @@
 Canonical Case
 ├─ Business Scenario
 ├─ Fixture Snapshot
-│  ├─ Gmail
-│  ├─ Tasks
-│  └─ Calendar
+│  ├─ google_workspace / Gmail
+│  ├─ google_workspace / Tasks
+│  └─ google_workspace / Calendar
 ├─ Canonical User Prompt
 ├─ Structured Gold
 ├─ Node Input·Gold
@@ -347,7 +347,7 @@ Gold:
 
 - Allowed Read Tool Violation 0
 - Read Argument Constraint Accuracy
-- MCP Read Tool Call 수 + MCP 내부 Google Provider Page·Detail API Call 수
+- Connector별 MCP Read Tool Call 수 + MCP 내부 Provider Page·Detail API Call 수
 - Retrieval Round·Latency
 - RAG Required Segment Recall
 - Evidence Precision/Coverage
@@ -386,7 +386,7 @@ HIGH
 - Hard Negative Rejection
 - Context Token
 - MCP Tool Call
-- MCP 내부 Google Provider API Call
+- MCP 내부 Provider API Call
 - p50·p95 Latency
 - Downstream Answer·Plan Accuracy
 
@@ -1055,7 +1055,7 @@ Final 채택 기준:
 
 ## 12. 공통 Metrics
 
-Google Workspace 비용/효율 측정은 두 층으로 분리한다. `mcp_tool_call_count`·`mcp_read_tool_call_count`는 제품 Core가 MCP 경계를 통해 수행한 Tool 호출 수이고, `google_provider_api_call_count`는 Google Work MCP Server 내부 Adapter가 pagination/detail hydration 등으로 실제 Provider API를 호출한 횟수다. Core의 Provider API/SDK 직접 호출은 효율 후보가 아니라 계약 위반으로 처리한다.
+Connector 비용/효율 측정은 `connector_id`를 기준으로 두 층으로 분리한다. `mcp_tool_call_count`·`mcp_read_tool_call_count`는 제품 Core가 Connector MCP 경계를 통해 수행한 Tool 호출 수이고, `provider_api_call_count`는 해당 Connector MCP Server 내부 Adapter가 pagination/detail hydration 등으로 실제 Provider API를 호출한 횟수다. Core의 Provider API/SDK 직접 호출은 효율 후보가 아니라 계약 위반으로 처리한다. P0는 `connector_id=google_workspace`다.
 
 ```text
 evaluation_item_count
@@ -1064,7 +1064,7 @@ llm_call_count
 provider_http_request_count
 mcp_tool_call_count
 mcp_read_tool_call_count
-google_provider_api_call_count
+provider_api_call_count
 input_token_count
 output_token_count
 cost_usd
@@ -1103,7 +1103,7 @@ Agent 평가 결과는 단일 점수로 끝내지 않고 다음 네 층을 함�
 
 1. **Outcome** — Business Task Success, Answer/Plan Accuracy, Write Final State Correctness.
 2. **Process** — Stage Milestone, Handoff required-field preservation, Evidence ID/Constraint loss, contradiction introduction, Error Propagation Depth, duplicate/unnecessary Tool Call.
-3. **Efficiency** — `agent_invocation_count`, `llm_call_count`, input/output/communication token, MCP Tool Call / MCP 내부 Google Provider API Call, Cost, p50/p95 Latency, Cost per Successful Run.
+3. **Efficiency** — `agent_invocation_count`, `llm_call_count`, input/output/communication token, Connector별 MCP Tool Call / MCP 내부 Provider API Call, Cost, p50/p95 Latency, Cost per Successful Run.
 4. **Reliability** — 반복 Trial 평균·분산, Case Win/Loss/Tie, paired difference, bootstrap confidence interval, finalist consistency.
 
 E06-A는 **제품 후보 패키지의 native 성능·비용 비교**이며 `agent_count` 단독 인과효과로 보고하지 않는다. E06-B가 post-retrieval decomposition의 원인 분석을 보조한다.
@@ -1172,7 +1172,7 @@ BTS =
 
 ### 13.4 비용·속도
 
-Cost·Token·Agent Invocation·LLM Call·MCP Tool Call·MCP 내부 Google Provider API Call·p95 Latency는 **정확도를 보상하는 점수 항목이 아니다.** Safety Gate와 품질 하한을 통과한 후보 사이에서 Pareto 비교·동률 판단에 사용한다.
+Cost·Token·Agent Invocation·LLM Call·Connector별 MCP Tool Call·MCP 내부 Provider API Call·p95 Latency는 **정확도를 보상하는 점수 항목이 아니다.** Safety Gate와 품질 하한을 통과한 후보 사이에서 Pareto 비교·동률 판단에 사용한다.
 
 따라서 `0.7×품질 + 0.3×비용` 같은 임의 종합 점수를 만들지 않는다.
 
@@ -1244,7 +1244,7 @@ llm_call_count
 provider_http_request_count
 mcp_tool_call_count
 mcp_read_tool_call_count
-google_provider_api_call_count
+provider_api_call_count
 input_token_count
 output_token_count
 cost_usd

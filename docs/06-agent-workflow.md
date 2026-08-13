@@ -1,8 +1,8 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.9`, `01-A v2.15`, `01-B v2.10`, `02 UI·UX v2.11`, `03 Architecture v3.4`, `04 Database v1.15`, `05 Retrieval v2.10`, `07 Interface v2.16`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.16`, `05 Retrieval v2.11`, `07 Interface v2.17`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v7.5 · **DB Schema:** v1.6 · **대상:** P0 MVP
+> **상태:** Draft v7.6 · **DB Schema:** v1.6 · **대상:** P0 MVP
 >
 > Main LangGraph는 결정적 Supervisor와 Versioned Typed Main State를 소유한다. 전문 Agent는 LangGraph Subgraph이며 Parent State에서 자기 책임에 필요한 필드만 Projection 받아 Local State를 단계적으로 채우고, 완료 시 공식 Typed Result만 Main State에 병합한다. Schema는 출력 가능 범위를 통제하고, State는 확정 정보를 기억하며, Prompt는 각 LLM Node의 단일 작업만 지시한다. 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -16,7 +16,7 @@
 - **Schema:** Node·Subgraph가 만들 수 있는 구조와 닫힌 값을 통제한다.
 - **Prompt:** 선택된 Node가 지금 해야 할 한 가지 판단·작성 작업만 지시한다.
 - **Edge:** Node Result와 공식 State를 기준으로 코드가 결정한다. LLM 자유 텍스트가 다음 Node를 선택하지 않는다.
-- **Tool Route:** IN에서 어디서 읽고 OUT으로 어디에 어떤 Effect를 만들지 한 번 결정해 Main State에 저장한다. Downstream Agent는 재선택하지 않는다.
+- **Tool Route:** IN에서 어떤 Connector·Resource·Read Tool을 사용할지, OUT으로 어떤 Connector·Resource·Effect·Tool을 사용할지 한 번 결정해 Main State에 저장한다. P0 첫 Connector는 Google Workspace다. Downstream Agent는 재선택하지 않는다.
 - **Write:** 어떤 Agent Subgraph도 직접 실행하지 않는다.
 
 ## 1. Main LangGraph
@@ -101,7 +101,7 @@ flowchart TD
 - Planning Action의 Tool identity는 `OutputToolRouteV1.selected_tool_id`를 결정적 Assembler가 복사해 materialize한다. Argument Writer나 Planning LLM이 Tool을 다시 선택·교체하지 않는다.
 - Tool Route의 Registry binding은 signed registry의 Resource·Effect·Schema 적합성을 검증하는 **결정적 eligibility filtering**만 허용한다. 후보가 하나면 코드가 확정하고, 여러 eligible 후보의 의미 선택이 필요한 경우에만 작은 선택 Node가 판단한다. 임의 heuristic shortlist로 등록 Tool을 선제 제거하지 않는다.
 - `TASK + CREATE`는 기존 미완료 Task 중복검사용 Tasks READ를, `CALENDAR + CREATE`는 대상 Calendar의 Event/FreeBusy 충돌검사용 READ를 결정적 Policy Precondition으로 추가한다. 사용자 지정 Source·기간·Resource 범위를 벗어나면 `SCOPE_EXPANSION_REQUIRED` Confirmation 전에는 확장하지 않는다. 거절 후 검사를 우회한 Write Plan은 금지한다.
-- Release Graph에서 모든 Google READ 의미는 `InputRoutePlanV1 → Retrieval`이 소유하며 실제 외부 조회는 Retrieval의 결정적 Application Node가 **MCP Read Port/Tool만 호출**해 수행한다. React·FastAPI Route·Application·LangGraph·Agent·Domain은 Gmail·Tasks·Calendar Provider API/SDK를 직접 호출하지 않는다. Provider API는 Google Work MCP Server 내부 Adapter 구현에만 존재한다.
+- Release Graph에서 모든 외부 Connector READ 의미는 `InputRoutePlanV1 → Retrieval`이 소유하며 실제 외부 조회는 Retrieval의 결정적 Application Node가 **Connector MCP Read Port/Tool만 호출**해 수행한다. React·FastAPI Route·Application·LangGraph·Agent·Domain은 Gmail·Tasks·Calendar Provider API/SDK를 직접 호출하지 않는다. Provider API는 Google Work MCP Server 내부 Adapter 구현에만 존재한다.
 - `OutputPlanV1`의 Action Route는 `CREATE | UPDATE | SEND | DELETE`만 허용한다. Release SIX Graph는 일반 Retrieval READ를 ActionPlan의 READ Action으로 만들지 않는다. Legacy READ Action 계약은 Domain 호환 경계 테스트에서만 유지한다.
 - `PREFLIGHT`는 실행으로 자동 fall-through하지 않는다. Domain Claim/Preflight 결과가 `applied=true`이고 Approval·Policy Confirmation Receipt·Arguments/Execution Hash·State Version이 모두 유효할 때만 `ACTION_EXECUTION`으로 간다. 재승인이 필요하면 `WAITING_APPROVAL`, 복구가 필요하면 `RECOVERY`, 차단/무효면 `FINALIZE`로 라우팅한다.
 - `RECOVERY`도 `VERIFICATION`으로 자동 loop하지 않는다. 기존 결과 회수나 재검증이 필요한 경우에만 Verification으로 돌아가며, 실패가 확정되면 terminal result를 합성하고, Domain이 `RECOVERY_REQUIRED`인 동안은 Graph를 suspend해 명시적 `resolve-recovery`/재인증을 기다린다. 차단·취소는 Terminal로 간다.

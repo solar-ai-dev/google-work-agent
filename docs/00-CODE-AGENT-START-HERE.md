@@ -1,47 +1,86 @@
-# Google Work Agent · Code Agent Start Here
+# Google Work Agent — Coding Agent Start Here
 
-> **Source Pack:** 2026-08-13 Notion Canonical · DB Schema v1.6 · Workflow v7.5
-> **목적:** 구현·검수 Agent가 현재 계약을 먼저 읽고 실제 소스와 비교한 뒤 안전 경계를 훼손하지 않고 작업하도록 한다.
+## 목적
 
-## 1. 최초 읽기 순서
+이 문서는 코딩 에이전트가 저장소를 수정하기 전에 읽어야 하는 **진입 가이드**다. 권위 계약 자체를 새로 정의하지 않으며, 충돌 시 25개 Canonical Source 문서를 따른다.
+
+## 현재 설계 기준
+
+- 제품은 Windows 11 x64 단일 사용자 로컬 애플리케이션이다.
+- Frontend는 React/TypeScript/Vite, Local Agent Service는 FastAPI, Workflow는 LangGraph다.
+- Main Graph는 결정적 Supervisor이며 Agent는 전문 LangGraph Subgraph다.
+- 외부 업무 시스템은 **Connector Registry → MCP Client/Port → Connector MCP Server → Provider Adapter** 경계를 통해 접근한다.
+- P0 첫 Connector는 `google_workspace`이며 Gmail·Google Tasks·Google Calendar를 제공한다.
+- Core/Application/LangGraph/Agent/Domain은 Provider API/SDK를 직접 호출하지 않는다.
+- 모든 Write는 `Domain Validation → Approval → Claim → Connector MCP Write → Verification Read`를 거친다.
+- Domain Store는 승인·실행·검증 사실의 기준점이며 Checkpoint는 Graph 재개 위치다.
+
+## 반드시 먼저 읽을 문서
 
 ```text
-00-google-work-agent-overview.md
-→ 00-PROJECT-SOURCE-GUIDE.md
-→ 01-requirements-prd.md
-→ 01-b-policy-definition-v2.8.md
-→ 03-system-architecture.md
-→ 04-domain-database-design.md
-→ 0001~0005 migration SQL
-→ state-transition-contract-v1.4.md
-→ 05-context-retrieval.md
-→ 06-agent-workflow.md
-→ 07-tool-mcp-internal-interface.md
-→ 12-test-design.md
-→ 15-agent-capability-failure-prompt-contract.md
+01 PRD
+01-A Functional
+01-B Policy
+03 Architecture
+04 Domain·DB
+05 Retrieval
+06 Workflow
+07 Interface
+08 Sequence
+09 Security
+12 Test
+15 Agent Capability·Failure·Prompt
 ```
 
-## 2. 구현 기준점
-- 실제 구현 상태는 repository source/test/runtime migration을 확인한다. 문서와 코드가 다르면 임의로 하나를 정답으로 만들지 말고 차이를 보고한다.
-- 설계 권위는 Concern Owner 규칙을 따른다. 01-B 안전, 04 Domain/DB, 05 Retrieval, 06 Workflow, 07 Interface를 하위 문서가 완화할 수 없다.
+DB 또는 상태 전이를 변경하면 추가로 다음을 읽는다.
 
-## 3. LangGraph 구현 불변조건
-- Main Supervisor는 결정적 Router다.
-- Agent는 LangGraph Subgraph이며 내부 Node마다 최소 State Projection을 사용한다.
-- Schema=출력 통제, State=확정 메모리, Prompt=현재 Node 작업 지시, Edge=결정적 Routing이다.
-- Tool Route가 IN/OUT을 한 번 확정하며 downstream Tool 재선택을 금지한다.
-- Google Workspace는 MCP 단일 경계다. 제품 Core에서 Gmail·Tasks·Calendar Provider API/SDK 직접 호출·직접 Provider Client 구성·MCP 장애 시 direct fallback을 금지한다.
-- `TASK + CREATE` 중복검사, `CALENDAR + CREATE` 충돌검사는 Policy Precondition READ다.
-- 사용자 범위 밖 READ는 `SCOPE_EXPANSION_REQUIRED` 확인 전 실행하지 않는다.
-- LLM 관계 후보는 deterministic validation 전 최종 중복/충돌 사실이 아니다.
-- Policy Override는 실제 사용자 응답 기반 `PolicyConfirmationReceiptV1` 없이는 진행하지 않는다.
+```text
+state-transition-contract-v1.4.md
+state-transition-test-matrix-v1.4.md
+0001~0005 migration SQL
+```
 
-## 4. Write 불변조건
-- 승인 없는 Write 금지.
-- ClaimContextV2는 승인 Business Hash와 실제 Execution Hash를 분리한다.
-- MCP Tool·MCP 내부 Google Provider API·LLM 외부 호출 중 SQLite Write Transaction을 유지하지 않는다.
-- `UNKNOWN_RESULT` blind resend 금지.
-- Write 후 MCP Verification Read로 실제 Google Provider 상태 재조회 필수.
+## 구현 시 핵심 불변조건
 
-## 5. 구현 완료 검증
-Repository가 정의한 테스트/정적 분석 명령을 우선한다. 최소 Unit/Integration/전체 테스트, Ruff, mypy, `git diff --check`를 실행하고 안전·상태 전이·Tool Contract 실패가 있으면 완료로 판정하지 않는다.
+1. LLM이 Policy 최종 허용 여부를 결정하지 않는다.
+2. Agent가 다른 Agent를 직접 호출하지 않는다.
+3. Tool Route가 Connector/IN/OUT Tool을 확정한 뒤 Retrieval·Planning이 재선택하지 않는다.
+4. 외부 READ는 Retrieval의 결정적 Application Node가 Connector MCP Read Port를 호출한다.
+5. 외부 Provider API direct fallback을 만들지 않는다.
+6. 승인 전에 Write하지 않는다.
+7. 승인된 Business Arguments와 실제 실행 Arguments의 무결성을 Claim V2로 검증한다.
+8. `UNKNOWN_RESULT`에서는 blind resend하지 않는다.
+9. 성공 Write는 Provider 상태 재조회로 검증한다.
+10. 기존 Migration은 이력/checksum Artifact이므로 소급 수정하지 않는다.
+
+## Connector 확장 시 주의
+
+Core의 장기 의미는 Connector-neutral이지만 현재 P0 구현에는 Google Workspace-first 호환 구조가 남아 있다.
+
+- DB v1.6의 `GoogleAccount` / `resource_refs.source` / 일부 CHECK는 P0 Google Workspace 값에 닫혀 있다.
+- 실제 두 번째 Connector를 추가할 때는 새 Migration으로 Account binding과 Resource identity를 확장한다.
+- 미래 Connector의 Tool 이름·OAuth 방식·Schema를 미리 추측해 문서나 코드에 넣지 않는다.
+- 먼저 Connector capability/registry/port 계약을 만족시키고 Provider-specific 세부는 Adapter 내부로 격리한다.
+
+## 수정 순서
+
+```text
+권위 문서 확인
+→ 현재 구현 조사
+→ Gap 식별
+→ 최소 완결 변경
+→ Contract/Unit Test
+→ Integration Test
+→ 관련 Safety Regression
+→ 문서/구현 정합성 재검수
+```
+
+## 금지
+
+- 설계 근거 없이 광범위한 리네이밍
+- 안전 임계 흐름과 무관한 대규모 동시 리팩터링
+- Provider API direct call 추가
+- 승인/Claim/Verification 우회
+- Migration 소급 수정
+- Prompt에 Gold/Grader/Expected Route 누출
+- 실제 사용자 Gmail·Tasks·Calendar 데이터의 테스트 Fixture 사용

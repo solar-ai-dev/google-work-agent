@@ -88,4 +88,4 @@
 
 ## Claim V2 추가 Contract Test 경계
 
-기존 `ClaimExecution` 테스트의 “Claim Commit before MCP write”, “claim single-use”, “Action/Approval/Hash mismatch 차단” 의미는 유지한다. Signature·TTL·Process Instance·`execution_arguments_hash`·Nonce·MCP 실제 인자 재해시의 세부 Contract Test는 `12 Test v3.5`에서 추가 검증한다.
+기존 `ClaimExecution` 테스트의 “Claim Commit before MCP write”, “claim single-use”, “Action/Approval/Hash mismatch 차단” 의미는 유지한다. Signature·TTL·Process Instance·`execution_arguments_hash`·Nonce·MCP 실제 인자 재해시의 세부 Contract Test는 `12 Test v3.13`에서 추가 검증한다.

@@ -1,15 +1,15 @@
 # 08. Google Work Agent · 시퀀스 설계서
 
-> **문서 기준:** `01. 요구사항 정의서·PRD v2.9`, `01-A. 기능 정의서 v2.15`, `01-B. 정책 정의서 v2.10`, `02. UI·UX 설계서 v2.11`, `03. 시스템 아키텍처 설계서 v3.4`, `04. 도메인·데이터베이스 설계서 Draft v1.15`, `05. Context·Retrieval 설계서 Draft v2.10`, `06. Agent·Workflow 설계서 Draft v7.5`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v2.16`, Domain 상태 전이 계약 v1.4를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
+> **문서 기준:** `01. 요구사항 정의서·PRD v2.10`, `01-A. 기능 정의서 v2.15`, `01-B. 정책 정의서 v2.11`, `02. UI·UX 설계서 v2.11`, `03. 시스템 아키텍처 설계서 v3.5`, `04. 도메인·데이터베이스 설계서 Draft v1.16`, `05. Context·Retrieval 설계서 Draft v2.11`, `06. Agent·Workflow 설계서 Draft v7.6`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v2.17`, Domain 상태 전이 계약 v1.4를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
 
-> **상태:** Draft v3.8 · **기준일:** 2026-08-13
+> **상태:** Draft v3.9 · **기준일:** 2026-08-13
 > **대상:** P0 MVP  
 > **구조:** 결정적 Supervisor + 1/3/6 Agent Subgraph Profile + 결정적 실행·검증 Engine  
 > **상태 기준:** SQLite Domain Store가 승인·실행·검증 사실의 기준점이며 LangGraph Checkpoint는 재개 위치, SSE는 UI Projection이다.
 
 ## 1. 목적과 범위
 
-이 문서는 주요 Use Case에서 React, FastAPI, Application, LangGraph Supervisor, 전문 Agent, Domain Service, MCP Server, MCP 내부 Google Provider Adapter와 SQLite가 **어떤 순서로 상호작용하는지** 정의한다.
+이 문서는 주요 Use Case에서 React, FastAPI, Application, LangGraph Supervisor, 전문 Agent, Domain Service, Connector MCP Server, Connector 내부 Provider Adapter와 SQLite가 **어떤 순서로 상호작용하는지** 정의한다.
 
 이 문서가 소유하는 내용:
 
@@ -80,29 +80,29 @@
 	</tr>
 	<tr>
 		<td>MCP</td>
-		<td>MCP Client·Google Work MCP Server</td>
-		<td>검증된 Google Tool 호출</td>
+		<td>Connector Registry·MCP Client·Connector MCP Server</td>
+		<td>검증된 Connector Tool 호출. P0는 Google Workspace MCP Server</td>
 	</tr>
 	<tr>
 		<td>G</td>
-		<td>Google Provider APIs</td>
-		<td>Google Work MCP Server 내부 Adapter만 접근하는 Gmail·Tasks·Calendar 원본 시스템</td>
+		<td>Provider APIs</td>
+		<td>Connector별 원본 시스템. 해당 Connector MCP Server 내부 Adapter만 직접 접근한다. P0는 Gmail·Tasks·Calendar다.</td>
 	</tr>
 </table>
 
 ## 3. 공통 순서 원칙
 
-1. React는 Google Provider API, MCP, SQLite를 직접 호출하지 않는다.
+1. React는 Provider API, MCP, SQLite를 직접 호출하지 않는다.
 2. FastAPI Route는 SQL과 Domain 상태 전이를 직접 수행하지 않는다.
 3. Agent는 다른 Agent를 직접 호출하지 않고 Supervisor로 결과를 반환한다.
 4. LLM Agent는 MCP Tool을 직접 호출하지 않는다. 검증된 Application Node가 MCP Port를 호출한다.
-5. **Google Workspace 접근 단일 경계:** FastAPI Route·Application·LangGraph·Agent·Domain은 Gmail·Tasks·Calendar Provider API/SDK를 직접 호출하거나 Provider Client를 구성하지 않는다. 모든 Browse·Count·Detail·Retrieval·Write·Verification·Recovery 조회는 `MCP Client/Port → Google Work MCP Server`를 통과하고, 실제 Provider API 호출은 MCP Server 내부 Adapter만 수행한다. MCP 장애 시 Core가 Provider API로 직접 fallback하지 않는다.
-6. MCP·MCP 내부 Provider API·LLM 외부 호출 중 SQLite Transaction을 유지하지 않는다.
+5. **Connector 접근 공통 경계:** FastAPI Route·Application·LangGraph·Agent·Domain은 외부 Provider API/SDK를 직접 호출하거나 Provider Client를 구성하지 않는다. 모든 Browse·Count·Detail·Retrieval·Write·Verification·Recovery 조회는 `Connector Registry → MCP Client/Port → Connector MCP Server`를 통과하고, 실제 Provider API 호출은 해당 MCP Server 내부 Adapter만 수행한다. MCP 장애 시 Core가 Provider API로 직접 fallback하지 않는다. P0 `google_workspace`가 첫 구현이다.
+6. Connector MCP·MCP 내부 Provider API·LLM 외부 호출 중 SQLite Transaction을 유지하지 않는다.
 7. 상태 변경은 Domain Command Result가 `applied=true`일 때만 다음 단계로 진행한다.
 8. SSE 전송 실패는 Domain 실패가 아니다.
 9. 승인 이후 LLM은 Tool·Arguments·대상 Resource·Dependency를 변경하지 않는다.
 10. 일반 Retrieval 호출은 Action Row를 만들지 않는다.
-11. Release Graph의 일반 Google READ는 `InputRoutePlanV1 → Retrieval`이 소유한다. Legacy READ Action은 호환 경계에만 남고 새 SIX Planning 결과로 만들지 않는다.
+11. Release Graph의 일반 Connector READ는 `InputRoutePlanV1 → Retrieval`이 소유한다. Legacy READ Action은 호환 경계에만 남고 새 SIX Planning 결과로 만들지 않는다.
 12. Supervisor는 Node만 Routing하며, 선택된 Agent·Application Node가 각 LLM 호출 전에 `agent_role + subgraph_name + node_name + node_state + purpose`로 PromptRef를 확정한다.
 13. Repair·Revision은 원 호출 Prompt를 묵시적으로 재사용하지 않고 등록된 별도 PromptRef를 사용할 수 있다.
 14. Confirmation은 공통 재시작이 아니라 LangGraph interrupt다. `interrupt_id + owner_subgraph + RegisteredResumeTargetRefV1`을 보존하고 사용자 응답 후 발생 Subgraph checkpoint에서 재개한다. 응답이 upstream 의미를 바꾸는 경우에만 Supervisor가 해당 State Owner로 Back-edge한다.
@@ -118,7 +118,7 @@ sequenceDiagram
     participant API as FastAPI 로컬 서비스
     participant DB as SQLite·Checkpointer
     participant K as 운영체제 키 저장소
-    participant MCP as Google Work MCP 서버
+    participant MCP as Google Workspace MCP 서버 (P0)
     participant LLM as LLM Provider Adapter
     participant FE as React 프런트엔드
 
@@ -203,7 +203,7 @@ sequenceDiagram
     participant REV as Review Subgraph
     participant LLM as Prompt Registry·LLM Router
     participant MCP as MCP Read Port
-    participant G as Google Provider APIs
+    participant G as Provider APIs (P0 Google Workspace)
     participant DB as Checkpointer·Trace
 
     SUP->>REQ: Request Projection + invocation_id
@@ -318,7 +318,7 @@ sequenceDiagram
     participant RET as Retrieval Subgraph
     participant LLM as Prompt Registry·LLM Router
     participant MCP as MCP Read Port
-    participant G as Google Provider APIs
+    participant G as Provider APIs (P0 Google Workspace)
 
     U->>FE: Gmail·Task·Event 선택 후 요청
     FE->>API: POST /api/v1/runs<br>selected_resources·command_id
@@ -443,7 +443,7 @@ sequenceDiagram
     participant DOM as Domain Service
     participant DB as SQLite
     participant MCP as MCP 읽기 Port
-    participant G as Google Provider APIs
+    participant G as Provider APIs (P0 Google Workspace)
     participant API as FastAPI
     participant FE as React 프런트엔드
 
@@ -495,7 +495,7 @@ sequenceDiagram
     participant DB as SQLite
     participant SUP as Supervisor
     participant MCP as MCP 쓰기·읽기 Port
-    participant G as Google Provider APIs
+    participant G as Provider APIs (P0 Google Workspace)
 
     SUP->>APP: save_plan_aggregate(ActionPlanDraft)
     APP->>DOM: Schema·Allowlist·Evidence·DAG·중복·충돌 검증
@@ -708,7 +708,7 @@ sequenceDiagram
     autonumber
     participant APP as 실행 Coordinator
     participant MCP as MCP 쓰기 Port
-    participant G as Google Provider APIs
+    participant G as Provider APIs (P0 Google Workspace)
     participant DOM as Domain Service
     participant DB as SQLite
     participant API as FastAPI
@@ -805,7 +805,7 @@ sequenceDiagram
     participant DOM as Domain Service
     participant DB as SQLite
     participant MCP as MCP Port
-    participant G as Google Provider APIs
+    participant G as Provider APIs (P0 Google Workspace)
 
     U->>FE: 실행 중단
     FE->>API: POST /api/v1/runs/{run_id}/cancel
@@ -894,7 +894,7 @@ sequenceDiagram
     autonumber
     participant APP as Application
     participant MCP as MCP Client·Server
-    participant G as Google Provider APIs
+    participant G as Provider APIs (P0 Google Workspace)
     participant DOM as Domain Service
 
     MCP--xAPP: 프로세스 종료 감지

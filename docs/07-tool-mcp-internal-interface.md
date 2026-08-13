@@ -1,10 +1,10 @@
 # 07. Google Work Agent · Tool · MCP · 내부 인터페이스 명세서
 
-> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v7.5`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, MCP Tool, Python 내부 인터페이스 계약을 정의한다.
+> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v7.6`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, Connector MCP Tool, Python 내부 인터페이스 계약을 정의한다.
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.16
+- **상태:** Draft v2.17
 - **기준일:** 2026-08-13
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
@@ -15,24 +15,24 @@
 
 1. React Frontend와 FastAPI Local Agent Service 사이의 Local API
 2. Python Application·LangGraph·Domain 사이의 내부 Port·Command 계약
-3. FastAPI Local Agent Service가 자식 프로세스로 관리하는 Google Work MCP Server의 Tool 계약
+3. FastAPI Local Agent Service가 관리하는 Connector MCP Runtime과 Connector별 MCP Server의 Tool 계약. P0 첫 구현은 Google Workspace MCP Server다.
 
 다음은 제공하지 않는다.
 
 - 인터넷에 공개되는 REST API
 - 원격 Backend 또는 SaaS API
 - 원격 MCP Server
-- React에서 Google API·SQLite·OS Keyring·MCP를 직접 호출하는 경로
-- FastAPI Route·Application·LangGraph·Agent·Domain에서 Gmail·Tasks·Calendar Provider API/SDK를 직접 호출하는 경로. Google Workspace 외부 접근은 Google Work MCP Server의 Tool 계약을 단일 경계로 사용한다.
+- React에서 Provider API·SQLite·OS Keyring·MCP를 직접 호출하는 경로
+- FastAPI Route·Application·LangGraph·Agent·Domain에서 외부 Provider API/SDK를 직접 호출하는 경로. 외부 업무 시스템 접근은 Connector MCP Runtime/Tool 계약을 공통 경계로 사용한다. P0 Google Workspace Provider API는 Google Workspace MCP Server 내부 Adapter만 호출한다.
 
-## 1.1 Google Workspace 접근 단일 경계
+## 1.1 Connector 접근 공통 경계
 
-- **Local API**는 React와 FastAPI Local Agent Service 사이의 제품 내부 REST/SSE 인터페이스다. Google Provider API를 직접 호출하기 위한 우회 경로가 아니다.
-- FastAPI Route·Application·LangGraph·Agent·Domain은 `MCP Client/Port → Google Work MCP Server` 계약에만 의존한다.
-- Gmail·Tasks·Calendar Provider API/SDK, OAuth Credential 적용, Provider raw token/response 해석은 Google Work MCP Server 내부 Adapter가 소유한다.
-- Retrieval Read, Sidebar Browse/Count/Detail, OAuth 상태 확인, Write dispatch, Verification/Recovery 조회까지 Google Workspace에 닿는 모든 제품 경로는 MCP Tool/Port를 통과해야 한다.
-- 테스트에서는 MCP Client/Transport를 Fake로 대체할 수 있다. 제품 Core에 별도 Google Provider Client를 주입해 MCP를 우회하는 대체 실행 경로를 두지 않는다.
-- MCP Server 내부에서 Google Provider API를 호출하는 것은 MCP 구현 세부사항이며, 문서의 `google_provider_api_call_count`는 이 내부 Provider 호출 수를 뜻한다.
+- **Local API**는 React와 FastAPI Local Agent Service 사이의 제품 내부 REST/SSE 인터페이스다. Provider API를 직접 호출하기 위한 우회 경로가 아니다.
+- FastAPI Route·Application·LangGraph·Agent·Domain은 `Connector Registry → MCP Client/Port → Connector MCP Server` 계약에만 의존한다.
+- 각 Provider API/SDK, Credential 적용, raw token/response 해석은 해당 Connector MCP Server 내부 Adapter가 소유한다.
+- Retrieval Read, Connector Browse/Count/Detail, Credential 상태 확인, Write dispatch, Verification/Recovery 조회까지 외부 업무 시스템에 닿는 모든 제품 경로는 Connector MCP Tool/Port를 통과해야 한다.
+- 테스트에서는 Connector MCP Client/Transport를 Fake로 대체할 수 있다. 제품 Core에 별도 Provider Client를 주입해 MCP를 우회하는 대체 실행 경로를 두지 않는다.
+- P0의 첫 Connector는 `google_workspace`이며 Google Workspace MCP Server가 Gmail·Tasks·Calendar와 Google OAuth/Provider Adapter를 소유한다. MCP Server 내부 Provider API 호출은 Connector 구현 세부사항이며 관측 지표는 `connector_id + provider_api_call_count`로 기록한다.
 
 ## 2. 설치·Runtime 경계
 
@@ -43,13 +43,15 @@ Windows Installer
    ├─ React 정적 Build 제공
    ├─ REST·SSE 제공
    ├─ Application·LangGraph 실행
-   └─ Google Work MCP Server 자식 프로세스 실행
+   └─ Connector MCP Runtime
+      └─ Google Workspace MCP Server (P0 registered Connector)
 ```
 
 - 사용자는 Python, Node.js, npm, Vite를 별도로 설치하지 않는다.
 - 운영 Runtime에서 Vite 개발 서버를 실행하지 않는다.
 - Local Service는 `127.0.0.1`의 동적 포트에만 바인딩한다.
 - Launcher가 Local Service 시작·Health Check·브라우저 열기·종료를 관리한다.
+- Connector MCP Runtime 계약은 여러 `connector_id` 등록을 허용하지만 P0 설치 Artifact에 포함되는 Connector MCP Server는 Google Workspace 하나다.
 
 ## 3. Local Agent API
 

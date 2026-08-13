@@ -1,6 +1,6 @@
 # 14. Google Work Agent · 예외 처리 · 운영 · 트러블슈팅 가이드
 
-> **상태:** Draft v2.5 · **기준일:** 2026-08-09 · **원격 운영 서버:** 없음
+> **상태:** Draft v2.6 · **기준일:** 2026-08-13 · **원격 운영 서버:** 없음
 
 ## 1. Severity
 
@@ -8,7 +8,7 @@
 |---|---|---|
 | SEV-0 | 보안·무결성·DB 손상·변조 | Write 차단·Safe Mode |
 | SEV-1 | UNKNOWN_RESULT·MISMATCH·Recovery | 새 Write 금지·결과 조회 |
-| SEV-2 | Google·MCP·LLM·Keyring 장애 | 제한 Retry·Reauth·대체 Runtime |
+| SEV-2 | Connector Provider·MCP·LLM·Keyring 장애 | 제한 Retry·Reauth·대체 Runtime |
 | SEV-3 | Browser·SSE·표시 | 재연결·Snapshot |
 
 ## 2. Triage
@@ -28,7 +28,7 @@
 
 - SSE: 재연결·Snapshot, Action 재실행 금지
 - MCP Read 전 종료: 1회 Restart·Schema
-- MCP 내부 Provider Read 429·5xx: 제한 Backoff
+- Connector Provider Read 429·5xx: Connector 정책 범위의 제한 Backoff
 - LLM: Retry 1·AUTO Fallback 1
 - Structured Output: Repair 1
 - Write 전달 전 확정 실패: FAILED, 자동 재실행 없음
@@ -38,7 +38,7 @@
 
 ## 4. 금지 안내
 
-DB 직접 편집·상태 SQL 변경·MCP 수동 Write·Wildcard CORS·Public Bind·Token 공유·미서명 Binary 교체·Downgrade Open·UNKNOWN_RESULT 재승인·Backup 없는 데이터 삭제를 안내하지 않는다. 또한 MCP 장애 시 FastAPI/Application/LangGraph/Agent/Domain이 Google Provider API/SDK를 직접 호출하거나 별도 Provider Client로 fallback하는 절차를 안내·허용하지 않는다.
+DB 직접 편집·상태 SQL 변경·MCP 수동 Write·Wildcard CORS·Public Bind·Token 공유·미서명 Binary 교체·Downgrade Open·UNKNOWN_RESULT 재승인·Backup 없는 데이터 삭제를 안내하지 않는다. 또한 MCP 장애 시 FastAPI/Application/LangGraph/Agent/Domain이 외부 Provider API/SDK를 직접 호출하거나 별도 Provider Client로 fallback하는 절차를 안내·허용하지 않는다. P0 Google Workspace도 동일하다.
 
 ## 5. Startup·Browser
 
@@ -70,12 +70,12 @@ LOCAL_GPU는 자동 API 전환 금지.
 - 범위 확대 전 사용자 확인
 - Prompt Injection은 POLICY_BLOCKED
 
-## 9. MCP·Google
+## 9. Connector MCP·Provider
 
 MCP 검증: Absolute Path → Signature·Hash → Version → Tool Schema → Registry → stdio.
 Write 도중 MCP 종료 시 같은 Write 재전송 금지.
 
-Google Write:
+Connector Write:
 ```text
 미전달 확실 → FAILED
 전달 가능성 → UNKNOWN_RESULT
@@ -101,11 +101,11 @@ FAILED
 
 기존 Approval·Idempotency Key 재사용 금지.
 
-## 11.1 MCP·Google Provider 장애 경계
+## 11.1 Connector MCP·Provider 장애 경계
 
-- Gmail·Tasks·Calendar Browse/Count/Detail, Retrieval, Write, Verification, Recovery 조회는 모두 MCP Client/Tool을 통해 수행한다.
-- MCP process exit, handshake/Tool Schema mismatch, Credential Provider 장애는 직접 Google Provider API 호출로 우회하지 않는다. Read는 명시적 실패/부분 결과, Write는 dispatch 여부에 따라 FAILED 또는 UNKNOWN_RESULT, Runtime은 NOT_READY/RECOVERY_REQUIRED로 전환한다.
-- Google Provider API/SDK는 MCP Server 내부 Adapter의 진단 대상이다. Core에서 Provider Client가 발견되면 운영 우회책이 아니라 아키텍처 위반으로 처리한다.
+- Connector Browse/Count/Detail, Retrieval, Write, Verification, Recovery 조회는 모두 Connector MCP Client/Tool을 통해 수행한다. P0 Gmail·Tasks·Calendar도 동일하다.
+- MCP process exit, handshake/Tool Schema mismatch, Credential Provider 장애는 직접 Provider API 호출로 우회하지 않는다. Read는 명시적 실패/부분 결과, Write는 dispatch 여부에 따라 FAILED 또는 UNKNOWN_RESULT, Runtime은 NOT_READY/RECOVERY_REQUIRED로 전환한다.
+- Provider API/SDK는 해당 Connector MCP Server 내부 Adapter의 진단 대상이다. Core에서 Provider Client가 발견되면 운영 우회책이 아니라 아키텍처 위반으로 처리한다.
 
 ## 12. UNKNOWN_RESULT
 

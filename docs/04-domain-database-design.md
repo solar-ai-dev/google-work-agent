@@ -6,7 +6,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 상태 | Draft v1.15 |
+| 상태 | Draft v1.16 |
 | 기준일 | 2026-08-13 |
 | 대상 | P0 MVP |
 | Database | SQLite |
@@ -90,7 +90,8 @@ Backup Manifest는 DB가 열리지 않을 때도 복구 후보를 확인할 수 
 
 불변 조건:
 
-- Conversation은 하나의 Google Account에 속한다.
+- 현재 DB Schema v1.6에서 Conversation은 하나의 Google Account에 속한다. 이는 P0 Google Workspace-first 영속 계약이며 Connector-neutral Core의 장기 의미로 승격하지 않는다.
+- 두 번째 Connector를 제품에 추가하기 전에는 Conversation 소유권과 Connector Credential/Account 연결을 분리하는 새 Migration이 필요하다. 정확한 Table/Column 형태는 해당 Connector 요구사항 확정 시 설계하며 현재 Migration을 소급 수정하지 않는다.
 - Conversation당 종료되지 않은 Run은 최대 하나다.
 - Message는 Conversation에 속하며 선택적으로 관련 Run을 참조한다.
 
@@ -133,6 +134,8 @@ Backup Manifest는 DB가 열리지 않을 때도 복구 후보를 확인할 수 
 
 `ResourceRef`는 Google 원본 복제본이 아니라 Run에서 실제로 사용한 최소 참조다. `Evidence`는 Action 판단과 승인 설명에 필요한 최소 excerpt만 저장한다.
 
+**Connector 일반화 경계:** Core 의미는 `connector_id + resource_type + external_resource_id` 조합이다. 다만 현재 DB Schema v1.6의 `resource_refs.source`와 `resource_type` CHECK는 Google Workspace P0 값에 닫혀 있으므로, 실제 신규 Connector 지원 시에는 소급 Migration 수정이 아니라 새 Schema Migration으로 확장한다. 이번 문서 일반화만으로 DB Schema v1.6을 변경하지 않는다.
+
 ### 4.5 Observability
 
 - `TraceEvent`: 실행·성능·장애 진단, Run과 함께 30일 보존
@@ -144,7 +147,7 @@ Audit는 더 긴 보존을 위해 Domain Foreign Key를 사용하지 않고 최�
 
 | 분류 | 구성 |
 |---|---|
-| Entity | GoogleAccount, Conversation, Message, Run, Plan, Action, ResourceRef, Evidence, Approval, ExecutionAttempt, Verification |
+| Entity | Conversation, Message, Run, Plan, Action, ResourceRef, Evidence, Approval, ExecutionAttempt, Verification. `GoogleAccount`는 현재 DB Schema v1.6의 P0 Connector-specific 계정 Entity이며 Connector-neutral account model은 후속 Migration 설계 대상이다. |
 | Join Entity | ActionDependency, ActionEvidence |
 | Append Event | TraceEvent, AuditEvent |
 | Value Object | CanonicalArguments, ArgumentsHash, SourceSnapshot, PolicyConfirmationReceiptV1, IdempotencyKey, RecoveryFingerprint, Cursor, RunBudget, VerificationDiff |

@@ -1,6 +1,6 @@
 # Google Work Agent · Agent Capability · Failure · Prompt 공통 계약
 
-> **상태:** Approved v1.10  
+> **상태:** Approved v1.11  
 > **기준일:** 2026-08-13  
 > **대상:** P0 Agent 개별실험, Prompt·Repair·Revision 실험, E2E 통합실험  
 > **적용 범위:** Request Understanding, Tool Route, Retrieval, Work Analysis, Planning, Review  
@@ -33,7 +33,7 @@
 ### 1.1 유지하는 확정 계약
 
 - Supervisor는 결정적 Router다.
-- LLM Agent는 Google API·MCP Write를 직접 호출하지 않는다.
+- LLM Agent는 Provider API·Connector MCP Write를 직접 호출하지 않는다. P0 Google Workspace도 동일하다.
 - 실제 Query·Page Token·Tool Arguments는 결정적 코드가 검증·생성한다.
 - Prompt는 Agent별 단일 문자열이 아니라 Node·상태·목적별 `PromptRef`로 선택한다.
 - Prompt·Completion 원문은 Graph State·일반 Trace·Audit에 저장하지 않는다.
@@ -82,7 +82,9 @@ Prompt Slot 수, PromptRef 수, LLM Call 수는 Agent 수와 독립적이다. �
 
 각 Node는 Parent/Main State 전체를 받지 않고 자기 작업에 필요한 Typed Projection만 받는다. 예를 들어 Retrieval Query Planner는 `request_intent + input_routes`, Evidence Selector는 `request_intent + ranked_segments`, Planning Argument Writer는 `output_route + work_analysis + evidence_refs`만 받는다.
 
-외부 READ는 Retrieval Subgraph의 결정적 Application Node가 Query Builder·MCP Read Port를 호출한다. Retrieval LLM Node는 Raw Query·MCP Arguments를 직접 실행하지 않으며 `ToolRoutePlanV2.input_plan.input_routes` 밖의 Tool을 선택하거나 호출하지 않는다.
+외부 READ는 Retrieval Subgraph의 결정적 Application Node가 Query Builder·Connector MCP Read Port를 호출한다. Retrieval LLM Node는 Raw Query·MCP Arguments를 직접 실행하지 않으며 `ToolRoutePlanV2.input_plan.input_routes` 밖의 Tool을 선택하거나 호출하지 않는다.
+
+Connector identity는 Tool Route의 공식 Typed Route에 포함되고 downstream은 재선택하지 않는다. P0 첫 Connector는 `google_workspace`이며 Gmail·Tasks·Calendar의 Provider 세부는 Connector Adapter가 소유한다.
 
 Graph Profile 간 semantic responsibility parity를 유지한다. 특히 `SINGLE_BASELINE`은 별도 Review Agent를 두지 않더라도 Unified Agent 내부 `self_review` 단계로 계획 품질 점검 책임을 수행한다.
 

@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.9`, `01-A v2.15`, `01-B v2.10`, `02 UI·UX v2.11`, `03 Architecture v3.4`, `04 Database v1.15`, `05 Retrieval v2.10`, `06 Workflow v7.5`, `07 Interface v2.16`, `08 Sequence v3.8`, `09 Security v2.9`, `10 Infrastructure v2.8`, `11 Observability v2.11`, `15 Agent Capability·Failure·Prompt v1.10`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.16`, `05 Retrieval v2.11`, `06 Workflow v7.6`, `07 Interface v2.17`, `08 Sequence v3.9`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.12`, `15 Agent Capability·Failure·Prompt v1.11`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v3.12 · **기준일:** 2026-08-13 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.13 · **기준일:** 2026-08-13 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -18,7 +18,7 @@ Unit → Contract → Integration → Component → E2E → Failure Injection �
 
 ```text
 TST-<AREA>-<NNN>
-AREA = DOM DB API SSE UI WF AGT RET LLM MCP GGL SEC INF OBS E2E PERF REL EVAL
+AREA = DOM DB API SSE UI WF AGT RET LLM MCP CON GGL SEC INF OBS E2E PERF REL EVAL
 ```
 
 Case 필드:
@@ -67,7 +67,8 @@ execution_lane
 FakeClock
 DeterministicUUID
 FakeKeyring
-FakeGoogleProviderAdapter   # Google Work MCP Server 내부 Adapter 테스트 전용
+FakeConnectorTransport      # Core Connector contract
+FakeGoogleProviderAdapter   # P0 Google Workspace MCP Server 내부 Adapter 테스트 전용
 FakeMCPTransport
 FakeLLMProvider
 FakeOllamaAdapter
@@ -163,7 +164,7 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - Override Action은 `WorkAnalysisResultV2.policy_confirmation_receipt_refs`와 Approval Snapshot이 같은 APPROVED Receipt를 참조해야 하며 누락/stale이면 Claim 전에 차단한다.
 
 - Retrieval LLM의 MCP 직접 호출 금지, deterministic Read Node만 `input_routes[].allowed_read_tool_ids` 범위에서 MCP Read Port를 호출하도록 허용
-- Google Workspace 접근 단일 경계 검증: React·FastAPI Route·Application·LangGraph·Agent·Domain에서 Gmail·Tasks·Calendar Provider API/SDK 직접 호출·직접 Provider Client 구성 0건. 모든 Sidebar Browse/Count/Detail, Retrieval Read, Write, Verification, Recovery 조회는 `FakeMCPTransport`/MCP Tool 경계를 통과한다. Google Provider Adapter 단위 테스트는 MCP Server 내부에서만 수행한다.
+- Connector 접근 공통 경계 검증: React·FastAPI Route·Application·LangGraph·Agent·Domain에서 Provider API/SDK 직접 호출·직접 Provider Client 구성 0건. 모든 Sidebar Browse/Count/Detail, Retrieval Read, Write, Verification, Recovery 조회는 `FakeMCPTransport`/MCP Tool 경계를 통과한다. Provider Adapter 단위 테스트는 해당 MCP Server 내부에서만 수행한다. P0 `GGL` 영역은 Gmail·Tasks·Calendar·Google OAuth 세부 계약을 검증하고 `CON` 영역은 Connector Registry/MCP boundary를 검증한다.
 - MCP unavailable/Tool Schema invalid 상황에서 제품 Core가 Google Provider API 직접 호출로 fallback하지 않고 NOT_READY/Recovery로 전환함을 검증
 - Preflight/Claim `applied=false`가 ACTION_EXECUTION으로 fall-through하지 않고 Domain Result에 따라 재승인·Recovery·Terminal로만 라우팅되는지 검증
 - Recovery는 recheck 필요 시에만 Verification으로 복귀하고 `RECOVERY_REQUIRED` 유지 시 explicit resolve/re-auth까지 suspend하며, terminal failure/block/cancel에서 무한 Verification loop가 없음을 검증

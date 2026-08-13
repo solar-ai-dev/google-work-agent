@@ -1,6 +1,6 @@
 # 11. Google Work Agent · 관측성 · 로그 · 감사 설계서
 
-> **상태:** Draft v2.11 · **기준일:** 2026-08-13 · **외부 Telemetry:** Production 기본 OFF
+> **상태:** Draft v2.12 · **기준일:** 2026-08-13 · **외부 Telemetry:** Production 기본 OFF
 
 ## 먼저 읽기
 
@@ -43,7 +43,7 @@ verification_id
 llm_call_id
 mcp_request_id
 provider_request_id
-google_request_id
+connector_id?
 ```
 
 평가 Runtime 추가:
@@ -89,7 +89,7 @@ attributes
 Category:
 
 ```text
-LIFECYCLE API WORKFLOW AGENT RETRIEVAL LLM DOMAIN MCP GOOGLE
+LIFECYCLE API WORKFLOW AGENT RETRIEVAL LLM DOMAIN MCP CONNECTOR PROVIDER
 VERIFICATION SECURITY PERSISTENCE INSTALLER DIAGNOSTIC EVALUATION
 ```
 
@@ -118,7 +118,7 @@ mcp-*.jsonl
 - Retrieval page·candidate·detail·budget
 - LLM runtime·token·latency·fallback
 - MCP process·handshake·tool
-- Google read·write·verification
+- Connector·Provider read·write·verification. P0 Google Workspace는 `connector_id=google_workspace`로 기록
 - SQLite transaction·busy·migration·backup
 - Evaluation item·candidate·trial·grader·budget stop
 
@@ -182,7 +182,7 @@ Schema 검증 → Field Allowlist → Secret·PII Redaction → 길이 제한 �
 
 - OAuth Token·API Key·Authorization·Cookie
 - Bootstrap·Session·PKCE
-- Gmail·Draft 전체 본문
+- Connector Source·Draft 전체 본문
 - LLM Prompt·Completion
 - MCP 전체 Request·Response
 - Approval Snapshot 전체
@@ -249,7 +249,7 @@ provider_http_request_count
 mcp_tool_call_count
 mcp_tool_call_count
 mcp_read_tool_call_count
-google_provider_api_call_count
+provider_api_call_count
 input_token_count
 output_token_count
 cost_usd
@@ -265,7 +265,7 @@ score_denominator_group?   # CORE | STRESS | HOLDOUT
 ```
 
 - 제품 수준의 Google 접근량은 `mcp_tool_call_count`와 `mcp_read_tool_call_count`로 본다.
-- `google_provider_api_call_count`는 Google Work MCP Server 내부 Adapter가 실제 Provider HTTP/API 요청을 수행한 횟수다. Pagination·N+1·Provider 효율을 관찰하기 위한 하위 지표이며 Core의 직접 Provider API 호출을 의미하지 않는다.
+- `provider_api_call_count`는 Google Work MCP Server 내부 Adapter가 실제 Provider HTTP/API 요청을 수행한 횟수다. Pagination·N+1·Provider 효율을 관찰하기 위한 하위 지표이며 Core의 직접 Provider API 호출을 의미하지 않는다.
 - Core에서 Provider API/SDK 직접 호출이 탐지되면 별도 효율 지표가 아니라 아키텍처 계약 위반으로 기록한다.
 
 규칙:
@@ -282,7 +282,7 @@ score_denominator_group?   # CORE | STRESS | HOLDOUT
 
 포함: Manifest, System Summary, Health, Sanitized Logs, Trace·Audit·Migration Summary
 
-제외: DB·Backup 원본, Keyring, Google 원문, Prompt·Completion, Approval Snapshot, 실험 Gold 원문
+제외: DB·Backup 원본, Keyring, Connector 원문, Prompt·Completion, Approval Snapshot, 실험 Gold 원문
 
 최대 20 MiB, 최근 24시간 또는 Run 하나. 자동 업로드 금지.
 
@@ -402,7 +402,7 @@ contradiction_introduced?
 
 규칙:
 - `agent_invocation_count`와 `llm_call_count`를 별도 집계한다.
-- Local State 원문, Prompt 원문, Completion 원문, Google 원문 전체는 Trace에 저장하지 않는다.
+- Local State 원문, Prompt 원문, Completion 원문, Connector 원문 전체는 Trace에 저장하지 않는다.
 - Handoff는 Agent 간 자유 대화가 아니라 Parent Graph의 Typed Result 이동으로 기록한다.
 - E06-A는 Profile의 실제 native 비용을 측정한다. E06-B는 `CONTEXT_READY_V1`의 동일 `context_snapshot_id`에서 post-retrieval decomposition 차이를 비교하며 MCP Read Tool 호출은 0이어야 한다.
 - 평가 실행은 `evaluation_environment_hash`로 model/runtime parameter, hardware profile, concurrency, timeout, fixture, Tool Schema, Policy, Prompt semantic bundle, Graph Profile을 함께 잠근다.

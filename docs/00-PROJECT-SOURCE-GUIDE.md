@@ -29,11 +29,11 @@ Prompt·Failure 정규화   → 15
 
 ## 현재 Canonical 기준 — 2026-08-13
 
-- PRD v2.9 / Functional v2.15 / Policy v2.10 / UI·UX v2.11
-- Architecture v3.4 / Domain·DB v1.15 / DB Schema v1.6
-- Retrieval v2.10 / Workflow v7.5 / Interface v2.16 / Sequence v3.8
-- Security v2.9 / Infrastructure v2.8 / Observability v2.11
-- Test v3.12 / Evaluation v3.8 / Operations v2.5 / Agent Capability v1.10
+- PRD v2.10 / Functional v2.15 / Policy v2.11 / UI·UX v2.11
+- Architecture v3.5 / Domain·DB v1.16 / DB Schema v1.6
+- Retrieval v2.11 / Workflow v7.6 / Interface v2.17 / Sequence v3.9
+- Security v2.10 / Infrastructure v2.9 / Observability v2.12
+- Test v3.13 / Evaluation v3.9 / Operations v2.6 / Agent Capability v1.11
 - Domain State Transition v1.4 / State Transition Test Matrix v1.4
 - DB Schema v1.6: `0001_initial.sql → 0002_action_effect_send_delete.sql → 0003_action_cancelled.sql → 0004_plan_review_gate.sql → 0005_cross_aggregate_invariants.sql`. 적용 Migration은 이력/checksum Artifact이므로 소급 수정하지 않는다.
 
@@ -43,11 +43,11 @@ Prompt·Failure 정규화   → 15
 - Schema는 출력 가능 범위를 통제하고, State는 확정 정보를 기억하며, Prompt는 각 Node의 작은 작업만 지시한다.
 - Node는 Parent/Main State 전체가 아니라 필요한 필드 Projection만 받는다.
 - Tool Route는 IN/OUT을 한 번 확정해 State에 저장하고 Retrieval·Planning은 재선택하지 않는다.
-- Google Workspace 접근은 `Core → MCP Client/Port → Google Work MCP Server → Provider Adapter` 단일 경계다. React·FastAPI Route·Application·LangGraph·Agent·Domain의 Gmail·Tasks·Calendar Provider API/SDK 직접 호출과 direct fallback을 금지한다.
+- 외부 업무 시스템 접근은 `Core → Connector Registry → MCP Client/Port → Connector MCP Server → Provider Adapter` 공통 경계다. React·FastAPI Route·Application·LangGraph·Agent·Domain의 Provider API/SDK 직접 호출과 direct fallback을 금지한다. P0 첫 Connector는 `google_workspace`이며 Gmail·Tasks·Calendar를 제공한다.
 - `TASK + CREATE` 중복검사와 `CALENDAR + CREATE` 충돌검사는 결정적 Policy Precondition READ다.
 - 사용자 지정 범위를 넓혀야 하면 `SCOPE_EXPANSION_REQUIRED` Confirmation을 먼저 받는다.
 - 중복/충돌 최종 확정은 deterministic validator가 수행하며 Override는 `PolicyConfirmationReceiptV1`로 증명한다.
-- Write는 Approval → Claim → MCP Write Tool → Google Work MCP Server 내부 Provider Adapter → MCP Verification Read 순서다.
+- Write는 Approval → Claim → Connector MCP Write Tool → Connector 내부 Provider Adapter → Connector Verification Read 순서다. P0 Google Workspace도 동일한 공통 실행 계약을 사용한다.
 
 ## 프로젝트 소스 25개 구성
 
