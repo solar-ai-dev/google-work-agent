@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   approveAction,
   bootstrapSession,
@@ -20,7 +20,6 @@ import {
   getSettings,
   listCalendarResources,
   listConversations,
-  listTaskResources,
   modifyAction,
   patchSettings,
   prepareRetry,
@@ -49,6 +48,7 @@ import { subscribeRunEvents } from "../api/sse";
 import { CalendarMonthView, calendarMonthRange, calendarRangeBoundary, configuredDateKey } from "./CalendarMonthView";
 import { ConversationView, useConversation } from "../features/conversation";
 import { GmailPanel, useGmail } from "../features/gmail";
+import { TasksPanel, useTasks } from "../features/tasks";
 
 type StartupState = {
   phase: string;
@@ -59,35 +59,13 @@ type StartupState = {
 };
 
 type ResourceTab = "gmail" | "tasks" | "calendar";
-type CountTab = "tasks";
-type TaskSort = "provider" | "scheduled_date";
-type SourceCount = { value: number; exact: boolean } | null;
-type CompletedTasksState = {
-  expanded: boolean;
-  initialized: boolean;
-  items: ResourceItem[];
-  pageIndex: number;
-  loading: boolean;
-  error: string | null;
-};
-
 type ResourceState = {
   tab: ResourceTab;
-  items: ResourceItem[];
-  nextPageToken: string | null;
-  pageIndex: number;
-  lastLoadedPageIndex: number;
-  loaded: boolean;
   selectedIds: string[];
   focusItem: ResourceItem | null;
   parentId: string | null;
   calendarTimeMin: string | null;
   calendarTimeMax: string | null;
-  taskSort: TaskSort;
-  totalCount: number | null;
-  countLoading: boolean;
-  loading: boolean;
-  error: string | null;
 };
 
 type ResourceCacheEntry = {
@@ -103,23 +81,6 @@ type GmailDetailState = {
   error: string | null;
 };
 
-type ResourceRequestIdentity = {
-  tab: ResourceTab;
-  parentId: string | null;
-  query: string;
-  pageIndex: number;
-  calendarTimeMin: string | null;
-  calendarTimeMax: string | null;
-  taskSort: TaskSort;
-  taskFilter: string;
-};
-
-type ResourceLoadOptions = {
-  force?: boolean;
-  calendarTimeMin?: string | null;
-  calendarTimeMax?: string | null;
-};
-
 type CalendarMonthRequestInput = {
   cacheKey: string;
   parentId: string | null;
@@ -129,7 +90,6 @@ type CalendarMonthRequestInput = {
 
 const resourceCache = new Map<string, ResourceCacheEntry>();
 const SIDEBAR_VISIBLE_PAGE_SIZE = 20;
-const TASKS_BROWSE_SIZE = 100;
 const CALENDAR_BROWSE_SIZE = 100;
 
 const THEME_KEY = "gwa.theme";
@@ -166,64 +126,42 @@ export function App(): JSX.Element {
   });
   const [resourceState, setResourceState] = useState<ResourceState>({
     tab: "gmail",
-    items: [],
-    nextPageToken: null,
-    pageIndex: 0,
-    lastLoadedPageIndex: 0,
-    loaded: false,
     selectedIds: [],
     focusItem: null,
     parentId: null,
     calendarTimeMin: null,
     calendarTimeMax: null,
-    taskSort: "provider",
-    totalCount: null,
-    countLoading: false,
-    loading: false,
-    error: null,
-  });
-  const [resourceCounts, setResourceCounts] = useState<Record<CountTab, SourceCount>>({
-    tasks: null,
   });
   const gmail = useGmail({ accountId: currentAccount?.account_id, active: resourceState.tab === "gmail" });
-  const [completedTasks, setCompletedTasks] = useState<CompletedTasksState>({
-    expanded: false, initialized: false, items: [], pageIndex: 0, loading: false, error: null,
-  });
+  const tasks = useTasks({ accountId: currentAccount?.account_id, parentId: resourceState.parentId, active: resourceState.tab === "tasks", filter: sidebarFilter });
   const selectedResourceIds = useMemo(
     () => [...new Set(resourceState.selectedIds)],
     [resourceState.selectedIds],
   );
   const selectedResourceLabels = useMemo(
-    () => resourceItemsForSelection(resourceState, gmail.items)
+    () => resourceItemsForSelection(resourceState, gmail.items, tasks.items)
       .filter((item) => selectedResourceIds.includes(item.resource_id))
       .map((item) => resourcePresentation(item).title)
       .filter((title): title is string => Boolean(title)),
-    [resourceState, gmail.items, selectedResourceIds],
+    [resourceState, gmail.items, selectedResourceIds, tasks.items],
   );
   const composerPrompt = resourceComposerPrompt(resourceState.tab);
   const visibleResourceItems = useMemo(() => {
-    if (!sidebarFilter.trim()) {
-      return resourceState.items.slice(
-        resourceState.pageIndex * SIDEBAR_VISIBLE_PAGE_SIZE,
-        (resourceState.pageIndex + 1) * SIDEBAR_VISIBLE_PAGE_SIZE,
-      );
+    if (resourceState.tab === "tasks") {
+      if (!sidebarFilter.trim()) return tasks.items.slice(tasks.pageIndex * SIDEBAR_VISIBLE_PAGE_SIZE, (tasks.pageIndex + 1) * SIDEBAR_VISIBLE_PAGE_SIZE);
+      const normalizedFilter = sidebarFilter.trim().toLocaleLowerCase("ko-KR");
+      return tasks.items.filter((item) => {
+        const presentation = resourcePresentation(item);
+        return [presentation.title, presentation.secondary, presentation.snippet, presentation.time].filter((value): value is string => Boolean(value)).some((value) => value.toLocaleLowerCase("ko-KR").includes(normalizedFilter));
+      }).slice(tasks.pageIndex * SIDEBAR_VISIBLE_PAGE_SIZE, (tasks.pageIndex + 1) * SIDEBAR_VISIBLE_PAGE_SIZE);
     }
-    const normalizedFilter = sidebarFilter.trim().toLocaleLowerCase("ko-KR");
-    return resourceState.items.filter((item) => {
-      const presentation = resourcePresentation(item);
-      return [presentation.title, presentation.secondary, presentation.snippet, presentation.time]
-        .filter((value): value is string => Boolean(value))
-        .some((value) => value.toLocaleLowerCase("ko-KR").includes(normalizedFilter));
-    }).slice(
-      resourceState.pageIndex * SIDEBAR_VISIBLE_PAGE_SIZE,
-      (resourceState.pageIndex + 1) * SIDEBAR_VISIBLE_PAGE_SIZE,
-    );
-  }, [resourceState.items, resourceState.pageIndex, sidebarFilter]);
+    return [];
+  }, [resourceState.tab, sidebarFilter, tasks.items, tasks.pageIndex]);
   const visibleTaskSections = useMemo(() => (
-    resourceState.tab === "tasks" && resourceState.taskSort === "scheduled_date"
+    resourceState.tab === "tasks" && tasks.sort === "scheduled_date"
       ? groupTasksByScheduledDate(visibleResourceItems)
       : null
-  ), [resourceState.tab, resourceState.taskSort, visibleResourceItems]);
+  ), [resourceState.tab, tasks.sort, visibleResourceItems]);
   const conversation = useConversation({
     currentAccount,
     selectedResourceIds,
@@ -284,27 +222,10 @@ export function App(): JSX.Element {
     formatTime,
   };
   const startupPromiseRef = useRef<Promise<void> | null>(null);
-  const resourceRequestRef = useRef<{ generation: number; identity: ResourceRequestIdentity | null }>({
-    generation: 0,
-    identity: null,
-  });
-  const countsPreloadedRef = useRef(false);
-  const previousTaskFilterRef = useRef(sidebarFilter);
-  const taskPreloadRef = useRef<Promise<SourceCount> | null>(null);
-  const taskCacheGenerationRef = useRef(0);
-  const taskSortLoadKeysRef = useRef(new Set<string>());
-  const completedRequestGenerationRef = useRef(0);
   const taskSortMenuRef = useRef<HTMLDivElement | null>(null);
   const calendarMonthRequestRef = useRef({ generation: 0, cacheKey: "" });
   const calendarMonthCacheGenerationRef = useRef(new Map<string, number>());
   const calendarMonthInFlightRef = useRef(new Map<string, Promise<ResourceItem[]>>());
-  const invalidateResourceRequest = useCallback((): void => {
-    resourceRequestRef.current = {
-      generation: resourceRequestRef.current.generation + 1,
-      identity: null,
-    };
-  }, []);
-
   useEffect(() => {
     if (!taskSortMenuOpen) {
       return;
@@ -353,233 +274,6 @@ export function App(): JSX.Element {
     }
     setGmailDetail({ resourceId: null, status: "idle", detail: null, error: null });
   }, [loadGmailDetail, resourceState.focusItem]);
-
-  const loadResources = useCallback(async (
-    tab: Exclude<ResourceTab, "gmail">,
-    pageIndex: number,
-    options: ResourceLoadOptions = {},
-  ): Promise<void> => {
-    const calendarTimeMin = tab === "calendar"
-      ? options.calendarTimeMin ?? resourceState.calendarTimeMin
-      : null;
-    const calendarTimeMax = tab === "calendar"
-      ? options.calendarTimeMax ?? resourceState.calendarTimeMax
-      : null;
-    const identity: ResourceRequestIdentity = {
-      tab,
-      parentId: resourceState.parentId,
-      query: "",
-      pageIndex,
-      calendarTimeMin: tab === "calendar" ? calendarTimeMin : null,
-      calendarTimeMax: tab === "calendar" ? calendarTimeMax : null,
-      taskSort: resourceState.taskSort,
-      taskFilter: tab === "tasks" ? sidebarFilter.trim().toLowerCase() : "",
-    };
-    const generation = resourceRequestRef.current.generation + 1;
-    resourceRequestRef.current = { generation, identity };
-    const isCurrentRequest = (): boolean => {
-      const current = resourceRequestRef.current;
-      return current.generation === generation && sameResourceRequestIdentity(current.identity, identity);
-    };
-    const cacheKey = resourceCacheKey({
-      accountId: currentAccount?.account_id ?? "anon",
-      tab,
-      parentId: resourceState.parentId,
-      query: "",
-      calendarTimeMin: tab === "calendar" ? calendarTimeMin : null,
-      calendarTimeMax: tab === "calendar" ? calendarTimeMax : null,
-      taskSort: resourceState.taskSort,
-      taskFilter: tab === "tasks" ? sidebarFilter.trim().toLowerCase() : "",
-    });
-    const cached = resourceCache.get(cacheKey);
-    if (tab === "tasks" && !options.force && cached === undefined && taskPreloadRef.current !== null) {
-      await taskPreloadRef.current;
-      if (!isCurrentRequest()) {
-        return;
-      }
-      const preloaded = resourceCache.get(cacheKey);
-      if (preloaded) {
-        setResourceState((current) => ({
-          ...current,
-          items: preloaded.items,
-          nextPageToken: preloaded.nextPageToken,
-          totalCount: preloaded.totalCount,
-          pageIndex,
-          loaded: true,
-          loading: false,
-          error: null,
-        }));
-        return;
-      }
-    }
-    const cachedItems = !options.force && cached ? cached.items : resourceState.items;
-    const cachedNextPageToken = !options.force && cached
-      ? cached.nextPageToken
-      : resourceState.nextPageToken;
-    const isKnownLastTasksPage = tab === "tasks"
-      && cachedNextPageToken !== null
-      && pageIndex === totalPageCount(null, cachedItems.length) - 1;
-    if (tab === "tasks" && resourceState.taskSort === "scheduled_date") {
-      if (!options.force && cached && cached.nextPageToken === null) {
-        setResourceState((current) => ({
-          ...current,
-          items: cached.items,
-          nextPageToken: null,
-          totalCount: cached.totalCount,
-          pageIndex,
-          loaded: true,
-          loading: false,
-          error: null,
-        }));
-        return;
-      }
-      const defaultTaskCache = !options.force ? resourceCache.get(resourceCacheKey({
-        accountId: currentAccount?.account_id ?? "anon",
-        tab: "tasks",
-        parentId: resourceState.parentId,
-        query: "",
-        calendarTimeMin: null,
-        calendarTimeMax: null,
-        taskSort: "provider",
-        taskFilter: sidebarFilter.trim().toLowerCase(),
-      })) : undefined;
-      if (defaultTaskCache?.nextPageToken === null) {
-        const nextItems = sortTasksByScheduledDate(defaultTaskCache.items);
-        resourceCache.set(cacheKey, { items: nextItems, nextPageToken: null, totalCount: nextItems.length });
-        setResourceState((current) => ({
-          ...current,
-          items: nextItems,
-          nextPageToken: null,
-          totalCount: nextItems.length,
-          pageIndex,
-          loaded: true,
-          loading: false,
-          error: null,
-        }));
-        return;
-      }
-      if (taskSortLoadKeysRef.current.has(cacheKey)) {
-        return;
-      }
-      taskSortLoadKeysRef.current.add(cacheKey);
-      setResourceState((current) => ({ ...current, loading: true, error: null }));
-      try {
-        const defaultTaskCache = resourceCache.get(resourceCacheKey({
-          accountId: currentAccount?.account_id ?? "anon",
-          tab: "tasks",
-          parentId: resourceState.parentId,
-          query: "",
-          calendarTimeMin: null,
-          calendarTimeMax: null,
-          taskSort: "provider",
-          taskFilter: sidebarFilter.trim().toLowerCase(),
-        }));
-        let nextItems = options.force ? [] : defaultTaskCache?.items ?? cachedItems;
-        let nextPageToken = options.force ? null : defaultTaskCache?.nextPageToken ?? cachedNextPageToken;
-        do {
-          const response = await listTaskResources(
-            resourceState.parentId,
-            nextPageToken,
-            TASKS_BROWSE_SIZE,
-            Boolean(options.force && nextPageToken === null),
-          );
-          nextItems = [...nextItems, ...response.items];
-          nextPageToken = response.next_page_token;
-        } while (nextPageToken !== null);
-        nextItems = sortTasksByScheduledDate(nextItems);
-        resourceCache.set(cacheKey, { items: nextItems, nextPageToken: null, totalCount: nextItems.length });
-        if (!isCurrentRequest()) return;
-        setResourceState((current) => ({
-          ...current,
-          items: nextItems,
-          nextPageToken: null,
-          totalCount: nextItems.length,
-          pageIndex,
-          loaded: true,
-          loading: false,
-        }));
-        setResourceCounts((current) => ({
-          ...current,
-          tasks: { value: nextItems.length, exact: true },
-        }));
-      } catch (error) {
-        if (!isCurrentRequest()) return;
-        setResourceState((current) => ({
-          ...current,
-          loading: false,
-          error: error instanceof ApiClientError ? error.message : "리소스를 불러오지 못했습니다.",
-        }));
-      } finally {
-        taskSortLoadKeysRef.current.delete(cacheKey);
-      }
-      return;
-    }
-    if (!options.force && cachedItems.length > pageIndex * SIDEBAR_VISIBLE_PAGE_SIZE && !isKnownLastTasksPage) {
-      setResourceState((current) => ({
-        ...current,
-        items: cachedItems,
-        nextPageToken: cachedNextPageToken,
-        totalCount: cached?.totalCount ?? current.totalCount,
-        pageIndex,
-        loaded: true,
-        loading: false,
-        error: null,
-      }));
-      return;
-    }
-    if (!options.force && cachedItems.length > 0 && cachedNextPageToken === null) {
-      return;
-    }
-    setResourceState((current) => ({ ...current, loading: true, error: null }));
-    try {
-      let nextItems = options.force ? [] : cachedItems;
-      let nextPageToken = options.force ? null : cachedNextPageToken;
-      {
-        const response = tab === "tasks"
-            ? await listTaskResources(resourceState.parentId, nextPageToken, TASKS_BROWSE_SIZE, Boolean(options.force && pageIndex === 0))
-            : await listCalendarResources(
-              resourceState.parentId,
-              nextPageToken,
-              CALENDAR_BROWSE_SIZE,
-              calendarTimeMin,
-              calendarTimeMax,
-            );
-        nextItems = options.force || cachedItems.length === 0
-          ? response.items
-          : [...cachedItems, ...response.items];
-        nextPageToken = response.next_page_token;
-      }
-      const totalCount = tab === "tasks" && nextPageToken === null ? nextItems.length : null;
-      resourceCache.set(cacheKey, { items: nextItems, nextPageToken, totalCount });
-      if (!isCurrentRequest()) {
-        return;
-      }
-      setResourceState((current) => ({
-        ...current,
-        items: nextItems,
-        nextPageToken,
-        totalCount,
-        pageIndex,
-        loaded: true,
-        loading: false,
-      }));
-      if (tab === "tasks") {
-        setResourceCounts((current) => ({
-          ...current,
-          tasks: { value: nextItems.length, exact: nextPageToken === null },
-        }));
-      }
-    } catch (error) {
-      if (!isCurrentRequest()) {
-        return;
-      }
-      setResourceState((current) => ({
-        ...current,
-        loading: false,
-        error: error instanceof ApiClientError ? error.message : "리소스를 불러오지 못했습니다.",
-      }));
-    }
-  }, [currentAccount?.account_id, resourceState.calendarTimeMax, resourceState.calendarTimeMin, resourceState.items, resourceState.nextPageToken, resourceState.parentId, resourceState.taskSort, sidebarFilter]);
 
   const calendarMonthRequestInput = useCallback((monthAnchor: string): CalendarMonthRequestInput => {
     const range = calendarMonthRange(monthAnchor);
@@ -675,101 +369,12 @@ export function App(): JSX.Element {
     }
   }, [calendarMonthRequestInput, prefetchAdjacentCalendarMonths, requestCalendarMonth]);
 
-  const loadCompletedTasks = useCallback(async (force = false): Promise<void> => {
-    const current = completedTasks;
-    if (!force && current.initialized) {
-      return;
-    }
-    let items: ResourceItem[] = [];
-    let pageToken: string | null = null;
-    const generation = completedRequestGenerationRef.current + 1;
-    completedRequestGenerationRef.current = generation;
-    setCompletedTasks((state) => ({ ...state, loading: true, error: null }));
-    try {
-      do {
-        const response = await listTaskResources(
-          resourceState.parentId,
-          pageToken,
-          TASKS_BROWSE_SIZE,
-          force && pageToken === null,
-          "completed",
-        );
-        items = uniqueResourceItems([...items, ...response.items.filter((item) => item.metadata.task_status === "completed")]);
-        pageToken = response.next_page_token;
-      } while (pageToken !== null);
-      if (completedRequestGenerationRef.current !== generation) return;
-      setCompletedTasks((state) => ({
-        ...state,
-        initialized: true,
-        items,
-        pageIndex: 0,
-        loading: false,
-        error: null,
-      }));
-    } catch (error) {
-      if (completedRequestGenerationRef.current !== generation) return;
-      setCompletedTasks((state) => ({ ...state, loading: false, error: error instanceof ApiClientError ? error.message : "완료된 할 일을 불러오지 못했습니다." }));
-    }
-  }, [completedTasks, resourceState.parentId]);
-
-  const preloadSidebarCounts = useCallback(async (): Promise<void> => {
-    if (countsPreloadedRef.current) {
-      return;
-    }
-    countsPreloadedRef.current = true;
-    const taskCacheKey = resourceCacheKey({
-      accountId: currentAccount?.account_id ?? "anon",
-      tab: "tasks",
-      parentId: null,
-      query: "",
-      calendarTimeMin: null,
-      calendarTimeMax: null,
-      taskSort: "provider",
-      taskFilter: "",
-    });
-    const preloadTasks = async (): Promise<SourceCount> => {
-      const cacheGeneration = taskCacheGenerationRef.current;
-      const cached = resourceCache.get(taskCacheKey);
-      if (cached) {
-        return { value: cached.items.length, exact: cached.nextPageToken === null };
-      }
-      try {
-        const response = await listTaskResources(null, null, TASKS_BROWSE_SIZE);
-        if (taskCacheGenerationRef.current === cacheGeneration) {
-          resourceCache.set(taskCacheKey, {
-            items: response.items,
-            nextPageToken: response.next_page_token,
-            totalCount: response.next_page_token === null ? response.items.length : null,
-          });
-        }
-        return { value: response.items.length, exact: response.next_page_token === null };
-      } catch {
-        return null;
-      }
-    };
-    taskPreloadRef.current = preloadTasks();
-    void loadCompletedTasks();
-    const [, tasks] = await Promise.allSettled([
-      gmail.loadCount(),
-      taskPreloadRef.current,
-    ]);
-    setResourceCounts((current) => ({
-      ...current,
-      tasks: tasks.status === "fulfilled" ? tasks.value : null,
-    }));
-  }, [currentAccount?.account_id, gmail, loadCompletedTasks]);
-
   const runStartup = useCallback(async (): Promise<void> => {
     // Preserve the one-time fragment in invocation-local memory before awaits.
     const bootstrapFragment = readBootstrapFragment(window.location.hash);
     resourceCache.clear();
     gmail.reset();
-    taskCacheGenerationRef.current += 1;
-    completedRequestGenerationRef.current += 1;
-    countsPreloadedRef.current = false;
-    taskPreloadRef.current = null;
-    setCompletedTasks({ expanded: false, initialized: false, items: [], pageIndex: 0, loading: false, error: null });
-    setResourceCounts({ tasks: null });
+    tasks.reset();
     setStartup({
       phase: "checks",
       status: "loading",
@@ -847,34 +452,12 @@ export function App(): JSX.Element {
   }, [runStartup]);
 
   useEffect(() => {
-    if (resourceState.tab !== "tasks") {
-      previousTaskFilterRef.current = sidebarFilter;
-      return;
-    }
-    if (previousTaskFilterRef.current === sidebarFilter) {
-      return;
-    }
-    previousTaskFilterRef.current = sidebarFilter;
-    invalidateResourceRequest();
-    setResourceState((current) => ({
-      ...current,
-      items: [],
-      nextPageToken: null,
-      pageIndex: 0,
-      lastLoadedPageIndex: 0,
-      loaded: false,
-      totalCount: null,
-      loading: false,
-      error: null,
-    }));
-    setResourceCounts((current) => ({ ...current, tasks: null }));
-  }, [invalidateResourceRequest, resourceState.tab, sidebarFilter]);
-
-  useEffect(() => {
     if (startup.status === "ready" && google?.connected) {
-      void preloadSidebarCounts();
+      void gmail.loadCount();
+      void tasks.preload();
+      void tasks.loadCompleted();
     }
-  }, [google?.connected, preloadSidebarCounts, startup.status]);
+  }, [gmail.loadCount, google?.connected, startup.status, tasks.loadCompleted, tasks.preload]);
 
   useEffect(() => {
     if (startup.status !== "ready" || !google?.connected || resourceState.tab !== "calendar") return;
@@ -894,14 +477,9 @@ export function App(): JSX.Element {
   }, [gmail.countLoading, gmail.error, gmail.loadCount, gmail.loadPage, gmail.loaded, gmail.loading, gmail.pageIndex, google?.connected, resourceState.tab, startup.status]);
 
   useEffect(() => {
-    if (startup.status !== "ready" || !google?.connected || resourceState.tab === "calendar" || resourceState.tab === "gmail") {
-      return;
-    }
-    if (!resourceState.loaded && !resourceState.loading && resourceState.error === null) {
-      void loadResources(resourceState.tab, resourceState.pageIndex);
-      return;
-    }
-  }, [google?.connected, loadResources, resourceState.error, resourceState.loaded, resourceState.loading, resourceState.pageIndex, resourceState.tab, startup.status]);
+    if (startup.status !== "ready" || !google?.connected || resourceState.tab !== "tasks") return;
+    if (!tasks.loaded && !tasks.loading && tasks.error === null) void tasks.loadPage(tasks.pageIndex);
+  }, [google?.connected, resourceState.tab, startup.status, tasks.error, tasks.loadPage, tasks.loaded, tasks.loading, tasks.pageIndex]);
 
   /* Extracted to features/conversation/useConversation.ts.
   async function selectConversation(conversationId: string): Promise<void> {
@@ -1150,16 +728,10 @@ export function App(): JSX.Element {
   }
 
   async function handleGoogleDisconnect(): Promise<void> {
-    invalidateResourceRequest();
     await disconnectGoogle();
     resourceCache.clear();
     gmail.reset();
-    taskCacheGenerationRef.current += 1;
-    completedRequestGenerationRef.current += 1;
-    countsPreloadedRef.current = false;
-    taskPreloadRef.current = null;
-    setCompletedTasks({ expanded: false, initialized: false, items: [], pageIndex: 0, loading: false, error: null });
-    setResourceCounts({ tasks: null });
+    tasks.reset();
     setGoogle((current) => current ? { ...current, connected: false } : current);
     setCurrentAccount(null);
     setResourceState((current) => ({
@@ -1267,7 +839,6 @@ export function App(): JSX.Element {
                     role="tab"
                     aria-selected={resourceState.tab === tab}
                     onClick={() => {
-                      invalidateResourceRequest();
                       setTaskSortMenuOpen(false);
                       setSidebarFilter("");
                       const calendarWindow = tab === "calendar" && resourceState.calendarTimeMin === null
@@ -1276,19 +847,10 @@ export function App(): JSX.Element {
                       setResourceState((current) => ({
                         ...current,
                         tab,
-                        items: [],
-                        nextPageToken: null,
-                        pageIndex: 0,
-                        lastLoadedPageIndex: 0,
-                        loaded: false,
                         parentId: null,
                         focusItem: null,
                         calendarTimeMin: calendarWindow?.timeMin ?? current.calendarTimeMin,
                         calendarTimeMax: calendarWindow?.timeMax ?? current.calendarTimeMax,
-                        totalCount: null,
-                        countLoading: false,
-                        loading: false,
-                        error: null,
                       }));
                     }}
                   >
@@ -1296,7 +858,7 @@ export function App(): JSX.Element {
                     <span className="resource-tab-label">{resourceTabLabel(tab)}</span>
                     {tab !== "calendar" ? (
                       <span className="resource-tab-count">
-                        {formatSourceCount(tab === "gmail" ? gmail.count : resourceCounts.tasks)}
+                        {formatSourceCount(tab === "gmail" ? gmail.count : tasks.count)}
                       </span>
                     ) : null}
                     <span className="sr-only">{tab.toUpperCase()}</span>
@@ -1314,6 +876,10 @@ export function App(): JSX.Element {
                     void gmail.refresh();
                     return;
                   }
+                  if (activeTab === "tasks") {
+                    void tasks.refresh();
+                    return;
+                  }
                   if (activeTab === "calendar") {
                     if (calendarMonthAnchor) void loadCalendarMonth(calendarMonthAnchor, true);
                     return;
@@ -1327,17 +893,10 @@ export function App(): JSX.Element {
                     query: "",
                     calendarTimeMin: null,
                     calendarTimeMax: null,
-                    taskFilter: activeTab === "tasks" ? sidebarFilter.trim().toLowerCase() : "",
+                    taskFilter: "",
                   };
-                  if (activeTab === "tasks") {
-                    taskCacheGenerationRef.current += 1;
-                    taskPreloadRef.current = null;
-                    for (const taskSort of ["provider", "scheduled_date"] as const) {
-                      resourceCache.delete(resourceCacheKey({ ...cacheIdentity, taskSort }));
-                    }
-                    void loadCompletedTasks(true);
-                  }
-                  void loadResources(activeTab, 0, { force: true, calendarTimeMin, calendarTimeMax });
+                  resourceCache.delete(resourceCacheKey(cacheIdentity));
+                  if (activeTab === "calendar" && calendarMonthAnchor) void loadCalendarMonth(calendarMonthAnchor, true);
                 }}
               >
                 ↻
@@ -1366,215 +925,61 @@ export function App(): JSX.Element {
                 presentResource={resourcePresentation}
               />
             ) : null}
-            {resourceState.tab !== "gmail" ? <><div className="resource-search-row">
-              <label className="resource-search">
-                <span className="resource-search-icon" aria-hidden="true">⌕</span>
-                <input
-                  aria-label={resourceSearchLabel(resourceState.tab)}
-                  placeholder={resourceSearchPlaceholder(resourceState.tab)}
-                  value={sidebarFilter}
-                  onChange={(event) => setSidebarFilter(event.target.value)}
-                />
-              </label>
-              {resourceState.tab === "tasks" ? (
-                <div className="task-sort-menu" ref={taskSortMenuRef}>
-                  <button
-                    aria-label="태스크 정렬 메뉴"
-                    aria-expanded={taskSortMenuOpen}
-                    aria-haspopup="menu"
-                    className="icon-button"
-                    type="button"
-                    onClick={() => setTaskSortMenuOpen((current) => !current)}
-                  >
-                    ⋮
-                  </button>
-                  {taskSortMenuOpen ? (
-                    <div className="task-sort-popover" role="menu" aria-label="정렬 기준">
-                      <p>정렬 기준</p>
-                      {(["provider", "scheduled_date"] as const).map((taskSort) => (
-                        <button
-                          key={taskSort}
-                          className="task-sort-option"
-                          role="menuitemradio"
-                          aria-checked={resourceState.taskSort === taskSort}
-                          type="button"
-                          onClick={() => {
-                            setTaskSortMenuOpen(false);
-                            if (resourceState.taskSort === taskSort) {
-                              return;
-                            }
-                            invalidateResourceRequest();
-                            setResourceState((current) => ({
-                              ...current,
-                              taskSort,
-                              pageIndex: 0,
-                              loaded: false,
-                              totalCount: null,
-                              loading: false,
-                              error: null,
-                            }));
-                          }}
-                        >
-                          <span aria-hidden="true">{resourceState.taskSort === taskSort ? "✓" : ""}</span>
-                          {taskSort === "provider" ? "기본 순서" : "날짜순"}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            {resourceState.tab === "calendar" && calendarMonthAnchor && calendarSelectedDate ? (
-              <CalendarMonthView
-                monthAnchor={calendarMonthAnchor}
-                timezone={calendarTimezone}
-                items={calendarMonthItems}
-                selectedDate={calendarSelectedDate}
-                loading={calendarMonthLoading}
-                error={calendarMonthError}
-                onPreviousMonth={() => {
-                  const previous = shiftMonth(calendarMonthAnchor, -1);
-                  setCalendarMonthAnchor(previous);
-                  setCalendarSelectedDate(`${previous}-01`);
+            {resourceState.tab === "tasks" ? (
+              <TasksPanel
+                tasks={tasks}
+                filter={sidebarFilter}
+                onFilterChange={setSidebarFilter}
+                selection={{
+                  selectedResourceIds: resourceState.selectedIds,
+                  focusedResourceId: resourceState.focusItem?.resource_id ?? null,
+                  onToggleResource: (resourceId) => setResourceState((current) => ({
+                    ...current,
+                    selectedIds: current.selectedIds.includes(resourceId)
+                      ? current.selectedIds.filter((selectedId) => selectedId !== resourceId)
+                      : [...current.selectedIds, resourceId],
+                  })),
+                  onFocusResource: (item) => setResourceState((current) => ({ ...current, focusItem: item })),
                 }}
-                onNextMonth={() => {
-                  const next = shiftMonth(calendarMonthAnchor, 1);
-                  setCalendarMonthAnchor(next);
-                  setCalendarSelectedDate(`${next}-01`);
-                }}
-                onSelectDate={setCalendarSelectedDate}
-                onSelectEvent={(item) => setResourceState((current) => ({ ...current, focusItem: item }))}
+                visibleItems={visibleResourceItems}
+                sections={visibleTaskSections}
+                pageIndexes={paginationPageIndexes(tasks.pageIndex, tasks.totalCount, tasks.items.length)}
+                hasNextPage={tasks.pageIndex + 1 < totalPageCount(tasks.totalCount, tasks.items.length) || (tasks.totalCount === null && tasks.nextPageToken !== null)}
+                presentResource={resourcePresentation}
+                pastDays={pastScheduledDays}
+                formatCompletedAt={(item) => formatCompletedTaskDate(firstPresentationValue(item.metadata, ["completed_at"]), calendarTimezone)}
               />
             ) : null}
-            {resourceState.tab !== "calendar" && resourceState.loading ? (
-              <div className="resource-load-status" aria-live="polite">
-                <p className="muted">자료를 불러오는 중입니다.</p>
+            {resourceState.tab === "calendar" ? <>
+              <div className="resource-search-row">
+                <label className="resource-search">
+                  <span className="resource-search-icon" aria-hidden="true">⌕</span>
+                  <input aria-label="일정 검색" placeholder="일정 검색" value={sidebarFilter} onChange={(event) => setSidebarFilter(event.target.value)} />
+                </label>
               </div>
-            ) : null}
-            {resourceState.tab !== "calendar" && resourceState.error ? <p className="status-bad">{resourceState.error}</p> : null}
-            {resourceState.tab !== "calendar" && !resourceState.loading && !resourceState.error && visibleResourceItems.length === 0 ? (
-              <p className="muted">표시할 자료가 없습니다.</p>
-            ) : null}
-            {resourceState.tab !== "calendar" ? <><div className={resourceState.tab === "tasks" ? "task-content-scroll" : "resource-content"}><ul className={`resource-list ${visibleTaskSections ? "task-date-sorted" : ""}`} aria-label="Google 업무 자료">
-              {(() => {
-                const renderResourceItem = (item: ResourceItem): JSX.Element => {
-                  const selected = resourceState.selectedIds.includes(item.resource_id);
-                  const focused = resourceState.focusItem?.resource_id === item.resource_id;
-                  const presentation = resourcePresentation(item);
-                  const isTaskDateSort = resourceState.tab === "tasks" && resourceState.taskSort === "scheduled_date";
-                  const pastDays = isTaskDateSort
-                    ? pastScheduledDays(item)
-                    : null;
-                return (
-                  <li key={item.resource_id} className={`resource-item ${item.source.toLowerCase() === "tasks" ? "task-resource-item" : ""} ${selected ? "selected" : ""} ${focused ? "focused" : ""}`}>
-                    <label className="resource-select-control" title="선택 항목에 포함">
-                      <input
-                        type="checkbox"
-                        aria-label={`${presentation.title ?? "제목 없음"} 선택`}
-                        checked={selected}
-                        onChange={() => setResourceState((current) => ({
-                          ...current,
-                          selectedIds: current.selectedIds.includes(item.resource_id)
-                            ? current.selectedIds.filter((resourceId) => resourceId !== item.resource_id)
-                            : [...current.selectedIds, item.resource_id],
-                        }))}
-                      />
-                    </label>
-                    <button
-                      className="resource-summary"
-                      type="button"
-                      aria-pressed={focused}
-                      onClick={() => setResourceState((current) => ({ ...current, focusItem: item }))}
-                    >
-
-                        <>
-                          {item.source.toLowerCase() === "tasks" ? (
-                            <span className="task-row-main">
-                              <strong className="row-title">{presentation.title ?? "제목 정보 없음"}</strong>
-                              {(!isTaskDateSort && presentation.time) || pastDays !== null ? (
-                                <span className="row-meta task-row-date">
-                                  {pastDays !== null ? `${pastDays}일 지남` : presentation.time}
-                                </span>
-                              ) : null}
-                            </span>
-                          ) : (
-                            <strong className="row-title">{presentation.title ?? "제목 정보 없음"}</strong>
-                          )}
-                          {presentation.secondary ? <span className="row-secondary">{presentation.secondary}</span> : null}
-                          {presentation.snippet ? <span className="row-snippet">{presentation.snippet}</span> : null}
-                          {item.source.toLowerCase() !== "tasks" && presentation.time ? <span className="row-meta">{presentation.time}</span> : null}
-                        </>
-                    </button>
-                  </li>
-                );
-                };
-                return visibleTaskSections
-                  ? visibleTaskSections.map((section, index) => (
-                  <Fragment key={`${section.key}-${index}`}>
-                    <li className={`task-date-section ${index > 0 ? "task-date-section-divider" : ""}`} aria-label={section.label}>{section.label}</li>
-                    {section.items.map((item) => renderResourceItem(item))}
-                  </Fragment>
-                  ))
-                  : visibleResourceItems.map((item) => renderResourceItem(item));
-              })()}
-            </ul>
-            {resourceState.tab === "tasks" ? (
-              <section className="completed-tasks" aria-label="완료됨">
-                <button
-                  className="completed-tasks-toggle"
-                  type="button"
-                  aria-expanded={completedTasks.expanded}
-                  onClick={() => {
-                    if (completedTasks.expanded) {
-                      setCompletedTasks((current) => ({ ...current, expanded: false }));
-                    } else {
-                      setCompletedTasks((current) => ({ ...current, expanded: true }));
-                    }
+              {calendarMonthAnchor && calendarSelectedDate ? (
+                <CalendarMonthView
+                  monthAnchor={calendarMonthAnchor}
+                  timezone={calendarTimezone}
+                  items={calendarMonthItems}
+                  selectedDate={calendarSelectedDate}
+                  loading={calendarMonthLoading}
+                  error={calendarMonthError}
+                  onPreviousMonth={() => {
+                    const previous = shiftMonth(calendarMonthAnchor, -1);
+                    setCalendarMonthAnchor(previous);
+                    setCalendarSelectedDate(`${previous}-01`);
                   }}
-                >
-                  완료됨{completedTasks.initialized ? `(${completedTasks.items.length})` : ""} {completedTasks.expanded ? "▾" : "▸"}
-                </button>
-                {completedTasks.expanded ? (
-                  <div className="completed-tasks-content">
-                    {completedTasks.loading ? <p className="muted">완료됨 로딩 중</p> : null}
-                    {completedTasks.error ? <p className="status-bad">{completedTasks.error}</p> : null}
-                    {!completedTasks.loading && !completedTasks.error && completedTasks.initialized && completedTasks.items.length === 0 ? <p className="muted">완료된 할 일이 없습니다.</p> : null}
-                    {completedTasks.items.slice(0, (completedTasks.pageIndex + 1) * SIDEBAR_VISIBLE_PAGE_SIZE).map((item) => {
-                      const completedAt = formatCompletedTaskDate(
-                        firstPresentationValue(item.metadata, ["completed_at"]),
-                        calendarTimezone,
-                      );
-                      return (
-                        <button key={item.resource_id} className="completed-task-row" type="button" onClick={() => setResourceState((current) => ({ ...current, focusItem: item }))}>
-                          <span className="completed-task-title">✓ {resourcePresentation(item).title ?? "제목 정보 없음"}</span>
-                          {completedAt ? <span className="completed-task-date">완료일: {completedAt}</span> : null}
-                        </button>
-                      );
-                    })}
-                    {!completedTasks.loading && !completedTasks.error && completedTasks.items.length > (completedTasks.pageIndex + 1) * SIDEBAR_VISIBLE_PAGE_SIZE ? (
-                      <button className="button-secondary" type="button" onClick={() => setCompletedTasks((current) => ({ ...current, pageIndex: current.pageIndex + 1 }))}>더 보기</button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </section>
-            ) : null}
-            </div>
-            <nav className="pagination" aria-label="자료 페이지">
-              <button className="button-secondary" type="button" disabled={resourceState.loading || resourceState.pageIndex === 0} onClick={() => void loadResources(resourceState.tab as Exclude<ResourceTab, "gmail">, resourceState.pageIndex - 1)}>
-                이전
-              </button>
-              {paginationPageIndexes(resourceState.pageIndex, resourceState.totalCount, resourceState.items.length).map((index) => (
-                <button key={index} className={index === resourceState.pageIndex ? "button-primary" : "button-secondary"} type="button" disabled={resourceState.loading} onClick={() => void loadResources(resourceState.tab as Exclude<ResourceTab, "gmail">, index)}>
-                  {index + 1}
-                </button>
-              ))}
-              {resourceState.pageIndex + 1 < totalPageCount(resourceState.totalCount, resourceState.items.length) || (resourceState.totalCount === null && resourceState.nextPageToken) ? (
-                <button className="button-secondary" type="button" disabled={resourceState.loading} onClick={() => void loadResources(resourceState.tab as Exclude<ResourceTab, "gmail">, resourceState.pageIndex + 1)}>
-                  다음
-                </button>
+                  onNextMonth={() => {
+                    const next = shiftMonth(calendarMonthAnchor, 1);
+                    setCalendarMonthAnchor(next);
+                    setCalendarSelectedDate(`${next}-01`);
+                  }}
+                  onSelectDate={setCalendarSelectedDate}
+                  onSelectEvent={(item) => setResourceState((current) => ({ ...current, focusItem: item }))}
+                />
               ) : null}
-            </nav>
-            </> : null}</> : null}
+            </> : null}
           </div>
         </aside>
 
@@ -1613,15 +1018,9 @@ export function App(): JSX.Element {
                         aria-label="하위 자료 보기"
                         title="하위 자료 보기"
                         onClick={() => {
-                          invalidateResourceRequest();
                           setResourceState((current) => ({
                             ...current,
                             parentId: resourceState.focusItem!.resource_id,
-                            items: [],
-                            nextPageToken: null,
-                            pageIndex: 0,
-                            loaded: false,
-                            totalCount: null,
                           }));
                         }}
                       >
@@ -2017,21 +1416,6 @@ function formatTime(value: number): string {
   return new Date(value).toLocaleString("ko-KR", { hour12: false });
 }
 
-function sameResourceRequestIdentity(
-  left: ResourceRequestIdentity | null,
-  right: ResourceRequestIdentity,
-): boolean {
-  return left !== null
-    && left.tab === right.tab
-    && left.parentId === right.parentId
-    && left.query === right.query
-    && left.pageIndex === right.pageIndex
-    && left.calendarTimeMin === right.calendarTimeMin
-    && left.calendarTimeMax === right.calendarTimeMax
-    && left.taskSort === right.taskSort
-    && left.taskFilter === right.taskFilter;
-}
-
 function resourceCacheKey(identity: {
   accountId: string;
   tab: ResourceTab;
@@ -2039,8 +1423,6 @@ function resourceCacheKey(identity: {
   query: string;
   calendarTimeMin: string | null;
   calendarTimeMax: string | null;
-  taskSort?: TaskSort;
-  taskFilter?: string;
 }): string {
   return [
     identity.accountId,
@@ -2049,8 +1431,6 @@ function resourceCacheKey(identity: {
     identity.query,
     identity.calendarTimeMin ?? "",
     identity.calendarTimeMax ?? "",
-    identity.taskSort ?? "",
-    identity.taskFilter ?? "",
   ].join("|");
 }
 
@@ -2072,7 +1452,7 @@ function totalPageCount(totalCount: number | null, loadedItemCount: number): num
   return Math.ceil((totalCount ?? loadedItemCount) / SIDEBAR_VISIBLE_PAGE_SIZE);
 }
 
-function formatSourceCount(count: SourceCount): string {
+function formatSourceCount(count: { value: number; exact: boolean } | null): string {
   if (count === null) return "";
   return `${count.value}${count.exact ? "" : "+"}`;
 }
@@ -2081,20 +1461,6 @@ function paginationPageIndexes(currentPage: number, totalCount: number | null, l
   const pageCount = totalPageCount(totalCount, loadedItemCount);
   const first = Math.max(0, Math.min(currentPage - 2, pageCount - 5));
   return Array.from({ length: Math.min(5, pageCount) }, (_, index) => first + index);
-}
-
-function sortTasksByScheduledDate(items: ResourceItem[]): ResourceItem[] {
-  return [...new Map(items.map((item) => [item.resource_id, item])).values()].sort((left, right) => {
-    const leftDate = taskScheduledDate(left);
-    const rightDate = taskScheduledDate(right);
-    if (leftDate === null) return rightDate === null ? 0 : 1;
-    if (rightDate === null) return -1;
-    return localCalendarDayNumber(leftDate) - localCalendarDayNumber(rightDate);
-  });
-}
-
-function uniqueResourceItems(items: ResourceItem[]): ResourceItem[] {
-  return [...new Map(items.map((item) => [item.resource_id, item])).values()];
 }
 
 function groupTasksByScheduledDate(items: ResourceItem[], now = new Date()): Array<{
@@ -2162,10 +1528,10 @@ function pastScheduledDays(item: ResourceItem, now = new Date()): number | null 
   return difference > 0 ? difference : null;
 }
 
-function resourceItemsForSelection(resourceState: ResourceState, gmailItems: ResourceItem[]): ResourceItem[] {
+function resourceItemsForSelection(resourceState: ResourceState, gmailItems: ResourceItem[], taskItems: ResourceItem[]): ResourceItem[] {
   return resourceState.tab === "gmail"
     ? gmailItems
-    : resourceState.items;
+    : resourceState.tab === "tasks" ? taskItems : [];
 }
 
 function GmailDetailViewer({
