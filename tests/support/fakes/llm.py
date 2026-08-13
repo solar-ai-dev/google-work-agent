@@ -142,17 +142,26 @@ class FakeSchemaRepairer:
     def repair(
         self,
         *,
+        provider: object = None,
         prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object] | None = None,
         failed_output: object,
         output_schema: OutputSchemaDefinition,
+        runtime_policy: object = None,
+        api_key: str | None = None,
         attempt_no: int,
+        max_attempts: int = 1,
         failure_reason_code: str,
+        validator_errors: tuple[str, ...] = (),
     ) -> object:
         self.calls.append(
             {
                 "prompt_id": prompt_ref.prompt_id,
+                "prompt_input": dict(prompt_input) if prompt_input is not None else {},
                 "attempt_no": attempt_no,
+                "max_attempts": max_attempts,
                 "failure_reason_code": failure_reason_code,
+                "validator_errors": list(validator_errors),
                 "failed_output": failed_output,
                 "schema_version": output_schema.schema_version,
             }

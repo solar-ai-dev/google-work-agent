@@ -216,9 +216,10 @@ def _find_slot(prompt_id: str, payload: dict[str, object]) -> dict[str, object]:
             raise ValueError("prompt manifest slots must be a list")
         for slot_value in slots:
             slot = _require_mapping(slot_value, "$.slots[]")
-            if _optional_string(slot.get("prompt_id")) == prompt_id or slot.get(
-                "slot_id"
-            ) == prompt_id:
+            if (
+                _optional_string(slot.get("prompt_id")) == prompt_id
+                or slot.get("slot_id") == prompt_id
+            ):
                 return slot
         raise LookupError(f"{prompt_id} prompt is missing from manifest")
     if "prompt_manifest" in payload:

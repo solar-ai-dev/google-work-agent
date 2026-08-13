@@ -165,14 +165,20 @@ class GeminiHTTPClient:
         )
 
 
+_RETRYABLE_HTTP_STATUS_CODES = frozenset({429, 500, 503})
+
+
 def _post_with_rate_limit_backoff(request: Request, *, timeout_seconds: int) -> object:
-    """POST with bounded backoff on 429 so free-tier RPM limits don't get
-    graded as real model-quality failures (see module docstring: grading
-    must reflect the real schema/model, not infra noise). Retries only
-    within ``timeout_seconds`` -- the same API_LLM call budget every other
-    caller respects -- then gives up by raising ``TimeoutError``, which
+    """POST with bounded backoff on 429/500/503 so free-tier RPM limits and
+    transient Gemini-side unavailability don't get graded as real
+    model-quality failures (see module docstring: grading must reflect the
+    real schema/model, not infra noise). Retries only within
+    ``timeout_seconds`` -- the same API_LLM call budget every other caller
+    respects -- then gives up by raising ``TimeoutError``, which
     ``application/llm.py::_invoke_provider`` already maps to
-    ``LLMErrorCode.PROVIDER_TIMEOUT`` (retryable).
+    ``LLMErrorCode.PROVIDER_TIMEOUT`` (retryable). Non-retryable HTTPErrors
+    (e.g. 400/401/403/404) are re-raised immediately and propagate as an
+    unhandled error, matching prior behavior for those codes.
     """
     deadline = time.monotonic() + timeout_seconds
     while True:
@@ -181,12 +187,12 @@ def _post_with_rate_limit_backoff(request: Request, *, timeout_seconds: int) -> 
             with urlopen(request, timeout=max(1, int(remaining))) as response:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as error:
-            if error.code != 429:
+            if error.code not in _RETRYABLE_HTTP_STATUS_CODES:
                 raise
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError(
-                    "Gemini rate limit (429) did not clear within the API call budget"
+                    f"Gemini {error.code} did not clear within the API call budget"
                 ) from error
             delay = _parse_retry_delay_seconds(error) or _MIN_RETRY_DELAY_SECONDS
             time.sleep(min(delay, remaining, _MAX_RETRY_DELAY_SECONDS))

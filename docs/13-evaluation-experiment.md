@@ -1,8 +1,8 @@
 # 13. Google Work Agent · 평가 · 실험 설계서
 
-> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `03 Architecture v3.0`, `05 Retrieval v2.6`, `06 Workflow v6.2`, `07 Interface v2.10`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `12 Test v3.5`, `15 Agent Capability·Failure·Prompt v1.5`를 기준으로 한다.
+> **문서 기준:** `01 PRD v2.9`, `01-A v2.15`, `01-B v2.10`, `03 Architecture v3.4`, `05 Retrieval v2.10`, `06 Workflow v7.5`, `07 Interface v2.16`, `10 Infrastructure v2.8`, `11 Observability v2.11`, `12 Test v3.12`, `15 Agent Capability·Failure·Prompt v1.10`를 기준으로 한다.
 >
-> **상태:** Draft v3.2 · **기준일:** 2026-08-10 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
+> **상태:** Draft v3.8 · **기준일:** 2026-08-13 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
 
 ## 먼저 읽기 — 이 문서가 결정하는 것
 
@@ -32,7 +32,7 @@
 
 ## 1. 목적과 범위
 
-제품의 Model·Prompt·Source Acquisition·Retrieval·Graph·Routing·Review 구성을 감으로 선택하지 않고, 같은 Canonical Case·Fixture·Tool Schema·Policy 조건에서 반복 가능한 실험으로 비교한다.
+제품의 Model·Prompt·Tool Route·Retrieval·Graph·Routing·Review 구성을 감으로 선택하지 않고, 같은 Canonical Case·Fixture·Tool Schema·Policy 조건에서 반복 가능한 실험으로 비교한다.
 
 이 문서가 소유한다.
 
@@ -40,7 +40,7 @@
 - API LLM·Local LLM 후보 비교
 - Node Prompt·Structured Output·Repair 실험
 - Node 단독 성능과 Handoff 오류 전파 분석
-- Source Acquisition·Read Tool Trajectory 실험
+- Tool Route·Retrieval Read Trajectory 실험
 - Retrieval·Evidence·Context Budget 실험
 - Graph Profile·Routing·Agent Skip·Review Agent 실험
 - Finalist E2E·Holdout·Stress·Robustness 평가
@@ -59,7 +59,7 @@
 - 한 실험에서 원칙적으로 하나의 독립 변수만 변경한다.
 - API 모델과 Local 모델은 별도 후보군으로 선정한다.
 - Graph 실험에서는 Model·Policy·Tool Schema·Fixture와 **Semantic Responsibility**를 고정한다. Profile topology에 필요한 Prompt Artifact 재조합은 허용하되 동일 `prompt_semantic_bundle_version`으로 책임 동등성을 잠근다. Routing·Review 단독 실험은 해당 실험의 독립변수 외 조건을 고정한다.
-- Retrieval 실험에서는 Source Acquisition 결과를 고정한다.
+- Retrieval 실험에서는 `ToolRoutePlanV2`을 고정하고 Retrieval Query·Read·RAG만 비교한다.
 - Node 단독 실험은 Gold Upstream 입력을 사용하고, Handoff 실험은 실제 Upstream 출력을 사용한다.
 - LLM Judge는 의미 품질의 보조 지표이며 Safety·Tool·Argument·End-state 판정의 기준점이 아니다.
 - 실제 사용자 Gmail·Tasks·Calendar 데이터는 평가셋에 포함하지 않는다.
@@ -88,7 +88,7 @@ Canonical Case
         ↓
 Experiment Projection
 ├─ User Understanding
-├─ Acquisition
+├─ Tool Route
 ├─ Retrieval
 ├─ Analysis
 ├─ Planning
@@ -102,30 +102,111 @@ Experiment Projection
 - Schema Repair·Review Challenge·Fault Injection처럼 좁은 목적은 별도 Micro Dataset을 사용한다.
 - 같은 Case·Fixture를 재사용하되 `evaluation_item_id`는 Projection·Candidate·Trial별로 구분한다.
 
+
+### Dataset Rebase 추가 계약 — Policy Precondition·Override
+- 신규 SIX Gold는 일반 Retrieval READ를 ActionPlan의 READ Action으로 요구하지 않는다.
+- `TASK + CREATE`는 기존 미완료 Task 중복 검사 IN, `CALENDAR + CREATE`는 Event/FreeBusy 충돌 검사 IN을 required trajectory로 기록한다.
+- 명시적 사용자 범위 밖 Policy Precondition READ는 `SCOPE_EXPANSION_REQUIRED → 사용자 확인 → APPROVED인 경우만 추가 IN Route`가 정답이다.
+- 정확 중복 기본 경로는 `action_necessity=NOT_REQUIRED`, 새 Action 0이다. 중복 추가 생성/검증된 충돌 Override는 각각 `DUPLICATE_OVERRIDE_REQUIRED`/`CONFLICT_OVERRIDE_REQUIRED` Confirmation 후에만 성공으로 본다.
+- Override 성공 trajectory에는 `PolicyConfirmationReceiptV1(APPROVED)`, 같은 receipt ID의 Audit, `WorkAnalysisResultV2.policy_confirmation_receipt_refs`, Approval Snapshot binding이 포함돼야 한다. stale/DECLINED/missing Receipt는 실패다.
+
+
 ## 4. P0 실험 Suite
 
 기존 네 개 실험을 유지하되, 멀티에이전트와 다중 LLM 호출의 원인 분석에 필요한 네 개를 추가한다. P0 핵심 비교 실험은 총 8개다.
 
-| ID | 실험 | 독립 변수 | 주요 질문 |
-|---|---|---|---|
-| `E01` | Model·Runtime Screening | Model 또는 Reasoning Budget 하나 | 어떤 모델 설정이 품질·비용·지연의 기준선을 만족하는가 |
-| `E02` | Prompt·Schema·Repair | Node Prompt 또는 Output Schema 하나 | 최초 출력과 1회 Repair의 구조·의미 정확도가 개선되는가 |
-| `E03` | Node 단독·Handoff 오류 전파 | Upstream 입력 모드 `ORACLE` vs `LIVE` | 실패가 대상 Node 자체인지 이전 Agent 오류 전파인지 구분 가능한가 |
-| `E04` | Source Acquisition·Read Tool Trajectory | Acquisition 전략 또는 Read Budget 하나 | 필요한 Source와 최소 API 호출을 정확히 계획하는가 |
-| `E05` | Retrieval·Evidence·Context Budget | Retrieval 구성 또는 Context Budget 하나 | 필요한 근거를 유지하면서 Noise·Token·Latency를 줄이는가 |
-| `E06-A` | Agent Subgraph Architecture Ablation | Graph Profile 하나 | 1/3/6 Agent Subgraph 구조 중 실제 제품 효율·품질 균형이 가장 좋은 것은 무엇인가 |
-| `E06-B` | Controlled Post-Retrieval Decomposition | post-retrieval Agent Subgraph 분해 수준 | 동일 Intent·Context·Evidence에서 분석·계획·검토 분해 자체가 판단 품질에 기여하는가 |
-| `E07` | Routing·Agent Skip | Always-call vs Conditional-skip | 쉬운 요청에서 품질 손실 없이 불필요한 Agent 호출을 줄이는가 |
-| `E08` | Review Agent 기여도 | Review 없음 vs Review 있음 | Review가 실제 오류를 줄이고 정상 결과를 과도하게 차단하지 않는가 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ID</td>
+		<td>실험</td>
+		<td>독립 변수</td>
+		<td>주요 질문</td>
+	</tr>
+	<tr>
+		<td>`E01`</td>
+		<td>Model·Runtime Screening</td>
+		<td>Model 또는 Reasoning Budget 하나</td>
+		<td>어떤 모델 설정이 품질·비용·지연의 기준선을 만족하는가</td>
+	</tr>
+	<tr>
+		<td>`E02`</td>
+		<td>Prompt·Schema·Repair</td>
+		<td>Node Prompt 또는 Output Schema 하나</td>
+		<td>최초 출력과 1회 Repair의 구조·의미 정확도가 개선되는가</td>
+	</tr>
+	<tr>
+		<td>`E03`</td>
+		<td>Node 단독·Handoff 오류 전파</td>
+		<td>Upstream 입력 모드 `ORACLE` vs `LIVE`</td>
+		<td>실패가 대상 Node 자체인지 이전 Agent 오류 전파인지 구분 가능한가</td>
+	</tr>
+	<tr>
+		<td>`E04`</td>
+		<td>Tool Route·Retrieval Read Trajectory</td>
+		<td>Route 또는 Retrieval 전략 하나</td>
+		<td>필요한 IN/OUT Route와 허용 Read Trajectory를 정확히 결정하는가</td>
+	</tr>
+	<tr>
+		<td>`E05`</td>
+		<td>Retrieval·Evidence·Context Budget</td>
+		<td>Retrieval 구성 또는 Context Budget 하나</td>
+		<td>필요한 근거를 유지하면서 Noise·Token·Latency를 줄이는가</td>
+	</tr>
+	<tr>
+		<td>`E06-A`</td>
+		<td>Agent Subgraph Architecture Ablation</td>
+		<td>Graph Profile 하나</td>
+		<td>1/3/6 Agent Subgraph 구조 중 실제 제품 효율·품질 균형이 가장 좋은 것은 무엇인가</td>
+	</tr>
+	<tr>
+		<td>`E06-B`</td>
+		<td>Controlled Post-Retrieval Decomposition</td>
+		<td>post-retrieval Agent Subgraph 분해 수준</td>
+		<td>동일 Intent·Context·Evidence에서 분석·계획·검토 분해 자체가 판단 품질에 기여하는가</td>
+	</tr>
+	<tr>
+		<td>`E07`</td>
+		<td>Routing·Agent Skip</td>
+		<td>Always-call vs Conditional-skip</td>
+		<td>쉬운 요청에서 품질 손실 없이 불필요한 Agent 호출을 줄이는가</td>
+	</tr>
+	<tr>
+		<td>`E08`</td>
+		<td>Review Agent 기여도</td>
+		<td>Review 없음 vs Review 있음</td>
+		<td>Review가 실제 오류를 줄이고 정상 결과를 과도하게 차단하지 않는가</td>
+	</tr>
+</table>
 
 다음은 비교 실험이 아니라 필수 Gate·최종 검증 Lane이다.
 
-| ID | 구분 | 목적 |
-|---|---|---|
-| `G00` | Dataset·Grader Integrity | 참조 무결성, Split 누수, Gold 일관성, Grader 보정 |
-| `G01` | Safety·Prompt Injection | 위험 제안·승인 우회·오염된 Evidence 전파 차단 |
-| `G02` | Fault·Recovery·Write Integrity | 401·403·409·429·Timeout·UNKNOWN_RESULT·승인 인자·GET 검증 |
-| `V01` | Finalist E2E | Holdout·Stress·Human Review·Robustness로 최종 후보 검증 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ID</td>
+		<td>구분</td>
+		<td>목적</td>
+	</tr>
+	<tr>
+		<td>`G00`</td>
+		<td>Dataset·Grader Integrity</td>
+		<td>참조 무결성, Split 누수, Gold 일관성, Grader 보정</td>
+	</tr>
+	<tr>
+		<td>`G01`</td>
+		<td>Safety·Prompt Injection</td>
+		<td>위험 제안·승인 우회·오염된 Evidence 전파 차단</td>
+	</tr>
+	<tr>
+		<td>`G02`</td>
+		<td>Fault·Recovery·Write Integrity</td>
+		<td>401·403·409·429·Timeout·UNKNOWN_RESULT·승인 인자·GET 검증</td>
+	</tr>
+	<tr>
+		<td>`V01`</td>
+		<td>Finalist E2E</td>
+		<td>Holdout·Stress·Human Review·Robustness로 최종 후보 검증</td>
+	</tr>
+</table>
 
 Embedding·Vector Index·Reranker는 `E05`의 Metadata·Keyword + LLM Evidence Selection이 목표 성능을 충족하지 못할 때만 수행한다. Local Model·GPU 평가는 API 수직 흐름과 Runner 안정화 후 별도 Lane으로 수행한다.
 
@@ -151,18 +232,23 @@ Model과 Reasoning Budget을 같은 Run에서 동시에 변경하지 않는다.
 
 ### 5.2 E02 Prompt·Schema·Repair
 
-초기 대상 Node:
+초기 대상 Node는 새 Graph의 단일 책임 LLM Node를 기준으로 한다.
 
-- `request_understanding.classify`
-- `acquisition.plan_sources`
-- `context.select_evidence`
-- `context.assess_sufficiency`
-- `analysis.analyze`
-- `planning.answer_only`
-- `planning.draft_plan`
+- `request.identify_goal`
+- `request.detect_ambiguity` (conditional)
+- `route.determine_resources`
+- `route.select_tool` (conditional; registered candidates only)
+- `retrieval.plan_query`
+- `retrieval.select_evidence`
+- `retrieval.assess_sufficiency`
+- `analysis.extract_facts`
+- `analysis.resolve_relations` (conditional)
+- `planning.compose_answer` 또는 `planning.compose_arguments`
+- `planning.compose_dependencies` (conditional)
 - `review.inspect`
+- `review.recheck` (conditional)
 
-Tier A 5개를 먼저 구현하되, Canonical Case와 Projection은 위 8개 Node를 수용하도록 작성한다. Tier B Node는 해당 경로 구현 완료 후 같은 방식으로 실험한다.
+Node별 Contract Stability Gate가 먼저 통과한 뒤 Prompt·Schema 품질 비교를 수행한다. Conditional Node는 적용 Case에서만 평가한다. Deterministic `route.bind_candidates`, `route.finalize`, `retrieval.build_query`, `retrieval.execute_read`, `planning.assemble`은 Prompt 실험 대상이 아니라 Contract/Integration Test 대상이다.
 
 비교:
 
@@ -194,8 +280,8 @@ LIVE:   실제 Upstream Output → Target Node
 예:
 
 ```text
-Gold Evidence → planning.draft_plan
-Live Retrieval Evidence → planning.draft_plan
+Gold WorkAnalysis + fixed OutputRoute → planning.compose_arguments
+Live WorkAnalysis + fixed OutputRoute → planning.compose_arguments
 ```
 
 측정:
@@ -208,39 +294,64 @@ Live Retrieval Evidence → planning.draft_plan
 
 `ORACLE` 결과는 성능 상한과 원인 분석용이며 제품 후보로 채택하지 않는다.
 
-### 5.4 E04 Source Acquisition·Read Tool Trajectory
+### 5.4 E04 Tool Route·Retrieval Read Trajectory
 
-Acquisition과 Retrieval을 분리해 평가한다.
+Tool Route와 Retrieval을 분리해 평가한다.
+
+#### E04-A Tool Route
 
 입력:
 
-- RequestIntent
-- Entry Mode
-- Selected Resource ID
-- 허용 Source
-- Read Budget
+- `RequestIntentV2`
+- Signed Tool Registry Snapshot
 
 Gold:
 
-- Required·Forbidden Source
-- 사용자 날짜·사람·이메일·선택 Resource 제약
-- Source 우선순위가 업무 의존성상 필요한 경우의 순서
-- `NO_FETCH_NEEDED` 여부
-- Metadata List Tool과 Detail GET Tool의 필수·금지 조건
-- Page·Candidate·Detail·Round **최대 허용 Budget**
-- 호출하지 말아야 할 Source·Tool
-
-채점은 전체 `SourceFetchPlan` JSON의 완전일치가 아니다. Required/Forbidden Source와 사용자 제약은 엄격하게 검사하고, `max_pages`, `detail_limit`, acquisition round 같은 숫자는 **Gold ceiling 이하인지** 검사한다. 더 적은 호출로 같은 근거를 얻은 후보를 오답 처리하지 않는다.
+- Required/Forbidden IN Resource Route
+- Required/Forbidden OUT Resource·Effect
+- Registered Tool ID만 사용
+- 복합 요청의 IN/OUT Route 보존
+- `output_mode=ANSWER|ACTION`
 
 측정:
 
-- Required Source Recall
-- Forbidden Source 호출 0
-- Unnecessary Source Rate
-- Correct List·Detail Tool Rate
+- IN Route Accuracy
+- OUT Route Accuracy
+- Effect Accuracy
+- Registered Tool Accuracy
+- Route Recall / Forbidden Route 0
+- Downstream Tool 재선택 0
+
+#### E04-B Retrieval Trajectory
+
+`ToolRoutePlanV2`을 고정하고 Retrieval만 평가한다.
+
+입력:
+
+- RequestIntentV2
+- `ToolRoutePlanV2.input_plan.input_routes`
+- Entry Mode / selected resource
+- Retrieval Budget
+
+Gold:
+
+- 사용자 날짜·사람·이메일·선택 Resource 제약
+- Metadata List·Detail GET·FreeBusy의 필수/금지 조건
+- Page·Candidate·Detail·Round 최대 허용 Budget
+- Required Resource/Segment/Evidence
+- `ROUTE_RECONSIDERATION_REQUIRED`가 필요한 Case
+
+채점은 `RetrievalQueryPlanV1` 전체 JSON의 완전일치가 아니다. 사용자 제약과 허용 Read Tool 범위는 엄격하게 검사하고, 더 적은 호출로 같은 Evidence를 얻은 후보를 오답 처리하지 않는다.
+
+측정:
+
+- Allowed Read Tool Violation 0
 - Read Argument Constraint Accuracy
-- Google API Page·Detail Call 수
+- MCP Read Tool Call 수 + MCP 내부 Google Provider Page·Detail API Call 수
 - Retrieval Round·Latency
+- RAG Required Segment Recall
+- Evidence Precision/Coverage
+- Route Reconsideration Accuracy
 
 `RESOURCE_SELECTED` 변형은 품질 Benchmark의 주력이 아니라 Routing·효율성 회귀용으로 사용한다.
 
@@ -249,7 +360,7 @@ Gold:
 단계적 비교:
 
 ```text
-R1. Metadata Filter + Keyword
+R1. Metadata Filter + deterministic/lexical Run-scoped RAG
 R2. R1 + LLM Evidence Selection
 R3. R2 + Embedding 또는 Reranker
 ```
@@ -274,7 +385,8 @@ HIGH
 - Evidence Coverage
 - Hard Negative Rejection
 - Context Token
-- Google API Call
+- MCP Tool Call
+- MCP 내부 Google Provider API Call
 - p50·p95 Latency
 - Downstream Answer·Plan Accuracy
 
@@ -284,24 +396,77 @@ HIGH
 
 `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE`은 LLM Call 개수가 아니라 **Agent Subgraph 분해 수준**을 뜻한다. Agent는 invocation 범위 Local State, Prompt 계약, bounded validation·repair/revision loop를 가진 LangGraph Subgraph다.
 
-| 후보 | Agent Subgraph | 책임 구조 |
-|---|---:|---|
-| `SINGLE_BASELINE` | 1 | Request·Source·Read·Evidence·Analysis·Planning·통합 self-review Agent |
-| `THREE_STAGE` | 3 | ① Request+Source+Read ② Evidence+Analysis+Planning ③ Review |
-| `SIX_ROLE_BASELINE` | 6 | Request / Acquisition / Context / Analysis / Planning / Review |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>후보</td>
+		<td>Agent Subgraph</td>
+		<td>책임 구조</td>
+	</tr>
+	<tr>
+		<td>`SINGLE_BASELINE`</td>
+		<td>1</td>
+		<td>Request·Tool Route·Retrieval·Analysis·Planning·통합 self-review Agent</td>
+	</tr>
+	<tr>
+		<td>`THREE_STAGE`</td>
+		<td>3</td>
+		<td>① Request+Tool Route+Retrieval ② Analysis+Planning ③ Review</td>
+	</tr>
+	<tr>
+		<td>`SIX_ROLE_BASELINE`</td>
+		<td>6</td>
+		<td>Request / Tool Route / Retrieval / Analysis / Planning / Review</td>
+	</tr>
+</table>
 
-Agent 수와 LLM Call 수를 동일시하지 않는다. Repair·Revision·acquisition 전후 판단 때문에 한 Agent가 여러 LLM Call을 사용할 수 있다. `agent_invocation_count`와 `llm_call_count`를 둘 다 기록한다.
+Agent 수와 LLM Call 수를 동일시하지 않는다. Repair·Revision·Retrieval 전후 판단 때문에 한 Agent가 여러 LLM Call을 사용할 수 있다. `agent_invocation_count`와 `llm_call_count`를 둘 다 기록한다.
 
 E06-A의 semantic responsibility parity:
 
-| 의미 책임 | SINGLE | THREE | SIX |
-|---|---|---|---|
-| Request 이해 | Unified 내부 | Stage 1 | Request Agent |
-| Source 판단·Read | Unified 내부 | Stage 1 | Acquisition Agent |
-| Evidence 판단 | Unified 내부 | Stage 2 | Context Agent |
-| Analysis | Unified 내부 | Stage 2 | Analysis Agent |
-| Planning | Unified 내부 | Stage 2 | Planning Agent |
-| Plan 품질 점검 | **Unified self-review** | Review Agent | Review Agent |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>의미 책임</td>
+		<td>SINGLE</td>
+		<td>THREE</td>
+		<td>SIX</td>
+	</tr>
+	<tr>
+		<td>Request 이해</td>
+		<td>Unified 내부</td>
+		<td>Stage 1</td>
+		<td>Request Agent</td>
+	</tr>
+	<tr>
+		<td>IN/OUT Tool Route</td>
+		<td>Unified 내부</td>
+		<td>Stage 1</td>
+		<td>Tool Route Agent</td>
+	</tr>
+	<tr>
+		<td>Query·Read·RAG·Evidence</td>
+		<td>Unified 내부</td>
+		<td>Stage 1</td>
+		<td>Retrieval Agent</td>
+	</tr>
+	<tr>
+		<td>Analysis</td>
+		<td>Unified 내부</td>
+		<td>Stage 2</td>
+		<td>Analysis Agent</td>
+	</tr>
+	<tr>
+		<td>Planning</td>
+		<td>Unified 내부</td>
+		<td>Stage 2</td>
+		<td>Planning Agent</td>
+	</tr>
+	<tr>
+		<td>Plan 품질 점검</td>
+		<td>**Unified self-review**</td>
+		<td>Review Agent</td>
+		<td>Review Agent</td>
+	</tr>
+</table>
 
 동일 의미 책임을 유지하되 책임 경계와 Handoff 수만 다르게 한다. Review 책임 자체를 제거하는 실험은 E08이 소유한다.
 
@@ -317,7 +482,7 @@ E06-A의 semantic responsibility parity:
 - 전체 의미 책임 범위와 Safety Gate
 - Profile별 Prompt 문구 자체가 아니라 동일 `prompt_semantic_bundle_version`의 Semantic Responsibility coverage
 
-각 Profile은 자신의 정상 Routing·Acquisition·bounded loop를 그대로 사용한다. 따라서 LLM Call·Token·Google Read Call·Latency 차이는 **제품 비용의 일부**다.
+각 Profile은 자신의 정상 Routing·Retrieval·bounded loop를 그대로 사용한다. 따라서 LLM Call·Token·MCP Read Tool Call·Latency 차이는 **제품 비용의 일부**다.
 
 측정:
 - Business Task Success / Final State Correctness
@@ -325,7 +490,7 @@ E06-A의 semantic responsibility parity:
 - Tool·Argument Accuracy
 - `agent_invocation_count`
 - `llm_call_count`·Token·Cost
-- Google Read Call·Tool Call
+- MCP Read Tool Call·Tool Call
 - p50·p95 Latency
 - Repair·Revision·Retrieval Round
 - Cost per Successful Run
@@ -337,7 +502,7 @@ E06-A의 semantic responsibility parity:
 고정 주입 경계: `CONTEXT_READY_V1`
 
 ```text
-RequestIntentV1
+RequestIntentV2
 ContextBundleV1
 EvidenceSetV1
 PolicySummaryV1
@@ -345,13 +510,30 @@ fixture_snapshot_id
 context_snapshot_id
 ```
 
-이 Lane에서는 Request Understanding·Acquisition·Context Retrieval Agent를 실행·채점하지 않는다. 동일 Snapshot을 다음 후보에 주입한다.
+이 Lane에서는 Request Understanding·Tool Route·Retrieval Agent를 실행·채점하지 않는다. Snapshot은 고정된 `ToolRoutePlanV2`과 `RetrievalResultV1`에서 생성된 `CONTEXT_READY_V1` 호환 경계다. 동일 Snapshot을 다음 후보에 주입한다.
 
-| 후보 | post-retrieval Agent Subgraph | 책임 |
-|---|---:|---|
-| `B1_INTEGRATED` | 1 | Analysis + Planning + integrated self-review |
-| `B2_STAGED` | 2 | Analysis+Planning / Review |
-| `B3_SPECIALIZED` | 3 | Analysis / Planning / Review |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>후보</td>
+		<td>post-retrieval Agent Subgraph</td>
+		<td>책임</td>
+	</tr>
+	<tr>
+		<td>`B1_INTEGRATED`</td>
+		<td>1</td>
+		<td>Analysis + Planning + integrated self-review</td>
+	</tr>
+	<tr>
+		<td>`B2_STAGED`</td>
+		<td>2</td>
+		<td>Analysis+Planning / Review</td>
+	</tr>
+	<tr>
+		<td>`B3_SPECIALIZED`</td>
+		<td>3</td>
+		<td>Analysis / Planning / Review</td>
+	</tr>
+</table>
 
 공통 고정:
 - 동일 Model·Runtime parameter
@@ -362,7 +544,7 @@ context_snapshot_id
 
 금지:
 - B 후보 중 하나에만 Gold reasoning hint 추가
-- Snapshot 이후 추가 Google Read
+- Snapshot 이후 추가 MCP Read Tool
 - 후보별 다른 Evidence 추가·삭제
 - 새로운 휴리스틱 비즈니스 로직 삽입
 
@@ -387,8 +569,8 @@ B. Entry Mode·Route·Context Sufficiency에 따른 조건부 Skip
 대표 기대:
 
 - `RESOURCE_SELECTED` + 단순 요약: 전체 Workspace Search 금지
-- `ANSWER_ONLY`: `planning.draft_plan` 미호출
-- `NO_FETCH_NEEDED`: Acquisition 실행·Google Search 미호출
+- `ANSWER_ONLY`: Action Argument/Plan Node 미호출
+- `NO_FETCH_NEEDED`: Retrieval Read·Google Search 미호출
 - 확인 질문 필요: 불필요한 Retrieval·Planning 선행 금지
 
 측정:
@@ -457,7 +639,7 @@ Baseline Config 고정
 → E01 Model·Runtime Screening
 → E02 Prompt·Schema·Repair
 → E03 Node 단독·Handoff 오류 전파
-→ E04 Source Acquisition·Read Tool Trajectory
+→ E04 Tool Route·Retrieval Read Trajectory
 → E05 Retrieval·Evidence·Context Budget
 → E06-A Native Architecture Ablation
 → E06-B Controlled Post-Retrieval Decomposition
@@ -535,29 +717,95 @@ human_rubric
 
 ### 7.3 실험 Projection
 
-| Projection | 주요 입력 | 주요 Gold |
-|---|---|---|
-| User Understanding | User Prompt·Entry Mode | Goal·Completion·Ambiguity·Result |
-| Acquisition | RequestIntent·Budget | Source Plan·Read Tool·Budget |
-| Retrieval | Candidate Resources·Segments | Required Evidence·Hard Negative |
-| Analysis | Gold 또는 Live Evidence | 관계·최신성·누락·위험 |
-| Planning | Analysis Result | Answer·Action DAG·Tool·Arguments |
-| Review | Plan·Evidence | PASS·REVISE·RETRIEVE_MORE·CONFIRM·BLOCK |
-| Routing·Trajectory | Full Trace Input | 호출 Node·Tool·Skip·Budget |
-| E2E | User Prompt + Fixture | Route·Answer·Action·End-state |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Projection</td>
+		<td>주요 입력</td>
+		<td>주요 Gold</td>
+	</tr>
+	<tr>
+		<td>User Understanding</td>
+		<td>User Prompt·Entry Mode</td>
+		<td>Goal·Completion·Ambiguity·Result</td>
+	</tr>
+	<tr>
+		<td>Tool Route</td>
+		<td>RequestIntent·Registry Snapshot</td>
+		<td>IN/OUT Resource·Effect·Registered Tool</td>
+	</tr>
+	<tr>
+		<td>Retrieval</td>
+		<td>RequestIntent·ToolRoute·Candidate Segments</td>
+		<td>Query/Read Trajectory·Required Evidence·Hard Negative</td>
+	</tr>
+	<tr>
+		<td>Analysis</td>
+		<td>Gold 또는 Live Evidence</td>
+		<td>관계·최신성·누락·위험</td>
+	</tr>
+	<tr>
+		<td>Planning</td>
+		<td>Fixed Output Route·Analysis Result</td>
+		<td>Answer·Action Arguments·Dependency (Tool은 Route에서 고정)</td>
+	</tr>
+	<tr>
+		<td>Review</td>
+		<td>Plan·Evidence</td>
+		<td>PASS·REVISE·RETRIEVE_MORE·CONFIRM·BLOCK</td>
+	</tr>
+	<tr>
+		<td>Routing·Trajectory</td>
+		<td>Full Trace Input</td>
+		<td>호출 Node·Tool·Skip·Budget</td>
+	</tr>
+	<tr>
+		<td>E2E</td>
+		<td>User Prompt + Fixture</td>
+		<td>Route·Answer·Action·End-state</td>
+	</tr>
+</table>
 
 Projection은 Canonical Case에서 자동 생성하되, 사람 검수된 Gold만 포함한다. `not_applicable` Node는 제외 사유를 기록한다.
 
 ### 7.4 Micro Dataset
 
-| Dataset | 초기 권장 규모 | 생성 방식 |
-|---|---:|---|
-| `resource_selected_variants` | 8~12 | Canonical Case의 동일 Goal·Fixture 재사용 |
-| `review_challenges` | 30~40 | Gold Plan에 통제된 오류 하나만 주입 |
-| `structured_output_repair` | 20~30 | 누락 Field·잘못된 Enum·타입 오류 |
-| `fault_profiles` | 15~20 | Adapter·Workflow 상태 오류 주입 |
-| `injection_variants` | 10~15 | 서로 다른 Source 위치·공격 목적 |
-| `paraphrase_robustness` | 주요 Core 20 × 2 | Finalist 선정 후 작성 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Dataset</td>
+		<td>초기 권장 규모</td>
+		<td>생성 방식</td>
+	</tr>
+	<tr>
+		<td>`resource_selected_variants`</td>
+		<td>8~12</td>
+		<td>Canonical Case의 동일 Goal·Fixture 재사용</td>
+	</tr>
+	<tr>
+		<td>`review_challenges`</td>
+		<td>30~40</td>
+		<td>Gold Plan에 통제된 오류 하나만 주입</td>
+	</tr>
+	<tr>
+		<td>`structured_output_repair`</td>
+		<td>20~30</td>
+		<td>누락 Field·잘못된 Enum·타입 오류</td>
+	</tr>
+	<tr>
+		<td>`fault_profiles`</td>
+		<td>15~20</td>
+		<td>Adapter·Workflow 상태 오류 주입</td>
+	</tr>
+	<tr>
+		<td>`injection_variants`</td>
+		<td>10~15</td>
+		<td>서로 다른 Source 위치·공격 목적</td>
+	</tr>
+	<tr>
+		<td>`paraphrase_robustness`</td>
+		<td>주요 Core 20 × 2</td>
+		<td>Finalist 선정 후 작성</td>
+	</tr>
+</table>
 
 Micro Dataset은 Canonical Case 92개를 대체하지 않으며 별도 `micro_case_id`와 원본 `case_id`를 연결한다.
 
@@ -565,12 +813,33 @@ Micro Dataset은 Canonical Case 92개를 대체하지 않으며 별도 `micro_ca
 
 초기에는 Case당 Canonical User Prompt 하나만 작성한다.
 
-| Dataset | Case | 초기 User Prompt |
-|---|---:|---:|
-| Core | 60 | 60 |
-| Holdout | 12 | 12 |
-| Stress | 20 | 20 |
-| **합계** | **92** | **92** |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Dataset</td>
+		<td>Case</td>
+		<td>초기 User Prompt</td>
+	</tr>
+	<tr>
+		<td>Core</td>
+		<td>60</td>
+		<td>60</td>
+	</tr>
+	<tr>
+		<td>Holdout</td>
+		<td>12</td>
+		<td>12</td>
+	</tr>
+	<tr>
+		<td>Stress</td>
+		<td>20</td>
+		<td>20</td>
+	</tr>
+	<tr>
+		<td>**합계**</td>
+		<td>**92**</td>
+		<td>**92**</td>
+	</tr>
+</table>
 
 추가 Paraphrase는 Finalist 선정 후 주요 Core 20 Case에 추가 표현 2개씩 총 40개를 우선 작성한다.
 
@@ -592,7 +861,7 @@ Canonical Case의 권위 Gold는 다음 네 층으로 나눈다.
 
 1. **Business Gold** — Goal, Completion Criteria, Required/Forbidden Source, Resource, Evidence, Action, End-state.
 2. **Interaction Gold** — 한 Run에 필요한 사용자 상호작용의 **순서 목록**. `CONFIRMATION | APPROVAL | REAUTH | RECOVERY_DECISION | CANCEL_REQUEST`를 사용하며 단일 `expected_interrupt`로 축약하지 않는다.
-3. **Semantic Milestone Gold** — `REQUEST_UNDERSTANDING`, `ACQUISITION`, `CONTEXT_RETRIEVAL`, `WORK_ANALYSIS`, `PLANNING`, `QUALITY_CHECK`, `DOMAIN_VALIDATION`, `APPROVAL`, `EXECUTION`, `VERIFICATION`, `RECOVERY` 등 Profile 중립 책임 단계.
+3. **Semantic Milestone Gold** — `REQUEST_UNDERSTANDING`, `TOOL_ROUTE`, `RETRIEVAL`, `WORK_ANALYSIS`, `PLANNING`, `QUALITY_CHECK`, `DOMAIN_VALIDATION`, `APPROVAL`, `EXECUTION`, `VERIFICATION`, `RECOVERY` 등 Profile 중립 책임 단계.
 4. **Reference Route** — `six_reference_route`와 `six_reference_skipped_nodes`. SIX_ROLE 회귀·E07 진단용이며 E06-A의 공통 품질 Gold가 아니다.
 
 Write Gold는 Action별 Effect와 검증 정책을 함께 가진다.
@@ -680,28 +949,90 @@ adoption_criteria
 
 Gold 필드는 모두 같은 방식으로 비교하지 않는다.
 
-| 유형 | 사용 예 | 판정 |
-|---|---|---|
-| `STRICT` | 금지 Tool, 승인, Target ID, Write Effect, Verification, 상태 | 계약과 정확히 일치 |
-| `SET` | Required/Forbidden Source·Evidence | 필수 포함·금지 제외 |
-| `CONSTRAINT_ENVELOPE` | Page/Detail/Retry Budget | Gold 상한/하한 안이면 허용 |
-| `ORDERED_PREFERENCE` | 의존성이 있는 Source·Action 순서 | 순서가 업무 의미일 때만 검사 |
-| `SEMANTIC_RUBRIC` | 답변·분석·계획의 의미 충족 | 보정된 Semantic Grader + Human Calibration |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>유형</td>
+		<td>사용 예</td>
+		<td>판정</td>
+	</tr>
+	<tr>
+		<td>`STRICT`</td>
+		<td>금지 Tool, 승인, Target ID, Write Effect, Verification, 상태</td>
+		<td>계약과 정확히 일치</td>
+	</tr>
+	<tr>
+		<td>`SET`</td>
+		<td>Required/Forbidden Source·Evidence</td>
+		<td>필수 포함·금지 제외</td>
+	</tr>
+	<tr>
+		<td>`CONSTRAINT_ENVELOPE`</td>
+		<td>Page/Detail/Retry Budget</td>
+		<td>Gold 상한/하한 안이면 허용</td>
+	</tr>
+	<tr>
+		<td>`ORDERED_PREFERENCE`</td>
+		<td>의존성이 있는 Source·Action 순서</td>
+		<td>순서가 업무 의미일 때만 검사</td>
+	</tr>
+	<tr>
+		<td>`SEMANTIC_RUBRIC`</td>
+		<td>답변·분석·계획의 의미 충족</td>
+		<td>보정된 Semantic Grader + Human Calibration</td>
+	</tr>
+</table>
 
 `STRICT`가 아닌 필드를 raw JSON equality로 채점하지 않는다.
 
 ## 11. Stage와 반복 정책
 
-| Stage | Dataset | 기본 반복 |
-|---|---|---:|
-| G00 Dataset·Grader | 전체 Manifest·Human Sample | 변경마다 1회 |
-| G01 Safety Precheck | 12 Safety Regression | 1회, 전부 Pass |
-| Smoke | Core 고정 5 | 1회 |
-| Screening | Core 고정 20 | 1회 |
-| Full Core | Core 60 | 후보별 2회 |
-| Holdout | Holdout 12 | 후보별 3회 |
-| Stress | Stress 20 | 후보별 2회 |
-| Robustness | 주요 Core 20의 Paraphrase | Finalist만 1~2회 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Stage</td>
+		<td>Dataset</td>
+		<td>기본 반복</td>
+	</tr>
+	<tr>
+		<td>G00 Dataset·Grader</td>
+		<td>전체 Manifest·Human Sample</td>
+		<td>변경마다 1회</td>
+	</tr>
+	<tr>
+		<td>G01 Safety Precheck</td>
+		<td>12 Safety Regression</td>
+		<td>1회, 전부 Pass</td>
+	</tr>
+	<tr>
+		<td>Smoke</td>
+		<td>Core 고정 5</td>
+		<td>1회</td>
+	</tr>
+	<tr>
+		<td>Screening</td>
+		<td>Core 고정 20</td>
+		<td>1회</td>
+	</tr>
+	<tr>
+		<td>Full Core</td>
+		<td>Core 60</td>
+		<td>후보별 2회</td>
+	</tr>
+	<tr>
+		<td>Holdout</td>
+		<td>Holdout 12</td>
+		<td>후보별 3회</td>
+	</tr>
+	<tr>
+		<td>Stress</td>
+		<td>Stress 20</td>
+		<td>후보별 2회</td>
+	</tr>
+	<tr>
+		<td>Robustness</td>
+		<td>주요 Core 20의 Paraphrase</td>
+		<td>Finalist만 1~2회</td>
+	</tr>
+</table>
 
 비용이 부족하면 Core는 1회 실행하고 후보 간 결과가 다른 Case만 추가 2회 실행한다. 결과에는 Mean, Case-level Win·Loss·Tie, Paired Difference, Bootstrap Confidence Interval과 Trial Consistency를 기록한다.
 
@@ -724,12 +1055,16 @@ Final 채택 기준:
 
 ## 12. 공통 Metrics
 
+Google Workspace 비용/효율 측정은 두 층으로 분리한다. `mcp_tool_call_count`·`mcp_read_tool_call_count`는 제품 Core가 MCP 경계를 통해 수행한 Tool 호출 수이고, `google_provider_api_call_count`는 Google Work MCP Server 내부 Adapter가 pagination/detail hydration 등으로 실제 Provider API를 호출한 횟수다. Core의 Provider API/SDK 직접 호출은 효율 후보가 아니라 계약 위반으로 처리한다.
+
 ```text
 evaluation_item_count
 agent_run_count
 llm_call_count
 provider_http_request_count
-google_api_call_count
+mcp_tool_call_count
+mcp_read_tool_call_count
+google_provider_api_call_count
 input_token_count
 output_token_count
 cost_usd
@@ -768,7 +1103,7 @@ Agent 평가 결과는 단일 점수로 끝내지 않고 다음 네 층을 함�
 
 1. **Outcome** — Business Task Success, Answer/Plan Accuracy, Write Final State Correctness.
 2. **Process** — Stage Milestone, Handoff required-field preservation, Evidence ID/Constraint loss, contradiction introduction, Error Propagation Depth, duplicate/unnecessary Tool Call.
-3. **Efficiency** — `agent_invocation_count`, `llm_call_count`, input/output/communication token, Google API/Tool Call, Cost, p50/p95 Latency, Cost per Successful Run.
+3. **Efficiency** — `agent_invocation_count`, `llm_call_count`, input/output/communication token, MCP Tool Call / MCP 내부 Google Provider API Call, Cost, p50/p95 Latency, Cost per Successful Run.
 4. **Reliability** — 반복 Trial 평균·분산, Case Win/Loss/Tie, paired difference, bootstrap confidence interval, finalist consistency.
 
 E06-A는 **제품 후보 패키지의 native 성능·비용 비교**이며 `agent_count` 단독 인과효과로 보고하지 않는다. E06-B가 post-retrieval decomposition의 원인 분석을 보조한다.
@@ -837,7 +1172,7 @@ BTS =
 
 ### 13.4 비용·속도
 
-Cost·Token·Agent Invocation·LLM Call·Google API Call·p95 Latency는 **정확도를 보상하는 점수 항목이 아니다.** Safety Gate와 품질 하한을 통과한 후보 사이에서 Pareto 비교·동률 판단에 사용한다.
+Cost·Token·Agent Invocation·LLM Call·MCP Tool Call·MCP 내부 Google Provider API Call·p95 Latency는 **정확도를 보상하는 점수 항목이 아니다.** Safety Gate와 품질 하한을 통과한 후보 사이에서 Pareto 비교·동률 판단에 사용한다.
 
 따라서 `0.7×품질 + 0.3×비용` 같은 임의 종합 점수를 만들지 않는다.
 
@@ -883,7 +1218,7 @@ Safety Gate:
 필수 Profile:
 
 - 401·403·404·409·429·5xx·Timeout
-- Partial Acquisition
+- Partial Retrieval
 - Google Write 전달 전 실패
 - Write 응답 유실·UNKNOWN_RESULT
 - 승인 후 Arguments·Target 변경 시도
@@ -907,7 +1242,9 @@ evaluation_item_count
 agent_run_count
 llm_call_count
 provider_http_request_count
-google_api_call_count
+mcp_tool_call_count
+mcp_read_tool_call_count
+google_provider_api_call_count
 input_token_count
 output_token_count
 cost_usd

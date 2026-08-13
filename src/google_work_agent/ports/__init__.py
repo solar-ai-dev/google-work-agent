@@ -10,7 +10,13 @@ from google_work_agent.ports.artifact_verifier import (
     ArtifactSignatureDecision,
     ArtifactSignatureVerifier,
 )
-from google_work_agent.ports.attachments import GmailAttachmentBytes, GmailAttachmentGateway
+from google_work_agent.ports.attachments import (
+    AttachmentDescriptor,
+    AttachmentStaging,
+    AttachmentStagingError,
+    GmailAttachmentBytes,
+    GmailAttachmentGateway,
+)
 from google_work_agent.ports.clock import Clock
 from google_work_agent.ports.event_publisher import (
     BufferStatus,
@@ -62,6 +68,7 @@ from google_work_agent.ports.llm import (
     LLMInvocationError,
     LLMProviderKind,
     LLMRuntimeRouter,
+    LLMToolCall,
     OllamaRuntimeProbe,
     OutputSchemaDefinition,
     ProbeResult,
@@ -74,6 +81,10 @@ from google_work_agent.ports.llm import (
     SchemaRepairer,
     StructuredLLMProvider,
     StructuredLLMResult,
+    ToolCallingLLMProvider,
+    ToolCallProviderResponse,
+    ToolCallSchemaRepairer,
+    ToolDefinition,
 )
 from google_work_agent.ports.mcp_transport import (
     MCPControlResponse,
@@ -165,6 +176,9 @@ __all__ = [
     "AnswerOnlyResponse",
     "ArtifactSignatureDecision",
     "ArtifactSignatureVerifier",
+    "AttachmentDescriptor",
+    "AttachmentStaging",
+    "AttachmentStagingError",
     "AttemptOutcome",
     "AuditEventRecord",
     "AuditRepository",
@@ -265,6 +279,11 @@ __all__ = [
     "StoredResourceType",
     "StructuredLLMProvider",
     "StructuredLLMResult",
+    "ToolCallingLLMProvider",
+    "ToolCallProviderResponse",
+    "ToolCallSchemaRepairer",
+    "ToolDefinition",
+    "LLMToolCall",
     "TraceEventRecord",
     "TraceRepository",
     "UnitOfWork",

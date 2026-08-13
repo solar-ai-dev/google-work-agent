@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
+import pytest
 from tests.support.fakes import (
     FakeAPIProviderTransport,
     FakeHardwareProbe,
@@ -414,3 +415,140 @@ def test_schema_repair_is_limited_to_one_attempt() -> None:
     assert result.structured_output_attempts == 2
     assert result.provider_calls_consumed == 1
     assert len(repairer.calls) == 1
+
+
+def test_semantic_validate_failure_is_repaired_through_the_same_boundary() -> None:
+    """A candidate that satisfies output_schema's JSON-shape but fails a
+    caller-supplied semantic_validate (e.g. work_analysis's cross-reference
+    checks) must share the exact same repair call and one-attempt budget as
+    a JSON-schema-shape failure -- not escape uncaught."""
+    api_transport = FakeAPIProviderTransport()
+    api_transport.queued_payloads.append(
+        ProviderResponsePayload(
+            content={"answer": "wrong-value"},
+            model="api-model",
+            provider_request_id="req-5",
+            input_tokens=5,
+            output_tokens=4,
+            latency_ms=10,
+        )
+    )
+    credential_service = LLMCredentialService(
+        provider_name="generic",
+        environment="DEVELOPMENT",
+        keyring_store=FakeKeyring(),
+        session_store=SessionMemorySecretStore(),
+    )
+    credential_service.store(api_key="key-1", mode=CredentialStorageMode.KEYRING)
+    repairer = FakeSchemaRepairer(repaired_output={"answer": "correct-value"})
+    settings = AppSettings(
+        deployment_profile="API_ONLY",
+        requested_runtime_mode="API_LLM",
+        external_llm_consent=True,
+    )
+    service = LLMRuntimeService(
+        settings_service=lambda: settings,
+        status_service=_status_service(
+            build_profile="API_ONLY",
+            credential_service=credential_service,
+            api_transport=api_transport,
+            ollama_transport=FakeOllamaTransport(),
+        ),
+        credential_service=credential_service,
+        api_provider=ApiStructuredLLMProvider(
+            provider_name="generic-api",
+            transport=api_transport,
+            model="api-model",
+        ),
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
+            provider_name="ollama",
+            transport=FakeOllamaTransport(),
+            endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
+            model_id=model.model_id,
+        ),
+        router=DeterministicLLMRuntimeRouter(),
+        runtime_policy=RuntimePolicy(structured_output_repair_budget=1),
+        schema_repairer=repairer,
+    )
+
+    def semantic_validate(candidate: object) -> object:
+        if not isinstance(candidate, dict) or candidate.get("answer") != "correct-value":
+            raise ValueError("$.answer must be 'correct-value'")
+        return candidate
+
+    result = service.invoke_structured(
+        prompt_ref=PROMPT_REF,
+        prompt_input={"topic": "hello"},
+        output_schema=OUTPUT_SCHEMA,
+        trace_context=ObservabilityContext(run_id="run-2", llm_call_id="llm-5"),
+        semantic_validate=semantic_validate,
+    )
+
+    assert result.structured_output == {"answer": "correct-value"}
+    assert result.structured_output_attempts == 2
+    assert len(repairer.calls) == 1
+    assert repairer.calls[0]["validator_errors"] == ["$.answer must be 'correct-value'"]
+
+
+def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attempt() -> None:
+    api_transport = FakeAPIProviderTransport()
+    api_transport.queued_payloads.append(
+        ProviderResponsePayload(
+            content={"answer": "wrong-value"},
+            model="api-model",
+            provider_request_id="req-6",
+            input_tokens=5,
+            output_tokens=4,
+            latency_ms=10,
+        )
+    )
+    credential_service = LLMCredentialService(
+        provider_name="generic",
+        environment="DEVELOPMENT",
+        keyring_store=FakeKeyring(),
+        session_store=SessionMemorySecretStore(),
+    )
+    credential_service.store(api_key="key-1", mode=CredentialStorageMode.KEYRING)
+    settings = AppSettings(
+        deployment_profile="API_ONLY",
+        requested_runtime_mode="API_LLM",
+        external_llm_consent=True,
+    )
+    service = LLMRuntimeService(
+        settings_service=lambda: settings,
+        status_service=_status_service(
+            build_profile="API_ONLY",
+            credential_service=credential_service,
+            api_transport=api_transport,
+            ollama_transport=FakeOllamaTransport(),
+        ),
+        credential_service=credential_service,
+        api_provider=ApiStructuredLLMProvider(
+            provider_name="generic-api",
+            transport=api_transport,
+            model="api-model",
+        ),
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
+            provider_name="ollama",
+            transport=FakeOllamaTransport(),
+            endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
+            model_id=model.model_id,
+        ),
+        router=DeterministicLLMRuntimeRouter(),
+        runtime_policy=RuntimePolicy(),
+    )
+
+    def semantic_validate(candidate: object) -> object:
+        raise ValueError("always invalid")
+
+    with pytest.raises(LLMInvocationError) as excinfo:
+        service.invoke_structured(
+            prompt_ref=PROMPT_REF,
+            prompt_input={"topic": "hello"},
+            output_schema=OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(run_id="run-3", llm_call_id="llm-6"),
+            semantic_validate=semantic_validate,
+        )
+    assert excinfo.value.code is LLMErrorCode.OUTPUT_SCHEMA_INVALID
+    invoke_calls = [c for c in api_transport.invocations if c["kind"] == "invoke"]
+    assert len(invoke_calls) == 1

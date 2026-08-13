@@ -99,6 +99,12 @@ class _QueuedLLMRuntime:
         self._before_invoke = before_invoke
 
     def invoke_structured(self, **kwargs: object) -> StructuredLLMResult:
+        return self._invoke(**kwargs)
+
+    def invoke_tool_call(self, **kwargs: object) -> StructuredLLMResult:
+        return self._invoke(**kwargs)
+
+    def _invoke(self, **kwargs: object) -> StructuredLLMResult:
         if self._before_invoke is not None:
             self._before_invoke()
         self.calls.append(dict(kwargs))

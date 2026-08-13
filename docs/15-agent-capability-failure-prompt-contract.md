@@ -1,9 +1,9 @@
 # Google Work Agent · Agent Capability · Failure · Prompt 공통 계약
 
-> **상태:** Approved v1.5 · R8.4 Claim V2·Attachment Boundary 정합성 검수 PASS  
-> **기준일:** 2026-08-09  
+> **상태:** Approved v1.10  
+> **기준일:** 2026-08-13  
 > **대상:** P0 Agent 개별실험, Prompt·Repair·Revision 실험, E2E 통합실험  
-> **적용 범위:** 요청 이해, API 탐색·수집, Context Retrieval, 업무 분석, 해결책·계획, 계획 검토  
+> **적용 범위:** Request Understanding, Tool Route, Retrieval, Work Analysis, Planning, Review  
 > **비적용 범위:** 승인, Claim, Google Write, GET Verification, UNKNOWN_RESULT 복구, Domain 상태 전이의 최종 판정
 
 ## 먼저 읽기 — Prompt가 알아도 되는 것
@@ -39,7 +39,7 @@
 - Prompt·Completion 원문은 Graph State·일반 Trace·Audit에 저장하지 않는다.
 - Product Runtime Prompt 문구는 `grader`, `gold`, `expected_route`, 평가 점수에 의존하지 않는다. 실험 Grader가 발견한 오류도 Runtime과 동일한 `failure_record` 형태로 투영한 뒤 Prompt에 전달한다.
 - Structured Output Schema Repair는 Node Call당 최대 1회다.
-- 최초 수집 이후 Additional Acquisition은 최대 2회다.
+- 최초 Retrieval 이후 Additional Retrieval은 최대 2회다.
 - Planning Revision은 Run당 최대 2회다.
 - 실행·검증·승인·정책 최종 판정에는 LLM Prompt를 사용하지 않는다.
 - `UNKNOWN_RESULT`에서는 새 Write Attempt를 만들지 않는다.
@@ -72,28 +72,84 @@
 - PromptRef 기반 LLM Node
 - 역할상 필요한 결정적 Validation·Read Application Node
 - Schema Validation과 허용된 bounded Repair/Revision
-- Versioned Typed Result + disposition 반환
+- Versioned Typed Result + disposition + 필요한 Typed Workflow Signal 반환
 - Agent→Agent 직접 호출 금지
 - 장기 Memory 금지
 
 Prompt Slot 수, PromptRef 수, LLM Call 수는 Agent 수와 독립적이다. 같은 Agent 안의 `INITIAL`, `CLARIFY`, `SCHEMA_REPAIR`, `SEMANTIC_REVISION`, `RECHECK`는 하나의 책임 계약을 보조하는 Prompt variant다.
 
-`AgentLocalState`는 candidate output, attempt, failure record, local disposition을 보존할 수 있으나 invocation 종료 후 다른 Agent 호출로 자동 승계하지 않는다. 제품의 장기 사실과 승인·실행·검증은 기존 Main Graph State와 Domain Store 계약을 따른다.
+공통 Runtime Envelope는 invocation metadata와 failure/repair counter만 보존한다. 업무 데이터는 Subgraph별 Typed Local State에 둔다. Local candidate·Query candidate·RAG score·Prompt 원문은 invocation 종료 후 다른 Agent 호출로 자동 승계하지 않는다. 제품의 장기 사실과 승인·실행·검증은 Main Graph Typed State와 Domain Store 계약을 따른다.
 
-Acquisition처럼 외부 READ가 필요한 Agent는 Subgraph invocation을 유지한 채 내부 결정적 Application Node가 Query Builder·MCP Read Port를 호출할 수 있다. LLM Node는 Source 전략만 제안하고 Raw Query·MCP Arguments를 직접 실행하지 않는다.
+각 Node는 Parent/Main State 전체를 받지 않고 자기 작업에 필요한 Typed Projection만 받는다. 예를 들어 Retrieval Query Planner는 `request_intent + input_routes`, Evidence Selector는 `request_intent + ranked_segments`, Planning Argument Writer는 `output_route + work_analysis + evidence_refs`만 받는다.
+
+외부 READ는 Retrieval Subgraph의 결정적 Application Node가 Query Builder·MCP Read Port를 호출한다. Retrieval LLM Node는 Raw Query·MCP Arguments를 직접 실행하지 않으며 `ToolRoutePlanV2.input_plan.input_routes` 밖의 Tool을 선택하거나 호출하지 않는다.
 
 Graph Profile 간 semantic responsibility parity를 유지한다. 특히 `SINGLE_BASELINE`은 별도 Review Agent를 두지 않더라도 Unified Agent 내부 `self_review` 단계로 계획 품질 점검 책임을 수행한다.
 
+
+### Policy Precondition·Receipt 공통 계약
+- Release Graph의 READ는 Retrieval이 소유하지만 Tool Route 의미 후보 뒤 결정적 `PolicyPreconditionResolver`가 `TASK + CREATE` 중복검사와 `CALENDAR + CREATE` 충돌검사 IN READ를 보강한다. 이는 두 번째 Tool 선택이 아니다.
+- 사용자 지정 범위 밖 필수 READ는 `SCOPE_EXPANSION_REQUIRED` Confirmation 전에는 materialize/execute하지 않는다.
+- 실제 사용자 응답을 검증한 Application/Confirmation Controller만 `PolicyConfirmationReceiptV1`을 생성한다. Agent/LLM은 Receipt를 생성하거나 승인 결정을 추정할 수 없다.
+- 날짜/interval 계산, Registry eligibility, Policy Precondition, Confirmation Receipt context 검증, 중복·충돌 relation 검증, state freshness, DAG cycle, Policy·Approval·Verification은 deterministic code가 소유한다.
+- Work Analysis LLM은 중복/충돌 후보만 제안하며 최종 `DUPLICATES`·`CONFLICTS_WITH`와 no-action 판단은 deterministic relation validator를 거친다.
+
+
 ## 2. Agent Registry
 
-| Agent Role | 주 책임 | 주요 입력 | 주요 출력 | 금지 |
-|---|---|---|---|---|
-| `request_understanding` | 목표·완료 조건·제약·모호성 구조화 | 사용자 요청, Entry Mode, 선택 Resource | `RequestIntent` | Google 조회, Action 생성 |
-| `acquisition` | 필요한 Source·순서·Budget 제안 + 결정적 Read 실행 조정 | `RequestIntent`, Entry Mode, Retrieval Budget | `SourceFetchPlan[]`, `AcquisitionResult` | LLM의 검증 없는 Query 실행, Write |
-| `context_retriever` | Segment·Evidence 선택, 충분성 판정 | 수집 Resource Handle, 사용자 목표 | `ContextRetrievalResult` | MCP·Google API 직접 호출 |
-| `work_analysis` | 관계·누락·중복·충돌·일정 위험 분석 | `ContextBundle`, Evidence | `WorkAnalysisResult` | 정책 최종 판정, 실행 |
-| `planning` | Answer-only 또는 Action DAG 초안 | Intent, Evidence, Analysis | `ActionPlanDraft` 또는 Answer | 승인, 실행, Tool 직접 호출 |
-| `review` | 목표 충족·Evidence·과잉 Action·모순 검토 | Plan Draft, Evidence, Policy Summary | `PlanReviewResult` | 실행 허용 최종 판정 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Agent Role</td>
+		<td>주 책임</td>
+		<td>주요 입력</td>
+		<td>주요 출력</td>
+		<td>금지</td>
+	</tr>
+	<tr>
+		<td>`request_understanding`</td>
+		<td>목표·완료 조건·제약·모호성·analysis requirement 구조화</td>
+		<td>`RunInputV1`</td>
+		<td>`RequestIntentV2`</td>
+		<td>Tool 선택, Google 조회, Action Arguments</td>
+	</tr>
+	<tr>
+		<td>`tool_route`</td>
+		<td>IN Resource/Read Tool 범위와 OUT Resource/Effect/Tool 확정</td>
+		<td>`RequestIntentV2`, Signed Tool Registry</td>
+		<td>`ToolRoutePlanV2`</td>
+		<td>Query 작성, Evidence 판단, Arguments 작성</td>
+	</tr>
+	<tr>
+		<td>`retrieval`</td>
+		<td>고정 IN Route에서 Query·Read·RAG·Evidence·Sufficiency</td>
+		<td>Intent, `input_routes`, Retrieval Budget</td>
+		<td>`RetrievalResultV1`</td>
+		<td>OUT Tool 변경, Write, Tool 종류 재선택</td>
+	</tr>
+	<tr>
+		<td>`work_analysis`</td>
+		<td>필요한 경우 업무 사실·관계·누락·중복·충돌·일정 위험 분석</td>
+		<td>Intent, Evidence</td>
+		<td>`WorkAnalysisResultV2`</td>
+		<td>Tool 선택, Arguments, 정책 최종 판정</td>
+	</tr>
+	<tr>
+		<td>`planning`</td>
+		<td>고정 OUT Route의 Answer/Arguments·Dependency 작성</td>
+		<td>Intent, `output_routes`, Analysis, Evidence</td>
+		<td>`AnswerDraftV2` 또는 `ActionPlanDraftV2`</td>
+		<td>Tool 재선택, 승인, 실행</td>
+	</tr>
+	<tr>
+		<td>`review`</td>
+		<td>목표 충족·Evidence·과잉 Action·모순·Route 오류 검토</td>
+		<td>Plan Draft, Evidence, Policy Summary</td>
+		<td>`PlanReviewResultV2`</td>
+		<td>Route 직접 변경, 실행 허용 최종 판정</td>
+	</tr>
+</table>
+
+Tool Route 내부에서는 Resource·Effect 의미 판단과 Registry Binding을 분리한다. 실제 Tool 후보는 Signed Tool Registry가 결정적으로 산출하고, 후보가 여러 개일 때만 Route 선택 Node가 등록 후보 중 하나를 선택한다.
 
 ---
 
@@ -157,23 +213,21 @@ HUMAN_REVIEW
 Request Understanding:
   COMPLETE | NEEDS_CONFIRMATION | INVALID
 
-Acquisition Planning:
-  PLAN_READY | NO_FETCH_NEEDED | NEEDS_CONFIRMATION | BLOCKED
+Tool Route:
+  ROUTE_READY | NO_TOOL_NEEDED | NEEDS_CONFIRMATION | BLOCKED
 
-Acquisition Execution:
-  COMPLETE | PARTIAL | AUTH_REQUIRED | RATE_LIMITED | BUDGET_EXHAUSTED | FAILED
-
-Context Sufficiency:
-  SUFFICIENT | NEEDS_MORE_DATA | NEEDS_CONFIRMATION | PARTIAL | BLOCKED
+Retrieval:
+  SUFFICIENT | NO_FETCH_NEEDED | NEEDS_MORE_DATA | NEEDS_CONFIRMATION |
+  ROUTE_RECONSIDERATION_REQUIRED | PARTIAL | BLOCKED
 
 Work Analysis:
-  COMPLETE | NEEDS_MORE_DATA | NEEDS_CONFIRMATION | BLOCKED
+  COMPLETE | NEEDS_MORE_DATA | NEEDS_CONFIRMATION | ROUTE_RECONSIDERATION_REQUIRED | BLOCKED
 
 Planning:
-  ANSWER_ONLY | PLAN_READY | NEEDS_CONFIRMATION | BLOCKED
+  ANSWER_ONLY | PLAN_READY | NEEDS_CONFIRMATION | ROUTE_RECONSIDERATION_REQUIRED | BLOCKED
 
 Review:
-  PASS | REVISE | RETRIEVE_MORE | CONFIRM | BLOCK
+  PASS | REVISE | RETRIEVE_MORE | ROUTE_RECONSIDERATION | CONFIRM | BLOCK
 
 Domain:
   ALLOW_READ | REQUIRE_APPROVAL | BLOCK
@@ -221,14 +275,36 @@ experiment_disposition: REJECT_CANDIDATE
 
 ### 6.1 공통 Schema 실패
 
-| Code | 기본 Runtime 처리 |
-|---|---|
-| `SCHEMA_INVALID_JSON` | `SCHEMA_REPAIR` |
-| `SCHEMA_REQUIRED_FIELD_MISSING` | `SCHEMA_REPAIR` |
-| `SCHEMA_INVALID_ENUM` | `SCHEMA_REPAIR` |
-| `SCHEMA_WRONG_TYPE` | `SCHEMA_REPAIR` |
-| `SCHEMA_UNSUPPORTED_FIELD` | `SCHEMA_REPAIR` |
-| `SCHEMA_VERSION_MISMATCH` | 호출 중단 또는 Schema Repair 1회 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Code</td>
+		<td>기본 Runtime 처리</td>
+	</tr>
+	<tr>
+		<td>`SCHEMA_INVALID_JSON`</td>
+		<td>`SCHEMA_REPAIR`</td>
+	</tr>
+	<tr>
+		<td>`SCHEMA_REQUIRED_FIELD_MISSING`</td>
+		<td>`SCHEMA_REPAIR`</td>
+	</tr>
+	<tr>
+		<td>`SCHEMA_INVALID_ENUM`</td>
+		<td>`SCHEMA_REPAIR`</td>
+	</tr>
+	<tr>
+		<td>`SCHEMA_WRONG_TYPE`</td>
+		<td>`SCHEMA_REPAIR`</td>
+	</tr>
+	<tr>
+		<td>`SCHEMA_UNSUPPORTED_FIELD`</td>
+		<td>`SCHEMA_REPAIR`</td>
+	</tr>
+	<tr>
+		<td>`SCHEMA_VERSION_MISMATCH`</td>
+		<td>호출 중단 또는 Schema Repair 1회</td>
+	</tr>
+</table>
 
 ### 6.2 요청 이해 실패
 
@@ -242,12 +318,23 @@ INTENT_OVER_CONFIRMATION
 INTENT_UNSUPPORTED_SCOPE
 ```
 
-### 6.3 Acquisition·Query 실패
+### 6.3 Tool Route 실패
 
 ```text
-ACQ_REQUIRED_SOURCE_MISSING
-ACQ_FORBIDDEN_SOURCE_INCLUDED
-ACQ_NO_FETCH_MISCLASSIFIED
+TOOL_ROUTE_REQUIRED_INPUT_MISSING
+TOOL_ROUTE_FORBIDDEN_INPUT_INCLUDED
+TOOL_ROUTE_REQUIRED_OUTPUT_MISSING
+TOOL_ROUTE_FORBIDDEN_OUTPUT_INCLUDED
+TOOL_ROUTE_UNREGISTERED_TOOL
+TOOL_ROUTE_EFFECT_MISMATCH
+TOOL_ROUTE_OUTPUT_MODE_WRONG
+TOOL_ROUTE_OVERCONFIRMATION
+```
+
+### 6.4 Retrieval·Query·RAG 실패
+
+```text
+RETRIEVAL_ROUTE_SCOPE_VIOLATION
 QUERY_USER_CONSTRAINT_MISSING
 QUERY_TOO_BROAD
 QUERY_TOO_NARROW
@@ -260,19 +347,15 @@ QUERY_DETAIL_FETCH_FAILED
 QUERY_AUTH_REQUIRED
 QUERY_RATE_LIMITED
 QUERY_PROVIDER_FAILED
-```
-
-### 6.4 Context Retrieval 실패
-
-```text
-CTX_REQUIRED_EVIDENCE_MISSING
-CTX_HARD_NEGATIVE_SELECTED
-CTX_STALE_EVIDENCE_SELECTED
+RAG_REQUIRED_SEGMENT_MISSING
+RAG_HARD_NEGATIVE_SELECTED
+RAG_STALE_EVIDENCE_SELECTED
+RAG_PROMPT_INJECTION_FOLLOWED
+RAG_CONTEXT_BUDGET_EXCEEDED
 CTX_CONFLICT_NOT_REPORTED
 CTX_LOW_CONFIDENCE_AUTO_SELECTED
-CTX_PROMPT_INJECTION_FOLLOWED
-CTX_TOKEN_BUDGET_EXCEEDED
 CTX_SUFFICIENCY_WRONG
+RETRIEVAL_ROUTE_RECONSIDERATION_MISSED
 ```
 
 ### 6.5 업무 분석 실패
@@ -291,8 +374,7 @@ ANALYSIS_NEEDS_MORE_DATA_MISSED
 ```text
 PLAN_REQUIRED_ACTION_MISSING
 PLAN_EXCESS_ACTION
-PLAN_WRONG_TOOL
-PLAN_WRONG_EFFECT_TYPE
+PLAN_ROUTE_TOOL_MISMATCH
 PLAN_WRONG_TARGET
 PLAN_REQUIRED_EVIDENCE_MISSING
 PLAN_DEPENDENCY_INVALID
@@ -307,7 +389,7 @@ PLAN_ANSWER_ONLY_MISROUTED
 ```text
 REVIEW_FALSE_PASS
 REVIEW_FALSE_BLOCK
-REVIEW_WRONG_ROUTE
+REVIEW_ROUTE_RECONSIDERATION_MISSED
 REVIEW_ERROR_NOT_LOCALIZED
 REVIEW_REPEATED_SAME_FAILURE
 ```
@@ -336,14 +418,43 @@ LAUNCHER_SHUTDOWN_TIMEOUT
 
 ## 7. Retry Kind와 처리 주체
 
-| Retry Kind | 정의 | LLM 사용 |
-|---|---|---:|
-| `NONE` | 성공·종료 또는 재시도 없는 경로 전환 | 아니오 |
-| `SCHEMA_REPAIR` | 의미를 유지하며 구조만 교정 | 예 |
-| `SEMANTIC_REVISION` | 실패 이유와 허용 범위 안에서 내용을 재판단 | 예 |
-| `WORKFLOW_REDIRECTION` | 다른 Node·Interrupt·종료로 이동 | 아니오 |
-| `DETERMINISTIC_RETRY` | 네트워크·Provider Read 기술 재시도 | 아니오 |
-| `DETERMINISTIC_RECOVERY` | Reauth·Fingerprint Search·GET Verification | 아니오 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Retry Kind</td>
+		<td>정의</td>
+		<td>LLM 사용</td>
+	</tr>
+	<tr>
+		<td>`NONE`</td>
+		<td>성공·종료 또는 재시도 없는 경로 전환</td>
+		<td>아니오</td>
+	</tr>
+	<tr>
+		<td>`SCHEMA_REPAIR`</td>
+		<td>의미를 유지하며 구조만 교정</td>
+		<td>예</td>
+	</tr>
+	<tr>
+		<td>`SEMANTIC_REVISION`</td>
+		<td>실패 이유와 허용 범위 안에서 내용을 재판단</td>
+		<td>예</td>
+	</tr>
+	<tr>
+		<td>`WORKFLOW_REDIRECTION`</td>
+		<td>다른 Node·Interrupt·종료로 이동</td>
+		<td>아니오</td>
+	</tr>
+	<tr>
+		<td>`DETERMINISTIC_RETRY`</td>
+		<td>네트워크·Provider Read 기술 재시도</td>
+		<td>아니오</td>
+	</tr>
+	<tr>
+		<td>`DETERMINISTIC_RECOVERY`</td>
+		<td>Reauth·Fingerprint Search·GET Verification</td>
+		<td>아니오</td>
+	</tr>
+</table>
 
 ### 7.1 금지 조합
 
@@ -382,7 +493,7 @@ Schema Repair: Node Call당 최대 1회
 Semantic Revision: 동일 Node·동일 Failure Signature당 최대 1회
 Planning Revision: Run당 최대 2회
 Review Recheck: 각 Planning Revision 결과마다 최대 1회
-Additional Acquisition: 최초 수집 이후 최대 2회
+Additional Retrieval: 최초 Retrieval 이후 최대 2회
 ```
 
 ### 8.2 Route별 LLM 호출 Budget Profile
@@ -397,7 +508,7 @@ ABSOLUTE_MAX_LLM_CALLS=16
 ```
 
 - 기본 Profile은 `NORMAL`이다.
-- `RETRIEVAL_HEAVY`는 `NEEDS_MORE_DATA` 또는 Additional Acquisition이 실제 발생한 경우에만 선택한다.
+- `RETRIEVAL_HEAVY`는 `NEEDS_MORE_DATA` 또는 Additional Retrieval이 실제 발생한 경우에만 선택한다.
 - `REVISION_HEAVY`는 Review가 `REVISE`를 반환하고 Domain·Policy가 Revision을 허용한 경우에만 선택한다.
 - Profile 승격은 Supervisor의 결정적 규칙으로 수행한다.
 - `ABSOLUTE_MAX_LLM_CALLS`를 넘으면 Prompt를 더 호출하지 않는다.
@@ -526,7 +637,7 @@ query_attempt:
   schema_version: 1
   query_attempt_id: string
   run_id: string
-  acquisition_round: 0 | 1 | 2
+  retrieval_round: 0 | 1 | 2
   operation_kind: SEARCH | NEXT_PAGE | DETAIL_FETCH | FREEBUSY
   source: GMAIL | TASKS | CALENDAR
   entry_mode: RESOURCE_SELECTED | AGENT_SEARCH
@@ -669,11 +780,26 @@ RESOURCE_SELECTED
 Paraphrase·혼합 언어
 ```
 
-### 14.2 Acquisition
+### 14.2 Tool Route
 
 ```text
-단일·복수 Source
-NO_FETCH_NEEDED
+ANSWER without external Tool
+IN-only Read Answer
+IN→OUT 복합 요청
+복수 IN Route
+복수 OUT Route
+CREATE·UPDATE·SEND·DELETE Effect
+Registered Tool binding
+Unregistered Tool 차단
+Required Route 누락
+Forbidden Route 포함
+Route 모호성 → NEEDS_CONFIRMATION
+```
+
+### 14.3 Retrieval
+
+```text
+단일·복수 Input Route
 RESOURCE_SELECTED 직접 GET
 날짜·사람·이메일·상태 제약
 결과 없음
@@ -682,26 +808,17 @@ Query 과대·과소
 동일 Search 반복
 정상 Pagination
 부분 Source 실패
-Round 1·2 Revision
+Round 1·2 Additional Retrieval
 Budget 소진
 범위 확대 전 확인
-```
-
-### 14.3 Context Retrieval
-
-```text
-Required Evidence 선택
+Run-scoped RAG Required Segment 선택
 Hard Negative 배제
 최신 합의 선택
 상충 Evidence
 긴 Thread·서명·인용 Noise
-저신뢰 후보
-NEEDS_MORE_DATA
-NEEDS_CONFIRMATION
-PARTIAL
-BLOCKED
 Prompt Injection
 Context Budget
+ROUTE_RECONSIDERATION_REQUIRED
 ```
 
 ### 14.4 Work Analysis
@@ -722,15 +839,17 @@ NEEDS_CONFIRMATION
 
 ```text
 ANSWER_ONLY
-단일 CREATE
-단일 UPDATE
+고정 OutputRoute의 단일 CREATE
+고정 OutputRoute의 단일 UPDATE
+SEND·DELETE Arguments
 복합 DAG
-부분 승인
 Evidence 연결
 CREATE·UPDATE Target 규칙
 불필요 Action 차단
-금지 Tool 차단
+Route Tool 재선택 차단
+Tool Schema Argument 작성
 확인 질문 전환
+ROUTE_RECONSIDERATION_REQUIRED
 BLOCK 전환
 ```
 
@@ -768,7 +887,7 @@ Revision 후 Recheck
 ### 15.2 E2E
 
 - Answer-only, READ-only, WRITE 경로가 존재한다.
-- Additional Acquisition 0·1·2회가 존재한다.
+- Additional Retrieval 0·1·2회가 존재한다.
 - Confirmation·Approval·Reauth·Recovery Interrupt가 존재한다.
 - `COMPLETED`, `BLOCKED`, `FAILED`, `CANCELLED`, `RECOVERY_REQUIRED`가 존재한다.
 - `PARTIAL` 결과 종류가 정상·장애 상태와 올바르게 조합된다.
@@ -780,19 +899,68 @@ Revision 후 Recheck
 
 ## 16. Dataset Layer Contract
 
-| Layer | 목적 | 주요 단위 |
-|---|---|---|
-| `canonical_e2e` | 현실 업무와 전체 Workflow | Canonical Case |
-| `node_capability_dev` | Agent Prompt 개발·오류 분석 | Node Evaluation Item |
-| `node_capability_holdout` | Agent Prompt 과적합 검증 | 잠긴 Node Item |
-| `prompt_repair_revision` | 실패 원인별 복구 | Mutated Node Item |
-| `query_retrieval` | Query·후보·Confidence·Round | Query Attempt Item |
-| `ambiguity_clarification` | 후보·관계·동작 모호성 해소 | Clarification Item |
-| `risky_user_requests` | 승인 우회·금지 동작·검증 생략 등 위험 사용자 요청 | Safety Request Item |
-| `adversarial_source_content` | Source 내부 Prompt Injection·정책 우회 지시 | Adversarial Source Item |
-| `fault_write_integrity` | 비-LLM 장애·UNKNOWN_RESULT·MISMATCH·Write 무결성 | Fault Profile |
-| `paraphrase_robustness` | 사용자 표현 변화 | Prompt Variant |
-| `canonical_holdout` | 최종 E2E 후보 검증 | 잠긴 Canonical Family |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Layer</td>
+		<td>목적</td>
+		<td>주요 단위</td>
+	</tr>
+	<tr>
+		<td>`canonical_e2e`</td>
+		<td>현실 업무와 전체 Workflow</td>
+		<td>Canonical Case</td>
+	</tr>
+	<tr>
+		<td>`node_capability_dev`</td>
+		<td>Agent Prompt 개발·오류 분석</td>
+		<td>Node Evaluation Item</td>
+	</tr>
+	<tr>
+		<td>`node_capability_holdout`</td>
+		<td>Agent Prompt 과적합 검증</td>
+		<td>잠긴 Node Item</td>
+	</tr>
+	<tr>
+		<td>`prompt_repair_revision`</td>
+		<td>실패 원인별 복구</td>
+		<td>Mutated Node Item</td>
+	</tr>
+	<tr>
+		<td>`query_retrieval`</td>
+		<td>Query·후보·Confidence·Round</td>
+		<td>Query Attempt Item</td>
+	</tr>
+	<tr>
+		<td>`ambiguity_clarification`</td>
+		<td>후보·관계·동작 모호성 해소</td>
+		<td>Clarification Item</td>
+	</tr>
+	<tr>
+		<td>`risky_user_requests`</td>
+		<td>승인 우회·금지 동작·검증 생략 등 위험 사용자 요청</td>
+		<td>Safety Request Item</td>
+	</tr>
+	<tr>
+		<td>`adversarial_source_content`</td>
+		<td>Source 내부 Prompt Injection·정책 우회 지시</td>
+		<td>Adversarial Source Item</td>
+	</tr>
+	<tr>
+		<td>`fault_write_integrity`</td>
+		<td>비-LLM 장애·UNKNOWN_RESULT·MISMATCH·Write 무결성</td>
+		<td>Fault Profile</td>
+	</tr>
+	<tr>
+		<td>`paraphrase_robustness`</td>
+		<td>사용자 표현 변화</td>
+		<td>Prompt Variant</td>
+	</tr>
+	<tr>
+		<td>`canonical_holdout`</td>
+		<td>최종 E2E 후보 검증</td>
+		<td>잠긴 Canonical Family</td>
+	</tr>
+</table>
 
 하나의 Canonical Fixture에서 여러 Node·Mutation Item을 파생할 수 있다.
 
@@ -899,14 +1067,36 @@ Holdout Gold 원문
 
 ## 20. 문서 영향
 
-| 문서 | 필수 변경 |
-|---|---|
-| `05 Context·Retrieval` | QueryAttempt, Confidence, Search 반복·Pagination 구분, Config Version |
-| `06 Agent·Workflow` | Retry Kind, Failure Record, Prompt 선택 Key, Route별 Budget Profile |
-| `11 Observability` | Failure·Retry·Attempt·Query·Budget Trace 필드 |
-| `12 Test` | 금지 Retry, 저신뢰 자동 선택, 반복 Search, Holdout 누수 회귀 |
-| `13 Evaluation` | E02·E03 분해, Dataset Layer, Node DEV·HOLDOUT, Item 최소 수 |
-| `04 Domain·DB` | `terminal_reason_code`, `recovery_reason_code` 저장 필요 여부만 검토 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>문서</td>
+		<td>필수 변경</td>
+	</tr>
+	<tr>
+		<td>`05 Context·Retrieval`</td>
+		<td>QueryAttempt, Confidence, Search 반복·Pagination 구분, Config Version</td>
+	</tr>
+	<tr>
+		<td>`06 Agent·Workflow`</td>
+		<td>Retry Kind, Failure Record, Prompt 선택 Key, Route별 Budget Profile</td>
+	</tr>
+	<tr>
+		<td>`11 Observability`</td>
+		<td>Failure·Retry·Attempt·Query·Budget Trace 필드</td>
+	</tr>
+	<tr>
+		<td>`12 Test`</td>
+		<td>금지 Retry, 저신뢰 자동 선택, 반복 Search, Holdout 누수 회귀</td>
+	</tr>
+	<tr>
+		<td>`13 Evaluation`</td>
+		<td>E02·E03 분해, Dataset Layer, Node DEV·HOLDOUT, Item 최소 수</td>
+	</tr>
+	<tr>
+		<td>`04 Domain·DB`</td>
+		<td>`terminal_reason_code`, `recovery_reason_code` 저장 필요 여부만 검토</td>
+	</tr>
+</table>
 
 ---
 
@@ -926,7 +1116,7 @@ prompt_runtime_activation: VALIDATION_GATED
 semantic_revision_same_failure_max: 1
 planning_revision_run_max: 2
 review_recheck_per_revision_max: 1
-additional_acquisition_max: 2
+additional_retrieval_max: 2
 confidence_bands: [HIGH, MEDIUM, LOW, NONE]
 threshold_owner: RETRIEVAL_CONFIG
 failure_reason_prompt_key: ASSEMBLY_METADATA

@@ -28,7 +28,7 @@
 
 - SSE: 재연결·Snapshot, Action 재실행 금지
 - MCP Read 전 종료: 1회 Restart·Schema
-- Google Read 429·5xx: 제한 Backoff
+- MCP 내부 Provider Read 429·5xx: 제한 Backoff
 - LLM: Retry 1·AUTO Fallback 1
 - Structured Output: Repair 1
 - Write 전달 전 확정 실패: FAILED, 자동 재실행 없음
@@ -38,7 +38,7 @@
 
 ## 4. 금지 안내
 
-DB 직접 편집·상태 SQL 변경·MCP 수동 Write·Wildcard CORS·Public Bind·Token 공유·미서명 Binary 교체·Downgrade Open·UNKNOWN_RESULT 재승인·Backup 없는 데이터 삭제를 안내하지 않는다.
+DB 직접 편집·상태 SQL 변경·MCP 수동 Write·Wildcard CORS·Public Bind·Token 공유·미서명 Binary 교체·Downgrade Open·UNKNOWN_RESULT 재승인·Backup 없는 데이터 삭제를 안내하지 않는다. 또한 MCP 장애 시 FastAPI/Application/LangGraph/Agent/Domain이 Google Provider API/SDK를 직접 호출하거나 별도 Provider Client로 fallback하는 절차를 안내·허용하지 않는다.
 
 ## 5. Startup·Browser
 
@@ -100,6 +100,12 @@ FAILED
 ```
 
 기존 Approval·Idempotency Key 재사용 금지.
+
+## 11.1 MCP·Google Provider 장애 경계
+
+- Gmail·Tasks·Calendar Browse/Count/Detail, Retrieval, Write, Verification, Recovery 조회는 모두 MCP Client/Tool을 통해 수행한다.
+- MCP process exit, handshake/Tool Schema mismatch, Credential Provider 장애는 직접 Google Provider API 호출로 우회하지 않는다. Read는 명시적 실패/부분 결과, Write는 dispatch 여부에 따라 FAILED 또는 UNKNOWN_RESULT, Runtime은 NOT_READY/RECOVERY_REQUIRED로 전환한다.
+- Google Provider API/SDK는 MCP Server 내부 Adapter의 진단 대상이다. Core에서 Provider Client가 발견되면 운영 우회책이 아니라 아키텍처 위반으로 처리한다.
 
 ## 12. UNKNOWN_RESULT
 

@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.8`, `01-A v2.9`, `01-B v2.8`, `02 UI·UX v2.8`, `03 Architecture v3.0`, `04 Database v1.12`, `05 Retrieval v2.6`, `06 Workflow v6.2`, `07 Interface v2.10`, `08 Sequence v3.2`, `09 Security v2.5`, `10 Infrastructure v2.7`, `11 Observability v2.9`, `15 Agent Capability·Failure·Prompt v1.5`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.9`, `01-A v2.15`, `01-B v2.10`, `02 UI·UX v2.11`, `03 Architecture v3.4`, `04 Database v1.15`, `05 Retrieval v2.10`, `06 Workflow v7.5`, `07 Interface v2.16`, `08 Sequence v3.8`, `09 Security v2.9`, `10 Infrastructure v2.8`, `11 Observability v2.11`, `15 Agent Capability·Failure·Prompt v1.10`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
 >
-> **상태:** Draft v3.5 · **기준일:** 2026-08-10 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.12 · **기준일:** 2026-08-13 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -67,7 +67,7 @@ execution_lane
 FakeClock
 DeterministicUUID
 FakeKeyring
-FakeGoogleGateway
+FakeGoogleProviderAdapter   # Google Work MCP Server 내부 Adapter 테스트 전용
 FakeMCPTransport
 FakeLLMProvider
 FakeOllamaAdapter
@@ -150,8 +150,28 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - Agent 간 직접 호출·Peer-to-Peer 금지
 - Agent invocation 수와 LLM Call 수를 별도 계수
 - Route별 LLM Budget Profile과 절대 상한 16 검증
-- Revision 2, Repair 1, Additional Acquisition 2
-- Retriever MCP 직접 호출 금지
+- Revision 2, Repair 1, Additional Retrieval 2
+- Main State Owner 단일성: RequestIntent/ToolRoute/Retrieval/Analysis/Planning/Review 각각 단일 Owner
+- Tool Route 한 번 확정 후 Retrieval·Planning의 Tool 재선택 0
+
+- 결정적 `PolicyPreconditionResolver`: `TASK + CREATE`는 기존 미완료 Task 중복검사용 Tasks READ, `CALENDAR + CREATE`는 Event/FreeBusy 충돌검사용 Calendar READ를 필수 IN Route로 포함한다.
+- 위 필수 READ가 사용자의 명시적 Source·기간·Resource 범위를 벗어나면 자동 확장 금지. `SCOPE_EXPANSION_REQUIRED` APPROVED Receipt 전에는 Route 실행 불가, 거절 후 검사를 생략한 Write Plan은 실패다.
+- `PolicyConfirmationReceiptV1`은 Agent/LLM이 생성할 수 없고 `meta.based_on + decision_context_hash`가 active revision과 일치해야 한다. stale/DECLINED Receipt, Audit/Checkpoint Receipt ID 불일치는 실패다.
+- Work Analysis의 `relation_candidates`는 결정적 validator를 거쳐 `validated_relations`로 승격되어야 한다. 검증 전 `DUPLICATES`/`CONFLICTS_WITH`가 최종 Result에 직접 들어가면 실패다.
+- 정확 Task 중복은 기본 `action_necessity=NOT_REQUIRED`이며 새 Action 0. 추가 생성은 `DUPLICATE_OVERRIDE_REQUIRED` 2차 Confirmation 후에만 가능하다.
+- 검증된 Calendar 충돌 Action은 `CONFLICT_OVERRIDE_REQUIRED` 2차 Confirmation 후에만 가능하다.
+- Override Action은 `WorkAnalysisResultV2.policy_confirmation_receipt_refs`와 Approval Snapshot이 같은 APPROVED Receipt를 참조해야 하며 누락/stale이면 Claim 전에 차단한다.
+
+- Retrieval LLM의 MCP 직접 호출 금지, deterministic Read Node만 `input_routes[].allowed_read_tool_ids` 범위에서 MCP Read Port를 호출하도록 허용
+- Google Workspace 접근 단일 경계 검증: React·FastAPI Route·Application·LangGraph·Agent·Domain에서 Gmail·Tasks·Calendar Provider API/SDK 직접 호출·직접 Provider Client 구성 0건. 모든 Sidebar Browse/Count/Detail, Retrieval Read, Write, Verification, Recovery 조회는 `FakeMCPTransport`/MCP Tool 경계를 통과한다. Google Provider Adapter 단위 테스트는 MCP Server 내부에서만 수행한다.
+- MCP unavailable/Tool Schema invalid 상황에서 제품 Core가 Google Provider API 직접 호출로 fallback하지 않고 NOT_READY/Recovery로 전환함을 검증
+- Preflight/Claim `applied=false`가 ACTION_EXECUTION으로 fall-through하지 않고 Domain Result에 따라 재승인·Recovery·Terminal로만 라우팅되는지 검증
+- Recovery는 recheck 필요 시에만 Verification으로 복귀하고 `RECOVERY_REQUIRED` 유지 시 explicit resolve/re-auth까지 suspend하며, terminal failure/block/cancel에서 무한 Verification loop가 없음을 검증
+- Confirmation은 `interrupt_id + owner_subgraph + RegisteredResumeTargetRefV1`으로 발생 Subgraph checkpoint에 복귀하며 무조건 Request Understanding으로 재시작하지 않음. Resume target은 compiled Graph Registry 등록값만 허용하고 LLM 임의 Node ID는 차단
+- 모든 공식 disposition은 정확히 하나의 Edge·Interrupt·Terminal 경로를 가지며 unknown disposition은 fail-closed
+- Synthetic Branch Completeness Fixture는 Request/Tool Route/Retrieval/Work Analysis/Planning/Review의 모든 공식 disposition과 Domain/Application의 Preflight·Verification·Recovery 결과 분기를 최소 1회 이상 통과해야 한다. 각 Case는 END, 사용자 interrupt/suspend 또는 명시된 owner back-edge 중 하나로 닫혀야 하며 implicit fall-through·무한 self-loop·정의되지 않은 terminal을 허용하지 않는다.
+- Retrieval에 Run-scoped RAG 단계 존재 및 후보 전체의 downstream 전달 금지
+- Node별 Typed Input Projection: 필요하지 않은 Main/Local State 필드 전달 금지
 - Prompt Registry Key 검증
 - Supervisor는 Node만 Routing하고 선택된 Agent·Application Node가 PromptRef를 확정
 - LLM Router·Model의 Prompt 선택 금지
@@ -160,7 +180,7 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - Prompt Manifest Version·Hash·Schema 검증
 - `ORACLE` Node Run과 `LIVE` Handoff Run 분리
 - `RESOURCE_SELECTED`에서 불필요한 Workspace Search 금지
-- `ANSWER_ONLY`에서 `planning.draft_plan` 미호출
+- `output_mode=ANSWER`에서 Action Argument/Plan Node 미호출
 - Review 없음·있음 Candidate가 Domain·Policy 코드를 공유
 
 ## 9. UI
@@ -175,20 +195,73 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 
 ## 10. Failure Injection
 
-| 위치 | 오류 | 기대 |
-|---|---|---|
-| LLM | Timeout·Invalid Output | Repair·Fallback 상한 |
-| Google Read | 401·429·5xx | Reauth·제한 Retry |
-| Google Write | 전달 전 실패 | FAILED |
-| Google Write | 응답 유실 | UNKNOWN_RESULT |
-| Verification | 404·Timeout | 즉시 실패 확정 금지 |
-| SQLite | Busy·Disk Full | Write 전 차단 |
-| Audit | 저장 실패 | 안전 Command 실패 |
-| MCP | Exit | 1회 Restart 또는 UNKNOWN_RESULT |
-| SSE | Loss | Domain 계속·UI 복원 |
-| Launcher | Shutdown Timeout | Recovery Marker |
-| Experiment Runner | Budget 초과 | 새 Item 시작 중단·Partial 표시 |
-| Grader | Schema·Version 불일치 | 후보 판정 중단 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>위치</td>
+		<td>오류</td>
+		<td>기대</td>
+	</tr>
+	<tr>
+		<td>LLM</td>
+		<td>Timeout·Invalid Output</td>
+		<td>Repair·Fallback 상한</td>
+	</tr>
+	<tr>
+		<td>MCP Read Tool</td>
+		<td>401·429·5xx</td>
+		<td>Reauth·제한 Retry</td>
+	</tr>
+	<tr>
+		<td>Google Write</td>
+		<td>전달 전 실패</td>
+		<td>FAILED</td>
+	</tr>
+	<tr>
+		<td>Google Write</td>
+		<td>응답 유실</td>
+		<td>UNKNOWN_RESULT</td>
+	</tr>
+	<tr>
+		<td>Verification</td>
+		<td>404·Timeout</td>
+		<td>즉시 실패 확정 금지</td>
+	</tr>
+	<tr>
+		<td>SQLite</td>
+		<td>Busy·Disk Full</td>
+		<td>Write 전 차단</td>
+	</tr>
+	<tr>
+		<td>Audit</td>
+		<td>저장 실패</td>
+		<td>안전 Command 실패</td>
+	</tr>
+	<tr>
+		<td>MCP</td>
+		<td>Exit</td>
+		<td>1회 Restart 또는 UNKNOWN_RESULT</td>
+	</tr>
+	<tr>
+		<td>SSE</td>
+		<td>Loss</td>
+		<td>Domain 계속·UI 복원</td>
+	</tr>
+	<tr>
+		<td>Launcher</td>
+		<td>Shutdown Timeout</td>
+		<td>Recovery Marker</td>
+	</tr>
+	<tr>
+		<td>Experiment Runner</td>
+		<td>Budget 초과</td>
+		<td>새 Item 시작 중단·Partial 표시</td>
+	</tr>
+	<tr>
+		<td>Grader</td>
+		<td>Schema·Version 불일치</td>
+		<td>후보 판정 중단</td>
+	</tr>
+</table>
 
 ## 11. Security
 
@@ -286,34 +359,98 @@ Secret leakage 0
 
 ## 16. Release Block
 
-미승인 Write, 금지 Tool, Hash 변경, Verification 누락, 중복 Write, UNKNOWN_RESULT 재실행, FAILED 직접 실행, READ 승인 Row, Retriever MCP 호출, Open Run 중복, Secret Leak, Public Bind, Signature·Migration·Backup 실패, Chrome·Edge 실패, API_ONLY Ollama 의존 중 하나라도 있으면 차단한다.
+미승인 Write, 금지 Tool, Hash 변경, Verification 누락, 중복 Write, UNKNOWN_RESULT 재실행, FAILED 직접 실행, READ 승인 Row, Retrieval LLM 직접 MCP 호출, Open Run 중복, Secret Leak, Public Bind, Signature·Migration·Backup 실패, Chrome·Edge 실패, API_ONLY Ollama 의존 중 하나라도 있으면 차단한다.
 
 Experiment Runner는 Dataset·Projection 참조 오류, Holdout 누수, 의도 외 Config Diff, Grader Version 누락, Budget 미설정 중 하나라도 있으면 실험 결과 생성을 차단한다.
 
 ## 17. 필수 회귀 ID
 
-| Test ID | 계약 |
-|---|---|
-| `TST-DB-101` | Command Receipt와 Domain 변경 원자 Commit |
-| `TST-API-101` | 같은 Command ID·같은 Hash 기존 결과 반환 |
-| `TST-API-102` | 같은 Command ID·다른 Hash 409 차단 |
-| `TST-SEC-101` | Bootstrap Endpoint는 기존 Session 없이 Secret으로만 성공 |
-| `TST-SEC-102` | 일반 API는 Local Session 없이 차단 |
-| `TST-SEC-103` | OAuth Token 원문 FastAPI·Log·DB 미노출 |
-| `TST-MCP-101` | 유효 Claim Token만 Write 허용 |
-| `TST-MCP-102` | Claim Token 재사용·만료·Binding 불일치 차단 |
-| `TST-WF-101` | Agent Node의 MCP 직접 호출 0회 |
-| `TST-WF-102` | Node Registry 외 Edge 차단 |
-| `TST-E2E-101` | Run 응답 유실·Service 재시작·재전송 시 Run 1개 |
-| `TST-E2E-102` | 부분 Action 성공 후 취소: Run CANCELLED·result_kind PARTIAL |
-| `TST-EVAL-101` | Case 1:N User Prompt와 Evaluation Item 연결 |
-| `TST-EVAL-102` | Canonical Case와 모든 Projection Reference 무결성 |
-| `TST-EVAL-103` | 후보 간 의도한 독립 변수 외 Config Diff 0 |
-| `TST-EVAL-104` | `ORACLE`·`LIVE` Upstream 입력 모드 분리 |
-| `TST-EVAL-105` | Required·Forbidden Read Tool Trajectory 판정 |
-| `TST-EVAL-106` | Write 승인·Claim·GET·End-state Strict 판정 |
-| `TST-EVAL-107` | Grader Version·Human Calibration·Dataset Issue 분리 |
-| `TST-EVAL-108` | Scenario Family·Fixture Relation Family Holdout 누수 0 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Test ID</td>
+		<td>계약</td>
+	</tr>
+	<tr>
+		<td>`TST-DB-101`</td>
+		<td>Command Receipt와 Domain 변경 원자 Commit</td>
+	</tr>
+	<tr>
+		<td>`TST-API-101`</td>
+		<td>같은 Command ID·같은 Hash 기존 결과 반환</td>
+	</tr>
+	<tr>
+		<td>`TST-API-102`</td>
+		<td>같은 Command ID·다른 Hash 409 차단</td>
+	</tr>
+	<tr>
+		<td>`TST-SEC-101`</td>
+		<td>Bootstrap Endpoint는 기존 Session 없이 Secret으로만 성공</td>
+	</tr>
+	<tr>
+		<td>`TST-SEC-102`</td>
+		<td>일반 API는 Local Session 없이 차단</td>
+	</tr>
+	<tr>
+		<td>`TST-SEC-103`</td>
+		<td>OAuth Token 원문 FastAPI·Log·DB 미노출</td>
+	</tr>
+	<tr>
+		<td>`TST-MCP-101`</td>
+		<td>유효 Claim Token만 Write 허용</td>
+	</tr>
+	<tr>
+		<td>`TST-MCP-102`</td>
+		<td>Claim Token 재사용·만료·Binding 불일치 차단</td>
+	</tr>
+	<tr>
+		<td>`TST-WF-101`</td>
+		<td>Agent Node의 MCP 직접 호출 0회</td>
+	</tr>
+	<tr>
+		<td>`TST-WF-102`</td>
+		<td>Node Registry 외 Edge 차단</td>
+	</tr>
+	<tr>
+		<td>`TST-E2E-101`</td>
+		<td>Run 응답 유실·Service 재시작·재전송 시 Run 1개</td>
+	</tr>
+	<tr>
+		<td>`TST-E2E-102`</td>
+		<td>부분 Action 성공 후 취소: Run CANCELLED·result_kind PARTIAL</td>
+	</tr>
+	<tr>
+		<td>`TST-EVAL-101`</td>
+		<td>Case 1:N User Prompt와 Evaluation Item 연결</td>
+	</tr>
+	<tr>
+		<td>`TST-EVAL-102`</td>
+		<td>Canonical Case와 모든 Projection Reference 무결성</td>
+	</tr>
+	<tr>
+		<td>`TST-EVAL-103`</td>
+		<td>후보 간 의도한 독립 변수 외 Config Diff 0</td>
+	</tr>
+	<tr>
+		<td>`TST-EVAL-104`</td>
+		<td>`ORACLE`·`LIVE` Upstream 입력 모드 분리</td>
+	</tr>
+	<tr>
+		<td>`TST-EVAL-105`</td>
+		<td>Required·Forbidden Read Tool Trajectory 판정</td>
+	</tr>
+	<tr>
+		<td>`TST-EVAL-106`</td>
+		<td>Write 승인·Claim·GET·End-state Strict 판정</td>
+	</tr>
+	<tr>
+		<td>`TST-EVAL-107`</td>
+		<td>Grader Version·Human Calibration·Dataset Issue 분리</td>
+	</tr>
+	<tr>
+		<td>`TST-EVAL-108`</td>
+		<td>Scenario Family·Fixture Relation Family Holdout 누수 0</td>
+	</tr>
+</table>
 
 ---
 
@@ -335,7 +472,7 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 - 동일 실패 Signature에 Semantic Revision을 두 번 호출하지 않는다.
 - Schema Repair가 Goal·Evidence·Action 의미를 변경하면 실패다.
 - 비재시도 오류에 LLM Prompt를 호출하지 않는다.
-- `AUTH_REQUIRED`를 Acquisition Revision으로 해결하려 하지 않는다.
+- `AUTH_REQUIRED`를 Retrieval Revision이나 Tool Route 재판단으로 해결하려 하지 않는다.
 - 429·5xx·Timeout을 LLM 재시도로 처리하지 않는다.
 - `UNKNOWN_RESULT`에서 Write Tool을 재호출하지 않는다.
 - Verification `MISMATCH`에서 자동 수정·Rollback하지 않는다.
@@ -368,28 +505,153 @@ Gate는 고정 Sampling 조건에서 Item당 1회 평가한다. Temperature는 G
 - Calendar overlap 자체를 conflict로 오판하지 않는다.
 ## 20. Agent Subgraph 회귀 테스트
 
-- Acquisition Agent는 LLM plan 후 같은 Subgraph invocation 안에서 결정적 Read Node를 실행하고 `AcquisitionResult` 반환 뒤 종료한다.
-- SourceFetchPlan을 Parent에 반환해 invocation을 끝낸 뒤 같은 Local State로 재진입하는 경로는 금지한다.
+- `SIX_ROLE_BASELINE`의 Role은 Request Understanding / Tool Route / Retrieval / Work Analysis / Planning / Review다.
+- Tool Route Subgraph가 `ToolRoutePlanV2`을 Parent에 반환한 뒤 Retrieval·Planning은 Tool Route를 read-only로 소비한다.
+- Retrieval Subgraph는 `input_routes` 안에서 Query→결정적 Read→Normalize/Segment→Run-scoped RAG→Evidence→Sufficiency를 완료한 뒤 공식 `RetrievalResultV1`과 필요한 Typed `WorkflowSignalV1`만 반환한다.
+- Retrieval의 Query candidate·Page Token·RAG score·repair candidate를 Main State에 승격하지 않는다.
+- Planning은 `output_routes[].selected_tool_id`와 해당 Tool Schema만 사용해 Arguments를 작성하고 Tool을 다시 선택하지 않는다.
+- upstream State revision 시 의존 downstream State가 stale 처리되고 재생성되는지 검증한다.
 - `SINGLE_BASELINE`은 Planning 결과에 대해 같은 Unified Agent 내부 self-review 책임을 수행한다.
-- E06-B는 `CONTEXT_READY_V1` 이후만 실행하며 Google Read 호출 수가 0이어야 한다.
+- E06-B는 `CONTEXT_READY_V1` 호환 Snapshot 이후만 실행하며 MCP Read Tool 호출 수가 0이어야 한다.
 - E06-B 후보는 `B1_INTEGRATED=1`, `B2_STAGED=2`, `B3_SPECIALIZED=3` post-retrieval Agent Subgraph topology를 가져야 한다.
 
-| Test ID | 검증 | 기대 |
-|---|---|---|
-| `TST-AGT-201` | SINGLE Profile topology | Agent Subgraph 1개 |
-| `TST-AGT-202` | THREE Profile topology | 서로 다른 책임 계약의 Agent Subgraph 3개 |
-| `TST-AGT-203` | SIX Profile topology | 전문 Agent Subgraph 6개 |
-| `TST-AGT-204` | Agent Local State isolation | invocation 종료 후 다음 호출에 임시 candidate/repair state 자동 승계 0 |
-| `TST-AGT-205` | Parent/Child state projection | 허용 필드만 입력·Typed Result만 반환 |
-| `TST-AGT-206` | bounded repair loop | Schema Repair 최대 1, Semantic Revision 계약 상한 준수 |
-| `TST-AGT-207` | direct agent call prohibition | Agent→Agent 직접 Edge 0 |
-| `TST-AGT-208` | write boundary | Agent Subgraph의 MCP/Google Write 직접 호출 0 |
-| `TST-AGT-209` | checkpoint authority | Local Checkpoint로 Approval/Execution 사실 확정 불가 |
-| `TST-EVAL-210` | E06-B replay | 동일 `CONTEXT_READY_V1` / `context_snapshot_id`를 B1/B2/B3에 주입하고 Google Read 0 |
-| `TST-AGT-211` | Prompt Slot Key | `failure_reason_code`가 Runtime Slot Key에 포함되지 않고 Failure Block assembly metadata로만 사용 |
-| `TST-EVAL-212` | Semantic parity | E06 후보의 `prompt_semantic_bundle_version`과 책임 coverage 일치 |
-| `TST-EVAL-213` | Environment lock | 비교 후보의 `evaluation_environment_hash`가 의도한 독립변수 외 조건에서 동일 |
-| `TST-HANDOFF-214` | Handoff fidelity | Required Field·Evidence ID·Constraint 보존 및 contradiction introduction 측정 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Test ID</td>
+		<td>검증</td>
+		<td>기대</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-201`</td>
+		<td>SINGLE Profile topology</td>
+		<td>Agent Subgraph 1개</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-202`</td>
+		<td>THREE Profile topology</td>
+		<td>서로 다른 책임 계약의 Agent Subgraph 3개</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-203`</td>
+		<td>SIX Profile topology</td>
+		<td>전문 Agent Subgraph 6개</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-204`</td>
+		<td>Agent Local State isolation</td>
+		<td>invocation 종료 후 다음 호출에 임시 candidate/repair state 자동 승계 0</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-205`</td>
+		<td>Parent/Child state projection</td>
+		<td>허용 필드만 입력·Typed Result만 반환</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-206`</td>
+		<td>bounded repair loop</td>
+		<td>Schema Repair 최대 1, Semantic Revision 계약 상한 준수</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-207`</td>
+		<td>direct agent call prohibition</td>
+		<td>Agent→Agent 직접 Edge 0</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-208`</td>
+		<td>write boundary</td>
+		<td>Agent Subgraph의 MCP/Google Write 직접 호출 0</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-209`</td>
+		<td>checkpoint authority</td>
+		<td>Local Checkpoint로 Approval/Execution 사실 확정 불가</td>
+	</tr>
+	<tr>
+		<td>`TST-EVAL-210`</td>
+		<td>E06-B replay</td>
+		<td>동일 `CONTEXT_READY_V1` / `context_snapshot_id`를 B1/B2/B3에 주입하고 MCP Read Tool 0</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-211`</td>
+		<td>Prompt Slot Key</td>
+		<td>`failure_reason_code`가 Runtime Slot Key에 포함되지 않고 Failure Block assembly metadata로만 사용</td>
+	</tr>
+	<tr>
+		<td>`TST-EVAL-212`</td>
+		<td>Semantic parity</td>
+		<td>E06 후보의 `prompt_semantic_bundle_version`과 책임 coverage 일치</td>
+	</tr>
+	<tr>
+		<td>`TST-EVAL-213`</td>
+		<td>Environment lock</td>
+		<td>비교 후보의 `evaluation_environment_hash`가 의도한 독립변수 외 조건에서 동일</td>
+	</tr>
+	<tr>
+		<td>`TST-HANDOFF-214`</td>
+		<td>Handoff fidelity</td>
+		<td>Required Field·Evidence ID·Constraint 보존 및 contradiction introduction 측정</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-215`</td>
+		<td>Tool Route authority</td>
+		<td>`ToolRoutePlanV2` 생성 이후 downstream Tool 재선택·임의 변경 0</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-216`</td>
+		<td>IN/OUT separation</td>
+		<td>Retrieval은 IN Route만, Planning은 OUT Route만 소비</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-217`</td>
+		<td>Node projection minimization</td>
+		<td>Node 선언 입력 외 State 필드 전달 0</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-218`</td>
+		<td>Local/Main boundary</td>
+		<td>Query candidate·Page Token·RAG score·LLM candidate의 Main State 승격 0</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-219`</td>
+		<td>Upstream revision invalidation</td>
+		<td>Route/Retrieval/Analysis revision 시 downstream stale State 재사용 0</td>
+	</tr>
+	<tr>
+		<td>`TST-RET-220`</td>
+		<td>Run-scoped RAG</td>
+		<td>Fetch 결과 전체를 Evidence 선정 없이 Analysis/Planning에 전달 0</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-221`</td>
+		<td>RunInput authority</td>
+		<td>`entry_mode`·`user_request`·`selected_resource_refs`가 Main State 기준점으로 보존되고 downstream 임의 변경 0</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-222`</td>
+		<td>Artifact/Signal separation</td>
+		<td>confirmation·route reconsideration 미완결 candidate가 공식 Artifact field에 저장되는 경우 0</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-223`</td>
+		<td>Request revision invalidation</td>
+		<td>RequestIntent revision 변경 시 Route 이하 downstream stale State 재사용 0</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-224`</td>
+		<td>Tool Route internal responsibility</td>
+		<td>Resource·Effect 판단과 Registry binding이 분리되고 unregistered Tool 생성 0</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-225`</td>
+		<td>Analysis conditional routing</td>
+		<td>`analysis_requirement=NONE` Answer 요청의 불필요 Work Analysis 호출 0; 단순 ACTION 자체만으로 Analysis 강제 0; TASK/CALENDAR CREATE Policy Precondition은 우회 0</td>
+	</tr>
+	<tr>
+		<td>`TST-AGT-226`</td>
+		<td>Review discriminated union</td>
+		<td>`PASS+confirmation`, `CONFIRM without confirmation`, `BLOCK without blockers` 표현 가능 상태 0</td>
+	</tr>
+</table>
 
 ## 21. Runtime E2E Canonical Contract 회귀
 
@@ -437,34 +699,85 @@ Gate는 고정 Sampling 조건에서 Item당 1회 평가한다. Temperature는 G
 
 ## 22. Frontend Main UI 회귀 계약
 
-이 절의 테스트는 `01-A v2.9`, `02 UI·UX v2.8`의 Frontend 구현 계약을 추적한다. 기존 Safety, Verification Diff, `UNKNOWN_RESULT`, Recovery, Chrome/Edge, Sanitization 회귀를 대체하거나 제거하지 않는다.
+이 절의 테스트는 `01-A v2.15`, `02 UI·UX v2.11`의 Frontend 구현 계약을 추적한다. 기존 Safety, Verification Diff, `UNKNOWN_RESULT`, Recovery, Chrome/Edge, Sanitization 회귀를 대체하거나 제거하지 않는다.
 
-| Test ID | 계층 | 검증 계약 |
-|---|---|---|
-| `TST-UI-201` | Component | Header는 제품명·정중앙의 비대화형 Google 연결 chip·현재 계정·Settings를 표시하고 개발 Runtime/Node/Profile 문자열을 Main에 노출하지 않는다. |
-| `TST-UI-202` | Component | Desktop 3 panel: Left Resource, Center Viewer+Chat, Right Conversation+Recent Execution의 정보 구조와 collapse 순서를 검증한다. |
-| `TST-UI-203` | Component | Gmail/Tasks/Calendar 탭, 검색/필터, compact resource row, selected/hover/focus/disabled, 긴 문자열 ellipsis와 keyboard navigation을 검증한다. |
-| `TST-UI-204` | Integration | Gmail·Tasks의 UI visible page는 20개이며 Agent Retrieval page size 20과 별도임을 검증한다. Calendar 기본 View는 Month이며 UI pagination을 쓰지 않는다. 최초 mount에서 active tab이 Gmail이어도 탭 클릭 없이 Gmail exact Count Read와 Tasks incomplete 첫 100개 이하 Provider batch가 독립적으로 시작되며 Tasks completed scope는 exact `완료됨(N)`을 위해 background terminal materialization한다. 최초 preload에서는 한 요청만 resolve된 동안 어느 count도 표시하지 않고, 두 요청이 모두 success/failure로 settle된 뒤 성공한 count를 한 번에 표시한다. 한 Source reject 뒤에도 나머지 성공 Source count는 함께 표시하며 실패 Source에 `0`을 표시하지 않는다. Calendar exact Count Read는 startup에 호출하지 않는다. Tasks `/tasks/count` 호출은 0회이며, incomplete terminal 첫 batch는 exact 수, next token이 있으면 `100+`를 표시하고 Tasks 첫 탭 진입에서 같은 batch를 재사용한다. 이후 manual refresh·Source별 갱신은 독립 반영될 수 있다. Gmail Browse와 Exact Count Read는 독립 호출이고 Browse는 count 지연·실패에도 목록을 표시한다. Tasks 기본 incomplete Browse는 초기 전체 traversal을 시작하지 않는다. Tasks는 Provider 100개 batch를 받아 20개 UI page로 나눈다: terminal 41개는 3 page, 100개와 next token은 최초 1..5 page만 표시하며 알려진 마지막 page 요청에서만 다음 batch를 조회한다. 받은 1..5 재방문은 Provider 호출이 없고, 두 번째 terminal batch 뒤 최종 count/page를 확정한다. continuation을 UI page number 또는 Google Provider token으로 가정하지 않으며 조건 변경·수동 Refresh cache 무효화를 포함한다. |
-| `TST-UI-205` | Integration | Count 성공 시만 Gmail `ResourceCountResponse.total_count`를 Source badge에 표시함을 검증한다. `loaded_count`와 `visible_count`는 exact `total_count`가 아니며 count 실패·timeout·partial traversal·estimate·hard-coded count에서는 numeric badge를 표시하지 않는다. Calendar tab에는 numeric badge를 표시하지 않으며 startup과 Calendar refresh 모두 Calendar count endpoint를 호출하지 않는다. Gmail은 `INBOX + PRIMARY` exact Thread count만 표시하고 Promotions 등 일반 mailbox 검색 중에도 기본 badge를 유지하며 count traversal의 body/detail N+1을 금지한다. Tasks는 configured/default List의 `show_completed=false` 미완료 Task 목록을 `tasks.list` metadata만으로 표시하고 목록마다 `tasks.get` N+1을 만들지 않는다. Tasks 첫 batch가 terminal이면 exact count를, 다음 token이 있으면 확인된 최소 수와 `+`를 표시하며 terminal 뒤 누적 exact total을 확정한다. 기본 순서는 Provider 반환 순이며, 명시적 날짜순만 전체 materialization·`scheduled_date` 오름차순·날짜 없는 Task 후순위·별도 session cache를 사용한다. range-less Calendar Browse의 configured timezone Upcoming `[time_min, time_max)`·`singleEvents=true`·+90일 fallback과 Month Browse의 별도 explicit visible grid range를 검증한다. |
-| `TST-UI-206` | Integration | Resource row click은 Focus Viewer만 갱신하고 checkbox는 다중 선택 Context 집합만 변경함을 검증한다. 선택 집합이 있으면 Composer Context Summary에 사용자 의미 label과 선택 수를 표시하고, 중복 없는 선택 ID 전체로 `RESOURCE_SELECTED`가 최신 상세 조회를 시작함을 검증한다. 선택 집합이 없으면 `AGENT_SEARCH`를 검증한다. |
-| `TST-UI-207` | Integration | 선택 없는 자연어 요청은 `AGENT_SEARCH`, Quick Action은 Agent 요청이며 Google Write를 직접 호출하지 않음을 검증한다. |
-| `TST-UI-208` | Component | Viewer와 Approval detail은 실제 REST/SSE Projection의 필드만 표시하며 fake count/detail/approval data가 없음을 검증한다. |
-| `TST-UI-209` | Component | Inline Approval의 approve/modify/reject, detail expand, pending/submitting/completed 상태와 duplicate click 방지를 검증한다. |
-| `TST-UI-210` | Integration | Conversation 새로 만들기·검색·선택 시 Center 복원과 Recent Execution의 Projection 조건부 표시/Empty State를 검증한다. |
-| `TST-UI-211` | Component | Loading/Empty/Error, keyboard, focus, disabled, 반응형 Right→Left collapse, Chat Input과 Approval 접근성을 검증한다. |
-| `TST-UI-212` | Integration | refresh, SSE disconnect/reconnect, cursor/snapshot 복구가 Domain 실패 또는 Write 재실행으로 오인되지 않음을 검증한다. |
-| `TST-UI-213` | Regression | Browser P0에서 native Window Control을 기능으로 호출하지 않고 Settings/Diagnostics와 기존 사용자 설정을 보존함을 검증한다. |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Test ID</td>
+		<td>계층</td>
+		<td>검증 계약</td>
+	</tr>
+	<tr>
+		<td>`TST-UI-201`</td>
+		<td>Component</td>
+		<td>Header는 제품명·정중앙의 비대화형 Google 연결 chip·현재 계정·Settings를 표시하고 개발 Runtime/Node/Profile 문자열을 Main에 노출하지 않는다.</td>
+	</tr>
+	<tr>
+		<td>`TST-UI-202`</td>
+		<td>Component</td>
+		<td>Desktop 3 panel: Left Resource, Center Viewer+Chat, Right Conversation+Recent Execution의 정보 구조와 collapse 순서를 검증한다.</td>
+	</tr>
+	<tr>
+		<td>`TST-UI-203`</td>
+		<td>Component</td>
+		<td>Gmail/Tasks/Calendar 탭, 검색/필터, compact resource row, selected/hover/focus/disabled, 긴 문자열 ellipsis와 keyboard navigation을 검증한다.</td>
+	</tr>
+	<tr>
+		<td>`TST-UI-204`</td>
+		<td>Integration</td>
+		<td>Gmail·Tasks UI visible page 20과 Agent Retrieval page size 20의 독립 계약을 검증한다. Gmail은 intermediate token-only traversal과 visible target metadata hydration, 이미 hydrate한 page 재방문 Provider 호출 0을 검증한다. Tasks는 Provider 최대 100개 batch를 UI 20개 page로 slice하고 100개+continuation이면 최초 1..5 page만 노출하며 알려진 마지막 page에서만 다음 batch를 append한다. Local API continuation을 UI page number나 Provider token으로 해석하지 않고 조건 변경·수동 Refresh에서 cache를 무효화한다. Calendar Month View는 visible grid terminal materialization을 사용하고 numeric pagination을 생성하지 않는다.</td>
+	</tr>
+	<tr>
+		<td>`TST-UI-205`</td>
+		<td>Integration</td>
+		<td>Tasks badge는 미완료 기본 scope의 batch terminal/continuation 상태를 따르고 terminal 도달 시 exact total을 확정한다. Calendar tab에는 numeric badge가 없으며 startup·Calendar refresh에서 Calendar Count Read를 호출하지 않는다. Gmail은 실제 exact count가 확인된 경우만 exact badge로 표시하고 추정치를 exact로 표시하지 않는다. Frontend 전체 Page 순회·hard code count는 금지한다.</td>
+	</tr>
+	<tr>
+		<td>`TST-UI-206`</td>
+		<td>Integration</td>
+		<td>Resource row click은 Focus Viewer만 갱신하고 checkbox는 다중 선택 Context 집합만 변경함을 검증한다. 선택 집합이 있으면 Composer Context Summary에 사용자 의미 label과 선택 수를 표시하고, 중복 없는 선택 ID 전체로 `RESOURCE_SELECTED`가 최신 상세 조회를 시작함을 검증한다. 선택 집합이 없으면 `AGENT_SEARCH`를 검증한다.</td>
+	</tr>
+	<tr>
+		<td>`TST-UI-207`</td>
+		<td>Integration</td>
+		<td>선택 없는 자연어 요청은 `AGENT_SEARCH`, Quick Action은 Agent 요청이며 Google Write를 직접 호출하지 않음을 검증한다.</td>
+	</tr>
+	<tr>
+		<td>`TST-UI-208`</td>
+		<td>Component</td>
+		<td>Viewer와 Approval detail은 실제 REST/SSE Projection의 필드만 표시하며 fake count/detail/approval data가 없음을 검증한다.</td>
+	</tr>
+	<tr>
+		<td>`TST-UI-209`</td>
+		<td>Component</td>
+		<td>Inline Approval의 approve/modify/reject, detail expand, pending/submitting/completed 상태와 duplicate click 방지를 검증한다.</td>
+	</tr>
+	<tr>
+		<td>`TST-UI-210`</td>
+		<td>Integration</td>
+		<td>Conversation 새로 만들기·검색·선택 시 Center 복원과 Recent Execution의 Projection 조건부 표시/Empty State를 검증한다.</td>
+	</tr>
+	<tr>
+		<td>`TST-UI-211`</td>
+		<td>Component</td>
+		<td>Loading/Empty/Error, keyboard, focus, disabled, 반응형 Right→Left collapse, Chat Input과 Approval 접근성을 검증한다.</td>
+	</tr>
+	<tr>
+		<td>`TST-UI-212`</td>
+		<td>Integration</td>
+		<td>refresh, SSE disconnect/reconnect, cursor/snapshot 복구가 Domain 실패 또는 Write 재실행으로 오인되지 않음을 검증한다.</td>
+	</tr>
+	<tr>
+		<td>`TST-UI-213`</td>
+		<td>Regression</td>
+		<td>Browser P0에서 native Window Control을 기능으로 호출하지 않고 Settings/Diagnostics와 기존 사용자 설정을 보존함을 검증한다.</td>
+	</tr>
+</table>
 
 ### Calendar·Tasks·Viewer 회귀
 
-- Gmail Sidebar는 기본 `INBOX + PRIMARY` Thread 목록·exact badge count를 사용하고, 검색은 Promotions·Social·Updates 등 일반 mailbox 결과를 포함하며 Spam·Trash를 제외하고 검색 중에도 기본 badge count를 유지함을 검증한다.
-- 최초 count preload 뒤 Gmail → Tasks → Calendar → Gmail 전환에도 Gmail·Tasks의 이미 확인된 count가 유지되고, 아직 확인하지 못한 count를 `0`으로 표시하지 않음을 검증한다. Calendar tab에는 numeric badge가 없고, Source 탭의 icon·label·count는 Gmail·Tasks에만 compact inline group으로 적용되며 캘린더를 포함한 label이 줄바꿈되지 않음을 검증한다.
-- Calendar Sidebar는 Month View만 제공하고 Sunday-start dynamic 5/6주 grid의 `[gridStart, gridEnd)`를 configured user timezone으로 계산하는지 검증한다. Month View는 `page_size=100`의 nextPageToken 순차 traversal로 terminal까지 materialize하고, 100개 초과도 누락하지 않으며 UI pagination을 만들지 않는다. 현재 월 complete 뒤 previous/next month prefetch는 한 단계만 하고 chain prefetch하지 않으며, cached/in-flight prefetch month로 이동하면 중복 요청하지 않는다. past/future month 이동에는 90일 horizon을 적용하지 않는다.
-- Calendar 날짜 클릭은 API 0회이고 selected-date Event 목록만 바꾸며, Event 0/1/2+의 no marker/dot/dot+count와 검색 결과의 marker·선택 날짜 목록 동시 반영을 검증한다. All-day와 timed multi-day는 half-open interval 배치를 검증하고, 정확히 다음 날 00:00에 끝나는 timed Event를 다음 날 cell에 표시하지 않는다. Refresh는 현재 monthAnchor·selected date를 유지한 채 같은 visible range cache를 fresh materialize하며 Calendar count endpoint를 호출하지 않는다. time window 생략 Browse/Count는 같은 Upcoming resolver를 사용한다.
-- Tasks Sidebar는 configured/default Task List의 미완료 Task 전체를 대상으로 하고 완료 Task는 기본 list에서 제외됨을 검증한다. `태스크 N`은 overdue·오늘·미래·날짜 없음인 미완료 Task를 모두 포함하고 completed·deleted를 제외함을 검증한다. 기본 Browse는 `showCompleted=false`, `showHidden=false`, `showDeleted=false`와 Provider 반환 순, lazy 100개 batch/20개 UI page mapping을 유지하며, 초기 exact count·전역 정렬을 위해 전체 scope를 순회하지 않는다. Refresh·account·scope·검색/filter/sort 변경은 React Session Cache를 폐기한다. 명시적 날짜순은 별도 cache에서만 전체 materialization·`scheduled_date` 오름차순·날짜 없는 Task 후순위를 검증한다.
-- Tasks `완료됨(N) ▸` section은 기본 접힘이지만 Tasks 데이터 준비에서 completed scope `showCompleted=true`, `showHidden=true`, `showDeleted=false`, `page_size=100`가 Provider terminal까지 background traversal됨을 검증한다. mixed Provider 결과는 `task_status=completed`만 completed cache/count에 보관하고, 같은 `resource_id`는 한 번만 센다. section 미클릭 상태에서도 exact `완료됨(N)`을 표시하며, section 클릭은 API 0회다. completed cache 47개는 first 20·더 보기·next 20·더 보기·final 7로 client-side pagination하고, 클릭/더 보기 모두 Provider API 추가 호출 0회임을 검증한다. Google raw `completed` RFC3339은 MCP payload와 API metadata `completed_at`으로 유지되며 completed row에 configured AppSettings timezone 기준 `완료일: M월 D일 (요일)`로 표시한다. 값이 없거나 유효하지 않은 completed Task는 row를 유지하되 완료일 줄을 생략하고 다른 날짜/현재 시각 fallback을 만들지 않는다. completed section은 incomplete 20개 pagination과 독립이다.
-- Tasks Refresh는 incomplete와 completed cache를 모두 fresh Read함을 검증한다. completed fresh generation은 previous dataset에 append하지 않고 terminal 성공 시 unique fresh dataset/exact count로 replace한다. 2 completed 뒤 외부 1개 완료는 `완료됨(3)`과 중복 없는 rows가 되고 반복 Refresh도 3을 유지한다. 외부 incomplete→completed 전환은 badge 감소·미완료 목록 제거·`완료됨(N)` 증가를, completed→incomplete 전환은 반대 이동과 badge 증가·`완료됨(N)` 감소를 검증한다. 기존 Provider order·날짜순·grouping·pagination 회귀는 유지한다.
-- Tasks 정렬 `⋮` 메뉴의 열기/닫기, `기본 순서`·`날짜순` 선택과 선택 기준의 `✓` 표시를 검증하며, 검색창 아래 별도 정렬 select row가 없는지 검증한다. 날짜순은 22개 결과를 20개+2개 UI page로 slice하고, 기본 순서 복귀와 sorted cache 재사용을 검증한다. 100개 초과 시 remaining Provider page를 materialize한 뒤 global sort하는 기존 회귀를 유지한다.
+- Calendar Sidebar는 기본 Query가 사용자 Timezone 기준 현재부터 향후 90일이며 실제 Event 제목과 같은 날/날짜가 다른 시간 범위, All-day 형식을 검증한다.
+- Tasks Sidebar는 기본 Query가 미완료 Task 전체를 대상으로 하고 완료 Task는 기본 count/list에서 제외됨을 검증한다.
 - 같은 날 시간 Event에는 연도·월·일·요일·시작/종료 시간이 있고 `시작`·`종료` label은 없으며, All-day Event에는 연도·월·일·요일과 `하루 종일`이 있다.
 - Calendar 중앙 Viewer에는 실제 Projection의 `시작`, `종료` 필드가 남아 있음을 검증한다.
 - Tasks Sidebar는 실제 Google Task Projection의 제목·예정일을 렌더링하고, Projection에 없는 priority·category·가짜 Task List를 표시하지 않음을 검증한다.
@@ -483,7 +796,7 @@ Gate는 고정 Sampling 조건에서 Item당 1회 평가한다. Temperature는 G
 ### UI Fixture 원칙
 
 - Projection fixture는 제공 필드와 누락 필드를 모두 포함한다. 누락 필드에는 placeholder 사실, 가짜 실행 이력, count를 만들지 않는다.
-- Page Token fixture는 41개 terminal Tasks batch, 100개와 next token, 두 번째 terminal batch를 제공한다. 이미 받은 UI 페이지 재방문에는 API 호출이 없고, Tasks는 알려진 마지막 UI page에서만 다음 batch를 요청하며 terminal 뒤 count/page를 확정함을 검증한다. 검색 조건 변경 후에는 검색 1페이지를 재조회하며 기본 Gmail badge count는 유지함을 검증한다.
+- Page Token fixture는 최소 3페이지를 제공하며, 2/3페이지 재방문에서 API 호출이 없는 경우와 검색 조건 변경 후 1페이지 재조회 경우를 모두 검증한다.
 - 접근성 검증은 Chrome·Edge에서 keyboard path와 focus visible을 포함한다. 단위/Component 검증만으로 REST Command, SSE, Approval 안전 회귀를 대체하지 않는다.
 
 ## 23. Claim V2·Attachment 필수 회귀

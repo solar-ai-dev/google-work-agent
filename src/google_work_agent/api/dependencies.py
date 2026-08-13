@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from fastapi import Request
 
 from google_work_agent.adapters.runtime import RuntimeOperation
+from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.errors import ApiError
 from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
 from google_work_agent.domain import calculate_canonical_json_hash
 from google_work_agent.ports import AccessDecision, ApiRequestContext, EndpointPolicy
-
-if TYPE_CHECKING:
-    from google_work_agent.api.app import ApiContainer
 
 
 def get_container(request: Request) -> ApiContainer:
@@ -48,9 +46,24 @@ def enforce_api_contract_version(
 ) -> None:
     """Reject unsupported contract versions before application execution."""
 
+    enforce_supported_api_contract_version(
+        supported_version=container.api_contract_version,
+        request_id=request_id,
+        request_version=request_version,
+    )
+
+
+def enforce_supported_api_contract_version(
+    *,
+    supported_version: str,
+    request_id: str,
+    request_version: str | None,
+) -> None:
+    """Reject a request version that differs from the supplied API contract."""
+
     if request_version is None:
         return
-    if request_version != container.api_contract_version:
+    if request_version != supported_version:
         raise ApiError(
             error_code="VERSION_CONFLICT",
             user_message="지원하지 않는 API 계약 버전입니다.",

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -15,11 +15,13 @@ from google_work_agent.application.workflows import (
     ConfirmationResponseKind,
     RequestUnderstandingAgent,
     RequestUnderstandingResult,
+    RequestUnderstandingValidationError,
     WorkflowPhase,
     build_user_interrupt_v1,
     load_request_understanding_clarify_prompt_reference,
     resolve_confirmation_origin_target,
     validate_confirmation_response_v1,
+    validate_request_intent_v1,
 )
 from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports import (
@@ -74,6 +76,7 @@ class FakeLLMRuntime:
         prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
         trace_context: ObservabilityContext,
+        semantic_validate: Callable[[object], object] | None = None,
     ) -> StructuredLLMResult:
         self.calls.append(
             {
@@ -81,6 +84,7 @@ class FakeLLMRuntime:
                 "prompt_input": dict(prompt_input),
                 "output_schema": output_schema,
                 "trace_context": trace_context,
+                "semantic_validate": semantic_validate,
             }
         )
         result = self.queued.popleft()
@@ -118,6 +122,32 @@ def test_clear_request_returns_complete_request_intent() -> None:
     assert cast(PromptReference, runtime.calls[0]["prompt_ref"]).prompt_id == (
         "request_understanding.classify"
     )
+
+
+def test_invoke_classify_llm_wires_semantic_validate_to_validate_request_intent_v1() -> None:
+    """Regression for the D-2-class repair-boundary gap: invoke_classify_llm
+    must pass validate_request_intent_v1 as semantic_validate so a
+    schema-shape-valid but semantically-invalid output (e.g. a bad
+    schema_version) is repair-eligible instead of raising uncaught from
+    build_output_from_llm_result."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result(_clear_intent()))
+    request = _request("김대리 메일 찾아서 이번 주 해야 할 일 정리해줘.")
+    agent = RequestUnderstandingAgent(
+        llm_runtime=runtime,
+        prompt_ref=PROMPT_REF,
+        clarify_prompt_ref=CLARIFY_PROMPT_REF,
+    )
+
+    agent.classify(request)
+
+    semantic_validate = runtime.calls[0]["semantic_validate"]
+    assert semantic_validate is validate_request_intent_v1
+    assert semantic_validate(_clear_intent())["schema_version"] == 2
+    invalid = _clear_intent()
+    invalid["schema_version"] = 99
+    with pytest.raises(RequestUnderstandingValidationError):
+        semantic_validate(invalid)
 
 
 def test_linguistically_ambiguous_request_needs_confirmation() -> None:

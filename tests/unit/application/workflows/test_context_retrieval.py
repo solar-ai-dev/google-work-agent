@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict, cast
@@ -24,6 +24,7 @@ from google_work_agent.application.workflows import (
     build_context_clarification_question,
     load_context_assess_sufficiency_prompt_reference,
     load_context_select_evidence_prompt_reference,
+    validate_sufficiency_output_v1,
 )
 from google_work_agent.application.workflows.context_retrieval import ContextStatusValue
 from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
@@ -83,6 +84,7 @@ class LLMCall(TypedDict):
     prompt_input: dict[str, object]
     output_schema: OutputSchemaDefinition
     trace_context: ObservabilityContext
+    semantic_validate: Callable[[object], object] | None
 
 
 @dataclass
@@ -97,6 +99,7 @@ class FakeLLMRuntime:
         prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
         trace_context: ObservabilityContext,
+        semantic_validate: Callable[[object], object] | None = None,
     ) -> StructuredLLMResult:
         self.calls.append(
             {
@@ -104,6 +107,7 @@ class FakeLLMRuntime:
                 "prompt_input": dict(prompt_input),
                 "output_schema": output_schema,
                 "trace_context": trace_context,
+                "semantic_validate": semantic_validate,
             }
         )
         result = self.queued.popleft()
@@ -152,6 +156,28 @@ def test_context_retrieval_builds_sufficient_context_result() -> None:
         "context.select_evidence",
         "context.assess_sufficiency",
     ]
+
+
+def test_assess_sufficiency_wires_semantic_validate_to_validate_sufficiency_output_v1() -> None:
+    """Regression for the D-2-class repair-boundary gap: assess_sufficiency
+    must pass validate_sufficiency_output_v1 as semantic_validate -- unlike
+    select_evidence, this node has no bespoke revision fallback of its own."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result(_selection_output(["seg-1"])))
+    runtime.queued.append(_llm_result(_sufficiency_output("SUFFICIENT")))
+    agent = _agent(runtime)
+
+    agent.retrieve(
+        request_intent=_intent(),
+        acquisition_result=_acquisition_result(),
+        request=_request(),
+    )
+
+    semantic_validate = runtime.calls[1]["semantic_validate"]
+    assert semantic_validate is validate_sufficiency_output_v1
+    assert semantic_validate(_sufficiency_output("SUFFICIENT"))["status"] == "SUFFICIENT"
+    with pytest.raises(ContextRetrievalValidationError):
+        semantic_validate(_invalid_sufficiency_output("NOT_A_REAL_STATUS"))
 
 
 def test_stage5_inline_resources_are_context_input_without_cache_resolver() -> None:

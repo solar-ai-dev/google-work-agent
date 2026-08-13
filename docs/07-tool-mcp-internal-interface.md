@@ -1,11 +1,11 @@
 # 07. Google Work Agent · Tool · MCP · 내부 인터페이스 명세서
 
-> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v6.2`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, MCP Tool, Python 내부 인터페이스 계약을 정의한다.
+> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v7.5`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, MCP Tool, Python 내부 인터페이스 계약을 정의한다.
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.10
-- **기준일:** 2026-08-10
+- **상태:** Draft v2.16
+- **기준일:** 2026-08-13
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
 
@@ -23,6 +23,16 @@
 - 원격 Backend 또는 SaaS API
 - 원격 MCP Server
 - React에서 Google API·SQLite·OS Keyring·MCP를 직접 호출하는 경로
+- FastAPI Route·Application·LangGraph·Agent·Domain에서 Gmail·Tasks·Calendar Provider API/SDK를 직접 호출하는 경로. Google Workspace 외부 접근은 Google Work MCP Server의 Tool 계약을 단일 경계로 사용한다.
+
+## 1.1 Google Workspace 접근 단일 경계
+
+- **Local API**는 React와 FastAPI Local Agent Service 사이의 제품 내부 REST/SSE 인터페이스다. Google Provider API를 직접 호출하기 위한 우회 경로가 아니다.
+- FastAPI Route·Application·LangGraph·Agent·Domain은 `MCP Client/Port → Google Work MCP Server` 계약에만 의존한다.
+- Gmail·Tasks·Calendar Provider API/SDK, OAuth Credential 적용, Provider raw token/response 해석은 Google Work MCP Server 내부 Adapter가 소유한다.
+- Retrieval Read, Sidebar Browse/Count/Detail, OAuth 상태 확인, Write dispatch, Verification/Recovery 조회까지 Google Workspace에 닿는 모든 제품 경로는 MCP Tool/Port를 통과해야 한다.
+- 테스트에서는 MCP Client/Transport를 Fake로 대체할 수 있다. 제품 Core에 별도 Google Provider Client를 주입해 MCP를 우회하는 대체 실행 경로를 두지 않는다.
+- MCP Server 내부에서 Google Provider API를 호출하는 것은 MCP 구현 세부사항이며, 문서의 `google_provider_api_call_count`는 이 내부 Provider 호출 수를 뜻한다.
 
 ## 2. 설치·Runtime 경계
 
@@ -57,27 +67,96 @@ Windows Installer
 
 `/health/*`는 인증 전 Launcher용이며 Base Path 밖에 둔다. 나머지 Endpoint는 모두 `/api/v1` 전체 경로를 사용한다.
 
-| 구분 | Method·Path | 역할 |
-|---|---|---|
-| Liveness | `GET /health/live` | FastAPI Process 응답 여부 |
-| Core Readiness | `GET /health/ready` | Manifest·Asset·API Contract·SQLite·Migration·Domain·Keyring Adapter·MCP Executable·Tool Schema |
-| Runtime Detail | `GET /api/v1/runtime` | Local Session 이후 Google Credential·Scope·LLM Provider·Ollama·Model·Recovery 상태 |
-| Session | `POST /api/v1/session/bootstrap` | Launcher Bootstrap으로 Local Session 수립 |
-| Conversation | `GET/POST /api/v1/conversations` | 대화 조회·생성 |
-| Run | `POST /api/v1/runs`, `GET /api/v1/runs/{run_id}` | 요청 시작·현재 Domain 상태 조회 |
-| Interrupt | `POST /api/v1/runs/{run_id}/confirm` | 확인 질문 응답으로 Graph 재개 |
-| Approval | `POST /api/v1/actions/{action_id}/approve\|modify\|reject` | 승인·수정·거절 Command |
-| Retry | `POST /api/v1/actions/{action_id}/prepare-retry` | 실패한 Write를 `MODIFIED`로 전환해 새 승인 준비 |
-| Control | `POST /api/v1/runs/{run_id}/cancel\|resume` | 취소 요청·안전 지점 재개 |
-| Resource | `GET /api/v1/resources/gmail\|tasks\|calendar` | Sidebar 목록·검색·Page Token 조회 |
-| Gmail Detail | `GET /api/v1/resources/gmail/{resource_id}` | Local Session으로 Gmail Thread의 최신 Message UI 상세 조회 |
-| Event | `GET /api/v1/runs/{run_id}/events` | SSE 진행 Projection |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>구분</td>
+		<td>Method·Path</td>
+		<td>역할</td>
+	</tr>
+	<tr>
+		<td>Liveness</td>
+		<td>`GET /health/live`</td>
+		<td>FastAPI Process 응답 여부</td>
+	</tr>
+	<tr>
+		<td>Core Readiness</td>
+		<td>`GET /health/ready`</td>
+		<td>Manifest·Asset·API Contract·SQLite·Migration·Domain·Keyring Adapter·MCP Executable·Tool Schema</td>
+	</tr>
+	<tr>
+		<td>Runtime Detail</td>
+		<td>`GET /api/v1/runtime`</td>
+		<td>Local Session 이후 Google Credential·Scope·LLM Provider·Ollama·Model·Recovery 상태</td>
+	</tr>
+	<tr>
+		<td>Session</td>
+		<td>`POST /api/v1/session/bootstrap`</td>
+		<td>Launcher Bootstrap으로 Local Session 수립</td>
+	</tr>
+	<tr>
+		<td>Conversation</td>
+		<td>`GET/POST /api/v1/conversations`</td>
+		<td>대화 조회·생성</td>
+	</tr>
+	<tr>
+		<td>Run</td>
+		<td>`POST /api/v1/runs`, `GET /api/v1/runs/{run_id}`</td>
+		<td>요청 시작·현재 Domain 상태 조회</td>
+	</tr>
+	<tr>
+		<td>Interrupt</td>
+		<td>`POST /api/v1/runs/{run_id}/confirm`</td>
+		<td>확인 질문 응답으로 Graph 재개</td>
+	</tr>
+	<tr>
+		<td>Approval</td>
+		<td>`POST /api/v1/actions/{action_id}/approve\|modify\|reject`</td>
+		<td>승인·수정·거절 Command</td>
+	</tr>
+	<tr>
+		<td>Retry</td>
+		<td>`POST /api/v1/actions/{action_id}/prepare-retry`</td>
+		<td>실패한 Write를 `MODIFIED`로 전환해 새 승인 준비</td>
+	</tr>
+	<tr>
+		<td>Control</td>
+		<td>`POST /api/v1/runs/{run_id}/cancel\|resume`</td>
+		<td>취소 요청·안전 지점 재개</td>
+	</tr>
+	<tr>
+		<td>Resource</td>
+		<td>`GET /api/v1/resources/gmail\|tasks\|calendar`</td>
+		<td>Sidebar 목록·검색·opaque Local API continuation 조회</td>
+	</tr>
+	<tr>
+		<td>Gmail Detail</td>
+		<td>`GET /api/v1/resources/gmail/{resource_id}`</td>
+		<td>Local Session으로 Gmail Thread의 최신 Message UI 상세 조회</td>
+	</tr>
+	<tr>
+		<td>Event</td>
+		<td>`GET /api/v1/runs/{run_id}/events`</td>
+		<td>SSE 진행 Projection</td>
+	</tr>
+</table>
 
 #### Gmail UI Detail Projection
 
 `GET /api/v1/resources/gmail/{resource_id}`는 Sidebar의 `gmail_thread` ID를 받아 해당 Thread에서 `internalDate` 기준 최신 Message 1개를 표시한다. 응답은 `resource_id`, `message_id`, `sender_name`, `sender_email`, `recipients`, `cc`, `subject`, `received_at`, `body`, `attachments`, `canonical_url`을 포함한다. 본문은 `text/plain`을 우선하고 HTML만 있으면 안전한 readable text로 변환하며 raw HTML을 Browser에 전달하지 않는다.
 
 이 Endpoint는 UI 전용 Application Query다. `gmail_get_thread`, `gmail_get_message`, Agent Context, Retrieval Workflow와 `selected_resources` 계약을 변경하지 않는다.
+
+### 3.2.1 Sidebar Resource Browse·Count 계약
+
+- Gmail·Tasks UI visible page는 `SIDEBAR_PAGE_SIZE=20`이며 Agent Retrieval `RETRIEVAL_PAGE_SIZE=20`과 별도다. Calendar Month View는 visible grid 전체를 materialize하고 numeric pagination을 사용하지 않는다.
+- `ResourceListResponse.next_page_token`은 Client 관점의 opaque Local API continuation이다. Frontend는 이를 Google Provider token이나 UI page number로 해석하지 않고 다음 Local API 요청에 그대로 전달한다. Provider raw token은 Adapter 내부 구현 세부사항이다.
+- Gmail Browse는 기본 `page_size=20`이고 optional `include_thread_metadata`의 기본값은 `true`다. 아직 표시하지 않을 intermediate page를 통과할 때만 `false`를 사용해 Thread ID/list metadata/continuation만 확보하고 visible target page는 metadata를 hydrate한다. target hydration 중 필요한 Provider Read 하나라도 실패하면 partial placeholder page를 만들지 않고 해당 page Read를 실패 처리한다.
+- Gmail 기본 Sidebar scope는 `INBOX + PRIMARY` Thread이며 exact badge count도 같은 scope다. Sidebar 검색은 Primary 제한 없이 일반 mailbox를 검색하되 Spam·Trash를 제외하고 기본 Gmail badge count는 유지한다. Count traversal은 body/attachment/detail N+1 없이 필요한 최소 list metadata만 사용한다.
+- Tasks 기본 Browse는 configured/default Task List에 `show_completed=false`, `show_hidden=false`, `show_deleted=false`, Provider `page_size<=100`을 사용한다. Application은 Task metadata batch와 opaque continuation을 반환하고 React Client Session Cache가 이를 UI 20개 page로 slice한다. 100개와 continuation이 있으면 초기에는 1..5 page만 알고, 알려진 마지막 page에서만 다음 batch를 append한다. terminal 뒤 누적 수로 exact total과 마지막 UI page를 확정한다. `tasks.get`은 focus/선택 detail에만 사용한다.
+- Tasks `status_scope=incomplete|completed`를 지원하고 기본은 `incomplete`다. completed materialization은 `show_completed=true`, `show_hidden=true`, `show_deleted=false`, `page_size<=100`으로 terminal까지 읽은 뒤 mixed Provider 결과에서 `task_status=completed`만 `resource_id` 기준 dedupe한다. raw Google `completed` timestamp는 존재할 때 `completed_at` metadata로 보존한다.
+- Calendar Month Browse는 `monthAnchor`에서 계산한 configured timezone의 explicit `[gridStart, gridEnd)`와 `singleEvents=true`를 사용하며 Provider `page_size<=100`을 terminal까지 순회한다. `time_min/time_max`가 생략된 일반 Upcoming Browse는 configured timezone 기준 현재 시각부터 90일 후까지의 bounded default window를 사용한다.
+- Exact Count Read는 Browse와 독립된 Local API Query다. P0 Sidebar startup은 Gmail exact count와 Tasks incomplete 첫 batch만 준비하며 Tasks badge는 그 batch의 terminal/continuation 상태에서 계산한다. Calendar tab에는 numeric badge가 없고 startup·Calendar refresh에서 Calendar Count Read를 호출하지 않는다. Count 실패·timeout은 Browse를 실패시키지 않고 numeric badge만 생략한다.
+- React Client Session Cache identity는 active Google `account_id`, source, container(Task List/Calendar), 검색/filter/sort/status scope, continuation/batch generation으로 구성한다. raw Local Session Cookie/token과 OAuth token은 Application snapshot이나 cache key로 전달하지 않는다. Refresh·계정/container/scope/검색/filter/sort 변경·session 종료는 관련 cache를 무효화한다.
 
 ### 3.3 상태 변경 API 입력 소유권
 
@@ -89,16 +168,62 @@ Windows Installer
 - Local Session이 승인 주체의 기준이며 Browser가 actor identity를 지정하지 않는다.
 - Browser가 보낸 Approval·Source Snapshot·Arguments Hash·Idempotency Key를 실행 권위로 사용하지 않는다.
 
-| Endpoint | Request Schema | 핵심 입력 | Domain/Application 매핑 |
-|---|---|---|---|
-| `POST /api/v1/runs/{run_id}/confirm` | `ConfirmationResponseV1` | `command_id`, `expected_version`, `interrupt_id`, `response_kind`, option 또는 free text | 확인 응답 저장 후 same-thread resume. 임의 resume payload 금지 |
-| `POST /api/v1/actions/{action_id}/approve` | `ApproveActionRequestV2` | `command_id`, `expected_version` | 서버가 최신 Action·Source·Policy·Tool Schema에서 Approval Snapshot·ID·Idempotency Key 생성 |
-| `POST /api/v1/actions/{action_id}/modify` | `ModifyActionRequestV2` | `command_id`, `expected_version`, 허용된 `arguments_patch` | `ModifyAction`; 기존 ACTIVE Approval revoke |
-| `POST /api/v1/actions/{action_id}/reject` | `RejectActionRequestV2` | `command_id`, `expected_version`, optional reason | `RejectAction` |
-| `POST /api/v1/actions/{action_id}/prepare-retry` | `PrepareRetryRequestV2` | `command_id`, `expected_version` | `FAILED → MODIFIED`; 새 Approval Metadata는 서버가 이후 생성 |
-| `POST /api/v1/runs/{run_id}/cancel` | `CancelRunRequestV2` | `command_id`, `expected_version`, optional reason | `RequestCancel`; Version/Receipt 판정 후에만 child mutation |
-| `POST /api/v1/runs/{run_id}/resume` | `ResumeRunRequestV2` | `command_id`, `expected_version`, `resume_kind` | `REAUTH_COMPLETED | SAFE_CHECKPOINT_RESUME | RECOVERY_RECHECK`만 허용. Confirmation/Approval은 전용 Endpoint 사용 |
-| `POST /api/v1/runs/{run_id}/resolve-recovery` | `ResolveRecoveryRequestV1` | `command_id`, `expected_version`, `action_id`, `resolution_kind` | Recovery reason별 허용 Enum만 `ResolveRecovery`로 전달 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Endpoint</td>
+		<td>Request Schema</td>
+		<td>핵심 입력</td>
+		<td>Domain/Application 매핑</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/runs/{run_id}/confirm`</td>
+		<td>`ConfirmationResponseV1`</td>
+		<td>`command_id`, `expected_version`, `interrupt_id`, `response_kind`, option 또는 free text</td>
+		<td>`interrupt_id`가 가리키는 `owner_subgraph + RegisteredResumeTargetRefV1` checkpoint에서 same-thread resume. `resume_target`은 compiled Graph Registry가 발급·검증하며 LLM 자유 문자열로 수신하지 않는다. 모든 확인을 Request Understanding으로 되돌리는 공통 재시작 금지</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/actions/{action_id}/approve`</td>
+		<td>`ApproveActionRequestV2`</td>
+		<td>`command_id`, `expected_version`</td>
+		<td>서버가 최신 Action·Source·Policy·Tool Schema에서 Approval Snapshot·ID·Idempotency Key 생성</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/actions/{action_id}/modify`</td>
+		<td>`ModifyActionRequestV2`</td>
+		<td>`command_id`, `expected_version`, 허용된 `arguments_patch`</td>
+		<td>`ModifyAction`; 기존 ACTIVE Approval revoke</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/actions/{action_id}/reject`</td>
+		<td>`RejectActionRequestV2`</td>
+		<td>`command_id`, `expected_version`, optional reason</td>
+		<td>`RejectAction`</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/actions/{action_id}/prepare-retry`</td>
+		<td>`PrepareRetryRequestV2`</td>
+		<td>`command_id`, `expected_version`</td>
+		<td>`FAILED → MODIFIED`; 새 Approval Metadata는 서버가 이후 생성</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/runs/{run_id}/cancel`</td>
+		<td>`CancelRunRequestV2`</td>
+		<td>`command_id`, `expected_version`, optional reason</td>
+		<td>`RequestCancel`; Version/Receipt 판정 후에만 child mutation</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/runs/{run_id}/resume`</td>
+		<td>`ResumeRunRequestV2`</td>
+		<td>`command_id`, `expected_version`, `resume_kind`</td>
+		<td>`REAUTH_COMPLETED</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/runs/{run_id}/resolve-recovery`</td>
+		<td>`ResolveRecoveryRequestV1`</td>
+		<td>`command_id`, `expected_version`, `action_id`, `resolution_kind`</td>
+		<td>Recovery reason별 허용 Enum만 `ResolveRecovery`로 전달</td>
+	</tr>
+</table>
 
 공통 오류: Version/Command Hash 충돌은 `409`, Schema·허용 Enum·상태 precondition 위반은 `422`, 필요한 Local Runtime·MCP·Google 상태가 일시적으로 준비되지 않으면 `503`을 사용한다. 실패 응답 자체가 Domain 사실을 임의 변경하지 않는다.
 
@@ -111,8 +236,8 @@ Event 예:
 ```text
 run_status
 phase_changed
-source_planning
-acquisition_progress
+tool_routing
+retrieval_progress
 context_progress
 confirmation_required
 analysis_progress
@@ -200,28 +325,41 @@ finalize_cancel
 
 ## 5. Agent 내부 인터페이스
 
-Agent는 Parent에 Versioned Structured Output만 반환한다. 다만 Agent Subgraph 내부에는 LLM Node 외에 책임 수행에 필요한 결정적 Validation·Read Application Node가 존재할 수 있다.
+`ToolRoutePlanV2`는 `InputRoutePlanV1`과 `OutputPlanV1`을 분리해 독립 revision/freshness 단위로 관리한다. OUT-only 변경은 기존 Retrieval을 자동 stale 처리하지 않고 Planning/Review만 재생성한다.
+
+Main Graph와 Agent Subgraph는 Versioned Typed State로 연결한다. Main State는 공식 결과만 누적하고 Subgraph 내부 Query candidate·LLM candidate·RAG score는 Local State 또는 Run Cache에 둔다.
 
 ```text
-RequestIntent
-SourceFetchPlan[]
-AcquisitionResult
-ContextRetrievalResult
-WorkAnalysisResult
-ActionPlanDraft
-PlanReviewResult
+RunInputV1
+RequestIntentV2
+ToolRoutePlanV2
+RetrievalResultV1
+WorkAnalysisResultV2
+AnswerDraftV2 | ActionPlanDraftV2
+PlanReviewResultV2
 ```
 
-`RoutingDecision`은 Agent Output이 아니라 결정적 Supervisor의 결과다. Agent는 다음 Agent를 직접 선택·호출하지 않고 자신의 Typed Result와 disposition을 반환한다.
+`RoutingDecision`은 Agent Output이 아니라 결정적 Supervisor의 결과다. Agent는 다음 Agent를 직접 선택·호출하지 않고 `SubgraphReturnV2(typed_result, disposition, workflow_signal)`을 반환한다.
 
 경계:
 
-- API 탐색·수집 Agent의 **LLM Node**는 Source·순서·Budget만 제안한다.
-- 실제 Query·Page Token·MCP Arguments는 **같은 Acquisition Subgraph 내부의 결정적 Application Node**가 확정하고 Read Port를 호출한다.
-- Acquisition Subgraph는 `SourceFetchPlan[]`과 최종 `AcquisitionResult`를 Parent에 함께 반환한다. Read 중 Subgraph invocation을 종료하지 않는다.
-- Context Retriever Agent는 MCP·Google API를 직접 호출하지 않는다.
+- Tool Route Subgraph가 IN Resource/Connector/허용 Read Tool 범위와 OUT Resource/Effect/Tool을 한 번 확정한다.
+- Tool ID·Scope·Effect·Schema Version 결합은 Signed Tool Registry를 기준으로 수행한다.
+- Tool Route LLM은 먼저 IN/OUT Resource·Effect만 판단하고, Registry 후보 결합은 결정적 코드가 수행한다. 후보가 여러 개일 때만 Route Subgraph 내부 선택 Node를 사용한다.
+- Retrieval Subgraph는 `ToolRoutePlanV2.input_plan.input_routes`를 읽고 그 안의 `allowed_read_tool_ids`만 사용한다. Connector/Tool 종류를 LLM이 다시 선택하지 않는다.
+- 실제 Query·Page Token·MCP Arguments는 Retrieval Subgraph의 결정적 Application Node가 확정하고 Read Port를 호출한다.
+- Retrieval은 Query→Read→Normalize/Segment→Run-scoped RAG→Evidence→Sufficiency를 완료한 뒤 `RetrievalResultV1`과 필요한 Typed `WorkflowSignalV1`만 Parent에 반환한다.
+- Planning Subgraph는 `ToolRoutePlanV2.output_plan.output_routes`의 `selected_tool_id`를 소비하며 Tool을 재선택하지 않는다. Tool별 Arguments만 작성하고 결정적 Assembler가 `ActionPlanDraftV2`를 만든다.
 - Agent 간 대용량 원문 전달 대신 Cache Handle·Resource·Evidence·Segment ID를 사용한다.
-- `SINGLE_BASELINE`은 하나의 Unified Agent Subgraph 안에서 요청 이해 → Source 계획 → 결정적 Read → Evidence → 분석 → 계획 → self-review를 수행할 수 있다. 이때 복수 LLM Call이 발생해도 Agent invocation은 1개다.
+- `SINGLE_BASELINE`은 동일 의미 책임을 Unified Subgraph 안에서 수행할 수 있으나 Main/Local State와 Tool Route 단일 권위 계약은 동일하다.
+
+
+### PolicyPreconditionResolver · Confirmation Receipt Interface
+- 의미 Route 후보 뒤 결정적 Resolver가 `TASK + CREATE → Tasks duplicate READ`, `CALENDAR + CREATE → Event/FreeBusy conflict READ`를 보강한다.
+- 사용자의 명시적 Source·기간·Resource 범위를 벗어나면 `SCOPE_EXPANSION_REQUIRED` Confirmation을 반환하고 승인 전에는 Route를 materialize/execute하지 않는다.
+- 실제 사용자 응답을 검증한 Application/Confirmation Controller만 `PolicyConfirmationReceiptV1`을 생성한다. Agent·LLM·MCP는 Receipt 생성 권한이 없다.
+- `DUPLICATE_OVERRIDE`/`CONFLICT_OVERRIDE` Write는 WorkAnalysis receipt refs와 Approval Snapshot의 receipt ID/context hash가 일치해야 하며 Preflight에서 stale/DECLINED/missing Receipt를 차단한다. Receipt 자체는 MCP Write Payload에 넣지 않고 Application이 Claim 발급 전에 검증한다.
+
 
 ## 6. MCP 연결
 
@@ -332,15 +470,40 @@ get_freebusy(calendars, time_range)
 
 내부 Read Port와 MCP Tool의 고정 매핑:
 
-| 내부 Read Port | MCP Tool |
-|---|---|
-| `list_gmail` | `gmail_search_threads` |
-| `get_gmail_threads` | `gmail_get_thread`, 필요 시 `gmail_get_message` |
-| `list_tasks` | `tasks_list_tasks` |
-| `get_tasks` | `tasks_get_task` |
-| `list_calendar_events` | `calendar_list_events` |
-| `get_calendar_events` | `calendar_get_event` |
-| `get_freebusy` | `calendar_query_freebusy` |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>내부 Read Port</td>
+		<td>MCP Tool</td>
+	</tr>
+	<tr>
+		<td>`list_gmail`</td>
+		<td>`gmail_search_threads`</td>
+	</tr>
+	<tr>
+		<td>`get_gmail_threads`</td>
+		<td>`gmail_get_thread`, 필요 시 `gmail_get_message`</td>
+	</tr>
+	<tr>
+		<td>`list_tasks`</td>
+		<td>`tasks_list_tasks`</td>
+	</tr>
+	<tr>
+		<td>`get_tasks`</td>
+		<td>`tasks_get_task`</td>
+	</tr>
+	<tr>
+		<td>`list_calendar_events`</td>
+		<td>`calendar_list_events`</td>
+	</tr>
+	<tr>
+		<td>`get_calendar_events`</td>
+		<td>`calendar_get_event`</td>
+	</tr>
+	<tr>
+		<td>`get_freebusy`</td>
+		<td>`calendar_query_freebusy`</td>
+	</tr>
+</table>
 
 - 일반 Retrieval 호출은 Action Row를 만들지 않는다.
 - 사용자에게 표시·재개가 필요한 명시적 READ Plan만 READ Action 계약을 사용한다.
@@ -521,14 +684,43 @@ fallback_reason?
 
 ## 22. 인증 Matrix
 
-| Endpoint | 기존 Local Session | 추가 검증 |
-|---|---:|---|
-| `GET /health/live` | 없음 | Loopback·Method 제한 |
-| `GET /health/ready` | 없음 | Loopback·Launcher 요청 제한 |
-| `POST /api/v1/session/bootstrap` | 없음 | 1회용 Bootstrap Secret·TTL·Service Instance |
-| OAuth Loopback Callback | 없음 | `state`·PKCE·Listener Instance |
-| `GET /api/v1/runtime` | 필수 | Session·Origin·Host |
-| 나머지 `/api/v1/*` | 필수 | Session·Origin·Host·Fetch Metadata·Schema |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Endpoint</td>
+		<td>기존 Local Session</td>
+		<td>추가 검증</td>
+	</tr>
+	<tr>
+		<td>`GET /health/live`</td>
+		<td>없음</td>
+		<td>Loopback·Method 제한</td>
+	</tr>
+	<tr>
+		<td>`GET /health/ready`</td>
+		<td>없음</td>
+		<td>Loopback·Launcher 요청 제한</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/session/bootstrap`</td>
+		<td>없음</td>
+		<td>1회용 Bootstrap Secret·TTL·Service Instance</td>
+	</tr>
+	<tr>
+		<td>OAuth Loopback Callback</td>
+		<td>없음</td>
+		<td>`state`·PKCE·Listener Instance</td>
+	</tr>
+	<tr>
+		<td>`GET /api/v1/runtime`</td>
+		<td>필수</td>
+		<td>Session·Origin·Host</td>
+	</tr>
+	<tr>
+		<td>나머지 `/api/v1/*`</td>
+		<td>필수</td>
+		<td>Session·Origin·Host·Fetch Metadata·Schema</td>
+	</tr>
+</table>
 
 Bootstrap 오류: `BOOTSTRAP_EXPIRED`, `BOOTSTRAP_REUSED`, `BOOTSTRAP_INSTANCE_MISMATCH`.
 
@@ -624,19 +816,56 @@ RejectActionRequestV1
 
 ### 24.4 Connection·Settings·Operation Endpoint
 
-| Method·Path | 역할 |
-|---|---|
-| `POST /api/v1/connections/google/start` | MCP Credential Provider OAuth 시작 |
-| `GET /api/v1/connections/google/status` | 계정·Scope·연결 상태 |
-| `POST /api/v1/connections/google/disconnect` | Revoke 시도·Keyring 삭제 |
-| `PUT /api/v1/credentials/llm/{provider}` | API Key 저장·세션 사용 |
-| `DELETE /api/v1/credentials/llm/{provider}` | API Key 삭제 |
-| `GET/PUT /api/v1/settings` | 비밀 아닌 설정 조회·변경 |
-| `POST /api/v1/runtime/mode` | Active Run 없을 때 Mode 변경 |
-| `POST /api/v1/backups` | Backup 생성 |
-| `POST /api/v1/restore` | Safe Mode Restore 시작 |
-| `POST /api/v1/diagnostics/bundles` | Sanitized Bundle 생성 |
-| `POST /api/v1/control/shutdown` | Graceful Shutdown 요청 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Method·Path</td>
+		<td>역할</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/connections/google/start`</td>
+		<td>MCP Credential Provider OAuth 시작</td>
+	</tr>
+	<tr>
+		<td>`GET /api/v1/connections/google/status`</td>
+		<td>계정·Scope·연결 상태</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/connections/google/disconnect`</td>
+		<td>Revoke 시도·Keyring 삭제</td>
+	</tr>
+	<tr>
+		<td>`PUT /api/v1/credentials/llm/{provider}`</td>
+		<td>API Key 저장·세션 사용</td>
+	</tr>
+	<tr>
+		<td>`DELETE /api/v1/credentials/llm/{provider}`</td>
+		<td>API Key 삭제</td>
+	</tr>
+	<tr>
+		<td>`GET/PUT /api/v1/settings`</td>
+		<td>비밀 아닌 설정 조회·변경</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/runtime/mode`</td>
+		<td>Active Run 없을 때 Mode 변경</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/backups`</td>
+		<td>Backup 생성</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/restore`</td>
+		<td>Safe Mode Restore 시작</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/diagnostics/bundles`</td>
+		<td>Sanitized Bundle 생성</td>
+	</tr>
+	<tr>
+		<td>`POST /api/v1/control/shutdown`</td>
+		<td>Graceful Shutdown 요청</td>
+	</tr>
+</table>
 
 ## 25. OAuth Credential Port
 
@@ -688,25 +917,152 @@ total_count?
 metadata
 ```
 
-| Tool | 핵심 Input | Output | Scope | Timeout | Retry |
-|---|---|---|---|---:|---|
-| `gmail_search_threads` | query<=2048, page_token?, page_size 1..100 | ThreadMetadata[] | gmail.readonly | 30s | Read 429·5xx 1회 |
-| `gmail_get_thread` | thread_id | ThreadDetail | gmail.readonly | 30s | Read 1회 |
-| `gmail_get_message` | message_id | MessageDetail | gmail.readonly | 30s | Read 1회 |
-| `gmail_create_draft` | recipients<=50, subject<=998, body<=65536, thread_id? + claim context | DraftMetadata | gmail.compose | 30s | 전달 불명 시 금지 |
-| `gmail_update_draft` | draft_id, mutable fields + claim context | DraftMetadata | gmail.compose | 30s | 전달 불명 시 금지 |
-| `gmail_get_draft` | draft_id | DraftDetail | gmail.compose | 30s | Read 1회 |
-| `tasks_list_tasklists` | page_token?, page_size | TaskListMetadata[] | tasks | 30s | Read 1회 |
-| `tasks_list_tasks` | tasklist_id, filter, page_token?, page_size | TaskMetadata[] + nextPageToken | tasks | 30s | Read 1회 |
-| `tasks_get_task` | tasklist_id, task_id | TaskDetail | tasks | 30s | Read 1회 |
-| `tasks_create_task` | tasklist_id, title, notes?, due? + claim context | TaskMetadata | tasks | 30s | 전달 불명 시 금지 |
-| `tasks_update_task` | tasklist_id, task_id, 허용 필드 + claim context | TaskMetadata | tasks | 30s | 전달 불명 시 금지 |
-| `calendar_list_calendars` | page_token?, page_size | CalendarMetadata[] | calendarlist.readonly | 30s | Read 1회 |
-| `calendar_list_events` | calendar_id, time_min, time_max, query?, page_token? | EventMetadata[] + exact `total_count` when requested by Sidebar | calendar.events | 30s | Read 1회 |
-| `calendar_query_freebusy` | calendar_ids<=20, time_min, time_max | BusyInterval[] | calendar.events.freebusy | 30s | Read 1회 |
-| `calendar_get_event` | calendar_id, event_id | EventDetail | calendar.events | 30s | Read 1회 |
-| `calendar_create_event` | calendar_id, title, start, end, description? + claim context | EventMetadata | calendar.events | 30s | 전달 불명 시 금지 |
-| `calendar_update_event` | calendar_id, event_id, 허용 필드 + claim context | EventMetadata | calendar.events | 30s | 전달 불명 시 금지 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>Tool</td>
+		<td>핵심 Input</td>
+		<td>Output</td>
+		<td>Scope</td>
+		<td>Timeout</td>
+		<td>Retry</td>
+	</tr>
+	<tr>
+		<td>`gmail_search_threads`</td>
+		<td>query<=2048, page_token?, page_size 1..100</td>
+		<td>ThreadMetadata[]</td>
+		<td>gmail.readonly</td>
+		<td>30s</td>
+		<td>Read 429·5xx 1회</td>
+	</tr>
+	<tr>
+		<td>`gmail_get_thread`</td>
+		<td>thread_id</td>
+		<td>ThreadDetail</td>
+		<td>gmail.readonly</td>
+		<td>30s</td>
+		<td>Read 1회</td>
+	</tr>
+	<tr>
+		<td>`gmail_get_message`</td>
+		<td>message_id</td>
+		<td>MessageDetail</td>
+		<td>gmail.readonly</td>
+		<td>30s</td>
+		<td>Read 1회</td>
+	</tr>
+	<tr>
+		<td>`gmail_create_draft`</td>
+		<td>recipients<=50, subject<=998, body<=65536, thread_id? + claim context</td>
+		<td>DraftMetadata</td>
+		<td>gmail.compose</td>
+		<td>30s</td>
+		<td>전달 불명 시 금지</td>
+	</tr>
+	<tr>
+		<td>`gmail_update_draft`</td>
+		<td>draft_id, mutable fields + claim context</td>
+		<td>DraftMetadata</td>
+		<td>gmail.compose</td>
+		<td>30s</td>
+		<td>전달 불명 시 금지</td>
+	</tr>
+	<tr>
+		<td>`gmail_get_draft`</td>
+		<td>draft_id</td>
+		<td>DraftDetail</td>
+		<td>gmail.compose</td>
+		<td>30s</td>
+		<td>Read 1회</td>
+	</tr>
+	<tr>
+		<td>`tasks_list_tasklists`</td>
+		<td>page_token?, page_size</td>
+		<td>TaskListMetadata[]</td>
+		<td>tasks</td>
+		<td>30s</td>
+		<td>Read 1회</td>
+	</tr>
+	<tr>
+		<td>`tasks_list_tasks`</td>
+		<td>tasklist_id, filter, page_token?, page_size</td>
+		<td>TaskMetadata[] + exact `total_count` when requested by Sidebar</td>
+		<td>tasks</td>
+		<td>30s</td>
+		<td>Read 1회</td>
+	</tr>
+	<tr>
+		<td>`tasks_get_task`</td>
+		<td>tasklist_id, task_id</td>
+		<td>TaskDetail</td>
+		<td>tasks</td>
+		<td>30s</td>
+		<td>Read 1회</td>
+	</tr>
+	<tr>
+		<td>`tasks_create_task`</td>
+		<td>tasklist_id, title, notes?, due? + claim context</td>
+		<td>TaskMetadata</td>
+		<td>tasks</td>
+		<td>30s</td>
+		<td>전달 불명 시 금지</td>
+	</tr>
+	<tr>
+		<td>`tasks_update_task`</td>
+		<td>tasklist_id, task_id, 허용 필드 + claim context</td>
+		<td>TaskMetadata</td>
+		<td>tasks</td>
+		<td>30s</td>
+		<td>전달 불명 시 금지</td>
+	</tr>
+	<tr>
+		<td>`calendar_list_calendars`</td>
+		<td>page_token?, page_size</td>
+		<td>CalendarMetadata[]</td>
+		<td>calendarlist.readonly</td>
+		<td>30s</td>
+		<td>Read 1회</td>
+	</tr>
+	<tr>
+		<td>`calendar_list_events`</td>
+		<td>calendar_id, time_min, time_max, query?, page_token?</td>
+		<td>EventMetadata[] + exact `total_count` when requested by Sidebar</td>
+		<td>calendar.events</td>
+		<td>30s</td>
+		<td>Read 1회</td>
+	</tr>
+	<tr>
+		<td>`calendar_query_freebusy`</td>
+		<td>calendar_ids<=20, time_min, time_max</td>
+		<td>BusyInterval[]</td>
+		<td>calendar.events.freebusy</td>
+		<td>30s</td>
+		<td>Read 1회</td>
+	</tr>
+	<tr>
+		<td>`calendar_get_event`</td>
+		<td>calendar_id, event_id</td>
+		<td>EventDetail</td>
+		<td>calendar.events</td>
+		<td>30s</td>
+		<td>Read 1회</td>
+	</tr>
+	<tr>
+		<td>`calendar_create_event`</td>
+		<td>calendar_id, title, start, end, description? + claim context</td>
+		<td>EventMetadata</td>
+		<td>calendar.events</td>
+		<td>30s</td>
+		<td>전달 불명 시 금지</td>
+	</tr>
+	<tr>
+		<td>`calendar_update_event`</td>
+		<td>calendar_id, event_id, 허용 필드 + claim context</td>
+		<td>EventMetadata</td>
+		<td>calendar.events</td>
+		<td>30s</td>
+		<td>전달 불명 시 금지</td>
+	</tr>
+</table>
 
 - 모든 ID·Page Token은 길이 1..2048, 제어문자 금지.
 - 날짜·시간은 RFC3339와 명시 Timezone을 사용한다.
@@ -715,82 +1071,42 @@ metadata
 
 ### 27.1 Sidebar Query Projection 계약
 
-- Gmail·Tasks의 UI 표시 단위는 `SIDEBAR_PAGE_SIZE=20`이며 Agent Retrieval `RETRIEVAL_PAGE_SIZE=20`과 별도다. Calendar Month View는 visible grid range 전체를 materialize하고 UI pagination을 쓰지 않는다. Gmail intermediate page는 metadata 없이 다음 token만 조회하고 target page만 metadata를 조회한다. Tasks는 Provider batch 최대 100개를 React Client Session Cache에 받아 UI 20개 page로 나눈다. Provider Page Token은 UI page number가 아니다.
-- Gmail 기본 Sidebar scope는 `INBOX + PRIMARY` Thread이며 검색은 Primary 제한 없이 일반 Gmail mailbox를 대상으로 하고 Spam·Trash는 제외한다. Tasks는 configured/default Task List의 미완료 Task 전체이다. Calendar Sidebar Month View는 선택된 `monthAnchor`의 explicit visible grid range `singleEvents=true` Event instance를 사용하며, 사용자 Timezone의 `[time_min, time_min + 90일)` Upcoming 범위는 bounded Browse와 Calendar badge exact count의 기본 scope로 유지한다.
-- `total_count`는 정의된 Source scope 전체의 exact total일 때만 사용한다. `loaded_count`와 `visible_count`는 별도이며 count 계산 실패·timeout·Provider estimate(`resultSizeEstimate` 등)는 numeric total로 표시하지 않는다. Gmail count는 Thread 기준이며 검색 query마다 Source badge count를 재계산하지 않는다. Tasks 기본 incomplete Browse는 terminal batch 전에는 exact `total_count`를 반환하지 않지만, 첫 batch에 다음 token이 있으면 확인된 최소 수에 `+`를 붙여 표시할 수 있다. `태스크 N`은 미완료 전체 수이며 completed·deleted를 포함하지 않는다.
-- Provider가 같은 scope의 authoritative exact total을 주지 않으면 Gmail·Calendar Count Read는 Page Token 끝까지 필요한 최소 metadata만 순회하여 계산할 수 있다. Gmail count를 위해 Message body·attachment·불필요한 detail을 읽지 않으며 Frontend는 모든 Page를 순회하지 않는다. Tasks 기본 Browse는 exact count만을 위해 전체 Page Token traversal을 시작하지 않고 terminal batch 도달 뒤 누적 수를 exact total로 확정한다.
-
-### 27.2 Sidebar Exact Count Read 계약 (OPTION C)
-
-Sidebar Browse Read와 Exact Count Read는 Gmail·Calendar에서 별도 Local API/Application Read다. Browse는 count 완료를 기다리지 않으며, 기존 `GET /api/v1/resources/gmail|tasks|calendar`의 `ResourceListResponse`는 `source`, `items`, `next_page_token`, `api_contract_version`만 유지한다. `next_page_token`은 Client 관점의 opaque Local API continuation token이며 Frontend는 해석하지 않고 다음 Local API 요청에 그대로 전달한다. Gmail Browse는 `page_size=20`이고, intermediate page는 `include_thread_metadata=false`로 token-only 조회하며 target page만 metadata를 조회한다. Tasks 기본 Browse는 `page_size<=100` Provider batch를 React Client Session Cache에 저장해 UI 20개 page로 나눈다. Provider raw token 자체는 public Local API 의미로 보장하지 않는다.
-
-Exact Count Read는 `GET /api/v1/resources/{source}/count`다. `{source}`는 `gmail`, `tasks`, `calendar`만 허용하며, 지원하지 않는 source는 기존 Local API 오류 형식의 `404 NOT_FOUND`로 처리한다. Gmail detail route와 충돌하지 않도록 count static route는 `GET /api/v1/resources/gmail/{resource_id}`보다 먼저 등록한다. 모든 Count Read는 기존 Resource route와 같이 `API_SESSION_REQUIRED`와 `X-API-Contract-Version` 검증을 적용하며, account ID는 request parameter로 받지 않고 Local API session/연결 계정 문맥에서 해석한다.
-
-| Source | Request query | Count scope |
-|---|---|---|
-| `gmail` | 없음. search query를 받지 않는다. | 현재 계정의 `INBOX + PRIMARY` exact Thread total |
-| `tasks` | 기본 Sidebar에서 호출하지 않음 | terminal Browse batch 도달 뒤 누적 미완료 Task 수로만 exact total 확정 |
-| `calendar` | `calendar_id?`, `time_min?`, `time_max?` | 지정했거나 default Calendar의 `[time_min, time_max)` `singleEvents=true` Event instance exact total |
-
-Calendar `time_min`과 `time_max`는 함께 지정하거나 함께 생략한다. 생략 시 Application이 사용자 timezone 기준 현재 시각과 그 시각부터 90일 후를 생성한다. Calendar Month View는 선택된 `monthAnchor`의 explicit visible grid window만 Browse에 전달하며, Calendar badge Count는 기존 Upcoming window를 유지한다. 같은 scope의 Browse와 Count를 함께 시작할 때만 Frontend는 동일한 명시 window를 두 Read에 전달하여 cache identity를 일치시킨다.
-
-성공 응답은 기존 `ResourceListResponse` 명명 규칙을 따르는 `ResourceCountResponse`이며 다음 shape만 가진다.
-
-```json
-{
-  "source": "gmail",
-  "total_count": 234,
-  "api_contract_version": "1"
-}
-```
-
-`total_count`는 정의된 source scope 전체의 exact count일 때만 존재한다. 계산 중 오류·timeout·provider estimate·partial traversal이면 성공 응답을 만들지 않고 기존 Local API 오류 형식으로 종료한다. partial numeric total, `loaded_count`, `visible_count` 또는 count progress는 이 endpoint에서 반환하지 않는다. 따라서 Count 오류는 독립 호출의 실패일 뿐 Browse 응답·상태를 실패시키지 않는다.
-
-Frontend는 Sidebar 최초 진입에서 active Source와 무관하게 Gmail·Calendar Count Read와 Tasks 첫 Browse batch를 독립 시작하고, count loading/unavailable 동안 목록을 유지하며 numeric badge를 생략한다. Tasks 기본 Browse는 별도 exact Count Read를 시작하지 않는다. Tasks 첫 batch가 terminal이면 exact total을, 다음 token이 있으면 확인된 최소 수와 `+`를 표시하며 terminal batch 뒤 누적 exact total을 확정한다. 이 첫 batch는 Tasks 첫 목록 진입에서 React Client Session Cache로 재사용한다. Browse cache는 account·source·default/parent container·검색/filter·sort·provider batch cursor 기준이다. Refresh와 account·scope·검색/filter/sort 변경은 관련 cache를 무효화한다. Gmail 검색 변경은 Browse cache만 바꾸며 기본 Primary Count cache와 badge를 바꾸지 않는다. Agent Run SSE는 Count Read에 사용하지 않는다.
-
-Tasks 기본 Browse는 configured/default Task List에 `show_completed=false`, `page_size<=100`으로 요청하고 `TaskMetadata[]`와 `nextPageToken`만 받는다. 100개와 next token을 받은 초기 결과는 UI 1..5 page로만 공개하고, 사용자가 알려진 마지막 UI page를 요청할 때만 다음 100개 batch를 append한다. terminal batch 도달 뒤 누적 수로 exact total과 마지막 UI page를 확정한다. 목록 행에는 `tasks.list` metadata를 사용하며 `tasks.get`은 focus/선택 상세 조회에만 사용한다. 기본 정렬은 Provider 반환 순이다. 사용자가 예정일 정렬을 명시한 경우에만 전체 결과를 materialize하여 예정일 오름차순·예정일 없는 Task 후순위로 정렬하고, materialized result는 기본 Browse cache와 분리한다. cache는 SQLite·Application 영속 메모리에 복제하지 않는다.
-
-`GET /api/v1/resources/tasks`는 `status_scope=incomplete|completed`를 지원하며 기본은 `incomplete`다. incomplete scope는 `show_completed=false`, `show_hidden=false`, `show_deleted=false`로 요청한다. Tasks 데이터 준비 시 completed scope는 `show_completed=true`, `show_hidden=true`, `show_deleted=false`, `page_size<=100`으로 시작해 Provider terminal까지 순차 Read한다. `show_completed=true`은 completed-only filter가 아니므로 Adapter/MCP/Application은 mixed Provider page 중 `task_status=completed`만 completed cache에 보관하고, 한 generation 안에서 `resource_id` 기준으로 dedupe한다. terminal materialization 결과는 exact completed count와 completed row cache를 함께 만든다. `완료됨(N)` section의 열기/닫기와 `더 보기`는 API Read가 아니며, `더 보기`는 terminal cache의 다음 20개 UI page를 표시한다. completed와 incomplete cache key는 account·task list·status scope·show_completed·show_hidden·show_deleted·provider continuation을 구분한다.
-
-Tasks Refresh는 두 status scope cache를 무효화하고 접힘/펼침과 무관하게 모두 fresh Read한다. completed fresh Read는 빈 generation accumulator에서 시작하며 terminal 성공 시 previous completed cache를 unique fresh dataset으로 atomic replace한다. MCP Task snapshot은 Google raw `completed` RFC3339 timestamp를 payload에 보존하고 Application은 이를 `completed_at` metadata로 전달한다. Frontend는 configured AppSettings timezone에서만 완료일을 표시하며 값이 없거나 유효하지 않으면 fallback을 만들지 않는다.
-
-Resource route는 기존 `API_SESSION_REQUIRED` 검증 뒤 HTTP Request 자체나 raw session token을 Application에 넘기지 않는다. Frontend는 active Google `account_id`, source·container·검색/filter·sort·provider batch identity를 React Client Session Cache key로 사용한다. 다른 account·Task List·scope·검색/filter/sort·Refresh generation의 cached page는 재사용하지 않는다. session validation을 통과하지 못한 요청은 기존 security layer에서 차단되고, UI session 종료 시 Client Session Cache는 폐기한다. raw token 보관, Application runtime snapshot, SQLite·영속 cache는 사용하지 않는다.
-
-Gateway Port와 Adapter/MCP는 새 tool을 만들지 않고 기존 list capability를 다음처럼 최소 확장한다.
-
-- `gmail_search_threads` / `search_gmail_threads`는 count traversal과 intermediate pagination에서 per-thread metadata hydration을 끄는 optional behavior를 지원한다. 이 경우 list 응답의 Thread ID·list metadata·next token만 사용하고 `_gmail_thread_list_metadata`, Thread detail, body, attachment를 N회 호출하지 않는다. Target Browse metadata hydration은 `format=metadata`, `metadataHeaders`의 `From`·`Subject`·`Date`, `fields=messages(internalDate,payload/headers),snippet`만 요청한다. 하나의 MCP Read invocation 내부 Provider Read도 Google Read concurrency budget에 포함한다. required metadata hydration 중 하나 이상의 Provider Read가 실패하면 해당 Gmail page Read 전체를 실패 처리하며 partial page, placeholder, 실패 thread 생략 응답은 만들지 않는다.
-- `tasks_list_tasks` / `list_tasks`는 status scope에 따라 incomplete의 `show_completed=false`, `show_hidden=false`, `show_deleted=false` 또는 completed section의 `show_completed=true`, `show_hidden=true`, `show_deleted=false`를 Google request에 명시적으로 전달한다.
-- `calendar_list_events` / `list_calendar_events`는 `time_max` argument를 받아 `timeMax`로 전달한다. Count와 Browse 모두 같은 `[time_min, time_max)`, `singleEvents=true`를 사용한다. 두 값이 생략되면 Application의 공통 resolver가 `AppSettings.timezone` 기준 현재 시각과 그 시각부터 90일 후를 생성한다.
-
-### 27.3 구현 CONTRACT_MISMATCH
-
-Gmail scope·intermediate list-only, Tasks incomplete filter·lazy batch browse, Calendar `time_max`와 공통 calendar window resolver는 이 문서의 계약을 따른다. 현재 구현이 Tasks eager snapshot·초기 exact count·기본 전역 정렬을 사용한다면 이 계약과의 `CONTRACT_MISMATCH`이며 다음 구현 작업에서 해소한다.
+- Gmail·Tasks visible UI page size는 `SIDEBAR_PAGE_SIZE=20`이다. Agent Retrieval `RETRIEVAL_PAGE_SIZE=20`과 숫자는 같지만 독립 계약이다. Calendar Month View는 visible grid를 materialize하며 numeric pagination을 사용하지 않는다.
+- Local API `next_page_token`은 opaque continuation이다. Frontend는 Provider raw token이나 page number로 해석하지 않는다.
+- Tasks Sidebar 기본 범위는 **미완료 Task 전체**이며 Provider batch는 최대 100개, UI는 20개씩 slice한다. 완료 Task는 사용자가 완료 상태 필터를 명시한 경우에만 별도 materialize한다.
+- Calendar Month Browse는 visible grid의 explicit `[gridStart, gridEnd)`를 사용한다. 일반 Upcoming Browse는 사용자 Timezone 기준 현재부터 90일까지 bounded window를 사용한다.
+- Gmail exact badge는 기본 `INBOX + PRIMARY` scope에서 실제 exact count가 확정된 경우만 표시한다. Provider 추정치를 exact로 승격하지 않는다. Tasks badge는 incomplete batch의 terminal/continuation 상태에서 계산하고 terminal 도달 시 exact total을 확정한다. **Calendar tab에는 numeric badge가 없고 startup·Calendar refresh에서 Calendar Count Read를 호출하지 않는다.**
+- Frontend가 exact count를 만들기 위해 전체 Page를 순회하거나 hard-code하지 않는다. 필요한 Count Query는 Local API/Application이 MCP Read Tool 경계를 통해 수행한다.
 
 ## 28. Verification·Recovery 계약
 - CREATE·UPDATE: GET_COMPARE.
 - DELETE: `GET_ABSENT` 정책으로 대상 GET에서 NOT_FOUND/삭제 상태를 확인한다.
 - SEND: `SENT_LOOKUP` 정책으로 반환된 Message/Thread 식별자 또는 결정적 전송 식별자를 조회한다.
 - SEND 전달 여부가 불명확하면 `UNKNOWN_RESULT`로 전환하고 자동 재전송하지 않는다.
-- 모든 외부 MCP/Google 호출은 SQLite Write Transaction 밖에서 수행한다.
+- 모든 외부 MCP Tool·MCP 내부 Google Provider 호출은 SQLite Write Transaction 밖에서 수행한다.
 
 ## 29. Agent Subgraph 내부 인터페이스
 
 Parent Graph와 Agent Subgraph 사이의 인터페이스는 자유 텍스트 대화가 아니라 Typed Input Projection과 Typed Result로 고정한다.
 
 ```text
-Parent Graph State
-→ AgentInputProjection
-→ Agent Subgraph Local State
-→ Versioned Typed Result + disposition
-→ Parent Graph State update
+Main Graph Typed State
+→ Subgraph Input Projection
+→ Subgraph Typed Local State
+→ Node별 최소 Projection
+→ Versioned Typed Result + disposition + optional WorkflowSignal
+→ Main Graph State update
 ```
 
-- `AgentInputProjection`은 해당 Role에 필요한 필드와 Resource·Evidence·Segment ID만 포함한다.
-- `AgentLocalState`는 invocation 범위 단편 상태이며 장기 Memory가 아니다.
+- Main State의 공식 Artifact Owner는 `Request → Tool Route → Retrieval → Work Analysis → Planning → Review` 순서로 고정한다.
+- Subgraph Input Projection은 해당 Role에 필요한 Main State 필드만 포함한다.
+- Subgraph 내부에서도 Node마다 입력 계약이 다르다. 예: Query Planner는 `request_intent + input_routes`, Evidence Selector는 `request_intent + ranked_segments`, Planning Argument Writer는 `output_route + work_analysis + evidence_refs`만 받는다.
+- 공통 Runtime Envelope와 업무 Local State를 분리한다. 범용 `dict` 하나에 모든 후보를 몰지 않는다.
 - Agent가 다른 Agent를 직접 호출하는 내부 Port는 제공하지 않는다.
-- Agent 내부에서 사용할 수 있는 재호출은 PromptRef 기반 bounded Schema Repair·Semantic Revision에 한정한다.
 - Agent Subgraph는 MCP/Google Write Port를 직접 받지 않는다.
-- 실제 Google Read가 필요한 Acquisition 경로는 Subgraph 내부에서 `SourceFetchPlan`을 결정적 Query Builder에 넘기고 MCP Read Port를 실행한 뒤, 같은 invocation에서 `AcquisitionResult`까지 확정해 Parent에 반환한다.
+- Retrieval Subgraph만 검증된 MCP Read Port를 사용하며 `ToolRoutePlanV2.input_plan.input_routes[].allowed_read_tool_ids` 밖의 Tool 호출은 거절한다.
+- Planning Subgraph는 `output_routes[].selected_tool_id`를 그대로 사용하며 다른 Tool을 제안할 수 없다.
+- 앞 단계 State 수정이 필요하면 `ROUTE_RECONSIDERATION_REQUIRED`, `RETRIEVE_MORE` 같은 disposition을 반환하고 Main Supervisor가 Back-edge를 선택한다.
 
 ## 30. Write Delivery Classification
 
@@ -802,14 +1118,43 @@ MAY_HAVE_BEEN_SENT
 SENT_RESPONSE_LOST
 ```
 
-| 실패 시점 | delivery_certainty | Domain 결과 |
-|---|---|---|
-| Schema/Policy/Preflight 실패, dispatch 전 process unavailable | `NOT_SENT` | `FAILED` 가능, 자동 Write 재실행은 하지 않고 retry 준비 계약 사용 |
-| connect/transport 오류에서 실제 dispatch 여부를 증명할 수 없음 | `MAY_HAVE_BEEN_SENT` | `UNKNOWN_RESULT` |
-| request bytes dispatch 후 Timeout | `MAY_HAVE_BEEN_SENT` | `UNKNOWN_RESULT` |
-| Provider 5xx에서 미전달 보장이 없음 | `MAY_HAVE_BEEN_SENT` | `UNKNOWN_RESULT` |
-| 요청 전달 후 response 유실·connection lost | `SENT_RESPONSE_LOST` | `UNKNOWN_RESULT` |
-| MCP process exit가 dispatch 이후일 수 있음 | `MAY_HAVE_BEEN_SENT` | `UNKNOWN_RESULT` |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>실패 시점</td>
+		<td>delivery_certainty</td>
+		<td>Domain 결과</td>
+	</tr>
+	<tr>
+		<td>Schema/Policy/Preflight 실패, dispatch 전 process unavailable</td>
+		<td>`NOT_SENT`</td>
+		<td>`FAILED` 가능, 자동 Write 재실행은 하지 않고 retry 준비 계약 사용</td>
+	</tr>
+	<tr>
+		<td>connect/transport 오류에서 실제 dispatch 여부를 증명할 수 없음</td>
+		<td>`MAY_HAVE_BEEN_SENT`</td>
+		<td>`UNKNOWN_RESULT`</td>
+	</tr>
+	<tr>
+		<td>request bytes dispatch 후 Timeout</td>
+		<td>`MAY_HAVE_BEEN_SENT`</td>
+		<td>`UNKNOWN_RESULT`</td>
+	</tr>
+	<tr>
+		<td>Provider 5xx에서 미전달 보장이 없음</td>
+		<td>`MAY_HAVE_BEEN_SENT`</td>
+		<td>`UNKNOWN_RESULT`</td>
+	</tr>
+	<tr>
+		<td>요청 전달 후 response 유실·connection lost</td>
+		<td>`SENT_RESPONSE_LOST`</td>
+		<td>`UNKNOWN_RESULT`</td>
+	</tr>
+	<tr>
+		<td>MCP process exit가 dispatch 이후일 수 있음</td>
+		<td>`MAY_HAVE_BEEN_SENT`</td>
+		<td>`UNKNOWN_RESULT`</td>
+	</tr>
+</table>
 
 Exception class 하나만으로 `NOT_SENT`를 추론하지 않는다. `UNKNOWN_RESULT`에서는 기존 결과 GET/Search만 허용하며 새 Attempt·blind resend를 금지한다.
 
@@ -866,6 +1211,3 @@ sha256
 - 발신 bytes는 Local Staging에서 읽고 MIME message를 조립한다.
 - Draft CREATE/UPDATE·SEND의 Canonical Business Arguments에는 Attachment Descriptor를 포함하고, 실제 bytes의 size/SHA-256을 실행 직전 재검증한다.
 - Browser가 임의 Local Path를 MCP Argument로 지정할 수 없다.
-### Gmail Sidebar Pagination Metadata Contract
-
-`GET /api/v1/resources/gmail` accepts `include_thread_metadata` as an optional query parameter with a default of `true`. The frontend may send `false` only while traversing an unvisited intermediate UI page to obtain thread IDs and the next opaque continuation token. The visible target page keeps the default and receives Sidebar metadata. Gmail Browse remains `page_size=20`; Count is unchanged.

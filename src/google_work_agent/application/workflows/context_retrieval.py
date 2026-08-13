@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import partial
 from math import ceil
 from pathlib import Path
 from typing import Literal, NotRequired, Required, TypedDict, cast
 
+import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.api_acquisition import AcquisitionResultV1
@@ -33,7 +35,6 @@ from google_work_agent.application.workflows.request_understanding import (
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
-    StructuredLLMResult,
     WorkflowStartRequest,
 )
 
@@ -461,6 +462,7 @@ class ContextRetrievalAgent:
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:context.assess_sufficiency",
             ),
+            semantic_validate=validate_sufficiency_output_v1,
         )
         return validate_sufficiency_output_v1(llm_result.structured_output), _provider_summary(
             llm_result
@@ -1131,111 +1133,34 @@ def _validate_evidence_draft(
     }
 
 
-def _provider_summary(result: StructuredLLMResult) -> dict[str, object]:
-    return {
-        "provider": result.provider,
-        "model": result.model,
-        "requested_mode": result.requested_mode.value,
-        "actual_runtime": result.actual_runtime.value,
-        "input_tokens": result.input_tokens,
-        "output_tokens": result.output_tokens,
-        "total_tokens": result.total_tokens,
-        "latency_ms": result.latency_ms,
-        "fallback_reason": result.fallback_reason,
-        "structured_output_attempts": result.structured_output_attempts,
-        "provider_request_id": result.provider_request_id,
-        "safe_error_code": result.safe_error_code,
-    }
-
-
-def _require_schema_version(value: dict[str, object], path: str) -> None:
-    schema_version = _require_int(value, "schema_version", path)
-    if schema_version != CONTEXT_RETRIEVAL_SCHEMA_VERSION:
-        raise ContextRetrievalValidationError(f"{path}.schema_version must be 1")
-
-
-def _require_mapping(value: object, path: str) -> dict[str, object]:
-    if not isinstance(value, dict):
-        raise ContextRetrievalValidationError(f"{path} must be an object")
-    result: dict[str, object] = {}
-    for key, item in value.items():
-        if not isinstance(key, str):
-            raise ContextRetrievalValidationError(f"{path} keys must be strings")
-        result[key] = item
-    return result
-
-
-def _nullable_mapping(value: object, path: str) -> dict[str, object] | None:
-    if value is None:
-        return None
-    return _require_mapping(value, path)
-
-
-def _require_exact_keys(value: dict[str, object], path: str, keys: set[str]) -> None:
-    actual = set(value)
-    missing = keys - actual
-    extra = actual - keys
-    if missing:
-        raise ContextRetrievalValidationError(
-            f"{path} is missing required fields: {sorted(missing)}"
-        )
-    if extra:
-        raise ContextRetrievalValidationError(f"{path} has unsupported fields: {sorted(extra)}")
-
-
-def _require_int(value: dict[str, object], field: str, path: str) -> int:
-    item = value[field]
-    if not isinstance(item, int) or isinstance(item, bool):
-        raise ContextRetrievalValidationError(f"{path}.{field} must be integer")
-    return item
-
-
-def _require_string(value: dict[str, object], field: str, path: str) -> str:
-    item = value[field]
-    if not isinstance(item, str):
-        raise ContextRetrievalValidationError(f"{path}.{field} must be string")
-    return item
-
-
-def _require_list(value: object, path: str) -> list[object]:
-    if not isinstance(value, list):
-        raise ContextRetrievalValidationError(f"{path} must be an array")
-    return value
-
-
-def _require_string_list(value: object, path: str) -> list[str]:
-    items = _require_list(value, path)
-    for index, item in enumerate(items):
-        if not isinstance(item, str):
-            raise ContextRetrievalValidationError(f"{path}[{index}] must be string")
-    return cast(list[str], items)
+# Shared with the other agent workflow modules; see _schema_support module docstring.
+_require_mapping = partial(_schema.require_mapping, error_cls=ContextRetrievalValidationError)
+_nullable_mapping = partial(_schema.nullable_mapping, error_cls=ContextRetrievalValidationError)
+_require_exact_keys = partial(_schema.require_exact_keys, error_cls=ContextRetrievalValidationError)
+_require_int = partial(_schema.require_int, error_cls=ContextRetrievalValidationError)
+_require_string = partial(_schema.require_string, error_cls=ContextRetrievalValidationError)
+_require_list = partial(_schema.require_list, error_cls=ContextRetrievalValidationError)
+_require_string_list = partial(
+    _schema.require_string_list, error_cls=ContextRetrievalValidationError
+)
+_require_schema_version = partial(
+    _schema.require_schema_version,
+    expected=CONTEXT_RETRIEVAL_SCHEMA_VERSION,
+    error_cls=ContextRetrievalValidationError,
+)
+_optional_string_list = partial(
+    _schema.optional_string_list, error_cls=ContextRetrievalValidationError
+)
+_optional_option_list = partial(
+    _schema.optional_option_list, error_cls=ContextRetrievalValidationError
+)
+_provider_summary = _schema.provider_summary
 
 
 def _optional_string(value: object) -> str | None:
     if value is None:
         return None
     return str(value)
-
-
-def _optional_string_list(value: object) -> list[str]:
-    if value is None:
-        return []
-    items = _require_list(value, "$.clarification.list")
-    result: list[str] = []
-    for index, item in enumerate(items):
-        if not isinstance(item, str):
-            raise ContextRetrievalValidationError(
-                f"clarification list entry must be string: {index}"
-            )
-        result.append(item)
-    return result
-
-
-def _optional_option_list(value: object) -> list[dict[str, object]]:
-    if value is None:
-        return []
-    items = _require_list(value, "$.clarification.options")
-    return [_require_mapping(item, "$.clarification.options[]") for item in items]
 
 
 def _truncate(value: str, max_chars: int) -> str:

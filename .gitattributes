@@ -1,2 +1,8 @@
 # Migration documentation and runtime copies are compared as raw bytes.
 *.sql text eol=lf
+
+# Assembled prompt artifacts are SHA-256 verified byte-for-byte against
+# prompt-manifest-v0.8.3.json at LLM-call time (prompt_registry.py). This
+# entry was committed with LF; without pinning eol=lf, Windows core.autocrlf
+# checkout rewrites it to CRLF and breaks the manifest's assembled_hash.
+prompts/agent/assembled-r8.4/acquisition.plan_sources.md text eol=lf

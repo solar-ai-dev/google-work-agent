@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -29,6 +29,10 @@ from google_work_agent.application.workflows import (
     validate_answer_draft_v1,
 )
 from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
+from google_work_agent.application.workflows.solution_planning import (
+    _action_plan_draft_output_schema_for_registry,
+)
+from google_work_agent.domain import SignedToolRegistry, build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -105,6 +109,7 @@ class FakeLLMRuntime:
         prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
         trace_context: ObservabilityContext,
+        semantic_validate: Callable[[object], object] | None = None,
     ) -> StructuredLLMResult:
         self.calls.append(
             {
@@ -112,6 +117,7 @@ class FakeLLMRuntime:
                 "prompt_input": dict(prompt_input),
                 "output_schema": output_schema,
                 "trace_context": trace_context,
+                "semantic_validate": semantic_validate,
             }
         )
         result = self.queued.popleft()
@@ -235,7 +241,102 @@ def test_draft_plan_builds_plan_ready_and_stores_plan_draft_only() -> None:
     assert state_update["plan_draft"] == result
     assert state_update["answer_draft"] is None
     assert cast(PromptReference, runtime.calls[0]["prompt_ref"]).prompt_id == "planning.draft_plan"
-    assert runtime.calls[0]["output_schema"] == ACTION_PLAN_DRAFT_OUTPUT_SCHEMA
+    assert runtime.calls[0]["output_schema"] == _action_plan_draft_output_schema_for_registry(
+        build_p0_tool_registry()
+    )
+
+
+def test_action_plan_draft_output_schema_reflects_injected_tool_registry() -> None:
+    """Contract: tool_name is constrained to the tool_registry actually
+    injected into this SolutionPlanningAgent instance, not a hardcoded P0
+    enum -- so a non-default registry never gets schema-rejected for its
+    own legitimately-registered tool names."""
+    full_entries = build_p0_tool_registry().list_entries()
+    custom_registry = SignedToolRegistry(full_entries[:1])
+
+    schema = _action_plan_draft_output_schema_for_registry(custom_registry)
+
+    properties = cast(dict[str, object], schema.json_schema["properties"])
+    actions_schema = cast(dict[str, object], properties["actions"])
+    item_schema = cast(dict[str, object], actions_schema["items"])
+    item_properties = cast(dict[str, object], item_schema["properties"])
+    tool_name_schema = cast(dict[str, object], item_properties["tool_name"])
+
+    assert tool_name_schema["enum"] == [full_entries[0].tool_name]
+
+
+def test_invoke_draft_plan_llm_scopes_tool_name_enum_to_agent_tool_registry() -> None:
+    full_entries = build_p0_tool_registry().list_entries()
+    custom_registry = SignedToolRegistry(full_entries[:1])
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result(_plan_output(PlanningResult.PLAN_READY.value)))
+    agent = SolutionPlanningAgent(
+        llm_runtime=runtime,
+        draft_plan_prompt_ref=DRAFT_PLAN_PROMPT_REF,
+        tool_registry=custom_registry,
+    )
+
+    agent.invoke_draft_plan_llm(
+        request_intent=_intent(),
+        context_result=_context_result(),
+        analysis_result=_analysis_result(),
+        request=_request(),
+    )
+
+    output_schema = cast(OutputSchemaDefinition, runtime.calls[0]["output_schema"])
+    assert output_schema == _action_plan_draft_output_schema_for_registry(custom_registry)
+
+
+def test_invoke_answer_only_llm_wires_semantic_validate_to_validate_answer_draft_v1() -> None:
+    """Regression for the D-2-class repair-boundary gap: invoke_answer_only_llm
+    must pass validate_answer_draft_v1 as semantic_validate."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result(_answer_output(PlanningResult.ANSWER_ONLY.value)))
+    agent = _agent(runtime)
+
+    agent.answer_only(
+        request_intent=_intent(),
+        context_result=_context_result(),
+        analysis_result=_analysis_result(),
+        request=_request(),
+    )
+
+    semantic_validate = cast("Callable[[object], object]", runtime.calls[0]["semantic_validate"])
+    assert semantic_validate is not None
+    repaired = cast(
+        "dict[str, object]", semantic_validate(_answer_output(PlanningResult.ANSWER_ONLY.value))
+    )
+    assert repaired["status"] == PlanningResult.ANSWER_ONLY.value
+    invalid = _answer_output(PlanningResult.ANSWER_ONLY.value)
+    invalid["status"] = "NOT_A_REAL_STATUS"
+    with pytest.raises(SolutionPlanningValidationError):
+        semantic_validate(invalid)
+
+
+def test_invoke_draft_plan_llm_wires_semantic_validate_to_validate_action_plan_draft_v1() -> None:
+    """Regression for the D-2-class repair-boundary gap: invoke_draft_plan_llm
+    must pass validate_action_plan_draft_v1 as semantic_validate."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result(_plan_output(PlanningResult.PLAN_READY.value)))
+    agent = _agent(runtime)
+
+    agent.draft_plan(
+        request_intent=_intent(),
+        context_result=_context_result(),
+        analysis_result=_analysis_result(),
+        request=_request(),
+    )
+
+    semantic_validate = cast("Callable[[object], object]", runtime.calls[0]["semantic_validate"])
+    assert semantic_validate is not None
+    repaired = cast(
+        "dict[str, object]", semantic_validate(_plan_output(PlanningResult.PLAN_READY.value))
+    )
+    assert repaired["status"] == PlanningResult.PLAN_READY.value
+    invalid = _plan_output(PlanningResult.PLAN_READY.value)
+    invalid["status"] = "NOT_A_REAL_STATUS"
+    with pytest.raises(SolutionPlanningValidationError):
+        semantic_validate(invalid)
 
 
 def test_revise_answer_uses_existing_answer_and_review_issues() -> None:

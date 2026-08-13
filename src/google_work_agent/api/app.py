@@ -5,14 +5,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 
+from google_work_agent.api.container import API_CONTRACT_VERSION, ApiContainer
 from google_work_agent.api.errors import ApiError, api_error_from_http, api_error_from_validation
 from google_work_agent.api.routes import (
     actions,
@@ -29,80 +28,10 @@ from google_work_agent.api.routes import (
     session,
     settings,
 )
-from google_work_agent.api.security import DEFAULT_ENDPOINT_POLICY_REGISTRY, LocalBindPolicy
+from google_work_agent.api.security import LocalBindPolicy
 from google_work_agent.api.security.body_limit import is_body_too_large
-from google_work_agent.ports import (
-    ApiAccessGuard,
-    Clock,
-    IdGenerator,
-    LauncherProbeVerifier,
-    OperationalLogSink,
-    ReadinessAggregator,
-    RunEventPublisher,
-    RuntimeStatusProvider,
-    WorkflowRuntime,
-)
 
-API_CONTRACT_VERSION = "1"
-
-
-@dataclass(frozen=True, slots=True)
-class ApiContainer:
-    unit_of_work_factory: Callable[[], Any]
-    query_service: Any
-    create_conversation_service: Any
-    start_run_service: Any
-    approve_action_service: Any
-    modify_action_service: Any
-    reject_action_service: Any
-    prepare_retry_service: Any
-    cancel_run_service: Any
-    resume_run_service: Any
-    local_run_coordinator: Any
-    workflow_runtime: WorkflowRuntime
-    event_publisher: RunEventPublisher
-    readiness_aggregator: ReadinessAggregator
-    runtime_status_provider: RuntimeStatusProvider
-    api_access_guard: ApiAccessGuard
-    clock: Clock
-    id_generator: IdGenerator
-    release_version: str
-    environment: str
-    service_instance_id: str
-    api_contract_version: str = API_CONTRACT_VERSION
-    local_bind_host: str = "127.0.0.1"
-    local_bind_port: int = 8000
-    max_request_body_bytes: int = 64 * 1024
-    api_docs_enabled: bool = False
-    launcher_probe_verifier: LauncherProbeVerifier | None = None
-    bootstrap_grant_store: Any | None = None
-    local_session_manager: Any | None = None
-    endpoint_policy_registry: Any = DEFAULT_ENDPOINT_POLICY_REGISTRY
-    client_address_resolver: Callable[[Request], str | None] | None = None
-    operational_log_sink: OperationalLogSink | None = None
-    start_google_oauth_service: Any | None = None
-    get_google_connection_service: Any | None = None
-    disconnect_google_service: Any | None = None
-    resource_query_service: Any | None = None
-    frontend_site: Any | None = None
-    additional_readiness_checks: tuple[Callable[[], Any], ...] = ()
-    safe_mode_controller: Any | None = None
-    core_initialization_in_progress: bool = False
-    get_settings_service: Any | None = None
-    patch_settings_service: Any | None = None
-    list_backups_service: Any | None = None
-    create_backup_service: Any | None = None
-    create_restore_plan_service: Any | None = None
-    request_shutdown_service: Any | None = None
-    get_llm_connection_service: Any | None = None
-    store_llm_api_key_service: Any | None = None
-    delete_llm_api_key_service: Any | None = None
-    test_llm_connection_service: Any | None = None
-    resolve_recovery_service: Any | None = None
-    get_gmail_attachment_service: Any | None = None
-    stage_attachment_service: Any | None = None
-    startup_callbacks: tuple[Callable[[], Awaitable[None]], ...] = ()
-    shutdown_callbacks: tuple[Callable[[], None], ...] = ()
+__all__ = ["API_CONTRACT_VERSION", "ApiContainer", "create_app"]
 
 
 def create_app(container: ApiContainer) -> FastAPI:
@@ -233,7 +162,15 @@ def create_app(container: ApiContainer) -> FastAPI:
     app.include_router(resources.router)
     app.include_router(settings.router)
     app.include_router(llm.router)
-    app.include_router(attachments.router)
+    app.include_router(
+        attachments.create_router(
+            attachments.AttachmentRouteDependencies(
+                api_contract_version=lambda: container.api_contract_version,
+                get_gmail_attachment_service=lambda: container.get_gmail_attachment_service,
+                stage_attachment_service=lambda: container.stage_attachment_service,
+            )
+        )
+    )
 
     @app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])
     async def reject_unknown_api_path(request: Request, path: str) -> Response:

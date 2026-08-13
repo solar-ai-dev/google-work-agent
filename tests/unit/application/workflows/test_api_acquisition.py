@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import TypedDict
+from typing import TypedDict, cast
+
+import pytest
 
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
@@ -68,6 +70,7 @@ class LLMCall(TypedDict):
     prompt_input: dict[str, object]
     output_schema: OutputSchemaDefinition
     trace_context: ObservabilityContext
+    semantic_validate: Callable[[object], object] | None
 
 
 @dataclass
@@ -82,6 +85,7 @@ class FakeLLMRuntime:
         prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
         trace_context: ObservabilityContext,
+        semantic_validate: Callable[[object], object] | None = None,
     ) -> StructuredLLMResult:
         self.calls.append(
             {
@@ -89,6 +93,7 @@ class FakeLLMRuntime:
                 "prompt_input": dict(prompt_input),
                 "output_schema": output_schema,
                 "trace_context": trace_context,
+                "semantic_validate": semantic_validate,
             }
         )
         result = self.queued.popleft()
@@ -368,6 +373,27 @@ def test_gmail_single_source_plan_and_acquisition_complete() -> None:
     assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
     assert acquisition["resource_handles"] == ["gmail_thread:thread-kim"]
     assert [name for name, _args in gateway.calls] == ["search_gmail_threads", "get_gmail_thread"]
+
+
+def test_invoke_plan_sources_llm_wires_semantic_validate_to_validate_source_fetch_plans_v1() -> (
+    None
+):
+    """Regression for the D-2-class repair-boundary gap: invoke_plan_sources_llm
+    must pass validate_source_fetch_plans_v1 as semantic_validate."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "김대리"})]))
+    agent = _agent(runtime=runtime, gateway=RecordingGoogleGateway())
+
+    agent.plan_sources(request_intent=_intent(source="GMAIL"), request=_request())
+
+    semantic_validate = runtime.calls[0]["semantic_validate"]
+    assert semantic_validate is not None
+    repaired = cast(
+        "list[dict[str, object]]", semantic_validate([_plan("GMAIL", {"query": "김대리"})])
+    )
+    assert repaired[0]["source"] == "GMAIL"
+    with pytest.raises(SourcePlanningValidationError):
+        semantic_validate([{"schema_version": 2}])
 
 
 def test_calendar_single_source_acquisition_complete() -> None:

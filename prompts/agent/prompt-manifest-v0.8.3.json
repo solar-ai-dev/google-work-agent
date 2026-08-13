@@ -34,9 +34,9 @@
         "prompts/agent/r8.4/specialist/acquisition/base.md",
         "prompts/agent/acquisition/plan_sources.md"
       ],
-      "content_hash": "e67267268e8f5d4a03107fd7ccbd44b957909a4347c50b63633a47576395685b",
+      "content_hash": "8be36fb27ae3f6e1aaa465155bc3e856197fe727d0bd8df51f933dfb7139979f",
       "assembled_path": "prompts/agent/assembled-r8.4/acquisition.plan_sources.md",
-      "assembled_hash": "e67267268e8f5d4a03107fd7ccbd44b957909a4347c50b63633a47576395685b",
+      "assembled_hash": "8be36fb27ae3f6e1aaa465155bc3e856197fe727d0bd8df51f933dfb7139979f",
       "supported_failure_reason_codes": [],
       "activated_from_gate_result": {
         "gate_run_id": "20260811T082349Z-ollama-qwen2.5-3b-cc7dd1f5",
@@ -607,9 +607,9 @@
         "prompts/agent/r8.4/specialist/planning/base.md",
         "prompts/agent/planning/repair.md"
       ],
-      "content_hash": "44567868c0266074dd7035d8a44378060c31924440c6201bf37c975dfb17a829",
+      "content_hash": "c671e682dcd21703a8cd7e9770f1a376d94bbfcaccc848824d5f9d19bc6e1fc4",
       "assembled_path": "prompts/agent/assembled-r8.4/planning.repair.md",
-      "assembled_hash": "44567868c0266074dd7035d8a44378060c31924440c6201bf37c975dfb17a829",
+      "assembled_hash": "c671e682dcd21703a8cd7e9770f1a376d94bbfcaccc848824d5f9d19bc6e1fc4",
       "supported_failure_reason_codes": [
         "SCHEMA_INVALID_JSON",
         "SCHEMA_REQUIRED_FIELD_MISSING",
@@ -1228,9 +1228,9 @@
         "prompts/agent/r8.4/specialist/review/base.md",
         "prompts/agent/review/repair.md"
       ],
-      "content_hash": "2db5440f112aa0d53f27e831e2c9dd82a865ff67ab2b551819feee528edf93cf",
+      "content_hash": "109407dabac96912adf8783320af70788ef9325ee5b4e223c1fa004de17dac85",
       "assembled_path": "prompts/agent/assembled-r8.4/review.repair.md",
-      "assembled_hash": "2db5440f112aa0d53f27e831e2c9dd82a865ff67ab2b551819feee528edf93cf",
+      "assembled_hash": "109407dabac96912adf8783320af70788ef9325ee5b4e223c1fa004de17dac85",
       "supported_failure_reason_codes": [
         "SCHEMA_INVALID_JSON",
         "SCHEMA_REQUIRED_FIELD_MISSING",

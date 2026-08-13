@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
@@ -139,6 +139,43 @@ class ProviderResponsePayload:
 
 
 @dataclass(frozen=True, slots=True)
+class ToolDefinition:
+    """One callable's name/description/JSON-schema-shaped parameters.
+
+    Domain-agnostic: a provider only ever sees this shape, never what the
+    tool name means to the calling Agent/Node.
+    """
+
+    name: str
+    description: str
+    parameters: Mapping[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class LLMToolCall:
+    """One provider-reported tool invocation: which function, which arguments."""
+
+    name: str
+    arguments: Mapping[str, object]
+    call_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCallProviderResponse:
+    """Provider payload for a tool-calling turn -- the ``ProviderResponsePayload``
+    analogue when the call used ``invoke_tool_call`` instead of ``invoke_structured``.
+    """
+
+    calls: tuple[LLMToolCall, ...]
+    model: str
+    provider_request_id: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    latency_ms: int
+    estimated_cost_usd: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class HardwareCapability:
     cpu_arch: str
     core_summary: str
@@ -227,19 +264,87 @@ class StructuredLLMProvider(Protocol):
         """Return one provider payload for structured parsing."""
 
 
+class ToolCallingLLMProvider(Protocol):
+    """Provider that can dispatch a native tool/function-calling turn.
+
+    Separate from ``StructuredLLMProvider``: a tool-calling turn returns
+    which function(s) the model chose and their raw arguments, not a JSON
+    document to validate against ``OutputSchemaDefinition``. The provider
+    knows nothing about what a ``tools`` entry's name means -- only the
+    calling Agent's deterministic mapper does.
+    """
+
+    provider_name: str
+    runtime: ActualRuntime
+
+    def invoke_tool_call(
+        self,
+        *,
+        prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object],
+        tools: Sequence[ToolDefinition],
+        runtime_policy: RuntimePolicy,
+        api_key: str | None,
+    ) -> ToolCallProviderResponse:
+        """Return one provider payload naming the tool call(s) chosen."""
+
+
 class SchemaRepairer(Protocol):
-    """Optional repair boundary for one invalid structured payload."""
+    """Optional repair boundary for one invalid structured payload.
+
+    Covers both JSON-schema-shape failures and semantic/contract-validator
+    failures -- both are routed through the same one-attempt-per-node-call
+    budget (``RuntimePolicy.structured_output_repair_budget``). A real
+    implementation must re-invoke the same routed ``provider`` so the
+    repair call uses the same runtime/model that produced ``failed_output``.
+    """
 
     def repair(
         self,
         *,
+        provider: StructuredLLMProvider,
         prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object],
         failed_output: object,
         output_schema: OutputSchemaDefinition,
+        runtime_policy: RuntimePolicy,
+        api_key: str | None,
         attempt_no: int,
+        max_attempts: int,
         failure_reason_code: str,
+        validator_errors: tuple[str, ...],
     ) -> object:
         """Return one repaired candidate output."""
+
+
+class ToolCallSchemaRepairer(Protocol):
+    """Repair boundary for one invalid tool-calling turn.
+
+    Structurally parallel to ``SchemaRepairer``, but the repair call must
+    stay in tool-calling mode (re-invoke ``provider.invoke_tool_call``, not
+    a free-JSON ``invoke_structured``) and the caller's ``mapper`` is applied
+    to the repaired tool call before returning, so the result is already the
+    Node's Typed-Result-shaped candidate -- same as ``SchemaRepairer.repair``.
+    """
+
+    def repair(
+        self,
+        *,
+        provider: ToolCallingLLMProvider,
+        prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object],
+        tools: Sequence[ToolDefinition],
+        mapper: Callable[[ToolCallProviderResponse], object],
+        failed_output: object,
+        output_schema: OutputSchemaDefinition,
+        runtime_policy: RuntimePolicy,
+        api_key: str | None,
+        attempt_no: int,
+        max_attempts: int,
+        failure_reason_code: str,
+        validator_errors: tuple[str, ...],
+    ) -> object:
+        """Return one repaired, already-mapped candidate output."""
 
 
 class HardwareProbe(Protocol):

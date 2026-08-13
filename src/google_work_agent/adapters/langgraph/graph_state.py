@@ -1,0 +1,219 @@
+"""Executable LangGraph state shape for the Stage 17/18 workflow runtime.
+
+Moved out of ``runtime.py`` (Stage 3 of the LangGraph module cleanup) as a
+pure type/constant/helper module with no behavior change: every definition
+here is unchanged from its previous location, only its module changed.
+"""
+
+from __future__ import annotations
+
+from json import dumps
+from typing import Final, Literal, NotRequired, TypedDict, cast
+
+from google_work_agent.application.workflows import (
+    AcquisitionResultV1,
+    ActionPlanDraftV1,
+    AgentLocalStateV1,
+    AnswerDraftV1,
+    ContextBundleV1,
+    ContextRetrievalResultV1,
+    EvidenceDraftV1,
+    EvidenceSelectionOutputV1,
+    MultiAgentGraphState,
+    PlanReviewResultV1,
+    RequestIntentV1,
+    RequestUnderstandingOutputV1,
+    RunBudgetV1,
+    SourceFetchPlanV1,
+    SourcePlanningOutputV1,
+    SufficiencyOutputV1,
+    WorkAnalysisResultV1,
+)
+from google_work_agent.application.workflows.profile_fused import (
+    ProfileReasonPlanOutputV1,
+    ProfileRequestSourceOutputV1,
+)
+from google_work_agent.ports import (
+    ResourceRefRecord,
+    ResourceSource,
+    StoredResourceType,
+    WorkflowStartRequest,
+)
+
+
+class ParentGraphState(MultiAgentGraphState):
+    """State projected from a native subgraph back to the parent graph."""
+
+    __request__: WorkflowStartRequest
+    __target__: str
+    __logical_target__: str
+    __modify_review_plan_id__: NotRequired[str | None]
+    __modify_review_version__: NotRequired[int | None]
+    __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
+    __replan_from_plan_id__: NotRequired[str]
+
+
+class GraphState(TypedDict):
+    """Executable graph state, including invocation-local subgraph projections."""
+
+    schema_version: Literal[1]
+    run_id: str
+    conversation_id: str
+    thread_id: str
+    workflow_phase: str
+    request_intent: RequestIntentV1 | None
+    source_fetch_plans: list[SourceFetchPlanV1]
+    acquisition_result: AcquisitionResultV1 | None
+    context_result: ContextRetrievalResultV1 | None
+    analysis_result: WorkAnalysisResultV1 | None
+    answer_draft: AnswerDraftV1 | None
+    plan_draft: ActionPlanDraftV1 | None
+    plan_review: PlanReviewResultV1 | None
+    approved_plan_id: str | None
+    execution_summary: dict[str, object] | None
+    verification_summary: dict[str, object] | None
+    finalize_intent: object | None
+    user_interrupt: object | None
+    retry_budget: RunBudgetV1
+    prompt_context: dict[str, object]
+    trace_context: dict[str, object]
+    context_bundle: NotRequired[ContextBundleV1]
+    evidence_drafts: NotRequired[list[EvidenceDraftV1]]
+    llm_provider_result: NotRequired[dict[str, object] | None]
+    __request__: WorkflowStartRequest
+    __target__: str
+    __logical_target__: str
+    __modify_review_plan_id__: NotRequired[str | None]
+    __modify_review_version__: NotRequired[int | None]
+    __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
+    __replan_from_plan_id__: NotRequired[str]
+    __request_agent_local__: NotRequired[AgentLocalStateV1]
+    __request_output__: NotRequired[RequestUnderstandingOutputV1]
+    __acquisition_agent_local__: NotRequired[AgentLocalStateV1]
+    __acquisition_planning_output__: NotRequired[SourcePlanningOutputV1]
+    __context_agent_local__: NotRequired[AgentLocalStateV1]
+    __context_selection_output__: NotRequired[EvidenceSelectionOutputV1]
+    __context_sufficiency_output__: NotRequired[SufficiencyOutputV1]
+    __analysis_agent_local__: NotRequired[AgentLocalStateV1]
+    __planning_agent_local__: NotRequired[AgentLocalStateV1]
+    __planning_mode__: NotRequired[str]
+    __planning_result__: NotRequired[AnswerDraftV1 | ActionPlanDraftV1]
+    __review_agent_local__: NotRequired[AgentLocalStateV1]
+    __review_mode__: NotRequired[str]
+    __profile_agent_local__: NotRequired[AgentLocalStateV1]
+    __profile_request_source_output__: NotRequired[ProfileRequestSourceOutputV1]
+    __profile_reason_plan_output__: NotRequired[ProfileReasonPlanOutputV1]
+
+
+REQUEST_AGENT_LOCAL_KEY: Final = "__request_agent_local__"
+REQUEST_OUTPUT_KEY: Final = "__request_output__"
+ACQUISITION_AGENT_LOCAL_KEY: Final = "__acquisition_agent_local__"
+ACQUISITION_PLANNING_OUTPUT_KEY: Final = "__acquisition_planning_output__"
+CONTEXT_AGENT_LOCAL_KEY: Final = "__context_agent_local__"
+CONTEXT_SELECTION_OUTPUT_KEY: Final = "__context_selection_output__"
+CONTEXT_SUFFICIENCY_OUTPUT_KEY: Final = "__context_sufficiency_output__"
+ANALYSIS_AGENT_LOCAL_KEY: Final = "__analysis_agent_local__"
+PLANNING_AGENT_LOCAL_KEY: Final = "__planning_agent_local__"
+PLANNING_MODE_KEY: Final = "__planning_mode__"
+REVIEW_AGENT_LOCAL_KEY: Final = "__review_agent_local__"
+REVIEW_MODE_KEY: Final = "__review_mode__"
+PROFILE_AGENT_LOCAL_KEY: Final = "__profile_agent_local__"
+PROFILE_REQUEST_SOURCE_OUTPUT_KEY: Final = "__profile_request_source_output__"
+PROFILE_REASON_PLAN_OUTPUT_KEY: Final = "__profile_reason_plan_output__"
+
+
+def _require_state_value[StateValueT](
+    value: StateValueT | None,
+    field_name: str,
+) -> StateValueT:
+    if value is None:
+        raise ValueError(f"graph state is missing required field: {field_name}")
+    return value
+
+
+def _resource_handle_for_ref(resource_ref: ResourceRefRecord) -> str:
+    prefixes = {
+        ("GMAIL", "THREAD"): "gmail_thread",
+        ("GMAIL", "MESSAGE"): "gmail_message",
+        ("TASKS", "TASK_LIST"): "task_list",
+        ("TASKS", "TASK"): "task",
+        ("CALENDAR", "CALENDAR"): "calendar",
+        ("CALENDAR", "EVENT"): "calendar_event",
+    }
+    prefix = prefixes.get((resource_ref.source.value, resource_ref.resource_type.value))
+    if prefix is None:
+        raise LookupError(f"unsupported persisted resource reference: {resource_ref.id}")
+    return f"{prefix}:{resource_ref.resource_id}"
+
+
+def _acquired_resource_by_handle(
+    *, acquisition_result: AcquisitionResultV1, resource_handle: str
+) -> dict[str, object] | None:
+    source_summaries = acquisition_result["source_summaries"]
+    for summary in source_summaries:
+        source = summary.get("source")
+        resources = summary.get("resources")
+        if not isinstance(source, str) or not isinstance(resources, list):
+            continue
+        for resource in resources:
+            if not isinstance(resource, dict):
+                continue
+            if resource.get("resource_handle") != resource_handle:
+                continue
+            payload = resource.get("payload")
+            if not isinstance(payload, dict):
+                raise LookupError(f"acquired resource payload is invalid: {resource_handle}")
+            return {**resource, "source": source, "payload": payload}
+    return None
+
+
+def request_from_state(state: GraphState) -> WorkflowStartRequest:
+    request = state.get("__request__")
+    if not isinstance(request, WorkflowStartRequest):
+        raise TypeError("workflow state is missing WorkflowStartRequest")
+    prompt_context = cast(dict[str, object], state.get("prompt_context", {}))
+    confirmation_response = prompt_context.get("confirmation_response")
+    if not isinstance(confirmation_response, dict):
+        return request
+    request_text = (
+        request.request_text
+        + "\n\n[clarification]\n"
+        + dumps(
+            {
+                "selected_option_ids": cast(
+                    list[str], confirmation_response.get("selected_option_ids", [])
+                ),
+                "free_text": cast(str | None, confirmation_response.get("free_text")),
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        )
+    )
+    return WorkflowStartRequest(
+        run_id=request.run_id,
+        conversation_id=request.conversation_id,
+        workflow_key=request.workflow_key,
+        entry_mode=request.entry_mode,
+        requested_mode=request.requested_mode,
+        request_text=request_text,
+        selected_resource_ids=request.selected_resource_ids,
+        correlation=request.correlation,
+        selected_resources=request.selected_resources,
+    )
+
+
+def _stored_resource_type_for_acquired_resource(
+    *, source: ResourceSource, resource_type: str
+) -> StoredResourceType:
+    mapping = {
+        (ResourceSource.GMAIL, "gmail_thread"): StoredResourceType.THREAD,
+        (ResourceSource.GMAIL, "gmail_message"): StoredResourceType.MESSAGE,
+        (ResourceSource.TASKS, "task_list"): StoredResourceType.TASK_LIST,
+        (ResourceSource.TASKS, "task"): StoredResourceType.TASK,
+        (ResourceSource.CALENDAR, "calendar"): StoredResourceType.CALENDAR,
+        (ResourceSource.CALENDAR, "calendar_event"): StoredResourceType.EVENT,
+    }
+    stored_type = mapping.get((source, resource_type))
+    if stored_type is None:
+        raise LookupError(f"unsupported acquired resource type: {source.value}/{resource_type}")
+    return stored_type

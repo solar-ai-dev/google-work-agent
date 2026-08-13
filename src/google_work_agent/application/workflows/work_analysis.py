@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from functools import partial
 from pathlib import Path
 from typing import Literal, NotRequired, Required, TypedDict, cast
 
+import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
@@ -109,13 +111,83 @@ WORK_ANALYSIS_OUTPUT_SCHEMA = OutputSchemaDefinition(
                 "enum": ["COMPLETE", "NEEDS_MORE_DATA", "NEEDS_CONFIRMATION", "BLOCKED"],
             },
             "summary": {"type": "string"},
-            "findings": {"type": "array", "items": {"type": "object"}},
+            # Nested finding shape mirrors AnalysisFindingV1 exactly (required
+            # field names + kind enum) rather than a bare {"type": "object"}:
+            # without this, Ollama's structured-output constraint gave the
+            # model zero guidance on the finding's internal field names,
+            # confirmed empirically to produce foreign shapes like
+            # {"finding": ..., "source": ..., "confidence": ...} instead of
+            # finding_id/kind/statement/evidence_refs/... (Node Contract
+            # Stability Runner, qwen2.5:7b). UNSUPPORTED_INFERENCE is
+            # deliberately excluded from the enum -- _PROHIBITED_FINDING_KINDS
+            # below already rejects it; omitting it from the constrained
+            # decoder's own choices is strictly safer, not narrower semantics.
+            "findings": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": [
+                        "schema_version",
+                        "finding_id",
+                        "kind",
+                        "statement",
+                        "evidence_refs",
+                        "resource_refs",
+                        "segment_refs",
+                        "related_resource_handles",
+                        "reason_codes",
+                    ],
+                    "additionalProperties": False,
+                    "properties": {
+                        "schema_version": {"type": "integer", "enum": [1]},
+                        "finding_id": {"type": "string"},
+                        "kind": {
+                            "type": "string",
+                            "enum": [
+                                "FACT",
+                                "RELATIONSHIP",
+                                "MISSING_INFORMATION",
+                                "DUPLICATE_CANDIDATE",
+                                "CONFLICT",
+                                "SCHEDULE_RISK",
+                                "EVIDENCE_GAP",
+                            ],
+                        },
+                        "statement": {"type": "string"},
+                        "evidence_refs": {"type": "array", "items": {"type": "string"}},
+                        "resource_refs": {"type": "array", "items": {"type": "string"}},
+                        "segment_refs": {"type": "array", "items": {"type": "string"}},
+                        "related_resource_handles": {"type": "array", "items": {"type": "string"}},
+                        "reason_codes": {"type": "array", "items": {"type": "string"}},
+                    },
+                },
+            },
             "missing_information": {"type": "array", "items": {"type": "string"}},
-            "confirmation": {},
+            "confirmation": {"type": ["object", "null"]},
             "blockers": {"type": "array", "items": {"type": "string"}},
             "evidence_refs": {"type": "array", "items": {"type": "string"}},
-            "resource_refs": {"type": "array", "items": {"type": "object"}},
-            "segment_refs": {"type": "array", "items": {"type": "object"}},
+            # resource_refs/segment_refs items are context_bundle entries the
+            # model echoes back (see _validated_resource_ref_objects/
+            # _validated_segment_ref_objects below, which only require
+            # resource_handle/segment_id and tolerate extra fields) --
+            # additionalProperties stays permissive here, unlike findings[]
+            # above, which is a closed, model-authored contract.
+            "resource_refs": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["resource_handle"],
+                    "properties": {"resource_handle": {"type": "string"}},
+                },
+            },
+            "segment_refs": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["segment_id"],
+                    "properties": {"segment_id": {"type": "string"}},
+                },
+            },
             "schedule_constraints": {
                 "type": "object",
                 "required": [
@@ -221,6 +293,9 @@ class WorkAnalysisAgent:
                 run_id=request.run_id,
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:analysis.analyze",
+            ),
+            semantic_validate=lambda candidate: validate_work_analysis_result_v1(
+                candidate, context_result=context_result
             ),
         )
 
@@ -474,31 +549,43 @@ def _validate_result_invariant(result: WorkAnalysisResultV1) -> None:
         and schedule["expected_duration_minutes"] is None
         and status is not AnalysisResult.NEEDS_CONFIRMATION
     ):
-        raise WorkAnalysisValidationError("missing expected duration requires NEEDS_CONFIRMATION")
+        raise WorkAnalysisValidationError(
+            "$.schedule_constraints.expected_duration_minutes missing expected duration "
+            "requires NEEDS_CONFIRMATION"
+        )
     if status is AnalysisResult.COMPLETE:
         if result["missing_information"]:
-            raise WorkAnalysisValidationError("COMPLETE must not include missing_information")
+            raise WorkAnalysisValidationError(
+                "$.missing_information COMPLETE must not include missing_information"
+            )
         if result["confirmation"] is not None:
-            raise WorkAnalysisValidationError("COMPLETE must not include confirmation")
+            raise WorkAnalysisValidationError(
+                "$.confirmation COMPLETE must not include confirmation"
+            )
         if result["blockers"]:
-            raise WorkAnalysisValidationError("COMPLETE must not include blockers")
+            raise WorkAnalysisValidationError("$.blockers COMPLETE must not include blockers")
     if status is AnalysisResult.NEEDS_MORE_DATA and not result["missing_information"]:
-        raise WorkAnalysisValidationError("NEEDS_MORE_DATA requires missing_information")
+        raise WorkAnalysisValidationError(
+            "$.missing_information NEEDS_MORE_DATA requires missing_information"
+        )
     if status is AnalysisResult.NEEDS_CONFIRMATION and result["confirmation"] is None:
-        raise WorkAnalysisValidationError("NEEDS_CONFIRMATION requires confirmation")
+        raise WorkAnalysisValidationError("$.confirmation NEEDS_CONFIRMATION requires confirmation")
     if status is AnalysisResult.BLOCKED and not result["blockers"]:
-        raise WorkAnalysisValidationError("BLOCKED requires blockers")
+        raise WorkAnalysisValidationError("$.blockers BLOCKED requires blockers")
     if (
         status is AnalysisResult.NEEDS_MORE_DATA
         and result["additional_acquisition_request"] is None
     ):
-        raise WorkAnalysisValidationError("NEEDS_MORE_DATA requires additional_acquisition_request")
+        raise WorkAnalysisValidationError(
+            "$.additional_acquisition_request NEEDS_MORE_DATA requires "
+            "additional_acquisition_request"
+        )
     if (
         status is not AnalysisResult.NEEDS_MORE_DATA
         and result["additional_acquisition_request"] is not None
     ):
         raise WorkAnalysisValidationError(
-            "additional_acquisition_request is only allowed for NEEDS_MORE_DATA"
+            "$.additional_acquisition_request is only allowed for NEEDS_MORE_DATA"
         )
 
 
@@ -605,120 +692,23 @@ def _validated_segment_ref_objects(
     return result
 
 
-def _validated_string_refs(
-    value: object,
-    allowed: set[str],
-    path: str,
-    label: str,
-) -> list[str]:
-    refs = _require_string_list(value, path)
-    for item in refs:
-        if item not in allowed:
-            raise WorkAnalysisValidationError(f"{label} reference does not exist: {item}")
-    return refs
-
-
-def _provider_summary(result: StructuredLLMResult) -> dict[str, object]:
-    return {
-        "provider": result.provider,
-        "model": result.model,
-        "requested_mode": result.requested_mode.value,
-        "actual_runtime": result.actual_runtime.value,
-        "input_tokens": result.input_tokens,
-        "output_tokens": result.output_tokens,
-        "total_tokens": result.total_tokens,
-        "latency_ms": result.latency_ms,
-        "fallback_reason": result.fallback_reason,
-        "structured_output_attempts": result.structured_output_attempts,
-        "provider_request_id": result.provider_request_id,
-        "safe_error_code": result.safe_error_code,
-    }
-
-
-def _require_schema_version(value: dict[str, object], path: str, expected: int) -> None:
-    schema_version = _require_int(value, "schema_version", path)
-    if schema_version != expected:
-        raise WorkAnalysisValidationError(f"{path}.schema_version must be {expected}")
-
-
-def _require_mapping(value: object, path: str) -> dict[str, object]:
-    if not isinstance(value, dict):
-        raise WorkAnalysisValidationError(f"{path} must be an object")
-    result: dict[str, object] = {}
-    for key, item in value.items():
-        if not isinstance(key, str):
-            raise WorkAnalysisValidationError(f"{path} keys must be strings")
-        result[key] = item
-    return result
-
-
-def _nullable_mapping(value: object, path: str) -> dict[str, object] | None:
-    if value is None:
-        return None
-    return _require_mapping(value, path)
-
-
-def _require_allowed_keys(
-    value: dict[str, object],
-    path: str,
-    *,
-    required: set[str],
-    optional: set[str],
-) -> None:
-    actual = set(value)
-    missing = required - actual
-    extra = actual - required - optional
-    if missing:
-        raise WorkAnalysisValidationError(f"{path} is missing required fields: {sorted(missing)}")
-    if extra:
-        raise WorkAnalysisValidationError(f"{path} has unsupported fields: {sorted(extra)}")
-
-
-def _require_int(value: dict[str, object], field: str, path: str) -> int:
-    item = value[field]
-    if not isinstance(item, int) or isinstance(item, bool):
-        raise WorkAnalysisValidationError(f"{path}.{field} must be integer")
-    return item
-
-
-def _require_string(value: dict[str, object], field: str, path: str) -> str:
-    item = value[field]
-    if not isinstance(item, str):
-        raise WorkAnalysisValidationError(f"{path}.{field} must be string")
-    return item
-
-
-def _require_list(value: object, path: str) -> list[object]:
-    if not isinstance(value, list):
-        raise WorkAnalysisValidationError(f"{path} must be an array")
-    return value
-
-
-def _require_string_list(value: object, path: str) -> list[str]:
-    items = _require_list(value, path)
-    for index, item in enumerate(items):
-        if not isinstance(item, str):
-            raise WorkAnalysisValidationError(f"{path}[{index}] must be string")
-    return cast(list[str], items)
-
-
-def _optional_string_list(value: object) -> list[str]:
-    if value is None:
-        return []
-    items = _require_list(value, "$.clarification.list")
-    result: list[str] = []
-    for index, item in enumerate(items):
-        if not isinstance(item, str):
-            raise WorkAnalysisValidationError(f"clarification list entry must be string: {index}")
-        result.append(item)
-    return result
-
-
-def _optional_option_list(value: object) -> list[dict[str, object]]:
-    if value is None:
-        return []
-    items = _require_list(value, "$.clarification.options")
-    return [_require_mapping(item, "$.clarification.options[]") for item in items]
+# Shared with the other agent workflow modules; see _schema_support module docstring.
+_require_mapping = partial(_schema.require_mapping, error_cls=WorkAnalysisValidationError)
+_nullable_mapping = partial(_schema.nullable_mapping, error_cls=WorkAnalysisValidationError)
+_require_allowed_keys = partial(_schema.require_allowed_keys, error_cls=WorkAnalysisValidationError)
+_require_int = partial(_schema.require_int, error_cls=WorkAnalysisValidationError)
+_require_string = partial(_schema.require_string, error_cls=WorkAnalysisValidationError)
+_require_list = partial(_schema.require_list, error_cls=WorkAnalysisValidationError)
+_require_string_list = partial(_schema.require_string_list, error_cls=WorkAnalysisValidationError)
+_require_schema_version = partial(
+    _schema.require_schema_version, error_cls=WorkAnalysisValidationError
+)
+_optional_string_list = partial(_schema.optional_string_list, error_cls=WorkAnalysisValidationError)
+_optional_option_list = partial(_schema.optional_option_list, error_cls=WorkAnalysisValidationError)
+_validated_string_refs = partial(
+    _schema.validated_string_refs, error_cls=WorkAnalysisValidationError
+)
+_provider_summary = _schema.provider_summary
 
 
 __all__ = [

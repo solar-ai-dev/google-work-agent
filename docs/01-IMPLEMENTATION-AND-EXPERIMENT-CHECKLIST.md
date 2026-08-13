@@ -28,7 +28,7 @@
 - [ ] `evaluation_environment_hash`로 Hardware·Concurrency·Timeout 조건 고정
 
 ## Runtime E2E Canonical 구현 Gate
-- [ ] Domain DB Schema v1.4 Migration: Action `CANCELLED` CHECK 확장 + foreign_key_check
+- [ ] Domain DB Schema v1.6 Migration chain: `0003` Action `CANCELLED` + `0004` durable Plan Review Gate + `0005` NFR-019 cross-aggregate invariant + foreign_key_check
 - [ ] Cancel Command Receipt/expected_version 판정 전 child mutation 0
 - [ ] `CANCEL_REQUESTED` 이후 신규 Claim·Google Write 0
 - [ ] 미실행 Action → `CANCELLED`, ACTIVE Approval → REVOKED, 새 Attempt·Verification 0
@@ -115,7 +115,9 @@
 
 ## R8.4 Claim V2·Attachment 구현 Gate
 
-- [ ] `0003_action_cancelled.sql` 존재 및 Schema v1.4 적용 확인
+- [ ] `0003_action_cancelled.sql` 존재 및 Schema v1.4 단계 적용 확인
+- [ ] `0004_plan_review_gate.sql` 존재 및 Schema v1.5 단계 적용 확인
+- [ ] `0005_cross_aggregate_invariants.sql` 존재 및 최종 Schema v1.6 적용 확인
 - [ ] ClaimContextV2 schema/version/signature/TTL/instance/nonce 구현
 - [ ] approval_arguments_hash와 execution_arguments_hash 분리
 - [ ] MCP 실제 Tool Arguments 재-canonicalize·rehash 후 Write

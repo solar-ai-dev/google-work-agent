@@ -20,32 +20,84 @@ def _validate(
 ) -> None:
     expected_type = schema.get("type")
     if isinstance(expected_type, str):
-        if expected_type == "object":
-            if not isinstance(value, dict):
-                errors.append(f"{path} must be an object")
-                return
-            _validate_object(value=value, schema=schema, path=path, errors=errors)
-            return
-        if expected_type == "array":
-            if not isinstance(value, list):
-                errors.append(f"{path} must be an array")
-                return
-            item_schema = schema.get("items")
-            if isinstance(item_schema, Mapping):
-                for index, item in enumerate(value):
-                    _validate(
-                        value=item,
-                        schema=item_schema,
-                        path=f"{path}[{index}]",
-                        errors=errors,
-                    )
-            return
-        if not _matches_scalar_type(value=value, expected_type=expected_type):
-            errors.append(f"{path} must be {expected_type}")
-            return
+        _validate_single_type(
+            value=value, schema=schema, expected_type=expected_type, path=path, errors=errors
+        )
+    elif isinstance(expected_type, list):
+        # JSON Schema type union, e.g. {"type": ["string", "null"]} for a
+        # nullable field. Every node's OutputSchemaDefinition uses this form
+        # for its nullable fields; previously only a bare `str` "type" was
+        # handled here, so every such field (role_hint, locator, ambiguity,
+        # confirmation, calendar_read_mode, target_resource_ref_id, ...)
+        # silently skipped all shape validation -- a wrong-typed value there
+        # was never caught at this layer, only (if at all) by whichever
+        # node's Python semantic validator happened to re-check the type.
+        _validate_type_union(
+            value=value, schema=schema, expected_types=expected_type, path=path, errors=errors
+        )
     enum_values = schema.get("enum")
     if isinstance(enum_values, list) and value not in enum_values:
         errors.append(f"{path} must be one of {enum_values}")
+
+
+def _validate_single_type(
+    *,
+    value: object,
+    schema: Mapping[str, object],
+    expected_type: str,
+    path: str,
+    errors: list[str],
+) -> None:
+    if expected_type == "object":
+        if not isinstance(value, dict):
+            errors.append(f"{path} must be an object")
+            return
+        _validate_object(value=value, schema=schema, path=path, errors=errors)
+        return
+    if expected_type == "array":
+        if not isinstance(value, list):
+            errors.append(f"{path} must be an array")
+            return
+        item_schema = schema.get("items")
+        if isinstance(item_schema, Mapping):
+            for index, item in enumerate(value):
+                _validate(
+                    value=item,
+                    schema=item_schema,
+                    path=f"{path}[{index}]",
+                    errors=errors,
+                )
+        return
+    if not _matches_scalar_type(value=value, expected_type=expected_type):
+        errors.append(f"{path} must be {expected_type}")
+
+
+def _validate_type_union(
+    *,
+    value: object,
+    schema: Mapping[str, object],
+    expected_types: list[object],
+    path: str,
+    errors: list[str],
+) -> None:
+    for candidate in expected_types:
+        if not isinstance(candidate, str):
+            continue
+        if _value_matches_type(value=value, expected_type=candidate):
+            if candidate in ("object", "array"):
+                _validate_single_type(
+                    value=value, schema=schema, expected_type=candidate, path=path, errors=errors
+                )
+            return
+    errors.append(f"{path} must be one of types {expected_types}")
+
+
+def _value_matches_type(*, value: object, expected_type: str) -> bool:
+    if expected_type == "object":
+        return isinstance(value, dict)
+    if expected_type == "array":
+        return isinstance(value, list)
+    return _matches_scalar_type(value=value, expected_type=expected_type)
 
 
 def _validate_object(

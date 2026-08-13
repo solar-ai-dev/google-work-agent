@@ -10,7 +10,7 @@ MCP-backed gateway produces.
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -111,8 +111,9 @@ class _FakeLLMRuntime:
         prompt_input: Mapping[str, object],
         output_schema: OutputSchemaDefinition,
         trace_context: ObservabilityContext,
+        semantic_validate: Callable[[object], object] | None = None,
     ) -> StructuredLLMResult:
-        del prompt_ref, prompt_input, output_schema, trace_context
+        del prompt_ref, prompt_input, output_schema, trace_context, semantic_validate
         return self.queued.popleft()
 
 

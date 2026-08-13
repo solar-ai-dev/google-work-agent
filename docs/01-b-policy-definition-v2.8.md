@@ -1,6 +1,6 @@
 # 01-B. Google Work Agent 정책 정의서
 
-> **상태:** Draft v2.8 · **기준일:** 2026-08-10
+> **상태:** Draft v2.10 · **기준일:** 2026-08-13
 
 ## 0. 사람이 먼저 볼 핵심 정책
 
@@ -15,6 +15,14 @@
 ## 1. 문서 목적
 
 이 문서는 Agent가 어떤 데이터를 읽을 수 있고, 어떤 Action을 제안·승인·실행할 수 있으며, 어떤 경우에 차단·경고·재질문해야 하는지 정의한다. 정책은 LLM Prompt가 아니라 일반 코드와 Tool Allowlist로 강제한다.
+
+### Google Workspace 실행 경계
+
+- Google Workspace API는 사용자 PC의 **Google Work MCP Server**가 사용자 OAuth Credential로 호출한다.
+- React Frontend, FastAPI Route, Application, LangGraph, Agent, Domain은 Gmail·Tasks·Calendar Provider API/SDK를 직접 호출하거나 별도 Provider Client를 구성하지 않는다.
+- 모든 Browse·Count·Detail·Retrieval Read·Write·Verification·Recovery 조회는 `MCP Client/Port → Google Work MCP Server → Provider Adapter` 경계를 통과한다.
+- MCP가 unavailable이거나 Tool Schema가 유효하지 않을 때 제품 Core가 Provider API 직접 호출로 fallback하는 것을 금지한다.
+- Local `/api/v1`은 React와 FastAPI 사이의 제품 내부 API이며 Google Provider API 우회 경로가 아니다.
 
 ## 2. 정책 우선순위
 
@@ -31,12 +39,33 @@
 
 ## 3. 위험 등급
 
-| 등급 | 정의 | 처리 |
-|---|---|---|
-| READ | 조회·검색·분석 | 사용자 요청 범위에서 자동 실행 가능 |
-| WRITE_LOW | Draft·Task·Event 생성 또는 허용 필드 수정 | 사용자 승인 필수 |
-| WRITE_HIGH | 메일 전송·Event 삭제·외부 참석자 변경처럼 외부 영향이 큰 작업 | 정확한 대상·인자를 고정하고 사용자 승인 후 실행. 승인 이후 인자 변경·UNKNOWN_RESULT 자동 재실행 금지 |
-| SYSTEM | Credential·환경·DB 변경 | 명시적 설정 화면에서만 수행 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>등급</td>
+		<td>정의</td>
+		<td>처리</td>
+	</tr>
+	<tr>
+		<td>READ</td>
+		<td>조회·검색·분석</td>
+		<td>사용자 요청 범위에서 자동 실행 가능</td>
+	</tr>
+	<tr>
+		<td>WRITE_LOW</td>
+		<td>Draft·Task·Event 생성 또는 허용 필드 수정</td>
+		<td>사용자 승인 필수</td>
+	</tr>
+	<tr>
+		<td>WRITE_HIGH</td>
+		<td>메일 전송·Event 삭제·외부 참석자 변경처럼 외부 영향이 큰 작업</td>
+		<td>정확한 대상·인자를 고정하고 사용자 승인 후 실행. 승인 이후 인자 변경·UNKNOWN_RESULT 자동 재실행 금지</td>
+	</tr>
+	<tr>
+		<td>SYSTEM</td>
+		<td>Credential·환경·DB 변경</td>
+		<td>명시적 설정 화면에서만 수행</td>
+	</tr>
+</table>
 
 ## 4. Tool 허용 정책
 
@@ -420,18 +449,52 @@ Dispatch 이후 Timeout·5xx·Transport Disconnect를 Provider가 미전달로 �
 
 ## 18. 데이터 보존 정책
 
-| 데이터 | 기본 보존 |
-|---|---|
-| Run·Checkpoint | 30일 |
-| Audit Log | 90일 |
-| Experiment Result | 사용자가 삭제할 때까지 |
-| 사이드바 목록 페이지·Page Token | React Client Session Cache, 세션 종료 시 삭제 |
-| Agent 검색 중간 후보 | 현재 Run 메모리, 종료 시 삭제 |
-| Gmail 전체 원문 | 영구 저장하지 않음 |
-| Task·Event 상세 원문 | 기본적으로 영구 저장하지 않음 |
-| 실제 사용 Resource ID·원본 링크 | Run 보존 기간과 동일 |
-| Evidence excerpt | Run 보존 기간과 동일 |
-| OAuth Token·API Key | OS Keyring, 연결 해제 시 삭제 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>데이터</td>
+		<td>기본 보존</td>
+	</tr>
+	<tr>
+		<td>Run·Checkpoint</td>
+		<td>30일</td>
+	</tr>
+	<tr>
+		<td>Audit Log</td>
+		<td>90일</td>
+	</tr>
+	<tr>
+		<td>Experiment Result</td>
+		<td>사용자가 삭제할 때까지</td>
+	</tr>
+	<tr>
+		<td>사이드바 목록 페이지·Page Token</td>
+		<td>React Client Session Cache, 세션 종료 시 삭제</td>
+	</tr>
+	<tr>
+		<td>Agent 검색 중간 후보</td>
+		<td>현재 Run 메모리, 종료 시 삭제</td>
+	</tr>
+	<tr>
+		<td>Gmail 전체 원문</td>
+		<td>영구 저장하지 않음</td>
+	</tr>
+	<tr>
+		<td>Task·Event 상세 원문</td>
+		<td>기본적으로 영구 저장하지 않음</td>
+	</tr>
+	<tr>
+		<td>실제 사용 Resource ID·원본 링크</td>
+		<td>Run 보존 기간과 동일</td>
+	</tr>
+	<tr>
+		<td>Evidence excerpt</td>
+		<td>Run 보존 기간과 동일</td>
+	</tr>
+	<tr>
+		<td>OAuth Token·API Key</td>
+		<td>OS Keyring, 연결 해제 시 삭제</td>
+	</tr>
+</table>
 
 보존 기간은 설정에서 줄일 수 있으며 늘리는 기능은 P1 이후 검토한다. 사이드바 목록 페이지와 Page Token은 React Client Session Cache에, Agent 검색 중간 후보는 Python Run 메모리에만 유지한다. 둘 다 영구 보존 대상이 아니다. Google Workspace 목록 전체를 SQLite에 동기화하거나 상시 복제하지 않는다.
 
@@ -503,14 +566,36 @@ API 후보는 Smoke 5 Case, Screening 20 Case를 통과한 경우에만 Full 60 
 
 ## 21. Policy 결과 유형
 
-| 결과 | 의미 |
-|---|---|
-| ALLOW | 자동 읽기 또는 승인된 쓰기 실행 가능 |
-| REQUIRE_APPROVAL | 사용자 승인 필요 |
-| REQUIRE_CONFIRMATION | 모호성·경고에 대한 사용자 확인 필요 |
-| BLOCK | 정책상 실행 금지 |
-| EXPIRED | 승인 또는 Credential 상태 만료 |
-| MISMATCH | 실행 결과가 승인 내용과 다름 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>결과</td>
+		<td>의미</td>
+	</tr>
+	<tr>
+		<td>ALLOW</td>
+		<td>자동 읽기 또는 승인된 쓰기 실행 가능</td>
+	</tr>
+	<tr>
+		<td>REQUIRE_APPROVAL</td>
+		<td>사용자 승인 필요</td>
+	</tr>
+	<tr>
+		<td>REQUIRE_CONFIRMATION</td>
+		<td>모호성·경고에 대한 사용자 확인 필요</td>
+	</tr>
+	<tr>
+		<td>BLOCK</td>
+		<td>정책상 실행 금지</td>
+	</tr>
+	<tr>
+		<td>EXPIRED</td>
+		<td>승인 또는 Credential 상태 만료</td>
+	</tr>
+	<tr>
+		<td>MISMATCH</td>
+		<td>실행 결과가 승인 내용과 다름</td>
+	</tr>
+</table>
 
 ## 22. Google Source 조회·메모리 캐시 정책
 
@@ -527,17 +612,17 @@ Google Workspace API는 사용자 PC의 로컬 MCP Server가 사용자 OAuth Cre
 ### POL-SRC-003 사이드바 목록
 
 - Gmail은 최근 수신 순으로 표시한다.
-- Tasks 기본 목록은 configured/default Task List의 미완료 항목을 Google Tasks Provider 반환 순으로 표시한다. 사용자가 예정일 정렬을 명시한 경우에만 전체 materialization 뒤 예정일 오름차순·예정일 없는 항목 후순위를 적용한다.
+- Tasks는 미완료와 예정일 임박 항목을 우선 표시한다.
 - Calendar는 현재 이후의 가까운 예정 일정부터 표시한다.
 - Sidebar의 페이지 단위와 Source별 기본 조회 범위는 안전 정책이 아니라 `01-A 기능 정의서`와 `07 Interface`가 소유한다.
-- Tasks는 `tasks.list(show_completed=false, page_size<=100)` batch를 UI 20개 page로 나누고, 알려진 마지막 UI page를 요청할 때만 다음 Page Token으로 Google API를 호출한다. 초기 exact count를 위해 Page Token 끝까지 순회하지 않는다.
+- 다음 페이지 이동 시 새 Page Token으로 Google API를 호출한다.
 
 ### POL-SRC-004 페이지 메모리 캐시
 
-- 이미 조회한 목록 페이지, Provider batch와 Page Token은 React Client Session Cache에 유지한다.
+- 이미 조회한 목록 페이지와 Page Token은 React Client Session Cache에 유지한다.
 - 동일 Google 계정, Source, 검색·필터, 정렬, Page Token 조합이 같으면 메모리 결과를 재사용한다.
 - 페이지 이동만으로 이미 조회한 페이지를 다시 호출하지 않는다.
-- UI 세션 종료, Google 계정·scope·검색/필터/정렬 변경, 해당 Source 수동 새로고침 시 관련 Cache를 폐기한다.
+- UI 세션 종료, Google 계정 변경, 해당 Source 수동 새로고침 시 관련 Cache를 폐기한다.
 - 사이드바 페이지 Cache는 SQLite에 영구 저장하지 않는다.
 
 ### POL-SRC-005 직접 선택
@@ -567,7 +652,7 @@ SQLite에는 실제 Run에서 사용된 Resource ID, Source, 원본 링크, 최�
 
 ### POL-SRC-009 수동 새로고침
 
-사용자가 Source의 새로고침을 실행하면 해당 Source의 목록 Cache와 Page Token을 폐기하고 첫 페이지를 최신 데이터로 다시 조회한다. Tasks는 첫 batch가 terminal이면 exact total을 표시하고, 다음 token이 있으면 확인된 최소 수에 `+`를 붙여 표시하며, terminal batch 뒤 누적 수로 exact total을 확정한다.
+사용자가 Source의 새로고침을 실행하면 해당 Source의 목록 Cache와 Page Token을 폐기하고 첫 페이지를 최신 데이터로 다시 조회한다.
 
 ## 23. Secure & Resilient 시스템 정책
 
@@ -774,11 +859,11 @@ LOCAL_CAPABLE Release는 검증된 Ollama Version, Model ID, Model Hash와 Runti
 ## 24. Multi-Agent 정책
 
 - Supervisor와 전문 Agent는 제안·분석·검토만 수행하며 정책 허용 여부를 최종 확정하지 않는다.
-- 요청 이해 Agent는 Google Tool을 호출하지 않는다.
-- Acquisition Agent의 LLM은 읽기 전략만 제안하고 같은 Subgraph의 결정적 Application Node가 Query·MCP 인자를 검증·실행한다.
-- Context Retriever Agent는 MCP·Google API를 직접 호출하지 않는다.
-- 업무 분석 Agent의 중복·충돌·위험 판단은 후보이며 Domain Validator가 최종 판정한다.
-- 해결책·계획 Agent와 계획 검토 Agent는 Approval·ExecutionAttempt·Verification Row를 생성하거나 변경하지 않는다.
+- Request Understanding Subgraph는 Google Tool을 호출하지 않는다.
+- Tool Route Subgraph만 IN/OUT Tool Route를 확정하며 downstream Subgraph는 Tool을 재선택하지 않는다.
+- Retrieval Subgraph의 LLM Node는 Raw Query·MCP Arguments를 직접 실행하지 않고 결정적 Application Node가 `ToolRoutePlan.input_routes`의 허용 Read Tool 범위에서 검증·실행한다.
+- Work Analysis의 중복·충돌·위험 판단은 후보이며 Domain Validator가 최종 판정한다.
+- Planning·Review Subgraph는 Approval·ExecutionAttempt·Verification Row를 생성하거나 변경하지 않는다.
 - Agent 간 자유 대화, 무제한 Handoff, Agent별 독립 장기 Memory와 Peer-to-Peer A2A를 금지한다. 전문 Agent Subgraph는 invocation 범위의 Local State만 보유하며 이를 장기 Memory나 Domain 사실로 승격하지 않는다.
 - Agent Subgraph Output은 Schema 검증 실패 시 동일 invocation 안에서 최대 1회 Schema Repair하고, 다시 실패하면 Supervisor에 실패 disposition을 반환하여 사용자 확인·부분 결과·차단 중 하나로 전환한다.
 - 승인 이후 Tool·Arguments·대상 Resource·Dependency를 LLM이 다시 생성하거나 수정할 수 없다.
@@ -786,8 +871,9 @@ LOCAL_CAPABLE Release는 검증된 Ollama Version, Model ID, Model Hash와 Runti
 
 ## 25. Agent·Retry 정책
 
-- API 탐색·수집 Agent와 Context Retriever Agent를 분리한다.
-- Retriever는 Google API·MCP를 직접 호출하지 않는다.
+- Tool Route와 Retrieval 책임을 분리한다.
+- Tool Route는 IN/OUT Tool을 한 번 확정하고 Retrieval·Planning은 재선택하지 않는다.
+- Retrieval의 LLM Node는 Google API·MCP를 직접 호출하지 않는다.
 - Supervisor는 결정적 Conditional Edge를 사용한다.
 - 일반 Retrieval 호출은 Action Row가 아니다.
 - Answer-only Run은 Open Write·UNKNOWN_RESULT·Recovery 상태가 없을 때만 완료한다.
