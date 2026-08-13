@@ -1,0 +1,197 @@
+"""LangGraph invocation, checkpoint, and result projection boundary."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any, cast
+
+from langgraph.types import Command
+
+from google_work_agent.adapters.langgraph.graph_state import GraphState
+from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.domain import RunStatus
+from google_work_agent.ports import (
+    WorkflowCancelRequest,
+    WorkflowInvocationResult,
+    WorkflowOutcome,
+    WorkflowRecoveryRequest,
+    WorkflowResumeRequest,
+    WorkflowStartRequest,
+)
+
+
+class WorkflowInvocationCoordinator:
+    """Own graph invocation and translate persisted state into runtime results."""
+
+    def __init__(
+        self,
+        *,
+        graph: Any,
+        graph_profile: GraphProfile,
+        initial_state: Callable[[WorkflowStartRequest], GraphState],
+        current_run_status: Callable[[str], str],
+        latest_unknown_action: Callable[[str], object | None],
+        recovery_node: Callable[[GraphState], GraphState],
+        has_executed_action: Callable[[str], bool],
+        recover_executed_actions: Callable[[GraphState, str], GraphState],
+        cancel_signal_lock: Any,
+        cancel_signals: set[str],
+    ) -> None:
+        self._graph = graph
+        self._graph_profile = graph_profile
+        self._initial_state = initial_state
+        self._current_run_status = current_run_status
+        self._latest_unknown_action = latest_unknown_action
+        self._recovery_node = recovery_node
+        self._has_executed_action = has_executed_action
+        self._recover_executed_actions = recover_executed_actions
+        self._cancel_signal_lock = cancel_signal_lock
+        self._cancel_signals = cancel_signals
+
+    def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
+        config = self.config_for_thread(request.workflow_key)
+        self._graph.invoke(self._initial_state(request), config=config)
+        return self.result_from_thread(
+            workflow_key=request.workflow_key,
+            run_id=request.run_id,
+        )
+
+    def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
+        config = self.config_for_thread(request.workflow_key)
+        snapshot = self._graph.get_state(config)
+        if not snapshot.values and not snapshot.next:
+            return WorkflowInvocationResult(
+                run_id=request.run_id,
+                workflow_key=request.workflow_key,
+                outcome=WorkflowOutcome.CHECKPOINT_MISSING,
+                payload={},
+            )
+        if not self.is_profile_compatible(cast(GraphState, snapshot.values)):
+            return WorkflowInvocationResult(
+                run_id=request.run_id,
+                workflow_key=request.workflow_key,
+                outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
+                payload={"graph_profile": self._graph_profile.value},
+            )
+        self._graph.invoke(Command(resume=request.resume_payload), config=config)
+        return self.result_from_thread(
+            workflow_key=request.workflow_key,
+            run_id=request.run_id,
+        )
+
+    def request_cancel(self, request: WorkflowCancelRequest) -> WorkflowInvocationResult:
+        with self._cancel_signal_lock:
+            self._cancel_signals.add(request.run_id)
+        return WorkflowInvocationResult(
+            run_id=request.run_id,
+            workflow_key=request.workflow_key,
+            outcome=WorkflowOutcome.ACCEPTED,
+            payload={"phase": "cancel_requested", "reason_code": request.reason_code},
+        )
+
+    def recover_open_run(self, request: WorkflowRecoveryRequest) -> WorkflowInvocationResult:
+        config = self.config_for_thread(request.workflow_key)
+        snapshot = self._graph.get_state(config)
+        if not snapshot.values and not snapshot.next:
+            return WorkflowInvocationResult(
+                run_id=request.run_id,
+                workflow_key=request.workflow_key,
+                outcome=WorkflowOutcome.CHECKPOINT_MISSING,
+                payload={},
+            )
+        if not self.is_profile_compatible(cast(GraphState, snapshot.values)):
+            return WorkflowInvocationResult(
+                run_id=request.run_id,
+                workflow_key=request.workflow_key,
+                outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
+                payload={"graph_profile": self._graph_profile.value},
+            )
+        values = cast(GraphState, snapshot.values)
+        if self._latest_unknown_action(request.run_id) is not None:
+            state = self._recovery_node(values)
+        elif self._has_executed_action(request.run_id):
+            state = self._recover_executed_actions(values, request.run_id)
+        else:
+            return self.result_from_thread(
+                workflow_key=request.workflow_key,
+                run_id=request.run_id,
+            )
+        return self.workflow_result_from_state(
+            state=state,
+            workflow_key=request.workflow_key,
+            run_id=request.run_id,
+        )
+
+    @staticmethod
+    def config_for_thread(workflow_key: str) -> dict[str, object]:
+        return {"configurable": {"thread_id": workflow_key}}
+
+    def workflow_result_from_state(
+        self,
+        *,
+        state: GraphState,
+        workflow_key: str,
+        run_id: str,
+    ) -> WorkflowInvocationResult:
+        return self.result_from_state(
+            state=state,
+            workflow_key=workflow_key,
+            run_id=run_id,
+        )
+
+    def result_from_thread(self, *, workflow_key: str, run_id: str) -> WorkflowInvocationResult:
+        snapshot = self._graph.get_state(self.config_for_thread(workflow_key))
+        return self.result_from_state(
+            state=cast(GraphState, snapshot.values),
+            workflow_key=workflow_key,
+            run_id=run_id,
+        )
+
+    def result_from_state(
+        self,
+        *,
+        state: GraphState,
+        workflow_key: str,
+        run_id: str,
+    ) -> WorkflowInvocationResult:
+        run_status = self._current_run_status(run_id)
+        terminal_statuses = {
+            RunStatus.COMPLETED.value,
+            RunStatus.BLOCKED.value,
+            RunStatus.FAILED.value,
+            RunStatus.CANCELLED.value,
+        }
+        if run_status in terminal_statuses:
+            outcome = WorkflowOutcome.COMPLETED
+        elif run_status == RunStatus.RECOVERY_REQUIRED.value:
+            outcome = WorkflowOutcome.RECOVERY_REQUIRED
+        elif run_status == RunStatus.REAUTH_REQUIRED.value:
+            outcome = WorkflowOutcome.ACCEPTED
+        else:
+            outcome = WorkflowOutcome.ACCEPTED
+        if run_status in terminal_statuses:
+            with self._cancel_signal_lock:
+                self._cancel_signals.discard(run_id)
+        return WorkflowInvocationResult(
+            run_id=run_id,
+            workflow_key=workflow_key,
+            outcome=outcome,
+            payload={
+                "phase": state.get("workflow_phase"),
+                "finalize_intent": state.get("finalize_intent"),
+                "user_interrupt": state.get("user_interrupt"),
+                "execution_summary": state.get("execution_summary"),
+                "verification_summary": state.get("verification_summary"),
+                "run_status": run_status,
+                "graph_profile": self._graph_profile.value,
+            },
+        )
+
+    def is_profile_compatible(self, state: GraphState) -> bool:
+        prompt_context = state.get("prompt_context")
+        if not isinstance(prompt_context, dict):
+            return True
+        persisted_profile = prompt_context.get("graph_profile")
+        if not isinstance(persisted_profile, str):
+            return True
+        return persisted_profile == self._graph_profile.value

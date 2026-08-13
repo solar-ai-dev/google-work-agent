@@ -12,7 +12,7 @@ from threading import Lock
 from typing import Any, cast
 
 from langgraph.checkpoint.sqlite import SqliteSaver
-from langgraph.types import Command, interrupt
+from langgraph.types import interrupt
 
 from google_work_agent.adapters.connectors import GoogleWorkspaceConnectorReader
 from google_work_agent.adapters.langgraph.graph_composition import (
@@ -28,6 +28,7 @@ from google_work_agent.adapters.langgraph.graph_state import (
     initial_graph_state,
     request_from_state,
 )
+from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCoordinator
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.route_translation import GraphRouteTranslator
 from google_work_agent.adapters.langgraph.subgraphs.acquisition import AcquisitionSubgraph
@@ -521,37 +522,24 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
         self._native_agent_subgraphs = self._native_subgraphs_for_profile()
         self._graph = self._build_graph()
+        self._invocation = WorkflowInvocationCoordinator(
+            graph=self._graph,
+            graph_profile=self._graph_profile,
+            initial_state=self._initial_state,
+            current_run_status=self._current_run_status,
+            latest_unknown_action=self._latest_unknown_action,
+            recovery_node=self._recovery_node,
+            has_executed_action=self._has_executed_action,
+            recover_executed_actions=self._recover_executed_actions,
+            cancel_signal_lock=self._cancel_signal_lock,
+            cancel_signals=self._cancel_signals,
+        )
 
     def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
-        config = self._config_for_thread(request.workflow_key)
-        self._graph.invoke(self._initial_state(request), config=config)
-        return self._result_from_thread(
-            workflow_key=request.workflow_key,
-            run_id=request.run_id,
-        )
+        return self._invocation.start(request)
 
     def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
-        config = self._config_for_thread(request.workflow_key)
-        snapshot = self._graph.get_state(config)
-        if not snapshot.values and not snapshot.next:
-            return WorkflowInvocationResult(
-                run_id=request.run_id,
-                workflow_key=request.workflow_key,
-                outcome=WorkflowOutcome.CHECKPOINT_MISSING,
-                payload={},
-            )
-        if not self._is_profile_compatible(cast(GraphState, snapshot.values)):
-            return WorkflowInvocationResult(
-                run_id=request.run_id,
-                workflow_key=request.workflow_key,
-                outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
-                payload={"graph_profile": self._graph_profile.value},
-            )
-        self._graph.invoke(Command(resume=request.resume_payload), config=config)
-        return self._result_from_thread(
-            workflow_key=request.workflow_key,
-            run_id=request.run_id,
-        )
+        return self._invocation.resume(request)
 
     def request_cancel(self, request: WorkflowCancelRequest) -> WorkflowInvocationResult:
         with self._cancel_signal_lock:
@@ -564,37 +552,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
 
     def recover_open_run(self, request: WorkflowRecoveryRequest) -> WorkflowInvocationResult:
-        config = self._config_for_thread(request.workflow_key)
-        snapshot = self._graph.get_state(config)
-        if not snapshot.values and not snapshot.next:
-            return WorkflowInvocationResult(
-                run_id=request.run_id,
-                workflow_key=request.workflow_key,
-                outcome=WorkflowOutcome.CHECKPOINT_MISSING,
-                payload={},
-            )
-        if not self._is_profile_compatible(cast(GraphState, snapshot.values)):
-            return WorkflowInvocationResult(
-                run_id=request.run_id,
-                workflow_key=request.workflow_key,
-                outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
-                payload={"graph_profile": self._graph_profile.value},
-            )
-        values = cast(GraphState, snapshot.values)
-        if self._latest_unknown_action(request.run_id) is not None:
-            state = self._recovery_node(values)
-        elif self._has_executed_action(request.run_id):
-            state = self._recover_executed_actions(values, request.run_id)
-        else:
-            return self._result_from_thread(
-                workflow_key=request.workflow_key,
-                run_id=request.run_id,
-            )
-        return self._workflow_result_from_state(
-            state=state,
-            workflow_key=request.workflow_key,
-            run_id=request.run_id,
-        )
+        return self._invocation.recover_open_run(request)
 
     def close(self) -> None:
         self._checkpoint_connection.close()
@@ -1194,7 +1152,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return request_from_state(state)
 
     def _config_for_thread(self, workflow_key: str) -> dict[str, object]:
-        return {"configurable": {"thread_id": workflow_key}}
+        return self._invocation.config_for_thread(workflow_key)
 
     def _workflow_result_from_state(
         self,
@@ -1203,15 +1161,14 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         workflow_key: str,
         run_id: str,
     ) -> WorkflowInvocationResult:
-        return self._result_from_state(state=state, workflow_key=workflow_key, run_id=run_id)
-
-    def _result_from_thread(self, *, workflow_key: str, run_id: str) -> WorkflowInvocationResult:
-        snapshot = self._graph.get_state(self._config_for_thread(workflow_key))
-        return self._result_from_state(
-            state=cast(GraphState, snapshot.values),
+        return self._invocation.workflow_result_from_state(
+            state=state,
             workflow_key=workflow_key,
             run_id=run_id,
         )
+
+    def _result_from_thread(self, *, workflow_key: str, run_id: str) -> WorkflowInvocationResult:
+        return self._invocation.result_from_thread(workflow_key=workflow_key, run_id=run_id)
 
     def _result_from_state(
         self,
@@ -1220,51 +1177,14 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         workflow_key: str,
         run_id: str,
     ) -> WorkflowInvocationResult:
-        run_status = self._current_run_status(run_id)
-        if run_status in {
-            RunStatus.COMPLETED.value,
-            RunStatus.BLOCKED.value,
-            RunStatus.FAILED.value,
-            RunStatus.CANCELLED.value,
-        }:
-            outcome = WorkflowOutcome.COMPLETED
-        elif run_status == RunStatus.RECOVERY_REQUIRED.value:
-            outcome = WorkflowOutcome.RECOVERY_REQUIRED
-        elif run_status == RunStatus.REAUTH_REQUIRED.value:
-            outcome = WorkflowOutcome.ACCEPTED
-        else:
-            outcome = WorkflowOutcome.ACCEPTED
-        if run_status in {
-            RunStatus.COMPLETED.value,
-            RunStatus.BLOCKED.value,
-            RunStatus.FAILED.value,
-            RunStatus.CANCELLED.value,
-        }:
-            with self._cancel_signal_lock:
-                self._cancel_signals.discard(run_id)
-        return WorkflowInvocationResult(
-            run_id=run_id,
+        return self._invocation.result_from_state(
+            state=state,
             workflow_key=workflow_key,
-            outcome=outcome,
-            payload={
-                "phase": state.get("workflow_phase"),
-                "finalize_intent": state.get("finalize_intent"),
-                "user_interrupt": state.get("user_interrupt"),
-                "execution_summary": state.get("execution_summary"),
-                "verification_summary": state.get("verification_summary"),
-                "run_status": run_status,
-                "graph_profile": self._graph_profile.value,
-            },
+            run_id=run_id,
         )
 
     def _is_profile_compatible(self, state: GraphState) -> bool:
-        prompt_context = state.get("prompt_context")
-        if not isinstance(prompt_context, dict):
-            return True
-        persisted_profile = prompt_context.get("graph_profile")
-        if not isinstance(persisted_profile, str):
-            return True
-        return persisted_profile == self._graph_profile.value
+        return self._invocation.is_profile_compatible(state)
 
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         run_id = state["run_id"]

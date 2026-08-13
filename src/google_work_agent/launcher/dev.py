@@ -19,10 +19,7 @@ from typing import Any, NoReturn, cast
 from fastapi import FastAPI
 
 from google_work_agent.adapters.connectors import (
-    GOOGLE_WORKSPACE_CONNECTOR_ID,
-    GoogleWorkspaceConnector,
     GoogleWorkspaceExecutionBackend,
-    build_google_workspace_connector_descriptor,
 )
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
 from google_work_agent.adapters.keyring import OSKeyringSecretStore
@@ -42,10 +39,7 @@ from google_work_agent.adapters.llm import (
     SessionMemorySecretStore,
 )
 from google_work_agent.adapters.mcp import (
-    MCPArtifactConfig,
-    MCPRuntimeStatusProvider,
     build_manifest_payload,
-    calculate_file_sha256,
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
@@ -56,7 +50,6 @@ from google_work_agent.adapters.runtime import (
     SettingsService,
 )
 from google_work_agent.adapters.runtime.attachment_staging import (
-    ATTACHMENT_STAGING_DIR_ENV,
     LocalAttachmentStaging,
 )
 from google_work_agent.api import API_CONTRACT_VERSION, ApiContainer, create_app
@@ -75,7 +68,6 @@ from google_work_agent.application.attachments import (
     GetGmailAttachmentService,
     StageAttachmentService,
 )
-from google_work_agent.application.connector_registry import ConnectorRegistry
 from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.llm import (
     DeleteLLMApiKeyService,
@@ -106,9 +98,13 @@ from google_work_agent.application.write_actions import (
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
-from google_work_agent.domain import CalendarWorkHours, ConnectorToolCatalog
-from google_work_agent.domain.google_workspace_tool_registry import (
-    build_google_workspace_tool_registry,
+from google_work_agent.domain import CalendarWorkHours
+from google_work_agent.launcher.connector_composition import build_connectors
+from google_work_agent.launcher.development_constants import (
+    PROJECT_ROOT,
+)
+from google_work_agent.launcher.development_readiness import (
+    DevelopmentReadinessAggregator as DevelopmentReadinessAggregator,
 )
 from google_work_agent.ports import (
     ApprovedModelInfo,
@@ -129,12 +125,9 @@ from google_work_agent.ports import (
 )
 from google_work_agent.ports.mcp_transport import MCPTransportError
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 RELEASE_VERSION = "0.1.0-dev"
-MCP_MANIFEST_VERSION = "2026-08-07.p0"
-MCP_TOOL_REGISTRY_VERSION = "2026-08-06.p0"
 # Dev-mode local model allowlist: LOCAL_GPU routing refuses to invoke a model
 # that is not "approved" (see DeterministicLLMRuntimeRouter._local_runtime_reason),
 # so at least one already-`ollama pull`-ed model must be listed here. This never
@@ -404,141 +397,6 @@ class _DeferredApiContainer:
         raise RuntimeError("core initialization is incomplete")
 
 
-@dataclass(frozen=True, slots=True)
-class DevelopmentReadinessAggregator(ReadinessAggregator):
-    database_path: Path
-    connector_registry: ConnectorRegistry
-    mcp_manifest_path: Path | None = None
-    prompt_active: bool = True
-
-    @property
-    def transport(self) -> Any:
-        """Compatibility view of the P0 connector's underlying transport."""
-
-        connector = self.connector_registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID)
-        return cast(Any, connector).transport
-
-    def evaluate(self) -> ReadinessReport:
-        checks = (
-            self._manifest_asset_check(),
-            self._api_contract_check(),
-            self._sqlite_check(),
-            self._domain_check(),
-            self._keyring_check(),
-            self._mcp_executable_check(),
-            self._mcp_check(),
-            self._tool_schema_check(),
-        )
-        state = (
-            ReadinessState.READY
-            if all(check.state is ReadinessState.READY for check in checks)
-            else ReadinessState.NOT_READY
-        )
-        return ReadinessReport(state=state, checks=checks)
-
-    def _sqlite_check(self) -> ReadinessCheckResult:
-        try:
-            with connect_sqlite(self.database_path) as connection:
-                row = connection.execute("SELECT COUNT(*) FROM schema_migrations;").fetchone()
-            if row is None or int(row[0]) < 1:
-                return ReadinessCheckResult(
-                    name="sqlite_migrations",
-                    state=ReadinessState.NOT_READY,
-                    detail="migration receipts are unavailable",
-                )
-        except sqlite3.Error:
-            return ReadinessCheckResult(
-                name="sqlite_migrations",
-                state=ReadinessState.NOT_READY,
-                detail="sqlite is unavailable",
-            )
-        return ReadinessCheckResult(name="sqlite_migrations", state=ReadinessState.READY)
-
-    def _manifest_asset_check(self) -> ReadinessCheckResult:
-        manifest_ok = self.mcp_manifest_path is not None and self.mcp_manifest_path.is_file()
-        asset_ok = (PROJECT_ROOT / "frontend" / "index.html").is_file()
-        if manifest_ok and asset_ok:
-            return ReadinessCheckResult(name="manifest_assets", state=ReadinessState.READY)
-        return ReadinessCheckResult(
-            name="manifest_assets",
-            state=ReadinessState.NOT_READY,
-            detail="MANIFEST_OR_ASSET_UNAVAILABLE",
-        )
-
-    @staticmethod
-    def _api_contract_check() -> ReadinessCheckResult:
-        if API_CONTRACT_VERSION:
-            return ReadinessCheckResult(name="api_contract", state=ReadinessState.READY)
-        return ReadinessCheckResult(
-            name="api_contract", state=ReadinessState.NOT_READY, detail="API_CONTRACT_UNAVAILABLE"
-        )
-
-    def _domain_check(self) -> ReadinessCheckResult:
-        try:
-            with connect_sqlite(self.database_path) as connection:
-                row = connection.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'runs';"
-                ).fetchone()
-        except sqlite3.Error:
-            row = None
-        if row is not None:
-            return ReadinessCheckResult(name="domain_schema", state=ReadinessState.READY)
-        return ReadinessCheckResult(
-            name="domain_schema", state=ReadinessState.NOT_READY, detail="DOMAIN_SCHEMA_UNAVAILABLE"
-        )
-
-    @staticmethod
-    def _keyring_check() -> ReadinessCheckResult:
-        try:
-            OSKeyringSecretStore()
-        except RuntimeError:
-            return ReadinessCheckResult(
-                name="keyring_adapter", state=ReadinessState.NOT_READY, detail="KEYRING_UNAVAILABLE"
-            )
-        return ReadinessCheckResult(name="keyring_adapter", state=ReadinessState.READY)
-
-    @staticmethod
-    def _mcp_executable_check() -> ReadinessCheckResult:
-        if Path(sys.executable).is_file():
-            return ReadinessCheckResult(name="mcp_executable", state=ReadinessState.READY)
-        return ReadinessCheckResult(
-            name="mcp_executable",
-            state=ReadinessState.NOT_READY,
-            detail="MCP_EXECUTABLE_UNAVAILABLE",
-        )
-
-    def _mcp_check(self) -> ReadinessCheckResult:
-        metadata = self.connector_registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID).health()
-        if metadata.process_status != "READY" or metadata.process_instance_id is None:
-            return ReadinessCheckResult(
-                name="mcp_handshake",
-                state=ReadinessState.NOT_READY,
-                detail=metadata.last_safe_error_code or metadata.process_status,
-            )
-        return ReadinessCheckResult(name="mcp_handshake", state=ReadinessState.READY)
-
-    def _tool_schema_check(self) -> ReadinessCheckResult:
-        metadata = self.connector_registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID).health()
-        if (
-            metadata.protocol_version == MCP_MANIFEST_VERSION
-            and metadata.tool_registry_version == MCP_TOOL_REGISTRY_VERSION
-            and metadata.available_tool_count > 0
-        ):
-            return ReadinessCheckResult(name="tool_schema", state=ReadinessState.READY)
-        return ReadinessCheckResult(
-            name="tool_schema", state=ReadinessState.NOT_READY, detail="TOOL_SCHEMA_UNAVAILABLE"
-        )
-
-    def _prompt_check(self) -> ReadinessCheckResult:
-        if self.prompt_active:
-            return ReadinessCheckResult(name="prompt_activation", state=ReadinessState.READY)
-        return ReadinessCheckResult(
-            name="prompt_activation",
-            state=ReadinessState.NOT_READY,
-            detail="PROMPT_NOT_ACTIVE",
-        )
-
-
 class _PromptInactiveWorkflowRuntime:
     """Safe placeholder: workflows cannot execute until prompts are approved."""
 
@@ -601,54 +459,20 @@ def build_container(
     except sqlite3.Error as error:
         raise CoreInitializationError("MIGRATION_FAILED") from error
 
-    connector_tool_catalog = ConnectorToolCatalog()
-    google_tool_registry = build_google_workspace_tool_registry()
-    connector_tool_catalog.register(
-        connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
-        registry=google_tool_registry,
-    )
-    google_descriptor = build_google_workspace_connector_descriptor(
-        MCPArtifactConfig(
-            executable_path=str(Path(sys.executable).resolve()),
-            manifest_path=str(mcp_manifest_path),
-            expected_binary_sha256=calculate_file_sha256(Path(sys.executable).resolve()),
-            expected_manifest_sha256=calculate_file_sha256(mcp_manifest_path),
-            expected_manifest_version=MCP_MANIFEST_VERSION,
-            expected_protocol_version=MCP_MANIFEST_VERSION,
-            expected_tool_registry_version=MCP_TOOL_REGISTRY_VERSION,
-            startup_timeout_ms=5_000,
-            # docs/07-tool-mcp-internal-interface.md's per-tool Timeout
-            # column specifies 30s for every MCP READ/WRITE tool; this
-            # transport-level budget must be at least that large or
-            # multi-message acquisition (search + several detail fetches)
-            # times out before any single tool call's own 30s budget is
-            # reached.
-            request_timeout_ms=30_000,
-            max_restart_count=1,
-            environment="DEVELOPMENT",
-            service_instance_id=service_instance_id,
-            working_directory=str(PROJECT_ROOT),
-            extra_environment={
-                ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir),
-            },
-        ),
-        tool_registry=connector_tool_catalog.registry_for(GOOGLE_WORKSPACE_CONNECTOR_ID),
-    )
-    google_connector = GoogleWorkspaceConnector(descriptor=google_descriptor)
-    connector_registry = ConnectorRegistry()
-    connector_registry.register(google_connector)
     try:
-        connector_registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID).start()
+        connector_bundle = build_connectors(
+            mcp_manifest_path=mcp_manifest_path,
+            service_instance_id=service_instance_id,
+            attachment_staging_dir=attachment_staging_dir,
+            python_executable=Path(sys.executable).resolve(),
+            working_directory=PROJECT_ROOT,
+        )
     except MCPTransportError as error:
         raise CoreInitializationError("MCP_HANDSHAKE_FAILED") from error
+    connector_registry = connector_bundle.registry
+    google_connector = connector_bundle.google_connector
+    runtime_status_provider = connector_bundle.runtime_status_provider
     google_provider = google_connector.oauth_provider
-    runtime_status_provider = MCPRuntimeStatusProvider(
-        google_provider=google_provider,
-        api_llm="NOT_CONFIGURED",
-        ollama="NOT_CONFIGURED",
-        deployment_profile=BuildProfile.LOCAL_CAPABLE.value,
-        runtime=connector_registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID),
-    )
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
     query_service = QueryService(
         database_path=database_path,
