@@ -12,7 +12,8 @@ import pytest
 
 from google_work_agent.mcp import server
 from google_work_agent.mcp.settings import GoogleOAuthSettings
-from google_work_agent.ports import CredentialState
+from google_work_agent.application.google_connection import GetGoogleConnectionService
+from google_work_agent.ports import CredentialState, GoogleConnectionStatus, OAuthEnvironment
 
 
 def _fake_id_token(claims: dict[str, object]) -> str:
@@ -257,9 +258,391 @@ def test_ensure_access_token_self_heals_account_email_from_refresh_id_token(
         return "access-value", server._now_ms() + 10_000, None, "user@example.com"
 
     monkeypatch.setattr(server, "_refresh_access_token", refresh)
+    monkeypatch.setattr(
+        server,
+        "_resolve_account_identity_from_userinfo",
+        lambda _access_token: pytest.fail("verified refresh id_token must skip UserInfo"),
+    )
     state.ensure_access_token()
 
     assert state.account_email == "user@example.com"
+
+
+def test_ensure_access_token_resolves_verified_email_from_userinfo_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+
+    monkeypatch.setattr(
+        server,
+        "_refresh_access_token",
+        lambda *_args: ("access-value", server._now_ms() + 10_000, None, None),
+    )
+    monkeypatch.setattr(
+        server,
+        "_resolve_account_identity_from_userinfo",
+        lambda access_token: server._UserInfoIdentityResolution(
+            email="user@example.com" if access_token == "access-value" else None,
+            http_status=200,
+        ),
+    )
+
+    state.ensure_access_token()
+
+    assert state.connection_state is CredentialState.CONNECTED
+    assert state.account_email == "user@example.com"
+
+
+def test_valid_access_token_with_resolved_identity_skips_refresh_and_userinfo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state.account_email = "user@example.com"
+    state.access_token = "access-value"
+    state.access_token_expires_at_ms = server._now_ms() + 10_000
+    monkeypatch.setattr(
+        server,
+        "_refresh_access_token",
+        lambda *_args: ("access-value", server._now_ms() + 10_000, None, None),
+    )
+    monkeypatch.setattr(
+        server,
+        "_resolve_account_identity_from_userinfo",
+        lambda _access_token: pytest.fail("UserInfo must not run for a known identity"),
+    )
+
+    state.ensure_access_token()
+
+    assert state.account_email == "user@example.com"
+
+
+def test_valid_access_token_resolves_missing_identity_without_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state.access_token = "access-value"
+    state.access_token_expires_at_ms = server._now_ms() + 10_000
+    refresh_calls = 0
+    userinfo_calls = 0
+
+    def refresh(*_args: object) -> tuple[str, int, str | None, str | None]:
+        nonlocal refresh_calls
+        refresh_calls += 1
+        return "unexpected", server._now_ms() + 10_000, None, None
+
+    def resolve(access_token: str) -> server._UserInfoIdentityResolution:
+        nonlocal userinfo_calls
+        userinfo_calls += 1
+        assert access_token == "access-value"
+        return server._UserInfoIdentityResolution(email="user@example.com", http_status=200)
+
+    monkeypatch.setattr(server, "_refresh_access_token", refresh)
+    monkeypatch.setattr(server, "_resolve_account_identity_from_userinfo", resolve)
+
+    state.ensure_access_token()
+
+    assert refresh_calls == 0
+    assert userinfo_calls == 1
+    assert state.account_email == "user@example.com"
+
+
+def test_valid_access_token_with_unverified_userinfo_keeps_oauth_connected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state.access_token = "access-value"
+    state.access_token_expires_at_ms = server._now_ms() + 10_000
+    refresh_calls = 0
+
+    def refresh(*_args: object) -> tuple[str, int, str | None, str | None]:
+        nonlocal refresh_calls
+        refresh_calls += 1
+        return "unexpected", server._now_ms() + 10_000, None, None
+
+    monkeypatch.setattr(server, "_refresh_access_token", refresh)
+    monkeypatch.setattr(
+        server,
+        "_resolve_account_identity_from_userinfo",
+        lambda _access_token: server._UserInfoIdentityResolution(
+            email=server._verified_email_from_userinfo_payload(
+                {"sub": "google-subject", "email": "user@example.com", "email_verified": False}
+            ),
+            http_status=200,
+        ),
+    )
+
+    state.ensure_access_token()
+
+    assert refresh_calls == 0
+    assert state.connection_state is CredentialState.CONNECTED
+    assert state.account_email is None
+
+
+def test_valid_access_token_userinfo_failure_keeps_oauth_connected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state.access_token = "access-value"
+    state.access_token_expires_at_ms = server._now_ms() + 10_000
+    monkeypatch.setattr(
+        server,
+        "_refresh_access_token",
+        lambda *_args: pytest.fail("valid token must not refresh"),
+    )
+    monkeypatch.setattr(
+        server,
+        "_resolve_account_identity_from_userinfo",
+        lambda _access_token: server._UserInfoIdentityResolution(email=None, http_status=None),
+    )
+
+    state.ensure_access_token()
+
+    assert state.connection_state is CredentialState.CONNECTED
+    assert state.account_email is None
+
+
+def test_valid_token_userinfo_401_refreshes_once_and_retries_userinfo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state.access_token = "old-access-value"
+    state.access_token_expires_at_ms = server._now_ms() + 10_000
+    refresh_calls = 0
+    userinfo_calls = 0
+
+    def refresh(*_args: object) -> tuple[str, int, str | None, str | None]:
+        nonlocal refresh_calls
+        refresh_calls += 1
+        return "new-access-value", server._now_ms() + 10_000, None, None
+
+    def resolve(access_token: str) -> server._UserInfoIdentityResolution:
+        nonlocal userinfo_calls
+        userinfo_calls += 1
+        return server._UserInfoIdentityResolution(
+            email=None if access_token == "old-access-value" else "user@example.com",
+            http_status=401 if access_token == "old-access-value" else 200,
+        )
+
+    monkeypatch.setattr(server, "_refresh_access_token", refresh)
+    monkeypatch.setattr(server, "_resolve_account_identity_from_userinfo", resolve)
+
+    state.ensure_access_token()
+
+    assert refresh_calls == 1
+    assert userinfo_calls == 2
+    assert state.access_token == "new-access-value"
+    assert state.account_email == "user@example.com"
+
+
+def test_userinfo_401_refresh_id_token_email_skips_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state.access_token = "old-access-value"
+    state.access_token_expires_at_ms = server._now_ms() + 10_000
+    userinfo_calls = 0
+
+    def resolve(_access_token: str) -> server._UserInfoIdentityResolution:
+        nonlocal userinfo_calls
+        userinfo_calls += 1
+        return server._UserInfoIdentityResolution(email=None, http_status=401)
+
+    monkeypatch.setattr(
+        server,
+        "_refresh_access_token",
+        lambda *_args: ("new-access-value", server._now_ms() + 10_000, None, "user@example.com"),
+    )
+    monkeypatch.setattr(server, "_resolve_account_identity_from_userinfo", resolve)
+
+    state.ensure_access_token()
+
+    assert userinfo_calls == 1
+    assert state.account_email == "user@example.com"
+
+
+def test_userinfo_401_refresh_failure_requires_reauthentication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state.access_token = "old-access-value"
+    state.access_token_expires_at_ms = server._now_ms() + 10_000
+    monkeypatch.setattr(
+        server,
+        "_resolve_account_identity_from_userinfo",
+        lambda _access_token: server._UserInfoIdentityResolution(email=None, http_status=401),
+    )
+    monkeypatch.setattr(
+        server,
+        "_refresh_access_token",
+        lambda *_args: (_ for _ in ()).throw(server._OAuthReauthenticationRequired()),
+    )
+
+    payload = server._control_call(state, method="google.connection.get")
+
+    assert payload["reauth_required"] is True
+    assert state.account_email is None
+
+
+def test_userinfo_401_retry_401_does_not_refresh_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state.access_token = "old-access-value"
+    state.access_token_expires_at_ms = server._now_ms() + 10_000
+    refresh_calls = 0
+    userinfo_calls = 0
+
+    def refresh(*_args: object) -> tuple[str, int, str | None, str | None]:
+        nonlocal refresh_calls
+        refresh_calls += 1
+        return "new-access-value", server._now_ms() + 10_000, None, None
+
+    def resolve(_access_token: str) -> server._UserInfoIdentityResolution:
+        nonlocal userinfo_calls
+        userinfo_calls += 1
+        return server._UserInfoIdentityResolution(email=None, http_status=401)
+
+    monkeypatch.setattr(server, "_refresh_access_token", refresh)
+    monkeypatch.setattr(server, "_resolve_account_identity_from_userinfo", resolve)
+
+    state.ensure_access_token()
+
+    assert refresh_calls == 1
+    assert userinfo_calls == 2
+    assert state.connection_state is CredentialState.REAUTH_REQUIRED
+    assert state.account_email is None
+
+
+@pytest.mark.parametrize(
+    "resolution",
+    (
+        server._UserInfoIdentityResolution(email=None, http_status=403),
+        server._UserInfoIdentityResolution(email=None, http_status=200),
+    ),
+)
+def test_non_401_userinfo_failure_does_not_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+    resolution: server._UserInfoIdentityResolution,
+) -> None:
+    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state.access_token = "access-value"
+    state.access_token_expires_at_ms = server._now_ms() + 10_000
+    monkeypatch.setattr(
+        server,
+        "_refresh_access_token",
+        lambda *_args: pytest.fail("non-401 UserInfo failure must not refresh"),
+    )
+    monkeypatch.setattr(server, "_resolve_account_identity_from_userinfo", lambda _access_token: resolution)
+
+    state.ensure_access_token()
+
+    assert state.connection_state is CredentialState.CONNECTED
+    assert state.account_email is None
+
+
+def test_google_connection_provisions_after_valid_token_identity_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state.access_token = "access-value"
+    state.access_token_expires_at_ms = server._now_ms() + 10_000
+    monkeypatch.setattr(
+        server,
+        "_refresh_access_token",
+        lambda *_args: pytest.fail("valid token must not refresh"),
+    )
+    monkeypatch.setattr(
+        server,
+        "_resolve_account_identity_from_userinfo",
+        lambda _access_token: server._UserInfoIdentityResolution(
+            email="user@example.com", http_status=200
+        ),
+    )
+    provisioned: list[str] = []
+
+    class Provider:
+        def get_connection_status(self) -> GoogleConnectionStatus:
+            payload = server._control_call(state, method="google.connection.get")
+            return GoogleConnectionStatus(
+                connected=bool(payload["connected"]),
+                credential_state=CredentialState(str(payload["credential_state"])),
+                account_email=payload["account_email"],
+                display_name=None,
+                granted_scopes=(),
+                missing_scopes=(),
+                reauth_required=False,
+                oauth_environment=OAuthEnvironment.DEVELOPMENT,
+                last_checked_at_ms=int(payload["last_checked_at_ms"]),
+            )
+
+    class Provisioner:
+        def ensure_google_account_connected(
+            self, *, email: str, display_name: str | None, now_ms: int
+        ) -> None:
+            del display_name, now_ms
+            provisioned.append(email)
+
+    status = GetGoogleConnectionService(
+        provider=Provider(), account_provisioner=Provisioner(), now_ms=server._now_ms
+    )()
+
+    assert status.account_email == "user@example.com"
+    assert provisioned == ["user@example.com"]
+
+
+def test_userinfo_requires_sub_and_verified_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: Request | None = None
+
+    def userinfo(request: Request, *, timeout: int) -> _HTTPResponse:
+        nonlocal captured
+        assert timeout == 10
+        captured = request
+        return _HTTPResponse(
+            b'{"sub":"google-subject","email":"user@example.com","email_verified":true}'
+        )
+
+    monkeypatch.setattr(server, "urlopen", userinfo)
+
+    assert server._resolve_account_identity_from_userinfo("access-value").email == "user@example.com"
+    assert captured is not None
+    assert captured.full_url == server.GOOGLE_USERINFO_ENDPOINT
+    assert captured.get_method() == "GET"
+    assert captured.get_header("Authorization") == "Bearer access-value"
+    assert (
+        server._verified_email_from_userinfo_payload(
+            {"sub": "google-subject", "email": "user@example.com", "email_verified": False}
+        )
+        is None
+    )
+    assert (
+        server._verified_email_from_userinfo_payload(
+            {"email": "user@example.com", "email_verified": True}
+        )
+        is None
+    )
+
+
+def test_expired_access_token_userinfo_failure_keeps_oauth_connected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    monkeypatch.setattr(
+        server,
+        "_refresh_access_token",
+        lambda *_args: ("access-value", server._now_ms() + 10_000, None, None),
+    )
+    monkeypatch.setattr(
+        server,
+        "_resolve_account_identity_from_userinfo",
+        lambda _access_token: server._UserInfoIdentityResolution(email=None, http_status=None),
+    )
+
+    state.ensure_access_token()
+
+    assert state.connection_state is CredentialState.CONNECTED
+    assert state.account_email is None
 
 
 def test_refresh_access_token_decodes_email_from_id_token(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -366,7 +749,7 @@ def test_concurrent_expired_access_token_refreshes_once(monkeypatch: pytest.Monk
         del value, client_id, client_secret
         with call_lock:
             calls += 1
-        return "access-value", server._now_ms() + 10_000, None, None
+        return "access-value", server._now_ms() + 10_000, None, "user@example.com"
 
     monkeypatch.setattr(server, "_refresh_access_token", refresh)
 
