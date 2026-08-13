@@ -1,6 +1,6 @@
 # 11. Google Work Agent · 관측성 · 로그 · 감사 설계서
 
-> **상태:** Draft v2.9 · **기준일:** 2026-08-09 · **외부 Telemetry:** Production 기본 OFF
+> **상태:** Draft v2.11 · **기준일:** 2026-08-13 · **외부 Telemetry:** Production 기본 OFF
 
 ## 먼저 읽기
 
@@ -138,6 +138,7 @@ EXPERIMENT_BUDGET_STOPPED
 ## 6. Audit 필수 Event
 
 ```text
+POLICY_CONFIRMATION_RECORDED
 ACTION_PROPOSED
 ACTION_MODIFIED
 ACTION_APPROVED
@@ -163,7 +164,11 @@ DIAGNOSTIC_BUNDLE_EXPORTED
 
 `ACTION_REJECTED`는 성공한 Domain mutation과 같은 UoW에서 기록하며 `run_id`, `plan_id`, `action_id`, `command_id`, actor, 이전/신규 상태, optional `reason_code` 존재 여부와 outcome을 포함한다. Action arguments, Gmail body 등 원문 콘텐츠는 복제하지 않는다. 실패·Version conflict·receipt replay에서는 새 Reject Audit을 만들지 않는다.
 
-안전 Command의 Audit 저장 실패는 Command 실패다. P0 Audit는 Application-level append-only이며 암호학적 Tamper Evidence는 P1 검토다.
+안전 Command의 Audit 저장 실패는 Command 실패다.
+
+
+`POLICY_CONFIRMATION_RECORDED`는 `confirmation_receipt_id`, `interrupt_id`, `confirmation_kind(SCOPE_EXPANSION|DUPLICATE_OVERRIDE|CONFLICT_OVERRIDE)`, `decision(APPROVED|DECLINED)`, `decision_context_hash`, 관련 Run·Resource/Route ID만 allowlist로 기록한다. 질문/응답 원문과 Google 본문은 기록하지 않는다. APPROVED Audit은 LangGraph Checkpoint의 `PolicyConfirmationReceiptV1`과 동일 ID/Context Hash를 가져 Approval Snapshot이 참조할 수 있어야 한다.
+ P0 Audit는 Application-level append-only이며 암호학적 Tamper Evidence는 P1 검토다.
 
 ## 7. Sanitization
 
@@ -241,7 +246,10 @@ grader_version
 ```text
 llm_call_count
 provider_http_request_count
-google_api_call_count
+mcp_tool_call_count
+mcp_tool_call_count
+mcp_read_tool_call_count
+google_provider_api_call_count
 input_token_count
 output_token_count
 cost_usd
@@ -255,6 +263,10 @@ semantic_task_pass?
 business_task_success?
 score_denominator_group?   # CORE | STRESS | HOLDOUT
 ```
+
+- 제품 수준의 Google 접근량은 `mcp_tool_call_count`와 `mcp_read_tool_call_count`로 본다.
+- `google_provider_api_call_count`는 Google Work MCP Server 내부 Adapter가 실제 Provider HTTP/API 요청을 수행한 횟수다. Pagination·N+1·Provider 효율을 관찰하기 위한 하위 지표이며 Core의 직접 Provider API 호출을 의미하지 않는다.
+- Core에서 Provider API/SDK 직접 호출이 탐지되면 별도 효율 지표가 아니라 아키텍처 계약 위반으로 기록한다.
 
 규칙:
 
@@ -379,7 +391,8 @@ llm_call_id
 input_token_count
 output_token_count
 tool_call_count
-google_read_call_count
+mcp_tool_call_count
+mcp_read_tool_call_count
 communication_token_count
 required_field_preservation_rate?
 evidence_id_preservation_rate?
@@ -391,7 +404,7 @@ contradiction_introduced?
 - `agent_invocation_count`와 `llm_call_count`를 별도 집계한다.
 - Local State 원문, Prompt 원문, Completion 원문, Google 원문 전체는 Trace에 저장하지 않는다.
 - Handoff는 Agent 간 자유 대화가 아니라 Parent Graph의 Typed Result 이동으로 기록한다.
-- E06-A는 Profile의 실제 native 비용을 측정한다. E06-B는 `CONTEXT_READY_V1`의 동일 `context_snapshot_id`에서 post-retrieval decomposition 차이를 비교하며 Google Read 호출은 0이어야 한다.
+- E06-A는 Profile의 실제 native 비용을 측정한다. E06-B는 `CONTEXT_READY_V1`의 동일 `context_snapshot_id`에서 post-retrieval decomposition 차이를 비교하며 MCP Read Tool 호출은 0이어야 한다.
 - 평가 실행은 `evaluation_environment_hash`로 model/runtime parameter, hardware profile, concurrency, timeout, fixture, Tool Schema, Policy, Prompt semantic bundle, Graph Profile을 함께 잠근다.
 
 ## Claim·Attachment 관측 계약

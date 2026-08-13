@@ -2,7 +2,7 @@
 
 > **문서 기준:** 2026-08-10 Claim V2·Attachment·Task 날짜 의미 설계 결정을 제품 목표·범위의 기준으로 한다. 문서 간 충돌은 §1.1의 권위·책임 소유 규칙으로 판정하며, PRD가 다른 Concern의 전문 권위 계약을 임의로 덮어쓰지 않는다.
 >
-> **상태:** Draft v2.8 · **기준일:** 2026-08-10 · **대상:** P0 MVP
+> **상태:** Draft v2.9 · **기준일:** 2026-08-13 · **대상:** P0 MVP
 
 ## 0. 한눈에 보기
 
@@ -62,19 +62,56 @@ Graph Profile의 독립변수는 **Agent Subgraph 분해 수준**이다. `SINGLE
 
 ### 3.2 사용자 환경
 
-| 항목 | 기준 |
-|---|---|
-| 운영체제 | Windows 11 x64 우선 |
-| UI 실행 | 최신 Chrome·Microsoft Edge에서 로컬 React UI 실행 |
-| 실행 위치 | 사용자 로컬 PC |
-| 사용자 수 | 앱 인스턴스당 1명 |
-| Google 계정 | 동시에 1개 활성 계정 |
-| Frontend | React + TypeScript + Vite |
-| Local Agent API | FastAPI · `127.0.0.1` · REST Command + SSE Event |
-| 제품 실행 | Launcher가 Local Agent Service를 시작하고 브라우저를 연다 |
-| Agent | LangGraph |
-| Google 연동 | 로컬 MCP Server, `stdio` |
-| 저장 | SQLite + OS Keyring |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>항목</td>
+		<td>기준</td>
+	</tr>
+	<tr>
+		<td>운영체제</td>
+		<td>Windows 11 x64 우선</td>
+	</tr>
+	<tr>
+		<td>UI 실행</td>
+		<td>최신 Chrome·Microsoft Edge에서 로컬 React UI 실행</td>
+	</tr>
+	<tr>
+		<td>실행 위치</td>
+		<td>사용자 로컬 PC</td>
+	</tr>
+	<tr>
+		<td>사용자 수</td>
+		<td>앱 인스턴스당 1명</td>
+	</tr>
+	<tr>
+		<td>Google 계정</td>
+		<td>동시에 1개 활성 계정</td>
+	</tr>
+	<tr>
+		<td>Frontend</td>
+		<td>React + TypeScript + Vite</td>
+	</tr>
+	<tr>
+		<td>Local Agent API</td>
+		<td>FastAPI · `127.0.0.1` · REST Command + SSE Event</td>
+	</tr>
+	<tr>
+		<td>제품 실행</td>
+		<td>Launcher가 Local Agent Service를 시작하고 브라우저를 연다</td>
+	</tr>
+	<tr>
+		<td>Agent</td>
+		<td>LangGraph</td>
+	</tr>
+	<tr>
+		<td>Google 연동</td>
+		<td>로컬 MCP Server, `stdio`</td>
+	</tr>
+	<tr>
+		<td>저장</td>
+		<td>SQLite + OS Keyring</td>
+	</tr>
+</table>
 
 ## 4. 해결할 문제
 
@@ -158,103 +195,383 @@ Agent가 미완료 Task의 예정일, 관련 메일·사용자 요청의 실제 
 
 ### 9.1 초기 설정·인증
 
-| ID | 요구사항 | 완료 조건 |
-|---|---|---|
-| FR-001 | 앱은 최초 실행 시 설정 Wizard를 제공해야 한다. | 사용자는 OAuth Client JSON을 입력하지 않고 Google 로그인, LLM 모드, API Key, 기본 Calendar·Task List만 설정한다. |
-| FR-002 | 앱은 개발팀이 소유한 Desktop OAuth Client로 Google 계정을 연결해야 한다. | 사용자는 `Google로 로그인` 버튼을 누르고 Google 동의 화면에서 필요한 Scope를 승인한다. |
-| FR-003 | 앱은 동시에 하나의 Google 계정만 활성화해야 한다. | 계정 변경 시 기존 Credential을 해제하고 재인증한다. |
-| FR-004 | OAuth Refresh Token과 API Key를 SQLite나 로그에 저장하지 않아야 한다. | Secret이 OS Keyring 또는 Local Agent Process Memory에만 존재한다. |
-| FR-005 | 개발·스테이징·운영 OAuth 프로젝트를 분리해야 한다. | 팀 테스트 계정과 운영 사용자가 서로 다른 Google Cloud 프로젝트와 동의 화면을 사용한다. |
-| FR-006 | Launcher는 사용 가능한 동적 포트에서 Local Agent Service를 시작하고 Health Check를 완료한 뒤 React UI를 열어야 한다. | 사용자가 Python·포트·명령어를 직접 설정하지 않고 앱을 시작한다. |
-| FR-007 | React Frontend와 Local Agent Service는 호환 가능한 API Contract Version을 확인해야 한다. | Version 불일치 시 Agent 실행을 차단하고 재설치·업데이트 안내를 표시한다. |
-| FR-008 | 운영 빌드는 React 정적 파일과 Local API를 같은 `127.0.0.1` Origin에서 제공해야 한다. | 일반 웹사이트가 Local Agent Command를 임의 호출하지 못하도록 Host·Origin·Session 검증을 적용한다. |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ID</td>
+		<td>요구사항</td>
+		<td>완료 조건</td>
+	</tr>
+	<tr>
+		<td>FR-001</td>
+		<td>앱은 최초 실행 시 설정 Wizard를 제공해야 한다.</td>
+		<td>사용자는 OAuth Client JSON을 입력하지 않고 Google 로그인, LLM 모드, API Key, 기본 Calendar·Task List만 설정한다.</td>
+	</tr>
+	<tr>
+		<td>FR-002</td>
+		<td>앱은 개발팀이 소유한 Desktop OAuth Client로 Google 계정을 연결해야 한다.</td>
+		<td>사용자는 `Google로 로그인` 버튼을 누르고 Google 동의 화면에서 필요한 Scope를 승인한다.</td>
+	</tr>
+	<tr>
+		<td>FR-003</td>
+		<td>앱은 동시에 하나의 Google 계정만 활성화해야 한다.</td>
+		<td>계정 변경 시 기존 Credential을 해제하고 재인증한다.</td>
+	</tr>
+	<tr>
+		<td>FR-004</td>
+		<td>OAuth Refresh Token과 API Key를 SQLite나 로그에 저장하지 않아야 한다.</td>
+		<td>Secret이 OS Keyring 또는 Local Agent Process Memory에만 존재한다.</td>
+	</tr>
+	<tr>
+		<td>FR-005</td>
+		<td>개발·스테이징·운영 OAuth 프로젝트를 분리해야 한다.</td>
+		<td>팀 테스트 계정과 운영 사용자가 서로 다른 Google Cloud 프로젝트와 동의 화면을 사용한다.</td>
+	</tr>
+	<tr>
+		<td>FR-006</td>
+		<td>Launcher는 사용 가능한 동적 포트에서 Local Agent Service를 시작하고 Health Check를 완료한 뒤 React UI를 열어야 한다.</td>
+		<td>사용자가 Python·포트·명령어를 직접 설정하지 않고 앱을 시작한다.</td>
+	</tr>
+	<tr>
+		<td>FR-007</td>
+		<td>React Frontend와 Local Agent Service는 호환 가능한 API Contract Version을 확인해야 한다.</td>
+		<td>Version 불일치 시 Agent 실행을 차단하고 재설치·업데이트 안내를 표시한다.</td>
+	</tr>
+	<tr>
+		<td>FR-008</td>
+		<td>운영 빌드는 React 정적 파일과 Local API를 같은 `127.0.0.1` Origin에서 제공해야 한다.</td>
+		<td>일반 웹사이트가 Local Agent Command를 임의 호출하지 못하도록 Host·Origin·Session 검증을 적용한다.</td>
+	</tr>
+</table>
 
 ### 9.2 추론 Runtime
 
-| ID | 요구사항 | 완료 조건 |
-|---|---|---|
-| FR-010 | 앱은 시작 시 Ollama 기반 Local LLM 사용 가능 여부를 진단해야 한다. | Ollama 연결, 승인 Model 존재, 최소 하드웨어, 테스트 추론 결과를 기록한다. 앱은 Ollama·Model을 설치·시작·종료·업데이트하지 않는다. |
-| FR-011 | CPU-only 또는 GPU 기준 미달 PC는 API LLM으로 고정해야 한다. | Local 옵션과 Ollama·Model 설정·진단 UI가 노출되지 않는다. |
-| FR-012 | P0의 검증된 GPU 환경에서는 AUTO, LOCAL_GPU, API_LLM을 제공해야 한다. | 사용자가 모드를 선택하고 현재 실제 실행 모드를 확인할 수 있다. |
-| FR-013 | AUTO는 기술적 Local 실패 시 API로 최대 1회 fallback할 수 있어야 한다. | 외부 LLM 전송 동의가 있을 때만 fallback하며 이유와 사용된 Provider가 Trace에 기록된다. |
-| FR-014 | 명시적 LOCAL_GPU 선택 시 자동 API 전환을 금지해야 한다. | 오류 화면에서 사용자가 전환을 직접 승인한다. |
-| FR-015 | Local LLM 제품 Runtime은 Ollama로 고정해야 한다. | 제품 코드에 Ollama Adapter가 기본 Local Provider로 등록되고 다른 Runtime은 제품 설정에 노출되지 않는다. |
-| FR-016 | API 전용 배포와 Local 지원 배포를 분리해야 한다. | API_ONLY는 Ollama 의존성을 포함하지 않는다. LOCAL_CAPABLE은 Adapter·진단·승인 Model Manifest만 포함하며 Ollama·Model 자체는 Bundle하지 않는다. |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ID</td>
+		<td>요구사항</td>
+		<td>완료 조건</td>
+	</tr>
+	<tr>
+		<td>FR-010</td>
+		<td>앱은 시작 시 Ollama 기반 Local LLM 사용 가능 여부를 진단해야 한다.</td>
+		<td>Ollama 연결, 승인 Model 존재, 최소 하드웨어, 테스트 추론 결과를 기록한다. 앱은 Ollama·Model을 설치·시작·종료·업데이트하지 않는다.</td>
+	</tr>
+	<tr>
+		<td>FR-011</td>
+		<td>CPU-only 또는 GPU 기준 미달 PC는 API LLM으로 고정해야 한다.</td>
+		<td>Local 옵션과 Ollama·Model 설정·진단 UI가 노출되지 않는다.</td>
+	</tr>
+	<tr>
+		<td>FR-012</td>
+		<td>P0의 검증된 GPU 환경에서는 AUTO, LOCAL_GPU, API_LLM을 제공해야 한다.</td>
+		<td>사용자가 모드를 선택하고 현재 실제 실행 모드를 확인할 수 있다.</td>
+	</tr>
+	<tr>
+		<td>FR-013</td>
+		<td>AUTO는 기술적 Local 실패 시 API로 최대 1회 fallback할 수 있어야 한다.</td>
+		<td>외부 LLM 전송 동의가 있을 때만 fallback하며 이유와 사용된 Provider가 Trace에 기록된다.</td>
+	</tr>
+	<tr>
+		<td>FR-014</td>
+		<td>명시적 LOCAL_GPU 선택 시 자동 API 전환을 금지해야 한다.</td>
+		<td>오류 화면에서 사용자가 전환을 직접 승인한다.</td>
+	</tr>
+	<tr>
+		<td>FR-015</td>
+		<td>Local LLM 제품 Runtime은 Ollama로 고정해야 한다.</td>
+		<td>제품 코드에 Ollama Adapter가 기본 Local Provider로 등록되고 다른 Runtime은 제품 설정에 노출되지 않는다.</td>
+	</tr>
+	<tr>
+		<td>FR-016</td>
+		<td>API 전용 배포와 Local 지원 배포를 분리해야 한다.</td>
+		<td>API_ONLY는 Ollama 의존성을 포함하지 않는다. LOCAL_CAPABLE은 Adapter·진단·승인 Model Manifest만 포함하며 Ollama·Model 자체는 Bundle하지 않는다.</td>
+	</tr>
+</table>
 
 ### 9.3 요청·Context·Retrieval
 
-| ID | 요구사항 | 완료 조건 |
-|---|---|---|
-| FR-020 | 앱은 자연어 요청에서 목표와 완료 조건을 구조화해야 한다. | 구조화 결과가 Schema Validation을 통과한다. |
-| FR-021 | Agent는 요청별 필요한 Source를 선택해야 한다. | Gmail·Tasks·Calendar 전체를 무조건 조회하지 않는다. |
-| FR-022 | 각 Source는 공식 Source-native 검색과 조회를 사용해야 한다. | 검색 Query와 조회 범위가 Trace에 남는다. |
-| FR-023 | 검색 결과는 공통 WorkItem·Evidence 형태로 정규화해야 한다. | 원본 Resource ID와 Source가 보존된다. |
-| FR-024 | Context가 부족하면 최대 2회까지 재검색해야 한다. | 재검색 이유와 Query 변경이 기록된다. |
-| FR-025 | 모호한 인물·기간·업무가 있으면 사용자 확인을 요청해야 한다. | 임의 선택 없이 후보와 차이를 제시한다. |
-| FR-026 | 긴 Gmail Thread는 인용·서명 제거와 Chunking을 지원해야 한다. | 핵심 본문과 원본 링크를 함께 유지한다. |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ID</td>
+		<td>요구사항</td>
+		<td>완료 조건</td>
+	</tr>
+	<tr>
+		<td>FR-020</td>
+		<td>앱은 자연어 요청에서 목표와 완료 조건을 구조화해야 한다.</td>
+		<td>구조화 결과가 Schema Validation을 통과한다.</td>
+	</tr>
+	<tr>
+		<td>FR-021</td>
+		<td>Agent는 요청별 필요한 Source를 선택해야 한다.</td>
+		<td>Gmail·Tasks·Calendar 전체를 무조건 조회하지 않는다.</td>
+	</tr>
+	<tr>
+		<td>FR-022</td>
+		<td>각 Source는 공식 Source-native 검색과 조회를 사용해야 한다.</td>
+		<td>검색 Query와 조회 범위가 Trace에 남는다.</td>
+	</tr>
+	<tr>
+		<td>FR-023</td>
+		<td>검색 결과는 공통 WorkItem·Evidence 형태로 정규화해야 한다.</td>
+		<td>원본 Resource ID와 Source가 보존된다.</td>
+	</tr>
+	<tr>
+		<td>FR-024</td>
+		<td>Context가 부족하면 최대 2회까지 재검색해야 한다.</td>
+		<td>재검색 이유와 Query 변경이 기록된다.</td>
+	</tr>
+	<tr>
+		<td>FR-025</td>
+		<td>모호한 인물·기간·업무가 있으면 사용자 확인을 요청해야 한다.</td>
+		<td>임의 선택 없이 후보와 차이를 제시한다.</td>
+	</tr>
+	<tr>
+		<td>FR-026</td>
+		<td>긴 Gmail Thread는 인용·서명 제거와 Chunking을 지원해야 한다.</td>
+		<td>핵심 본문과 원본 링크를 함께 유지한다.</td>
+	</tr>
+</table>
 
 ### 9.4 분석·계획
 
-| ID | 요구사항 | 완료 조건 |
-|---|---|---|
-| FR-030 | Agent는 메일·Task·Event의 관계를 Evidence 기반으로 연결해야 한다. | 각 연결에 근거 Resource가 포함된다. |
-| FR-031 | Agent는 Task 중복과 Calendar 충돌을 검사해야 한다. | 차단 또는 경고 사유가 사용자에게 표시된다. |
-| FR-032 | Agent는 업무 가능성을 가능·위험·불가능으로 분류해야 한다. | 실제 업무 마감은 Gmail·사용자 요청·Evidence에서, 수행 예정일은 Google Task 예정일에서 구분해 예상 시간·가용 Slot 근거와 함께 제시한다. |
-| FR-033 | Agent는 Action을 DAG로 생성해야 한다. | 종속·독립 Action이 구분된다. |
-| FR-034 | Action은 Tool, Arguments, Evidence, Risk, Expected Result를 포함해야 한다. | 승인 화면에서 모든 필드를 검토할 수 있다. |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ID</td>
+		<td>요구사항</td>
+		<td>완료 조건</td>
+	</tr>
+	<tr>
+		<td>FR-030</td>
+		<td>Agent는 메일·Task·Event의 관계를 Evidence 기반으로 연결해야 한다.</td>
+		<td>각 연결에 근거 Resource가 포함된다.</td>
+	</tr>
+	<tr>
+		<td>FR-031</td>
+		<td>Agent는 Task 중복과 Calendar 충돌을 검사해야 한다.</td>
+		<td>차단 또는 경고 사유가 사용자에게 표시된다.</td>
+	</tr>
+	<tr>
+		<td>FR-032</td>
+		<td>Agent는 업무 가능성을 가능·위험·불가능으로 분류해야 한다.</td>
+		<td>실제 업무 마감은 Gmail·사용자 요청·Evidence에서, 수행 예정일은 Google Task 예정일에서 구분해 예상 시간·가용 Slot 근거와 함께 제시한다.</td>
+	</tr>
+	<tr>
+		<td>FR-033</td>
+		<td>Agent는 Action을 DAG로 생성해야 한다.</td>
+		<td>종속·독립 Action이 구분된다.</td>
+	</tr>
+	<tr>
+		<td>FR-034</td>
+		<td>Action은 Tool, Arguments, Evidence, Risk, Expected Result를 포함해야 한다.</td>
+		<td>승인 화면에서 모든 필드를 검토할 수 있다.</td>
+	</tr>
+</table>
 
 ### 9.5 승인·수정
 
-| ID | 요구사항 | 완료 조건 |
-|---|---|---|
-| FR-040 | 모든 쓰기 Action은 실행 전에 사용자 승인을 받아야 한다. | 승인 기록이 없으면 Tool 호출이 차단된다. |
-| FR-041 | 사용자는 전체 승인, 일부 승인, 수정, 거절을 할 수 있어야 한다. | Action별 결정 상태가 저장된다. |
-| FR-042 | 사용자가 Arguments를 수정하면 Schema·Policy·중복·충돌을 다시 검사해야 한다. | 재검증 완료 전 실행 버튼이 비활성화된다. |
-| FR-043 | 승인된 Arguments는 Canonical JSON Hash로 고정해야 한다. | 실행 직전 Hash 불일치 시 차단된다. |
-| FR-044 | 승인은 일정 시간 경과 또는 원본 Resource 변경 시 만료되어야 한다. | 만료 시 재조회와 재승인을 요구한다. |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ID</td>
+		<td>요구사항</td>
+		<td>완료 조건</td>
+	</tr>
+	<tr>
+		<td>FR-040</td>
+		<td>모든 쓰기 Action은 실행 전에 사용자 승인을 받아야 한다.</td>
+		<td>승인 기록이 없으면 Tool 호출이 차단된다.</td>
+	</tr>
+	<tr>
+		<td>FR-041</td>
+		<td>사용자는 전체 승인, 일부 승인, 수정, 거절을 할 수 있어야 한다.</td>
+		<td>Action별 결정 상태가 저장된다.</td>
+	</tr>
+	<tr>
+		<td>FR-042</td>
+		<td>사용자가 Arguments를 수정하면 Schema·Policy·중복·충돌을 다시 검사해야 한다.</td>
+		<td>재검증 완료 전 실행 버튼이 비활성화된다.</td>
+	</tr>
+	<tr>
+		<td>FR-043</td>
+		<td>승인된 Arguments는 Canonical JSON Hash로 고정해야 한다.</td>
+		<td>실행 직전 Hash 불일치 시 차단된다.</td>
+	</tr>
+	<tr>
+		<td>FR-044</td>
+		<td>승인은 일정 시간 경과 또는 원본 Resource 변경 시 만료되어야 한다.</td>
+		<td>만료 시 재조회와 재승인을 요구한다.</td>
+	</tr>
+</table>
 
 ### 9.6 실행·검증·복구
 
-| ID | 요구사항 | 완료 조건 |
-|---|---|---|
-| FR-050 | 승인된 Action만 MCP Write Tool로 실행해야 한다. | MCP Server가 Approval Token과 Hash를 검증한다. |
-| FR-051 | Gmail Draft, Task, Calendar Event 생성·수정을 지원해야 한다. | 정책상 허용된 필드만 변경된다. |
-| FR-052 | 모든 쓰기 Action은 실행 후 Effect별 결정적 검증을 수행해야 한다. | CREATE·UPDATE는 GET 비교, DELETE는 대상 부재/삭제 상태, SEND는 Sent 결과 조회가 저장된다. |
-| FR-053 | 정상화 가능한 차이와 실제 불일치를 구분해야 한다. | 공백·Timezone 등은 정규화하고 핵심 필드 차이는 MISMATCH로 처리한다. |
-| FR-054 | 부분 실패 시 성공 Action을 보존하고 실패 Action만 재시도해야 한다. | 실행 결과와 종속 Action 차단 상태가 표시된다. |
-| FR-055 | 브라우저 새로고침, SSE 재연결 또는 앱 재시작 후 Checkpoint와 Domain Store에서 재개해야 한다. | 동일 Thread ID로 승인·실행 상태를 복원하며 Client State만으로 실행 사실을 판단하지 않는다. |
-| FR-056 | Run 진행 상태는 재연결 가능한 SSE Event Stream으로 전달해야 한다. | 연결이 끊기면 마지막 Event Cursor 이후 재구독하거나 현재 Run Snapshot을 다시 조회한다. |
-| FR-057 | 모든 변경 Command는 Command ID와 대상 Version을 포함해야 한다. | 네트워크 재시도와 중복 클릭이 같은 Domain Transition을 두 번 적용하지 않는다. |
-| FR-058 | 상태 변경 Command는 영속 Command Receipt로 중복 적용을 방지해야 한다. | 같은 `command_id`·같은 요청은 기존 결과를 반환하고, 같은 ID·다른 요청은 차단한다. |
-| FR-059 | Google Write는 실행 Claim과 결합된 1회용 실행 증명을 MCP가 검증해야 한다. | 승인·Hash·Attempt·Service Instance가 일치하지 않으면 Tool 호출을 차단한다. |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ID</td>
+		<td>요구사항</td>
+		<td>완료 조건</td>
+	</tr>
+	<tr>
+		<td>FR-050</td>
+		<td>승인된 Action만 MCP Write Tool로 실행해야 한다.</td>
+		<td>MCP Server가 Approval Token과 Hash를 검증한다.</td>
+	</tr>
+	<tr>
+		<td>FR-051</td>
+		<td>Gmail Draft, Task, Calendar Event 생성·수정을 지원해야 한다.</td>
+		<td>정책상 허용된 필드만 변경된다.</td>
+	</tr>
+	<tr>
+		<td>FR-052</td>
+		<td>모든 쓰기 Action은 실행 후 Effect별 결정적 검증을 수행해야 한다.</td>
+		<td>CREATE·UPDATE는 GET 비교, DELETE는 대상 부재/삭제 상태, SEND는 Sent 결과 조회가 저장된다.</td>
+	</tr>
+	<tr>
+		<td>FR-053</td>
+		<td>정상화 가능한 차이와 실제 불일치를 구분해야 한다.</td>
+		<td>공백·Timezone 등은 정규화하고 핵심 필드 차이는 MISMATCH로 처리한다.</td>
+	</tr>
+	<tr>
+		<td>FR-054</td>
+		<td>부분 실패 시 성공 Action을 보존하고 실패 Action만 재시도해야 한다.</td>
+		<td>실행 결과와 종속 Action 차단 상태가 표시된다.</td>
+	</tr>
+	<tr>
+		<td>FR-055</td>
+		<td>브라우저 새로고침, SSE 재연결 또는 앱 재시작 후 Checkpoint와 Domain Store에서 재개해야 한다.</td>
+		<td>동일 Thread ID로 승인·실행 상태를 복원하며 Client State만으로 실행 사실을 판단하지 않는다.</td>
+	</tr>
+	<tr>
+		<td>FR-056</td>
+		<td>Run 진행 상태는 재연결 가능한 SSE Event Stream으로 전달해야 한다.</td>
+		<td>연결이 끊기면 마지막 Event Cursor 이후 재구독하거나 현재 Run Snapshot을 다시 조회한다.</td>
+	</tr>
+	<tr>
+		<td>FR-057</td>
+		<td>모든 변경 Command는 Command ID와 대상 Version을 포함해야 한다.</td>
+		<td>네트워크 재시도와 중복 클릭이 같은 Domain Transition을 두 번 적용하지 않는다.</td>
+	</tr>
+	<tr>
+		<td>FR-058</td>
+		<td>상태 변경 Command는 영속 Command Receipt로 중복 적용을 방지해야 한다.</td>
+		<td>같은 `command_id`·같은 요청은 기존 결과를 반환하고, 같은 ID·다른 요청은 차단한다.</td>
+	</tr>
+	<tr>
+		<td>FR-059</td>
+		<td>Google Write는 실행 Claim과 결합된 1회용 실행 증명을 MCP가 검증해야 한다.</td>
+		<td>승인·Hash·Attempt·Service Instance가 일치하지 않으면 Tool 호출을 차단한다.</td>
+	</tr>
+</table>
 
 ### 9.7 관측성·실험
 
-| ID | 요구사항 | 완료 조건 |
-|---|---|---|
-| FR-060 | Run·Node·Tool·Action Trace를 로컬에 기록해야 한다. | 민감정보를 제외한 상태·지연·오류·모델 정보가 조회된다. |
-| FR-061 | 제품 Runtime과 Experiment Runner를 분리해야 한다. | 제품 UI에서 실험용 모델·Prompt·Graph 변경 기능이 보이지 않는다. |
-| FR-062 | 고정 평가셋으로 API 모델, GPU 모델, Graph, Retrieval을 비교해야 한다. | 동일 Dataset과 Policy로 결과 보고서를 생성한다. |
-| FR-063 | 안전 기준 미달 Local 모델은 제품 기본 모델로 채택하지 않아야 한다. | P0 Local 기능은 유지하되 해당 후보는 배포 Config에서 제외된다. |
-| FR-064 | API LLM 실험은 호출량·Token·비용·동시성 제한을 가져야 한다. | 한도 초과 전에 Runner가 중단되고 소비량과 중단 사유를 보고한다. |
-| FR-065 | sLLM 실험과 제품 배포를 분리해야 한다. | GPU 실험 산출물·후보 모델은 일반 배포에 포함되지 않고 Release Gate를 통과한 모델 Config만 승격된다. |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ID</td>
+		<td>요구사항</td>
+		<td>완료 조건</td>
+	</tr>
+	<tr>
+		<td>FR-060</td>
+		<td>Run·Node·Tool·Action Trace를 로컬에 기록해야 한다.</td>
+		<td>민감정보를 제외한 상태·지연·오류·모델 정보가 조회된다.</td>
+	</tr>
+	<tr>
+		<td>FR-061</td>
+		<td>제품 Runtime과 Experiment Runner를 분리해야 한다.</td>
+		<td>제품 UI에서 실험용 모델·Prompt·Graph 변경 기능이 보이지 않는다.</td>
+	</tr>
+	<tr>
+		<td>FR-062</td>
+		<td>고정 평가셋으로 API 모델, GPU 모델, Graph, Retrieval을 비교해야 한다.</td>
+		<td>동일 Dataset과 Policy로 결과 보고서를 생성한다.</td>
+	</tr>
+	<tr>
+		<td>FR-063</td>
+		<td>안전 기준 미달 Local 모델은 제품 기본 모델로 채택하지 않아야 한다.</td>
+		<td>P0 Local 기능은 유지하되 해당 후보는 배포 Config에서 제외된다.</td>
+	</tr>
+	<tr>
+		<td>FR-064</td>
+		<td>API LLM 실험은 호출량·Token·비용·동시성 제한을 가져야 한다.</td>
+		<td>한도 초과 전에 Runner가 중단되고 소비량과 중단 사유를 보고한다.</td>
+	</tr>
+	<tr>
+		<td>FR-065</td>
+		<td>sLLM 실험과 제품 배포를 분리해야 한다.</td>
+		<td>GPU 실험 산출물·후보 모델은 일반 배포에 포함되지 않고 Release Gate를 통과한 모델 Config만 승격된다.</td>
+	</tr>
+</table>
 
 ## 10. 비기능 요구사항
 
-| ID | 분류 | 요구사항 |
-|---|---|---|
-| NFR-001 | 보안 | Local Agent Service는 `127.0.0.1`에만 바인딩하고 LAN·Public Interface에 노출하지 않는다. |
-| NFR-002 | 보안 | OAuth Token·API Key·원문 Credential은 로그와 SQLite에 기록하지 않는다. |
-| NFR-003 | 개인정보 | API LLM 전송 전 선택된 Context Source와 범위를 사용자에게 고지한다. |
-| NFR-004 | 신뢰성 | 쓰기 Action의 승인 준수율, 금지 작업 차단률, 검증 수행률은 100%여야 한다. |
-| NFR-005 | 복구성 | Google API 재시도 중복으로 동일 Resource가 반복 생성되지 않아야 한다. |
-| NFR-006 | 성능 | 일반 Run은 사용자에게 단계별 진행 상태와 취소 기능을 제공한다. |
-| NFR-007 | 호환성 | P0는 Windows 11 x64와 최신 Chrome·Microsoft Edge를 공식 지원한다. React UI는 FastAPI가 제공하는 로컬 Origin에서 동작한다. |
-| NFR-008 | 유지보수 | Tool 입력·출력과 LLM Structured Output은 Pydantic Schema로 관리한다. |
-| NFR-009 | 테스트성 | Google Client, LLM Provider, MCP Tool은 Mock 가능한 인터페이스를 제공한다. |
-| NFR-010 | 감사 | 승인·실행·검증 이벤트는 append-only Audit Log에 기록한다. |
-| NFR-011 | 비용·쿼터 | API 실험 Runner는 Provider별 RPM·TPM·요청 수·비용 한도를 적용하고 429 응답을 제한적으로 처리한다. |
-| NFR-012 | 배포성 | GPU가 없는 PC는 Ollama 없이 API_ONLY 프로필을 설치·실행할 수 있어야 한다. |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ID</td>
+		<td>분류</td>
+		<td>요구사항</td>
+	</tr>
+	<tr>
+		<td>NFR-001</td>
+		<td>보안</td>
+		<td>Local Agent Service는 `127.0.0.1`에만 바인딩하고 LAN·Public Interface에 노출하지 않는다.</td>
+	</tr>
+	<tr>
+		<td>NFR-002</td>
+		<td>보안</td>
+		<td>OAuth Token·API Key·원문 Credential은 로그와 SQLite에 기록하지 않는다.</td>
+	</tr>
+	<tr>
+		<td>NFR-003</td>
+		<td>개인정보</td>
+		<td>API LLM 전송 전 선택된 Context Source와 범위를 사용자에게 고지한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-004</td>
+		<td>신뢰성</td>
+		<td>쓰기 Action의 승인 준수율, 금지 작업 차단률, 검증 수행률은 100%여야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-005</td>
+		<td>복구성</td>
+		<td>Google API 재시도 중복으로 동일 Resource가 반복 생성되지 않아야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-006</td>
+		<td>성능</td>
+		<td>일반 Run은 사용자에게 단계별 진행 상태와 취소 기능을 제공한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-007</td>
+		<td>호환성</td>
+		<td>P0는 Windows 11 x64와 최신 Chrome·Microsoft Edge를 공식 지원한다. React UI는 FastAPI가 제공하는 로컬 Origin에서 동작한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-008</td>
+		<td>유지보수</td>
+		<td>Tool 입력·출력과 LLM Structured Output은 Pydantic Schema로 관리한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-009</td>
+		<td>테스트성</td>
+		<td>MCP Client/Transport, MCP 내부 Google Provider Adapter, LLM Provider는 각각 Mock 가능한 인터페이스를 제공한다. 제품 Core에는 MCP를 우회하는 Google Provider Client 경로를 두지 않는다.</td>
+	</tr>
+	<tr>
+		<td>NFR-010</td>
+		<td>감사</td>
+		<td>승인·실행·검증 이벤트는 append-only Audit Log에 기록한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-011</td>
+		<td>비용·쿼터</td>
+		<td>API 실험 Runner는 Provider별 RPM·TPM·요청 수·비용 한도를 적용하고 429 응답을 제한적으로 처리한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-012</td>
+		<td>배포성</td>
+		<td>GPU가 없는 PC는 Ollama 없이 API_ONLY 프로필을 설치·실행할 수 있어야 한다.</td>
+	</tr>
+</table>
 
 ## 11. 데이터 요구사항
 
@@ -301,24 +618,65 @@ Agent가 미완료 Task의 예정일, 관련 메일·사용자 요청의 실제 
 
 ### 안전 Gate
 
-| 지표 | 기준 |
-|---|---:|
-| Approval Compliance | 100% |
-| Forbidden Action Block | 100% |
-| Write Verification | 100% |
-| Approval Argument Integrity | 100% |
-| Credential Leakage | 0건 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>지표</td>
+		<td>기준</td>
+	</tr>
+	<tr>
+		<td>Approval Compliance</td>
+		<td>100%</td>
+	</tr>
+	<tr>
+		<td>Forbidden Action Block</td>
+		<td>100%</td>
+	</tr>
+	<tr>
+		<td>Write Verification</td>
+		<td>100%</td>
+	</tr>
+	<tr>
+		<td>Approval Argument Integrity</td>
+		<td>100%</td>
+	</tr>
+	<tr>
+		<td>Credential Leakage</td>
+		<td>0건</td>
+	</tr>
+</table>
 
 ### 품질 Gate
 
-| 지표 | 목표 |
-|---|---:|
-| Source Selection | 90% 이상 |
-| Tool Selection | 90% 이상 |
-| Tool Argument Accuracy | 90% 이상 |
-| Business Task Success (BTS) | Core 기준 80% 이상 |
-| Duplicate Creation | 5% 이하 |
-| Calendar Conflict | 3% 이하 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>지표</td>
+		<td>목표</td>
+	</tr>
+	<tr>
+		<td>Source Selection</td>
+		<td>90% 이상</td>
+	</tr>
+	<tr>
+		<td>Tool Selection</td>
+		<td>90% 이상</td>
+	</tr>
+	<tr>
+		<td>Tool Argument Accuracy</td>
+		<td>90% 이상</td>
+	</tr>
+	<tr>
+		<td>Business Task Success (BTS)</td>
+		<td>Core 기준 80% 이상</td>
+	</tr>
+	<tr>
+		<td>Duplicate Creation</td>
+		<td>5% 이하</td>
+	</tr>
+	<tr>
+		<td>Calendar Conflict</td>
+		<td>3% 이하</td>
+	</tr>
+</table>
 
 ## 14. 단계별 범위
 
@@ -468,7 +826,7 @@ Domain 상태 전이·SQLite·Command Receipt
 
 ### 19.2 사이드바 목록
 
-- Gmail은 최근 수신 순, Tasks는 configured/default Task List의 미완료 Task를 기본적으로 Google Tasks Provider 반환 순으로, Calendar Month View의 선택 날짜 Event 목록은 `startTime` 순으로 표시한다. Calendar 월력은 visible grid range 전체를 materialize하며 UI pagination을 사용하지 않는다. Tasks는 Provider batch 최대 100개를 UI 20개 page로 나누고 nextPageToken 기반 lazy continuation을 사용한다. 사용자가 날짜순을 선택한 경우에만 전체 미완료 Task를 materialize하여 `scheduled_date` 오름차순·날짜 없는 Task 후순위로 정렬하며, 이 결과는 별도 React Client Session Cache에 둔다.
+- Gmail은 최근 수신 순, Tasks는 미완료·예정일 임박 우선, Calendar는 가까운 예정 일정 순으로 표시한다.
 - Sidebar의 페이지 단위와 Source별 기본 조회 범위는 `01-A 기능 정의서`와 `07 Interface`의 Canonical Query 계약을 따른다.
 - 다음 페이지 이동 시 Google API에서 새 목록을 조회한다.
 - 이미 조회한 페이지는 React Client Session Cache에서 재사용하고 SQLite에는 영구 저장하지 않는다.
@@ -499,24 +857,93 @@ Domain 상태 전이·SQLite·Command Receipt
 
 이 절은 일반 SaaS 체크리스트 전체를 적용하는 것이 아니라, 로컬 단일 사용자·React·FastAPI Local Agent Service·SQLite·MCP `stdio` 구조에 실제로 필요한 안전성과 복구성 기준을 정의한다.
 
-| ID | 분류 | 요구사항 |
-|---|---|---|
-| NFR-013 | 입력 검증 | 사용자 입력, Google API 응답, LLM 출력, Resource ID·Page Token은 비신뢰 데이터로 취급하고 타입·길이·개수·날짜 범위·허용값을 중앙 Schema에서 검증해야 한다. |
-| NFR-014 | 출력 안전성 | Google·사용자·LLM 문자열을 Raw HTML로 렌더링하지 않고 안전한 Text·Markdown으로 표시해야 한다. 외부 링크는 허용 Scheme과 목적지를 검증해야 한다. |
-| NFR-015 | 오류 격리 | 사용자 오류 메시지와 기술 진단 정보를 분리하고 Stack Trace, SQL, 로컬 경로, Credential 상태 원문을 일반 화면에 노출하지 않아야 한다. |
-| NFR-016 | 로컬 노출면 | FastAPI Local Agent Service는 `127.0.0.1`의 동적 포트에만 바인딩한다. Host·Origin·Local Session 검증을 적용하고 원격 접속·Public Bind를 금지한다. |
-| NFR-017 | DB 동시성 | SQLite 쓰기는 Application의 단일 Write Coordination 경계를 통과하고, 조건부 상태 전이·UNIQUE Constraint·Idempotency로 중복 실행과 Race Condition을 차단해야 한다. |
-| NFR-018 | 트랜잭션 | DB Transaction은 짧게 유지하며 Google API·LLM·MCP 네트워크 호출 중 Transaction과 Write Lock을 유지하지 않아야 한다. |
-| NFR-019 | 데이터 무결성 | Foreign Key, UNIQUE, NOT NULL, CHECK Constraint와 허용된 상태 전이를 DB·Repository에서 강제해야 한다. 애플리케이션 검증만으로 무결성을 보장하지 않는다. |
-| NFR-020 | Migration·복구 | Schema Version, 순차 Migration, Migration 전 안전한 Backup, 실패 시 Rollback·Write 차단, 시작 시 DB 무결성 검사를 지원해야 한다. |
-| NFR-021 | 조회 성능 | 대화·메시지·Run·Audit처럼 증가하는 목록은 안정된 정렬키와 Cursor 기반 Pagination을 지원하고, Repository는 화면·Use Case 단위 Batch 조회로 N+1 호출을 방지해야 한다. |
-| NFR-022 | 외부 장애 격리 | Run별 Google·LLM 호출 수, 재검색, Retry, Context 크기, 실행 시간을 제한하고 연속 장애 시 새 호출을 일시 중단하는 Circuit 상태를 지원해야 한다. |
-| NFR-023 | 공급망 보안 | Dependency Lock, 취약점·Secret Scan, 배포 Artifact Hash, 지원 Runtime Version과 Ollama·제품 모델 Version 고정을 Release Gate로 관리해야 한다. |
-| NFR-024 | Backup 검증 | Backup 생성 성공만 확인하지 않고 테스트 환경에서 실제 Restore와 무결성 검사를 반복 검증해야 한다. |
-| NFR-025 | Local API 인증 | Launcher가 생성한 일회성 Bootstrap Secret으로 Local Session을 수립하고 Secret을 URL Query·로그·SQLite에 남기지 않아야 한다. |
-| NFR-026 | Same-origin UI | 운영 빌드는 React UI와 Local API를 같은 Origin에서 제공하며 임의 Origin 허용을 금지해야 한다. |
-| NFR-027 | Event 전달 | SSE는 UI 진행 상태와 식별자 중심으로 전달하고 OAuth Token·API Key·불필요한 원문을 포함하지 않아야 한다. |
-| NFR-028 | API 입력 검증 | REST Path·Body·Header·Cursor·Command ID를 중앙 Schema와 Allowlist로 검증해야 한다. |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ID</td>
+		<td>분류</td>
+		<td>요구사항</td>
+	</tr>
+	<tr>
+		<td>NFR-013</td>
+		<td>입력 검증</td>
+		<td>사용자 입력, Google API 응답, LLM 출력, Resource ID·Page Token은 비신뢰 데이터로 취급하고 타입·길이·개수·날짜 범위·허용값을 중앙 Schema에서 검증해야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-014</td>
+		<td>출력 안전성</td>
+		<td>Google·사용자·LLM 문자열을 Raw HTML로 렌더링하지 않고 안전한 Text·Markdown으로 표시해야 한다. 외부 링크는 허용 Scheme과 목적지를 검증해야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-015</td>
+		<td>오류 격리</td>
+		<td>사용자 오류 메시지와 기술 진단 정보를 분리하고 Stack Trace, SQL, 로컬 경로, Credential 상태 원문을 일반 화면에 노출하지 않아야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-016</td>
+		<td>로컬 노출면</td>
+		<td>FastAPI Local Agent Service는 `127.0.0.1`의 동적 포트에만 바인딩한다. Host·Origin·Local Session 검증을 적용하고 원격 접속·Public Bind를 금지한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-017</td>
+		<td>DB 동시성</td>
+		<td>SQLite 쓰기는 Application의 단일 Write Coordination 경계를 통과하고, 조건부 상태 전이·UNIQUE Constraint·Idempotency로 중복 실행과 Race Condition을 차단해야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-018</td>
+		<td>트랜잭션</td>
+		<td>DB Transaction은 짧게 유지하며 Google API·LLM·MCP 네트워크 호출 중 Transaction과 Write Lock을 유지하지 않아야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-019</td>
+		<td>데이터 무결성</td>
+		<td>Foreign Key, UNIQUE, NOT NULL, CHECK Constraint와 허용된 상태 전이를 DB·Repository에서 강제해야 한다. 애플리케이션 검증만으로 무결성을 보장하지 않는다.</td>
+	</tr>
+	<tr>
+		<td>NFR-020</td>
+		<td>Migration·복구</td>
+		<td>Schema Version, 순차 Migration, Migration 전 안전한 Backup, 실패 시 Rollback·Write 차단, 시작 시 DB 무결성 검사를 지원해야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-021</td>
+		<td>조회 성능</td>
+		<td>대화·메시지·Run·Audit처럼 증가하는 목록은 안정된 정렬키와 Cursor 기반 Pagination을 지원하고, Repository는 화면·Use Case 단위 Batch 조회로 N+1 호출을 방지해야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-022</td>
+		<td>외부 장애 격리</td>
+		<td>Run별 Google·LLM 호출 수, 재검색, Retry, Context 크기, 실행 시간을 제한하고 연속 장애 시 새 호출을 일시 중단하는 Circuit 상태를 지원해야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-023</td>
+		<td>공급망 보안</td>
+		<td>Dependency Lock, 취약점·Secret Scan, 배포 Artifact Hash, 지원 Runtime Version과 Ollama·제품 모델 Version 고정을 Release Gate로 관리해야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-024</td>
+		<td>Backup 검증</td>
+		<td>Backup 생성 성공만 확인하지 않고 테스트 환경에서 실제 Restore와 무결성 검사를 반복 검증해야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-025</td>
+		<td>Local API 인증</td>
+		<td>Launcher가 생성한 일회성 Bootstrap Secret으로 Local Session을 수립하고 Secret을 URL Query·로그·SQLite에 남기지 않아야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-026</td>
+		<td>Same-origin UI</td>
+		<td>운영 빌드는 React UI와 Local API를 같은 Origin에서 제공하며 임의 Origin 허용을 금지해야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-027</td>
+		<td>Event 전달</td>
+		<td>SSE는 UI 진행 상태와 식별자 중심으로 전달하고 OAuth Token·API Key·불필요한 원문을 포함하지 않아야 한다.</td>
+	</tr>
+	<tr>
+		<td>NFR-028</td>
+		<td>API 입력 검증</td>
+		<td>REST Path·Body·Header·Cursor·Command ID를 중앙 Schema와 Allowlist로 검증해야 한다.</td>
+	</tr>
+</table>
 
 ### 20.1 P0 적용 범위
 
@@ -540,7 +967,7 @@ Domain 상태 전이·SQLite·Command Receipt
 ## 21. Agent Workflow 제품 요구사항
 
 - P0 Agent Runtime은 결정적 Supervisor가 Agent Subgraph를 제어하는 평가 가능 계층형 Workflow를 사용한다.
-- 초기 Baseline은 요청 이해, API 탐색·수집, Context Retrieval, 업무 분석, 해결책·계획, 계획 검토의 최대 6개 전문 Agent Subgraph다.
+- 초기 `SIX_ROLE_BASELINE`은 Request Understanding, Tool Route, Retrieval, Work Analysis, Planning, Review의 6개 전문 Agent Subgraph다.
 - Agent Subgraph의 병합·분리는 `SINGLE_BASELINE(1)`, `THREE_STAGE(3)`, `SIX_ROLE_BASELINE(6)` 실험 대상이며 Release Graph는 평가 결과로 고정한다.
 - Supervisor는 현재 Workflow Phase, Agent Result, Domain Command Result와 호출 예산으로 다음 경로를 결정한다.
 - Agent 간 전달은 Versioned Structured Output과 Resource·Evidence ID Reference를 사용한다.
@@ -551,8 +978,12 @@ Domain 상태 전이·SQLite·Command Receipt
 ## 21-A. Agent Workflow Baseline 계약
 
 - 결정적 Supervisor + 최대 6개 전문 Agent Subgraph를 초기 Baseline으로 사용한다.
-- API 탐색·수집 Agent의 LLM Node는 최소 API 호출 전략과 Source·Page·상세 조회 예산을 제안하고, 같은 Subgraph의 결정적 Read Node가 검증된 Query·MCP Read를 수행해 `AcquisitionResult`까지 반환한다.
-- Context Retriever Agent는 수집된 데이터에서 필요한 Segment·Evidence만 선별하고 MCP를 직접 호출하지 않는다.
+- Main Graph State는 읽기 전용 `RunInput`을 기준점으로 `RequestIntent → ToolRoutePlan → RetrievalResult → WorkAnalysisResult → PlanningResult → PlanReviewResult`의 공식 Typed Result를 단계적으로 누적하며, Back-edge·Interrupt 제어 정보는 Typed `WorkflowSignal`로 분리한다.
+- Tool Route Subgraph가 IN Resource/Read Tool 범위와 OUT Resource/Effect/Tool을 한 번 확정한다. Resource·Effect 판단과 Registry Tool binding을 분리하고 후보가 하나면 결정적으로 선택한다. Retrieval·Planning은 이를 재선택하지 않는다.
+- Retrieval Subgraph는 고정 IN Route에서 Query 계획·결정적 Read·Run-scoped RAG·Evidence·Sufficiency를 수행하고 `RetrievalResult`를 반환한다.
+- Work Analysis는 `analysis_requirement=REQUIRED`이거나 ACTION 생성에 업무 사실·관계 해석이 필요한 경우만 실행하며 Tool·Arguments를 작성하지 않는다.
+- Planning은 고정 OUT Route의 Tool Schema에 맞는 Answer/Arguments를 작성하며 최종 Plan은 결정적 Assembler가 조립한다.
+- Agent Subgraph 내부 Node는 필요한 State Projection만 받고, Local candidate 전체를 Main State에 승격하지 않는다.
 - 일반 Retrieval 호출은 Domain Action Row를 만들지 않는다.
 - Answer-only Run, READ-only Plan, READ 실패와 Write Retry는 04·06의 Domain 계약을 따른다.
 - 승인 이후 LLM이 Tool·Arguments·대상 Resource를 변경할 수 없다.

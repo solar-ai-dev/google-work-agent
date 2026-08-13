@@ -1,6 +1,6 @@
 # 01-A. Google Work Agent 기능 정의서
 
-> **상태:** Draft v2.9 · **기준일:** 2026-08-10
+> **상태:** Draft v2.15 · **기준일:** 2026-08-13
 
 ## 1. 문서 목적
 
@@ -8,27 +8,77 @@
 
 ## 2. 기능 상태
 
-| 상태 | 의미 |
-|---|---|
-| P0 | MVP 필수 |
-| P1 | P0 안정화 후 추가 |
-| EXP | 실험 Runner에서 비교 후 제품 반영 |
-| OUT | 제품 범위 제외 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>상태</td>
+		<td>의미</td>
+	</tr>
+	<tr>
+		<td>P0</td>
+		<td>MVP 필수</td>
+	</tr>
+	<tr>
+		<td>P1</td>
+		<td>P0 안정화 후 추가</td>
+	</tr>
+	<tr>
+		<td>EXP</td>
+		<td>실험 Runner에서 비교 후 제품 반영</td>
+	</tr>
+	<tr>
+		<td>OUT</td>
+		<td>제품 범위 제외</td>
+	</tr>
+</table>
 
 ## 3. 기능 목록 요약
 
-| 영역 | 기능 |
-|---|---|
-| 설정 | 첫 실행, Google 로그인, OAuth 환경, Runtime 진단, 배포 프로필, 기본 Resource 선택 |
-| 요청 | 자연어 입력, 범위 지정, 실행 취소, Run 재개 |
-| Context | Source 선택, 검색, 정규화, Evidence, 재검색, Gmail 첨부파일 Metadata 조회·사용자 요청 시 다운로드 |
-| 분석 | 관계 연결, 중복, 충돌, 업무 가능성 |
-| 계획 | Action Plan, DAG, Draft 생성, 위험 표시 |
-| 승인 | 전체·부분 승인, 수정, 거절, 승인 만료 |
-| 실행 | MCP Tool 호출, Idempotency, 부분 실행, Gmail Draft·Send 첨부파일 전달 |
-| 검증 | GET 재조회, 필드 비교, Recovery |
-| 관측 | Trace, Audit, 오류 진단 |
-| 실험 | API 호출 예산 통제, 모델·Graph·Retrieval 비교, sLLM 실험 분리 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>영역</td>
+		<td>기능</td>
+	</tr>
+	<tr>
+		<td>설정</td>
+		<td>첫 실행, Google 로그인, OAuth 환경, Runtime 진단, 배포 프로필, 기본 Resource 선택</td>
+	</tr>
+	<tr>
+		<td>요청</td>
+		<td>자연어 입력, 범위 지정, 실행 취소, Run 재개</td>
+	</tr>
+	<tr>
+		<td>Context</td>
+		<td>Source 선택, 검색, 정규화, Evidence, 재검색, Gmail 첨부파일 Metadata 조회·사용자 요청 시 다운로드</td>
+	</tr>
+	<tr>
+		<td>분석</td>
+		<td>관계 연결, 중복, 충돌, 업무 가능성</td>
+	</tr>
+	<tr>
+		<td>계획</td>
+		<td>Action Plan, DAG, Draft 생성, 위험 표시</td>
+	</tr>
+	<tr>
+		<td>승인</td>
+		<td>전체·부분 승인, 수정, 거절, 승인 만료</td>
+	</tr>
+	<tr>
+		<td>실행</td>
+		<td>MCP Tool 호출, Idempotency, 부분 실행, Gmail Draft·Send 첨부파일 전달</td>
+	</tr>
+	<tr>
+		<td>검증</td>
+		<td>GET 재조회, 필드 비교, Recovery</td>
+	</tr>
+	<tr>
+		<td>관측</td>
+		<td>Trace, Audit, 오류 진단</td>
+	</tr>
+	<tr>
+		<td>실험</td>
+		<td>API 호출 예산 통제, 모델·Graph·Retrieval 비교, sLLM 실험 분리</td>
+	</tr>
+</table>
 
 ## 4. 초기 설정·Local Runtime 기능
 
@@ -145,22 +195,24 @@
 
 - **상태:** P0
 - **사용자 목적:** Gmail·Tasks·Calendar의 현재 항목을 목록으로 탐색한다.
-- **입력:** Source, 검색·필터 조건, Page Token.
-- **처리:** Gmail Sidebar UI/Browse는 페이지당 `SIDEBAR_PAGE_SIZE=20`개를 사용한다. 아직 표시하지 않을 intermediate page는 metadata 없이 다음 token만 조회하고 target page만 metadata를 요청한다. Tasks와 Calendar의 batch 정책은 각 source 계약을 유지하며 Agent Retrieval의 `RETRIEVAL_PAGE_SIZE=20`과 분리한다.
-- **Source 기본 범위:** Gmail은 `INBOX + PRIMARY` Thread, Tasks는 configured/default Task List의 **미완료 Task 전체**다. Calendar Sidebar Month View는 선택된 `monthAnchor`의 Event instance를 사용한다. 기존 Upcoming Browse의 사용자 Timezone 기준 현재 시각부터 **향후 90일** `singleEvents=true` 범위는 bounded Upcoming Browse의 기본 horizon으로 유지하며, Month View에 자동 적용하지 않는다.
-- **정렬:** Gmail 최근 수신 순, Tasks는 기본적으로 Google Tasks Provider 반환 순, Calendar Month View의 선택 날짜 Event 목록은 `startTime` 오름차순이다. Tasks 정렬 옵션은 `기본 순서`와 `날짜순`뿐이며 `기한순`은 제공하지 않는다. 사용자가 Tasks 날짜순을 명시한 경우에만 전체 materialization 뒤 `scheduled_date` 오름차순·날짜 없는 Task 후순위 정렬을 적용한다.
-- **출력:** Browse Read는 목록 Metadata와 다음 Local API opaque continuation token을 반환한다. Gmail·Calendar exact `total_count`는 Browse와 분리된 Count Read가 성공했을 때만 반환하며, Tasks exact `total_count`는 terminal Browse batch의 누적 수로만 확정한다. Provider Page Token은 source 내부 구현 세부사항이며 Local API public 의미로 보장하지 않는다.
-- **Count 규칙:** `total_count`는 정의된 scope 전체의 exact total이며 `loaded_count`·`visible_count`와 다르다. Gmail은 기본 scope Thread exact total, Calendar는 90일 Event instance exact total을 사용한다. Tasks 기본 Browse는 exact count를 위해 Provider 전체를 선순회하지 않으며, terminal batch까지 도달했을 때 누적 수를 exact `total_count`로 확정한다. Provider estimate·partial count·hard-coded count는 exact count로 표시하지 않는다.
-- **초기 Count 준비:** Sidebar 최초 진입 뒤 active Source와 무관하게 Gmail exact Count Read와 Tasks incomplete `tasks.list` 첫 Provider batch(최대 100개)를 독립적으로 시작한다. Calendar는 Source tab numeric badge나 startup exact Count Read를 사용하지 않는다. Tasks는 `/tasks/count`를 사용하지 않으며, incomplete 첫 batch가 terminal이면 그 수를 exact로, 다음 token이 있으면 `100+`로 표시한다. Tasks 데이터 준비 시 completed scope는 별도 background terminal materialization으로 exact `완료됨(N)` cache를 준비한다. incomplete 첫 batch와 completed terminal 결과는 해당 탭 첫 목록/완료됨 진입 때 React Client Session Cache에서 재사용한다.
-- **완료 조건:** 사용자가 원본 전체를 로컬 DB에 저장하지 않고 최신 목록을 탐색할 수 있다.
+- **입력:** Source, 검색·필터·정렬·상태 조건, opaque Local API continuation.
+- **처리:** Gmail·Tasks의 UI 표시 단위는 `SIDEBAR_PAGE_SIZE=20`이다. Agent Retrieval의 `RETRIEVAL_PAGE_SIZE=20`과 숫자가 같더라도 서로 독립된 계약이다. Calendar는 Month View visible grid를 사용하며 numeric pagination을 사용하지 않는다.
+- **Google 접근 경계:** Local API/Application은 Google Provider API를 직접 호출하지 않는다. 모든 Sidebar Browse·Count·Detail은 `MCP Client/Port → Google Work MCP Server → Provider Adapter`를 통과한다.
+- **Gmail:** 기본 Sidebar scope는 `INBOX + PRIMARY` Thread이고 visible page는 20개다. 이미 지나간 intermediate page는 필요한 최소 list metadata만 읽고, 실제 표시 page만 metadata를 hydrate한다.
+- **Tasks:** configured/default Task List의 미완료 Task를 Provider batch 최대 100개로 받아 React Client Session Cache에서 20개 UI page로 slice한다. 100개와 continuation이 있으면 처음에는 1..5 page만 알고, 알려진 마지막 page에서만 다음 batch를 append한다.
+- **Calendar:** configured timezone의 Month View visible grid를 `[gridStart, gridEnd)`로 materialize한다. 일반 Upcoming 조회의 bounded default는 현재부터 향후 90일이다.
+- **정렬:** Gmail 최근 수신 순, Tasks 미완료·예정일 임박 우선, Calendar 가까운 예정 일정 순.
+- **출력:** 목록 Metadata, opaque `next_page_token`, 마지막 조회 시각, 계약상 제공 가능한 count metadata.
+- **Count 규칙:** Gmail은 기본 scope의 exact count를 별도 Read로 계산할 수 있으나 Provider 추정값을 exact로 표시하지 않는다. Tasks badge는 incomplete batch의 terminal/continuation 상태에서 계산하고 terminal까지 materialize되면 exact total을 확정한다. Calendar tab에는 numeric badge가 없으며 startup·Calendar refresh에서 별도 Calendar Count Read를 호출하지 않는다.
+- **완료 조건:** 사용자가 Google 원본 전체를 로컬 DB에 저장하지 않고 최신 목록을 탐색할 수 있다.
 
 ### FN-015 Frontend 페이지 메모리 캐시
 
 - **상태:** P0
-- **처리:** 조회된 목록 페이지와 Local API continuation token을 Google 계정·Source·검색 조건·정렬·token 조합으로 React Client Session Cache에 저장한다.
-- **재사용:** 이미 조회한 페이지 또는 초기 Tasks count 준비에 사용한 첫 Provider batch로 돌아가면 API를 다시 호출하지 않고 메모리 결과를 표시한다.
-- **폐기:** UI 세션 종료, Google 계정 변경, 해당 Source 수동 새로고침 시 폐기한다.
-- **제한:** Frontend Page Cache는 승인·중복·충돌·검증 판단의 기준점이 아니며 SQLite에 영구 저장하지 않는다.
+- **처리:** 조회된 목록 page/batch와 opaque Local API continuation을 active Google `account_id`, Source, container(Task List/Calendar), 검색·필터·정렬·status scope, continuation/batch generation 조합으로 React Client Session Cache에 저장한다.
+- **재사용:** 이미 materialize한 Gmail/Tasks UI page로 돌아가면 Provider를 다시 호출하지 않고 메모리 결과를 표시한다.
+- **폐기:** UI 세션 종료, Google 계정·container·검색·필터·정렬·status scope 변경, 해당 Source 수동 새로고침 시 관련 Cache를 폐기한다.
+- **제한:** Frontend Cache와 page number는 승인·중복·충돌·검증 판단의 기준점이 아니며 SQLite에 영구 저장하지 않는다. raw Local Session/OAuth token이나 Provider page token 의미를 Frontend가 해석하지 않는다.
 
 ### FN-016 사용자 선택형 요청
 
@@ -426,21 +478,62 @@
 
 ## 14. 범위 제외 기능
 
-| ID | 기능 | 상태 |
-|---|---|---|
-| P0-WRITE-001 | Gmail 승인형 전송 | P0 |
-| OUT-002 | Gmail Message·Thread 원문 삭제 | OUT |
-| P0-WRITE-002 | Google Task·Calendar Event 승인형 삭제 | P0 |
-| P0-WRITE-003 | Calendar 참석자 승인형 추가·수정 | P0 |
-| OUT-004 | CPU Local LLM | OUT |
-| OUT-005 | 원격 SaaS·멀티 사용자·외부 공개 API | OUT |
-| OUT-006 | 백그라운드 자동 실행 | OUT |
-| OUT-007 | Gmail·Tasks·Calendar 전체 데이터의 로컬 상시 복제 | OUT |
-| OUT-008 | 페이지 이동마다 이미 조회한 목록을 다시 호출하는 동작 | OUT |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ID</td>
+		<td>기능</td>
+		<td>상태</td>
+	</tr>
+	<tr>
+		<td>P0-WRITE-001</td>
+		<td>Gmail 승인형 전송</td>
+		<td>P0</td>
+	</tr>
+	<tr>
+		<td>OUT-002</td>
+		<td>Gmail Message·Thread 원문 삭제</td>
+		<td>OUT</td>
+	</tr>
+	<tr>
+		<td>P0-WRITE-002</td>
+		<td>Google Task·Calendar Event 승인형 삭제</td>
+		<td>P0</td>
+	</tr>
+	<tr>
+		<td>P0-WRITE-003</td>
+		<td>Calendar 참석자 승인형 추가·수정</td>
+		<td>P0</td>
+	</tr>
+	<tr>
+		<td>OUT-004</td>
+		<td>CPU Local LLM</td>
+		<td>OUT</td>
+	</tr>
+	<tr>
+		<td>OUT-005</td>
+		<td>원격 SaaS·멀티 사용자·외부 공개 API</td>
+		<td>OUT</td>
+	</tr>
+	<tr>
+		<td>OUT-006</td>
+		<td>백그라운드 자동 실행</td>
+		<td>OUT</td>
+	</tr>
+	<tr>
+		<td>OUT-007</td>
+		<td>Gmail·Tasks·Calendar 전체 데이터의 로컬 상시 복제</td>
+		<td>OUT</td>
+	</tr>
+	<tr>
+		<td>OUT-008</td>
+		<td>페이지 이동마다 이미 조회한 목록을 다시 호출하는 동작</td>
+		<td>OUT</td>
+	</tr>
+</table>
 
 ## 15. Google Source 데이터 수명주기
 
-1. **목록:** 사이드바 표시를 위해 Local API가 source별 continuation batch를 반환하고 React Client Session Cache에 유지한다. Tasks 기본 Browse는 configured/default Task List에서 Provider batch 최대 100개를 받아 UI 20개 page로 나누며, 목록 행에는 `tasks.list` metadata만 사용한다. 명시적 날짜순 정렬의 전체 materialization 결과도 별도 React Client Session Cache에만 둔다.
+1. **목록:** 사이드바 표시는 Local API → Application → MCP Browse Tool 경계로 조회하고 React Client Session Cache에 유지한다. Google Provider API/SDK와 raw continuation 해석은 MCP Server 내부 Adapter만 소유한다.
 2. **상세:** 사용자가 Resource를 클릭·선택하거나 Agent가 후보를 확정했을 때 필요한 항목만 조회한다.
 3. **LLM Context:** 현재 Run 수행에 필요한 상세 내용만 메모리에서 사용한다.
 4. **영구 기록:** 실제 판단과 승인에 사용된 Resource ID, 원본 링크, 최소 Metadata, Evidence excerpt만 SQLite에 저장한다.
@@ -462,33 +555,37 @@
 현재 Workflow Phase, Agent Result, Domain Command Result와 호출 예산을 입력으로 받아 다음 Agent Subgraph·Interrupt·종료 경로를 결정한다. Agent Subgraph는 다른 Agent를 직접 호출하지 않고 Supervisor로 Typed Result를 반환한다.
 
 ### FN-101 요청 이해 Agent
-목표·완료 조건·기간·사람·Source·제약·모호성을 Structured Output으로 생성한다. Google 조회와 Action Plan 확정은 수행하지 않는다.
+사용자 목표·완료 조건·제약·모호성과 `analysis_requirement(NONE|REQUIRED)`을 Structured Output으로 생성한다. Tool 이름·Google Query·Action Arguments는 생성하지 않는다. 단순 ACTION은 사용자가 Arguments를 충분히 제공하고 별도 업무 해석이 불필요하면 `NONE`일 수 있다. 실제 Work Analysis 호출 여부는 semantic requirement뿐 아니라 Policy Precondition을 결정적으로 함께 평가한다.
 
-### FN-102 Retrieval Agent
-Source·검색 전략·추가 검색 필요성을 제안한다. 실제 Gmail Query·날짜 범위·Page Token·MCP 인자는 결정적 Query Builder와 Adapter가 확정한다.
+### FN-102 Tool Route Agent
 
-### FN-103 업무 분석 Agent
-업무 의미, Resource 관계, 누락 업무, 중복 후보, 일정 제약과 마감 위험을 분석한다. 최종 중복·충돌·정책 판정은 일반 코드가 수행한다.
+### FN-102A Policy Precondition·Scope Confirmation
+Policy Precondition READ가 사용자가 명시한 Source·기간·Resource 범위를 벗어나면 자동으로 범위를 넓히지 않는다. Tool Route owner가 `SCOPE_EXPANSION_REQUIRED` Confirmation을 발생시키고, 실제 사용자 응답을 검증한 Application/Confirmation Controller만 `PolicyConfirmationReceiptV1`을 생성한다. 거절 시 필수 검사를 생략한 Write Plan을 만들지 않는다.
 
-### FN-104 해결책·계획 Agent
-Evidence 기반 해결책, Action DAG, Arguments 초안, Risk와 Expected Result를 생성한다. 승인·실행·Domain Row 변경은 금지한다.
+`RequestIntent`를 입력으로 IN/OUT Resource·Effect를 판단하고, Signed Tool Registry가 가능한 Tool 후보를 결정적으로 결합한다. 의미 Route 후보 뒤에는 `PolicyPreconditionResolver`가 적용되며 `TASK + CREATE`는 기존 미완료 Task 중복 검사용 Tasks READ, `CALENDAR + CREATE`는 대상 시간대 Event/FreeBusy 충돌 검사용 Calendar READ를 필수 IN Route로 보강한다. 후보가 하나면 코드가 자동 선택하고 여러 개일 때만 Route Subgraph 내부 선택 Node가 등록 후보 중 하나를 고른다. 최종 IN Resource/Connector/허용 Read Tool 범위와 OUT Resource/Effect/Tool을 `ToolRoutePlan`으로 한 번 확정하며 Downstream Agent가 Tool을 재선택하지 않는다.
 
-### FN-105 계획 검토 Agent
-목표 충족, 근거 누락, 과잉 작업, 모순, Dependency 오류와 Unsupported Action을 독립 검토하고 `PASS`, `REVISE`, `RETRIEVE_MORE`, `CONFIRM`, `BLOCK` 중 하나를 반환한다.
+### FN-103 Retrieval Agent
+`ToolRoutePlanV2.input_plan.input_routes` 안에서 Query 계획·결정적 MCP Read·Normalize/Segment·Run-scoped RAG·Evidence 선택·충분성 판정을 수행한다. 실제 Query·Page Token·MCP 인자는 결정적 Query Builder와 Adapter가 확정한다.
 
-### FN-106 Typed Handoff·Checkpoint
-Agent Input·Result Schema Version을 검증하고 `resource_ref_id`, `evidence_id`, `segment_id` 기반으로 필요한 Context만 전달한다. 각 Agent Subgraph는 호출 단위 Local State와 bounded validation·repair/revision loop를 가질 수 있으나 자유 텍스트 Agent 대화와 Agent별 독립 장기 Memory는 금지한다.
+### FN-104 업무 분석 Agent
+Evidence에서 업무 사실·관계·누락·중복 후보·일정 제약과 마감 위험을 분석한다. LLM의 `DUPLICATES`·`CONFLICTS_WITH` 후보는 결정적 relation validator가 정규화된 Source 데이터와 현재 Task/Calendar 상태로 검증한 뒤에만 최종 관계로 승격한다. 정확 중복이면 기본 `action_necessity=NOT_REQUIRED`로 새 Action을 만들지 않는다. 사용자가 중복 추가 생성 또는 검증된 일정 충돌 Override를 요구하면 각각 `DUPLICATE_OVERRIDE_REQUIRED` / `CONFLICT_OVERRIDE_REQUIRED` 2차 Confirmation을 거치며 승인된 결과는 `PolicyConfirmationReceiptV1` ref로 보존한다. Tool 선택·Tool Arguments·최종 정책 판정은 수행하지 않는다.
 
-### FN-107 응답 조립
+### FN-105 Planning Agent
+`ToolRoutePlanV2.output_plan.output_routes`의 고정 Tool을 사용해 Answer 또는 Tool Arguments·Dependency 후보를 작성한다. Tool을 다시 선택하지 않으며 최종 Typed Plan 조립은 결정적 Assembler가 수행한다.
+
+### FN-106 계획 검토 Agent
+목표 충족, 근거 누락, 과잉 작업, 모순, Dependency 오류와 Unsupported Action을 독립 검토하고 `PASS`, `REVISE`, `RETRIEVE_MORE`, `ROUTE_RECONSIDERATION`, `CONFIRM`, `BLOCK` 중 하나를 반환한다.
+
+### FN-107 Typed Handoff·Checkpoint
+Main Graph는 읽기 전용 `RunInput`과 공식 Versioned Typed Result를 누적하고, Back-edge·Interrupt에 필요한 Typed `WorkflowSignal`만 일시적으로 보존한다. Subgraph는 필요한 Parent State만 Projection 받고, 내부 Node도 자기 작업에 필요한 Local State 필드만 받는다. `resource_ref_id`, `evidence_id`, `segment_id`와 Run Cache Handle을 사용하며 자유 텍스트 Agent 대화와 Agent별 독립 장기 Memory는 금지한다.
+
+### FN-108 응답 조립
 Supervisor가 검증된 분석·Plan·실행·검증 결과를 사용자 응답으로 조립한다. 내부 Agent 대화와 비공개 추론은 사용자에게 노출하지 않는다.
 
 ## 18. Agent 실행 기능
 
-### FN-108 API 탐색·수집 Agent
-`RequestIntent`와 API Budget으로 Source·조회 순서·Page·후보·상세 예산을 제안한다. 일반 코드가 Query를 검증하고 MCP 읽기를 실행한다.
-
-### FN-109 Context Retriever Agent
-수집 Resource에서 Segment·Evidence를 선별하고 Token Budget과 충분성을 판정한다. Google API·MCP는 직접 호출하지 않는다.
+### FN-109 Retrieval Subgraph 실행
+`RequestIntent + ToolRoutePlanV2.input_plan.input_routes`로 `RetrievalQueryPlan`을 만들고 결정적 Read Node가 허용된 Read Tool만 호출한다. 가져온 자료는 Normalize/Segment 후 Run-scoped RAG를 거쳐 Evidence와 Sufficiency로 축약하고 `RetrievalResult`와 필요한 Typed `WorkflowSignal`만 Parent에 반환한다.
 
 ### FN-110 Answer-only Run 완료
 Plan·Action이 없는 조회·분석 결과는 `complete_answer_only_run`으로 종료한다.
@@ -567,20 +664,16 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 
 ## 20. Frontend Sidebar·Resource 선택 기능 계약
 
-### Sidebar 목록·페이지·Count
+### Sidebar 목록·페이지 계약
 
-- Gmail Sidebar UI/Browse의 표시·요청 단위는 `SIDEBAR_PAGE_SIZE=20`이다. intermediate page는 ID와 다음 token만 받고 target page만 metadata를 요청한다. Tasks와 Calendar의 batch 정책은 각 source 계약을 유지한다. `RETRIEVAL_PAGE_SIZE=20`은 Agent Retrieval Budget이며 Sidebar UI 값이 아니다.
-- Local Resource API의 `next_page_token`은 Frontend가 해석하지 않고 다음 Local API 요청에 그대로 전달하는 opaque continuation token이다. Provider Page Token은 source 내부 구현 세부사항이며 UI 페이지 번호가 아니다. Gmail의 token-known page와 metadata-loaded page는 구분되며, metadata를 받은 page의 재방문은 Session Cache만 사용한다.
-- UI에는 현재 탐색 범위에 따라 이동하는 최대 5개 page number만 표시한다. Page Token은 사용자에게 노출하거나 UI page number로 취급하지 않는다.
-- `total_count`는 정의된 Source scope 전체의 exact total, `loaded_count`는 Session Cache에 받은 Resource 수, `visible_count`는 현재 UI 페이지의 표시 수다. Gmail Source badge에는 `total_count`만 사용하며 추가 browse 후에도 바뀌지 않는다. Calendar tab에는 numeric badge를 표시하지 않는다. Tasks 기본 Browse는 첫 Provider batch가 terminal이면 그 수를 exact로 표시하고, 다음 token이 있으면 확인된 최소 수에 `+`를 붙여 표시한다. terminal batch 도달 뒤 누적 수를 exact total로 확정한다. partial·estimate·hard-coded 숫자는 exact total로 표시하지 않는다.
-- Gmail 기본 Sidebar 범위는 `INBOX + PRIMARY`이며 최근 수신 Thread 순이다. `메일 N`은 현재 계정의 같은 기본 범위 Thread exact total이다. 직접 검색은 Primary 제한을 해제해 일반 Gmail mailbox를 검색하되 Spam·Trash는 제외하고, 검색 중 Source badge는 기본 count를 유지한다.
-- Tasks 기본 Sidebar 범위는 configured/default Task List의 미완료 Task 전체이며 Google request에 `show_completed=false`를 명시한다. Provider `tasks.list`의 최대 100개 metadata batch를 React Client Session Cache에 누적하고 UI는 20개씩 표시한다. 100개와 다음 token을 받으면 초기 UI page는 1..5만 알고, 알려진 마지막 UI page에서만 다음 100개 batch를 요청한다. terminal batch까지 도달하면 누적 수로 exact total과 마지막 UI page를 확정한다. 기본 정렬은 Provider 반환 순이며 초기 exact count·전역 정렬을 위해 전체 scope를 선순회하지 않는다. 사용자가 날짜순 정렬을 명시한 경우에만 전체 결과를 materialize하여 `scheduled_date` 오름차순·날짜 없는 Task 후순위로 정렬하고, 그 결과는 기본 Browse cache와 분리한다. 100개 이하에서는 확보한 Provider batch 전체를 local global sort하고, 100개 초과에서는 remaining Provider page를 materialize한 전체 결과를 sort한다. 정렬된 결과의 UI page는 20개 단위 slice다. 목록 행은 `tasks.list` metadata만 사용하고 `tasks.get`은 사용자의 선택·상세 조회 때만 호출한다. cache key는 account·source·task_list_id·search/filter·sort·provider token/batch를 포함하며 Refresh·계정·scope·검색/filter/sort 변경·session 종료 시 폐기한다. SQLite나 서버 영속 cache에 복제하지 않는다.
-- Tasks 기본 Browse는 `show_hidden=false`, `show_deleted=false`도 명시한다. `태스크 N`은 과거·오늘·미래·날짜 없음 여부와 무관한 미완료 Task 전체 수이며 completed·deleted를 포함하지 않는다.
-- 미완료 목록 하단에는 기본 접힘 `완료됨(N) ▸` section을 둔다. Tasks 데이터 준비 시 completed scope `show_completed=true`, `show_hidden=true`, `show_deleted=false`, 최대 `page_size=100`을 background로 시작해 Provider terminal까지 page token을 순차 탐색한다. `show_completed=true` 결과는 미완료와 완료가 섞일 수 있으므로 `task_status=completed`만 completed cache/UI에 보관하고, 한 generation 안에서 `resource_id`로 dedupe한다. terminal materialization으로 받은 completed rows를 보존해 exact `N`을 계산하며 section 접힘/펼침은 presentation만 바꾸고 Provider Read를 만들지 않는다. completed cache가 20개를 초과하면 `더 보기`는 cache의 다음 20개를 client-side로 표시하며 Provider continuation을 호출하지 않는다. completed cache는 incomplete cache와 분리하며 account·Task List·status scope·provider continuation을 identity에 포함한다. Refresh는 접힘/펼침과 무관하게 두 scope를 fresh Read하며 completed 결과는 새 generation으로 atomic replace한다.
-- Calendar Sidebar는 Month View만 제공한다. 실제 Sunday-start grid의 `[gridStart, gridEnd)` Event instance 전체를 materialize하고 UI pagination을 쓰지 않는다. Calendar tab에는 numeric badge를 표시하지 않는다. `time_min`·`time_max`를 생략한 Local API 호출은 configured user timezone 기준 Upcoming 기본 window를 사용한다.
-- Calendar Month View의 날짜 계산, today, month/grid 경계와 timed Event 배치는 `AppSettings.timezone` IANA timezone을 사용하며 browser local timezone을 fallback으로 쓰지 않는다. `gridStart`는 month 1일 이전/당일의 가장 가까운 일요일 00:00, `gridEnd`는 마지막 렌더 주 다음 일요일 00:00이며 5/6주를 고정하지 않는다. All-day Event는 `[start.date, end.date)`, timed Event는 configured timezone에서 `[start, end)`와 실제로 겹치는 모든 날짜에 배치한다. 정확히 다음 날 00:00에 끝나는 timed Event는 다음 날에 배치하지 않는다. 반복 일정은 `singleEvents=true` occurrence 단위로 처리한다.
-- 검색·필터·정렬·Source·Google 계정 변경 시 관련 page mapping을 비운다. Calendar Month View 검색은 fully materialized Month cache의 client-side filter이며 marker/count와 selected-date Event 목록에 동일하게 적용하고 Provider를 다시 호출하지 않는다. Refresh는 현재 `monthAnchor`와 selected date를 유지한 채 현재 visible grid cache를 무효화하고 같은 range를 fresh materialize한다. Gmail 검색어 변경은 검색 list/cursor/cache scope만 바꾸고 기본 Gmail badge count는 바꾸지 않는다. cache와 page 번호는 Domain authority나 영속 상태가 아니다.
-- 목록 기본 표현은 Card가 아닌 keyboard-navigable compact list row다. 제목, 제공되는 발신자/소유자, 시간·상태, snippet을 2~3줄로 표시하고 긴 문자열은 ellipsis 처리한다.
+- Gmail·Tasks의 기본 visible UI page size는 **20개**다. `SIDEBAR_PAGE_SIZE=20`과 Agent `RETRIEVAL_PAGE_SIZE=20`은 목적·budget·cache가 서로 독립된 계약이다. Calendar Month View는 visible grid 전체를 사용하고 숫자 pagination을 만들지 않는다.
+- Gmail은 Local API의 opaque continuation을 순차 사용해 visible target page만 metadata hydrate한다. 이미 hydrate한 page는 React Session Memory에서 재사용한다.
+- Tasks는 Provider metadata를 최대 100개 batch로 받고 UI에서 20개씩 slice한다. continuation이 있으면 현재 알려진 마지막 UI page에서 다음 batch를 append한다.
+- Calendar 기본 Upcoming 범위는 현재부터 향후 90일이며 Month View는 사용자 timezone에서 계산한 grid 범위를 terminal까지 materialize한다.
+- Frontend는 Local API `next_page_token`을 Google Provider token이나 offset으로 해석하지 않는다. page number는 현재 Session에서 materialize한 page/batch에 대한 UI projection일 뿐이다.
+- 검색·필터·정렬·status scope·container·Source·Google 계정 변경 또는 수동 새로고침 시 관련 cache를 무효화한다. cache와 page 번호는 Domain authority나 영속 상태가 아니다.
+- Gmail·Tasks의 목록 기본 표현은 keyboard-navigable compact list row다. 제목, 제공되는 발신자/소유자, 시간·상태, snippet을 2~3줄로 표시하고 긴 문자열은 ellipsis 처리한다.
+- Numeric badge는 Gmail·Tasks의 계약된 count만 표시한다. Calendar tab에는 numeric badge를 만들지 않는다. Frontend 전체 page 순회나 hard-code count로 exact 값을 만들어서는 안 된다.
 
 ### Resource 선택과 Viewer
 
@@ -601,12 +694,11 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 
 ### Source별 Sidebar 목록
 
-- Tasks는 실제 Google Workspace Source다. 지원 Projection은 제목, 메모, 예정일, Task List, 완료 상태이며, 기본 compact row는 **Task 제목 → 예정일** 순서로 표시한다. Task List는 실제 반환된 값만 보조 정보로 사용할 수 있다. 정렬 옵션은 `기본 순서`와 `날짜순`뿐이며 `기한순`은 제공하지 않는다. 기본 정렬은 Google Tasks Provider 반환 순이며, 사용자가 날짜순 정렬을 명시한 경우에만 `scheduled_date` 오름차순·날짜 없는 Task 후순위를 적용한다.
-- completed section row는 **✓ Task 제목** 아래에 Provider raw `completed`를 `completed_at`으로 보존한 경우에만 AppSettings timezone 기준 `완료일: M월 D일 (요일)` 보조 텍스트를 표시한다. `completed_at`이 없거나 유효하지 않으면 row는 그대로 표시하고 완료일 줄은 생략하며, `scheduled_date`·`due`·`updated`·현재 시각으로 대체하지 않는다.
-- Tasks와 Calendar `목록` row에는 priority, 임의 category·Task List 이름, 임의 색상 dot·marker·status badge, 내부 Google ID, Page Token을 생성하거나 표시하지 않는다. Calendar `월력` 날짜 cell의 Event 수량 marker/count는 Month View 계약에 따른다.
+- Tasks는 실제 Google Workspace Source다. 지원 Projection은 제목, 메모, 예정일, Task List, 완료 상태이며, 기본 compact row는 **Task 제목 → 예정일** 순서로 표시한다. Task List는 실제 반환된 값만 보조 정보로 사용할 수 있다. 정렬은 미완료·예정일 임박 우선 의미를 유지한다.
+- Tasks와 Calendar row에는 priority, 임의 category·Task List 이름, 임의 색상 dot·marker·status badge, 내부 Google ID, Page Token을 생성하거나 표시하지 않는다.
 - Calendar Event compact row는 **Event 제목 → 시간 범위** 순서다. 같은 날 시간 Event는 `YYYY년 M월 D일 (요일) 오전/오후 h:mm - 오전/오후 h:mm` 형식으로 연·월·일·요일·시작 시간·종료 시간을 표시하고 날짜는 한 번만 표시한다. 날짜가 다르면 시작일과 종료일을 각각 식별 가능하게 표시한다. All-day Event는 `YYYY년 M월 D일 (요일) · 하루 종일` 형식이다.
 - Calendar Sidebar에는 `시작`, `종료` label을 표시하지 않는다. 중앙 Viewer의 Event 상세는 제공된 `시작`, `종료` 필드를 유지한다. 선택 상태는 기존 Source row와 같은 background/focus styling으로만 나타낸다.
-- `calendar_list_events`의 기본 Upcoming 범위는 사용자 Timezone 기준 현재부터 **향후 90일**이며, Interface가 `time_min`·`time_max`를 생성한다. 이는 bounded Upcoming Browse의 기본 horizon이다. Calendar Sidebar Month View는 선택된 `monthAnchor`의 explicit visible grid range를 사용하며, 사용자 지정 기간이 있으면 그 범위를 우선한다.
+- `calendar_list_events`의 기본 Upcoming 범위는 사용자 Timezone 기준 현재부터 **향후 90일**이며, Interface가 `time_min`·`time_max`를 생성한다. 사용자 지정 기간이 있으면 그 범위를 우선한다.
 
 ### Source별 Resource Viewer Empty State
 
@@ -627,7 +719,7 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 
 - Provider raw `needsAction`은 제품 상태 `NEEDS_ACTION`, UI 문구 `미완료`로 정규화한다. raw `completed`는 `COMPLETED`, UI 문구 `완료`로 정규화한다.
 - 예정일 경과는 상태 전이가 아니다. `scheduled_date`가 지났고 상태가 미완료이면 UI 보조 문구 `예정일 지남`만 사용할 수 있으며, `기한 초과`·`마감 초과` 또는 자동 완료로 표현하지 않는다.
-- 완료는 Google Task 실제 status가 `completed`일 때만 표시한다. Provider raw `completed` RFC3339 timestamp는 `completed_at`으로 Projection에 보존해 completed section의 완료일 보조 텍스트에만 사용한다. 값이 없거나 유효하지 않으면 완료일을 추정하거나 대체하지 않는다.
+- 완료는 Google Task 실제 status가 `completed`일 때만 표시한다. Provider가 완료 날짜를 제공하면 사용자 친화적인 `완료일`로 표시할 수 있다.
 - 목록·상세에는 raw enum, RFC3339 raw `due`, 내부 `due` 필드명, API에 없는 작업 시간·업무 마감을 표시하지 않는다. React는 사용자용 Local API Projection을 소비하며 Provider 의미의 최종 정규화를 담당하지 않는다.
 
 ## 23. Gmail 첨부파일 기능
@@ -636,7 +728,7 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 - **상태:** P0
 - **사용자 목적:** Gmail Message에 포함된 첨부파일을 확인하고 원본 파일을 받을 수 있다.
 - **입력:** `message_id`, `attachment_id`, 검증된 Local Session.
-- **처리:** Message 상세에서 파일명·MIME Type·크기·Google Attachment ID Metadata 확인 → MCP Gmail Attachment Read → Google API bytes 조회 → FastAPI Download Stream.
+- **처리:** Message 상세에서 파일명·MIME Type·크기·Google Attachment ID Metadata 확인 → MCP Gmail Attachment Read → MCP Server 내부 Provider Adapter bytes 조회 → FastAPI Download Stream.
 - **출력:** 원본 bytes와 검증된 `filename`, `mime_type`, `size_bytes`.
 - **제한:** 첨부파일 bytes·내용을 LLM Prompt·Context·Evidence로 전달하지 않는다.
 - **완료 조건:** LLM 호출 없이 사용자가 선택한 첨부파일을 받을 수 있다.
@@ -648,6 +740,3 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 - **출력:** 첨부파일이 포함된 Gmail Draft 또는 SEND 결과.
 - **예외:** Staging 만료·파일 누락·크기/Hash mismatch이면 기존 Approval을 실행하지 않고 파일 재선택→Action 수정→새 Approval로 돌아간다.
 - **완료 조건:** 승인된 파일과 실제 전송 파일이 동일하고 기존 SEND Verification 계약을 그대로 수행한다.
-### Gmail Sidebar Pagination Metadata Contract
-
-Gmail Sidebar Browse uses `page_size=20`. `GET /api/v1/resources/gmail` exposes optional `include_thread_metadata`, defaulting to `true`. Frontend session memory separately tracks a page token and hydrated metadata: unvisited intermediate pages are requested with `false`, while the target page is requested with metadata. Refresh, search scope changes, account changes, and disconnect invalidate this session cache. Gmail Count is not part of this traversal.

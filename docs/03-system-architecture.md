@@ -4,15 +4,40 @@
 
 ## 0. 문서 정보
 
-| 항목 | 내용 |
-|---|---|
-| 문서명 | 03. Google Work Agent 시스템 아키텍처 설계서 |
-| 상태 | Draft v3.0 |
-| 기준일 | 2026-08-09 |
-| 대상 릴리스 | P0 MVP |
-| 공식 환경 | Windows 11 x64 · 최신 Chrome·Microsoft Edge |
-| 제품 형태 | 단일 사용자용 로컬 Web UI + Python Agent 애플리케이션 |
-| 핵심 Runtime | React · TypeScript · Vite · FastAPI · LangGraph · Google Work MCP Server `stdio` · SQLite · OS Keyring |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>항목</td>
+		<td>내용</td>
+	</tr>
+	<tr>
+		<td>문서명</td>
+		<td>03. Google Work Agent 시스템 아키텍처 설계서</td>
+	</tr>
+	<tr>
+		<td>상태</td>
+		<td>Draft v3.4</td>
+	</tr>
+	<tr>
+		<td>기준일</td>
+		<td>2026-08-13</td>
+	</tr>
+	<tr>
+		<td>대상 릴리스</td>
+		<td>P0 MVP</td>
+	</tr>
+	<tr>
+		<td>공식 환경</td>
+		<td>Windows 11 x64 · 최신 Chrome·Microsoft Edge</td>
+	</tr>
+	<tr>
+		<td>제품 형태</td>
+		<td>단일 사용자용 로컬 Web UI + Python Agent 애플리케이션</td>
+	</tr>
+	<tr>
+		<td>핵심 Runtime</td>
+		<td>React · TypeScript · Vite · FastAPI · LangGraph · Google Work MCP Server `stdio` · SQLite · OS Keyring</td>
+	</tr>
+</table>
 
 ## 0-A. 한눈에 보는 구조
 
@@ -73,7 +98,7 @@ React UI → FastAPI Local Service → Deterministic Supervisor → Agent Subgra
 
 Google Work Agent는 **로컬 Frontend와 Python Modular Monolith를 분리한 단일 사용자 애플리케이션**으로 구성한다.
 
-> **React Frontend가 사용자 화면을 담당하고, FastAPI Local Agent Service가 Application·LangGraph·Domain·Persistence의 단일 진입 경계를 제공한다. Google Work MCP Server는 Google API 작업을 수행한다. 모든 제품 프로세스는 사용자 PC에서 실행된다.**
+> **React Frontend가 사용자 화면을 담당하고, FastAPI Local Agent Service가 Application·LangGraph·Domain·Persistence의 단일 진입 경계를 제공한다. Gmail·Tasks·Calendar에 닿는 모든 제품 경로는 Google Work MCP Server를 통과하며 Google Provider API/SDK는 MCP Server 내부 Adapter에서만 사용한다. 모든 제품 프로세스는 사용자 PC에서 실행된다.**
 
 주요 실행 단위는 다음 네 가지다.
 
@@ -92,44 +117,160 @@ Google Work Agent는 **로컬 Frontend와 Python Modular Monolith를 분리한 �
 - 운영 UI 제공: FastAPI가 React Static Build와 `/api/v1`을 같은 Origin에서 제공
 - 내부 구조: Python Layered Modular Monolith
 - 의존성 방향: React → Local API → Application → Domain
-- Agent 구조: 결정적 Supervisor + 평가 가능한 1/3/6 Agent Subgraph Profile + 결정적 실행·검증 Engine
+- Agent 구조: 결정적 Supervisor + Versioned Typed Main State + 평가 가능한 1/3/6 Agent Subgraph Profile + 결정적 실행·검증 Engine
 - 진행 전달: REST Command·Query + SSE Event Stream
 - 외부 Tool 연동: MCP `stdio`
 - 상태 관리: SQLite Domain Store + LangGraph Checkpointer
 - Secret 관리: OS Keyring
 - 분산 트랜잭션 방식: Action 단위 상태 전이를 사용하는 Saga형 실행
 
+### 2.2 Google Workspace 접근 단일 경계
+
+```plain text
+React
+→ FastAPI Local API
+→ Application / LangGraph / Domain
+→ MCP Client / Port
+→ Google Work MCP Server · stdio
+→ Gmail·Tasks·Calendar Provider Adapter
+→ Google Workspace Provider APIs
+```
+
+- Local `/api/v1`은 React와 Python Core 사이의 제품 내부 REST/SSE 계약이며 Google Provider API 우회 경로가 아니다.
+- React·FastAPI Route·Application·LangGraph·Agent·Domain에서 Gmail·Tasks·Calendar Provider API/SDK 직접 호출과 직접 Provider Client 구성을 금지한다.
+- Sidebar Browse/Count/Detail, Retrieval Read, OAuth 상태 확인, Write, Verification, Recovery 조회는 모두 MCP Tool/Port를 통과한다.
+- MCP unavailable 또는 Tool Schema invalid일 때 Core는 Provider API direct fallback을 하지 않고 NOT_READY/Recovery로 전환한다.
+- Google Provider API의 pagination·raw response·OAuth token 적용은 MCP Server 내부 Adapter의 구현 책임이다.
+
 ## 3. 아키텍처 목표와 우선순위
 
-| 우선순위 | 품질 속성 | 아키텍처 의미 |
-|---:|---|---|
-| 1 | 안전성 | 승인 없는 쓰기, 금지 Tool, 승인 인자 변경을 결정적으로 차단한다. |
-| 2 | 복구성 | 브라우저 새로고침·REST Retry·SSE 재연결·앱 종료·OAuth 만료·Tool 응답 유실 후 중복 실행 없이 재개한다. |
-| 3 | 개인정보 보호 | Secret과 불필요한 Gmail 원문을 저장·로그·전송하지 않는다. |
-| 4 | 예측 가능성 | LLM의 자유 실행이 아니라 정의된 Workflow와 상태 전이를 사용한다. |
-| 5 | 단순성 | 단일 사용자 로컬 제품에 불필요한 원격 서버·Queue·Kubernetes를 도입하지 않는다. |
-| 6 | 테스트 가능성 | Google Client, LLM Provider, MCP Client, Clock, Keyring을 교체 가능한 Port로 둔다. |
-| 7 | 성능 | 단계별 진행 상태를 제공하고 불필요한 Source·LLM 호출을 줄인다. |
-| 8 | 확장성 | 수평 확장보다 기능 모듈과 Adapter 교체 가능성을 우선한다. |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>우선순위</td>
+		<td>품질 속성</td>
+		<td>아키텍처 의미</td>
+	</tr>
+	<tr>
+		<td>1</td>
+		<td>안전성</td>
+		<td>승인 없는 쓰기, 금지 Tool, 승인 인자 변경을 결정적으로 차단한다.</td>
+	</tr>
+	<tr>
+		<td>2</td>
+		<td>복구성</td>
+		<td>브라우저 새로고침·REST Retry·SSE 재연결·앱 종료·OAuth 만료·Tool 응답 유실 후 중복 실행 없이 재개한다.</td>
+	</tr>
+	<tr>
+		<td>3</td>
+		<td>개인정보 보호</td>
+		<td>Secret과 불필요한 Gmail 원문을 저장·로그·전송하지 않는다.</td>
+	</tr>
+	<tr>
+		<td>4</td>
+		<td>예측 가능성</td>
+		<td>LLM의 자유 실행이 아니라 정의된 Workflow와 상태 전이를 사용한다.</td>
+	</tr>
+	<tr>
+		<td>5</td>
+		<td>단순성</td>
+		<td>단일 사용자 로컬 제품에 불필요한 원격 서버·Queue·Kubernetes를 도입하지 않는다.</td>
+	</tr>
+	<tr>
+		<td>6</td>
+		<td>테스트 가능성</td>
+		<td>MCP Client/Transport, MCP 내부 Provider Adapter, LLM Provider, Clock, Keyring을 경계별 Test Double로 교체할 수 있게 둔다.</td>
+	</tr>
+	<tr>
+		<td>7</td>
+		<td>성능</td>
+		<td>단계별 진행 상태를 제공하고 불필요한 Source·LLM 호출을 줄인다.</td>
+	</tr>
+	<tr>
+		<td>8</td>
+		<td>확장성</td>
+		<td>수평 확장보다 기능 모듈과 Adapter 교체 가능성을 우선한다.</td>
+	</tr>
+</table>
 
 ## 4. 핵심 아키텍처 결정
 
-| ID | 결정 | 이유 |
-|---|---|---|
-| ARC-001 | 로컬 단일 사용자 앱 | 제품 목표와 개인정보·운영 범위에 맞춘다. |
-| ARC-002 | React + TypeScript + Vite Frontend | 복잡한 3열 UI, Inline Action Card, 편집·반응형·Client State를 명시적으로 구현한다. |
-| ARC-003 | FastAPI Local Agent Boundary | React와 Python Core 사이를 Versioned REST·SSE 계약으로 분리하되 외부 공개 서버는 두지 않는다. |
-| ARC-011 | Production same-origin | FastAPI가 React 정적 산출물과 `/api/v1`을 같은 `127.0.0.1` Origin에서 제공한다. |
-| ARC-012 | REST Command + SSE Event | 상태 변경은 REST Command, 진행 전달은 재연결 가능한 SSE를 사용한다. |
-| ARC-013 | Launcher Process Supervision | Launcher가 Port·Service·Browser·MCP 수명주기를 조정한다. |
-| ARC-014 | Versioned Prompt Registry | Supervisor는 Node를 Routing하고 선택된 Agent·Application Node가 Node·상태·목적별 PromptRef를 확정한다. |
-| ARC-004 | 결정적 LangGraph Supervisor 기반 평가 가능 Workflow | `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE`을 같은 안전·Tool·Policy 계약으로 비교한다. Agent는 invocation 범위 Local State를 가진 Subgraph이며, 필요한 Google Read는 해당 Agent Subgraph 안의 결정적 Application Node가 수행할 수 있다. 승인·실행·검증·복구는 Graph 후보와 독립된 결정적 Engine이 통제한다. |
-| ARC-005 | Agent와 Domain·Policy 분리 | LLM은 제안하고 일반 코드는 허용·차단·검증을 결정한다. |
-| ARC-006 | Google 연동은 MCP `stdio` | Google Tool 계약과 실행 경계를 표준화하고 로컬에 유지한다. |
-| ARC-007 | Checkpoint와 Domain Store 분리 | Graph 재개 상태와 제품의 승인·실행 사실을 별도로 보존한다. |
-| ARC-008 | 모든 쓰기 후 Effect별 결정적 검증 | Tool 응답만 신뢰하지 않는다. CREATE·UPDATE는 GET 비교, DELETE는 대상 부재/삭제 상태, SEND는 Sent 결과 조회를 사용한다. |
-| ARC-009 | Local Runtime은 Ollama로 고정 | 제품 Runtime과 실험 Runtime의 범위를 제한한다. |
-| ARC-010 | `API_ONLY`·`LOCAL_CAPABLE` 분리 | GPU가 없는 환경에 Ollama·모델 의존성을 강제하지 않는다. |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ID</td>
+		<td>결정</td>
+		<td>이유</td>
+	</tr>
+	<tr>
+		<td>ARC-001</td>
+		<td>로컬 단일 사용자 앱</td>
+		<td>제품 목표와 개인정보·운영 범위에 맞춘다.</td>
+	</tr>
+	<tr>
+		<td>ARC-002</td>
+		<td>React + TypeScript + Vite Frontend</td>
+		<td>복잡한 3열 UI, Inline Action Card, 편집·반응형·Client State를 명시적으로 구현한다.</td>
+	</tr>
+	<tr>
+		<td>ARC-003</td>
+		<td>FastAPI Local Agent Boundary</td>
+		<td>React와 Python Core 사이를 Versioned REST·SSE 계약으로 분리하되 외부 공개 서버는 두지 않는다.</td>
+	</tr>
+	<tr>
+		<td>ARC-011</td>
+		<td>Production same-origin</td>
+		<td>FastAPI가 React 정적 산출물과 `/api/v1`을 같은 `127.0.0.1` Origin에서 제공한다.</td>
+	</tr>
+	<tr>
+		<td>ARC-012</td>
+		<td>REST Command + SSE Event</td>
+		<td>상태 변경은 REST Command, 진행 전달은 재연결 가능한 SSE를 사용한다.</td>
+	</tr>
+	<tr>
+		<td>ARC-013</td>
+		<td>Launcher Process Supervision</td>
+		<td>Launcher가 Port·Service·Browser·MCP 수명주기를 조정한다.</td>
+	</tr>
+	<tr>
+		<td>ARC-014</td>
+		<td>Versioned Prompt Registry</td>
+		<td>Supervisor는 Node를 Routing하고 선택된 Agent·Application Node가 Node·상태·목적별 PromptRef를 확정한다.</td>
+	</tr>
+	<tr>
+		<td>ARC-004</td>
+		<td>결정적 LangGraph Supervisor + Typed State 기반 평가 가능 Workflow</td>
+		<td>`SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE`을 같은 안전·Tool·Policy 계약으로 비교한다. Main Graph는 읽기 전용 `RunInput`을 기준점으로 `RequestIntent → ToolRoutePlan → RetrievalResult → WorkAnalysisResult → PlanningResult → PlanReviewResult`의 공식 Typed State를 누적하고 Back-edge·Interrupt 제어는 Typed `WorkflowSignal`로 분리하며, 각 Agent Subgraph는 필요한 State만 Projection 받아 자기 Local State에서 책임을 수행한다. IN/OUT Tool Route는 Tool Route Subgraph가 한 번 확정하고 Retrieval·Planning이 재선택하지 않는다. 승인·실행·검증·복구는 Graph 후보와 독립된 결정적 Engine이 통제한다.</td>
+	</tr>
+	<tr>
+		<td>ARC-005</td>
+		<td>Agent와 Domain·Policy 분리</td>
+		<td>LLM은 제안하고 일반 코드는 허용·차단·검증을 결정한다.</td>
+	</tr>
+	<tr>
+		<td>ARC-006</td>
+		<td>Google 연동은 MCP `stdio`</td>
+		<td>Google Workspace 접근을 MCP `stdio` 단일 경계로 고정해 Provider SDK 결합과 우회 실행 경로를 Core 밖으로 격리한다.</td>
+	</tr>
+	<tr>
+		<td>ARC-007</td>
+		<td>Checkpoint와 Domain Store 분리</td>
+		<td>Graph 재개 상태와 제품의 승인·실행 사실을 별도로 보존한다.</td>
+	</tr>
+	<tr>
+		<td>ARC-008</td>
+		<td>모든 쓰기 후 Effect별 결정적 검증</td>
+		<td>Tool 응답만 신뢰하지 않는다. CREATE·UPDATE는 GET 비교, DELETE는 대상 부재/삭제 상태, SEND는 Sent 결과 조회를 사용한다.</td>
+	</tr>
+	<tr>
+		<td>ARC-009</td>
+		<td>Local Runtime은 Ollama로 고정</td>
+		<td>제품 Runtime과 실험 Runtime의 범위를 제한한다.</td>
+	</tr>
+	<tr>
+		<td>ARC-010</td>
+		<td>`API_ONLY`·`LOCAL_CAPABLE` 분리</td>
+		<td>GPU가 없는 환경에 Ollama·모델 의존성을 강제하지 않는다.</td>
+	</tr>
+</table>
 
 
 ### 4.1 Local Run Coordinator
@@ -150,7 +291,7 @@ P0 실행 계약:
 
 - Conversation당 Open Run 최대 1개
 - 전체 LLM Run 동시성 1
-- Google Read 동시성 최대 3. 하나의 MCP Read invocation 내부에서 발생하는 Google Provider Read도 이 공통 budget에 포함한다.
+- MCP Read 동시성 최대 3
 - Google Write 동시성 1
 - Run Queue는 메모리 기반이며 실행 사실의 기준점은 `runs`와 Checkpoint다.
 - Service 재시작 시 Open Run과 Checkpoint를 조회해 명시적 Resume 또는 `RECOVERY_REQUIRED`로 전환한다.
@@ -180,7 +321,7 @@ flowchart LR
     U["개인 사용자"] -->|"Chrome·Edge에서 요청·승인"| FE["React 프런트엔드<br>사용자 로컬 PC"]
     FE -->|"동일 출처 REST + SSE"| API["FastAPI 로컬 에이전트 서비스"]
     API -->|"MCP stdio"| MCP["Google 업무 MCP 서버"]
-    MCP -->|"Gmail·Tasks·Calendar API"| GOOGLE["Google 업무 API"]
+    MCP -->|"Provider Adapter HTTPS"| GOOGLE["Google Workspace Provider APIs"]
     API -->|"선택된 최소 문맥"| EXT["API LLM 제공자"]
     API -->|"로컬 추론"| OLLAMA["Ollama<br>선택적 GPU 실행 환경"]
     API -->|"도메인·체크포인트"| DB["SQLite"]
@@ -190,13 +331,38 @@ flowchart LR
 
 ### 5.1 외부 Actor와 시스템
 
-| 대상 | 관계 | 신뢰 수준 |
-|---|---|---|
-| 사용자 | 자연어 요청, 확인 질문 응답, 쓰기 승인·수정·거절 | 인증된 로컬 사용자이나 입력은 Schema 검증 필요 |
-| Google APIs | Gmail·Tasks·Calendar 조회·허용된 쓰기·결과 재조회 | 외부 시스템 응답으로 정상화·검증 필요 |
-| API LLM Provider | API_LLM 추론 | 외부 처리자, 최소 Context만 전송 |
-| Ollama | LOCAL_GPU 추론 | 로컬 프로세스이나 출력은 비신뢰 LLM 결과 |
-| OS Keyring | Google Refresh Token은 MCP Credential Provider, LLM API Key는 LLM Adapter가 분리된 Entry로 사용 | Secret 저장의 기준점 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>대상</td>
+		<td>관계</td>
+		<td>신뢰 수준</td>
+	</tr>
+	<tr>
+		<td>사용자</td>
+		<td>자연어 요청, 확인 질문 응답, 쓰기 승인·수정·거절</td>
+		<td>인증된 로컬 사용자이나 입력은 Schema 검증 필요</td>
+	</tr>
+	<tr>
+		<td>Google Workspace Provider APIs</td>
+		<td>MCP Server 내부 Adapter가 수행하는 Gmail·Tasks·Calendar 조회·허용된 쓰기·결과 재조회</td>
+		<td>외부 시스템 응답으로 정상화·검증 필요</td>
+	</tr>
+	<tr>
+		<td>API LLM Provider</td>
+		<td>API_LLM 추론</td>
+		<td>외부 처리자, 최소 Context만 전송</td>
+	</tr>
+	<tr>
+		<td>Ollama</td>
+		<td>LOCAL_GPU 추론</td>
+		<td>로컬 프로세스이나 출력은 비신뢰 LLM 결과</td>
+	</tr>
+	<tr>
+		<td>OS Keyring</td>
+		<td>Google Refresh Token은 MCP Credential Provider, LLM API Key는 LLM Adapter가 분리된 Entry로 사용</td>
+		<td>Secret 저장의 기준점</td>
+	</tr>
+</table>
 
 ## 6. 전체 실행 환경·프로세스 구조
 
@@ -256,15 +422,48 @@ flowchart TB
 
 ### 6.1 프로세스 경계
 
-| 실행 단위 | 형태 | 주요 장애 영향 |
-|---|---|---|
-| Launcher | 제품 시작·종료 Supervisor | Local Agent Service 시작 실패, Version 불일치와 종료 상태를 사용자에게 표시한다. |
-| Chrome·Edge + React Frontend | 로컬 UI Client | 탭이 닫히거나 새로고침되어도 영구 Run 상태는 SQLite에 남는다. |
-| FastAPI Local Agent Service | 제품의 중심 Python 프로세스 | REST·SSE·Application·Agent가 중단되며 Checkpoint와 Domain 상태로 복구한다. |
-| Google Work MCP Server | Local Agent Service가 관리하는 단일 자식 프로세스 | Google 읽기·쓰기 Tool이 중단된다. 쓰기 중 장애는 결과 재조회 후 상태를 확정한다. |
-| Ollama | 선택적 로컬 외부 프로세스 | LOCAL_GPU가 실패하며 명시 모드 또는 AUTO fallback 정책으로 분기한다. |
-| Google Workspace APIs | 외부 시스템 | 일시 오류·인증 만료·Quota 오류를 공통 오류로 변환한다. |
-| API LLM Provider | 선택적 외부 추론 시스템 | API_LLM 실패 또는 AUTO fallback 실패로 처리한다. |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>실행 단위</td>
+		<td>형태</td>
+		<td>주요 장애 영향</td>
+	</tr>
+	<tr>
+		<td>Launcher</td>
+		<td>제품 시작·종료 Supervisor</td>
+		<td>Local Agent Service 시작 실패, Version 불일치와 종료 상태를 사용자에게 표시한다.</td>
+	</tr>
+	<tr>
+		<td>Chrome·Edge + React Frontend</td>
+		<td>로컬 UI Client</td>
+		<td>탭이 닫히거나 새로고침되어도 영구 Run 상태는 SQLite에 남는다.</td>
+	</tr>
+	<tr>
+		<td>FastAPI Local Agent Service</td>
+		<td>제품의 중심 Python 프로세스</td>
+		<td>REST·SSE·Application·Agent가 중단되며 Checkpoint와 Domain 상태로 복구한다.</td>
+	</tr>
+	<tr>
+		<td>Google Work MCP Server</td>
+		<td>Local Agent Service가 관리하는 단일 자식 프로세스</td>
+		<td>Google 읽기·쓰기 Tool이 중단된다. 쓰기 중 장애는 결과 재조회 후 상태를 확정한다.</td>
+	</tr>
+	<tr>
+		<td>Ollama</td>
+		<td>선택적 로컬 외부 프로세스</td>
+		<td>LOCAL_GPU가 실패하며 명시 모드 또는 AUTO fallback 정책으로 분기한다.</td>
+	</tr>
+	<tr>
+		<td>Google Workspace APIs</td>
+		<td>외부 시스템</td>
+		<td>일시 오류·인증 만료·Quota 오류를 공통 오류로 변환한다.</td>
+	</tr>
+	<tr>
+		<td>API LLM Provider</td>
+		<td>선택적 외부 추론 시스템</td>
+		<td>API_LLM 실패 또는 AUTO fallback 실패로 처리한다.</td>
+	</tr>
+</table>
 
 ## 7. 프런트엔드와 로컬 에이전트 서비스 논리 구조
 
@@ -294,7 +493,7 @@ flowchart LR
 
 제한:
 
-- Google API·MCP·SQLite·OS Keyring 직접 호출 금지
+- React의 Google Provider API·MCP·SQLite·OS Keyring 직접 호출 금지. Core의 Google Provider API/SDK 직접 호출도 금지하며 Application은 MCP Port만 사용
 - 승인 Button에서 Write Tool 직접 실행 금지
 - Browser Storage와 Client State를 승인·실행 사실의 기준점으로 사용 금지
 - API Error·SSE Disconnect만으로 Domain 실패를 추정 금지
@@ -421,38 +620,148 @@ flowchart TB
 
 ## 9. 컴포넌트 책임
 
-| 컴포넌트 | 핵심 책임 | 소유하지 않는 책임 |
-|---|---|---|
-| React Frontend | 사용자 입력, View State, REST·SSE 렌더링 | Google Write 실행, 정책 결정, Secret 접근 |
-| Typed API Client | Versioned REST·SSE 통신, Cursor·Request ID | Domain 상태 결정 |
-| Frontend Session Cache | 사이드바 목록 페이지·Page Token의 UI 세션 재사용 | 영구 승인·실행 상태 |
-| FastAPI Adapter | Local Session·Schema·Command·Event 경계 | Policy·Domain 규칙 복제 |
-| Application Services | Run 명령, 상태 전이, 승인·실행·복구 조정 | LLM 의미 판단, Google SDK 세부사항 |
-| LangGraph Runtime | Workflow, Interrupt, Checkpoint 재개 | 승인·실행 사실의 유일한 저장 |
-| Domain·Policy | Allowlist, 정책, 중복·충돌, 무결성, 검증 판정 | UI와 외부 SDK |
-| LLM Runtime Router | 요청 모드와 실제 Runtime 선택, fallback 기록 | 정책 우회, Tool 허용 |
-| MCP Client | Tool 계약 호출과 Transport 관리 | Google Credential 원문 관리 |
-| Google Work MCP Server | Google OAuth·API Adapter, Tool Registry, 실행 경계 검증 | Agent 계획과 사용자 UX |
-| Domain Repositories | Conversation·Run·Action·Approval·Execution·Verification 저장 | Graph 중간 Channel 상태 |
-| LangGraph Checkpointer | Graph State와 Interrupt 재개 정보 | 감사 사실의 기준점 |
-| Audit Writer | 승인·수정·차단·실행·검증 append-only 기록 | 전체 Gmail 원문 저장 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>컴포넌트</td>
+		<td>핵심 책임</td>
+		<td>소유하지 않는 책임</td>
+	</tr>
+	<tr>
+		<td>React Frontend</td>
+		<td>사용자 입력, View State, REST·SSE 렌더링</td>
+		<td>Google Write 실행, 정책 결정, Secret 접근</td>
+	</tr>
+	<tr>
+		<td>Typed API Client</td>
+		<td>Versioned REST·SSE 통신, Cursor·Request ID</td>
+		<td>Domain 상태 결정</td>
+	</tr>
+	<tr>
+		<td>Frontend Session Cache</td>
+		<td>사이드바 목록 페이지·Page Token의 UI 세션 재사용</td>
+		<td>영구 승인·실행 상태</td>
+	</tr>
+	<tr>
+		<td>FastAPI Adapter</td>
+		<td>Local Session·Schema·Command·Event 경계</td>
+		<td>Policy·Domain 규칙 복제</td>
+	</tr>
+	<tr>
+		<td>Application Services</td>
+		<td>Run 명령, 상태 전이, 승인·실행·복구 조정</td>
+		<td>LLM 의미 판단, Google SDK 세부사항</td>
+	</tr>
+	<tr>
+		<td>LangGraph Runtime</td>
+		<td>Workflow, Interrupt, Checkpoint 재개</td>
+		<td>승인·실행 사실의 유일한 저장</td>
+	</tr>
+	<tr>
+		<td>Domain·Policy</td>
+		<td>Allowlist, 정책, 중복·충돌, 무결성, 검증 판정</td>
+		<td>UI와 외부 SDK</td>
+	</tr>
+	<tr>
+		<td>LLM Runtime Router</td>
+		<td>요청 모드와 실제 Runtime 선택, fallback 기록</td>
+		<td>정책 우회, Tool 허용</td>
+	</tr>
+	<tr>
+		<td>MCP Client</td>
+		<td>Tool 계약 호출과 Transport 관리</td>
+		<td>Google Credential 원문 관리</td>
+	</tr>
+	<tr>
+		<td>Google Work MCP Server</td>
+		<td>Google OAuth·API Adapter, Tool Registry, 실행 경계 검증</td>
+		<td>Agent 계획과 사용자 UX</td>
+	</tr>
+	<tr>
+		<td>Domain Repositories</td>
+		<td>Conversation·Run·Action·Approval·Execution·Verification 저장</td>
+		<td>Graph 중간 Channel 상태</td>
+	</tr>
+	<tr>
+		<td>LangGraph Checkpointer</td>
+		<td>Graph State와 Interrupt 재개 정보</td>
+		<td>감사 사실의 기준점</td>
+	</tr>
+	<tr>
+		<td>Audit Writer</td>
+		<td>승인·수정·차단·실행·검증 append-only 기록</td>
+		<td>전체 Gmail 원문 저장</td>
+	</tr>
+</table>
 
 ## 10. 상태와 데이터 소유권
 
-| 데이터 | 기준 저장소 | 설명 |
-|---|---|---|
-| 패널 열림·너비, 현재 탭, 임시 선택 | React Client State 또는 비밀이 아닌 로컬 설정 | UX 상태이며 실행 사실이 아님 |
-| 사이드바 목록 페이지·Page Token | React Client Session Cache | UI 세션 종료·계정 변경·수동 새로고침 시 폐기 |
-| Agent 검색 중간 후보와 상세 원문 | 현재 Run 메모리 | 사용되지 않은 후보와 전체 원문은 영구 저장하지 않음 |
-| Conversation·Message | SQLite Domain Store | 대화 내역 복원 |
-| Run·Action·Approval | SQLite Domain Store | 제품의 제안·승인 사실 기준점 |
-| Execution·Verification | SQLite Domain Store | 중복 방지와 실제 결과 기준점 |
-| Audit | SQLite append-only 저장 | 안전·책임 추적 |
-| Graph State·Interrupt | LangGraph Checkpointer | Workflow 재개 지점 |
-| Gmail·Tasks·Calendar 원본 | Google Workspace APIs | 원본 Resource의 기준점 |
-| 실제 사용 Resource ID·Evidence excerpt | SQLite Domain Store | Run 보존 기간 동안 최소 근거 보존 |
-| OAuth Refresh Token·LLM API Key | OS Keyring | SQLite·Checkpoint·로그 저장 금지 |
-| Local Model | Ollama Model Store | 제품이 임의 경로를 직접 관리하지 않음 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>데이터</td>
+		<td>기준 저장소</td>
+		<td>설명</td>
+	</tr>
+	<tr>
+		<td>패널 열림·너비, 현재 탭, 임시 선택</td>
+		<td>React Client State 또는 비밀이 아닌 로컬 설정</td>
+		<td>UX 상태이며 실행 사실이 아님</td>
+	</tr>
+	<tr>
+		<td>사이드바 목록 페이지·Page Token</td>
+		<td>React Client Session Cache</td>
+		<td>UI 세션 종료·계정 변경·수동 새로고침 시 폐기</td>
+	</tr>
+	<tr>
+		<td>Agent 검색 중간 후보와 상세 원문</td>
+		<td>현재 Run 메모리</td>
+		<td>사용되지 않은 후보와 전체 원문은 영구 저장하지 않음</td>
+	</tr>
+	<tr>
+		<td>Conversation·Message</td>
+		<td>SQLite Domain Store</td>
+		<td>대화 내역 복원</td>
+	</tr>
+	<tr>
+		<td>Run·Action·Approval</td>
+		<td>SQLite Domain Store</td>
+		<td>제품의 제안·승인 사실 기준점</td>
+	</tr>
+	<tr>
+		<td>Execution·Verification</td>
+		<td>SQLite Domain Store</td>
+		<td>중복 방지와 실제 결과 기준점</td>
+	</tr>
+	<tr>
+		<td>Audit</td>
+		<td>SQLite append-only 저장</td>
+		<td>안전·책임 추적</td>
+	</tr>
+	<tr>
+		<td>Graph State·Interrupt</td>
+		<td>LangGraph Checkpointer</td>
+		<td>Workflow 재개 지점</td>
+	</tr>
+	<tr>
+		<td>Gmail·Tasks·Calendar 원본</td>
+		<td>Google Workspace APIs</td>
+		<td>원본 Resource의 기준점</td>
+	</tr>
+	<tr>
+		<td>실제 사용 Resource ID·Evidence excerpt</td>
+		<td>SQLite Domain Store</td>
+		<td>Run 보존 기간 동안 최소 근거 보존</td>
+	</tr>
+	<tr>
+		<td>OAuth Refresh Token·LLM API Key</td>
+		<td>OS Keyring</td>
+		<td>SQLite·Checkpoint·로그 저장 금지</td>
+	</tr>
+	<tr>
+		<td>Local Model</td>
+		<td>Ollama Model Store</td>
+		<td>제품이 임의 경로를 직접 관리하지 않음</td>
+	</tr>
+</table>
 
 ### 10.1 Checkpoint와 Domain Store 분리 원칙
 
@@ -469,7 +778,7 @@ Graph Node 구성이 변경되거나 Checkpoint가 정리돼도 승인·실행·
 - Cache Key는 Google 계정, Source, 검색·필터, 정렬, Page Token 조합으로 구성한다.
 - 동일 세션에서 이미 본 페이지를 재방문할 때만 재사용한다.
 - Cache는 승인·중복·충돌·검증 판단의 기준점이 아니다.
-- 선택형 요청 시작, 계획 확정, 승인 후 실행 직전, 실행 직후에는 Google API 응답을 우선한다.
+- 선택형 요청 시작, 계획 확정, 승인 후 실행 직전, 실행 직후에는 MCP를 통해 재조회한 최신 Google Provider 상태를 우선한다.
 
 ## 10-A. Local API와 Event 계약
 
@@ -624,7 +933,7 @@ flowchart LR
 - 일부 승인 시 승인된 Action과 독립 Action만 실행한다.
 - Action 수정으로 종속 Arguments가 바뀌면 관련 Action을 재계획·재검증한다.
 
-SQLite와 Google API를 하나의 ACID Transaction으로 묶을 수 없으므로 Plan 전체가 아닌 Action 단위 상태 전이를 사용하는 Saga형 실행으로 처리한다.
+SQLite와 MCP를 통해 반영되는 Google Provider 상태를 하나의 ACID Transaction으로 묶을 수 없으므로 Plan 전체가 아닌 Action 단위 상태 전이를 사용하는 Saga형 실행으로 처리한다.
 
 ## 14. Idempotency와 결과 불명확 처리
 
@@ -636,7 +945,7 @@ SQLite와 Google API를 하나의 ACID Transaction으로 묶을 수 없으므로
 - SSE Event 중복 수신
 - 앱 재시작 후 Run 재개
 - MCP 응답 유실
-- Google API Timeout 후 Retry
+- MCP 내부 Google Provider API Timeout 후 Recovery/제한 Retry
 
 ### 14.2 기본 원칙
 
@@ -648,7 +957,7 @@ Execution Service는 영구 Action 상태와 Idempotency 정보를 확인한 뒤
 
 ### 14.3 결과 불명확 상태
 
-Google API 요청을 전달한 뒤 MCP 연결이 끊기면 실패로 단정하지 않는다.
+MCP Server가 Google Provider API 요청을 전달한 뒤 MCP 연결이 끊기면 실패로 단정하지 않는다.
 
 ```text
 EXECUTING
@@ -671,7 +980,7 @@ flowchart TB
     AUTH --> GML["Gmail 어댑터"]
     AUTH --> TSK["할 일 어댑터"]
     AUTH --> CAL["캘린더 어댑터"]
-    GML --> API["Google API"]
+    GML --> API["Google Workspace Provider APIs"]
     TSK --> API
     CAL --> API
     API --> NORM["Google 응답 정규화기"]
@@ -721,14 +1030,36 @@ structured_output_attempts
 
 ### 16.2 모드 규칙
 
-| 환경·선택 | 동작 |
-|---|---|
-| CPU-only 또는 GPU 기준 미달 | `API_LLM` 고정 |
-| `API_ONLY` 배포 | `API_LLM`만 사용 |
-| `LOCAL_CAPABLE` + `LOCAL_GPU` | Ollama만 사용하며 동의 없는 API 전환 금지 |
-| `LOCAL_CAPABLE` + `API_LLM` | API Provider만 사용 |
-| `LOCAL_CAPABLE` + `AUTO` | Ollama 우선, 허용된 기술 실패에서 API로 최대 1회 fallback |
-| 사용 가능한 Runtime 없음 | Agent 실행 차단과 설정 Action 제공 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>환경·선택</td>
+		<td>동작</td>
+	</tr>
+	<tr>
+		<td>CPU-only 또는 GPU 기준 미달</td>
+		<td>`API_LLM` 고정</td>
+	</tr>
+	<tr>
+		<td>`API_ONLY` 배포</td>
+		<td>`API_LLM`만 사용</td>
+	</tr>
+	<tr>
+		<td>`LOCAL_CAPABLE` + `LOCAL_GPU`</td>
+		<td>Ollama만 사용하며 동의 없는 API 전환 금지</td>
+	</tr>
+	<tr>
+		<td>`LOCAL_CAPABLE` + `API_LLM`</td>
+		<td>API Provider만 사용</td>
+	</tr>
+	<tr>
+		<td>`LOCAL_CAPABLE` + `AUTO`</td>
+		<td>Ollama 우선, 허용된 기술 실패에서 API로 최대 1회 fallback</td>
+	</tr>
+	<tr>
+		<td>사용 가능한 Runtime 없음</td>
+		<td>Agent 실행 차단과 설정 Action 제공</td>
+	</tr>
+</table>
 
 AUTO fallback 허용 원인:
 
@@ -854,7 +1185,7 @@ P0는 Domain Table과 LangGraph Checkpoint Table을 하나의 앱 전용 SQLite 
 - Gmail·Tasks·Calendar의 사이드바 목록 페이지와 Page Token은 React Client Session Cache에, 사용되지 않은 검색 후보는 현재 Python Run 메모리에만 유지한다.
 - Gmail 전체 원문과 Task·Event 상세 원문은 기본적으로 장기 저장하지 않는다.
 - 실제 Run에서 판단·승인에 사용된 Resource ID, Source, 원본 링크, 최소 Metadata, 필요한 Evidence excerpt만 저장한다.
-- Google Workspace 원본 데이터는 Google API를 기준점으로 사용하고 SQLite를 Google 데이터의 원본 저장소로 취급하지 않는다.
+- Google Workspace 원본 데이터는 MCP Server가 재조회한 Provider 상태를 기준점으로 사용하고 SQLite를 Google 데이터의 원본 저장소로 취급하지 않는다.
 - 선택형 요청 시작 시 선택 Resource의 상세를 다시 조회하고, 쓰기 계획 확정 전·승인 후 실행 직전·실행 직후 관련 Resource를 재조회한다.
 - Run·Checkpoint 기본 30일, Audit 기본 90일 정책을 지원한다.
 - 보존 기간 정리는 앱 시작 또는 명시적 유지보수 시점에 수행할 수 있다.
@@ -863,11 +1194,28 @@ P0는 Domain Table과 LangGraph Checkpoint Table을 하나의 앱 전용 SQLite 
 
 관측성은 세 층으로 분리한다.
 
-| 층 | 대상 | 목적 |
-|---|---|---|
-| 사용자 진행 상태 | 현재 단계와 다음 행동 | 기술 로그 없이 작업 진행 이해 |
-| Run Trace | Node, Tool, Provider, 모델, Latency, Token, 오류 | 개발·진단·성능 분석 |
-| Audit | 승인, 수정, 거절, Policy 차단, 실행, 검증 | 안전·책임 추적 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>층</td>
+		<td>대상</td>
+		<td>목적</td>
+	</tr>
+	<tr>
+		<td>사용자 진행 상태</td>
+		<td>현재 단계와 다음 행동</td>
+		<td>기술 로그 없이 작업 진행 이해</td>
+	</tr>
+	<tr>
+		<td>Run Trace</td>
+		<td>Node, Tool, Provider, 모델, Latency, Token, 오류</td>
+		<td>개발·진단·성능 분석</td>
+	</tr>
+	<tr>
+		<td>Audit</td>
+		<td>승인, 수정, 거절, Policy 차단, 실행, 검증</td>
+		<td>안전·책임 추적</td>
+	</tr>
+</table>
 
 Audit는 append-only로 취급하고 사용자 UI에서 수정하지 못하게 한다. Trace와 Audit 모두 Secret, Authorization Header, 불필요한 Gmail 원문을 기록하지 않는다.
 
@@ -974,15 +1322,48 @@ Domain → React·FastAPI·LangGraph Runtime·외부 SDK 비의존
 
 ## 23. 테스트와 Mock 경계
 
-| 경계 | 대체 구현 | 주요 검증 |
-|---|---|---|
-| LLM Port | Fixed Response·Fixture LLM | Graph 흐름과 Structured Output 오류 |
-| MCP Port | In-process Mock MCP | Tool 선택, Arguments, Timeout, 결과 유실 |
-| Google Adapter | Fake Gmail·Tasks·Calendar | 중복, 충돌, 재조회, 부분 실패 |
-| Repository | Temporary SQLite | Migration, 상태 전이, Idempotency |
-| OS Keyring | In-memory Fake Keyring | Secret 비저장, 연결 해제, 삭제 |
-| Clock | Fixed Clock | 승인 만료, 보존 기간, 재시도 시간 |
-| Ollama Adapter | Mock Local Runtime | OOM, Timeout, Structured Output 실패, fallback |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>경계</td>
+		<td>대체 구현</td>
+		<td>주요 검증</td>
+	</tr>
+	<tr>
+		<td>LLM Port</td>
+		<td>Fixed Response·Fixture LLM</td>
+		<td>Graph 흐름과 Structured Output 오류</td>
+	</tr>
+	<tr>
+		<td>MCP Port</td>
+		<td>In-process Mock MCP</td>
+		<td>Tool 선택, Arguments, Timeout, 결과 유실</td>
+	</tr>
+	<tr>
+		<td>Google Adapter</td>
+		<td>Fake Gmail·Tasks·Calendar</td>
+		<td>중복, 충돌, 재조회, 부분 실패</td>
+	</tr>
+	<tr>
+		<td>Repository</td>
+		<td>Temporary SQLite</td>
+		<td>Migration, 상태 전이, Idempotency</td>
+	</tr>
+	<tr>
+		<td>OS Keyring</td>
+		<td>In-memory Fake Keyring</td>
+		<td>Secret 비저장, 연결 해제, 삭제</td>
+	</tr>
+	<tr>
+		<td>Clock</td>
+		<td>Fixed Clock</td>
+		<td>승인 만료, 보존 기간, 재시도 시간</td>
+	</tr>
+	<tr>
+		<td>Ollama Adapter</td>
+		<td>Mock Local Runtime</td>
+		<td>OOM, Timeout, Structured Output 실패, fallback</td>
+	</tr>
+</table>
 
 GPU가 없는 팀원은 `API_ONLY`, Mock, 고정 Fixture로 공통 UI·Graph·Policy·MCP Contract를 개발하고 검증할 수 있어야 한다.
 
@@ -1001,21 +1382,78 @@ GPU가 없는 팀원은 `API_ONLY`, Mock, 고정 Fixture로 공통 UI·Graph·Po
 
 ## 25. 주요 ADR 목록
 
-| ADR | 주제 | 상태 |
-|---|---|---|
-| ADR-001 | React + TypeScript + Vite Presentation 선택 | Accepted |
-| ADR-002 | FastAPI Local Agent Boundary 선택 | Accepted |
-| ADR-011 | Production same-origin Static UI + `/api/v1` | Accepted |
-| ADR-012 | REST Command + SSE Event Stream | Accepted |
-| ADR-013 | Launcher 기반 Local Process Supervision | Accepted |
-| ADR-003 | Supervisor 제어형 계층적 Multi-Agent Workflow 사용 | Accepted |
-| ADR-004 | Google 연동을 로컬 MCP `stdio`로 제한 | Accepted |
-| ADR-005 | Domain Policy와 Agent 판단 분리 | Accepted |
-| ADR-006 | Checkpoint와 Domain Store 분리 | Accepted |
-| ADR-007 | 모든 쓰기 후 Effect별 결정적 Verification | Accepted |
-| ADR-008 | Action Saga·부분 성공 보존 | Accepted |
-| ADR-009 | Ollama를 제품 Local Runtime으로 고정 | Accepted |
-| ADR-010 | `API_ONLY`·`LOCAL_CAPABLE` Artifact 분리 | Accepted |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ADR</td>
+		<td>주제</td>
+		<td>상태</td>
+	</tr>
+	<tr>
+		<td>ADR-001</td>
+		<td>React + TypeScript + Vite Presentation 선택</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-002</td>
+		<td>FastAPI Local Agent Boundary 선택</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-011</td>
+		<td>Production same-origin Static UI + `/api/v1`</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-012</td>
+		<td>REST Command + SSE Event Stream</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-013</td>
+		<td>Launcher 기반 Local Process Supervision</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-003</td>
+		<td>Supervisor 제어형 계층적 Multi-Agent Workflow 사용</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-004</td>
+		<td>Google 연동을 로컬 MCP `stdio`로 제한</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-005</td>
+		<td>Domain Policy와 Agent 판단 분리</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-006</td>
+		<td>Checkpoint와 Domain Store 분리</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-007</td>
+		<td>모든 쓰기 후 Effect별 결정적 Verification</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-008</td>
+		<td>Action Saga·부분 성공 보존</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-009</td>
+		<td>Ollama를 제품 Local Runtime으로 고정</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-010</td>
+		<td>`API_ONLY`·`LOCAL_CAPABLE` Artifact 분리</td>
+		<td>Accepted</td>
+	</tr>
+</table>
 
 ## 26. 세부값 소유 문서
 
@@ -1064,17 +1502,58 @@ flowchart LR
     REL["배포물 무결성 검증기"] --> APP
 ```
 
-| 컴포넌트 | 책임 | 금지 책임 |
-|---|---|---|
-| Input Validator | 사용자·Google·LLM·MCP 입력의 Schema, 길이, 개수, 허용값 검증 | 업무 의미 판단 |
-| Safe Renderer | 비신뢰 문자열의 Text·Markdown 출력과 URL Scheme 검증 | Raw HTML 실행 |
-| Transaction Manager | 짧은 SQLite Transaction 경계와 Commit·Rollback | 외부 API 호출 중 Lock 유지 |
-| Write Coordinator | 조건부 상태 전이, 실행권 Claim, Idempotency와 단일 쓰기 조정 | Google 결과를 성공으로 추정 |
-| Database Health Checker | Schema Version, 빠른 무결성 검사, Foreign Key 검사, 잠김 상태 진단 | 손상 상태에서 Write 허용 |
-| Migration Runner | 순차 Migration, 사전 Backup, 실패 Rollback과 호환성 판단 | 임의 Schema 자동 수정 |
-| Backup·Restore Service | 일관된 Backup 생성, 명시적 Restore, 복원 후 재검사 | 실행 중 DB 파일 단순 복사 |
-| Provider Circuit Registry | Google·LLM·Ollama·MCP 연속 장애 상태와 재호출 제한 | Policy 오류 자동 Retry |
-| Release Integrity Verifier | Dependency·Runtime·Model Version과 Artifact Hash 확인 | 검증되지 않은 자동 업그레이드 |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>컴포넌트</td>
+		<td>책임</td>
+		<td>금지 책임</td>
+	</tr>
+	<tr>
+		<td>Input Validator</td>
+		<td>사용자·Google·LLM·MCP 입력의 Schema, 길이, 개수, 허용값 검증</td>
+		<td>업무 의미 판단</td>
+	</tr>
+	<tr>
+		<td>Safe Renderer</td>
+		<td>비신뢰 문자열의 Text·Markdown 출력과 URL Scheme 검증</td>
+		<td>Raw HTML 실행</td>
+	</tr>
+	<tr>
+		<td>Transaction Manager</td>
+		<td>짧은 SQLite Transaction 경계와 Commit·Rollback</td>
+		<td>외부 API 호출 중 Lock 유지</td>
+	</tr>
+	<tr>
+		<td>Write Coordinator</td>
+		<td>조건부 상태 전이, 실행권 Claim, Idempotency와 단일 쓰기 조정</td>
+		<td>Google 결과를 성공으로 추정</td>
+	</tr>
+	<tr>
+		<td>Database Health Checker</td>
+		<td>Schema Version, 빠른 무결성 검사, Foreign Key 검사, 잠김 상태 진단</td>
+		<td>손상 상태에서 Write 허용</td>
+	</tr>
+	<tr>
+		<td>Migration Runner</td>
+		<td>순차 Migration, 사전 Backup, 실패 Rollback과 호환성 판단</td>
+		<td>임의 Schema 자동 수정</td>
+	</tr>
+	<tr>
+		<td>Backup·Restore Service</td>
+		<td>일관된 Backup 생성, 명시적 Restore, 복원 후 재검사</td>
+		<td>실행 중 DB 파일 단순 복사</td>
+	</tr>
+	<tr>
+		<td>Provider Circuit Registry</td>
+		<td>Google·LLM·Ollama·MCP 연속 장애 상태와 재호출 제한</td>
+		<td>Policy 오류 자동 Retry</td>
+	</tr>
+	<tr>
+		<td>Release Integrity Verifier</td>
+		<td>Dependency·Runtime·Model Version과 Artifact Hash 확인</td>
+		<td>검증되지 않은 자동 업그레이드</td>
+	</tr>
+</table>
 
 ## 28.2 실행 트랜잭션 경계
 
@@ -1084,7 +1563,7 @@ Google Write를 포함한 실행은 다음 단계로 분리한다.
 flowchart TB
     A["승인된 작업"] --> T1["트랜잭션 A<br>실행권 확보 · APPROVED → EXECUTING<br>멱등성 예약"]
     T1 --> C1["커밋"]
-    C1 --> G["Google API 쓰기<br>DB 트랜잭션 없음"]
+    C1 --> G["MCP Write Tool → Provider API<br>DB 트랜잭션 없음"]
     G --> T2["트랜잭션 B<br>자원 ID·실행 결과 저장"]
     T2 --> C2["커밋"]
     C2 --> GET["Google 자원 재조회 검증<br>DB 트랜잭션 없음"]
@@ -1223,15 +1702,48 @@ P0 로컬 제품에는 WAF, VPC, Redis 분산 Lock, Kubernetes, ALB, 자체 JWT�
 
 ## 28.9 추가 ADR
 
-| ADR | 주제 | 상태 |
-|---|---|---|
-| ADR-011 | Google·LLM 외부 호출과 SQLite Transaction 분리 | Accepted |
-| ADR-012 | 조건부 상태 전이와 DB Constraint를 실행 동시성 기준점으로 사용 | Accepted |
-| ADR-013 | 핵심 Domain 정규화와 Versioned JSON Snapshot 병행 | Accepted |
-| ADR-014 | 증가 목록에 Keyset Pagination 사용 | Accepted |
-| ADR-015 | Migration 전 일관된 Backup과 DB 실패 Safe Mode 적용 | Accepted |
-| ADR-016 | Run Budget과 Component별 Circuit 상태 도입 | Accepted |
-| ADR-017 | Dependency·Artifact·Model 무결성을 Release Gate로 관리 | Accepted |
+<table fit-page-width="true" header-row="true">
+	<tr>
+		<td>ADR</td>
+		<td>주제</td>
+		<td>상태</td>
+	</tr>
+	<tr>
+		<td>ADR-011</td>
+		<td>Google·LLM 외부 호출과 SQLite Transaction 분리</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-012</td>
+		<td>조건부 상태 전이와 DB Constraint를 실행 동시성 기준점으로 사용</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-013</td>
+		<td>핵심 Domain 정규화와 Versioned JSON Snapshot 병행</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-014</td>
+		<td>증가 목록에 Keyset Pagination 사용</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-015</td>
+		<td>Migration 전 일관된 Backup과 DB 실패 Safe Mode 적용</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-016</td>
+		<td>Run Budget과 Component별 Circuit 상태 도입</td>
+		<td>Accepted</td>
+	</tr>
+	<tr>
+		<td>ADR-017</td>
+		<td>Dependency·Artifact·Model 무결성을 Release Gate로 관리</td>
+		<td>Accepted</td>
+	</tr>
+</table>
 
 ## 28.10 DB 설계 문서로 넘기는 결정
 
@@ -1253,19 +1765,24 @@ P0 로컬 제품에는 WAF, VPC, Redis 분산 Lock, Kubernetes, ALB, 자체 JWT�
 
 ```mermaid
 flowchart TD
-    SUP["결정적 Supervisor"] --> REQ["요청 이해 Agent"]
-    SUP --> ACQ["API 탐색·수집 Agent"]
-    SUP --> RET["Context Retriever Agent"]
-    SUP --> ANA["업무 분석 Agent"]
-    SUP --> PLAN["해결책·계획 Agent"]
-    SUP --> REVIEW["계획 검토 Agent"]
+    SUP["결정적 Main Supervisor"] --> REQ["Request Understanding Subgraph"]
+    SUP --> ROUTE["Tool Route Subgraph"]
+    SUP --> RET["Retrieval Subgraph"]
+    SUP --> ANA["Work Analysis Subgraph"]
+    SUP --> PLAN["Planning Subgraph"]
+    SUP --> REVIEW["Review Subgraph"]
     SUP --> EXEC["결정적 실행 Engine"]
     SUP --> VERIFY["결정적 검증·복구 Engine"]
 ```
 
-- API 수집과 Context 선별은 별도 Agent다.
-- Agent는 하나의 Run·Thread를 공유한다.
-- 중간 결과는 Checkpoint·Run Retrieval Cache, 승인·실행 사실은 Domain Store가 소유한다.
+- Main Graph는 전체 Run의 공식 Typed State와 다음 Subgraph Edge를 소유한다.
+- Tool Route Subgraph가 IN Resource/Read Tool 범위와 OUT Resource/Effect/Tool을 한 번 확정해 Main State에 저장한다. Resource·Effect 판단과 Signed Tool Registry 후보 결합을 분리하고 후보가 하나면 코드가 자동 선택한다.
+- Retrieval Subgraph는 고정된 IN Route 안에서 Query·Read·Run-scoped RAG·Evidence·Sufficiency를 수행하고 Tool 종류를 다시 선택하지 않는다.
+- Work Analysis는 `analysis_requirement=REQUIRED` 또는 ACTION 경로에서만 업무 사실·관계를 해석하며 Tool·Arguments를 작성하지 않는다.
+- Planning Subgraph는 고정된 OUT Route를 사용해 Answer 또는 Tool Arguments·Action Plan을 작성하며 Tool을 다시 선택하지 않는다.
+- 각 Subgraph 내부도 LangGraph이며 Node마다 필요한 State Projection이 다를 수 있다.
+- 중간 Query candidate·RAG score·LLM candidate는 Subgraph Local State/Run Retrieval Cache에 두고 Parent에는 공식 Typed Result와 필요한 Typed Workflow Signal만 반영한다.
+- Agent는 하나의 Run·Thread를 공유한다. 승인·실행·검증 사실은 Domain Store가 소유한다.
 
 
 ## 29.1 계층형 Agent Subgraph 계약
@@ -1274,13 +1791,17 @@ P0의 Multi-Agent는 자유 대화형 군집이 아니라 **결정적 Supervisor
 
 ```mermaid
 flowchart TD
-    SUP["Main Supervisor Graph"] --> A["Agent Subgraph"]
-    A --> S["Agent Local State"]
-    S --> L["LLM Node"]
-    L --> V["Schema / Semantic Validation"]
-    V -->|"repair / revision 허용"| L
+    MS["Main Typed State"] -->|"필요 필드 Projection"| A["Agent Subgraph"]
+    A --> LS["Subgraph Typed Local State"]
+    LS --> N1["Node A"]
+    N1 -->|"A만 필요"| N2["Node B"]
+    LS -->|"A+B+C Projection"| N3["Node C"]
+    N2 --> V["Schema / Contract Validation"]
+    N3 --> V
+    V -->|"bounded repair / revision"| LS
     V -->|"complete"| R["Versioned Typed Result"]
-    R --> SUP
+    R --> MS
+    MS --> SUP["Deterministic Supervisor Edge"]
     SUP --> D["Domain Validation"]
     D --> X["Approval / Execution / Verification"]
 ```
@@ -1291,9 +1812,9 @@ Agent는 다음 조건을 함께 만족하는 실행 단위다.
 
 1. Main Supervisor가 하나의 Subgraph로 호출한다.
 2. 안정적인 책임 범위와 Prompt 계약을 가진다.
-3. Parent State와 분리된 호출 단위 Local State를 가질 수 있다.
+3. Parent State에서 자기 책임에 필요한 Typed 필드만 Projection 받고, Subgraph별 Typed Local State를 단계적으로 채운다.
 4. LLM 출력 검증과 허용된 bounded repair/revision loop를 내부에서 수행한다.
-5. 종료 시 Parent Graph에는 Versioned Typed Result와 disposition만 반환한다.
+5. 종료 시 Parent Graph에는 Versioned Typed Result와 disposition만 반환하며 Local candidate·Prompt 원문·대용량 원문은 승격하지 않는다.
 6. 다른 Agent를 직접 호출하지 않는다. Agent 간 이동은 Supervisor가 결정한다.
 7. Agent Local State는 장기 Memory가 아니며 Domain Store·Approval·ExecutionAttempt·Verification의 기준점이 아니다.
 
@@ -1305,7 +1826,7 @@ THREE_STAGE      = Stage Agent Subgraph 3개
 SIX_ROLE_BASELINE= Specialized Agent Subgraph 6개
 ```
 
-Agent 수와 LLM Call 수를 동일시하지 않는다. 한 Agent Subgraph가 acquisition 전후 판단이나 Schema Repair 때문에 둘 이상의 LLM Call을 사용할 수 있다. 실제 호출 수·Token·Latency는 Trace와 Evaluation에서 별도 측정한다.
+Agent 수와 LLM Call 수를 동일시하지 않는다. 하나의 Subgraph 안에서도 Node별 책임을 분리할 수 있고 Query Builder·Registry Binding·Read 실행·Segment Normalize·Plan Assembly 같은 Node는 결정적 코드로 수행할 수 있다. 실제 호출 수·Token·Latency는 Trace와 Evaluation에서 별도 측정한다.
 
 
 ---
@@ -1313,6 +1834,14 @@ Agent 수와 LLM Call 수를 동일시하지 않는다. 한 Agent Subgraph가 ac
 ## 29.2 문서 권위 규칙
 
 문서 번호 순서가 아니라 `01 PRD §1.1`의 **Concern Owner 규칙**을 따른다. 이 문서는 자신의 책임 범위만 구체화하며 01-B 안전 정책, 04 Domain·상태 전이, 07 Tool 계약 같은 전문 권위 계약을 완화하지 않는다.
+
+
+
+### Policy Precondition·Confirmation Receipt 경계
+- Tool Route 의미 판단 뒤 결정적 `PolicyPreconditionResolver`가 `TASK + CREATE` 중복 검사 READ와 `CALENDAR + CREATE` 충돌 검사 READ를 보강한다. 이는 두 번째 Tool 선택이 아니다.
+- 사용자가 명시한 Source·기간·Resource 범위를 벗어나는 필수 READ는 자동 확장하지 않고 `SCOPE_EXPANSION_REQUIRED` interrupt로 확인한다.
+- `SCOPE_EXPANSION`, `DUPLICATE_OVERRIDE`, `CONFLICT_OVERRIDE` 승인 사실은 Agent/LLM이 만들 수 없는 `PolicyConfirmationReceiptV1`로 보존한다. Receipt는 active State revision의 `meta.based_on`과 `decision_context_hash`에 바인딩되며 stale Receipt는 실행 근거가 아니다.
+- 중복·충돌 relation의 최종 확정, Calendar interval 산술, Registry eligibility, Policy/Approval/Claim/Verification은 결정적 Application/Domain 코드가 소유한다.
 
 
 # 30. Prompt Registry와 Ollama 소유권
@@ -1351,7 +1880,6 @@ React
 
 - MCP Credential Provider만 Authorization Code를 Token으로 교환하고 Refresh Token을 읽고 쓴다.
 - FastAPI는 `account_id`, `email`, `granted_scopes`, `connection_status`, `reauth_required`만 받는다.
-- Resource Browse/Count route는 기존 Local Session 검증을 통과한 뒤 `LocalSessionRecord.digest`를 opaque local session identity로, 현재 연결 계정의 기존 `account_id`를 active Google account identity로만 Application에 전달할 수 있다. raw session cookie/token과 OAuth access token은 Application snapshot scope에 전달하지 않는다.
 - Access Token은 MCP Process Memory에만 둔다.
 
 ## 31.3 Agent·MCP 호출 경계

@@ -6,8 +6,8 @@
 
 | 항목 | 내용 |
 |---|---|
-| 상태 | Draft v1.13 |
-| 기준일 | 2026-08-12 |
+| 상태 | Draft v1.15 |
+| 기준일 | 2026-08-13 |
 | 대상 | P0 MVP |
 | Database | SQLite |
 | 저장 형태 | 하나의 제품 DB 파일 |
@@ -37,11 +37,11 @@ LangGraph Checkpoint 내부 Schema, Tool별 JSON Schema, Google API 원본 Schem
 |---|---|---|
 | DB-001 | P0는 SQLite 파일 하나를 사용 | Domain과 Checkpoint를 함께 Backup·Restore하며 단일 사용자 부하에 충분하다. |
 | DB-002 | Domain과 Checkpoint는 논리적으로 분리 | Checkpoint는 Workflow 재개, Domain은 승인·실행 사실의 기준점이다. |
-| DB-003 | Google Sidebar 목록과 Local API continuation은 React Client Session Cache에 둔다 | Google 전체 데이터를 로컬에 복제하지 않는다. Tasks 기본 Browse batch와 명시적 날짜순 materialization 결과도 별도 React Client Session Cache에만 둔다. |
+| DB-003 | Sidebar 목록·Local API continuation·Tasks browse batch는 React Client Session Cache에 둔다 | Google 전체 데이터를 로컬에 복제하지 않고 Provider raw token을 Domain에 저장하지 않는다. |
 | DB-004 | 실제 사용 Resource와 최소 Evidence만 저장 | 대화 복구·승인 근거를 유지하면서 원문 저장을 최소화한다. |
 | DB-005 | 핵심 관계와 상태는 정규화한다 | Join, Constraint와 상태 전이를 DB에서 검증한다. |
 | DB-006 | 가변 Arguments와 불변 Snapshot만 JSON으로 저장한다 | Tool별 구조 변화와 승인 당시 값을 보존한다. |
-| DB-007 | 외부 호출과 DB Transaction을 분리한다 | Google API·LLM 호출 중 SQLite Write Lock을 유지하지 않는다. |
+| DB-007 | 외부 호출과 DB Transaction을 분리한다 | MCP Tool·MCP 내부 Google Provider API·LLM 호출 중 SQLite Write Lock을 유지하지 않는다. |
 | DB-008 | 제한적 Optimistic Lock과 짧은 `BEGIN IMMEDIATE`를 사용한다 | 분산 Lock 없이 REST Retry·중복 클릭·브라우저 재연결·복합 작업 경쟁을 차단한다. |
 | DB-009 | 로컬 Keyset Cursor와 Google Page Token을 분리한다 | 서로 다른 Pagination 계약을 혼용하지 않는다. |
 | DB-010 | Aggregate 단위 Batch 조회를 사용한다 | N+1을 막되 거대한 Join의 Row 곱집합은 피한다. |
@@ -66,8 +66,7 @@ LangGraph Checkpoint 내부 Schema, Tool별 JSON Schema, Google API 원본 Schem
 | Conversation·Run·Plan·Action | SQLite Domain Table |
 | Approval·Execution·Verification | SQLite Domain Table |
 | LangGraph State·Interrupt | 같은 SQLite 파일의 Library 관리 Table |
-| Google Sidebar 목록·Local API continuation | React Client Session Cache |
-| Tasks Sidebar Browse batch·page mapping | React Client Session Cache, account·task_list_id·검색/filter·sort·provider token/batch 범위 |
+| Google Sidebar 목록·opaque Local API continuation·Tasks materialized batch | React Client Session Cache |
 | Agent 검색 중간 후보·전체 원문 | 현재 Run 메모리 |
 | 실제 사용 Resource·Evidence excerpt | SQLite Domain Table |
 | OAuth Token·API Key | OS Keyring 또는 Local Agent Process Memory |
@@ -137,7 +136,7 @@ Backup Manifest는 DB가 열리지 않을 때도 복구 후보를 확인할 수 
 ### 4.5 Observability
 
 - `TraceEvent`: 실행·성능·장애 진단, Run과 함께 30일 보존
-- `AuditEvent`: 승인·수정·거절·차단·실행·검증의 안전 기록, 90일 보존
+- `AuditEvent`: 정책 확인·승인·수정·거절·차단·실행·검증의 안전 기록, 90일 보존
 
 Audit는 더 긴 보존을 위해 Domain Foreign Key를 사용하지 않고 최소 식별자만 저장한다.
 
@@ -148,7 +147,7 @@ Audit는 더 긴 보존을 위해 Domain Foreign Key를 사용하지 않고 최�
 | Entity | GoogleAccount, Conversation, Message, Run, Plan, Action, ResourceRef, Evidence, Approval, ExecutionAttempt, Verification |
 | Join Entity | ActionDependency, ActionEvidence |
 | Append Event | TraceEvent, AuditEvent |
-| Value Object | CanonicalArguments, ArgumentsHash, SourceSnapshot, IdempotencyKey, RecoveryFingerprint, Cursor, RunBudget, VerificationDiff |
+| Value Object | CanonicalArguments, ArgumentsHash, SourceSnapshot, PolicyConfirmationReceiptV1, IdempotencyKey, RecoveryFingerprint, Cursor, RunBudget, VerificationDiff |
 
 ID와 시간 규칙:
 
@@ -418,7 +417,7 @@ BEGIN IMMEDIATE
 ### 10.5 외부 Write와 결과
 
 ```text
-Google API Write
+MCP Write Tool → Google Work MCP Server 내부 Provider Adapter
 → DB Transaction 없음
 
 BEGIN IMMEDIATE
@@ -538,8 +537,7 @@ P0 초기값:
 
 | 경로 | 초기값 |
 |---|---:|
-| Google Sidebar UI 표시 | 20개 |
-| Tasks Sidebar Provider browse batch | 최대 100개 Task metadata (UI 표시는 20개) |
+| Google Sidebar 목록 | Gmail visible 20 / Tasks Provider batch ≤100 → UI 20 / Calendar Month grid |
 | Conversation·Message Page | 20개 |
 | 내부 ID Batch Query | 최대 50개 |
 | Plan·Action·Evidence Batch Write | 최대 50 Row |
@@ -550,16 +548,21 @@ P0 초기값:
 
 ### 14.1 Google Source
 
-Google Provider pagination은 source 내부 구현으로 사용하고, Local Resource API는 Client에 opaque continuation token만 제공한다.
+Google Provider의 raw Page Token은 Google Work MCP Server 내부 Adapter가 해석한다. React/Application은 Provider token을 직접 다루지 않고 Local API의 opaque continuation만 전달한다.
 
 ```text
-목록 API
-→ items + Local API opaque continuation token
+React
+→ Local API opaque continuation
+→ Application / MCP Port
+→ MCP Server 내부 Provider token mapping
+→ items + provider next token
+→ Local API continuation으로 재포장
 → React Client Session Cache
-→ 다음 요청에 token을 그대로 사용
 ```
 
-Tasks 기본 Browse는 configured/default Task List의 `show_completed=false` Provider 반환 순을 유지한다. `tasks.list` 최대 100개 metadata batch와 continuation·UI 20개 page mapping은 React Client Session Cache에만 둔다. 100개와 next token을 받으면 초기에는 5개 UI page만 알고, 알려진 마지막 page를 요청할 때만 다음 batch를 append한다. terminal batch 도달 뒤 누적 수로 exact total과 마지막 page를 확정하며, 초기 exact count를 위해 전체 scope를 순회하지 않는다. 사용자가 예정일 정렬을 명시한 경우에만 전체 결과를 materialize하여 예정일 오름차순·예정일 없는 Task 후순위를 적용하고, 그 결과는 기본 Browse cache와 분리한다. Refresh·계정/Task List·scope·검색/filter/sort 변경·session 종료는 관련 cache를 무효화한다. raw bearer/session token은 cache key나 Application에 전달하지 않으며 SQLite·영속 cache에 저장하지 않는다.
+- Gmail visible page는 20개다.
+- Tasks는 Provider metadata를 최대 100개 batch로 받고 UI에서 20개씩 slice한다.
+- Calendar Month View는 visible grid를 terminal까지 materialize하며 numeric pagination을 사용하지 않는다.
 
 ### 14.2 Local DB
 
@@ -608,16 +611,18 @@ Python·SQLite에서는 JPA Fetch Join 대신 SQL JOIN, CTE, `WHERE id IN (...)`
 
 Action×Evidence×Attempt×Verification을 한 JOIN으로 합쳐 Row 곱집합을 만들지 않는다.
 
-### 15.2 Google API
+### 15.2 MCP Read·Provider API
 
 ```text
-Sidebar 목록 1회
+Sidebar Local API Query
+→ MCP Read Tool
+→ Provider list/metadata
 → Metadata 표시
 → 항목별 상세 자동 조회 금지
-→ 클릭·선택한 Resource만 상세 조회
+→ 클릭·선택한 Resource만 MCP detail Read
 ```
 
-복수 선택은 Application에서 Resource를 Source별로 그룹화한 뒤 `get_gmail_threads`, `get_tasks`, `get_calendar_events` 중 해당 Batch Read Port를 Source당 한 번 호출한다. Google 서비스가 개별 상세 Endpoint만 제공하면 MCP 내부 HTTP 요청은 여러 번일 수 있으나 다음을 적용한다.
+복수 선택은 Application에서 Resource를 Source별로 그룹화한 뒤 `get_gmail_threads`, `get_tasks`, `get_calendar_events` 중 해당 Batch Read Port를 Source당 한 번 호출한다. Google Provider가 개별 상세 Endpoint만 제공하면 MCP Server 내부 HTTP 요청은 여러 번일 수 있으나 Core에서는 MCP Tool 경계를 유지하고 다음을 적용한다.
 
 - Resource ID 중복 제거
 - 제한된 동시성

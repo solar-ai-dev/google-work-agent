@@ -1,12 +1,12 @@
 # 10. Google Work Agent · 인프라 · 환경 설정 설계서
 
-> **상태:** Draft v2.7 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v2.8 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 확정 결정
 
 - 사용자별 설치, 관리자 권한 불필요
 - One-folder Application Bundle + Windows Installer
-- Launcher → FastAPI → MCP `stdio`
+- Launcher → FastAPI → MCP `stdio` → Google Work MCP Server 내부 Provider Adapter → Google Workspace Provider APIs
 - UI·API same-origin, `127.0.0.1` 동적 Port
 - API_ONLY·LOCAL_CAPABLE Artifact 분리
 - P0 수동 In-place Upgrade
@@ -36,7 +36,7 @@ GoogleWorkAgentLauncher.exe
 └─ ollama.exe
 ```
 
-Launcher가 Service를, Service가 MCP를 소유한다. Browser 종료는 Runtime 종료가 아니다. 제품은 Ollama를 시작·종료·업데이트하지 않는다.
+Launcher가 Service를, Service가 MCP를 소유한다. Browser 종료는 Runtime 종료가 아니다. Gmail·Tasks·Calendar Provider SDK/API는 MCP Server 내부 Adapter에만 포함하며 Service/Application/LangGraph/Agent/Domain에는 직접 Provider Client 실행 경로를 두지 않는다. 제품은 Ollama를 시작·종료·업데이트하지 않는다.
 
 ## 4. Startup
 
@@ -50,6 +50,7 @@ Single Instance Lock
 → /health/live
 → SQLite·Migration·Domain·Keyring Adapter
 → Frontend Asset·API Contract·MCP Handshake·Tool Schema
+→ Core에서 직접 Google Provider Client가 구성되지 않았는지 계약 검증
 → /health/ready
 → Chrome·Edge Browser 열기
 → Local Session
@@ -67,7 +68,7 @@ Single Instance Lock
 - `SEC-INF-007`: Keyring Namespace `GoogleWorkAgent/<env>/<credential-type>`
 - `SEC-INF-008`: Google Token은 MCP, LLM Key는 LLM Adapter
 - `SEC-INF-009`: ACL current user + SYSTEM
-- `SEC-INF-010`: MCP absolute path·signature·hash·schema pin
+- `SEC-INF-010`: MCP absolute path·signature·hash·schema pin. Google Workspace Provider API/SDK는 MCP 내부 Adapter에서만 사용하고 Core direct fallback을 금지
 - `SEC-INF-011`: Child environment allowlist
 - `SEC-INF-012`: distributed test·production signing
 - `SEC-INF-013`: signed release manifest
@@ -78,6 +79,18 @@ Single Instance Lock
 - `SEC-INF-018`: crash recovery
 - `SEC-INF-019`: Ollama isolation
 - `SEC-INF-020`: production secret file/env/CLI prohibition. DEV Desktop OAuth의 protocol compatibility `client_secret`은 예외적으로 repo-root `.env.local`에서 MCP Credential Provider만 읽을 수 있으나, Production에서는 이 예외를 허용하지 않는다.
+
+
+## 5.1 Google Workspace Provider 경계
+
+```text
+React → FastAPI Local API → Application/LangGraph/Domain → MCP stdio → Google Work MCP Server → Provider APIs
+```
+
+- 제품 Core는 Gmail·Tasks·Calendar Provider API/SDK를 직접 import·구성·호출하지 않는다.
+- Sidebar Browse/Count/Detail, Retrieval, Write, Verification, Recovery와 Google OAuth/Token 적용은 MCP 경계를 통과한다.
+- `MCP executable 없음`, handshake 실패, Tool Schema mismatch는 NOT_READY/Recovery 사유이며 direct Provider API fallback 사유가 아니다.
+- 테스트는 MCP Transport를 Fake로 대체할 수 있지만 제품 Core용 Fake/Real Google Provider Client Port를 별도 우회 경로로 만들지 않는다. Provider Adapter 단위 테스트는 MCP Server 내부 테스트에서만 수행한다.
 
 ## 6. Directory
 
@@ -174,12 +187,12 @@ Service Start 30s
 Shutdown 30s
 MCP Start 10s
 MCP Restart 1회
-Google Read·Write 30s
+MCP Google Read·Write Tool 30s
 API LLM 120s
 Ollama 180s
 SQLite busy_timeout 5s
 LLM concurrency 1
-MCP Read concurrency 3 (하나의 invocation 내부 Google Provider Read 포함)
+MCP Read concurrency 3
 Write concurrency 1
 Conversation Active Run 1
 ```

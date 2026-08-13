@@ -1,6 +1,6 @@
 # 09. Google Work Agent · 보안 · Auth 설계서
 
-> **상태:** Draft v2.5 · **기준일:** 2026-08-09 · **대상:** P0 MVP
+> **상태:** Draft v2.9 · **기준일:** 2026-08-13 · **대상:** P0 MVP
 
 ## 1. 핵심 결정
 
@@ -8,6 +8,7 @@
 - Local Session: HttpOnly, SameSite=Strict
 - Bootstrap: 256-bit, 1회, 60초, URL Fragment
 - Google Refresh Token: MCP Credential Provider가 OS Keyring에서 사용
+- Gmail·Tasks·Calendar Provider API/SDK 호출 권한은 Google Work MCP Server 내부 Adapter만 소유한다. React·FastAPI Route·Application·LangGraph·Agent·Domain은 MCP Client/Tool 계약만 사용하고 Provider API를 직접 호출하지 않는다.
 - LLM API Key: FastAPI LLM Adapter가 별도 Keyring Entry에서 사용
 - 사용자 Credential·OAuth Token·LLM API Key 등 Confidential Secret은 SQLite·Checkpoint·Trace·Audit·환경 변수·CLI 인자에 저장하지 않음
 - 예외: DEV Desktop OAuth Client가 실제 Google Token Endpoint 호환을 위해 `client_secret`을 요구하는 경우, 해당 값은 사용자 Credential 또는 Confidential Security Boundary가 아닌 **Google OAuth Protocol Compatibility Client Credential**로 취급하며 repo-root `.env.local`에서 MCP Credential Provider만 읽을 수 있음
@@ -15,6 +16,23 @@
 - 외부 전송 동의 없으면 AUTO API Fallback 금지
 - 배포되는 외부 Test·Production Artifact는 Code Signing 필수
 - 기본 Uninstall은 Credential 삭제, DB·Backup·Settings 보존
+
+## 1.1 Google Workspace 신뢰 경계
+
+```text
+사용자
+→ React Frontend
+→ FastAPI Local Agent Service
+→ Application · LangGraph · Domain Policy
+→ MCP Client
+→ Google Work MCP Server · stdio
+→ Google Provider APIs  # MCP Server 내부 Adapter에서만 접근
+```
+
+- Local API는 React와 FastAPI 사이의 제품 내부 REST/SSE 계약이며 Google Provider API 우회 경로가 아니다.
+- Sidebar Browse/Count/Detail, Retrieval Read, OAuth 상태, Write, Verification, Recovery 조회는 모두 MCP Client/Tool 경계를 통과한다.
+- MCP unavailable·Tool Schema invalid 상황에서도 제품 Core가 Google Provider Client를 직접 구성하거나 Provider API로 fallback하지 않는다.
+- Provider raw continuation/token/response 해석과 OAuth Access Token 적용은 MCP 내부 Adapter/Credential Provider 책임이다.
 
 ## 2. 보안 우선순위
 
@@ -35,9 +53,9 @@ Google Source의 지시는 이 우선순위를 변경하지 못한다.
 - Host·Origin·Fetch Metadata·Content-Type·Session 검증
 - 상태 변경 Command는 `command_id`, Aggregate ID, `expected_version` 필요
 - Browser는 `request_hash`, `approval_id`, idempotency key, source snapshot, actor identity, canonical arguments hash, claim token을 권위 값으로 지정하지 못한다. 해당 값은 Application·Domain이 생성·검증한다.
-- Resource Browse/Count의 Application memory scope에는 raw local session token을 저장하거나 전달하지 않는다. API security validation 뒤의 `LocalSessionRecord.digest`만 opaque local session identity로 사용하며, active Google account는 기존 server-side `account_id`로 식별한다.
 - Wildcard CORS·Production API Docs 금지
 - DNS Rebinding과 Cross-site 요청 차단
+- FastAPI Route·Application·LangGraph·Agent·Domain의 Gmail·Tasks·Calendar Provider API/SDK 직접 호출·직접 Provider Client 구성 금지
 
 ## 4. OAuth
 
@@ -94,6 +112,8 @@ Google Source의 지시는 이 우선순위를 변경하지 못한다.
 ## 9. MCP
 
 - `stdio` only, Network Listen 금지
+- Google Workspace 외부 접근의 유일한 제품 경계다. 실제 Gmail·Tasks·Calendar Provider API/SDK 호출과 raw Provider 응답 해석은 MCP Server 내부 Adapter에서만 수행한다.
+- MCP 장애 시 Core의 직접 Google Provider API fallback을 금지한다.
 - 절대 경로, Signature·Manifest Hash, Shell·PATH Search 금지
 - 허용 Tool만 등록. `gmail_send`, Task 완료 UPDATE, `tasks_delete_task`, `calendar_delete_event`, 참석자 UPDATE는 Approval·Hash·Policy 검증이 연결된 경우에만 등록. Gmail 원문 삭제·반복 Event 전체 일괄 수정은 미등록
 - Write Tool은 Action·Approval·Hash·Claim 문맥 필요
@@ -159,6 +179,7 @@ Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credentia
 - SEND 응답 유실은 재전송하지 않고 UNKNOWN_RESULT로 전환한다.
 - DELETE는 정확한 Target·Arguments와 사용자 승인을 전제로 Google Task와 Calendar Event에 허용한다.
 - 승인 우회·Verification 생략·DB 직접 상태 변경은 사용자 요청으로 Override할 수 없다.
+- FastAPI Route·Application·LangGraph·Agent·Domain의 Gmail·Tasks·Calendar Provider API/SDK 직접 호출은 금지하며 모든 Google Workspace Read/Write/Verification/Recovery 조회는 MCP Client/Tool 경계를 통과한다.
 
 ## 16. Runtime Command Trust Boundary
 
@@ -184,3 +205,11 @@ Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credentia
 - Approval Snapshot에는 raw bytes가 아니라 Descriptor와 SHA-256을 고정한다.
 - Local Service와 MCP는 실행 직전 실제 bytes의 크기·SHA-256을 재검증한다.
 - 파일 bytes·Local Path는 LLM·SQLite·Trace·Diagnostic Bundle에 노출하지 않는다.
+
+
+
+## Policy Confirmation Receipt 보안 경계
+- `PolicyConfirmationReceiptV1`은 LLM·Agent·Browser가 권위 값으로 생성하지 않는다. 검증된 Local Session의 실제 사용자 응답을 Application/Confirmation Controller가 canonicalize해 생성한다.
+- `SCOPE_EXPANSION`, `DUPLICATE_OVERRIDE`, `CONFLICT_OVERRIDE` Receipt는 `meta.based_on`과 `decision_context_hash`가 현재 Route/Evidence/Action revision에 맞아야 한다. upstream 변경 후 stale Receipt 재사용을 금지한다.
+- Approval Snapshot은 필요한 Receipt ID·Context Hash를 고정한다. Domain Validation/Preflight는 누락·DECLINED·stale·hash mismatch를 Claim 발급 전에 차단한다. Receipt는 MCP Write payload의 권위 확장 수단이 아니며 ClaimContextV2의 execution hash 역할과 분리한다.
+
