@@ -709,11 +709,40 @@ def _build_clarification(intent: RequestIntentV1) -> ClarificationQuestionV1:
     }
 
 
+_SELECTED_RESOURCE_SOURCE_TO_CATEGORY: Final = {
+    "GMAIL": "EMAIL",
+    "TASKS": "TASK",
+    "CALENDAR": "CALENDAR",
+}
+
+# P0 has exactly one Connector (docs/03-system-architecture.md: "P0 첫
+# Connector는 google_workspace"). request_understanding.classify's
+# selected_resources projection needs a connector_id per
+# prompt-runtime-input-contract-v1.json; there is only one to report until
+# a second Connector exists.
+_P0_CONNECTOR_ID: Final = "google_workspace"
+
+
 def _prompt_input_from_request(request: WorkflowStartRequest) -> dict[str, object]:
     return {
-        "request_text": request.request_text,
+        "user_request": request.request_text,
         "entry_mode": request.entry_mode,
-        "selected_resource_ids": list(request.selected_resource_ids),
+        # MISSING_UPSTREAM_FIELD: no deterministic request-language source
+        # exists anywhere upstream of this node yet (WorkflowStartRequest,
+        # conversation/run state). request-understanding-input-v1.schema.json
+        # types this as ["string", "null"] for exactly this case -- send
+        # null rather than guess a value or add a new LLM call to detect it.
+        "language": None,
+        "selected_resources": [
+            {
+                "connector_id": _P0_CONNECTOR_ID,
+                "resource_type": _SELECTED_RESOURCE_SOURCE_TO_CATEGORY.get(
+                    ref.source, ref.source
+                ),
+                "external_resource_id": ref.resource_id,
+            }
+            for ref in request.selected_resources
+        ],
     }
 
 

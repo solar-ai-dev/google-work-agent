@@ -31,6 +31,7 @@ from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
     RequestedRuntimeMode,
+    SelectedResourceRef,
     StructuredLLMResult,
     WorkflowCorrelationContext,
     WorkflowStartRequest,
@@ -115,9 +116,10 @@ def test_clear_request_returns_complete_request_intent() -> None:
     assert state_update["workflow_phase"] == WorkflowPhase.REQUEST_ANALYSIS.value
     assert state_update["request_intent"] == output["request_intent"]
     assert runtime.calls[0]["prompt_input"] == {
-        "request_text": request.request_text,
+        "user_request": request.request_text,
         "entry_mode": "AGENT_SEARCH",
-        "selected_resource_ids": [],
+        "language": None,
+        "selected_resources": [],
     }
     assert cast(PromptReference, runtime.calls[0]["prompt_ref"]).prompt_id == (
         "request_understanding.classify"
@@ -267,6 +269,11 @@ def test_resource_selected_preserves_selected_resource_context_without_intent_du
         "이 메일 기준으로 해야 할 일 정리해줘.",
         entry_mode="RESOURCE_SELECTED",
         selected_resource_ids=("gmail-thread-1",),
+        selected_resources=(
+            SelectedResourceRef(
+                source="GMAIL", resource_type="THREAD", resource_id="gmail-thread-1"
+            ),
+        ),
     )
     agent = RequestUnderstandingAgent(
         llm_runtime=runtime,
@@ -279,9 +286,16 @@ def test_resource_selected_preserves_selected_resource_context_without_intent_du
 
     assert output["result"] == RequestUnderstandingResult.COMPLETE.value
     assert runtime.calls[0]["prompt_input"] == {
-        "request_text": request.request_text,
+        "user_request": request.request_text,
         "entry_mode": "RESOURCE_SELECTED",
-        "selected_resource_ids": ["gmail-thread-1"],
+        "language": None,
+        "selected_resources": [
+            {
+                "connector_id": "google_workspace",
+                "resource_type": "EMAIL",
+                "external_resource_id": "gmail-thread-1",
+            }
+        ],
     }
     assert "selected_resource_ids" not in cast(dict[str, object], output["request_intent"])
     assert state_update["prompt_context"] == {
@@ -444,6 +458,7 @@ def _request(
     *,
     entry_mode: str = "AGENT_SEARCH",
     selected_resource_ids: tuple[str, ...] = (),
+    selected_resources: tuple[SelectedResourceRef, ...] = (),
 ) -> WorkflowStartRequest:
     return WorkflowStartRequest(
         run_id="run-1",
@@ -453,6 +468,7 @@ def _request(
         requested_mode="AUTO",
         request_text=request_text,
         selected_resource_ids=selected_resource_ids,
+        selected_resources=selected_resources,
         correlation=WorkflowCorrelationContext(
             request_id="request-1",
             command_id="command-1",
