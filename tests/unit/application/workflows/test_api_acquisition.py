@@ -10,6 +10,7 @@ import pytest
 
 from google_work_agent.adapters.connectors import GoogleWorkspaceConnectorReader
 from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.application.ports import ConnectorReadRequest
 from google_work_agent.application.workflows import (
     AdditionalAcquisitionRequestV1,
     ApiAcquisitionResult,
@@ -34,6 +35,7 @@ from google_work_agent.ports import (
     ActualRuntime,
     FreeBusyCalendar,
     GoogleWorkspaceErrorCode,
+    GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     LLMErrorCode,
     LLMInvocationError,
@@ -64,6 +66,24 @@ PROMPT_REF = PromptReference(
     output_schema_version="agent-node-output-v0.1",
 )
 DEFAULT_TEST_RETRIEVAL_BUDGET = RetrievalBudget()
+
+
+def test_connector_reader_rejects_read_outside_frozen_tool_ids() -> None:
+    reader = GoogleWorkspaceConnectorReader(
+        gateway=cast(GoogleWorkspaceGateway, RecordingGoogleGateway())
+    )
+    request = ConnectorReadRequest(
+        plan=_plan("TASKS", {}),
+        selected_resources=(),
+        prefer_selected_resources=False,
+        remaining_budget=DEFAULT_TEST_RETRIEVAL_BUDGET.as_remaining(),
+        now_ms=0,
+        timezone="Asia/Seoul",
+        allowed_read_tool_ids=frozenset({"tasks_list_tasks", "tasks_get_task"}),
+    )
+
+    with pytest.raises(PermissionError, match="outside frozen input route"):
+        reader.read(request)
 
 
 class LLMCall(TypedDict):

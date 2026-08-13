@@ -32,6 +32,7 @@ from google_work_agent.application.workflows.prompt_registry import InactiveProm
 from google_work_agent.application.workflows.solution_planning import (
     _action_plan_draft_output_schema_for_registry,
 )
+from google_work_agent.application.workflows.tool_routing import OutputToolRouteV1
 from google_work_agent.domain import SignedToolRegistry, build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
@@ -263,6 +264,40 @@ def test_action_plan_draft_output_schema_reflects_injected_tool_registry() -> No
     tool_name_schema = cast(dict[str, object], item_properties["tool_name"])
 
     assert tool_name_schema["enum"] == [full_entries[0].tool_name]
+
+
+def test_action_plan_cannot_escape_frozen_output_route() -> None:
+    output = _plan_output(
+        PlanningResult.PLAN_READY.value,
+        actions=[
+            _action(
+                "action-1",
+                1,
+                effect="CREATE",
+                tool_name="tasks_create_task",
+                evidence_refs=["evidence-1"],
+                resource_refs=["gmail_thread:thread-kim"],
+            )
+        ],
+        evidence_refs=["evidence-1"],
+    )
+    frozen_routes: tuple[OutputToolRouteV1, ...] = (
+        {
+            "route_id": "route-1",
+            "resource_type": "CALENDAR_EVENT",
+            "connector_id": "google_workspace",
+            "effect": "CREATE",
+            "selected_tool_id": "calendar_create_event",
+            "reason_codes": ["REGISTRY_SINGLE_CANDIDATE"],
+        },
+    )
+
+    with pytest.raises(SolutionPlanningValidationError, match="escapes frozen output route"):
+        validate_action_plan_draft_v1(
+            output,
+            analysis_result=_analysis_result(),
+            frozen_output_routes=frozen_routes,
+        )
 
 
 def test_invoke_draft_plan_llm_scopes_tool_name_enum_to_agent_tool_registry() -> None:

@@ -39,6 +39,7 @@ from google_work_agent.application.workflows.request_understanding import (
 from google_work_agent.application.workflows.task_write_semantics import (
     normalize_task_write_arguments,
 )
+from google_work_agent.application.workflows.tool_routing import OutputToolRouteV1
 from google_work_agent.domain import (
     EffectType,
     EvidencePolicyInput,
@@ -195,6 +196,26 @@ def _action_plan_draft_output_schema_for_registry(
     """
 
     tool_names = sorted(entry.tool_name for entry in tool_registry.list_entries())
+    base_schema = dict(ACTION_PLAN_DRAFT_OUTPUT_SCHEMA.json_schema)
+    json_schema: dict[str, object] = copy.deepcopy(base_schema)
+    properties = cast("dict[str, object]", json_schema["properties"])
+    actions_schema = cast("dict[str, object]", properties["actions"])
+    action_item_schema = cast("dict[str, object]", actions_schema["items"])
+    action_item_properties = cast("dict[str, object]", action_item_schema["properties"])
+    action_item_properties["tool_name"] = {"type": "string", "enum": tool_names}
+    return OutputSchemaDefinition(
+        schema_version=ACTION_PLAN_DRAFT_OUTPUT_SCHEMA.schema_version,
+        json_schema=json_schema,
+    )
+
+
+def _action_plan_draft_output_schema_for_routes(
+    routes: tuple[OutputToolRouteV1, ...],
+    read_tool_ids: frozenset[str],
+) -> OutputSchemaDefinition:
+    tool_names = sorted(
+        {route["selected_tool_id"] for route in routes} | set(read_tool_ids)
+    )
     base_schema = dict(ACTION_PLAN_DRAFT_OUTPUT_SCHEMA.json_schema)
     json_schema: dict[str, object] = copy.deepcopy(base_schema)
     properties = cast("dict[str, object]", json_schema["properties"])
@@ -371,6 +392,8 @@ class SolutionPlanningAgent:
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
+        frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
+        frozen_read_tool_ids: frozenset[str] = frozenset(),
     ) -> StructuredLLMResult:
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._draft_plan_prompt_ref,
@@ -382,8 +405,16 @@ class SolutionPlanningAgent:
                 "evidence_drafts": context_result["evidence_drafts"],
                 "analysis_result": analysis_result,
                 "source_content_is_untrusted": True,
+                "output_routes": list(frozen_output_routes or ()),
             },
-            output_schema=_action_plan_draft_output_schema_for_registry(self._tool_registry),
+            output_schema=(
+                _action_plan_draft_output_schema_for_registry(self._tool_registry)
+                if frozen_output_routes is None
+                else _action_plan_draft_output_schema_for_routes(
+                    frozen_output_routes,
+                    frozen_read_tool_ids,
+                )
+            ),
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,
                 command_id=request.correlation.command_id,
@@ -393,7 +424,11 @@ class SolutionPlanningAgent:
                 llm_call_id=f"{request.run_id}:planning.draft_plan",
             ),
             semantic_validate=lambda candidate: validate_action_plan_draft_v1(
-                candidate, analysis_result=analysis_result, tool_registry=self._tool_registry
+                candidate,
+                analysis_result=analysis_result,
+                tool_registry=self._tool_registry,
+                frozen_output_routes=frozen_output_routes,
+                frozen_read_tool_ids=frozen_read_tool_ids,
             ),
         )
 
@@ -402,11 +437,15 @@ class SolutionPlanningAgent:
         llm_result: StructuredLLMResult,
         *,
         analysis_result: WorkAnalysisResultV1,
+        frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
+        frozen_read_tool_ids: frozenset[str] = frozenset(),
     ) -> ActionPlanDraftV1:
         result = validate_action_plan_draft_v1(
             llm_result.structured_output,
             analysis_result=analysis_result,
             tool_registry=self._tool_registry,
+            frozen_output_routes=frozen_output_routes,
+            frozen_read_tool_ids=frozen_read_tool_ids,
         )
         result["llm_provider_result"] = _provider_summary(llm_result)
         return result
@@ -507,6 +546,8 @@ class SolutionPlanningAgent:
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
+        frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
+        frozen_read_tool_ids: frozenset[str] = frozenset(),
     ) -> StructuredLLMResult:
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._revise_plan_prompt_ref,
@@ -521,8 +562,16 @@ class SolutionPlanningAgent:
                 "evidence_drafts": context_result["evidence_drafts"],
                 "analysis_result": analysis_result,
                 "source_content_is_untrusted": True,
+                "output_routes": list(frozen_output_routes or ()),
             },
-            output_schema=ACTION_PLAN_DRAFT_OUTPUT_SCHEMA,
+            output_schema=(
+                ACTION_PLAN_DRAFT_OUTPUT_SCHEMA
+                if frozen_output_routes is None
+                else _action_plan_draft_output_schema_for_routes(
+                    frozen_output_routes,
+                    frozen_read_tool_ids,
+                )
+            ),
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,
                 command_id=request.correlation.command_id,
@@ -530,6 +579,13 @@ class SolutionPlanningAgent:
                 run_id=request.run_id,
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:planning.revise_plan",
+            ),
+            semantic_validate=lambda candidate: validate_action_plan_draft_v1(
+                candidate,
+                analysis_result=analysis_result,
+                tool_registry=self._tool_registry,
+                frozen_output_routes=frozen_output_routes,
+                frozen_read_tool_ids=frozen_read_tool_ids,
             ),
         )
 
@@ -631,6 +687,8 @@ def validate_action_plan_draft_v1(
     *,
     analysis_result: WorkAnalysisResultV1,
     tool_registry: SignedToolRegistry | None = None,
+    frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
+    frozen_read_tool_ids: frozenset[str] = frozenset(),
 ) -> ActionPlanDraftV1:
     root = _require_mapping(value, "$")
     _require_allowed_keys(
@@ -690,7 +748,37 @@ def validate_action_plan_draft_v1(
             "$.llm_provider_result",
         )
     _validate_action_plan_invariant(result)
+    if frozen_output_routes is not None:
+        _validate_frozen_output_routes(
+            result,
+            frozen_output_routes,
+            frozen_read_tool_ids=frozen_read_tool_ids,
+        )
     return result
+
+
+def _validate_frozen_output_routes(
+    result: ActionPlanDraftV1,
+    routes: tuple[OutputToolRouteV1, ...],
+    *,
+    frozen_read_tool_ids: frozenset[str],
+) -> None:
+    allowed = {(route["selected_tool_id"], route["effect"]) for route in routes}
+    read_actions = [action for action in result["actions"] if action["effect"] == "READ"]
+    if any(action["tool_name"] not in frozen_read_tool_ids for action in read_actions):
+        raise SolutionPlanningValidationError("read action escapes frozen input route")
+    actual = {
+        (action["tool_name"], action["effect"])
+        for action in result["actions"]
+        if action["effect"] != "READ"
+    }
+    unexpected = actual - allowed
+    if unexpected:
+        raise SolutionPlanningValidationError("action escapes frozen output route")
+    if actual and result["status"] == PlanningResult.PLAN_READY.value and not allowed.issubset(
+        actual
+    ):
+        raise SolutionPlanningValidationError("plan omits a frozen output route")
 
 
 def build_solution_planning_clarification_question(

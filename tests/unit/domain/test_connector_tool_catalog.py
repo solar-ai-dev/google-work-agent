@@ -86,6 +86,7 @@ def test_existing_p0_public_tool_names_are_unchanged() -> None:
 def _entry(tool_name: str) -> ToolRegistryEntry:
     return ToolRegistryEntry(
         tool_name=tool_name,
+        resource_type="TASK",
         effect_type=EffectType.READ,
         approval_requirement=ApprovalRequirement.NONE,
         verification_policy=VerificationPolicy.NONE,

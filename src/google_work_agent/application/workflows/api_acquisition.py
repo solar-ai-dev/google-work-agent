@@ -47,6 +47,11 @@ from google_work_agent.application.workflows.request_understanding import (
     build_clarification_question_v1,
 )
 from google_work_agent.application.workflows.temporal_query import resolve_temporal_query
+from google_work_agent.application.workflows.tool_routing import (
+    ToolRoutePlanV2,
+    allowed_input_sources,
+    allowed_read_tool_ids,
+)
 from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
@@ -252,13 +257,18 @@ class ApiDiscoveryAcquisitionAgent:
         request_intent: RequestIntentV1,
         request: WorkflowStartRequest,
         additional_acquisition_request: AdditionalAcquisitionRequestV1 | None = None,
+        tool_route_plan: ToolRoutePlanV2 | None = None,
     ) -> SourcePlanningOutputV1:
         llm_result = self.invoke_plan_sources_llm(
             request_intent=request_intent,
             request=request,
             additional_acquisition_request=additional_acquisition_request,
+            tool_route_plan=tool_route_plan,
         )
-        return self.build_planning_output_from_llm_result(llm_result)
+        return self.build_planning_output_from_llm_result(
+            llm_result,
+            tool_route_plan=tool_route_plan,
+        )
 
     def invoke_plan_sources_llm(
         self,
@@ -266,6 +276,7 @@ class ApiDiscoveryAcquisitionAgent:
         request_intent: RequestIntentV1,
         request: WorkflowStartRequest,
         additional_acquisition_request: AdditionalAcquisitionRequestV1 | None = None,
+        tool_route_plan: ToolRoutePlanV2 | None = None,
     ) -> StructuredLLMResult:
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
@@ -274,6 +285,7 @@ class ApiDiscoveryAcquisitionAgent:
                 request=request,
                 retrieval_budget=self._retrieval_budget,
                 additional_acquisition_request=additional_acquisition_request,
+                tool_route_plan=tool_route_plan,
             ),
             output_schema=SOURCE_FETCH_PLAN_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -284,14 +296,30 @@ class ApiDiscoveryAcquisitionAgent:
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:acquisition.plan_sources",
             ),
-            semantic_validate=validate_source_fetch_plans_v1,
+            semantic_validate=(
+                validate_source_fetch_plans_v1
+                if tool_route_plan is None
+                else lambda value: validate_source_fetch_plans_for_route(
+                    value,
+                    tool_route_plan=tool_route_plan,
+                )
+            ),
         )
 
     def build_planning_output_from_llm_result(
         self,
         llm_result: StructuredLLMResult,
+        *,
+        tool_route_plan: ToolRoutePlanV2 | None = None,
     ) -> SourcePlanningOutputV1:
-        plans = validate_source_fetch_plans_v1(llm_result.structured_output)
+        plans = (
+            validate_source_fetch_plans_v1(llm_result.structured_output)
+            if tool_route_plan is None
+            else validate_source_fetch_plans_for_route(
+                llm_result.structured_output,
+                tool_route_plan=tool_route_plan,
+            )
+        )
         return _interpret_source_plans(plans=plans, llm_result=llm_result)
 
     def acquire(
@@ -300,6 +328,7 @@ class ApiDiscoveryAcquisitionAgent:
         plans: list[SourceFetchPlanV1],
         request: WorkflowStartRequest,
         request_intent: RequestIntentV1 | None = None,
+        tool_route_plan: ToolRoutePlanV2 | None = None,
     ) -> AcquisitionResultV1:
         remaining = self._retrieval_budget.as_remaining()
         if not plans:
@@ -336,6 +365,7 @@ class ApiDiscoveryAcquisitionAgent:
                     request=request,
                     remaining=remaining,
                     request_intent=request_intent,
+                    tool_route_plan=tool_route_plan,
                 )
             except GoogleWorkspaceGatewayError as error:
                 mapped = _map_gateway_error(error)
@@ -421,6 +451,7 @@ class ApiDiscoveryAcquisitionAgent:
         request: WorkflowStartRequest,
         remaining: dict[str, int],
         request_intent: RequestIntentV1 | None,
+        tool_route_plan: ToolRoutePlanV2 | None,
     ) -> dict[str, object]:
         del request_intent  # Calendar FreeBusy gating now uses only the
         # typed calendar_read_mode/temporal_query plan fields (see
@@ -437,6 +468,11 @@ class ApiDiscoveryAcquisitionAgent:
                 remaining_budget=remaining,
                 now_ms=now_ms,
                 timezone=timezone,
+                allowed_read_tool_ids=(
+                    None
+                    if tool_route_plan is None
+                    else allowed_read_tool_ids(tool_route_plan, source=plan["source"])
+                ),
             )
         )
         snapshots = read_result.snapshots
@@ -504,6 +540,23 @@ def validate_source_fetch_plans_v1(value: object) -> list[SourceFetchPlanV1]:
         raise SourcePlanningValidationError("SourceFetchPlan output must be a list")
     plans = [_validate_source_fetch_plan(item, index) for index, item in enumerate(value)]
     return sorted(plans, key=lambda item: item["priority"])
+
+
+def validate_source_fetch_plans_for_route(
+    value: object,
+    *,
+    tool_route_plan: ToolRoutePlanV2,
+) -> list[SourceFetchPlanV1]:
+    """Reject source plans that escape the frozen input route."""
+
+    plans = validate_source_fetch_plans_v1(value)
+    allowed_sources = allowed_input_sources(tool_route_plan)
+    unexpected = sorted({plan["source"] for plan in plans} - allowed_sources)
+    if unexpected:
+        raise SourcePlanningValidationError(
+            f"source plan is outside frozen input route: {','.join(unexpected)}"
+        )
+    return plans
 
 
 def load_acquisition_plan_sources_prompt_reference(
@@ -615,6 +668,7 @@ def _planning_prompt_input(
     request: WorkflowStartRequest,
     retrieval_budget: RetrievalBudget,
     additional_acquisition_request: AdditionalAcquisitionRequestV1 | None,
+    tool_route_plan: ToolRoutePlanV2 | None,
 ) -> dict[str, object]:
     return {
         "planning_mode": "ADDITIONAL_DATA" if additional_acquisition_request else "INITIAL",
@@ -624,6 +678,9 @@ def _planning_prompt_input(
         "selected_resource_ids": list(request.selected_resource_ids),
         "selected_resources": [asdict(resource) for resource in request.selected_resources],
         "retrieval_budget": retrieval_budget.as_remaining(),
+        "input_routes": (
+            [] if tool_route_plan is None else tool_route_plan["input_plan"]["input_routes"]
+        ),
     }
 
 

@@ -15,6 +15,7 @@ from google_work_agent.adapters.langgraph.profiles import GraphProfile
 @dataclass(frozen=True, slots=True)
 class GraphNodeBindings:
     request_understanding: Any
+    tool_route: Any
     acquisition: Any
     context_retriever: Any
     work_analysis: Any
@@ -35,6 +36,7 @@ class GraphNodeBindings:
     def for_name(self, name: str) -> Any:
         return {
             "request_understanding": self.request_understanding,
+            "tool_route": self.tool_route,
             "acquisition": self.acquisition,
             "context_retriever": self.context_retriever,
             "work_analysis": self.work_analysis,
@@ -92,6 +94,7 @@ class WorkflowGraphComposition:
         for name in self._topology:
             graph.add_node(name, self._bindings.for_name(name))
         for name in (
+            "tool_route",
             "domain_validation",
             "waiting_confirmation",
             "waiting_approval",
@@ -105,6 +108,7 @@ class WorkflowGraphComposition:
         edges = self.edge_map()
         for name in (
             *self._topology,
+            "tool_route",
             "domain_validation",
             "waiting_confirmation",
             "waiting_approval",
@@ -118,6 +122,7 @@ class WorkflowGraphComposition:
 
     def edge_map(self) -> dict[Hashable, str]:
         edges: dict[Hashable, str] = {
+            "tool_route": "tool_route",
             "domain_validation": "domain_validation",
             "waiting_confirmation": "waiting_confirmation",
             "waiting_approval": "waiting_approval",

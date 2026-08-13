@@ -34,6 +34,12 @@ from google_work_agent.application.workflows import (
     WorkAnalysisResultV1,
     WorkflowPhase,
 )
+from google_work_agent.application.workflows.tool_routing import (
+    RouteReconsiderationRequiredV1,
+    ScopeExpansionRequiredV1,
+    ToolRoutePlanV2,
+    ToolRouteResultV1,
+)
 from google_work_agent.ports import (
     ResourceRefRecord,
     ResourceSource,
@@ -70,6 +76,7 @@ CONTEXT_SUFFICIENCY_OUTPUT_KEY: Final = "__context_sufficiency_output__"
 ANALYSIS_AGENT_LOCAL_KEY: Final = "__analysis_agent_local__"
 PLANNING_AGENT_LOCAL_KEY: Final = "__planning_agent_local__"
 PLANNING_MODE_KEY: Final = "__planning_mode__"
+TOOL_ROUTE_RESULT_KEY: Final = "__tool_route_result__"
 REVIEW_AGENT_LOCAL_KEY: Final = "__review_agent_local__"
 REVIEW_MODE_KEY: Final = "__review_mode__"
 PROFILE_AGENT_LOCAL_KEY: Final = "__profile_agent_local__"
@@ -90,6 +97,8 @@ def initial_graph_state(
         "thread_id": request.workflow_key,
         "workflow_phase": WorkflowPhase.INITIALIZE.value,
         "request_intent": None,
+        "tool_route_plan": None,
+        "workflow_signal": None,
         "source_fetch_plans": [],
         "acquisition_result": None,
         "context_result": None,

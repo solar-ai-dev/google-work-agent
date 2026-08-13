@@ -61,6 +61,11 @@ from google_work_agent.application.workflows.request_understanding import (
 from google_work_agent.application.workflows.solution_planning import (
     build_solution_planning_clarification_question,
 )
+from google_work_agent.application.workflows.tool_routing import (
+    RouteReconsiderationRequiredV1,
+    ToolRouteDisposition,
+    ToolRouteResultV1,
+)
 from google_work_agent.application.workflows.work_analysis import (
     build_work_analysis_clarification_question,
 )
@@ -71,6 +76,7 @@ JsonObject = dict[str, object]
 class SupervisorTarget(StrEnum):
     """Deterministic routing targets selected by the Stage 10 supervisor."""
 
+    TOOL_ROUTE = "TOOL_ROUTE"
     SOURCE_PLANNING = "SOURCE_PLANNING"
     API_ACQUISITION = "API_ACQUISITION"
     CONTEXT_RETRIEVAL = "CONTEXT_RETRIEVAL"
@@ -107,10 +113,18 @@ def route_supervisor(
     result: object | None = None,
 ) -> SupervisorDecisionV1:
     current_phase = WorkflowPhase(phase)
+    reconsideration = _route_reconsideration(current_phase, result)
+    if reconsideration is not None:
+        return reconsideration
     if current_phase is WorkflowPhase.REQUEST_ANALYSIS:
         return _route_request_understanding(
             state=state,
             output=cast(RequestUnderstandingOutputV1, _require_mapping(result, "result")),
+        )
+    if current_phase is WorkflowPhase.TOOL_ROUTING:
+        return _route_tool_routing(
+            state=state,
+            result=cast(ToolRouteResultV1, _require_mapping(result, "result")),
         )
     if current_phase is WorkflowPhase.SOURCE_PLANNING:
         return _route_source_planning(
@@ -174,6 +188,51 @@ def route_supervisor(
     raise ValueError(f"unsupported supervisor phase: {current_phase.value}")
 
 
+def _route_reconsideration(
+    phase: WorkflowPhase,
+    result: object | None,
+) -> SupervisorDecisionV1 | None:
+    if not isinstance(result, Mapping):
+        return None
+    status = result.get("status", result.get("result"))
+    expected = {
+        WorkflowPhase.CONTEXT_RETRIEVAL: "ROUTE_RECONSIDERATION_REQUIRED",
+        WorkflowPhase.CONTEXT_EVALUATION: "ROUTE_RECONSIDERATION_REQUIRED",
+        WorkflowPhase.WORK_ANALYSIS: "ROUTE_RECONSIDERATION_REQUIRED",
+        WorkflowPhase.SOLUTION_PLANNING: "ROUTE_RECONSIDERATION_REQUIRED",
+        WorkflowPhase.PLAN_REVIEW: "ROUTE_RECONSIDERATION",
+    }.get(phase)
+    if expected is None or status != expected:
+        return None
+    raw_reason_codes = result.get("reason_codes", [])
+    reason_codes = (
+        [item for item in raw_reason_codes if isinstance(item, str)]
+        if isinstance(raw_reason_codes, list)
+        else []
+    )
+    signal: RouteReconsiderationRequiredV1 = {
+        "schema_version": 1,
+        "kind": "ROUTE_RECONSIDERATION_REQUIRED",
+        "reason_codes": reason_codes or ["ROUTE_RECONSIDERATION_REQUIRED"],
+    }
+    return _decision(
+        target=SupervisorTarget.TOOL_ROUTE,
+        next_phase=WorkflowPhase.TOOL_ROUTING,
+        state_update=_base_state_update(
+            WorkflowPhase.TOOL_ROUTING,
+            workflow_signal=signal,
+            source_fetch_plans=[],
+            acquisition_result=None,
+            context_result=None,
+            analysis_result=None,
+            answer_draft=None,
+            plan_draft=None,
+            plan_review=None,
+        ),
+        reason_code=signal["reason_codes"][0],
+    )
+
+
 def _route_request_understanding(
     *,
     state: MultiAgentGraphState,
@@ -183,10 +242,10 @@ def _route_request_understanding(
     request_intent = output.get("request_intent")
     if result is RequestUnderstandingResult.COMPLETE:
         return _decision(
-            target=SupervisorTarget.SOURCE_PLANNING,
-            next_phase=WorkflowPhase.SOURCE_PLANNING,
+            target=SupervisorTarget.TOOL_ROUTE,
+            next_phase=WorkflowPhase.TOOL_ROUTING,
             state_update=_base_state_update(
-                WorkflowPhase.SOURCE_PLANNING,
+                WorkflowPhase.TOOL_ROUTING,
                 request_intent=request_intent,
             ),
         )
@@ -207,6 +266,86 @@ def _route_request_understanding(
         intent=FinalizeIntent.BLOCKED.value,
         reason_code=reason_code,
         request_intent=request_intent,
+    )
+
+
+def _route_tool_routing(
+    *,
+    state: MultiAgentGraphState,
+    result: ToolRouteResultV1,
+) -> SupervisorDecisionV1:
+    try:
+        disposition = ToolRouteDisposition(result["disposition"])
+    except (KeyError, ValueError):
+        return _decision(
+            target=SupervisorTarget.RECOVERY,
+            next_phase=WorkflowPhase.RECOVERY,
+            state_update=_base_state_update(
+                WorkflowPhase.RECOVERY,
+                execution_summary={"result": "CONTRACT_VIOLATION"},
+            ),
+            reason_code="TOOL_ROUTE_CONTRACT_VIOLATION",
+        )
+    plan = result["tool_route_plan"]
+    if disposition in {
+        ToolRouteDisposition.ROUTE_READY,
+        ToolRouteDisposition.NO_TOOL_NEEDED,
+    }:
+        if plan is None:
+            return _decision(
+                target=SupervisorTarget.RECOVERY,
+                next_phase=WorkflowPhase.RECOVERY,
+                state_update=_base_state_update(
+                    WorkflowPhase.RECOVERY,
+                    execution_summary={"result": "CONTRACT_VIOLATION"},
+                ),
+                reason_code="TOOL_ROUTE_PLAN_MISSING",
+            )
+        return _decision(
+            target=SupervisorTarget.SOURCE_PLANNING,
+            next_phase=WorkflowPhase.SOURCE_PLANNING,
+            state_update=_base_state_update(
+                WorkflowPhase.SOURCE_PLANNING,
+                tool_route_plan=plan,
+                workflow_signal=None,
+            ),
+            reason_code=disposition.value,
+        )
+    if disposition is ToolRouteDisposition.NEEDS_CONFIRMATION:
+        question: ClarificationQuestionV1 = {
+            "schema_version": 1,
+            "origin_target": "tool_route.finalize",
+            "question": "작업 대상 또는 작업 종류를 더 구체적으로 알려주세요.",
+            "affected_field_paths": [
+                "requested_resource_hints",
+                "requested_effect_hints",
+            ],
+            "reason_code": result["reason_codes"][0]
+            if result["reason_codes"]
+            else "TOOL_ROUTE_NEEDS_CONFIRMATION",
+            "known_context_summary": _request_intent_from_state(state)["goal"][
+                "user_visible_objective"
+            ],
+            "options": [],
+        }
+        return _decision(
+            target=SupervisorTarget.WAITING_CONFIRMATION,
+            next_phase=WorkflowPhase.WAITING_CONFIRMATION,
+            state_update=_confirmation_state_update(
+                question=question,
+                tool_route_plan=None,
+                workflow_signal=result["workflow_signal"],
+            ),
+            reason_code=question["reason_code"],
+        )
+    return _finalize(
+        state=state,
+        intent=FinalizeIntent.BLOCKED.value,
+        reason_code=result["reason_codes"][0]
+        if result["reason_codes"]
+        else "TOOL_ROUTE_BLOCKED",
+        tool_route_plan=None,
+        workflow_signal=result["workflow_signal"],
     )
 
 

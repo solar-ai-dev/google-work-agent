@@ -16,6 +16,11 @@ if TYPE_CHECKING:
         SourceFetchPlanV1,
         WorkAnalysisResultV1,
     )
+    from google_work_agent.application.workflows.tool_routing import (
+        RouteReconsiderationRequiredV1,
+        ScopeExpansionRequiredV1,
+        ToolRoutePlanV2,
+    )
 
 
 class BudgetProfile(StrEnum):
@@ -116,6 +121,8 @@ class MultiAgentGraphState(TypedDict):
     thread_id: str
     workflow_phase: str
     request_intent: RequestIntentV1 | None
+    tool_route_plan: ToolRoutePlanV2 | None
+    workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     context_result: ContextRetrievalResultV1 | None
@@ -138,6 +145,8 @@ class GraphStateUpdateV1(TypedDict, total=False):
 
     workflow_phase: str
     request_intent: RequestIntentV1 | None
+    tool_route_plan: ToolRoutePlanV2 | None
+    workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     context_result: ContextRetrievalResultV1 | None
@@ -160,6 +169,7 @@ class WorkflowPhase(StrEnum):
 
     INITIALIZE = "INITIALIZE"
     REQUEST_ANALYSIS = "REQUEST_ANALYSIS"
+    TOOL_ROUTING = "TOOL_ROUTING"
     WAITING_CONFIRMATION = "WAITING_CONFIRMATION"
     SOURCE_PLANNING = "SOURCE_PLANNING"
     API_ACQUISITION = "API_ACQUISITION"
@@ -428,6 +438,7 @@ CONFIRMATION_RESPONSE_ALLOWED_KINDS = frozenset(item.value for item in Confirmat
 CONFIRMATION_ORIGIN_TARGETS = frozenset(
     {
         "request_understanding.classify",
+        "tool_route.finalize",
         "acquisition.plan_sources",
         "context.assess_sufficiency",
         "analysis.analyze",

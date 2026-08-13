@@ -142,8 +142,12 @@ class AcquisitionSubgraph:
             request_intent=_require_state_value(state["request_intent"], "request_intent"),
             request=request,
             additional_acquisition_request=additional,
+            tool_route_plan=state.get("tool_route_plan"),
         )
-        output = self._agent.build_planning_output_from_llm_result(llm_result)
+        output = self._agent.build_planning_output_from_llm_result(
+            llm_result,
+            tool_route_plan=state.get("tool_route_plan"),
+        )
         updated_local = dict(record_llm_result(local_state, llm_result))
         updated_local["node_state"] = "PLAN_COMPLETE"
         updated_local["typed_result"] = cast(dict[str, object], output)
@@ -200,6 +204,7 @@ class AcquisitionSubgraph:
             plans=planning_output["source_fetch_plans"],
             request=request,
             request_intent=state.get("request_intent"),
+            tool_route_plan=state.get("tool_route_plan"),
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "READ_COMPLETE"

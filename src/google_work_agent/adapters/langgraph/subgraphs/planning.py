@@ -40,11 +40,19 @@ from google_work_agent.application.workflows import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
+from google_work_agent.application.workflows.tool_routing import (
+    OutputToolRouteV1,
+    ToolRoutePlanV2,
+    output_routes,
+)
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 
 
-def planning_mode_from_request_intent(request_intent: RequestIntentV1) -> str:
+def planning_mode_from_request_intent(
+    request_intent: RequestIntentV1,
+    tool_route_plan: ToolRoutePlanV2 | None = None,
+) -> str:
     """Deterministic answer_only/draft_plan selection (GAP-F1).
 
     Reads the ``response_disposition`` typed field produced by
@@ -63,6 +71,12 @@ def planning_mode_from_request_intent(request_intent: RequestIntentV1) -> str:
     for (docs/01-b-policy-definition-v2.8.md POL-EVD-003 / "Answer-only에서
     불필요한 Action을 생성하지 않는다").
     """
+    if tool_route_plan is not None:
+        return (
+            "draft_plan"
+            if tool_route_plan["output_plan"]["output_mode"] == "ACTION"
+            else "answer_only"
+        )
     return (
         "draft_plan"
         if request_intent.get("response_disposition") == "ACTION_REQUIRED"
@@ -108,7 +122,8 @@ class PlanningSubgraph:
         review = state["plan_review"]
         request_intent = _require_state_value(state["request_intent"], "request_intent")
         analysis_result = _require_state_value(state["analysis_result"], "analysis_result")
-        mode = planning_mode_from_request_intent(request_intent)
+        tool_route_plan = state.get("tool_route_plan")
+        mode = planning_mode_from_request_intent(request_intent, tool_route_plan)
         if review is not None and review.get("status") == ReviewResult.REVISE.value:
             mode = "revise_answer" if state.get("answer_draft") is not None else "revise_plan"
         prompt_ref = {
@@ -125,6 +140,7 @@ class PlanningSubgraph:
                 "request_intent": request_intent,
                 "analysis_result": analysis_result,
                 "mode": mode,
+                "output_routes": list(output_routes(tool_route_plan)) if tool_route_plan else [],
             },
             prompt_ref=prompt_ref,
         )
@@ -175,10 +191,14 @@ class PlanningSubgraph:
                 context_result=_require_state_value(state["context_result"], "context_result"),
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
+                frozen_output_routes=_frozen_output_routes(state),
+                frozen_read_tool_ids=_frozen_read_tool_ids(state),
             )
             result = self._agent.build_plan_output_from_llm_result(
                 llm_result,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                frozen_output_routes=_frozen_output_routes(state),
+                frozen_read_tool_ids=_frozen_read_tool_ids(state),
             )
             llm_call_id = f"{request.run_id}:planning.draft_plan"
         elif mode == "revise_answer":
@@ -205,10 +225,14 @@ class PlanningSubgraph:
                 context_result=_require_state_value(state["context_result"], "context_result"),
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
+                frozen_output_routes=_frozen_output_routes(state),
+                frozen_read_tool_ids=_frozen_read_tool_ids(state),
             )
             result = self._agent.build_plan_output_from_llm_result(
                 llm_result,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                frozen_output_routes=_frozen_output_routes(state),
+                frozen_read_tool_ids=_frozen_read_tool_ids(state),
             )
             llm_call_id = f"{request.run_id}:planning.revise_plan"
         updated_local = dict(record_llm_result(local_state, llm_result))
@@ -266,6 +290,8 @@ class PlanningSubgraph:
             plan_result = validate_action_plan_draft_v1(
                 result,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                frozen_output_routes=_frozen_output_routes(state),
+                frozen_read_tool_ids=_frozen_read_tool_ids(state),
             )
             state_update = self._agent.build_plan_state_update(plan_result)
         decision = route_supervisor(
@@ -303,3 +329,21 @@ class PlanningSubgraph:
         merged.pop(PLANNING_MODE_KEY, None)
         merged.pop("__planning_result__", None)
         return cast(PlanningLocalState, merged)
+
+
+def _frozen_output_routes(
+    state: PlanningLocalState,
+) -> tuple[OutputToolRouteV1, ...] | None:
+    plan = state.get("tool_route_plan")
+    return None if plan is None else output_routes(plan)
+
+
+def _frozen_read_tool_ids(state: PlanningLocalState) -> frozenset[str]:
+    plan = state.get("tool_route_plan")
+    if plan is None:
+        return frozenset()
+    return frozenset(
+        tool_id
+        for route in plan["input_plan"]["input_routes"]
+        for tool_id in route["allowed_read_tool_ids"]
+    )

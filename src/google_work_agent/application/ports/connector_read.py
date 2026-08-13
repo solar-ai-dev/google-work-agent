@@ -19,6 +19,7 @@ class ConnectorReadRequest:
     remaining_budget: dict[str, int]
     now_ms: int
     timezone: str
+    allowed_read_tool_ids: frozenset[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)

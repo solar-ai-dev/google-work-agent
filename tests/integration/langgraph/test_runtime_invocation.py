@@ -14,17 +14,18 @@ from tests.integration.langgraph.test_runtime import (
     GoogleGatewayFaultKind,
     Path,
     ProductFixtureSnapshotLoader,
+    RequestIntentV1,
     StoreWriteActionSuccessCommand,
     WorkflowCorrelationContext,
     WorkflowOutcome,
     WorkflowRecoveryRequest,
     WorkflowResumeRequest,
+    _action_intent,
     _action_required_intent,
     _ambiguous_intent,
     _analysis_output,
     _answer_output,
     _calendar_analysis_output,
-    _calendar_intent,
     _calendar_selection_output,
     _clear_intent,
     _delete_task_write_plan_output,
@@ -46,6 +47,8 @@ from tests.integration.langgraph.test_runtime import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+
+from google_work_agent.ports import ResourceSnapshot
 
 
 def test_langgraph_runtime_completes_answer_only_run(
@@ -173,6 +176,7 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
 
 def test_langgraph_runtime_executes_verified_write_after_approval_resume(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
@@ -216,6 +220,39 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(
     )
     assert approve_response.applied is True
 
+    observed_run_statuses: dict[str, str] = {}
+    original_create_task = gateway.create_task
+    original_get_task = gateway.get_task
+
+    def current_run_status() -> str:
+        connection = connect_sqlite(database_path)
+        try:
+            return str(
+                connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()[0]
+            )
+        finally:
+            connection.close()
+
+    def create_task_with_status_observation(
+        *,
+        task_list_id: str,
+        payload: dict[str, object],
+        claim_context: dict[str, object] | None = None,
+    ) -> ResourceSnapshot:
+        observed_run_statuses["write"] = current_run_status()
+        return original_create_task(
+            task_list_id=task_list_id,
+            payload=payload,
+            claim_context=claim_context,
+        )
+
+    def get_task_with_status_observation(*, task_list_id: str, task_id: str) -> ResourceSnapshot:
+        observed_run_statuses["verification"] = current_run_status()
+        return original_get_task(task_list_id=task_list_id, task_id=task_id)
+
+    monkeypatch.setattr(gateway, "create_task", create_task_with_status_observation)
+    monkeypatch.setattr(gateway, "get_task", get_task_with_status_observation)
+
     resumed = runtime.resume(
         WorkflowResumeRequest(
             run_id="run-1",
@@ -231,6 +268,10 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(
     )
 
     assert resumed.outcome is WorkflowOutcome.COMPLETED
+    assert observed_run_statuses == {
+        "write": "WAITING_APPROVAL",
+        "verification": "VERIFYING",
+    }
     connection = connect_sqlite(database_path)
     try:
         row = connection.execute(
@@ -292,9 +333,6 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
     )
     assert approved.applied is True
 
-    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-        unit_of_work.runs.set_verifying("run-1")
-        unit_of_work.commit()
     runtime._preflight_write(action_id="action-1")  # noqa: SLF001
     claim = runtime._claim_write(  # noqa: SLF001
         ClaimWriteActionCommand(
@@ -324,6 +362,18 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
         )
     )
     assert gateway.count_calls("create_task") == 1
+    connection = connect_sqlite(database_path)
+    try:
+        interrupted_state = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1');
+            """
+        ).fetchone()
+        assert tuple(interrupted_state) == ("WAITING_APPROVAL", "EXECUTED")
+    finally:
+        connection.close()
     runtime.close()
 
     restarted = _make_runtime(
@@ -337,8 +387,8 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
         WorkflowRecoveryRequest(
             run_id="run-1",
             workflow_key="thread-1",
-            domain_status="VERIFYING",
-            domain_version=3,
+            domain_status="WAITING_APPROVAL",
+            domain_version=2,
             correlation=WorkflowCorrelationContext(
                 request_id="startup-recovery",
                 command_id=None,
@@ -367,12 +417,40 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
 
 
 @pytest.mark.parametrize(
-    ("plan_output", "expected_operation", "calendar_context", "recovery_fault"),
+    ("plan_output", "expected_operation", "calendar_context", "recovery_fault", "intent"),
     [
-        (_send_write_plan_output, "send_gmail", False, None),
-        (_delete_write_plan_output, "delete_calendar_event", True, None),
-        (_delete_task_write_plan_output, "delete_task", False, None),
-        (_send_write_plan_output, "send_gmail", False, GoogleGatewayFaultKind.HTTP_500),
+        (
+            _send_write_plan_output,
+            "send_gmail",
+            False,
+            None,
+            _action_intent(resource="GMAIL_MESSAGE", effect="SEND"),
+        ),
+        (
+            _delete_write_plan_output,
+            "delete_calendar_event",
+            True,
+            None,
+            _action_intent(
+                resource="CALENDAR_EVENT",
+                effect="DELETE",
+                source="CALENDAR",
+            ),
+        ),
+        (
+            _delete_task_write_plan_output,
+            "delete_task",
+            False,
+            None,
+            _action_intent(resource="TASK", effect="DELETE"),
+        ),
+        (
+            _send_write_plan_output,
+            "send_gmail",
+            False,
+            GoogleGatewayFaultKind.HTTP_500,
+            _action_intent(resource="GMAIL_MESSAGE", effect="SEND"),
+        ),
     ],
 )
 def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
@@ -381,6 +459,7 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
     expected_operation: str,
     calendar_context: bool,
     recovery_fault: GoogleGatewayFaultKind | None,
+    intent: RequestIntentV1,
 ) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
@@ -388,7 +467,7 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
     gateway = FakeGoogleGateway(snapshot)
     llm_payloads = (
         [
-            _calendar_intent(),
+            intent,
             [_plan("CALENDAR", {"calendar_id": "calendar-primary"})],
             _calendar_selection_output(),
             _sufficiency_output("SUFFICIENT"),
@@ -398,7 +477,7 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
         ]
         if calendar_context
         else [
-            _action_required_intent(),
+            intent,
             [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),

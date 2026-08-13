@@ -50,6 +50,8 @@ def test_multi_agent_graph_state_fields_match_workflow_document() -> None:
         "thread_id",
         "workflow_phase",
         "request_intent",
+        "tool_route_plan",
+        "workflow_signal",
         "source_fetch_plans",
         "acquisition_result",
         "context_result",
@@ -66,7 +68,7 @@ def test_multi_agent_graph_state_fields_match_workflow_document() -> None:
         "prompt_context",
         "trace_context",
     } == MULTI_AGENT_GRAPH_STATE_FIELDS
-    assert len(MULTI_AGENT_GRAPH_STATE_FIELDS) == 21
+    assert len(MULTI_AGENT_GRAPH_STATE_FIELDS) == 23
 
 
 def test_multi_agent_graph_state_has_no_implementation_only_fields() -> None:
@@ -81,6 +83,7 @@ def test_workflow_phase_values_match_workflow_document() -> None:
     assert _values(WorkflowPhase) == (
         "INITIALIZE",
         "REQUEST_ANALYSIS",
+        "TOOL_ROUTING",
         "WAITING_CONFIRMATION",
         "SOURCE_PLANNING",
         "API_ACQUISITION",
@@ -295,6 +298,7 @@ def test_confirmation_contract_constants_match_gap_b_contract() -> None:
     assert {"OPTION_SELECTION", "FREE_TEXT"} == CONFIRMATION_RESPONSE_ALLOWED_KINDS
     assert {
         "request_understanding.classify",
+        "tool_route.finalize",
         "acquisition.plan_sources",
         "context.assess_sufficiency",
         "analysis.analyze",

@@ -118,6 +118,9 @@ def test_stage18_schema_audit_keeps_runtime_contract_fields_locked() -> None:
         "semantic_constraints",
         "ambiguity",
         "unsupported_scope",
+        "requested_effect_hints",
+        "requested_resource_hints",
+        "analysis_requirement",
     ]
     assert profile_single_schema["required"] == [
         "schema_version",

@@ -22,6 +22,7 @@ class ToolRegistryEntry:
     """Deterministic policy snapshot for one registered tool."""
 
     tool_name: str
+    resource_type: str
     effect_type: EffectType
     approval_requirement: ApprovalRequirement
     verification_policy: VerificationPolicy
@@ -42,6 +43,7 @@ class ToolRegistryEntry:
         payload = dumps(
             {
                 "tool_name": self.tool_name,
+                "resource_type": self.resource_type,
                 "effect_type": self.effect_type.value,
                 "approval_requirement": self.approval_requirement.value,
                 "verification_policy": self.verification_policy.value,
@@ -84,6 +86,20 @@ class SignedToolRegistry:
 
         return tuple(sorted(self._entries.values(), key=lambda entry: entry.tool_name))
 
+    def eligible(
+        self,
+        *,
+        resource_type: str,
+        effect_type: EffectType,
+    ) -> tuple[ToolRegistryEntry, ...]:
+        """Return deterministic candidates for one semantic resource/effect pair."""
+
+        return tuple(
+            entry
+            for entry in self.list_entries()
+            if entry.resource_type == resource_type and entry.effect_type is effect_type
+        )
+
 
 class ConnectorToolCatalog:
     """Lookup catalog keyed by connector id and existing public tool id."""
@@ -110,6 +126,18 @@ class ConnectorToolCatalog:
 
     def require(self, *, connector_id: str, tool_id: str) -> ToolRegistryEntry:
         return self.registry_for(connector_id).require(tool_id)
+
+    def eligible(
+        self,
+        *,
+        connector_id: str,
+        resource_type: str,
+        effect_type: EffectType,
+    ) -> tuple[ToolRegistryEntry, ...]:
+        return self.registry_for(connector_id).eligible(
+            resource_type=resource_type,
+            effect_type=effect_type,
+        )
 
 
 def build_p0_tool_registry() -> SignedToolRegistry:

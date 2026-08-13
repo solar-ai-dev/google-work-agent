@@ -66,7 +66,14 @@ def test_successful_write_phase_preserves_call_trajectory() -> None:
 
     assert result.disposition is WriteExecutionDisposition.VERIFIED
     assert result.action_status == ActionStatus.VERIFIED.value
-    assert calls == ["preflight", "claim", "execute", "store", "verify"]
+    assert calls == [
+        "preflight",
+        "claim",
+        "execute",
+        "store",
+        "begin_verification",
+        "verify",
+    ]
 
 
 def test_uncertain_delivery_marks_unknown_without_blind_resend() -> None:
@@ -87,6 +94,26 @@ def test_uncertain_delivery_marks_unknown_without_blind_resend() -> None:
 
     assert result.disposition is WriteExecutionDisposition.UNKNOWN_RESULT
     assert calls == ["preflight", "claim", "execute", "mark_unknown"]
+
+
+def test_not_sent_failure_does_not_begin_verification() -> None:
+    calls: list[str] = []
+    coordinator = _coordinator(
+        calls=calls,
+        execute_error=GoogleWorkspaceGatewayError(
+            code=GoogleWorkspaceErrorCode.TIMEOUT,
+            message="write was not sent",
+            delivered=False,
+            mutated=False,
+        ),
+    )
+
+    result = coordinator.execute(
+        WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
+    )
+
+    assert result.disposition is WriteExecutionDisposition.FAILED
+    assert calls == ["preflight", "claim", "execute", "mark_failed"]
 
 
 def _coordinator(
@@ -152,11 +179,18 @@ def _coordinator(
             StoreWriteActionSuccessService,
             _RecordedCall(name="store", calls=calls, result=stored),
         ),
+        begin_verification=cast(
+            Callable[[str], None],
+            _RecordedCall(name="begin_verification", calls=calls),
+        ),
         verify_write=cast(
             VerifyWriteActionService,
             _RecordedCall(name="verify", calls=calls, result=verified),
         ),
-        mark_write_failed=cast(MarkWriteActionFailedService, unused),
+        mark_write_failed=cast(
+            MarkWriteActionFailedService,
+            _RecordedCall(name="mark_failed", calls=calls),
+        ),
         mark_write_unknown=cast(
             MarkWriteActionUnknownResultService,
             _RecordedCall(name="mark_unknown", calls=calls, result=unknown),

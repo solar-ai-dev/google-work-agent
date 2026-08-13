@@ -31,12 +31,14 @@ class GoogleWorkspaceConnectorReader(ConnectorReadPort):
     def read(self, request: ConnectorReadRequest) -> ConnectorReadResult:
         plan = request.plan
         remaining = request.remaining_budget
+        allowed = request.allowed_read_tool_ids
         if request.prefer_selected_resources:
             selected = _selected_snapshots(
                 gateway=self._gateway,
                 plan=plan,
                 selected_resources=request.selected_resources,
                 remaining=remaining,
+                allowed=allowed,
             )
             if selected:
                 return ConnectorReadResult(snapshots=tuple(selected))
@@ -45,6 +47,7 @@ class GoogleWorkspaceConnectorReader(ConnectorReadPort):
                 gateway=self._gateway,
                 plan=plan,
                 remaining=remaining,
+                allowed=allowed,
             )
             return ConnectorReadResult(snapshots=tuple(snapshots))
         if plan["source"] == "TASKS":
@@ -52,6 +55,7 @@ class GoogleWorkspaceConnectorReader(ConnectorReadPort):
                 gateway=self._gateway,
                 plan=plan,
                 remaining=remaining,
+                allowed=allowed,
             )
             return ConnectorReadResult(snapshots=tuple(snapshots))
         snapshots, error_code = _acquire_calendar(
@@ -60,6 +64,7 @@ class GoogleWorkspaceConnectorReader(ConnectorReadPort):
             remaining=remaining,
             now_ms=request.now_ms,
             timezone=request.timezone,
+            allowed=allowed,
         )
         return ConnectorReadResult(snapshots=tuple(snapshots), error_code=error_code)
 
@@ -70,18 +75,28 @@ def _selected_snapshots(
     plan: SourceFetchPlanV1,
     selected_resources: tuple[SelectedResourceRef, ...],
     remaining: dict[str, int],
+    allowed: frozenset[str] | None,
 ) -> list[ResourceSnapshot]:
     matching = [resource for resource in selected_resources if resource.source == plan["source"]]
     snapshots: list[ResourceSnapshot] = []
     for resource in matching:
         if resource.source == "GMAIL":
             snapshots.extend(
-                _get_selected_gmail(gateway=gateway, resource=resource, remaining=remaining)
+                _get_selected_gmail(
+                    gateway=gateway,
+                    resource=resource,
+                    remaining=remaining,
+                    allowed=allowed,
+                )
             )
         elif resource.source == "TASKS":
-            snapshots.append(_get_selected_task(gateway=gateway, resource=resource))
+            snapshots.append(
+                _get_selected_task(gateway=gateway, resource=resource, allowed=allowed)
+            )
         elif resource.source == "CALENDAR":
-            snapshots.append(_get_selected_calendar(gateway=gateway, resource=resource))
+            snapshots.append(
+                _get_selected_calendar(gateway=gateway, resource=resource, allowed=allowed)
+            )
     return snapshots
 
 
@@ -90,28 +105,36 @@ def _get_selected_gmail(
     gateway: GoogleWorkspaceGateway,
     resource: SelectedResourceRef,
     remaining: dict[str, int],
+    allowed: frozenset[str] | None,
 ) -> list[ResourceSnapshot]:
     if resource.resource_type == "THREAD":
+        _require_allowed("gmail_get_thread", allowed)
         thread_snapshot = gateway.get_gmail_thread(thread_id=resource.resource_id)
         remaining["details"] = max(0, remaining["details"] - 1)
         messages = _acquire_gmail_thread_messages(
             gateway=gateway,
             thread_snapshot=thread_snapshot,
             remaining=remaining,
+            allowed=allowed,
         )
         return [thread_snapshot, *messages]
     if resource.resource_type == "MESSAGE":
+        _require_allowed("gmail_get_message", allowed)
         return [gateway.get_gmail_message(message_id=resource.resource_id)]
     raise ValueError(f"unsupported selected Gmail resource type: {resource.resource_type}")
 
 
 def _get_selected_task(
-    *, gateway: GoogleWorkspaceGateway, resource: SelectedResourceRef
+    *,
+    gateway: GoogleWorkspaceGateway,
+    resource: SelectedResourceRef,
+    allowed: frozenset[str] | None,
 ) -> ResourceSnapshot:
     if resource.resource_type != "TASK":
         raise ValueError(f"unsupported selected Tasks resource type: {resource.resource_type}")
     if resource.parent_resource_id is None:
         raise ValueError("selected task requires parent_resource_id")
+    _require_allowed("tasks_get_task", allowed)
     return gateway.get_task(
         task_list_id=resource.parent_resource_id,
         task_id=resource.resource_id,
@@ -119,12 +142,16 @@ def _get_selected_task(
 
 
 def _get_selected_calendar(
-    *, gateway: GoogleWorkspaceGateway, resource: SelectedResourceRef
+    *,
+    gateway: GoogleWorkspaceGateway,
+    resource: SelectedResourceRef,
+    allowed: frozenset[str] | None,
 ) -> ResourceSnapshot:
     if resource.resource_type != "EVENT":
         raise ValueError(f"unsupported selected Calendar resource type: {resource.resource_type}")
     if resource.parent_resource_id is None:
         raise ValueError("selected calendar event requires parent_resource_id")
+    _require_allowed("calendar_get_event", allowed)
     return gateway.get_calendar_event(
         calendar_id=resource.parent_resource_id,
         event_id=resource.resource_id,
@@ -136,8 +163,10 @@ def _acquire_gmail(
     gateway: GoogleWorkspaceGateway,
     plan: SourceFetchPlanV1,
     remaining: dict[str, int],
+    allowed: frozenset[str] | None,
 ) -> list[ResourceSnapshot]:
     query = _query_from_constraints(plan["constraints"])
+    _require_allowed("gmail_search_threads", allowed)
     page = gateway.search_gmail_threads(
         query=query,
         page_token=None,
@@ -151,6 +180,7 @@ def _acquire_gmail(
     for thread_id in detail_ids:
         if remaining["details"] <= 0:
             break
+        _require_allowed("gmail_get_thread", allowed)
         thread_snapshot = gateway.get_gmail_thread(thread_id=thread_id)
         remaining["details"] -= 1
         details.append(thread_snapshot)
@@ -159,6 +189,7 @@ def _acquire_gmail(
                 gateway=gateway,
                 thread_snapshot=thread_snapshot,
                 remaining=remaining,
+                allowed=allowed,
             )
         )
     return details
@@ -169,6 +200,7 @@ def _acquire_gmail_thread_messages(
     gateway: GoogleWorkspaceGateway,
     thread_snapshot: ResourceSnapshot,
     remaining: dict[str, int],
+    allowed: frozenset[str] | None,
 ) -> list[ResourceSnapshot]:
     message_ids = _string_list(thread_snapshot.payload.get("message_ids"))
     messages: list[ResourceSnapshot] = []
@@ -176,6 +208,7 @@ def _acquire_gmail_thread_messages(
         if remaining["details"] <= 0:
             break
         try:
+            _require_allowed("gmail_get_message", allowed)
             message_snapshot = gateway.get_gmail_message(message_id=message_id)
         except GoogleWorkspaceGatewayError:
             continue
@@ -189,14 +222,17 @@ def _acquire_tasks(
     gateway: GoogleWorkspaceGateway,
     plan: SourceFetchPlanV1,
     remaining: dict[str, int],
+    allowed: frozenset[str] | None,
 ) -> list[ResourceSnapshot]:
     task_list_id = _constraint_string(plan["constraints"], "task_list_id")
     if task_list_id is None:
+        _require_allowed("tasks_list_tasklists", allowed)
         lists_page = gateway.list_task_lists(page_token=None, page_size=1)
         remaining["pages"] -= 1
         if not lists_page.items:
             return []
         task_list_id = lists_page.items[0].resource_id
+    _require_allowed("tasks_list_tasks", allowed)
     page = gateway.list_tasks(
         task_list_id=task_list_id,
         page_token=None,
@@ -206,9 +242,10 @@ def _acquire_tasks(
     candidates = list(page.items[: plan["max_candidates"]])
     remaining["candidates"] -= len(candidates)
     detail_ids = [item.resource_id for item in candidates[: plan["detail_limit"]]]
-    details = [
-        gateway.get_task(task_list_id=task_list_id, task_id=task_id) for task_id in detail_ids
-    ]
+    details = []
+    for task_id in detail_ids:
+        _require_allowed("tasks_get_task", allowed)
+        details.append(gateway.get_task(task_list_id=task_list_id, task_id=task_id))
     remaining["details"] -= len(details)
     return details
 
@@ -220,14 +257,17 @@ def _acquire_calendar(
     remaining: dict[str, int],
     now_ms: int,
     timezone: str,
+    allowed: frozenset[str] | None,
 ) -> tuple[list[ResourceSnapshot], str | None]:
     calendar_id = _constraint_string(plan["constraints"], "calendar_id")
     if calendar_id is None:
+        _require_allowed("calendar_list_calendars", allowed)
         calendars_page = gateway.list_calendars(page_token=None, page_size=1)
         remaining["pages"] -= 1
         if not calendars_page.items:
             return [], None
         calendar_id = calendars_page.items[0].resource_id
+    _require_allowed("calendar_list_events", allowed)
     page = gateway.list_calendar_events(
         calendar_id=calendar_id,
         page_token=None,
@@ -237,10 +277,10 @@ def _acquire_calendar(
     candidates = list(page.items[: plan["max_candidates"]])
     remaining["candidates"] -= len(candidates)
     detail_ids = [item.resource_id for item in candidates[: plan["detail_limit"]]]
-    details = [
-        gateway.get_calendar_event(calendar_id=calendar_id, event_id=event_id)
-        for event_id in detail_ids
-    ]
+    details = []
+    for event_id in detail_ids:
+        _require_allowed("calendar_get_event", allowed)
+        details.append(gateway.get_calendar_event(calendar_id=calendar_id, event_id=event_id))
     remaining["details"] -= len(details)
     freebusy_snapshot, error_code = _maybe_query_freebusy(
         gateway=gateway,
@@ -249,6 +289,7 @@ def _acquire_calendar(
         now_ms=now_ms,
         timezone=timezone,
         remaining=remaining,
+        allowed=allowed,
     )
     if freebusy_snapshot is not None:
         details.append(freebusy_snapshot)
@@ -263,6 +304,7 @@ def _maybe_query_freebusy(
     now_ms: int,
     timezone: str,
     remaining: dict[str, int],
+    allowed: frozenset[str] | None,
 ) -> tuple[ResourceSnapshot | None, str | None]:
     if plan["calendar_read_mode"] != "EVENTS_AND_FREEBUSY":
         return None, None
@@ -279,6 +321,7 @@ def _maybe_query_freebusy(
     if time_range is None:
         return None, "INVALID_TEMPORAL_QUERY"
     try:
+        _require_allowed("calendar_query_freebusy", allowed)
         calendars = gateway.query_freebusy(calendar_ids=(calendar_id,), time_range=time_range)
     except GoogleWorkspaceGatewayError:
         return None, None
@@ -362,3 +405,8 @@ def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value]
+
+
+def _require_allowed(tool_id: str, allowed: frozenset[str] | None) -> None:
+    if allowed is not None and tool_id not in allowed:
+        raise PermissionError(f"read tool is outside frozen input route: {tool_id}")

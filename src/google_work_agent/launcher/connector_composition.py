@@ -31,6 +31,7 @@ from google_work_agent.launcher.development_constants import (
 @dataclass(frozen=True, slots=True)
 class DevelopmentConnectorBundle:
     registry: ConnectorRegistry
+    tool_catalog: ConnectorToolCatalog
     google_connector: GoogleWorkspaceConnector
     runtime_status_provider: MCPRuntimeStatusProvider
 
@@ -73,6 +74,7 @@ def build_connectors(
     registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID).start()
     return DevelopmentConnectorBundle(
         registry=registry,
+        tool_catalog=tool_catalog,
         google_connector=google_connector,
         runtime_status_provider=MCPRuntimeStatusProvider(
             google_provider=google_connector.oauth_provider,

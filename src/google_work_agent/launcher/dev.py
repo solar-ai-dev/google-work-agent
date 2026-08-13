@@ -497,6 +497,7 @@ def build_container(
             llm_runtime=llm_runtime,
             gateway=gateway,
             connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
+            tool_catalog=connector_bundle.tool_catalog,
             now_ms=clock.now_ms,
             id_factory=id_generator.next_id,
             signing_secret=secrets.token_hex(32),

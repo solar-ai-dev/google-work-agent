@@ -16,6 +16,7 @@ class RouteTranslation:
 
 
 _COMMON_ROUTES = {
+    SupervisorTarget.TOOL_ROUTE.value: RouteTranslation("tool_route", "tool_route"),
     SupervisorTarget.DOMAIN_VALIDATION.value: RouteTranslation(
         "domain_validation", "domain_validation"
     ),
@@ -133,6 +134,8 @@ class GraphRouteTranslator:
 
     def confirmation_resume_target(self, interrupt_payload: Mapping[str, object]) -> str:
         origin_target = interrupt_payload.get("origin_target")
+        if origin_target == "tool_route.finalize":
+            return self.topology()[0]
         if self.profile is GraphProfile.THREE_STAGE and isinstance(origin_target, str):
             if origin_target.startswith(("request_understanding.", "acquisition.")):
                 return "stage_one"

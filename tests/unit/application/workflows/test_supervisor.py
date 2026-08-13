@@ -30,7 +30,7 @@ from google_work_agent.application.workflows import (
 from google_work_agent.application.write_actions import WriteActionResponse
 
 
-def test_request_complete_routes_to_source_planning() -> None:
+def test_request_complete_routes_to_tool_route() -> None:
     state = _state()
 
     decision = route_supervisor(
@@ -47,8 +47,8 @@ def test_request_complete_routes_to_source_planning() -> None:
         },
     )
 
-    assert decision["target"] == SupervisorTarget.SOURCE_PLANNING.value
-    assert decision["next_phase"] == WorkflowPhase.SOURCE_PLANNING.value
+    assert decision["target"] == SupervisorTarget.TOOL_ROUTE.value
+    assert decision["next_phase"] == WorkflowPhase.TOOL_ROUTING.value
     assert decision["state_update"]["request_intent"] == _request_intent()
     assert decision["state_update"]["user_interrupt"] is None
     assert decision["state_update"]["finalize_intent"] is None
@@ -83,6 +83,60 @@ def test_source_planning_needs_confirmation_routes_to_waiting_confirmation() -> 
     assert decision["next_phase"] == WorkflowPhase.WAITING_CONFIRMATION.value
     assert user_interrupt["origin_target"] == "acquisition.plan_sources"
     assert user_interrupt["options"][0]["option_id"] == "gmail"
+
+
+def test_tool_route_ready_publishes_frozen_plan_to_source_planning() -> None:
+    plan = _tool_route_plan()
+    decision = route_supervisor(
+        phase=WorkflowPhase.TOOL_ROUTING,
+        state=_state(request_intent=_request_intent()),
+        result={
+            "schema_version": 1,
+            "disposition": "ROUTE_READY",
+            "tool_route_plan": plan,
+            "workflow_signal": None,
+            "reason_codes": [],
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.SOURCE_PLANNING.value
+    assert decision["state_update"]["tool_route_plan"] == plan
+
+
+def test_unknown_tool_route_disposition_fails_closed_to_recovery() -> None:
+    decision = route_supervisor(
+        phase=WorkflowPhase.TOOL_ROUTING,
+        state=_state(request_intent=_request_intent()),
+        result={
+            "schema_version": 1,
+            "disposition": "UNKNOWN",
+            "tool_route_plan": None,
+            "workflow_signal": None,
+            "reason_codes": [],
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.RECOVERY.value
+    assert decision["reason_code"] == "TOOL_ROUTE_CONTRACT_VIOLATION"
+
+
+def test_downstream_route_reconsideration_returns_to_tool_route_owner() -> None:
+    decision = route_supervisor(
+        phase=WorkflowPhase.SOLUTION_PLANNING,
+        state=_state(request_intent=_request_intent()),
+        result={
+            "schema_version": 2,
+            "status": "ROUTE_RECONSIDERATION_REQUIRED",
+            "reason_codes": ["NEW_RESOURCE_ROUTE_REQUIRED"],
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.TOOL_ROUTE.value
+    assert decision["state_update"]["workflow_signal"] == {
+        "schema_version": 1,
+        "kind": "ROUTE_RECONSIDERATION_REQUIRED",
+        "reason_codes": ["NEW_RESOURCE_ROUTE_REQUIRED"],
+    }
 
 
 def test_source_planning_no_fetch_needed_skips_acquisition_and_builds_canonical_result() -> None:
@@ -624,6 +678,8 @@ def _state(
         "thread_id": "thread-1",
         "workflow_phase": workflow_phase.value,
         "request_intent": request_intent,
+        "tool_route_plan": None,
+        "workflow_signal": None,
         "source_fetch_plans": [],
         "acquisition_result": acquisition_result,
         "context_result": context_result,
@@ -668,6 +724,19 @@ def _request_intent() -> RequestIntentV1:
             "reason_code": None,
             "explanation": None,
         },
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["TASK"],
+        "analysis_requirement": "REQUIRED",
+    }
+
+
+def _tool_route_plan() -> dict[str, object]:
+    meta = {"artifact_id": "route-plan-1", "revision": 1, "based_on": []}
+    return {
+        "schema_version": 2,
+        "input_plan": {"schema_version": 1, "meta": meta, "input_routes": []},
+        "output_plan": {"schema_version": 1, "meta": meta, "output_mode": "ANSWER"},
+        "tool_registry_version": "2026-08-06.p0",
     }
 
 

@@ -31,6 +31,7 @@ from tests.integration.langgraph.test_runtime import (
     _start_request,
     _start_write_request,
     _sufficiency_output,
+    _tool_catalog,
     _validated_analysis_result,
     _write_plan_output,
     pytest,
@@ -191,8 +192,8 @@ def test_request_subgraph_clears_local_state_and_records_trace_counts(
         result = runtime._request_subgraph.invoke(state)  # noqa: SLF001
 
         assert "__request_agent_local__" not in result
-        assert result["__logical_target__"] == "acquisition"
-        assert result["__target__"] == "acquisition"
+        assert result["__logical_target__"] == "tool_route"
+        assert result["__target__"] == "tool_route"
         trace_context = result["trace_context"]
         assert trace_context["agent_invocation_count"] == 1
         assert trace_context["llm_call_count"] == 1
@@ -201,6 +202,32 @@ def test_request_subgraph_clears_local_state_and_records_trace_counts(
             "classify",
             "finalize",
         ]
+    finally:
+        runtime.close()
+
+
+def test_tool_route_subgraph_freezes_plan_before_acquisition(tmp_path: Path) -> None:
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(tmp_path),
+        llm_payloads=[_clear_intent()],
+        gateway=FakeGoogleGateway(
+            ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+        ),
+        checkpoint_database_path=tmp_path / "checkpoints-tool-route.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        understood = runtime._request_subgraph.invoke(  # noqa: SLF001
+            runtime._initial_state(_start_request())  # noqa: SLF001
+        )
+        routed = runtime._tool_route_subgraph.invoke(understood)  # noqa: SLF001
+
+        assert routed["__target__"] == "acquisition"
+        assert routed["tool_route_plan"]["schema_version"] == 2
+        input_routes = routed["tool_route_plan"]["input_plan"]["input_routes"]
+        assert {route["resource_type"] for route in input_routes} == {"TASK", "TASK_LIST"}
+        assert "__tool_route_result__" not in routed
     finally:
         runtime.close()
 
@@ -218,6 +245,7 @@ def test_acquisition_subgraph_keeps_single_invocation_id_and_parent_isolation(
         llm_runtime=llm_runtime,
         gateway=gateway,
         connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
+        tool_catalog=_tool_catalog(),
         now_ms=FakeClock(1000).now_ms,
         id_factory=DeterministicUUID(prefix="runtime").next_id,
         signing_secret="stage17-secret",
@@ -398,7 +426,7 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
         runtime._acquisition_subgraph.invoke = _forbid_peer_invoke("acquisition")  # noqa: SLF001
         request_state = runtime._initial_state(_start_request())  # noqa: SLF001
         request_result = runtime._request_subgraph.invoke(request_state)  # noqa: SLF001
-        assert request_result["__target__"] == "acquisition"
+        assert request_result["__target__"] == "tool_route"
 
         runtime._acquisition_subgraph.invoke = original_acquisition_invoke  # noqa: SLF001
         runtime._context_subgraph.invoke = _forbid_peer_invoke("context_retriever")  # noqa: SLF001

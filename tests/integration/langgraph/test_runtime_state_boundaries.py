@@ -37,6 +37,7 @@ from tests.integration.langgraph.test_runtime import (
     _selection_output,
     _start_request,
     _sufficiency_output,
+    _tool_catalog,
     pytest,
     sqlite_unit_of_work_factory,
     write_manifest_with_overrides,
@@ -153,8 +154,12 @@ def test_edge_request_to_acquisition_to_context_preserves_typed_state(
     try:
         initial = runtime._initial_state(_start_request())  # noqa: SLF001
         understood = runtime._request_subgraph.invoke(initial)  # noqa: SLF001
-        assert understood["request_intent"] == intent
-        assert understood["__target__"] == "acquisition"
+        intent_without_meta = {
+            key: value for key, value in understood["request_intent"].items() if key != "meta"
+        }
+        assert intent_without_meta == intent
+        assert understood["request_intent"]["meta"]["revision"] == 1
+        assert understood["__target__"] == "tool_route"
 
         acquired = runtime._acquisition_subgraph.invoke(understood)  # noqa: SLF001
         assert acquired["__target__"] == "context_retriever"
@@ -298,6 +303,7 @@ def test_chain_context_analysis_planning_review_preserves_typed_outputs(
         llm_runtime=llm_runtime,
         gateway=gateway,
         connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
+        tool_catalog=_tool_catalog(),
         now_ms=FakeClock(1000).now_ms,
         id_factory=DeterministicUUID(prefix="edge").next_id,
         signing_secret="edge-secret",

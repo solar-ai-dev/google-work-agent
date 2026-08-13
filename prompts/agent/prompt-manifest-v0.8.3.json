@@ -1086,9 +1086,9 @@
         "prompts/agent/r8.4/specialist/request_understanding/base.md",
         "prompts/agent/request_understanding/classify.md"
       ],
-      "content_hash": "38715e8b323c6a334a2aa3e20ac5f1a6747b11e408edcb7f5ee23f44fd4ebcdb",
+      "content_hash": "315905333747d5b12cd29aa374203aa195f02c9391ccd3769bbac2431bef2eac",
       "assembled_path": "prompts/agent/assembled-r8.4/request_understanding.classify.md",
-      "assembled_hash": "38715e8b323c6a334a2aa3e20ac5f1a6747b11e408edcb7f5ee23f44fd4ebcdb",
+      "assembled_hash": "315905333747d5b12cd29aa374203aa195f02c9391ccd3769bbac2431bef2eac",
       "supported_failure_reason_codes": [],
       "activated_from_gate_result": {
         "gate_run_id": "20260811T044439Z-ollama-qwen2.5-3b-2687a73f",

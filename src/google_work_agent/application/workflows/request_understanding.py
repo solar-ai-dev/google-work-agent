@@ -71,6 +71,9 @@ REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "ambiguity",
             "unsupported_scope",
             "response_disposition",
+            "requested_effect_hints",
+            "requested_resource_hints",
+            "analysis_requirement",
         ],
         "additionalProperties": False,
         "properties": {
@@ -211,6 +214,21 @@ REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "response_disposition": {
                 "type": "string",
                 "enum": ["ANSWER_ONLY", "ACTION_REQUIRED"],
+            },
+            "requested_effect_hints": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": ["READ", "CREATE", "UPDATE", "SEND", "DELETE"],
+                },
+            },
+            "requested_resource_hints": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+            },
+            "analysis_requirement": {
+                "type": "string",
+                "enum": ["NONE", "REQUIRED"],
             },
         },
     },
@@ -374,8 +392,11 @@ def validate_request_intent_v1(value: object) -> RequestIntentV1:
             "semantic_constraints",
             "ambiguity",
             "unsupported_scope",
+            "requested_effect_hints",
+            "requested_resource_hints",
+            "analysis_requirement",
         },
-        optional={"response_disposition"},
+        optional={"response_disposition", "meta"},
     )
     schema_version = _require_int(root, "schema_version", "$")
     if schema_version != REQUEST_INTENT_SCHEMA_VERSION:
@@ -394,6 +415,26 @@ def validate_request_intent_v1(value: object) -> RequestIntentV1:
         semantic_constraints=semantic_constraints,
         ambiguity=ambiguity,
         unsupported_scope=unsupported_scope,
+        requested_effect_hints=cast(
+            list[Literal["READ", "CREATE", "UPDATE", "SEND", "DELETE"]],
+            _require_enum_list(
+                root["requested_effect_hints"],
+                "$.requested_effect_hints",
+                {"READ", "CREATE", "UPDATE", "SEND", "DELETE"},
+            ),
+        ),
+        requested_resource_hints=_require_string_list(
+            root["requested_resource_hints"], "$.requested_resource_hints"
+        ),
+        analysis_requirement=cast(
+            Literal["NONE", "REQUIRED"],
+            _require_enum_string(
+                root,
+                "analysis_requirement",
+                "$",
+                {"NONE", "REQUIRED"},
+            ),
+        ),
     )
     if "response_disposition" in root:
         response_disposition = _require_string(root, "response_disposition", "$")
@@ -403,6 +444,19 @@ def validate_request_intent_v1(value: object) -> RequestIntentV1:
             RequestIntentResponseDispositionValue, response_disposition
         )
     return result
+
+
+def materialize_request_intent_artifact(
+    intent: RequestIntentV1,
+    *,
+    artifact_id: str,
+) -> RequestIntentV1:
+    """Attach Application-owned artifact identity after LLM validation."""
+
+    return {
+        **intent,
+        "meta": {"artifact_id": artifact_id, "revision": 1, "based_on": []},
+    }
 
 
 def validate_clarification_question_v1(value: object) -> ClarificationQuestionV1:
@@ -865,6 +919,25 @@ _require_string_list = partial(
     _schema.require_string_list, error_cls=RequestUnderstandingValidationError
 )
 _provider_summary = _schema.provider_summary
+
+
+def _require_enum_list(value: object, path: str, allowed: set[str]) -> list[str]:
+    items = _require_string_list(value, path)
+    if any(item not in allowed for item in items):
+        raise RequestUnderstandingValidationError(f"{path} contains an invalid value")
+    return items
+
+
+def _require_enum_string(
+    value: dict[str, object],
+    key: str,
+    path: str,
+    allowed: set[str],
+) -> str:
+    item = _require_string(value, key, path)
+    if item not in allowed:
+        raise RequestUnderstandingValidationError(f"{path}.{key} is invalid")
+    return item
 
 
 def _non_empty(value: str) -> bool:

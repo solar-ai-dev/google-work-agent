@@ -31,7 +31,7 @@ from google_work_agent.application.write_actions import (
     VerifyWriteActionService,
     WriteActionResponse,
 )
-from google_work_agent.domain import ActionStatus, PolicyViolationError
+from google_work_agent.domain import ActionStatus, PolicyViolationError, RunStatus
 from google_work_agent.ports import (
     DeliveryCertainty,
     GoogleWorkspaceErrorCode,
@@ -75,6 +75,23 @@ class UnknownRecoveryPhaseRequest:
     attempt_version: int
 
 
+class BeginWriteVerificationService:
+    """Advance a write Run only when an EXECUTED result is ready to verify."""
+
+    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork]) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+
+    def __call__(self, run_id: str) -> None:
+        with self._unit_of_work_factory() as unit_of_work:
+            run = unit_of_work.runs.get_by_id(run_id)
+            if run is None:
+                raise LookupError(f"run not found: {run_id}")
+            if run.status is RunStatus.VERIFYING:
+                return
+            unit_of_work.runs.set_verifying(run_id)
+            unit_of_work.commit()
+
+
 class WriteExecutionPhaseCoordinator:
     """Sequence existing safety services without owning their rules."""
 
@@ -89,6 +106,7 @@ class WriteExecutionPhaseCoordinator:
         claim_write: ClaimWriteActionService,
         execute_write: ExecuteWriteActionService,
         store_write_success: StoreWriteActionSuccessService,
+        begin_verification: Callable[[str], None],
         verify_write: VerifyWriteActionService,
         mark_write_failed: MarkWriteActionFailedService,
         mark_write_unknown: MarkWriteActionUnknownResultService,
@@ -106,6 +124,7 @@ class WriteExecutionPhaseCoordinator:
         self._claim_write = claim_write
         self._execute_write = execute_write
         self._store_write_success = store_write_success
+        self._begin_verification = begin_verification
         self._verify_write = verify_write
         self._mark_write_failed = mark_write_failed
         self._mark_write_unknown = mark_write_unknown
@@ -198,6 +217,7 @@ class WriteExecutionPhaseCoordinator:
         )
         if not isinstance(stored.attempt_id, str) or not stored.attempt_id:
             raise ValueError("attempt_id is required")
+        self._begin_verification(request.run_id)
         verified = self._verify_write(
             VerifyWriteActionCommand(
                 command_id=self._id_factory(),

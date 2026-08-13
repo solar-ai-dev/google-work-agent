@@ -107,6 +107,10 @@ class RequestIntentV1(TypedDict):
     ambiguity: RequestIntentAmbiguityV1
     unsupported_scope: RequestIntentUnsupportedScopeV1
     response_disposition: NotRequired[RequestIntentResponseDispositionValue]
+    requested_effect_hints: NotRequired[list[ActionEffectValue]]
+    requested_resource_hints: NotRequired[list[str]]
+    analysis_requirement: NotRequired[Literal["NONE", "REQUIRED"]]
+    meta: NotRequired[dict[str, object]]
 
 
 class ClarificationQuestionV1(TypedDict):

@@ -10,7 +10,10 @@
     "completion_criteria",
     "semantic_constraints",
     "ambiguity",
-    "unsupported_scope"
+    "unsupported_scope",
+    "requested_effect_hints",
+    "requested_resource_hints",
+    "analysis_requirement"
   ],
   "properties": {
     "schema_version": {
@@ -139,6 +142,22 @@
           }
         }
       }
+    },
+    "requested_effect_hints": {
+      "type": "array",
+      "items": {
+        "enum": ["READ", "CREATE", "UPDATE", "SEND", "DELETE"]
+      }
+    },
+    "requested_resource_hints": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "analysis_requirement": {
+      "enum": ["NONE", "REQUIRED"]
     }
   }
 }

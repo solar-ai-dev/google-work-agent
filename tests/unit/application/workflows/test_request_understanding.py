@@ -512,6 +512,9 @@ def _base_intent() -> dict[str, object]:
             "reason_code": None,
             "explanation": None,
         },
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["GMAIL_THREAD", "TASK"],
+        "analysis_requirement": "REQUIRED",
     }
 
 

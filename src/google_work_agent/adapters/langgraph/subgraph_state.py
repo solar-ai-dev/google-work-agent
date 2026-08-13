@@ -32,12 +32,22 @@ from google_work_agent.application.workflows.profile_fused import (
     ProfileReasonPlanOutputV1,
     ProfileRequestSourceOutputV1,
 )
+from google_work_agent.application.workflows.tool_routing import (
+    RouteReconsiderationRequiredV1,
+    ScopeExpansionRequiredV1,
+    ToolRoutePlanV2,
+    ToolRouteResultV1,
+)
 from google_work_agent.ports import WorkflowStartRequest
 
 
 class RequestUnderstandingLocalState(GraphState):
     __request_agent_local__: NotRequired[AgentLocalStateV1]
     __request_output__: NotRequired[RequestUnderstandingOutputV1]
+
+
+class ToolRoutingLocalState(GraphState):
+    __tool_route_result__: NotRequired[ToolRouteResultV1]
 
 
 class AcquisitionLocalState(GraphState):

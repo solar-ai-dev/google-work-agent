@@ -29,18 +29,14 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCoordinator
+from google_work_agent.adapters.langgraph.pre_analysis_composition import (
+    build_pre_analysis_subgraphs,
+)
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.route_translation import GraphRouteTranslator
-from google_work_agent.adapters.langgraph.subgraphs.acquisition import AcquisitionSubgraph
-from google_work_agent.adapters.langgraph.subgraphs.context_retrieval import (
-    ContextRetrieverSubgraph,
-)
 from google_work_agent.adapters.langgraph.subgraphs.planning import (
     PlanningSubgraph,
     planning_mode_from_request_intent,
-)
-from google_work_agent.adapters.langgraph.subgraphs.request_understanding import (
-    RequestUnderstandingSubgraph,
 )
 from google_work_agent.adapters.langgraph.subgraphs.review import ReviewSubgraph
 from google_work_agent.adapters.langgraph.subgraphs.single_workflow import (
@@ -52,6 +48,8 @@ from google_work_agent.adapters.langgraph.subgraphs.three_stage import (
     ThreeStageTwoSubgraph,
 )
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis import WorkAnalysisSubgraph
+from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
+from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoordinator
 from google_work_agent.application import (
     BlockRunCommand,
     BlockRunService,
@@ -99,10 +97,8 @@ from google_work_agent.application.calendar_conflicts import (
     evidence_calendar_conflict_risk,
 )
 from google_work_agent.application.execution_phase import (
-    UnknownRecoveryPhaseRequest,
-    WriteExecutionDisposition,
+    BeginWriteVerificationService,
     WriteExecutionPhaseCoordinator,
-    WriteExecutionPhaseRequest,
 )
 from google_work_agent.application.feasibility import evidence_feasibility_risk
 from google_work_agent.application.ports import ConnectorExecutionPort
@@ -121,7 +117,6 @@ from google_work_agent.application.workflows import (
     MultiAgentGraphState,
     PlanReviewAgent,
     PlanReviewResultV1,
-    RequestIntentV1,
     RequestUnderstandingAgent,
     ReviewResult,
     SolutionPlanningAgent,
@@ -146,6 +141,7 @@ from google_work_agent.application.write_actions import (
 from google_work_agent.domain import (
     ActionStatus,
     CalendarWorkHours,
+    ConnectorToolCatalog,
     ResultCode,
     RunStatus,
 )
@@ -182,6 +178,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         llm_runtime: Any,
         gateway: GoogleWorkspaceGateway,
         connector_execution: ConnectorExecutionPort,
+        tool_catalog: ConnectorToolCatalog,
         now_ms: Callable[[], int],
         id_factory: Callable[[], str],
         signing_secret: str,
@@ -390,6 +387,9 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             now_ms=now_ms,
             gateway=connector_execution,
         )
+        self._begin_write_verification = BeginWriteVerificationService(
+            unit_of_work_factory=unit_of_work_factory,
+        )
         self._write_execution_phase = WriteExecutionPhaseCoordinator(
             unit_of_work_factory=unit_of_work_factory,
             id_factory=id_factory,
@@ -399,6 +399,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             claim_write=self._claim_write,
             execute_write=self._execute_write,
             store_write_success=self._store_write_success,
+            begin_verification=self._begin_write_verification,
             verify_write=self._verify_write,
             mark_write_failed=self._mark_write_failed,
             mark_write_unknown=self._mark_write_unknown,
@@ -408,26 +409,40 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             recover_unknown_delete=self._recover_unknown_delete,
             recover_unknown_update=self._recover_unknown_update,
         )
-        self._request_subgraph = RequestUnderstandingSubgraph(
-            agent=self._request_understanding,
+        self._write_execution_node = WriteExecutionNode(
+            id_factory=id_factory,
+            request_hash=self._request_hash,
+            should_stop_for_cancel=self._should_stop_for_cancel,
+            list_actions=self._list_actions,
+            execute_read_only_plan=self._execute_read_only_plan,
+            execution_phase=self._write_execution_phase,
+            has_persisted_cancel_intent=self._has_persisted_cancel_intent,
+            complete_write_run=self._complete_write_run,
+            current_run_version=self._current_run_version,
+        )
+        self._write_recovery = WriteRecoveryCoordinator(
+            latest_unknown_action=self._latest_unknown_action,
+            execution_phase=self._write_execution_phase,
+            complete_write_run_if_verified=self._complete_write_run_if_verified,
+            plans_for_run=self._plans_for_run,
+            list_actions=self._list_actions,
+            begin_verification=self._begin_write_verification,
+            latest_attempt_id=self._latest_attempt_id,
+        )
+        entry_subgraphs = build_pre_analysis_subgraphs(
+            request_agent=self._request_understanding,
+            acquisition_agent=self._acquisition,
+            context_agent=self._context,
+            tool_catalog=tool_catalog,
             id_factory=id_factory,
             graph_profile=self._graph_profile,
             transition_run=self._transition_run,
             merge_decision=self._merge_decision,
-        ).build()
-        self._acquisition_subgraph = AcquisitionSubgraph(
-            agent=self._acquisition,
-            id_factory=id_factory,
-            graph_profile=self._graph_profile,
-            transition_run=self._transition_run,
-            merge_decision=self._merge_decision,
-        ).build()
-        self._context_subgraph = ContextRetrieverSubgraph(
-            agent=self._context,
-            id_factory=id_factory,
-            graph_profile=self._graph_profile,
-            merge_decision=self._merge_decision,
-        ).build()
+        )
+        self._request_subgraph = entry_subgraphs.request_understanding
+        self._tool_route_subgraph = entry_subgraphs.tool_route
+        self._acquisition_subgraph = entry_subgraphs.acquisition
+        self._context_subgraph = entry_subgraphs.context_retrieval
         self._analysis_subgraph = WorkAnalysisSubgraph(
             agent=self._analysis,
             id_factory=id_factory,
@@ -500,6 +515,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             topology=self._topology,
             bindings=GraphNodeBindings(
                 request_understanding=self._request_subgraph,
+                tool_route=self._tool_route_subgraph,
                 acquisition=self._acquisition_subgraph,
                 context_retriever=self._context_subgraph,
                 work_analysis=self._analysis_subgraph,
@@ -510,8 +526,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 waiting_confirmation=self._waiting_confirmation_node,
                 waiting_approval=self._waiting_approval_node,
                 modify_review=self._modify_review_node,
-                action_execution=self._action_execution_node,
-                recovery=self._recovery_node,
+                action_execution=self._write_execution_node,
+                recovery=self._write_recovery.recover_unknown,
                 finalize=self._finalize_node,
                 stage_one=self._three_stage_one_subgraph,
                 stage_two=self._three_stage_two_subgraph,
@@ -528,9 +544,9 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             initial_state=self._initial_state,
             current_run_status=self._current_run_status,
             latest_unknown_action=self._latest_unknown_action,
-            recovery_node=self._recovery_node,
+            recovery_node=self._write_recovery.recover_unknown,
             has_executed_action=self._has_executed_action,
-            recover_executed_actions=self._recover_executed_actions,
+            recover_executed_actions=self._write_recovery.recover_executed,
             cancel_signal_lock=self._cancel_signal_lock,
             cancel_signals=self._cancel_signals,
         )
@@ -861,209 +877,6 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             unit_of_work.plans.supersede(plan.id)
             unit_of_work.commit()
             return True
-
-    def _action_execution_node(self, state: GraphState) -> GraphState:
-        run_id = cast(str, state["run_id"])
-        if self._should_stop_for_cancel(run_id):
-            return {
-                **state,
-                "__target__": "end",
-                "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-                "execution_summary": {"result": "CANCEL_REQUESTED"},
-            }
-        plan_id = self._required_string(state.get("approved_plan_id"), "approved_plan_id")
-        actions = self._list_actions(plan_id)
-        if actions and all(action.effect_type == "READ" for action in actions):
-            return self._execute_read_only_plan(state, plan_id, actions)
-
-        with self._unit_of_work_factory() as unit_of_work:
-            run = unit_of_work.runs.get_by_id(cast(str, state["run_id"]))
-            if run is None:
-                raise LookupError(f"run not found: {state['run_id']}")
-            if run.status != RunStatus.VERIFYING:
-                unit_of_work.runs.set_verifying(cast(str, state["run_id"]))
-                unit_of_work.commit()
-        verification_statuses: list[str] = []
-        for action in actions:
-            if self._should_stop_for_cancel(run_id):
-                return {
-                    **state,
-                    "__target__": "end",
-                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-                    "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
-                    "verification_summary": {"action_statuses": verification_statuses},
-                }
-            if action.status in {
-                ActionStatus.VERIFIED.value,
-                ActionStatus.MISMATCH.value,
-                ActionStatus.FAILED.value,
-                ActionStatus.BLOCKED.value,
-                ActionStatus.DEPENDENCY_BLOCKED.value,
-            }:
-                verification_statuses.append(action.status)
-                continue
-            if action.status != ActionStatus.APPROVED.value:
-                continue
-            phase_result = self._write_execution_phase.execute(
-                WriteExecutionPhaseRequest(
-                    run_id=run_id,
-                    action_id=action.id,
-                    action_version=action.version,
-                )
-            )
-            if phase_result.disposition is WriteExecutionDisposition.PREFLIGHT_REAPPROVAL_REQUIRED:
-                _ = interrupt(
-                    {
-                        "interrupt_kind": "APPROVAL",
-                        "run_id": run_id,
-                        "plan_id": plan_id,
-                        "action_id": action.id,
-                        "reason": "PREFLIGHT_REAPPROVAL_REQUIRED",
-                    }
-                )
-                return {
-                    **state,
-                    "__target__": "action_execution",
-                    "workflow_phase": WorkflowPhase.PREFLIGHT.value,
-                }
-            if phase_result.disposition is WriteExecutionDisposition.PREFLIGHT_BLOCKED:
-                return {
-                    **state,
-                    "__target__": "end",
-                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-                    "execution_summary": {
-                        "result": "PREFLIGHT_BLOCKED",
-                        "action_id": action.id,
-                        "safe_error_code": phase_result.safe_error_code,
-                    },
-                }
-            if phase_result.disposition is WriteExecutionDisposition.CLAIM_SKIPPED:
-                continue
-            if phase_result.disposition is WriteExecutionDisposition.CANCEL_REQUESTED:
-                if phase_result.action_status is not None:
-                    verification_statuses.append(phase_result.action_status)
-                return {
-                    **state,
-                    "__target__": "end",
-                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-                    "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
-                    "verification_summary": {"action_statuses": verification_statuses},
-                }
-            if phase_result.disposition is WriteExecutionDisposition.REAUTH_REQUIRED:
-                return {
-                    **state,
-                    "__target__": "end",
-                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-                    "execution_summary": {"result": "REAUTH_REQUIRED", "action_id": action.id},
-                }
-            if phase_result.disposition is WriteExecutionDisposition.UNKNOWN_RESULT:
-                return {
-                    **state,
-                    "__target__": "recovery",
-                    "workflow_phase": WorkflowPhase.RECOVERY.value,
-                    "execution_summary": {
-                        "result": phase_result.result_code,
-                        "action_id": action.id,
-                        "safe_error_code": phase_result.safe_error_code,
-                    },
-                }
-            if phase_result.disposition is WriteExecutionDisposition.FAILED:
-                verification_statuses.append(ActionStatus.FAILED.value)
-                continue
-            verification_statuses.append(
-                self._required_string(phase_result.action_status, "action_status")
-            )
-            if self._should_stop_for_cancel(run_id):
-                return {
-                    **state,
-                    "__target__": "end",
-                    "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-                    "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
-                    "verification_summary": {"action_statuses": verification_statuses},
-                }
-        if (
-            actions
-            and verification_statuses
-            and all(status == ActionStatus.VERIFIED.value for status in verification_statuses)
-            and not self._has_persisted_cancel_intent(run_id)
-        ):
-            self._complete_write_run(
-                CompleteWriteRunCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash(
-                        {"kind": "complete_write_run", "run_id": state["run_id"]}
-                    ),
-                    run_id=cast(str, state["run_id"]),
-                    expected_version=self._current_run_version(cast(str, state["run_id"])),
-                )
-            )
-        return {
-            **state,
-            "__target__": "finalize",
-            "workflow_phase": WorkflowPhase.VERIFICATION.value,
-            "execution_summary": {"result": "EXECUTED", "plan_id": plan_id},
-            "verification_summary": {"action_statuses": verification_statuses},
-        }
-
-    def _recovery_node(self, state: GraphState) -> GraphState:
-        unknown_action = self._latest_unknown_action(cast(str, state["run_id"]))
-        if unknown_action is None:
-            return {
-                **state,
-                "__target__": "end",
-                "workflow_phase": WorkflowPhase.RECOVERY.value,
-            }
-        action, attempt_id, attempt_version = unknown_action
-        response = self._write_execution_phase.recover_unknown(
-            UnknownRecoveryPhaseRequest(
-                action_id=action.id,
-                effect_type=action.effect_type,
-                action_version=action.version,
-                attempt_id=attempt_id,
-                attempt_version=attempt_version,
-            )
-        )
-        if response.applied and response.action_status == ActionStatus.VERIFIED.value:
-            self._complete_write_run_if_verified(action.plan_id, cast(str, state["run_id"]))
-        outcome = (
-            "RECOVERY_REQUIRED"
-            if response.result_code == ResultCode.RECOVERY_REQUIRED.value
-            else "RECOVERED"
-        )
-        return {
-            **state,
-            "__target__": "end",
-            "workflow_phase": WorkflowPhase.RECOVERY.value,
-            "execution_summary": {"result": outcome, "action_id": action.id},
-            "verification_summary": {"action_statuses": [response.action_status]},
-        }
-
-    def _recover_executed_actions(self, state: GraphState, run_id: str) -> GraphState:
-        plans = self._plans_for_run(run_id)
-        if not plans:
-            return {**state, "__target__": "end", "workflow_phase": WorkflowPhase.RECOVERY.value}
-        latest_plan = sorted(plans, key=lambda item: (item.revision_no, item.created_at_ms))[-1]
-        statuses: list[str] = []
-        for action in self._list_actions(latest_plan.id):
-            if action.status != ActionStatus.EXECUTED.value:
-                statuses.append(action.status)
-                continue
-            attempt_id = self._latest_attempt_id(action.id)
-            verified = self._write_execution_phase.verify_executed(
-                action_id=action.id,
-                action_version=action.version,
-                attempt_id=attempt_id,
-                request_kind="verify_after_restart",
-            )
-            statuses.append(verified.action_status)
-        self._complete_write_run_if_verified(latest_plan.id, run_id)
-        return {
-            **state,
-            "__target__": "end",
-            "workflow_phase": WorkflowPhase.RECOVERY.value,
-            "execution_summary": {"result": "RESTART_RECONCILED", "plan_id": latest_plan.id},
-            "verification_summary": {"action_statuses": statuses},
-        }
 
     def _finalize_node(self, state: GraphState) -> GraphState:
         finalize_intent = derive_finalize_intent(state=cast(MultiAgentGraphState, state))
@@ -1669,5 +1482,4 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _request_hash(self, payload: dict[str, object]) -> str:
         return sha256(dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
-    def _planning_mode_from_request_intent(self, request_intent: RequestIntentV1) -> str:
-        return planning_mode_from_request_intent(request_intent)
+    _planning_mode_from_request_intent = staticmethod(planning_mode_from_request_intent)

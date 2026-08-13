@@ -8,10 +8,9 @@ from typing import cast
 import pytest
 from fastapi.testclient import TestClient
 from tests.integration.langgraph.test_runtime import (
-    _action_required_intent,
+    _action_intent,
     _analysis_output,
     _calendar_analysis_output,
-    _calendar_intent,
     _calendar_selection_output,
     _delete_write_plan_output,
     _make_runtime,
@@ -43,7 +42,7 @@ from google_work_agent.application.start_run import (
     ResumeRunService,
     StartRunService,
 )
-from google_work_agent.application.workflows import ActionPlanDraftV1
+from google_work_agent.application.workflows import ActionPlanDraftV1, RequestIntentV1
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
     PrepareWriteRetryService,
@@ -204,6 +203,30 @@ def _task_delete_plan() -> ActionPlanDraftV1:
     return plan
 
 
+def _intent_for_write_operation(write_operation: str) -> RequestIntentV1:
+    if write_operation == "create_gmail_draft":
+        return _action_intent(resource="GMAIL_DRAFT", effect="CREATE")
+    if write_operation == "send_gmail":
+        return _action_intent(resource="GMAIL_MESSAGE", effect="SEND")
+    if write_operation == "create_task":
+        return _action_intent(resource="TASK", effect="CREATE")
+    if write_operation == "update_task":
+        return _action_intent(resource="TASK", effect="UPDATE")
+    if write_operation == "delete_task":
+        return _action_intent(resource="TASK", effect="DELETE")
+    if write_operation == "create_calendar_event":
+        return _action_intent(resource="CALENDAR_EVENT", effect="CREATE")
+    if write_operation == "update_calendar_event":
+        return _action_intent(
+            resource="CALENDAR_EVENT", effect="UPDATE", source="CALENDAR"
+        )
+    if write_operation == "delete_calendar_event":
+        return _action_intent(
+            resource="CALENDAR_EVENT", effect="DELETE", source="CALENDAR"
+        )
+    raise AssertionError(f"unsupported write operation fixture: {write_operation}")
+
+
 @pytest.mark.parametrize(
     ("plan_factory", "calendar_context", "write_operation", "verification_operation"),
     [
@@ -232,7 +255,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
     )
     llm_payloads = (
         [
-            _calendar_intent(),
+            _intent_for_write_operation(write_operation),
             [_plan("CALENDAR", {"calendar_id": "calendar-primary"})],
             _calendar_selection_output(),
             _sufficiency_output("SUFFICIENT"),
@@ -242,7 +265,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         ]
         if calendar_context
         else [
-            _action_required_intent(),
+            _intent_for_write_operation(write_operation),
             [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),

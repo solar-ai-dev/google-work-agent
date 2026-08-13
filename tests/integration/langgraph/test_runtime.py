@@ -57,6 +57,7 @@ from google_work_agent.application.workflows import (
     validate_work_analysis_result_v1,
 )
 from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
+from google_work_agent.domain import ConnectorToolCatalog, build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
     RequestedRuntimeMode,
@@ -90,6 +91,12 @@ _RUNTIME_ACTIVE_PROMPT_IDS = {
     "profile.three.stage1.initial",
     "profile.three.stage2.initial",
 }
+
+
+def _tool_catalog() -> ConnectorToolCatalog:
+    catalog = ConnectorToolCatalog()
+    catalog.register(connector_id="google_workspace", registry=build_p0_tool_registry())
+    return catalog
 
 
 class _QueuedLLMRuntime:
@@ -161,12 +168,32 @@ def _clear_intent() -> RequestIntentV1:
             "explanation": None,
         },
         "response_disposition": "ANSWER_ONLY",
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["TASK"],
+        "analysis_requirement": "REQUIRED",
     }
 
 
 def _action_required_intent() -> RequestIntentV1:
     payload = _clear_intent()
     payload["response_disposition"] = "ACTION_REQUIRED"
+    payload["requested_effect_hints"] = ["CREATE"]
+    payload["requested_resource_hints"] = ["TASK"]
+    return payload
+
+
+def _action_intent(
+    *,
+    resource: str,
+    effect: str,
+    source: Literal["GMAIL", "TASKS", "CALENDAR"] = "TASKS",
+) -> RequestIntentV1:
+    payload = _action_required_intent()
+    payload["requested_resource_hints"] = [resource]
+    payload["requested_effect_hints"] = [effect]  # type: ignore[list-item]
+    payload["semantic_constraints"]["sources"] = [
+        {"source": source, "mention": source.lower(), "confidence": "HIGH"}
+    ]
     return payload
 
 
@@ -519,6 +546,7 @@ def _calendar_intent() -> RequestIntentV1:
     intent["semantic_constraints"]["sources"] = [
         {"source": "CALENDAR", "mention": "calendar", "confidence": "HIGH"}
     ]
+    intent["requested_resource_hints"] = ["CALENDAR_EVENT"]
     return intent
 
 
@@ -615,6 +643,7 @@ def _make_runtime(
         llm_runtime=_QueuedLLMRuntime(llm_payloads, before_invoke=before_llm_invoke),
         gateway=gateway,
         connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
+        tool_catalog=_tool_catalog(),
         now_ms=clock.now_ms,
         id_factory=ids.next_id,
         signing_secret="stage17-secret",

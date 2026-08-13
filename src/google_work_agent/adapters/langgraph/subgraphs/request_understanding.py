@@ -32,6 +32,9 @@ from google_work_agent.application.workflows import (
     WorkflowPhase,
     route_supervisor,
 )
+from google_work_agent.application.workflows.request_understanding import (
+    materialize_request_intent_artifact,
+)
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]
@@ -135,6 +138,14 @@ class RequestUnderstandingSubgraph:
         local_state = cast(AgentLocalStateV1, state[REQUEST_AGENT_LOCAL_KEY])
         request = request_from_state(state)
         output = state[REQUEST_OUTPUT_KEY]
+        if output["request_intent"] is not None and "meta" not in output["request_intent"]:
+            output = {
+                **output,
+                "request_intent": materialize_request_intent_artifact(
+                    output["request_intent"],
+                    artifact_id=self._id_factory(),
+                ),
+            }
         decision = route_supervisor(
             phase=WorkflowPhase.REQUEST_ANALYSIS,
             state=cast(MultiAgentGraphState, state),
