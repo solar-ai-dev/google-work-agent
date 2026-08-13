@@ -10,7 +10,6 @@ import {
   getCurrentAccount,
   getGoogleConnection,
   getGmailResourceDetail,
-  getResourceCount,
   getLLMConnection,
   getLatestConversationRun,
   getLive,
@@ -21,7 +20,6 @@ import {
   getSettings,
   listCalendarResources,
   listConversations,
-  listGmailResources,
   listTaskResources,
   modifyAction,
   patchSettings,
@@ -40,7 +38,6 @@ import type {
   GoogleConnectionResponse,
   GmailResourceDetailResponse,
   ResourceItem,
-  ResourceListResponse,
   RunAction,
   RunContext,
   RunSnapshot,
@@ -51,6 +48,7 @@ import { ApiClientError } from "../api/client";
 import { subscribeRunEvents } from "../api/sse";
 import { CalendarMonthView, calendarMonthRange, calendarRangeBoundary, configuredDateKey } from "./CalendarMonthView";
 import { ConversationView, useConversation } from "../features/conversation";
+import { GmailPanel, useGmail } from "../features/gmail";
 
 type StartupState = {
   phase: string;
@@ -61,7 +59,7 @@ type StartupState = {
 };
 
 type ResourceTab = "gmail" | "tasks" | "calendar";
-type CountTab = Exclude<ResourceTab, "calendar">;
+type CountTab = "tasks";
 type TaskSort = "provider" | "scheduled_date";
 type SourceCount = { value: number; exact: boolean } | null;
 type CompletedTasksState = {
@@ -75,9 +73,7 @@ type CompletedTasksState = {
 
 type ResourceState = {
   tab: ResourceTab;
-  query: string;
   items: ResourceItem[];
-  gmailPages: Record<number, GmailPageCacheEntry>;
   nextPageToken: string | null;
   pageIndex: number;
   lastLoadedPageIndex: number;
@@ -94,22 +90,10 @@ type ResourceState = {
   error: string | null;
 };
 
-type GmailPageCacheEntry = {
-  pageToken: string | null;
-  nextPageToken: string | null;
-  items: ResourceItem[] | null;
-};
-
-type GmailProviderPage = {
-  response: ResourceListResponse;
-  includesMetadata: boolean;
-};
-
 type ResourceCacheEntry = {
   items: ResourceItem[];
   nextPageToken: string | null;
   totalCount: number | null;
-  gmailPages?: Record<number, GmailPageCacheEntry>;
 };
 
 type GmailDetailState = {
@@ -136,11 +120,6 @@ type ResourceLoadOptions = {
   calendarTimeMax?: string | null;
 };
 
-type ResourceCountLoadOptions = {
-  force?: boolean;
-  publish?: boolean;
-};
-
 type CalendarMonthRequestInput = {
   cacheKey: string;
   parentId: string | null;
@@ -149,9 +128,7 @@ type CalendarMonthRequestInput = {
 };
 
 const resourceCache = new Map<string, ResourceCacheEntry>();
-const resourceCountCache = new Map<string, number | null>();
 const SIDEBAR_VISIBLE_PAGE_SIZE = 20;
-const GMAIL_BROWSE_SIZE = 20;
 const TASKS_BROWSE_SIZE = 100;
 const CALENDAR_BROWSE_SIZE = 100;
 
@@ -176,7 +153,6 @@ export function App(): JSX.Element {
   const [calendarMonthItems, setCalendarMonthItems] = useState<ResourceItem[]>([]);
   const [calendarMonthLoading, setCalendarMonthLoading] = useState(false);
   const [calendarMonthError, setCalendarMonthError] = useState<string | null>(null);
-  const [gmailSearchInput, setGmailSearchInput] = useState("");
   const [taskSortMenuOpen, setTaskSortMenuOpen] = useState(false);
   const [conversationQuery, setConversationQuery] = useState("");
   const [sidebarFilter, setSidebarFilter] = useState("");
@@ -190,9 +166,7 @@ export function App(): JSX.Element {
   });
   const [resourceState, setResourceState] = useState<ResourceState>({
     tab: "gmail",
-    query: "",
     items: [],
-    gmailPages: {},
     nextPageToken: null,
     pageIndex: 0,
     lastLoadedPageIndex: 0,
@@ -209,9 +183,9 @@ export function App(): JSX.Element {
     error: null,
   });
   const [resourceCounts, setResourceCounts] = useState<Record<CountTab, SourceCount>>({
-    gmail: null,
     tasks: null,
   });
+  const gmail = useGmail({ accountId: currentAccount?.account_id, active: resourceState.tab === "gmail" });
   const [completedTasks, setCompletedTasks] = useState<CompletedTasksState>({
     expanded: false, initialized: false, items: [], pageIndex: 0, loading: false, error: null,
   });
@@ -220,20 +194,14 @@ export function App(): JSX.Element {
     [resourceState.selectedIds],
   );
   const selectedResourceLabels = useMemo(
-    () => resourceItemsForSelection(resourceState)
+    () => resourceItemsForSelection(resourceState, gmail.items)
       .filter((item) => selectedResourceIds.includes(item.resource_id))
       .map((item) => resourcePresentation(item).title)
       .filter((title): title is string => Boolean(title)),
-    [resourceState, selectedResourceIds],
+    [resourceState, gmail.items, selectedResourceIds],
   );
   const composerPrompt = resourceComposerPrompt(resourceState.tab);
   const visibleResourceItems = useMemo(() => {
-    if (resourceState.tab === "gmail") {
-      const visiblePageIndex = resourceState.loading
-        ? resourceState.lastLoadedPageIndex
-        : resourceState.pageIndex;
-      return resourceState.gmailPages[visiblePageIndex]?.items ?? [];
-    }
     if (!sidebarFilter.trim()) {
       return resourceState.items.slice(
         resourceState.pageIndex * SIDEBAR_VISIBLE_PAGE_SIZE,
@@ -250,17 +218,12 @@ export function App(): JSX.Element {
       resourceState.pageIndex * SIDEBAR_VISIBLE_PAGE_SIZE,
       (resourceState.pageIndex + 1) * SIDEBAR_VISIBLE_PAGE_SIZE,
     );
-  }, [resourceState.gmailPages, resourceState.items, resourceState.lastLoadedPageIndex, resourceState.loading, resourceState.pageIndex, resourceState.tab, sidebarFilter]);
+  }, [resourceState.items, resourceState.pageIndex, sidebarFilter]);
   const visibleTaskSections = useMemo(() => (
     resourceState.tab === "tasks" && resourceState.taskSort === "scheduled_date"
       ? groupTasksByScheduledDate(visibleResourceItems)
       : null
   ), [resourceState.tab, resourceState.taskSort, visibleResourceItems]);
-  const resourceLoadingMessage = resourceState.tab === "gmail"
-    && resourceState.loading
-    && resourceState.pageIndex !== resourceState.lastLoadedPageIndex
-    ? `${resourceState.pageIndex + 1}페이지를 불러오는 중입니다.`
-    : "자료를 불러오는 중입니다.";
   const conversation = useConversation({
     currentAccount,
     selectedResourceIds,
@@ -332,41 +295,9 @@ export function App(): JSX.Element {
   const taskSortLoadKeysRef = useRef(new Set<string>());
   const completedRequestGenerationRef = useRef(0);
   const taskSortMenuRef = useRef<HTMLDivElement | null>(null);
-  const gmailInFlightRef = useRef(new Map<string, {
-    includesMetadata: boolean;
-    promise: Promise<GmailProviderPage>;
-  }>());
   const calendarMonthRequestRef = useRef({ generation: 0, cacheKey: "" });
   const calendarMonthCacheGenerationRef = useRef(new Map<string, number>());
   const calendarMonthInFlightRef = useRef(new Map<string, Promise<ResourceItem[]>>());
-
-  const requestGmailPage = useCallback(async (
-    cacheKey: string,
-    query: string,
-    pageToken: string | null,
-    includeThreadMetadata: boolean,
-  ): Promise<GmailProviderPage> => {
-    const inFlightKey = `${cacheKey}|${pageToken ?? "first"}`;
-    const inFlight = gmailInFlightRef.current.get(inFlightKey);
-    if (inFlight) {
-      const result = await inFlight.promise;
-      if (!includeThreadMetadata || result.includesMetadata) {
-        return result;
-      }
-      return requestGmailPage(cacheKey, query, pageToken, true);
-    }
-    const promise = listGmailResources(query, pageToken, GMAIL_BROWSE_SIZE, includeThreadMetadata)
-      .then((response) => ({ response, includesMetadata: includeThreadMetadata }));
-    gmailInFlightRef.current.set(inFlightKey, { includesMetadata: includeThreadMetadata, promise });
-    try {
-      return await promise;
-    } finally {
-      if (gmailInFlightRef.current.get(inFlightKey)?.promise === promise) {
-        gmailInFlightRef.current.delete(inFlightKey);
-      }
-    }
-  }, []);
-
   const invalidateResourceRequest = useCallback((): void => {
     resourceRequestRef.current = {
       generation: resourceRequestRef.current.generation + 1,
@@ -424,7 +355,7 @@ export function App(): JSX.Element {
   }, [loadGmailDetail, resourceState.focusItem]);
 
   const loadResources = useCallback(async (
-    tab: ResourceTab,
+    tab: Exclude<ResourceTab, "gmail">,
     pageIndex: number,
     options: ResourceLoadOptions = {},
   ): Promise<void> => {
@@ -437,7 +368,7 @@ export function App(): JSX.Element {
     const identity: ResourceRequestIdentity = {
       tab,
       parentId: resourceState.parentId,
-      query: resourceState.query.trim().toLowerCase(),
+      query: "",
       pageIndex,
       calendarTimeMin: tab === "calendar" ? calendarTimeMin : null,
       calendarTimeMax: tab === "calendar" ? calendarTimeMax : null,
@@ -454,7 +385,7 @@ export function App(): JSX.Element {
       accountId: currentAccount?.account_id ?? "anon",
       tab,
       parentId: resourceState.parentId,
-      query: identity.query,
+      query: "",
       calendarTimeMin: tab === "calendar" ? calendarTimeMin : null,
       calendarTimeMax: tab === "calendar" ? calendarTimeMax : null,
       taskSort: resourceState.taskSort,
@@ -477,140 +408,6 @@ export function App(): JSX.Element {
           loaded: true,
           loading: false,
           error: null,
-        }));
-        return;
-      }
-    }
-    const cachedGmailPages = !options.force && cached?.gmailPages
-      ? cached.gmailPages
-      : resourceState.gmailPages;
-    if (tab === "gmail") {
-      const prefetchNextGmailPage = (pages: Record<number, GmailPageCacheEntry>, loadedPageIndex: number): void => {
-        const nextPageIndex = loadedPageIndex + 1;
-        const loadedPage = pages[loadedPageIndex];
-        if (loadedPage?.nextPageToken === null || pages[nextPageIndex]?.items) {
-          return;
-        }
-        void requestGmailPage(cacheKey, resourceState.query, loadedPage.nextPageToken, true)
-          .then(({ response }) => {
-            const currentCache = resourceCache.get(cacheKey);
-            const currentPages = { ...(currentCache?.gmailPages ?? pages) };
-            if (currentPages[nextPageIndex]?.items) {
-              return;
-            }
-            currentPages[nextPageIndex] = {
-              pageToken: loadedPage.nextPageToken,
-              nextPageToken: response.next_page_token,
-              items: response.items,
-            };
-            resourceCache.set(cacheKey, {
-              items: gmailMetadataItems(currentPages),
-              nextPageToken: response.next_page_token,
-              totalCount: null,
-              gmailPages: currentPages,
-            });
-          })
-          .catch(() => {
-            // Prefetch failures do not affect the currently displayed Gmail page.
-          });
-      };
-      const cachedPage = !options.force ? cachedGmailPages[pageIndex] : undefined;
-      if (cachedPage?.items) {
-        setResourceState((current) => ({
-          ...current,
-          items: gmailMetadataItems(cachedGmailPages),
-          gmailPages: cachedGmailPages,
-          nextPageToken: cachedPage.nextPageToken,
-          pageIndex,
-          lastLoadedPageIndex: pageIndex,
-          loaded: true,
-          loading: false,
-          error: null,
-        }));
-        prefetchNextGmailPage(cachedGmailPages, pageIndex);
-        return;
-      }
-      setResourceState((current) => ({ ...current, pageIndex, loading: true, error: null }));
-      try {
-        const nextGmailPages = options.force ? {} : { ...cachedGmailPages };
-        for (let currentPageIndex = 0; currentPageIndex <= pageIndex; currentPageIndex += 1) {
-          const knownPage = nextGmailPages[currentPageIndex];
-          if (knownPage) {
-            if (currentPageIndex === pageIndex && knownPage.items === null) {
-              const { response } = await requestGmailPage(
-                cacheKey,
-                resourceState.query,
-                knownPage.pageToken,
-                true,
-              );
-              nextGmailPages[currentPageIndex] = {
-                ...knownPage,
-                items: response.items,
-                nextPageToken: response.next_page_token,
-              };
-            }
-            continue;
-          }
-          const pageToken = currentPageIndex === 0
-            ? null
-            : nextGmailPages[currentPageIndex - 1]?.nextPageToken;
-          if (currentPageIndex > 0 && pageToken === null) {
-            break;
-          }
-          if (pageToken !== null && Object.values(nextGmailPages).some((page) => page.pageToken === pageToken)) {
-            throw new Error("Gmail page token repeated during pagination traversal.");
-          }
-          const includeThreadMetadata = currentPageIndex === pageIndex;
-          const { response, includesMetadata } = await requestGmailPage(
-            cacheKey,
-            resourceState.query,
-            pageToken,
-            includeThreadMetadata,
-          );
-          nextGmailPages[currentPageIndex] = {
-            pageToken,
-            nextPageToken: response.next_page_token,
-            items: includesMetadata ? response.items : null,
-          };
-        }
-        const targetPage = nextGmailPages[pageIndex];
-        if (!targetPage?.items) {
-          if (isCurrentRequest()) {
-            setResourceState((current) => ({ ...current, loading: false, error: null }));
-          }
-          return;
-        }
-        const gmailItems = gmailMetadataItems(nextGmailPages);
-        resourceCache.set(cacheKey, {
-          items: gmailItems,
-          nextPageToken: targetPage.nextPageToken,
-          totalCount: null,
-          gmailPages: nextGmailPages,
-        });
-        if (!isCurrentRequest()) {
-          return;
-        }
-        setResourceState((current) => ({
-          ...current,
-          items: gmailItems,
-          gmailPages: nextGmailPages,
-          nextPageToken: targetPage.nextPageToken,
-          pageIndex,
-          lastLoadedPageIndex: pageIndex,
-          loaded: true,
-          loading: false,
-        }));
-        prefetchNextGmailPage(nextGmailPages, pageIndex);
-        return;
-      } catch (error) {
-        if (!isCurrentRequest()) {
-          return;
-        }
-        setResourceState((current) => ({
-          ...current,
-          pageIndex: current.lastLoadedPageIndex,
-          loading: false,
-          error: error instanceof ApiClientError ? error.message : "리소스를 불러오지 못했습니다.",
         }));
         return;
       }
@@ -782,63 +579,7 @@ export function App(): JSX.Element {
         error: error instanceof ApiClientError ? error.message : "리소스를 불러오지 못했습니다.",
       }));
     }
-  }, [currentAccount?.account_id, requestGmailPage, resourceState.calendarTimeMax, resourceState.calendarTimeMin, resourceState.gmailPages, resourceState.items, resourceState.nextPageToken, resourceState.parentId, resourceState.query, resourceState.taskSort, sidebarFilter]);
-
-  const loadResourceCount = useCallback(async (
-    tab: "gmail",
-    options: ResourceCountLoadOptions = {},
-  ): Promise<SourceCount> => {
-    const publish = options.publish !== false;
-    const cacheKey = resourceCacheKey({
-      accountId: currentAccount?.account_id ?? "anon",
-      tab,
-      parentId: resourceState.parentId,
-      query: resourceState.query.trim().toLowerCase(),
-      calendarTimeMin: null,
-      calendarTimeMax: null,
-    });
-    if (!options.force && resourceCountCache.has(cacheKey)) {
-      const cachedCount = resourceCountCache.get(cacheKey) ?? null;
-      const count = cachedCount === null ? null : { value: cachedCount, exact: true };
-      if (publish) {
-        setResourceCounts((current) => ({ ...current, [tab]: count }));
-        setResourceState((current) => current.totalCount === cachedCount && !current.countLoading
-          ? current
-          : { ...current, totalCount: cachedCount, countLoading: false });
-      }
-      return count;
-    }
-    if (publish) {
-      setResourceState((current) => ({ ...current, totalCount: null, countLoading: true }));
-    }
-    try {
-      const response = await getResourceCount(tab, {
-        query: resourceState.query,
-        taskListId: null,
-        calendarId: null,
-        timeMin: null,
-        timeMax: null,
-      });
-      resourceCountCache.set(cacheKey, response.total_count);
-      const count = { value: response.total_count, exact: true };
-      if (publish) {
-        setResourceCounts((current) => ({ ...current, [tab]: count }));
-        setResourceState((current) => current.tab === tab
-          ? { ...current, totalCount: response.total_count, countLoading: false }
-          : current);
-      }
-      return count;
-    } catch {
-      resourceCountCache.set(cacheKey, null);
-      if (publish) {
-        setResourceCounts((current) => ({ ...current, [tab]: null }));
-        setResourceState((current) => current.tab === tab
-          ? { ...current, totalCount: null, countLoading: false }
-          : current);
-      }
-      return null;
-    }
-  }, [currentAccount?.account_id, resourceState.parentId, resourceState.query]);
+  }, [currentAccount?.account_id, resourceState.calendarTimeMax, resourceState.calendarTimeMin, resourceState.items, resourceState.nextPageToken, resourceState.parentId, resourceState.taskSort, sidebarFilter]);
 
   const calendarMonthRequestInput = useCallback((monthAnchor: string): CalendarMonthRequestInput => {
     const range = calendarMonthRange(monthAnchor);
@@ -1008,28 +749,27 @@ export function App(): JSX.Element {
     };
     taskPreloadRef.current = preloadTasks();
     void loadCompletedTasks();
-    const [gmail, tasks] = await Promise.allSettled([
-      loadResourceCount("gmail", { publish: false }),
+    const [, tasks] = await Promise.allSettled([
+      gmail.loadCount(),
       taskPreloadRef.current,
     ]);
     setResourceCounts((current) => ({
       ...current,
-      gmail: gmail.status === "fulfilled" ? gmail.value : null,
       tasks: tasks.status === "fulfilled" ? tasks.value : null,
     }));
-  }, [currentAccount?.account_id, loadCompletedTasks, loadResourceCount]);
+  }, [currentAccount?.account_id, gmail, loadCompletedTasks]);
 
   const runStartup = useCallback(async (): Promise<void> => {
     // Preserve the one-time fragment in invocation-local memory before awaits.
     const bootstrapFragment = readBootstrapFragment(window.location.hash);
     resourceCache.clear();
+    gmail.reset();
     taskCacheGenerationRef.current += 1;
     completedRequestGenerationRef.current += 1;
-    resourceCountCache.clear();
     countsPreloadedRef.current = false;
     taskPreloadRef.current = null;
     setCompletedTasks({ expanded: false, initialized: false, items: [], pageIndex: 0, loading: false, error: null });
-    setResourceCounts({ gmail: null, tasks: null });
+    setResourceCounts({ tasks: null });
     setStartup({
       phase: "checks",
       status: "loading",
@@ -1107,28 +847,6 @@ export function App(): JSX.Element {
   }, [runStartup]);
 
   useEffect(() => {
-    if (resourceState.tab !== "gmail" || gmailSearchInput === resourceState.query) {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      invalidateResourceRequest();
-      setResourceState((current) => ({
-        ...current,
-        query: gmailSearchInput,
-        items: [],
-        gmailPages: {},
-        nextPageToken: null,
-        pageIndex: 0,
-        lastLoadedPageIndex: 0,
-        loaded: false,
-        totalCount: null,
-      }));
-      setResourceCounts((current) => ({ ...current, gmail: null }));
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [gmailSearchInput, invalidateResourceRequest, resourceState.query, resourceState.tab]);
-
-  useEffect(() => {
     if (resourceState.tab !== "tasks") {
       previousTaskFilterRef.current = sidebarFilter;
       return;
@@ -1170,17 +888,20 @@ export function App(): JSX.Element {
   }, [calendarMonthAnchor, calendarTimezone, google?.connected, loadCalendarMonth, resourceState.tab, startup.status]);
 
   useEffect(() => {
-    if (startup.status !== "ready" || !google?.connected || resourceState.tab === "calendar") {
+    if (startup.status !== "ready" || !google?.connected || resourceState.tab !== "gmail") return;
+    if (!gmail.loaded && !gmail.loading && gmail.error === null) void gmail.loadPage(gmail.pageIndex);
+    else if (gmail.loaded && !gmail.countLoading) void gmail.loadCount();
+  }, [gmail.countLoading, gmail.error, gmail.loadCount, gmail.loadPage, gmail.loaded, gmail.loading, gmail.pageIndex, google?.connected, resourceState.tab, startup.status]);
+
+  useEffect(() => {
+    if (startup.status !== "ready" || !google?.connected || resourceState.tab === "calendar" || resourceState.tab === "gmail") {
       return;
     }
     if (!resourceState.loaded && !resourceState.loading && resourceState.error === null) {
       void loadResources(resourceState.tab, resourceState.pageIndex);
       return;
     }
-    if (resourceState.tab === "gmail" && resourceState.loaded && !resourceState.countLoading) {
-      void loadResourceCount("gmail");
-    }
-  }, [google?.connected, loadResourceCount, loadResources, resourceState.countLoading, resourceState.error, resourceState.loaded, resourceState.loading, resourceState.pageIndex, resourceState.tab, startup.status]);
+  }, [google?.connected, loadResources, resourceState.error, resourceState.loaded, resourceState.loading, resourceState.pageIndex, resourceState.tab, startup.status]);
 
   /* Extracted to features/conversation/useConversation.ts.
   async function selectConversation(conversationId: string): Promise<void> {
@@ -1432,19 +1153,18 @@ export function App(): JSX.Element {
     invalidateResourceRequest();
     await disconnectGoogle();
     resourceCache.clear();
+    gmail.reset();
     taskCacheGenerationRef.current += 1;
     completedRequestGenerationRef.current += 1;
-    resourceCountCache.clear();
     countsPreloadedRef.current = false;
     taskPreloadRef.current = null;
     setCompletedTasks({ expanded: false, initialized: false, items: [], pageIndex: 0, loading: false, error: null });
-    setResourceCounts({ gmail: null, tasks: null });
+    setResourceCounts({ tasks: null });
     setGoogle((current) => current ? { ...current, connected: false } : current);
     setCurrentAccount(null);
     setResourceState((current) => ({
       ...current,
       items: [],
-      gmailPages: {},
       nextPageToken: null,
       pageIndex: 0,
       loaded: false,
@@ -1557,7 +1277,6 @@ export function App(): JSX.Element {
                         ...current,
                         tab,
                         items: [],
-                        gmailPages: {},
                         nextPageToken: null,
                         pageIndex: 0,
                         lastLoadedPageIndex: 0,
@@ -1577,7 +1296,7 @@ export function App(): JSX.Element {
                     <span className="resource-tab-label">{resourceTabLabel(tab)}</span>
                     {tab !== "calendar" ? (
                       <span className="resource-tab-count">
-                        {formatSourceCount(resourceCounts[tab])}
+                        {formatSourceCount(tab === "gmail" ? gmail.count : resourceCounts.tasks)}
                       </span>
                     ) : null}
                     <span className="sr-only">{tab.toUpperCase()}</span>
@@ -1591,6 +1310,10 @@ export function App(): JSX.Element {
                 title="새로고침"
                 onClick={() => {
                   const activeTab = resourceState.tab;
+                  if (activeTab === "gmail") {
+                    void gmail.refresh();
+                    return;
+                  }
                   if (activeTab === "calendar") {
                     if (calendarMonthAnchor) void loadCalendarMonth(calendarMonthAnchor, true);
                     return;
@@ -1601,7 +1324,7 @@ export function App(): JSX.Element {
                     accountId: currentAccount?.account_id ?? "anon",
                     tab: activeTab,
                     parentId: resourceState.parentId,
-                    query: activeTab === "gmail" ? resourceState.query.trim().toLowerCase() : "",
+                    query: "",
                     calendarTimeMin: null,
                     calendarTimeMax: null,
                     taskFilter: activeTab === "tasks" ? sidebarFilter.trim().toLowerCase() : "",
@@ -1613,30 +1336,44 @@ export function App(): JSX.Element {
                       resourceCache.delete(resourceCacheKey({ ...cacheIdentity, taskSort }));
                     }
                     void loadCompletedTasks(true);
-                  } else {
-                    resourceCache.delete(resourceCacheKey({ ...cacheIdentity, taskSort: resourceState.taskSort }));
                   }
-                  resourceCountCache.delete(resourceCacheKey({ ...cacheIdentity, taskSort: resourceState.taskSort }));
                   void loadResources(activeTab, 0, { force: true, calendarTimeMin, calendarTimeMax });
                 }}
               >
                 ↻
               </button>
             </div>
-            <div className="resource-search-row">
+            {resourceState.tab === "gmail" ? (
+              <GmailPanel
+                gmail={gmail}
+                selection={{
+                  selectedResourceIds: resourceState.selectedIds,
+                  focusedResourceId: resourceState.focusItem?.resource_id ?? null,
+                  onToggleResource: (resourceId) => setResourceState((current) => ({
+                    ...current,
+                    selectedIds: current.selectedIds.includes(resourceId)
+                      ? current.selectedIds.filter((selectedId) => selectedId !== resourceId)
+                      : [...current.selectedIds, resourceId],
+                  })),
+                  onFocusResource: (item) => setResourceState((current) => ({ ...current, focusItem: item })),
+                }}
+                pagination={{
+                  pageIndexes: paginationPageIndexes(gmail.pageIndex, gmail.totalCount, gmail.items.length),
+                  hasNextPage: gmail.pageIndex + 1 < totalPageCount(gmail.totalCount, gmail.items.length)
+                    || (gmail.totalCount === null && gmail.nextPageToken !== null),
+                  onGoToPage: (pageIndex) => void gmail.loadPage(pageIndex),
+                }}
+                presentResource={resourcePresentation}
+              />
+            ) : null}
+            {resourceState.tab !== "gmail" ? <><div className="resource-search-row">
               <label className="resource-search">
                 <span className="resource-search-icon" aria-hidden="true">⌕</span>
                 <input
                   aria-label={resourceSearchLabel(resourceState.tab)}
                   placeholder={resourceSearchPlaceholder(resourceState.tab)}
-                  value={resourceState.tab === "gmail" ? gmailSearchInput : sidebarFilter}
-                  onChange={(event) => {
-                    if (resourceState.tab === "gmail") {
-                      setGmailSearchInput(event.target.value);
-                      return;
-                    }
-                    setSidebarFilter(event.target.value);
-                  }}
+                  value={sidebarFilter}
+                  onChange={(event) => setSidebarFilter(event.target.value)}
                 />
               </label>
               {resourceState.tab === "tasks" ? (
@@ -1711,7 +1448,7 @@ export function App(): JSX.Element {
             ) : null}
             {resourceState.tab !== "calendar" && resourceState.loading ? (
               <div className="resource-load-status" aria-live="polite">
-                <p className="muted">{resourceLoadingMessage}</p>
+                <p className="muted">자료를 불러오는 중입니다.</p>
               </div>
             ) : null}
             {resourceState.tab !== "calendar" && resourceState.error ? <p className="status-bad">{resourceState.error}</p> : null}
@@ -1749,18 +1486,7 @@ export function App(): JSX.Element {
                       aria-pressed={focused}
                       onClick={() => setResourceState((current) => ({ ...current, focusItem: item }))}
                     >
-                      {item.source.toLowerCase() === "gmail" ? (
-                        <>
-                          {(presentation.secondary || presentation.time) ? (
-                            <span className="row-mail-meta">
-                              {presentation.secondary ? <span className="row-sender">{presentation.secondary}</span> : null}
-                              {presentation.time ? <span className="row-meta">{presentation.time}</span> : null}
-                            </span>
-                          ) : null}
-                          <strong className="row-title">{presentation.title ?? "제목 없음"}</strong>
-                          {presentation.snippet ? <span className="row-snippet">{presentation.snippet}</span> : null}
-                        </>
-                      ) : (
+
                         <>
                           {item.source.toLowerCase() === "tasks" ? (
                             <span className="task-row-main">
@@ -1778,7 +1504,6 @@ export function App(): JSX.Element {
                           {presentation.snippet ? <span className="row-snippet">{presentation.snippet}</span> : null}
                           {item.source.toLowerCase() !== "tasks" && presentation.time ? <span className="row-meta">{presentation.time}</span> : null}
                         </>
-                      )}
                     </button>
                   </li>
                 );
@@ -1835,21 +1560,21 @@ export function App(): JSX.Element {
             ) : null}
             </div>
             <nav className="pagination" aria-label="자료 페이지">
-              <button className="button-secondary" type="button" disabled={(resourceState.loading && resourceState.tab !== "gmail") || resourceState.pageIndex === 0} onClick={() => void loadResources(resourceState.tab, resourceState.pageIndex - 1)}>
+              <button className="button-secondary" type="button" disabled={resourceState.loading || resourceState.pageIndex === 0} onClick={() => void loadResources(resourceState.tab as Exclude<ResourceTab, "gmail">, resourceState.pageIndex - 1)}>
                 이전
               </button>
               {paginationPageIndexes(resourceState.pageIndex, resourceState.totalCount, resourceState.items.length).map((index) => (
-                <button key={index} className={index === resourceState.pageIndex ? "button-primary" : "button-secondary"} type="button" disabled={resourceState.loading && resourceState.tab !== "gmail"} onClick={() => void loadResources(resourceState.tab, index)}>
+                <button key={index} className={index === resourceState.pageIndex ? "button-primary" : "button-secondary"} type="button" disabled={resourceState.loading} onClick={() => void loadResources(resourceState.tab as Exclude<ResourceTab, "gmail">, index)}>
                   {index + 1}
                 </button>
               ))}
               {resourceState.pageIndex + 1 < totalPageCount(resourceState.totalCount, resourceState.items.length) || (resourceState.totalCount === null && resourceState.nextPageToken) ? (
-                <button className="button-secondary" type="button" disabled={resourceState.loading && resourceState.tab !== "gmail"} onClick={() => void loadResources(resourceState.tab, resourceState.pageIndex + 1)}>
+                <button className="button-secondary" type="button" disabled={resourceState.loading} onClick={() => void loadResources(resourceState.tab as Exclude<ResourceTab, "gmail">, resourceState.pageIndex + 1)}>
                   다음
                 </button>
               ) : null}
             </nav>
-            </> : null}
+            </> : null}</> : null}
           </div>
         </aside>
 
@@ -1893,7 +1618,6 @@ export function App(): JSX.Element {
                             ...current,
                             parentId: resourceState.focusItem!.resource_id,
                             items: [],
-                            gmailPages: {},
                             nextPageToken: null,
                             pageIndex: 0,
                             loaded: false,
@@ -2438,13 +2162,9 @@ function pastScheduledDays(item: ResourceItem, now = new Date()): number | null 
   return difference > 0 ? difference : null;
 }
 
-function gmailMetadataItems(gmailPages: Record<number, GmailPageCacheEntry>): ResourceItem[] {
-  return Object.values(gmailPages).flatMap((page) => page.items ?? []);
-}
-
-function resourceItemsForSelection(resourceState: ResourceState): ResourceItem[] {
+function resourceItemsForSelection(resourceState: ResourceState, gmailItems: ResourceItem[]): ResourceItem[] {
   return resourceState.tab === "gmail"
-    ? gmailMetadataItems(resourceState.gmailPages)
+    ? gmailItems
     : resourceState.items;
 }
 
