@@ -12,6 +12,7 @@ from google_work_agent.api.dependencies import (
 from google_work_agent.api.errors import ApiError
 from google_work_agent.api.schemas.resources import (
     GmailResourceDetailResponse,
+    ResourceCountResponse,
     ResourceListResponse,
 )
 from google_work_agent.ports import (
@@ -28,7 +29,8 @@ def list_gmail_resources(
     request: Request,
     query: str = Query(default=""),
     page_token: str | None = Query(default=None),
-    page_size: int = Query(default=20, ge=1, le=50),
+    page_size: int = Query(default=20, ge=1, le=100),
+    include_thread_metadata: bool = Query(default=True),
     x_api_contract_version: str | None = Header(default=None),
 ) -> ResourceListResponse:
     container = get_container(request)
@@ -48,13 +50,80 @@ def list_gmail_resources(
             detail_code="RESOURCE_QUERY_UNAVAILABLE",
         )
     try:
-        page = service.list_gmail_threads(query=query, page_token=page_token, page_size=page_size)
+        page = service.list_gmail_threads(
+            query=query,
+            page_token=page_token,
+            page_size=page_size,
+            include_thread_metadata=include_thread_metadata,
+        )
     except GoogleWorkspaceGatewayError as error:
         _raise_resource_error(error, request_id=request.state.request_id)
     return ResourceListResponse(
         source=page.source,
         items=[asdict(item) for item in page.items],
         next_page_token=page.next_page_token,
+        api_contract_version=container.api_contract_version,
+    )
+
+
+@router.get("/{source}/count", response_model=ResourceCountResponse)
+def get_resource_count(
+    request: Request,
+    source: str = Path(min_length=1, max_length=32),
+    query: str = Query(default=""),
+    task_list_id: str | None = Query(default=None),
+    calendar_id: str | None = Query(default=None),
+    time_min: str | None = Query(default=None, min_length=1, max_length=64),
+    time_max: str | None = Query(default=None, min_length=1, max_length=64),
+    refresh: bool = Query(default=False),
+    x_api_contract_version: str | None = Header(default=None),
+) -> ResourceCountResponse:
+    container = get_container(request)
+    enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
+    enforce_api_contract_version(
+        container=container,
+        request_id=request.state.request_id,
+        request_version=x_api_contract_version,
+    )
+    service = container.resource_query_service
+    if service is None:
+        raise ApiError(
+            error_code="SERVICE_BUSY",
+            user_message="Resource provider is not configured.",
+            status_code=503,
+            request_id=request.state.request_id,
+            detail_code="RESOURCE_QUERY_UNAVAILABLE",
+        )
+    try:
+        if source == "gmail":
+            count = service.count_gmail_threads(query=query)
+        elif source == "tasks":
+            count = service.count_tasks(task_list_id=task_list_id)
+        elif source == "calendar":
+            count = service.count_calendar_resources(
+                calendar_id=calendar_id,
+                time_min=time_min,
+                time_max=time_max,
+            )
+        else:
+            raise ApiError(
+                error_code="NOT_FOUND",
+                user_message="Resource source was not found.",
+                status_code=404,
+                request_id=request.state.request_id,
+            )
+    except ValueError as error:
+        raise ApiError(
+            error_code="INVALID_ARGUMENT",
+            user_message="Resource query parameters are invalid.",
+            status_code=422,
+            request_id=request.state.request_id,
+        ) from error
+    except GoogleWorkspaceGatewayError as error:
+        _raise_resource_error(error, request_id=request.state.request_id)
+    return ResourceCountResponse(
+        source=count.source,
+        total_count=count.total_count,
         api_contract_version=container.api_contract_version,
     )
 
@@ -104,7 +173,9 @@ def list_task_resources(
     request: Request,
     task_list_id: str | None = Query(default=None),
     page_token: str | None = Query(default=None),
-    page_size: int = Query(default=20, ge=1, le=50),
+    page_size: int = Query(default=100, ge=1, le=100),
+    status_scope: str = Query(default="incomplete", pattern="^(incomplete|completed)$"),
+    refresh: bool = Query(default=False),
     x_api_contract_version: str | None = Header(default=None),
 ) -> ResourceListResponse:
     container = get_container(request)
@@ -128,7 +199,15 @@ def list_task_resources(
             task_list_id=task_list_id,
             page_token=page_token,
             page_size=page_size,
+            status_scope=status_scope,
         )
+    except ValueError as error:
+        raise ApiError(
+            error_code="INVALID_ARGUMENT",
+            user_message="Resource query parameters are invalid.",
+            status_code=422,
+            request_id=request.state.request_id,
+        ) from error
     except GoogleWorkspaceGatewayError as error:
         _raise_resource_error(error, request_id=request.state.request_id)
     return ResourceListResponse(
@@ -144,8 +223,9 @@ def list_calendar_resources(
     request: Request,
     calendar_id: str | None = Query(default=None),
     time_min: str | None = Query(default=None, min_length=1, max_length=64),
+    time_max: str | None = Query(default=None, min_length=1, max_length=64),
     page_token: str | None = Query(default=None),
-    page_size: int = Query(default=20, ge=1, le=50),
+    page_size: int = Query(default=100, ge=1, le=100),
     x_api_contract_version: str | None = Header(default=None),
 ) -> ResourceListResponse:
     container = get_container(request)
@@ -168,9 +248,17 @@ def list_calendar_resources(
         page = service.list_calendar_resources(
             calendar_id=calendar_id,
             time_min=time_min,
+            time_max=time_max,
             page_token=page_token,
             page_size=page_size,
         )
+    except ValueError as error:
+        raise ApiError(
+            error_code="INVALID_ARGUMENT",
+            user_message="Resource query parameters are invalid.",
+            status_code=422,
+            request_id=request.state.request_id,
+        ) from error
     except GoogleWorkspaceGatewayError as error:
         _raise_resource_error(error, request_id=request.state.request_id)
     return ResourceListResponse(

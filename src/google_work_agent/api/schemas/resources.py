@@ -10,6 +10,12 @@ class ResourceListResponse(ApiModel):
     api_contract_version: str
 
 
+class ResourceCountResponse(ApiModel):
+    source: str
+    total_count: int
+    api_contract_version: str
+
+
 class GmailAttachmentMetadataResponse(ApiModel):
     message_id: str
     attachment_id: str

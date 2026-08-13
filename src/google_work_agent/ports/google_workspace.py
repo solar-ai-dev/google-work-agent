@@ -171,6 +171,7 @@ class GoogleWorkspaceGateway(Protocol):
         query: str,
         page_token: str | None,
         page_size: int,
+        include_thread_metadata: bool = True,
     ) -> ResourcePage:
         """Search Gmail threads."""
 
@@ -223,6 +224,9 @@ class GoogleWorkspaceGateway(Protocol):
         task_list_id: str,
         page_token: str | None,
         page_size: int,
+        show_completed: bool = False,
+        show_hidden: bool = False,
+        show_deleted: bool = False,
     ) -> ResourcePage:
         """List tasks for one task list."""
 

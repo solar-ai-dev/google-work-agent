@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import hmac
 import json
@@ -57,6 +58,7 @@ REQUIRED_SCOPES = (
 OAUTH_FLOW_TTL_MS = 60_000
 DEFAULT_ACCESS_TOKEN_TTL_MS = 3_600_000
 GOOGLE_API_TIMEOUT_SECONDS = 30
+GMAIL_METADATA_HYDRATION_MAX_WORKERS = 3
 
 CLAIM_CONTEXT_VERSION = 2
 CLAIM_CONTEXT_MAX_TTL_MS = 60_000
@@ -376,25 +378,47 @@ def _gmail_search_threads(
     state: _WorkspaceState, arguments: dict[str, object]
 ) -> dict[str, object]:
     query = _text_argument(arguments, "query", maximum=2048, allow_empty=True)
+    include_thread_metadata = arguments.get("include_thread_metadata", True)
+    if not isinstance(include_thread_metadata, bool):
+        raise _WorkspaceToolError("INVALID_ARGUMENT")
     params = _page_params(arguments)
     if query:
         params["q"] = query
+    if not include_thread_metadata:
+        params["fields"] = "threads/id,nextPageToken"
     payload = _google_api(state, "https://gmail.googleapis.com/gmail/v1/users/me/threads", params)
-    items = []
-    for thread in _object_list(payload.get("threads")):
-        thread_id = _required_response_text(thread, "id")
-        metadata = _gmail_thread_list_metadata(
-            state=state,
-            thread_id=thread_id,
-            list_snippet=_optional_text(thread.get("snippet")),
+    threads = _object_list(payload.get("threads"))
+    thread_entries = [
+        (
+            _required_response_text(thread, "id"),
+            _optional_text(thread.get("snippet")),
+            thread.get("historyId"),
         )
+        for thread in threads
+    ]
+    if include_thread_metadata:
+        with ThreadPoolExecutor(max_workers=GMAIL_METADATA_HYDRATION_MAX_WORKERS) as executor:
+            metadata_items = list(
+                executor.map(
+                    lambda entry: _gmail_thread_list_metadata(
+                        state=state,
+                        thread_id=entry[0],
+                        list_snippet=entry[1],
+                    ),
+                    thread_entries,
+                )
+            )
+    else:
+        metadata_items = [{} for _ in thread_entries]
+    items = []
+    for (thread_id, _list_snippet, history_id), metadata in zip(thread_entries, metadata_items, strict=True):
         items.append(
             _snapshot(
                 "gmail_thread",
                 thread_id,
                 None,
                 (),
-                thread.get("historyId"),
+                history_id,
                 metadata,
             )
         )
@@ -410,7 +434,11 @@ def _gmail_thread_list_metadata(
     payload = _google_api(
         state,
         f"https://gmail.googleapis.com/gmail/v1/users/me/threads/{quote(thread_id, safe='')}",
-        {"format": "metadata"},
+        {
+            "format": "metadata",
+            "metadataHeaders": ["From", "Subject", "Date"],
+            "fields": "messages(internalDate,payload/headers),snippet",
+        },
     )
     messages = _object_list(payload.get("messages"))
     headers = _headers(messages[0]) if messages else {}
@@ -931,10 +959,19 @@ def _tasks_list_tasklists(
 
 def _tasks_list_tasks(state: _WorkspaceState, arguments: dict[str, object]) -> dict[str, object]:
     task_list_id = _text_argument(arguments, "task_list_id", maximum=2048)
+    show_completed = arguments.get("show_completed", False)
+    show_hidden = arguments.get("show_hidden", False)
+    show_deleted = arguments.get("show_deleted", False)
+    if not all(isinstance(value, bool) for value in (show_completed, show_hidden, show_deleted)):
+        raise _WorkspaceToolError("INVALID_ARGUMENT")
+    params = _page_params(arguments)
+    params["showCompleted"] = "true" if show_completed else "false"
+    params["showHidden"] = "true" if show_hidden else "false"
+    params["showDeleted"] = "true" if show_deleted else "false"
     payload = _google_api(
         state,
         f"https://tasks.googleapis.com/tasks/v1/lists/{quote(task_list_id, safe='')}/tasks",
-        _page_params(arguments),
+        params,
     )
     items = [_task_snapshot(item, task_list_id) for item in _object_list(payload.get("items"))]
     return {"items": items, "next_page_token": _optional_text(payload.get("nextPageToken"))}
@@ -1036,7 +1073,15 @@ def _task_write_body(payload: dict[str, object], *, title_required: bool) -> dic
             notes = f"{notes}\n\n{marker}" if notes else marker
         if notes:
             body["notes"] = notes
-    if "due" in payload:
+    if "scheduled_date" in payload:
+        scheduled_date = _optional_text(payload.get("scheduled_date"))
+        if scheduled_date:
+            body["due"] = scheduled_date
+        elif not title_required:
+            # An approved update may intentionally remove a prior scheduled date.
+            body["due"] = None
+    elif "due" in payload:
+        # Legacy raw Provider-boundary payloads remain compatible.
         due = _optional_text(payload.get("due"))
         if due:
             body["due"] = due
@@ -1409,6 +1454,7 @@ def _task_snapshot(item: dict[str, object], task_list_id: str) -> dict[str, obje
             "notes": _optional_text(item.get("notes")),
             "due": _optional_text(item.get("due")),
             "status": _optional_text(item.get("status")),
+            "completed": _optional_text(item.get("completed")),
         },
     )
 
@@ -1503,7 +1549,7 @@ def _google_api_call(
     method: str,
     url: str,
     *,
-    params: dict[str, str] | None = None,
+    params: dict[str, str | list[str]] | None = None,
     body: dict[str, object] | None = None,
 ) -> dict[str, object]:
     try:
@@ -1513,7 +1559,7 @@ def _google_api_call(
         raise _WorkspaceToolError("REAUTH_REQUIRED") from error
     if state.access_token is None:
         raise _WorkspaceToolError("OAUTH_NOT_CONNECTED")
-    request_url = f"{url}?{urlencode(params)}" if params else url
+    request_url = f"{url}?{urlencode(params, doseq=True)}" if params else url
     headers = {"Authorization": f"Bearer {state.access_token}", "Accept": "application/json"}
     data: bytes | None = None
     if body is not None:
@@ -1552,7 +1598,7 @@ def _google_api_call(
 
 
 def _google_api(
-    state: _WorkspaceState, url: str, params: dict[str, str] | None = None
+    state: _WorkspaceState, url: str, params: dict[str, str | list[str]] | None = None
 ) -> dict[str, object]:
     return _google_api_call(state, "GET", url, params=params)
 

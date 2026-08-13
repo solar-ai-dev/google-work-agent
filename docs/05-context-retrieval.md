@@ -215,6 +215,8 @@ MAX_DETAIL_FETCH_PER_SOURCE=5
 MAX_TOTAL_DETAIL_RESOURCES=12
 ```
 
+`RETRIEVAL_PAGE_SIZE=20`은 Agent Run의 후보 수집 예산이다. Gmail·Tasks의 UI 표시 단위는 20개지만 별도의 Pagination 계약이며, Calendar Month View는 visible grid range 전체를 materialize하고 UI pagination을 쓰지 않는다. 특히 Tasks Sidebar는 Provider에서 최대 100개 metadata batch를 받아 Client Session Cache에서 20개 UI page로 나눈다. 이 문서는 Sidebar의 Page Token, exact count, lazy continuation 또는 정렬 동작을 규정하지 않는다.
+
 ## 14. Cache와 영속 경계
 
 - Sidebar Cache: React Session Memory

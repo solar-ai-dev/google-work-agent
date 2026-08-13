@@ -84,6 +84,7 @@ class FakeGoogleGateway:
         query: str,
         page_token: str | None,
         page_size: int,
+        include_thread_metadata: bool = True,
     ) -> ResourcePage:
         operation = "search_gmail_threads"
         self._check_fault(operation=operation, can_mutate=False)
@@ -91,7 +92,8 @@ class FakeGoogleGateway:
         threads = [
             resource
             for resource in self._sorted_resources(ResourceType.GMAIL_THREAD)
-            if query_lower in str(resource.payload.get("subject", "")).lower()
+            if query_lower == "in:inbox category:primary"
+            or query_lower in str(resource.payload.get("subject", "")).lower()
             or any(
                 query_lower in str(participant).lower()
                 for participant in resource.payload.get("participants", [])
@@ -99,7 +101,12 @@ class FakeGoogleGateway:
         ]
         return self._paginate(
             operation=operation,
-            arguments={"query": query, "page_token": page_token, "page_size": page_size},
+            arguments={
+                "query": query,
+                "page_token": page_token,
+                "page_size": page_size,
+                "include_thread_metadata": include_thread_metadata,
+            },
             items=threads,
             page_token=page_token,
             page_size=page_size,
@@ -221,6 +228,9 @@ class FakeGoogleGateway:
         task_list_id: str,
         page_token: str | None,
         page_size: int,
+        show_completed: bool = False,
+        show_hidden: bool = False,
+        show_deleted: bool = False,
     ) -> ResourcePage:
         operation = "list_tasks"
         self._check_fault(operation=operation, can_mutate=False)
@@ -228,6 +238,7 @@ class FakeGoogleGateway:
             resource
             for resource in self._sorted_resources(ResourceType.TASK)
             if resource.parent_id == task_list_id
+            and (show_completed or resource.payload.get("status") != "completed")
         ]
         return self._paginate(
             operation=operation,
@@ -235,6 +246,9 @@ class FakeGoogleGateway:
                 "task_list_id": task_list_id,
                 "page_token": page_token,
                 "page_size": page_size,
+                "show_completed": show_completed,
+                "show_hidden": show_hidden,
+                "show_deleted": show_deleted,
             },
             items=tasks,
             page_token=page_token,

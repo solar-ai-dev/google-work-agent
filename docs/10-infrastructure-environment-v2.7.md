@@ -179,7 +179,7 @@ API LLM 120s
 Ollama 180s
 SQLite busy_timeout 5s
 LLM concurrency 1
-MCP Read concurrency 3
+MCP Read concurrency 3 (하나의 invocation 내부 Google Provider Read 포함)
 Write concurrency 1
 Conversation Active Run 1
 ```

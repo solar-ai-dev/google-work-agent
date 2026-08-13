@@ -773,6 +773,7 @@ def build_container(
             gmail_detail_gateway=MCPGmailUiReadGateway(transport=transport),
             default_calendar_id_provider=lambda: llm_runtime.settings_service().default_calendar_id,
             default_tasklist_id_provider=lambda: llm_runtime.settings_service().default_tasklist_id,
+            timezone_provider=lambda: llm_runtime.settings_service().timezone,
         ),
         get_gmail_attachment_service=GetGmailAttachmentService(
             gateway=MCPGmailAttachmentGateway(transport=transport),

@@ -203,7 +203,12 @@ describe("api index wrappers", () => {
       },
       {
         call: () => api.listGmailResources("follow up", "page-1"),
-        path: "/api/v1/resources/gmail?query=follow+up&page_size=10&page_token=page-1",
+        path: "/api/v1/resources/gmail?query=follow+up&page_size=20&page_token=page-1",
+        method: "GET",
+      },
+      {
+        call: () => api.listGmailResources("follow up", "page-1", 20, false),
+        path: "/api/v1/resources/gmail?query=follow+up&page_size=20&page_token=page-1&include_thread_metadata=false",
         method: "GET",
       },
       {
@@ -213,17 +218,18 @@ describe("api index wrappers", () => {
       },
       {
         call: () => api.listTaskResources("list-1", "page-2"),
-        path: "/api/v1/resources/tasks?page_size=10&task_list_id=list-1&page_token=page-2",
+        path: "/api/v1/resources/tasks?page_size=100&task_list_id=list-1&page_token=page-2",
         method: "GET",
       },
       {
         call: () => api.listCalendarResources(
           "calendar-1",
           "page-3",
-          10,
+          100,
           "2026-08-10T00:00:00Z",
+          "2026-11-08T00:00:00Z",
         ),
-        path: "/api/v1/resources/calendar?page_size=10&calendar_id=calendar-1&page_token=page-3&time_min=2026-08-10T00%3A00%3A00Z",
+        path: "/api/v1/resources/calendar?page_size=100&calendar_id=calendar-1&page_token=page-3&time_min=2026-08-10T00%3A00%3A00Z&time_max=2026-11-08T00%3A00%3A00Z",
         method: "GET",
       },
     ];

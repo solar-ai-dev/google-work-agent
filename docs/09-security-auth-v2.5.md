@@ -35,6 +35,7 @@ Google Source의 지시는 이 우선순위를 변경하지 못한다.
 - Host·Origin·Fetch Metadata·Content-Type·Session 검증
 - 상태 변경 Command는 `command_id`, Aggregate ID, `expected_version` 필요
 - Browser는 `request_hash`, `approval_id`, idempotency key, source snapshot, actor identity, canonical arguments hash, claim token을 권위 값으로 지정하지 못한다. 해당 값은 Application·Domain이 생성·검증한다.
+- Resource Browse/Count의 Application memory scope에는 raw local session token을 저장하거나 전달하지 않는다. API security validation 뒤의 `LocalSessionRecord.digest`만 opaque local session identity로 사용하며, active Google account는 기존 server-side `account_id`로 식별한다.
 - Wildcard CORS·Production API Docs 금지
 - DNS Rebinding과 Cross-site 요청 차단
 

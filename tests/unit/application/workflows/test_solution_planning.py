@@ -702,6 +702,29 @@ def test_update_action_uses_existing_policy_validator() -> None:
         validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
 
 
+def test_task_provider_due_is_rejected_by_plan_semantic_validation() -> None:
+    action = _action(
+        "action-1",
+        1,
+        effect="CREATE",
+        tool_name="tasks_create_task",
+        evidence_refs=["evidence-1"],
+        resource_refs=["gmail_thread:thread-kim"],
+    )
+    action["arguments"] = {
+        "task_list_id": "task-list-default",
+        "payload": {"title": "보고서 정리", "due": "2026-08-12"},
+    }
+    output = _plan_output(
+        PlanningResult.PLAN_READY.value,
+        actions=[action],
+        evidence_refs=["evidence-1"],
+    )
+
+    with pytest.raises(SolutionPlanningValidationError, match="Provider-boundary field"):
+        validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
+
+
 def test_provider_failure_is_not_mapped_to_blocked() -> None:
     runtime = FakeLLMRuntime()
     runtime.queued.append(RuntimeError("provider unavailable"))
