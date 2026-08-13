@@ -9,6 +9,7 @@ from urllib.request import HTTPRedirectHandler, build_opener
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClock
 
+from google_work_agent.adapters.connectors import build_google_workspace_connector_descriptor
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
     MCPGoogleOAuthCredentialProvider,
@@ -60,26 +61,28 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
     )
     executable = Path(sys.executable).resolve()
     transport = SubprocessMCPTransport(
-        config=MCPArtifactConfig(
-            executable_path=str(executable),
-            manifest_path=str(manifest_path.resolve()),
-            expected_binary_sha256=calculate_file_sha256(executable),
-            expected_manifest_sha256=calculate_file_sha256(manifest_path.resolve()),
-            expected_manifest_version="2026-08-07.p0",
-            expected_protocol_version="2026-08-07.p0",
-            expected_tool_registry_version="2026-08-06.p0",
-            startup_timeout_ms=5_000,
-            request_timeout_ms=5_000,
-            max_restart_count=1,
-            environment="DEVELOPMENT",
-            service_instance_id="svc-google-api",
-            working_directory=str(Path(__file__).resolve().parents[3]),
-            extra_environment={
-                "GWA_TEST_KEYRING_PATH": str(keyring_path.resolve()),
-                "GWA_PRODUCT_FIXTURE_MANIFEST": str(fixture_manifest.resolve()),
-                "GOOGLE_OAUTH_CLIENT_ID": "test-desktop-client-id",
-                "GOOGLE_OAUTH_CLIENT_SECRET": "compatibility-client-secret",
-            },
+        descriptor=build_google_workspace_connector_descriptor(
+            MCPArtifactConfig(
+                executable_path=str(executable),
+                manifest_path=str(manifest_path.resolve()),
+                expected_binary_sha256=calculate_file_sha256(executable),
+                expected_manifest_sha256=calculate_file_sha256(manifest_path.resolve()),
+                expected_manifest_version="2026-08-07.p0",
+                expected_protocol_version="2026-08-07.p0",
+                expected_tool_registry_version="2026-08-06.p0",
+                startup_timeout_ms=5_000,
+                request_timeout_ms=5_000,
+                max_restart_count=1,
+                environment="DEVELOPMENT",
+                service_instance_id="svc-google-api",
+                working_directory=str(Path(__file__).resolve().parents[3]),
+                extra_environment={
+                    "GWA_TEST_KEYRING_PATH": str(keyring_path.resolve()),
+                    "GWA_PRODUCT_FIXTURE_MANIFEST": str(fixture_manifest.resolve()),
+                    "GOOGLE_OAUTH_CLIENT_ID": "test-desktop-client-id",
+                    "GOOGLE_OAUTH_CLIENT_SECRET": "compatibility-client-secret",
+                },
+            )
         )
     )
     provider = MCPGoogleOAuthCredentialProvider(transport=transport)

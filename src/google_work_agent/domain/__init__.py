@@ -73,6 +73,7 @@ from google_work_agent.domain.task_duplicate import (
 from google_work_agent.domain.tool_registry import (
     DEFAULT_POLICY_VERSION,
     DEFAULT_TOOL_SCHEMA_VERSION,
+    ConnectorToolCatalog,
     SignedToolRegistry,
     ToolRegistryEntry,
     build_p0_tool_registry,
@@ -99,6 +100,7 @@ __all__ = [
     "CalendarIntervalKind",
     "CalendarWorkHours",
     "CommandResult",
+    "ConnectorToolCatalog",
     "DEFAULT_POLICY_VERSION",
     "DEFAULT_TOOL_SCHEMA_VERSION",
     "DomainError",

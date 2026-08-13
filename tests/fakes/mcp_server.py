@@ -6,7 +6,9 @@ import json
 import sys
 from typing import cast
 
-from google_work_agent.domain import build_p0_tool_registry
+from google_work_agent.domain.google_workspace_tool_registry import (
+    build_google_workspace_tool_registry,
+)
 
 
 def main() -> None:
@@ -28,7 +30,8 @@ def main() -> None:
         elif message_type == "list_tools":
             payload = {
                 "tool_names": sorted(
-                    entry.tool_name for entry in build_p0_tool_registry().list_entries()
+                    entry.tool_name
+                    for entry in build_google_workspace_tool_registry().list_entries()
                 )
             }
         elif message_type == "control_call":

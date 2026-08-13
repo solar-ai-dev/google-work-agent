@@ -18,6 +18,11 @@ from typing import Any, NoReturn, cast
 
 from fastapi import FastAPI
 
+from google_work_agent.adapters.connectors import (
+    GOOGLE_WORKSPACE_CONNECTOR_ID,
+    GoogleWorkspaceConnector,
+    build_google_workspace_connector_descriptor,
+)
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
 from google_work_agent.adapters.keyring import OSKeyringSecretStore
 from google_work_agent.adapters.langgraph import LangGraphWorkflowRuntime
@@ -37,15 +42,10 @@ from google_work_agent.adapters.llm import (
 )
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
-    MCPGmailUiReadGateway,
-    MCPGoogleOAuthCredentialProvider,
-    MCPGoogleWorkspaceGateway,
     MCPRuntimeStatusProvider,
-    SubprocessMCPTransport,
     build_manifest_payload,
     calculate_file_sha256,
 )
-from google_work_agent.adapters.mcp.gateway import MCPGmailAttachmentGateway
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.runtime import (
@@ -74,6 +74,7 @@ from google_work_agent.application.attachments import (
     GetGmailAttachmentService,
     StageAttachmentService,
 )
+from google_work_agent.application.connector_registry import ConnectorRegistry
 from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.llm import (
     DeleteLLMApiKeyService,
@@ -104,7 +105,10 @@ from google_work_agent.application.write_actions import (
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
-from google_work_agent.domain import CalendarWorkHours
+from google_work_agent.domain import CalendarWorkHours, ConnectorToolCatalog
+from google_work_agent.domain.google_workspace_tool_registry import (
+    build_google_workspace_tool_registry,
+)
 from google_work_agent.ports import (
     ApprovedModelInfo,
     LauncherProbeDecision,
@@ -402,9 +406,16 @@ class _DeferredApiContainer:
 @dataclass(frozen=True, slots=True)
 class DevelopmentReadinessAggregator(ReadinessAggregator):
     database_path: Path
-    transport: SubprocessMCPTransport
+    connector_registry: ConnectorRegistry
     mcp_manifest_path: Path | None = None
     prompt_active: bool = True
+
+    @property
+    def transport(self) -> Any:
+        """Compatibility view of the P0 connector's underlying transport."""
+
+        connector = self.connector_registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID)
+        return cast(Any, connector).transport
 
     def evaluate(self) -> ReadinessReport:
         checks = (
@@ -496,7 +507,7 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
         )
 
     def _mcp_check(self) -> ReadinessCheckResult:
-        metadata = self.transport.runtime_metadata()
+        metadata = self.connector_registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID).health()
         if metadata.process_status != "READY" or metadata.process_instance_id is None:
             return ReadinessCheckResult(
                 name="mcp_handshake",
@@ -506,7 +517,7 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
         return ReadinessCheckResult(name="mcp_handshake", state=ReadinessState.READY)
 
     def _tool_schema_check(self) -> ReadinessCheckResult:
-        metadata = self.transport.runtime_metadata()
+        metadata = self.connector_registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID).health()
         if (
             metadata.protocol_version == MCP_MANIFEST_VERSION
             and metadata.tool_registry_version == MCP_TOOL_REGISTRY_VERSION
@@ -589,42 +600,53 @@ def build_container(
     except sqlite3.Error as error:
         raise CoreInitializationError("MIGRATION_FAILED") from error
 
+    connector_tool_catalog = ConnectorToolCatalog()
+    google_tool_registry = build_google_workspace_tool_registry()
+    connector_tool_catalog.register(
+        connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
+        registry=google_tool_registry,
+    )
+    google_descriptor = build_google_workspace_connector_descriptor(
+        MCPArtifactConfig(
+            executable_path=str(Path(sys.executable).resolve()),
+            manifest_path=str(mcp_manifest_path),
+            expected_binary_sha256=calculate_file_sha256(Path(sys.executable).resolve()),
+            expected_manifest_sha256=calculate_file_sha256(mcp_manifest_path),
+            expected_manifest_version=MCP_MANIFEST_VERSION,
+            expected_protocol_version=MCP_MANIFEST_VERSION,
+            expected_tool_registry_version=MCP_TOOL_REGISTRY_VERSION,
+            startup_timeout_ms=5_000,
+            # docs/07-tool-mcp-internal-interface.md's per-tool Timeout
+            # column specifies 30s for every MCP READ/WRITE tool; this
+            # transport-level budget must be at least that large or
+            # multi-message acquisition (search + several detail fetches)
+            # times out before any single tool call's own 30s budget is
+            # reached.
+            request_timeout_ms=30_000,
+            max_restart_count=1,
+            environment="DEVELOPMENT",
+            service_instance_id=service_instance_id,
+            working_directory=str(PROJECT_ROOT),
+            extra_environment={
+                ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir),
+            },
+        ),
+        tool_registry=connector_tool_catalog.registry_for(GOOGLE_WORKSPACE_CONNECTOR_ID),
+    )
+    google_connector = GoogleWorkspaceConnector(descriptor=google_descriptor)
+    connector_registry = ConnectorRegistry()
+    connector_registry.register(google_connector)
     try:
-        transport = SubprocessMCPTransport(
-            config=MCPArtifactConfig(
-                executable_path=str(Path(sys.executable).resolve()),
-                manifest_path=str(mcp_manifest_path),
-                expected_binary_sha256=calculate_file_sha256(Path(sys.executable).resolve()),
-                expected_manifest_sha256=calculate_file_sha256(mcp_manifest_path),
-                expected_manifest_version=MCP_MANIFEST_VERSION,
-                expected_protocol_version=MCP_MANIFEST_VERSION,
-                expected_tool_registry_version=MCP_TOOL_REGISTRY_VERSION,
-                startup_timeout_ms=5_000,
-                # docs/07-tool-mcp-internal-interface.md's per-tool Timeout
-                # column specifies 30s for every MCP READ/WRITE tool; this
-                # transport-level budget must be at least that large or
-                # multi-message acquisition (search + several detail fetches)
-                # times out before any single tool call's own 30s budget is
-                # reached.
-                request_timeout_ms=30_000,
-                max_restart_count=1,
-                environment="DEVELOPMENT",
-                service_instance_id=service_instance_id,
-                working_directory=str(PROJECT_ROOT),
-                extra_environment={
-                    ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir),
-                },
-            )
-        )
+        connector_registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID).start()
     except MCPTransportError as error:
         raise CoreInitializationError("MCP_HANDSHAKE_FAILED") from error
-    google_provider = MCPGoogleOAuthCredentialProvider(transport=transport)
+    google_provider = google_connector.oauth_provider
     runtime_status_provider = MCPRuntimeStatusProvider(
         google_provider=google_provider,
-        transport=transport,
         api_llm="NOT_CONFIGURED",
         ollama="NOT_CONFIGURED",
         deployment_profile=BuildProfile.LOCAL_CAPABLE.value,
+        runtime=connector_registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID),
     )
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
     query_service = QueryService(
@@ -639,11 +661,11 @@ def build_container(
             prompt_manifest_path=prompt_manifest_path,
         )
     except RuntimeError as error:
-        transport.close()
+        connector_registry.close_all()
         raise CoreInitializationError("KEYRING_UNAVAILABLE") from error
     prompt_active = True
     workflow_runtime: LangGraphWorkflowRuntime | _PromptInactiveWorkflowRuntime
-    gateway = MCPGoogleWorkspaceGateway(transport=transport)
+    gateway = google_connector.workspace_gateway
     try:
         workflow_runtime = LangGraphWorkflowRuntime(
             unit_of_work_factory=unit_of_work_factory,
@@ -738,7 +760,7 @@ def build_container(
         event_publisher=event_publisher,
         readiness_aggregator=DevelopmentReadinessAggregator(
             database_path=database_path,
-            transport=transport,
+            connector_registry=connector_registry,
             mcp_manifest_path=mcp_manifest_path,
             prompt_active=prompt_active,
         ),
@@ -771,13 +793,13 @@ def build_container(
         disconnect_google_service=DisconnectGoogleService(provider=google_provider),
         resource_query_service=ResourceQueryService(
             gateway=gateway,
-            gmail_detail_gateway=MCPGmailUiReadGateway(transport=transport),
+            gmail_detail_gateway=google_connector.gmail_ui_gateway,
             default_calendar_id_provider=lambda: llm_runtime.settings_service().default_calendar_id,
             default_tasklist_id_provider=lambda: llm_runtime.settings_service().default_tasklist_id,
             timezone_provider=lambda: llm_runtime.settings_service().timezone,
         ),
         get_gmail_attachment_service=GetGmailAttachmentService(
-            gateway=MCPGmailAttachmentGateway(transport=transport),
+            gateway=google_connector.gmail_attachment_gateway,
         ),
         stage_attachment_service=StageAttachmentService(staging=attachment_staging),
         get_llm_connection_service=GetLLMConnectionService(
@@ -794,7 +816,7 @@ def build_container(
         ),
         test_llm_connection_service=TestLLMConnectionService(runtime_service=llm_runtime),
         safe_mode_controller=safe_mode_controller,
-        shutdown_callbacks=(workflow_runtime.close, transport.close),
+        shutdown_callbacks=(workflow_runtime.close, connector_registry.close_all),
     )
 
 

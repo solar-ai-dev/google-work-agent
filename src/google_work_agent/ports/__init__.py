@@ -18,6 +18,7 @@ from google_work_agent.ports.attachments import (
     GmailAttachmentGateway,
 )
 from google_work_agent.ports.clock import Clock
+from google_work_agent.ports.connectors import ConnectorRuntimeHandle
 from google_work_agent.ports.event_publisher import (
     BufferStatus,
     InvalidReplayCursorError,
@@ -202,6 +203,7 @@ __all__ = [
     "CommandReceiptStatus",
     "ConversationRecord",
     "ConversationRepository",
+    "ConnectorRuntimeHandle",
     "CredentialState",
     "DisconnectResult",
     "EndpointPolicy",
