@@ -246,6 +246,7 @@ export function App(): JSX.Element {
   const [runSnapshot, setRunSnapshot] = useState<RunSnapshot | null>(null);
   const [runContext, setRunContext] = useState<RunContext | null>(null);
   const [composerText, setComposerText] = useState("");
+  const [composerError, setComposerError] = useState<string | null>(null);
   const [sidebarFilter, setSidebarFilter] = useState("");
   const [busyCommand, setBusyCommand] = useState<string | null>(null);
   const [googleConnectPending, setGoogleConnectPending] = useState(false);
@@ -1112,12 +1113,15 @@ export function App(): JSX.Element {
         window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
       }
       setStartup((current) => ({ ...current, phase: "runtime", message: "런타임 상태를 읽고 있습니다." }));
-      const [runtimeResponse, googleResponse, accountResponse, settingsResponse] = await Promise.all([
+      const [runtimeResponse, googleResponse, settingsResponse] = await Promise.all([
         getRuntime(),
         getGoogleConnection(),
-        getCurrentAccount(),
         getSettings().catch(() => null),
       ]);
+      const firstAccountResponse = await getCurrentAccount();
+      const accountResponse = googleResponse.connected && firstAccountResponse.account === null
+        ? await getCurrentAccount()
+        : firstAccountResponse;
       setRuntime(runtimeResponse.summary);
       setGoogle(googleResponse);
       setCurrentAccount(accountResponse.account);
@@ -1260,7 +1264,9 @@ export function App(): JSX.Element {
 
   async function handleStartRun(quickPrompt?: string): Promise<void> {
     if (!currentAccount?.account_id) {
-      setStatusLine("현재 연결된 계정 정보를 찾지 못했습니다.");
+      const message = "현재 연결된 계정 정보를 찾지 못했습니다.";
+      setStatusLine(message);
+      setComposerError(message);
       return;
     }
     const requestText = (quickPrompt ?? composerText).trim();
@@ -1268,6 +1274,7 @@ export function App(): JSX.Element {
       return;
     }
     setBusyCommand("start-run");
+    setComposerError(null);
     try {
       const conversationId = selectedConversationId ?? crypto.randomUUID();
       if (!selectedConversationId) {
@@ -1296,6 +1303,10 @@ export function App(): JSX.Element {
       });
       await selectRun(response.run_id);
       setComposerText("");
+    } catch (error) {
+      const message = error instanceof ApiClientError ? error.message : "요청을 시작하지 못했습니다.";
+      setStatusLine(message);
+      setComposerError(message);
     } finally {
       setBusyCommand(null);
     }
@@ -1542,7 +1553,9 @@ export function App(): JSX.Element {
           <span className="sr-only" aria-live="polite">{statusLine}</span>
         </div>
         <div className="topbar-connection" aria-live="polite">
-          <span className="pill">{google?.connected ? "Google 연결됨" : "Google 미연결"}</span>
+          <span className={`pill ${google?.connected ? "connection-connected" : "connection-disconnected"}`}>
+            {google?.connected ? "Google 연결됨" : "Google 미연결"}
+          </span>
         </div>
         <div className="topbar-actions">
           {currentAccount ? <span className="muted">{currentAccount.email}</span> : null}
@@ -1753,7 +1766,7 @@ export function App(): JSX.Element {
             {resourceState.tab !== "calendar" && !resourceState.loading && !resourceState.error && visibleResourceItems.length === 0 ? (
               <p className="muted">표시할 자료가 없습니다.</p>
             ) : null}
-            {resourceState.tab !== "calendar" ? <><ul className={`resource-list ${visibleTaskSections ? "task-date-sorted" : ""}`} aria-label="Google 업무 자료">
+            {resourceState.tab !== "calendar" ? <><div className={resourceState.tab === "tasks" ? "task-content-scroll" : "resource-content"}><ul className={`resource-list ${visibleTaskSections ? "task-date-sorted" : ""}`} aria-label="Google 업무 자료">
               {(() => {
                 const renderResourceItem = (item: ResourceItem): JSX.Element => {
                   const selected = resourceState.selectedIds.includes(item.resource_id);
@@ -1868,6 +1881,7 @@ export function App(): JSX.Element {
                 ) : null}
               </section>
             ) : null}
+            </div>
             <nav className="pagination" aria-label="자료 페이지">
               <button className="button-secondary" type="button" disabled={(resourceState.loading && resourceState.tab !== "gmail") || resourceState.pageIndex === 0} onClick={() => void loadResources(resourceState.tab, resourceState.pageIndex - 1)}>
                 이전
@@ -1891,7 +1905,7 @@ export function App(): JSX.Element {
           {showRunHeader ? (
             <div className="panel-header run-header">
               <div>
-                <strong>{selectedConversationId ? "대화 진행" : "새 요청"}</strong>
+                <strong>{runHeaderTitle(runSnapshot.status, Boolean(selectedConversationId))}</strong>
                 <div className="muted">{userRunStatus(runSnapshot.status)}</div>
                 {runSnapshot.result_kind === "PARTIAL" ? (
                   <div className="status-warn">일부 작업은 완료되었고 나머지는 취소되었습니다.</div>
@@ -2233,7 +2247,10 @@ export function App(): JSX.Element {
                   aria-label={composerPrompt}
                   placeholder={composerPrompt}
                   value={composerText}
-                  onChange={(event) => setComposerText(event.target.value)}
+                  onChange={(event) => {
+                    setComposerText(event.target.value);
+                    setComposerError(null);
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
@@ -2245,6 +2262,7 @@ export function App(): JSX.Element {
                   <span aria-hidden="true">➤</span>
                 </button>
               </div>
+              {composerError ? <p className="status-bad" role="alert">{composerError}</p> : null}
             </div>
           </div>
         </main>
@@ -2605,6 +2623,13 @@ function readBootstrapFragment(hash: string): { bootstrap_secret: string; servic
 
 function formatTime(value: number): string {
   return new Date(value).toLocaleString("ko-KR", { hour12: false });
+}
+
+function runHeaderTitle(status: string | undefined, hasConversation: boolean): string {
+  if (status === "FAILED") {
+    return "실행 실패";
+  }
+  return hasConversation ? "대화 진행" : "새 요청";
 }
 
 function userRunStatus(status: string | undefined): string {

@@ -89,21 +89,37 @@ button {
   line-height: 1;
 }
 
-.topbar-connection .pill::before {
+.topbar-connection .connection-connected::before,
+.topbar-connection .connection-disconnected::before {
   content: "";
   width: 0.52rem;
   height: 0.52rem;
   margin-right: 0.48rem;
   border-radius: 50%;
+}
+
+.topbar-connection .connection-connected::before {
   background: var(--success);
 }
 
-.topbar-connection .pill {
+.topbar-connection .connection-disconnected::before {
+  background: var(--muted);
+}
+
+.topbar-connection .connection-connected,
+.topbar-connection .connection-disconnected {
   display: inline-flex;
   align-items: center;
   min-height: 2.25rem;
   padding: 0.38rem 0.9rem;
+}
+
+.topbar-connection .connection-connected {
   background: color-mix(in srgb, var(--panel), var(--success) 5%);
+}
+
+.topbar-connection .connection-disconnected {
+  background: color-mix(in srgb, var(--panel), var(--muted) 5%);
 }
 
 .topbar-actions {
@@ -231,6 +247,17 @@ main.panel .panel-header > div:first-child .muted {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+}
+.resource-content { display: contents; }
+.task-content-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.task-content-scroll .resource-list {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
 }
 .resource-summary { all: unset; cursor: pointer; display: grid; gap: 0.22rem; width: 100%; min-width: 0; }
 .resource-summary strong, .resource-summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
