@@ -4,13 +4,12 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Header, Query, Request, Response, status
 
-from google_work_agent.adapters.runtime import RuntimeOperation
 from google_work_agent.api.dependencies import (
+    ConversationRouteDependency,
     calculate_server_request_hash,
     enforce_access,
-    enforce_api_contract_version,
     enforce_runtime_operation,
-    get_container,
+    enforce_supported_api_contract_version,
 )
 from google_work_agent.api.errors import ApiError, http_status_for_result_code
 from google_work_agent.api.schemas.conversations import (
@@ -30,21 +29,23 @@ def create_conversation(
     request: Request,
     payload: CreateConversationRequest,
     response: Response,
+    dependencies: ConversationRouteDependency,
 ) -> ConversationResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=payload.api_contract_version,
     )
-    enforce_runtime_operation(request, operation=RuntimeOperation.RUN_COMMANDS)
+    enforce_runtime_operation(request, operation="RUN_COMMANDS")
     command_payload = payload.model_dump()
     command_payload["request_hash"] = calculate_server_request_hash(
         operation="CreateConversationRequestV1",
         payload=command_payload,
     )
-    result = container.create_conversation_service(CreateConversationCommand(**command_payload))
+    result = dependencies.create_conversation_service()(
+        CreateConversationCommand(**command_payload)
+    )
     response.status_code = http_status_for_result_code(
         result.result_code,
         default_success=201,
@@ -55,19 +56,19 @@ def create_conversation(
 @router.get("", response_model=ConversationListResponse)
 def list_conversations(
     request: Request,
+    dependencies: ConversationRouteDependency,
     account_id: str = Query(...),
     cursor: str | None = Query(default=None),
     page_size: int = Query(default=20, ge=1, le=100),
     x_api_contract_version: str | None = Header(default=None),
 ) -> ConversationListResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    page = container.query_service.list_conversations(
+    page = dependencies.query_service().list_conversations(
         account_id=account_id,
         cursor=cursor,
         page_size=page_size,
@@ -75,7 +76,7 @@ def list_conversations(
     return ConversationListResponse(
         items=[asdict(item) for item in page.items],
         next_cursor=page.next_cursor,
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
@@ -83,16 +84,16 @@ def list_conversations(
 def get_conversation(
     conversation_id: str,
     request: Request,
+    dependencies: ConversationRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> ConversationListResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    conversation = container.query_service.get_conversation(conversation_id)
+    conversation = dependencies.query_service().get_conversation(conversation_id)
     if conversation is None:
         raise ApiError(
             error_code="NOT_FOUND",
@@ -103,7 +104,7 @@ def get_conversation(
     return ConversationListResponse(
         items=[asdict(conversation)],
         next_cursor=None,
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
@@ -111,17 +112,17 @@ def get_conversation(
 def get_latest_conversation_run(
     conversation_id: str,
     request: Request,
+    dependencies: ConversationRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> LatestConversationRunResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    run = container.query_service.get_latest_run_for_conversation(conversation_id)
+    run = dependencies.query_service().get_latest_run_for_conversation(conversation_id)
     return LatestConversationRunResponse(
         run=None if run is None else asdict(run),
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )

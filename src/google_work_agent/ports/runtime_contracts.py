@@ -3,7 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
+
+
+class RuntimeOperation(StrEnum):
+    """Operations evaluated by the runtime safe-mode boundary."""
+
+    SETTINGS = "SETTINGS"
+    BACKUP = "BACKUP"
+    RESTORE = "RESTORE"
+    SHUTDOWN = "SHUTDOWN"
+    DIAGNOSTICS = "DIAGNOSTICS"
+    RUN_COMMANDS = "RUN_COMMANDS"
+    APPROVALS = "APPROVALS"
+    WRITES = "WRITES"
 
 
 @dataclass(frozen=True, slots=True)

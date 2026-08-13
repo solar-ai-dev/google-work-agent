@@ -2,22 +2,240 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Annotated, cast
 
-from fastapi import Request
+from fastapi import Depends, Request
 
-from google_work_agent.adapters.runtime import RuntimeOperation
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.errors import ApiError
+from google_work_agent.api.route_dependencies import (
+    ActionRouteDependencies,
+    AttachmentRouteDependencies,
+    ConversationRouteDependencies,
+    EventRouteDependencies,
+    GoogleRouteDependencies,
+    HealthRouteDependencies,
+    IdentityRouteDependencies,
+    LLMRouteDependencies,
+    ResourceRouteDependencies,
+    RunRouteDependencies,
+    RuntimeRouteDependencies,
+    SafeModeRouteState,
+    SessionRouteDependencies,
+    SettingsRouteDependencies,
+)
 from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
+from google_work_agent.application.readiness import compose_readiness
 from google_work_agent.domain import calculate_canonical_json_hash
-from google_work_agent.ports import AccessDecision, ApiRequestContext, EndpointPolicy
+from google_work_agent.ports import (
+    AccessDecision,
+    ApiRequestContext,
+    EndpointPolicy,
+    ReadinessCheckResult,
+    ReadinessState,
+    RuntimeOperation,
+)
 
 
 def get_container(request: Request) -> ApiContainer:
     """Return the application container stored on `app.state`."""
 
     return cast("ApiContainer", request.app.state.container)
+
+
+def get_health_route_dependencies(request: Request) -> HealthRouteDependencies:
+    container = get_container(request)
+    frontend = container.frontend_site
+    safe_mode = container.safe_mode_controller
+    return HealthRouteDependencies(
+        service_instance_id=container.service_instance_id,
+        release_version=container.release_version,
+        api_contract_version=container.api_contract_version,
+        clock=container.clock,
+        readiness_aggregator=lambda: container.readiness_aggregator,
+        launcher_probe_verifier=container.launcher_probe_verifier,
+        frontend_readiness_check=(None if frontend is None else frontend.readiness_check),
+        safe_mode_readiness_check=(None if safe_mode is None else safe_mode.readiness_check),
+        additional_readiness_checks=container.additional_readiness_checks,
+    )
+
+
+def get_session_route_dependencies(request: Request) -> SessionRouteDependencies:
+    container = get_container(request)
+    return SessionRouteDependencies(
+        service_instance_id=container.service_instance_id,
+        api_contract_version=container.api_contract_version,
+        clock=container.clock,
+        bootstrap_grant_store=container.bootstrap_grant_store,
+        local_session_manager=container.local_session_manager,
+    )
+
+
+def get_google_route_dependencies(request: Request) -> GoogleRouteDependencies:
+    container = get_container(request)
+    return GoogleRouteDependencies(
+        api_contract_version=container.api_contract_version,
+        start_google_oauth_service=lambda: container.start_google_oauth_service,
+        get_google_connection_service=lambda: container.get_google_connection_service,
+        disconnect_google_service=lambda: container.disconnect_google_service,
+    )
+
+
+def get_runtime_route_dependencies(request: Request) -> RuntimeRouteDependencies:
+    container = get_container(request)
+
+    def safe_mode_state() -> SafeModeRouteState | None:
+        controller = container.safe_mode_controller
+        if controller is None:
+            return None
+        state = controller.snapshot()
+        return SafeModeRouteState(
+            enabled=state.enabled,
+            reason_codes=tuple(state.reason_codes),
+            allowed_operations=tuple(item.value for item in state.allowed_operations),
+        )
+
+    return RuntimeRouteDependencies(
+        api_contract_version=container.api_contract_version,
+        query_service=lambda: container.query_service,
+        safe_mode_state=safe_mode_state,
+    )
+
+
+def get_identity_route_dependencies(request: Request) -> IdentityRouteDependencies:
+    container = get_container(request)
+    return IdentityRouteDependencies(
+        api_contract_version=container.api_contract_version,
+        query_service=lambda: container.query_service,
+    )
+
+
+def get_conversation_route_dependencies(request: Request) -> ConversationRouteDependencies:
+    container = get_container(request)
+    return ConversationRouteDependencies(
+        api_contract_version=container.api_contract_version,
+        query_service=lambda: container.query_service,
+        create_conversation_service=lambda: container.create_conversation_service,
+    )
+
+
+def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
+    from google_work_agent.application.write_actions import ResolveMismatchRecoveryService
+
+    container = get_container(request)
+
+    def resolve_recovery_service() -> ResolveMismatchRecoveryService:
+        return container.resolve_recovery_service or ResolveMismatchRecoveryService(
+            unit_of_work_factory=container.unit_of_work_factory,
+            now_ms=container.clock.now_ms,
+        )
+
+    return RunRouteDependencies(
+        api_contract_version=container.api_contract_version,
+        query_service=lambda: container.query_service,
+        start_run_service=lambda: container.start_run_service,
+        cancel_run_service=lambda: container.cancel_run_service,
+        resume_run_service=lambda: container.resume_run_service,
+        resolve_recovery_service=resolve_recovery_service,
+        local_run_coordinator=container.local_run_coordinator,
+        id_generator=container.id_generator,
+    )
+
+
+def get_action_route_dependencies(request: Request) -> ActionRouteDependencies:
+    container = get_container(request)
+    return ActionRouteDependencies(
+        api_contract_version=container.api_contract_version,
+        approve_action_service=lambda: container.approve_action_service,
+        modify_action_service=lambda: container.modify_action_service,
+        reject_action_service=lambda: container.reject_action_service,
+        prepare_retry_service=lambda: container.prepare_retry_service,
+        unit_of_work_factory=lambda: container.unit_of_work_factory(),
+        local_run_coordinator=container.local_run_coordinator,
+        event_publisher=lambda: container.event_publisher,
+        clock=container.clock,
+        id_generator=container.id_generator,
+    )
+
+
+def get_event_route_dependencies(request: Request) -> EventRouteDependencies:
+    container = get_container(request)
+    return EventRouteDependencies(
+        api_contract_version=container.api_contract_version,
+        query_service=lambda: container.query_service,
+        event_publisher=lambda: container.event_publisher,
+        clock=container.clock,
+    )
+
+
+def get_resource_route_dependencies(request: Request) -> ResourceRouteDependencies:
+    container = get_container(request)
+    return ResourceRouteDependencies(
+        api_contract_version=container.api_contract_version,
+        resource_query_service=lambda: container.resource_query_service,
+    )
+
+
+def get_settings_route_dependencies(request: Request) -> SettingsRouteDependencies:
+    container = get_container(request)
+    return SettingsRouteDependencies(
+        api_contract_version=container.api_contract_version,
+        get_settings_service=lambda: container.get_settings_service,
+        patch_settings_service=lambda: container.patch_settings_service,
+        list_backups_service=lambda: container.list_backups_service,
+        create_backup_service=lambda: container.create_backup_service,
+        create_restore_plan_service=lambda: container.create_restore_plan_service,
+        request_shutdown_service=lambda: container.request_shutdown_service,
+    )
+
+
+def get_llm_route_dependencies(request: Request) -> LLMRouteDependencies:
+    container = get_container(request)
+    return LLMRouteDependencies(
+        api_contract_version=container.api_contract_version,
+        get_llm_connection_service=lambda: container.get_llm_connection_service,
+        store_llm_api_key_service=lambda: container.store_llm_api_key_service,
+        delete_llm_api_key_service=lambda: container.delete_llm_api_key_service,
+        test_llm_connection_service=lambda: container.test_llm_connection_service,
+    )
+
+
+def get_attachment_route_dependencies(request: Request) -> AttachmentRouteDependencies:
+    container = get_container(request)
+    return AttachmentRouteDependencies(
+        api_contract_version=lambda: container.api_contract_version,
+        get_gmail_attachment_service=lambda: container.get_gmail_attachment_service,
+        stage_attachment_service=lambda: container.stage_attachment_service,
+    )
+
+
+HealthRouteDependency = Annotated[HealthRouteDependencies, Depends(get_health_route_dependencies)]
+SessionRouteDependency = Annotated[
+    SessionRouteDependencies, Depends(get_session_route_dependencies)
+]
+GoogleRouteDependency = Annotated[GoogleRouteDependencies, Depends(get_google_route_dependencies)]
+RuntimeRouteDependency = Annotated[
+    RuntimeRouteDependencies, Depends(get_runtime_route_dependencies)
+]
+IdentityRouteDependency = Annotated[
+    IdentityRouteDependencies, Depends(get_identity_route_dependencies)
+]
+ConversationRouteDependency = Annotated[
+    ConversationRouteDependencies, Depends(get_conversation_route_dependencies)
+]
+RunRouteDependency = Annotated[RunRouteDependencies, Depends(get_run_route_dependencies)]
+ActionRouteDependency = Annotated[ActionRouteDependencies, Depends(get_action_route_dependencies)]
+EventRouteDependency = Annotated[EventRouteDependencies, Depends(get_event_route_dependencies)]
+ResourceRouteDependency = Annotated[
+    ResourceRouteDependencies, Depends(get_resource_route_dependencies)
+]
+SettingsRouteDependency = Annotated[
+    SettingsRouteDependencies, Depends(get_settings_route_dependencies)
+]
+LLMRouteDependency = Annotated[LLMRouteDependencies, Depends(get_llm_route_dependencies)]
+AttachmentRouteDependency = Annotated[
+    AttachmentRouteDependencies, Depends(get_attachment_route_dependencies)
+]
 
 
 def get_request_id(request: Request) -> str:
@@ -36,6 +254,12 @@ def calculate_server_request_hash(*, operation: str, payload: dict[str, object])
     """Hash the versioned request contract on the server, never a browser-provided hash."""
 
     return calculate_canonical_json_hash({"operation": operation, "payload": payload})
+
+
+def composed_readiness_state(
+    checks: tuple[ReadinessCheckResult, ...],
+) -> ReadinessState:
+    return compose_readiness(checks).state
 
 
 def enforce_api_contract_version(
@@ -110,7 +334,7 @@ def enforce_access(
     _raise_if_denied(decision, request_id)
 
 
-def enforce_runtime_operation(request: Request, *, operation: RuntimeOperation) -> None:
+def enforce_runtime_operation(request: Request, *, operation: str) -> None:
     container = get_container(request)
     if container.core_initialization_in_progress:
         raise ApiError(
@@ -122,7 +346,7 @@ def enforce_runtime_operation(request: Request, *, operation: RuntimeOperation) 
             current_state="CORE_INITIALIZING",
         )
     controller = container.safe_mode_controller
-    if controller is None or controller.allows(operation):
+    if controller is None or controller.allows(RuntimeOperation(operation)):
         return
     state = controller.snapshot()
     raise ApiError(

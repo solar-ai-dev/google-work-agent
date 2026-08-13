@@ -3,20 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 
-from google_work_agent.ports import ReadinessCheckResult, ReadinessState
-
-
-class RuntimeOperation(StrEnum):
-    SETTINGS = "SETTINGS"
-    BACKUP = "BACKUP"
-    RESTORE = "RESTORE"
-    SHUTDOWN = "SHUTDOWN"
-    DIAGNOSTICS = "DIAGNOSTICS"
-    RUN_COMMANDS = "RUN_COMMANDS"
-    APPROVALS = "APPROVALS"
-    WRITES = "WRITES"
+from google_work_agent.ports import ReadinessCheckResult, ReadinessState, RuntimeOperation
 
 
 @dataclass(frozen=True, slots=True)

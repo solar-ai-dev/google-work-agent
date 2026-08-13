@@ -6,13 +6,11 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Header, Request
 
-from google_work_agent.adapters.runtime import RuntimeOperation, SettingsPatch
-from google_work_agent.adapters.runtime.settings import WorkHours
 from google_work_agent.api.dependencies import (
+    SettingsRouteDependency,
     enforce_access,
-    enforce_api_contract_version,
     enforce_runtime_operation,
-    get_container,
+    enforce_supported_api_contract_version,
 )
 from google_work_agent.api.errors import ApiError
 from google_work_agent.api.schemas.settings import (
@@ -24,7 +22,7 @@ from google_work_agent.api.schemas.settings import (
     SettingsResponse,
     ShutdownResponse,
 )
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports import EndpointPolicy, SettingsPatch, WorkHours
 
 router = APIRouter(prefix="/api/v1")
 
@@ -32,23 +30,23 @@ router = APIRouter(prefix="/api/v1")
 @router.get("/settings", response_model=SettingsResponse)
 def get_settings(
     request: Request,
+    dependencies: SettingsRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> SettingsResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    enforce_runtime_operation(request, operation=RuntimeOperation.SETTINGS)
-    service = container.get_settings_service
+    enforce_runtime_operation(request, operation="SETTINGS")
+    service = dependencies.get_settings_service()
     if service is None:
         raise _service_unavailable(request, "SETTINGS_UNAVAILABLE")
     settings = service()
     return SettingsResponse(
         settings=asdict(settings),
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
@@ -56,17 +54,17 @@ def get_settings(
 def patch_settings(
     payload: PatchSettingsRequest,
     request: Request,
+    dependencies: SettingsRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> SettingsResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    enforce_runtime_operation(request, operation=RuntimeOperation.SETTINGS)
-    service = container.patch_settings_service
+    enforce_runtime_operation(request, operation="SETTINGS")
+    service = dependencies.patch_settings_service()
     if service is None:
         raise _service_unavailable(request, "SETTINGS_UNAVAILABLE")
     try:
@@ -104,46 +102,46 @@ def patch_settings(
         ) from error
     return SettingsResponse(
         settings=asdict(result),
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
 @router.get("/backups", response_model=BackupListResponse)
 def list_backups(
     request: Request,
+    dependencies: SettingsRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> BackupListResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    enforce_runtime_operation(request, operation=RuntimeOperation.BACKUP)
-    service = container.list_backups_service
+    enforce_runtime_operation(request, operation="BACKUP")
+    service = dependencies.list_backups_service()
     if service is None:
         raise _service_unavailable(request, "BACKUP_UNAVAILABLE")
     return BackupListResponse(
         items=list(service()),
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
 @router.post("/backups", response_model=BackupResponse)
 def create_backup(
     request: Request,
+    dependencies: SettingsRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> BackupResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    enforce_runtime_operation(request, operation=RuntimeOperation.BACKUP)
-    service = container.create_backup_service
+    enforce_runtime_operation(request, operation="BACKUP")
+    service = dependencies.create_backup_service()
     if service is None:
         raise _service_unavailable(request, "BACKUP_UNAVAILABLE")
     try:
@@ -162,7 +160,7 @@ def create_backup(
             "database_path": str(result.database_path),
             "manifest_path": str(result.manifest_path),
         },
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
@@ -170,17 +168,17 @@ def create_backup(
 def create_restore_plan(
     payload: RestorePlanRequest,
     request: Request,
+    dependencies: SettingsRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> RestorePlanResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    enforce_runtime_operation(request, operation=RuntimeOperation.RESTORE)
-    service = container.create_restore_plan_service
+    enforce_runtime_operation(request, operation="RESTORE")
+    service = dependencies.create_restore_plan_service()
     if service is None:
         raise _service_unavailable(request, "RESTORE_UNAVAILABLE")
     try:
@@ -200,30 +198,30 @@ def create_restore_plan(
             "current_db_backup_required": plan.current_db_backup_required,
             "downgrade_blocked": plan.downgrade_blocked,
         },
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
 @router.post("/control/shutdown", response_model=ShutdownResponse)
 def shutdown(
     request: Request,
+    dependencies: SettingsRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> ShutdownResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    enforce_runtime_operation(request, operation=RuntimeOperation.SHUTDOWN)
-    service = container.request_shutdown_service
+    enforce_runtime_operation(request, operation="SHUTDOWN")
+    service = dependencies.request_shutdown_service()
     if service is None:
         raise _service_unavailable(request, "SHUTDOWN_UNAVAILABLE")
     report = service()
     return ShutdownResponse(
         report=asdict(report),
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 

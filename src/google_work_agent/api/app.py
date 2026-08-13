@@ -162,15 +162,7 @@ def create_app(container: ApiContainer) -> FastAPI:
     app.include_router(resources.router)
     app.include_router(settings.router)
     app.include_router(llm.router)
-    app.include_router(
-        attachments.create_router(
-            attachments.AttachmentRouteDependencies(
-                api_contract_version=lambda: container.api_contract_version,
-                get_gmail_attachment_service=lambda: container.get_gmail_attachment_service,
-                stage_attachment_service=lambda: container.stage_attachment_service,
-            )
-        )
-    )
+    app.include_router(attachments.router)
 
     @app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])
     async def reject_unknown_api_path(request: Request, path: str) -> Response:

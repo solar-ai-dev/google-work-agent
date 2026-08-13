@@ -5,9 +5,9 @@ from dataclasses import asdict
 from fastapi import APIRouter, Header, Path, Query, Request
 
 from google_work_agent.api.dependencies import (
+    ResourceRouteDependency,
     enforce_access,
-    enforce_api_contract_version,
-    get_container,
+    enforce_supported_api_contract_version,
 )
 from google_work_agent.api.errors import ApiError
 from google_work_agent.api.schemas.resources import (
@@ -27,20 +27,20 @@ router = APIRouter(prefix="/api/v1/resources")
 @router.get("/gmail", response_model=ResourceListResponse)
 def list_gmail_resources(
     request: Request,
+    dependencies: ResourceRouteDependency,
     query: str = Query(default=""),
     page_token: str | None = Query(default=None),
     page_size: int = Query(default=20, ge=1, le=100),
     include_thread_metadata: bool = Query(default=True),
     x_api_contract_version: str | None = Header(default=None),
 ) -> ResourceListResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    service = container.resource_query_service
+    service = dependencies.resource_query_service()
     if service is None:
         raise ApiError(
             error_code="SERVICE_BUSY",
@@ -62,13 +62,14 @@ def list_gmail_resources(
         source=page.source,
         items=[asdict(item) for item in page.items],
         next_page_token=page.next_page_token,
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
 @router.get("/{source}/count", response_model=ResourceCountResponse)
 def get_resource_count(
     request: Request,
+    dependencies: ResourceRouteDependency,
     source: str = Path(min_length=1, max_length=32),
     query: str = Query(default=""),
     task_list_id: str | None = Query(default=None),
@@ -78,14 +79,13 @@ def get_resource_count(
     refresh: bool = Query(default=False),
     x_api_contract_version: str | None = Header(default=None),
 ) -> ResourceCountResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    service = container.resource_query_service
+    service = dependencies.resource_query_service()
     if service is None:
         raise ApiError(
             error_code="SERVICE_BUSY",
@@ -124,24 +124,24 @@ def get_resource_count(
     return ResourceCountResponse(
         source=count.source,
         total_count=count.total_count,
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
 @router.get("/gmail/{resource_id}", response_model=GmailResourceDetailResponse)
 def get_gmail_resource_detail(
     request: Request,
+    dependencies: ResourceRouteDependency,
     resource_id: str = Path(min_length=1, max_length=2048),
     x_api_contract_version: str | None = Header(default=None),
 ) -> GmailResourceDetailResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    service = container.resource_query_service
+    service = dependencies.resource_query_service()
     if service is None:
         raise ApiError(
             error_code="SERVICE_BUSY",
@@ -164,13 +164,14 @@ def get_gmail_resource_detail(
         _raise_resource_error(error, request_id=request.state.request_id)
     return GmailResourceDetailResponse(
         **asdict(detail),
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
 @router.get("/tasks", response_model=ResourceListResponse)
 def list_task_resources(
     request: Request,
+    dependencies: ResourceRouteDependency,
     task_list_id: str | None = Query(default=None),
     page_token: str | None = Query(default=None),
     page_size: int = Query(default=100, ge=1, le=100),
@@ -178,14 +179,13 @@ def list_task_resources(
     refresh: bool = Query(default=False),
     x_api_contract_version: str | None = Header(default=None),
 ) -> ResourceListResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    service = container.resource_query_service
+    service = dependencies.resource_query_service()
     if service is None:
         raise ApiError(
             error_code="SERVICE_BUSY",
@@ -214,13 +214,14 @@ def list_task_resources(
         source=page.source,
         items=[asdict(item) for item in page.items],
         next_page_token=page.next_page_token,
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
 @router.get("/calendar", response_model=ResourceListResponse)
 def list_calendar_resources(
     request: Request,
+    dependencies: ResourceRouteDependency,
     calendar_id: str | None = Query(default=None),
     time_min: str | None = Query(default=None, min_length=1, max_length=64),
     time_max: str | None = Query(default=None, min_length=1, max_length=64),
@@ -228,14 +229,13 @@ def list_calendar_resources(
     page_size: int = Query(default=100, ge=1, le=100),
     x_api_contract_version: str | None = Header(default=None),
 ) -> ResourceListResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    service = container.resource_query_service
+    service = dependencies.resource_query_service()
     if service is None:
         raise ApiError(
             error_code="SERVICE_BUSY",
@@ -265,7 +265,7 @@ def list_calendar_resources(
         source=page.source,
         items=[asdict(item) for item in page.items],
         next_page_token=page.next_page_token,
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
