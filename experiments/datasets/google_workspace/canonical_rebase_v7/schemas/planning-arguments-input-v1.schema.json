@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/planning-arguments-input-v1.schema.json",
+  "title": "planning-arguments-input-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "user_request",
+    "request_intent",
+    "output_route",
+    "selected_tool_schema",
+    "evidence"
+  ],
+  "properties": {
+    "user_request": {
+      "type": "string"
+    },
+    "request_intent": {
+      "$ref": "request-intent-v2.schema.json"
+    },
+    "output_route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route_id",
+        "connector_id",
+        "resource_type",
+        "effect",
+        "selected_tool_id"
+      ],
+      "properties": {
+        "route_id": {
+          "type": "string"
+        },
+        "connector_id": {
+          "type": "string"
+        },
+        "resource_type": {
+          "type": "string",
+          "enum": [
+            "EMAIL",
+            "TASK",
+            "CALENDAR"
+          ]
+        },
+        "effect": {
+          "type": "string",
+          "enum": [
+            "CREATE",
+            "UPDATE",
+            "SEND",
+            "DELETE"
+          ]
+        },
+        "selected_tool_id": {
+          "type": "string"
+        }
+      }
+    },
+    "selected_tool_schema": {
+      "type": "object"
+    },
+    "work_analysis": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "evidence_ref",
+          "excerpt",
+          "role"
+        ],
+        "properties": {
+          "evidence_ref": {
+            "type": "string"
+          },
+          "excerpt": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "SUPPORTS",
+              "CONTRADICTS",
+              "CONTEXT"
+            ]
+          },
+          "resource_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

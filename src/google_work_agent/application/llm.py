@@ -887,9 +887,9 @@ class PromptRepairSchemaRepairer:
     """Real Schema Repair boundary.
 
     Re-invokes the same routed ``provider`` with the failed prompt's sibling
-    ``<namespace>.repair`` slot (``prompt_id`` with its final segment
-    replaced by ``repair``, e.g. ``analysis.analyze`` -> ``analysis.repair``)
-    for one bounded attempt, using the exact ``repair_input`` shape already
+    ``<prompt_id>.repair`` slot (``prompt_id`` with ``.repair`` appended,
+    e.g. ``work_analysis.analyze`` -> ``work_analysis.analyze.repair``) for
+    one bounded attempt, using the exact ``repair_input`` shape already
     proven by
     ``experiments/runner/r84_gate_runner.py::_run_repair_case`` against the
     matching ``*-repair-input.schema.json`` contracts (see e.g.
@@ -940,14 +940,12 @@ class PromptRepairSchemaRepairer:
 
         manifest_path = self.manifest_path or default_prompt_manifest_path()
         loader = self.prompt_loader or load_prompt_reference
-        # The sibling repair slot's id is the failed prompt's namespace with
-        # its final (node_name) segment swapped for "repair" -- e.g.
-        # "analysis.analyze" -> "analysis.repair". This is prompt_id's own
-        # namespace prefix, NOT PromptReference.subgraph_name: the manifest's
-        # "analysis.*" slots all carry subgraph_name="work_analysis" (the
-        # agent's internal LangGraph subgraph name), which does not match
-        # any "work_analysis.repair" slot in prompt-manifest-v0.8.3.json.
-        repair_prompt_id = f"{prompt_ref.prompt_id.rsplit('.', 1)[0]}.repair"
+        # The sibling repair slot's id is the failed prompt's own prompt_id
+        # with ".repair" appended -- e.g. "work_analysis.analyze" ->
+        # "work_analysis.analyze.repair". Each node owns its own repair slot
+        # in prompt-manifest-v0.9.0.json (unlike v0.8.3.json's one
+        # generic "<namespace>.repair" slot per agent role).
+        repair_prompt_id = f"{prompt_ref.prompt_id}.repair"
         try:
             repair_prompt_ref = loader(repair_prompt_id, manifest_path)
         except (LookupError, InactivePromptArtifactError) as error:
@@ -1017,7 +1015,7 @@ class PromptRepairToolCallRepairer:
     """Real Schema Repair boundary for the native tool-calling invocation path.
 
     Structurally parallel to ``PromptRepairSchemaRepairer`` (same sibling
-    ``<namespace>.repair`` slot lookup, same DRAFT fail-closed default, same
+    ``<prompt_id>.repair`` slot lookup, same DRAFT fail-closed default, same
     DEV-only ``prompt_loader`` escape hatch), except the repair call stays in
     tool-calling mode: it re-invokes ``provider.invoke_tool_call`` with the
     same ``tools`` list, then applies ``mapper`` to the repaired tool call
@@ -1055,7 +1053,7 @@ class PromptRepairToolCallRepairer:
 
         manifest_path = self.manifest_path or default_prompt_manifest_path()
         loader = self.prompt_loader or load_prompt_reference
-        repair_prompt_id = f"{prompt_ref.prompt_id.rsplit('.', 1)[0]}.repair"
+        repair_prompt_id = f"{prompt_ref.prompt_id}.repair"
         try:
             repair_prompt_ref = loader(repair_prompt_id, manifest_path)
         except (LookupError, InactivePromptArtifactError) as error:

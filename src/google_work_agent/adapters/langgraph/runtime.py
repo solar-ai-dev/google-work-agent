@@ -122,6 +122,7 @@ from google_work_agent.application.workflows import (
     SolutionPlanningAgent,
     SupervisorDecisionV1,
     SupervisorTarget,
+    ToolRouteAgent,
     WorkAnalysisAgent,
     WorkflowPhase,
     route_supervisor,
@@ -211,6 +212,11 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._checkpointer = SqliteSaver(self._checkpoint_connection)
         self._request_understanding = RequestUnderstandingAgent(
             llm_runtime=llm_runtime,
+            manifest_path=prompt_manifest_path,
+        )
+        self._tool_route_agent = ToolRouteAgent(
+            llm_runtime=llm_runtime,
+            tool_catalog=tool_catalog,
             manifest_path=prompt_manifest_path,
         )
         self._acquisition = ApiDiscoveryAcquisitionAgent(
@@ -431,6 +437,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
         entry_subgraphs = build_pre_analysis_subgraphs(
             request_agent=self._request_understanding,
+            tool_route_agent=self._tool_route_agent,
             acquisition_agent=self._acquisition,
             context_agent=self._context,
             tool_catalog=tool_catalog,

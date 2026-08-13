@@ -294,13 +294,22 @@ class RequestUnderstandingAgent:
         self._prompt_ref = prompt_ref or load_request_understanding_classify_prompt_reference(
             manifest_path
         )
-        self._clarify_prompt_ref = (
-            clarify_prompt_ref or load_request_understanding_clarify_prompt_reference(manifest_path)
-        )
+        # Resolved lazily (see _clarify_prompt_ref below): clarify() is not
+        # wired into the active SIX_ROLE_BASELINE subgraph node today, so
+        # construction must not fail just because request_understanding.clarify
+        # happens to be unavailable in the current prompt bundle.
+        self._clarify_prompt_ref_override = clarify_prompt_ref
+        self._manifest_path = manifest_path
 
     @property
     def prompt_ref(self) -> PromptReference:
         return self._prompt_ref
+
+    @property
+    def _clarify_prompt_ref(self) -> PromptReference:
+        return self._clarify_prompt_ref_override or (
+            load_request_understanding_clarify_prompt_reference(self._manifest_path)
+        )
 
     def __call__(self, request: WorkflowStartRequest) -> RequestUnderstandingOutputV1:
         return self.classify(request)

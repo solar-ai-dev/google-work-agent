@@ -211,6 +211,11 @@ from google_work_agent.application.workflows.supervisor import (
     SupervisorTarget,
     route_supervisor,
 )
+from google_work_agent.application.workflows.tool_route_semantic import (
+    ToolRouteAgent,
+    load_tool_route_determine_io_resources_prompt_reference,
+    load_tool_route_select_tool_if_needed_prompt_reference,
+)
 from google_work_agent.application.workflows.tool_routing import (
     ActionOutputPlanV1,
     AnswerOutputPlanV1,
@@ -374,6 +379,7 @@ __all__ = [
     "ScopeExpansionRequiredV1",
     "StateArtifactMetaV1",
     "StateArtifactRefV1",
+    "ToolRouteAgent",
     "ToolRouteCoordinator",
     "ToolRouteDisposition",
     "ToolRoutePlanV2",
@@ -430,6 +436,8 @@ __all__ = [
     "load_solution_planning_draft_plan_prompt_reference",
     "load_solution_planning_revise_answer_prompt_reference",
     "load_solution_planning_revise_plan_prompt_reference",
+    "load_tool_route_determine_io_resources_prompt_reference",
+    "load_tool_route_select_tool_if_needed_prompt_reference",
     "load_work_analysis_analyze_prompt_reference",
     "validate_action_plan_draft_v1",
     "validate_additional_acquisition_request_v1",

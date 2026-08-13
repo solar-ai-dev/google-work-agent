@@ -735,7 +735,7 @@ def load_plan_review_recheck_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "review.recheck",
+        "review.inspect.recheck",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 

@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/retrieval-sufficiency-input-v1.schema.json",
+  "title": "retrieval-sufficiency-input-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "user_request",
+    "request_intent",
+    "selected_evidence",
+    "source_statuses",
+    "budget_state"
+  ],
+  "properties": {
+    "user_request": {
+      "type": "string"
+    },
+    "request_intent": {
+      "$ref": "request-intent-v2.schema.json"
+    },
+    "selected_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "evidence_ref",
+          "excerpt",
+          "role"
+        ],
+        "properties": {
+          "evidence_ref": {
+            "type": "string"
+          },
+          "excerpt": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "SUPPORTS",
+              "CONTRADICTS",
+              "CONTEXT"
+            ]
+          },
+          "resource_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "source_statuses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "route_id",
+          "resource_type",
+          "status"
+        ],
+        "properties": {
+          "route_id": {
+            "type": "string"
+          },
+          "resource_type": {
+            "type": "string",
+            "enum": [
+              "EMAIL",
+              "TASK",
+              "CALENDAR"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "COMPLETE",
+              "PARTIAL",
+              "FAILED",
+              "NOT_ATTEMPTED"
+            ]
+          },
+          "failure_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "budget_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "additional_rounds_used",
+        "additional_rounds_remaining"
+      ],
+      "properties": {
+        "additional_rounds_used": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "additional_rounds_remaining": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

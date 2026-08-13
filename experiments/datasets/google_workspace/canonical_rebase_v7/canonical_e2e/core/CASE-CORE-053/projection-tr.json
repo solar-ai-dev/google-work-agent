@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-CORE-053-TR",
+  "case_id": "CASE-CORE-053",
+  "projection_kind": "TOOL_ROUTE",
+  "applicable": false,
+  "not_applicable_reason": "CANONICAL_STAGE_NOT_REACHED",
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-006",
+    "user_prompt_id": "UP-CORE-053",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "applicable": false,
+    "expected_disposition": "NOT_REACHED",
+    "input_plan": {
+      "schema_version": 1,
+      "input_routes": []
+    },
+    "output_plan": {
+      "schema_version": 1,
+      "output_mode": "ANSWER",
+      "not_reached": true
+    },
+    "tool_registry_version": "v2.18",
+    "scope_expansion_confirmations": [],
+    "lineage_expectation": {
+      "owner": "tool_route",
+      "input_plan_based_on": [
+        "request_intent"
+      ],
+      "output_plan_based_on": [
+        "request_intent"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.tool_route.deterministic",
+    "grader.tool_route.semantic"
+  ]
+}

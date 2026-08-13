@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/product-episode-e2e-projection-v1.schema.json",
+  "title": "ProductEpisodeE2EProjectionV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "projection_id",
+    "projection_kind",
+    "suite_id",
+    "episode_variant_id",
+    "applicable",
+    "product_input",
+    "evaluator_input",
+    "gold",
+    "grader_ids"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "projection_id": {
+      "type": "string"
+    },
+    "projection_kind": {
+      "const": "PRODUCT_EPISODE_E2E"
+    },
+    "suite_id": {
+      "const": "E_PRODUCT_EPISODE_EXTENSION_V1"
+    },
+    "episode_variant_id": {
+      "type": "string"
+    },
+    "applicable": {
+      "const": true
+    },
+    "product_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_snapshot_id",
+        "user_prompt",
+        "dataset_version"
+      ],
+      "properties": {
+        "fixture_snapshot_id": {
+          "type": "string"
+        },
+        "user_prompt": {
+          "type": "string"
+        },
+        "dataset_version": {
+          "type": "string"
+        }
+      }
+    },
+    "evaluator_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_script",
+        "source_refs"
+      ],
+      "properties": {
+        "decision_script": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "gold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "business_gold",
+        "interaction_gold",
+        "action_gold",
+        "safety_gold",
+        "end_state_gold"
+      ],
+      "properties": {
+        "business_gold": {
+          "type": "object"
+        },
+        "interaction_gold": {
+          "type": "array"
+        },
+        "action_gold": {
+          "type": "array"
+        },
+        "safety_gold": {
+          "type": "object"
+        },
+        "end_state_gold": {
+          "type": "object"
+        }
+      }
+    },
+    "grader_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 5,
+      "uniqueItems": true
+    }
+  }
+}

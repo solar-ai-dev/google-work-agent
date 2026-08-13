@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-STRESS-013-UU",
+  "case_id": "CASE-STRESS-013",
+  "projection_kind": "REQUEST_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-STRESS-013",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "expected_disposition": "COMPLETE",
+    "request_intent_semantic": {
+      "schema_version": 2,
+      "goal": "Event 생성 후 일정 Draft를 준비한다.",
+      "completion_conditions": [
+        "세 Source를 확인한다.",
+        "Event와 Draft를 두 Action으로 만든다.",
+        "Draft는 Event에 의존한다.",
+        "UNKNOWN_RESULT에서 동일 Write를 재호출하지 않는다.",
+        "기존 결과를 조회해 확인한 뒤 GET 검증한다."
+      ],
+      "constraints": [
+        {
+          "kind": "SCOPE",
+          "field": "required_sources",
+          "value": [
+            "EMAIL",
+            "TASK",
+            "CALENDAR"
+          ]
+        }
+      ],
+      "requested_effect_hints": [
+        "CREATE"
+      ],
+      "requested_resource_hints": [
+        "CALENDAR",
+        "EMAIL",
+        "TASK"
+      ],
+      "analysis_requirement": "REQUIRED",
+      "ambiguity": {
+        "requires_confirmation": false,
+        "reason_codes": [],
+        "missing_fields": []
+      }
+    },
+    "lineage_expectation": {
+      "owner": "request_understanding",
+      "based_on": [
+        "run_input"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.request_understanding.deterministic",
+    "grader.request_understanding.semantic"
+  ]
+}

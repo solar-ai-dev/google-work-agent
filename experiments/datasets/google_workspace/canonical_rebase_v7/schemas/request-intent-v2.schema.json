@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/request-intent-v2.schema.json",
+  "title": "RequestIntentV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "meta",
+    "goal",
+    "completion_conditions",
+    "constraints",
+    "requested_effect_hints",
+    "requested_resource_hints",
+    "analysis_requirement",
+    "ambiguity"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_id",
+        "revision",
+        "based_on"
+      ],
+      "properties": {
+        "artifact_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "based_on": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "artifact_id",
+              "revision"
+            ],
+            "properties": {
+              "artifact_id": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "goal": {
+      "type": "string"
+    },
+    "completion_conditions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "field",
+          "value"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "PERSON",
+              "EMAIL",
+              "DATE",
+              "TIME",
+              "RESOURCE",
+              "SCOPE",
+              "USER_REQUIREMENT"
+            ]
+          },
+          "field": {
+            "type": "string"
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "requested_effect_hints": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "READ",
+          "CREATE",
+          "UPDATE",
+          "SEND",
+          "DELETE"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "requested_resource_hints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "analysis_requirement": {
+      "enum": [
+        "NONE",
+        "REQUIRED"
+      ]
+    },
+    "ambiguity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requires_confirmation",
+        "reason_codes",
+        "missing_fields"
+      ],
+      "properties": {
+        "requires_confirmation": {
+          "type": "boolean"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

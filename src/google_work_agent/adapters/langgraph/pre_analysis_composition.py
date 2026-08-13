@@ -21,6 +21,7 @@ from google_work_agent.application.workflows import (
     ApiDiscoveryAcquisitionAgent,
     ContextRetrievalAgent,
     RequestUnderstandingAgent,
+    ToolRouteAgent,
 )
 from google_work_agent.domain import ConnectorToolCatalog
 
@@ -36,6 +37,7 @@ class PreAnalysisSubgraphs:
 def build_pre_analysis_subgraphs(
     *,
     request_agent: RequestUnderstandingAgent,
+    tool_route_agent: ToolRouteAgent,
     acquisition_agent: ApiDiscoveryAcquisitionAgent,
     context_agent: ContextRetrievalAgent,
     tool_catalog: ConnectorToolCatalog,
@@ -58,6 +60,7 @@ def build_pre_analysis_subgraphs(
             tool_catalog=tool_catalog,
             id_factory=id_factory,
             merge_decision=merge_decision,
+            semantic_agent=tool_route_agent,
         ),
         acquisition=AcquisitionSubgraph(
             agent=acquisition_agent,

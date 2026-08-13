@@ -1,4 +1,11 @@
-"""Canonical Tool Route V2 contracts and deterministic route ownership."""
+"""Canonical Tool Route V2 contracts and deterministic route ownership.
+
+The Tool Route semantic LLM stage (PromptRef, LLM invocation, semantic
+candidate/tool-selection validation) lives in ``tool_route_semantic.py``.
+This module owns everything downstream of a ``SemanticRouteCandidate``:
+deterministic Registry binding, PolicyPreconditionResolver, validation,
+revision, and freezing into a ``ToolRoutePlanV2``.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +18,7 @@ from google_work_agent.application.workflows.handoff_contracts import RequestInt
 from google_work_agent.domain import ConnectorToolCatalog, EffectType
 
 ToolRouteEffect = Literal["CREATE", "UPDATE", "SEND", "DELETE"]
+ToolSelector = Callable[..., str]
 
 
 class StateArtifactRefV1(TypedDict):
@@ -199,19 +207,42 @@ class ToolRouteCoordinator:
         *,
         request_intent: RequestIntentV1,
         previous_plan: ToolRoutePlanV2 | None = None,
+        semantic_candidate: SemanticRouteCandidate | None = None,
+        semantic_candidate_provider: Callable[[], SemanticRouteCandidate] | None = None,
+        select_tool: ToolSelector | None = None,
     ) -> ToolRouteResultV1:
-        try:
-            candidate = determine_semantic_routes(request_intent)
-        except ToolRouteValidationError as error:
-            return _route_result(
-                disposition=ToolRouteDisposition.NEEDS_CONFIRMATION,
-                plan=None,
-                reason_codes=[str(error)],
+        """Bind a frozen ``ToolRoutePlanV2`` from a semantic route candidate.
+
+        ``semantic_candidate``/``semantic_candidate_provider`` are the release
+        path: the Tool Route LLM stage (``ToolRouteAgent.determine_semantic_candidate``)
+        owns semantic resource/effect selection there. When neither is given,
+        ``determine_semantic_routes`` is used instead -- a deterministic
+        compatibility path kept for callers (tests, non-LLM invocations) that
+        supply ``request_intent`` hints directly. Exactly one candidate source
+        ever runs per call; they are not alternate opinions reconciled against
+        each other.
+        """
+
+        if semantic_candidate is not None:
+            candidate = semantic_candidate
+        else:
+            provider = semantic_candidate_provider or (
+                lambda: determine_semantic_routes(request_intent)
             )
+            try:
+                candidate = provider()
+            except ToolRouteValidationError as error:
+                return _route_result(
+                    disposition=ToolRouteDisposition.NEEDS_CONFIRMATION,
+                    plan=None,
+                    reason_codes=[str(error)],
+                )
 
         request_ref = _request_intent_ref(request_intent)
         try:
-            output_routes = self._bind_output_routes(candidate.output_pairs)
+            output_routes = self._bind_output_routes(
+                candidate.output_pairs, select_tool=select_tool
+            )
             input_routes = self._bind_input_routes(
                 candidate.input_resource_types,
                 reason_code="REQUESTED_INPUT",
@@ -248,6 +279,8 @@ class ToolRouteCoordinator:
     def _bind_output_routes(
         self,
         output_pairs: tuple[tuple[str, EffectType], ...],
+        *,
+        select_tool: ToolSelector | None = None,
     ) -> list[OutputToolRouteV1]:
         routes: list[OutputToolRouteV1] = []
         for resource_type, effect_type in output_pairs:
@@ -255,19 +288,37 @@ class ToolRouteCoordinator:
                 resource_type=resource_type,
                 effect_type=effect_type,
             )
-            if len(candidates) != 1:
+            route_id = self._id_factory()
+            if len(candidates) == 1:
+                selected_tool_id = candidates[0]
+                reason_codes = ["REGISTRY_SINGLE_CANDIDATE"]
+            elif select_tool is not None:
+                selected_tool_id = select_tool(
+                    route_id=route_id,
+                    connector_id=connector_id,
+                    resource_type=resource_type,
+                    effect=effect_type.value,
+                    eligible_tool_ids=candidates,
+                )
+                if selected_tool_id not in candidates:
+                    raise ToolRouteValidationError(
+                        f"selected tool is not a registered candidate: "
+                        f"{resource_type}/{effect_type.value}"
+                    )
+                reason_codes = ["LLM_SELECTED_FROM_REGISTRY_CANDIDATES"]
+            else:
                 raise ToolRouteValidationError(
                     f"route binding requires exactly one registered tool: "
                     f"{resource_type}/{effect_type.value}"
                 )
             routes.append(
                 {
-                    "route_id": self._id_factory(),
+                    "route_id": route_id,
                     "resource_type": resource_type,
                     "connector_id": connector_id,
                     "effect": cast(ToolRouteEffect, effect_type.value),
-                    "selected_tool_id": candidates[0],
-                    "reason_codes": ["REGISTRY_SINGLE_CANDIDATE"],
+                    "selected_tool_id": selected_tool_id,
+                    "reason_codes": reason_codes,
                 }
             )
         return routes
@@ -424,7 +475,7 @@ def determine_semantic_routes(request_intent: RequestIntentV1) -> SemanticRouteC
     """Project request meaning without reading Registry tool identities."""
 
     resource_hints = tuple(
-        _normalize_resource_type(item)
+        normalize_resource_type(item)
         for item in request_intent.get("requested_resource_hints", [])
     )
     if not resource_hints:
@@ -625,10 +676,19 @@ def _source_default_resource(source: str) -> str:
         raise ToolRouteValidationError(f"unsupported source hint: {source}") from error
 
 
-def _normalize_resource_type(value: str) -> str:
+def normalize_resource_type(value: str) -> str:
+    """Expand a coarse or aliased resource type to its canonical form.
+
+    Shared by ``determine_semantic_routes`` (deterministic compatibility
+    path) and ``tool_route_semantic._semantic_candidate_from_llm_candidate``
+    (LLM release path) -- both need the same coarse-to-canonical mapping,
+    e.g. the LLM's "EMAIL"/"CALENDAR" -> "GMAIL_THREAD"/"CALENDAR_EVENT".
+    """
+
     normalized = value.strip().upper()
     aliases = {
         "GMAIL": "GMAIL_THREAD",
+        "EMAIL": "GMAIL_THREAD",
         "TASKS": "TASK",
         "CALENDAR": "CALENDAR_EVENT",
         "EVENT": "CALENDAR_EVENT",

@@ -3,9 +3,9 @@
 # ruff: noqa: F401
 
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import pytest
 from tests.integration.persistence.test_write_actions import _expected_task_projection
@@ -54,9 +54,13 @@ from google_work_agent.application.workflows import (
     EvidenceSelectionOutputV1,
     RequestIntentV1,
     WorkAnalysisResultV1,
+    determine_semantic_routes,
     validate_work_analysis_result_v1,
 )
 from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
+from google_work_agent.application.workflows.tool_route_semantic import (
+    _coarse_resource_category,
+)
 from google_work_agent.domain import ConnectorToolCatalog, build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
@@ -72,25 +76,27 @@ from google_work_agent.ports import (
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
 _RUNTIME_ACTIVE_PROMPT_IDS = {
     "request_understanding.classify",
-    "request_understanding.clarify",
-    "acquisition.plan_sources",
-    "context.select_evidence",
-    "context.select_evidence.semantic_revision",
-    "context.assess_sufficiency",
-    "analysis.analyze",
-    "planning.answer_only",
-    "planning.draft_plan",
-    "planning.revise_plan",
-    "planning.revise_answer",
+    "tool_route.determine_io_resources",
+    "tool_route.select_tool_if_needed",
+    "retrieval.plan_query",
+    "retrieval.select_evidence",
+    "retrieval.select_evidence.revise",
+    "retrieval.assess_sufficiency",
+    "work_analysis.analyze",
+    "planning.compose_answer",
+    "planning.compose_arguments",
+    "planning.compose_arguments.revise",
+    "planning.compose_answer.revise",
     "review.inspect",
-    "review.recheck",
-    "profile.single.request_source.initial",
-    "profile.single.reason_plan.initial",
-    "profile.single.self_review.initial",
-    "profile.single.self_review.recheck",
-    "profile.three.stage1.initial",
-    "profile.three.stage2.initial",
+    "review.inspect.recheck",
 }
+# SINGLE_BASELINE/THREE_STAGE profile prompts ("profile.single.*",
+# "profile.three.*") and "request_understanding.clarify" have no v0.9.0
+# slot in prompt-manifest-v0.9.0.json -- the PHASE 7.5 bundle only ships
+# the SIX_ROLE_BASELINE-role prompts above. Tests that construct those
+# profiles fail closed on InactivePromptArtifactError/LookupError until
+# Prompt Authoring ships matching PHASE 7.5 artifacts for them; that is a
+# Prompt Artifact gap, not something this integration pass can invent.
 
 
 def _tool_catalog() -> ConnectorToolCatalog:
@@ -120,9 +126,49 @@ class _QueuedLLMRuntime:
         if self._before_invoke is not None:
             self._before_invoke()
         self.calls.append(dict(kwargs))
+        prompt_ref = kwargs.get("prompt_ref")
+        if getattr(prompt_ref, "prompt_id", None) == "tool_route.determine_io_resources":
+            # Tool Route's semantic LLM call has no fixture-authored payload
+            # in these tests -- it is synthesized here from the same
+            # request_intent every other queued payload was authored
+            # against, so the resulting ToolRoutePlanV2 (and everything
+            # every existing test asserts about it) is unchanged. This
+            # keeps the ~50 pre-existing llm_payloads=[...] fixtures in this
+            # suite from needing an inserted entry for a call they were
+            # never written to expect.
+            prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
+            request_intent = cast(RequestIntentV1, prompt_input["request_intent"])
+            return _llm_result(_synthesize_tool_route_candidate(request_intent))
         if not self._queued:
             raise RuntimeError("no queued llm result")
         return self._queued.popleft()
+
+
+def _synthesize_tool_route_candidate(request_intent: RequestIntentV1) -> dict[str, object]:
+    """Fake response for tool_route.determine_io_resources.
+
+    Mirrors what ``determine_semantic_routes`` (the deterministic
+    compatibility path Tool Route falls back to without an LLM candidate)
+    derives from the same request_intent, so the resulting ToolRoutePlanV2
+    is identical to what these tests were originally written against.
+    Raises ToolRouteValidationError the same way determine_semantic_routes
+    does for an unsupported hint combination -- ToolRouteCoordinator.route()
+    already catches that from its semantic_candidate_provider and reports
+    NEEDS_CONFIRMATION, so ambiguous-intent test cases are unaffected.
+    """
+
+    candidate = determine_semantic_routes(request_intent)
+    return {
+        "schema_version": 1,
+        "input_resource_types": sorted(
+            {_coarse_resource_category(item) for item in candidate.input_resource_types}
+        ),
+        "output_resource_types": sorted(
+            {_coarse_resource_category(resource) for resource, _effect in candidate.output_pairs}
+        ),
+        "output_effects": [effect.value for _resource, effect in candidate.output_pairs],
+        "disposition": "ROUTE_READY",
+    }
 
 
 def _llm_result(payload: object) -> StructuredLLMResult:

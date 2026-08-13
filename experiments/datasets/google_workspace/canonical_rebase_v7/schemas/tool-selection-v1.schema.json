@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/tool-selection-v1.schema.json",
+  "title": "ToolSelectionV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "route_id",
+    "selected_tool_id"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "route_id": {
+      "type": "string"
+    },
+    "selected_tool_id": {
+      "type": "string"
+    }
+  }
+}

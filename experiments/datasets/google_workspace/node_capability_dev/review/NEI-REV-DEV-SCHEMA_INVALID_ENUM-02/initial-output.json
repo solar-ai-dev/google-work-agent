@@ -1,8 +1,0 @@
-{
-  "schema_version": 1,
-  "result": "INVALID_RESULT",
-  "findings": [],
-  "localized_failure_codes": [],
-  "next_route": "DOMAIN_VALIDATION",
-  "recheck_required": false
-}

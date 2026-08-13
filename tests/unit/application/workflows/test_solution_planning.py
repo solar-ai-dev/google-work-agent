@@ -307,7 +307,10 @@ def test_invoke_draft_plan_llm_scopes_tool_name_enum_to_agent_tool_registry() ->
     runtime.queued.append(_llm_result(_plan_output(PlanningResult.PLAN_READY.value)))
     agent = SolutionPlanningAgent(
         llm_runtime=runtime,
+        answer_only_prompt_ref=ANSWER_ONLY_PROMPT_REF,
         draft_plan_prompt_ref=DRAFT_PLAN_PROMPT_REF,
+        revise_answer_prompt_ref=REVISE_ANSWER_PROMPT_REF,
+        revise_plan_prompt_ref=REVISE_PLAN_PROMPT_REF,
         tool_registry=custom_registry,
     )
 
@@ -789,10 +792,10 @@ def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
     manifest_path = write_runtime_active_manifest(
         tmp_path,
         prompt_ids={
-            "planning.answer_only",
-            "planning.draft_plan",
-            "planning.revise_plan",
-            "planning.revise_answer",
+            "planning.compose_answer",
+            "planning.compose_arguments",
+            "planning.compose_arguments.revise",
+            "planning.compose_answer.revise",
         },
     )
     answer_prompt = load_solution_planning_answer_only_prompt_reference(manifest_path)
@@ -800,34 +803,34 @@ def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
     revise_prompt = load_solution_planning_revise_answer_prompt_reference(manifest_path)
     revise_plan_prompt = load_solution_planning_revise_plan_prompt_reference(manifest_path)
 
-    assert answer_prompt.prompt_id == "planning.answer_only"
-    assert answer_prompt.prompt_version == "0.8.3"
+    assert answer_prompt.prompt_id == "planning.compose_answer"
+    assert answer_prompt.prompt_version == "0.9.0"
     assert answer_prompt.content_hash
     assert answer_prompt.node_state == "INITIAL"
-    assert answer_prompt.output_schema_version == "v2"
+    assert answer_prompt.output_schema_version == "r8.6-output-contract-snapshot-v1"
 
-    assert plan_prompt.prompt_id == "planning.draft_plan"
-    assert plan_prompt.prompt_version == "0.8.3"
+    assert plan_prompt.prompt_id == "planning.compose_arguments"
+    assert plan_prompt.prompt_version == "0.9.0"
     assert plan_prompt.content_hash
     assert plan_prompt.node_state == "INITIAL"
-    assert plan_prompt.output_schema_version == "v2"
+    assert plan_prompt.output_schema_version == "r8.6-output-contract-snapshot-v1"
 
-    assert revise_prompt.prompt_id == "planning.revise_answer"
-    assert revise_prompt.prompt_version == "0.8.3"
+    assert revise_prompt.prompt_id == "planning.compose_answer.revise"
+    assert revise_prompt.prompt_version == "0.9.0"
     assert revise_prompt.content_hash
     assert revise_prompt.node_state == "SEMANTIC_REVISION"
-    assert revise_prompt.output_schema_version == "v2"
+    assert revise_prompt.output_schema_version == "r8.6-output-contract-snapshot-v1"
 
-    assert revise_plan_prompt.prompt_id == "planning.revise_plan"
-    assert revise_plan_prompt.prompt_version == "0.8.3"
+    assert revise_plan_prompt.prompt_id == "planning.compose_arguments.revise"
+    assert revise_plan_prompt.prompt_version == "0.9.0"
     assert revise_plan_prompt.content_hash
     assert revise_plan_prompt.node_state == "SEMANTIC_REVISION"
-    assert revise_plan_prompt.output_schema_version == "v2"
+    assert revise_plan_prompt.output_schema_version == "r8.6-output-contract-snapshot-v1"
 
 
 def test_default_product_loader_rejects_draft_planning_prompts(tmp_path: Path) -> None:
-    manifest_path = write_draft_manifest(tmp_path, prompt_ids={"planning.answer_only"})
-    with pytest.raises(InactivePromptArtifactError, match="planning.answer_only"):
+    manifest_path = write_draft_manifest(tmp_path, prompt_ids={"planning.compose_answer"})
+    with pytest.raises(InactivePromptArtifactError, match="planning.compose_answer"):
         load_solution_planning_answer_only_prompt_reference(manifest_path)
 
 

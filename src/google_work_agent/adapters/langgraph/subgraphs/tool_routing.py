@@ -12,12 +12,14 @@ from google_work_agent.adapters.langgraph.graph_state import (
     GraphState,
     ParentGraphState,
     _require_state_value,
+    request_from_state,
 )
 from google_work_agent.adapters.langgraph.subgraph_state import ToolRoutingLocalState
 from google_work_agent.application.workflows import (
     GraphStateUpdateV1,
     MultiAgentGraphState,
     SupervisorDecisionV1,
+    ToolRouteAgent,
     ToolRouteCoordinator,
     ToolRouteResultV1,
     WorkflowPhase,
@@ -35,9 +37,11 @@ class ToolRoutingSubgraph:
         self,
         *,
         coordinator: ToolRouteCoordinator,
+        semantic_agent: ToolRouteAgent,
         merge_decision: MergeDecision,
     ) -> None:
         self._coordinator = coordinator
+        self._semantic_agent = semantic_agent
         self._merge_decision = merge_decision
 
     def build(self) -> Any:
@@ -54,9 +58,18 @@ class ToolRoutingSubgraph:
         return graph.compile(name="tool_routing_subgraph")
 
     def _route_node(self, state: ToolRoutingLocalState) -> ToolRoutingLocalState:
+        request_intent = _require_state_value(state["request_intent"], "request_intent")
+        request = request_from_state(state)
         result = self._coordinator.route(
-            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            request_intent=request_intent,
             previous_plan=state.get("tool_route_plan"),
+            semantic_candidate_provider=lambda: self._semantic_agent.determine_semantic_candidate(
+                request_intent=request_intent,
+                request=request,
+            ),
+            select_tool=lambda **kwargs: self._semantic_agent.select_tool_if_needed(
+                request=request, **kwargs
+            ),
         )
         return {**state, TOOL_ROUTE_RESULT_KEY: result}
 
@@ -84,11 +97,13 @@ def build_tool_routing_subgraph(
     tool_catalog: ConnectorToolCatalog,
     id_factory: Callable[[], str],
     merge_decision: MergeDecision,
+    semantic_agent: ToolRouteAgent,
 ) -> Any:
     """Build the Tool Route node at the LangGraph composition boundary."""
 
     return ToolRoutingSubgraph(
         coordinator=ToolRouteCoordinator(tool_catalog=tool_catalog, id_factory=id_factory),
+        semantic_agent=semantic_agent,
         merge_decision=merge_decision,
     ).build()
 

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/retrieval-evidence-selection-input-v1.schema.json",
+  "title": "retrieval-evidence-selection-input-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "user_request",
+    "request_intent",
+    "ranked_segments"
+  ],
+  "properties": {
+    "user_request": {
+      "type": "string"
+    },
+    "request_intent": {
+      "$ref": "request-intent-v2.schema.json"
+    },
+    "ranked_segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "segment_id",
+          "resource_ref",
+          "excerpt",
+          "retrieval_score",
+          "trust_class",
+          "content_role"
+        ],
+        "properties": {
+          "segment_id": {
+            "type": "string"
+          },
+          "resource_ref": {
+            "type": "string"
+          },
+          "excerpt": {
+            "type": "string"
+          },
+          "retrieval_score": {
+            "type": "number"
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "trust_class": {
+            "const": "UNTRUSTED_SOURCE_CONTENT"
+          },
+          "content_role": {
+            "const": "DATA_ONLY"
+          }
+        }
+      },
+      "maxItems": 40
+    }
+  }
+}

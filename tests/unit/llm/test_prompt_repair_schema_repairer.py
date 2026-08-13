@@ -1,6 +1,6 @@
 """Unit tests for PromptRepairSchemaRepairer, the real Schema Repair
 boundary that re-invokes the routed provider with a failed prompt's sibling
-``<namespace>.repair`` slot (see application/llm.py)."""
+``<prompt_id>.repair`` slot (see application/llm.py)."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from google_work_agent.ports import (
 
 ANALYZE_PROMPT_REF = PromptReference(
     prompt_bundle_version="agent-r4-v0.1-baseline",
-    prompt_id="analysis.analyze",
+    prompt_id="work_analysis.analyze",
     prompt_version="v0.1",
     content_hash="hash",
     agent_role="work_analysis",
@@ -56,7 +56,9 @@ def _provider(transport: FakeAPIProviderTransport) -> ApiStructuredLLMProvider:
 def test_repair_dispatches_the_sibling_repair_prompt_with_full_input_shape(
     tmp_path: Path,
 ) -> None:
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=["analysis.repair"])
+    manifest_path = write_runtime_active_manifest(
+        tmp_path, prompt_ids=["work_analysis.analyze.repair"]
+    )
     transport = FakeAPIProviderTransport()
     transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -87,7 +89,7 @@ def test_repair_dispatches_the_sibling_repair_prompt_with_full_input_shape(
     assert result == {"answer": "fixed"}
     assert len(transport.invocations) == 1
     call = transport.invocations[0]
-    assert call["prompt_id"] == "analysis.repair"
+    assert call["prompt_id"] == "work_analysis.analyze.repair"
     repair_input = cast(dict[str, object], call["prompt_input"])
     assert repair_input["schema_version"] == 1
     assert repair_input["original_input"] == {"topic": "hello"}
@@ -100,13 +102,17 @@ def test_repair_dispatches_the_sibling_repair_prompt_with_full_input_shape(
     assert failure_record["failure_reason_code"] == "OUTPUT_SCHEMA_INVALID"
 
 
-def test_repair_is_derived_from_prompt_id_namespace_not_subgraph_name(tmp_path: Path) -> None:
-    """analysis.analyze's PromptReference.subgraph_name is "work_analysis"
-    (the LangGraph subgraph), but the manifest's sibling repair slot is
-    "analysis.repair" -- prompt_id's own namespace prefix. A repairer keyed
-    off subgraph_name would look for a nonexistent "work_analysis.repair"
-    slot and always fail closed even once analysis.repair is promoted."""
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=["analysis.repair"])
+def test_repair_is_derived_from_prompt_id_not_subgraph_name(tmp_path: Path) -> None:
+    """The sibling repair slot is derived from prompt_ref.prompt_id itself
+    ("work_analysis.analyze" -> "work_analysis.analyze.repair"), not from
+    PromptReference.subgraph_name. Both happen to be "work_analysis" here,
+    so this pins the derivation source with a subgraph_name that would
+    still resolve the same slot only by coincidence -- a repairer that
+    read subgraph_name instead would still pass this one test but break on
+    slots where the two diverge (e.g. the retrieval role's several nodes)."""
+    manifest_path = write_runtime_active_manifest(
+        tmp_path, prompt_ids=["work_analysis.analyze.repair"]
+    )
     transport = FakeAPIProviderTransport()
     transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -134,7 +140,7 @@ def test_repair_is_derived_from_prompt_id_namespace_not_subgraph_name(tmp_path: 
         validator_errors=("$.answer must be string",),
     )
 
-    assert transport.invocations[0]["prompt_id"] == "analysis.repair"
+    assert transport.invocations[0]["prompt_id"] == "work_analysis.analyze.repair"
 
 
 def test_repair_fails_closed_when_sibling_prompt_is_still_draft() -> None:

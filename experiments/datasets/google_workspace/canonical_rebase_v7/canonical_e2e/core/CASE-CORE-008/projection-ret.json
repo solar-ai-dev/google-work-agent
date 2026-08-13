@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-CORE-008-RET",
+  "case_id": "CASE-CORE-008",
+  "projection_kind": "RETRIEVAL",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-012",
+    "user_prompt_id": "UP-CORE-008",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "applicable": true,
+    "expected_disposition": "SUFFICIENT",
+    "coverage": "SUFFICIENT",
+    "required_resource_ids": [
+      "GTH-L-001",
+      "GM-L-001"
+    ],
+    "hard_negative_resource_ids": [],
+    "required_evidence_ids": [
+      "EVD-SEG-GM-L-001-1"
+    ],
+    "source_statuses": [
+      {
+        "route_id": "IN-CASE-CORE-008-EMAIL",
+        "resource_type": "EMAIL",
+        "status": "COMPLETE",
+        "reason_codes": []
+      }
+    ],
+    "expected_read_trajectory": [
+      {
+        "phase": "RETRIEVAL_READ",
+        "tool": "gmail_search_threads",
+        "required": true,
+        "constraints": {
+          "fixture_scope": "FW-D-012"
+        }
+      },
+      {
+        "phase": "RETRIEVAL_READ",
+        "tool": "gmail_get_thread",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "GTH-L-001"
+          ]
+        }
+      }
+    ],
+    "max_additional_rounds": 2,
+    "lineage_expectation": {
+      "owner": "retrieval",
+      "based_on": [
+        "tool_route.input_plan"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.retrieval.deterministic",
+    "grader.retrieval.semantic"
+  ]
+}

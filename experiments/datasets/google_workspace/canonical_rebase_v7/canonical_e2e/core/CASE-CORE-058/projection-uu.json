@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-CORE-058-UU",
+  "case_id": "CASE-CORE-058",
+  "projection_kind": "REQUEST_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-010",
+    "user_prompt_id": "UP-CORE-058",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "expected_disposition": "COMPLETE",
+    "request_intent_semantic": {
+      "schema_version": 2,
+      "goal": "충돌 상태에서 자동 Event 생성을 하지 않는다.",
+      "completion_conditions": [
+        "15~16시가 OOO 15~17시와 겹친다.",
+        "다른 시간으로 임의 이동하지 않는다."
+      ],
+      "constraints": [
+        {
+          "kind": "SCOPE",
+          "field": "required_sources",
+          "value": [
+            "CALENDAR"
+          ]
+        }
+      ],
+      "requested_effect_hints": [
+        "CREATE"
+      ],
+      "requested_resource_hints": [
+        "CALENDAR"
+      ],
+      "analysis_requirement": "NONE",
+      "ambiguity": {
+        "requires_confirmation": false,
+        "reason_codes": [],
+        "missing_fields": []
+      }
+    },
+    "lineage_expectation": {
+      "owner": "request_understanding",
+      "based_on": [
+        "run_input"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.request_understanding.deterministic",
+    "grader.request_understanding.semantic"
+  ]
+}

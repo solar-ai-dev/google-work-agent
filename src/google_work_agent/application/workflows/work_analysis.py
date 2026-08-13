@@ -424,7 +424,7 @@ def load_work_analysis_analyze_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "analysis.analyze",
+        "work_analysis.analyze",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 

@@ -1,0 +1,92 @@
+{
+  "schema_version": 3,
+  "prompt_semantic_bundle_version": "semantic-r8.6-v2",
+  "roles": {
+    "request_understanding": {
+      "owns": [
+        "goal",
+        "completion_conditions",
+        "explicit_constraints",
+        "effect_resource_hints",
+        "analysis_requirement",
+        "user_owned_ambiguity"
+      ],
+      "forbidden": [
+        "tool_selection",
+        "retrieval",
+        "action_arguments",
+        "policy_decision"
+      ]
+    },
+    "tool_route": {
+      "owns": [
+        "semantic_input_resources",
+        "semantic_output_resources",
+        "semantic_output_effects",
+        "eligible_tool_choice"
+      ],
+      "forbidden": [
+        "provider_query",
+        "evidence_analysis",
+        "action_arguments",
+        "policy_precondition_materialization"
+      ]
+    },
+    "retrieval": {
+      "owns": [
+        "same_route_information_plan",
+        "evidence_selection",
+        "sufficiency"
+      ],
+      "forbidden": [
+        "output_tool_selection",
+        "write_action",
+        "provider_native_query_execution"
+      ]
+    },
+    "work_analysis": {
+      "owns": [
+        "work_facts",
+        "relation_candidates",
+        "ambiguities",
+        "risks"
+      ],
+      "forbidden": [
+        "tool_selection",
+        "action_arguments",
+        "final_duplicate_conflict_validation",
+        "final_policy_decision"
+      ]
+    },
+    "planning": {
+      "owns": [
+        "grounded_answer",
+        "arguments_for_fixed_output_route"
+      ],
+      "forbidden": [
+        "tool_reselection",
+        "general_read_action",
+        "approval",
+        "execution",
+        "verification"
+      ]
+    },
+    "review": {
+      "owns": [
+        "goal_fit_check",
+        "support_check",
+        "necessity_check",
+        "contradiction_check",
+        "route_consistency_check",
+        "defect_disposition"
+      ],
+      "forbidden": [
+        "tool_mutation",
+        "execution",
+        "approval",
+        "new_policy_creation"
+      ]
+    }
+  },
+  "topology_note": "SINGLE/THREE/SIX profiles must preserve these semantic responsibilities; topology is not encoded as business gold."
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/retrieval-plan-query-input-v1.schema.json",
+  "title": "retrieval-plan-query-input-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "user_request",
+    "request_intent",
+    "input_routes",
+    "retrieval_budget"
+  ],
+  "properties": {
+    "user_request": {
+      "type": "string"
+    },
+    "request_intent": {
+      "$ref": "request-intent-v2.schema.json"
+    },
+    "input_routes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "route_id",
+          "connector_id",
+          "resource_type",
+          "allowed_read_tool_ids",
+          "required"
+        ],
+        "properties": {
+          "route_id": {
+            "type": "string"
+          },
+          "connector_id": {
+            "type": "string"
+          },
+          "resource_type": {
+            "type": "string",
+            "enum": [
+              "EMAIL",
+              "TASK",
+              "CALENDAR"
+            ]
+          },
+          "allowed_read_tool_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "retrieval_budget": {
+      "type": "object"
+    }
+  }
+}

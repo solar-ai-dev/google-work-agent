@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-STRESS-020-ANL",
+  "case_id": "CASE-STRESS-020",
+  "projection_kind": "WORK_ANALYSIS",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-STRESS-020",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "applicable": true,
+    "expected_disposition": "COMPLETE",
+    "action_necessity": "REQUIRED",
+    "required_evidence_ids": [
+      "EVD-SEG-GM-A-002-1",
+      "EVD-SEG-TSK-A-001-2",
+      "EVD-SEG-TSK-A-002-3",
+      "EVD-SEG-EV-A-001-4",
+      "UE-STRESS-020"
+    ],
+    "policy_confirmation_receipt_refs_required": false,
+    "deterministic_relation_validation_required": true,
+    "lineage_expectation": {
+      "owner": "work_analysis",
+      "based_on": [
+        "request_intent",
+        "retrieval_result"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.work_analysis.deterministic",
+    "grader.work_analysis.semantic"
+  ]
+}

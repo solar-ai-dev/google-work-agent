@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-CORE-026-UU",
+  "case_id": "CASE-CORE-026",
+  "projection_kind": "REQUEST_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-026",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "expected_disposition": "COMPLETE",
+    "request_intent_semantic": {
+      "schema_version": 2,
+      "goal": "기한 전 가용 Slot을 이용한 Event를 제안한다.",
+      "completion_conditions": [
+        "출고 업무 마감과 Task 예정일을 구분하고, Task 예정일을 실제 업무 마감으로 동일시하지 않는다.",
+        "Calendar FreeBusy로 가용 Slot을 결정한다."
+      ],
+      "constraints": [
+        {
+          "kind": "SCOPE",
+          "field": "required_sources",
+          "value": [
+            "EMAIL",
+            "TASK",
+            "CALENDAR"
+          ]
+        }
+      ],
+      "requested_effect_hints": [
+        "CREATE"
+      ],
+      "requested_resource_hints": [
+        "CALENDAR",
+        "EMAIL",
+        "TASK"
+      ],
+      "analysis_requirement": "REQUIRED",
+      "ambiguity": {
+        "requires_confirmation": false,
+        "reason_codes": [],
+        "missing_fields": []
+      }
+    },
+    "lineage_expectation": {
+      "owner": "request_understanding",
+      "based_on": [
+        "run_input"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.request_understanding.deterministic",
+    "grader.request_understanding.semantic"
+  ]
+}

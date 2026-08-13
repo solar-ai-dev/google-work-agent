@@ -1,0 +1,92 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-STRESS-002-RT",
+  "case_id": "CASE-STRESS-002",
+  "projection_kind": "ROUTING_TRAJECTORY",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-011",
+    "user_prompt_id": "UP-STRESS-002",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "expected_read_trajectory": [
+      {
+        "phase": "RETRIEVAL_READ",
+        "tool": "gmail_search_threads",
+        "required": true,
+        "constraints": {
+          "fixture_scope": "FW-D-011"
+        },
+        "expected_outcome": "UPSTREAM_5XX"
+      },
+      {
+        "phase": "RETRIEVAL_READ",
+        "tool": "gmail_get_thread",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "GTH-K-001"
+          ]
+        },
+        "expected_outcome": "UPSTREAM_5XX"
+      },
+      {
+        "phase": "RETRIEVAL_READ",
+        "tool": "tasks_list_tasks",
+        "required": true,
+        "constraints": {
+          "status": "needsAction"
+        }
+      },
+      {
+        "phase": "RETRIEVAL_READ",
+        "tool": "tasks_get_task",
+        "required": true,
+        "constraints": {
+          "resource_ids": [
+            "TSK-K-001"
+          ]
+        }
+      }
+    ],
+    "topology_scope": "SIX_ROLE_BASELINE",
+    "six_reference_route": [
+      "initialization.start_analysis",
+      "request_understanding",
+      "tool_route.determine_io_resources",
+      "tool_route.bind_registry_candidates",
+      "tool_route.finalize_route",
+      "retrieval.plan_query",
+      "retrieval.build_query",
+      "retrieval.execute_read",
+      "retrieval.normalize_segments",
+      "retrieval.rag_retrieve",
+      "retrieval.select_evidence",
+      "retrieval.assess_sufficiency",
+      "work_analysis.extract_work_facts",
+      "work_analysis.resolve_relations",
+      "work_analysis.validate_relations",
+      "work_analysis.assemble_analysis",
+      "planning.compose_answer",
+      "response_synthesis",
+      "complete_answer_only_run",
+      "FINALIZE",
+      "COMPLETED"
+    ],
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "TOOL_ROUTE",
+      "RETRIEVAL",
+      "WORK_ANALYSIS",
+      "PLANNING",
+      "RESPONSE_SYNTHESIS"
+    ]
+  },
+  "grader_ids": [
+    "grader.routing_trajectory.deterministic",
+    "grader.routing_trajectory.semantic"
+  ]
+}

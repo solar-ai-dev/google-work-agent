@@ -1,0 +1,65 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-CORE-060-UU",
+  "case_id": "CASE-CORE-060",
+  "projection_kind": "REQUEST_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-014",
+    "user_prompt_id": "UP-CORE-060",
+    "entry_mode": "RESOURCE_SELECTED",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "expected_disposition": "COMPLETE",
+    "request_intent_semantic": {
+      "schema_version": 2,
+      "goal": "선택한 Raven Task를 완료 상태로 변경하는 계획을 만든다.",
+      "completion_conditions": [
+        "선택한 TSK-R-001을 정확한 Target으로 유지한다.",
+        "Task 완료를 금지 작업으로 오분류하지 않는다.",
+        "승인 후 tasks_update_task로 완료 상태를 변경한다.",
+        "GET_COMPARE로 실제 완료 상태를 확인한다."
+      ],
+      "constraints": [
+        {
+          "kind": "RESOURCE",
+          "field": "selected_resource_ids",
+          "value": [
+            "TSK-R-001"
+          ]
+        },
+        {
+          "kind": "SCOPE",
+          "field": "required_sources",
+          "value": [
+            "TASK"
+          ]
+        }
+      ],
+      "requested_effect_hints": [
+        "UPDATE"
+      ],
+      "requested_resource_hints": [
+        "TASK"
+      ],
+      "analysis_requirement": "NONE",
+      "ambiguity": {
+        "requires_confirmation": false,
+        "reason_codes": [],
+        "missing_fields": []
+      }
+    },
+    "lineage_expectation": {
+      "owner": "request_understanding",
+      "based_on": [
+        "run_input"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.request_understanding.deterministic",
+    "grader.request_understanding.semantic"
+  ]
+}

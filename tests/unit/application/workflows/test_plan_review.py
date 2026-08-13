@@ -777,22 +777,22 @@ def test_recheck_accepts_only_pass_or_block() -> None:
 def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
     manifest_path = write_runtime_active_manifest(
         tmp_path,
-        prompt_ids={"review.inspect", "review.recheck"},
+        prompt_ids={"review.inspect", "review.inspect.recheck"},
     )
     inspect_prompt = load_plan_review_inspect_prompt_reference(manifest_path)
     recheck_prompt = load_plan_review_recheck_prompt_reference(manifest_path)
 
     assert inspect_prompt.prompt_id == "review.inspect"
-    assert inspect_prompt.prompt_version == "0.8.3"
+    assert inspect_prompt.prompt_version == "0.9.0"
     assert inspect_prompt.content_hash
     assert inspect_prompt.node_state == "INITIAL"
-    assert inspect_prompt.output_schema_version == "v2"
+    assert inspect_prompt.output_schema_version == "r8.6-output-contract-snapshot-v1"
 
-    assert recheck_prompt.prompt_id == "review.recheck"
-    assert recheck_prompt.prompt_version == "0.8.3"
+    assert recheck_prompt.prompt_id == "review.inspect.recheck"
+    assert recheck_prompt.prompt_version == "0.9.0"
     assert recheck_prompt.content_hash
-    assert recheck_prompt.node_state == "RECHECK"
-    assert recheck_prompt.output_schema_version == "v2"
+    assert recheck_prompt.node_state == "SEMANTIC_REVISION"
+    assert recheck_prompt.output_schema_version == "r8.6-output-contract-snapshot-v1"
 
 
 def test_default_product_loader_rejects_draft_review_prompt(tmp_path: Path) -> None:

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "tasklists": [
+    {
+      "tasklist_id": "TL-WORK",
+      "title": "업무"
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "TSK-PE-DELETE-001",
+      "tasklist_id": "TL-WORK",
+      "title": "폐기 예정 테스트 작업",
+      "due": null,
+      "status": "needsAction",
+      "notes": "삭제 Effect 계약 검증용",
+      "updated_at": "2026-08-13T10:00:00Z"
+    }
+  ]
+}

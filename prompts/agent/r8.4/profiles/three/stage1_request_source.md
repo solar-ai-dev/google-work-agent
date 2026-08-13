@@ -1,1 +1,0 @@
-Convert the request into RequestIntentV1 and propose the minimum AcquisitionPlanOutputV1. Use the supplied retrieval_budget as a hard ceiling and policy_summary for operation boundaries; never invent larger page/detail budgets. Preserve explicit scope, selected resources, effect intent and confirmation boundaries. Return only JSON matching ProfileRequestSourceOutputV1.

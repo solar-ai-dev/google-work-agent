@@ -447,12 +447,12 @@ def test_context_agent_has_no_google_gateway_or_domain_dependency() -> None:
 def test_assess_sufficiency_prompt_ref_is_runtime_active(tmp_path: Path) -> None:
     manifest_path = write_runtime_active_manifest(
         tmp_path,
-        prompt_ids={"context.assess_sufficiency"},
+        prompt_ids={"retrieval.assess_sufficiency"},
     )
     prompt_ref = load_context_assess_sufficiency_prompt_reference(manifest_path)
 
-    assert prompt_ref.prompt_id == "context.assess_sufficiency"
-    assert prompt_ref.prompt_version == "0.8.3"
+    assert prompt_ref.prompt_id == "retrieval.assess_sufficiency"
+    assert prompt_ref.prompt_version == "0.9.0"
     assert prompt_ref.node_state == "INITIAL"
     assert prompt_ref.content_hash
 
@@ -460,10 +460,10 @@ def test_assess_sufficiency_prompt_ref_is_runtime_active(tmp_path: Path) -> None
 def test_default_product_loader_rejects_draft_context_prompt(tmp_path: Path) -> None:
     manifest_path = write_draft_manifest(
         tmp_path,
-        prompt_ids={"context.select_evidence"},
+        prompt_ids={"retrieval.select_evidence"},
     )
 
-    with pytest.raises(InactivePromptArtifactError, match="context.select_evidence"):
+    with pytest.raises(InactivePromptArtifactError, match="retrieval.select_evidence"):
         load_context_select_evidence_prompt_reference(manifest_path)
 
 

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/route-resource-candidate-v1.schema.json",
+  "title": "RouteResourceCandidateV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "input_resource_types",
+    "output_resource_types",
+    "output_effects",
+    "disposition"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "input_resource_types": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "EMAIL",
+          "TASK",
+          "CALENDAR"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "output_resource_types": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "EMAIL",
+          "TASK",
+          "CALENDAR"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "output_effects": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "CREATE",
+          "UPDATE",
+          "SEND",
+          "DELETE"
+        ]
+      },
+      "uniqueItems": false
+    },
+    "disposition": {
+      "enum": [
+        "ROUTE_READY",
+        "NO_TOOL_NEEDED",
+        "NEEDS_CONFIRMATION",
+        "BLOCKED"
+      ]
+    }
+  }
+}

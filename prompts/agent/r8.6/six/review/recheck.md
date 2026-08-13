@@ -1,0 +1,1 @@
+Task: recheck the revised proposal narrowly against the prior review defects and current runtime input. Do not invent new actions, evidence, routes, or policy. Apply the same disposition rules as the initial review and return the full PlanReviewResultV2.

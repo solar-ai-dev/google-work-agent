@@ -1,8 +1,0 @@
-{
-  "schema_version": 99,
-  "result": "BLOCKED",
-  "plans": [],
-  "confirmation": null,
-  "blocked_reason": "UNSUPPORTED_SCOPE",
-  "stop_reason": "POLICY_BLOCK"
-}

@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-STRESS-010-RT",
+  "case_id": "CASE-STRESS-010",
+  "projection_kind": "ROUTING_TRAJECTORY",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-004",
+    "user_prompt_id": "UP-STRESS-010",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "expected_read_trajectory": [
+      {
+        "phase": "RETRIEVAL_READ",
+        "tool": "gmail_search_threads",
+        "required": true,
+        "constraints": {
+          "fixture_scope": "FW-D-004"
+        }
+      }
+    ],
+    "topology_scope": "SIX_ROLE_BASELINE",
+    "six_reference_route": [
+      "initialization.start_analysis",
+      "request_understanding",
+      "tool_route.determine_io_resources",
+      "tool_route.bind_registry_candidates",
+      "tool_route.finalize_route",
+      "retrieval.plan_query",
+      "retrieval.build_query",
+      "retrieval.execute_read",
+      "retrieval.normalize_segments",
+      "retrieval.rag_retrieve",
+      "retrieval.select_evidence",
+      "retrieval.assess_sufficiency",
+      "WAITING_CONFIRMATION"
+    ],
+    "expected_semantic_milestones": [
+      "REQUEST_UNDERSTANDING",
+      "TOOL_ROUTE",
+      "RETRIEVAL",
+      "CONFIRMATION"
+    ]
+  },
+  "grader_ids": [
+    "grader.routing_trajectory.deterministic",
+    "grader.routing_trajectory.semantic"
+  ]
+}

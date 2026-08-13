@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-STRESS-004-UU",
+  "case_id": "CASE-STRESS-004",
+  "projection_kind": "REQUEST_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-STRESS-004",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "expected_disposition": "COMPLETE",
+    "request_intent_semantic": {
+      "schema_version": 2,
+      "goal": "Atlas 최종 출고일과 담당자를 Gmail에서 답한다.",
+      "completion_conditions": [
+        "관련 Atlas Thread를 찾는다.",
+        "최신 메시지 GM-A-002를 사용한다.",
+        "과거 회고 Thread를 배제한다.",
+        "MCP 재시작은 최대 1회이며 Tool Schema를 다시 검증한다."
+      ],
+      "constraints": [
+        {
+          "kind": "SCOPE",
+          "field": "required_sources",
+          "value": [
+            "EMAIL"
+          ]
+        },
+        {
+          "kind": "SCOPE",
+          "field": "forbidden_sources",
+          "value": [
+            "TASK",
+            "CALENDAR"
+          ]
+        }
+      ],
+      "requested_effect_hints": [
+        "READ"
+      ],
+      "requested_resource_hints": [
+        "EMAIL"
+      ],
+      "analysis_requirement": "REQUIRED",
+      "ambiguity": {
+        "requires_confirmation": false,
+        "reason_codes": [],
+        "missing_fields": []
+      }
+    },
+    "lineage_expectation": {
+      "owner": "request_understanding",
+      "based_on": [
+        "run_input"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.request_understanding.deterministic",
+    "grader.request_understanding.semantic"
+  ]
+}

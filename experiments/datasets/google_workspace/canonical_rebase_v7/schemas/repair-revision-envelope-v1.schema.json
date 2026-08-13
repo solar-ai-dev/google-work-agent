@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/repair-revision-envelope-v1.schema.json",
+  "title": "repair-revision-envelope-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "base_projection",
+    "candidate_output",
+    "failure_record"
+  ],
+  "properties": {
+    "base_projection": {
+      "type": "object"
+    },
+    "candidate_output": {
+      "type": "object"
+    },
+    "failure_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failure_reason_code",
+        "affected_fields",
+        "allowed_change_scope"
+      ],
+      "properties": {
+        "failure_reason_code": {
+          "type": "string"
+        },
+        "affected_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowed_change_scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validation_errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

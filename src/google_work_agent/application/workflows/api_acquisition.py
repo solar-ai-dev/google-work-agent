@@ -563,7 +563,7 @@ def load_acquisition_plan_sources_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "acquisition.plan_sources",
+        "retrieval.plan_query",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 

@@ -19,7 +19,7 @@ from google_work_agent.application.workflows.prompt_registry import (
 )
 
 
-def test_default_prompt_manifest_path_uses_canonical_r83_bundle(
+def test_default_prompt_manifest_path_uses_canonical_r90_bundle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
@@ -28,7 +28,7 @@ def test_default_prompt_manifest_path_uses_canonical_r83_bundle(
     )
 
     assert default_prompt_manifest_path() == canonical_prompt_manifest_path()
-    assert default_prompt_manifest_path().name == "prompt-manifest-v0.8.3.json"
+    assert default_prompt_manifest_path().name == "prompt-manifest-v0.9.0.json"
 
 
 def test_discover_canonical_prompt_manifest_path_picks_highest_semver(tmp_path: Path) -> None:
@@ -60,23 +60,25 @@ def test_discover_canonical_prompt_manifest_path_requires_a_versioned_manifest(
 def test_load_prompt_reference_succeeds_for_runtime_active_slot(tmp_path: Path) -> None:
     manifest_path = write_runtime_active_manifest(
         tmp_path,
-        prompt_ids={"planning.revise_plan"},
+        prompt_ids={"planning.compose_arguments.revise"},
     )
 
-    prompt_ref = load_prompt_reference("planning.revise_plan", manifest_path)
+    prompt_ref = load_prompt_reference("planning.compose_arguments.revise", manifest_path)
 
-    assert prompt_ref.prompt_id == "planning.revise_plan"
+    assert prompt_ref.prompt_id == "planning.compose_arguments.revise"
     assert prompt_ref.node_state == "SEMANTIC_REVISION"
-    assert prompt_ref.input_schema_version == "v1"
-    assert prompt_ref.output_schema_version == "v2"
+    assert prompt_ref.input_schema_version == "r8.6-runtime-input-snapshot-v1"
+    assert prompt_ref.output_schema_version == "r8.6-output-contract-snapshot-v1"
 
 
 def test_load_prompt_reference_distinguishes_missing_from_inactive_artifact(
     tmp_path: Path,
 ) -> None:
-    draft_manifest_path = write_draft_manifest(tmp_path, prompt_ids={"planning.draft_plan"})
-    with pytest.raises(InactivePromptArtifactError, match="planning.draft_plan"):
-        load_prompt_reference("planning.draft_plan", draft_manifest_path)
+    draft_manifest_path = write_draft_manifest(
+        tmp_path, prompt_ids={"planning.compose_arguments"}
+    )
+    with pytest.raises(InactivePromptArtifactError, match="planning.compose_arguments"):
+        load_prompt_reference("planning.compose_arguments", draft_manifest_path)
 
     with pytest.raises(LookupError, match="planning.missing_slot"):
         load_prompt_reference("planning.missing_slot", canonical_prompt_manifest_path())

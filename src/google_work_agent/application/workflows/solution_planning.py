@@ -803,7 +803,7 @@ def load_solution_planning_answer_only_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "planning.answer_only",
+        "planning.compose_answer",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 
@@ -812,7 +812,7 @@ def load_solution_planning_draft_plan_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "planning.draft_plan",
+        "planning.compose_arguments",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 
@@ -821,7 +821,7 @@ def load_solution_planning_revise_answer_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "planning.revise_answer",
+        "planning.compose_answer.revise",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 
@@ -830,7 +830,7 @@ def load_solution_planning_revise_plan_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "planning.revise_plan",
+        "planning.compose_arguments.revise",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 

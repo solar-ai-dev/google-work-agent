@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PrePolicyToolRouteGoldV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "split",
+    "dataset_version",
+    "stage",
+    "applicable",
+    "candidate_gold",
+    "source_final_tool_route_projection",
+    "review_status"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "case_id": {
+      "type": "string"
+    },
+    "split": {
+      "enum": [
+        "CORE",
+        "STRESS",
+        "HOLDOUT"
+      ]
+    },
+    "dataset_version": {
+      "type": "string"
+    },
+    "stage": {
+      "const": "PRE_POLICY_SEMANTIC_ROUTE_GOLD"
+    },
+    "applicable": {
+      "type": "boolean"
+    },
+    "candidate_gold": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "input_resource_types",
+            "output_resource_types",
+            "output_effects"
+          ],
+          "properties": {
+            "input_resource_types": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "EMAIL",
+                  "TASK",
+                  "CALENDAR"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "output_resource_types": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "EMAIL",
+                  "TASK",
+                  "CALENDAR"
+                ]
+              },
+              "uniqueItems": false
+            },
+            "output_effects": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "CREATE",
+                  "UPDATE",
+                  "SEND",
+                  "DELETE"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "source_final_tool_route_projection": {
+      "const": "ToolRoutePlanV2"
+    },
+    "review_status": {
+      "const": "CONTRACT_REVIEWED"
+    }
+  }
+}

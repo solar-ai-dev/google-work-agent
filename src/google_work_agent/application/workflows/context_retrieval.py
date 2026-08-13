@@ -643,7 +643,7 @@ def load_context_select_evidence_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "context.select_evidence",
+        "retrieval.select_evidence",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 
@@ -652,7 +652,7 @@ def load_context_assess_sufficiency_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "context.assess_sufficiency",
+        "retrieval.assess_sufficiency",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 
@@ -661,7 +661,7 @@ def load_context_select_evidence_semantic_revision_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "context.select_evidence.semantic_revision",
+        "retrieval.select_evidence.revise",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 
