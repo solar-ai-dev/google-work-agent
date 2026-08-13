@@ -205,6 +205,7 @@ test("keeps the fragment until one StrictMode bootstrap request succeeds", async
 
 test("starts a run in RESOURCE_SELECTED mode", async () => {
   let conversationCreated = false;
+  let createdConversationId = "conversation-1";
   installFetch((path, init) => {
     if (path === "/health/live") {
       return jsonResponse({ status: "LIVE", service_instance_id: "svc-1", release_version: "test", api_contract_version: "1", occurred_at_ms: 1 });
@@ -224,7 +225,7 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonResponse({
         items: conversationCreated
-          ? [{ id: "conversation-1", account_id: "account-1", title: "Project sync", created_at_ms: 1, updated_at_ms: 2 }]
+          ? [{ id: createdConversationId, account_id: "account-1", title: "Project sync", created_at_ms: 1, updated_at_ms: 2 }]
           : [],
         next_cursor: null,
         api_contract_version: "1",
@@ -253,7 +254,8 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
     }
     if (path === "/api/v1/conversations" && init?.method === "POST") {
       conversationCreated = true;
-      return jsonResponse({ conversation_id: "conversation-1" });
+      createdConversationId = JSON.parse(String(init.body)).conversation_id;
+      return jsonResponse({ conversation_id: createdConversationId });
     }
     if (path === "/api/v1/runs" && init?.method === "POST") {
       return jsonResponse({
@@ -270,13 +272,13 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
       });
     }
     if (path === "/api/v1/runs/run-1") {
-      return jsonResponse(snapshotPayload({ status: "FAILED", entry_mode: "RESOURCE_SELECTED" }));
+      return jsonResponse(snapshotPayload({ conversation_id: createdConversationId, status: "FAILED", entry_mode: "RESOURCE_SELECTED" }));
     }
     if (path === "/api/v1/runs/run-1/context") {
       return jsonResponse({
         context: {
           run_id: "run-1",
-          conversation_id: "conversation-1",
+          conversation_id: createdConversationId,
           workflow_key: "workflow-run-1",
           entry_mode: "RESOURCE_SELECTED",
           requested_mode: "AUTO",
@@ -316,6 +318,68 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
   expect(body.selected_resource_ids).toEqual(["thread-project"]);
   expect(await screen.findByText("실행 실패")).toBeInTheDocument();
   expect(screen.getByText("작업을 완료하지 못했습니다.")).toBeInTheDocument();
+});
+
+test("clears the previous conversation projection when starting a new conversation", async () => {
+  installUiContractFetch({ conversations: true, status: "FAILED" });
+  const user = userEvent.setup();
+  render(<App />);
+
+  expect(await screen.findByText("작업을 완료하지 못했습니다.")).toBeInTheDocument();
+  expect(screen.getByText("Verified 0")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "새 대화" }));
+
+  expect(screen.queryByText("작업을 완료하지 못했습니다.")).not.toBeInTheDocument();
+  expect(screen.queryByText("Verified 0")).not.toBeInTheDocument();
+});
+
+test("keeps the last selected conversation when earlier latest-run responses arrive late", async () => {
+  let resolveLatestA: (response: MockResponse) => void = () => {
+    throw new Error("Conversation A request did not start");
+  };
+  installFetch((path) => {
+    if (path === "/health/live") return jsonResponse(liveResponse());
+    if (path === "/health/ready") return jsonResponse(readyResponse());
+    if (path === "/api/v1/runtime") return jsonResponse({ summary: runtimeSummary([]), api_contract_version: "1" });
+    if (path === "/api/v1/google/connection") return jsonResponse(googleConnection());
+    if (path === "/api/v1/identity/google-account") return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
+    if (path.startsWith("/api/v1/conversations?")) {
+      return jsonResponse({
+        items: [
+          { id: "conversation-a", account_id: "account-1", title: "대화 A", created_at_ms: 1, updated_at_ms: 1 },
+          { id: "conversation-b", account_id: "account-1", title: "대화 B", created_at_ms: 2, updated_at_ms: 2 },
+        ],
+        next_cursor: null,
+        api_contract_version: "1",
+      });
+    }
+    if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
+    if (path === "/api/v1/conversations/conversation-a/latest-run") {
+      return new Promise<MockResponse>((resolve) => { resolveLatestA = resolve; });
+    }
+    if (path === "/api/v1/conversations/conversation-b/latest-run") {
+      return jsonResponse({ run: { run_id: "run-b" }, api_contract_version: "1" });
+    }
+    if (path === "/api/v1/runs/run-b") {
+      return jsonResponse(snapshotPayload({ run_id: "run-b", conversation_id: "conversation-b" }));
+    }
+    if (path === "/api/v1/runs/run-b/context") {
+      return jsonResponse({ context: { run_id: "run-b", conversation_id: "conversation-b", workflow_key: "workflow-b", entry_mode: "AGENT_SEARCH", requested_mode: "AUTO", status: "WAITING_APPROVAL", version: 1, request_text: "대화 B 요청", selected_resource_ids: [] }, api_contract_version: "1" });
+    }
+    throw new Error(`Unhandled path ${path}`);
+  });
+
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: /대화 A/ }));
+  await user.click(screen.getByRole("button", { name: /대화 B/ }));
+  expect(await screen.findByText("대화 B 요청")).toBeInTheDocument();
+
+  resolveLatestA(jsonResponse({ run: { run_id: "run-a" }, api_contract_version: "1" }));
+
+  await waitFor(() => expect(screen.getByText("대화 B 요청")).toBeInTheDocument());
+  expect(screen.queryByText("대화 A 요청")).not.toBeInTheDocument();
 });
 
 test("shows approve button for write actions and posts approve command", async () => {
@@ -2969,9 +3033,9 @@ function calendarEventItem(overrides: Record<string, unknown> = {}): Record<stri
   };
 }
 
-function installFetch(handler: (path: string, init?: RequestInit) => MockResponse): void {
+function installFetch(handler: (path: string, init?: RequestInit) => MockResponse | Promise<MockResponse>): void {
   globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
-    const response = handler(String(input), init);
+    const response = await handler(String(input), init);
     return new Response(JSON.stringify(response.json ?? {}), {
       status: response.status ?? 200,
       headers: {

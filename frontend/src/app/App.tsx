@@ -50,6 +50,7 @@ import type {
 import { ApiClientError } from "../api/client";
 import { subscribeRunEvents } from "../api/sse";
 import { CalendarMonthView, calendarMonthRange, calendarRangeBoundary, configuredDateKey } from "./CalendarMonthView";
+import { ConversationView, useConversation } from "../features/conversation";
 
 type StartupState = {
   phase: string;
@@ -111,11 +112,6 @@ type ResourceCacheEntry = {
   gmailPages?: Record<number, GmailPageCacheEntry>;
 };
 
-type PendingConfirmation = {
-  interruptId: string;
-  question: string;
-};
-
 type GmailDetailState = {
   resourceId: string | null;
   status: "idle" | "loading" | "ready" | "error";
@@ -133,64 +129,6 @@ type ResourceRequestIdentity = {
   taskSort: TaskSort;
   taskFilter: string;
 };
-
-type TaskDuplicateDecision =
-  | "NOT_DUPLICATE"
-  | "SIMILAR_CANDIDATE"
-  | "CLEAR_DUPLICATE";
-
-function taskDuplicateDecision(risk: Record<string, unknown>): TaskDuplicateDecision | null {
-  const duplicate = risk.duplicate;
-  if (!duplicate || typeof duplicate !== "object") {
-    return null;
-  }
-  const decision = (duplicate as { decision?: unknown }).decision;
-  return decision === "NOT_DUPLICATE" ||
-    decision === "SIMILAR_CANDIDATE" ||
-    decision === "CLEAR_DUPLICATE"
-    ? decision
-    : null;
-}
-
-type CalendarConflictDecision = "NO_CONFLICT" | "WARNING" | "HARD_CONFLICT";
-
-function calendarConflictDecision(
-  risk: Record<string, unknown>,
-): CalendarConflictDecision | null {
-  const conflict = risk.calendar_conflict;
-  if (!conflict || typeof conflict !== "object") {
-    return null;
-  }
-  const decision = (conflict as { decision?: unknown }).decision;
-  return decision === "NO_CONFLICT" ||
-    decision === "WARNING" ||
-    decision === "HARD_CONFLICT"
-    ? decision
-    : null;
-}
-
-type FeasibilityDecision = "FEASIBLE" | "RISK" | "INFEASIBLE";
-
-function feasibilityDecision(risk: Record<string, unknown>): FeasibilityDecision | null {
-  const feasibility = risk.feasibility;
-  if (!feasibility || typeof feasibility !== "object") {
-    return null;
-  }
-  const decision = (feasibility as { decision?: unknown }).decision;
-  return decision === "FEASIBLE" || decision === "RISK" || decision === "INFEASIBLE"
-    ? decision
-    : null;
-}
-
-function hasOtherRisk(risk: Record<string, unknown>): boolean {
-  return Object.keys(risk).some(
-    (key) =>
-      key !== "duplicate" &&
-      key !== "calendar_conflict" &&
-      key !== "feasibility" &&
-      key !== "feasibility_input",
-  );
-}
 
 type ResourceLoadOptions = {
   force?: boolean;
@@ -240,18 +178,9 @@ export function App(): JSX.Element {
   const [calendarMonthError, setCalendarMonthError] = useState<string | null>(null);
   const [gmailSearchInput, setGmailSearchInput] = useState("");
   const [taskSortMenuOpen, setTaskSortMenuOpen] = useState(false);
-  const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [conversationQuery, setConversationQuery] = useState("");
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
-  const [runSnapshot, setRunSnapshot] = useState<RunSnapshot | null>(null);
-  const [runContext, setRunContext] = useState<RunContext | null>(null);
-  const [composerText, setComposerText] = useState("");
-  const [composerError, setComposerError] = useState<string | null>(null);
   const [sidebarFilter, setSidebarFilter] = useState("");
-  const [busyCommand, setBusyCommand] = useState<string | null>(null);
   const [googleConnectPending, setGoogleConnectPending] = useState(false);
-  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
-  const [confirmationText, setConfirmationText] = useState("");
   const [statusLine, setStatusLine] = useState("로컬 API에 연결되어 있습니다.");
   const [gmailDetail, setGmailDetail] = useState<GmailDetailState>({
     resourceId: null,
@@ -332,9 +261,65 @@ export function App(): JSX.Element {
     && resourceState.pageIndex !== resourceState.lastLoadedPageIndex
     ? `${resourceState.pageIndex + 1}페이지를 불러오는 중입니다.`
     : "자료를 불러오는 중입니다.";
-  const showRunHeader = runSnapshot !== null;
-  const subscriptionRef = useRef<(() => void) | null>(null);
-  const subscriptionRunIdRef = useRef<string | null>(null);
+  const conversation = useConversation({
+    currentAccount,
+    selectedResourceIds,
+    onStatusLine: setStatusLine,
+  });
+  const {
+    conversations,
+    selectedConversationId,
+    runSnapshot,
+    runContext,
+    composerText,
+    composerError,
+    busyCommand,
+    pendingConfirmation,
+    confirmationText,
+    setComposerText,
+    setComposerError,
+    setConfirmationText,
+    refreshConversations,
+    beginConversationProjection,
+    selectConversation,
+    selectRun,
+    refreshRun,
+    handleStartRun,
+    handleApprove,
+    handleSimpleAction,
+    handleCancelRun,
+    handleResumeRun,
+    handleConfirmation,
+    handleResolveRecovery,
+  } = conversation;
+  const conversationViewModel = {
+    controller: {
+      selectedConversationId,
+      runSnapshot,
+      runContext,
+      pendingConfirmation,
+      confirmationText,
+      setConfirmationText,
+      composerText,
+      composerError,
+      setComposerText,
+      setComposerError,
+      busyCommand,
+      handleStartRun,
+      handleApprove,
+      handleSimpleAction,
+      handleCancelRun,
+      handleResumeRun,
+      handleConfirmation,
+      handleResolveRecovery,
+    },
+    resourceContext: {
+      selectedResourceIds,
+      selectedResourceLabels,
+      composerPrompt,
+    },
+    formatTime,
+  };
   const startupPromiseRef = useRef<Promise<void> | null>(null);
   const resourceRequestRef = useRef<{ generation: number; identity: ResourceRequestIdentity | null }>({
     generation: 0,
@@ -402,59 +387,11 @@ export function App(): JSX.Element {
     return () => document.removeEventListener("mousedown", closeOnOutsidePointer);
   }, [taskSortMenuOpen]);
 
-  const refreshConversations = useCallback(async (accountId: string): Promise<void> => {
-    const response = await listConversations(accountId);
-    setConversations(response.items);
-  }, []);
-
   const refreshRuntimeSummary = useCallback(async (): Promise<void> => {
     const [runtimeResponse, googleResponse] = await Promise.all([getRuntime(), getGoogleConnection()]);
     setRuntime(runtimeResponse.summary);
     setGoogle(googleResponse);
   }, []);
-
-  const refreshRun = useCallback(async (runId: string): Promise<void> => {
-    const [snapshotResponse, contextResponse] = await Promise.all([
-      getRunSnapshot(runId),
-      getRunContext(runId),
-    ]);
-    setRunSnapshot(snapshotResponse.snapshot);
-    setRunContext(contextResponse.context);
-    setSelectedConversationId(snapshotResponse.snapshot.conversation_id);
-    setPendingConfirmation((current) =>
-      snapshotResponse.snapshot.status === "WAITING_CONFIRMATION" ? current : null,
-    );
-  }, []);
-
-  const selectRun = useCallback(async (runId: string): Promise<void> => {
-    await refreshRun(runId);
-    if (subscriptionRunIdRef.current === runId && subscriptionRef.current) {
-      return;
-    }
-    subscriptionRef.current?.();
-    subscriptionRef.current = subscribeRunEvents(runId, {
-      onStateChange: (message) => setStatusLine(message),
-      onEvent: (event) => {
-        if (event.eventType === "confirmation_required") {
-          const interrupt = event.payload.user_interrupt;
-          if (interrupt && typeof interrupt === "object") {
-            const values = interrupt as Record<string, unknown>;
-            if (typeof values.interrupt_id === "string") {
-              setPendingConfirmation({
-                interruptId: values.interrupt_id,
-                question:
-                  typeof values.question === "string"
-                    ? values.question
-                    : "계속하려면 필요한 내용을 확인해 주세요.",
-              });
-            }
-          }
-        }
-        void refreshRun(runId);
-      },
-    });
-    subscriptionRunIdRef.current = runId;
-  }, [refreshRun]);
 
   const loadGmailDetail = useCallback(async (resourceId: string): Promise<void> => {
     setGmailDetail({ resourceId, status: "loading", detail: null, error: null });
@@ -1167,11 +1104,6 @@ export function App(): JSX.Element {
     if (startupPromiseRef.current === null) {
       startupPromiseRef.current = runStartup();
     }
-    return () => {
-      subscriptionRef.current?.();
-      subscriptionRef.current = null;
-      subscriptionRunIdRef.current = null;
-    };
   }, [runStartup]);
 
   useEffect(() => {
@@ -1250,15 +1182,32 @@ export function App(): JSX.Element {
     }
   }, [google?.connected, loadResourceCount, loadResources, resourceState.countLoading, resourceState.error, resourceState.loaded, resourceState.loading, resourceState.pageIndex, resourceState.tab, startup.status]);
 
+  /* Extracted to features/conversation/useConversation.ts.
   async function selectConversation(conversationId: string): Promise<void> {
-    setSelectedConversationId(conversationId);
-    const latest = await getLatestConversationRun(conversationId);
-    if (latest.run) {
-      await selectRun(latest.run.run_id);
-      return;
+    const generation = beginConversationProjection(conversationId);
+    try {
+      const latest = await getLatestConversationRun(conversationId);
+      if (
+        conversationProjectionRef.current.generation !== generation
+        || conversationProjectionRef.current.conversationId !== conversationId
+      ) {
+        return;
+      }
+      if (latest.run) {
+        await selectRun(latest.run.run_id, conversationId, generation);
+      }
+    } catch (error) {
+      if (
+        conversationProjectionRef.current.generation === generation
+        && conversationProjectionRef.current.conversationId === conversationId
+      ) {
+        const message = error instanceof ApiClientError
+          ? error.message
+          : "대화 실행 정보를 불러오지 못했습니다.";
+        setStatusLine(message);
+        setComposerError(message);
+      }
     }
-    setRunSnapshot(null);
-    setRunContext(null);
   }
 
 
@@ -1277,6 +1226,7 @@ export function App(): JSX.Element {
     setComposerError(null);
     try {
       const conversationId = selectedConversationId ?? crypto.randomUUID();
+      let projectionGeneration = conversationProjectionRef.current.generation;
       if (!selectedConversationId) {
         await createConversation({
           command_id: crypto.randomUUID(),
@@ -1284,8 +1234,8 @@ export function App(): JSX.Element {
           account_id: currentAccount.account_id,
           title: requestText.slice(0, 80),
         });
+        projectionGeneration = beginConversationProjection(conversationId);
         await refreshConversations(currentAccount.account_id);
-        setSelectedConversationId(conversationId);
       }
       const commandId = crypto.randomUUID();
       const runId = crypto.randomUUID();
@@ -1301,7 +1251,7 @@ export function App(): JSX.Element {
         selected_resource_ids: selectedResourceIds,
         requested_mode: "AUTO",
       });
-      await selectRun(response.run_id);
+      await selectRun(response.run_id, conversationId, projectionGeneration);
       setComposerText("");
     } catch (error) {
       const message = error instanceof ApiClientError ? error.message : "요청을 시작하지 못했습니다.";
@@ -1459,6 +1409,8 @@ export function App(): JSX.Element {
       setBusyCommand(null);
     }
   }
+
+  */
 
   async function handleGoogleConnect(): Promise<void> {
     if (google?.connected || googleConnectPending) {
@@ -1902,30 +1854,7 @@ export function App(): JSX.Element {
         </aside>
 
         <main className="panel">
-          {showRunHeader ? (
-            <div className="panel-header run-header">
-              <div>
-                <strong>{runHeaderTitle(runSnapshot.status, Boolean(selectedConversationId))}</strong>
-                <div className="muted">{userRunStatus(runSnapshot.status)}</div>
-                {runSnapshot.result_kind === "PARTIAL" ? (
-                  <div className="status-warn">일부 작업은 완료되었고 나머지는 취소되었습니다.</div>
-                ) : null}
-              </div>
-              <div className="button-row">
-                {runSnapshot.next_allowed_commands.includes("REQUEST_CANCEL") ? (
-                  <button className="button-danger" type="button" onClick={() => void handleCancelRun()}>
-                    취소
-                  </button>
-                ) : null}
-                {runSnapshot.next_allowed_commands.includes("RESUME") ? (
-                  <button className="button-secondary" type="button" onClick={() => void handleResumeRun()}>
-                    재개
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-          <div className="panel-body">
+          <ConversationView viewModel={conversationViewModel}>
             <section className="resource-viewer" aria-label="선택 자료 상세">
               {resourceState.focusItem ? (
                 <div className="viewer-actions viewer-actions-floating">
@@ -2003,274 +1932,13 @@ export function App(): JSX.Element {
                 )
               ) : <p className="muted">{resourceViewerEmptyMessage(resourceState.tab)}</p>}
             </section>
-            <section className="agent-workspace" aria-label="에이전트 대화">
-              <section className="card-list">
-              {runContext?.request_text ? (
-                <article className="info-card user-request-card">
-                  <strong>사용자 요청</strong>
-                  <p>{runContext.request_text}</p>
-                </article>
-              ) : null}
-
-              {runSnapshot?.status === "WAITING_CONFIRMATION" ? (
-                <article className="info-card">
-                  <strong>추가 확인</strong>
-                  <p>
-                    {pendingConfirmation?.question ?? "확인 요청 정보를 동기화하고 있습니다."}
-                  </p>
-                  <textarea
-                    aria-label="확인 응답"
-                    className="composer"
-                    disabled={!pendingConfirmation}
-                    value={confirmationText}
-                    onChange={(event) => setConfirmationText(event.target.value)}
-                  />
-                  <button
-                    className="button-primary"
-                    type="button"
-                    disabled={
-                      !pendingConfirmation ||
-                      !confirmationText.trim() ||
-                      busyCommand === "confirm-run"
-                    }
-                    onClick={() => void handleConfirmation()}
-                  >
-                    응답 보내기
-                  </button>
-                </article>
-              ) : null}
-
-              {runSnapshot?.active_plan ? (
-                <article className="info-card">
-                  <strong>Action Plan</strong>
-                  <div className="muted">{runSnapshot.active_plan.summary_text ?? "요약이 아직 없습니다."}</div>
-                  <div className="muted">Action {runSnapshot.execution_status.action_count}건</div>
-                </article>
-              ) : null}
-
-              {runSnapshot?.actions.map((action) => {
-                const approval = runSnapshot.approvals.find((item) => item.action_id === action.action_id);
-                const feasibility = feasibilityDecision(action.risk);
-                const waitingApproval =
-                  action.approval_required &&
-                  feasibility !== "INFEASIBLE" &&
-                  ["PROPOSED", "MODIFIED"].includes(action.status);
-                const duplicateDecision = taskDuplicateDecision(action.risk);
-                const duplicateNeedsAcknowledgement =
-                  duplicateDecision === "SIMILAR_CANDIDATE" ||
-                  duplicateDecision === "CLEAR_DUPLICATE";
-                const conflictDecision = calendarConflictDecision(action.risk);
-                const conflictNeedsAcknowledgement =
-                  conflictDecision === "WARNING" ||
-                  conflictDecision === "HARD_CONFLICT";
-                return (
-                  <article key={action.action_id} className="info-card">
-                    <div className="inline-row" style={{ justifyContent: "space-between" }}>
-                      <strong>{action.tool_name}</strong>
-                      <span className="pill">{action.status}</span>
-                    </div>
-                    <div className="muted">
-                      {action.effect_type} / {action.verification_policy}
-                    </div>
-                    {duplicateDecision === "SIMILAR_CANDIDATE" ? (
-                      <p className="status-warn">비슷한 기존 작업이 있습니다.</p>
-                    ) : null}
-                    {duplicateDecision === "CLEAR_DUPLICATE" ? (
-                      <p className="status-warn">
-                        동일한 작업이 이미 있습니다. 기존 작업을 확인한 뒤 계속해 주세요.
-                      </p>
-                    ) : null}
-                    {conflictDecision === "WARNING" ? (
-                      <p className="status-warn">
-                        겹칠 가능성이 있거나 업무 시간 밖의 일정입니다.
-                      </p>
-                    ) : null}
-                    {conflictDecision === "HARD_CONFLICT" ? (
-                      <p className="status-warn">해당 시간에 기존 일정이 있습니다.</p>
-                    ) : null}
-                    {feasibility === "RISK" ? (
-                      <p className="status-warn">
-                        현재 일정 기준으로 가능한 시간이 제한적입니다.
-                      </p>
-                    ) : null}
-                    {feasibility === "INFEASIBLE" ? (
-                      <p className="status-warn">
-                        현재 업무 시간과 일정 기준으로 마감 전에 필요한 연속 시간을 확보할 수
-                        없습니다.
-                      </p>
-                    ) : null}
-                    {hasOtherRisk(action.risk) ? (
-                      <p className="status-warn">
-                        서버 검증에서 확인된 위험 정보가 있습니다. 승인 전에 확인해 주세요.
-                      </p>
-                    ) : null}
-                    <details>
-                      <summary>승인 상세</summary>
-                      <dl className="metadata-list">
-                        <div><dt>Action</dt><dd>{action.tool_name}</dd></div>
-                        <div><dt>검증</dt><dd>{action.verification_policy}</dd></div>
-                      </dl>
-                    </details>
-                    {approval ? (
-                      <div className="muted">
-                        승인 상태 {approval.status} / 만료 {formatTime(approval.expires_at_ms)}
-                      </div>
-                    ) : null}
-                    {waitingApproval ? (
-                      <div className="button-row">
-                        <button
-                          className="button-primary"
-                          type="button"
-                          disabled={busyCommand === `approve-${action.action_id}`}
-                          onClick={() =>
-                            void handleApprove(
-                              action,
-                              duplicateNeedsAcknowledgement,
-                              conflictNeedsAcknowledgement,
-                            )
-                          }
-                        >
-                          {conflictDecision === "HARD_CONFLICT"
-                            ? "충돌을 알고도 진행"
-                            : conflictDecision === "WARNING"
-                              ? "확인하고 승인"
-                              : duplicateDecision === "CLEAR_DUPLICATE"
-                            ? "그래도 새로 만들기"
-                            : duplicateDecision === "SIMILAR_CANDIDATE"
-                              ? "확인하고 승인"
-                              : "승인"}
-                        </button>
-                        <button
-                          className="button-secondary"
-                          type="button"
-                          disabled={busyCommand === `modify-${action.action_id}`}
-                          onClick={() => void handleSimpleAction("modify", action)}
-                        >
-                          수정
-                        </button>
-                        <button
-                          className="button-danger"
-                          type="button"
-                          disabled={busyCommand === `reject-${action.action_id}`}
-                          onClick={() => void handleSimpleAction("reject", action)}
-                        >
-                          건너뛰기
-                        </button>
-                      </div>
-                    ) : null}
-                    {action.status === "APPROVED" ? (
-                      <div className="button-row">
-                        <button
-                          className="button-secondary"
-                          type="button"
-                          disabled={busyCommand === `modify-${action.action_id}`}
-                          onClick={() => void handleSimpleAction("modify", action)}
-                        >
-                          수정
-                        </button>
-                        <button
-                          className="button-danger"
-                          type="button"
-                          disabled={busyCommand === `reject-${action.action_id}`}
-                          onClick={() => void handleSimpleAction("reject", action)}
-                        >
-                          거절
-                        </button>
-                      </div>
-                    ) : null}
-                    {action.status === "FAILED" ? (
-                      <button className="button-secondary" type="button" onClick={() => void handleSimpleAction("retry", action)}>
-                        다시 준비
-                      </button>
-                    ) : null}
-                    {action.status === "UNKNOWN_RESULT" ? (
-                      <p className="status-warn">실제 결과를 확인하는 중입니다. 새 쓰기 실행은 잠시 막혀 있습니다.</p>
-                    ) : null}
-                    {action.status === "MISMATCH" ? (
-                      <div>
-                        <p className="status-warn">
-                          실행 결과가 승인 내용과 다릅니다. 자동 수정이나 롤백은 수행하지 않습니다.
-                        </p>
-                        <div className="button-row">
-                          <button
-                            className="button-secondary"
-                            type="button"
-                            onClick={() => void handleResolveRecovery(action, "ACCEPT_PARTIAL")}
-                          >
-                            현재 결과 수용
-                          </button>
-                          <button
-                            className="button-primary"
-                            type="button"
-                            onClick={() =>
-                              void handleResolveRecovery(action, "CREATE_CORRECTIVE_PLAN")
-                            }
-                          >
-                            새 계획 만들기
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </article>
-                );
-              })}
-
-              {runSnapshot ? (
-                <article className="info-card">
-                  <strong>검증 결과</strong>
-                  <div className="muted">Verified {runSnapshot.verification_summary.verified_count}</div>
-                  <div className="muted">Mismatch {runSnapshot.verification_summary.mismatch_count}</div>
-                </article>
-              ) : null}
-
-              {runSnapshot?.recovery_summary.unknown_result_action_count ? (
-                <article className="info-card">
-                  <strong>Recovery</strong>
-                  <p>결과 불명 작업 {runSnapshot.recovery_summary.unknown_result_action_count}건을 확인하고 있습니다.</p>
-                </article>
-              ) : null}
-              </section>
-            </section>
-
-            <div className="composer-dock">
-              <div className="composer-surface">
-                {selectedResourceIds.length > 0 ? (
-                  <div className="composer-context" aria-live="polite">
-                    <strong>요청에 사용할 자료 {selectedResourceIds.length}개</strong>
-                    {selectedResourceLabels.length > 0 ? (
-                      <span>{selectedResourceLabels.join(" · ")}</span>
-                    ) : null}
-                  </div>
-                ) : null}
-                <textarea
-                  className="composer"
-                  aria-label={composerPrompt}
-                  placeholder={composerPrompt}
-                  value={composerText}
-                  onChange={(event) => {
-                    setComposerText(event.target.value);
-                    setComposerError(null);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void handleStartRun();
-                    }
-                  }}
-                />
-                <button className="button-primary icon-button composer-send" type="button" aria-label="보내기" title="보내기" disabled={busyCommand === "start-run"} onClick={() => void handleStartRun()}>
-                  <span aria-hidden="true">➤</span>
-                </button>
-              </div>
-              {composerError ? <p className="status-bad" role="alert">{composerError}</p> : null}
-            </div>
-          </div>
+          </ConversationView>
         </main>
 
         <aside className="panel conversation-panel">
           <div className="panel-header">
             <strong>대화</strong>
-            <button className="button-secondary" type="button" onClick={() => setSelectedConversationId(null)}>
+            <button className="button-secondary" type="button" onClick={() => beginConversationProjection(null)}>
               새 대화
             </button>
           </div>
@@ -2623,37 +2291,6 @@ function readBootstrapFragment(hash: string): { bootstrap_secret: string; servic
 
 function formatTime(value: number): string {
   return new Date(value).toLocaleString("ko-KR", { hour12: false });
-}
-
-function runHeaderTitle(status: string | undefined, hasConversation: boolean): string {
-  if (status === "FAILED") {
-    return "실행 실패";
-  }
-  return hasConversation ? "대화 진행" : "새 요청";
-}
-
-function userRunStatus(status: string | undefined): string {
-  switch (status) {
-    case "WAITING_APPROVAL":
-      return "승인이 필요합니다.";
-    case "WAITING_CONFIRMATION":
-      return "추가 정보를 확인하고 있습니다.";
-    case "PLANNING":
-      return "요청을 검토하고 있습니다.";
-    case "RETRIEVING":
-      return "관련 자료를 확인하고 있습니다.";
-    case "VERIFYING":
-      return "작업 결과를 확인하고 있습니다.";
-    case "COMPLETED":
-    case "SUCCEEDED":
-      return "작업이 완료되었습니다.";
-    case "FAILED":
-      return "작업을 완료하지 못했습니다.";
-    case "RECOVERY_REQUIRED":
-      return "실제 결과를 확인해야 합니다.";
-    default:
-      return "작업을 처리하고 있습니다.";
-  }
 }
 
 function sameResourceRequestIdentity(
