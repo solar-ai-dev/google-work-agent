@@ -12,16 +12,20 @@ from threading import Lock
 from typing import Any, cast
 
 from langgraph.checkpoint.sqlite import SqliteSaver
-from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
 from google_work_agent.adapters.connectors import GoogleWorkspaceConnectorReader
+from google_work_agent.adapters.langgraph.graph_composition import (
+    GraphNodeBindings,
+    WorkflowGraphComposition,
+)
 from google_work_agent.adapters.langgraph.graph_state import (
     GraphState,
     _acquired_resource_by_handle,
     _require_state_value,
     _resource_handle_for_ref,
     _stored_resource_type_for_acquired_resource,
+    initial_graph_state,
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
@@ -489,8 +493,33 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 transition_run=self._transition_run,
                 merge_decision=self._merge_decision,
             ).build()
-        self._native_agent_subgraphs = self._native_subgraphs_for_profile()
         self._topology = self._topology_for_profile()
+        self._graph_composition = WorkflowGraphComposition(
+            profile=self._graph_profile,
+            topology=self._topology,
+            bindings=GraphNodeBindings(
+                request_understanding=self._request_subgraph,
+                acquisition=self._acquisition_subgraph,
+                context_retriever=self._context_subgraph,
+                work_analysis=self._analysis_subgraph,
+                planning=self._planning_subgraph,
+                review=self._review_subgraph,
+                single_workflow=self._single_workflow_subgraph,
+                domain_validation=self._domain_validation_node,
+                waiting_confirmation=self._waiting_confirmation_node,
+                waiting_approval=self._waiting_approval_node,
+                modify_review=self._modify_review_node,
+                action_execution=self._action_execution_node,
+                recovery=self._recovery_node,
+                finalize=self._finalize_node,
+                stage_one=self._three_stage_one_subgraph,
+                stage_two=self._three_stage_two_subgraph,
+                stage_three=self._three_stage_review_subgraph,
+            ),
+            route_next_node=self._route_next_node,
+            checkpointer=self._checkpointer,
+        )
+        self._native_agent_subgraphs = self._native_subgraphs_for_profile()
         self._graph = self._build_graph()
 
     def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
@@ -571,87 +600,17 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._checkpoint_connection.close()
 
     def _build_graph(self) -> Any:
-        graph = StateGraph(GraphState)
-        for name in self._topology:
-            graph.add_node(name, self._node_handler(name))
-        graph.add_node("domain_validation", self._domain_validation_node)
-        graph.add_node("waiting_confirmation", self._waiting_confirmation_node)
-        graph.add_node("waiting_approval", self._waiting_approval_node)
-        graph.add_node("modify_review", self._modify_review_node)
-        graph.add_node("action_execution", self._action_execution_node)
-        graph.add_node("recovery", self._recovery_node)
-        graph.add_node("finalize", self._finalize_node)
-        graph.add_edge(START, self._topology[0])
-        for name in (
-            *self._topology,
-            "domain_validation",
-            "waiting_confirmation",
-            "waiting_approval",
-            "modify_review",
-            "action_execution",
-            "recovery",
-            "finalize",
-        ):
-            graph.add_conditional_edges(name, self._route_next_node, self._edge_map())
-        return graph.compile(checkpointer=self._checkpointer)
+        return self._graph_composition.build()
 
     def _edge_map(self) -> dict[Hashable, str]:
-        edges: dict[Hashable, str] = {
-            "domain_validation": "domain_validation",
-            "waiting_confirmation": "waiting_confirmation",
-            "waiting_approval": "waiting_approval",
-            "modify_review": "modify_review",
-            "action_execution": "action_execution",
-            "recovery": "recovery",
-            "finalize": "finalize",
-            "end": END,
-        }
-        for name in self._topology:
-            edges[name] = name
-        return edges
+        return self._graph_composition.edge_map()
 
     def _initial_state(self, request: WorkflowStartRequest) -> GraphState:
-        return {
-            "schema_version": 1,
-            "run_id": request.run_id,
-            "conversation_id": request.conversation_id,
-            "thread_id": request.workflow_key,
-            "workflow_phase": WorkflowPhase.INITIALIZE.value,
-            "request_intent": None,
-            "source_fetch_plans": [],
-            "acquisition_result": None,
-            "context_result": None,
-            "analysis_result": None,
-            "answer_draft": None,
-            "plan_draft": None,
-            "plan_review": None,
-            "approved_plan_id": None,
-            "execution_summary": None,
-            "verification_summary": None,
-            "finalize_intent": None,
-            "user_interrupt": None,
-            "retry_budget": {
-                "schema_version": 1,
-                "profile": "NORMAL",
-                "llm_calls_used": 0,
-                "additional_acquisitions_used": 0,
-                "planning_revisions_used": 0,
-                "last_rechecked_planning_revision": 0,
-                "semantic_revision_signatures_used": [],
-            },
-            "prompt_context": {"graph_profile": self._graph_profile.value},
-            "trace_context": {
-                "agent_invocation_count": 0,
-                "llm_call_count": 0,
-                "repair_count": 0,
-                "revision_count": 0,
-                "agent_node_log": [],
-                "prompt_refs": [],
-            },
-            "__request__": request,
-            "__target__": self._topology[0],
-            "__logical_target__": self._topology[0],
-        }
+        return initial_graph_state(
+            request,
+            graph_profile=self._graph_profile,
+            initial_target=self._topology[0],
+        )
 
     def describe_topology(self) -> tuple[str, ...]:
         return self._topology
@@ -663,38 +622,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return self._route_translator.topology()
 
     def _node_handler(self, name: str) -> Any:
-        mapping = {
-            "request_understanding": self._request_subgraph,
-            "acquisition": self._acquisition_subgraph,
-            "context_retriever": self._context_subgraph,
-            "work_analysis": self._analysis_subgraph,
-            "planning": self._planning_subgraph,
-            "review": self._review_subgraph,
-            "single_workflow": self._single_workflow_subgraph,
-            "domain_validation": self._domain_validation_node,
-            "stage_one": self._three_stage_one_subgraph,
-            "stage_two": self._three_stage_two_subgraph,
-            "stage_three": self._three_stage_review_subgraph,
-        }
-        return mapping[name]
+        return self._graph_composition.node_handler(name)
 
     def _native_subgraphs_for_profile(self) -> dict[str, Any]:
-        if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE:
-            return {
-                "request_understanding": self._request_subgraph,
-                "acquisition": self._acquisition_subgraph,
-                "context_retriever": self._context_subgraph,
-                "work_analysis": self._analysis_subgraph,
-                "planning": self._planning_subgraph,
-                "review": self._review_subgraph,
-            }
-        if self._graph_profile is GraphProfile.THREE_STAGE:
-            return {
-                "stage_one": self._three_stage_one_subgraph,
-                "stage_two": self._three_stage_two_subgraph,
-                "stage_three": self._three_stage_review_subgraph,
-            }
-        return {"single_workflow": self._single_workflow_subgraph}
+        return self._graph_composition.native_subgraphs()
 
     def _domain_validation_node(self, state: GraphState) -> GraphState:
         plan_draft = _require_state_value(state["plan_draft"], "plan_draft")

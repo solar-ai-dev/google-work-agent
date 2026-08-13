@@ -13,6 +13,7 @@ from __future__ import annotations
 from json import dumps
 from typing import Final, NotRequired, cast
 
+from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.application.workflows import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
@@ -31,6 +32,7 @@ from google_work_agent.application.workflows import (
     SourcePlanningOutputV1,
     SufficiencyOutputV1,
     WorkAnalysisResultV1,
+    WorkflowPhase,
 )
 from google_work_agent.ports import (
     ResourceRefRecord,
@@ -73,6 +75,55 @@ REVIEW_MODE_KEY: Final = "__review_mode__"
 PROFILE_AGENT_LOCAL_KEY: Final = "__profile_agent_local__"
 PROFILE_REQUEST_SOURCE_OUTPUT_KEY: Final = "__profile_request_source_output__"
 PROFILE_REASON_PLAN_OUTPUT_KEY: Final = "__profile_reason_plan_output__"
+
+
+def initial_graph_state(
+    request: WorkflowStartRequest,
+    *,
+    graph_profile: GraphProfile,
+    initial_target: str,
+) -> GraphState:
+    return {
+        "schema_version": 1,
+        "run_id": request.run_id,
+        "conversation_id": request.conversation_id,
+        "thread_id": request.workflow_key,
+        "workflow_phase": WorkflowPhase.INITIALIZE.value,
+        "request_intent": None,
+        "source_fetch_plans": [],
+        "acquisition_result": None,
+        "context_result": None,
+        "analysis_result": None,
+        "answer_draft": None,
+        "plan_draft": None,
+        "plan_review": None,
+        "approved_plan_id": None,
+        "execution_summary": None,
+        "verification_summary": None,
+        "finalize_intent": None,
+        "user_interrupt": None,
+        "retry_budget": {
+            "schema_version": 1,
+            "profile": "NORMAL",
+            "llm_calls_used": 0,
+            "additional_acquisitions_used": 0,
+            "planning_revisions_used": 0,
+            "last_rechecked_planning_revision": 0,
+            "semantic_revision_signatures_used": [],
+        },
+        "prompt_context": {"graph_profile": graph_profile.value},
+        "trace_context": {
+            "agent_invocation_count": 0,
+            "llm_call_count": 0,
+            "repair_count": 0,
+            "revision_count": 0,
+            "agent_node_log": [],
+            "prompt_refs": [],
+        },
+        "__request__": request,
+        "__target__": initial_target,
+        "__logical_target__": initial_target,
+    }
 
 
 def _require_state_value[StateValueT](
