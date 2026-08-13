@@ -498,6 +498,30 @@ flowchart LR
 - Browser Storage와 Client State를 승인·실행 사실의 기준점으로 사용 금지
 - API Error·SSE Disconnect만으로 Domain 실패를 추정 금지
 
+#### 7.1.1 Frontend 내부 코드 조직
+
+React Frontend는 **feature-first(Feature Folder) 구조**를 사용한다. Bulletproof React의 feature ownership과 composition 원칙을 참고하되, 해당 프로젝트 구조를 그대로 복제하지 않는다. Feature-first 구조는 프로젝트 상황에 맞게 적용한다.
+
+```text
+frontend/src/
+├─ app/
+│  └─ App.tsx
+├─ features/
+│  ├─ conversation/
+│  ├─ gmail/
+│  ├─ tasks/
+│  ├─ calendar/
+│  └─ settings/
+├─ api/
+├─ styles/
+└─ test/
+```
+
+- `App.tsx`는 Composition Root다. Top-level layout, header·panel·tab composition, feature controller 생성·연결, global account/runtime/theme, OAuth·startup lifecycle, shared resource selection/focus/viewer, feature 간 callback 연결, top-level Conversation sidebar 조립을 소유한다.
+- Feature 전용 책임은 `features/<feature>/` 내부가 소유한다. Conversation은 Run/SSE 상태·orchestration과 전용 UI, Gmail은 browse/search/page/cache/count와 전용 UI, Tasks는 browse/materialization/sort/completed/cache/count와 전용 UI, Calendar는 month state/cache/prefetch/navigation/stale guard와 전용 UI, Settings는 settings/LLM/API key local state·API flow와 SettingsDrawer UI를 소유한다.
+- Feature 전용 state, API fetching, cache/pagination/prefetch/stale guard를 `App.tsx`에 다시 구현하지 않는다. Feature 간 조립은 App의 명시적 props/callback 연결을 기본으로 한다.
+- 단순 줄 수 감소를 목적으로 과도하게 파일을 분리하지 않는다. 실제 cross-feature 필요가 확인되기 전에는 새로운 global state management를 도입하지 않으며, 현재 `api/`, `styles/`, `test/` 구조는 유지할 수 있다.
+
 ### 7.2 FastAPI Route·Event Adapter
 
 책임:
