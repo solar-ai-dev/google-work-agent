@@ -7,42 +7,19 @@ import json
 import os
 import sqlite3
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
-from google_work_agent.ports import Clock, MaintenanceGate
-
-
-@dataclass(frozen=True, slots=True)
-class BackupManifestRecord:
-    backup_id: str
-    created_at_ms: int
-    release_version: str
-    database_schema_version: str
-    domain_contract_version: str
-    source_db_identity: str
-    backup_sha256: str
-    backup_size_bytes: int
-    quick_check_result: str
-    foreign_key_check_result: str
-
-
-@dataclass(frozen=True, slots=True)
-class BackupCreateResult:
-    backup: BackupManifestRecord
-    database_path: Path
-    manifest_path: Path
-
-
-@dataclass(frozen=True, slots=True)
-class RestorePlan:
-    backup: BackupManifestRecord
-    backup_path: Path
-    current_db_backup_required: bool
-    downgrade_blocked: bool
+from google_work_agent.ports import (
+    BackupCreateResult,
+    BackupManifestRecord,
+    Clock,
+    MaintenanceGate,
+    RestorePlan,
+)
 
 
 class BackupIdGenerator(Protocol):

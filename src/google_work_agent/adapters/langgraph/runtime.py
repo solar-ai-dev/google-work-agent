@@ -24,6 +24,7 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.route_translation import GraphRouteTranslator
 from google_work_agent.adapters.langgraph.subgraphs.acquisition import AcquisitionSubgraph
 from google_work_agent.adapters.langgraph.subgraphs.context_retrieval import (
     ContextRetrieverSubgraph,
@@ -198,6 +199,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._service_instance_id = service_instance_id
         self._checkpoint_database_path = checkpoint_database_path
         self._graph_profile = graph_profile
+        self._route_translator = GraphRouteTranslator(graph_profile)
         self._work_hours_provider = work_hours_provider or (
             lambda: CalendarWorkHours(timezone=(timezone_provider or (lambda: "Asia/Seoul"))())
         )
@@ -645,24 +647,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return self._graph_profile
 
     def _topology_for_profile(self) -> tuple[str, ...]:
-        if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE:
-            return (
-                "request_understanding",
-                "acquisition",
-                "context_retriever",
-                "work_analysis",
-                "planning",
-                "review",
-            )
-        if self._graph_profile is GraphProfile.THREE_STAGE:
-            return (
-                "stage_one",
-                "stage_two",
-                "stage_three",
-            )
-        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
-            return ("single_workflow",)
-        raise ValueError(f"unsupported graph profile: {self._graph_profile}")
+        return self._route_translator.topology()
 
     def _node_handler(self, name: str) -> Any:
         mapping = {
@@ -1419,169 +1404,13 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return merged
 
     def _logical_target_name(self, target: str) -> str:
-        if self._graph_profile is GraphProfile.SINGLE_BASELINE and target in {
-            SupervisorTarget.SOURCE_PLANNING.value,
-            SupervisorTarget.API_ACQUISITION.value,
-            SupervisorTarget.CONTEXT_RETRIEVAL.value,
-            SupervisorTarget.WORK_ANALYSIS.value,
-            SupervisorTarget.SOLUTION_PLANNING.value,
-            SupervisorTarget.PLAN_REVIEW_INSPECT.value,
-            SupervisorTarget.PLAN_REVIEW_RECHECK.value,
-            SupervisorTarget.PLANNING_REVISE_ANSWER.value,
-            SupervisorTarget.PLANNING_REVISE_PLAN.value,
-        }:
-            return "single_workflow"
-        if self._graph_profile is GraphProfile.THREE_STAGE and target in {
-            SupervisorTarget.SOURCE_PLANNING.value,
-            SupervisorTarget.API_ACQUISITION.value,
-        }:
-            return "stage_one"
-        if self._graph_profile is GraphProfile.THREE_STAGE and target in {
-            SupervisorTarget.CONTEXT_RETRIEVAL.value,
-            SupervisorTarget.WORK_ANALYSIS.value,
-            SupervisorTarget.SOLUTION_PLANNING.value,
-            SupervisorTarget.PLANNING_REVISE_ANSWER.value,
-            SupervisorTarget.PLANNING_REVISE_PLAN.value,
-        }:
-            return "stage_two"
-        if self._graph_profile is GraphProfile.THREE_STAGE and target in {
-            SupervisorTarget.PLAN_REVIEW_INSPECT.value,
-            SupervisorTarget.PLAN_REVIEW_RECHECK.value,
-        }:
-            return "stage_three"
-        if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE and target in {
-            SupervisorTarget.SOURCE_PLANNING.value,
-            SupervisorTarget.API_ACQUISITION.value,
-        }:
-            return "acquisition"
-        if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE:
-            six_logical_mapping = {
-                SupervisorTarget.CONTEXT_RETRIEVAL.value: "context_retriever",
-                SupervisorTarget.WORK_ANALYSIS.value: "work_analysis",
-                SupervisorTarget.SOLUTION_PLANNING.value: "planning",
-                SupervisorTarget.PLAN_REVIEW_INSPECT.value: "review",
-                SupervisorTarget.PLAN_REVIEW_RECHECK.value: "review",
-                SupervisorTarget.PLANNING_REVISE_ANSWER.value: "planning",
-                SupervisorTarget.PLANNING_REVISE_PLAN.value: "planning",
-            }
-            resolved = six_logical_mapping.get(target)
-            if resolved is not None:
-                return resolved
-        mapping = {
-            SupervisorTarget.SOURCE_PLANNING.value: "source_planning",
-            SupervisorTarget.API_ACQUISITION.value: "api_acquisition",
-            SupervisorTarget.CONTEXT_RETRIEVAL.value: "context_retrieval",
-            SupervisorTarget.WORK_ANALYSIS.value: "work_analysis",
-            SupervisorTarget.SOLUTION_PLANNING.value: "solution_planning",
-            SupervisorTarget.PLAN_REVIEW_INSPECT.value: "plan_review",
-            SupervisorTarget.PLAN_REVIEW_RECHECK.value: "plan_review",
-            SupervisorTarget.PLANNING_REVISE_ANSWER.value: "solution_planning",
-            SupervisorTarget.PLANNING_REVISE_PLAN.value: "solution_planning",
-            SupervisorTarget.DOMAIN_VALIDATION.value: "domain_validation",
-            SupervisorTarget.WAITING_CONFIRMATION.value: "waiting_confirmation",
-            SupervisorTarget.WAITING_APPROVAL.value: "waiting_approval",
-            SupervisorTarget.ACTION_EXECUTION.value: "action_execution",
-            SupervisorTarget.REAUTH.value: "end",
-            SupervisorTarget.RECOVERY.value: "recovery",
-            SupervisorTarget.FINALIZE.value: "finalize",
-        }
-        return mapping.get(target, "end")
+        return self._route_translator.translate(target).logical_target
 
     def _target_to_node(self, target: str) -> str:
-        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
-            single_mapping = {
-                SupervisorTarget.SOURCE_PLANNING.value: "single_workflow",
-                SupervisorTarget.API_ACQUISITION.value: "single_workflow",
-                SupervisorTarget.CONTEXT_RETRIEVAL.value: "single_workflow",
-                SupervisorTarget.WORK_ANALYSIS.value: "single_workflow",
-                SupervisorTarget.SOLUTION_PLANNING.value: "single_workflow",
-                SupervisorTarget.PLAN_REVIEW_INSPECT.value: "single_workflow",
-                SupervisorTarget.PLAN_REVIEW_RECHECK.value: "single_workflow",
-                SupervisorTarget.PLANNING_REVISE_ANSWER.value: "single_workflow",
-                SupervisorTarget.PLANNING_REVISE_PLAN.value: "single_workflow",
-                SupervisorTarget.DOMAIN_VALIDATION.value: "domain_validation",
-                SupervisorTarget.WAITING_CONFIRMATION.value: "waiting_confirmation",
-                SupervisorTarget.WAITING_APPROVAL.value: "waiting_approval",
-                SupervisorTarget.ACTION_EXECUTION.value: "action_execution",
-                SupervisorTarget.REAUTH.value: "end",
-                SupervisorTarget.RECOVERY.value: "recovery",
-                SupervisorTarget.FINALIZE.value: "finalize",
-            }
-            return single_mapping.get(target, "end")
-        if self._graph_profile is GraphProfile.THREE_STAGE:
-            three_stage_mapping = {
-                SupervisorTarget.SOURCE_PLANNING.value: "stage_one",
-                SupervisorTarget.API_ACQUISITION.value: "stage_two",
-                SupervisorTarget.CONTEXT_RETRIEVAL.value: "stage_two",
-                SupervisorTarget.WORK_ANALYSIS.value: "stage_two",
-                SupervisorTarget.SOLUTION_PLANNING.value: "stage_two",
-                SupervisorTarget.PLAN_REVIEW_INSPECT.value: "stage_three",
-                SupervisorTarget.PLAN_REVIEW_RECHECK.value: "stage_three",
-                SupervisorTarget.PLANNING_REVISE_ANSWER.value: "stage_two",
-                SupervisorTarget.PLANNING_REVISE_PLAN.value: "stage_two",
-                SupervisorTarget.DOMAIN_VALIDATION.value: "domain_validation",
-                SupervisorTarget.WAITING_CONFIRMATION.value: "waiting_confirmation",
-                SupervisorTarget.WAITING_APPROVAL.value: "waiting_approval",
-                SupervisorTarget.ACTION_EXECUTION.value: "action_execution",
-                SupervisorTarget.REAUTH.value: "end",
-                SupervisorTarget.RECOVERY.value: "recovery",
-                SupervisorTarget.FINALIZE.value: "finalize",
-            }
-            return three_stage_mapping.get(target, "end")
-        if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE:
-            six_stage_mapping = {
-                SupervisorTarget.SOURCE_PLANNING.value: "acquisition",
-                SupervisorTarget.API_ACQUISITION.value: "acquisition",
-                SupervisorTarget.CONTEXT_RETRIEVAL.value: "context_retriever",
-                SupervisorTarget.WORK_ANALYSIS.value: "work_analysis",
-                SupervisorTarget.SOLUTION_PLANNING.value: "planning",
-                SupervisorTarget.PLAN_REVIEW_INSPECT.value: "review",
-                SupervisorTarget.PLAN_REVIEW_RECHECK.value: "review",
-                SupervisorTarget.PLANNING_REVISE_ANSWER.value: "planning",
-                SupervisorTarget.PLANNING_REVISE_PLAN.value: "planning",
-                SupervisorTarget.DOMAIN_VALIDATION.value: "domain_validation",
-                SupervisorTarget.WAITING_CONFIRMATION.value: "waiting_confirmation",
-                SupervisorTarget.WAITING_APPROVAL.value: "waiting_approval",
-                SupervisorTarget.ACTION_EXECUTION.value: "action_execution",
-                SupervisorTarget.REAUTH.value: "end",
-                SupervisorTarget.RECOVERY.value: "recovery",
-                SupervisorTarget.FINALIZE.value: "finalize",
-            }
-            return six_stage_mapping.get(target, "end")
-        mapping = {
-            SupervisorTarget.SOURCE_PLANNING.value: "source_planning",
-            SupervisorTarget.API_ACQUISITION.value: "api_acquisition",
-            SupervisorTarget.CONTEXT_RETRIEVAL.value: "context_retrieval",
-            SupervisorTarget.WORK_ANALYSIS.value: "work_analysis",
-            SupervisorTarget.SOLUTION_PLANNING.value: "solution_planning",
-            SupervisorTarget.PLAN_REVIEW_INSPECT.value: "plan_review",
-            SupervisorTarget.PLAN_REVIEW_RECHECK.value: "plan_review",
-            SupervisorTarget.PLANNING_REVISE_ANSWER.value: "solution_planning",
-            SupervisorTarget.PLANNING_REVISE_PLAN.value: "solution_planning",
-            SupervisorTarget.DOMAIN_VALIDATION.value: "domain_validation",
-            SupervisorTarget.WAITING_CONFIRMATION.value: "waiting_confirmation",
-            SupervisorTarget.WAITING_APPROVAL.value: "waiting_approval",
-            SupervisorTarget.ACTION_EXECUTION.value: "action_execution",
-            SupervisorTarget.REAUTH.value: "end",
-            SupervisorTarget.RECOVERY.value: "recovery",
-            SupervisorTarget.FINALIZE.value: "finalize",
-        }
-        return mapping.get(target, "end")
+        return self._route_translator.translate(target).node
 
     def _confirmation_resume_target(self, interrupt_payload: dict[str, object]) -> str:
-        origin_target = cast(str | None, interrupt_payload.get("origin_target"))
-        if self._graph_profile is GraphProfile.THREE_STAGE and origin_target is not None:
-            if origin_target.startswith(("request_understanding.", "acquisition.")):
-                return "stage_one"
-            if origin_target.startswith(("context.", "analysis.", "planning.")):
-                return "stage_two"
-            if origin_target.startswith("review."):
-                return "stage_three"
-        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
-            return "single_workflow"
-        if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE:
-            return "acquisition"
-        return "source_planning"
+        return self._route_translator.confirmation_resume_target(interrupt_payload)
 
     def _request_from_state(self, state: GraphState) -> WorkflowStartRequest:
         return request_from_state(state)

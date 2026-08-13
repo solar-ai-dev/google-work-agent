@@ -7,12 +7,11 @@ from dataclasses import dataclass
 from functools import partial
 from math import ceil
 from pathlib import Path
-from typing import Literal, NotRequired, Required, TypedDict, cast
+from typing import Literal, cast
 
 import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.api_acquisition import AcquisitionResultV1
 from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
@@ -21,6 +20,17 @@ from google_work_agent.application.workflows.contracts import (
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
 )
+from google_work_agent.application.workflows.handoff_contracts import (
+    AcquisitionResultV1,
+    ClarificationQuestionV1,
+    ContextBundleV1,
+    ContextRetrievalResultV1,
+    ContextStatusValue,
+    EvidenceDraftV1,
+    EvidenceSelectionOutputV1,
+    RequestIntentV1,
+    SufficiencyOutputV1,
+)
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )
@@ -28,8 +38,6 @@ from google_work_agent.application.workflows.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.application.workflows.request_understanding import (
-    ClarificationQuestionV1,
-    RequestIntentV1,
     build_clarification_question_v1,
 )
 from google_work_agent.ports import (
@@ -39,65 +47,6 @@ from google_work_agent.ports import (
 )
 
 JsonObject = dict[str, object]
-ContextStatusValue = Literal[
-    "SUFFICIENT",
-    "NEEDS_MORE_DATA",
-    "NEEDS_CONFIRMATION",
-    "PARTIAL",
-    "BLOCKED",
-]
-
-
-class EvidenceDraftV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    evidence_id: str
-    resource_handle: str
-    segment_id: str
-    kind: str
-    excerpt: str
-    locator: dict[str, object] | None
-    reason_codes: list[str]
-
-
-class ContextBundleV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    resource_refs: list[dict[str, object]]
-    segment_refs: list[dict[str, object]]
-    evidence_refs: list[str]
-    normalized_context: list[dict[str, object]]
-    missing_information: list[str]
-    ambiguity: dict[str, object] | None
-
-
-class ContextRetrievalResultV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    status: ContextStatusValue
-    context_bundle: ContextBundleV1
-    evidence_drafts: list[EvidenceDraftV1]
-    selected_segment_ids: list[str]
-    excluded_resource_handles: list[str]
-    missing_slots: list[str]
-    additional_acquisition_request: AdditionalAcquisitionRequestV1 | None
-    sufficiency: dict[str, object]
-    llm_provider_result: NotRequired[dict[str, object]]
-
-
-class EvidenceSelectionOutputV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    result: Literal["SELECTED", "PARTIAL", "BLOCKED"]
-    selected_segment_ids: list[str]
-    evidence_drafts: list[EvidenceDraftV1]
-    excluded_resource_handles: list[str]
-    missing_information: list[str]
-    ambiguity: dict[str, object] | None
-
-
-class SufficiencyOutputV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    status: ContextStatusValue
-    sufficiency: dict[str, object]
-    missing_slots: list[str]
-    ambiguity: dict[str, object] | None
 
 
 @dataclass(frozen=True, slots=True)

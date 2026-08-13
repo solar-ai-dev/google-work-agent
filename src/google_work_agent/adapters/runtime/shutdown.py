@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
-from google_work_agent.ports import Clock
+from google_work_agent.ports import Clock, ShutdownReport
 
 
 class ShutdownPhase(StrEnum):
@@ -29,14 +28,6 @@ class ComponentShutdownPort(Protocol):
     def checkpoint_wal(self) -> None: ...
     def close(self) -> None: ...
     def invalidate_all(self) -> None: ...
-
-
-@dataclass(frozen=True, slots=True)
-class ShutdownReport:
-    phase: str
-    status: str
-    duration_ms: int
-    safe_error_codes: tuple[str, ...]
 
 
 class GracefulShutdownCoordinator:

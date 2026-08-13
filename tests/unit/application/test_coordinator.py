@@ -117,7 +117,11 @@ def test_workflow_outcome_failed_persists_run_status_not_only_an_sse_event(
         connection.close()
 
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    query_service = QueryService(database_path=database_path, runtime_status_provider=None)  # type: ignore[arg-type]
+    query_service = QueryService(
+        database_path=database_path,
+        connection_factory=connect_sqlite,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    )
 
     runtime = FakeWorkflowRuntime()
     runtime.queue_result(
@@ -211,7 +215,11 @@ def test_workflow_runtime_raising_persists_run_status_not_only_an_sse_event(
         connection.close()
 
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    query_service = QueryService(database_path=database_path, runtime_status_provider=None)  # type: ignore[arg-type]
+    query_service = QueryService(
+        database_path=database_path,
+        connection_factory=connect_sqlite,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    )
 
     runtime = FakeWorkflowRuntime()
     runtime.queue_failure(WorkflowFailure(message="structured output did not satisfy schema"))
@@ -327,7 +335,11 @@ def test_workflow_runtime_raising_after_internal_transition_still_persists_faile
         connection.close()
 
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    query_service = QueryService(database_path=database_path, runtime_status_provider=None)  # type: ignore[arg-type]
+    query_service = QueryService(
+        database_path=database_path,
+        connection_factory=connect_sqlite,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    )
 
     runtime = _VersionAdvancingThenFailingRuntime(database_path)
     coordinator = LocalRunCoordinator(

@@ -11,12 +11,17 @@ from typing import Literal, Required, TypedDict, cast
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.context_retrieval import (
-    ContextRetrievalResultV1,
     validate_context_retrieval_result_v1,
+)
+from google_work_agent.application.workflows.handoff_contracts import (
+    ActionPlanDraftV1,
+    AnswerDraftV1,
+    ContextRetrievalResultV1,
+    PlanReviewResultV1,
+    WorkAnalysisResultV1,
 )
 from google_work_agent.application.workflows.plan_review import (
     PLAN_REVIEW_OUTPUT_SCHEMA,
-    PlanReviewResultV1,
     load_plan_review_inspect_prompt_reference,
     validate_plan_review_result_v1,
 )
@@ -33,8 +38,6 @@ from google_work_agent.application.workflows.prompt_registry import (
 from google_work_agent.application.workflows.solution_planning import (
     ACTION_PLAN_DRAFT_OUTPUT_SCHEMA,
     ANSWER_DRAFT_OUTPUT_SCHEMA,
-    ActionPlanDraftV1,
-    AnswerDraftV1,
     load_solution_planning_answer_only_prompt_reference,
     load_solution_planning_draft_plan_prompt_reference,
     validate_action_plan_draft_v1,
@@ -42,7 +45,6 @@ from google_work_agent.application.workflows.solution_planning import (
 )
 from google_work_agent.application.workflows.work_analysis import (
     WORK_ANALYSIS_OUTPUT_SCHEMA,
-    WorkAnalysisResultV1,
     load_work_analysis_analyze_prompt_reference,
     validate_work_analysis_result_v1,
 )

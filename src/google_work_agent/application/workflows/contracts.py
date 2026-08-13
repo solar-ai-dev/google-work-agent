@@ -6,18 +6,16 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Literal, NotRequired, Required, TypedDict, cast
 
 if TYPE_CHECKING:
-    from google_work_agent.application.workflows.api_acquisition import (
+    from google_work_agent.application.workflows.handoff_contracts import (
         AcquisitionResultV1,
-        SourceFetchPlanV1,
-    )
-    from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
-    from google_work_agent.application.workflows.plan_review import PlanReviewResultV1
-    from google_work_agent.application.workflows.request_understanding import RequestIntentV1
-    from google_work_agent.application.workflows.solution_planning import (
         ActionPlanDraftV1,
         AnswerDraftV1,
+        ContextRetrievalResultV1,
+        PlanReviewResultV1,
+        RequestIntentV1,
+        SourceFetchPlanV1,
+        WorkAnalysisResultV1,
     )
-    from google_work_agent.application.workflows.work_analysis import WorkAnalysisResultV1
 
 
 class BudgetProfile(StrEnum):

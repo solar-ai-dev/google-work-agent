@@ -3,14 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 
-from google_work_agent.ports import LLMCredentialState, SecretStore
-
-
-class CredentialStorageMode(StrEnum):
-    KEYRING = "KEYRING"
-    SESSION_MEMORY = "SESSION_MEMORY"
+from google_work_agent.ports import CredentialStorageMode, LLMCredentialState, SecretStore
 
 
 class SessionMemorySecretStore:

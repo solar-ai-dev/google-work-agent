@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, time, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Literal, Required, TypedDict, cast
+from typing import Literal, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import google_work_agent.application.workflows._schema_support as _schema
@@ -21,6 +21,20 @@ from google_work_agent.application.workflows.contracts import (
     GraphStateUpdateV1,
     WorkflowPhase,
 )
+from google_work_agent.application.workflows.handoff_contracts import (
+    AcquisitionResultV1,
+    CalendarReadMode,
+    ClarificationQuestionV1,
+    Daypart,
+    RelativeUnit,
+    RequestIntentV1,
+    SourceFetchPlanV1,
+    SourceName,
+    SourcePlanningOutputV1,
+    TemporalQueryV1,
+    TemporalRelation,
+    Weekday,
+)
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )
@@ -28,8 +42,6 @@ from google_work_agent.application.workflows.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.application.workflows.request_understanding import (
-    ClarificationQuestionV1,
-    RequestIntentV1,
     build_clarification_question_v1,
 )
 from google_work_agent.ports import (
@@ -48,81 +60,8 @@ from google_work_agent.ports import (
 )
 
 JsonObject = dict[str, object]
-SourceName = Literal["GMAIL", "TASKS", "CALENDAR"]
-CalendarReadMode = Literal["EVENTS_ONLY", "EVENTS_AND_FREEBUSY"]
-TemporalRelation = Literal["RELATIVE", "ABSOLUTE"]
-RelativeUnit = Literal["DAY", "WEEK"]
-Weekday = Literal["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-Daypart = Literal["MORNING", "AFTERNOON", "EVENING"]
 
 DEFAULT_TIMEZONE = "Asia/Seoul"
-
-
-class TemporalQueryV1(TypedDict):
-    """Typed Calendar time-window proposal.
-
-    See docs/05-context-retrieval.md section 8, "Calendar Typed Query 계약".
-
-    The Acquisition Planning LLM only chooses among these closed enum
-    values -- it never computes RFC3339 itself. Deterministic code (see
-    ``_resolve_temporal_query``) is the only thing that applies "now",
-    timezone, weekday, and daypart arithmetic to turn this into a
-    ``TimeRange``.
-    """
-
-    schema_version: Required[Literal[1]]
-    relation: TemporalRelation
-    relative_unit: RelativeUnit | None
-    relative_offset: int | None
-    weekday: Weekday | None
-    daypart: Daypart | None
-    absolute_start: str | None
-    absolute_end: str | None
-
-
-class SourceFetchPlanV1(TypedDict):
-    schema_version: Required[Literal[2]]
-    source: SourceName
-    priority: int
-    reason_codes: list[str]
-    constraints: dict[str, object]
-    page_size: int
-    max_pages: int
-    max_candidates: int
-    detail_limit: int
-    required: bool
-    # CALENDAR-only typed fields (docs/05 section 8 (Calendar Typed Query 계약)). Required by schema
-    # for every source (null for GMAIL/TASKS) so every plan entry has a
-    # uniform shape; semantic validation enforces they are only meaningful
-    # for CALENDAR.
-    calendar_read_mode: CalendarReadMode | None
-    temporal_query: TemporalQueryV1 | None
-
-
-class SourcePlanningOutputV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    result: Literal["PLAN_READY", "NO_FETCH_NEEDED", "NEEDS_CONFIRMATION", "BLOCKED"]
-    source_fetch_plans: list[SourceFetchPlanV1]
-    clarification: dict[str, object] | None
-    failure: dict[str, object] | None
-    validator_codes: list[str]
-    llm_provider_result: dict[str, object]
-
-
-class AcquisitionResultV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    status: Literal[
-        "COMPLETE",
-        "PARTIAL",
-        "AUTH_REQUIRED",
-        "RATE_LIMITED",
-        "BUDGET_EXHAUSTED",
-        "FAILED",
-    ]
-    resource_handles: list[str]
-    source_summaries: list[dict[str, object]]
-    missing_slots: list[str]
-    remaining_budget: dict[str, int]
 
 
 @dataclass(frozen=True, slots=True)

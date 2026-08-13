@@ -5,16 +5,27 @@ from __future__ import annotations
 import copy
 from functools import partial
 from pathlib import Path
-from typing import Final, Literal, NotRequired, Required, TypedDict, cast
+from typing import Final, TypedDict, cast
 
 import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
 from google_work_agent.application.workflows.contracts import (
     GraphStateUpdateV1,
     PlanningResult,
     WorkflowPhase,
+)
+from google_work_agent.application.workflows.handoff_contracts import (
+    ActionDraftV1,
+    ActionEffectValue,
+    ActionPlanDraftV1,
+    AnswerDraftStatusValue,
+    AnswerDraftV1,
+    ClarificationQuestionV1,
+    ContextRetrievalResultV1,
+    PlanDraftStatusValue,
+    RequestIntentV1,
+    WorkAnalysisResultV1,
 )
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
@@ -23,14 +34,11 @@ from google_work_agent.application.workflows.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.application.workflows.request_understanding import (
-    ClarificationQuestionV1,
-    RequestIntentV1,
     build_clarification_question_v1,
 )
 from google_work_agent.application.workflows.task_write_semantics import (
     normalize_task_write_arguments,
 )
-from google_work_agent.application.workflows.work_analysis import WorkAnalysisResultV1
 from google_work_agent.domain import (
     EffectType,
     EvidencePolicyInput,
@@ -47,51 +55,6 @@ from google_work_agent.ports import (
 )
 
 JsonObject = dict[str, object]
-AnswerDraftStatusValue = Literal["ANSWER_ONLY", "NEEDS_CONFIRMATION", "BLOCKED"]
-PlanDraftStatusValue = Literal["PLAN_READY", "NEEDS_CONFIRMATION", "BLOCKED"]
-ActionEffectValue = Literal["READ", "CREATE", "UPDATE", "SEND", "DELETE"]
-
-
-class AnswerDraftV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    status: AnswerDraftStatusValue
-    answer: str
-    evidence_refs: list[str]
-    resource_refs: list[dict[str, object]]
-    reason_codes: list[str]
-    confirmation: dict[str, object] | None
-    blockers: list[str]
-    llm_provider_result: NotRequired[dict[str, object]]
-
-
-class ActionDraftV1(TypedDict):
-    schema_version: Required[Literal[2]]
-    action_id: str
-    position: int
-    effect: ActionEffectValue
-    tool_name: str
-    arguments: dict[str, object]
-    expected: dict[str, object]
-    evidence_refs: list[str]
-    resource_refs: list[str]
-    target_resource_ref_id: str | None
-    depends_on_action_ids: list[str]
-    user_visible_reason: str
-
-
-class ActionPlanDraftV1(TypedDict):
-    schema_version: Required[Literal[2]]
-    status: PlanDraftStatusValue
-    plan_id: str
-    summary: str
-    objective: str
-    actions: list[ActionDraftV1]
-    evidence_refs: list[str]
-    resource_refs: list[dict[str, object]]
-    confirmation: dict[str, object] | None
-    llm_provider_result: NotRequired[dict[str, object]]
-
-
 ANSWER_DRAFT_SCHEMA_VERSION: Final = 1
 ACTION_PLAN_DRAFT_SCHEMA_VERSION: Final = 2
 ACTION_DRAFT_SCHEMA_VERSION: Final = 2

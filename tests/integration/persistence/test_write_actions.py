@@ -2125,6 +2125,7 @@ def test_executed_cancel_moves_run_to_verifying_without_cancelling_result(
     assert finalized.result_kind is None
     snapshot = QueryService(
         database_path=write_database,
+        connection_factory=connect_sqlite,
         runtime_status_provider=None,  # type: ignore[arg-type]
     ).get_run_snapshot("run-1")
     assert snapshot is not None
@@ -2239,6 +2240,7 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
     assert finalized.result_kind == "PARTIAL"
     snapshot = QueryService(
         database_path=write_database,
+        connection_factory=connect_sqlite,
         runtime_status_provider=None,  # type: ignore[arg-type]
     ).get_run_snapshot("run-1")
     assert snapshot is not None
@@ -2328,6 +2330,7 @@ def test_unknown_result_cancel_enters_recovery_without_blind_retry(
     assert finalized.run_status == "RECOVERY_REQUIRED"
     snapshot = QueryService(
         database_path=write_database,
+        connection_factory=connect_sqlite,
         runtime_status_provider=None,  # type: ignore[arg-type]
     ).get_run_snapshot("run-1")
     assert snapshot is not None
@@ -2378,6 +2381,7 @@ def test_non_success_terminal_action_with_cancelled_sibling_is_not_partial(
     assert result.result_kind == "CANCELLED"
     snapshot = QueryService(
         database_path=write_database,
+        connection_factory=connect_sqlite,
         runtime_status_provider=None,  # type: ignore[arg-type]
     ).get_run_snapshot("run-1")
     assert snapshot is not None
@@ -2651,6 +2655,7 @@ def test_failed_cancel_audit_marker_does_not_authorize_verifying_continuation(
 
     query_service = QueryService(
         database_path=write_database,
+        connection_factory=connect_sqlite,
         runtime_status_provider=None,  # type: ignore[arg-type]
     )
     assert query_service.has_cancel_intent("run-1") is False
@@ -2883,6 +2888,7 @@ def test_action_risk_round_trips_through_repository_and_run_snapshot(
     assert ready[0].risk == risk
     snapshot = QueryService(
         database_path=write_database,
+        connection_factory=connect_sqlite,
         runtime_status_provider=None,  # type: ignore[arg-type]
     ).get_run_snapshot("run-1")
     assert snapshot is not None

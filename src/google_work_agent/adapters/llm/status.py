@@ -29,6 +29,9 @@ class LLMRuntimeStatusService:
     approved_models: dict[str, ApprovedModelInfo]
     runtime_policy: RuntimePolicy
 
+    def get_approved_model(self, model_id: str) -> ApprovedModelInfo | None:
+        return self.approved_models.get(model_id)
+
     def get_runtime_status(self, settings: AppSettings) -> dict[str, object]:
         requested_mode = RequestedRuntimeMode(settings.requested_runtime_mode)
         credential_state = self.credential_service.describe_state()

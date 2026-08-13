@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from functools import partial
 from pathlib import Path
-from typing import Final, Literal, NotRequired, Required, TypedDict, cast
+from typing import Final, Literal, TypedDict, cast
 
 import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
 from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
@@ -18,6 +17,26 @@ from google_work_agent.application.workflows.contracts import (
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
 )
+from google_work_agent.application.workflows.handoff_contracts import (
+    ActionPlanDraftV1,
+    AnswerDraftV1,
+    ClarificationQuestionV1,
+    ContextRetrievalResultV1,
+    PlanReviewResultV1,
+    PolicyReviewContextV1,
+    RequestIntentV1,
+    ReviewIssueV1,
+    ReviewStatusValue,
+    ReviewTargetValue,
+    ToolPolicySummaryV1,
+    WorkAnalysisResultV1,
+)
+from google_work_agent.application.workflows.handoff_contracts import (
+    EvidencePolicySummaryV1 as EvidencePolicySummaryV1,
+)
+from google_work_agent.application.workflows.handoff_contracts import (
+    RecheckStatusValue as RecheckStatusValue,
+)
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )
@@ -25,15 +44,8 @@ from google_work_agent.application.workflows.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.application.workflows.request_understanding import (
-    ClarificationQuestionV1,
-    RequestIntentV1,
     build_clarification_question_v1,
 )
-from google_work_agent.application.workflows.solution_planning import (
-    ActionPlanDraftV1,
-    AnswerDraftV1,
-)
-from google_work_agent.application.workflows.work_analysis import WorkAnalysisResultV1
 from google_work_agent.domain import SignedToolRegistry, build_p0_tool_registry
 from google_work_agent.ports import (
     OutputSchemaDefinition,
@@ -45,60 +57,6 @@ from google_work_agent.ports import (
 )
 
 JsonObject = dict[str, object]
-ReviewStatusValue = Literal["PASS", "REVISE", "RETRIEVE_MORE", "CONFIRM", "BLOCK"]
-RecheckStatusValue = Literal["PASS", "BLOCK"]
-ReviewTargetValue = Literal["ANSWER", "PLAN"]
-
-
-class ReviewIssueV1(TypedDict):
-    schema_version: Required[Literal[2]]
-    issue_id: str
-    kind: str
-    message: str
-    affected_action_ids: list[str]
-    affected_field_paths: list[str]
-    evidence_refs: list[str]
-    resource_refs: list[str]
-    reason_codes: list[str]
-
-
-class PlanReviewResultV1(TypedDict):
-    schema_version: Required[Literal[2]]
-    status: ReviewStatusValue
-    summary: str
-    issues: list[ReviewIssueV1]
-    confirmation: dict[str, object] | None
-    blockers: list[str]
-    additional_acquisition_request: AdditionalAcquisitionRequestV1 | None
-    llm_provider_result: NotRequired[dict[str, object]]
-
-
-class ToolPolicySummaryV1(TypedDict):
-    tool_name: str
-    effect_type: str
-    approval_requirement: str
-    verification_policy: str
-    recovery_policy: str
-    scope: str
-    retryable: bool
-    input_schema_version: str
-    output_schema_version: str
-    registry_version: str
-    tool_schema_hash: str
-
-
-class EvidencePolicySummaryV1(TypedDict):
-    minimum_evidence_per_action: int
-    update_targeting_requirements: list[str]
-
-
-class PolicyReviewContextV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    tool_registry_version: str
-    tool_policies: list[ToolPolicySummaryV1]
-    evidence_policy: EvidencePolicySummaryV1
-
-
 PLAN_REVIEW_SCHEMA_VERSION: Final = 2
 REVIEW_ISSUE_SCHEMA_VERSION: Final = 2
 POLICY_REVIEW_CONTEXT_SCHEMA_VERSION: Final = 1

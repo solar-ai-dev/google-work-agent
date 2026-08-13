@@ -5,16 +5,30 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Protocol
 
-from google_work_agent.adapters.runtime import (
+from google_work_agent.ports import (
     AppSettings,
     BackupCreateResult,
-    BackupService,
+    BackupManifestRecord,
     RestorePlan,
-    RestorePlanner,
     SettingsPatch,
-    SettingsService,
     ShutdownReport,
 )
+
+
+class SettingsStore(Protocol):
+    def get(self) -> AppSettings: ...
+
+    def patch(self, patch: SettingsPatch) -> AppSettings: ...
+
+
+class BackupManager(Protocol):
+    def create_backup(self) -> BackupCreateResult: ...
+
+    def list_backups(self) -> tuple[BackupManifestRecord, ...]: ...
+
+
+class RestorePlanFactory(Protocol):
+    def create_plan(self, backup_id: str) -> RestorePlan: ...
 
 
 class ShutdownCoordinator(Protocol):
@@ -23,7 +37,7 @@ class ShutdownCoordinator(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class GetSettingsService:
-    service: SettingsService
+    service: SettingsStore
 
     def __call__(self) -> AppSettings:
         return self.service.get()
@@ -31,7 +45,7 @@ class GetSettingsService:
 
 @dataclass(frozen=True, slots=True)
 class PatchSettingsService:
-    service: SettingsService
+    service: SettingsStore
 
     def __call__(self, patch: SettingsPatch) -> AppSettings:
         return self.service.patch(patch)
@@ -39,7 +53,7 @@ class PatchSettingsService:
 
 @dataclass(frozen=True, slots=True)
 class CreateBackupService:
-    service: BackupService
+    service: BackupManager
 
     def __call__(self) -> BackupCreateResult:
         return self.service.create_backup()
@@ -47,7 +61,7 @@ class CreateBackupService:
 
 @dataclass(frozen=True, slots=True)
 class ListBackupsService:
-    service: BackupService
+    service: BackupManager
 
     def __call__(self) -> tuple[dict[str, object], ...]:
         return tuple(asdict(item) for item in self.service.list_backups())
@@ -55,7 +69,7 @@ class ListBackupsService:
 
 @dataclass(frozen=True, slots=True)
 class CreateRestorePlanService:
-    service: RestorePlanner
+    service: RestorePlanFactory
 
     def __call__(self, backup_id: str) -> RestorePlan:
         return self.service.create_plan(backup_id)

@@ -8,12 +8,9 @@ from enum import StrEnum
 from typing import TypedDict, cast
 
 from google_work_agent.application.workflows.api_acquisition import (
-    AcquisitionResultV1,
-    SourcePlanningOutputV1,
     build_source_planning_clarification_question,
 )
 from google_work_agent.application.workflows.context_retrieval import (
-    ContextRetrievalResultV1,
     build_context_clarification_question,
 )
 from google_work_agent.application.workflows.contracts import (
@@ -33,6 +30,18 @@ from google_work_agent.application.workflows.contracts import (
     approve_review_recheck,
     validate_finalize_intent_v1,
 )
+from google_work_agent.application.workflows.handoff_contracts import (
+    AcquisitionResultV1,
+    ActionPlanDraftV1,
+    AnswerDraftV1,
+    ClarificationQuestionV1,
+    ContextRetrievalResultV1,
+    PlanReviewResultV1,
+    RequestIntentV1,
+    RequestUnderstandingOutputV1,
+    SourcePlanningOutputV1,
+    WorkAnalysisResultV1,
+)
 from google_work_agent.application.workflows.insufficient_data import (
     InsufficientDataContext,
     InsufficientDataDisposition,
@@ -41,25 +50,18 @@ from google_work_agent.application.workflows.insufficient_data import (
     decide_insufficient_data,
 )
 from google_work_agent.application.workflows.plan_review import (
-    PlanReviewResultV1,
     build_plan_review_clarification_question,
     resolve_review_target,
 )
 from google_work_agent.application.workflows.request_understanding import (
-    ClarificationQuestionV1,
-    RequestIntentV1,
-    RequestUnderstandingOutputV1,
     build_user_interrupt_v1,
     validate_clarification_question_v1,
     validate_request_intent_v1,
 )
 from google_work_agent.application.workflows.solution_planning import (
-    ActionPlanDraftV1,
-    AnswerDraftV1,
     build_solution_planning_clarification_question,
 )
 from google_work_agent.application.workflows.work_analysis import (
-    WorkAnalysisResultV1,
     build_work_analysis_clarification_question,
 )
 

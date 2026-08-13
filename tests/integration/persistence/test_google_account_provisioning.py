@@ -17,7 +17,9 @@ def _fresh_query_service(tmp_path: Path) -> tuple[QueryService, Path]:
         connection.close()
     return (
         QueryService(
-            database_path=database_path, runtime_status_provider=_UnusedRuntimeStatusProvider()
+            database_path=database_path,
+            connection_factory=connect_sqlite,
+            runtime_status_provider=_UnusedRuntimeStatusProvider(),
         ),
         database_path,
     )

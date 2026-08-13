@@ -629,6 +629,7 @@ def build_container(
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
     query_service = QueryService(
         database_path=database_path,
+        connection_factory=connect_sqlite,
         runtime_status_provider=runtime_status_provider,
     )
     try:

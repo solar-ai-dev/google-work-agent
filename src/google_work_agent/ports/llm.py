@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
+from google_work_agent.ports.runtime_contracts import AppSettings
+
 
 class RequestedRuntimeMode(StrEnum):
     API_LLM = "API_LLM"
@@ -29,6 +31,11 @@ class LLMCredentialState(StrEnum):
     KEYRING = "KEYRING"
     SESSION_MEMORY = "SESSION_MEMORY"
     UNAVAILABLE = "UNAVAILABLE"
+
+
+class CredentialStorageMode(StrEnum):
+    KEYRING = "KEYRING"
+    SESSION_MEMORY = "SESSION_MEMORY"
 
 
 class AvailabilityState(StrEnum):
@@ -365,3 +372,24 @@ class OllamaRuntimeProbe(Protocol):
 class LLMRuntimeRouter(Protocol):
     def decide(self, request: RouteDecisionInput) -> RouteDecision:
         """Choose one primary runtime and fallback policy."""
+
+
+class LLMCredentialStore(Protocol):
+    def describe_state(self) -> LLMCredentialState: ...
+
+    def store(
+        self,
+        *,
+        api_key: str,
+        mode: CredentialStorageMode,
+    ) -> LLMCredentialState: ...
+
+    def read_secret(self) -> str | None: ...
+
+    def delete(self) -> LLMCredentialState: ...
+
+
+class LLMRuntimeStatusReader(Protocol):
+    def get_runtime_status(self, settings: AppSettings) -> dict[str, object]: ...
+
+    def get_approved_model(self, model_id: str) -> ApprovedModelInfo | None: ...

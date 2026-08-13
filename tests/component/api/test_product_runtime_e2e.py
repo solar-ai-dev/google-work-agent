@@ -271,6 +271,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
     )
     query_service = QueryService(
         database_path=database_path,
+        connection_factory=connect_sqlite,
         runtime_status_provider=status_provider,
     )
     publisher = InMemoryRunEventPublisher(service_instance_id="svc-product", capacity_per_run=32)

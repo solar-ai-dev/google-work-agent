@@ -11,26 +11,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from google_work_agent.adapters.llm import (
-    CredentialStorageMode,
-    DeterministicLLMRuntimeRouter,
-    LLMCredentialService,
-    LLMRuntimeStatusService,
-    validate_output_schema,
-)
-from google_work_agent.adapters.runtime.settings import AppSettings
 from google_work_agent.application.observability import (
     ObservabilityContext,
     Severity,
 )
+from google_work_agent.application.schema_validation import validate_output_schema
 from google_work_agent.ports import (
     ActualRuntime,
     ApprovedModelInfo,
+    AppSettings,
     AvailabilityState,
+    CredentialStorageMode,
     HardwareCapability,
     HardwareCapabilityStatus,
+    LLMCredentialStore,
     LLMErrorCode,
     LLMInvocationError,
+    LLMRuntimeRouter,
+    LLMRuntimeStatusReader,
     OutputSchemaDefinition,
     ProbeResult,
     PromptReference,
@@ -127,11 +125,11 @@ class NullLLMEventRecorder:
 @dataclass
 class LLMRuntimeService:
     settings_service: Callable[[], AppSettings]
-    status_service: LLMRuntimeStatusService
-    credential_service: LLMCredentialService
+    status_service: LLMRuntimeStatusReader
+    credential_service: LLMCredentialStore
     api_provider: StructuredLLMProvider
     ollama_provider_factory: Callable[[ApprovedModelInfo, AppSettings], StructuredLLMProvider]
-    router: DeterministicLLMRuntimeRouter
+    router: LLMRuntimeRouter
     runtime_policy: RuntimePolicy
     event_recorder: LLMEventRecorder = NullLLMEventRecorder()
     schema_repairer: SchemaRepairer | None = None
@@ -231,7 +229,7 @@ class LLMRuntimeService:
         status = self.status_service.get_runtime_status(settings)
         api_provider_summary = cast(dict[str, object], status["api_provider"])
         ollama_summary = cast(dict[str, object], status["ollama"])
-        approved_model = self.status_service.approved_models.get(settings.approved_model_id or "")
+        approved_model = self.status_service.get_approved_model(settings.approved_model_id or "")
         hardware_capability = _hardware_from_dict(ollama_summary["hardware_capability"])
         decision = self.router.decide(
             RouteDecisionInput(
@@ -361,7 +359,7 @@ class LLMRuntimeService:
         requested_mode = RequestedRuntimeMode(settings.requested_runtime_mode)
         status = self.status_service.get_runtime_status(settings)
         ollama_summary = cast(dict[str, object], status["ollama"])
-        approved_model = self.status_service.approved_models.get(settings.approved_model_id or "")
+        approved_model = self.status_service.get_approved_model(settings.approved_model_id or "")
         hardware_capability = _hardware_from_dict(ollama_summary["hardware_capability"])
         provider = self._resolve_provider(
             runtime=ActualRuntime.LOCAL_GPU,
@@ -990,11 +988,7 @@ def _build_repair_input(
     """Shared repair-input shape for both the free-JSON and tool-calling repair boundaries."""
 
     affected_field_paths = sorted(
-        {
-            path
-            for message in validator_errors
-            if (path := _leading_json_path(message)) is not None
-        }
+        {path for message in validator_errors if (path := _leading_json_path(message)) is not None}
     )
     return {
         "schema_version": 1,
@@ -1091,7 +1085,7 @@ class PromptRepairToolCallRepairer:
 
 @dataclass(frozen=True, slots=True)
 class GetLLMConnectionService:
-    runtime_status_service: LLMRuntimeStatusService
+    runtime_status_service: LLMRuntimeStatusReader
     settings_service: Callable[[], AppSettings]
 
     def __call__(self) -> dict[str, object]:
@@ -1100,7 +1094,7 @@ class GetLLMConnectionService:
 
 @dataclass(frozen=True, slots=True)
 class StoreLLMApiKeyService:
-    credential_service: LLMCredentialService
+    credential_service: LLMCredentialStore
 
     def __call__(self, *, api_key: str, storage_mode: CredentialStorageMode) -> dict[str, str]:
         state = self.credential_service.store(api_key=api_key, mode=storage_mode)
@@ -1109,7 +1103,7 @@ class StoreLLMApiKeyService:
 
 @dataclass(frozen=True, slots=True)
 class DeleteLLMApiKeyService:
-    credential_service: LLMCredentialService
+    credential_service: LLMCredentialStore
 
     def __call__(self) -> dict[str, str]:
         state = self.credential_service.delete()

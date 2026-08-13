@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 from pathlib import Path
-from typing import Final, Literal, NotRequired, Required, TypedDict, cast
+from typing import Final, Literal, cast
 
 import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
@@ -20,6 +20,26 @@ from google_work_agent.application.workflows.contracts import (
     validate_confirmation_response_v1,
     validate_user_interrupt_v1,
 )
+from google_work_agent.application.workflows.handoff_contracts import (
+    ClarificationOptionV1,
+    ClarificationQuestionV1,
+    RequestIntentAmbiguityItemV1,
+    RequestIntentAmbiguityV1,
+    RequestIntentGoalV1,
+    RequestIntentPeopleConstraintV1,
+    RequestIntentResponseDispositionValue,
+    RequestIntentSemanticConstraintsV1,
+    RequestIntentSourceConstraintV1,
+    RequestIntentStatusConstraintV1,
+    RequestIntentTimeConstraintV1,
+    RequestIntentTopicConstraintV1,
+    RequestIntentUnsupportedScopeV1,
+    RequestIntentV1,
+    RequestUnderstandingOutputV1,
+)
+from google_work_agent.application.workflows.handoff_contracts import (
+    RequestUnderstandingFailureV1 as RequestUnderstandingFailureV1,
+)
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )
@@ -34,122 +54,6 @@ from google_work_agent.ports import (
 )
 
 JsonObject = dict[str, object]
-
-
-class ClarificationOptionV1(TypedDict):
-    option_id: str
-    label: str
-
-
-class RequestIntentGoalV1(TypedDict):
-    summary: str
-    user_visible_objective: str
-
-
-class RequestIntentTopicConstraintV1(TypedDict):
-    text: str
-    source_text: str
-
-
-class RequestIntentPeopleConstraintV1(TypedDict):
-    mention: str
-    role_hint: str | None
-    source_text: str
-
-
-class RequestIntentTimeConstraintV1(TypedDict):
-    mention: str
-    granularity_hint: Literal["DATE", "DATETIME", "RANGE", "RELATIVE", "UNKNOWN"]
-    source_text: str
-
-
-class RequestIntentSourceConstraintV1(TypedDict):
-    source: Literal["GMAIL", "TASKS", "CALENDAR", "UNKNOWN"]
-    mention: str
-    confidence: Literal["HIGH", "MEDIUM", "LOW"]
-
-
-class RequestIntentStatusConstraintV1(TypedDict):
-    mention: str
-    source_text: str
-
-
-class RequestIntentSemanticConstraintsV1(TypedDict):
-    topics: list[RequestIntentTopicConstraintV1]
-    people: list[RequestIntentPeopleConstraintV1]
-    time: list[RequestIntentTimeConstraintV1]
-    sources: list[RequestIntentSourceConstraintV1]
-    status_or_state: list[RequestIntentStatusConstraintV1]
-    negative_constraints: list[str]
-    policy_or_safety_constraints: list[str]
-
-
-class RequestIntentAmbiguityItemV1(TypedDict):
-    field_path: str
-    reason_code: str
-    user_question: str
-
-
-class RequestIntentAmbiguityV1(TypedDict):
-    is_ambiguous: bool
-    items: list[RequestIntentAmbiguityItemV1]
-
-
-class RequestIntentUnsupportedScopeV1(TypedDict):
-    is_unsupported: bool
-    reason_code: str | None
-    explanation: str | None
-
-
-RequestIntentResponseDispositionValue = Literal["ANSWER_ONLY", "ACTION_REQUIRED"]
-"""Deterministic planning-mode signal produced by request_understanding.classify.
-
-Selects whether the Planning stage calls ``planning.answer_only`` or
-``planning.draft_plan`` (docs/06-agent-workflow.md Node Registry). Optional
-(``NotRequired``) rather than added to ``REQUEST_INTENT_SCHEMA_VERSION``'s
-required set: profiles other than SIX_ROLE_BASELINE (SINGLE_BASELINE's
-``profile.single.reason_plan.initial``, THREE_STAGE's
-``profile.three.stage2.initial``) already decide ANSWER_ONLY vs PLAN_READY
-inside their own fused planning output and never consult this field, so
-their embedded ``RequestIntentV1`` payloads are not required to carry it.
-"""
-
-
-class RequestIntentV1(TypedDict):
-    schema_version: Required[Literal[2]]
-    goal: RequestIntentGoalV1
-    completion_criteria: list[str]
-    semantic_constraints: RequestIntentSemanticConstraintsV1
-    ambiguity: RequestIntentAmbiguityV1
-    unsupported_scope: RequestIntentUnsupportedScopeV1
-    response_disposition: NotRequired[RequestIntentResponseDispositionValue]
-
-
-class ClarificationQuestionV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    origin_target: str
-    question: str
-    affected_field_paths: list[str]
-    reason_code: str
-    known_context_summary: str
-    options: list[ClarificationOptionV1]
-
-
-class RequestUnderstandingFailureV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    reason_code: str
-    user_safe_message: str
-    diagnostic: str
-
-
-class RequestUnderstandingOutputV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    result: Literal["COMPLETE", "NEEDS_CONFIRMATION", "INVALID"]
-    request_intent: RequestIntentV1 | None
-    clarification: ClarificationQuestionV1 | None
-    failure: RequestUnderstandingFailureV1 | None
-    validator_codes: list[str]
-    llm_provider_result: NotRequired[dict[str, object]]
 
 
 REQUEST_INTENT_SCHEMA_VERSION: Final = 2
