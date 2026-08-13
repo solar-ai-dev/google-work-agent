@@ -72,7 +72,6 @@ export function App(): JSX.Element {
   const [google, setGoogle] = useState<GoogleConnectionResponse | null>(null);
   const [currentAccount, setCurrentAccount] = useState<CurrentGoogleAccountResponse["account"]>(null);
   const [calendarTimezone, setCalendarTimezone] = useState("Asia/Seoul");
-  const [taskSortMenuOpen, setTaskSortMenuOpen] = useState(false);
   const [conversationQuery, setConversationQuery] = useState("");
   const [sidebarFilter, setSidebarFilter] = useState("");
   const [googleConnectPending, setGoogleConnectPending] = useState(false);
@@ -185,20 +184,6 @@ export function App(): JSX.Element {
     formatTime,
   };
   const startupPromiseRef = useRef<Promise<void> | null>(null);
-  const taskSortMenuRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!taskSortMenuOpen) {
-      return;
-    }
-    const closeOnOutsidePointer = (event: MouseEvent): void => {
-      if (!taskSortMenuRef.current?.contains(event.target as Node)) {
-        setTaskSortMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", closeOnOutsidePointer);
-    return () => document.removeEventListener("mousedown", closeOnOutsidePointer);
-  }, [taskSortMenuOpen]);
-
   const refreshRuntimeSummary = useCallback(async (): Promise<void> => {
     const [runtimeResponse, googleResponse] = await Promise.all([getRuntime(), getGoogleConnection()]);
     setRuntime(runtimeResponse.summary);
@@ -361,14 +346,8 @@ export function App(): JSX.Element {
     setCurrentAccount(null);
     setResourceState((current) => ({
       ...current,
-      items: [],
-      nextPageToken: null,
-      pageIndex: 0,
-      loaded: false,
       selectedIds: [],
       focusItem: null,
-      totalCount: null,
-      countLoading: false,
     }));
     await refreshRuntimeSummary();
   }
@@ -464,7 +443,6 @@ export function App(): JSX.Element {
                     role="tab"
                     aria-selected={resourceState.tab === tab}
                     onClick={() => {
-                      setTaskSortMenuOpen(false);
                       setSidebarFilter("");
                       setResourceState((current) => ({
                         ...current,
@@ -1012,28 +990,6 @@ function isSameCalendarDate(left: Date, right: Date): boolean {
   return left.getFullYear() === right.getFullYear()
     && left.getMonth() === right.getMonth()
     && left.getDate() === right.getDate();
-}
-
-function resourceSearchPlaceholder(tab: ResourceTab): string {
-  switch (tab) {
-    case "tasks":
-      return "작업 검색";
-    case "calendar":
-      return "일정 검색";
-    default:
-      return "검색 (제목, 보낸사람, 내용)";
-  }
-}
-
-function resourceSearchLabel(tab: ResourceTab): string {
-  switch (tab) {
-    case "tasks":
-      return "작업 검색";
-    case "calendar":
-      return "일정 검색";
-    default:
-      return "메일 검색";
-  }
 }
 
 function resourceComposerPrompt(tab: ResourceTab): string {
