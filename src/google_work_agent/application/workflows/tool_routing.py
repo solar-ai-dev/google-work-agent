@@ -706,6 +706,26 @@ def _resource_source(resource_type: str) -> str:
     raise ToolRouteValidationError(f"resource type has no source projection: {resource_type}")
 
 
+def coarse_resource_category(resource_type: str) -> str:
+    """Collapse a canonical resource type to the Prompt-facing EMAIL/TASK/CALENDAR category.
+
+    The inverse of ``normalize_resource_type``. Shared by the Tool Route
+    semantic LLM stage (``tool_route_semantic.py``) and Retrieval's
+    ``retrieval.plan_query`` input projection (``api_acquisition.py``):
+    both must render Registry/Route-level resource types (e.g.
+    "GMAIL_THREAD", "TASK_LIST", "CALENDAR_FREEBUSY") into the same
+    3-value enum every PHASE 7.5 Prompt schema uses for resource_type.
+    """
+
+    if resource_type.startswith("GMAIL"):
+        return "EMAIL"
+    if resource_type in {"TASK", "TASK_LIST"}:
+        return "TASK"
+    if resource_type.startswith("CALENDAR"):
+        return "CALENDAR"
+    raise ToolRouteValidationError(f"resource type has no coarse category: {resource_type}")
+
+
 def _next_revision(plan: ToolRoutePlanV2 | None, key: Literal["input_plan", "output_plan"]) -> int:
     return 1 if plan is None else plan[key]["meta"]["revision"] + 1
 

@@ -58,9 +58,7 @@ from google_work_agent.application.workflows import (
     validate_work_analysis_result_v1,
 )
 from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
-from google_work_agent.application.workflows.tool_route_semantic import (
-    _coarse_resource_category,
-)
+from google_work_agent.application.workflows.tool_routing import coarse_resource_category
 from google_work_agent.domain import ConnectorToolCatalog, build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
@@ -161,10 +159,10 @@ def _synthesize_tool_route_candidate(request_intent: RequestIntentV1) -> dict[st
     return {
         "schema_version": 1,
         "input_resource_types": sorted(
-            {_coarse_resource_category(item) for item in candidate.input_resource_types}
+            {coarse_resource_category(item) for item in candidate.input_resource_types}
         ),
         "output_resource_types": sorted(
-            {_coarse_resource_category(resource) for resource, _effect in candidate.output_pairs}
+            {coarse_resource_category(resource) for resource, _effect in candidate.output_pairs}
         ),
         "output_effects": [effect.value for _resource, effect in candidate.output_pairs],
         "disposition": "ROUTE_READY",

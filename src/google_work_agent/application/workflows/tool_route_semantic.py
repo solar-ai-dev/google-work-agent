@@ -28,6 +28,7 @@ from google_work_agent.application.workflows.prompt_registry import (
 from google_work_agent.application.workflows.tool_routing import (
     SemanticRouteCandidate,
     ToolRouteValidationError,
+    coarse_resource_category,
     normalize_resource_type,
 )
 from google_work_agent.domain import ConnectorToolCatalog, EffectType
@@ -243,23 +244,13 @@ def _validate_tool_selection(value: object) -> Mapping[str, object]:
     return root
 
 
-def _coarse_resource_category(resource_type: str) -> str:
-    if resource_type.startswith("GMAIL"):
-        return "EMAIL"
-    if resource_type in {"TASK", "TASK_LIST"}:
-        return "TASK"
-    if resource_type.startswith("CALENDAR"):
-        return "CALENDAR"
-    raise ToolRouteValidationError(f"resource type has no coarse category: {resource_type}")
-
-
 def _eligible_route_capabilities(
     tool_catalog: ConnectorToolCatalog,
 ) -> list[dict[str, object]]:
     by_key: dict[tuple[str, str], dict[str, object]] = {}
     for connector_id in tool_catalog.list_connector_ids():
         for entry in tool_catalog.registry_for(connector_id).list_entries():
-            category = _coarse_resource_category(entry.resource_type)
+            category = coarse_resource_category(entry.resource_type)
             capability = by_key.setdefault(
                 (connector_id, category),
                 {

@@ -25,6 +25,7 @@ from google_work_agent.application.workflows import (
     SourcePlanningValidationError,
     TemporalQueryV1,
     TemporalRelation,
+    ToolRoutePlanV2,
     Weekday,
     WorkflowPhase,
     build_source_planning_clarification_question,
@@ -522,14 +523,16 @@ def test_resource_selected_uses_direct_get_and_does_not_search() -> None:
 
     assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
     assert [name for name, _args in gateway.calls] == ["get_gmail_thread"]
-    assert runtime.calls[0]["prompt_input"]["selected_resources"] == [
-        {
-            "source": "GMAIL",
-            "resource_type": "THREAD",
-            "resource_id": "thread-kim",
-            "parent_resource_id": None,
-        }
-    ]
+    # retrieval.plan_query's Prompt Runtime Input Contract has no
+    # selected_resources/selected_resource_ids/entry_mode field: Tool Route
+    # has already frozen input_routes from that same RESOURCE_SELECTED
+    # signal, so Retrieval must not re-derive or re-select a route from it.
+    assert set(runtime.calls[0]["prompt_input"]) == {
+        "user_request",
+        "request_intent",
+        "input_routes",
+        "retrieval_budget",
+    }
     assert "selected_resource_ids" not in planning["source_fetch_plans"][0]
 
 
@@ -1005,7 +1008,16 @@ def test_retrieval_ambiguity_uses_planning_confirmation_not_request_understandin
     assert gateway.calls == []
 
 
-def test_additional_acquisition_request_is_forwarded_to_plan_sources_prompt_input() -> None:
+def test_additional_acquisition_request_is_accepted_but_not_leaked_into_plan_query_prompt() -> (
+    None
+):
+    """retrieval.plan_query's Prompt Runtime Input Contract has no
+    planning_mode/additional_acquisition_request field (additionalProperties:
+    false); repeat-round signalling belongs to Retrieval Local State / the
+    retrieval.plan_query.revise slot (FOLLOWING_WAVE_DEPENDENCY), not an
+    ad-hoc INITIAL-prompt field. The parameter must still be accepted
+    without breaking the call -- callers pass it today -- it just must not
+    reach the Prompt."""
     runtime = FakeLLMRuntime()
     runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "source follow-up"})]))
     gateway = RecordingGoogleGateway()
@@ -1028,8 +1040,66 @@ def test_additional_acquisition_request_is_forwarded_to_plan_sources_prompt_inpu
 
     prompt_input = runtime.calls[0]["prompt_input"]
     assert planning["result"] == ApiPlanningResult.PLAN_READY.value
-    assert prompt_input["planning_mode"] == "ADDITIONAL_DATA"
-    assert prompt_input["additional_acquisition_request"] == additional_request
+    assert "planning_mode" not in prompt_input
+    assert "additional_acquisition_request" not in prompt_input
+    assert set(prompt_input) == {
+        "user_request",
+        "request_intent",
+        "input_routes",
+        "retrieval_budget",
+    }
+
+
+def test_plan_query_projects_frozen_input_routes_without_reselecting_them() -> None:
+    """The Prompt only ever sees Tool Route's already-frozen input_routes,
+    recoded to the Prompt's coarse EMAIL/TASK/CALENDAR resource_type enum --
+    route_id/connector_id/allowed_read_tool_ids/required/reason_codes (the
+    actual Registry binding) pass through unchanged, proving Retrieval does
+    not reselect a connector/resource/tool."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "kim"})]))
+    agent = _agent(runtime=runtime, gateway=RecordingGoogleGateway())
+    tool_route_plan: ToolRoutePlanV2 = {
+        "schema_version": 2,
+        "input_plan": {
+            "schema_version": 1,
+            "meta": {"artifact_id": "route-1", "revision": 1, "based_on": []},
+            "input_routes": [
+                {
+                    "route_id": "route-0",
+                    "resource_type": "GMAIL_THREAD",
+                    "connector_id": "google_workspace",
+                    "allowed_read_tool_ids": ["gmail_search_threads", "gmail_get_thread"],
+                    "required": True,
+                    "reason_codes": ["REQUESTED_INPUT"],
+                }
+            ],
+        },
+        "output_plan": {
+            "schema_version": 1,
+            "meta": {"artifact_id": "route-2", "revision": 1, "based_on": []},
+            "output_mode": "ANSWER",
+        },
+        "tool_registry_version": "2026-08-06.p0",
+    }
+
+    agent.plan_sources(
+        request_intent=_intent(source="GMAIL"),
+        request=_request(),
+        tool_route_plan=tool_route_plan,
+    )
+
+    prompt_input = runtime.calls[0]["prompt_input"]
+    assert prompt_input["input_routes"] == [
+        {
+            "route_id": "route-0",
+            "resource_type": "EMAIL",
+            "connector_id": "google_workspace",
+            "allowed_read_tool_ids": ["gmail_search_threads", "gmail_get_thread"],
+            "required": True,
+            "reason_codes": ["REQUESTED_INPUT"],
+        }
+    ]
 
 
 def test_planning_schema_failure_is_not_google_acquisition_failure() -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time as _time_module
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Literal, cast
@@ -51,6 +51,7 @@ from google_work_agent.application.workflows.tool_routing import (
     ToolRoutePlanV2,
     allowed_input_sources,
     allowed_read_tool_ids,
+    coarse_resource_category,
 )
 from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
@@ -278,13 +279,21 @@ class ApiDiscoveryAcquisitionAgent:
         additional_acquisition_request: AdditionalAcquisitionRequestV1 | None = None,
         tool_route_plan: ToolRoutePlanV2 | None = None,
     ) -> StructuredLLMResult:
+        # additional_acquisition_request is accepted but not projected into
+        # the Prompt: prompt-runtime-input-contract-v1.json's
+        # retrieval.plan_query entry has no field for "this is a follow-up
+        # round" and its schema is additionalProperties:false. Canonical
+        # (05-context-retrieval.md RetrievalStateV1.query_attempts) models
+        # repeat rounds as Retrieval Local State / the retrieval.plan_query.revise
+        # slot, not an extra INITIAL-prompt field -- neither is implemented
+        # yet, so this parameter is a FOLLOWING_WAVE_DEPENDENCY, not silently
+        # dropped functionality.
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
-            prompt_input=_planning_prompt_input(
+            prompt_input=_plan_query_prompt_input(
                 request_intent=request_intent,
                 request=request,
                 retrieval_budget=self._retrieval_budget,
-                additional_acquisition_request=additional_acquisition_request,
                 tool_route_plan=tool_route_plan,
             ),
             output_schema=SOURCE_FETCH_PLAN_OUTPUT_SCHEMA,
@@ -662,25 +671,35 @@ def _planning_output(
     }
 
 
-def _planning_prompt_input(
+def _plan_query_prompt_input(
     *,
     request_intent: RequestIntentV1,
     request: WorkflowStartRequest,
     retrieval_budget: RetrievalBudget,
-    additional_acquisition_request: AdditionalAcquisitionRequestV1 | None,
     tool_route_plan: ToolRoutePlanV2 | None,
 ) -> dict[str, object]:
+    """Typed retrieval.plan_query Prompt Runtime Input Projection.
+
+    Field set is pinned to prompt-runtime-input-contract-v1.json's
+    retrieval.plan_query entry and retrieval-plan-query-input-v1.schema.json
+    (additionalProperties: false). entry_mode/selected_resource_ids/
+    selected_resources are not sent here: Tool Route has already frozen
+    input_routes from that same signal (Q3 boundary), and Retrieval must
+    consume the frozen route rather than re-deriving or re-selecting it
+    from raw request fields.
+    """
+
+    frozen_input_routes = (
+        () if tool_route_plan is None else tool_route_plan["input_plan"]["input_routes"]
+    )
     return {
-        "planning_mode": "ADDITIONAL_DATA" if additional_acquisition_request else "INITIAL",
+        "user_request": request.request_text,
         "request_intent": request_intent,
-        "additional_acquisition_request": additional_acquisition_request,
-        "entry_mode": request.entry_mode,
-        "selected_resource_ids": list(request.selected_resource_ids),
-        "selected_resources": [asdict(resource) for resource in request.selected_resources],
+        "input_routes": [
+            {**route, "resource_type": coarse_resource_category(route["resource_type"])}
+            for route in frozen_input_routes
+        ],
         "retrieval_budget": retrieval_budget.as_remaining(),
-        "input_routes": (
-            [] if tool_route_plan is None else tool_route_plan["input_plan"]["input_routes"]
-        ),
     }
 
 
