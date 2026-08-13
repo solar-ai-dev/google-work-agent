@@ -877,6 +877,42 @@ Do not create a separate report artifact unless explicitly requested.
 
 ---
 
+---
+
+## Canonical Documentation and Parallel Change Reconciliation
+
+When documentation or implementation has diverged across parallel branches, do not choose a whole-file winner merely from filename, timestamp, branch age, or apparent version number.
+
+Before merging parallel changes:
+
+1. identify the common baseline when it can be determined;
+2. identify the concern owner for each changed contract using the current project source guide and canonical document hierarchy;
+3. compare changes by semantic concern rather than by whole file;
+4. preserve independent changes from both sides when they do not conflict;
+5. when the same contract conflicts, resolve it according to the current canonical concern owner and the safer applicable contract;
+6. do not reintroduce an older architecture, state contract, policy, or compatibility behavior merely because it appears in a teammate branch;
+7. after reconciliation, validate cross-document references and implementation-facing contracts.
+
+Repository documentation can be an export snapshot of canonical documentation. Do not infer semantic authority from a filename suffix alone.
+
+Versioning rules:
+
+* increase a document's own version only when the meaning owned by that document changes;
+* when only a referenced canonical document version changes, update the reference without increasing the referring document's own version unless its owned meaning also changes;
+* keep database schema and migration versions separate from documentation versions;
+* never rewrite historical migrations merely to make documentation versions align.
+
+Documentation hygiene:
+
+* preserve the purpose and responsibility of each document;
+* place new material in the document that owns that concern;
+* do not add changelog, update-history, work-log, handoff, or status sections unless the user explicitly requests them;
+* do not preserve conflicting duplicate contracts in multiple documents for convenience.
+
+For behavior-preserving structural refactoring, do not silently absorb unrelated canonical behavior changes into the refactor. Complete and validate the structural change first, then implement the separate behavior contract as an explicit follow-up unless the user explicitly requests both together.
+
+After integrating parallel changes, a clean textual merge is not sufficient. Re-check the affected semantic contracts, version references, tests, and safety boundaries.
+
 ## Core Engineering Principle
 
 Prefer:
