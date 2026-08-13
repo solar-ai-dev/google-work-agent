@@ -205,6 +205,7 @@ test("keeps the fragment until one StrictMode bootstrap request succeeds", async
 
 test("starts a run in RESOURCE_SELECTED mode", async () => {
   let conversationCreated = false;
+  let createdConversationId = "conversation-1";
   installFetch((path, init) => {
     if (path === "/health/live") {
       return jsonResponse({ status: "LIVE", service_instance_id: "svc-1", release_version: "test", api_contract_version: "1", occurred_at_ms: 1 });
@@ -224,7 +225,7 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonResponse({
         items: conversationCreated
-          ? [{ id: "conversation-1", account_id: "account-1", title: "Project sync", created_at_ms: 1, updated_at_ms: 2 }]
+          ? [{ id: createdConversationId, account_id: "account-1", title: "Project sync", created_at_ms: 1, updated_at_ms: 2 }]
           : [],
         next_cursor: null,
         api_contract_version: "1",
@@ -253,7 +254,8 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
     }
     if (path === "/api/v1/conversations" && init?.method === "POST") {
       conversationCreated = true;
-      return jsonResponse({ conversation_id: "conversation-1" });
+      createdConversationId = JSON.parse(String(init.body)).conversation_id;
+      return jsonResponse({ conversation_id: createdConversationId });
     }
     if (path === "/api/v1/runs" && init?.method === "POST") {
       return jsonResponse({
@@ -270,17 +272,17 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
       });
     }
     if (path === "/api/v1/runs/run-1") {
-      return jsonResponse(snapshotPayload({ status: "CREATED", entry_mode: "RESOURCE_SELECTED" }));
+      return jsonResponse(snapshotPayload({ conversation_id: createdConversationId, status: "FAILED", entry_mode: "RESOURCE_SELECTED" }));
     }
     if (path === "/api/v1/runs/run-1/context") {
       return jsonResponse({
         context: {
           run_id: "run-1",
-          conversation_id: "conversation-1",
+          conversation_id: createdConversationId,
           workflow_key: "workflow-run-1",
           entry_mode: "RESOURCE_SELECTED",
           requested_mode: "AUTO",
-          status: "CREATED",
+          status: "FAILED",
           version: 0,
           request_text: "Summarize the selected thread",
           selected_resource_ids: ["thread-project"],
@@ -314,6 +316,70 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
   };
   expect(body.entry_mode).toBe("RESOURCE_SELECTED");
   expect(body.selected_resource_ids).toEqual(["thread-project"]);
+  expect(await screen.findByText("실행 실패")).toBeInTheDocument();
+  expect(screen.getByText("작업을 완료하지 못했습니다.")).toBeInTheDocument();
+});
+
+test("clears the previous conversation projection when starting a new conversation", async () => {
+  installUiContractFetch({ conversations: true, status: "FAILED" });
+  const user = userEvent.setup();
+  render(<App />);
+
+  expect(await screen.findByText("작업을 완료하지 못했습니다.")).toBeInTheDocument();
+  expect(screen.getByText("Verified 0")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "새 대화" }));
+
+  expect(screen.queryByText("작업을 완료하지 못했습니다.")).not.toBeInTheDocument();
+  expect(screen.queryByText("Verified 0")).not.toBeInTheDocument();
+});
+
+test("keeps the last selected conversation when earlier latest-run responses arrive late", async () => {
+  let resolveLatestA: (response: MockResponse) => void = () => {
+    throw new Error("Conversation A request did not start");
+  };
+  installFetch((path) => {
+    if (path === "/health/live") return jsonResponse(liveResponse());
+    if (path === "/health/ready") return jsonResponse(readyResponse());
+    if (path === "/api/v1/runtime") return jsonResponse({ summary: runtimeSummary([]), api_contract_version: "1" });
+    if (path === "/api/v1/google/connection") return jsonResponse(googleConnection());
+    if (path === "/api/v1/identity/google-account") return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
+    if (path.startsWith("/api/v1/conversations?")) {
+      return jsonResponse({
+        items: [
+          { id: "conversation-a", account_id: "account-1", title: "대화 A", created_at_ms: 1, updated_at_ms: 1 },
+          { id: "conversation-b", account_id: "account-1", title: "대화 B", created_at_ms: 2, updated_at_ms: 2 },
+        ],
+        next_cursor: null,
+        api_contract_version: "1",
+      });
+    }
+    if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
+    if (path === "/api/v1/conversations/conversation-a/latest-run") {
+      return new Promise<MockResponse>((resolve) => { resolveLatestA = resolve; });
+    }
+    if (path === "/api/v1/conversations/conversation-b/latest-run") {
+      return jsonResponse({ run: { run_id: "run-b" }, api_contract_version: "1" });
+    }
+    if (path === "/api/v1/runs/run-b") {
+      return jsonResponse(snapshotPayload({ run_id: "run-b", conversation_id: "conversation-b" }));
+    }
+    if (path === "/api/v1/runs/run-b/context") {
+      return jsonResponse({ context: { run_id: "run-b", conversation_id: "conversation-b", workflow_key: "workflow-b", entry_mode: "AGENT_SEARCH", requested_mode: "AUTO", status: "WAITING_APPROVAL", version: 1, request_text: "대화 B 요청", selected_resource_ids: [] }, api_contract_version: "1" });
+    }
+    throw new Error(`Unhandled path ${path}`);
+  });
+
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: /대화 A/ }));
+  await user.click(screen.getByRole("button", { name: /대화 B/ }));
+  expect(await screen.findByText("대화 B 요청")).toBeInTheDocument();
+
+  resolveLatestA(jsonResponse({ run: { run_id: "run-a" }, api_contract_version: "1" }));
+
+  await waitFor(() => expect(screen.getByText("대화 B 요청")).toBeInTheDocument());
+  expect(screen.queryByText("대화 A 요청")).not.toBeInTheDocument();
 });
 
 test("shows approve button for write actions and posts approve command", async () => {
@@ -690,6 +756,9 @@ test("does not open an unexpected authorization URL returned by the API", async 
 
   const user = userEvent.setup();
   render(<App />);
+
+  await waitFor(() => expect(document.querySelector(".topbar-connection .connection-disconnected")).not.toBeNull());
+  expect(screen.getByRole("button", { name: "Google 연결" })).toBeInTheDocument();
 
   await user.click(await screen.findByRole("button", { name: "Google 연결" }));
   await waitFor(() =>
@@ -1095,6 +1164,8 @@ test("TST-UI-201 header shows product, connection, account, help, settings, and 
   installUiContractFetch();
   render(<App />);
 
+  await waitFor(() => expect(document.querySelector(".topbar-connection .connection-connected")).not.toBeNull());
+
   await screen.findByText("승인이 필요합니다.");
   expect(screen.getByText("user@example.com")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "도움말" })).toBeInTheDocument();
@@ -1313,6 +1384,10 @@ test("Tasks eagerly materializes completed rows and opens the exact count from c
   const incompleteList = screen.getByRole("list", { name: "Google 업무 자료" });
   const completedSection = screen.getByLabelText("완료됨");
   const pagination = screen.getByRole("navigation", { name: "자료 페이지" });
+  const taskContent = completedSection.closest(".task-content-scroll");
+  expect(taskContent).toContainElement(incompleteList);
+  expect(taskContent).toContainElement(completedSection);
+  expect(taskContent).not.toContainElement(pagination);
   expect(incompleteList.compareDocumentPosition(completedSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(completedSection.compareDocumentPosition(pagination) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(requests.some((request) => request.path.includes("page_token=completed-page-2"))).toBe(true);
@@ -1322,6 +1397,7 @@ test("Tasks eagerly materializes completed rows and opens the exact count from c
     expect(screen.getByText("완료일: 8월 13일 (목)")).toBeInTheDocument();
     expect(screen.getAllByText(/완료일:/)).toHaveLength(1);
     expect(screen.queryByText("✓ 섞인 미완료")).not.toBeInTheDocument();
+  expect(taskContent).toContainElement(screen.getByText("✓ 완료 업무"));
   expect(screen.getByRole("button", { name: "완료됨(2) ▾" })).toBeInTheDocument();
   expect(requests.filter((request) => request.path.includes("status_scope=completed"))).toHaveLength(completedCallsBeforeOpen);
 });
@@ -1348,8 +1424,14 @@ test("Tasks completed refresh replaces the terminal cache and client-side more m
   expect(await screen.findByText("✓ 완료 20")).toBeInTheDocument();
   expect(screen.queryByText("✓ 완료 21")).not.toBeInTheDocument();
   const callsBeforeMore = requests.filter((request) => request.path.includes("status_scope=completed")).length;
-  await user.click(screen.getByRole("button", { name: "더 보기" }));
+  const moreButton = screen.getByRole("button", { name: "더 보기" });
+  const completedSection = screen.getByLabelText("완료됨");
+  const taskContent = completedSection.closest(".task-content-scroll");
+  expect(taskContent).toContainElement(moreButton);
+  expect(taskContent).not.toContainElement(screen.getByRole("navigation", { name: "자료 페이지" }));
+  await user.click(moreButton);
   expect(await screen.findByText("✓ 완료 22")).toBeInTheDocument();
+  expect(taskContent).toContainElement(screen.getByText("✓ 완료 22"));
   expect(requests.filter((request) => request.path.includes("status_scope=completed"))).toHaveLength(callsBeforeMore);
 
   await user.click(screen.getByRole("button", { name: "현재 목록 새로고침" }));
@@ -2605,11 +2687,77 @@ test("shows a partial-result notice after a run is cancelled", async () => {
   ).toBeInTheDocument();
 });
 
+test("loads the account after Google connection provisioning and retries one initial identity miss", async () => {
+  const requests = installUiContractFetch({ accountResponses: [null, currentAccount()] });
+  const user = userEvent.setup();
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  const identityRequests = requests
+    .map((request, index) => ({ path: request.path, index }))
+    .filter((request) => request.path === "/api/v1/identity/google-account");
+  const connectionIndex = requests.findIndex((request) => request.path === "/api/v1/google/connection");
+  expect(identityRequests).toHaveLength(2);
+  expect(connectionIndex).toBeLessThan(identityRequests[0]?.index ?? -1);
+
+  await user.type(document.querySelector("textarea.composer") as HTMLTextAreaElement, "계정 준비 후 실행");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
+
+  await waitFor(() =>
+    expect(requests).toContainEqual(expect.objectContaining({
+      path: "/api/v1/runs",
+      init: expect.objectContaining({ method: "POST" }),
+    })),
+  );
+});
+
+test("shows a visible error and does not start a run when no current account is available", async () => {
+  const requests = installUiContractFetch({ accountResponses: [null, null] });
+  const user = userEvent.setup();
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await user.type(document.querySelector("textarea.composer") as HTMLTextAreaElement, "계정 없는 실행");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("현재 연결된 계정 정보를 찾지 못했습니다.");
+  expect(requests.some((request) => request.path === "/api/v1/conversations" && request.init?.method === "POST")).toBe(false);
+  expect(requests.some((request) => request.path === "/api/v1/runs" && request.init?.method === "POST")).toBe(false);
+});
+
+test("shows a visible error and releases the composer when conversation creation fails", async () => {
+  installUiContractFetch({ conversationError: true, run: false });
+  const user = userEvent.setup();
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await user.type(document.querySelector("textarea.composer") as HTMLTextAreaElement, "대화 생성 실패");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("대화를 만들지 못했습니다.");
+  expect(screen.getByRole("button", { name: "보내기" })).not.toBeDisabled();
+});
+
+test("shows a visible error and releases the composer when run creation fails", async () => {
+  installUiContractFetch({ runError: true, run: false });
+  const user = userEvent.setup();
+  render(<App />);
+
+  await screen.findByText("첫 번째 자료");
+  await user.type(document.querySelector("textarea.composer") as HTMLTextAreaElement, "실행 생성 실패");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("실행을 시작하지 못했습니다.");
+  expect(screen.getByRole("button", { name: "보내기" })).not.toBeDisabled();
+});
+
 function installUiContractFetch(options: {
   action?: boolean;
   actionStatus?: string;
   actionRisk?: Record<string, unknown>;
   accountAbsent?: boolean;
+  accountResponses?: Array<Record<string, unknown> | null>;
+  conversationError?: boolean;
   conversations?: boolean;
   calendarEvents?: Record<string, unknown>[];
   calendarPageResponses?: Response[];
@@ -2625,6 +2773,7 @@ function installUiContractFetch(options: {
   gmailCountError?: boolean;
   gmailCountResponse?: Promise<Response>;
   run?: boolean;
+  runError?: boolean;
   resource?: Partial<ReturnType<typeof gmailThread>>;
   resultKind?: string;
   status?: string;
@@ -2651,6 +2800,7 @@ function installUiContractFetch(options: {
   let actionStatus = options.actionStatus ?? "PROPOSED";
   let firstTaskPageRequests = 0;
   let completedTaskResponseIndex = 0;
+  let accountResponseIndex = 0;
   globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
     const path = String(input);
     requests.push({ path, init });
@@ -2658,7 +2808,12 @@ function installUiContractFetch(options: {
     if (path === "/health/ready") return jsonFetchResponse(readyResponse());
     if (path === "/api/v1/runtime") return jsonFetchResponse({ summary: runtimeSummary(options.run === false ? [] : ["run-1"], { llm: {} }), api_contract_version: "1" });
     if (path === "/api/v1/google/connection") return jsonFetchResponse(googleConnection());
-    if (path === "/api/v1/identity/google-account") return jsonFetchResponse({ account: options.accountAbsent ? null : currentAccount(), api_contract_version: "1" });
+    if (path === "/api/v1/identity/google-account") {
+      const account = options.accountResponses && accountResponseIndex < options.accountResponses.length
+        ? options.accountResponses[accountResponseIndex++]
+        : (options.accountAbsent ? null : currentAccount());
+      return jsonFetchResponse({ account, api_contract_version: "1" });
+    }
     if (path === "/api/v1/settings") return jsonFetchResponse({ settings: settingsPayload(), api_contract_version: "1" });
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonFetchResponse({ items: options.conversations ? [{ id: "conversation-1", account_id: "account-1", title: "업무 대화", updated_at_ms: 1, created_at_ms: 1 }] : [], next_cursor: null, api_contract_version: "1" });
@@ -2822,8 +2977,18 @@ function installUiContractFetch(options: {
       if (calendarPageResponse) return calendarPageResponse;
       return jsonFetchResponse(calendarEventResponse(options.calendarEvents));
     }
-    if (path === "/api/v1/conversations" && init?.method === "POST") return jsonFetchResponse({ conversation_id: "conversation-1" });
-    if (path === "/api/v1/runs" && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-1", conversation_id: "conversation-1", run_status: "WAITING_APPROVAL", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-1", enqueued: true, request_replayed: false });
+    if (path === "/api/v1/conversations" && init?.method === "POST") {
+      if (options.conversationError) {
+        return jsonFetchResponse({ error_code: "UPSTREAM_UNAVAILABLE", user_message: "대화를 만들지 못했습니다.", retryable: true, request_id: "request-1", api_contract_version: "1" }, 503);
+      }
+      return jsonFetchResponse({ conversation_id: "conversation-1" });
+    }
+    if (path === "/api/v1/runs" && init?.method === "POST") {
+      if (options.runError) {
+        return jsonFetchResponse({ error_code: "UPSTREAM_UNAVAILABLE", user_message: "실행을 시작하지 못했습니다.", retryable: true, request_id: "request-1", api_contract_version: "1" }, 503);
+      }
+      return jsonFetchResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-1", conversation_id: "conversation-1", run_status: "WAITING_APPROVAL", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-1", enqueued: true, request_replayed: false });
+    }
     if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: "gmail_draft", status: actionStatus, version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", risk: options.actionRisk ?? {}, next_allowed_commands: [] }] : [] }));
     if (path === "/api/v1/runs/run-1/context") return jsonFetchResponse({ context: null, api_contract_version: "1" });
     if (path.includes("/api/v1/actions/") && init?.method === "POST") {
@@ -2868,9 +3033,9 @@ function calendarEventItem(overrides: Record<string, unknown> = {}): Record<stri
   };
 }
 
-function installFetch(handler: (path: string, init?: RequestInit) => MockResponse): void {
+function installFetch(handler: (path: string, init?: RequestInit) => MockResponse | Promise<MockResponse>): void {
   globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
-    const response = handler(String(input), init);
+    const response = await handler(String(input), init);
     return new Response(JSON.stringify(response.json ?? {}), {
       status: response.status ?? 200,
       headers: {

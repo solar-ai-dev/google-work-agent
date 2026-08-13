@@ -42,6 +42,7 @@ from google_work_agent.ports import CredentialState, OAuthEnvironment, SecretSto
 
 GOOGLE_AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo"
 GOOGLE_REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke"
 GOOGLE_KEYRING_SERVICE = "GoogleWorkAgent/DEVELOPMENT"
 GOOGLE_REFRESH_TOKEN_ACCOUNT = "google-oauth-refresh-token"
@@ -120,6 +121,12 @@ class _OAuthReauthenticationRequired(RuntimeError):
     """Raised when Google rejects a stored refresh token."""
 
 
+@dataclass(frozen=True, slots=True)
+class _UserInfoIdentityResolution:
+    email: str | None
+    http_status: int | None
+
+
 class _WorkspaceToolError(RuntimeError):
     """A sanitized Google Workspace tool failure.
 
@@ -189,10 +196,21 @@ class _WorkspaceState:
         }
 
     def ensure_access_token(self) -> None:
-        if self.access_token is not None and _now_ms() < self.access_token_expires_at_ms:
+        if (
+            self.access_token is not None
+            and _now_ms() < self.access_token_expires_at_ms
+            and self.account_email is not None
+        ):
             return
         with self._refresh_lock:
             if self.access_token is not None and _now_ms() < self.access_token_expires_at_ms:
+                if self.account_email is None:
+                    resolution = _resolve_account_identity_from_userinfo(self.access_token)
+                    self.account_email = (
+                        self._recover_identity_after_userinfo_401()
+                        if resolution.http_status == 401
+                        else resolution.email
+                    )
                 return
             refresh_token = self.keyring.get_secret(
                 service=GOOGLE_KEYRING_SERVICE,
@@ -215,6 +233,13 @@ class _WorkspaceState:
                 # process-memory-only, so a restarted MCP process re-derives
                 # the account email here instead of requiring reconnect.
                 self.account_email = refreshed_email
+            elif self.account_email is None:
+                # A refresh response commonly omits id_token. The originally
+                # granted openid/userinfo.email scope still permits resolving
+                # the verified identity from this newly refreshed access token.
+                # Failure here must not downgrade an otherwise usable OAuth
+                # credential used by the Workspace read tools.
+                self.account_email = _resolve_account_identity_from_userinfo(access_token).email
             if rotated_refresh_token is not None:
                 self.keyring.set_secret(
                     service=GOOGLE_KEYRING_SERVICE,
@@ -222,6 +247,43 @@ class _WorkspaceState:
                     secret=rotated_refresh_token,
                 )
             self.connection_state = CredentialState.CONNECTED
+
+    def _recover_identity_after_userinfo_401(self) -> str | None:
+        refresh_token = self.keyring.get_secret(
+            service=GOOGLE_KEYRING_SERVICE,
+            account=GOOGLE_REFRESH_TOKEN_ACCOUNT,
+        )
+        if refresh_token is None:
+            raise _OAuthReauthenticationRequired
+        try:
+            access_token, expires_at_ms, rotated_refresh_token, refreshed_email = (
+                _refresh_access_token(
+                    refresh_token,
+                    self.oauth_settings.google_oauth_client_id,
+                    self.oauth_settings.google_oauth_client_secret,
+                )
+            )
+        except _OAuthReauthenticationRequired:
+            raise
+        except _OAuthExchangeError as error:
+            raise _OAuthReauthenticationRequired from error
+        self.access_token = access_token
+        self.access_token_expires_at_ms = expires_at_ms
+        if rotated_refresh_token is not None:
+            self.keyring.set_secret(
+                service=GOOGLE_KEYRING_SERVICE,
+                account=GOOGLE_REFRESH_TOKEN_ACCOUNT,
+                secret=rotated_refresh_token,
+            )
+        self.connection_state = CredentialState.CONNECTED
+        if refreshed_email is not None:
+            return refreshed_email
+        retry = _resolve_account_identity_from_userinfo(access_token)
+        if retry.http_status == 401:
+            self.connection_state = CredentialState.REAUTH_REQUIRED
+            self.access_token = None
+            self.access_token_expires_at_ms = 0
+        return retry.email
 
 
 def main() -> None:
@@ -2002,6 +2064,46 @@ def _verified_email_from_id_token(id_token: str) -> str | None:
         return None
     email = claims.get("email")
     return email if isinstance(email, str) and email.strip() else None
+
+
+def _resolve_account_identity_from_userinfo(access_token: str) -> _UserInfoIdentityResolution:
+    request = Request(
+        GOOGLE_USERINFO_ENDPOINT,
+        headers={"Authorization": f"Bearer {access_token}"},
+        method="GET",
+    )
+    try:
+        with urlopen(request, timeout=10) as response:  # nosec B310: fixed Google endpoint
+            payload = cast(dict[str, object], json.loads(response.read().decode("utf-8")))
+    except HTTPError as error:
+        return _UserInfoIdentityResolution(email=None, http_status=error.code)
+    except TimeoutError:
+        return _UserInfoIdentityResolution(email=None, http_status=None)
+    except URLError:
+        return _UserInfoIdentityResolution(email=None, http_status=None)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _UserInfoIdentityResolution(email=None, http_status=None)
+    email = _verified_email_from_userinfo_payload(payload)
+    return _UserInfoIdentityResolution(
+        email=email,
+        http_status=getattr(response, "status", 200),
+    )
+
+
+def _verified_email_from_userinfo_payload(payload: dict[str, object]) -> str | None:
+    """Accept only a complete, verified OIDC identity response."""
+
+    sub = payload.get("sub")
+    email = payload.get("email")
+    if (
+        not isinstance(sub, str)
+        or not sub.strip()
+        or payload.get("email_verified") is not True
+        or not isinstance(email, str)
+        or not email.strip()
+    ):
+        return None
+    return email
 
 
 def _oauth_exchange_error_from_http_error(
