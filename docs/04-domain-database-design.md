@@ -1,12 +1,12 @@
 # 04. Google Work Agent 도메인 · 데이터베이스 설계서
 
-> **문서 기준:** `01 PRD §1.1`의 Concern Owner 규칙을 따른다. 이 문서는 Domain 상태·영속 사실·DB 불변조건을 소유하며 현재 Canonical DB Schema v1.6과 상태 전이 계약 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD §1.1`의 Concern Owner 규칙을 따른다. 이 문서는 Domain 상태·영속 사실·DB 불변조건을 소유하며 현재 Canonical DB Schema v1.6과 Domain 상태 전이 계약 v1.5을 기준으로 한다.
 
 ## 0. 문서 정보
 
 | 항목 | 내용 |
 |---|---|
-| 상태 | Draft v1.16 |
+| 상태 | Draft v1.19 |
 | 기준일 | 2026-08-13 |
 | 대상 | P0 MVP |
 | Database | SQLite |
@@ -287,26 +287,40 @@ Approval은 Action 현재값과 분리된 승인 이력이다.
 
 ### 9.1 Run
 
+현재 Release Write의 지배적 Run 경로:
+
 ```text
 CREATED
-→ ANALYZING
-→ RETRIEVING
-→ WAITING_CONFIRMATION | PLANNING
-→ WAITING_APPROVAL
-→ EXECUTING
-→ VERIFYING
-→ COMPLETED
+→ StartAnalysis → ANALYZING
+→ BeginRetrieval → RETRIEVING
+→ RequestConfirmation ↔ WAITING_CONFIRMATION
+→ BeginPlanning → PLANNING
+→ PublishPlan → WAITING_APPROVAL
+→ Action Claim·Execute (Run은 WAITING_APPROVAL 유지)
+→ BeginVerification → VERIFYING
+→ CompleteWriteRun → COMPLETED
 ```
 
-예외 흐름:
+Back-edge:
+
+```text
+PLANNING → BeginRetrieval → RETRIEVING
+RETRIEVING → BeginPlanning → PLANNING
+RECOVERY_REQUIRED → ResolveRecovery(CREATE_CORRECTIVE_PLAN) → PLANNING
+```
+
+공통 종료·예외:
 
 ```text
 CANCEL_REQUESTED → CANCELLED
 REAUTH_REQUIRED → LangGraph Checkpoint의 안전한 Node에서 재개
 RECOVERY_REQUIRED → VERIFYING | PLANNING | COMPLETED | FAILED | CANCELLED
-Policy 위반 → BLOCKED
-기술적 복구 불가 → FAILED
+Claim 전 pre-execution 단계의 Policy 위반 → BLOCKED
 ```
+
+`Run.EXECUTING`은 DB Schema v1.6 호환을 위해 유지하는 Legacy READ-only Plan 상태다. **현재 승인형 Write Release 경로는 Action `EXECUTING`을 이유로 Run을 `EXECUTING`으로 바꾸지 않는다.**
+
+Claim 이후 `EXECUTING | UNKNOWN_RESULT | EXECUTED` Write 사실이 있으면 새 정책/취소 요청이 생겨도 Run을 임의 `BLOCKED`로 덮지 않고 기존 결과 확정·Verification·Recovery를 먼저 수행한다.
 
 ### 9.2 Action
 
@@ -327,30 +341,32 @@ EXECUTED → VERIFIED | MISMATCH
 
 ### 9.3 취소 상태 계약
 
-이 절은 Domain 상태 전이 계약 v1.4의 취소 규칙을 소유한다. Action `CANCELLED` 추가는 Domain DB Schema v1.4 Migration 대상이다.
+이 절은 Domain 상태 전이 계약 v1.5의 취소 규칙을 소유한다. Action `CANCELLED`는 DB Schema v1.4부터 지원되며 현재 Canonical Schema v1.6에서 유지한다.
 
-Run 취소는 `RequestCancel`과 `FinalizeCancellation`이 소유하며, 개별 Action을 임의 상태로 덮어쓰지 않는다.
-
-- `RequestCancel`은 모든 비Terminal Run에서 허용하되 `command_id` 중복 판정과 `expected_version` 검증을 Approval·Plan·Action 변경보다 먼저 수행한다. Version Conflict 또는 같은 `command_id`의 다른 Hash Replay에서는 Domain 변경이 0건이어야 한다.
-- 취소 요청이 수락되면 Run은 `CANCEL_REQUESTED`가 되고 이후 새 Action Claim과 새 Google Write를 시작하지 않는다.
-- Plan이 아직 없거나 LLM·Retrieval·Confirmation 단계이면 Run만 `CANCEL_REQUESTED → CANCELLED`로 종료한다.
-- 미실행 Action `PROPOSED | MODIFIED | APPROVED | EXPIRED`는 내부 `CancelPendingAction` Command로 `CANCELLED` 처리한다. ACTIVE Approval이 있으면 같은 Transaction에서 `REVOKED`로 전환한다. ExecutionAttempt·Verification은 새로 만들지 않는다.
-- `EXECUTING`은 결과가 확정될 때까지 상태를 보존한다. 취소 요청 자체가 외부 Write를 중단하거나 실패로 간주하지 않는다.
-- `EXECUTED`는 반드시 Effect별 Verification을 끝낸 뒤 취소를 마무리한다.
-- `UNKNOWN_RESULT`가 하나라도 남아 있으면 Run을 `RECOVERY_REQUIRED`로 전환하며 blind resend를 금지한다. 결과 확정 후 기존 cancel intent를 이어서 처리한다.
-- `VERIFIED | MISMATCH | FAILED | REJECTED | BLOCKED | DEPENDENCY_BLOCKED`는 이미 확정된 사실이므로 취소 과정에서 다른 상태로 덮어쓰지 않는다.
-- 모든 in-flight 결과가 확정되면 Plan은 `CANCELLED`, Run은 `CANCELLED`가 된다. 이미 성공한 Write가 있으면 Projection 결과 분류는 `PARTIAL`이며 Google 상태를 Rollback하지 않는다.
+- `RequestCancel`은 모든 비Terminal Run에 대해 요청할 수 있으나, Receipt/Version/현재 in-flight 사실을 먼저 판정한다.
+- 성공한 `RequestCancel`의 **APPLIED Command Receipt가 durable cancel intent의 기준점**이다. Run.status가 결과 확정 중 `VERIFYING | RECOVERY_REQUIRED | REAUTH_REQUIRED`로 바뀌어도 Receipt에서 `cancel_intent_active=true`를 재구성한다.
+- cancel intent가 활성인 동안 새 Action Claim과 새 Connector Write는 0이어야 한다.
+- 미실행 Action `PROPOSED | MODIFIED | APPROVED | EXPIRED`는 `CancelPendingAction`으로 `CANCELLED` 처리하고 ACTIVE Approval은 같은 UoW에서 `REVOKED`한다.
+- in-flight Action은 취소 요청만으로 덮어쓰지 않는다. 먼저 `EXECUTED | UNKNOWN_RESULT | FAILED` 중 실제 결과를 확정한다.
+- `EXECUTED`는 Verification, `UNKNOWN_RESULT`는 Recovery를 통과한다. 인증 문제는 Reauth를 완료한 뒤 이어간다.
+- 결과 확정 후 `CANCEL_REQUESTED | VERIFYING | REAUTH_REQUIRED`에서 unresolved result가 없으면 `FinalizeCancel`로 `CANCELLED`를 만든다.
+- `RECOVERY_REQUIRED`에서는 cancel intent가 활성일 때 `ResolveRecovery(CANCEL)`을 사용한다. 재검증이 필요한 경우 `VERIFYING`으로 복귀한 뒤 `FinalizeCancel`한다.
+- cancel intent가 활성인 동안 `CREATE_CORRECTIVE_PLAN`과 일반 `ACCEPT_PARTIAL → COMPLETED`를 금지한다.
+- 성공한 Connector Write는 Rollback하지 않는다. 일부 성공 후 취소면 Run Domain Status는 `CANCELLED`, Projection `result_kind=PARTIAL`이 될 수 있다.
 
 ### 9.4 Verification MISMATCH Recovery 계약
 
 `StoreVerification`이 핵심 필드 불일치를 확정하면 Verification을 append-only로 저장하고 Action을 `MISMATCH`, Run을 `RECOVERY_REQUIRED`로 전환한다. `MISMATCH` Action은 terminal·immutable이다.
 
-`ResolveRecovery`는 Recovery reason에 맞는 typed resolution만 허용한다.
+`ResolveRecovery`는 Recovery reason과 cancel intent에 맞는 typed resolution만 허용한다.
 
-- `ACCEPT_PARTIAL`: 기존 `MISMATCH`와 실제 Google 상태를 보존하고 미실행 Action을 `CANCELLED`로 처리한다. Plan 결과를 확정하고 Run은 `COMPLETED`, 결과 분류는 `PARTIAL`로 종료한다.
-- `CREATE_CORRECTIVE_PLAN`: 실제 Google 상태를 최신 Source Snapshot으로 재조회하고 Run을 `PLANNING`으로 전환해 같은 Run의 새 Plan Revision을 만든다. 기존 MISMATCH Action·Approval·Attempt·Verification은 재사용하지 않는다. 새 Write는 Domain Validation → 새 Approval → 새 Claim → 새 Attempt를 거친다.
+- `ACCEPT_PARTIAL`: `cancel_intent_active=false`일 때만 허용한다. 기존 MISMATCH와 실제 Provider 상태를 보존하고 미실행 Action을 terminalize한 뒤 Run을 `COMPLETED`, 결과를 `PARTIAL`로 확정한다.
+- `CREATE_CORRECTIVE_PLAN`: `cancel_intent_active=false`일 때만 허용한다. 실제 Provider 상태를 최신 Source Snapshot으로 사용해 `RECOVERY_REQUIRED → PLANNING` 후 같은 Run의 **새 Plan Revision**을 만든다. 기존 MISMATCH/Approval/Attempt/Verification은 재사용하지 않는다.
+- `CANCEL`: durable cancel intent가 활성이고 recovery 결과가 terminal snapshot으로 정리됐을 때 Run을 `CANCELLED`로 닫는다.
+- `FAIL`: 복구 불가가 확정됐을 때만 `FAILED`로 닫는다.
+- 재검증이 필요한 경우에만 `VERIFYING`으로 돌아간다. `Recovery → Verification` 무조건 반복은 금지한다.
 
-일반 사용자 취소는 Recovery resolution이 아니라 `RequestCancel`을 사용한다. `ResolveRecovery`가 기존 `MISMATCH` Action을 `EXECUTING`으로 되돌리거나 자동 수정·자동 Rollback을 수행하는 경로는 금지한다.
+새 corrective Write는 Domain Validation → 새 Approval → 새 Claim → 새 Attempt → 새 Verification을 다시 거친다. 기존 MISMATCH Action을 `EXECUTING`으로 되돌리거나 자동 수정·자동 Rollback하지 않는다.
 
 ## 9-A. Local API와 Domain Store 경계
 
@@ -932,29 +948,30 @@ RECOVERY_REQUIRED
 | 현재 | Command·Event | Guard | 다음 | 주요 동시 변경 | Audit Event |
 |---|---|---|---|---|---|
 | CREATED | StartAnalysis | Open Run, Runtime 사용 가능 | ANALYZING | 시작 상태 기록 | RUN_ANALYSIS_STARTED |
-| ANALYZING | BeginRetrieval | 구조화 요청 유효 | RETRIEVING | Retrieval Trace | RUN_RETRIEVAL_STARTED |
-| ANALYZING | BlockRun | Policy 위반 | BLOCKED | `finished_at_ms` | RUN_BLOCKED |
-| RETRIEVING | RequestConfirmation | 모호성 존재 | WAITING_CONFIRMATION | Checkpoint Interrupt | RUN_CONFIRMATION_REQUIRED |
-| RETRIEVING | BeginPlanning | Context 충분 | PLANNING | Context 확정 | RUN_PLANNING_STARTED |
-| WAITING_CONFIRMATION | SubmitConfirmation | 유효한 응답 | RETRIEVING 또는 PLANNING | Message 저장 | RUN_CONFIRMATION_RESOLVED |
-| PLANNING | PublishPlan | Plan Aggregate 검증 성공 | WAITING_APPROVAL | Plan·Action Batch 저장 | RUN_WAITING_APPROVAL |
-| WAITING_APPROVAL | BeginExecution | 승인 Action 존재 | EXECUTING | Plan ACTIVE | RUN_EXECUTION_STARTED |
-| WAITING_APPROVAL | RequestCancel | 비Terminal·Version/Receipt 유효 | CANCEL_REQUESTED | 신규 Claim 차단 | RUN_CANCEL_REQUESTED |
-| EXECUTING | BeginVerification | 검증 대상 존재 | VERIFYING | 없음 | RUN_VERIFICATION_STARTED |
-| EXECUTING | RequestCancel | Write 진행 가능성 존재 | CANCEL_REQUESTED | 취소 요청 | RUN_CANCEL_REQUESTED |
-| CANCEL_REQUESTED | FinalizeCancellation | 결과 확정 완료 | CANCELLED 또는 VERIFYING | 종료 또는 검증 대상 | RUN_CANCEL_FINALIZED |
-| VERIFYING | CompleteRun | 모든 Action Terminal | COMPLETED | Plan COMPLETED, 종료 시각 | RUN_COMPLETED |
-| VERIFYING | RequireRecovery | UNKNOWN_RESULT·Checkpoint 불일치 | RECOVERY_REQUIRED | Recovery 후보 | RUN_RECOVERY_REQUIRED |
-| RECOVERY_REQUIRED | ResumeVerification | Recovery 결과 확보 | VERIFYING | Attempt·Resource 보정 | RUN_RECOVERY_RESOLVED |
-| RECOVERY_REQUIRED | AcceptPartialRecovery | MISMATCH 실제 상태 수용 | COMPLETED | 미실행 Action CANCELLED, 결과 PARTIAL | RUN_RECOVERY_ACCEPTED_PARTIAL |
-| RECOVERY_REQUIRED | CreateCorrectivePlan | MISMATCH 교정 작업 필요 | PLANNING | 최신 Source 재조회, 새 Plan Revision | RUN_RECOVERY_REPLAN |
-| RECOVERY_REQUIRED | CancelRecovery | 사용자 명시 취소 | CANCELLED | 신규 Write 금지 | RUN_RECOVERY_CANCELLED |
-| RECOVERY_REQUIRED | FailRecovery | 복구 불가 | FAILED | 종료 시각 | RUN_RECOVERY_FAILED |
-| 진행 상태 | RequireReauth | Credential 만료 | REAUTH_REQUIRED | Checkpoint 저장 | RUN_REAUTH_REQUIRED |
-| REAUTH_REQUIRED | ResumeAfterReauth | Credential 유효, Checkpoint 존재 | Checkpoint의 안전 상태 | Source 재조회 | RUN_REAUTH_RESUMED |
+| ANALYZING·PLANNING | BeginRetrieval | 새 Retrieval invocation 필요 | RETRIEVING | Retrieval Trace·PLANNING Back-edge에서는 기존 Artifact freshness 규칙 적용 | RUN_RETRIEVAL_STARTED |
+| ANALYZING·RETRIEVING | BeginPlanning | no-fetch 또는 Context 충분 | PLANNING | Context 확정 | RUN_PLANNING_STARTED |
+| ANALYZING·RETRIEVING·PLANNING | RequestConfirmation | 공식 NEEDS_CONFIRMATION + resume target 등록 | WAITING_CONFIRMATION | interrupt_id·owner_subgraph·RegisteredResumeTargetRefV1 checkpoint | RUN_CONFIRMATION_REQUIRED |
+| WAITING_CONFIRMATION | ResumeConfirmation | 유효 사용자 응답·Checkpoint 존재 | 발생 전 안전 상태 | Message·Policy Receipt 필요 시 append | RUN_CONFIRMATION_RESOLVED |
+| CREATED·ANALYZING·RETRIEVING·WAITING_CONFIRMATION·PLANNING·WAITING_APPROVAL | BlockRun | Policy 위반 + Active/Unknown/미검증 Write Attempt 없음 | BLOCKED | Plan 존재 시 미실행 Action terminalize → ACTIVE Approval REVOKED → Plan CANCELLED → Run BLOCKED 순서 | POLICY_BLOCKED·RUN_BLOCKED |
+| ANALYZING·RETRIEVING·PLANNING | CompleteAnswerOnlyRun | Open Write/실행 중 READ/미해결 Recovery 없음 + Output Schema 통과 | COMPLETED | Assistant Message·필수 Trace·finished_at 같은 UoW | RUN_COMPLETED |
+| PLANNING | PublishPlan | Plan Aggregate·Review·Domain Validation 성공 | WAITING_APPROVAL | Plan·Action Batch 저장 | RUN_WAITING_APPROVAL |
+| WAITING_APPROVAL·CANCEL_REQUESTED | BeginVerification | 검증 대상 `EXECUTED` Write Attempt 존재 | VERIFYING | 정상 Write는 Run을 WAITING_APPROVAL에 유지. CANCEL_REQUESTED에서는 durable cancel intent 유지 | RUN_VERIFICATION_STARTED |
+| VERIFYING | CompleteWriteRun | 모든 승인 Action Terminal + 미해결 결과 없음 + cancel_intent_active=false | COMPLETED | Plan COMPLETED·finished_at | RUN_COMPLETED |
+| 비Terminal | RequestCancel | Receipt/Version 유효 | CANCEL_REQUESTED 또는 현재 in-flight 안전 상태 유지 | APPLIED Receipt로 durable cancel intent 생성·신규 Claim/Write 금지 | RUN_CANCEL_REQUESTED |
+| CANCEL_REQUESTED·VERIFYING·REAUTH_REQUIRED | FinalizeCancel | cancel intent + unresolved in-flight 0 + 미실행 Action terminal + ACTIVE Approval revoke | CANCELLED | Plan CANCELLED·finished_at·성공 Write 보존 | RUN_CANCEL_FINALIZED |
+| ANALYZING·RETRIEVING·PLANNING·WAITING_APPROVAL·EXECUTING·VERIFYING·RECOVERY_REQUIRED | RequireReauth | Connector Credential 만료 | REAUTH_REQUIRED | 안전 checkpoint 저장·in-flight/Recovery 사실 보존 | RUN_REAUTH_REQUIRED |
+| REAUTH_REQUIRED | ResumeAfterReauth | Credential 유효·Checkpoint 존재 | Checkpoint의 안전 Domain phase | Source/Version 재검증·이미 dispatch된 Write 재전송 금지 | RUN_REAUTH_RESUMED |
+| 비Terminal | RequireRecovery | UNKNOWN_RESULT·MISMATCH·Checkpoint/Contract 불일치 등 | RECOVERY_REQUIRED | Recovery reason·실제 사실 보존 | RUN_RECOVERY_REQUIRED |
+| RECOVERY_REQUIRED | ResolveRecovery(RECHECK) | 재검증 필요 | VERIFYING | 기존 결과 snapshot 보존 | RUN_RECOVERY_RESOLVED |
+| RECOVERY_REQUIRED | ResolveRecovery(ACCEPT_PARTIAL) | cancel_intent_active=false | COMPLETED | 결과 PARTIAL·미실행 Action terminal | RUN_RECOVERY_ACCEPTED_PARTIAL |
+| RECOVERY_REQUIRED | ResolveRecovery(CREATE_CORRECTIVE_PLAN) | cancel_intent_active=false | PLANNING | 실제 외부 상태를 Source Snapshot으로 새 Plan Revision | RUN_RECOVERY_REPLAN |
+| RECOVERY_REQUIRED | ResolveRecovery(CANCEL) | cancel intent 활성 + terminal snapshot | CANCELLED | Plan CANCELLED·finished_at | RUN_RECOVERY_CANCELLED |
+| RECOVERY_REQUIRED | ResolveRecovery(FAIL) | 복구 불가 확정 | FAILED | finished_at | RUN_RECOVERY_FAILED |
 | REAUTH_REQUIRED | CheckpointMissing | Checkpoint 없음·손상 | RECOVERY_REQUIRED | 정합성 오류 | RUN_CHECKPOINT_MISSING |
 
-`finished_at_ms`는 COMPLETED, CANCELLED, FAILED, BLOCKED에서만 설정한다.
+Run의 `finished_at_ms`는 `COMPLETED`, `CANCELLED`, `FAILED`, `BLOCKED`로 전이할 때만 설정한다.
+
+**Release Write 불변조건:** Action이 `EXECUTING`이라고 해서 Run을 자동 `EXECUTING`으로 재계산하지 않는다. 승인형 Write의 Run은 첫 Verification 전까지 기본적으로 `WAITING_APPROVAL`을 유지한다. `Run.EXECUTING`은 Legacy READ-only Plan 호환 경계에만 남는다.
 
 ## 25.5 Plan 상태 전이
 
@@ -1091,51 +1108,71 @@ NOT_FOUND와 ERROR만으로 Action을 즉시 FAILED로 확정하지 않는다.
 - Reject 성공 시 아직 미실행인 직접·간접 종속 `PROPOSED·MODIFIED·APPROVED` Action은 `DEPENDENCY_BLOCKED`가 되고 ACTIVE Approval은 같은 Transaction에서 `REVOKED`된다. 이미 Terminal인 Action은 변경하지 않으며 그 뒤의 DAG 전파도 해당 Terminal 사실을 넘어가지 않는다.
 - Reject 결과로 Plan의 모든 Action이 Terminal이면 기존 revision에서 Plan과 Run을 `COMPLETED`로 확정한다. 독립적인 미완료 Action이 남아 있으면 Plan/Run 상태를 유지한다. Reject는 Run을 `CANCELLED`로 만들지 않는다.
 
-## 25.11 상위 상태 재계산
+## 25.11 Run·Plan 상위 상태 정합성 규칙
 
-Action 전이 후 상위 상태를 재계산한다.
+Action 전이는 상위 Run 상태를 임의로 재계산해 덮어쓰지 않는다. **Run 상태는 25.4의 명시적 Domain Command와 Guard가 전이시키며 Action 상태는 그 Command의 전제 사실로 사용한다.**
 
-Run:
+### Run
 
-- 승인 대기 Action 존재 → WAITING_APPROVAL
-- 실행 중·결과 불명 Action 존재 → EXECUTING
-- 검증 대기 Action 존재 → VERIFYING
-- 미해결 UNKNOWN_RESULT·Checkpoint 불일치 → RECOVERY_REQUIRED
-- 모든 Action Terminal → COMPLETED
+- 승인형 Write Action을 Claim·실행하는 동안 Run은 기본적으로 `WAITING_APPROVAL`을 유지한다.
+- 첫 `EXECUTED` Write 결과를 검증할 때 `BeginVerification`으로 `WAITING_APPROVAL → VERIFYING`한다.
+- 실행 중 취소 뒤 이미 반영된 결과는 durable cancel intent를 유지한 채 `CANCEL_REQUESTED → VERIFYING`할 수 있다.
+- 미해결 `UNKNOWN_RESULT`, Checkpoint/Contract 불일치 또는 `MISMATCH`는 `RequireRecovery`로 `RECOVERY_REQUIRED`에 둔다.
+- `CREATE_CORRECTIVE_PLAN`, `ACCEPT_PARTIAL`, `FAIL`, `CANCEL`은 등록된 `ResolveRecovery` Command만 상태를 전이한다.
+- 모든 승인 대상 Action이 Terminal이고 미해결 결과가 없으며 cancel intent가 없을 때만 `CompleteWriteRun: VERIFYING → COMPLETED`를 적용한다.
+- cancel intent가 활성인 경우 `CompleteWriteRun`보다 `FinalizeCancel` 또는 Recovery의 cancel resolution을 우선한다.
+- Policy 차단은 Claim 전 `BlockRun` Guard가 실제 적용된 경우에만 `BLOCKED`다.
 
-Plan:
+### Plan
 
-- 검증 전 → DRAFT
-- 승인 대기 → WAITING_APPROVAL
-- 실행 가능한 승인 Action 존재 → ACTIVE
-- 새 Revision 활성화 → 이전 SUPERSEDED
-- 모든 Action Terminal → COMPLETED
+- 새 Revision 검증 전: `DRAFT`.
+- 승인 대기 Action 존재: `WAITING_APPROVAL`.
+- 실행 가능한 승인 Action 존재: `ACTIVE`.
+- 새 Revision이 활성화됨: 이전 Revision `SUPERSEDED`.
+- Run 취소 Finalization이면 현재 Plan은 `CANCELLED`.
+- MISMATCH가 unresolved이면 Plan을 완료 처리하지 않고 Run Recovery 결정을 기다린다.
+- 그 외 모든 Action Terminal이면 `COMPLETED`.
+
+상위 상태를 UI 입력값이나 LangGraph `workflow_phase`로 저장하지 않는다.
 
 ## 25.12 Repository Command 계약
 
 ```text
 start_run
+start_analysis
 begin_retrieval
+begin_planning
 request_confirmation
-submit_confirmation
+resume_confirmation
+complete_answer_only_run
 publish_plan
+publish_read_only_plan
+block_run
 approve_action
 modify_action
 reject_action
+expire_approval
 refresh_expired_action
 claim_read_action
 complete_read_action
 finalize_read_action
+fail_read_action
 claim_action_execution
 mark_attempt_executing
 store_execution_success
 store_execution_unknown
 store_execution_failure
 store_verification_result
-request_run_cancel
+begin_verification
+complete_write_run
+prepare_write_retry
+request_cancel
+cancel_pending_action
+finalize_cancel
 require_reauth
+resume_after_reauth
 require_recovery
-complete_run
+resolve_recovery
 ```
 
 공통 반환:
@@ -1307,7 +1344,7 @@ finalize_read_action
 Open Write, 실행 중 READ, UNKNOWN_RESULT, REAUTH_REQUIRED, RECOVERY_REQUIRED가 없어야 한다.
 
 ## 28.3 READ-only Plan
-`publish_read_only_plan`: Plan `DRAFT → ACTIVE`, Run `→ EXECUTING`. 승인 단계는 없다.
+`publish_read_only_plan`: Legacy/호환 READ-only Plan에서 Plan `DRAFT → ACTIVE`, Run `→ EXECUTING`. 현재 Release Graph의 일반 Retrieval READ는 Action Plan을 만들지 않는다.
 
 ## 28.4 READ 실패
 `fail_read_action`: READ Action `EXECUTING → FAILED`. Approval·ExecutionAttempt·Verification Row는 없다.
@@ -1380,7 +1417,7 @@ UPDATE → REQUIRED / GET_COMPARE / GET_TARGET
 SEND   → REQUIRED / SENT_LOOKUP / MESSAGE_SEARCH
 DELETE → REQUIRED / GET_ABSENT  / GET_TARGET
 ```
-Task 완료·Calendar 참석자 변경은 UPDATE다. DELETE는 P0에서 Calendar Event 삭제에만 사용한다.
+Task 완료·Calendar 참석자 변경은 UPDATE다. DELETE는 P0에서 Google Task 삭제와 Calendar Event 삭제에 사용한다. Gmail Message·Thread 원문 삭제는 금지다.
 
 ## 31.2 외부 호출 Transaction 경계
 Google/MCP/LLM 응답 대기 중 SQLite Write Transaction을 유지하지 않는다. 외부 호출 전 Snapshot Transaction과 호출 후 결과 저장 Transaction을 분리하며 두 번째 Transaction에서 Version·Action·Attempt 상태를 재검사한다.

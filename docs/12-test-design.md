@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.16`, `05 Retrieval v2.11`, `06 Workflow v7.6`, `07 Interface v2.17`, `08 Sequence v3.9`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.12`, `15 Agent Capability·Failure·Prompt v1.11`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.19`, `05 Retrieval v2.11`, `06 Workflow v7.12`, `07 Interface v2.18`, `08 Sequence v3.12`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.12`, `15 Agent Capability·Failure·Prompt v1.11`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v3.13 · **기준일:** 2026-08-13 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.19 · **기준일:** 2026-08-13 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -183,6 +183,25 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - `RESOURCE_SELECTED`에서 불필요한 Workspace Search 금지
 - `output_mode=ANSWER`에서 Action Argument/Plan Node 미호출
 - Review 없음·있음 Candidate가 Domain·Policy 코드를 공유
+
+
+### 8-A. Canonical Workflow·State Regression
+
+- Run 시작 뒤 Request Understanding 전에 `StartAnalysis: CREATED → ANALYZING`이 정확히 한 번 적용되어야 한다.
+- Request `COMPLETE`는 Tool Route로 정확히 한 번 연결된다. Retrieval/Planning으로 직접 건너뛰면 실패다.
+- `BeginRetrieval`은 `ANALYZING | PLANNING → RETRIEVING`, `BeginPlanning`은 `ANALYZING | RETRIEVING → PLANNING`을 지원하며 이미 target 상태인 local loop에서는 반복하지 않는다.
+- `NEEDS_MORE_DATA`는 local budget 내 bounded loop만 허용하고 budget 소진 시 `NEEDS_CONFIRMATION | PARTIAL | BLOCKED`로 정규화한다. `NO_FETCH_NEEDED`는 SUFFICIENT와 같은 analysis guard를 따른다.
+- Confirmation은 `RequestConfirmation → WAITING_CONFIRMATION → ResumeConfirmation → 동일 owner checkpoint`를 사용한다. 모든 Confirmation을 Request Understanding으로 공통 재시작하면 실패다.
+- Preflight/Claim `applied=false`가 `ACTION_EXECUTION` 또는 `FINALIZE`로 fall-through하면 실패다. `current_status + next_allowed_commands`로 재조정해야 한다.
+- `ACTION_EXECUTION`: `EXECUTED`만 Verification, `UNKNOWN_RESULT`는 Recovery, `FAILED + NOT_SENT`는 retry/cancel 대기 suspend다.
+- 승인형 Write 첫 Verification은 정상 경로 `WAITING_APPROVAL → VERIFYING`, 취소 후 이미 EXECUTED된 결과 확인은 `CANCEL_REQUESTED → VERIFYING`이다. 다중 Action에서 이미 VERIFYING이면 반복 호출하지 않는다.
+- predecessor Action이 `VERIFIED`되기 전 종속 Action을 실행하면 실패다.
+- 모든 승인 Action terminal + 미해결 결과 0 + cancel intent false에서만 `CompleteWriteRun → COMPLETED`; cancel intent true이면 `FinalizeCancel → CANCELLED`가 우선한다.
+- `RequestCancel` APPLIED Receipt는 `VERIFYING | RECOVERY_REQUIRED | REAUTH_REQUIRED` 전환 및 재시작 이후에도 durable cancel intent를 복원해야 하며 새 Claim/Write는 0이다.
+- `ResolveRecovery(FAIL)`은 `FAILED → FINALIZE` 한 경로만 가져야 한다. `ACCEPT_PARTIAL`과 중복 Edge에 매핑하면 실패다.
+- `Retrieval.PARTIAL + usable Evidence 없음`은 `CompleteAnswerOnlyRun → COMPLETED` 이후 FINALIZE해야 하며 비Terminal Run의 직접 FINALIZE는 실패다.
+- unknown Enum/Version/Disposition은 bounded repair 후 `RequireRecovery(CONTRACT_VIOLATION)`로 fail-closed한다.
+- `BlockRun`은 Claim 전 + Active/Unknown/미검증 Write Attempt 없음일 때만 적용한다. Plan이 존재하면 Action terminalize → ACTIVE Approval revoke → Plan CANCELLED → Run BLOCKED 순서를 같은 UoW에서 지켜 `0005` cross-aggregate trigger를 만족해야 한다.
 
 ## 9. UI
 

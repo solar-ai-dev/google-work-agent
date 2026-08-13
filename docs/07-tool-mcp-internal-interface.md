@@ -1,10 +1,10 @@
 # 07. Google Work Agent · Tool · MCP · 내부 인터페이스 명세서
 
-> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v7.6`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, Connector MCP Tool, Python 내부 인터페이스 계약을 정의한다.
+> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v7.12`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, Connector MCP Tool, Python 내부 인터페이스 계약을 정의한다.
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.17
+- **상태:** Draft v2.18
 - **기준일:** 2026-08-13
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
@@ -295,8 +295,16 @@ conflict_detail
 필수 Command:
 
 ```text
+start_run
+start_analysis
+begin_retrieval
+begin_planning
+request_confirmation
+resume_confirmation
 complete_answer_only_run
+publish_plan
 publish_read_only_plan
+block_run
 claim_read_action
 complete_read_action
 finalize_read_action
@@ -304,6 +312,7 @@ fail_read_action
 approve_action
 modify_action
 reject_action
+expire_approval
 refresh_expired_action
 claim_action_execution
 store_execution_success
@@ -312,9 +321,16 @@ mark_unknown_result
 recover_existing_result
 resolve_as_failed
 store_verification
+begin_verification
+complete_write_run
 prepare_write_retry
 request_cancel
+cancel_pending_action
 finalize_cancel
+require_reauth
+resume_after_reauth
+require_recovery
+resolve_recovery
 ```
 
 규칙:

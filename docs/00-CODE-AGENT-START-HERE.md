@@ -1,86 +1,45 @@
-# Google Work Agent — Coding Agent Start Here
+# Google Work Agent — Code Agent Start Here
 
-## 목적
+> 이 문서는 구현 Agent용 온보딩 문서다. Concern Owner가 아니며 충돌 시 `00-PROJECT-SOURCE-GUIDE.md`와 01~15/Domain/SQL 계약을 따른다.
 
-이 문서는 코딩 에이전트가 저장소를 수정하기 전에 읽어야 하는 **진입 가이드**다. 권위 계약 자체를 새로 정의하지 않으며, 충돌 시 25개 Canonical Source 문서를 따른다.
+## 1. 현재 Canonical
 
-## 현재 설계 기준
+- PRD v2.10 / Functional v2.15 / Policy v2.11 / UI v2.11
+- Architecture v3.5 / Domain·DB v1.19 / DB Schema v1.6
+- Retrieval v2.11 / Workflow v7.12 / Interface v2.18 / Sequence v3.12
+- Security v2.10 / Infrastructure v2.9 / Observability v2.12
+- Test v3.19 / Evaluation v3.9 / Operations v2.7 / Agent Capability v1.11
+- Domain State Transition v1.5 / Test Matrix v1.5
 
-- 제품은 Windows 11 x64 단일 사용자 로컬 애플리케이션이다.
-- Frontend는 React/TypeScript/Vite, Local Agent Service는 FastAPI, Workflow는 LangGraph다.
-- Main Graph는 결정적 Supervisor이며 Agent는 전문 LangGraph Subgraph다.
-- 외부 업무 시스템은 **Connector Registry → MCP Client/Port → Connector MCP Server → Provider Adapter** 경계를 통해 접근한다.
-- P0 첫 Connector는 `google_workspace`이며 Gmail·Google Tasks·Google Calendar를 제공한다.
-- Core/Application/LangGraph/Agent/Domain은 Provider API/SDK를 직접 호출하지 않는다.
-- 모든 Write는 `Domain Validation → Approval → Claim → Connector MCP Write → Verification Read`를 거친다.
-- Domain Store는 승인·실행·검증 사실의 기준점이며 Checkpoint는 Graph 재개 위치다.
-
-## 반드시 먼저 읽을 문서
+## 2. 먼저 읽을 순서
 
 ```text
-01 PRD
-01-A Functional
-01-B Policy
-03 Architecture
-04 Domain·DB
-05 Retrieval
-06 Workflow
-07 Interface
-08 Sequence
-09 Security
-12 Test
-15 Agent Capability·Failure·Prompt
+01 PRD → 03 Architecture → 06 Workflow → 08 Sequence
+→ 01-A Functional → 01-B Policy
+→ 04 Domain·DB → 05 Retrieval → 07 Interface
+→ 09 Security → 10 Infrastructure → 11 Observability → 14 Operations
+→ 12 Test → 13 Evaluation → 15 Agent Capability
 ```
 
-DB 또는 상태 전이를 변경하면 추가로 다음을 읽는다.
+## 3. 구현 불변조건
 
-```text
-state-transition-contract-v1.4.md
-state-transition-test-matrix-v1.4.md
-0001~0005 migration SQL
-```
+- 외부 업무 시스템 접근: `Core → Connector Registry → MCP Client/Port → Connector MCP Server → Provider Adapter`.
+- Core에서 Provider API/SDK 직접 호출 또는 MCP 장애 시 direct fallback 금지.
+- Agent/LLM은 Write를 직접 실행하지 않는다.
+- 승인형 Write: Domain Validation → Approval → Claim → MCP Write → Verification → Recovery/Finalize.
+- Claim Commit 전 MCP Write 0.
+- `UNKNOWN_RESULT` blind resend 0.
+- `FAILED + NOT_SENT`는 명시적 retry/cancel 전 자동 재실행 0.
+- Action 실행 중 Run을 자동 EXECUTING으로 덮지 않는다. 정상 Write는 첫 Verification까지 Run WAITING_APPROVAL 유지.
+- Confirmation은 owner checkpoint resume. 모든 확인을 Request Understanding으로 재시작하지 않는다.
+- FINALIZE는 비Terminal Run을 직접 종료하지 않는다.
+- Migration SQL `0001~0005`는 checksum/history Artifact이므로 소급 수정하지 않는다.
 
-## 구현 시 핵심 불변조건
+## 4. 변경할 때
 
-1. LLM이 Policy 최종 허용 여부를 결정하지 않는다.
-2. Agent가 다른 Agent를 직접 호출하지 않는다.
-3. Tool Route가 Connector/IN/OUT Tool을 확정한 뒤 Retrieval·Planning이 재선택하지 않는다.
-4. 외부 READ는 Retrieval의 결정적 Application Node가 Connector MCP Read Port를 호출한다.
-5. 외부 Provider API direct fallback을 만들지 않는다.
-6. 승인 전에 Write하지 않는다.
-7. 승인된 Business Arguments와 실제 실행 Arguments의 무결성을 Claim V2로 검증한다.
-8. `UNKNOWN_RESULT`에서는 blind resend하지 않는다.
-9. 성공 Write는 Provider 상태 재조회로 검증한다.
-10. 기존 Migration은 이력/checksum Artifact이므로 소급 수정하지 않는다.
-
-## Connector 확장 시 주의
-
-Core의 장기 의미는 Connector-neutral이지만 현재 P0 구현에는 Google Workspace-first 호환 구조가 남아 있다.
-
-- DB v1.6의 `GoogleAccount` / `resource_refs.source` / 일부 CHECK는 P0 Google Workspace 값에 닫혀 있다.
-- 실제 두 번째 Connector를 추가할 때는 새 Migration으로 Account binding과 Resource identity를 확장한다.
-- 미래 Connector의 Tool 이름·OAuth 방식·Schema를 미리 추측해 문서나 코드에 넣지 않는다.
-- 먼저 Connector capability/registry/port 계약을 만족시키고 Provider-specific 세부는 Adapter 내부로 격리한다.
-
-## 수정 순서
-
-```text
-권위 문서 확인
-→ 현재 구현 조사
-→ Gap 식별
-→ 최소 완결 변경
-→ Contract/Unit Test
-→ Integration Test
-→ 관련 Safety Regression
-→ 문서/구현 정합성 재검수
-```
-
-## 금지
-
-- 설계 근거 없이 광범위한 리네이밍
-- 안전 임계 흐름과 무관한 대규모 동시 리팩터링
-- Provider API direct call 추가
-- 승인/Claim/Verification 우회
-- Migration 소급 수정
-- Prompt에 Gold/Grader/Expected Route 누출
-- 실제 사용자 Gmail·Tasks·Calendar 데이터의 테스트 Fixture 사용
+1. 어떤 Concern인지 찾는다.
+2. 해당 권위 문서의 상태/Schema/Command를 먼저 확인한다.
+3. 구현은 최소 완결 변경으로 한다.
+4. Domain/Policy/Interface 경계를 우회하지 않는다.
+5. 관련 Contract/Regression Test를 같이 수정한다.
+6. 새 Connector 추가 시 Core 상태/Graph를 Provider-specific으로 확장하기보다 Registry/MCP/Adapter/Normalizer/Migration 경계를 우선한다.

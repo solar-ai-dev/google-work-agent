@@ -361,7 +361,7 @@ evaluation_item_id
 
 ## 17. QueryAttempt·Confidence·재검색 계약
 
-이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.6`를 적용한다.
+이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.11`를 적용한다.
 
 ### 17.1 QueryAttempt
 

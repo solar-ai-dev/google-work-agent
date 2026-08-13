@@ -1,8 +1,8 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.16`, `05 Retrieval v2.11`, `07 Interface v2.17`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.19`, `05 Retrieval v2.11`, `07 Interface v2.18`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v7.6 · **DB Schema:** v1.6 · **대상:** P0 MVP
+> **상태:** Draft v7.12 · **DB Schema:** v1.6 · **대상:** P0 MVP
 >
 > Main LangGraph는 결정적 Supervisor와 Versioned Typed Main State를 소유한다. 전문 Agent는 LangGraph Subgraph이며 Parent State에서 자기 책임에 필요한 필드만 Projection 받아 Local State를 단계적으로 채우고, 완료 시 공식 Typed Result만 Main State에 병합한다. Schema는 출력 가능 범위를 통제하고, State는 확정 정보를 기억하며, Prompt는 각 LLM Node의 단일 작업만 지시한다. 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -25,39 +25,41 @@
 
 ```mermaid
 flowchart TD
-    START["START"] --> INIT["INITIALIZE"]
+    START["START"] --> INIT["INITIALIZE · StartAnalysis"]
     INIT --> REQ["Request Understanding Subgraph"]
+    REQ -->|"complete"| ROUTE["Tool Route Subgraph"]
     REQ -->|"needs confirmation"| CONF["WAITING_CONFIRMATION / interrupt"]
-    REQ -->|"invalid"| FIN["FINALIZE"]
+    REQ -->|"invalid · CompleteAnswerOnlyRun 또는 policy BlockRun"| FIN["FINALIZE"]
     CONF -->|"resume owner subgraph at checkpoint"| RESUME["ORIGINATING SUBGRAPH CHECKPOINT"]
     RESUME -.-> REQ
-    RESUME -.-> ROUTE["Tool Route Subgraph"]
+    RESUME -.-> ROUTE
     RESUME -.-> RET["Retrieval Subgraph"]
     RESUME -.-> ANA["Work Analysis Subgraph"]
     RESUME -.-> PLAN["Planning Subgraph"]
     RESUME -.-> REV["Review Subgraph"]
     ROUTE -->|"needs confirmation"| CONF
-    ROUTE -->|"blocked"| FIN
+    ROUTE -->|"blocked · BlockRun applied"| FIN
     ROUTE -->|"IN route exists"| RET
-    ROUTE -->|"no IN + policy precondition 없음 + analysis not required"| PLAN
-    ROUTE -->|"no IN + analysis required"| ANA
+    ROUTE -->|"ROUTE_READY no IN / NO_TOOL_NEEDED + policy precondition 없음 + analysis not required"| PLAN
+    ROUTE -->|"ROUTE_READY no IN / NO_TOOL_NEEDED + analysis required"| ANA
     RET -->|"needs confirmation"| CONF
-    RET -->|"blocked"| FIN
+    RET -->|"blocked · BlockRun applied"| FIN
     RET -->|"partial + usable evidence + effective analysis required"| ANA
     RET -->|"partial + usable evidence + effective analysis not required"| PLAN
-    RET -->|"partial + no usable evidence"| FIN
+    RET -->|"partial + no usable evidence · CompleteAnswerOnlyRun applied"| FIN
+    RET -->|"needs more data + local budget · bounded local loop"| RET
     RET -->|"route reconsideration"| ROUTE
-    RET -->|"sufficient + effective analysis required"| ANA
-    RET -->|"sufficient + effective analysis not required"| PLAN
+    RET -->|"sufficient / no fetch needed + effective analysis required"| ANA
+    RET -->|"sufficient / no fetch needed + effective analysis not required"| PLAN
     ANA -->|"needs more data + existing IN route"| RET
     ANA -->|"needs more data + no IN route"| ROUTE
     ANA -->|"route reconsideration"| ROUTE
     ANA -->|"needs confirmation"| CONF
-    ANA -->|"blocked"| FIN
-    ANA --> PLAN
+    ANA -->|"blocked · BlockRun applied"| FIN
+    ANA -->|"complete"| PLAN
     PLAN -->|"route reconsideration"| ROUTE
     PLAN -->|"needs confirmation"| CONF
-    PLAN -->|"blocked"| FIN
+    PLAN -->|"blocked · BlockRun applied"| FIN
     PLAN -->|"answer only"| RESP["RESPONSE_SYNTHESIS"]
     PLAN -->|"action plan"| REV
     REV -->|"REVISE"| PLAN
@@ -65,49 +67,129 @@ flowchart TD
     REV -->|"RETRIEVE_MORE + no IN route"| ROUTE
     REV -->|"ROUTE_RECONSIDERATION"| ROUTE
     REV -->|"CONFIRM"| CONF
-    REV -->|"BLOCK"| FIN
+    REV -->|"BLOCK · BlockRun applied"| FIN
     REV -->|"PASS"| DOM["DOMAIN_VALIDATION"]
     DOM -->|"REQUIRE_APPROVAL"| APP["WAITING_APPROVAL"]
-    DOM -->|"BLOCK"| FIN
+    DOM -->|"BLOCK · BlockRun applied"| FIN
     APP --> PRE["PREFLIGHT"]
     PRE -->|"claim applied=true / ready"| EXEC["ACTION_EXECUTION"]
     PRE -->|"reapproval required"| APP
     PRE -->|"recovery required"| REC["RECOVERY"]
-    PRE -->|"blocked / invalid"| FIN
-    EXEC --> VER["VERIFICATION"]
-    VER -->|"verified"| RESP
+    PRE -->|"policy blocked + BlockRun applied"| FIN
+    PRE -->|"applied=false · state/version/command conflict"| RECON["DOMAIN_RECONCILE · current_status + next_allowed_commands"]
+    RECON -->|"approval path"| APP
+    RECON -->|"recovery path"| REC
+    RECON -->|"reauth/cancel/in-flight resolution"| DOMWAIT["SUSPEND · Domain 상태 해소 대기"]
+    RECON -->|"already terminal"| FIN
+    EXEC -->|"executed / verification target exists"| VER["VERIFICATION"]
+    EXEC -->|"unknown result / recovery required"| REC
+    EXEC -->|"failed · NOT_SENT / retry decision required"| FAILWAIT["SUSPEND · FAILED retry/cancel 대기"]
+    FAILWAIT -->|"prepare-retry applied / review required"| REV
+    FAILWAIT -->|"CancelPendingAction + FinalizeCancel applied"| FIN
+    VER -->|"verified + next executable action"| PRE
+    VER -->|"verified + all approved actions terminal / CompleteWriteRun"| RESP
     VER -->|"recovery required"| REC
     REC -->|"existing result recovered / recheck required"| VER
-    REC -->|"resolved failed / terminal result"| RESP
+    REC -->|"CREATE_CORRECTIVE_PLAN"| PLAN
+    REC -->|"ResolveRecovery(ACCEPT_PARTIAL) terminal result"| RESP
     REC -->|"Domain RECOVERY_REQUIRED 유지"| SUSP["SUSPEND · explicit resolve/re-auth 대기"]
     SUSP -->|"resolve-recovery / safe resume"| REC
-    REC -->|"blocked / cancelled"| FIN
+    REC -->|"ResolveRecovery(FAIL/CANCEL) applied"| FIN
     RESP --> FIN
     FIN --> END["END"]
 ```
+
+### 1.1-A 전역 Domain 상태 오버레이
+
+- `REAUTH_REQUIRED`: Connector 접근 중 Credential 갱신 실패 시 checkpoint와 in-flight 사실을 보존하고 suspend한다. `ResumeAfterReauth` 후 저장된 안전 Phase로 돌아가며 이미 dispatch된 Write를 재전송하지 않는다.
+- `CANCEL_REQUESTED`: Claim 전이면 미실행 Action·Approval을 정리하고 `FinalizeCancel`로 닫을 수 있다. Claim 이후 in-flight Action은 먼저 `EXECUTED | UNKNOWN_RESULT | FAILED`로 확정한다. cancel intent는 APPLIED `RequestCancel` Receipt에서 재구성한다.
+- `RECOVERY_REQUIRED`: Recovery Node가 소유한다. 재검증, 부분 수용, corrective plan, cancel, fail 중 등록된 `ResolveRecovery`만 허용한다.
+- `BLOCKED`: Claim 전 `BlockRun`이 실제 적용된 경우만 Terminal이다. in-flight Write 사실을 `BLOCKED`로 덮어쓰지 않는다.
+
+### 1.1-B FINALIZE 계약
+
+`FINALIZE`는 임의의 Run 상태 변경 Node가 아니다.
+
+```text
+Answer-only·처리 불가 안내 → CompleteAnswerOnlyRun → COMPLETED → FINALIZE
+Policy block              → BlockRun → BLOCKED → FINALIZE
+Write 정상 완료           → CompleteWriteRun → COMPLETED → FINALIZE
+Cancel 완료               → FinalizeCancel → CANCELLED → FINALIZE
+Recovery 실패             → ResolveRecovery(FAIL) → FAILED → FINALIZE
+Recovery 부분 수용        → ResolveRecovery(ACCEPT_PARTIAL) → COMPLETED → FINALIZE
+```
+
+Run이 `WAITING_APPROVAL | VERIFYING | REAUTH_REQUIRED | RECOVERY_REQUIRED | CANCEL_REQUESTED` 같은 비Terminal 상태인데 대응 Domain Command가 적용되지 않았다면 `FINALIZE → END`로 진행하지 않고 suspend한다.
 
 ### 1.2 Main Supervisor 불변조건
 
 - Supervisor는 **Workflow Controller**이며 업무 의미·Tool Argument·계획 내용을 생성하지 않는다.
 - Agent는 다른 Agent/Subgraph를 직접 호출하지 않는다. 필요한 다음 단계는 Typed Disposition으로 Parent에 반환한다.
-- 모든 Subgraph Result/Disposition은 Supervisor Router에서 정확히 하나의 다음 Edge 또는 Terminal/Interrupt 경로를 가진다. 정의되지 않은 Enum·Version·Disposition은 fail-closed로 처리하며 추측 Routing을 금지한다.
-- `WAITING_CONFIRMATION`은 공통 Router가 아니라 LangGraph interrupt 경계다. Confirmation은 `owner_subgraph`, `resume_target`, `interrupt_id`를 보존하고 사용자 응답 후 발생시킨 Subgraph의 안전한 checkpoint로 재개한다. 사용자 응답이 upstream 의미를 바꾸는 경우에만 Supervisor가 Request Understanding 등 State Owner로 Back-edge한다.
-- Main State 공식 Artifact는 **단일 Owner + 다수 Consumer** 규칙을 따른다. Request Understanding만 `request_intent`, Tool Route만 `tool_route_plan.input_plan/output_plan`, Retrieval만 `retrieval_result`, Work Analysis만 `work_analysis_result`, Planning만 `planning_result`, Review만 `plan_review`의 새 revision을 생성할 수 있다.
-- `policy_confirmation_receipts`는 Agent Artifact가 아니라 실제 interrupt 응답을 검증한 Application/Confirmation Controller만 append할 수 있으며 Agent가 임의 생성·수정할 수 없다.
-- Subgraph 반환은 전체 Main State 교체가 아니라 **owner field + 허용된 workflow signal만 갱신하는 patch merge**다. Local State의 누락 필드나 `None`을 이유로 다른 Main State field를 초기화·삭제하지 않는다.
-- Downstream Node는 upstream Artifact를 read-only Projection으로 소비하며 동일 의미를 다시 조사해 대체 Artifact를 만들지 않는다. 재판단이 필요하면 직접 수정하지 않고 해당 Owner로 Back-edge한다.
-- Back-edge로 upstream 공식 State가 새 revision으로 교체되면 `meta.based_on`과 현재 active revision을 비교해 의존 Artifact를 stale 처리한다. 단계 이름을 하드코딩한 invalidation 목록을 권위로 사용하지 않는다.
-- `InputRoutePlanV1`과 `OutputPlanV1`은 같은 Tool Route Subgraph가 소유하지만 서로 독립적인 revision Artifact다. Output-only 변경은 기존 Retrieval을 stale 처리하지 않고 Planning·Review만 재생성한다.
-- Planning Action의 Tool identity는 `OutputToolRouteV1.selected_tool_id`를 결정적 Assembler가 복사해 materialize한다. Argument Writer나 Planning LLM이 Tool을 다시 선택·교체하지 않는다.
-- Tool Route의 Registry binding은 signed registry의 Resource·Effect·Schema 적합성을 검증하는 **결정적 eligibility filtering**만 허용한다. 후보가 하나면 코드가 확정하고, 여러 eligible 후보의 의미 선택이 필요한 경우에만 작은 선택 Node가 판단한다. 임의 heuristic shortlist로 등록 Tool을 선제 제거하지 않는다.
-- `TASK + CREATE`는 기존 미완료 Task 중복검사용 Tasks READ를, `CALENDAR + CREATE`는 대상 Calendar의 Event/FreeBusy 충돌검사용 READ를 결정적 Policy Precondition으로 추가한다. 사용자 지정 Source·기간·Resource 범위를 벗어나면 `SCOPE_EXPANSION_REQUIRED` Confirmation 전에는 확장하지 않는다. 거절 후 검사를 우회한 Write Plan은 금지한다.
-- Release Graph에서 모든 외부 Connector READ 의미는 `InputRoutePlanV1 → Retrieval`이 소유하며 실제 외부 조회는 Retrieval의 결정적 Application Node가 **Connector MCP Read Port/Tool만 호출**해 수행한다. React·FastAPI Route·Application·LangGraph·Agent·Domain은 Gmail·Tasks·Calendar Provider API/SDK를 직접 호출하지 않는다. Provider API는 Google Work MCP Server 내부 Adapter 구현에만 존재한다.
-- `OutputPlanV1`의 Action Route는 `CREATE | UPDATE | SEND | DELETE`만 허용한다. Release SIX Graph는 일반 Retrieval READ를 ActionPlan의 READ Action으로 만들지 않는다. Legacy READ Action 계약은 Domain 호환 경계 테스트에서만 유지한다.
-- `PREFLIGHT`는 실행으로 자동 fall-through하지 않는다. Domain Claim/Preflight 결과가 `applied=true`이고 Approval·Policy Confirmation Receipt·Arguments/Execution Hash·State Version이 모두 유효할 때만 `ACTION_EXECUTION`으로 간다. 재승인이 필요하면 `WAITING_APPROVAL`, 복구가 필요하면 `RECOVERY`, 차단/무효면 `FINALIZE`로 라우팅한다.
-- `RECOVERY`도 `VERIFICATION`으로 자동 loop하지 않는다. 기존 결과 회수나 재검증이 필요한 경우에만 Verification으로 돌아가며, 실패가 확정되면 terminal result를 합성하고, Domain이 `RECOVERY_REQUIRED`인 동안은 Graph를 suspend해 명시적 `resolve-recovery`/재인증을 기다린다. 차단·취소는 Terminal로 간다.
-- `workflow_phase`는 LangGraph routing/checkpoint 위치이며 Domain `Run.status`의 권위 복제본이 아니다. `REAUTH_REQUIRED`, `CANCEL_REQUESTED/CANCELLED`, `RECOVERY_REQUIRED`와 Approval·Execution·Verification 사실은 Domain Store가 소유한다. 충돌 시 Domain 상태를 우선한다.
+- 모든 공식 Result/Disposition은 정확히 하나의 다음 Edge·Interrupt·Terminal 경로를 가진다. bounded Schema Repair 뒤에도 알 수 없는 Enum·Version·Disposition이면 `RequireRecovery(CONTRACT_VIOLATION)`로 `RECOVERY_REQUIRED`에 두며 추측 Routing/FINALIZE를 금지한다.
+- 공식 `NEEDS_CONFIRMATION`은 Application이 `RequestConfirmation`을 적용해 `WAITING_CONFIRMATION`을 만든 뒤 `owner_subgraph + RegisteredResumeTargetRefV1 + interrupt_id`를 checkpoint에 저장한다. 사용자 응답 검증 후 `ResumeConfirmation`으로 발생 전 안전 Domain 상태를 복원하고 같은 owner checkpoint에서 재개한다.
+- Main State Artifact는 **단일 Owner + 다수 Consumer**다. downstream은 upstream을 직접 수정하지 않고 재판단이 필요하면 Owner로 Back-edge한다.
+- `policy_confirmation_receipts`는 Agent Artifact가 아니다. 실제 interrupt 응답을 검증한 Application/Confirmation Controller만 append한다.
+- Subgraph 반환은 전체 State 교체가 아니라 owner field + 허용 workflow signal의 patch merge다.
+- Tool identity는 Tool Route가 소유하고 Planning의 결정적 Assembler가 복사한다. Argument Writer가 Tool을 재선택하지 않는다.
+- Back-edge로 upstream revision이 바뀌면 `meta.based_on`으로 downstream freshness를 재판정한다.
+- Signed Registry binding은 결정적 eligibility filtering만 허용한다. 후보가 하나면 코드가 확정하고 의미 선택이 필요한 복수 후보만 작은 LLM Node가 판단한다.
+- 모든 외부 Connector READ는 `InputRoutePlanV1 → Retrieval`이 소유한다. 실제 호출은 결정적 Application Node가 Connector MCP Read Port/Tool을 사용한다. Provider API/SDK 직접 호출과 direct fallback은 금지한다.
+- `TASK + CREATE`, `CALENDAR + CREATE`의 필수 Policy Precondition READ는 결정적으로 Route에 보강한다. 사용자 명시 범위를 넓혀야 하면 `SCOPE_EXPANSION_REQUIRED` Confirmation이 선행한다.
+- `INITIALIZE`는 Run 생성 직후 `StartAnalysis: CREATED → ANALYZING`을 정확히 한 번 적용한다. `applied=false`이면 Request Agent를 호출하지 않고 Domain 상태를 조정한다.
+- 새 Retrieval invocation에서 Run이 `ANALYZING | PLANNING`이면 `BeginRetrieval → RETRIEVING`; 같은 Retrieval local loop처럼 이미 `RETRIEVING`이면 반복하지 않는다.
+- 새 Planning 진입에서 Run이 `ANALYZING | RETRIEVING`이면 `BeginPlanning → PLANNING`; 이미 `PLANNING`인 bounded revision에서는 반복하지 않는다.
+- `PREFLIGHT applied=false`는 실행/FINALIZE로 fall-through하지 않는다. `current_status + next_allowed_commands`로 재승인·Recovery·Reauth·Cancel/in-flight·Terminal 중 하나를 결정적으로 조정한다.
+- `ACTION_EXECUTION`: `EXECUTED`만 Verification, `UNKNOWN_RESULT`는 Recovery, `FAILED + NOT_SENT`는 retry/cancel 대기 suspend로 보낸다. `prepare_write_retry` 후 `MODIFIED → Review → Domain Validation → 새 Approval`을 다시 거친다.
+- 승인형 Write의 첫 Verification은 `BeginVerification: WAITING_APPROVAL → VERIFYING`이다. 실행 중 취소 뒤 이미 반영된 결과는 `CANCEL_REQUESTED → VERIFYING`을 허용하되 durable cancel intent를 유지한다. 다중 Action DAG에서 Run이 이미 VERIFYING이면 `BeginVerification`을 반복하지 않는다.
+- 각 종속 Action은 predecessor가 `VERIFIED`된 뒤에만 실행한다. 모든 승인 Action이 Terminal이고 미해결 결과가 없을 때 cancel intent가 없으면 `CompleteWriteRun`, 있으면 `FinalizeCancel`을 우선한다.
+- 실행 중 Cancel은 즉시 Terminal Edge가 아니다. 새 Claim/Write를 막고 in-flight 결과를 먼저 확정하며, `UNKNOWN_RESULT`는 Recovery, `EXECUTED`는 Verification을 통과한다.
+- Recovery는 기존 결과 회수/재검증이 필요할 때만 Verification으로 돌아간다. `CREATE_CORRECTIVE_PLAN`은 `RECOVERY_REQUIRED → PLANNING` Back-edge와 새 Plan Revision을 만든다. cancel intent가 활성인 동안 corrective-plan과 일반 accept-partial 완료를 금지한다.
+- `workflow_phase`는 LangGraph routing/checkpoint 위치이며 Domain `Run.status`의 권위 복제본이 아니다. 충돌 시 Domain Store를 우선한다.
 
-### 1.3 Graph Profile
+### 1.3 Supervisor Disposition → Edge 완전성
+
+```text
+Request.COMPLETE → Tool Route
+Request.NEEDS_CONFIRMATION → interrupt(Request owner)
+Request.INVALID → CompleteAnswerOnlyRun 또는 BlockRun → FINALIZE
+
+ToolRoute.ROUTE_READY + IN 있음 → Retrieval
+ToolRoute.ROUTE_READY + IN 없음 → Work Analysis 또는 Planning
+ToolRoute.NO_TOOL_NEEDED → Work Analysis 또는 Planning
+ToolRoute.NEEDS_CONFIRMATION → interrupt(Tool Route owner)
+ToolRoute.BLOCKED → BlockRun → FINALIZE
+
+Retrieval.SUFFICIENT / NO_FETCH_NEEDED → Work Analysis 또는 Planning
+Retrieval.NEEDS_MORE_DATA + local budget → bounded Retrieval local loop
+budget exhausted → NEEDS_CONFIRMATION | PARTIAL | BLOCKED 중 하나로 정규화
+Retrieval.PARTIAL + usable Evidence → Work Analysis 또는 Planning
+Retrieval.PARTIAL + usable Evidence 없음 → CompleteAnswerOnlyRun → FINALIZE
+Retrieval.ROUTE_RECONSIDERATION_REQUIRED → Tool Route
+Retrieval.NEEDS_CONFIRMATION → interrupt(Retrieval owner)
+Retrieval.BLOCKED → BlockRun → FINALIZE
+
+WorkAnalysis.COMPLETE → Planning
+WorkAnalysis.NEEDS_MORE_DATA + current IN route → Retrieval
+WorkAnalysis.NEEDS_MORE_DATA + no IN route → Tool Route
+WorkAnalysis.ROUTE_RECONSIDERATION_REQUIRED → Tool Route
+WorkAnalysis.NEEDS_CONFIRMATION → interrupt(Analysis owner)
+WorkAnalysis.BLOCKED → BlockRun → FINALIZE
+
+Planning.ANSWER_ONLY → Response Synthesis
+Planning.PLAN_READY → Review
+Planning.ROUTE_RECONSIDERATION_REQUIRED → Tool Route
+Planning.NEEDS_CONFIRMATION → interrupt(Planning owner)
+Planning.BLOCKED → BlockRun → FINALIZE
+
+Review.PASS → Domain Validation
+Review.REVISE → Planning
+Review.RETRIEVE_MORE → Retrieval 또는 Tool Route
+Review.ROUTE_RECONSIDERATION → Tool Route
+Review.CONFIRM → interrupt(Review owner)
+Review.BLOCK → BlockRun → FINALIZE
+```
+
+### 1.4 Graph Profile
 
 <table fit-page-width="true" header-row="true">
 	<tr>
@@ -971,7 +1053,8 @@ Request COMPLETE → Tool Route
 Tool Route ROUTE_READY + IN 있음 → Retrieval
 Tool Route ROUTE_READY + IN 없음 + `analysis_requirement=NONE` + ANSWER → Planning
 Tool Route ROUTE_READY + IN 없음 + effective analysis required → Work Analysis
-Tool Route NO_TOOL_NEEDED → Planning(answer)
+Tool Route NO_TOOL_NEEDED + `analysis_requirement=NONE` → Planning(answer)
+Tool Route NO_TOOL_NEEDED + `analysis_requirement=REQUIRED` → Work Analysis → Planning(answer)
 Retrieval SUFFICIENT/NO_FETCH_NEEDED + effective analysis required → Work Analysis
 Retrieval SUFFICIENT/NO_FETCH_NEEDED + `analysis_requirement=NONE` + ANSWER → Planning
 Retrieval NEEDS_MORE_DATA + local budget → Retrieval local loop
@@ -1113,7 +1196,7 @@ SEND/DELETE → blind repeat 금지
 
 ## 13. Agent Failure 계약
 
-`15. Agent Capability · Failure · Prompt 공통 계약 v1.6`을 따른다.
+`15. Agent Capability · Failure · Prompt 공통 계약 v1.11`을 따른다.
 
 ```python
 class AgentFailureRecord:

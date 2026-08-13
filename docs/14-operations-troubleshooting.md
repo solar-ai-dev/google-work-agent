@@ -1,6 +1,8 @@
 # 14. Google Work Agent · 예외 처리 · 운영 · 트러블슈팅 가이드
 
-> **상태:** Draft v2.6 · **기준일:** 2026-08-13 · **원격 운영 서버:** 없음
+> **문서 기준:** `04 Domain·DB v1.19`, `05 Retrieval v2.11`, `06 Workflow v7.12`, `07 Interface v2.18`, `08 Sequence v3.12`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.12`, `12 Test v3.19`, `13 Evaluation v3.9`, `15 Agent Capability v1.11`를 따른다. 이 문서는 새 상태 전이·보안·Prompt 정책을 만들지 않는다.
+
+> **상태:** Draft v2.7 · **기준일:** 2026-08-13 · **원격 운영 서버:** 없음
 
 ## 1. Severity
 
@@ -133,8 +135,11 @@ Expected·Actual·Diff 저장
 
 허용 선택:
 
-- `ACCEPT_PARTIAL`: 현재 Google 실제 상태를 수용하고 추가 Write 없이 종료한다. 미실행 Action은 취소되고 Run은 `COMPLETED`, 결과는 `PARTIAL`로 표시한다.
-- `CREATE_CORRECTIVE_PLAN`: 실제 Google 상태를 다시 읽고 같은 Run에서 새 Plan Revision을 만든다. 필요한 Write는 새 Approval·Claim·Attempt를 거친다.
+- `ACCEPT_PARTIAL`: **`cancel_intent_active=false`일 때만** 현재 외부 실제 상태를 수용하고 추가 Write 없이 `COMPLETED + PARTIAL`로 종료한다.
+- `CREATE_CORRECTIVE_PLAN`: **`cancel_intent_active=false`일 때만** 실제 외부 상태를 다시 읽고 같은 Run에서 새 Plan Revision을 만든다. 필요한 Write는 새 Approval·Claim·Attempt·Verification을 거친다.
+
+- `cancel_intent_active=true`이면 `CREATE_CORRECTIVE_PLAN`과 일반 `ACCEPT_PARTIAL → COMPLETED`를 사용하지 않는다. Recovery가 terminal snapshot이면 `ResolveRecovery(CANCEL)`, 재검증이 필요하면 `VERIFYING`으로 돌아간 뒤 `FinalizeCancel`로 닫는다.
+- cancel intent의 기준점은 성공한 `RequestCancel` Command Receipt다. Run.status가 `VERIFYING | RECOVERY_REQUIRED | REAUTH_REQUIRED`로 바뀌거나 앱이 재시작되어도 Receipt에서 재구성한다.
 
 일반 Run 중단은 별도 Cancel Command를 사용한다.
 
