@@ -9,9 +9,9 @@ from math import ceil
 from pathlib import Path
 from typing import Literal, NotRequired, Required, TypedDict, cast
 
+import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows import _schema_support as _schema
 from google_work_agent.application.workflows.api_acquisition import AcquisitionResultV1
 from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionOriginResult,

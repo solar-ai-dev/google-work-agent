@@ -20,9 +20,12 @@ import json
 import secrets
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+
+from google_work_agent.ports.attachments import (
+    AttachmentDescriptor,
+    AttachmentStagingError,
+)
 
 STAGING_TTL_MS = 15 * 60 * 1000
 MAX_STAGED_FILE_BYTES = 8 * 1024 * 1024
@@ -32,47 +35,6 @@ ATTACHMENT_STAGING_DIR_ENV = "GWA_ATTACHMENT_STAGING_DIR"
 
 def _default_now_ms() -> int:
     return int(time.time() * 1000)
-
-
-class AttachmentStagingError(RuntimeError):
-    """A sanitized staging failure. ``safe_code`` never contains file content."""
-
-    def __init__(self, safe_code: str) -> None:
-        super().__init__(safe_code)
-        self.safe_code = safe_code
-
-
-@dataclass(frozen=True, slots=True)
-class AttachmentDescriptor:
-    """Minimal Attachment Descriptor carried in Business Arguments and Claims."""
-
-    staged_attachment_id: str
-    filename: str
-    mime_type: str
-    size_bytes: int
-    sha256: str
-
-    def to_json(self) -> dict[str, object]:
-        return {
-            "staged_attachment_id": self.staged_attachment_id,
-            "filename": self.filename,
-            "mime_type": self.mime_type,
-            "size_bytes": self.size_bytes,
-            "sha256": self.sha256,
-        }
-
-    @classmethod
-    def from_json(cls, payload: dict[str, object]) -> AttachmentDescriptor:
-        try:
-            return cls(
-                staged_attachment_id=str(payload["staged_attachment_id"]),
-                filename=str(payload["filename"]),
-                mime_type=str(payload["mime_type"]),
-                size_bytes=int(cast(int, payload["size_bytes"])),
-                sha256=str(payload["sha256"]),
-            )
-        except (KeyError, TypeError, ValueError) as error:
-            raise AttachmentStagingError("ATTACHMENT_DESCRIPTOR_MALFORMED") from error
 
 
 class LocalAttachmentStaging:

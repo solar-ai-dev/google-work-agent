@@ -10,7 +10,13 @@ from google_work_agent.ports.artifact_verifier import (
     ArtifactSignatureDecision,
     ArtifactSignatureVerifier,
 )
-from google_work_agent.ports.attachments import GmailAttachmentBytes, GmailAttachmentGateway
+from google_work_agent.ports.attachments import (
+    AttachmentDescriptor,
+    AttachmentStaging,
+    AttachmentStagingError,
+    GmailAttachmentBytes,
+    GmailAttachmentGateway,
+)
 from google_work_agent.ports.clock import Clock
 from google_work_agent.ports.event_publisher import (
     BufferStatus,
@@ -170,6 +176,9 @@ __all__ = [
     "AnswerOnlyResponse",
     "ArtifactSignatureDecision",
     "ArtifactSignatureVerifier",
+    "AttachmentDescriptor",
+    "AttachmentStaging",
+    "AttachmentStagingError",
     "AttemptOutcome",
     "AuditEventRecord",
     "AuditRepository",

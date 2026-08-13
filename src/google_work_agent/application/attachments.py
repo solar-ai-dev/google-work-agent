@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from google_work_agent.adapters.runtime.attachment_staging import (
+from google_work_agent.ports import (
     AttachmentDescriptor,
-    LocalAttachmentStaging,
+    AttachmentStaging,
+    GmailAttachmentBytes,
+    GmailAttachmentGateway,
 )
-from google_work_agent.ports import GmailAttachmentBytes, GmailAttachmentGateway
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,7 +26,7 @@ class GetGmailAttachmentService:
 class StageAttachmentService:
     """Stage one outbound attachment's bytes and return its descriptor."""
 
-    staging: LocalAttachmentStaging
+    staging: AttachmentStaging
 
     def __call__(self, *, data: bytes, filename: str, mime_type: str) -> AttachmentDescriptor:
         return self.staging.stage(data=data, filename=filename, mime_type=mime_type)

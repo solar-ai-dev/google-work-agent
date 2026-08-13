@@ -7,9 +7,9 @@ from functools import partial
 from pathlib import Path
 from typing import Final, Literal, NotRequired, Required, TypedDict, cast
 
+import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows import _schema_support as _schema
 from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
 from google_work_agent.application.workflows.contracts import (
     GraphStateUpdateV1,

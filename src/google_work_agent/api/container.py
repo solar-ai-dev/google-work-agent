@@ -1,0 +1,91 @@
+"""Dependency contract supplied to the FastAPI delivery boundary."""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+from fastapi import Request
+
+from google_work_agent.api.security import DEFAULT_ENDPOINT_POLICY_REGISTRY
+from google_work_agent.ports import (
+    ApiAccessGuard,
+    Clock,
+    IdGenerator,
+    LauncherProbeVerifier,
+    OperationalLogSink,
+    ReadinessAggregator,
+    RunEventPublisher,
+    RuntimeStatusProvider,
+    WorkflowRuntime,
+)
+
+if TYPE_CHECKING:
+    from google_work_agent.application.attachments import (
+        GetGmailAttachmentService,
+        StageAttachmentService,
+    )
+
+API_CONTRACT_VERSION = "1"
+
+
+@dataclass(frozen=True, slots=True)
+class ApiContainer:
+    """Dependencies and delivery configuration assembled by the launcher."""
+
+    unit_of_work_factory: Callable[[], Any]
+    query_service: Any
+    create_conversation_service: Any
+    start_run_service: Any
+    approve_action_service: Any
+    modify_action_service: Any
+    reject_action_service: Any
+    prepare_retry_service: Any
+    cancel_run_service: Any
+    resume_run_service: Any
+    local_run_coordinator: Any
+    workflow_runtime: WorkflowRuntime
+    event_publisher: RunEventPublisher
+    readiness_aggregator: ReadinessAggregator
+    runtime_status_provider: RuntimeStatusProvider
+    api_access_guard: ApiAccessGuard
+    clock: Clock
+    id_generator: IdGenerator
+    release_version: str
+    environment: str
+    service_instance_id: str
+    api_contract_version: str = API_CONTRACT_VERSION
+    local_bind_host: str = "127.0.0.1"
+    local_bind_port: int = 8000
+    max_request_body_bytes: int = 64 * 1024
+    api_docs_enabled: bool = False
+    launcher_probe_verifier: LauncherProbeVerifier | None = None
+    bootstrap_grant_store: Any | None = None
+    local_session_manager: Any | None = None
+    endpoint_policy_registry: Any = DEFAULT_ENDPOINT_POLICY_REGISTRY
+    client_address_resolver: Callable[[Request], str | None] | None = None
+    operational_log_sink: OperationalLogSink | None = None
+    start_google_oauth_service: Any | None = None
+    get_google_connection_service: Any | None = None
+    disconnect_google_service: Any | None = None
+    resource_query_service: Any | None = None
+    frontend_site: Any | None = None
+    additional_readiness_checks: tuple[Callable[[], Any], ...] = ()
+    safe_mode_controller: Any | None = None
+    core_initialization_in_progress: bool = False
+    get_settings_service: Any | None = None
+    patch_settings_service: Any | None = None
+    list_backups_service: Any | None = None
+    create_backup_service: Any | None = None
+    create_restore_plan_service: Any | None = None
+    request_shutdown_service: Any | None = None
+    get_llm_connection_service: Any | None = None
+    store_llm_api_key_service: Any | None = None
+    delete_llm_api_key_service: Any | None = None
+    test_llm_connection_service: Any | None = None
+    resolve_recovery_service: Any | None = None
+    get_gmail_attachment_service: GetGmailAttachmentService | None = None
+    stage_attachment_service: StageAttachmentService | None = None
+    startup_callbacks: tuple[Callable[[], Awaitable[None]], ...] = ()
+    shutdown_callbacks: tuple[Callable[[], None], ...] = ()

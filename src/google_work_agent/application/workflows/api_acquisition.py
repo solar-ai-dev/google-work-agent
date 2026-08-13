@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import Literal, Required, TypedDict, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows import _schema_support as _schema
 from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionRequestV1,
     ApiAcquisitionResult,

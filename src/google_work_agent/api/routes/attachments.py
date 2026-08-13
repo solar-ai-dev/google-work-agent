@@ -11,14 +11,15 @@ from __future__ import annotations
 
 import base64
 import binascii
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import StreamingResponse
 
-from google_work_agent.adapters.runtime.attachment_staging import AttachmentStagingError
 from google_work_agent.api.dependencies import (
     enforce_access,
-    enforce_api_contract_version,
+    enforce_supported_api_contract_version,
     get_container,
 )
 from google_work_agent.api.errors import ApiError
@@ -26,13 +27,16 @@ from google_work_agent.api.schemas.attachments import (
     AttachmentDescriptorResponse,
     StageAttachmentRequest,
 )
+from google_work_agent.application.attachments import (
+    GetGmailAttachmentService,
+    StageAttachmentService,
+)
 from google_work_agent.ports import (
+    AttachmentStagingError,
     EndpointPolicy,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
 )
-
-router = APIRouter(prefix="/api/v1")
 
 _STAGING_ERROR_STATUS = {
     "ATTACHMENT_EMPTY": 422,
@@ -41,94 +45,126 @@ _STAGING_ERROR_STATUS = {
 }
 
 
-@router.get("/gmail/messages/{message_id}/attachments/{attachment_id}")
-def download_gmail_attachment(
-    message_id: str,
-    attachment_id: str,
-    request: Request,
-    x_api_contract_version: str | None = Header(default=None),
-) -> StreamingResponse:
-    container = get_container(request)
-    enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
-        request_id=request.state.request_id,
-        request_version=x_api_contract_version,
-    )
-    service = container.get_gmail_attachment_service
-    if service is None:
-        raise ApiError(
-            error_code="SERVICE_BUSY",
-            user_message="Attachment provider is not configured.",
-            status_code=503,
+@dataclass(frozen=True, slots=True)
+class AttachmentRouteDependencies:
+    """Dependencies required by the attachment delivery capability."""
+
+    api_contract_version: Callable[[], str]
+    get_gmail_attachment_service: Callable[[], GetGmailAttachmentService | None]
+    stage_attachment_service: Callable[[], StageAttachmentService | None]
+
+
+def create_router(
+    dependencies: AttachmentRouteDependencies | None = None,
+) -> APIRouter:
+    """Create attachment routes with explicit services from the API composition boundary."""
+
+    router = APIRouter(prefix="/api/v1")
+
+    @router.get("/gmail/messages/{message_id}/attachments/{attachment_id}")
+    def download_gmail_attachment(
+        message_id: str,
+        attachment_id: str,
+        request: Request,
+        x_api_contract_version: str | None = Header(default=None),
+    ) -> StreamingResponse:
+        route_dependencies = dependencies or _dependencies_from_container(request)
+        enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
+        enforce_supported_api_contract_version(
+            supported_version=route_dependencies.api_contract_version(),
             request_id=request.state.request_id,
-            detail_code="ATTACHMENT_SERVICE_UNAVAILABLE",
+            request_version=x_api_contract_version,
         )
-    try:
-        attachment = service(message_id=message_id, attachment_id=attachment_id)
-    except GoogleWorkspaceGatewayError as error:
-        _raise_attachment_gateway_error(error, request_id=request.state.request_id)
-    return StreamingResponse(
-        iter([attachment.data]),
-        media_type="application/octet-stream",
-        headers={
-            "Content-Length": str(attachment.size_bytes),
-            "Content-Disposition": "attachment",
-            "X-Content-Type-Options": "nosniff",
-        },
+        service = route_dependencies.get_gmail_attachment_service()
+        if service is None:
+            raise ApiError(
+                error_code="SERVICE_BUSY",
+                user_message="Attachment provider is not configured.",
+                status_code=503,
+                request_id=request.state.request_id,
+                detail_code="ATTACHMENT_SERVICE_UNAVAILABLE",
+            )
+        try:
+            attachment = service(message_id=message_id, attachment_id=attachment_id)
+        except GoogleWorkspaceGatewayError as error:
+            _raise_attachment_gateway_error(error, request_id=request.state.request_id)
+        return StreamingResponse(
+            iter([attachment.data]),
+            media_type="application/octet-stream",
+            headers={
+                "Content-Length": str(attachment.size_bytes),
+                "Content-Disposition": "attachment",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    @router.post("/attachments/stage", response_model=AttachmentDescriptorResponse)
+    def stage_attachment(
+        body: StageAttachmentRequest,
+        request: Request,
+        x_api_contract_version: str | None = Header(default=None),
+    ) -> AttachmentDescriptorResponse:
+        route_dependencies = dependencies or _dependencies_from_container(request)
+        enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
+        supported_version = route_dependencies.api_contract_version()
+        enforce_supported_api_contract_version(
+            supported_version=supported_version,
+            request_id=request.state.request_id,
+            request_version=x_api_contract_version,
+        )
+        service = route_dependencies.stage_attachment_service()
+        if service is None:
+            raise ApiError(
+                error_code="SERVICE_BUSY",
+                user_message="Attachment staging is not configured.",
+                status_code=503,
+                request_id=request.state.request_id,
+                detail_code="ATTACHMENT_STAGING_SERVICE_UNAVAILABLE",
+            )
+        try:
+            data = base64.b64decode(body.data_base64, validate=True)
+        except binascii.Error as error:
+            raise ApiError(
+                error_code="INVALID_ATTACHMENT",
+                user_message="The attachment could not be staged.",
+                status_code=422,
+                request_id=request.state.request_id,
+                detail_code="ATTACHMENT_ENCODING_INVALID",
+            ) from error
+        try:
+            descriptor = service(data=data, filename=body.filename, mime_type=body.mime_type)
+        except AttachmentStagingError as error:
+            raise ApiError(
+                error_code="INVALID_ATTACHMENT",
+                user_message="The attachment could not be staged.",
+                status_code=_STAGING_ERROR_STATUS.get(error.safe_code, 422),
+                request_id=request.state.request_id,
+                detail_code=error.safe_code,
+            ) from error
+        return AttachmentDescriptorResponse(
+            staged_attachment_id=descriptor.staged_attachment_id,
+            filename=descriptor.filename,
+            mime_type=descriptor.mime_type,
+            size_bytes=descriptor.size_bytes,
+            sha256=descriptor.sha256,
+            api_contract_version=supported_version,
+        )
+
+    return router
+
+
+def _dependencies_from_container(request: Request) -> AttachmentRouteDependencies:
+    """Preserve the legacy module-level router for external API assemblers."""
+
+    container = get_container(request)
+    return AttachmentRouteDependencies(
+        api_contract_version=lambda: container.api_contract_version,
+        get_gmail_attachment_service=lambda: container.get_gmail_attachment_service,
+        stage_attachment_service=lambda: container.stage_attachment_service,
     )
 
 
-@router.post("/attachments/stage", response_model=AttachmentDescriptorResponse)
-def stage_attachment(
-    body: StageAttachmentRequest,
-    request: Request,
-    x_api_contract_version: str | None = Header(default=None),
-) -> AttachmentDescriptorResponse:
-    container = get_container(request)
-    enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
-        request_id=request.state.request_id,
-        request_version=x_api_contract_version,
-    )
-    service = container.stage_attachment_service
-    if service is None:
-        raise ApiError(
-            error_code="SERVICE_BUSY",
-            user_message="Attachment staging is not configured.",
-            status_code=503,
-            request_id=request.state.request_id,
-            detail_code="ATTACHMENT_STAGING_SERVICE_UNAVAILABLE",
-        )
-    try:
-        data = base64.b64decode(body.data_base64, validate=True)
-    except binascii.Error as error:
-        raise ApiError(
-            error_code="INVALID_ATTACHMENT",
-            user_message="The attachment could not be staged.",
-            status_code=422,
-            request_id=request.state.request_id,
-            detail_code="ATTACHMENT_ENCODING_INVALID",
-        ) from error
-    try:
-        descriptor = service(data=data, filename=body.filename, mime_type=body.mime_type)
-    except AttachmentStagingError as error:
-        raise ApiError(
-            error_code="INVALID_ATTACHMENT",
-            user_message="The attachment could not be staged.",
-            status_code=_STAGING_ERROR_STATUS.get(error.safe_code, 422),
-            request_id=request.state.request_id,
-            detail_code=error.safe_code,
-        ) from error
-    return AttachmentDescriptorResponse(
-        staged_attachment_id=descriptor.staged_attachment_id,
-        filename=descriptor.filename,
-        mime_type=descriptor.mime_type,
-        size_bytes=descriptor.size_bytes,
-        sha256=descriptor.sha256,
-        api_contract_version=container.api_contract_version,
-    )
+router = create_router()
 
 
 def _raise_attachment_gateway_error(error: GoogleWorkspaceGatewayError, *, request_id: str) -> None:
