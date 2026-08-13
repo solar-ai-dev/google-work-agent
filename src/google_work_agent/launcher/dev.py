@@ -21,6 +21,7 @@ from fastapi import FastAPI
 from google_work_agent.adapters.connectors import (
     GOOGLE_WORKSPACE_CONNECTOR_ID,
     GoogleWorkspaceConnector,
+    GoogleWorkspaceExecutionBackend,
     build_google_workspace_connector_descriptor,
 )
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
@@ -671,6 +672,7 @@ def build_container(
             unit_of_work_factory=unit_of_work_factory,
             llm_runtime=llm_runtime,
             gateway=gateway,
+            connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
             now_ms=clock.now_ms,
             id_factory=id_generator.next_id,
             signing_secret=secrets.token_hex(32),

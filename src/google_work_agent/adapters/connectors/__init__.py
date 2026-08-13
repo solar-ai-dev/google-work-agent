@@ -5,6 +5,9 @@ from google_work_agent.adapters.connectors.google_workspace import (
     GoogleWorkspaceConnector,
     build_google_workspace_connector_descriptor,
 )
+from google_work_agent.adapters.connectors.google_workspace_execution import (
+    GoogleWorkspaceExecutionBackend,
+)
 from google_work_agent.adapters.connectors.google_workspace_reader import (
     GoogleWorkspaceConnectorReader,
 )
@@ -15,5 +18,6 @@ __all__ = [
     "ConnectorMcpRuntime",
     "GoogleWorkspaceConnector",
     "GoogleWorkspaceConnectorReader",
+    "GoogleWorkspaceExecutionBackend",
     "build_google_workspace_connector_descriptor",
 ]

@@ -65,9 +65,7 @@ from google_work_agent.application import (
     FailRunService,
     FinalizeReadActionCommand,
     FinalizeReadActionService,
-    MarkWriteActionFailedCommand,
     MarkWriteActionFailedService,
-    MarkWriteActionUnknownResultCommand,
     MarkWriteActionUnknownResultService,
     PreflightWriteActionService,
     PublishReadOnlyPlanCommand,
@@ -76,23 +74,16 @@ from google_work_agent.application import (
     PublishWritePlanService,
     ReadActionDraft,
     ReadEvidenceDraft,
-    RecoverUnknownCreateActionCommand,
     RecoverUnknownCreateActionService,
-    RecoverUnknownDeleteActionCommand,
     RecoverUnknownDeleteActionService,
-    RecoverUnknownSendActionCommand,
     RecoverUnknownSendActionService,
-    RecoverUnknownUpdateActionCommand,
     RecoverUnknownUpdateActionService,
-    RequireWriteReauthCommand,
     RequireWriteReauthService,
     SaveReadOnlyPlanCommand,
     SaveReadOnlyPlanService,
     SaveWritePlanCommand,
     SaveWritePlanService,
-    StoreWriteActionSuccessCommand,
     StoreWriteActionSuccessService,
-    VerifyWriteActionCommand,
     VerifyWriteActionService,
     WriteActionDraft,
     WriteEvidenceDraft,
@@ -102,7 +93,14 @@ from google_work_agent.application.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     evidence_calendar_conflict_risk,
 )
+from google_work_agent.application.execution_phase import (
+    UnknownRecoveryPhaseRequest,
+    WriteExecutionDisposition,
+    WriteExecutionPhaseCoordinator,
+    WriteExecutionPhaseRequest,
+)
 from google_work_agent.application.feasibility import evidence_feasibility_risk
+from google_work_agent.application.ports import ConnectorExecutionPort
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     evidence_duplicate_risk,
@@ -137,21 +135,17 @@ from google_work_agent.application.workflows.profile_fused import (
     load_profile_three_stage2_prompt_reference,
 )
 from google_work_agent.application.write_actions import (
-    ClaimWriteActionCommand,
     ClaimWriteActionService,
     ExecuteWriteActionService,
 )
 from google_work_agent.domain import (
     ActionStatus,
     CalendarWorkHours,
-    PolicyViolationError,
     ResultCode,
     RunStatus,
 )
 from google_work_agent.ports import (
-    DeliveryCertainty,
     EvidenceOriginType,
-    GoogleWorkspaceErrorCode,
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     PlanRecord,
@@ -182,6 +176,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         unit_of_work_factory: Callable[[], UnitOfWork],
         llm_runtime: Any,
         gateway: GoogleWorkspaceGateway,
+        connector_execution: ConnectorExecutionPort,
         now_ms: Callable[[], int],
         id_factory: Callable[[], str],
         signing_secret: str,
@@ -212,7 +207,6 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             check_same_thread=False,
         )
         self._checkpointer = SqliteSaver(self._checkpoint_connection)
-
         self._request_understanding = RequestUnderstandingAgent(
             llm_runtime=llm_runtime,
             manifest_path=prompt_manifest_path,
@@ -345,7 +339,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
         self._execute_write = ExecuteWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
-            gateway=gateway,
+            gateway=connector_execution,
             now_ms=now_ms,
             signing_secret=signing_secret,
             service_instance_id=service_instance_id,
@@ -365,7 +359,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._verify_write = VerifyWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
-            gateway=gateway,
+            gateway=connector_execution,
         )
         self._require_write_reauth = RequireWriteReauthService(
             unit_of_work_factory=unit_of_work_factory,
@@ -374,22 +368,40 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._recover_unknown_create = RecoverUnknownCreateActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
-            gateway=gateway,
+            gateway=connector_execution,
         )
         self._recover_unknown_send = RecoverUnknownSendActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
-            gateway=gateway,
+            gateway=connector_execution,
         )
         self._recover_unknown_delete = RecoverUnknownDeleteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
-            gateway=gateway,
+            gateway=connector_execution,
         )
         self._recover_unknown_update = RecoverUnknownUpdateActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
-            gateway=gateway,
+            gateway=connector_execution,
+        )
+        self._write_execution_phase = WriteExecutionPhaseCoordinator(
+            unit_of_work_factory=unit_of_work_factory,
+            id_factory=id_factory,
+            request_hash=self._request_hash,
+            should_stop_for_cancel=self._should_stop_for_cancel,
+            preflight_write=self._preflight_write,
+            claim_write=self._claim_write,
+            execute_write=self._execute_write,
+            store_write_success=self._store_write_success,
+            verify_write=self._verify_write,
+            mark_write_failed=self._mark_write_failed,
+            mark_write_unknown=self._mark_write_unknown,
+            require_write_reauth=self._require_write_reauth,
+            recover_unknown_create=self._recover_unknown_create,
+            recover_unknown_send=self._recover_unknown_send,
+            recover_unknown_delete=self._recover_unknown_delete,
+            recover_unknown_update=self._recover_unknown_update,
         )
         self._request_subgraph = RequestUnderstandingSubgraph(
             agent=self._request_understanding,
@@ -1003,28 +1015,29 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 continue
             if action.status != ActionStatus.APPROVED.value:
                 continue
-            try:
-                self._preflight_write(action_id=action.id)
-            except (GoogleWorkspaceGatewayError, LookupError, PolicyViolationError) as error:
-                refreshed = next(
-                    (item for item in self._list_actions(plan_id) if item.id == action.id),
-                    None,
+            phase_result = self._write_execution_phase.execute(
+                WriteExecutionPhaseRequest(
+                    run_id=run_id,
+                    action_id=action.id,
+                    action_version=action.version,
                 )
-                if refreshed is not None and refreshed.status == ActionStatus.MODIFIED.value:
-                    _ = interrupt(
-                        {
-                            "interrupt_kind": "APPROVAL",
-                            "run_id": run_id,
-                            "plan_id": plan_id,
-                            "action_id": action.id,
-                            "reason": "PREFLIGHT_REAPPROVAL_REQUIRED",
-                        }
-                    )
-                    return {
-                        **state,
-                        "__target__": "action_execution",
-                        "workflow_phase": WorkflowPhase.PREFLIGHT.value,
+            )
+            if phase_result.disposition is WriteExecutionDisposition.PREFLIGHT_REAPPROVAL_REQUIRED:
+                _ = interrupt(
+                    {
+                        "interrupt_kind": "APPROVAL",
+                        "run_id": run_id,
+                        "plan_id": plan_id,
+                        "action_id": action.id,
+                        "reason": "PREFLIGHT_REAPPROVAL_REQUIRED",
                     }
+                )
+                return {
+                    **state,
+                    "__target__": "action_execution",
+                    "workflow_phase": WorkflowPhase.PREFLIGHT.value,
+                }
+            if phase_result.disposition is WriteExecutionDisposition.PREFLIGHT_BLOCKED:
                 return {
                     **state,
                     "__target__": "end",
@@ -1032,10 +1045,14 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                     "execution_summary": {
                         "result": "PREFLIGHT_BLOCKED",
                         "action_id": action.id,
-                        "safe_error_code": type(error).__name__,
+                        "safe_error_code": phase_result.safe_error_code,
                     },
                 }
-            if self._should_stop_for_cancel(run_id):
+            if phase_result.disposition is WriteExecutionDisposition.CLAIM_SKIPPED:
+                continue
+            if phase_result.disposition is WriteExecutionDisposition.CANCEL_REQUESTED:
+                if phase_result.action_status is not None:
+                    verification_statuses.append(phase_result.action_status)
                 return {
                     **state,
                     "__target__": "end",
@@ -1043,139 +1060,30 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                     "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
                     "verification_summary": {"action_statuses": verification_statuses},
                 }
-            claim_response = self._claim_write(
-                ClaimWriteActionCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash({"kind": "claim", "action_id": action.id}),
-                    action_id=action.id,
-                    expected_version=action.version,
-                    source_snapshot={},
-                    attempt_id=self._id_factory(),
-                    nonce=self._id_factory(),
-                )
-            )
-            if (
-                not claim_response.applied
-                or claim_response.claim_token is None
-                or claim_response.attempt_id is None
-            ):
-                continue
-            if self._should_stop_for_cancel(run_id):
-                self._mark_write_failed(
-                    MarkWriteActionFailedCommand(
-                        command_id=self._id_factory(),
-                        request_hash=self._request_hash(
-                            {"kind": "cancel_before_write", "action_id": action.id}
-                        ),
-                        action_id=action.id,
-                        attempt_id=self._required_string(claim_response.attempt_id, "attempt_id"),
-                        expected_action_version=claim_response.action_version,
-                        expected_attempt_version=0,
-                        error_code="CANCEL_REQUESTED",
-                        error_detail="write was not sent because cancellation was requested",
-                    )
-                )
-                verification_statuses.append(ActionStatus.FAILED.value)
+            if phase_result.disposition is WriteExecutionDisposition.REAUTH_REQUIRED:
                 return {
                     **state,
                     "__target__": "end",
                     "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-                    "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
-                    "verification_summary": {"action_statuses": verification_statuses},
+                    "execution_summary": {"result": "REAUTH_REQUIRED", "action_id": action.id},
                 }
-            try:
-                executed = self._execute_write(
-                    action_id=action.id,
-                    claim_token=claim_response.claim_token,
-                )
-            except GoogleWorkspaceGatewayError as error:
-                if error.code in {
-                    GoogleWorkspaceErrorCode.AUTH_EXPIRED,
-                    GoogleWorkspaceErrorCode.PERMISSION_DENIED,
-                }:
-                    self._require_write_reauth(
-                        RequireWriteReauthCommand(
-                            command_id=self._id_factory(),
-                            request_hash=self._request_hash(
-                                {"kind": "reauth", "action_id": action.id}
-                            ),
-                            run_id=cast(str, state["run_id"]),
-                            action_id=action.id,
-                            safe_error_code=error.code.value,
-                        )
-                    )
-                    return {
-                        **state,
-                        "__target__": "end",
-                        "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-                        "execution_summary": {"result": "REAUTH_REQUIRED", "action_id": action.id},
-                    }
-                if error.delivery_certainty is not DeliveryCertainty.NOT_SENT:
-                    unknown = self._mark_write_unknown(
-                        MarkWriteActionUnknownResultCommand(
-                            command_id=self._id_factory(),
-                            request_hash=self._request_hash(
-                                {"kind": "unknown", "action_id": action.id}
-                            ),
-                            action_id=action.id,
-                            attempt_id=self._required_string(
-                                claim_response.attempt_id, "attempt_id"
-                            ),
-                            expected_action_version=claim_response.action_version,
-                            expected_attempt_version=0,
-                            error_code=error.code.value,
-                            error_detail=str(error),
-                        )
-                    )
-                    return {
-                        **state,
-                        "__target__": "recovery",
-                        "workflow_phase": WorkflowPhase.RECOVERY.value,
-                        "execution_summary": {
-                            "result": unknown.result_code,
-                            "action_id": action.id,
-                            "safe_error_code": error.code.value,
-                        },
-                    }
-                self._mark_write_failed(
-                    MarkWriteActionFailedCommand(
-                        command_id=self._id_factory(),
-                        request_hash=self._request_hash({"kind": "failed", "action_id": action.id}),
-                        action_id=action.id,
-                        attempt_id=self._required_string(claim_response.attempt_id, "attempt_id"),
-                        expected_action_version=claim_response.action_version,
-                        expected_attempt_version=0,
-                        error_code=error.code.value,
-                        error_detail=str(error),
-                    )
-                )
+            if phase_result.disposition is WriteExecutionDisposition.UNKNOWN_RESULT:
+                return {
+                    **state,
+                    "__target__": "recovery",
+                    "workflow_phase": WorkflowPhase.RECOVERY.value,
+                    "execution_summary": {
+                        "result": phase_result.result_code,
+                        "action_id": action.id,
+                        "safe_error_code": phase_result.safe_error_code,
+                    },
+                }
+            if phase_result.disposition is WriteExecutionDisposition.FAILED:
                 verification_statuses.append(ActionStatus.FAILED.value)
                 continue
-
-            stored = self._store_write_success(
-                StoreWriteActionSuccessCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash(
-                        {"kind": "store_success", "action_id": action.id}
-                    ),
-                    action_id=action.id,
-                    attempt_id=self._required_string(claim_response.attempt_id, "attempt_id"),
-                    expected_action_version=claim_response.action_version,
-                    expected_attempt_version=0,
-                    snapshot=executed.snapshot,
-                )
+            verification_statuses.append(
+                self._required_string(phase_result.action_status, "action_status")
             )
-            verified = self._verify_write(
-                VerifyWriteActionCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash({"kind": "verify", "action_id": action.id}),
-                    action_id=action.id,
-                    attempt_id=self._required_string(stored.attempt_id, "attempt_id"),
-                    expected_action_version=stored.action_version,
-                    verification_id=self._id_factory(),
-                )
-            )
-            verification_statuses.append(verified.action_status)
             if self._should_stop_for_cancel(run_id):
                 return {
                     **state,
@@ -1217,71 +1125,15 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 "workflow_phase": WorkflowPhase.RECOVERY.value,
             }
         action, attempt_id, attempt_version = unknown_action
-        if action.effect_type == "CREATE":
-            response = self._recover_unknown_create(
-                RecoverUnknownCreateActionCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash(
-                        {"kind": "recover_create", "action_id": action.id}
-                    ),
-                    action_id=action.id,
-                    attempt_id=attempt_id,
-                    expected_action_version=action.version,
-                    expected_attempt_version=attempt_version,
-                )
+        response = self._write_execution_phase.recover_unknown(
+            UnknownRecoveryPhaseRequest(
+                action_id=action.id,
+                effect_type=action.effect_type,
+                action_version=action.version,
+                attempt_id=attempt_id,
+                attempt_version=attempt_version,
             )
-        elif action.effect_type == "SEND":
-            response = self._recover_unknown_send(
-                RecoverUnknownSendActionCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash(
-                        {"kind": "recover_send", "action_id": action.id}
-                    ),
-                    action_id=action.id,
-                    attempt_id=attempt_id,
-                    expected_action_version=action.version,
-                    expected_attempt_version=attempt_version,
-                )
-            )
-        elif action.effect_type == "DELETE":
-            response = self._recover_unknown_delete(
-                RecoverUnknownDeleteActionCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash(
-                        {"kind": "recover_delete", "action_id": action.id}
-                    ),
-                    action_id=action.id,
-                    attempt_id=attempt_id,
-                    expected_action_version=action.version,
-                    expected_attempt_version=attempt_version,
-                )
-            )
-        else:
-            response = self._recover_unknown_update(
-                RecoverUnknownUpdateActionCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash(
-                        {"kind": "recover_update", "action_id": action.id}
-                    ),
-                    action_id=action.id,
-                    attempt_id=attempt_id,
-                    expected_action_version=action.version,
-                    expected_attempt_version=attempt_version,
-                )
-            )
-        if response.applied and response.action_status == ActionStatus.EXECUTED.value:
-            response = self._verify_write(
-                VerifyWriteActionCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash(
-                        {"kind": "verify_recovered", "action_id": action.id}
-                    ),
-                    action_id=action.id,
-                    attempt_id=attempt_id,
-                    expected_action_version=response.action_version,
-                    verification_id=self._id_factory(),
-                )
-            )
+        )
         if response.applied and response.action_status == ActionStatus.VERIFIED.value:
             self._complete_write_run_if_verified(action.plan_id, cast(str, state["run_id"]))
         outcome = (
@@ -1308,17 +1160,11 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 statuses.append(action.status)
                 continue
             attempt_id = self._latest_attempt_id(action.id)
-            verified = self._verify_write(
-                VerifyWriteActionCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash(
-                        {"kind": "verify_after_restart", "action_id": action.id}
-                    ),
-                    action_id=action.id,
-                    attempt_id=attempt_id,
-                    expected_action_version=action.version,
-                    verification_id=self._id_factory(),
-                )
+            verified = self._write_execution_phase.verify_executed(
+                action_id=action.id,
+                action_version=action.version,
+                attempt_id=attempt_id,
+                request_kind="verify_after_restart",
             )
             statuses.append(verified.action_status)
         self._complete_write_run_if_verified(latest_plan.id, run_id)

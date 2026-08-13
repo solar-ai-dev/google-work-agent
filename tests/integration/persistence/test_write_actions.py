@@ -2,9 +2,13 @@ import sqlite3
 from collections.abc import Mapping
 from json import loads
 from pathlib import Path
+from typing import cast
 
 import pytest
 
+from google_work_agent.adapters.connectors.google_workspace_execution import (
+    GoogleWorkspaceExecutionBackend,
+)
 from google_work_agent.adapters.persistence import (
     apply_migrations,
     connect_sqlite,
@@ -68,6 +72,7 @@ from google_work_agent.ports import (
     EvidenceOriginType,
     FreeBusyCalendar,
     GoogleWorkspaceErrorCode,
+    GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     ResourcePage,
     ResourceSnapshot,
@@ -836,9 +841,14 @@ def test_verify_write_action_get_runs_without_sqlite_write_transaction(
     verify_service = VerifyWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
-        gateway=_TransactionCheckingGateway(
-            delegate=fixture_gateway,
-            database_path=write_database,
+        gateway=GoogleWorkspaceExecutionBackend(
+            gateway=cast(
+                GoogleWorkspaceGateway,
+                _TransactionCheckingGateway(
+                    delegate=fixture_gateway,
+                    database_path=write_database,
+                ),
+            )
         ),
     )
 
@@ -896,11 +906,16 @@ def test_verify_write_action_rechecks_version_after_external_get(
     verify_service = VerifyWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
-        gateway=_TransactionCheckingGateway(
-            delegate=fixture_gateway,
-            database_path=write_database,
-            after_get_sql=(
-                "UPDATE actions SET version = version + 1 WHERE id = 'action-verify-race';"
+        gateway=GoogleWorkspaceExecutionBackend(
+            gateway=cast(
+                GoogleWorkspaceGateway,
+                _TransactionCheckingGateway(
+                    delegate=fixture_gateway,
+                    database_path=write_database,
+                    after_get_sql=(
+                        "UPDATE actions SET version = version + 1 WHERE id = 'action-verify-race';"
+                    ),
+                ),
             ),
         ),
     )
@@ -1789,9 +1804,14 @@ def test_update_recovery_get_runs_without_sqlite_write_transaction(
     recover_service = RecoverUnknownUpdateActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
-        gateway=_TransactionCheckingGateway(
-            delegate=fixture_gateway,
-            database_path=write_database,
+        gateway=GoogleWorkspaceExecutionBackend(
+            gateway=cast(
+                GoogleWorkspaceGateway,
+                _TransactionCheckingGateway(
+                    delegate=fixture_gateway,
+                    database_path=write_database,
+                ),
+            )
         ),
     )
 

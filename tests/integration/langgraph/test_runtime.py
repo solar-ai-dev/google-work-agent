@@ -22,6 +22,7 @@ from tests.unit.application.workflows.test_api_acquisition import _plan
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 from tests.unit.application.workflows.test_plan_review import _review_output
 
+from google_work_agent.adapters.connectors import GoogleWorkspaceExecutionBackend
 from google_work_agent.adapters.langgraph import (
     GraphProfile,
     LangGraphWorkflowRuntime,
@@ -609,6 +610,7 @@ def _make_runtime(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         llm_runtime=_QueuedLLMRuntime(llm_payloads, before_invoke=before_llm_invoke),
         gateway=gateway,
+        connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
         now_ms=clock.now_ms,
         id_factory=ids.next_id,
         signing_secret="stage17-secret",
@@ -1395,6 +1397,7 @@ def test_acquisition_subgraph_keeps_single_invocation_id_and_parent_isolation(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         llm_runtime=llm_runtime,
         gateway=gateway,
+        connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
         now_ms=FakeClock(1000).now_ms,
         id_factory=DeterministicUUID(prefix="runtime").next_id,
         signing_secret="stage17-secret",
@@ -2521,12 +2524,14 @@ def test_chain_context_analysis_planning_review_preserves_typed_outputs(
             _review_output("PASS"),
         ]
     )
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
     runtime = LangGraphWorkflowRuntime(
         unit_of_work_factory=sqlite_unit_of_work_factory(_seed_runtime_database(tmp_path)),
         llm_runtime=llm_runtime,
-        gateway=FakeGoogleGateway(
-            ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-        ),
+        gateway=gateway,
+        connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
         now_ms=FakeClock(1000).now_ms,
         id_factory=DeterministicUUID(prefix="edge").next_id,
         signing_secret="edge-secret",

@@ -16,6 +16,7 @@ from typing import Protocol, cast
 
 from google_work_agent.application.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
+    CalendarConflictGateway,
     CalendarConflictValidator,
     approval_calendar_conflict_authority,
     approval_source_snapshot_for_calendar_conflict,
@@ -25,6 +26,7 @@ from google_work_agent.application.calendar_conflicts import (
     require_calendar_conflict_acknowledgement,
 )
 from google_work_agent.application.feasibility import (
+    FeasibilityGateway,
     FeasibilityValidator,
     approval_feasibility_authority,
     approval_source_snapshot_for_feasibility,
@@ -33,9 +35,11 @@ from google_work_agent.application.feasibility import (
     merge_feasibility_risk,
     require_feasibility_approval,
 )
+from google_work_agent.application.ports import ConnectorExecutionPort, ConnectorWriteRequest
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     TaskDuplicateValidator,
+    TaskListGateway,
     approval_duplicate_authority,
     approval_source_snapshot_for_task_duplicate,
     duplicate_authority,
@@ -82,7 +86,6 @@ from google_work_agent.ports import (
     EvidenceRecord,
     ExecutionAttemptRecord,
     GoogleWorkspaceErrorCode,
-    GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     PlanRecord,
     PlanReviewStatus,
@@ -99,16 +102,17 @@ from google_work_agent.ports import (
 )
 
 
-class VerificationSnapshotGateway(Protocol):
-    """Read capability required by deterministic write verification."""
-
-    def get_gmail_message(self, *, message_id: str) -> ResourceSnapshot: ...
+class PreflightWriteGateway(
+    TaskListGateway,
+    CalendarConflictGateway,
+    FeasibilityGateway,
+    Protocol,
+):
+    """Provider reads required by write preflight safety checks."""
 
     def get_gmail_draft(self, *, draft_id: str) -> ResourceSnapshot: ...
 
     def get_task(self, *, task_list_id: str, task_id: str) -> ResourceSnapshot: ...
-
-    def get_calendar_event(self, *, calendar_id: str, event_id: str) -> ResourceSnapshot: ...
 
 
 CLAIM_TOKEN_VERSION = "v1"
@@ -1419,13 +1423,13 @@ class ExecuteWriteActionService:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        gateway: GoogleWorkspaceGateway,
+        gateway: ConnectorExecutionPort,
         now_ms: Callable[[], int],
         signing_secret: str,
         service_instance_id: str,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
-        self._gateway = gateway
+        self._connector_execution = gateway
         self._now_ms = now_ms
         self._signing_secret = signing_secret
         self._service_instance_id = service_instance_id
@@ -1475,24 +1479,18 @@ class ExecuteWriteActionService:
                 self._used_nonces.discard(nonce)
             raise
 
-        final_arguments = _build_final_dispatch_arguments(
-            action.tool_name,
-            loads(action.arguments_json),
-            recovery_fingerprint=approval.recovery_fingerprint,
-        )
-        claim_context = _prepare_gateway_claim_context(
-            gateway=self._gateway,
-            claim_payload=payload,
+        prepared = self._connector_execution.prepare_write(
             tool_name=action.tool_name,
-            approval_arguments_hash=action.arguments_hash,
-            execution_arguments_hash=calculate_canonical_json_hash(final_arguments),
-        )
-        snapshot = _dispatch_write_action(
-            self._gateway,
-            action.tool_name,
-            loads(action.arguments_json),
+            arguments=loads(action.arguments_json),
             recovery_fingerprint=approval.recovery_fingerprint,
-            claim_context=claim_context,
+        )
+        snapshot = self._connector_execution.execute_write(
+            ConnectorWriteRequest(
+                prepared=prepared,
+                claim_payload=payload,
+                approval_arguments_hash=action.arguments_hash,
+                execution_arguments_hash=calculate_canonical_json_hash(prepared.arguments),
+            )
         )
         return ExecutedWriteActionResult(
             snapshot=snapshot,
@@ -1510,7 +1508,7 @@ class PreflightWriteActionService:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        gateway: GoogleWorkspaceGateway,
+        gateway: PreflightWriteGateway,
         now_ms: Callable[[], int] | None = None,
         work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
     ) -> None:
@@ -2111,11 +2109,11 @@ class VerifyWriteActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: VerificationSnapshotGateway,
+        gateway: ConnectorExecutionPort,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._gateway = gateway
+        self._connector_execution = gateway
 
     def __call__(self, command: VerifyWriteActionCommand) -> WriteActionResponse:
         with self._unit_of_work_factory() as unit_of_work:
@@ -2168,9 +2166,9 @@ class VerifyWriteActionService:
         delete_target_absent = False
         if action.tool_name in _DELETE_TOOL_TARGETS:
             try:
-                actual_snapshot = _load_verification_snapshot(
-                    gateway=self._gateway,
-                    action=action,
+                actual_snapshot = self._connector_execution.fetch_verification_snapshot(
+                    tool_name=action.tool_name,
+                    arguments=loads(action.arguments_json),
                     fallback_resource_id=fallback_resource_id,
                 )
             except LookupError:
@@ -2182,9 +2180,9 @@ class VerifyWriteActionService:
                 delete_target_absent = True
                 actual_snapshot = None
         else:
-            actual_snapshot = _load_verification_snapshot(
-                gateway=self._gateway,
-                action=action,
+            actual_snapshot = self._connector_execution.fetch_verification_snapshot(
+                tool_name=action.tool_name,
+                arguments=loads(action.arguments_json),
                 fallback_resource_id=fallback_resource_id,
             )
 
@@ -2628,19 +2626,19 @@ class RecoverUnknownCreateActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: GoogleWorkspaceGateway,
+        gateway: ConnectorExecutionPort,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._gateway = gateway
+        self._connector_execution = gateway
 
     def __call__(self, command: RecoverUnknownCreateActionCommand) -> WriteActionResponse:
         with self._unit_of_work_factory() as unit_of_work:
             action = _require_action(unit_of_work, command.action_id)
             attempt = _require_attempt(unit_of_work, command.attempt_id)
             approval = _require_approval(unit_of_work, attempt.approval_id)
-        candidates = self._gateway.search_by_recovery_fingerprint(
-            resource_type=_recovery_resource_type_for_tool(action.tool_name),
+        candidates = self._connector_execution.search_recovery_candidates(
+            tool_name=action.tool_name,
             recovery_fingerprint=approval.recovery_fingerprint,
         )
         if len(candidates) != 1:
@@ -2678,7 +2676,7 @@ class RecoverUnknownSendActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: GoogleWorkspaceGateway,
+        gateway: ConnectorExecutionPort,
     ) -> None:
         self._delegate = RecoverUnknownCreateActionService(
             unit_of_work_factory=unit_of_work_factory,
@@ -2707,11 +2705,11 @@ class RecoverUnknownDeleteActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: GoogleWorkspaceGateway,
+        gateway: ConnectorExecutionPort,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._gateway = gateway
+        self._connector_execution = gateway
 
     def __call__(self, command: RecoverUnknownDeleteActionCommand) -> WriteActionResponse:
         with self._unit_of_work_factory() as unit_of_work:
@@ -2724,7 +2722,11 @@ class RecoverUnknownDeleteActionService:
                 )
             arguments = _dict_argument(loads(action.arguments_json))
         try:
-            self._get_delete_target(tool_name=action.tool_name, arguments=arguments)
+            self._connector_execution.fetch_verification_snapshot(
+                tool_name=action.tool_name,
+                arguments=arguments,
+                fallback_resource_id=None,
+            )
         except LookupError:
             return self._recover_absent_target(command=command, action=action, attempt=attempt)
         except GoogleWorkspaceGatewayError as error:
@@ -2741,21 +2743,6 @@ class RecoverUnknownDeleteActionService:
             attempt_id=attempt.id,
             conflict_detail="delete target is still present; blind re-delete is forbidden",
         )
-
-    def _get_delete_target(
-        self, *, tool_name: str, arguments: dict[str, object]
-    ) -> ResourceSnapshot:
-        if tool_name == "calendar_delete_event":
-            return self._gateway.get_calendar_event(
-                calendar_id=_required_argument_string(arguments, "calendar_id"),
-                event_id=_required_argument_string(arguments, "event_id"),
-            )
-        if tool_name == "tasks_delete_task":
-            return self._gateway.get_task(
-                task_list_id=_required_argument_string(arguments, "task_list_id"),
-                task_id=_required_argument_string(arguments, "task_id"),
-            )
-        raise LookupError(f"unsupported delete recovery tool: {tool_name}")
 
     def _recover_absent_target(
         self,
@@ -2799,11 +2786,11 @@ class RecoverUnknownUpdateActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: VerificationSnapshotGateway,
+        gateway: ConnectorExecutionPort,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._gateway = gateway
+        self._connector_execution = gateway
 
     def __call__(self, command: RecoverUnknownUpdateActionCommand) -> WriteActionResponse:
         with self._unit_of_work_factory() as unit_of_work:
@@ -2823,9 +2810,9 @@ class RecoverUnknownUpdateActionService:
                 action=action,
                 resource_ref_id=action.target_resource_ref_id,
             )
-        snapshot = _load_verification_snapshot(
-            gateway=self._gateway,
-            action=action,
+        snapshot = self._connector_execution.fetch_verification_snapshot(
+            tool_name=action.tool_name,
+            arguments=loads(action.arguments_json),
             fallback_resource_id=fallback_resource_id,
         )
         normalized_actual = normalize_verification_projection(snapshot)
@@ -3644,195 +3631,6 @@ def _validate_write_plan(
         )
 
 
-def _build_final_dispatch_arguments(
-    tool_name: str,
-    arguments: dict[str, object],
-    *,
-    recovery_fingerprint: str | None,
-) -> dict[str, object]:
-    """Build the exact argument dict a write tool call dispatches with.
-
-    ``ExecuteWriteActionService`` also canonicalizes this same dict to
-    compute ClaimContextV2's ``execution_arguments_hash``, so it must stay
-    byte-for-byte identical to what ``_dispatch_write_action`` sends to the
-    gateway/MCP tool below.
-    """
-
-    if tool_name == "gmail_send":
-        return {
-            "draft_id": _required_argument_string(arguments, "draft_id"),
-            "recovery_fingerprint": recovery_fingerprint,
-        }
-    if tool_name == "calendar_delete_event":
-        return {
-            "calendar_id": _required_argument_string(arguments, "calendar_id"),
-            "event_id": _required_argument_string(arguments, "event_id"),
-        }
-    if tool_name == "tasks_delete_task":
-        return {
-            "task_list_id": _required_argument_string(arguments, "task_list_id"),
-            "task_id": _required_argument_string(arguments, "task_id"),
-        }
-    payload = _dict_argument(arguments.get("payload"))
-    payload_with_recovery = dict(payload)
-    if recovery_fingerprint is not None and tool_name in {
-        "gmail_create_draft",
-        "tasks_create_task",
-        "calendar_create_event",
-    }:
-        payload_with_recovery["recovery_fingerprint"] = recovery_fingerprint
-    if tool_name == "gmail_create_draft":
-        return {"payload": payload_with_recovery}
-    if tool_name == "gmail_update_draft":
-        return {"draft_id": str(arguments["draft_id"]), "payload": payload}
-    if tool_name == "tasks_create_task":
-        return {
-            "task_list_id": str(arguments["task_list_id"]),
-            "payload": payload_with_recovery,
-        }
-    if tool_name == "tasks_update_task":
-        return {
-            "task_list_id": str(arguments["task_list_id"]),
-            "task_id": str(arguments["task_id"]),
-            "payload": payload,
-        }
-    if tool_name == "calendar_create_event":
-        return {
-            "calendar_id": str(arguments["calendar_id"]),
-            "payload": payload_with_recovery,
-        }
-    if tool_name == "calendar_update_event":
-        return {
-            "calendar_id": str(arguments["calendar_id"]),
-            "event_id": str(arguments["event_id"]),
-            "payload": payload,
-        }
-    raise LookupError(f"unsupported write tool: {tool_name}")
-
-
-def _dispatch_write_action(
-    gateway: GoogleWorkspaceGateway,
-    tool_name: str,
-    arguments: dict[str, object],
-    *,
-    recovery_fingerprint: str | None = None,
-    claim_context: dict[str, object] | None = None,
-) -> ResourceSnapshot:
-    final_arguments = _build_final_dispatch_arguments(
-        tool_name, arguments, recovery_fingerprint=recovery_fingerprint
-    )
-    if tool_name == "gmail_send":
-        return gateway.send_gmail(
-            draft_id=cast(str, final_arguments["draft_id"]),
-            recovery_fingerprint=cast(str | None, final_arguments["recovery_fingerprint"]),
-            claim_context=claim_context,
-        )
-    if tool_name == "calendar_delete_event":
-        return gateway.delete_calendar_event(
-            calendar_id=cast(str, final_arguments["calendar_id"]),
-            event_id=cast(str, final_arguments["event_id"]),
-            claim_context=claim_context,
-        )
-    if tool_name == "tasks_delete_task":
-        return gateway.delete_task(
-            task_list_id=cast(str, final_arguments["task_list_id"]),
-            task_id=cast(str, final_arguments["task_id"]),
-            claim_context=claim_context,
-        )
-    if tool_name == "gmail_create_draft":
-        return gateway.create_gmail_draft(
-            payload=cast(dict[str, object], final_arguments["payload"]),
-            claim_context=claim_context,
-        )
-    if tool_name == "gmail_update_draft":
-        return gateway.update_gmail_draft(
-            draft_id=cast(str, final_arguments["draft_id"]),
-            payload=cast(dict[str, object], final_arguments["payload"]),
-            claim_context=claim_context,
-        )
-    if tool_name == "tasks_create_task":
-        return gateway.create_task(
-            task_list_id=cast(str, final_arguments["task_list_id"]),
-            payload=cast(dict[str, object], final_arguments["payload"]),
-            claim_context=claim_context,
-        )
-    if tool_name == "tasks_update_task":
-        return gateway.update_task(
-            task_list_id=cast(str, final_arguments["task_list_id"]),
-            task_id=cast(str, final_arguments["task_id"]),
-            payload=cast(dict[str, object], final_arguments["payload"]),
-            claim_context=claim_context,
-        )
-    if tool_name == "calendar_create_event":
-        return gateway.create_calendar_event(
-            calendar_id=cast(str, final_arguments["calendar_id"]),
-            payload=cast(dict[str, object], final_arguments["payload"]),
-            claim_context=claim_context,
-        )
-    if tool_name == "calendar_update_event":
-        return gateway.update_calendar_event(
-            calendar_id=cast(str, final_arguments["calendar_id"]),
-            event_id=cast(str, final_arguments["event_id"]),
-            payload=cast(dict[str, object], final_arguments["payload"]),
-            claim_context=claim_context,
-        )
-    raise LookupError(f"unsupported write tool: {tool_name}")
-
-
-def _prepare_gateway_claim_context(
-    *,
-    gateway: GoogleWorkspaceGateway,
-    claim_payload: dict[str, object],
-    tool_name: str,
-    approval_arguments_hash: str,
-    execution_arguments_hash: str,
-) -> dict[str, object] | None:
-    prepare = getattr(gateway, "prepare_claim_context", None)
-    if not callable(prepare):
-        return None
-    return cast(
-        dict[str, object],
-        prepare(
-            claim_payload=claim_payload,
-            tool_name=tool_name,
-            approval_arguments_hash=approval_arguments_hash,
-            execution_arguments_hash=execution_arguments_hash,
-        ),
-    )
-
-
-def _load_verification_snapshot(
-    *,
-    gateway: VerificationSnapshotGateway,
-    action: ActionRecord,
-    fallback_resource_id: str | None,
-) -> ResourceSnapshot:
-    arguments = loads(action.arguments_json)
-    if action.tool_name in {"gmail_create_draft", "gmail_update_draft"}:
-        draft_id = str(arguments.get("draft_id") or _required_resource_id(fallback_resource_id))
-        return gateway.get_gmail_draft(draft_id=draft_id)
-    if action.tool_name == "gmail_send":
-        message_id = _required_resource_id(fallback_resource_id)
-        return gateway.get_gmail_message(message_id=message_id)
-    if action.tool_name in {"tasks_create_task", "tasks_update_task"}:
-        task_list_id = str(arguments["task_list_id"])
-        task_id = str(arguments.get("task_id") or _required_resource_id(fallback_resource_id))
-        return gateway.get_task(task_list_id=task_list_id, task_id=task_id)
-    if action.tool_name in {"calendar_create_event", "calendar_update_event"}:
-        calendar_id = str(arguments["calendar_id"])
-        event_id = str(arguments.get("event_id") or _required_resource_id(fallback_resource_id))
-        return gateway.get_calendar_event(calendar_id=calendar_id, event_id=event_id)
-    if action.tool_name == "calendar_delete_event":
-        calendar_id = str(arguments["calendar_id"])
-        event_id = str(arguments["event_id"])
-        return gateway.get_calendar_event(calendar_id=calendar_id, event_id=event_id)
-    if action.tool_name == "tasks_delete_task":
-        task_list_id = str(arguments["task_list_id"])
-        task_id = str(arguments["task_id"])
-        return gateway.get_task(task_list_id=task_list_id, task_id=task_id)
-    raise LookupError(f"unsupported verification tool: {action.tool_name}")
-
-
 def _resolve_snapshot_fallback_resource_id(
     unit_of_work: UnitOfWork,
     *,
@@ -3861,12 +3659,6 @@ def _resolve_snapshot_fallback_resource_id(
     if action.tool_name == "gmail_send":
         return _resource_id_from_ref(unit_of_work, resource_ref_id)
     return None
-
-
-def _required_resource_id(resource_id: str | None) -> str:
-    if resource_id is None:
-        raise LookupError("resource reference is required for verification")
-    return resource_id
 
 
 def _resource_id_from_ref(unit_of_work: UnitOfWork, resource_ref_id: str | None) -> str:
@@ -4422,18 +4214,6 @@ def _propagate_dependency_blocked(
                 created_at_ms=updated_at_ms,
             )
         )
-
-
-def _recovery_resource_type_for_tool(tool_name: str) -> ResourceType:
-    if tool_name == "gmail_send":
-        return ResourceType.GMAIL_MESSAGE
-    if tool_name.startswith("gmail_"):
-        return ResourceType.GMAIL_DRAFT
-    if tool_name.startswith("tasks_"):
-        return ResourceType.TASK
-    if tool_name.startswith("calendar_"):
-        return ResourceType.CALENDAR_EVENT
-    raise LookupError(f"unsupported recovery tool: {tool_name}")
 
 
 def _resolve_existing_run_receipt(
