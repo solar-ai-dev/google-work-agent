@@ -1,6 +1,6 @@
 # 11. Google Work Agent · 관측성 · 로그 · 감사 설계서
 
-> **상태:** Draft v2.12 · **기준일:** 2026-08-13 · **외부 Telemetry:** Production 기본 OFF
+> **상태:** Draft v2.18 · **기준일:** 2026-08-14 · **외부 Telemetry:** Production 기본 OFF
 
 ## 먼저 읽기
 
@@ -429,3 +429,38 @@ attachment_mime_types
 
 추가 거절 사유 예:
 `CLAIM_VERSION_UNSUPPORTED`, `CLAIM_EXPIRED`, `CLAIM_INSTANCE_MISMATCH`, `CLAIM_ARGUMENTS_MISMATCH`, `CLAIM_NONCE_REUSED`, `ATTACHMENT_HASH_MISMATCH`.
+
+## PHASE 2~7 Evaluation·Prompt Trace 보강
+
+평가 Runtime은 기존 제품 Trace와 분리해 다음 식별자를 추가한다.
+
+```text
+main_experiment_id?       # A | B | C | D | E
+dataset_suite_id?         # BASE_92 | PRODUCT_EPISODE_EXTENSION | SYNTHETIC_MULTI_CONNECTOR
+episode_variant_id?
+projection_version
+prompt_bundle_version
+prompt_id
+prompt_version
+candidate_config_hash
+trial_index
+upstream_mode?            # ORACLE | LIVE
+target_node_id?
+grader_version
+scoring_contract_version
+```
+
+집계 denominator는 `CORE | STRESS | HOLDOUT | PRODUCT_EPISODE | SYNTHETIC_MULTI_CONNECTOR`를 분리한다. 비용·Latency가 Safety/Business 실패를 상쇄하는 단일 점수를 만들지 않는다.
+
+Prompt Trace는 Prompt 원문을 저장하지 않고 `prompt_bundle_version`, `prompt_id`, `prompt_version`, `content_hash`, `agent_role`, `subgraph_name`, `node_name`, `purpose`, `input_schema_version`, `output_schema_version`, repair/revision metadata만 기록한다.
+
+PHASE 7 Runner는 다음 stage를 구분해 기록해야 한다.
+
+```text
+LLM_SLOT_CANDIDATE
+DETERMINISTIC_TRANSFORM
+FINAL_STATE_ARTIFACT
+END_STATE
+```
+
+특히 Tool Route LLM의 pre-policy candidate와 `PolicyPreconditionResolver` 이후 final `ToolRoutePlanV2`를 같은 grader stage로 합치지 않는다. 수동 Local-SLLM style pilot 결과는 `simulation_mode=MANUAL_CONSTRAINED_SLLM_EMULATION`, `benchmark_eligible=false`로 기록하며 실제 Ollama/qwen 성능 결과와 합치지 않는다.

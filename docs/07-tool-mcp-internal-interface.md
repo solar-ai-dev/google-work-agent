@@ -4,7 +4,7 @@
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.18
+- **상태:** Draft v2.19
 - **기준일:** 2026-08-13
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
@@ -1229,3 +1229,24 @@ sha256
 - 발신 bytes는 Local Staging에서 읽고 MIME message를 조립한다.
 - Draft CREATE/UPDATE·SEND의 Canonical Business Arguments에는 Attachment Descriptor를 포함하고, 실제 bytes의 size/SHA-256을 실행 직전 재검증한다.
 - Browser가 임의 Local Path를 MCP Argument로 지정할 수 없다.
+
+## PHASE 7.5 · Planning Default Container Binding
+
+`tasklist_id`, `calendar_id`처럼 Connector Write Tool이 요구하지만 사용자 문장에 직접 나타나지 않을 수 있는 container ID는 LLM이 추측하지 않는다.
+
+```text
+OutputToolRouteV1
++ selected resource/container parent if explicitly bound
++ AppSettings.default_tasklist_id / default_calendar_id
+→ DefaultContainerResolver          # deterministic
+→ BoundSelectedToolSchemaV1         # container field is immutable/const
+→ Planning Argument Writer
+→ Deterministic Argument Assembler
+```
+
+규칙:
+
+- 명시적으로 선택된 target/container가 있으면 configured default보다 우선한다.
+- 필요한 default가 없으면 Planning LLM에 숨은 ID를 추측시키지 않고 `NEEDS_CONFIRMATION` 또는 설정/route 계약의 명시적 실패로 보낸다.
+- Planning LLM은 bound Tool Schema에 이미 고정된 `tasklist_id/calendar_id`를 변경할 수 없다.
+- 승인 Snapshot/Arguments Hash에는 deterministic binding이 완료된 최종 Business Arguments를 사용한다.

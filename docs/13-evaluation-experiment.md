@@ -1,8 +1,8 @@
 # 13. Google Work Agent · 평가 · 실험 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `03 Architecture v3.5`, `05 Retrieval v2.11`, `06 Workflow v7.12`, `07 Interface v2.18`, `10 Infrastructure v2.9`, `11 Observability v2.12`, `12 Test v3.19`, `15 Agent Capability·Failure·Prompt v1.11`를 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `03 Architecture v3.5`, `05 Retrieval v2.11`, `06 Workflow v7.13`, `07 Interface v2.19`, `10 Infrastructure v2.9`, `11 Observability v2.18`, `12 Test v3.30`, `15 Agent Capability·Failure·Prompt v1.20`를 기준으로 한다.
 >
-> **상태:** Draft v3.9 · **기준일:** 2026-08-13 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
+> **상태:** Draft v3.20 · **기준일:** 2026-08-14 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
 
 ## 먼저 읽기 — 이 문서가 결정하는 것
 
@@ -1450,3 +1450,111 @@ Clarification 평가는 `clarify_required`와 `clarify_not_required`를 모두 �
 - Attachment I/O 무결성은 `12`의 결정적 Product Regression과 `G02 Fault·Recovery·Write Integrity`가 소유한다.
 - G02에는 Claim V2 Signature·TTL·Instance·Execution Hash·Nonce 및 Attachment Download/Stage/Write isolation 회귀를 포함한다.
 - Agent 구조 실험에서 첨부파일 Metadata는 일반 Resource Metadata로 취급하되 bytes 분석 능력을 점수화하지 않는다.
+
+## Canonical Rebase PHASE 2~7 현재 상태
+
+### Main Experiment 구조
+
+제품 의사결정을 만드는 Main Experiment는 다섯 개다.
+
+```text
+A Model·Runtime
+B Prompt·Node Quality
+C Retrieval
+D Agent Architecture
+E Final Product Validation
+```
+
+기존 E01~E09/V01은 과거 Artifact traceability 및 diagnostic alias로만 유지한다.
+
+### PHASE 2 — Scoring / Grader 분리
+
+평가 순서는 다음과 같이 분리한다.
+
+```text
+Safety Contract
+User Interaction
+Tool Trajectory
+End-state
+Semantic Completion
+```
+
+`BUSINESS_TASK_SUCCESS = safety_contract_pass AND business_outcome_pass`이며 비용은 실패를 상쇄하지 않는다.
+
+### PHASE 3 — Coverage
+
+- Base-92 = Core 60 / Stress 20 / Holdout 12, 고정.
+- Product Episode Extension V1 = 10개.
+- Base-92에서 희귀한 P0 Effect는 Product Episode로 보강한다.
+- A~E 실험은 전체 92를 모든 후보에 반복하지 않고 stratified budget을 사용한다.
+
+### PHASE 4 — Canonical Gold
+
+- Dataset: `rebuild-v1.16-r8.6-canonical-gold-rebase`
+- Schema: `CanonicalCaseV7`
+- 상태: `GOLD_REBASED_NOT_ACTIVE`
+- Base-92 92/92, Product Episode 10/10 정적 검증 통과.
+- `end_state_gold`는 ANSWER_ONLY / NO_MUTATION_EXPECTED / ALL_REQUIRED_MUTATIONS / INDETERMINATE_PENDING_RECOVERY / PARTIAL_ALLOWED를 명시한다.
+
+### PHASE 5 — Projection
+
+- Projection bundle: `projection-v1.0-r8.6-phase5`
+- Base-92 × 8종 = 736 Projection.
+- E2E는 `E2EProjectionV5`, Product Episode는 `ProductEpisodeE2EProjectionV1`.
+- Source Equality / Traceability / Role Boundary 736/736 PASS.
+
+### PHASE 6 — Prompt
+
+- Prompt Bundle: `0.9.0-r8.6-phase6`
+- Semantic Bundle: `semantic-r8.6-v2`
+- 30 Slot topology 유지.
+- 상태: `DRAFT_STATIC_VALIDATED_NOT_ACTIVE`.
+- Product Prompt에 Evaluation 전용 Gold/Grader/Expected Route/End-state/Decision Script를 넣지 않는다.
+- Tool Route LLM은 policy-precondition READ를 materialize하지 않고 Review는 supplied policy summary 밖의 정책을 만들지 않는다.
+
+### PHASE 7 — Runner / manual Local-SLLM style pilot
+
+상태:
+
+```text
+RUNNER_CONTRACT_LOCKED_MANUAL_PILOT_COMPLETE_REAL_MODEL_BLOCKED
+```
+
+20 CORE case family × 2 문체 = 40 요청을 제한된 Node 역할로 수동 해석했다. 이는 실제 Ollama/qwen 실행이 아니며 benchmark eligible=false, Holdout 사용 0이다.
+
+- Request Understanding schema smoke: 40/40.
+- Pre-policy Tool Route schema smoke: applicable 38/38.
+- 동일 Case의 2개 문체 의미 일관성: 20/20.
+- 위 수치는 Local model 정확도가 아니다.
+
+실제 Local model 실행 전 blocker:
+
+1. **Tool Route grading stage mismatch** — final Gold에 deterministic PolicyPreconditionResolver 결과가 포함되어 있으므로 pre-policy LLM candidate와 직접 비교하면 안 된다. Base-92에서 policy-precondition annotation Case는 31개다.
+2. **RequestIntent Gold review** — 일부 legacy `analysis_requirement=REQUIRED`가 최신 Workflow의 simple lookup/direct Action 의미와 충돌할 가능성이 있다.
+3. **Planning default resource binding** — `tasklist_id/calendar_id`를 LLM이 숨은 default로 추측하지 않도록 deterministic binding 또는 명시적 runtime projection을 고정해야 한다.
+
+이 blocker를 해소하고 영향받는 Gold/Projection/Runner만 최소 재생성한 뒤 실제 Ollama Local CORE/DEV Pilot을 시작한다. Holdout은 그 이후까지 봉인한다.
+
+## PHASE 7.5 — Contract Correction 완료
+
+후보 Artifact:
+
+```text
+Dataset     rebuild-v1.17-r8.6-phase7.5-contract-correction
+Canonical   CanonicalCaseV7
+Projection  projection-v1.1-r8.6-phase7.5
+Pre-policy  PrePolicyToolRouteGoldV1
+Prompt      0.9.0-r8.6-phase6 (content unchanged)
+Status      CONTRACT_CORRECTED_READY_FOR_REAL_MODEL_PILOT_NOT_ACTIVE
+```
+
+교정 사항:
+
+- Request `analysis_requirement` 9건 교정.
+- 실제 Work Analysis skip으로 이어진 Case 8건; CORE-058은 policy conflict analysis 유지.
+- CORE-057은 human review 후 REQUIRED 유지.
+- Base-92 92건에 `PrePolicyToolRouteGoldV1` 생성.
+- Task UPDATE 14건의 `tasklist_id` Gold를 fixture default binding과 정합화.
+- Canonical 92/92, pre-policy 92/92, Projection 736/736 정적 검증 PASS.
+
+실제 Ollama/qwen execution과 Holdout tuning은 아직 수행하지 않았다. 다음 단계는 이 계약을 Runner/Prompt Assembler에 구현하고 CORE/DEV 실제 Local model pilot을 수행하는 것이다.

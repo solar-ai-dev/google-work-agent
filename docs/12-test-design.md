@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.19`, `05 Retrieval v2.11`, `06 Workflow v7.12`, `07 Interface v2.18`, `08 Sequence v3.12`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.12`, `15 Agent Capability·Failure·Prompt v1.11`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.19`, `05 Retrieval v2.11`, `06 Workflow v7.13`, `07 Interface v2.19`, `08 Sequence v3.13`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.18`, `15 Agent Capability·Failure·Prompt v1.20`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v3.19 · **기준일:** 2026-08-13 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.30 · **기준일:** 2026-08-14 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -836,3 +836,59 @@ Attachment:
 - Staging 파일 변조·만료·삭제 후 기존 Approval 실행 0.
 - Draft CREATE/UPDATE·SEND 시 실제 MIME attachment와 승인 Descriptor가 일치.
 - Attachment 포함 SEND에서도 SENT_LOOKUP, UNKNOWN_RESULT no-resend 계약 유지.
+
+## PHASE 4~7 Dataset·Projection·Prompt·Runner 계약
+
+### CanonicalCaseV7 / E2EProjectionV5
+
+- Base-92는 60 CORE / 20 STRESS / 12 HOLDOUT을 유지한다.
+- `CanonicalCaseV7`은 모든 Case에 명시적 `end_state_gold`를 가진다.
+- `E2EProjectionV5`는 Canonical V7에서만 생성하며 hidden Planning args로 end-state를 추론하지 않는다.
+- Product Episode 10개는 E2E 전용 Projection으로 분리하고 Base-92 headline denominator에 섞지 않는다.
+
+### Prompt Runtime Input Gate
+
+- Product Prompt assembler는 `prompt-runtime-input-contract-v1` allowlist만 직렬화한다.
+- `gold`, `grader`, `expected_route`, `end_state_gold`, Holdout label, User Simulator `decision_script`가 Product Prompt로 들어가면 실패다.
+- Repair/Revision은 `base_projection + candidate_output + normalized failure_record`만 받고 `allowed_change_scope` 밖 필드를 변경하면 실패다.
+
+### PHASE 7 slot-aware grading
+
+Tool Route 평가를 두 단계로 분리한다.
+
+```text
+RouteResourceCandidateV1
+→ PRE_POLICY_SEMANTIC_ROUTE_GOLD
+→ deterministic Registry Binding
+→ PolicyPreconditionResolver
+→ ToolRoutePlanV2
+→ final route/trajectory grader
+```
+
+LLM candidate를 final ToolRoutePlanV2의 policy-precondition READ와 직접 비교하면 grader defect다.
+
+### RequestIntent Gold review gate
+
+`analysis_requirement`는 ACTION 여부만으로 `REQUIRED`가 되지 않는다. 단순 조회·직접 Action은 제품 계약상 `NONE`일 수 있고 duplicate/conflict 검사는 downstream effective analysis다. `CASE-CORE-002/003/005/006/008/055/058/059/060`은 PHASE 7 Gold review candidate다. `CASE-CORE-057`은 business-deadline 의미 때문에 human review 전 자동 수정하지 않는다.
+
+### Planning default binding gate
+
+`tasklist_id`, `calendar_id` 같은 default container ID를 LLM이 숨은 값으로 추측하면 실패다. 실제 Local model Planning pilot 전 다음 중 하나를 고정한다.
+
+1. deterministic Plan/Argument Assembler가 default ID를 바인딩한다.
+2. 또는 allowlisted `runtime_context/default_resource_bindings`를 Planning input에 명시한다.
+
+### Manual style smoke
+
+PHASE 7의 20 CORE × 2 문체 = 40 요청은 실제 Ollama/qwen benchmark가 아니다. Holdout 0, benchmark eligible=false로 기록한다. 실제 모델 DEV/Holdout 결과와 합치지 않는다.
+
+## PHASE 7.5 Contract Correction Regression
+
+- `CASE-CORE-002/003/005/006/008/055/058/059/060`의 RequestIntent `analysis_requirement=NONE`을 검증한다.
+- `CASE-CORE-057`은 business-deadline 의미 때문에 human review 결과 `REQUIRED` 유지다.
+- `CORE-058`처럼 Request analysis는 NONE이어도 Calendar CREATE policy conflict precondition 때문에 `effective_analysis_required=true`가 될 수 있다.
+- Tool Route Slot grader는 `PrePolicyToolRouteGoldV1`을 사용하고 final route/trajectory grader만 `ToolRoutePlanV2`를 사용한다.
+- Base-92 92건 모두 pre-policy Gold가 존재해야 한다.
+- Task UPDATE Planning Gold의 required `tasklist_id` 누락 0건을 검증한다.
+- default `tasklist_id/calendar_id`는 deterministic resolver가 bind하며 Planning LLM hidden guess 0건을 검증한다.
+- Dataset `rebuild-v1.17-r8.6-phase7.5-contract-correction`, Projection `projection-v1.1-r8.6-phase7.5`의 92 Canonical + 736 Projection source equality를 검증한다.

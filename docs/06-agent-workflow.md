@@ -1,8 +1,8 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.19`, `05 Retrieval v2.11`, `07 Interface v2.18`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.19`, `05 Retrieval v2.11`, `07 Interface v2.19`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v7.12 · **DB Schema:** v1.6 · **대상:** P0 MVP
+> **상태:** Draft v7.13 · **DB Schema:** v1.6 · **대상:** P0 MVP
 >
 > Main LangGraph는 결정적 Supervisor와 Versioned Typed Main State를 소유한다. 전문 Agent는 LangGraph Subgraph이며 Parent State에서 자기 책임에 필요한 필드만 Projection 받아 Local State를 단계적으로 채우고, 완료 시 공식 Typed Result만 Main State에 병합한다. Schema는 출력 가능 범위를 통제하고, State는 확정 정보를 기억하며, Prompt는 각 LLM Node의 단일 작업만 지시한다. 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -1485,3 +1485,24 @@ output_schema_version
 - 첨부파일 bytes는 Main State, Agent Local State, ContextBundle, Evidence, Prompt 입력에 포함하지 않는다.
 - 실제 Download·Staging·MIME 조립은 결정적 Application·MCP 경계가 수행한다.
 - ClaimContextV2 생성·검증은 Agent Node가 아니라 공통 결정적 Execution Engine 책임이다.
+
+## PHASE 7.5 · analysis requirement와 effective analysis 정합화
+
+Request Understanding의 `analysis_requirement`와 실제 Work Analysis 호출 여부를 분리한다.
+
+```text
+request_analysis_required
+= RequestIntentV2.analysis_requirement == REQUIRED
+
+policy_precondition_analysis_required
+= TASK+CREATE duplicate check
+  OR CALENDAR+CREATE conflict check
+  OR 그 밖의 결정적 policy precondition이 명시적으로 요구하는 analysis
+
+effective_analysis_required
+= request_analysis_required OR policy_precondition_analysis_required
+```
+
+- 단순 lookup·직접 Action이라는 이유만으로 `analysis_requirement=REQUIRED`를 강제하지 않는다.
+- Task CREATE/Calendar CREATE의 duplicate/conflict 검사는 Request Understanding의 의미 분석 요구가 아니라 downstream deterministic Policy Precondition이다.
+- Supervisor는 `output_mode=ACTION` 자체가 아니라 `effective_analysis_required`로 Work Analysis 호출 여부를 결정한다.

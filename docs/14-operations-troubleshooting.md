@@ -1,8 +1,8 @@
 # 14. Google Work Agent · 예외 처리 · 운영 · 트러블슈팅 가이드
 
-> **문서 기준:** `04 Domain·DB v1.19`, `05 Retrieval v2.11`, `06 Workflow v7.12`, `07 Interface v2.18`, `08 Sequence v3.12`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.12`, `12 Test v3.19`, `13 Evaluation v3.9`, `15 Agent Capability v1.11`를 따른다. 이 문서는 새 상태 전이·보안·Prompt 정책을 만들지 않는다.
+> **문서 기준:** `04 Domain·DB v1.19`, `05 Retrieval v2.11`, `06 Workflow v7.13`, `07 Interface v2.19`, `08 Sequence v3.13`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.18`, `12 Test v3.30`, `13 Evaluation v3.20`, `15 Agent Capability v1.20`를 따른다. 이 문서는 새 상태 전이·보안·Prompt 정책을 만들지 않는다.
 
-> **상태:** Draft v2.7 · **기준일:** 2026-08-13 · **원격 운영 서버:** 없음
+> **상태:** Draft v2.17 · **기준일:** 2026-08-14 · **원격 운영 서버:** 없음
 
 ## 1. Severity
 
@@ -260,3 +260,18 @@ Timeout·5xx·MCP 종료를 일괄 `NOT_SENT`로 분류하지 않는다. 결과�
 - Gmail 수신 첨부파일 다운로드 실패는 Message/Attachment ID, Google 연결 상태, 파일 크기 제한을 확인하고 READ 경로만 재시도한다. LLM Retry로 해결하지 않는다.
 - 발신 Staging 파일이 만료·삭제·Hash mismatch이면 기존 Approval로 실행하지 않는다. **파일 재선택 → Descriptor 갱신 → Action 수정 → 새 Approval** 순서다.
 - Attachment bytes·Local Path를 진단 Bundle이나 지원 요청에 포함시키지 않는다.
+
+## PHASE 7 Experiment Runner 운영 경계
+
+- 수동 `MANUAL_CONSTRAINED_SLLM_EMULATION` 결과를 실제 Ollama/qwen benchmark로 승격하지 않는다.
+- Tool Route pre-policy candidate를 final ToolRoutePlanV2 Gold로 직접 채점하는 Runner는 실행 중지 후 grader contract를 수정한다.
+- RequestIntent Gold defect candidate가 남아 있을 때 Prompt를 Gold에 맞춰 튜닝하지 않는다.
+- Planning default resource binding이 명시되지 않은 상태에서 실제 Local Planning benchmark를 실행하지 않는다.
+- Holdout은 blocker 해결·DEV Pilot·Prompt 후보 고정 전까지 열지 않는다.
+
+## PHASE 7.5 운영 경계
+
+- `PrePolicyToolRouteGoldV1`과 final `ToolRoutePlanV2`를 혼용하는 Runner는 실제 model benchmark를 시작하지 않는다.
+- default Task List/Calendar container가 결정적으로 resolve되지 않으면 Planning LLM에게 ID 생성을 요구하지 않는다.
+- `rebuild-v1.17-r8.6-phase7.5-contract-correction`은 Real Local model pilot 전 Candidate이며 Active baseline을 자동 대체하지 않는다.
+- Holdout은 DEV pilot과 Prompt candidate 고정 전까지 봉인한다.

@@ -2,7 +2,7 @@
 
 > **문서 기준:** `01. 요구사항 정의서·PRD v2.10`, `01-A. 기능 정의서 v2.15`, `01-B. 정책 정의서 v2.11`, `02. UI·UX 설계서 v2.11`, `03. 시스템 아키텍처 설계서 v3.5`, `04. 도메인·데이터베이스 설계서 Draft v1.19`, `05. Context·Retrieval 설계서 Draft v2.11`, `06. Agent·Workflow 설계서 Draft v7.12`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v2.18`, Domain 상태 전이 계약 v1.5를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
 
-> **상태:** Draft v3.12 · **기준일:** 2026-08-13
+> **상태:** Draft v3.13 · **기준일:** 2026-08-13
 > **대상:** P0 MVP  
 > **구조:** 결정적 Supervisor + 1/3/6 Agent Subgraph Profile + 결정적 실행·검증 Engine  
 > **상태 기준:** SQLite Domain Store가 승인·실행·검증 사실의 기준점이며 LangGraph Checkpoint는 재개 위치, SSE는 UI Projection이다.
@@ -271,13 +271,13 @@ sequenceDiagram
         SUP->>DB: RETRIEVAL Checkpoint
     end
 
-    alt analysis_requirement = REQUIRED or output_mode = ACTION
+    alt effective_analysis_required = true
         SUP->>ANA: Intent + RetrievalResult/Evidence Projection
         ANA->>LLM: fact/relation analysis PromptRef
         LLM-->>ANA: WorkAnalysis candidate
         ANA->>ANA: typed local state + validate
         ANA-->>SUP: WorkAnalysisResultV2
-    else analysis_requirement = NONE
+    else effective_analysis_required = false
         SUP->>SUP: Work Analysis skip
     end
 
@@ -1371,3 +1371,16 @@ Approval ACTIVE
 ```
 
 첨부파일 bytes는 어느 시퀀스에서도 LLM·Agent Context를 통과하지 않는다.
+
+## PHASE 7.5 · Tool Route/Planning stage contract
+
+Tool Route LLM의 semantic candidate와 final route는 같은 단계가 아니다.
+
+```text
+RouteResourceCandidateV1
+→ Registry Binding
+→ PolicyPreconditionResolver
+→ ToolRoutePlanV2
+```
+
+Planning 진입 전에는 `DefaultContainerResolver`가 selected parent 또는 configured default를 사용해 `tasklist_id/calendar_id`를 결정적으로 bind한다. 해당 값이 없으면 LLM이 생성하지 않는다.

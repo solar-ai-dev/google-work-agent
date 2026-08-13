@@ -2,38 +2,68 @@
 
 > 설명 문서다. 실험 권위 계약은 13, Prompt/Failure는 15, 제품 회귀는 12가 소유한다.
 
-## 1. 평가 순서
+## 1. 제품 의사결정 구조
 
 ```text
-Dataset·Grader Integrity
-→ Safety / Write Integrity Hard Gate
-→ Business Task Success
-→ Process 원인 분석
-→ Efficiency 비교
-→ Reliability / Holdout / Stress
-→ Product Decision
+A Model·Runtime
+B Prompt·Node Quality
+C Retrieval
+D Agent Architecture
+E Final Product Validation
 ```
 
-## 2. 핵심 원칙
+기존 E01~E09/V01은 과거 Artifact 재현과 diagnostic traceability alias다.
 
-- Safety는 평균 점수가 아니라 **100% Gate**다.
-- 1차 Outcome은 Business Task Success(BTS)다.
-- 비용·지연은 품질을 통과한 후보끼리 비교한다.
-- Gold는 내부 Graph topology가 아니라 사용자 목표·완료조건·필요 Evidence·금지 Action·검증 결과를 정의한다.
-- STRICT/SET/CONSTRAINT_ENVELOPE/ORDERED_PREFERENCE/SEMANTIC_RUBRIC을 구분한다.
-- Agent invocation과 LLM call을 별도 계수한다.
-- Connector별 MCP Tool call과 Provider API call도 별도 계수한다.
+## 2. 평가 우선순위
 
-## 3. P0 실험 질문
+```text
+Safety Hard Gate
+→ Business Task Success
+→ Process / Failure Taxonomy
+→ Efficiency
+→ Reliability / Holdout / Stress
+```
 
-- E01 Model·Runtime
-- E02 Prompt·Schema·Repair
-- E03 Node·Handoff
-- E04 Tool Route·Retrieval
-- E05 Retrieval·Context
-- E06-A Native 1/3/6 Architecture
-- E06-B Controlled Post-Retrieval Decomposition
-- E07 Routing·Skip
-- E08 Review
+Safety 실패를 비용·지연으로 상쇄하지 않는다. Core·Stress·Holdout·Product Episode denominator를 섞지 않는다.
 
-Safety/Integrity Gate를 통과하지 못한 후보는 비용이 낮아도 Release 후보가 아니다.
+## 3. Artifact 생성 순서
+
+```text
+Product Contract
+→ Experiment Question
+→ Dataset Coverage
+→ Canonical Gold
+→ Projection
+→ Prompt
+→ Runner / Grader
+→ DEV Pilot
+→ Holdout
+```
+
+Canonical Case가 Source of Truth이며 Projection은 View다. Product Prompt는 Gold/Grader/Expected Route/End-state/Decision Script를 보지 않는다.
+
+## 4. PHASE 2~7 결정
+
+- PHASE 2: Safety / Interaction / Trajectory / End-state / Semantic Completion grader 분리.
+- PHASE 3: Base-92 고정, 희귀 P0 흐름은 Product Episode 10개로 분리.
+- PHASE 4: `CanonicalCaseV7`, 명시적 `end_state_gold`.
+- PHASE 5: Base-92 8종 736 Projection + E2EProjectionV5.
+- PHASE 6: Prompt 0.9.0, 30 Slot 유지, runtime input allowlist / leakage 0 정적 Gate.
+- PHASE 7: Runner slot-aware grading contract + 수동 40개 문체 smoke. 실제 Ollama/qwen benchmark는 아직 수행하지 않음.
+- PHASE 7.5: Request Gold/Pre-policy Tool Route Gold/default container binding을 최소 교정하고 Dataset v1.17 + Projection v1.1을 정적 검증.
+
+## 5. PHASE 7이 발견한 실제 blocker
+
+1. **Tool Route stage mismatch**: pre-policy LLM candidate와 deterministic policy-precondition 이후 final Gold를 분리해야 한다.
+2. **RequestIntent Gold review**: 단순 lookup/direct Action에 남아 있는 legacy `analysis_requirement=REQUIRED` 후보를 최신 Workflow 계약으로 검수한다.
+3. **Planning default binding**: default tasklist/calendar ID를 LLM이 추측하지 않도록 deterministic binding 또는 명시적 runtime projection을 고정한다.
+
+## 6. 다음 순서
+
+```text
+PHASE 7.5 contract correction 완료
+→ Runner/Prompt Assembler 적용
+→ CORE/DEV 실제 Local SLLM pilot
+→ Prompt candidate 고정
+→ Holdout
+```
