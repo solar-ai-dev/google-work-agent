@@ -1,8 +1,8 @@
-# Google Work Agent — Claude Code Instructions
-- 이 `CLAUDE.md`는 매 세션 필요한 저장소 공통 규칙만 둔다.
-- 특정 작업용 장문 절차나 참고자료를 계속 추가하지 않는다.
-- 같은 규칙을 여러 위치에 중복 작성하지 않는다.
-- 기존 path rule/skill이 있으면 재사용하고 새 설정 체계는 사용자 요청 없이 만들지 않는다.
+# Google Work Agent — Codex Instructions
+- 이 `AGENTS.md`는 저장소 루트 전체에 적용한다.
+- 하위 `AGENTS.md`가 있으면 해당 경로 작업에는 함께 적용한다.
+- 하위 규칙은 경로별 convention을 추가할 수 있지만 이 파일의 Canonical·안전·의존성 경계를 약화시키면 안 된다.
+- 최종 patch의 모든 수정 파일에 적용되는 instruction을 확인한다.
 
 ## Source of truth
 - 공식 설계 원본은 Notion이다. 저장소에서는 `00-PROJECT-SOURCE-GUIDE.md`로 현재 Canonical과 Concern Owner를 먼저 확인한다.
