@@ -32,9 +32,9 @@ Prompt·Failure 정규화   → 15
 - Project Overview v1.14
 - PRD v2.10 / Functional v2.15 / Policy v2.11 / UI·UX v2.11
 - Architecture v3.6 / Domain·DB v1.19 / DB Schema v1.6
-- Retrieval v2.11 / Workflow **v7.14** / Interface **v2.19** / Sequence **v3.14**
-- Security v2.10 / Infrastructure v2.9 / Observability v2.18
-- Test **v3.31** / Evaluation **v3.20** / Operations **v2.17** / Agent Capability·Prompt **v1.20**
+- Retrieval **v2.12** / Workflow **v7.15** / Interface **v2.20** / Sequence **v3.14**
+- Security v2.10 / Infrastructure v2.9 / Observability **v2.19**
+- Test **v3.32** / Evaluation **v3.20** / Operations **v2.17** / Agent Capability·Prompt **v1.21**
 - Domain State Transition v1.5 / State Transition Test Matrix v1.5
 - Dataset candidate: `rebuild-v1.17-r8.6-phase7.5-contract-correction`
 - Projection candidate: `projection-v1.1-r8.6-phase7.5`
@@ -55,6 +55,13 @@ PHASE 7에서 발견된 세 blocker는 PHASE 7.5에서 계약 수준으로 교�
 - Work Analysis·Review의 추가 Retrieval 요청은 `RetrievalRequiredV1`로 정규화하고 Retrieval 내부 `NEEDS_MORE_DATA`는 같은 frozen IN Route의 bounded local loop로 유지한다.
 - Confirmation resume authority는 active compiled Main Graph의 registered resume target이며 `graph_version`은 resume-contract version이다.
 - `options=[]`는 자유 텍스트, non-empty options는 닫힌 선택 응답이다. `UserInterruptV1`은 Core workflow truth가 아니라 필요한 경우 UI/API one-way projection으로만 허용한다.
+
+2026-08-14 Retrieval local-loop continuation alignment에서 구현 가능성을 막던 continuation owner 계약을 추가로 닫았다.
+
+- Retrieval self-loop의 raw Provider continuation은 **Run Retrieval Cache의 read-result entry만 memory-only로 소유**하며 Local/Main State·Checkpoint·Domain DB·Prompt·Trace·Audit에 raw token을 복제하지 않는다.
+- Retrieval Local State는 `read_result_handle`만 보존하고, 결정적 Read Node가 handle의 `run_id + route_id + query identity/hash`를 검증한 뒤 `NEXT_PAGE` continuation을 resolve한다.
+- Follow-up `retrieval.plan_query`는 `current_round_no + prior QueryAttempt + unresolved SufficiencyIssueV2 + bounded read-result summary`를 추가로 보되 raw Page Token·Provider-native Query·MCP Arguments는 보지 않는다.
+- 동일 Query + 동일 continuation state 재실행은 새 Retrieval Round로 인정하지 않으며 `NEXT_PAGE | DETAIL_FETCH | unresolved issue에 근거한 changed SEARCH`만 새 정보 획득 후보가 된다.
 
 ## 프로젝트 소스 25개 구성
 

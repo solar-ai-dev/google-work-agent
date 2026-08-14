@@ -1,6 +1,6 @@
 # Google Work Agent · Agent Capability · Failure · Prompt 공통 계약
 
-> **상태:** Approved v1.20  
+> **상태:** Approved v1.21  
 > **기준일:** 2026-08-13  
 > **대상:** P0 Agent 개별실험, Prompt·Repair·Revision 실험, E2E 통합실험  
 > **적용 범위:** Request Understanding, Tool Route, Retrieval, Work Analysis, Planning, Review  
@@ -80,7 +80,7 @@ Prompt Slot 수, PromptRef 수, LLM Call 수는 Agent 수와 독립적이다. �
 
 공통 Runtime Envelope는 invocation metadata와 failure/repair counter만 보존한다. 업무 데이터는 Subgraph별 Typed Local State에 둔다. Local candidate·Query candidate·RAG score·Prompt 원문은 invocation 종료 후 다른 Agent 호출로 자동 승계하지 않는다. 제품의 장기 사실과 승인·실행·검증은 Main Graph Typed State와 Domain Store 계약을 따른다.
 
-각 Node는 Parent/Main State 전체를 받지 않고 자기 작업에 필요한 Typed Projection만 받는다. 예를 들어 Retrieval Query Planner는 `request_intent + input_routes`, Evidence Selector는 `request_intent + ranked_segments`, Planning Argument Writer는 `output_route + work_analysis + evidence_refs`만 받는다.
+각 Node는 Parent/Main State 전체를 받지 않고 자기 작업에 필요한 Typed Projection만 받는다. Retrieval Query Planner의 Initial Round는 `request_intent + input_routes + retrieval_budget`을 받고, Follow-up Round는 여기에 `current_round_no + prior QueryAttempt + unresolved SufficiencyIssueV2 + bounded read-result summary`만 추가한다. raw Provider continuation·Provider-native Query·MCP Arguments는 Product Prompt 입력이 아니다. Evidence Selector는 `request_intent + ranked_segments`, Planning Argument Writer는 `output_route + work_analysis + evidence_refs`만 받는다.
 
 외부 READ는 Retrieval Subgraph의 결정적 Application Node가 Query Builder·Connector MCP Read Port를 호출한다. Retrieval LLM Node는 Raw Query·MCP Arguments를 직접 실행하지 않으며 `ToolRoutePlanV2.input_plan.input_routes` 밖의 Tool을 선택하거나 호출하지 않는다.
 
@@ -671,7 +671,8 @@ query_attempt:
 
 ### 11.1 반복 검색 판정
 
-- 같은 Query와 새로운 Page Token을 사용하는 `NEXT_PAGE`는 정상이다.
+- 같은 Query와 새로운 continuation state를 사용하는 `NEXT_PAGE`는 정상이다. raw Provider continuation은 05 Retrieval v2.12가 정의한 Run Retrieval Cache read-result entry에만 memory-only로 존재하며 QueryAttempt에는 `page_token_hash`/page-state hash만 남긴다.
+- `NEXT_PAGE`의 실제 raw token resolve와 `run_id + route_id + query identity/hash + exhaustion` 검증은 결정적 Retrieval Read Node가 소유한다. LLM은 token을 생성·선택·복사하지 않는다.
 - 실패 후 같은 Query·같은 Page 상태로 `SEARCH`를 반복하면 `QUERY_REPEATED_WITHOUT_CHANGE`다.
 - `DETAIL_FETCH`는 Resource ID와 Run Cache를 기준으로 중복 호출을 판정한다.
 - Query 변경 여부와 Pagination 여부를 하나의 Hash 비교로 판단하지 않는다.

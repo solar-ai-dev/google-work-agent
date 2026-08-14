@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.11`, `06 Workflow v7.14`, `07 Interface v2.19`, `08 Sequence v3.14`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.18`, `15 Agent Capability·Failure·Prompt v1.20`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.12`, `06 Workflow v7.15`, `07 Interface v2.20`, `08 Sequence v3.14`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.19`, `15 Agent Capability·Failure·Prompt v1.21`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v3.31 · **기준일:** 2026-08-14 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.32 · **기준일:** 2026-08-14 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -170,6 +170,10 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - Recovery는 recheck 필요 시에만 Verification으로 복귀하고 `RECOVERY_REQUIRED` 유지 시 explicit resolve/re-auth까지 suspend하며, terminal failure/block/cancel에서 무한 Verification loop가 없음을 검증
 - Confirmation은 `interrupt_id + owner_subgraph + RegisteredResumeTargetRefV1`으로 발생 Subgraph checkpoint에 복귀하며 무조건 Request Understanding으로 재시작하지 않음. Resume target은 compiled Graph Registry 등록값만 허용하고 LLM 임의 Node ID는 차단
 - `RetrievalNeedV1`은 non-empty `required_information`과 최소 1개 `reason_codes`만 허용하며 Connector·Tool·raw query·page token·MCP argument를 포함하지 않음. Work Analysis `NEEDS_MORE_DATA`와 Review `RETRIEVE_MORE`만 결정적 `RetrievalRequiredV1` projection을 만들고 Retrieval 자신의 `NEEDS_MORE_DATA`는 같은 frozen IN Route의 local bounded loop로 남음
+- Retrieval self-loop continuation의 raw Provider token은 Run Retrieval Cache read-result entry에만 memory-only로 존재하고 Local/Main State·Checkpoint·Domain DB·Prompt·Trace·Audit에는 0건이어야 함
+- `NEXT_PAGE` 검증: prior handle의 `run_id + route_id + query identity/hash`가 현재 frozen IN Route와 일치하고 continuation이 미소진일 때만 MCP Read가 발생함. unknown/cross-run/wrong-route/wrong-query/exhausted handle은 Provider 호출 0건으로 fail-closed
+- Follow-up `retrieval.plan_query`는 `current_round_no + prior QueryAttempt + unresolved SufficiencyIssueV2 + bounded read-result summary`만 추가 소비하고 raw Page Token·Provider-native Query·MCP Arguments를 소비하지 않음
+- 동일 Query + 동일 continuation state 반복은 새 Retrieval Round로 인정하지 않으며 `NEXT_PAGE | DETAIL_FETCH | unresolved issue에 근거한 changed SEARCH`만 새 정보 획득 후보로 인정함
 - 현재 IN Route로 추가 정보 요구를 충족할 수 없으면 `RetrievalRequiredV1`로 우회하지 않고 `RouteReconsiderationRequiredV1`을 사용함
 - Resume target은 현재 compiled Main Graph Registry의 `(subgraph_id, node_id, graph_version)` 등록값만 허용. unknown target·wrong owner·wrong graph version은 fail-closed이며 LLM/User supplied resume authority를 허용하지 않음
 - `ConfirmationRequiredV1.options=[]`는 자유 텍스트, non-empty options는 등록값 중 하나만 허용하는 닫힌 선택으로 검증. `UserInterruptV1`이 필요한 경우 Canonical confirmation state에서 UI/API one-way projection으로만 생성하고 Main State의 독립 workflow truth로 저장하지 않음
@@ -503,7 +507,7 @@ REVIEW_RECHECK_PER_PLANNING_REVISION=1
 - `AGENT_SEARCH`의 저신뢰 후보를 자동 확정하지 않는다.
 - 사용자 날짜·사람·이메일 제약이 Query에서 누락되면 실패다.
 - 실패 후 Query·Page 상태가 모두 같은 `SEARCH`를 반복하면 실패다.
-- 같은 Query와 새로운 Page Token의 `NEXT_PAGE`는 정상으로 인정한다.
+- 같은 Query와 새로운 continuation state의 `NEXT_PAGE`는 정상으로 인정한다. 동일 Query + 동일 continuation state 반복은 Round 증가 없이 실패 처리한다.
 - Node DEV와 Node HOLDOUT의 Failure·Scenario·Fixture Family가 겹치면 실패다.
 - Prompt Manifest가 `RUNTIME_ACTIVE`가 아닌 Prompt를 제품 Runtime이 선택하면 실패다.
 

@@ -1,10 +1,10 @@
 # 07. Google Work Agent · Tool · MCP · 내부 인터페이스 명세서
 
-> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `06. Agent·Workflow 설계서 Draft v7.14`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, Connector MCP Tool, Python 내부 인터페이스 계약을 정의한다.
+> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `05. Context·Retrieval 설계서 Draft v2.12`, `06. Agent·Workflow 설계서 Draft v7.15`를 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, Connector MCP Tool, Python 내부 인터페이스 계약을 정의한다.
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.19
+- **상태:** Draft v2.20
 - **기준일:** 2026-08-13
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
@@ -522,6 +522,14 @@ get_freebusy(calendars, time_range)
 		<td>`calendar_query_freebusy`</td>
 	</tr>
 </table>
+
+### 12.1 Retrieval continuation 경계
+
+- List Read 결과의 Provider-native `next_page_token`은 Core public state로 승격하지 않는다. Application의 결정적 Retrieval Read Node가 해당 결과를 **Run Retrieval Cache read-result entry**에 memory-only로 보관하고 Retrieval Local State에는 `read_result_handle`만 반환한다.
+- `NEXT_PAGE` 호출은 Application의 결정적 Retrieval Read Node가 `read_result_handle`을 resolve한 뒤 `run_id + route_id + query identity/hash`가 현재 frozen IN Route와 일치하고 continuation이 미소진임을 검증한 경우에만 raw token을 해당 Connector MCP Read Argument에 전달한다.
+- unknown handle, cross-run handle, route/query mismatch, exhausted continuation은 MCP/Provider 호출 전에 fail-closed한다.
+- raw Provider continuation은 Main State·LangGraph Checkpoint·Domain DB·Prompt·Trace·Audit에 저장하거나 노출하지 않는다. Trace에는 11 Observability가 허용한 안전 hash/상태 metadata만 남긴다.
+- Sidebar Local API continuation과 Agent Retrieval continuation은 서로 다른 계약이다. Sidebar continuation은 Frontend용 opaque Local API token이고, Agent Retrieval continuation은 Run Retrieval Cache 내부 handle로만 소비한다.
 
 - 일반 Retrieval 호출은 Action Row를 만들지 않는다.
 - 사용자에게 표시·재개가 필요한 명시적 READ Plan만 READ Action 계약을 사용한다.

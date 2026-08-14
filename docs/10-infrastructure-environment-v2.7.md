@@ -1,6 +1,6 @@
 # 10. Google Work Agent · 인프라 · 환경 설정 설계서
 
-> **문서 기준:** `03 Architecture v3.6`, `04 Domain·DB v1.19`, `06 Workflow v7.14`, `07 Interface v2.19`, `09 Security v2.10`, `11 Observability v2.18`, `12 Test v3.31`, `14 Operations v2.17`의 현재 배포·Runtime 경계를 따른다.
+> **문서 기준:** `03 Architecture v3.6`, `04 Domain·DB v1.19`, `05 Retrieval v2.12`, `06 Workflow v7.15`, `07 Interface v2.20`, `09 Security v2.10`, `11 Observability v2.19`, `12 Test v3.32`, `14 Operations v2.17`의 현재 배포·Runtime 경계를 따른다.
 
 > **상태:** Draft v2.9 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 

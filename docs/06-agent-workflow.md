@@ -1,8 +1,8 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.11`, `07 Interface v2.19`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.12`, `07 Interface v2.20`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v7.14 · **DB Schema:** v1.6 · **대상:** P0 MVP
+> **상태:** Draft v7.15 · **DB Schema:** v1.6 · **대상:** P0 MVP
 >
 > Main LangGraph는 결정적 Supervisor와 Versioned Typed Main State를 소유한다. 전문 Agent는 LangGraph Subgraph이며 Parent State에서 자기 책임에 필요한 필드만 Projection 받아 Local State를 단계적으로 채우고, 완료 시 공식 Typed Result만 Main State에 병합한다. Schema는 출력 가능 범위를 통제하고, State는 확정 정보를 기억하며, Prompt는 각 LLM Node의 단일 작업만 지시한다. 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -161,6 +161,9 @@ ToolRoute.BLOCKED → BlockRun → FINALIZE
 
 Retrieval.SUFFICIENT / NO_FETCH_NEEDED → Work Analysis 또는 Planning
 Retrieval.NEEDS_MORE_DATA + local budget → bounded Retrieval local loop
+  - 이 Edge는 Parent Supervisor handoff가 아니라 Retrieval Subgraph 내부 Edge다.
+  - self-loop 중 `workflow_signal`과 `RetrievalRequiredV1`을 만들지 않는다.
+  - 다음 Page/Detail은 05 Retrieval v2.12의 `read_result_handle → Run Retrieval Cache` continuation 계약으로 결정적 Read Node가 resolve한다.
 budget exhausted → NEEDS_CONFIRMATION | PARTIAL | BLOCKED 중 하나로 정규화
 Retrieval.PARTIAL + usable Evidence → Work Analysis 또는 Planning
 Retrieval.PARTIAL + usable Evidence 없음 → CompleteAnswerOnlyRun → FINALIZE
@@ -1066,7 +1069,7 @@ Tool Route NO_TOOL_NEEDED + `analysis_requirement=NONE` → Planning(answer)
 Tool Route NO_TOOL_NEEDED + `analysis_requirement=REQUIRED` → Work Analysis → Planning(answer)
 Retrieval SUFFICIENT/NO_FETCH_NEEDED + effective analysis required → Work Analysis
 Retrieval SUFFICIENT/NO_FETCH_NEEDED + `analysis_requirement=NONE` + ANSWER → Planning
-Retrieval NEEDS_MORE_DATA + local budget → Retrieval local loop
+Retrieval NEEDS_MORE_DATA + local budget → Retrieval local loop (Parent 반환 없음, workflow_signal 없음)
 Retrieval NEEDS_MORE_DATA + budget exhausted → Confirmation 또는 PARTIAL/BLOCKED를 정책에 따라 반환
 Retrieval ROUTE_RECONSIDERATION_REQUIRED → Tool Route (RouteReconsiderationRequiredV1 전달)
 Analysis NEEDS_MORE_DATA → Retrieval (RetrievalRequiredV1 전달)
@@ -1205,7 +1208,7 @@ SEND/DELETE → blind repeat 금지
 
 ## 13. Agent Failure 계약
 
-`15. Agent Capability · Failure · Prompt 공통 계약 v1.11`을 따른다.
+`15. Agent Capability · Failure · Prompt 공통 계약 v1.21`을 따른다.
 
 ```python
 class AgentFailureRecord:

@@ -1,6 +1,6 @@
 # 05. Google Work Agent · Context · Retrieval 설계서
 
-> **상태:** Draft v2.11 · **기준일:** 2026-08-13 · **대상:** P0 MVP
+> **상태:** Draft v2.12 · **기준일:** 2026-08-14 · **대상:** P0 MVP
 >
 > Retrieval은 `ToolRoutePlanV2.input_plan.input_routes`를 입력으로 받는 하나의 LangGraph Subgraph다. Tool Route는 Main Graph에서 이미 확정되어 있으며 Retrieval은 Tool 종류를 다시 선택하지 않는다. Subgraph 내부에서 Query 계획 → 결정적 Read → Normalize/Segment → Run-scoped RAG → Evidence → Sufficiency를 수행하고 `RetrievalResultV1`과 필요한 Typed `WorkflowSignalV1`만 Parent에 반환한다.
 
@@ -21,6 +21,10 @@
 - `CTX-005`: Query 계획 → 결정적 Query Builder → MCP Read → Normalize/Segment → Run-scoped RAG → Evidence → Sufficiency
 - `CTX-006`: 가져온 후보 전체를 Work Analysis·Planning Prompt에 직접 전달하지 않음
 - `CTX-007`: 부족 시 같은 IN Route 안에서 추가 Retrieval 최대 2회
+- `CTX-007A`: Retrieval self-loop의 raw Provider continuation은 현재 Run의 **Run Retrieval Cache read-result entry**만 memory-only로 소유한다. Retrieval Local State에는 raw token을 복제하지 않고 `read_result_handle`만 둔다.
+- `CTX-007B`: raw continuation은 Main State·LangGraph Checkpoint·Domain DB·Prompt·Trace·Audit에 저장하거나 전달하지 않는다. Run 종료 시 Cache entry와 함께 폐기한다.
+- `CTX-007C`: Follow-up `retrieval.plan_query`는 이전 Round의 의미 수준 정보만 소비한다. `current_round_no`, prior `QueryAttempt`, unresolved `SufficiencyIssueV2`, bounded read-result summary를 사용할 수 있지만 raw Page Token·Provider-native Query·MCP Arguments를 입력으로 받지 않는다.
+- `CTX-007D`: `NEXT_PAGE`는 결정적 Read Node가 prior `read_result_handle`을 resolve해 `run_id + route_id + query identity/hash + continuation exhaustion`을 검증한 뒤 수행한다. unknown/cross-run/mismatched/exhausted handle은 Provider 호출 전에 fail-closed한다. 동일 Query + 동일 continuation state 재실행은 새 Retrieval Round로 인정하지 않는다.
 - `CTX-008`: 새 Resource/Connector Route가 필요하면 `ROUTE_RECONSIDERATION_REQUIRED`를 Parent에 반환
 - `CTX-009`: 일반 Retrieval은 Action Row가 아니라 Trace·Checkpoint·Run Cache 대상
 - `CTX-010`: RAG는 구조적 필수 단계다. 초기 backend는 deterministic score/lexical retrieval을 사용할 수 있고 Embedding·Reranker·Vector Index는 교체 가능한 실험 변수다.
@@ -63,9 +67,9 @@ class RetrievalStateV1:
 규칙:
 
 - `request_intent`, `input_routes`는 Parent Projection이며 Retrieval이 수정하지 않는다.
-- `query_plan`, `query_attempts`, `read_result_handles`, `segment_handles`, `rag_candidates`는 Local State다.
+- `query_plan`, `query_attempts`, `read_result_handles`, `segment_handles`, `rag_candidates`는 Local State다. `read_result_handle`은 현재 Run Cache entry를 가리키며 raw continuation 자체를 포함하지 않는다.
 - Parent에는 `RetrievalResultV1`만 병합한다.
-- 실제 Connector 원문은 Run Retrieval Cache Handle로 참조하고 Main State·Prompt·Trace에 복제하지 않는다.
+- 실제 Connector 원문과 raw pagination continuation은 Run Retrieval Cache Handle로 참조하고 Main State·Checkpoint·Domain DB·Prompt·Trace·Audit에 복제하지 않는다.
 
 ## 5. Node별 책임
 
@@ -74,9 +78,16 @@ class RetrievalStateV1:
 입력:
 
 ```text
+# 모든 Round
 request_intent
 input_routes
 retrieval_budget
+
+# Follow-up Round에서만 추가되는 bounded Local Projection
+current_round_no
+prior_query_attempts
+unresolved_sufficiency_issues
+read_result_summaries
 ```
 
 출력:
@@ -94,6 +105,13 @@ class RetrievalQueryPlanV1:
 - 이미 허용된 IN Route 안에서 무엇을 어떤 순서로 찾을지 제안
 - 사용자 날짜·사람·선택 Resource·업무 제약을 구조화
 - Page·후보·상세 조회 Budget 제안
+
+Follow-up 입력 규칙:
+
+- `prior_query_attempts`는 이전 Search/Page/Detail의 정규화된 의미·hash·결과 요약만 전달한다.
+- `unresolved_sufficiency_issues`는 같은 frozen IN Route에서 추가 획득이 가능한 부족 정보만 전달한다.
+- `read_result_summaries`는 `has_next_page`, exhaustion, result count, 이미 확인한 Resource 식별용 bounded metadata만 허용한다.
+- raw Provider continuation, Provider-native Query 문자열, MCP Arguments는 LLM Prompt 입력이 아니다.
 
 금지:
 
@@ -120,6 +138,8 @@ RetrievalQueryPlanV1 + InputToolRouteV1
 - `input_routes[].allowed_read_tool_ids` 안의 Tool만 호출한다.
 - Retrieval LLM은 Tool을 다시 선택하지 않는다. Query Plan을 실제 Tool 호출 순서로 변환하는 것은 Registry metadata와 Query Builder의 결정적 책임이다.
 - Page·Detail Fetch·FreeBusy는 Query Plan과 Route에 따라 결정적으로 호출한다.
+- `NEXT_PAGE`는 prior `read_result_handle`을 Run Retrieval Cache에서 resolve하고 handle의 `run_id + route_id + query identity/hash`가 현재 frozen IN Route와 일치하며 continuation이 미소진일 때만 raw token을 MCP Read Argument에 주입한다.
+- unknown handle, cross-run handle, route/query mismatch, exhausted continuation은 Provider 호출 전에 fail-closed한다.
 - 401·429·5xx·Timeout은 LLM Repair가 아니라 일반 Retry/Reauth 계약을 따른다.
 
 ### 5.4 `retrieval.normalize_segments`
@@ -304,6 +324,8 @@ Round 2 같은 IN Route의 마지막 표적 확장
 ```
 
 - 같은 IN Route 내부 확장은 Retrieval Subgraph가 소유한다.
+- Additional Retrieval은 `NEXT_PAGE`, `DETAIL_FETCH`, 또는 unresolved `SufficiencyIssueV2`에 근거한 changed `SEARCH`처럼 새 정보 획득 가능성이 있어야 한다. 동일 Query + 동일 continuation state 재실행은 Round를 소비하지 않는다.
+- self-loop 중 raw continuation은 Parent/Supervisor로 반환하지 않고 `read_result_handle → Run Retrieval Cache` 경계에서만 소비한다.
 - 사용자 지정 범위를 벗어나는 기간 확장은 확인을 우선한다.
 - 새로운 Resource/Connector가 필요하면 `RouteReconsiderationRequiredV1`과 함께 `ROUTE_RECONSIDERATION_REQUIRED`를 Parent에 반환한다.
 - 동명이인·대상 복수·사용자만 해결 가능한 정보는 추가 Google 조회보다 확인 질문을 우선한다.
@@ -324,10 +346,10 @@ MAX_TOTAL_DETAIL_RESOURCES=12
 ## 14. Cache와 영속 경계
 
 - Sidebar Cache: React Session Memory
-- Run Retrieval Cache: 현재 Run Memory, Run 종료 시 폐기
+- Run Retrieval Cache: 현재 Run Memory, Run 종료 시 폐기. read-result entry가 raw Provider continuation의 유일한 Runtime owner다.
 - Main Graph State: `RetrievalResultV1`과 Cache/Evidence Reference만 저장
 - 강제 최신 조회: RESOURCE_SELECTED 시작, Plan 확정 전, 승인 후 실행 전, 실행 후 Verification
-- 저장 금지: 전체 Sidebar 목록, Page Token, 미사용 후보, Gmail 전체 원문, FreeBusy 전체 응답, RAG 후보 전체와 score 전체
+- 저장 금지: 전체 Sidebar 목록, **Run Retrieval Cache memory-only continuation 예외를 제외한 raw Page Token**, 미사용 후보, Gmail 전체 원문, FreeBusy 전체 응답, RAG 후보 전체와 score 전체
 - 저장 허용: 실제 사용 ResourceRef, 최소 Evidence excerpt, Action 연결
 
 ## 15. 실험 연결
@@ -361,7 +383,7 @@ evaluation_item_id
 
 ## 17. QueryAttempt·Confidence·재검색 계약
 
-이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.11`를 적용한다.
+이 절은 `15. Agent Capability · Failure · Prompt 공통 계약 v1.21`를 적용한다.
 
 ### 17.1 QueryAttempt
 
@@ -395,10 +417,10 @@ class QueryAttempt:
 
 ### 17.2 반복과 Pagination
 
-- 같은 Query와 새로운 Page Token을 사용하는 `NEXT_PAGE`는 정상 Pagination이다.
+- 같은 Query와 **새로운 continuation state**를 사용하는 `NEXT_PAGE`는 정상 Pagination이다. raw token은 QueryAttempt에 저장하지 않고 `page_state_hash`/안전 hash만 남긴다.
 - 실패 뒤 같은 Query와 같은 Page 상태로 `SEARCH`를 반복하면 `QUERY_UNCHANGED_AFTER_FAILURE`다.
 - `DETAIL_FETCH` 재호출은 Run Cache 또는 Provider 기술 재시도 규칙을 따른다.
-- 추가 Retrieval 시 최소 하나의 제약 변경 또는 같은 Route의 Page/Detail 확장이 있어야 한다.
+- 추가 Retrieval 시 최소 하나의 제약 변경 또는 같은 Route의 **새 Page/Detail 확장**이 있어야 한다. 동일 Query + 동일 continuation state 반복은 추가 Retrieval로 인정하지 않는다.
 - 새로운 Resource Route를 Local Retry로 몰래 추가하지 않는다.
 
 ### 17.3 저신뢰 후보
