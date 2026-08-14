@@ -1,6 +1,8 @@
 # 14. Google Work Agent · 예외 처리 · 운영 · 트러블슈팅 가이드
 
-> **상태:** Draft v2.5 · **기준일:** 2026-08-09 · **원격 운영 서버:** 없음
+> **문서 기준:** `04 Domain·DB v1.19`, `05 Retrieval v2.11`, `06 Workflow v7.13`, `07 Interface v2.19`, `08 Sequence v3.13`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.18`, `12 Test v3.30`, `13 Evaluation v3.20`, `15 Agent Capability v1.20`를 따른다. 이 문서는 새 상태 전이·보안·Prompt 정책을 만들지 않는다.
+
+> **상태:** Draft v2.17 · **기준일:** 2026-08-14 · **원격 운영 서버:** 없음
 
 ## 1. Severity
 
@@ -8,7 +10,7 @@
 |---|---|---|
 | SEV-0 | 보안·무결성·DB 손상·변조 | Write 차단·Safe Mode |
 | SEV-1 | UNKNOWN_RESULT·MISMATCH·Recovery | 새 Write 금지·결과 조회 |
-| SEV-2 | Google·MCP·LLM·Keyring 장애 | 제한 Retry·Reauth·대체 Runtime |
+| SEV-2 | Connector Provider·MCP·LLM·Keyring 장애 | 제한 Retry·Reauth·대체 Runtime |
 | SEV-3 | Browser·SSE·표시 | 재연결·Snapshot |
 
 ## 2. Triage
@@ -28,7 +30,7 @@
 
 - SSE: 재연결·Snapshot, Action 재실행 금지
 - MCP Read 전 종료: 1회 Restart·Schema
-- MCP 내부 Provider Read 429·5xx: 제한 Backoff
+- Connector Provider Read 429·5xx: Connector 정책 범위의 제한 Backoff
 - LLM: Retry 1·AUTO Fallback 1
 - Structured Output: Repair 1
 - Write 전달 전 확정 실패: FAILED, 자동 재실행 없음
@@ -38,7 +40,7 @@
 
 ## 4. 금지 안내
 
-DB 직접 편집·상태 SQL 변경·MCP 수동 Write·Wildcard CORS·Public Bind·Token 공유·미서명 Binary 교체·Downgrade Open·UNKNOWN_RESULT 재승인·Backup 없는 데이터 삭제를 안내하지 않는다. 또한 MCP 장애 시 FastAPI/Application/LangGraph/Agent/Domain이 Google Provider API/SDK를 직접 호출하거나 별도 Provider Client로 fallback하는 절차를 안내·허용하지 않는다.
+DB 직접 편집·상태 SQL 변경·MCP 수동 Write·Wildcard CORS·Public Bind·Token 공유·미서명 Binary 교체·Downgrade Open·UNKNOWN_RESULT 재승인·Backup 없는 데이터 삭제를 안내하지 않는다. 또한 MCP 장애 시 FastAPI/Application/LangGraph/Agent/Domain이 외부 Provider API/SDK를 직접 호출하거나 별도 Provider Client로 fallback하는 절차를 안내·허용하지 않는다. P0 Google Workspace도 동일하다.
 
 ## 5. Startup·Browser
 
@@ -70,12 +72,12 @@ LOCAL_GPU는 자동 API 전환 금지.
 - 범위 확대 전 사용자 확인
 - Prompt Injection은 POLICY_BLOCKED
 
-## 9. MCP·Google
+## 9. Connector MCP·Provider
 
 MCP 검증: Absolute Path → Signature·Hash → Version → Tool Schema → Registry → stdio.
 Write 도중 MCP 종료 시 같은 Write 재전송 금지.
 
-Google Write:
+Connector Write:
 ```text
 미전달 확실 → FAILED
 전달 가능성 → UNKNOWN_RESULT
@@ -101,11 +103,11 @@ FAILED
 
 기존 Approval·Idempotency Key 재사용 금지.
 
-## 11.1 MCP·Google Provider 장애 경계
+## 11.1 Connector MCP·Provider 장애 경계
 
-- Gmail·Tasks·Calendar Browse/Count/Detail, Retrieval, Write, Verification, Recovery 조회는 모두 MCP Client/Tool을 통해 수행한다.
-- MCP process exit, handshake/Tool Schema mismatch, Credential Provider 장애는 직접 Google Provider API 호출로 우회하지 않는다. Read는 명시적 실패/부분 결과, Write는 dispatch 여부에 따라 FAILED 또는 UNKNOWN_RESULT, Runtime은 NOT_READY/RECOVERY_REQUIRED로 전환한다.
-- Google Provider API/SDK는 MCP Server 내부 Adapter의 진단 대상이다. Core에서 Provider Client가 발견되면 운영 우회책이 아니라 아키텍처 위반으로 처리한다.
+- Connector Browse/Count/Detail, Retrieval, Write, Verification, Recovery 조회는 모두 Connector MCP Client/Tool을 통해 수행한다. P0 Gmail·Tasks·Calendar도 동일하다.
+- MCP process exit, handshake/Tool Schema mismatch, Credential Provider 장애는 직접 Provider API 호출로 우회하지 않는다. Read는 명시적 실패/부분 결과, Write는 dispatch 여부에 따라 FAILED 또는 UNKNOWN_RESULT, Runtime은 NOT_READY/RECOVERY_REQUIRED로 전환한다.
+- Provider API/SDK는 해당 Connector MCP Server 내부 Adapter의 진단 대상이다. Core에서 Provider Client가 발견되면 운영 우회책이 아니라 아키텍처 위반으로 처리한다.
 
 ## 12. UNKNOWN_RESULT
 
@@ -133,8 +135,11 @@ Expected·Actual·Diff 저장
 
 허용 선택:
 
-- `ACCEPT_PARTIAL`: 현재 Google 실제 상태를 수용하고 추가 Write 없이 종료한다. 미실행 Action은 취소되고 Run은 `COMPLETED`, 결과는 `PARTIAL`로 표시한다.
-- `CREATE_CORRECTIVE_PLAN`: 실제 Google 상태를 다시 읽고 같은 Run에서 새 Plan Revision을 만든다. 필요한 Write는 새 Approval·Claim·Attempt를 거친다.
+- `ACCEPT_PARTIAL`: **`cancel_intent_active=false`일 때만** 현재 외부 실제 상태를 수용하고 추가 Write 없이 `COMPLETED + PARTIAL`로 종료한다.
+- `CREATE_CORRECTIVE_PLAN`: **`cancel_intent_active=false`일 때만** 실제 외부 상태를 다시 읽고 같은 Run에서 새 Plan Revision을 만든다. 필요한 Write는 새 Approval·Claim·Attempt·Verification을 거친다.
+
+- `cancel_intent_active=true`이면 `CREATE_CORRECTIVE_PLAN`과 일반 `ACCEPT_PARTIAL → COMPLETED`를 사용하지 않는다. Recovery가 terminal snapshot이면 `ResolveRecovery(CANCEL)`, 재검증이 필요하면 `VERIFYING`으로 돌아간 뒤 `FinalizeCancel`로 닫는다.
+- cancel intent의 기준점은 성공한 `RequestCancel` Command Receipt다. Run.status가 `VERIFYING | RECOVERY_REQUIRED | REAUTH_REQUIRED`로 바뀌거나 앱이 재시작되어도 Receipt에서 재구성한다.
 
 일반 Run 중단은 별도 Cancel Command를 사용한다.
 
@@ -255,3 +260,18 @@ Timeout·5xx·MCP 종료를 일괄 `NOT_SENT`로 분류하지 않는다. 결과�
 - Gmail 수신 첨부파일 다운로드 실패는 Message/Attachment ID, Google 연결 상태, 파일 크기 제한을 확인하고 READ 경로만 재시도한다. LLM Retry로 해결하지 않는다.
 - 발신 Staging 파일이 만료·삭제·Hash mismatch이면 기존 Approval로 실행하지 않는다. **파일 재선택 → Descriptor 갱신 → Action 수정 → 새 Approval** 순서다.
 - Attachment bytes·Local Path를 진단 Bundle이나 지원 요청에 포함시키지 않는다.
+
+## PHASE 7 Experiment Runner 운영 경계
+
+- 수동 `MANUAL_CONSTRAINED_SLLM_EMULATION` 결과를 실제 Ollama/qwen benchmark로 승격하지 않는다.
+- Tool Route pre-policy candidate를 final ToolRoutePlanV2 Gold로 직접 채점하는 Runner는 실행 중지 후 grader contract를 수정한다.
+- RequestIntent Gold defect candidate가 남아 있을 때 Prompt를 Gold에 맞춰 튜닝하지 않는다.
+- Planning default resource binding이 명시되지 않은 상태에서 실제 Local Planning benchmark를 실행하지 않는다.
+- Holdout은 blocker 해결·DEV Pilot·Prompt 후보 고정 전까지 열지 않는다.
+
+## PHASE 7.5 운영 경계
+
+- `PrePolicyToolRouteGoldV1`과 final `ToolRoutePlanV2`를 혼용하는 Runner는 실제 model benchmark를 시작하지 않는다.
+- default Task List/Calendar container가 결정적으로 resolve되지 않으면 Planning LLM에게 ID 생성을 요구하지 않는다.
+- `rebuild-v1.17-r8.6-phase7.5-contract-correction`은 Real Local model pilot 전 Candidate이며 Active baseline을 자동 대체하지 않는다.
+- Holdout은 DEV pilot과 Prompt candidate 고정 전까지 봉인한다.

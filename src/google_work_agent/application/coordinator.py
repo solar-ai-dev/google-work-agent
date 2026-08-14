@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from queue import Full, Queue
 from threading import Event, Lock, Thread
 
+from google_work_agent.application.coordinator_outcomes import (
+    RunOutcomeHandler,
+)
 from google_work_agent.application.projections import build_projection_event
 from google_work_agent.application.queries import QueryService, RunExecutionContext
 from google_work_agent.application.write_actions import (
@@ -80,6 +83,11 @@ class LocalRunCoordinator:
         self._lock = Lock()
         self._stop_event = Event()
         self._thread: Thread | None = None
+        self._outcomes = RunOutcomeHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            event_publisher=event_publisher,
+            now_ms=now_ms,
+        )
 
     def start(self) -> None:
         if self._thread is not None:
@@ -396,26 +404,7 @@ class LocalRunCoordinator:
         return bool(checker is not None and checker(run_id))
 
     def _publish_cancel_response(self, response: WriteRunResponse) -> None:
-        event_type = (
-            "completed"
-            if response.run_status == RunStatus.CANCELLED.value
-            else "recovery_required"
-            if response.run_status == RunStatus.RECOVERY_REQUIRED.value
-            else "run_status"
-        )
-        self._publish(
-            build_projection_event(
-                run_id=response.run_id,
-                occurred_at_ms=self._now_ms(),
-                event_type=event_type,
-                payload={
-                    "result_code": response.result_code,
-                    "run_status": response.run_status,
-                    "run_version": response.run_version,
-                    "result_kind": response.result_kind,
-                },
-            )
-        )
+        self._outcomes.publish_cancel_response(response)
 
     def _ensure_analysis_started(self, run_id: str) -> int:
         """Guarantee a run has left CREATED before any outcome is recorded against it.
@@ -452,69 +441,7 @@ class LocalRunCoordinator:
         payload: dict[str, object],
         expected_version: int,
     ) -> None:
-        if outcome in {
-            WorkflowOutcome.CHECKPOINT_MISSING,
-            WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
-        }:
-            with self._unit_of_work_factory() as unit_of_work:
-                unit_of_work.runs.set_recovery_required(run_id, finished_at_ms=None)
-                unit_of_work.commit()
-            self._publish(
-                build_projection_event(
-                    run_id=run_id,
-                    occurred_at_ms=self._now_ms(),
-                    event_type="recovery_required",
-                    payload={"outcome": outcome.value},
-                )
-            )
-            return
-        if outcome is WorkflowOutcome.FAILED:
-            # Prior behavior only published this as an SSE event; the run's
-            # persisted domain status stayed CREATED/ANALYZING forever (the
-            # UI polls GET /runs/{id}, not SSE, so it never saw the failure).
-            # The Domain Store, not the transient event stream, must hold
-            # the fact that the run failed.
-            with self._unit_of_work_factory() as unit_of_work:
-                unit_of_work.runs.fail_run(
-                    run_id,
-                    expected_version=expected_version,
-                    finished_at_ms=self._now_ms(),
-                )
-                unit_of_work.commit()
-        event_type = {
-            WorkflowOutcome.ACCEPTED: _accepted_event_type(payload),
-            WorkflowOutcome.ALREADY_RUNNING: "phase_changed",
-            WorkflowOutcome.COMPLETED: "completed",
-            WorkflowOutcome.RECOVERY_REQUIRED: "recovery_required",
-            WorkflowOutcome.FAILED: "error",
-        }[outcome]
-        self._publish(
-            build_projection_event(
-                run_id=run_id,
-                occurred_at_ms=self._now_ms(),
-                event_type=event_type,
-                payload={"outcome": outcome.value, **payload},
-            )
-        )
+        self._outcomes.handle_result(run_id, outcome, payload, expected_version)
 
     def _publish(self, event: PendingProjectionEvent) -> None:
-        try:
-            self._event_publisher.publish(event)
-        except Exception:
-            return
-
-
-def _accepted_event_type(payload: dict[str, object]) -> str:
-    interrupt_payload = payload.get("user_interrupt")
-    if isinstance(interrupt_payload, dict):
-        interrupt_kind = interrupt_payload.get("interrupt_kind")
-        if interrupt_kind == "CONFIRMATION":
-            return "confirmation_required"
-        if interrupt_kind == "APPROVAL":
-            return "approval_required"
-    phase = payload.get("phase")
-    if phase == "WAITING_CONFIRMATION":
-        return "confirmation_required"
-    if phase == "WAITING_APPROVAL":
-        return "approval_required"
-    return "run_status"
+        self._outcomes.publish(event)

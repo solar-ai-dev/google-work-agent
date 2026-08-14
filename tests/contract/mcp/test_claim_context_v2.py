@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 
+from google_work_agent.adapters.connectors import build_google_workspace_connector_descriptor
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
     MCPGoogleWorkspaceGateway,
@@ -49,25 +50,27 @@ def _start_transport(tmp_path: Path, *, service_instance_id: str) -> SubprocessM
     executable = Path(sys.executable).resolve()
     keyring_path = tmp_path / "keyring.json"
     return SubprocessMCPTransport(
-        config=MCPArtifactConfig(
-            executable_path=str(executable),
-            manifest_path=str(manifest_path.resolve()),
-            expected_binary_sha256=calculate_file_sha256(executable),
-            expected_manifest_sha256=calculate_file_sha256(manifest_path.resolve()),
-            expected_manifest_version="2026-08-07.p0",
-            expected_protocol_version="2026-08-07.p0",
-            expected_tool_registry_version="2026-08-06.p0",
-            startup_timeout_ms=5_000,
-            request_timeout_ms=5_000,
-            max_restart_count=1,
-            environment="DEVELOPMENT",
-            service_instance_id=service_instance_id,
-            working_directory=str(Path(__file__).resolve().parents[3]),
-            module_name="google_work_agent.mcp.server",
-            extra_environment={
-                "GOOGLE_OAUTH_CLIENT_ID": "test-desktop-client-id",
-                "GWA_TEST_KEYRING_PATH": str(keyring_path),
-            },
+        descriptor=build_google_workspace_connector_descriptor(
+            MCPArtifactConfig(
+                executable_path=str(executable),
+                manifest_path=str(manifest_path.resolve()),
+                expected_binary_sha256=calculate_file_sha256(executable),
+                expected_manifest_sha256=calculate_file_sha256(manifest_path.resolve()),
+                expected_manifest_version="2026-08-07.p0",
+                expected_protocol_version="2026-08-07.p0",
+                expected_tool_registry_version="2026-08-06.p0",
+                startup_timeout_ms=5_000,
+                request_timeout_ms=5_000,
+                max_restart_count=1,
+                environment="DEVELOPMENT",
+                service_instance_id=service_instance_id,
+                working_directory=str(Path(__file__).resolve().parents[3]),
+                module_name="google_work_agent.mcp.server",
+                extra_environment={
+                    "GOOGLE_OAUTH_CLIENT_ID": "test-desktop-client-id",
+                    "GWA_TEST_KEYRING_PATH": str(keyring_path),
+                },
+            )
         )
     )
 

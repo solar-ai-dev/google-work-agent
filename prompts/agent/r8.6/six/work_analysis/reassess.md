@@ -1,0 +1,1 @@
+Task: reassess only the identified Work Analysis defect using base_projection and the allowed failure scope. Preserve evidence grounding and the candidate-versus-deterministically-validated relation boundary. Do not create routes, actions, receipts, or final policy facts. Return the full revised WorkAnalysisCandidateV2.

@@ -11,25 +11,20 @@ from __future__ import annotations
 
 import base64
 import binascii
-from collections.abc import Callable
-from dataclasses import dataclass
 
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import StreamingResponse
 
 from google_work_agent.api.dependencies import (
+    AttachmentRouteDependency,
     enforce_access,
     enforce_supported_api_contract_version,
-    get_container,
 )
 from google_work_agent.api.errors import ApiError
+from google_work_agent.api.route_dependencies import AttachmentRouteDependencies
 from google_work_agent.api.schemas.attachments import (
     AttachmentDescriptorResponse,
     StageAttachmentRequest,
-)
-from google_work_agent.application.attachments import (
-    GetGmailAttachmentService,
-    StageAttachmentService,
 )
 from google_work_agent.ports import (
     AttachmentStagingError,
@@ -45,15 +40,6 @@ _STAGING_ERROR_STATUS = {
 }
 
 
-@dataclass(frozen=True, slots=True)
-class AttachmentRouteDependencies:
-    """Dependencies required by the attachment delivery capability."""
-
-    api_contract_version: Callable[[], str]
-    get_gmail_attachment_service: Callable[[], GetGmailAttachmentService | None]
-    stage_attachment_service: Callable[[], StageAttachmentService | None]
-
-
 def create_router(
     dependencies: AttachmentRouteDependencies | None = None,
 ) -> APIRouter:
@@ -66,9 +52,10 @@ def create_router(
         message_id: str,
         attachment_id: str,
         request: Request,
+        injected_dependencies: AttachmentRouteDependency,
         x_api_contract_version: str | None = Header(default=None),
     ) -> StreamingResponse:
-        route_dependencies = dependencies or _dependencies_from_container(request)
+        route_dependencies = dependencies or injected_dependencies
         enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
         enforce_supported_api_contract_version(
             supported_version=route_dependencies.api_contract_version(),
@@ -102,9 +89,10 @@ def create_router(
     def stage_attachment(
         body: StageAttachmentRequest,
         request: Request,
+        injected_dependencies: AttachmentRouteDependency,
         x_api_contract_version: str | None = Header(default=None),
     ) -> AttachmentDescriptorResponse:
-        route_dependencies = dependencies or _dependencies_from_container(request)
+        route_dependencies = dependencies or injected_dependencies
         enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
         supported_version = route_dependencies.api_contract_version()
         enforce_supported_api_contract_version(
@@ -151,17 +139,6 @@ def create_router(
         )
 
     return router
-
-
-def _dependencies_from_container(request: Request) -> AttachmentRouteDependencies:
-    """Preserve the legacy module-level router for external API assemblers."""
-
-    container = get_container(request)
-    return AttachmentRouteDependencies(
-        api_contract_version=lambda: container.api_contract_version,
-        get_gmail_attachment_service=lambda: container.get_gmail_attachment_service,
-        stage_attachment_service=lambda: container.stage_attachment_service,
-    )
 
 
 router = create_router()

@@ -1,16 +1,21 @@
 # 00-C. 핵심 정책·안전 불변조건 요약
 
-- 승인 없는 Google Write 금지. 실제 Write는 승인·Claim 이후 MCP Write Tool로만 수행한다.
-- Gmail Message/Thread 원문 삭제와 반복 Event 전체 일괄 수정 금지.
-- Google Source 본문은 항상 비신뢰 DATA_ONLY다. Source의 명령문이 사용자 요청·Tool Route·Approval로 승격될 수 없다.
-- Tool Route가 IN/OUT을 한 번 확정하며 Retrieval/Planning은 Tool을 재선택하지 않는다.
-- React·FastAPI Route·Application·LangGraph·Agent·Domain의 Gmail·Tasks·Calendar Provider API/SDK 직접 호출과 Provider Client 구성 금지. 모든 Google Workspace Read/Write/Verification/Recovery는 MCP Client/Tool 경계를 통과하며 MCP 장애 시 direct fallback하지 않는다.
-- TASK CREATE는 기존 미완료 Task 중복검사, CALENDAR CREATE는 Event/FreeBusy 충돌검사가 필수다.
-- 사용자 명시 범위 밖의 필수 READ는 Scope Confirmation 없이 자동 확장하지 않는다.
-- LLM이 중복/충돌을 단독 확정하지 않는다. 결정적 validator를 통과해야 한다.
-- 정확 중복은 기본 no-action이며 강제 추가 생성/충돌 일정 Override는 2차 Confirmation과 APPROVED `PolicyConfirmationReceiptV1`을 요구한다.
-- Receipt/Approval/Action lineage가 stale이면 실행 금지.
-- ClaimContextV2는 승인 Business Hash와 Execution Hash를 분리하고 TTL/instance/nonce를 검증한다.
-- `UNKNOWN_RESULT`에서 새 Write를 만들지 않는다.
-- 모든 성공 Write는 MCP Verification Read로 실제 Google Provider 상태를 재조회해 종료한다.
-- Prompt/Completion, Credential, Google 전체 원문, Attachment bytes를 Trace/Audit에 저장하지 않는다.
+> 요약 문서다. 충돌 시 `01-B Policy`, `04 Domain·DB`, `07 Interface`, SQL Constraint가 우선한다.
+
+## 핵심 불변조건
+
+1. **Provider 직접 호출 금지** — Core 외부 접근은 Connector Registry→MCP→Connector Adapter 경계만 사용한다.
+2. **Write는 승인 후에만** — 승인 대상 Business Arguments/Target/Tool이 실행 전에 다시 검증된다.
+3. **Claim Commit 전 MCP Write 금지**.
+4. **승인 후 LLM 재작성 금지** — Tool·Arguments·Target·Dependency를 모델이 바꾸지 않는다.
+5. **UNKNOWN_RESULT blind resend 금지**.
+6. **FAILED 직접 재실행 금지** — `FAILED → MODIFIED → Review → Domain Validation → 새 Approval`.
+7. **Verification 없이 성공 확정 금지** — Effect별 결정적 Read로 실제 외부 상태를 다시 확인한다.
+8. **Action 상태와 Run 상태 혼용 금지** — 승인형 Write Action이 EXECUTING이어도 Run은 첫 Verification까지 기본 WAITING_APPROVAL이다.
+9. **취소 중 in-flight 사실 보존** — RequestCancel Receipt가 durable cancel intent이며 결과 확정 전 Action을 CANCELLED로 덮지 않는다.
+10. **FINALIZE는 상태 전이 Node가 아님** — Domain Command로 Terminal 상태가 먼저 만들어져야 한다.
+11. **Confirmation owner resume** — 확인 응답은 발생시킨 Subgraph checkpoint로 돌아간다.
+12. **외부 호출 중 SQLite Write Transaction 유지 금지**.
+13. **Migration 소급 수정 금지** — 0001~0005는 checksum/history Artifact다.
+14. **Gmail 원문 DELETE 금지** — Task/Calendar DELETE와 구분한다.
+15. **Prompt Injection은 Source Data** — Connector 원문 속 instruction-like content가 정책/Tool 권한을 변경하지 못한다.

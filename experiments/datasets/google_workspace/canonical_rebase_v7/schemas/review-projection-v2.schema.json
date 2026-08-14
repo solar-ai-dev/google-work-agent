@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/reviewprojectionv2.schema.json",
+  "title": "ReviewProjectionV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "projection_id",
+    "case_id",
+    "projection_kind",
+    "applicable",
+    "not_applicable_reason",
+    "input_contract",
+    "gold",
+    "grader_ids"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "projection_kind": {
+      "const": "REVIEW"
+    },
+    "projection_id": {
+      "type": "string"
+    },
+    "case_id": {
+      "type": "string"
+    },
+    "applicable": {
+      "type": "boolean"
+    },
+    "not_applicable_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "input_contract": {
+      "type": "object"
+    },
+    "gold": {
+      "type": "object"
+    },
+    "grader_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    }
+  }
+}

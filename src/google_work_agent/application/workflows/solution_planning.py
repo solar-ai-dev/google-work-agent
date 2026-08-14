@@ -5,16 +5,27 @@ from __future__ import annotations
 import copy
 from functools import partial
 from pathlib import Path
-from typing import Final, Literal, NotRequired, Required, TypedDict, cast
+from typing import Final, TypedDict, cast
 
 import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
 from google_work_agent.application.workflows.contracts import (
     GraphStateUpdateV1,
     PlanningResult,
     WorkflowPhase,
+)
+from google_work_agent.application.workflows.handoff_contracts import (
+    ActionDraftV1,
+    ActionEffectValue,
+    ActionPlanDraftV1,
+    AnswerDraftStatusValue,
+    AnswerDraftV1,
+    ClarificationQuestionV1,
+    ContextRetrievalResultV1,
+    PlanDraftStatusValue,
+    RequestIntentV2,
+    WorkAnalysisResultV1,
 )
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
@@ -23,14 +34,12 @@ from google_work_agent.application.workflows.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.application.workflows.request_understanding import (
-    ClarificationQuestionV1,
-    RequestIntentV1,
     build_clarification_question_v1,
 )
 from google_work_agent.application.workflows.task_write_semantics import (
     normalize_task_write_arguments,
 )
-from google_work_agent.application.workflows.work_analysis import WorkAnalysisResultV1
+from google_work_agent.application.workflows.tool_routing import OutputToolRouteV1
 from google_work_agent.domain import (
     EffectType,
     EvidencePolicyInput,
@@ -47,51 +56,6 @@ from google_work_agent.ports import (
 )
 
 JsonObject = dict[str, object]
-AnswerDraftStatusValue = Literal["ANSWER_ONLY", "NEEDS_CONFIRMATION", "BLOCKED"]
-PlanDraftStatusValue = Literal["PLAN_READY", "NEEDS_CONFIRMATION", "BLOCKED"]
-ActionEffectValue = Literal["READ", "CREATE", "UPDATE", "SEND", "DELETE"]
-
-
-class AnswerDraftV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    status: AnswerDraftStatusValue
-    answer: str
-    evidence_refs: list[str]
-    resource_refs: list[dict[str, object]]
-    reason_codes: list[str]
-    confirmation: dict[str, object] | None
-    blockers: list[str]
-    llm_provider_result: NotRequired[dict[str, object]]
-
-
-class ActionDraftV1(TypedDict):
-    schema_version: Required[Literal[2]]
-    action_id: str
-    position: int
-    effect: ActionEffectValue
-    tool_name: str
-    arguments: dict[str, object]
-    expected: dict[str, object]
-    evidence_refs: list[str]
-    resource_refs: list[str]
-    target_resource_ref_id: str | None
-    depends_on_action_ids: list[str]
-    user_visible_reason: str
-
-
-class ActionPlanDraftV1(TypedDict):
-    schema_version: Required[Literal[2]]
-    status: PlanDraftStatusValue
-    plan_id: str
-    summary: str
-    objective: str
-    actions: list[ActionDraftV1]
-    evidence_refs: list[str]
-    resource_refs: list[dict[str, object]]
-    confirmation: dict[str, object] | None
-    llm_provider_result: NotRequired[dict[str, object]]
-
-
 ANSWER_DRAFT_SCHEMA_VERSION: Final = 1
 ACTION_PLAN_DRAFT_SCHEMA_VERSION: Final = 2
 ACTION_DRAFT_SCHEMA_VERSION: Final = 2
@@ -245,6 +209,26 @@ def _action_plan_draft_output_schema_for_registry(
     )
 
 
+def _action_plan_draft_output_schema_for_routes(
+    routes: tuple[OutputToolRouteV1, ...],
+    read_tool_ids: frozenset[str],
+) -> OutputSchemaDefinition:
+    tool_names = sorted(
+        {route["selected_tool_id"] for route in routes} | set(read_tool_ids)
+    )
+    base_schema = dict(ACTION_PLAN_DRAFT_OUTPUT_SCHEMA.json_schema)
+    json_schema: dict[str, object] = copy.deepcopy(base_schema)
+    properties = cast("dict[str, object]", json_schema["properties"])
+    actions_schema = cast("dict[str, object]", properties["actions"])
+    action_item_schema = cast("dict[str, object]", actions_schema["items"])
+    action_item_properties = cast("dict[str, object]", action_item_schema["properties"])
+    action_item_properties["tool_name"] = {"type": "string", "enum": tool_names}
+    return OutputSchemaDefinition(
+        schema_version=ACTION_PLAN_DRAFT_OUTPUT_SCHEMA.schema_version,
+        json_schema=json_schema,
+    )
+
+
 _ANSWER_RESULT_VALUES = {
     PlanningResult.ANSWER_ONLY.value,
     PlanningResult.NEEDS_CONFIRMATION.value,
@@ -320,7 +304,7 @@ class SolutionPlanningAgent:
     def answer_only(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
@@ -339,7 +323,7 @@ class SolutionPlanningAgent:
     def invoke_answer_only_llm(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
@@ -385,7 +369,7 @@ class SolutionPlanningAgent:
     def draft_plan(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
@@ -404,10 +388,12 @@ class SolutionPlanningAgent:
     def invoke_draft_plan_llm(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
+        frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
+        frozen_read_tool_ids: frozenset[str] = frozenset(),
     ) -> StructuredLLMResult:
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._draft_plan_prompt_ref,
@@ -419,8 +405,16 @@ class SolutionPlanningAgent:
                 "evidence_drafts": context_result["evidence_drafts"],
                 "analysis_result": analysis_result,
                 "source_content_is_untrusted": True,
+                "output_routes": list(frozen_output_routes or ()),
             },
-            output_schema=_action_plan_draft_output_schema_for_registry(self._tool_registry),
+            output_schema=(
+                _action_plan_draft_output_schema_for_registry(self._tool_registry)
+                if frozen_output_routes is None
+                else _action_plan_draft_output_schema_for_routes(
+                    frozen_output_routes,
+                    frozen_read_tool_ids,
+                )
+            ),
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,
                 command_id=request.correlation.command_id,
@@ -430,7 +424,11 @@ class SolutionPlanningAgent:
                 llm_call_id=f"{request.run_id}:planning.draft_plan",
             ),
             semantic_validate=lambda candidate: validate_action_plan_draft_v1(
-                candidate, analysis_result=analysis_result, tool_registry=self._tool_registry
+                candidate,
+                analysis_result=analysis_result,
+                tool_registry=self._tool_registry,
+                frozen_output_routes=frozen_output_routes,
+                frozen_read_tool_ids=frozen_read_tool_ids,
             ),
         )
 
@@ -439,11 +437,15 @@ class SolutionPlanningAgent:
         llm_result: StructuredLLMResult,
         *,
         analysis_result: WorkAnalysisResultV1,
+        frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
+        frozen_read_tool_ids: frozenset[str] = frozenset(),
     ) -> ActionPlanDraftV1:
         result = validate_action_plan_draft_v1(
             llm_result.structured_output,
             analysis_result=analysis_result,
             tool_registry=self._tool_registry,
+            frozen_output_routes=frozen_output_routes,
+            frozen_read_tool_ids=frozen_read_tool_ids,
         )
         result["llm_provider_result"] = _provider_summary(llm_result)
         return result
@@ -451,7 +453,7 @@ class SolutionPlanningAgent:
     def revise_answer(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         answer_draft: AnswerDraftV1,
         review_issues: list[dict[str, object]],
         review_summary: str | None,
@@ -476,7 +478,7 @@ class SolutionPlanningAgent:
     def invoke_revise_answer_llm(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         answer_draft: AnswerDraftV1,
         review_issues: list[dict[str, object]],
         review_summary: str | None,
@@ -512,7 +514,7 @@ class SolutionPlanningAgent:
     def revise_plan(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         plan_draft: ActionPlanDraftV1,
         review_issues: list[dict[str, object]],
         review_summary: str | None,
@@ -537,13 +539,15 @@ class SolutionPlanningAgent:
     def invoke_revise_plan_llm(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         plan_draft: ActionPlanDraftV1,
         review_issues: list[dict[str, object]],
         review_summary: str | None,
         context_result: ContextRetrievalResultV1,
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
+        frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
+        frozen_read_tool_ids: frozenset[str] = frozenset(),
     ) -> StructuredLLMResult:
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._revise_plan_prompt_ref,
@@ -558,8 +562,16 @@ class SolutionPlanningAgent:
                 "evidence_drafts": context_result["evidence_drafts"],
                 "analysis_result": analysis_result,
                 "source_content_is_untrusted": True,
+                "output_routes": list(frozen_output_routes or ()),
             },
-            output_schema=ACTION_PLAN_DRAFT_OUTPUT_SCHEMA,
+            output_schema=(
+                ACTION_PLAN_DRAFT_OUTPUT_SCHEMA
+                if frozen_output_routes is None
+                else _action_plan_draft_output_schema_for_routes(
+                    frozen_output_routes,
+                    frozen_read_tool_ids,
+                )
+            ),
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,
                 command_id=request.correlation.command_id,
@@ -567,6 +579,13 @@ class SolutionPlanningAgent:
                 run_id=request.run_id,
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:planning.revise_plan",
+            ),
+            semantic_validate=lambda candidate: validate_action_plan_draft_v1(
+                candidate,
+                analysis_result=analysis_result,
+                tool_registry=self._tool_registry,
+                frozen_output_routes=frozen_output_routes,
+                frozen_read_tool_ids=frozen_read_tool_ids,
             ),
         )
 
@@ -668,6 +687,8 @@ def validate_action_plan_draft_v1(
     *,
     analysis_result: WorkAnalysisResultV1,
     tool_registry: SignedToolRegistry | None = None,
+    frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
+    frozen_read_tool_ids: frozenset[str] = frozenset(),
 ) -> ActionPlanDraftV1:
     root = _require_mapping(value, "$")
     _require_allowed_keys(
@@ -727,13 +748,43 @@ def validate_action_plan_draft_v1(
             "$.llm_provider_result",
         )
     _validate_action_plan_invariant(result)
+    if frozen_output_routes is not None:
+        _validate_frozen_output_routes(
+            result,
+            frozen_output_routes,
+            frozen_read_tool_ids=frozen_read_tool_ids,
+        )
     return result
+
+
+def _validate_frozen_output_routes(
+    result: ActionPlanDraftV1,
+    routes: tuple[OutputToolRouteV1, ...],
+    *,
+    frozen_read_tool_ids: frozenset[str],
+) -> None:
+    allowed = {(route["selected_tool_id"], route["effect"]) for route in routes}
+    read_actions = [action for action in result["actions"] if action["effect"] == "READ"]
+    if any(action["tool_name"] not in frozen_read_tool_ids for action in read_actions):
+        raise SolutionPlanningValidationError("read action escapes frozen input route")
+    actual = {
+        (action["tool_name"], action["effect"])
+        for action in result["actions"]
+        if action["effect"] != "READ"
+    }
+    unexpected = actual - allowed
+    if unexpected:
+        raise SolutionPlanningValidationError("action escapes frozen output route")
+    if actual and result["status"] == PlanningResult.PLAN_READY.value and not allowed.issubset(
+        actual
+    ):
+        raise SolutionPlanningValidationError("plan omits a frozen output route")
 
 
 def build_solution_planning_clarification_question(
     *,
     result: AnswerDraftV1 | ActionPlanDraftV1,
-    request_intent: RequestIntentV1,
+    request_intent: RequestIntentV2,
 ) -> ClarificationQuestionV1:
     confirmation = _require_mapping(result["confirmation"], "$.confirmation")
     origin_target = "planning.answer_only" if "answer" in result else "planning.draft_plan"
@@ -741,8 +792,7 @@ def build_solution_planning_clarification_question(
         origin_target=origin_target,
         question=_require_string(confirmation, "question", "$.confirmation"),
         reason_code=_require_string(confirmation, "reason_code", "$.confirmation"),
-        known_context_summary=request_intent["goal"]["user_visible_objective"]
-        or request_intent["goal"]["summary"],
+        known_context_summary=request_intent["goal"],
         affected_field_paths=_optional_string_list(confirmation.get("affected_field_paths")),
         options=_optional_option_list(confirmation.get("options")),
     )
@@ -752,7 +802,7 @@ def load_solution_planning_answer_only_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "planning.answer_only",
+        "planning.compose_answer",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 
@@ -761,7 +811,7 @@ def load_solution_planning_draft_plan_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "planning.draft_plan",
+        "planning.compose_arguments",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 
@@ -770,7 +820,7 @@ def load_solution_planning_revise_answer_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "planning.revise_answer",
+        "planning.compose_answer.revise",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 
@@ -779,7 +829,7 @@ def load_solution_planning_revise_plan_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "planning.revise_plan",
+        "planning.compose_arguments.revise",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 

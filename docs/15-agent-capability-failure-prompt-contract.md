@@ -1,6 +1,6 @@
 # Google Work Agent · Agent Capability · Failure · Prompt 공통 계약
 
-> **상태:** Approved v1.10  
+> **상태:** Approved v1.20  
 > **기준일:** 2026-08-13  
 > **대상:** P0 Agent 개별실험, Prompt·Repair·Revision 실험, E2E 통합실험  
 > **적용 범위:** Request Understanding, Tool Route, Retrieval, Work Analysis, Planning, Review  
@@ -12,7 +12,7 @@
 - `gold`, `grader`, `expected_route`, benchmark score는 Product Prompt 입력이 아니다.
 - Failure-specific Prompt는 별도 전체 Prompt가 아니라 **Base Slot + Failure Instruction Block**으로 조립한다.
 - E06-B의 모델 입력과 Gold는 파일 수준에서도 분리한다.
-- 현재 정적 검수 기준 Prompt Bundle은 `0.8.2-r8.3`이며 모든 신규 Slot은 `DRAFT`다. Node DEV/HOLDOUT·Safety Gate 전에는 Runtime 활성화하지 않는다.
+- 재현용 Prompt Baseline은 `0.8.2-r8.3`이다. R8.5 Rebase Candidate는 `0.8.4-r8.5`이며 비활성이다. PHASE 6 Prompt Candidate는 `0.9.0-r8.6-phase6 / semantic-r8.6-v2`, 상태 `DRAFT_STATIC_VALIDATED_NOT_ACTIVE`다. DEV·Holdout·Safety Gate 전에는 Runtime 활성화하지 않는다.
 
 ## 0. 문서 목적
 
@@ -33,7 +33,7 @@
 ### 1.1 유지하는 확정 계약
 
 - Supervisor는 결정적 Router다.
-- LLM Agent는 Google API·MCP Write를 직접 호출하지 않는다.
+- LLM Agent는 Provider API·Connector MCP Write를 직접 호출하지 않는다. P0 Google Workspace도 동일하다.
 - 실제 Query·Page Token·Tool Arguments는 결정적 코드가 검증·생성한다.
 - Prompt는 Agent별 단일 문자열이 아니라 Node·상태·목적별 `PromptRef`로 선택한다.
 - Prompt·Completion 원문은 Graph State·일반 Trace·Audit에 저장하지 않는다.
@@ -82,7 +82,9 @@ Prompt Slot 수, PromptRef 수, LLM Call 수는 Agent 수와 독립적이다. �
 
 각 Node는 Parent/Main State 전체를 받지 않고 자기 작업에 필요한 Typed Projection만 받는다. 예를 들어 Retrieval Query Planner는 `request_intent + input_routes`, Evidence Selector는 `request_intent + ranked_segments`, Planning Argument Writer는 `output_route + work_analysis + evidence_refs`만 받는다.
 
-외부 READ는 Retrieval Subgraph의 결정적 Application Node가 Query Builder·MCP Read Port를 호출한다. Retrieval LLM Node는 Raw Query·MCP Arguments를 직접 실행하지 않으며 `ToolRoutePlanV2.input_plan.input_routes` 밖의 Tool을 선택하거나 호출하지 않는다.
+외부 READ는 Retrieval Subgraph의 결정적 Application Node가 Query Builder·Connector MCP Read Port를 호출한다. Retrieval LLM Node는 Raw Query·MCP Arguments를 직접 실행하지 않으며 `ToolRoutePlanV2.input_plan.input_routes` 밖의 Tool을 선택하거나 호출하지 않는다.
+
+Connector identity는 Tool Route의 공식 Typed Route에 포함되고 downstream은 재선택하지 않는다. P0 첫 Connector는 `google_workspace`이며 Gmail·Tasks·Calendar의 Provider 세부는 Connector Adapter가 소유한다.
 
 Graph Profile 간 semantic responsibility parity를 유지한다. 특히 `SINGLE_BASELINE`은 별도 Review Agent를 두지 않더라도 Unified Agent 내부 `self_review` 단계로 계획 품질 점검 책임을 수행한다.
 
@@ -1137,3 +1139,71 @@ prompt_assembly: BASE_PLUS_FAILURE_BLOCK
 - Agent는 필요 시 파일명·MIME Type·크기·Attachment Descriptor만 사용한다.
 - Download/Stage/Hash Verification/MIME 조립/Claim V2 검증 실패는 `DETERMINISTIC` 또는 `TERMINAL` Runtime 처리이며 LLM Repair·Semantic Revision 대상으로 바꾸지 않는다.
 - Claim V2와 Attachment integrity는 제품 Runtime 안전 계약이므로 Agent Profile 실험의 독립변수로 변경하지 않는다.
+
+## PHASE 6 · Prompt Runtime Input Contract
+
+Prompt Bundle `0.9.0-r8.6-phase6`은 기존 30 Slot topology를 유지한다.
+
+- Request Understanding은 사용자만 해결 가능한 ambiguity/선호만 Confirmation으로 보낸다.
+- Tool Route LLM은 semantic Resource/Effect를 판단하며 policy-precondition READ, scope-expansion receipt를 만들지 않는다.
+- Retrieval은 고정 IN Route 안에서만 Query/Evidence/Sufficiency를 판단한다.
+- Work Analysis는 relation candidate를 제안할 수 있으나 duplicate/conflict 최종 확정은 deterministic validator가 한다.
+- Planning은 고정 OUT Route를 소비하고 Tool identity를 재선택하지 않는다.
+- Review는 goal fit/evidence/action necessity/contradiction/route consistency와 supplied policy summary만 검토한다.
+- `business_deadline != scheduled_date`; 단순 deadline을 Task due/scheduling으로 자동 변환하지 않는다.
+- Product Prompt는 provider 이름에 결합하지 않고 connector/tool schema runtime projection을 사용한다.
+
+`prompt-runtime-input-contract-v1`이 Slot별 root-field allowlist를 소유한다. `gold`, `grader`, `expected_route`, `end_state_gold`, benchmark score, Holdout label, evaluator decision script는 Product Prompt 입력이 아니다.
+
+Repair/Revision은 `base_projection + candidate_output + normalized failure_record`만 받고 `affected_fields/allowed_change_scope` 밖 의미를 새로 만들지 않는다.
+
+## PHASE 7 · Runner Slot Evaluation Boundary와 수동 Local-SLLM Style Pilot
+
+실제 모델 호출 전 Runner는 LLM Slot candidate와 deterministic transform 이후 state artifact를 구분해 채점한다.
+
+```text
+LLM_SLOT_CANDIDATE
+→ deterministic transforms / validators
+→ FINAL_STATE_ARTIFACT
+→ E2E / END_STATE
+```
+
+Tool Route는 특히:
+
+```text
+RouteResourceCandidateV1
+→ PRE_POLICY_SEMANTIC_ROUTE_GOLD
+→ Registry Binding
+→ PolicyPreconditionResolver
+→ ToolRoutePlanV2
+```
+
+순서로 채점한다. final `ToolRoutePlanV2.input_plan`에 포함된 duplicate/conflict precondition READ를 pre-policy LLM candidate의 Gold로 사용하지 않는다.
+
+PHASE 7 manual pilot은 20 CORE × 2 문체, Holdout 0이며 실제 Ollama/qwen 실행이 아니다. Local model accuracy/latency/reliability 지표로 사용하지 않는다.
+
+실제 Local model 실행 전:
+- RequestIntent `analysis_requirement` Gold review,
+- Planning default container ID binding,
+- slot-aware Runner grader
+를 확정한다.
+
+## PHASE 7.5 · Slot Gold와 deterministic binding
+
+Prompt Bundle 내용은 `0.9.0-r8.6-phase6` 그대로 유지한다. 변경은 Runtime/Grader 계약이다.
+
+### Tool Route Slot
+
+```text
+RouteResourceCandidateV1
+→ PrePolicyToolRouteGoldV1 로 의미 채점
+→ deterministic Registry Binding
+→ PolicyPreconditionResolver
+→ ToolRoutePlanV2 로 final route/trajectory 채점
+```
+
+Policy duplicate/conflict READ를 Tool Route LLM Gold에 포함시키지 않는다.
+
+### Planning Slot
+
+`tasklist_id/calendar_id` 같은 default container ID는 deterministic `DefaultContainerResolver`가 먼저 bind한다. Prompt에는 bound Tool Schema/allowlisted runtime input만 제공하며 LLM이 hidden default ID를 추측하지 않는다.

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "case_id": "CASE-CORE-052",
+  "split": "CORE",
+  "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction",
+  "stage": "PRE_POLICY_SEMANTIC_ROUTE_GOLD",
+  "applicable": true,
+  "candidate_gold": {
+    "input_resource_types": [
+      "EMAIL"
+    ],
+    "output_resource_types": [],
+    "output_effects": []
+  },
+  "source_final_tool_route_projection": "ToolRoutePlanV2",
+  "review_status": "CONTRACT_REVIEWED"
+}

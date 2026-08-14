@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-CORE-001-REV",
+  "case_id": "CASE-CORE-001",
+  "projection_kind": "REVIEW",
+  "applicable": false,
+  "not_applicable_reason": "CANONICAL_STAGE_NOT_REACHED",
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-002",
+    "user_prompt_id": "UP-CORE-001",
+    "entry_mode": "RESOURCE_SELECTED",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "applicable": false,
+    "expected_status": "NOT_REACHED",
+    "critical_checks": [
+      "goal",
+      "evidence",
+      "excess_action",
+      "contradiction",
+      "route",
+      "argument_constraints",
+      "dependency",
+      "policy"
+    ],
+    "route_mutation_forbidden": true,
+    "lineage_expectation": {
+      "owner": "review",
+      "based_on": [
+        "planning_result"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.review.deterministic",
+    "grader.review.semantic"
+  ]
+}

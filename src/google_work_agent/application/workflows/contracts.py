@@ -6,18 +6,21 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Literal, NotRequired, Required, TypedDict, cast
 
 if TYPE_CHECKING:
-    from google_work_agent.application.workflows.api_acquisition import (
+    from google_work_agent.application.workflows.handoff_contracts import (
         AcquisitionResultV1,
-        SourceFetchPlanV1,
-    )
-    from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
-    from google_work_agent.application.workflows.plan_review import PlanReviewResultV1
-    from google_work_agent.application.workflows.request_understanding import RequestIntentV1
-    from google_work_agent.application.workflows.solution_planning import (
         ActionPlanDraftV1,
         AnswerDraftV1,
+        ContextRetrievalResultV1,
+        PlanReviewResultV1,
+        RequestIntentV2,
+        SourceFetchPlanV1,
+        WorkAnalysisResultV1,
     )
-    from google_work_agent.application.workflows.work_analysis import WorkAnalysisResultV1
+    from google_work_agent.application.workflows.tool_routing import (
+        RouteReconsiderationRequiredV1,
+        ScopeExpansionRequiredV1,
+        ToolRoutePlanV2,
+    )
 
 
 class BudgetProfile(StrEnum):
@@ -117,7 +120,9 @@ class MultiAgentGraphState(TypedDict):
     conversation_id: str
     thread_id: str
     workflow_phase: str
-    request_intent: RequestIntentV1 | None
+    request_intent: RequestIntentV2 | None
+    tool_route_plan: ToolRoutePlanV2 | None
+    workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     context_result: ContextRetrievalResultV1 | None
@@ -139,7 +144,9 @@ class GraphStateUpdateV1(TypedDict, total=False):
     """Typed partial update returned by workflow agents and the supervisor."""
 
     workflow_phase: str
-    request_intent: RequestIntentV1 | None
+    request_intent: RequestIntentV2 | None
+    tool_route_plan: ToolRoutePlanV2 | None
+    workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     context_result: ContextRetrievalResultV1 | None
@@ -162,6 +169,7 @@ class WorkflowPhase(StrEnum):
 
     INITIALIZE = "INITIALIZE"
     REQUEST_ANALYSIS = "REQUEST_ANALYSIS"
+    TOOL_ROUTING = "TOOL_ROUTING"
     WAITING_CONFIRMATION = "WAITING_CONFIRMATION"
     SOURCE_PLANNING = "SOURCE_PLANNING"
     API_ACQUISITION = "API_ACQUISITION"
@@ -214,6 +222,7 @@ class ContextResult(StrEnum):
     SUFFICIENT = "SUFFICIENT"
     NEEDS_MORE_DATA = "NEEDS_MORE_DATA"
     NEEDS_CONFIRMATION = "NEEDS_CONFIRMATION"
+    ROUTE_RECONSIDERATION_REQUIRED = "ROUTE_RECONSIDERATION_REQUIRED"
     PARTIAL = "PARTIAL"
     BLOCKED = "BLOCKED"
 
@@ -430,6 +439,7 @@ CONFIRMATION_RESPONSE_ALLOWED_KINDS = frozenset(item.value for item in Confirmat
 CONFIRMATION_ORIGIN_TARGETS = frozenset(
     {
         "request_understanding.classify",
+        "tool_route.finalize",
         "acquisition.plan_sources",
         "context.assess_sufficiency",
         "analysis.analyze",

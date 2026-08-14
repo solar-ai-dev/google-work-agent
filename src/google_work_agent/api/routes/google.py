@@ -3,9 +3,9 @@
 from fastapi import APIRouter, Header, Request
 
 from google_work_agent.api.dependencies import (
+    GoogleRouteDependency,
     enforce_access,
-    enforce_api_contract_version,
-    get_container,
+    enforce_supported_api_contract_version,
 )
 from google_work_agent.api.errors import ApiError
 from google_work_agent.api.schemas.google import (
@@ -22,16 +22,16 @@ router = APIRouter(prefix="/api/v1/google")
 @router.post("/oauth/start", response_model=GoogleOAuthStartResponse)
 def start_google_oauth(
     request: Request,
+    dependencies: GoogleRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> GoogleOAuthStartResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    service = container.start_google_oauth_service
+    service = dependencies.start_google_oauth_service()
     if service is None:
         raise ApiError(
             error_code="SERVICE_BUSY",
@@ -67,23 +67,23 @@ def start_google_oauth(
         expires_at_ms=result.expires_at_ms,
         oauth_environment=result.oauth_environment.value,
         scopes=list(result.scopes),
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
 @router.get("/connection", response_model=GoogleConnectionResponse)
 def get_google_connection(
     request: Request,
+    dependencies: GoogleRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> GoogleConnectionResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    service = container.get_google_connection_service
+    service = dependencies.get_google_connection_service()
     if service is None:
         raise ApiError(
             error_code="SERVICE_BUSY",
@@ -105,23 +105,23 @@ def get_google_connection(
         last_checked_at_ms=result.last_checked_at_ms,
         safe_error_code=result.safe_error_code,
         safe_error_description=result.safe_error_description,
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )
 
 
 @router.post("/disconnect", response_model=GoogleDisconnectResponse)
 def disconnect_google(
     request: Request,
+    dependencies: GoogleRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> GoogleDisconnectResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    service = container.disconnect_google_service
+    service = dependencies.disconnect_google_service()
     if service is None:
         raise ApiError(
             error_code="SERVICE_BUSY",
@@ -137,5 +137,5 @@ def disconnect_google(
         revoke_attempted=result.revoke_attempted,
         revoke_succeeded=result.revoke_succeeded,
         credential_state=result.credential_state.value,
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )

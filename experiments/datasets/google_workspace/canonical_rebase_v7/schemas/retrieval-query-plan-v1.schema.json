@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/retrieval-query-plan-v1.schema.json",
+  "title": "RetrievalQueryPlanV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "route_queries",
+    "required_information",
+    "retrieval_order"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "route_queries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "route_id",
+          "intent_constraints",
+          "operation_preference"
+        ],
+        "properties": {
+          "route_id": {
+            "type": "string"
+          },
+          "intent_constraints": {
+            "type": "object"
+          },
+          "operation_preference": {
+            "enum": [
+              "SEARCH",
+              "DETAIL_FETCH",
+              "LIST",
+              "FREEBUSY"
+            ]
+          }
+        }
+      }
+    },
+    "required_information": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "retrieval_order": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

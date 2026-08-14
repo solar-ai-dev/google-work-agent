@@ -4,12 +4,16 @@ Moved out of ``runtime.py`` (Stage 3 of the LangGraph module cleanup) as a
 pure type/constant/helper module with no behavior change: every definition
 here is unchanged from its previous location, only its module changed.
 """
+# Runtime type names below are retained for LangGraph's inherited TypedDict
+# get_type_hints resolution, even when they are not referenced textually here.
+# ruff: noqa: F401
 
 from __future__ import annotations
 
 from json import dumps
-from typing import Final, Literal, NotRequired, TypedDict, cast
+from typing import Final, NotRequired, cast
 
+from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.application.workflows import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
@@ -18,20 +22,23 @@ from google_work_agent.application.workflows import (
     ContextBundleV1,
     ContextRetrievalResultV1,
     EvidenceDraftV1,
-    EvidenceSelectionOutputV1,
+    EvidenceSelectionResultV2,
     MultiAgentGraphState,
     PlanReviewResultV1,
-    RequestIntentV1,
+    RequestIntentV2,
     RequestUnderstandingOutputV1,
     RunBudgetV1,
     SourceFetchPlanV1,
     SourcePlanningOutputV1,
-    SufficiencyOutputV1,
+    SufficiencyResultV2,
     WorkAnalysisResultV1,
+    WorkflowPhase,
 )
-from google_work_agent.application.workflows.profile_fused import (
-    ProfileReasonPlanOutputV1,
-    ProfileRequestSourceOutputV1,
+from google_work_agent.application.workflows.tool_routing import (
+    RouteReconsiderationRequiredV1,
+    ScopeExpansionRequiredV1,
+    ToolRoutePlanV2,
+    ToolRouteResultV1,
 )
 from google_work_agent.ports import (
     ResourceRefRecord,
@@ -51,58 +58,12 @@ class ParentGraphState(MultiAgentGraphState):
     __modify_review_version__: NotRequired[int | None]
     __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
     __replan_from_plan_id__: NotRequired[str]
-
-
-class GraphState(TypedDict):
-    """Executable graph state, including invocation-local subgraph projections."""
-
-    schema_version: Literal[1]
-    run_id: str
-    conversation_id: str
-    thread_id: str
-    workflow_phase: str
-    request_intent: RequestIntentV1 | None
-    source_fetch_plans: list[SourceFetchPlanV1]
-    acquisition_result: AcquisitionResultV1 | None
-    context_result: ContextRetrievalResultV1 | None
-    analysis_result: WorkAnalysisResultV1 | None
-    answer_draft: AnswerDraftV1 | None
-    plan_draft: ActionPlanDraftV1 | None
-    plan_review: PlanReviewResultV1 | None
-    approved_plan_id: str | None
-    execution_summary: dict[str, object] | None
-    verification_summary: dict[str, object] | None
-    finalize_intent: object | None
-    user_interrupt: object | None
-    retry_budget: RunBudgetV1
-    prompt_context: dict[str, object]
-    trace_context: dict[str, object]
     context_bundle: NotRequired[ContextBundleV1]
     evidence_drafts: NotRequired[list[EvidenceDraftV1]]
     llm_provider_result: NotRequired[dict[str, object] | None]
-    __request__: WorkflowStartRequest
-    __target__: str
-    __logical_target__: str
-    __modify_review_plan_id__: NotRequired[str | None]
-    __modify_review_version__: NotRequired[int | None]
-    __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
-    __replan_from_plan_id__: NotRequired[str]
-    __request_agent_local__: NotRequired[AgentLocalStateV1]
-    __request_output__: NotRequired[RequestUnderstandingOutputV1]
-    __acquisition_agent_local__: NotRequired[AgentLocalStateV1]
-    __acquisition_planning_output__: NotRequired[SourcePlanningOutputV1]
-    __context_agent_local__: NotRequired[AgentLocalStateV1]
-    __context_selection_output__: NotRequired[EvidenceSelectionOutputV1]
-    __context_sufficiency_output__: NotRequired[SufficiencyOutputV1]
-    __analysis_agent_local__: NotRequired[AgentLocalStateV1]
-    __planning_agent_local__: NotRequired[AgentLocalStateV1]
-    __planning_mode__: NotRequired[str]
-    __planning_result__: NotRequired[AnswerDraftV1 | ActionPlanDraftV1]
-    __review_agent_local__: NotRequired[AgentLocalStateV1]
-    __review_mode__: NotRequired[str]
-    __profile_agent_local__: NotRequired[AgentLocalStateV1]
-    __profile_request_source_output__: NotRequired[ProfileRequestSourceOutputV1]
-    __profile_reason_plan_output__: NotRequired[ProfileReasonPlanOutputV1]
+
+
+GraphState = ParentGraphState
 
 
 REQUEST_AGENT_LOCAL_KEY: Final = "__request_agent_local__"
@@ -110,16 +71,69 @@ REQUEST_OUTPUT_KEY: Final = "__request_output__"
 ACQUISITION_AGENT_LOCAL_KEY: Final = "__acquisition_agent_local__"
 ACQUISITION_PLANNING_OUTPUT_KEY: Final = "__acquisition_planning_output__"
 CONTEXT_AGENT_LOCAL_KEY: Final = "__context_agent_local__"
+CONTEXT_RAG_CANDIDATES_KEY: Final = "__context_rag_candidates__"
 CONTEXT_SELECTION_OUTPUT_KEY: Final = "__context_selection_output__"
 CONTEXT_SUFFICIENCY_OUTPUT_KEY: Final = "__context_sufficiency_output__"
 ANALYSIS_AGENT_LOCAL_KEY: Final = "__analysis_agent_local__"
 PLANNING_AGENT_LOCAL_KEY: Final = "__planning_agent_local__"
 PLANNING_MODE_KEY: Final = "__planning_mode__"
+TOOL_ROUTE_RESULT_KEY: Final = "__tool_route_result__"
 REVIEW_AGENT_LOCAL_KEY: Final = "__review_agent_local__"
 REVIEW_MODE_KEY: Final = "__review_mode__"
 PROFILE_AGENT_LOCAL_KEY: Final = "__profile_agent_local__"
 PROFILE_REQUEST_SOURCE_OUTPUT_KEY: Final = "__profile_request_source_output__"
 PROFILE_REASON_PLAN_OUTPUT_KEY: Final = "__profile_reason_plan_output__"
+
+
+def initial_graph_state(
+    request: WorkflowStartRequest,
+    *,
+    graph_profile: GraphProfile,
+    initial_target: str,
+) -> GraphState:
+    return {
+        "schema_version": 1,
+        "run_id": request.run_id,
+        "conversation_id": request.conversation_id,
+        "thread_id": request.workflow_key,
+        "workflow_phase": WorkflowPhase.INITIALIZE.value,
+        "request_intent": None,
+        "tool_route_plan": None,
+        "workflow_signal": None,
+        "source_fetch_plans": [],
+        "acquisition_result": None,
+        "context_result": None,
+        "analysis_result": None,
+        "answer_draft": None,
+        "plan_draft": None,
+        "plan_review": None,
+        "approved_plan_id": None,
+        "execution_summary": None,
+        "verification_summary": None,
+        "finalize_intent": None,
+        "user_interrupt": None,
+        "retry_budget": {
+            "schema_version": 1,
+            "profile": "NORMAL",
+            "llm_calls_used": 0,
+            "additional_acquisitions_used": 0,
+            "planning_revisions_used": 0,
+            "last_rechecked_planning_revision": 0,
+            "semantic_revision_signatures_used": [],
+        },
+        "prompt_context": {"graph_profile": graph_profile.value},
+        "trace_context": {
+            "agent_invocation_count": 0,
+            "llm_call_count": 0,
+            "repair_count": 0,
+            "revision_count": 0,
+            "agent_node_log": [],
+            "prompt_refs": [],
+        },
+        "__request__": request,
+        "__target__": initial_target,
+        "__logical_target__": initial_target,
+    }
 
 
 def _require_state_value[StateValueT](

@@ -8,7 +8,6 @@ from json import loads
 from pathlib import Path
 from sqlite3 import Row
 
-from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.domain import (
     ActionCommand,
     ActionStatus,
@@ -18,7 +17,12 @@ from google_work_agent.domain import (
     next_allowed_run_commands,
     parse_action_risk_json,
 )
-from google_work_agent.ports import RuntimeStatusProvider, RuntimeSummary, SelectedResourceRef
+from google_work_agent.ports import (
+    QueryConnectionFactory,
+    RuntimeStatusProvider,
+    RuntimeSummary,
+    SelectedResourceRef,
+)
 
 MAX_PAGE_SIZE = 100
 
@@ -117,9 +121,11 @@ class QueryService:
         self,
         *,
         database_path: Path,
+        connection_factory: QueryConnectionFactory,
         runtime_status_provider: RuntimeStatusProvider,
     ) -> None:
         self._database_path = database_path
+        self._connection_factory = connection_factory
         self._runtime_status_provider = runtime_status_provider
 
     def list_conversations(
@@ -137,7 +143,7 @@ class QueryService:
             predicate += " AND (updated_at_ms < ? OR (updated_at_ms = ? AND id < ?))"
             params.extend([updated_at_ms, updated_at_ms, conversation_id])
         params.append(limit + 1)
-        with connect_sqlite(self._database_path) as connection:
+        with self._connection_factory(self._database_path) as connection:
             rows = connection.execute(
                 f"""
                 SELECT id, account_id, title, created_at_ms, updated_at_ms
@@ -156,7 +162,7 @@ class QueryService:
         return ConversationPage(items=items, next_cursor=next_cursor)
 
     def get_conversation(self, conversation_id: str) -> ConversationListItem | None:
-        with connect_sqlite(self._database_path) as connection:
+        with self._connection_factory(self._database_path) as connection:
             row = connection.execute(
                 """
                 SELECT id, account_id, title, created_at_ms, updated_at_ms
@@ -170,7 +176,7 @@ class QueryService:
         return _conversation_item_from_row(row)
 
     def get_run_snapshot(self, run_id: str) -> RunSnapshot | None:
-        with connect_sqlite(self._database_path) as connection:
+        with self._connection_factory(self._database_path) as connection:
             run_row = connection.execute(
                 """
                 SELECT id, conversation_id, entry_mode, status, requested_mode,
@@ -327,7 +333,7 @@ class QueryService:
 
     def has_cancel_intent(self, run_id: str) -> bool:
         """Return whether the accepted cancellation intent is durably recorded."""
-        with connect_sqlite(self._database_path) as connection:
+        with self._connection_factory(self._database_path) as connection:
             row = connection.execute(
                 """
                 SELECT 1
@@ -342,7 +348,7 @@ class QueryService:
         return row is not None
 
     def get_run_execution_context(self, run_id: str) -> RunExecutionContext | None:
-        with connect_sqlite(self._database_path) as connection:
+        with self._connection_factory(self._database_path) as connection:
             run_row = connection.execute(
                 """
                 SELECT id, conversation_id, langgraph_thread_id, entry_mode,
@@ -405,7 +411,7 @@ class QueryService:
         )
 
     def list_open_runs(self) -> tuple[OpenRunRecord, ...]:
-        with connect_sqlite(self._database_path) as connection:
+        with self._connection_factory(self._database_path) as connection:
             rows = connection.execute(
                 """
                 SELECT id, langgraph_thread_id, status, version
@@ -425,7 +431,7 @@ class QueryService:
         )
 
     def get_latest_run_for_conversation(self, conversation_id: str) -> ConversationRunRecord | None:
-        with connect_sqlite(self._database_path) as connection:
+        with self._connection_factory(self._database_path) as connection:
             row = connection.execute(
                 """
                 SELECT id, status, version, started_at_ms
@@ -468,7 +474,7 @@ class QueryService:
         )
 
     def get_current_google_account(self) -> GoogleAccountRecord | None:
-        with connect_sqlite(self._database_path) as connection:
+        with self._connection_factory(self._database_path) as connection:
             row = connection.execute(
                 """
                 SELECT id, email, display_name
@@ -499,7 +505,7 @@ class QueryService:
         """
 
         account_id = _google_account_id_for_email(email)
-        with connect_sqlite(self._database_path) as connection:
+        with self._connection_factory(self._database_path) as connection:
             connection.execute(
                 """
                 INSERT INTO google_accounts

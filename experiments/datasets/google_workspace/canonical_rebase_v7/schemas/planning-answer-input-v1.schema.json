@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/planning-answer-input-v1.schema.json",
+  "title": "planning-answer-input-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "user_request",
+    "request_intent",
+    "evidence"
+  ],
+  "properties": {
+    "user_request": {
+      "type": "string"
+    },
+    "request_intent": {
+      "$ref": "request-intent-v2.schema.json"
+    },
+    "work_analysis": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "evidence_ref",
+          "excerpt",
+          "role"
+        ],
+        "properties": {
+          "evidence_ref": {
+            "type": "string"
+          },
+          "excerpt": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "SUPPORTS",
+              "CONTRADICTS",
+              "CONTEXT"
+            ]
+          },
+          "resource_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

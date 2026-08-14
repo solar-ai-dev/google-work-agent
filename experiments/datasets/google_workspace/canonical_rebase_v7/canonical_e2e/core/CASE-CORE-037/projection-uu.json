@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-CORE-037-UU",
+  "case_id": "CASE-CORE-037",
+  "projection_kind": "REQUEST_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-037",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "expected_disposition": "COMPLETE",
+    "request_intent_semantic": {
+      "schema_version": 2,
+      "goal": "TSK-A-001의 업무 마감 메모 수정 Action을 제안한다.",
+      "completion_conditions": [
+        "선택 대상이 TSK-A-001임을 보존한다.",
+        "CREATE가 아니라 UPDATE를 사용한다."
+      ],
+      "constraints": [
+        {
+          "kind": "SCOPE",
+          "field": "required_sources",
+          "value": [
+            "CALENDAR",
+            "EMAIL",
+            "TASK"
+          ]
+        }
+      ],
+      "requested_effect_hints": [
+        "UPDATE"
+      ],
+      "requested_resource_hints": [
+        "CALENDAR",
+        "EMAIL",
+        "TASK"
+      ],
+      "analysis_requirement": "REQUIRED",
+      "ambiguity": {
+        "requires_confirmation": false,
+        "reason_codes": [],
+        "missing_fields": []
+      }
+    },
+    "lineage_expectation": {
+      "owner": "request_understanding",
+      "based_on": [
+        "run_input"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.request_understanding.deterministic",
+    "grader.request_understanding.semantic"
+  ]
+}

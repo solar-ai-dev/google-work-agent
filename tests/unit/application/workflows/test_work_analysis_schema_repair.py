@@ -1,7 +1,7 @@
 """Regression tests for the work_analysis Schema Repair boundary.
 
 Covers the READ-runtime crash traced in this session: a semantically
-invalid ``analysis.analyze`` output (e.g. a non-string ``resource_refs``
+invalid ``work_analysis.analyze`` output (e.g. a non-string ``resource_refs``
 entry) used to raise ``WorkAnalysisValidationError`` straight out of
 ``WorkAnalysisAgent.analyze`` -- unreachable by ``_validate_or_repair`` --
 instead of going through the same Schema Repair boundary JSON-schema-shape
@@ -20,7 +20,7 @@ from typing import cast
 import pytest
 from tests.support.fakes import FakeAPIProviderTransport, FakeHardwareProbe, FakeKeyring
 from tests.support.prompt_manifests import (
-    canonical_prompt_manifest_path,
+    write_manifest_with_overrides,
     write_runtime_active_manifest,
 )
 
@@ -39,7 +39,7 @@ from google_work_agent.application.llm import LLMRuntimeService, PromptRepairSch
 from google_work_agent.application.workflows import (
     AnalysisResult,
     ContextRetrievalResultV1,
-    RequestIntentV1,
+    RequestIntentV2,
     WorkAnalysisAgent,
     validate_work_analysis_result_v1,
 )
@@ -77,29 +77,21 @@ def _request() -> WorkflowStartRequest:
     )
 
 
-def _intent() -> RequestIntentV1:
+def _intent() -> RequestIntentV2:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "Analyze risky follow-up work",
-            "user_visible_objective": "Find follow-up risks",
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "Find follow-up risks",
+        "completion_conditions": ["Evidence-backed work analysis is available."],
+        "constraints": [],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "completion_criteria": ["Evidence-backed work analysis is available."],
-        "semantic_constraints": {
-            "topics": [{"text": "follow-up", "source_text": "follow-up"}],
-            "people": [],
-            "time": [],
-            "sources": [{"source": "GMAIL", "mention": "mail", "confidence": "HIGH"}],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
-        },
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["GMAIL_THREAD"],
+        "analysis_requirement": "REQUIRED",
     }
 
 
@@ -289,10 +281,13 @@ def _queue(api_transport: FakeAPIProviderTransport, payload: object) -> None:
 
 def test_invalid_first_output_is_repaired_and_run_continues(tmp_path: Path) -> None:
     """First real call: resource_refs=[123] (semantically invalid). Second
-    real call (the analysis.repair prompt, once promoted RUNTIME_ACTIVE):
-    a corrected, valid payload. The agent must return the repaired result
-    without the caller ever seeing a raised validation error."""
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=["analysis.repair"])
+    real call (the work_analysis.analyze.repair prompt, once promoted
+    RUNTIME_ACTIVE): a corrected, valid payload. The agent must return the
+    repaired result without the caller ever seeing a raised validation
+    error."""
+    manifest_path = write_runtime_active_manifest(
+        tmp_path, prompt_ids=["work_analysis.analyze", "work_analysis.analyze.repair"]
+    )
     api_transport = FakeAPIProviderTransport()
 
     bad_finding = _finding("finding-1", "RELATIONSHIP")
@@ -311,8 +306,8 @@ def test_invalid_first_output_is_repaired_and_run_continues(tmp_path: Path) -> N
     assert result["findings"][0]["resource_refs"] == ["gmail_thread:thread-kim"]
     invoke_calls = [c for c in api_transport.invocations if c["kind"] == "invoke"]
     assert len(invoke_calls) == 2
-    assert invoke_calls[0]["prompt_id"] == "analysis.analyze"
-    assert invoke_calls[1]["prompt_id"] == "analysis.repair"
+    assert invoke_calls[0]["prompt_id"] == "work_analysis.analyze"
+    assert invoke_calls[1]["prompt_id"] == "work_analysis.analyze.repair"
     repair_input = cast(dict[str, object], invoke_calls[1]["prompt_input"])
     assert repair_input["attempt_no"] == 1
     assert repair_input["max_attempts"] == 1
@@ -327,7 +322,9 @@ def test_still_invalid_after_repair_raises_typed_error_not_unlimited_retry(
     semantically invalid, the caller must see one clean, typed,
     OUTPUT_SCHEMA_INVALID LLMInvocationError -- never a second repair
     attempt and never the raw WorkAnalysisValidationError escaping."""
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=["analysis.repair"])
+    manifest_path = write_runtime_active_manifest(
+        tmp_path, prompt_ids=["work_analysis.analyze", "work_analysis.analyze.repair"]
+    )
     api_transport = FakeAPIProviderTransport()
 
     first_bad = _finding("finding-1", "RELATIONSHIP")
@@ -353,18 +350,23 @@ def test_repair_prompt_still_draft_fails_closed_without_using_unapproved_prompt(
     tmp_path: Path,
 ) -> None:
     """Documents the actual current repo state: every ``*.repair`` slot in
-    the canonical manifest (including analysis.repair) is still DRAFT --
-    Node DEV -> Node HOLDOUT -> G01 Safety Gate has not promoted it. The
-    repairer must refuse to use it rather than silently activating an
-    unapproved prompt, and the failure must still be the same typed,
-    catchable LLMInvocationError."""
+    the canonical manifest (including work_analysis.analyze.repair) is
+    still DRAFT -- Node DEV -> Node HOLDOUT -> G01 Safety Gate has not
+    promoted it. The repairer must refuse to use it rather than silently
+    activating an unapproved prompt, and the failure must still be the
+    same typed, catchable LLMInvocationError."""
+    manifest_path = write_manifest_with_overrides(
+        tmp_path,
+        active_prompt_ids={"work_analysis.analyze"},
+        draft_prompt_ids={"work_analysis.analyze.repair"},
+    )
     api_transport = FakeAPIProviderTransport()
     bad_finding = _finding("finding-1", "RELATIONSHIP")
     bad_finding["resource_refs"] = [123]
     _queue(api_transport, _analysis_output(AnalysisResult.COMPLETE.value, findings=[bad_finding]))
 
-    runtime = _real_llm_runtime(api_transport, manifest_path=canonical_prompt_manifest_path())
-    agent = WorkAnalysisAgent(llm_runtime=runtime, manifest_path=canonical_prompt_manifest_path())
+    runtime = _real_llm_runtime(api_transport, manifest_path=manifest_path)
+    agent = WorkAnalysisAgent(llm_runtime=runtime, manifest_path=manifest_path)
 
     with pytest.raises(LLMInvocationError) as excinfo:
         agent.analyze(
@@ -376,7 +378,9 @@ def test_repair_prompt_still_draft_fails_closed_without_using_unapproved_prompt(
 
 
 def test_valid_first_output_never_invokes_repair(tmp_path: Path) -> None:
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=["analysis.repair"])
+    manifest_path = write_runtime_active_manifest(
+        tmp_path, prompt_ids=["work_analysis.analyze", "work_analysis.analyze.repair"]
+    )
     api_transport = FakeAPIProviderTransport()
     _queue(api_transport, _analysis_output(AnalysisResult.COMPLETE.value))
 

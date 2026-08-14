@@ -1,6 +1,6 @@
 # 01-B. Google Work Agent 정책 정의서
 
-> **상태:** Draft v2.10 · **기준일:** 2026-08-13
+> **상태:** Draft v2.11 · **기준일:** 2026-08-13
 
 ## 0. 사람이 먼저 볼 핵심 정책
 
@@ -14,7 +14,7 @@
 
 ## 1. 문서 목적
 
-이 문서는 Agent가 어떤 데이터를 읽을 수 있고, 어떤 Action을 제안·승인·실행할 수 있으며, 어떤 경우에 차단·경고·재질문해야 하는지 정의한다. 정책은 LLM Prompt가 아니라 일반 코드와 Tool Allowlist로 강제한다.
+이 문서는 Agent가 Connector를 통해 어떤 데이터를 읽을 수 있고, 어떤 Action을 제안·승인·실행할 수 있으며, 어떤 경우에 차단·경고·재질문해야 하는지 정의한다. 공통 정책은 Connector-neutral Core에 적용하고 Gmail·Tasks·Calendar 세부 정책은 P0 `google_workspace` Connector 계약으로 유지한다. 정책은 LLM Prompt가 아니라 일반 코드와 Tool Allowlist로 강제한다.
 
 ### Google Workspace 실행 경계
 
@@ -92,7 +92,7 @@
 - 반복 Event 전체 일괄 수정
 - 승인·Policy·Verification을 우회하는 System/DB 직접 변경
 
-금지 Tool은 UI에서 숨기는 것만으로 끝내지 않고 MCP Server에 등록하지 않는다.
+금지 Tool은 UI에서 숨기는 것만으로 끝내지 않고 해당 Connector MCP Server의 등록 Tool에 포함하지 않는다.
 
 ## 5. 승인 정책
 

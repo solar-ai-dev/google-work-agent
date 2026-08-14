@@ -3,9 +3,9 @@
 from fastapi import APIRouter, Header, Request
 
 from google_work_agent.api.dependencies import (
+    RuntimeRouteDependency,
     enforce_access,
-    enforce_api_contract_version,
-    get_container,
+    enforce_supported_api_contract_version,
 )
 from google_work_agent.api.schemas.runtime import RuntimeSummaryResponse
 from google_work_agent.ports import EndpointPolicy
@@ -16,24 +16,24 @@ router = APIRouter(prefix="/api/v1")
 @router.get("/runtime", response_model=RuntimeSummaryResponse)
 def get_runtime(
     request: Request,
+    dependencies: RuntimeRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> RuntimeSummaryResponse:
-    container = get_container(request)
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_api_contract_version(
-        container=container,
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    summary = container.query_service.get_runtime_summary()
+    summary = dependencies.query_service().get_runtime_summary()
     safe_mode = summary.safe_mode
     safe_mode_reason_codes = list(summary.safe_mode_reason_codes)
     allowed_operations = list(summary.allowed_operations)
-    if container.safe_mode_controller is not None:
-        state = container.safe_mode_controller.snapshot()
+    state = dependencies.safe_mode_state()
+    if state is not None:
         safe_mode = state.enabled
         safe_mode_reason_codes = list(state.reason_codes)
-        allowed_operations = [item.value for item in state.allowed_operations]
+        allowed_operations = list(state.allowed_operations)
     return RuntimeSummaryResponse(
         summary={
             "google": summary.google,
@@ -50,5 +50,5 @@ def get_runtime(
             "safe_mode_reason_codes": safe_mode_reason_codes,
             "allowed_operations": allowed_operations,
         },
-        api_contract_version=container.api_contract_version,
+        api_contract_version=dependencies.api_contract_version,
     )

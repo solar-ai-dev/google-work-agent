@@ -2,8 +2,11 @@
 
 from fastapi import APIRouter, Request
 
-from google_work_agent.adapters.readiness.composite import compose_readiness
-from google_work_agent.api.dependencies import enforce_access, get_container
+from google_work_agent.api.dependencies import (
+    HealthRouteDependency,
+    composed_readiness_state,
+    enforce_access,
+)
 from google_work_agent.api.schemas.runtime import LiveResponse, ReadyResponse
 from google_work_agent.ports import EndpointPolicy, ReadinessCheckResult, ReadinessState
 
@@ -11,26 +14,24 @@ router = APIRouter()
 
 
 @router.get("/health/live", response_model=LiveResponse)
-def live(request: Request) -> LiveResponse:
+def live(request: Request, dependencies: HealthRouteDependency) -> LiveResponse:
     enforce_access(request, policy=EndpointPolicy.HEALTH_PUBLIC)
-    container = get_container(request)
     return LiveResponse(
         status="LIVE",
-        service_instance_id=container.service_instance_id,
-        release_version=container.release_version,
-        api_contract_version=container.api_contract_version,
-        occurred_at_ms=container.clock.now_ms(),
+        service_instance_id=dependencies.service_instance_id,
+        release_version=dependencies.release_version,
+        api_contract_version=dependencies.api_contract_version,
+        occurred_at_ms=dependencies.clock.now_ms(),
     )
 
 
 @router.get("/health/ready", response_model=ReadyResponse)
-def ready(request: Request) -> ReadyResponse:
+def ready(request: Request, dependencies: HealthRouteDependency) -> ReadyResponse:
     enforce_access(request, policy=EndpointPolicy.HEALTH_PUBLIC)
-    container = get_container(request)
-    report = container.readiness_aggregator.evaluate()
+    report = dependencies.readiness_aggregator().evaluate()
     checks = list(report.checks)
     state = report.state
-    verifier = container.launcher_probe_verifier
+    verifier = dependencies.launcher_probe_verifier
     if verifier is None:
         checks.append(
             ReadinessCheckResult(
@@ -41,7 +42,7 @@ def ready(request: Request) -> ReadyResponse:
         )
         state = ReadinessState.NOT_READY
     else:
-        probe = verifier.verify(service_instance_id=container.service_instance_id)
+        probe = verifier.verify(service_instance_id=dependencies.service_instance_id)
         if probe.allowed:
             checks.append(ReadinessCheckResult(name="launcher_probe", state=ReadinessState.READY))
         else:
@@ -53,20 +54,20 @@ def ready(request: Request) -> ReadyResponse:
                 )
             )
             state = ReadinessState.NOT_READY
-    if container.frontend_site is not None:
-        checks.append(container.frontend_site.readiness_check())
-    if container.safe_mode_controller is not None:
-        checks.append(container.safe_mode_controller.readiness_check())
-    for factory in container.additional_readiness_checks:
+    if dependencies.frontend_readiness_check is not None:
+        checks.append(dependencies.frontend_readiness_check())
+    if dependencies.safe_mode_readiness_check is not None:
+        checks.append(dependencies.safe_mode_readiness_check())
+    for factory in dependencies.additional_readiness_checks:
         checks.append(factory())
-    state = compose_readiness(tuple(checks)).state
+    state = composed_readiness_state(tuple(checks))
     return ReadyResponse(
         status=state.value,
         checks=[
             {"name": check.name, "state": check.state.value, "detail": check.detail}
             for check in checks
         ],
-        release_version=container.release_version,
-        api_contract_version=container.api_contract_version,
-        occurred_at_ms=container.clock.now_ms(),
+        release_version=dependencies.release_version,
+        api_contract_version=dependencies.api_contract_version,
+        occurred_at_ms=dependencies.clock.now_ms(),
     )

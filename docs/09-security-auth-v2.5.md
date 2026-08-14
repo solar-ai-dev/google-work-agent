@@ -1,6 +1,6 @@
 # 09. Google Work Agent · 보안 · Auth 설계서
 
-> **상태:** Draft v2.9 · **기준일:** 2026-08-13 · **대상:** P0 MVP
+> **상태:** Draft v2.10 · **기준일:** 2026-08-13 · **대상:** P0 MVP
 
 ## 1. 핵심 결정
 
@@ -25,8 +25,10 @@
 → FastAPI Local Agent Service
 → Application · LangGraph · Domain Policy
 → MCP Client
-→ Google Work MCP Server · stdio
-→ Google Provider APIs  # MCP Server 내부 Adapter에서만 접근
+→ Connector MCP Server · stdio
+→ Provider APIs  # 각 Connector MCP Server 내부 Adapter에서만 접근
+
+P0: google_workspace → Google Workspace MCP Server → Gmail·Tasks·Calendar APIs
 ```
 
 - Local API는 React와 FastAPI 사이의 제품 내부 REST/SSE 계약이며 Google Provider API 우회 경로가 아니다.

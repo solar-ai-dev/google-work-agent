@@ -78,6 +78,7 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
     publisher = InMemoryRunEventPublisher(service_instance_id="svc-test", capacity_per_run=8)
     query_service = QueryService(
         database_path=database_path,
+        connection_factory=connect_sqlite,
         runtime_status_provider=StaticRuntimeStatusProvider(
             RuntimeSummary(
                 google="NOT_CONFIGURED",

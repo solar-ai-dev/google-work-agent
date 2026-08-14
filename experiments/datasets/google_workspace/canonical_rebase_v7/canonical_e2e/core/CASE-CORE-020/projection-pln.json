@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-CORE-020-PLN",
+  "case_id": "CASE-CORE-020",
+  "projection_kind": "PLANNING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-009",
+    "user_prompt_id": "UP-CORE-020",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "applicable": true,
+    "result_type": "ACTION_PLAN",
+    "actions": [
+      {
+        "action_id": "ACT-CORE-020-1",
+        "route_id": "OUT-CASE-CORE-020-1",
+        "tool_id": "gmail_create_draft",
+        "effect": "CREATE",
+        "arguments": {
+          "to": [
+            "manager@team.example.test"
+          ],
+          "subject": "Ion 온보딩 준비",
+          "body": "기존 온보딩 체크리스트가 진행 중이며 추가 Task 생성 없이 현재 상태를 공유드립니다."
+        },
+        "evidence_refs": [
+          "EVD-SEG-TSK-I-001-1",
+          "UE-CORE-020",
+          "DE-CORE-020-CALFREE"
+        ],
+        "depends_on_action_ids": []
+      }
+    ],
+    "zero_action_reason": null,
+    "tool_identity_owned_by_output_route": true,
+    "read_actions_forbidden": true,
+    "lineage_expectation": {
+      "owner": "planning",
+      "based_on": [
+        "tool_route.output_plan",
+        "work_analysis_result",
+        "retrieval_result"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.planning.deterministic",
+    "grader.planning.semantic"
+  ]
+}

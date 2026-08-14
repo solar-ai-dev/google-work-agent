@@ -8,7 +8,9 @@ from typing import TypedDict, cast
 
 import pytest
 
+from google_work_agent.adapters.connectors import GoogleWorkspaceConnectorReader
 from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.application.ports import ConnectorReadRequest
 from google_work_agent.application.workflows import (
     AdditionalAcquisitionRequestV1,
     ApiAcquisitionResult,
@@ -17,12 +19,13 @@ from google_work_agent.application.workflows import (
     CalendarReadMode,
     Daypart,
     RelativeUnit,
-    RequestIntentV1,
+    RequestIntentV2,
     RetrievalBudget,
     SourceFetchPlanV1,
     SourcePlanningValidationError,
     TemporalQueryV1,
     TemporalRelation,
+    ToolRoutePlanV2,
     Weekday,
     WorkflowPhase,
     build_source_planning_clarification_question,
@@ -33,6 +36,7 @@ from google_work_agent.ports import (
     ActualRuntime,
     FreeBusyCalendar,
     GoogleWorkspaceErrorCode,
+    GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     LLMErrorCode,
     LLMInvocationError,
@@ -63,6 +67,24 @@ PROMPT_REF = PromptReference(
     output_schema_version="agent-node-output-v0.1",
 )
 DEFAULT_TEST_RETRIEVAL_BUDGET = RetrievalBudget()
+
+
+def test_connector_reader_rejects_read_outside_frozen_tool_ids() -> None:
+    reader = GoogleWorkspaceConnectorReader(
+        gateway=cast(GoogleWorkspaceGateway, RecordingGoogleGateway())
+    )
+    request = ConnectorReadRequest(
+        plan=_plan("TASKS", {}),
+        selected_resources=(),
+        prefer_selected_resources=False,
+        remaining_budget=DEFAULT_TEST_RETRIEVAL_BUDGET.as_remaining(),
+        now_ms=0,
+        timezone="Asia/Seoul",
+        allowed_read_tool_ids=frozenset({"tasks_list_tasks", "tasks_get_task"}),
+    )
+
+    with pytest.raises(PermissionError, match="outside frozen input route"):
+        reader.read(request)
 
 
 class LLMCall(TypedDict):
@@ -501,14 +523,16 @@ def test_resource_selected_uses_direct_get_and_does_not_search() -> None:
 
     assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
     assert [name for name, _args in gateway.calls] == ["get_gmail_thread"]
-    assert runtime.calls[0]["prompt_input"]["selected_resources"] == [
-        {
-            "source": "GMAIL",
-            "resource_type": "THREAD",
-            "resource_id": "thread-kim",
-            "parent_resource_id": None,
-        }
-    ]
+    # retrieval.plan_query's Prompt Runtime Input Contract has no
+    # selected_resources/selected_resource_ids/entry_mode field: Tool Route
+    # has already frozen input_routes from that same RESOURCE_SELECTED
+    # signal, so Retrieval must not re-derive or re-select a route from it.
+    assert set(runtime.calls[0]["prompt_input"]) == {
+        "user_request",
+        "request_intent",
+        "input_routes",
+        "retrieval_budget",
+    }
     assert "selected_resource_ids" not in planning["source_fetch_plans"][0]
 
 
@@ -984,7 +1008,16 @@ def test_retrieval_ambiguity_uses_planning_confirmation_not_request_understandin
     assert gateway.calls == []
 
 
-def test_additional_acquisition_request_is_forwarded_to_plan_sources_prompt_input() -> None:
+def test_additional_acquisition_request_is_accepted_but_not_leaked_into_plan_query_prompt() -> (
+    None
+):
+    """retrieval.plan_query's Prompt Runtime Input Contract has no
+    planning_mode/additional_acquisition_request field (additionalProperties:
+    false); repeat-round signalling belongs to Retrieval Local State / the
+    retrieval.plan_query.revise slot (FOLLOWING_WAVE_DEPENDENCY), not an
+    ad-hoc INITIAL-prompt field. The parameter must still be accepted
+    without breaking the call -- callers pass it today -- it just must not
+    reach the Prompt."""
     runtime = FakeLLMRuntime()
     runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "source follow-up"})]))
     gateway = RecordingGoogleGateway()
@@ -1007,8 +1040,66 @@ def test_additional_acquisition_request_is_forwarded_to_plan_sources_prompt_inpu
 
     prompt_input = runtime.calls[0]["prompt_input"]
     assert planning["result"] == ApiPlanningResult.PLAN_READY.value
-    assert prompt_input["planning_mode"] == "ADDITIONAL_DATA"
-    assert prompt_input["additional_acquisition_request"] == additional_request
+    assert "planning_mode" not in prompt_input
+    assert "additional_acquisition_request" not in prompt_input
+    assert set(prompt_input) == {
+        "user_request",
+        "request_intent",
+        "input_routes",
+        "retrieval_budget",
+    }
+
+
+def test_plan_query_projects_frozen_input_routes_without_reselecting_them() -> None:
+    """The Prompt only ever sees Tool Route's already-frozen input_routes,
+    recoded to the Prompt's coarse EMAIL/TASK/CALENDAR resource_type enum --
+    route_id/connector_id/allowed_read_tool_ids/required/reason_codes (the
+    actual Registry binding) pass through unchanged, proving Retrieval does
+    not reselect a connector/resource/tool."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result([_plan("GMAIL", {"query": "kim"})]))
+    agent = _agent(runtime=runtime, gateway=RecordingGoogleGateway())
+    tool_route_plan: ToolRoutePlanV2 = {
+        "schema_version": 2,
+        "input_plan": {
+            "schema_version": 1,
+            "meta": {"artifact_id": "route-1", "revision": 1, "based_on": []},
+            "input_routes": [
+                {
+                    "route_id": "route-0",
+                    "resource_type": "GMAIL_THREAD",
+                    "connector_id": "google_workspace",
+                    "allowed_read_tool_ids": ["gmail_search_threads", "gmail_get_thread"],
+                    "required": True,
+                    "reason_codes": ["REQUESTED_INPUT"],
+                }
+            ],
+        },
+        "output_plan": {
+            "schema_version": 1,
+            "meta": {"artifact_id": "route-2", "revision": 1, "based_on": []},
+            "output_mode": "ANSWER",
+        },
+        "tool_registry_version": "2026-08-06.p0",
+    }
+
+    agent.plan_sources(
+        request_intent=_intent(source="GMAIL"),
+        request=_request(),
+        tool_route_plan=tool_route_plan,
+    )
+
+    prompt_input = runtime.calls[0]["prompt_input"]
+    assert prompt_input["input_routes"] == [
+        {
+            "route_id": "route-0",
+            "resource_type": "EMAIL",
+            "connector_id": "google_workspace",
+            "allowed_read_tool_ids": ["gmail_search_threads", "gmail_get_thread"],
+            "required": True,
+            "reason_codes": ["REQUESTED_INPUT"],
+        }
+    ]
 
 
 def test_planning_schema_failure_is_not_google_acquisition_failure() -> None:
@@ -1570,7 +1661,7 @@ def _agent(
 ) -> ApiDiscoveryAcquisitionAgent:
     return ApiDiscoveryAcquisitionAgent(
         llm_runtime=runtime,
-        gateway=gateway,
+        connector_reader=GoogleWorkspaceConnectorReader(gateway=gateway),
         prompt_ref=PROMPT_REF,
         retrieval_budget=retrieval_budget,
         now_ms=(lambda: now_ms) if now_ms is not None else None,
@@ -1602,35 +1693,24 @@ def _request(
     )
 
 
-def _intent(*, source: SourceName) -> RequestIntentV1:
+def _intent(*, source: SourceName) -> RequestIntentV2:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "Google Workspace 자료 조회",
-            "user_visible_objective": "요청한 업무 자료 조회",
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "Google Workspace 자료 조회",
+        "completion_conditions": ["필요한 원본 자료를 수집한다."],
+        "constraints": [
+            {"kind": "PERSON", "field": "person", "value": "김대리"},
+            {"kind": "TIME", "field": "time_range", "value": "이번 주"},
+        ],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "completion_criteria": ["필요한 원본 자료를 수집한다."],
-        "semantic_constraints": {
-            "topics": [{"text": "업무 자료", "source_text": "업무 자료"}],
-            "people": [{"mention": "김대리", "role_hint": None, "source_text": "김대리"}],
-            "time": [
-                {
-                    "mention": "이번 주",
-                    "granularity_hint": "RELATIVE",
-                    "source_text": "이번 주",
-                }
-            ],
-            "sources": [{"source": source, "mention": source.lower(), "confidence": "HIGH"}],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
-        },
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": [source],
+        "analysis_requirement": "REQUIRED",
     }
 
 

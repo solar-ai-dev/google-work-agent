@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/e2e-projection-v5.schema.json",
+  "title": "E2EProjectionV5",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "projection_id",
+    "case_id",
+    "projection_kind",
+    "applicable",
+    "not_applicable_reason",
+    "input_contract",
+    "gold",
+    "grader_ids"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 5
+    },
+    "projection_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projection_kind": {
+      "const": "E2E"
+    },
+    "applicable": {
+      "const": true
+    },
+    "not_applicable_reason": {
+      "type": "null"
+    },
+    "input_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_snapshot_id",
+        "user_prompt_id",
+        "entry_mode",
+        "dataset_version",
+        "canonical_case_schema"
+      ],
+      "properties": {
+        "fixture_snapshot_id": {
+          "type": "string"
+        },
+        "user_prompt_id": {
+          "type": "string"
+        },
+        "entry_mode": {
+          "enum": [
+            "AGENT_SEARCH",
+            "RESOURCE_SELECTED"
+          ]
+        },
+        "dataset_version": {
+          "type": "string"
+        },
+        "canonical_case_schema": {
+          "const": "CanonicalCaseV7"
+        }
+      }
+    },
+    "gold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "business_gold",
+        "request_gold",
+        "interaction_gold",
+        "tool_route_gold",
+        "retrieval_gold",
+        "analysis_gold",
+        "planning_gold",
+        "review_gold",
+        "workflow_gold",
+        "safety_gold",
+        "end_state_gold"
+      ],
+      "properties": {
+        "business_gold": {
+          "type": "object"
+        },
+        "request_gold": {
+          "type": "object"
+        },
+        "interaction_gold": {
+          "type": "array"
+        },
+        "tool_route_gold": {
+          "type": "object"
+        },
+        "retrieval_gold": {
+          "type": "object"
+        },
+        "analysis_gold": {
+          "type": "object"
+        },
+        "planning_gold": {
+          "type": "object"
+        },
+        "review_gold": {
+          "type": "object"
+        },
+        "workflow_gold": {
+          "type": "object"
+        },
+        "safety_gold": {
+          "type": "object"
+        },
+        "end_state_gold": {
+          "type": "object"
+        }
+      }
+    },
+    "grader_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 5,
+      "uniqueItems": true
+    }
+  }
+}

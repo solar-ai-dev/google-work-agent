@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "case_id": "CASE-STRESS-017",
+  "split": "STRESS",
+  "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction",
+  "stage": "PRE_POLICY_SEMANTIC_ROUTE_GOLD",
+  "applicable": true,
+  "candidate_gold": {
+    "input_resource_types": [
+      "TASK"
+    ],
+    "output_resource_types": [
+      "TASK"
+    ],
+    "output_effects": [
+      "UPDATE"
+    ]
+  },
+  "source_final_tool_route_projection": "ToolRoutePlanV2",
+  "review_status": "CONTRACT_REVIEWED"
+}

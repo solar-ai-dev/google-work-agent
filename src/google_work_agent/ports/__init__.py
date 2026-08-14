@@ -18,6 +18,7 @@ from google_work_agent.ports.attachments import (
     GmailAttachmentGateway,
 )
 from google_work_agent.ports.clock import Clock
+from google_work_agent.ports.connectors import ConnectorRuntimeHandle
 from google_work_agent.ports.event_publisher import (
     BufferStatus,
     InvalidReplayCursorError,
@@ -60,14 +61,17 @@ from google_work_agent.ports.llm import (
     ActualRuntime,
     ApprovedModelInfo,
     AvailabilityState,
+    CredentialStorageMode,
     HardwareCapability,
     HardwareCapabilityStatus,
     HardwareProbe,
     LLMCredentialState,
+    LLMCredentialStore,
     LLMErrorCode,
     LLMInvocationError,
     LLMProviderKind,
     LLMRuntimeRouter,
+    LLMRuntimeStatusReader,
     LLMToolCall,
     OllamaRuntimeProbe,
     OutputSchemaDefinition,
@@ -126,6 +130,7 @@ from google_work_agent.ports.observability import (
     OperationalLogRecord,
     OperationalLogSink,
 )
+from google_work_agent.ports.query import QueryConnectionFactory
 from google_work_agent.ports.readiness import (
     ReadinessAggregator,
     ReadinessCheckResult,
@@ -150,6 +155,16 @@ from google_work_agent.ports.repositories import (
     TraceRepository,
     UnitOfWork,
     VerificationRepository,
+)
+from google_work_agent.ports.runtime_contracts import (
+    AppSettings,
+    BackupCreateResult,
+    BackupManifestRecord,
+    RestorePlan,
+    RuntimeOperation,
+    SettingsPatch,
+    ShutdownReport,
+    WorkHours,
 )
 from google_work_agent.ports.secret_store import SecretStore
 from google_work_agent.ports.workflow_runtime import (
@@ -189,6 +204,7 @@ __all__ = [
     "CommandReceiptStatus",
     "ConversationRecord",
     "ConversationRepository",
+    "ConnectorRuntimeHandle",
     "CredentialState",
     "DisconnectResult",
     "EndpointPolicy",
@@ -274,6 +290,7 @@ __all__ = [
     "PromptReference",
     "ProviderResponsePayload",
     "RuntimePolicy",
+    "RuntimeOperation",
     "SchemaRepairer",
     "SnapshotRequiredReplayError",
     "StoredResourceType",
@@ -300,4 +317,15 @@ __all__ = [
     "ActualRuntime",
     "ApprovedModelInfo",
     "AvailabilityState",
+    "AppSettings",
+    "BackupCreateResult",
+    "BackupManifestRecord",
+    "CredentialStorageMode",
+    "LLMCredentialStore",
+    "LLMRuntimeStatusReader",
+    "QueryConnectionFactory",
+    "RestorePlan",
+    "SettingsPatch",
+    "ShutdownReport",
+    "WorkHours",
 ]

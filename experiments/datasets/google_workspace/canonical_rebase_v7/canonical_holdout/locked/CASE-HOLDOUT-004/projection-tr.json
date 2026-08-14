@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "projection_id": "PROJ-HOLDOUT-004-TR",
+  "case_id": "CASE-HOLDOUT-004",
+  "projection_kind": "TOOL_ROUTE",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-203",
+    "user_prompt_id": "UP-HOLDOUT-004",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "applicable": true,
+    "expected_disposition": "ROUTE_READY",
+    "input_plan": {
+      "schema_version": 1,
+      "input_routes": [
+        {
+          "route_id": "IN-CASE-HOLDOUT-004-TASK",
+          "resource_type": "TASK",
+          "connector_id": "google_workspace",
+          "allowed_read_tool_ids": [
+            "tasks_list_tasks",
+            "tasks_get_task",
+            "tasks_list_tasklists"
+          ],
+          "required": true,
+          "reason_codes": [
+            "USER_REQUEST"
+          ]
+        },
+        {
+          "route_id": "IN-CASE-HOLDOUT-004-CALENDAR",
+          "resource_type": "CALENDAR",
+          "connector_id": "google_workspace",
+          "allowed_read_tool_ids": [
+            "calendar_list_events",
+            "calendar_get_event",
+            "calendar_list_calendars",
+            "calendar_query_freebusy"
+          ],
+          "required": true,
+          "reason_codes": [
+            "USER_REQUEST"
+          ]
+        }
+      ]
+    },
+    "output_plan": {
+      "schema_version": 1,
+      "output_mode": "ACTION",
+      "output_routes": [
+        {
+          "route_id": "OUT-CASE-HOLDOUT-004-1",
+          "resource_type": "EMAIL",
+          "connector_id": "google_workspace",
+          "effect": "CREATE",
+          "selected_tool_id": "gmail_create_draft",
+          "reason_codes": [
+            "USER_REQUEST"
+          ]
+        }
+      ]
+    },
+    "tool_registry_version": "v2.18",
+    "scope_expansion_confirmations": [],
+    "lineage_expectation": {
+      "owner": "tool_route",
+      "input_plan_based_on": [
+        "request_intent"
+      ],
+      "output_plan_based_on": [
+        "request_intent"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.tool_route.deterministic",
+    "grader.tool_route.semantic"
+  ]
+}

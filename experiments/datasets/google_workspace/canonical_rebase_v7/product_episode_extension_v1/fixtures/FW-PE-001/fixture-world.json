@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "fixture_snapshot_id": "FW-PE-001",
+  "split_scope": "PRODUCT_EPISODE",
+  "scenario_family_id": "SF-PE-001",
+  "fixture_relation_family": "RF-PE-001",
+  "title": "Product Episode P0 Effect Coverage",
+  "locale": "ko-KR",
+  "timezone": "Asia/Seoul",
+  "as_of": "2026-08-13T23:22:00+09:00",
+  "business_context": "Base-92를 늘리지 않고 Task DELETE, Calendar attendee UPDATE, Calendar DELETE의 실제 Effect 계약을 검증하는 합성 Fixture.",
+  "user_profile": {
+    "account_email": "user@example.test",
+    "work_hours": {
+      "weekdays": "09:00-18:00"
+    },
+    "default_tasklist_id": "TL-WORK",
+    "default_calendar_id": "CAL-PRIMARY"
+  },
+  "source_files": {
+    "gmail": "gmail.json",
+    "tasks": "tasks.json",
+    "calendar": "calendar.json",
+    "relations": "relations.json"
+  },
+  "resource_ids": {
+    "gmail": [],
+    "tasks": [
+      "TSK-PE-DELETE-001"
+    ],
+    "calendar": [
+      "EV-PE-ATT-001",
+      "EV-PE-DEL-001"
+    ]
+  },
+  "tags": [
+    "product_episode",
+    "p0_effect_coverage"
+  ]
+}

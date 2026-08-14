@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-CORE-036-UU",
+  "case_id": "CASE-CORE-036",
+  "projection_kind": "REQUEST_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-009",
+    "user_prompt_id": "UP-CORE-036",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "expected_disposition": "COMPLETE",
+    "request_intent_semantic": {
+      "schema_version": 2,
+      "goal": "기존 동일 Task가 있음을 알리고 새 Task를 만들지 않는다.",
+      "completion_conditions": [
+        "TSK-I-001이 동일 제목·동일 예정일의 미완료 Task임을 확인한다.",
+        "새 tasks_create_task를 제안하지 않는다."
+      ],
+      "constraints": [
+        {
+          "kind": "SCOPE",
+          "field": "required_sources",
+          "value": [
+            "TASK",
+            "EMAIL",
+            "CALENDAR"
+          ]
+        }
+      ],
+      "requested_effect_hints": [
+        "CREATE"
+      ],
+      "requested_resource_hints": [
+        "CALENDAR",
+        "EMAIL",
+        "TASK"
+      ],
+      "analysis_requirement": "REQUIRED",
+      "ambiguity": {
+        "requires_confirmation": false,
+        "reason_codes": [],
+        "missing_fields": []
+      }
+    },
+    "lineage_expectation": {
+      "owner": "request_understanding",
+      "based_on": [
+        "run_input"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.request_understanding.deterministic",
+    "grader.request_understanding.semantic"
+  ]
+}

@@ -31,6 +31,7 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.subgraph_state import SingleWorkflowLocalState
 from google_work_agent.adapters.langgraph.subgraphs.profile_shared import (
     build_no_fetch_acquisition_result,
     planning_result_from_projection,
@@ -61,7 +62,7 @@ from google_work_agent.application.workflows.profile_fused import (
 )
 from google_work_agent.ports import PromptReference
 
-MergeDecision = Callable[[GraphState, GraphStateUpdateV1, SupervisorDecisionV1], GraphState]
+MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]
 
 
@@ -94,7 +95,11 @@ class SingleWorkflowSubgraph:
         self._merge_decision = merge_decision
 
     def build(self) -> Any:
-        graph = StateGraph(GraphState, output_schema=ParentGraphState)
+        graph = StateGraph(
+            SingleWorkflowLocalState,
+            input_schema=GraphState,
+            output_schema=ParentGraphState,
+        )
         graph.add_node("init", self._init_node)
         graph.add_node("request_source", self._request_source_node)
         graph.add_node("plan_validate", self._plan_validate_node)
@@ -122,7 +127,7 @@ class SingleWorkflowSubgraph:
         graph.add_edge("finalize", END)
         return graph.compile(name="single_workflow_subgraph")
 
-    def _init_node(self, state: GraphState) -> GraphState:
+    def _init_node(self, state: SingleWorkflowLocalState) -> SingleWorkflowLocalState:
         request = request_from_state(state)
         self._transition_run(request.run_id, "start_analysis")
         invocation_id = self._id_factory()
@@ -149,7 +154,7 @@ class SingleWorkflowSubgraph:
             ),
         }
 
-    def _request_source_node(self, state: GraphState) -> GraphState:
+    def _request_source_node(self, state: SingleWorkflowLocalState) -> SingleWorkflowLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         llm_result = self._request_understanding_agent._llm_runtime.invoke_structured(
@@ -184,14 +189,14 @@ class SingleWorkflowSubgraph:
             ),
         }
 
-    def _plan_validate_node(self, state: GraphState) -> GraphState:
+    def _plan_validate_node(self, state: SingleWorkflowLocalState) -> SingleWorkflowLocalState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
         source_plan = prompt_output["source_plan"]
         updated_local = dict(local_state)
         updated_local["node_state"] = "PLAN_VALIDATED"
         updated_local["typed_result"] = prompt_output
-        next_state: GraphState = {
+        next_state: SingleWorkflowLocalState = {
             **state,
             "request_intent": prompt_output["request_intent"],
             "source_fetch_plans": source_plan["source_fetch_plans"],
@@ -210,7 +215,7 @@ class SingleWorkflowSubgraph:
             next_state["acquisition_result"] = build_no_fetch_acquisition_result()
         return next_state
 
-    def _route_plan_validate(self, state: GraphState) -> str:
+    def _route_plan_validate(self, state: SingleWorkflowLocalState) -> str:
         prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
         source_plan = prompt_output["source_plan"]
         if source_plan["result"] == "PLAN_READY":
@@ -219,7 +224,7 @@ class SingleWorkflowSubgraph:
             return "reason_plan"
         return "finalize"
 
-    def _read_node(self, state: GraphState) -> GraphState:
+    def _read_node(self, state: SingleWorkflowLocalState) -> SingleWorkflowLocalState:
         request = request_from_state(state)
         self._transition_run(request.run_id, "begin_retrieval")
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
@@ -246,7 +251,7 @@ class SingleWorkflowSubgraph:
             ),
         }
 
-    def _reason_plan_node(self, state: GraphState) -> GraphState:
+    def _reason_plan_node(self, state: SingleWorkflowLocalState) -> SingleWorkflowLocalState:
         request = request_from_state(state)
         self._transition_run(request.run_id, "begin_planning")
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
@@ -282,7 +287,7 @@ class SingleWorkflowSubgraph:
             ),
         }
 
-    def _self_review_node(self, state: GraphState) -> GraphState:
+    def _self_review_node(self, state: SingleWorkflowLocalState) -> SingleWorkflowLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         output = state[PROFILE_REASON_PLAN_OUTPUT_KEY]
@@ -342,7 +347,7 @@ class SingleWorkflowSubgraph:
             ),
         }
 
-    def _result_validate_node(self, state: GraphState) -> GraphState:
+    def _result_validate_node(self, state: SingleWorkflowLocalState) -> SingleWorkflowLocalState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         review_result = _require_state_value(state["plan_review"], "plan_review")
         updated_local = dict(local_state)
@@ -362,13 +367,13 @@ class SingleWorkflowSubgraph:
             ),
         }
 
-    def _finalize_node(self, state: GraphState) -> GraphState:
+    def _finalize_node(self, state: SingleWorkflowLocalState) -> SingleWorkflowLocalState:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         if state.get("plan_review") is None:
             prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
             source_plan = prompt_output["source_plan"]
             request_intent = prompt_output["request_intent"]
-            current: GraphState = {
+            current: SingleWorkflowLocalState = {
                 **state,
                 "request_intent": request_intent,
                 "trace_context": merge_trace_context(
@@ -404,7 +409,7 @@ class SingleWorkflowSubgraph:
             )
             merged.pop(PROFILE_AGENT_LOCAL_KEY, None)
             merged.pop(PROFILE_REQUEST_SOURCE_OUTPUT_KEY, None)
-            return merged
+            return cast(SingleWorkflowLocalState, merged)
         result = _require_state_value(state["plan_review"], "plan_review")
         decision = route_supervisor(
             phase=WorkflowPhase.PLAN_REVIEW,
@@ -438,4 +443,4 @@ class SingleWorkflowSubgraph:
         )
         merged.pop(PROFILE_AGENT_LOCAL_KEY, None)
         merged.pop(PROFILE_REASON_PLAN_OUTPUT_KEY, None)
-        return merged
+        return cast(SingleWorkflowLocalState, merged)

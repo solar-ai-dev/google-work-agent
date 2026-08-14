@@ -14,12 +14,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from google_work_agent.adapters.connectors import GoogleWorkspaceConnectorReader
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
     ApiAcquisitionResult,
     ApiDiscoveryAcquisitionAgent,
     ContextRetrievalAgent,
-    RequestIntentV1,
+    RequestIntentV2,
     RetrievalBudget,
 )
 from google_work_agent.ports import (
@@ -193,7 +194,7 @@ def test_gmail_thread_search_to_detail_to_body_to_segment_chain() -> None:
     gateway = _gateway()
     agent = ApiDiscoveryAcquisitionAgent(
         llm_runtime=_FakeLLMRuntime(),
-        gateway=gateway,
+        connector_reader=GoogleWorkspaceConnectorReader(gateway=gateway),
         prompt_ref=PLAN_PROMPT_REF,
     )
 
@@ -238,7 +239,7 @@ def test_gmail_thread_with_no_messages_completes_without_message_fetch() -> None
     gateway = _gateway()
     agent = ApiDiscoveryAcquisitionAgent(
         llm_runtime=_FakeLLMRuntime(),
-        gateway=gateway,
+        connector_reader=GoogleWorkspaceConnectorReader(gateway=gateway),
         prompt_ref=PLAN_PROMPT_REF,
     )
 
@@ -257,7 +258,7 @@ def test_resource_selected_gmail_thread_reaches_body_and_segments() -> None:
     gateway = _gateway()
     agent = ApiDiscoveryAcquisitionAgent(
         llm_runtime=_FakeLLMRuntime(),
-        gateway=gateway,
+        connector_reader=GoogleWorkspaceConnectorReader(gateway=gateway),
         prompt_ref=PLAN_PROMPT_REF,
     )
     request = _resource_selected_request(thread_id="thread-project")
@@ -286,7 +287,7 @@ def test_gmail_detail_limit_bounds_how_many_threads_get_message_expansion() -> N
     gateway = _gateway()
     agent = ApiDiscoveryAcquisitionAgent(
         llm_runtime=_FakeLLMRuntime(),
-        gateway=gateway,
+        connector_reader=GoogleWorkspaceConnectorReader(gateway=gateway),
         prompt_ref=PLAN_PROMPT_REF,
         retrieval_budget=RetrievalBudget(),
     )
@@ -307,7 +308,7 @@ def test_evidence_selection_uses_only_the_selected_message_segment() -> None:
     gateway = _gateway()
     acquisition_agent = ApiDiscoveryAcquisitionAgent(
         llm_runtime=_FakeLLMRuntime(),
-        gateway=gateway,
+        connector_reader=GoogleWorkspaceConnectorReader(gateway=gateway),
         prompt_ref=PLAN_PROMPT_REF,
     )
     acquisition = acquisition_agent.acquire(plans=[_plan()], request=_request())
@@ -322,35 +323,25 @@ def test_evidence_selection_uses_only_the_selected_message_segment() -> None:
     context_runtime.queued.append(
         _llm_result(
             {
-                "schema_version": 1,
-                "result": "SELECTED",
+                "schema_version": 2,
                 "selected_segment_ids": [target_segment.segment_id],
                 "evidence_drafts": [
                     {
-                        "schema_version": 1,
-                        "evidence_id": "evidence-1",
-                        "resource_handle": target_segment.resource_handle,
                         "segment_id": target_segment.segment_id,
-                        "kind": "excerpt",
-                        "excerpt": "Please summarize the open items and draft a calm reply.",
-                        "locator": {"kind": "resource_payload"},
-                        "reason_codes": ["GOAL_RELEVANT"],
+                        "role": "SUPPORTS",
+                        "relevance_reason": "Directly answers the summary request.",
                     }
                 ],
-                "excluded_resource_handles": [],
-                "missing_information": [],
-                "ambiguity": None,
+                "excluded_segment_ids": [],
             }
         )
     )
     context_runtime.queued.append(
         _llm_result(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "status": "SUFFICIENT",
-                "sufficiency": {"reason_codes": ["CONTEXT_READY"]},
-                "missing_slots": [],
-                "ambiguity": None,
+                "issues": [],
             }
         )
     )
@@ -362,35 +353,27 @@ def test_evidence_selection_uses_only_the_selected_message_segment() -> None:
     )
 
     assert result["status"] == "SUFFICIENT"
-    assert result["context_bundle"]["evidence_refs"] == ["evidence-1"]
+    assert result["context_bundle"]["evidence_refs"] == [f"evidence-{target_segment.segment_id}"]
     assert result["context_bundle"]["normalized_context"][0]["excerpt"] == (
         "Please summarize the open items and draft a calm reply."
     )
 
 
-def _intent() -> RequestIntentV1:
+def _intent() -> RequestIntentV2:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "Summarize the project thread",
-            "user_visible_objective": "Summarize the project thread",
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "Summarize the project thread",
+        "completion_conditions": ["Relevant evidence is available."],
+        "constraints": [],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "completion_criteria": ["Relevant evidence is available."],
-        "semantic_constraints": {
-            "topics": [],
-            "people": [],
-            "time": [],
-            "sources": [{"source": "GMAIL", "mention": "mail", "confidence": "HIGH"}],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
-        },
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["GMAIL_THREAD"],
+        "analysis_requirement": "REQUIRED",
     }
 
 

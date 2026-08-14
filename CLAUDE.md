@@ -1,955 +1,125 @@
-# Repository Coding Agent Instructions
+# Google Work Agent — Claude Code Instructions
+- 이 `CLAUDE.md`는 매 세션 필요한 저장소 공통 규칙만 둔다.
+- 특정 작업용 장문 절차나 참고자료를 계속 추가하지 않는다.
+- 같은 규칙을 여러 위치에 중복 작성하지 않는다.
+- 기존 path rule/skill이 있으면 재사용하고 새 설정 체계는 사용자 요청 없이 만들지 않는다.
 
-## Purpose
+## Source of truth
+- 공식 설계 원본은 Notion이다. 저장소에서는 `00-PROJECT-SOURCE-GUIDE.md`로 현재 Canonical과 Concern Owner를 먼저 확인한다.
+- Canonical은 목표 동작, 코드·테스트·Migration·Runtime wiring은 현재 구현의 근거다.
+- 문서와 구현이 다르면 숨기지 말고 `IMPLEMENTATION_DELTA`로 분리한다. 구조 리팩터링에서 의미를 몰래 바꾸지 않는다.
+- 과거 버전이 남은 파일명만 보고 권위를 판단하지 않는다. 적용된 Migration은 소급 수정하지 않는다.
 
-This document defines how coding agents should work in this repository.
-
-It does not replace product, architecture, policy, domain, interface, security, test, evaluation, or operational specifications.
-
-Do not duplicate detailed contracts here.
-
-When implementation details matter, read the current canonical documents and the actual repository.
-
----
-
-## Communication
-
-Use Korean as the default language for all user-facing communication.
-
-This applies to:
-
-* normal responses;
-* progress updates;
-* intermediate status messages;
-* implementation notes;
-* investigation summaries;
-* test and validation reports;
-* completion reports;
-* explanations shown while work is in progress.
-
-Do not switch to another natural language unless the user explicitly requests it.
-
-Technical identifiers may keep their original form, including:
-
-* source code;
-* CLI commands;
-* paths;
-* class and function names;
-* variable names;
-* API names;
-* schema fields;
-* enum values;
-* branch and commit identifiers;
-* raw error messages when exact reproduction is necessary.
-
-When technical text is quoted in another language, explain its meaning in Korean when explanation is needed.
-
-Keep explanations concise and engineering-focused.
-
-Clearly distinguish:
-
-* current repository facts;
-* canonical requirements;
-* implementation gaps;
-* assumptions;
-* recommendations.
-
-Language consistency is part of completion quality.
-
----
-
-## Source of Truth
-
-Before substantial work:
-
-1. inspect the actual repository;
-2. inspect the current branch and working tree;
-3. identify the canonical owner of the concern being changed;
-4. read only the specifications and tests relevant to that concern;
-5. inspect the implementation that currently exists.
-
-Use:
-
-* canonical documents to determine how the system should behave;
-* source code, tests, migrations, configuration, and runtime wiring to determine what is implemented now.
-
-Do not assume that documentation describes the current implementation exactly.
-
-Do not assume that implementation is correct merely because tests pass.
-
-If documentation and implementation disagree:
-
-* identify the mismatch;
-* determine which concern owns the contract;
-* preserve the safer existing behavior until the mismatch is resolved;
-* do not silently invent a new contract.
-
----
-
-## Working Method
-
-Before editing:
-
-* inspect repository status and current branch;
-* locate the relevant implementation;
-* locate existing tests;
-* understand the current dependency direction;
-* identify existing abstractions and module boundaries;
-* determine the smallest complete change within the requested concern.
-
-Do not implement something that already exists without confirming the actual gap.
-
-Prefer extending or correcting existing patterns over creating parallel implementations.
-
-Do not perform unrelated cleanup while changing another concern.
-
----
-
-## Scope Discipline
-
-Make the smallest complete change that satisfies the requested concern and its contracts.
-
-"Minimal change" means the smallest complete change **inside the requested concern**.
-
-It does not mean that a change must be limited to one file or one class.
-
-When the user explicitly requests a structural refactor, a multi-file change is acceptable when necessary to correctly refactor that concern.
-
-For an explicitly scoped refactor:
-
-1. define the concern boundary first;
-2. preserve behavior unless behavior change is explicitly requested;
-3. change only components inside that concern or directly required boundaries;
-4. validate incrementally;
-5. do not expand into unrelated architecture.
-
-Avoid:
-
-* unrelated refactors;
-* broad renames without architectural value;
-* dependency-wide upgrades;
-* speculative architecture redesign;
-* large formatting-only diffs;
-* weakening tests to obtain a passing build;
-* temporary workarounds presented as permanent design.
-
-If multiple files genuinely belong to the same contract, modify the necessary set rather than forcing the change into one location.
-
----
+## 작업 시작
+1. branch와 working tree를 확인한다.
+2. 요청 Concern의 Canonical Owner와 관련 문서만 읽는다.
+3. 실제 구현, 소비자, 테스트, DI wiring을 확인한다.
+4. 이미 존재하는 기능·경계를 중복 구현하지 않는다.
+5. 요청 범위 안에서 가장 작은 완결 변경을 정한다.
+- 저장소에서 확인 가능한 내용을 사용자에게 다시 묻지 않는다.
 
 ## Architecture
-
-Preserve architectural boundaries and dependency direction.
-
-General responsibility flow:
-
 ```text
-User Interface
-→ API / Delivery Boundary
-→ Application / Workflow
-→ Domain / Policy
+React → FastAPI API → Application / Workflow → Domain / Policy
+Application / Workflow → Port ← Connector Adapter
+→ Connector Registry / MCP Runtime → Connector MCP Server → Provider Adapter/API
 ```
+- P0 첫 Connector는 `google_workspace`이며 Gmail·Tasks·Calendar를 제공한다.
+- Composition Root는 생성·DI·lifecycle wiring만 소유한다. 업무 정책, SQL, Workflow routing, Provider 동작을 구현하지 않는다.
+- 금지: Core의 Provider API/SDK 직접 호출, MCP 장애 direct fallback, Application→concrete Adapter, Domain→Application/Adapter, Route→DB/Adapter concrete, Agent→peer Agent direct call, Agent/LLM의 Write 권한.
 
-External capabilities should follow dependency inversion:
+## Ownership
+- Domain: invariant, 상태 전이, domain vocabulary
+- Policy: deterministic allow/block/approval/safety
+- Application: use case와 transaction orchestration
+- Workflow: graph phase/routing/handoff
+- Port: 외부 capability 계약
+- Adapter/Connector: integration-specific 구현
+- API: protocol validation/translation
+- Composition Root: construction/wiring
+- `Enum`, `Literal`, DTO, `TypedDict`, `dataclass`, `Protocol`, type alias, constant, exception, validator, normalizer, mapper도 실제 의미 Owner가 소유한다.
+- 공유 계약을 대형 구현 파일이 소유하게 두지 않는다. Local-only 타입은 불필요하게 공용 contract로 승격하지 않는다.
 
+## Cohesion / abstraction
+- 목표는 작은 파일이 아니라 **change locality**다. 한 Concern 수정 시 관련 Owner 몇 개만 읽으면 되게 유지한다.
+- 새 동작 추가 전 `기존 Owner가 있는가 / 두 번째 책임이 생기는가 / 새 cross-layer dependency가 생기는가`를 확인한다.
+- junk drawer(`utils.py`, `common.py`, `helpers.py`, `shared.py`, 전역 `enums.py`/`models.py`)를 만들지 않는다.
+- 미래 Connector를 상상한 speculative interface, LOC 감소만을 위한 분할, forwarding/call-chain만 늘리는 distributed spaghetti를 금지한다.
+- Port는 실제 외부 경계·교체 가능 구현·독립 테스트 capability가 있을 때 usage-driven으로 추출한다.
+- 800 LOC 이상은 cohesion review, 1200 LOC 이상은 responsibility audit 신호일 뿐 강제 분할 기준이 아니다.
+
+## Broad refactor freeze
+- R1~R7 이후 광범위 구조 리팩터링은 기본 동결한다.
+- 파일 길이, 디렉터리 미관, 이름 통일, interface 추가 가능성만으로 broad refactor를 시작하지 않는다.
+- 다음 실제 결함이 증명될 때만 최소 local refactor를 허용한다: 책임 혼재, shared contract의 implementation 종속, dependency violation, private reach-through, service locator, unsafe transaction/I/O ownership, facade의 business logic 누적, circular/lateral dependency, 심각한 poor change locality, Canonical 기능을 올바른 Owner에 넣을 수 없는 구조.
+- 구조 수정은 증명된 문제만 고치며 새 전면 아키텍처 재설계로 확대하지 않는다.
+
+## LangGraph / LLM
+- Main Graph는 deterministic Supervisor다. Agent는 전문 LangGraph Subgraph이며 invocation-local state를 사용한다.
+- Node는 필요한 Typed Projection만 받는다. 공식 Main State Artifact는 단일 Owner를 가진다.
+- LLM은 해석·분석·작성 후보를 만든다. deterministic code가 routing guard, policy, authorization, state transition, execution authority, verification/recovery 허용 여부를 결정한다.
+- Agent가 Tool을 임의 재선택하거나 Provider call/Write를 직접 실행하게 만들지 않는다.
+- Prompt/Schema/State/Edge 책임을 섞지 않는다.
+- ToolRoutePlanV2, RAG, lineage, Confirmation/Resume 등 Canonical behavior 구현은 구조 리팩터링과 분리한다.
+
+## Write safety
 ```text
-Application / Workflow
-→ Port / Contract
-← Adapter
-→ External System
+Approval → Claim → Claim commit → tool/args/hash/token 검증
+→ Connector Write → result persistence → Verification Read → deterministic recovery
 ```
+반드시 유지:
+- Unauthorized Write = 0
+- Claim commit 전 Write = 0
+- reused/invalid Claim Write = 0
+- Tool mismatch Write = 0
+- arguments/hash mismatch Write = 0
+- UNKNOWN_RESULT blind resend = 0
+- required Verification 누락 = 0
+- Recovery 자동 성공 오판 = 0
+- SQLite write transaction 중 external I/O = 0
+- `UNKNOWN_RESULT`는 자동 재전송하지 않고 Recovery로 간다.
+- 안전 코드 구조 변경은 characterization → 작은 extraction → focused safety tests 순서로 하고 behavior change와 섞지 않는다.
 
-Concrete dependency construction happens separately:
+## State / DB / transaction
+- Domain Store가 승인·실행·검증 사실의 기준점이다. LangGraph Checkpoint는 재개 위치이며 SSE/UI는 Projection이다.
+- undocumented state/transition을 만들지 않는다.
+- optimistic concurrency, command receipt/idempotency, aggregate invariant를 유지한다.
+- SQLite write transaction은 짧게 유지하고 Provider/MCP/LLM I/O를 transaction 안에서 기다리지 않는다.
+- Schema 변경은 새 Migration으로 한다.
 
+## Compatibility
+- 필요한 기존 import/path는 얇은 re-export/delegate facade로 유지할 수 있다.
+- Compatibility facade는 새 business logic을 갖지 않고 canonical implementation에만 위임한다.
+- private 이름이라는 이유만으로 소비자 조사 없이 삭제하지 않는다.
+
+## Prompt / Dataset / Evaluation
+- Product Prompt에 gold, grader, expected answer/route, benchmark 정보를 넣지 않는다.
+- Prompt/Dataset은 최신 Canonical 기준으로 수정한다.
+- 코드 변경이 필요한 차이는 `IMPLEMENTATION_DELTA`로 보고하고 Prompt/Dataset에 억지로 흡수하지 않는다.
+- 구조 리팩터링과 Prompt/Dataset 의미 변경을 섞지 않는다.
+- 실제 사용자 Google 데이터는 일반 자동 평가/fixture에 사용하지 않는다.
+
+## Tests / gates
+- 명령어를 추측하지 말고 저장소 실제 설정을 확인한다.
+- 위험에 비례해 focused → contract/state-transition → safety → integration/component → broader regression → lint/format/type/schema 순으로 검증한다.
+- 가능한 Architecture rule은 자동 회귀 테스트로 고정한다.
 ```text
-Composition Root
-→ constructs implementations
-→ connects dependencies
-→ exposes completed application components
+Application → concrete Adapter       = 0
+Domain → Application                 = 0
+Core → Provider SDK/direct API       = 0
+FastAPI Route → Adapter/DB concrete  = 0
+Agent → Provider API/SDK             = 0
+Agent → peer Agent direct call       = 0
+external I/O inside SQLite write tx  = 0
 ```
-
-Responsibilities must remain with their owning layer.
-
-In particular:
-
-* presentation code must not bypass backend or domain boundaries;
-* API handlers must not become domain services;
-* workflow code must not become the authority for persistent product facts;
-* model reasoning must not replace deterministic policy;
-* model reasoning must not replace authorization;
-* model reasoning must not replace state-transition rules;
-* model reasoning must not replace execution authority;
-* model reasoning must not determine whether an external side effect actually succeeded;
-* external adapters must not bypass upstream safety contracts.
-
----
-
-## Modularity
-
-Prefer high cohesion and low coupling.
-
-A module should own one clear capability or responsibility.
-
-A module should perform work belonging to its own capability and should not absorb unrelated behavior merely because two operations appear in the same user flow.
-
-Separate:
-
-```text
-capability implementation
-use-case orchestration
-dependency composition
-```
-
-A capability module should not know about unrelated sibling capability implementations.
-
-Avoid lateral dependency chains such as:
-
-```text
-Capability A
-→ Capability B
-→ Capability C
-→ Capability A
-```
-
-Prefer:
-
-```text
-              Application
-             /     |      \
-    Capability A   B       C
-```
-
-When multiple capabilities are required for one user-visible operation, coordinate them from the Application or Workflow layer.
-
-Do not move orchestration into individual capability modules merely to reduce the number of application services.
-
----
-
-## Module Ownership
-
-Before placing logic in a module, determine who owns the responsibility.
-
-Typical ownership:
-
-* Domain: business invariants and state-transition rules;
-* Policy: deterministic allow, block, approval, and safety rules;
-* Application: use-case orchestration;
-* Workflow: execution order and workflow routing;
-* Port: capability contract;
-* Adapter: integration-specific implementation;
-* Persistence Adapter: storage translation;
-* API Boundary: protocol translation and validation;
-* Composition Root: construction and dependency wiring.
-
-Do not place logic according to convenience or proximity.
-
-Place it according to responsibility ownership.
-
----
-
-## Dependency Inversion
-
-Depend on stable contracts rather than concrete infrastructure implementations.
-
-Prefer:
-
-```text
-Application
-→ Contract
-← Infrastructure Implementation
-```
-
-over:
-
-```text
-Application
-→ Infrastructure Implementation
-→ External SDK
-```
-
-Core business logic should not directly depend on:
-
-* web frameworks;
-* workflow runtimes;
-* database adapters;
-* provider SDKs;
-* external API clients;
-* operating-system-specific infrastructure;
-* model-provider implementations.
-
-External integrations should implement upstream contracts.
-
-Do not create abstractions merely to increase abstraction count.
-
-Introduce a Port or interface when there is a real boundary such as:
-
-* an external system;
-* a replaceable implementation;
-* an independently testable capability;
-* an architectural dependency boundary.
-
-Do not introduce interfaces around pure internal implementation details with no meaningful replacement or boundary.
-
----
-
-## Dependency Injection
-
-Dependencies should normally be supplied explicitly.
-
-Prefer:
-
-* constructor injection;
-* function parameter injection;
-* explicit factories.
-
-Avoid creating infrastructure dependencies inside business components when those dependencies can be supplied externally.
-
-Bad pattern:
-
-```text
-Business component
-→ creates database implementation
-→ creates provider implementation
-→ creates external client
-```
-
-Preferred pattern:
-
-```text
-Composition Root
-→ creates implementations
-→ injects required contracts
-→ business component uses only those contracts
-```
-
-Inject only what a component actually needs.
-
-Do not inject an entire dependency container into:
-
-* domain objects;
-* services;
-* workflow nodes;
-* agents;
-* repositories;
-* adapters.
-
-Do not use the dependency container as a service locator.
-
-Dependencies should remain visible from constructors or explicit function signatures.
-
----
-
-## Composition Root
-
-Concrete object construction and dependency wiring belong in a small, explicit Composition Root at the application startup boundary.
-
-The Composition Root may:
-
-* construct adapters;
-* construct repositories;
-* construct services;
-* select implementations from configuration;
-* connect Ports to Adapters;
-* construct workflows;
-* construct application use cases;
-* manage dependency lifetime where necessary.
-
-The Composition Root must not:
-
-* implement business rules;
-* perform policy decisions;
-* implement use cases;
-* execute domain operations itself;
-* perform workflow routing;
-* contain model reasoning;
-* become a general utility module.
-
-Lower-level components must not import or query the Composition Root.
-
-Dependency direction goes outward from the Composition Root into constructed components, never back toward it.
-
----
-
-## Orchestration
-
-Combining multiple capabilities into a single operation belongs to Application or Workflow orchestration.
-
-For example:
-
-```text
-User Use Case
-      ↓
-Application
- ├─ Capability A
- ├─ Capability B
- ├─ Capability C
- └─ Domain / Policy
-```
-
-Individual capability modules remain independent.
-
-The DI Container only assembles these components.
-
-The Application or Workflow layer executes the actual use case.
-
-Do not confuse dependency composition with business orchestration.
-
----
-
-## Encapsulation
-
-Treat module internals as private unless deliberately exposed as part of a contract.
-
-Do not access another module's:
-
-* private helpers;
-* internal state;
-* concrete repository implementation;
-* provider-specific models;
-* internal caches;
-* private persistence details;
-
-merely to avoid defining or using the correct boundary.
-
-A leading private marker is not, however, sufficient evidence that an existing symbol can safely be removed or renamed.
-
-Repository consumers must be checked first.
-
----
-
-## Shared Code
-
-Extract shared code only when the semantics are genuinely identical.
-
-Do not generalize code merely because two implementations look similar.
-
-If implementations share the same algorithm but require different domain-specific behavior, keep that difference explicit through parameters or narrow wrappers.
-
-Prefer narrowly scoped support modules.
-
-Avoid dumping grounds such as:
-
-```text
-utils
-common
-shared
-helpers
-misc
-```
-
-unless the contents genuinely share one cohesive responsibility.
-
-If two pieces of code represent different business concepts, keep them separate even when their current implementation happens to be similar.
-
-Duplication is preferable to a false abstraction.
-
----
-
-## Structural Refactoring
-
-Structural refactoring should improve responsibility ownership without changing observable behavior unless behavior change is explicitly requested.
-
-Typical structural refactoring includes:
-
-* moving cohesive behavior into its owning module;
-* splitting a large component by responsibility;
-* extracting shared deterministic helpers;
-* replacing concrete cross-module dependencies with stable contracts;
-* introducing explicit dependency injection;
-* moving orchestration upward;
-* reducing duplicated implementation;
-* removing verified dead code.
-
-For each structural refactor:
-
-1. establish the behavioral baseline;
-2. identify responsibility boundaries;
-3. identify existing consumers;
-4. extract one responsibility at a time;
-5. preserve public and compatibility contracts;
-6. inject dependencies explicitly;
-7. remove obsolete dependency paths;
-8. run focused tests after each meaningful extraction;
-9. run broader regression tests before completion.
-
-Do not combine broad behavior changes with broad structural refactoring in the same step unless explicitly required.
-
----
-
-## Dead Code Removal
-
-Do not classify code as dead solely because no production call site is immediately visible.
-
-Before removing apparently unused code, inspect the repository for references across relevant surfaces, including:
-
-* production source;
-* tests;
-* fixtures;
-* prompt or model registries;
-* evaluation artifacts;
-* configuration;
-* factories;
-* plugin or extension boundaries;
-* compatibility layers;
-* migration or upgrade code when applicable.
-
-"No active runtime caller found" does not prove that code is dead.
-
-Code may intentionally exist as:
-
-* a reserved capability;
-* a compatibility surface;
-* an experiment boundary;
-* a registered contract;
-* a test seam;
-* a future-wired interface explicitly preserved by current design.
-
-Only remove code when its ownership and references have been investigated sufficiently to show that it has no required role.
-
----
-
-## Compatibility Surfaces
-
-Internal-looking code can still form a repository-level compatibility surface.
-
-Before moving, renaming, or deleting a symbol:
-
-* search for repository consumers;
-* inspect tests;
-* inspect factories and registries;
-* inspect dynamic lookup paths when applicable.
-
-Do not assume that private naming means no consumer exists.
-
-When an implementation should move but an existing consumer must remain supported, prefer a thin delegating compatibility wrapper rather than duplicating logic.
-
-Compatibility wrappers should:
-
-* remain small;
-* contain no new business logic;
-* delegate to the canonical implementation;
-* be removed only when their consumers are intentionally migrated.
-
----
-
-## Safety-Critical Boundaries
-
-Operations that can change external state are safety-sensitive.
-
-Safety-critical concerns include:
-
-* authorization;
-* user approval;
-* argument integrity;
-* execution authority;
-* execution claims;
-* external Write dispatch;
-* idempotency;
-* delivery uncertainty;
-* verification;
-* recovery;
-* cancellation;
-* command receipts;
-* persistent safety audit.
-
-Do not weaken these contracts for convenience or architectural cleanliness.
-
-For structure-only refactoring of safety-critical code:
-
-1. do not combine the extraction with behavior changes;
-2. preserve call ordering;
-3. preserve transaction boundaries;
-4. preserve authorization and approval boundaries;
-5. preserve argument integrity checks;
-6. move one responsibility at a time;
-7. run focused safety and contract tests after each extraction;
-8. run the broader safety regression suite before completion.
-
-If the requested task does not require changing a safety-critical boundary, prefer leaving it unchanged.
-
----
-
-## External Effects
-
-Treat every operation that can change an external system as an external effect.
-
-Follow the canonical contracts for:
-
-* authorization;
-* approval;
-* execution authority;
-* argument integrity;
-* idempotency;
-* verification;
-* recovery;
-* cancellation.
-
-Do not treat a successful external API response alone as proof that the intended product state is correct when verification is required.
-
-When delivery outcome is uncertain:
-
-* preserve uncertainty;
-* do not blindly repeat the effect;
-* follow the defined recovery path.
-
-Never move external execution authority into prompts or model reasoning.
-
----
-
-## State and Persistence
-
-Treat Domain state and persistent data as authoritative according to their owning contracts.
-
-Do not invent undocumented states or transitions.
-
-Do not mutate persistent state from inappropriate layers.
-
-Preserve:
-
-* optimistic concurrency;
-* command idempotency;
-* transaction boundaries;
-* persistent invariants.
-
-Keep database transactions short.
-
-Do not hold a write transaction open while waiting for:
-
-* external APIs;
-* model providers;
-* remote tools;
-* other long-running I/O.
-
-Migration files are historical artifacts.
-
-Do not rewrite previously applied migrations to represent a new change.
-
-Create a new migration only when the current schema actually requires a new change.
-
----
-
-## Workflow and Agent Behavior
-
-Use models for responsibilities that require interpretation, synthesis, or reasoning.
-
-Keep deterministic responsibilities in deterministic code.
-
-Workflow and agent components must follow existing contracts rather than inventing new:
-
-* routing semantics;
-* memory semantics;
-* tool semantics;
-* persistent state;
-* execution authority.
-
-Agents should have narrow, cohesive responsibilities.
-
-An agent or workflow component should receive only the state and dependencies required for its responsibility.
-
-Prefer typed handoff contracts over implicit shared mutable state.
-
-Do not allow agents to:
-
-* bypass the Application boundary;
-* bypass Domain or Policy;
-* directly gain execution authority;
-* treat model output as verification;
-* create long-term memory unless explicitly defined;
-* inject evaluation answers or hidden benchmark data into product prompts.
-
----
-
-## Deterministic Safety
-
-Model reasoning may propose or interpret.
-
-Deterministic code must decide:
-
-* whether an operation is allowed;
-* whether approval is required;
-* whether authorization is valid;
-* whether state transition is legal;
-* whether execution authority exists;
-* whether execution arguments match the approved arguments;
-* whether an external result is verified;
-* whether recovery or retry is safe.
-
-Do not move these decisions into prompts even if doing so appears to simplify implementation.
-
----
-
-## Data and Secrets
-
-Minimize exposure of sensitive information.
-
-Never intentionally expose credentials, secrets, or unnecessary private user data through:
-
-* source code;
-* commits;
-* logs;
-* traces;
-* test output;
-* diagnostics;
-* prompts;
-* generated documentation.
-
-Use fake, stub, synthetic, or isolated test infrastructure whenever possible.
-
-Do not use live credentials or live user data for ordinary automated tests.
-
-Do not perform destructive or externally visible live operations unless explicitly requested and allowed by the product safety contract.
-
----
-
-## Frontend and Presentation
-
-Presentation code is not authoritative for backend or domain facts.
-
-When changing presentation code:
-
-* inspect existing component and state patterns first;
-* use documented API contracts;
-* preserve backend ownership of domain state;
-* keep visual-only changes separate from domain redesign unless the contract requires both;
-* do not bypass application boundaries for convenience.
-
-Client-side projections, caches, or progress displays must not become the source of truth for persistent business state.
-
----
-
-## Testing
-
-Use the repository's actual configured commands.
-
-Do not guess command names or scripts.
-
-Testing should be proportional to the change.
-
-Run:
-
-* focused tests for the changed behavior;
-* relevant contract tests;
-* relevant integration tests;
-* broader regression tests appropriate to the risk.
-
-If configured for the affected code, also run:
-
-* lint;
-* formatting checks;
-* static type checking;
-* builds;
-* schema validation;
-* other repository gates.
-
-Do not claim completion while a relevant:
-
-* safety test;
-* state-transition test;
-* interface test;
-* regression test;
-
-is failing.
-
----
-
-## Refactoring Validation
-
-For large structural refactoring, validate incrementally.
-
-Do not perform a large extraction and wait until the end to test everything.
-
-Preferred sequence:
-
-```text
-baseline
-→ small extraction
-→ focused tests
-→ next extraction
-→ focused tests
-→ broader regression
-```
-
-When a refactor touches safety-critical code, increase the validation frequency.
-
-A passing final test suite does not justify knowingly skipping intermediate validation of high-risk boundaries.
-
----
-
-## Merge and Integration Validation
-
-A conflict-free automatic merge does not prove semantic compatibility.
-
-After integrating changes from another branch:
-
-1. identify files modified by both sides;
-2. inspect overlapping semantic areas even if no textual conflict occurred;
-3. confirm that both intended changes remain present;
-4. run focused tests for overlapping concerns;
-5. run the appropriate broader regression suite.
-
-Do not modify unrelated pre-existing failures merely because they become visible during integration.
-
-Clearly distinguish:
-
-* failures introduced by the current work;
-* failures already present in the integration baseline.
-
----
-
-## Repository Hygiene
-
-Unless explicitly requested:
-
-* do not commit;
-* do not push;
-* do not merge;
-* do not rebase;
-* do not switch branches;
-* do not perform destructive Git operations.
-
-Do not create unnecessary:
-
-* changelogs;
-* status files;
-* handoff documents;
-* scratch documents;
-* temporary architecture reports.
-
-Keep implementation artifacts inside the repository's established structure.
-
-Do not commit generated or temporary files unless they are intentionally part of the repository contract.
-
----
-
-## Investigation Before Questions
-
-Investigate before asking the user for information that can be discovered from the repository.
-
-Check:
-
-* source code;
-* tests;
-* specifications;
-* migrations;
-* configuration;
-* registries;
-* existing patterns.
-
-If a required contract remains missing or contradictory after investigation:
-
-* identify the exact ambiguity;
-* explain which concerns are affected;
-* preserve the safer existing behavior;
-* do not invent a contract.
-
-If a true contract change is required, identify its impact before implementation.
-
----
-
-## Completion Criteria
-
-A coding task is complete only when:
-
-* the requested concern is implemented;
-* architectural boundaries remain valid;
-* relevant compatibility surfaces are preserved or intentionally migrated;
-* relevant tests pass;
-* relevant static checks pass;
-* safety-critical contracts remain intact;
-* no unrelated change was introduced.
-
----
-
-## Completion Report
-
-At the end of a coding task, report concisely:
-
-* what changed;
-* which areas were affected;
-* which important boundaries or contracts were preserved;
-* tests and checks executed;
-* their results;
-* remaining manual or live verification;
-* repository-versus-document mismatches discovered;
-* pre-existing failures that were intentionally left untouched.
-
-Do not create a separate report artifact unless explicitly requested.
-
----
-
----
-
-## Canonical Documentation and Parallel Change Reconciliation
-
-When documentation or implementation has diverged across parallel branches, do not choose a whole-file winner merely from filename, timestamp, branch age, or apparent version number.
-
-Before merging parallel changes:
-
-1. identify the common baseline when it can be determined;
-2. identify the concern owner for each changed contract using the current project source guide and canonical document hierarchy;
-3. compare changes by semantic concern rather than by whole file;
-4. preserve independent changes from both sides when they do not conflict;
-5. when the same contract conflicts, resolve it according to the current canonical concern owner and the safer applicable contract;
-6. do not reintroduce an older architecture, state contract, policy, or compatibility behavior merely because it appears in a teammate branch;
-7. after reconciliation, validate cross-document references and implementation-facing contracts.
-
-Repository documentation can be an export snapshot of canonical documentation. Do not infer semantic authority from a filename suffix alone.
-
-Versioning rules:
-
-* increase a document's own version only when the meaning owned by that document changes;
-* when only a referenced canonical document version changes, update the reference without increasing the referring document's own version unless its owned meaning also changes;
-* keep database schema and migration versions separate from documentation versions;
-* never rewrite historical migrations merely to make documentation versions align.
-
-Documentation hygiene:
-
-* preserve the purpose and responsibility of each document;
-* place new material in the document that owns that concern;
-* do not add changelog, update-history, work-log, handoff, or status sections unless the user explicitly requests them;
-* do not preserve conflicting duplicate contracts in multiple documents for convenience.
-
-For behavior-preserving structural refactoring, do not silently absorb unrelated canonical behavior changes into the refactor. Complete and validate the structural change first, then implement the separate behavior contract as an explicit follow-up unless the user explicitly requests both together.
-
-After integrating parallel changes, a clean textual merge is not sufficient. Re-check the affected semantic contracts, version references, tests, and safety boundaries.
-
-## Core Engineering Principle
-
-Prefer:
-
-```text
-high cohesion,
-low coupling,
-explicit dependencies,
-clear ownership,
-contract consistency,
-deterministic safety,
-recoverability,
-minimal complete change,
-and verifiable behavior
-```
-
-over:
-
-```text
-convenience,
-implicit dependencies,
-cross-module reach-through,
-service-location,
-false abstraction,
-speculative redesign,
-or shorter code.
-```
-
-The central rule is:
-
-```text
-Modules own capabilities.
-Application and Workflow own orchestration.
-Ports own boundaries.
-Adapters own external implementations.
-The Composition Root owns construction and wiring.
-Domain and Policy own deterministic rules.
-```
-
-Keep those responsibilities separate.
+- 기존 baseline 실패와 현재 작업이 만든 실패를 구분한다. 관련 safety/contract test가 깨진 상태에서 완료라고 보고하지 않는다.
+
+## Git / scope
+- 사용자가 명시하지 않으면 commit, push, merge, rebase, branch switch, destructive Git operation을 하지 않는다.
+- 관련 없는 cleanup, dependency-wide upgrade, broad rename, formatting-only 대형 diff를 만들지 않는다.
+- 작업 중 외부 commit/변경이 나타나면 덮어쓰지 말고 충돌 여부를 확인한다.
+
+## Completion
+완료 전 확인: 요청 Concern 완결, Canonical Owner/의존 방향 준수, 중복 path 없음, 필요한 compatibility 보존, safety/state/transaction invariant 유지, 관련 테스트/static check 통과, unrelated change 없음.
+완료 보고는 `변경 내용 / 보존 경계 / 테스트 결과 / 기존 baseline 실패 / 남은 IMPLEMENTATION_DELTA 또는 live 검증`만 간결하게 포함한다.
+별도 status/report 문서는 사용자가 요청하지 않으면 만들지 않는다.

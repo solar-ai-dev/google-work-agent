@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "manifest_id": "DATASET-BUILD-v1.17-R8.6-PHASE7.5",
+  "status": "CONTRACT_CORRECTED_READY_FOR_REAL_MODEL_PILOT_NOT_ACTIVE",
+  "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction",
+  "canonical_case_schema": "CanonicalCaseV7",
+  "projection_bundle_version": "projection-v1.1-r8.6-phase7.5",
+  "e2e_projection_schema": "E2EProjectionV5",
+  "pre_policy_tool_route_gold_schema": "PrePolicyToolRouteGoldV1",
+  "prompt_bundle_version": "0.9.0-r8.6-phase6",
+  "policy_version": "01-B-v2.11",
+  "tool_schema_version": "v2.19",
+  "canonical_counts": {
+    "CORE": 60,
+    "STRESS": 20,
+    "HOLDOUT": 12,
+    "TOTAL": 92
+  },
+  "product_episode_count": 10,
+  "real_model_execution_performed": false,
+  "holdout_used_for_tuning": false,
+  "source_of_truth_rules": [
+    "CanonicalCaseV7 is business truth; projections are views.",
+    "Tool Route LLM candidate is graded against PrePolicyToolRouteGoldV1 before deterministic PolicyPreconditionResolver.",
+    "Default Task List/Calendar container identifiers are deterministically bound; the LLM does not guess hidden IDs.",
+    "Gold/evaluator data never enters Product Prompt."
+  ]
+}

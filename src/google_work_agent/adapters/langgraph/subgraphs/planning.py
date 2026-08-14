@@ -24,13 +24,14 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.subgraph_state import PlanningLocalState
 from google_work_agent.application.workflows import (
     ActionPlanDraftV1,
     AgentLocalStateV1,
     AnswerDraftV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
-    RequestIntentV1,
+    RequestIntentV2,
     ReviewResult,
     SolutionPlanningAgent,
     SupervisorDecisionV1,
@@ -39,34 +40,49 @@ from google_work_agent.application.workflows import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
+from google_work_agent.application.workflows.tool_routing import (
+    OutputToolRouteV1,
+    ToolRoutePlanV2,
+    output_routes,
+)
 
-MergeDecision = Callable[[GraphState, GraphStateUpdateV1, SupervisorDecisionV1], GraphState]
+MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 
 
-def planning_mode_from_request_intent(request_intent: RequestIntentV1) -> str:
+_WRITE_EFFECT_HINTS = frozenset({"CREATE", "UPDATE", "SEND", "DELETE"})
+
+
+def planning_mode_from_request_intent(
+    request_intent: RequestIntentV2,
+    tool_route_plan: ToolRoutePlanV2 | None = None,
+) -> str:
     """Deterministic answer_only/draft_plan selection (GAP-F1).
 
-    Reads the ``response_disposition`` typed field produced by
-    ``request_understanding.classify`` instead of matching keyword
-    substrings against ``request_text`` -- the previous approach silently
-    misrouted any request whose natural-language phrasing (in particular
-    Korean) did not contain one of a fixed English token list. The field
-    is optional on ``RequestIntentV1`` (see its definition) because only
-    SIX_ROLE_BASELINE's standalone Planning subgraph needs this upfront
-    choice between the two mutually exclusive ``planning.answer_only`` /
-    ``planning.draft_plan`` prompt slots; SINGLE_BASELINE and THREE_STAGE
-    decide ANSWER_ONLY vs PLAN_READY inside one fused planning call. When
-    the field is absent -- an older classify prompt version that predates
-    this field, or a profile that never sets it -- this falls back to
-    ``answer_only`` rather than guessing an action the user did not ask
-    for (docs/01-b-policy-definition-v2.8.md POL-EVD-003 / "Answer-only에서
+    ``tool_route_plan.output_plan.output_mode`` is the official ANSWER/ACTION
+    authority (Q2-X) -- Tool Route always runs before Planning in the SIX
+    release path, so this is the branch actually taken there. The
+    ``requested_effect_hints``-based fallback below only matters for
+    SINGLE_BASELINE/THREE_STAGE's standalone Planning subgraph invocation,
+    which does not have a ``tool_route_plan`` to consult; RequestIntentV2
+    carries no explicit disposition field (unlike the retired V1
+    ``response_disposition``), so ACTION is inferred the same way Tool
+    Route's own deterministic compatibility path does: any effect hint that
+    isn't a plain READ. Falls back to ``answer_only`` when no write effect
+    is present, rather than guessing an action the user did not ask for
+    (docs/01-b-policy-definition-v2.8.md POL-EVD-003 / "Answer-only에서
     불필요한 Action을 생성하지 않는다").
     """
-    return (
-        "draft_plan"
-        if request_intent.get("response_disposition") == "ACTION_REQUIRED"
-        else "answer_only"
+    if tool_route_plan is not None:
+        return (
+            "draft_plan"
+            if tool_route_plan["output_plan"]["output_mode"] == "ACTION"
+            else "answer_only"
+        )
+    has_write_effect = any(
+        effect in _WRITE_EFFECT_HINTS
+        for effect in request_intent.get("requested_effect_hints", [])
     )
+    return "draft_plan" if has_write_effect else "answer_only"
 
 
 class PlanningSubgraph:
@@ -86,7 +102,11 @@ class PlanningSubgraph:
         self._merge_decision = merge_decision
 
     def build(self) -> Any:
-        graph = StateGraph(GraphState, output_schema=ParentGraphState)
+        graph = StateGraph(
+            PlanningLocalState,
+            input_schema=GraphState,
+            output_schema=ParentGraphState,
+        )
         graph.add_node("init", self._init_node)
         graph.add_node("plan", self._plan_node)
         graph.add_node("result_validate", self._result_validate_node)
@@ -98,12 +118,13 @@ class PlanningSubgraph:
         graph.add_edge("finalize", END)
         return graph.compile(name="planning_subgraph")
 
-    def _init_node(self, state: GraphState) -> GraphState:
+    def _init_node(self, state: PlanningLocalState) -> PlanningLocalState:
         invocation_id = self._id_factory()
         review = state["plan_review"]
         request_intent = _require_state_value(state["request_intent"], "request_intent")
         analysis_result = _require_state_value(state["analysis_result"], "analysis_result")
-        mode = planning_mode_from_request_intent(request_intent)
+        tool_route_plan = state.get("tool_route_plan")
+        mode = planning_mode_from_request_intent(request_intent, tool_route_plan)
         if review is not None and review.get("status") == ReviewResult.REVISE.value:
             mode = "revise_answer" if state.get("answer_draft") is not None else "revise_plan"
         prompt_ref = {
@@ -120,6 +141,7 @@ class PlanningSubgraph:
                 "request_intent": request_intent,
                 "analysis_result": analysis_result,
                 "mode": mode,
+                "output_routes": list(output_routes(tool_route_plan)) if tool_route_plan else [],
             },
             prompt_ref=prompt_ref,
         )
@@ -141,7 +163,7 @@ class PlanningSubgraph:
             ),
         }
 
-    def _plan_node(self, state: GraphState) -> GraphState:
+    def _plan_node(self, state: PlanningLocalState) -> PlanningLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
         mode = state[PLANNING_MODE_KEY]
@@ -170,10 +192,14 @@ class PlanningSubgraph:
                 context_result=_require_state_value(state["context_result"], "context_result"),
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
+                frozen_output_routes=_frozen_output_routes(state),
+                frozen_read_tool_ids=_frozen_read_tool_ids(state),
             )
             result = self._agent.build_plan_output_from_llm_result(
                 llm_result,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                frozen_output_routes=_frozen_output_routes(state),
+                frozen_read_tool_ids=_frozen_read_tool_ids(state),
             )
             llm_call_id = f"{request.run_id}:planning.draft_plan"
         elif mode == "revise_answer":
@@ -200,10 +226,14 @@ class PlanningSubgraph:
                 context_result=_require_state_value(state["context_result"], "context_result"),
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
+                frozen_output_routes=_frozen_output_routes(state),
+                frozen_read_tool_ids=_frozen_read_tool_ids(state),
             )
             result = self._agent.build_plan_output_from_llm_result(
                 llm_result,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                frozen_output_routes=_frozen_output_routes(state),
+                frozen_read_tool_ids=_frozen_read_tool_ids(state),
             )
             llm_call_id = f"{request.run_id}:planning.revise_plan"
         updated_local = dict(record_llm_result(local_state, llm_result))
@@ -227,7 +257,7 @@ class PlanningSubgraph:
             ),
         }
 
-    def _result_validate_node(self, state: GraphState) -> GraphState:
+    def _result_validate_node(self, state: PlanningLocalState) -> PlanningLocalState:
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
         result = state["__planning_result__"]
         updated_local = dict(local_state)
@@ -247,7 +277,7 @@ class PlanningSubgraph:
             ),
         }
 
-    def _finalize_node(self, state: GraphState) -> GraphState:
+    def _finalize_node(self, state: PlanningLocalState) -> PlanningLocalState:
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
         mode = state[PLANNING_MODE_KEY]
         result = state["__planning_result__"]
@@ -261,6 +291,8 @@ class PlanningSubgraph:
             plan_result = validate_action_plan_draft_v1(
                 result,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                frozen_output_routes=_frozen_output_routes(state),
+                frozen_read_tool_ids=_frozen_read_tool_ids(state),
             )
             state_update = self._agent.build_plan_state_update(plan_result)
         decision = route_supervisor(
@@ -297,4 +329,22 @@ class PlanningSubgraph:
         merged.pop(PLANNING_AGENT_LOCAL_KEY, None)
         merged.pop(PLANNING_MODE_KEY, None)
         merged.pop("__planning_result__", None)
-        return merged
+        return cast(PlanningLocalState, merged)
+
+
+def _frozen_output_routes(
+    state: PlanningLocalState,
+) -> tuple[OutputToolRouteV1, ...] | None:
+    plan = state.get("tool_route_plan")
+    return None if plan is None else output_routes(plan)
+
+
+def _frozen_read_tool_ids(state: PlanningLocalState) -> frozenset[str]:
+    plan = state.get("tool_route_plan")
+    if plan is None:
+        return frozenset()
+    return frozenset(
+        tool_id
+        for route in plan["input_plan"]["input_routes"]
+        for tool_id in route["allowed_read_tool_ids"]
+    )

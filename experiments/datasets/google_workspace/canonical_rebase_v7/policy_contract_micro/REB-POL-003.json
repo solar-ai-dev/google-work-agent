@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction",
+  "case_id": "REB-POL-003",
+  "fixture_snapshot_id": "FW-D-009",
+  "user_prompt": "Ion 온보딩 체크리스트가 이미 있어도 같은 Task를 하나 더 만들어줘.",
+  "contract": "DUPLICATE_OVERRIDE",
+  "expected": {
+    "initial_action_necessity": "NOT_REQUIRED",
+    "confirmation_kind": "DUPLICATE_OVERRIDE",
+    "reason_code": "DUPLICATE_OVERRIDE_REQUIRED",
+    "receipt_required": true,
+    "receipt_decision": "APPROVED",
+    "approval_snapshot_binding_required": true,
+    "write_before_receipt": false
+  }
+}

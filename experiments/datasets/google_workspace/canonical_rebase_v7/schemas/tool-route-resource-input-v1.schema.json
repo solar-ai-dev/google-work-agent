@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/tool-route-resource-input-v1.schema.json",
+  "title": "tool-route-resource-input-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "user_request",
+    "request_intent",
+    "eligible_route_capabilities"
+  ],
+  "properties": {
+    "user_request": {
+      "type": "string"
+    },
+    "request_intent": {
+      "$ref": "request-intent-v2.schema.json"
+    },
+    "eligible_route_capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "connector_id",
+          "resource_type",
+          "read_supported",
+          "write_effects"
+        ],
+        "properties": {
+          "connector_id": {
+            "type": "string"
+          },
+          "resource_type": {
+            "type": "string",
+            "enum": [
+              "EMAIL",
+              "TASK",
+              "CALENDAR"
+            ]
+          },
+          "read_supported": {
+            "type": "boolean"
+          },
+          "write_effects": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "CREATE",
+                "UPDATE",
+                "SEND",
+                "DELETE"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

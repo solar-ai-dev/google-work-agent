@@ -18,6 +18,9 @@ from typing import Any, NoReturn, cast
 
 from fastapi import FastAPI
 
+from google_work_agent.adapters.connectors import (
+    GoogleWorkspaceExecutionBackend,
+)
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
 from google_work_agent.adapters.keyring import OSKeyringSecretStore
 from google_work_agent.adapters.langgraph import LangGraphWorkflowRuntime
@@ -36,16 +39,8 @@ from google_work_agent.adapters.llm import (
     SessionMemorySecretStore,
 )
 from google_work_agent.adapters.mcp import (
-    MCPArtifactConfig,
-    MCPGmailUiReadGateway,
-    MCPGoogleOAuthCredentialProvider,
-    MCPGoogleWorkspaceGateway,
-    MCPRuntimeStatusProvider,
-    SubprocessMCPTransport,
     build_manifest_payload,
-    calculate_file_sha256,
 )
-from google_work_agent.adapters.mcp.gateway import MCPGmailAttachmentGateway
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.runtime import (
@@ -55,7 +50,6 @@ from google_work_agent.adapters.runtime import (
     SettingsService,
 )
 from google_work_agent.adapters.runtime.attachment_staging import (
-    ATTACHMENT_STAGING_DIR_ENV,
     LocalAttachmentStaging,
 )
 from google_work_agent.api import API_CONTRACT_VERSION, ApiContainer, create_app
@@ -105,6 +99,13 @@ from google_work_agent.application.write_actions import (
     RequestRunCancellationService,
 )
 from google_work_agent.domain import CalendarWorkHours
+from google_work_agent.launcher.connector_composition import build_connectors
+from google_work_agent.launcher.development_constants import (
+    PROJECT_ROOT,
+)
+from google_work_agent.launcher.development_readiness import (
+    DevelopmentReadinessAggregator as DevelopmentReadinessAggregator,
+)
 from google_work_agent.ports import (
     ApprovedModelInfo,
     LauncherProbeDecision,
@@ -124,12 +125,9 @@ from google_work_agent.ports import (
 )
 from google_work_agent.ports.mcp_transport import MCPTransportError
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 RELEASE_VERSION = "0.1.0-dev"
-MCP_MANIFEST_VERSION = "2026-08-07.p0"
-MCP_TOOL_REGISTRY_VERSION = "2026-08-06.p0"
 # Dev-mode local model allowlist: LOCAL_GPU routing refuses to invoke a model
 # that is not "approved" (see DeterministicLLMRuntimeRouter._local_runtime_reason),
 # so at least one already-`ollama pull`-ed model must be listed here. This never
@@ -399,134 +397,6 @@ class _DeferredApiContainer:
         raise RuntimeError("core initialization is incomplete")
 
 
-@dataclass(frozen=True, slots=True)
-class DevelopmentReadinessAggregator(ReadinessAggregator):
-    database_path: Path
-    transport: SubprocessMCPTransport
-    mcp_manifest_path: Path | None = None
-    prompt_active: bool = True
-
-    def evaluate(self) -> ReadinessReport:
-        checks = (
-            self._manifest_asset_check(),
-            self._api_contract_check(),
-            self._sqlite_check(),
-            self._domain_check(),
-            self._keyring_check(),
-            self._mcp_executable_check(),
-            self._mcp_check(),
-            self._tool_schema_check(),
-        )
-        state = (
-            ReadinessState.READY
-            if all(check.state is ReadinessState.READY for check in checks)
-            else ReadinessState.NOT_READY
-        )
-        return ReadinessReport(state=state, checks=checks)
-
-    def _sqlite_check(self) -> ReadinessCheckResult:
-        try:
-            with connect_sqlite(self.database_path) as connection:
-                row = connection.execute("SELECT COUNT(*) FROM schema_migrations;").fetchone()
-            if row is None or int(row[0]) < 1:
-                return ReadinessCheckResult(
-                    name="sqlite_migrations",
-                    state=ReadinessState.NOT_READY,
-                    detail="migration receipts are unavailable",
-                )
-        except sqlite3.Error:
-            return ReadinessCheckResult(
-                name="sqlite_migrations",
-                state=ReadinessState.NOT_READY,
-                detail="sqlite is unavailable",
-            )
-        return ReadinessCheckResult(name="sqlite_migrations", state=ReadinessState.READY)
-
-    def _manifest_asset_check(self) -> ReadinessCheckResult:
-        manifest_ok = self.mcp_manifest_path is not None and self.mcp_manifest_path.is_file()
-        asset_ok = (PROJECT_ROOT / "frontend" / "index.html").is_file()
-        if manifest_ok and asset_ok:
-            return ReadinessCheckResult(name="manifest_assets", state=ReadinessState.READY)
-        return ReadinessCheckResult(
-            name="manifest_assets",
-            state=ReadinessState.NOT_READY,
-            detail="MANIFEST_OR_ASSET_UNAVAILABLE",
-        )
-
-    @staticmethod
-    def _api_contract_check() -> ReadinessCheckResult:
-        if API_CONTRACT_VERSION:
-            return ReadinessCheckResult(name="api_contract", state=ReadinessState.READY)
-        return ReadinessCheckResult(
-            name="api_contract", state=ReadinessState.NOT_READY, detail="API_CONTRACT_UNAVAILABLE"
-        )
-
-    def _domain_check(self) -> ReadinessCheckResult:
-        try:
-            with connect_sqlite(self.database_path) as connection:
-                row = connection.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'runs';"
-                ).fetchone()
-        except sqlite3.Error:
-            row = None
-        if row is not None:
-            return ReadinessCheckResult(name="domain_schema", state=ReadinessState.READY)
-        return ReadinessCheckResult(
-            name="domain_schema", state=ReadinessState.NOT_READY, detail="DOMAIN_SCHEMA_UNAVAILABLE"
-        )
-
-    @staticmethod
-    def _keyring_check() -> ReadinessCheckResult:
-        try:
-            OSKeyringSecretStore()
-        except RuntimeError:
-            return ReadinessCheckResult(
-                name="keyring_adapter", state=ReadinessState.NOT_READY, detail="KEYRING_UNAVAILABLE"
-            )
-        return ReadinessCheckResult(name="keyring_adapter", state=ReadinessState.READY)
-
-    @staticmethod
-    def _mcp_executable_check() -> ReadinessCheckResult:
-        if Path(sys.executable).is_file():
-            return ReadinessCheckResult(name="mcp_executable", state=ReadinessState.READY)
-        return ReadinessCheckResult(
-            name="mcp_executable",
-            state=ReadinessState.NOT_READY,
-            detail="MCP_EXECUTABLE_UNAVAILABLE",
-        )
-
-    def _mcp_check(self) -> ReadinessCheckResult:
-        metadata = self.transport.runtime_metadata()
-        if metadata.process_status != "READY" or metadata.process_instance_id is None:
-            return ReadinessCheckResult(
-                name="mcp_handshake",
-                state=ReadinessState.NOT_READY,
-                detail=metadata.last_safe_error_code or metadata.process_status,
-            )
-        return ReadinessCheckResult(name="mcp_handshake", state=ReadinessState.READY)
-
-    def _tool_schema_check(self) -> ReadinessCheckResult:
-        metadata = self.transport.runtime_metadata()
-        if (
-            metadata.protocol_version == MCP_MANIFEST_VERSION
-            and metadata.tool_registry_version == MCP_TOOL_REGISTRY_VERSION
-            and metadata.available_tool_count > 0
-        ):
-            return ReadinessCheckResult(name="tool_schema", state=ReadinessState.READY)
-        return ReadinessCheckResult(
-            name="tool_schema", state=ReadinessState.NOT_READY, detail="TOOL_SCHEMA_UNAVAILABLE"
-        )
-
-    def _prompt_check(self) -> ReadinessCheckResult:
-        if self.prompt_active:
-            return ReadinessCheckResult(name="prompt_activation", state=ReadinessState.READY)
-        return ReadinessCheckResult(
-            name="prompt_activation",
-            state=ReadinessState.NOT_READY,
-            detail="PROMPT_NOT_ACTIVE",
-        )
-
-
 class _PromptInactiveWorkflowRuntime:
     """Safe placeholder: workflows cannot execute until prompts are approved."""
 
@@ -590,45 +460,23 @@ def build_container(
         raise CoreInitializationError("MIGRATION_FAILED") from error
 
     try:
-        transport = SubprocessMCPTransport(
-            config=MCPArtifactConfig(
-                executable_path=str(Path(sys.executable).resolve()),
-                manifest_path=str(mcp_manifest_path),
-                expected_binary_sha256=calculate_file_sha256(Path(sys.executable).resolve()),
-                expected_manifest_sha256=calculate_file_sha256(mcp_manifest_path),
-                expected_manifest_version=MCP_MANIFEST_VERSION,
-                expected_protocol_version=MCP_MANIFEST_VERSION,
-                expected_tool_registry_version=MCP_TOOL_REGISTRY_VERSION,
-                startup_timeout_ms=5_000,
-                # docs/07-tool-mcp-internal-interface.md's per-tool Timeout
-                # column specifies 30s for every MCP READ/WRITE tool; this
-                # transport-level budget must be at least that large or
-                # multi-message acquisition (search + several detail fetches)
-                # times out before any single tool call's own 30s budget is
-                # reached.
-                request_timeout_ms=30_000,
-                max_restart_count=1,
-                environment="DEVELOPMENT",
-                service_instance_id=service_instance_id,
-                working_directory=str(PROJECT_ROOT),
-                extra_environment={
-                    ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir),
-                },
-            )
+        connector_bundle = build_connectors(
+            mcp_manifest_path=mcp_manifest_path,
+            service_instance_id=service_instance_id,
+            attachment_staging_dir=attachment_staging_dir,
+            python_executable=Path(sys.executable).resolve(),
+            working_directory=PROJECT_ROOT,
         )
     except MCPTransportError as error:
         raise CoreInitializationError("MCP_HANDSHAKE_FAILED") from error
-    google_provider = MCPGoogleOAuthCredentialProvider(transport=transport)
-    runtime_status_provider = MCPRuntimeStatusProvider(
-        google_provider=google_provider,
-        transport=transport,
-        api_llm="NOT_CONFIGURED",
-        ollama="NOT_CONFIGURED",
-        deployment_profile=BuildProfile.LOCAL_CAPABLE.value,
-    )
+    connector_registry = connector_bundle.registry
+    google_connector = connector_bundle.google_connector
+    runtime_status_provider = connector_bundle.runtime_status_provider
+    google_provider = google_connector.oauth_provider
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
     query_service = QueryService(
         database_path=database_path,
+        connection_factory=connect_sqlite,
         runtime_status_provider=runtime_status_provider,
     )
     try:
@@ -638,16 +486,18 @@ def build_container(
             prompt_manifest_path=prompt_manifest_path,
         )
     except RuntimeError as error:
-        transport.close()
+        connector_registry.close_all()
         raise CoreInitializationError("KEYRING_UNAVAILABLE") from error
     prompt_active = True
     workflow_runtime: LangGraphWorkflowRuntime | _PromptInactiveWorkflowRuntime
-    gateway = MCPGoogleWorkspaceGateway(transport=transport)
+    gateway = google_connector.workspace_gateway
     try:
         workflow_runtime = LangGraphWorkflowRuntime(
             unit_of_work_factory=unit_of_work_factory,
             llm_runtime=llm_runtime,
             gateway=gateway,
+            connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
+            tool_catalog=connector_bundle.tool_catalog,
             now_ms=clock.now_ms,
             id_factory=id_generator.next_id,
             signing_secret=secrets.token_hex(32),
@@ -737,7 +587,7 @@ def build_container(
         event_publisher=event_publisher,
         readiness_aggregator=DevelopmentReadinessAggregator(
             database_path=database_path,
-            transport=transport,
+            connector_registry=connector_registry,
             mcp_manifest_path=mcp_manifest_path,
             prompt_active=prompt_active,
         ),
@@ -770,13 +620,13 @@ def build_container(
         disconnect_google_service=DisconnectGoogleService(provider=google_provider),
         resource_query_service=ResourceQueryService(
             gateway=gateway,
-            gmail_detail_gateway=MCPGmailUiReadGateway(transport=transport),
+            gmail_detail_gateway=google_connector.gmail_ui_gateway,
             default_calendar_id_provider=lambda: llm_runtime.settings_service().default_calendar_id,
             default_tasklist_id_provider=lambda: llm_runtime.settings_service().default_tasklist_id,
             timezone_provider=lambda: llm_runtime.settings_service().timezone,
         ),
         get_gmail_attachment_service=GetGmailAttachmentService(
-            gateway=MCPGmailAttachmentGateway(transport=transport),
+            gateway=google_connector.gmail_attachment_gateway,
         ),
         stage_attachment_service=StageAttachmentService(staging=attachment_staging),
         get_llm_connection_service=GetLLMConnectionService(
@@ -793,7 +643,7 @@ def build_container(
         ),
         test_llm_connection_service=TestLLMConnectionService(runtime_service=llm_runtime),
         safe_mode_controller=safe_mode_controller,
-        shutdown_callbacks=(workflow_runtime.close, transport.close),
+        shutdown_callbacks=(workflow_runtime.close, connector_registry.close_all),
     )
 
 

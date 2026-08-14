@@ -1,0 +1,34 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-CORE-030-PLN",
+  "case_id": "CASE-CORE-030",
+  "projection_kind": "PLANNING",
+  "applicable": false,
+  "not_applicable_reason": "CANONICAL_STAGE_NOT_REACHED",
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-005",
+    "user_prompt_id": "UP-CORE-030",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "applicable": false,
+    "result_type": "NOT_REACHED",
+    "actions": [],
+    "zero_action_reason": null,
+    "tool_identity_owned_by_output_route": true,
+    "read_actions_forbidden": true,
+    "lineage_expectation": {
+      "owner": "planning",
+      "based_on": [
+        "tool_route.output_plan",
+        "work_analysis_result",
+        "retrieval_result"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.planning.deterministic",
+    "grader.planning.semantic"
+  ]
+}

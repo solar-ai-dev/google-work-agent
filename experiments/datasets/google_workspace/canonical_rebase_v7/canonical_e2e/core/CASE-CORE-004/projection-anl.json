@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-CORE-004-ANL",
+  "case_id": "CASE-CORE-004",
+  "projection_kind": "WORK_ANALYSIS",
+  "applicable": false,
+  "not_applicable_reason": "CANONICAL_STAGE_NOT_REACHED",
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-010",
+    "user_prompt_id": "UP-CORE-004",
+    "entry_mode": "RESOURCE_SELECTED",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "applicable": false,
+    "expected_disposition": "NOT_REACHED",
+    "action_necessity": "NOT_REQUIRED",
+    "required_evidence_ids": [
+      "EVD-SEG-EV-J-001-1"
+    ],
+    "policy_confirmation_receipt_refs_required": false,
+    "deterministic_relation_validation_required": true,
+    "lineage_expectation": {
+      "owner": "work_analysis",
+      "based_on": [
+        "request_intent",
+        "retrieval_result"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.work_analysis.deterministic",
+    "grader.work_analysis.semantic"
+  ]
+}

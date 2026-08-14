@@ -4,22 +4,38 @@ from __future__ import annotations
 
 import time as _time_module
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
-from datetime import UTC, datetime, time, timedelta
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Literal, Required, TypedDict, cast
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from typing import Literal, cast
 
 import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.application.ports import (
+    ConnectorReadPort,
+    ConnectorReadRequest,
+)
 from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionRequestV1,
     ApiAcquisitionResult,
     ApiPlanningResult,
     GraphStateUpdateV1,
     WorkflowPhase,
+)
+from google_work_agent.application.workflows.handoff_contracts import (
+    AcquisitionResultV1,
+    CalendarReadMode,
+    ClarificationQuestionV1,
+    Daypart,
+    RelativeUnit,
+    RequestIntentV2,
+    SourceFetchPlanV1,
+    SourceName,
+    SourcePlanningOutputV1,
+    TemporalQueryV1,
+    TemporalRelation,
+    Weekday,
 )
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
@@ -28,101 +44,29 @@ from google_work_agent.application.workflows.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.application.workflows.request_understanding import (
-    ClarificationQuestionV1,
-    RequestIntentV1,
     build_clarification_question_v1,
 )
+from google_work_agent.application.workflows.temporal_query import resolve_temporal_query
+from google_work_agent.application.workflows.tool_routing import (
+    ToolRoutePlanV2,
+    allowed_input_sources,
+    allowed_read_tool_ids,
+    coarse_resource_category,
+)
 from google_work_agent.ports import (
-    FreeBusyCalendar,
     GoogleWorkspaceErrorCode,
-    GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     OutputSchemaDefinition,
     PromptReference,
     ResourceSnapshot,
-    ResourceType,
-    SelectedResourceRef,
     StructuredLLMResult,
     TimeRange,
     WorkflowStartRequest,
 )
 
 JsonObject = dict[str, object]
-SourceName = Literal["GMAIL", "TASKS", "CALENDAR"]
-CalendarReadMode = Literal["EVENTS_ONLY", "EVENTS_AND_FREEBUSY"]
-TemporalRelation = Literal["RELATIVE", "ABSOLUTE"]
-RelativeUnit = Literal["DAY", "WEEK"]
-Weekday = Literal["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-Daypart = Literal["MORNING", "AFTERNOON", "EVENING"]
 
 DEFAULT_TIMEZONE = "Asia/Seoul"
-
-
-class TemporalQueryV1(TypedDict):
-    """Typed Calendar time-window proposal.
-
-    See docs/05-context-retrieval.md section 8, "Calendar Typed Query 계약".
-
-    The Acquisition Planning LLM only chooses among these closed enum
-    values -- it never computes RFC3339 itself. Deterministic code (see
-    ``_resolve_temporal_query``) is the only thing that applies "now",
-    timezone, weekday, and daypart arithmetic to turn this into a
-    ``TimeRange``.
-    """
-
-    schema_version: Required[Literal[1]]
-    relation: TemporalRelation
-    relative_unit: RelativeUnit | None
-    relative_offset: int | None
-    weekday: Weekday | None
-    daypart: Daypart | None
-    absolute_start: str | None
-    absolute_end: str | None
-
-
-class SourceFetchPlanV1(TypedDict):
-    schema_version: Required[Literal[2]]
-    source: SourceName
-    priority: int
-    reason_codes: list[str]
-    constraints: dict[str, object]
-    page_size: int
-    max_pages: int
-    max_candidates: int
-    detail_limit: int
-    required: bool
-    # CALENDAR-only typed fields (docs/05 section 8 (Calendar Typed Query 계약)). Required by schema
-    # for every source (null for GMAIL/TASKS) so every plan entry has a
-    # uniform shape; semantic validation enforces they are only meaningful
-    # for CALENDAR.
-    calendar_read_mode: CalendarReadMode | None
-    temporal_query: TemporalQueryV1 | None
-
-
-class SourcePlanningOutputV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    result: Literal["PLAN_READY", "NO_FETCH_NEEDED", "NEEDS_CONFIRMATION", "BLOCKED"]
-    source_fetch_plans: list[SourceFetchPlanV1]
-    clarification: dict[str, object] | None
-    failure: dict[str, object] | None
-    validator_codes: list[str]
-    llm_provider_result: dict[str, object]
-
-
-class AcquisitionResultV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    status: Literal[
-        "COMPLETE",
-        "PARTIAL",
-        "AUTH_REQUIRED",
-        "RATE_LIMITED",
-        "BUDGET_EXHAUSTED",
-        "FAILED",
-    ]
-    resource_handles: list[str]
-    source_summaries: list[dict[str, object]]
-    missing_slots: list[str]
-    remaining_budget: dict[str, int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,13 +221,13 @@ def _default_now_ms() -> int:
 
 
 class ApiDiscoveryAcquisitionAgent:
-    """Plan Google source reads and execute them through the existing gateway."""
+    """Plan sources and orchestrate reads through a connector capability."""
 
     def __init__(
         self,
         *,
         llm_runtime: StructuredLLMRuntime,
-        gateway: GoogleWorkspaceGateway,
+        connector_reader: ConnectorReadPort,
         prompt_ref: PromptReference | None = None,
         retrieval_budget: RetrievalBudget = DEFAULT_RETRIEVAL_BUDGET,
         manifest_path: Path | None = None,
@@ -291,7 +235,7 @@ class ApiDiscoveryAcquisitionAgent:
         timezone_provider: Callable[[], str] | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
-        self._gateway = gateway
+        self._connector_reader = connector_reader
         self._prompt_ref = prompt_ref or load_acquisition_plan_sources_prompt_reference(
             manifest_path
         )
@@ -311,31 +255,46 @@ class ApiDiscoveryAcquisitionAgent:
     def plan_sources(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         request: WorkflowStartRequest,
         additional_acquisition_request: AdditionalAcquisitionRequestV1 | None = None,
+        tool_route_plan: ToolRoutePlanV2 | None = None,
     ) -> SourcePlanningOutputV1:
         llm_result = self.invoke_plan_sources_llm(
             request_intent=request_intent,
             request=request,
             additional_acquisition_request=additional_acquisition_request,
+            tool_route_plan=tool_route_plan,
         )
-        return self.build_planning_output_from_llm_result(llm_result)
+        return self.build_planning_output_from_llm_result(
+            llm_result,
+            tool_route_plan=tool_route_plan,
+        )
 
     def invoke_plan_sources_llm(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         request: WorkflowStartRequest,
         additional_acquisition_request: AdditionalAcquisitionRequestV1 | None = None,
+        tool_route_plan: ToolRoutePlanV2 | None = None,
     ) -> StructuredLLMResult:
+        # additional_acquisition_request is accepted but not projected into
+        # the Prompt: prompt-runtime-input-contract-v1.json's
+        # retrieval.plan_query entry has no field for "this is a follow-up
+        # round" and its schema is additionalProperties:false. Canonical
+        # (05-context-retrieval.md RetrievalStateV1.query_attempts) models
+        # repeat rounds as Retrieval Local State / the retrieval.plan_query.revise
+        # slot, not an extra INITIAL-prompt field -- neither is implemented
+        # yet, so this parameter is a FOLLOWING_WAVE_DEPENDENCY, not silently
+        # dropped functionality.
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
-            prompt_input=_planning_prompt_input(
+            prompt_input=_plan_query_prompt_input(
                 request_intent=request_intent,
                 request=request,
                 retrieval_budget=self._retrieval_budget,
-                additional_acquisition_request=additional_acquisition_request,
+                tool_route_plan=tool_route_plan,
             ),
             output_schema=SOURCE_FETCH_PLAN_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -346,14 +305,30 @@ class ApiDiscoveryAcquisitionAgent:
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:acquisition.plan_sources",
             ),
-            semantic_validate=validate_source_fetch_plans_v1,
+            semantic_validate=(
+                validate_source_fetch_plans_v1
+                if tool_route_plan is None
+                else lambda value: validate_source_fetch_plans_for_route(
+                    value,
+                    tool_route_plan=tool_route_plan,
+                )
+            ),
         )
 
     def build_planning_output_from_llm_result(
         self,
         llm_result: StructuredLLMResult,
+        *,
+        tool_route_plan: ToolRoutePlanV2 | None = None,
     ) -> SourcePlanningOutputV1:
-        plans = validate_source_fetch_plans_v1(llm_result.structured_output)
+        plans = (
+            validate_source_fetch_plans_v1(llm_result.structured_output)
+            if tool_route_plan is None
+            else validate_source_fetch_plans_for_route(
+                llm_result.structured_output,
+                tool_route_plan=tool_route_plan,
+            )
+        )
         return _interpret_source_plans(plans=plans, llm_result=llm_result)
 
     def acquire(
@@ -361,7 +336,8 @@ class ApiDiscoveryAcquisitionAgent:
         *,
         plans: list[SourceFetchPlanV1],
         request: WorkflowStartRequest,
-        request_intent: RequestIntentV1 | None = None,
+        request_intent: RequestIntentV2 | None = None,
+        tool_route_plan: ToolRoutePlanV2 | None = None,
     ) -> AcquisitionResultV1:
         remaining = self._retrieval_budget.as_remaining()
         if not plans:
@@ -398,6 +374,7 @@ class ApiDiscoveryAcquisitionAgent:
                     request=request,
                     remaining=remaining,
                     request_intent=request_intent,
+                    tool_route_plan=tool_route_plan,
                 )
             except GoogleWorkspaceGatewayError as error:
                 mapped = _map_gateway_error(error)
@@ -482,7 +459,8 @@ class ApiDiscoveryAcquisitionAgent:
         plan: SourceFetchPlanV1,
         request: WorkflowStartRequest,
         remaining: dict[str, int],
-        request_intent: RequestIntentV1 | None,
+        request_intent: RequestIntentV2 | None,
+        tool_route_plan: ToolRoutePlanV2 | None,
     ) -> dict[str, object]:
         del request_intent  # Calendar FreeBusy gating now uses only the
         # typed calendar_read_mode/temporal_query plan fields (see
@@ -491,36 +469,23 @@ class ApiDiscoveryAcquisitionAgent:
         remaining["sources"] -= 1
         now_ms = self._now_ms()
         timezone = self._timezone_provider()
-        error_code: str | None = None
-        if request.entry_mode == "RESOURCE_SELECTED":
-            selected = _selected_snapshots(
-                gateway=self._gateway,
+        read_result = self._connector_reader.read(
+            ConnectorReadRequest(
                 plan=plan,
                 selected_resources=request.selected_resources,
-                remaining=remaining,
-            )
-            if selected:
-                snapshots = selected
-            else:
-                snapshots, error_code = _acquire_planned_source(
-                    gateway=self._gateway,
-                    plan=plan,
-                    remaining=remaining,
-                    now_ms=now_ms,
-                    timezone=timezone,
-                )
-        elif plan["source"] == "GMAIL":
-            snapshots = _acquire_gmail(gateway=self._gateway, plan=plan, remaining=remaining)
-        elif plan["source"] == "TASKS":
-            snapshots = _acquire_tasks(gateway=self._gateway, plan=plan, remaining=remaining)
-        else:
-            snapshots, error_code = _acquire_calendar(
-                gateway=self._gateway,
-                plan=plan,
-                remaining=remaining,
+                prefer_selected_resources=request.entry_mode == "RESOURCE_SELECTED",
+                remaining_budget=remaining,
                 now_ms=now_ms,
                 timezone=timezone,
+                allowed_read_tool_ids=(
+                    None
+                    if tool_route_plan is None
+                    else allowed_read_tool_ids(tool_route_plan, source=plan["source"])
+                ),
             )
+        )
+        snapshots = read_result.snapshots
+        error_code = read_result.error_code
         summary: dict[str, object] = {
             "schema_version": 1,
             "source": plan["source"],
@@ -586,11 +551,28 @@ def validate_source_fetch_plans_v1(value: object) -> list[SourceFetchPlanV1]:
     return sorted(plans, key=lambda item: item["priority"])
 
 
+def validate_source_fetch_plans_for_route(
+    value: object,
+    *,
+    tool_route_plan: ToolRoutePlanV2,
+) -> list[SourceFetchPlanV1]:
+    """Reject source plans that escape the frozen input route."""
+
+    plans = validate_source_fetch_plans_v1(value)
+    allowed_sources = allowed_input_sources(tool_route_plan)
+    unexpected = sorted({plan["source"] for plan in plans} - allowed_sources)
+    if unexpected:
+        raise SourcePlanningValidationError(
+            f"source plan is outside frozen input route: {','.join(unexpected)}"
+        )
+    return plans
+
+
 def load_acquisition_plan_sources_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "acquisition.plan_sources",
+        "retrieval.plan_query",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 
@@ -598,15 +580,14 @@ def load_acquisition_plan_sources_prompt_reference(
 def build_source_planning_clarification_question(
     *,
     output: SourcePlanningOutputV1,
-    request_intent: RequestIntentV1,
+    request_intent: RequestIntentV2,
 ) -> ClarificationQuestionV1:
     clarification = _require_mapping(output["clarification"], "$.clarification")
     return build_clarification_question_v1(
         origin_target="acquisition.plan_sources",
         question=_require_string(clarification, "question", "$.clarification"),
         reason_code=_require_string(clarification, "reason_code", "$.clarification"),
-        known_context_summary=request_intent["goal"]["user_visible_objective"]
-        or request_intent["goal"]["summary"],
+        known_context_summary=request_intent["goal"],
         affected_field_paths=_optional_string_list(clarification.get("affected_field_paths")),
         options=_optional_option_list(clarification.get("options")),
     )
@@ -689,20 +670,34 @@ def _planning_output(
     }
 
 
-def _planning_prompt_input(
+def _plan_query_prompt_input(
     *,
-    request_intent: RequestIntentV1,
+    request_intent: RequestIntentV2,
     request: WorkflowStartRequest,
     retrieval_budget: RetrievalBudget,
-    additional_acquisition_request: AdditionalAcquisitionRequestV1 | None,
+    tool_route_plan: ToolRoutePlanV2 | None,
 ) -> dict[str, object]:
+    """Typed retrieval.plan_query Prompt Runtime Input Projection.
+
+    Field set is pinned to prompt-runtime-input-contract-v1.json's
+    retrieval.plan_query entry and retrieval-plan-query-input-v1.schema.json
+    (additionalProperties: false). entry_mode/selected_resource_ids/
+    selected_resources are not sent here: Tool Route has already frozen
+    input_routes from that same signal (Q3 boundary), and Retrieval must
+    consume the frozen route rather than re-deriving or re-selecting it
+    from raw request fields.
+    """
+
+    frozen_input_routes = (
+        () if tool_route_plan is None else tool_route_plan["input_plan"]["input_routes"]
+    )
     return {
-        "planning_mode": "ADDITIONAL_DATA" if additional_acquisition_request else "INITIAL",
+        "user_request": request.request_text,
         "request_intent": request_intent,
-        "additional_acquisition_request": additional_acquisition_request,
-        "entry_mode": request.entry_mode,
-        "selected_resource_ids": list(request.selected_resource_ids),
-        "selected_resources": [asdict(resource) for resource in request.selected_resources],
+        "input_routes": [
+            {**route, "resource_type": coarse_resource_category(route["resource_type"])}
+            for route in frozen_input_routes
+        ],
         "retrieval_budget": retrieval_budget.as_remaining(),
     }
 
@@ -883,483 +878,18 @@ def _plan_exceeds_budget(plan: SourceFetchPlanV1, budget: RetrievalBudget) -> bo
     )
 
 
-def _selected_snapshots(
-    *,
-    gateway: GoogleWorkspaceGateway,
-    plan: SourceFetchPlanV1,
-    selected_resources: tuple[SelectedResourceRef, ...],
-    remaining: dict[str, int],
-) -> list[ResourceSnapshot]:
-    matching = [resource for resource in selected_resources if resource.source == plan["source"]]
-    snapshots: list[ResourceSnapshot] = []
-    for resource in matching:
-        if resource.source == "GMAIL":
-            snapshots.extend(
-                _get_selected_gmail(gateway=gateway, resource=resource, remaining=remaining)
-            )
-        elif resource.source == "TASKS":
-            snapshots.append(_get_selected_task(gateway=gateway, resource=resource))
-        elif resource.source == "CALENDAR":
-            snapshots.append(_get_selected_calendar(gateway=gateway, resource=resource))
-    return snapshots
-
-
-def _get_selected_gmail(
-    *,
-    gateway: GoogleWorkspaceGateway,
-    resource: SelectedResourceRef,
-    remaining: dict[str, int],
-) -> list[ResourceSnapshot]:
-    """Resolve one RESOURCE_SELECTED Gmail reference to its latest detail.
-
-    docs/05-context-retrieval.md section 7: a user-selected Resource is
-    re-fetched by ID (never re-searched) and is force-included regardless of
-    candidate score/budget. That force-include applies to the selected
-    Resource itself only -- for a THREAD selection, the follow-on message
-    body expansion (the same helper the AGENT_SEARCH path uses) still spends
-    the shared detail budget, so a selected Thread never silently vanishes
-    but very large threads still respect the Retrieval budget contract.
-    This calls the Agent Read Port (``get_gmail_thread``/``get_gmail_message``),
-    never the Sidebar-only ``GmailUiReadGateway``/``gmail_get_ui_thread_detail``
-    path, keeping the Agent/UI detail boundary intact.
-    """
-
-    if resource.resource_type == "THREAD":
-        thread_snapshot = gateway.get_gmail_thread(thread_id=resource.resource_id)
-        remaining["details"] = max(0, remaining["details"] - 1)
-        messages = _acquire_gmail_thread_messages(
-            gateway=gateway,
-            thread_snapshot=thread_snapshot,
-            remaining=remaining,
-        )
-        return [thread_snapshot, *messages]
-    if resource.resource_type == "MESSAGE":
-        return [gateway.get_gmail_message(message_id=resource.resource_id)]
-    raise ValueError(f"unsupported selected Gmail resource type: {resource.resource_type}")
-
-
-def _get_selected_task(
-    *,
-    gateway: GoogleWorkspaceGateway,
-    resource: SelectedResourceRef,
-) -> ResourceSnapshot:
-    if resource.resource_type != "TASK":
-        raise ValueError(f"unsupported selected Tasks resource type: {resource.resource_type}")
-    if resource.parent_resource_id is None:
-        raise ValueError("selected task requires parent_resource_id")
-    return gateway.get_task(
-        task_list_id=resource.parent_resource_id,
-        task_id=resource.resource_id,
-    )
-
-
-def _get_selected_calendar(
-    *,
-    gateway: GoogleWorkspaceGateway,
-    resource: SelectedResourceRef,
-) -> ResourceSnapshot:
-    if resource.resource_type != "EVENT":
-        raise ValueError(f"unsupported selected Calendar resource type: {resource.resource_type}")
-    if resource.parent_resource_id is None:
-        raise ValueError("selected calendar event requires parent_resource_id")
-    return gateway.get_calendar_event(
-        calendar_id=resource.parent_resource_id,
-        event_id=resource.resource_id,
-    )
-
-
-def _acquire_planned_source(
-    *,
-    gateway: GoogleWorkspaceGateway,
-    plan: SourceFetchPlanV1,
-    remaining: dict[str, int],
-    now_ms: int,
-    timezone: str,
-) -> tuple[list[ResourceSnapshot], str | None]:
-    if plan["source"] == "GMAIL":
-        return _acquire_gmail(gateway=gateway, plan=plan, remaining=remaining), None
-    if plan["source"] == "TASKS":
-        return _acquire_tasks(gateway=gateway, plan=plan, remaining=remaining), None
-    return _acquire_calendar(
-        gateway=gateway,
-        plan=plan,
-        remaining=remaining,
-        now_ms=now_ms,
-        timezone=timezone,
-    )
-
-
-def _acquire_gmail(
-    *,
-    gateway: GoogleWorkspaceGateway,
-    plan: SourceFetchPlanV1,
-    remaining: dict[str, int],
-) -> list[ResourceSnapshot]:
-    """Narrow Gmail candidates by Thread metadata, then read full message bodies.
-
-    Metadata search already bounds which threads get a detail GET
-    (``detail_limit``); this only adds the second hop the Context Retriever
-    needs for real evidence text -- for each detail-fetched thread, read its
-    messages in the order Gmail already returns them (docs/05 section 8:
-    "Message 시간순 정리") so Evidence excerpts carry actual body content
-    instead of thread-level subject/snippet metadata alone.
-    """
-
-    query = _query_from_constraints(plan["constraints"])
-    page = gateway.search_gmail_threads(query=query, page_token=None, page_size=plan["page_size"])
-    remaining["pages"] -= 1
-    candidates = list(page.items[: plan["max_candidates"]])
-    remaining["candidates"] -= len(candidates)
-    detail_ids = [item.resource_id for item in candidates[: plan["detail_limit"]]]
-    details: list[ResourceSnapshot] = []
-    for thread_id in detail_ids:
-        if remaining["details"] <= 0:
-            break
-        thread_snapshot = gateway.get_gmail_thread(thread_id=thread_id)
-        remaining["details"] -= 1
-        details.append(thread_snapshot)
-        details.extend(
-            _acquire_gmail_thread_messages(
-                gateway=gateway,
-                thread_snapshot=thread_snapshot,
-                remaining=remaining,
-            )
-        )
-    return details
-
-
-def _acquire_gmail_thread_messages(
-    *,
-    gateway: GoogleWorkspaceGateway,
-    thread_snapshot: ResourceSnapshot,
-    remaining: dict[str, int],
-) -> list[ResourceSnapshot]:
-    message_ids = _string_list(thread_snapshot.payload.get("message_ids"))
-    messages: list[ResourceSnapshot] = []
-    for message_id in message_ids:
-        if remaining["details"] <= 0:
-            break
-        try:
-            message_snapshot = gateway.get_gmail_message(message_id=message_id)
-        except GoogleWorkspaceGatewayError:
-            # One unreadable message (deleted/permission edge case) must not
-            # sink the rest of the thread's already-fetched detail budget.
-            continue
-        remaining["details"] -= 1
-        messages.append(message_snapshot)
-    return messages
-
-
-def _string_list(value: object) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item) for item in value]
-
-
-def _acquire_tasks(
-    *,
-    gateway: GoogleWorkspaceGateway,
-    plan: SourceFetchPlanV1,
-    remaining: dict[str, int],
-) -> list[ResourceSnapshot]:
-    task_list_id = _constraint_string(plan["constraints"], "task_list_id")
-    if task_list_id is None:
-        lists_page = gateway.list_task_lists(page_token=None, page_size=1)
-        remaining["pages"] -= 1
-        if not lists_page.items:
-            return []
-        task_list_id = lists_page.items[0].resource_id
-    page = gateway.list_tasks(
-        task_list_id=task_list_id,
-        page_token=None,
-        page_size=plan["page_size"],
-    )
-    remaining["pages"] -= 1
-    candidates = list(page.items[: plan["max_candidates"]])
-    remaining["candidates"] -= len(candidates)
-    detail_ids = [item.resource_id for item in candidates[: plan["detail_limit"]]]
-    details = [
-        gateway.get_task(task_list_id=task_list_id, task_id=task_id) for task_id in detail_ids
-    ]
-    remaining["details"] -= len(details)
-    return details
-
-
-def _acquire_calendar(
-    *,
-    gateway: GoogleWorkspaceGateway,
-    plan: SourceFetchPlanV1,
-    remaining: dict[str, int],
-    now_ms: int,
-    timezone: str,
-) -> tuple[list[ResourceSnapshot], str | None]:
-    calendar_id = _constraint_string(plan["constraints"], "calendar_id")
-    if calendar_id is None:
-        calendars_page = gateway.list_calendars(page_token=None, page_size=1)
-        remaining["pages"] -= 1
-        if not calendars_page.items:
-            return [], None
-        calendar_id = calendars_page.items[0].resource_id
-    page = gateway.list_calendar_events(
-        calendar_id=calendar_id,
-        page_token=None,
-        page_size=plan["page_size"],
-    )
-    remaining["pages"] -= 1
-    candidates = list(page.items[: plan["max_candidates"]])
-    remaining["candidates"] -= len(candidates)
-    detail_ids = [item.resource_id for item in candidates[: plan["detail_limit"]]]
-    details = [
-        gateway.get_calendar_event(calendar_id=calendar_id, event_id=event_id)
-        for event_id in detail_ids
-    ]
-    remaining["details"] -= len(details)
-    freebusy_snapshot, error_code = _maybe_query_freebusy(
-        gateway=gateway,
-        plan=plan,
-        calendar_id=calendar_id,
-        now_ms=now_ms,
-        timezone=timezone,
-        remaining=remaining,
-    )
-    if freebusy_snapshot is not None:
-        details.append(freebusy_snapshot)
-    return details, error_code
-
-
-def _maybe_query_freebusy(
-    *,
-    gateway: GoogleWorkspaceGateway,
-    plan: SourceFetchPlanV1,
-    calendar_id: str,
-    now_ms: int,
-    timezone: str,
-    remaining: dict[str, int],
-) -> tuple[ResourceSnapshot | None, str | None]:
-    """Deterministically call FreeBusy only for a typed EVENTS_AND_FREEBUSY plan.
-
-    docs/05-context-retrieval.md section 8: FreeBusy is not called for every
-    Calendar plan, only when the request actually needs an
-    availability/conflict judgement. That judgement is the Acquisition
-    Planning LLM's job (docs/07 section 5) expressed through the typed,
-    schema-validated ``calendar_read_mode``/``temporal_query`` fields --
-    this function only performs deterministic semantic normalization of an
-    already-produced typed signal (docs/00-CODE-AGENT-START-HERE.md section
-    4: "실제 Query와 Tool Arguments는 결정적 코드가 검증·생성한다"), it never
-    re-derives intent from raw request text.
-
-    Returns ``(snapshot, None)`` on success, ``(None, None)`` when FreeBusy
-    is not needed, and ``(None, "INVALID_TEMPORAL_QUERY")`` when the plan
-    asked for EVENTS_AND_FREEBUSY but the typed temporal_query could not be
-    resolved to a valid TimeRange -- a deterministic, testable failure
-    signal (surfaced via the source summary's ``error_code`` into
-    ``missing_slots``) rather than a silent no-op.
-    """
-
-    if plan["calendar_read_mode"] != "EVENTS_AND_FREEBUSY":
-        return None, None
-    if remaining["details"] <= 0:
-        return None, None
-    temporal_query = plan["temporal_query"]
-    if temporal_query is None:
-        return None, "INVALID_TEMPORAL_QUERY"
-    time_range = _resolve_temporal_query(
-        temporal_query=temporal_query,
-        now_ms=now_ms,
-        timezone=timezone,
-    )
-    if time_range is None:
-        return None, "INVALID_TEMPORAL_QUERY"
-    try:
-        calendars = gateway.query_freebusy(calendar_ids=(calendar_id,), time_range=time_range)
-    except GoogleWorkspaceGatewayError:
-        return None, None
-    remaining["details"] -= 1
-    return (
-        _freebusy_resource_snapshot(
-            calendar_id=calendar_id,
-            time_range=time_range,
-            calendars=calendars,
-        ),
-        None,
-    )
-
-
-# docs/05-context-retrieval.md section 8, "Calendar Typed Query 계약":
-# Daypart -> wall-clock window, in the user's configured timezone
-# (AppSettings.timezone). No Canonical
-# document defined MORNING/AFTERNOON/EVENING boundaries before this change
-# (checked 01-a/02/03/05/06/07/09/10/12/15 -- only 12-hour AM/PM *display*
-# formatting existed, not a semantic daypart-to-range mapping, and
-# AppSettings.work_hours is a single 09:00-18:00 "업무 가능 시간" window, a
-# narrower and different concept than a general day part). These three
-# fixed, non-overlapping, timezone-local windows are the new minimal
-# contract added to docs/05 alongside this implementation.
-_DAYPART_WINDOWS: dict[str, tuple[time, time]] = {
-    "MORNING": (time(6, 0), time(12, 0)),
-    "AFTERNOON": (time(12, 0), time(18, 0)),
-    "EVENING": (time(18, 0), time(21, 0)),
-}
-_WEEKDAY_INDEX: dict[str, int] = {
-    "MON": 0,
-    "TUE": 1,
-    "WED": 2,
-    "THU": 3,
-    "FRI": 4,
-    "SAT": 5,
-    "SUN": 6,
-}
-
-
 def _resolve_temporal_query(
     *,
     temporal_query: TemporalQueryV1,
     now_ms: int,
     timezone: str,
 ) -> TimeRange | None:
-    """Deterministically turn a typed TemporalQueryV1 into an RFC3339 TimeRange.
-
-    The only inputs are the LLM's closed-enum choices plus ``now``/
-    ``timezone`` -- no natural-language text is read or re-interpreted
-    here. Returns None (never raises) for any combination that cannot be
-    resolved, so the caller can treat it as a deterministic "invalid
-    temporal proposal" rather than crash.
-    """
-
-    if temporal_query["relation"] == "ABSOLUTE":
-        start = temporal_query["absolute_start"]
-        end = temporal_query["absolute_end"]
-        if start is None or end is None:
-            return None
-        try:
-            return TimeRange(start=start, end=end)
-        except ValueError:
-            return None
-
-    try:
-        tz = ZoneInfo(timezone)
-    except (ZoneInfoNotFoundError, ValueError, KeyError):
-        return None
-    now_local = datetime.fromtimestamp(now_ms / 1000, tz=UTC).astimezone(tz)
-
-    unit = temporal_query["relative_unit"]
-    offset = temporal_query["relative_offset"]
-    if unit is None or offset is None:
-        return None
-    if unit == "DAY":
-        window_start_date = (now_local + timedelta(days=offset)).date()
-        window_end_date = window_start_date + timedelta(days=1)
-    elif unit == "WEEK":
-        monday = now_local.date() - timedelta(days=now_local.weekday())
-        window_start_date = monday + timedelta(weeks=offset)
-        window_end_date = window_start_date + timedelta(days=7)
-    else:
-        return None
-
-    weekday = temporal_query["weekday"]
-    if weekday is not None and unit == "WEEK":
-        target_index = _WEEKDAY_INDEX[weekday]
-        day_offset = (target_index - window_start_date.weekday()) % 7
-        candidate = window_start_date + timedelta(days=day_offset)
-        if candidate >= window_end_date:
-            return None
-        window_start_date = candidate
-        window_end_date = candidate + timedelta(days=1)
-
-    daypart = temporal_query["daypart"]
-    if daypart is not None:
-        start_time, end_time = _DAYPART_WINDOWS[daypart]
-        start_dt = datetime.combine(window_start_date, start_time, tzinfo=tz)
-        end_dt = datetime.combine(window_start_date, end_time, tzinfo=tz)
-    else:
-        start_dt = datetime.combine(window_start_date, time.min, tzinfo=tz)
-        end_dt = datetime.combine(window_end_date, time.min, tzinfo=tz)
-
-    try:
-        return TimeRange(start=start_dt.isoformat(), end=end_dt.isoformat())
-    except ValueError:
-        return None
-
-
-def _freebusy_resource_snapshot(
-    *,
-    calendar_id: str,
-    time_range: TimeRange,
-    calendars: tuple[FreeBusyCalendar, ...],
-) -> ResourceSnapshot:
-    """Normalize the raw FreeBusy response into a Context-Retrieval-ready segment.
-
-    Only the deterministic ``summary`` text (built here, never raw Google
-    JSON) reaches Segment/Evidence text, so the Planning LLM never
-    interprets FreeBusy JSON directly -- it reads a short, code-authored
-    sentence describing busy intervals. The structured ``busy_intervals``
-    list is kept alongside for typed downstream consumption but is not one
-    of the text keys Context Retrieval extracts into segment text.
-    """
-
-    intervals: list[dict[str, object]] = [
-        {
-            "calendar_id": calendar.calendar_id,
-            "start": interval.start,
-            "end": interval.end,
-            "transparency": interval.transparency,
-        }
-        for calendar in calendars
-        for interval in calendar.intervals
-    ]
-    return ResourceSnapshot(
-        fixture_snapshot_id="",
-        resource_type=ResourceType.CALENDAR_FREEBUSY,
-        resource_id=f"freebusy-{calendar_id}-{time_range.start}-{time_range.end}",
-        parent_id=calendar_id,
-        related_resource_ids=(calendar_id,),
-        version="",
-        recovery_fingerprint=None,
-        payload={
-            "summary": _freebusy_summary(
-                calendar_id=calendar_id,
-                time_range=time_range,
-                intervals=intervals,
-            ),
-            "calendar_id": calendar_id,
-            "time_min": time_range.start,
-            "time_max": time_range.end,
-            "busy_intervals": intervals,
-        },
+    """Compatibility wrapper for existing private-function test imports."""
+    return resolve_temporal_query(
+        temporal_query=temporal_query,
+        now_ms=now_ms,
+        timezone=timezone,
     )
-
-
-def _freebusy_summary(
-    *,
-    calendar_id: str,
-    time_range: TimeRange,
-    intervals: list[dict[str, object]],
-) -> str:
-    if not intervals:
-        return (
-            f"{calendar_id} has no busy intervals between {time_range.start} and {time_range.end}."
-        )
-    parts = [f"{item['start']}~{item['end']} ({item['transparency']})" for item in intervals]
-    return (
-        f"{calendar_id} busy intervals between {time_range.start} and {time_range.end}: "
-        + "; ".join(parts)
-    )
-
-
-def _query_from_constraints(constraints: dict[str, object]) -> str:
-    terms: list[str] = []
-    for key in ("query", "topic", "person", "time"):
-        value = constraints.get(key)
-        if isinstance(value, str) and value.strip():
-            terms.append(value.strip())
-    return " ".join(terms)
-
-
-def _constraint_string(constraints: dict[str, object], key: str) -> str | None:
-    value = constraints.get(key)
-    if isinstance(value, str) and value.strip():
-        return value
-    return None
 
 
 def _acquisition_result(

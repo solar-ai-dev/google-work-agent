@@ -21,7 +21,7 @@ from google_work_agent.application.workflows import (
     load_request_understanding_clarify_prompt_reference,
     resolve_confirmation_origin_target,
     validate_confirmation_response_v1,
-    validate_request_intent_v1,
+    validate_request_intent_v2,
 )
 from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports import (
@@ -31,6 +31,7 @@ from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
     RequestedRuntimeMode,
+    SelectedResourceRef,
     StructuredLLMResult,
     WorkflowCorrelationContext,
     WorkflowStartRequest,
@@ -109,24 +110,25 @@ def test_clear_request_returns_complete_request_intent() -> None:
     assert output["result"] == RequestUnderstandingResult.COMPLETE.value
     assert output["request_intent"] is not None
     assert output["request_intent"]["schema_version"] == 2
-    assert output["request_intent"]["goal"]["summary"] == "김대리 관련 메일에서 할 일 정리"
+    assert output["request_intent"]["goal"] == "김대리 관련 메일에서 할 일 정리"
     assert output["clarification"] is None
     assert output["failure"] is None
     assert state_update["workflow_phase"] == WorkflowPhase.REQUEST_ANALYSIS.value
     assert state_update["request_intent"] == output["request_intent"]
     assert runtime.calls[0]["prompt_input"] == {
-        "request_text": request.request_text,
+        "user_request": request.request_text,
         "entry_mode": "AGENT_SEARCH",
-        "selected_resource_ids": [],
+        "language": None,
+        "selected_resources": [],
     }
     assert cast(PromptReference, runtime.calls[0]["prompt_ref"]).prompt_id == (
         "request_understanding.classify"
     )
 
 
-def test_invoke_classify_llm_wires_semantic_validate_to_validate_request_intent_v1() -> None:
+def test_invoke_classify_llm_wires_semantic_validate_to_validate_request_intent_v2() -> None:
     """Regression for the D-2-class repair-boundary gap: invoke_classify_llm
-    must pass validate_request_intent_v1 as semantic_validate so a
+    must pass validate_request_intent_v2 as semantic_validate so a
     schema-shape-valid but semantically-invalid output (e.g. a bad
     schema_version) is repair-eligible instead of raising uncaught from
     build_output_from_llm_result."""
@@ -142,7 +144,7 @@ def test_invoke_classify_llm_wires_semantic_validate_to_validate_request_intent_
     agent.classify(request)
 
     semantic_validate = runtime.calls[0]["semantic_validate"]
-    assert semantic_validate is validate_request_intent_v1
+    assert semantic_validate is validate_request_intent_v2
     assert semantic_validate(_clear_intent())["schema_version"] == 2
     invalid = _clear_intent()
     invalid["schema_version"] = 99
@@ -168,8 +170,8 @@ def test_linguistically_ambiguous_request_needs_confirmation() -> None:
     assert output["clarification"] == {
         "schema_version": 1,
         "origin_target": "request_understanding.classify",
-        "question": "어떤 사람을 말하는지 알려주세요.",
-        "affected_field_paths": ["semantic_constraints.people[0]"],
+        "question": "다음 정보를 확인해 주세요: 대상 인물",
+        "affected_field_paths": ["대상 인물"],
         "reason_code": "INTENT_AMBIGUITY_MISSED",
         "known_context_summary": "그 사람과 이야기했던 일정 정리",
         "options": [],
@@ -194,12 +196,16 @@ def test_retrieval_candidate_ambiguity_is_not_confirmed_by_request_understanding
     assert output["result"] == RequestUnderstandingResult.COMPLETE.value
     assert output["clarification"] is None
     assert output["request_intent"] is not None
-    assert output["request_intent"]["semantic_constraints"]["people"][0]["mention"] == "민수"
+    assert output["request_intent"]["constraints"][0]["value"] == "민수"
 
 
-def test_unsupported_scope_returns_invalid_without_request_intent_handoff() -> None:
+def test_delete_request_preserves_intent_for_tool_route_capability_block() -> None:
+    """Q2-X: capability blocking for unsupported actions (e.g. Gmail DELETE)
+    moved from Request Understanding INVALID to Tool Route's deterministic
+    Signed Registry/Policy BLOCKED boundary. Request Understanding now
+    classifies this as COMPLETE and preserves the DELETE intent unmodified."""
     runtime = FakeLLMRuntime()
-    runtime.queued.append(_llm_result(_unsupported_intent()))
+    runtime.queued.append(_llm_result(_delete_intent()))
     agent = RequestUnderstandingAgent(
         llm_runtime=runtime,
         prompt_ref=PROMPT_REF,
@@ -209,17 +215,13 @@ def test_unsupported_scope_returns_invalid_without_request_intent_handoff() -> N
     output = agent.classify(_request("메일 전부 삭제해줘."))
     state_update = agent.build_state_update(output, request=_request("메일 전부 삭제해줘."))
 
-    assert output["result"] == RequestUnderstandingResult.INVALID.value
-    assert output["request_intent"] is None
+    assert output["result"] == RequestUnderstandingResult.COMPLETE.value
+    assert output["request_intent"] is not None
+    assert output["request_intent"]["requested_effect_hints"] == ["DELETE"]
+    assert output["request_intent"]["requested_resource_hints"] == ["GMAIL_MESSAGE"]
     assert output["clarification"] is None
-    assert output["failure"] == {
-        "schema_version": 1,
-        "reason_code": "INTENT_UNSUPPORTED_SCOPE",
-        "user_safe_message": "삭제 요청은 현재 제품 범위에서 처리할 수 없습니다.",
-        "diagnostic": "RequestIntentV1.unsupported_scope.is_unsupported=true",
-    }
-    assert state_update["workflow_phase"] == WorkflowPhase.FINALIZE.value
-    assert "user_interrupt" not in state_update
+    assert output["failure"] is None
+    assert state_update["workflow_phase"] == WorkflowPhase.REQUEST_ANALYSIS.value
 
 
 def test_structured_output_schema_error_is_not_converted_to_invalid() -> None:
@@ -267,6 +269,11 @@ def test_resource_selected_preserves_selected_resource_context_without_intent_du
         "이 메일 기준으로 해야 할 일 정리해줘.",
         entry_mode="RESOURCE_SELECTED",
         selected_resource_ids=("gmail-thread-1",),
+        selected_resources=(
+            SelectedResourceRef(
+                source="GMAIL", resource_type="THREAD", resource_id="gmail-thread-1"
+            ),
+        ),
     )
     agent = RequestUnderstandingAgent(
         llm_runtime=runtime,
@@ -279,9 +286,16 @@ def test_resource_selected_preserves_selected_resource_context_without_intent_du
 
     assert output["result"] == RequestUnderstandingResult.COMPLETE.value
     assert runtime.calls[0]["prompt_input"] == {
-        "request_text": request.request_text,
+        "user_request": request.request_text,
         "entry_mode": "RESOURCE_SELECTED",
-        "selected_resource_ids": ["gmail-thread-1"],
+        "language": None,
+        "selected_resources": [
+            {
+                "connector_id": "google_workspace",
+                "resource_type": "EMAIL",
+                "external_resource_id": "gmail-thread-1",
+            }
+        ],
     }
     assert "selected_resource_ids" not in cast(dict[str, object], output["request_intent"])
     assert state_update["prompt_context"] == {
@@ -434,7 +448,7 @@ def test_request_understanding_exports_do_not_change_existing_workflow_contracts
     assert workflows.RequestUnderstandingResult is RequestUnderstandingResult
     assert workflows.WorkflowPhase is WorkflowPhase
     assert hasattr(workflows, "RequestUnderstandingAgent")
-    assert hasattr(workflows, "RequestIntentV1")
+    assert hasattr(workflows, "RequestIntentV2")
     assert hasattr(workflows, "load_request_understanding_clarify_prompt_reference")
     assert hasattr(workflows, "resolve_confirmation_origin_target")
 
@@ -444,6 +458,7 @@ def _request(
     *,
     entry_mode: str = "AGENT_SEARCH",
     selected_resource_ids: tuple[str, ...] = (),
+    selected_resources: tuple[SelectedResourceRef, ...] = (),
 ) -> WorkflowStartRequest:
     return WorkflowStartRequest(
         run_id="run-1",
@@ -453,6 +468,7 @@ def _request(
         requested_mode="AUTO",
         request_text=request_text,
         selected_resource_ids=selected_resource_ids,
+        selected_resources=selected_resources,
         correlation=WorkflowCorrelationContext(
             request_id="request-1",
             command_id="command-1",
@@ -483,35 +499,20 @@ def _llm_result(payload: dict[str, object], *, attempts: int = 1) -> StructuredL
 def _base_intent() -> dict[str, object]:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "김대리 관련 메일에서 할 일 정리",
-            "user_visible_objective": "김대리 메일에서 이번 주 해야 할 일을 정리",
+        "goal": "김대리 관련 메일에서 할 일 정리",
+        "completion_conditions": ["관련 메일을 찾고 이번 주 해야 할 일을 요약한다."],
+        "constraints": [
+            {"kind": "PERSON", "field": "person", "value": "김대리"},
+            {"kind": "TIME", "field": "time_range", "value": "이번 주"},
+        ],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "completion_criteria": ["관련 메일을 찾고 이번 주 해야 할 일을 요약한다."],
-        "semantic_constraints": {
-            "topics": [{"text": "해야 할 일", "source_text": "해야 할 일"}],
-            "people": [{"mention": "김대리", "role_hint": None, "source_text": "김대리"}],
-            "time": [
-                {
-                    "mention": "이번 주",
-                    "granularity_hint": "RELATIVE",
-                    "source_text": "이번 주",
-                }
-            ],
-            "sources": [
-                {"source": "GMAIL", "mention": "메일", "confidence": "HIGH"},
-                {"source": "TASKS", "mention": "해야 할 일", "confidence": "MEDIUM"},
-            ],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
-        },
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["GMAIL_THREAD", "TASK"],
+        "analysis_requirement": "REQUIRED",
     }
 
 
@@ -521,58 +522,38 @@ def _clear_intent() -> dict[str, object]:
 
 def _ambiguous_intent() -> dict[str, object]:
     intent = _base_intent()
-    intent["goal"] = {
-        "summary": "그 사람과 이야기했던 일정 정리",
-        "user_visible_objective": "그 사람과 이야기했던 일정 정리",
-    }
-    intent["semantic_constraints"] = {
-        **cast(dict[str, object], intent["semantic_constraints"]),
-        "people": [{"mention": "그 사람", "role_hint": None, "source_text": "그 사람"}],
-        "sources": [{"source": "CALENDAR", "mention": "일정", "confidence": "HIGH"}],
-    }
+    intent["goal"] = "그 사람과 이야기했던 일정 정리"
+    intent["constraints"] = [
+        {"kind": "PERSON", "field": "person", "value": "그 사람"},
+    ]
+    intent["requested_resource_hints"] = ["CALENDAR_EVENT"]
     intent["ambiguity"] = {
-        "is_ambiguous": True,
-        "items": [
-            {
-                "field_path": "semantic_constraints.people[0]",
-                "reason_code": "INTENT_AMBIGUITY_MISSED",
-                "user_question": "어떤 사람을 말하는지 알려주세요.",
-            }
-        ],
+        "requires_confirmation": True,
+        "reason_codes": ["INTENT_AMBIGUITY_MISSED"],
+        "missing_fields": ["대상 인물"],
     }
     return intent
 
 
 def _minsu_intent() -> dict[str, object]:
     intent = _base_intent()
-    intent["goal"] = {
-        "summary": "민수와 이야기했던 일정 정리",
-        "user_visible_objective": "민수와 이야기했던 일정 정리",
-    }
-    intent["semantic_constraints"] = {
-        **cast(dict[str, object], intent["semantic_constraints"]),
-        "people": [{"mention": "민수", "role_hint": None, "source_text": "민수"}],
-        "sources": [{"source": "CALENDAR", "mention": "일정", "confidence": "HIGH"}],
-    }
+    intent["goal"] = "민수와 이야기했던 일정 정리"
+    intent["constraints"] = [
+        {"kind": "PERSON", "field": "person", "value": "민수"},
+    ]
+    intent["requested_resource_hints"] = ["CALENDAR_EVENT"]
     return intent
 
 
-def _unsupported_intent() -> dict[str, object]:
+def _delete_intent() -> dict[str, object]:
+    """Q2-X: capability blocking for unsupported actions no longer lives in
+    RequestIntentV2 (unsupported_scope was removed). This fixture preserves
+    the DELETE intent unmodified — Tool Route's Signed Registry/Policy
+    boundary is now responsible for BLOCKED classification."""
     intent = _base_intent()
-    intent["goal"] = {
-        "summary": "메일 삭제",
-        "user_visible_objective": "메일 삭제",
-    }
-    intent["completion_criteria"] = ["메일 삭제 완료"]
-    intent["semantic_constraints"] = {
-        **cast(dict[str, object], intent["semantic_constraints"]),
-        "topics": [{"text": "삭제", "source_text": "삭제"}],
-        "negative_constraints": [],
-        "policy_or_safety_constraints": ["Gmail 삭제는 제품 범위 제외"],
-    }
-    intent["unsupported_scope"] = {
-        "is_unsupported": True,
-        "reason_code": "INTENT_UNSUPPORTED_SCOPE",
-        "explanation": "삭제 요청은 현재 제품 범위에서 처리할 수 없습니다.",
-    }
+    intent["goal"] = "메일 삭제"
+    intent["completion_conditions"] = ["메일 삭제 완료"]
+    intent["constraints"] = []
+    intent["requested_effect_hints"] = ["DELETE"]
+    intent["requested_resource_hints"] = ["GMAIL_MESSAGE"]
     return intent

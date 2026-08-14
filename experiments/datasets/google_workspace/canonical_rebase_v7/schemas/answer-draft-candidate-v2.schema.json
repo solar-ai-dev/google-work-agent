@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://google-work-agent.local/schemas/answer-draft-candidate-v2.schema.json",
+  "title": "AnswerDraftCandidateV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "answer",
+    "evidence_refs"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "answer": {
+      "type": "string"
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

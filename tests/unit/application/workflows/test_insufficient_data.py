@@ -50,6 +50,10 @@ def _context(
             InsufficientDataDisposition.NEEDS_CONFIRMATION,
         ),
         (
+            _context(source=ResolutionSource.ROUTE),
+            InsufficientDataDisposition.ROUTE_RECONSIDERATION_REQUIRED,
+        ),
+        (
             _context(source=ResolutionSource.GOOGLE),
             InsufficientDataDisposition.RETRIEVE_MORE,
         ),

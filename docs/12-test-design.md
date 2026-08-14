@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.9`, `01-A v2.15`, `01-B v2.10`, `02 UI·UX v2.11`, `03 Architecture v3.4`, `04 Database v1.15`, `05 Retrieval v2.10`, `06 Workflow v7.5`, `07 Interface v2.16`, `08 Sequence v3.8`, `09 Security v2.9`, `10 Infrastructure v2.8`, `11 Observability v2.11`, `15 Agent Capability·Failure·Prompt v1.10`, Domain 상태 전이 계약 v1.4와 테스트 매트릭스 v1.4을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.19`, `05 Retrieval v2.11`, `06 Workflow v7.13`, `07 Interface v2.19`, `08 Sequence v3.13`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.18`, `15 Agent Capability·Failure·Prompt v1.20`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v3.12 · **기준일:** 2026-08-13 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.30 · **기준일:** 2026-08-14 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -18,7 +18,7 @@ Unit → Contract → Integration → Component → E2E → Failure Injection �
 
 ```text
 TST-<AREA>-<NNN>
-AREA = DOM DB API SSE UI WF AGT RET LLM MCP GGL SEC INF OBS E2E PERF REL EVAL
+AREA = DOM DB API SSE UI WF AGT RET LLM MCP CON GGL SEC INF OBS E2E PERF REL EVAL
 ```
 
 Case 필드:
@@ -67,7 +67,8 @@ execution_lane
 FakeClock
 DeterministicUUID
 FakeKeyring
-FakeGoogleProviderAdapter   # Google Work MCP Server 내부 Adapter 테스트 전용
+FakeConnectorTransport      # Core Connector contract
+FakeGoogleProviderAdapter   # P0 Google Workspace MCP Server 내부 Adapter 테스트 전용
 FakeMCPTransport
 FakeLLMProvider
 FakeOllamaAdapter
@@ -163,7 +164,7 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - Override Action은 `WorkAnalysisResultV2.policy_confirmation_receipt_refs`와 Approval Snapshot이 같은 APPROVED Receipt를 참조해야 하며 누락/stale이면 Claim 전에 차단한다.
 
 - Retrieval LLM의 MCP 직접 호출 금지, deterministic Read Node만 `input_routes[].allowed_read_tool_ids` 범위에서 MCP Read Port를 호출하도록 허용
-- Google Workspace 접근 단일 경계 검증: React·FastAPI Route·Application·LangGraph·Agent·Domain에서 Gmail·Tasks·Calendar Provider API/SDK 직접 호출·직접 Provider Client 구성 0건. 모든 Sidebar Browse/Count/Detail, Retrieval Read, Write, Verification, Recovery 조회는 `FakeMCPTransport`/MCP Tool 경계를 통과한다. Google Provider Adapter 단위 테스트는 MCP Server 내부에서만 수행한다.
+- Connector 접근 공통 경계 검증: React·FastAPI Route·Application·LangGraph·Agent·Domain에서 Provider API/SDK 직접 호출·직접 Provider Client 구성 0건. 모든 Sidebar Browse/Count/Detail, Retrieval Read, Write, Verification, Recovery 조회는 `FakeMCPTransport`/MCP Tool 경계를 통과한다. Provider Adapter 단위 테스트는 해당 MCP Server 내부에서만 수행한다. P0 `GGL` 영역은 Gmail·Tasks·Calendar·Google OAuth 세부 계약을 검증하고 `CON` 영역은 Connector Registry/MCP boundary를 검증한다.
 - MCP unavailable/Tool Schema invalid 상황에서 제품 Core가 Google Provider API 직접 호출로 fallback하지 않고 NOT_READY/Recovery로 전환함을 검증
 - Preflight/Claim `applied=false`가 ACTION_EXECUTION으로 fall-through하지 않고 Domain Result에 따라 재승인·Recovery·Terminal로만 라우팅되는지 검증
 - Recovery는 recheck 필요 시에만 Verification으로 복귀하고 `RECOVERY_REQUIRED` 유지 시 explicit resolve/re-auth까지 suspend하며, terminal failure/block/cancel에서 무한 Verification loop가 없음을 검증
@@ -182,6 +183,25 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - `RESOURCE_SELECTED`에서 불필요한 Workspace Search 금지
 - `output_mode=ANSWER`에서 Action Argument/Plan Node 미호출
 - Review 없음·있음 Candidate가 Domain·Policy 코드를 공유
+
+
+### 8-A. Canonical Workflow·State Regression
+
+- Run 시작 뒤 Request Understanding 전에 `StartAnalysis: CREATED → ANALYZING`이 정확히 한 번 적용되어야 한다.
+- Request `COMPLETE`는 Tool Route로 정확히 한 번 연결된다. Retrieval/Planning으로 직접 건너뛰면 실패다.
+- `BeginRetrieval`은 `ANALYZING | PLANNING → RETRIEVING`, `BeginPlanning`은 `ANALYZING | RETRIEVING → PLANNING`을 지원하며 이미 target 상태인 local loop에서는 반복하지 않는다.
+- `NEEDS_MORE_DATA`는 local budget 내 bounded loop만 허용하고 budget 소진 시 `NEEDS_CONFIRMATION | PARTIAL | BLOCKED`로 정규화한다. `NO_FETCH_NEEDED`는 SUFFICIENT와 같은 analysis guard를 따른다.
+- Confirmation은 `RequestConfirmation → WAITING_CONFIRMATION → ResumeConfirmation → 동일 owner checkpoint`를 사용한다. 모든 Confirmation을 Request Understanding으로 공통 재시작하면 실패다.
+- Preflight/Claim `applied=false`가 `ACTION_EXECUTION` 또는 `FINALIZE`로 fall-through하면 실패다. `current_status + next_allowed_commands`로 재조정해야 한다.
+- `ACTION_EXECUTION`: `EXECUTED`만 Verification, `UNKNOWN_RESULT`는 Recovery, `FAILED + NOT_SENT`는 retry/cancel 대기 suspend다.
+- 승인형 Write 첫 Verification은 정상 경로 `WAITING_APPROVAL → VERIFYING`, 취소 후 이미 EXECUTED된 결과 확인은 `CANCEL_REQUESTED → VERIFYING`이다. 다중 Action에서 이미 VERIFYING이면 반복 호출하지 않는다.
+- predecessor Action이 `VERIFIED`되기 전 종속 Action을 실행하면 실패다.
+- 모든 승인 Action terminal + 미해결 결과 0 + cancel intent false에서만 `CompleteWriteRun → COMPLETED`; cancel intent true이면 `FinalizeCancel → CANCELLED`가 우선한다.
+- `RequestCancel` APPLIED Receipt는 `VERIFYING | RECOVERY_REQUIRED | REAUTH_REQUIRED` 전환 및 재시작 이후에도 durable cancel intent를 복원해야 하며 새 Claim/Write는 0이다.
+- `ResolveRecovery(FAIL)`은 `FAILED → FINALIZE` 한 경로만 가져야 한다. `ACCEPT_PARTIAL`과 중복 Edge에 매핑하면 실패다.
+- `Retrieval.PARTIAL + usable Evidence 없음`은 `CompleteAnswerOnlyRun → COMPLETED` 이후 FINALIZE해야 하며 비Terminal Run의 직접 FINALIZE는 실패다.
+- unknown Enum/Version/Disposition은 bounded repair 후 `RequireRecovery(CONTRACT_VIOLATION)`로 fail-closed한다.
+- `BlockRun`은 Claim 전 + Active/Unknown/미검증 Write Attempt 없음일 때만 적용한다. Plan이 존재하면 Action terminalize → ACTIVE Approval revoke → Plan CANCELLED → Run BLOCKED 순서를 같은 UoW에서 지켜 `0005` cross-aggregate trigger를 만족해야 한다.
 
 ## 9. UI
 
@@ -816,3 +836,59 @@ Attachment:
 - Staging 파일 변조·만료·삭제 후 기존 Approval 실행 0.
 - Draft CREATE/UPDATE·SEND 시 실제 MIME attachment와 승인 Descriptor가 일치.
 - Attachment 포함 SEND에서도 SENT_LOOKUP, UNKNOWN_RESULT no-resend 계약 유지.
+
+## PHASE 4~7 Dataset·Projection·Prompt·Runner 계약
+
+### CanonicalCaseV7 / E2EProjectionV5
+
+- Base-92는 60 CORE / 20 STRESS / 12 HOLDOUT을 유지한다.
+- `CanonicalCaseV7`은 모든 Case에 명시적 `end_state_gold`를 가진다.
+- `E2EProjectionV5`는 Canonical V7에서만 생성하며 hidden Planning args로 end-state를 추론하지 않는다.
+- Product Episode 10개는 E2E 전용 Projection으로 분리하고 Base-92 headline denominator에 섞지 않는다.
+
+### Prompt Runtime Input Gate
+
+- Product Prompt assembler는 `prompt-runtime-input-contract-v1` allowlist만 직렬화한다.
+- `gold`, `grader`, `expected_route`, `end_state_gold`, Holdout label, User Simulator `decision_script`가 Product Prompt로 들어가면 실패다.
+- Repair/Revision은 `base_projection + candidate_output + normalized failure_record`만 받고 `allowed_change_scope` 밖 필드를 변경하면 실패다.
+
+### PHASE 7 slot-aware grading
+
+Tool Route 평가를 두 단계로 분리한다.
+
+```text
+RouteResourceCandidateV1
+→ PRE_POLICY_SEMANTIC_ROUTE_GOLD
+→ deterministic Registry Binding
+→ PolicyPreconditionResolver
+→ ToolRoutePlanV2
+→ final route/trajectory grader
+```
+
+LLM candidate를 final ToolRoutePlanV2의 policy-precondition READ와 직접 비교하면 grader defect다.
+
+### RequestIntent Gold review gate
+
+`analysis_requirement`는 ACTION 여부만으로 `REQUIRED`가 되지 않는다. 단순 조회·직접 Action은 제품 계약상 `NONE`일 수 있고 duplicate/conflict 검사는 downstream effective analysis다. `CASE-CORE-002/003/005/006/008/055/058/059/060`은 PHASE 7 Gold review candidate다. `CASE-CORE-057`은 business-deadline 의미 때문에 human review 전 자동 수정하지 않는다.
+
+### Planning default binding gate
+
+`tasklist_id`, `calendar_id` 같은 default container ID를 LLM이 숨은 값으로 추측하면 실패다. 실제 Local model Planning pilot 전 다음 중 하나를 고정한다.
+
+1. deterministic Plan/Argument Assembler가 default ID를 바인딩한다.
+2. 또는 allowlisted `runtime_context/default_resource_bindings`를 Planning input에 명시한다.
+
+### Manual style smoke
+
+PHASE 7의 20 CORE × 2 문체 = 40 요청은 실제 Ollama/qwen benchmark가 아니다. Holdout 0, benchmark eligible=false로 기록한다. 실제 모델 DEV/Holdout 결과와 합치지 않는다.
+
+## PHASE 7.5 Contract Correction Regression
+
+- `CASE-CORE-002/003/005/006/008/055/058/059/060`의 RequestIntent `analysis_requirement=NONE`을 검증한다.
+- `CASE-CORE-057`은 business-deadline 의미 때문에 human review 결과 `REQUIRED` 유지다.
+- `CORE-058`처럼 Request analysis는 NONE이어도 Calendar CREATE policy conflict precondition 때문에 `effective_analysis_required=true`가 될 수 있다.
+- Tool Route Slot grader는 `PrePolicyToolRouteGoldV1`을 사용하고 final route/trajectory grader만 `ToolRoutePlanV2`를 사용한다.
+- Base-92 92건 모두 pre-policy Gold가 존재해야 한다.
+- Task UPDATE Planning Gold의 required `tasklist_id` 누락 0건을 검증한다.
+- default `tasklist_id/calendar_id`는 deterministic resolver가 bind하며 Planning LLM hidden guess 0건을 검증한다.
+- Dataset `rebuild-v1.17-r8.6-phase7.5-contract-correction`, Projection `projection-v1.1-r8.6-phase7.5`의 92 Canonical + 736 Projection source equality를 검증한다.

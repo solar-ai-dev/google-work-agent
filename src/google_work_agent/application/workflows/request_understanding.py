@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 from pathlib import Path
-from typing import Final, Literal, NotRequired, Required, TypedDict, cast
+from typing import Final, Literal, cast
 
 import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
@@ -19,6 +19,18 @@ from google_work_agent.application.workflows.contracts import (
     validate_confirmation_origin_target,
     validate_confirmation_response_v1,
     validate_user_interrupt_v1,
+)
+from google_work_agent.application.workflows.handoff_contracts import (
+    AmbiguityV1,
+    ClarificationOptionV1,
+    ClarificationQuestionV1,
+    ConstraintKindValue,
+    ConstraintV1,
+    RequestIntentV2,
+    RequestUnderstandingOutputV1,
+)
+from google_work_agent.application.workflows.handoff_contracts import (
+    RequestUnderstandingFailureV1 as RequestUnderstandingFailureV1,
 )
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
@@ -36,125 +48,18 @@ from google_work_agent.ports import (
 JsonObject = dict[str, object]
 
 
-class ClarificationOptionV1(TypedDict):
-    option_id: str
-    label: str
-
-
-class RequestIntentGoalV1(TypedDict):
-    summary: str
-    user_visible_objective: str
-
-
-class RequestIntentTopicConstraintV1(TypedDict):
-    text: str
-    source_text: str
-
-
-class RequestIntentPeopleConstraintV1(TypedDict):
-    mention: str
-    role_hint: str | None
-    source_text: str
-
-
-class RequestIntentTimeConstraintV1(TypedDict):
-    mention: str
-    granularity_hint: Literal["DATE", "DATETIME", "RANGE", "RELATIVE", "UNKNOWN"]
-    source_text: str
-
-
-class RequestIntentSourceConstraintV1(TypedDict):
-    source: Literal["GMAIL", "TASKS", "CALENDAR", "UNKNOWN"]
-    mention: str
-    confidence: Literal["HIGH", "MEDIUM", "LOW"]
-
-
-class RequestIntentStatusConstraintV1(TypedDict):
-    mention: str
-    source_text: str
-
-
-class RequestIntentSemanticConstraintsV1(TypedDict):
-    topics: list[RequestIntentTopicConstraintV1]
-    people: list[RequestIntentPeopleConstraintV1]
-    time: list[RequestIntentTimeConstraintV1]
-    sources: list[RequestIntentSourceConstraintV1]
-    status_or_state: list[RequestIntentStatusConstraintV1]
-    negative_constraints: list[str]
-    policy_or_safety_constraints: list[str]
-
-
-class RequestIntentAmbiguityItemV1(TypedDict):
-    field_path: str
-    reason_code: str
-    user_question: str
-
-
-class RequestIntentAmbiguityV1(TypedDict):
-    is_ambiguous: bool
-    items: list[RequestIntentAmbiguityItemV1]
-
-
-class RequestIntentUnsupportedScopeV1(TypedDict):
-    is_unsupported: bool
-    reason_code: str | None
-    explanation: str | None
-
-
-RequestIntentResponseDispositionValue = Literal["ANSWER_ONLY", "ACTION_REQUIRED"]
-"""Deterministic planning-mode signal produced by request_understanding.classify.
-
-Selects whether the Planning stage calls ``planning.answer_only`` or
-``planning.draft_plan`` (docs/06-agent-workflow.md Node Registry). Optional
-(``NotRequired``) rather than added to ``REQUEST_INTENT_SCHEMA_VERSION``'s
-required set: profiles other than SIX_ROLE_BASELINE (SINGLE_BASELINE's
-``profile.single.reason_plan.initial``, THREE_STAGE's
-``profile.three.stage2.initial``) already decide ANSWER_ONLY vs PLAN_READY
-inside their own fused planning output and never consult this field, so
-their embedded ``RequestIntentV1`` payloads are not required to carry it.
-"""
-
-
-class RequestIntentV1(TypedDict):
-    schema_version: Required[Literal[2]]
-    goal: RequestIntentGoalV1
-    completion_criteria: list[str]
-    semantic_constraints: RequestIntentSemanticConstraintsV1
-    ambiguity: RequestIntentAmbiguityV1
-    unsupported_scope: RequestIntentUnsupportedScopeV1
-    response_disposition: NotRequired[RequestIntentResponseDispositionValue]
-
-
-class ClarificationQuestionV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    origin_target: str
-    question: str
-    affected_field_paths: list[str]
-    reason_code: str
-    known_context_summary: str
-    options: list[ClarificationOptionV1]
-
-
-class RequestUnderstandingFailureV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    reason_code: str
-    user_safe_message: str
-    diagnostic: str
-
-
-class RequestUnderstandingOutputV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    result: Literal["COMPLETE", "NEEDS_CONFIRMATION", "INVALID"]
-    request_intent: RequestIntentV1 | None
-    clarification: ClarificationQuestionV1 | None
-    failure: RequestUnderstandingFailureV1 | None
-    validator_codes: list[str]
-    llm_provider_result: NotRequired[dict[str, object]]
-
-
 REQUEST_INTENT_SCHEMA_VERSION: Final = 2
 CLARIFICATION_QUESTION_SCHEMA_VERSION: Final = 1
 REQUEST_UNDERSTANDING_OUTPUT_SCHEMA_VERSION: Final = 1
+_CONSTRAINT_KIND_VALUES = {
+    "PERSON",
+    "EMAIL",
+    "DATE",
+    "TIME",
+    "RESOURCE",
+    "SCOPE",
+    "USER_REQUIREMENT",
+}
 REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="request-intent-v2",
     json_schema={
@@ -162,151 +67,60 @@ REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(
         "required": [
             "schema_version",
             "goal",
-            "completion_criteria",
-            "semantic_constraints",
+            "completion_conditions",
+            "constraints",
+            "requested_effect_hints",
+            "requested_resource_hints",
+            "analysis_requirement",
             "ambiguity",
-            "unsupported_scope",
-            "response_disposition",
         ],
         "additionalProperties": False,
         "properties": {
             "schema_version": {"type": "integer", "enum": [REQUEST_INTENT_SCHEMA_VERSION]},
-            "goal": {
-                "type": "object",
-                "required": ["summary", "user_visible_objective"],
-                "additionalProperties": False,
-                "properties": {
-                    "summary": {"type": "string"},
-                    "user_visible_objective": {"type": "string"},
+            "goal": {"type": "string"},
+            "completion_conditions": {"type": "array", "items": {"type": "string"}},
+            "constraints": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["kind", "field", "value"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "kind": {"type": "string", "enum": sorted(_CONSTRAINT_KIND_VALUES)},
+                        "field": {"type": "string"},
+                        "value": {
+                            "oneOf": [
+                                {"type": "string"},
+                                {"type": "array", "items": {"type": "string"}},
+                            ]
+                        },
+                    },
                 },
             },
-            "completion_criteria": {"type": "array", "items": {"type": "string"}},
-            "semantic_constraints": {
-                "type": "object",
-                "required": [
-                    "topics",
-                    "people",
-                    "time",
-                    "sources",
-                    "status_or_state",
-                    "negative_constraints",
-                    "policy_or_safety_constraints",
-                ],
-                "additionalProperties": False,
-                "properties": {
-                    "topics": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "required": ["text", "source_text"],
-                            "additionalProperties": False,
-                            "properties": {
-                                "text": {"type": "string"},
-                                "source_text": {"type": "string"},
-                            },
-                        },
-                    },
-                    "people": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "required": ["mention", "role_hint", "source_text"],
-                            "additionalProperties": False,
-                            "properties": {
-                                "mention": {"type": "string"},
-                                "role_hint": {"type": ["string", "null"]},
-                                "source_text": {"type": "string"},
-                            },
-                        },
-                    },
-                    "time": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "required": ["mention", "granularity_hint", "source_text"],
-                            "additionalProperties": False,
-                            "properties": {
-                                "mention": {"type": "string"},
-                                "granularity_hint": {
-                                    "type": "string",
-                                    "enum": ["DATE", "DATETIME", "RANGE", "RELATIVE", "UNKNOWN"],
-                                },
-                                "source_text": {"type": "string"},
-                            },
-                        },
-                    },
-                    "sources": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "required": ["source", "mention", "confidence"],
-                            "additionalProperties": False,
-                            "properties": {
-                                "source": {
-                                    "type": "string",
-                                    "enum": ["GMAIL", "TASKS", "CALENDAR", "UNKNOWN"],
-                                },
-                                "mention": {"type": "string"},
-                                "confidence": {
-                                    "type": "string",
-                                    "enum": ["HIGH", "MEDIUM", "LOW"],
-                                },
-                            },
-                        },
-                    },
-                    "status_or_state": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "required": ["mention", "source_text"],
-                            "additionalProperties": False,
-                            "properties": {
-                                "mention": {"type": "string"},
-                                "source_text": {"type": "string"},
-                            },
-                        },
-                    },
-                    "negative_constraints": {"type": "array", "items": {"type": "string"}},
-                    "policy_or_safety_constraints": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                    },
+            "requested_effect_hints": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": ["READ", "CREATE", "UPDATE", "SEND", "DELETE"],
                 },
+            },
+            "requested_resource_hints": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+            },
+            "analysis_requirement": {
+                "type": "string",
+                "enum": ["NONE", "REQUIRED"],
             },
             "ambiguity": {
                 "type": "object",
-                "required": ["is_ambiguous", "items"],
+                "required": ["requires_confirmation", "reason_codes", "missing_fields"],
                 "additionalProperties": False,
                 "properties": {
-                    "is_ambiguous": {"type": "boolean"},
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "required": ["field_path", "reason_code", "user_question"],
-                            "additionalProperties": False,
-                            "properties": {
-                                "field_path": {"type": "string"},
-                                "reason_code": {"type": "string"},
-                                "user_question": {"type": "string"},
-                            },
-                        },
-                    },
+                    "requires_confirmation": {"type": "boolean"},
+                    "reason_codes": {"type": "array", "items": {"type": "string"}},
+                    "missing_fields": {"type": "array", "items": {"type": "string"}},
                 },
-            },
-            "unsupported_scope": {
-                "type": "object",
-                "required": ["is_unsupported", "reason_code", "explanation"],
-                "additionalProperties": False,
-                "properties": {
-                    "is_unsupported": {"type": "boolean"},
-                    "reason_code": {"type": ["string", "null"]},
-                    "explanation": {"type": ["string", "null"]},
-                },
-            },
-            "response_disposition": {
-                "type": "string",
-                "enum": ["ANSWER_ONLY", "ACTION_REQUIRED"],
             },
         },
     },
@@ -348,17 +162,12 @@ CLARIFICATION_QUESTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
     },
 )
 
-_TIME_GRANULARITY_VALUES = {"DATE", "DATETIME", "RANGE", "RELATIVE", "UNKNOWN"}
-_SOURCE_VALUES = {"GMAIL", "TASKS", "CALENDAR", "UNKNOWN"}
-_CONFIDENCE_VALUES = {"HIGH", "MEDIUM", "LOW"}
-
-
 class RequestUnderstandingValidationError(ValueError):
-    """Raised when a structured RequestIntentV1 is not semantically usable."""
+    """Raised when a structured RequestIntentV2 is not semantically usable."""
 
 
 class RequestUnderstandingAgent:
-    """Classify a workflow start request into the RequestIntentV1 handoff."""
+    """Classify a workflow start request into the RequestIntentV2 handoff."""
 
     def __init__(
         self,
@@ -372,13 +181,22 @@ class RequestUnderstandingAgent:
         self._prompt_ref = prompt_ref or load_request_understanding_classify_prompt_reference(
             manifest_path
         )
-        self._clarify_prompt_ref = (
-            clarify_prompt_ref or load_request_understanding_clarify_prompt_reference(manifest_path)
-        )
+        # Resolved lazily (see _clarify_prompt_ref below): clarify() is not
+        # wired into the active SIX_ROLE_BASELINE subgraph node today, so
+        # construction must not fail just because request_understanding.clarify
+        # happens to be unavailable in the current prompt bundle.
+        self._clarify_prompt_ref_override = clarify_prompt_ref
+        self._manifest_path = manifest_path
 
     @property
     def prompt_ref(self) -> PromptReference:
         return self._prompt_ref
+
+    @property
+    def _clarify_prompt_ref(self) -> PromptReference:
+        return self._clarify_prompt_ref_override or (
+            load_request_understanding_clarify_prompt_reference(self._manifest_path)
+        )
 
     def __call__(self, request: WorkflowStartRequest) -> RequestUnderstandingOutputV1:
         return self.classify(request)
@@ -400,14 +218,14 @@ class RequestUnderstandingAgent:
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:request_understanding.classify",
             ),
-            semantic_validate=validate_request_intent_v1,
+            semantic_validate=validate_request_intent_v2,
         )
 
     def build_output_from_llm_result(
         self,
         llm_result: StructuredLLMResult,
     ) -> RequestUnderstandingOutputV1:
-        intent = validate_request_intent_v1(llm_result.structured_output)
+        intent = validate_request_intent_v2(llm_result.structured_output)
         return _classify_valid_intent(intent=intent, llm_result=llm_result)
 
     def clarify(
@@ -455,50 +273,83 @@ class RequestUnderstandingAgent:
         }
 
 
-_RESPONSE_DISPOSITION_VALUES = {"ANSWER_ONLY", "ACTION_REQUIRED"}
+def validate_request_intent_v2(value: object) -> RequestIntentV2:
+    """Validate the LLM's RequestIntentV2 candidate (06-agent-workflow.md §3.1).
 
+    ``meta`` is intentionally absent here: it is Application-owned lineage
+    identity (artifact_id/revision/based_on), not something the LLM
+    produces. ``materialize_request_intent_artifact`` attaches it right
+    after this validation succeeds, so the returned value is a genuine
+    ``RequestIntentV2`` only once both steps have run.
+    """
 
-def validate_request_intent_v1(value: object) -> RequestIntentV1:
     root = _require_mapping(value, "$")
-    _require_allowed_keys(
+    _require_exact_keys(
         root,
         "$",
-        required={
+        {
             "schema_version",
             "goal",
-            "completion_criteria",
-            "semantic_constraints",
+            "completion_conditions",
+            "constraints",
+            "requested_effect_hints",
+            "requested_resource_hints",
+            "analysis_requirement",
             "ambiguity",
-            "unsupported_scope",
         },
-        optional={"response_disposition"},
     )
     schema_version = _require_int(root, "schema_version", "$")
     if schema_version != REQUEST_INTENT_SCHEMA_VERSION:
         raise RequestUnderstandingValidationError(
             f"$.schema_version must be {REQUEST_INTENT_SCHEMA_VERSION}"
         )
-    goal = _validate_goal(root["goal"])
-    completion_criteria = _require_string_list(root["completion_criteria"], "$.completion_criteria")
-    semantic_constraints = _validate_semantic_constraints(root["semantic_constraints"])
-    ambiguity = _validate_ambiguity(root["ambiguity"])
-    unsupported_scope = _validate_unsupported_scope(root["unsupported_scope"])
-    result = RequestIntentV1(
-        schema_version=REQUEST_INTENT_SCHEMA_VERSION,
-        goal=goal,
-        completion_criteria=completion_criteria,
-        semantic_constraints=semantic_constraints,
-        ambiguity=ambiguity,
-        unsupported_scope=unsupported_scope,
+    goal = _require_string(root, "goal", "$")
+    completion_conditions = _require_string_list(
+        root["completion_conditions"], "$.completion_conditions"
     )
-    if "response_disposition" in root:
-        response_disposition = _require_string(root, "response_disposition", "$")
-        if response_disposition not in _RESPONSE_DISPOSITION_VALUES:
-            raise RequestUnderstandingValidationError("$.response_disposition is invalid")
-        result["response_disposition"] = cast(
-            RequestIntentResponseDispositionValue, response_disposition
-        )
-    return result
+    constraints = [
+        _validate_constraint(item, f"$.constraints[{index}]")
+        for index, item in enumerate(_require_list(root["constraints"], "$.constraints"))
+    ]
+    ambiguity = _validate_ambiguity(root["ambiguity"])
+    return cast(
+        RequestIntentV2,
+        {
+            "schema_version": REQUEST_INTENT_SCHEMA_VERSION,
+            "goal": goal,
+            "completion_conditions": completion_conditions,
+            "constraints": constraints,
+            "requested_effect_hints": cast(
+                list[Literal["READ", "CREATE", "UPDATE", "SEND", "DELETE"]],
+                _require_enum_list(
+                    root["requested_effect_hints"],
+                    "$.requested_effect_hints",
+                    {"READ", "CREATE", "UPDATE", "SEND", "DELETE"},
+                ),
+            ),
+            "requested_resource_hints": _require_string_list(
+                root["requested_resource_hints"], "$.requested_resource_hints"
+            ),
+            "analysis_requirement": cast(
+                Literal["NONE", "REQUIRED"],
+                _require_enum_string(root, "analysis_requirement", "$", {"NONE", "REQUIRED"}),
+            ),
+            "ambiguity": ambiguity,
+        },
+    )
+
+
+def materialize_request_intent_artifact(
+    intent: RequestIntentV2,
+    *,
+    artifact_id: str,
+) -> RequestIntentV2:
+    """Attach Application-owned artifact identity after LLM validation."""
+
+    return {
+        **intent,
+        "meta": {"artifact_id": artifact_id, "revision": 1, "based_on": []},
+    }
 
 
 def validate_clarification_question_v1(value: object) -> ClarificationQuestionV1:
@@ -617,34 +468,25 @@ def load_request_understanding_clarify_prompt_reference(
 
 def _classify_valid_intent(
     *,
-    intent: RequestIntentV1,
+    intent: RequestIntentV2,
     llm_result: StructuredLLMResult,
 ) -> RequestUnderstandingOutputV1:
-    validator_codes: list[str] = []
-    unsupported = intent["unsupported_scope"]
-    if unsupported["is_unsupported"]:
-        validator_codes.append("INTENT_UNSUPPORTED_SCOPE")
-        return RequestUnderstandingOutputV1(
-            schema_version=1,
-            result=RequestUnderstandingResult.INVALID.value,
-            request_intent=None,
-            clarification=None,
-            failure={
-                "schema_version": 1,
-                "reason_code": unsupported["reason_code"] or "INTENT_UNSUPPORTED_SCOPE",
-                "user_safe_message": unsupported["explanation"]
-                or "이 요청은 현재 제품 범위에서 처리할 수 없습니다.",
-                "diagnostic": "RequestIntentV1.unsupported_scope.is_unsupported=true",
-            },
-            validator_codes=validator_codes,
-            llm_provider_result=_provider_summary(llm_result),
-        )
+    """Route a validated RequestIntentV2 candidate to its Node result.
 
-    if intent["ambiguity"]["is_ambiguous"]:
-        if not intent["ambiguity"]["items"]:
-            raise RequestUnderstandingValidationError(
-                "$.ambiguity.items is required when is_ambiguous is true"
-            )
+    Q2-X: RequestIntentV2 no longer carries ``unsupported_scope`` --
+    Request Understanding does not judge product-capability support
+    anymore. A request whose resource/effect combination the Registry
+    cannot serve (e.g. deleting a Gmail message, which has no eligible
+    tool) still classifies COMPLETE here with its hints preserved, and is
+    deterministically BLOCKED downstream by Tool Route's Signed Registry
+    binding (``ToolRouteCoordinator._eligible_bindings``). ``ambiguity`` is
+    reserved for meaning only the user can resolve (e.g. "which Kim?");
+    unsupported-capability judgment never returns NEEDS_CONFIRMATION here.
+    """
+
+    validator_codes: list[str] = []
+
+    if intent["ambiguity"]["requires_confirmation"]:
         validator_codes.append("INTENT_AMBIGUITY_DETECTED")
         return RequestUnderstandingOutputV1(
             schema_version=1,
@@ -656,31 +498,21 @@ def _classify_valid_intent(
             llm_provider_result=_provider_summary(llm_result),
         )
 
-    if not _non_empty(intent["goal"]["summary"]):
+    if not _non_empty(intent["goal"]):
         validator_codes.append("INTENT_GOAL_MISSING")
         return _confirmation_for_missing_field(
             intent=intent,
-            field_path="goal.summary",
+            field_path="goal",
             reason_code="INTENT_GOAL_MISSING",
             question="무엇을 도와드리면 될지 조금 더 구체적으로 알려주세요.",
             validator_codes=validator_codes,
             llm_result=llm_result,
         )
-    if not _non_empty(intent["goal"]["user_visible_objective"]):
-        validator_codes.append("INTENT_GOAL_MISSING")
-        return _confirmation_for_missing_field(
-            intent=intent,
-            field_path="goal.user_visible_objective",
-            reason_code="INTENT_GOAL_MISSING",
-            question="요청의 목표를 사용자에게 확인할 수 있도록 다시 알려주세요.",
-            validator_codes=validator_codes,
-            llm_result=llm_result,
-        )
-    if not any(_non_empty(item) for item in intent["completion_criteria"]):
+    if not any(_non_empty(item) for item in intent["completion_conditions"]):
         validator_codes.append("INTENT_COMPLETION_CRITERIA_MISSING")
         return _confirmation_for_missing_field(
             intent=intent,
-            field_path="completion_criteria",
+            field_path="completion_conditions",
             reason_code="INTENT_COMPLETION_CRITERIA_MISSING",
             question="완료되었다고 판단할 기준을 알려주세요.",
             validator_codes=validator_codes,
@@ -701,7 +533,7 @@ def _classify_valid_intent(
 
 def _confirmation_for_missing_field(
     *,
-    intent: RequestIntentV1,
+    intent: RequestIntentV2,
     field_path: str,
     reason_code: str,
     question: str,
@@ -718,8 +550,7 @@ def _confirmation_for_missing_field(
             "question": question,
             "affected_field_paths": [field_path],
             "reason_code": reason_code,
-            "known_context_summary": intent["goal"]["user_visible_objective"]
-            or intent["goal"]["summary"],
+            "known_context_summary": intent["goal"],
             "options": [],
         },
         failure=None,
@@ -728,25 +559,71 @@ def _confirmation_for_missing_field(
     )
 
 
-def _build_clarification(intent: RequestIntentV1) -> ClarificationQuestionV1:
-    first = intent["ambiguity"]["items"][0]
+def _build_clarification(intent: RequestIntentV2) -> ClarificationQuestionV1:
+    """Deterministic clarification text from an ambiguity signal.
+
+    RequestIntentV2.ambiguity carries structured ``reason_codes``/
+    ``missing_fields`` only -- unlike retired V1, no per-item natural-language
+    ``user_question`` field exists for the LLM to fill in directly (that is
+    ``request_understanding.clarify``'s job in Canonical, not yet wired into
+    the active SIX_ROLE_BASELINE path). This builds a generic but honest
+    question from the structured fields rather than inventing free text.
+    """
+
+    ambiguity = intent["ambiguity"]
+    missing_fields = ambiguity["missing_fields"]
+    question = (
+        f"다음 정보를 확인해 주세요: {', '.join(missing_fields)}"
+        if missing_fields
+        else "요청을 진행하기 전에 조금 더 구체적으로 알려주세요."
+    )
     return {
         "schema_version": 1,
         "origin_target": "request_understanding.classify",
-        "question": first["user_question"],
-        "affected_field_paths": [item["field_path"] for item in intent["ambiguity"]["items"]],
-        "reason_code": first["reason_code"],
-        "known_context_summary": intent["goal"]["user_visible_objective"]
-        or intent["goal"]["summary"],
+        "question": question,
+        "affected_field_paths": missing_fields,
+        "reason_code": ambiguity["reason_codes"][0]
+        if ambiguity["reason_codes"]
+        else "INTENT_AMBIGUITY_MISSED",
+        "known_context_summary": intent["goal"],
         "options": [],
     }
 
 
+_SELECTED_RESOURCE_SOURCE_TO_CATEGORY: Final = {
+    "GMAIL": "EMAIL",
+    "TASKS": "TASK",
+    "CALENDAR": "CALENDAR",
+}
+
+# P0 has exactly one Connector (docs/03-system-architecture.md: "P0 첫
+# Connector는 google_workspace"). request_understanding.classify's
+# selected_resources projection needs a connector_id per
+# prompt-runtime-input-contract-v1.json; there is only one to report until
+# a second Connector exists.
+_P0_CONNECTOR_ID: Final = "google_workspace"
+
+
 def _prompt_input_from_request(request: WorkflowStartRequest) -> dict[str, object]:
     return {
-        "request_text": request.request_text,
+        "user_request": request.request_text,
         "entry_mode": request.entry_mode,
-        "selected_resource_ids": list(request.selected_resource_ids),
+        # MISSING_UPSTREAM_FIELD: no deterministic request-language source
+        # exists anywhere upstream of this node yet (WorkflowStartRequest,
+        # conversation/run state). request-understanding-input-v1.schema.json
+        # types this as ["string", "null"] for exactly this case -- send
+        # null rather than guess a value or add a new LLM call to detect it.
+        "language": None,
+        "selected_resources": [
+            {
+                "connector_id": _P0_CONNECTOR_ID,
+                "resource_type": _SELECTED_RESOURCE_SOURCE_TO_CATEGORY.get(
+                    ref.source, ref.source
+                ),
+                "external_resource_id": ref.resource_id,
+            }
+            for ref in request.selected_resources
+        ],
     }
 
 
@@ -773,176 +650,48 @@ def resolve_confirmation_origin_target(
     return question["origin_target"]
 
 
-def _validate_goal(value: object) -> RequestIntentGoalV1:
-    goal = _require_mapping(value, "$.goal")
-    _require_exact_keys(goal, "$.goal", {"summary", "user_visible_objective"})
-    return {
-        "summary": _require_string(goal, "summary", "$.goal"),
-        "user_visible_objective": _require_string(goal, "user_visible_objective", "$.goal"),
-    }
-
-
-def _validate_semantic_constraints(value: object) -> RequestIntentSemanticConstraintsV1:
-    constraints = _require_mapping(value, "$.semantic_constraints")
-    _require_exact_keys(
-        constraints,
-        "$.semantic_constraints",
-        {
-            "topics",
-            "people",
-            "time",
-            "sources",
-            "status_or_state",
-            "negative_constraints",
-            "policy_or_safety_constraints",
-        },
-    )
-    return {
-        "topics": [
-            _validate_topic(item, f"$.semantic_constraints.topics[{index}]")
-            for index, item in enumerate(_require_list(constraints["topics"], "$.topics"))
-        ],
-        "people": [
-            _validate_person(item, f"$.semantic_constraints.people[{index}]")
-            for index, item in enumerate(_require_list(constraints["people"], "$.people"))
-        ],
-        "time": [
-            _validate_time(item, f"$.semantic_constraints.time[{index}]")
-            for index, item in enumerate(_require_list(constraints["time"], "$.time"))
-        ],
-        "sources": [
-            _validate_source(item, f"$.semantic_constraints.sources[{index}]")
-            for index, item in enumerate(_require_list(constraints["sources"], "$.sources"))
-        ],
-        "status_or_state": [
-            _validate_status(item, f"$.semantic_constraints.status_or_state[{index}]")
-            for index, item in enumerate(_require_list(constraints["status_or_state"], "$.status"))
-        ],
-        "negative_constraints": _require_string_list(
-            constraints["negative_constraints"],
-            "$.semantic_constraints.negative_constraints",
-        ),
-        "policy_or_safety_constraints": _require_string_list(
-            constraints["policy_or_safety_constraints"],
-            "$.semantic_constraints.policy_or_safety_constraints",
-        ),
-    }
-
-
-def _validate_topic(value: object, path: str) -> RequestIntentTopicConstraintV1:
+def _validate_constraint(value: object, path: str) -> ConstraintV1:
     item = _require_mapping(value, path)
-    _require_exact_keys(item, path, {"text", "source_text"})
+    _require_exact_keys(item, path, {"kind", "field", "value"})
+    kind = _require_string(item, "kind", path)
+    if kind not in _CONSTRAINT_KIND_VALUES:
+        raise RequestUnderstandingValidationError(f"{path}.kind is invalid")
+    raw_value = item["value"]
+    if isinstance(raw_value, str):
+        value_out: str | list[str] = raw_value
+    elif isinstance(raw_value, list) and all(isinstance(entry, str) for entry in raw_value):
+        value_out = cast(list[str], raw_value)
+    else:
+        raise RequestUnderstandingValidationError(f"{path}.value must be a string or string array")
     return {
-        "text": _require_string(item, "text", path),
-        "source_text": _require_string(item, "source_text", path),
+        "kind": cast(ConstraintKindValue, kind),
+        "field": _require_string(item, "field", path),
+        "value": value_out,
     }
 
 
-def _validate_person(value: object, path: str) -> RequestIntentPeopleConstraintV1:
-    item = _require_mapping(value, path)
-    _require_exact_keys(item, path, {"mention", "role_hint", "source_text"})
-    role_hint = item["role_hint"]
-    if role_hint is not None and not isinstance(role_hint, str):
-        raise RequestUnderstandingValidationError(f"{path}.role_hint must be string or null")
-    return {
-        "mention": _require_string(item, "mention", path),
-        "role_hint": role_hint,
-        "source_text": _require_string(item, "source_text", path),
-    }
-
-
-def _validate_time(value: object, path: str) -> RequestIntentTimeConstraintV1:
-    item = _require_mapping(value, path)
-    _require_exact_keys(item, path, {"mention", "granularity_hint", "source_text"})
-    granularity = _require_string(item, "granularity_hint", path)
-    if granularity not in _TIME_GRANULARITY_VALUES:
-        raise RequestUnderstandingValidationError(f"{path}.granularity_hint is invalid")
-    return {
-        "mention": _require_string(item, "mention", path),
-        "granularity_hint": cast(
-            Literal["DATE", "DATETIME", "RANGE", "RELATIVE", "UNKNOWN"],
-            granularity,
-        ),
-        "source_text": _require_string(item, "source_text", path),
-    }
-
-
-def _validate_source(value: object, path: str) -> RequestIntentSourceConstraintV1:
-    item = _require_mapping(value, path)
-    _require_exact_keys(item, path, {"source", "mention", "confidence"})
-    source = _require_string(item, "source", path)
-    confidence = _require_string(item, "confidence", path)
-    if source not in _SOURCE_VALUES:
-        raise RequestUnderstandingValidationError(f"{path}.source is invalid")
-    if confidence not in _CONFIDENCE_VALUES:
-        raise RequestUnderstandingValidationError(f"{path}.confidence is invalid")
-    return {
-        "source": cast(Literal["GMAIL", "TASKS", "CALENDAR", "UNKNOWN"], source),
-        "mention": _require_string(item, "mention", path),
-        "confidence": cast(Literal["HIGH", "MEDIUM", "LOW"], confidence),
-    }
-
-
-def _validate_status(value: object, path: str) -> RequestIntentStatusConstraintV1:
-    item = _require_mapping(value, path)
-    _require_exact_keys(item, path, {"mention", "source_text"})
-    return {
-        "mention": _require_string(item, "mention", path),
-        "source_text": _require_string(item, "source_text", path),
-    }
-
-
-def _validate_ambiguity(value: object) -> RequestIntentAmbiguityV1:
+def _validate_ambiguity(value: object) -> AmbiguityV1:
     ambiguity = _require_mapping(value, "$.ambiguity")
-    _require_exact_keys(ambiguity, "$.ambiguity", {"is_ambiguous", "items"})
-    is_ambiguous = ambiguity["is_ambiguous"]
-    if not isinstance(is_ambiguous, bool):
-        raise RequestUnderstandingValidationError("$.ambiguity.is_ambiguous must be boolean")
-    return {
-        "is_ambiguous": is_ambiguous,
-        "items": [
-            _validate_ambiguity_item(item, f"$.ambiguity.items[{index}]")
-            for index, item in enumerate(_require_list(ambiguity["items"], "$.ambiguity.items"))
-        ],
-    }
-
-
-def _validate_ambiguity_item(value: object, path: str) -> RequestIntentAmbiguityItemV1:
-    item = _require_mapping(value, path)
-    _require_exact_keys(item, path, {"field_path", "reason_code", "user_question"})
-    return {
-        "field_path": _require_string(item, "field_path", path),
-        "reason_code": _require_string(item, "reason_code", path),
-        "user_question": _require_string(item, "user_question", path),
-    }
-
-
-def _validate_unsupported_scope(value: object) -> RequestIntentUnsupportedScopeV1:
-    unsupported = _require_mapping(value, "$.unsupported_scope")
     _require_exact_keys(
-        unsupported,
-        "$.unsupported_scope",
-        {"is_unsupported", "reason_code", "explanation"},
+        ambiguity, "$.ambiguity", {"requires_confirmation", "reason_codes", "missing_fields"}
     )
-    is_unsupported = unsupported["is_unsupported"]
-    if not isinstance(is_unsupported, bool):
+    requires_confirmation = ambiguity["requires_confirmation"]
+    if not isinstance(requires_confirmation, bool):
         raise RequestUnderstandingValidationError(
-            "$.unsupported_scope.is_unsupported must be boolean"
+            "$.ambiguity.requires_confirmation must be boolean"
         )
-    reason_code = unsupported["reason_code"]
-    explanation = unsupported["explanation"]
-    if reason_code is not None and not isinstance(reason_code, str):
+    reason_codes = _require_string_list(ambiguity["reason_codes"], "$.ambiguity.reason_codes")
+    missing_fields = _require_string_list(
+        ambiguity["missing_fields"], "$.ambiguity.missing_fields"
+    )
+    if requires_confirmation and not reason_codes:
         raise RequestUnderstandingValidationError(
-            "$.unsupported_scope.reason_code must be string or null"
-        )
-    if explanation is not None and not isinstance(explanation, str):
-        raise RequestUnderstandingValidationError(
-            "$.unsupported_scope.explanation must be string or null"
+            "$.ambiguity.reason_codes is required when requires_confirmation is true"
         )
     return {
-        "is_unsupported": is_unsupported,
-        "reason_code": reason_code,
-        "explanation": explanation,
+        "requires_confirmation": requires_confirmation,
+        "reason_codes": reason_codes,
+        "missing_fields": missing_fields,
     }
 
 
@@ -951,9 +700,6 @@ _require_mapping = partial(_schema.require_mapping, error_cls=RequestUnderstandi
 _require_exact_keys = partial(
     _schema.require_exact_keys, error_cls=RequestUnderstandingValidationError
 )
-_require_allowed_keys = partial(
-    _schema.require_allowed_keys, error_cls=RequestUnderstandingValidationError
-)
 _require_int = partial(_schema.require_int, error_cls=RequestUnderstandingValidationError)
 _require_string = partial(_schema.require_string, error_cls=RequestUnderstandingValidationError)
 _require_list = partial(_schema.require_list, error_cls=RequestUnderstandingValidationError)
@@ -961,6 +707,25 @@ _require_string_list = partial(
     _schema.require_string_list, error_cls=RequestUnderstandingValidationError
 )
 _provider_summary = _schema.provider_summary
+
+
+def _require_enum_list(value: object, path: str, allowed: set[str]) -> list[str]:
+    items = _require_string_list(value, path)
+    if any(item not in allowed for item in items):
+        raise RequestUnderstandingValidationError(f"{path} contains an invalid value")
+    return items
+
+
+def _require_enum_string(
+    value: dict[str, object],
+    key: str,
+    path: str,
+    allowed: set[str],
+) -> str:
+    item = _require_string(value, key, path)
+    if item not in allowed:
+        raise RequestUnderstandingValidationError(f"{path}.{key} is invalid")
+    return item
 
 
 def _non_empty(value: str) -> bool:

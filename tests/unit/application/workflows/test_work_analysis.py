@@ -14,7 +14,7 @@ from google_work_agent.application.workflows import (
     WORK_ANALYSIS_OUTPUT_SCHEMA,
     AnalysisResult,
     ContextRetrievalResultV1,
-    RequestIntentV1,
+    RequestIntentV2,
     WorkAnalysisAgent,
     WorkAnalysisValidationError,
     WorkflowPhase,
@@ -382,19 +382,19 @@ def test_work_analysis_agent_has_no_google_mcp_domain_or_repository_dependency()
 def test_analyze_prompt_ref_is_runtime_active(tmp_path: Path) -> None:
     manifest_path = write_runtime_active_manifest(
         tmp_path,
-        prompt_ids={"analysis.analyze"},
+        prompt_ids={"work_analysis.analyze"},
     )
     prompt_ref = load_work_analysis_analyze_prompt_reference(manifest_path)
 
-    assert prompt_ref.prompt_id == "analysis.analyze"
-    assert prompt_ref.prompt_version == "0.8.3"
+    assert prompt_ref.prompt_id == "work_analysis.analyze"
+    assert prompt_ref.prompt_version == "0.9.0"
     assert prompt_ref.content_hash
     assert prompt_ref.node_state == "INITIAL"
 
 
 def test_default_product_loader_rejects_draft_analysis_prompt(tmp_path: Path) -> None:
-    manifest_path = write_draft_manifest(tmp_path, prompt_ids={"analysis.analyze"})
-    with pytest.raises(InactivePromptArtifactError, match="analysis.analyze"):
+    manifest_path = write_draft_manifest(tmp_path, prompt_ids={"work_analysis.analyze"})
+    with pytest.raises(InactivePromptArtifactError, match="work_analysis.analyze"):
         load_work_analysis_analyze_prompt_reference(manifest_path)
 
 
@@ -432,29 +432,21 @@ def _request() -> WorkflowStartRequest:
     )
 
 
-def _intent() -> RequestIntentV1:
+def _intent() -> RequestIntentV2:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "Analyze risky follow-up work",
-            "user_visible_objective": "Find follow-up risks",
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "Find follow-up risks",
+        "completion_conditions": ["Evidence-backed work analysis is available."],
+        "constraints": [],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "completion_criteria": ["Evidence-backed work analysis is available."],
-        "semantic_constraints": {
-            "topics": [{"text": "follow-up", "source_text": "follow-up"}],
-            "people": [],
-            "time": [],
-            "sources": [{"source": "GMAIL", "mention": "mail", "confidence": "HIGH"}],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
-        },
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["GMAIL_THREAD"],
+        "analysis_requirement": "REQUIRED",
     }
 
 

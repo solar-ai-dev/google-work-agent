@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-CORE-044-UU",
+  "case_id": "CASE-CORE-044",
+  "projection_kind": "REQUEST_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-D-001",
+    "user_prompt_id": "UP-CORE-044",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "expected_disposition": "COMPLETE",
+    "request_intent_semantic": {
+      "schema_version": 2,
+      "goal": "인쇄소 슬롯이 Task 예정일보다 먼저임을 설명한다.",
+      "completion_conditions": [
+        "EV-A-001 8/13과 Task 예정일 8/16·17을 비교한다.",
+        "Gmail 최종 출고 8/19도 맥락으로 포함한다."
+      ],
+      "constraints": [
+        {
+          "kind": "SCOPE",
+          "field": "required_sources",
+          "value": [
+            "EMAIL",
+            "TASK",
+            "CALENDAR"
+          ]
+        }
+      ],
+      "requested_effect_hints": [
+        "READ"
+      ],
+      "requested_resource_hints": [
+        "CALENDAR",
+        "EMAIL",
+        "TASK"
+      ],
+      "analysis_requirement": "REQUIRED",
+      "ambiguity": {
+        "requires_confirmation": false,
+        "reason_codes": [],
+        "missing_fields": []
+      }
+    },
+    "lineage_expectation": {
+      "owner": "request_understanding",
+      "based_on": [
+        "run_input"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.request_understanding.deterministic",
+    "grader.request_understanding.semantic"
+  ]
+}

@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, replace
 from pathlib import Path
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from google_work_agent.adapters.runtime.build_manifest import BuildProfile
+from google_work_agent.ports import AppSettings, SettingsPatch, WorkHours
 
 _MAX_SETTINGS_BYTES = 32 * 1024
 _SECRET_LIKE_KEYS = {
@@ -23,46 +24,6 @@ _SECRET_LIKE_KEYS = {
     "client_secret",
     "claim_token",
 }
-
-
-@dataclass(frozen=True, slots=True)
-class WorkHours:
-    days: tuple[int, ...] = (0, 1, 2, 3, 4)
-    start: str = "09:00"
-    end: str = "18:00"
-
-
-@dataclass(frozen=True, slots=True)
-class AppSettings:
-    config_schema_version: int = 1
-    deployment_profile: str = BuildProfile.API_ONLY.value
-    requested_runtime_mode: str = "API_LLM"
-    default_calendar_id: str | None = None
-    default_tasklist_id: str | None = None
-    timezone: str = "Asia/Seoul"
-    work_hours: WorkHours = WorkHours()
-    approval_ttl_minutes: int = 30
-    run_retention_days: int = 30
-    external_llm_consent: bool = False
-    ollama_endpoint: str | None = None
-    approved_model_id: str | None = None
-    log_level: str = "INFO"
-
-
-@dataclass(frozen=True, slots=True)
-class SettingsPatch:
-    command_id: str
-    requested_runtime_mode: str | None = None
-    default_calendar_id: str | None = None
-    default_tasklist_id: str | None = None
-    timezone: str | None = None
-    work_hours: WorkHours | None = None
-    approval_ttl_minutes: int | None = None
-    run_retention_days: int | None = None
-    external_llm_consent: bool | None = None
-    ollama_endpoint: str | None = None
-    approved_model_id: str | None = None
-    log_level: str | None = None
 
 
 class FileSettingsStore:

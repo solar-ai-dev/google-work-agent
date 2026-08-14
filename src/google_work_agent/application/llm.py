@@ -11,26 +11,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from google_work_agent.adapters.llm import (
-    CredentialStorageMode,
-    DeterministicLLMRuntimeRouter,
-    LLMCredentialService,
-    LLMRuntimeStatusService,
-    validate_output_schema,
-)
-from google_work_agent.adapters.runtime.settings import AppSettings
 from google_work_agent.application.observability import (
     ObservabilityContext,
     Severity,
 )
+from google_work_agent.application.schema_validation import validate_output_schema
 from google_work_agent.ports import (
     ActualRuntime,
     ApprovedModelInfo,
+    AppSettings,
     AvailabilityState,
+    CredentialStorageMode,
     HardwareCapability,
     HardwareCapabilityStatus,
+    LLMCredentialStore,
     LLMErrorCode,
     LLMInvocationError,
+    LLMRuntimeRouter,
+    LLMRuntimeStatusReader,
     OutputSchemaDefinition,
     ProbeResult,
     PromptReference,
@@ -127,11 +125,11 @@ class NullLLMEventRecorder:
 @dataclass
 class LLMRuntimeService:
     settings_service: Callable[[], AppSettings]
-    status_service: LLMRuntimeStatusService
-    credential_service: LLMCredentialService
+    status_service: LLMRuntimeStatusReader
+    credential_service: LLMCredentialStore
     api_provider: StructuredLLMProvider
     ollama_provider_factory: Callable[[ApprovedModelInfo, AppSettings], StructuredLLMProvider]
-    router: DeterministicLLMRuntimeRouter
+    router: LLMRuntimeRouter
     runtime_policy: RuntimePolicy
     event_recorder: LLMEventRecorder = NullLLMEventRecorder()
     schema_repairer: SchemaRepairer | None = None
@@ -231,7 +229,7 @@ class LLMRuntimeService:
         status = self.status_service.get_runtime_status(settings)
         api_provider_summary = cast(dict[str, object], status["api_provider"])
         ollama_summary = cast(dict[str, object], status["ollama"])
-        approved_model = self.status_service.approved_models.get(settings.approved_model_id or "")
+        approved_model = self.status_service.get_approved_model(settings.approved_model_id or "")
         hardware_capability = _hardware_from_dict(ollama_summary["hardware_capability"])
         decision = self.router.decide(
             RouteDecisionInput(
@@ -361,7 +359,7 @@ class LLMRuntimeService:
         requested_mode = RequestedRuntimeMode(settings.requested_runtime_mode)
         status = self.status_service.get_runtime_status(settings)
         ollama_summary = cast(dict[str, object], status["ollama"])
-        approved_model = self.status_service.approved_models.get(settings.approved_model_id or "")
+        approved_model = self.status_service.get_approved_model(settings.approved_model_id or "")
         hardware_capability = _hardware_from_dict(ollama_summary["hardware_capability"])
         provider = self._resolve_provider(
             runtime=ActualRuntime.LOCAL_GPU,
@@ -889,9 +887,9 @@ class PromptRepairSchemaRepairer:
     """Real Schema Repair boundary.
 
     Re-invokes the same routed ``provider`` with the failed prompt's sibling
-    ``<namespace>.repair`` slot (``prompt_id`` with its final segment
-    replaced by ``repair``, e.g. ``analysis.analyze`` -> ``analysis.repair``)
-    for one bounded attempt, using the exact ``repair_input`` shape already
+    ``<prompt_id>.repair`` slot (``prompt_id`` with ``.repair`` appended,
+    e.g. ``work_analysis.analyze`` -> ``work_analysis.analyze.repair``) for
+    one bounded attempt, using the exact ``repair_input`` shape already
     proven by
     ``experiments/runner/r84_gate_runner.py::_run_repair_case`` against the
     matching ``*-repair-input.schema.json`` contracts (see e.g.
@@ -942,14 +940,12 @@ class PromptRepairSchemaRepairer:
 
         manifest_path = self.manifest_path or default_prompt_manifest_path()
         loader = self.prompt_loader or load_prompt_reference
-        # The sibling repair slot's id is the failed prompt's namespace with
-        # its final (node_name) segment swapped for "repair" -- e.g.
-        # "analysis.analyze" -> "analysis.repair". This is prompt_id's own
-        # namespace prefix, NOT PromptReference.subgraph_name: the manifest's
-        # "analysis.*" slots all carry subgraph_name="work_analysis" (the
-        # agent's internal LangGraph subgraph name), which does not match
-        # any "work_analysis.repair" slot in prompt-manifest-v0.8.3.json.
-        repair_prompt_id = f"{prompt_ref.prompt_id.rsplit('.', 1)[0]}.repair"
+        # The sibling repair slot's id is the failed prompt's own prompt_id
+        # with ".repair" appended -- e.g. "work_analysis.analyze" ->
+        # "work_analysis.analyze.repair". Each node owns its own repair slot
+        # in prompt-manifest-v0.9.0.json (unlike v0.8.3.json's one
+        # generic "<namespace>.repair" slot per agent role).
+        repair_prompt_id = f"{prompt_ref.prompt_id}.repair"
         try:
             repair_prompt_ref = loader(repair_prompt_id, manifest_path)
         except (LookupError, InactivePromptArtifactError) as error:
@@ -990,11 +986,7 @@ def _build_repair_input(
     """Shared repair-input shape for both the free-JSON and tool-calling repair boundaries."""
 
     affected_field_paths = sorted(
-        {
-            path
-            for message in validator_errors
-            if (path := _leading_json_path(message)) is not None
-        }
+        {path for message in validator_errors if (path := _leading_json_path(message)) is not None}
     )
     return {
         "schema_version": 1,
@@ -1023,7 +1015,7 @@ class PromptRepairToolCallRepairer:
     """Real Schema Repair boundary for the native tool-calling invocation path.
 
     Structurally parallel to ``PromptRepairSchemaRepairer`` (same sibling
-    ``<namespace>.repair`` slot lookup, same DRAFT fail-closed default, same
+    ``<prompt_id>.repair`` slot lookup, same DRAFT fail-closed default, same
     DEV-only ``prompt_loader`` escape hatch), except the repair call stays in
     tool-calling mode: it re-invokes ``provider.invoke_tool_call`` with the
     same ``tools`` list, then applies ``mapper`` to the repaired tool call
@@ -1061,7 +1053,7 @@ class PromptRepairToolCallRepairer:
 
         manifest_path = self.manifest_path or default_prompt_manifest_path()
         loader = self.prompt_loader or load_prompt_reference
-        repair_prompt_id = f"{prompt_ref.prompt_id.rsplit('.', 1)[0]}.repair"
+        repair_prompt_id = f"{prompt_ref.prompt_id}.repair"
         try:
             repair_prompt_ref = loader(repair_prompt_id, manifest_path)
         except (LookupError, InactivePromptArtifactError) as error:
@@ -1091,7 +1083,7 @@ class PromptRepairToolCallRepairer:
 
 @dataclass(frozen=True, slots=True)
 class GetLLMConnectionService:
-    runtime_status_service: LLMRuntimeStatusService
+    runtime_status_service: LLMRuntimeStatusReader
     settings_service: Callable[[], AppSettings]
 
     def __call__(self) -> dict[str, object]:
@@ -1100,7 +1092,7 @@ class GetLLMConnectionService:
 
 @dataclass(frozen=True, slots=True)
 class StoreLLMApiKeyService:
-    credential_service: LLMCredentialService
+    credential_service: LLMCredentialStore
 
     def __call__(self, *, api_key: str, storage_mode: CredentialStorageMode) -> dict[str, str]:
         state = self.credential_service.store(api_key=api_key, mode=storage_mode)
@@ -1109,7 +1101,7 @@ class StoreLLMApiKeyService:
 
 @dataclass(frozen=True, slots=True)
 class DeleteLLMApiKeyService:
-    credential_service: LLMCredentialService
+    credential_service: LLMCredentialStore
 
     def __call__(self) -> dict[str, str]:
         state = self.credential_service.delete()

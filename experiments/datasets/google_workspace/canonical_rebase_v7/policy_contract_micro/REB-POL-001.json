@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction",
+  "case_id": "REB-POL-001",
+  "fixture_snapshot_id": "FW-D-002",
+  "user_prompt": "Atlas 출고 메일만 보고 인쇄소 인계 확인 Task를 만들어줘. 기존 Tasks는 보지 마.",
+  "contract": "SCOPE_EXPANSION_TASK_CREATE",
+  "expected": {
+    "tool_route_disposition": "NEEDS_CONFIRMATION",
+    "confirmation_kind": "SCOPE_EXPANSION",
+    "reason_code": "SCOPE_EXPANSION_REQUIRED",
+    "required_policy_route": {
+      "resource_type": "TASK",
+      "connector_id": "google_workspace",
+      "required": true,
+      "reason_codes": [
+        "POLICY_DUPLICATE_CHECK"
+      ]
+    },
+    "write_before_confirmation": false
+  }
+}

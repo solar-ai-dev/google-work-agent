@@ -2,11 +2,11 @@
 
 > **문서 기준:** 2026-08-10 Claim V2·Attachment·Task 날짜 의미 설계 결정을 제품 목표·범위의 기준으로 한다. 문서 간 충돌은 §1.1의 권위·책임 소유 규칙으로 판정하며, PRD가 다른 Concern의 전문 권위 계약을 임의로 덮어쓰지 않는다.
 >
-> **상태:** Draft v2.9 · **기준일:** 2026-08-13 · **대상:** P0 MVP
+> **상태:** Draft v2.10 · **기준일:** 2026-08-13 · **대상:** P0 MVP
 
 ## 0. 한눈에 보기
 
-- **사용자 문제:** Gmail·Tasks·Calendar에 흩어진 업무를 한 요청으로 연결하고 실행 가능한 계획으로 만든다.
+- **사용자 문제:** 외부 업무 시스템에 흩어진 업무를 한 요청으로 연결하고 실행 가능한 계획으로 만든다. P0는 Google Workspace의 Gmail·Tasks·Calendar를 제공한다.
 - **Agent 역할:** 이해·근거 수집·분석·계획.
 - **결정적 코드 역할:** Policy·승인·상태전이·Write·검증.
 - **실험:** 동일 책임을 SINGLE/THREE/SIX Subgraph에 재배치해 Release Graph를 선택한다.
@@ -32,7 +32,7 @@
 
 ## 2. 제품 개요
 
-Google Work Agent는 Gmail, Google Tasks, Google Calendar에 흩어진 업무 정보를 조회하고 연결해 사용자의 목표를 달성할 실행 계획을 만든다. 결정적 LangGraph Supervisor가 최대 6개의 전문 **Agent Subgraph**를 조정한다. 각 Agent Subgraph는 자신의 호출 단위 Local State, Prompt 계약, bounded validation·repair/revision loop를 가지며 완료 시 Versioned Typed Result만 Main Graph에 반환한다. Agent별 장기 Memory는 두지 않는다. 역할 분리 수는 제품 불변조건이 아니며 `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE` 비교 후 Release Graph를 확정한다. 모든 쓰기는 사용자 승인 후 공통 결정적 실행·검증 Engine이 수행하고 Google API 재조회로 검증한다.
+Google Work Agent는 Connector 확장 가능한 Work Agent Core 위에 Google Workspace Connector를 P0 첫 구현으로 제공한다. Core는 Connector별 업무 정보를 조회·연결해 사용자의 목표를 달성할 실행 계획을 만든다. P0의 실제 Resource는 Gmail, Google Tasks, Google Calendar다. 결정적 LangGraph Supervisor가 최대 6개의 전문 **Agent Subgraph**를 조정한다. 각 Agent Subgraph는 자신의 호출 단위 Local State, Prompt 계약, bounded validation·repair/revision loop를 가지며 완료 시 Versioned Typed Result만 Main Graph에 반환한다. Agent별 장기 Memory는 두지 않는다. 역할 분리 수는 제품 불변조건이 아니며 `SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE` 비교 후 Release Graph를 확정한다. 모든 쓰기는 사용자 승인 후 공통 결정적 실행·검증 Engine이 수행하고 Google API 재조회로 검증한다.
 
 ## 2.1 Agent · Role · LLM Call · Subgraph 정의
 
@@ -125,12 +125,12 @@ Graph Profile의 독립변수는 **Agent Subgraph 분해 수준**이다. `SINGLE
 ## 5. 제품 목표
 
 - 자연어 요청에서 목표와 완료 조건을 추출한다.
-- 요청에 필요한 Gmail·Tasks·Calendar Source를 동적으로 선택한다.
-- Source-native 검색으로 근거를 수집하고 Evidence를 구성한다.
+- 요청에 필요한 Connector·Resource Source를 동적으로 선택한다. P0는 Gmail·Tasks·Calendar를 사용한다.
+- Connector-native 검색으로 근거를 수집하고 Evidence를 구성한다.
 - 업무 간 관계, 중복, 충돌, Evidence 기반 업무 마감 위험을 판단한다.
 - 사용자가 검토할 수 있는 Action Plan을 생성한다.
-- 승인된 Action만 MCP Tool로 실행한다.
-- 모든 쓰기 결과를 재조회하여 검증한다.
+- 승인된 Action만 해당 Connector MCP Tool로 실행한다.
+- 모든 Connector 쓰기 결과를 해당 Connector의 Verification Read로 재조회하여 검증한다.
 - P0에서 API LLM과 GPU Local LLM 모드를 모두 제공한다.
 - Local LLM 제품 Runtime은 Ollama로 고정한다.
 - CPU-only 또는 GPU 기준 미달 PC에서는 API LLM으로 고정한다.

@@ -16,7 +16,7 @@ from pathlib import Path
 from queue import Empty, Queue
 from typing import Any, cast
 
-from google_work_agent.domain import build_p0_tool_registry
+from google_work_agent.domain import SignedToolRegistry
 from google_work_agent.ports import (
     ArtifactSignatureDecision,
     ArtifactSignatureVerifier,
@@ -82,8 +82,7 @@ class MCPServerManifest:
         )
 
 
-def build_manifest_payload() -> dict[str, object]:
-    registry = build_p0_tool_registry()
+def build_manifest_payload_for_registry(registry: SignedToolRegistry) -> dict[str, object]:
     entries = registry.list_entries()
     registry_version = entries[0].registry_version if entries else "2026-08-07.p0"
     tools = [
@@ -146,6 +145,17 @@ class MCPArtifactConfig:
     extra_environment: dict[str, str] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class MCPConnectorDescriptor:
+    connector_id: str
+    artifact_config: MCPArtifactConfig
+    expected_tool_registry: SignedToolRegistry
+
+    def __post_init__(self) -> None:
+        if not self.connector_id.strip():
+            raise ValueError("connector_id must not be blank")
+
+
 def normalize_manifest_bytes(raw: bytes) -> bytes:
     return raw.replace(b"\r\n", b"\n")
 
@@ -174,10 +184,11 @@ class SubprocessMCPTransport:
     def __init__(
         self,
         *,
-        config: MCPArtifactConfig,
+        descriptor: MCPConnectorDescriptor,
         signature_verifier: ArtifactSignatureVerifier | None = None,
     ) -> None:
-        self._config = config
+        self._descriptor = descriptor
+        self._config = descriptor.artifact_config
         self._signature_verifier = signature_verifier
         self._manifest = self._validate_artifacts()
         self._process: subprocess.Popen[str] | None = None
@@ -246,6 +257,19 @@ class SubprocessMCPTransport:
             self._process = None
             self._status = MCPProcessStatus.STOPPED
 
+    def restart(self) -> MCPRuntimeMetadata:
+        with self._lock:
+            if self._restart_count >= self._config.max_restart_count:
+                self._status = MCPProcessStatus.FAILED
+                raise MCPTransportError(
+                    code=MCPTransportErrorCode.PROCESS_UNAVAILABLE,
+                    message="mcp restart limit exhausted",
+                )
+            self.close()
+            self._restart_count += 1
+            self._start_process()
+            return self.runtime_metadata()
+
     def _validate_artifacts(self) -> MCPServerManifest:
         executable_path = Path(self._config.executable_path)
         manifest_path = Path(self._config.manifest_path)
@@ -299,10 +323,10 @@ class SubprocessMCPTransport:
         return manifest
 
     def _validate_manifest_tools(self, manifest: MCPServerManifest) -> None:
-        registry = build_p0_tool_registry()
+        registry = self._descriptor.expected_tool_registry
         expected_names = {entry.tool_name for entry in registry.list_entries()}
         manifest_names = {tool.tool_name for tool in manifest.tools}
-        if manifest_names != expected_names:
+        if len(manifest_names) != len(manifest.tools) or manifest_names != expected_names:
             raise MCPTransportError(
                 code=MCPTransportErrorCode.TOOL_REJECTED,
                 message="manifest tool allowlist mismatch",
@@ -318,6 +342,31 @@ class SubprocessMCPTransport:
                 raise MCPTransportError(
                     code=MCPTransportErrorCode.TOOL_REJECTED,
                     message=f"tool scope mismatch: {tool.tool_name}",
+                )
+            expected_contract = (
+                entry.approval_requirement.value,
+                entry.verification_policy.value,
+                entry.recovery_policy.value,
+                entry.retryable,
+                entry.input_schema_version,
+                entry.output_schema_version,
+                entry.tool_schema_hash,
+                entry.registry_version,
+            )
+            manifest_contract = (
+                tool.approval_requirement,
+                tool.verification_policy,
+                tool.recovery_policy,
+                tool.retryable,
+                tool.input_schema_version,
+                tool.output_schema_version,
+                tool.tool_schema_hash,
+                tool.registry_version,
+            )
+            if manifest_contract != expected_contract:
+                raise MCPTransportError(
+                    code=MCPTransportErrorCode.TOOL_REJECTED,
+                    message=f"tool contract mismatch: {tool.tool_name}",
                 )
 
     def _start_process(self) -> None:

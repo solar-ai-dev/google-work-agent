@@ -19,7 +19,7 @@ from google_work_agent.application.workflows import (
     PlanReviewAgent,
     PlanReviewResultV1,
     PlanReviewValidationError,
-    RequestIntentV1,
+    RequestIntentV2,
     ReviewIssueV1,
     ReviewResult,
     WorkAnalysisResultV1,
@@ -777,22 +777,22 @@ def test_recheck_accepts_only_pass_or_block() -> None:
 def test_prompt_refs_are_runtime_active(tmp_path: Path) -> None:
     manifest_path = write_runtime_active_manifest(
         tmp_path,
-        prompt_ids={"review.inspect", "review.recheck"},
+        prompt_ids={"review.inspect", "review.inspect.recheck"},
     )
     inspect_prompt = load_plan_review_inspect_prompt_reference(manifest_path)
     recheck_prompt = load_plan_review_recheck_prompt_reference(manifest_path)
 
     assert inspect_prompt.prompt_id == "review.inspect"
-    assert inspect_prompt.prompt_version == "0.8.3"
+    assert inspect_prompt.prompt_version == "0.9.0"
     assert inspect_prompt.content_hash
     assert inspect_prompt.node_state == "INITIAL"
-    assert inspect_prompt.output_schema_version == "v2"
+    assert inspect_prompt.output_schema_version == "r8.6-output-contract-snapshot-v1"
 
-    assert recheck_prompt.prompt_id == "review.recheck"
-    assert recheck_prompt.prompt_version == "0.8.3"
+    assert recheck_prompt.prompt_id == "review.inspect.recheck"
+    assert recheck_prompt.prompt_version == "0.9.0"
     assert recheck_prompt.content_hash
-    assert recheck_prompt.node_state == "RECHECK"
-    assert recheck_prompt.output_schema_version == "v2"
+    assert recheck_prompt.node_state == "SEMANTIC_REVISION"
+    assert recheck_prompt.output_schema_version == "r8.6-output-contract-snapshot-v1"
 
 
 def test_default_product_loader_rejects_draft_review_prompt(tmp_path: Path) -> None:
@@ -851,29 +851,23 @@ def _request() -> WorkflowStartRequest:
     )
 
 
-def _intent() -> RequestIntentV1:
+def _intent() -> RequestIntentV2:
     return {
         "schema_version": 2,
-        "goal": {
-            "summary": "Review the next response or action plan",
-            "user_visible_objective": "Handle Kim's follow-up",
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "Handle Kim's follow-up",
+        "completion_conditions": ["Produce a review result only."],
+        "constraints": [
+            {"kind": "PERSON", "field": "person", "value": "Kim"},
+        ],
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
-        "completion_criteria": ["Produce a review result only."],
-        "semantic_constraints": {
-            "topics": [{"text": "follow-up", "source_text": "follow-up"}],
-            "people": [{"mention": "Kim", "role_hint": None, "source_text": "Kim"}],
-            "time": [],
-            "sources": [{"source": "GMAIL", "mention": "mail", "confidence": "HIGH"}],
-            "status_or_state": [],
-            "negative_constraints": [],
-            "policy_or_safety_constraints": [],
-        },
-        "ambiguity": {"is_ambiguous": False, "items": []},
-        "unsupported_scope": {
-            "is_unsupported": False,
-            "reason_code": None,
-            "explanation": None,
-        },
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": ["GMAIL_THREAD"],
+        "analysis_requirement": "REQUIRED",
     }
 
 

@@ -5,12 +5,11 @@ from __future__ import annotations
 from datetime import date, datetime
 from functools import partial
 from pathlib import Path
-from typing import Literal, NotRequired, Required, TypedDict, cast
+from typing import Literal, TypedDict, cast
 
 import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.context_retrieval import ContextRetrievalResultV1
 from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
@@ -19,6 +18,16 @@ from google_work_agent.application.workflows.contracts import (
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
 )
+from google_work_agent.application.workflows.handoff_contracts import (
+    AnalysisFindingKind,
+    AnalysisFindingV1,
+    AnalysisStatusValue,
+    ClarificationQuestionV1,
+    ContextRetrievalResultV1,
+    FeasibilityScheduleConstraintsV1,
+    RequestIntentV2,
+    WorkAnalysisResultV1,
+)
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )
@@ -26,8 +35,6 @@ from google_work_agent.application.workflows.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.application.workflows.request_understanding import (
-    ClarificationQuestionV1,
-    RequestIntentV1,
     build_clarification_question_v1,
 )
 from google_work_agent.ports import (
@@ -38,53 +45,6 @@ from google_work_agent.ports import (
 )
 
 JsonObject = dict[str, object]
-AnalysisStatusValue = Literal["COMPLETE", "NEEDS_MORE_DATA", "NEEDS_CONFIRMATION", "BLOCKED"]
-AnalysisFindingKind = Literal[
-    "FACT",
-    "RELATIONSHIP",
-    "MISSING_INFORMATION",
-    "DUPLICATE_CANDIDATE",
-    "CONFLICT",
-    "SCHEDULE_RISK",
-    "EVIDENCE_GAP",
-]
-
-
-class AnalysisFindingV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    finding_id: str
-    kind: AnalysisFindingKind
-    statement: str
-    evidence_refs: list[str]
-    resource_refs: list[str]
-    segment_refs: list[str]
-    related_resource_handles: list[str]
-    reason_codes: list[str]
-
-
-class FeasibilityScheduleConstraintsV1(TypedDict):
-    business_deadline: str
-    business_deadline_source: Literal["USER", "GMAIL_EVIDENCE"]
-    expected_duration_minutes: int | None
-    duration_source: Literal["EXPLICIT_ESTIMATE", "EVENT_INTERVAL"]
-
-
-class WorkAnalysisResultV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    status: AnalysisStatusValue
-    summary: str
-    findings: list[AnalysisFindingV1]
-    missing_information: list[str]
-    confirmation: dict[str, object] | None
-    blockers: list[str]
-    evidence_refs: list[str]
-    resource_refs: list[dict[str, object]]
-    segment_refs: list[dict[str, object]]
-    additional_acquisition_request: AdditionalAcquisitionRequestV1 | None
-    schedule_constraints: NotRequired[FeasibilityScheduleConstraintsV1]
-    llm_provider_result: NotRequired[dict[str, object]]
-
-
 WORK_ANALYSIS_SCHEMA_VERSION = 1
 ANALYSIS_FINDING_SCHEMA_VERSION = 1
 WORK_ANALYSIS_OUTPUT_SCHEMA = OutputSchemaDefinition(
@@ -254,7 +214,7 @@ class WorkAnalysisAgent:
     def analyze(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         request: WorkflowStartRequest,
     ) -> WorkAnalysisResultV1:
@@ -268,7 +228,7 @@ class WorkAnalysisAgent:
     def invoke_analyze_llm(
         self,
         *,
-        request_intent: RequestIntentV1,
+        request_intent: RequestIntentV2,
         context_result: ContextRetrievalResultV1,
         request: WorkflowStartRequest,
     ) -> StructuredLLMResult:
@@ -446,15 +406,14 @@ def _validate_schedule_constraints(value: object) -> FeasibilityScheduleConstrai
 def build_work_analysis_clarification_question(
     *,
     result: WorkAnalysisResultV1,
-    request_intent: RequestIntentV1,
+    request_intent: RequestIntentV2,
 ) -> ClarificationQuestionV1:
     confirmation = _require_mapping(result["confirmation"], "$.confirmation")
     return build_clarification_question_v1(
         origin_target="analysis.analyze",
         question=_require_string(confirmation, "question", "$.confirmation"),
         reason_code=_require_string(confirmation, "reason_code", "$.confirmation"),
-        known_context_summary=request_intent["goal"]["user_visible_objective"]
-        or request_intent["goal"]["summary"],
+        known_context_summary=request_intent["goal"],
         affected_field_paths=_optional_string_list(confirmation.get("affected_field_paths")),
         options=_optional_option_list(confirmation.get("options")),
     )
@@ -464,7 +423,7 @@ def load_work_analysis_analyze_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
     return _load_registry_prompt_reference(
-        "analysis.analyze",
+        "work_analysis.analyze",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 

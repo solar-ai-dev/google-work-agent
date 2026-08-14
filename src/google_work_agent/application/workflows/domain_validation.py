@@ -7,12 +7,14 @@ from google_work_agent.application.workflows.contracts import (
     DomainValidationResult,
     validate_domain_validation_output_v1,
 )
-from google_work_agent.application.workflows.solution_planning import (
+from google_work_agent.application.workflows.handoff_contracts import (
     ActionPlanDraftV1,
+    WorkAnalysisResultV1,
+)
+from google_work_agent.application.workflows.solution_planning import (
     SolutionPlanningValidationError,
     validate_action_plan_draft_v1,
 )
-from google_work_agent.application.workflows.work_analysis import WorkAnalysisResultV1
 from google_work_agent.domain import EffectType, SignedToolRegistry, build_p0_tool_registry
 
 

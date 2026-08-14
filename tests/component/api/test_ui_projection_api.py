@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClock, FakeGoogleGateway, FakeWorkflowRuntime
 from tests.support.fixtures import ProductFixtureSnapshotLoader
@@ -39,6 +40,7 @@ from google_work_agent.ports import (
     RuntimeSummary,
 )
 
+
 def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path: Path) -> None:
     database_path = tmp_path / "ui-projections.db"
     with connect_sqlite(database_path) as connection:
@@ -72,6 +74,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
     publisher = InMemoryRunEventPublisher(service_instance_id="svc-ui", capacity_per_run=8)
     query_service = QueryService(
         database_path=database_path,
+        connection_factory=connect_sqlite,
         runtime_status_provider=StaticRuntimeStatusProvider(
             RuntimeSummary(
                 google="CONNECTED",
@@ -242,7 +245,11 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             headers=headers,
         )
         assert completed_tasks.status_code == 200
-        completed_item = next(item for item in completed_tasks.json()["items"] if item["resource_id"] == "task-completed")
+        completed_item = next(
+            item
+            for item in completed_tasks.json()["items"]
+            if item["resource_id"] == "task-completed"
+        )
         assert completed_item["metadata"]["completed_at"] == "2026-08-13T00:30:00.000Z"
 
         tasks_count = client.get("/api/v1/resources/tasks/count", headers=headers)

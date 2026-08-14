@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-HOLDOUT-007-UU",
+  "case_id": "CASE-HOLDOUT-007",
+  "projection_kind": "REQUEST_UNDERSTANDING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-203",
+    "user_prompt_id": "UP-HOLDOUT-007",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "expected_disposition": "COMPLETE",
+    "request_intent_semantic": {
+      "schema_version": 2,
+      "goal": "Willow 사전 공유 Task를 제안한다.",
+      "completion_conditions": [
+        "메일의 정오 마감과 킥오프 Event를 연결한다.",
+        "Tasks 중복 검사 후 CREATE한다."
+      ],
+      "constraints": [
+        {
+          "kind": "SCOPE",
+          "field": "required_sources",
+          "value": [
+            "CALENDAR",
+            "EMAIL",
+            "TASK"
+          ]
+        }
+      ],
+      "requested_effect_hints": [
+        "CREATE"
+      ],
+      "requested_resource_hints": [
+        "CALENDAR",
+        "EMAIL",
+        "TASK"
+      ],
+      "analysis_requirement": "REQUIRED",
+      "ambiguity": {
+        "requires_confirmation": false,
+        "reason_codes": [],
+        "missing_fields": []
+      }
+    },
+    "lineage_expectation": {
+      "owner": "request_understanding",
+      "based_on": [
+        "run_input"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.request_understanding.deterministic",
+    "grader.request_understanding.semantic"
+  ]
+}

@@ -8,12 +8,9 @@ from enum import StrEnum
 from typing import TypedDict, cast
 
 from google_work_agent.application.workflows.api_acquisition import (
-    AcquisitionResultV1,
-    SourcePlanningOutputV1,
     build_source_planning_clarification_question,
 )
 from google_work_agent.application.workflows.context_retrieval import (
-    ContextRetrievalResultV1,
     build_context_clarification_question,
 )
 from google_work_agent.application.workflows.contracts import (
@@ -33,6 +30,18 @@ from google_work_agent.application.workflows.contracts import (
     approve_review_recheck,
     validate_finalize_intent_v1,
 )
+from google_work_agent.application.workflows.handoff_contracts import (
+    AcquisitionResultV1,
+    ActionPlanDraftV1,
+    AnswerDraftV1,
+    ClarificationQuestionV1,
+    ContextRetrievalResultV1,
+    PlanReviewResultV1,
+    RequestIntentV2,
+    RequestUnderstandingOutputV1,
+    SourcePlanningOutputV1,
+    WorkAnalysisResultV1,
+)
 from google_work_agent.application.workflows.insufficient_data import (
     InsufficientDataContext,
     InsufficientDataDisposition,
@@ -41,25 +50,22 @@ from google_work_agent.application.workflows.insufficient_data import (
     decide_insufficient_data,
 )
 from google_work_agent.application.workflows.plan_review import (
-    PlanReviewResultV1,
     build_plan_review_clarification_question,
     resolve_review_target,
 )
 from google_work_agent.application.workflows.request_understanding import (
-    ClarificationQuestionV1,
-    RequestIntentV1,
-    RequestUnderstandingOutputV1,
     build_user_interrupt_v1,
     validate_clarification_question_v1,
-    validate_request_intent_v1,
 )
 from google_work_agent.application.workflows.solution_planning import (
-    ActionPlanDraftV1,
-    AnswerDraftV1,
     build_solution_planning_clarification_question,
 )
+from google_work_agent.application.workflows.tool_routing import (
+    RouteReconsiderationRequiredV1,
+    ToolRouteDisposition,
+    ToolRouteResultV1,
+)
 from google_work_agent.application.workflows.work_analysis import (
-    WorkAnalysisResultV1,
     build_work_analysis_clarification_question,
 )
 
@@ -69,6 +75,7 @@ JsonObject = dict[str, object]
 class SupervisorTarget(StrEnum):
     """Deterministic routing targets selected by the Stage 10 supervisor."""
 
+    TOOL_ROUTE = "TOOL_ROUTE"
     SOURCE_PLANNING = "SOURCE_PLANNING"
     API_ACQUISITION = "API_ACQUISITION"
     CONTEXT_RETRIEVAL = "CONTEXT_RETRIEVAL"
@@ -105,10 +112,18 @@ def route_supervisor(
     result: object | None = None,
 ) -> SupervisorDecisionV1:
     current_phase = WorkflowPhase(phase)
+    reconsideration = _route_reconsideration(current_phase, result)
+    if reconsideration is not None:
+        return reconsideration
     if current_phase is WorkflowPhase.REQUEST_ANALYSIS:
         return _route_request_understanding(
             state=state,
             output=cast(RequestUnderstandingOutputV1, _require_mapping(result, "result")),
+        )
+    if current_phase is WorkflowPhase.TOOL_ROUTING:
+        return _route_tool_routing(
+            state=state,
+            result=cast(ToolRouteResultV1, _require_mapping(result, "result")),
         )
     if current_phase is WorkflowPhase.SOURCE_PLANNING:
         return _route_source_planning(
@@ -172,6 +187,51 @@ def route_supervisor(
     raise ValueError(f"unsupported supervisor phase: {current_phase.value}")
 
 
+def _route_reconsideration(
+    phase: WorkflowPhase,
+    result: object | None,
+) -> SupervisorDecisionV1 | None:
+    if not isinstance(result, Mapping):
+        return None
+    status = result.get("status", result.get("result"))
+    expected = {
+        WorkflowPhase.CONTEXT_RETRIEVAL: "ROUTE_RECONSIDERATION_REQUIRED",
+        WorkflowPhase.CONTEXT_EVALUATION: "ROUTE_RECONSIDERATION_REQUIRED",
+        WorkflowPhase.WORK_ANALYSIS: "ROUTE_RECONSIDERATION_REQUIRED",
+        WorkflowPhase.SOLUTION_PLANNING: "ROUTE_RECONSIDERATION_REQUIRED",
+        WorkflowPhase.PLAN_REVIEW: "ROUTE_RECONSIDERATION",
+    }.get(phase)
+    if expected is None or status != expected:
+        return None
+    raw_reason_codes = result.get("reason_codes", [])
+    reason_codes = (
+        [item for item in raw_reason_codes if isinstance(item, str)]
+        if isinstance(raw_reason_codes, list)
+        else []
+    )
+    signal: RouteReconsiderationRequiredV1 = {
+        "schema_version": 1,
+        "kind": "ROUTE_RECONSIDERATION_REQUIRED",
+        "reason_codes": reason_codes or ["ROUTE_RECONSIDERATION_REQUIRED"],
+    }
+    return _decision(
+        target=SupervisorTarget.TOOL_ROUTE,
+        next_phase=WorkflowPhase.TOOL_ROUTING,
+        state_update=_base_state_update(
+            WorkflowPhase.TOOL_ROUTING,
+            workflow_signal=signal,
+            source_fetch_plans=[],
+            acquisition_result=None,
+            context_result=None,
+            analysis_result=None,
+            answer_draft=None,
+            plan_draft=None,
+            plan_review=None,
+        ),
+        reason_code=signal["reason_codes"][0],
+    )
+
+
 def _route_request_understanding(
     *,
     state: MultiAgentGraphState,
@@ -181,10 +241,10 @@ def _route_request_understanding(
     request_intent = output.get("request_intent")
     if result is RequestUnderstandingResult.COMPLETE:
         return _decision(
-            target=SupervisorTarget.SOURCE_PLANNING,
-            next_phase=WorkflowPhase.SOURCE_PLANNING,
+            target=SupervisorTarget.TOOL_ROUTE,
+            next_phase=WorkflowPhase.TOOL_ROUTING,
             state_update=_base_state_update(
-                WorkflowPhase.SOURCE_PLANNING,
+                WorkflowPhase.TOOL_ROUTING,
                 request_intent=request_intent,
             ),
         )
@@ -205,6 +265,84 @@ def _route_request_understanding(
         intent=FinalizeIntent.BLOCKED.value,
         reason_code=reason_code,
         request_intent=request_intent,
+    )
+
+
+def _route_tool_routing(
+    *,
+    state: MultiAgentGraphState,
+    result: ToolRouteResultV1,
+) -> SupervisorDecisionV1:
+    try:
+        disposition = ToolRouteDisposition(result["disposition"])
+    except (KeyError, ValueError):
+        return _decision(
+            target=SupervisorTarget.RECOVERY,
+            next_phase=WorkflowPhase.RECOVERY,
+            state_update=_base_state_update(
+                WorkflowPhase.RECOVERY,
+                execution_summary={"result": "CONTRACT_VIOLATION"},
+            ),
+            reason_code="TOOL_ROUTE_CONTRACT_VIOLATION",
+        )
+    plan = result["tool_route_plan"]
+    if disposition in {
+        ToolRouteDisposition.ROUTE_READY,
+        ToolRouteDisposition.NO_TOOL_NEEDED,
+    }:
+        if plan is None:
+            return _decision(
+                target=SupervisorTarget.RECOVERY,
+                next_phase=WorkflowPhase.RECOVERY,
+                state_update=_base_state_update(
+                    WorkflowPhase.RECOVERY,
+                    execution_summary={"result": "CONTRACT_VIOLATION"},
+                ),
+                reason_code="TOOL_ROUTE_PLAN_MISSING",
+            )
+        return _decision(
+            target=SupervisorTarget.SOURCE_PLANNING,
+            next_phase=WorkflowPhase.SOURCE_PLANNING,
+            state_update=_base_state_update(
+                WorkflowPhase.SOURCE_PLANNING,
+                tool_route_plan=plan,
+                workflow_signal=None,
+            ),
+            reason_code=disposition.value,
+        )
+    if disposition is ToolRouteDisposition.NEEDS_CONFIRMATION:
+        question: ClarificationQuestionV1 = {
+            "schema_version": 1,
+            "origin_target": "tool_route.finalize",
+            "question": "작업 대상 또는 작업 종류를 더 구체적으로 알려주세요.",
+            "affected_field_paths": [
+                "requested_resource_hints",
+                "requested_effect_hints",
+            ],
+            "reason_code": result["reason_codes"][0]
+            if result["reason_codes"]
+            else "TOOL_ROUTE_NEEDS_CONFIRMATION",
+            "known_context_summary": _request_intent_from_state(state)["goal"],
+            "options": [],
+        }
+        return _decision(
+            target=SupervisorTarget.WAITING_CONFIRMATION,
+            next_phase=WorkflowPhase.WAITING_CONFIRMATION,
+            state_update=_confirmation_state_update(
+                question=question,
+                tool_route_plan=None,
+                workflow_signal=result["workflow_signal"],
+            ),
+            reason_code=question["reason_code"],
+        )
+    return _finalize(
+        state=state,
+        intent=FinalizeIntent.BLOCKED.value,
+        reason_code=result["reason_codes"][0]
+        if result["reason_codes"]
+        else "TOOL_ROUTE_BLOCKED",
+        tool_route_plan=None,
+        workflow_signal=result["workflow_signal"],
     )
 
 
@@ -750,9 +888,15 @@ def _finalize(
     )
 
 
-def _request_intent_from_state(state: MultiAgentGraphState) -> RequestIntentV1:
-    return validate_request_intent_v1(
-        _require_mapping(state.get("request_intent"), "request_intent")
+def _request_intent_from_state(state: MultiAgentGraphState) -> RequestIntentV2:
+    # validate_request_intent_v2 is the LLM-input-only validator (meta is
+    # intentionally absent from its schema -- see request_understanding.py).
+    # Main State's request_intent is already a materialized RequestIntentV2
+    # with meta attached, so it is trusted and cast here like every other
+    # typed state payload in this module, not re-validated against the
+    # narrower LLM output schema.
+    return cast(
+        RequestIntentV2, _require_mapping(state.get("request_intent"), "request_intent")
     )
 
 
@@ -787,6 +931,10 @@ def _planning_state_update(
 
 
 def _request_invalid_reason_code(output: RequestUnderstandingOutputV1) -> str:
+    # RequestIntentV2 has no unsupported_scope field: Request Understanding
+    # no longer judges product-capability support (Q2-X). INVALID is now
+    # reserved for malformed/unusable classify output, so the only reason
+    # code source is the failure record Request Understanding itself built.
     failure = _mapping_or_none(output.get("failure"))
     if (
         failure is not None
@@ -794,18 +942,6 @@ def _request_invalid_reason_code(output: RequestUnderstandingOutputV1) -> str:
         and failure["reason_code"]
     ):
         return cast(str, failure["reason_code"])
-    request_intent = _mapping_or_none(output.get("request_intent"))
-    unsupported = (
-        None
-        if request_intent is None
-        else _mapping_or_none(request_intent.get("unsupported_scope"))
-    )
-    if (
-        unsupported is not None
-        and isinstance(unsupported.get("reason_code"), str)
-        and unsupported["reason_code"]
-    ):
-        return cast(str, unsupported["reason_code"])
     return "REQUEST_UNDERSTANDING_INVALID"
 
 

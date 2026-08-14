@@ -1,0 +1,98 @@
+{
+  "schema_version": 2,
+  "projection_id": "PROJ-HOLDOUT-010-PLN",
+  "case_id": "CASE-HOLDOUT-010",
+  "projection_kind": "PLANNING",
+  "applicable": true,
+  "not_applicable_reason": null,
+  "input_contract": {
+    "fixture_snapshot_id": "FW-CH-203",
+    "user_prompt_id": "UP-HOLDOUT-010",
+    "entry_mode": "AGENT_SEARCH",
+    "dataset_version": "rebuild-v1.17-r8.6-phase7.5-contract-correction"
+  },
+  "gold": {
+    "applicable": true,
+    "result_type": "ACTION_PLAN",
+    "actions": [
+      {
+        "action_id": "ACT-HOLDOUT-010-1",
+        "route_id": "OUT-CASE-HOLDOUT-010-1",
+        "tool_id": "tasks_update_task",
+        "effect": "UPDATE",
+        "arguments": {
+          "task_id": "TSK-W-201",
+          "notes": "8월 18일 정오까지 자료 사전 공유 필요",
+          "tasklist_id": "TL-WORK"
+        },
+        "evidence_refs": [
+          "EVD-CH-W-201",
+          "EVD-CH-W-202",
+          "EVD-CH-W-203",
+          "UE-HOLDOUT-010",
+          "DE-HOLDOUT-010-1"
+        ],
+        "depends_on_action_ids": []
+      },
+      {
+        "action_id": "ACT-HOLDOUT-010-2",
+        "route_id": "OUT-CASE-HOLDOUT-010-2",
+        "tool_id": "calendar_create_event",
+        "effect": "CREATE",
+        "arguments": {
+          "calendar_id": "CAL-PRIMARY",
+          "title": "Willow 사전 점검",
+          "start": "2026-08-18T16:00:00+09:00",
+          "duration_minutes": 30
+        },
+        "evidence_refs": [
+          "EVD-CH-W-201",
+          "EVD-CH-W-202",
+          "EVD-CH-W-203",
+          "UE-HOLDOUT-010",
+          "DE-HOLDOUT-010-1"
+        ],
+        "depends_on_action_ids": []
+      },
+      {
+        "action_id": "ACT-HOLDOUT-010-3",
+        "route_id": "OUT-CASE-HOLDOUT-010-3",
+        "tool_id": "gmail_create_draft",
+        "effect": "CREATE",
+        "arguments": {
+          "to": [
+            "team@willow.example.test"
+          ],
+          "subject": "Willow 킥오프 준비",
+          "body": "자료 사전 공유와 점검 일정을 준비했습니다."
+        },
+        "evidence_refs": [
+          "EVD-CH-W-201",
+          "EVD-CH-W-202",
+          "EVD-CH-W-203",
+          "UE-HOLDOUT-010",
+          "DE-HOLDOUT-010-1"
+        ],
+        "depends_on_action_ids": [
+          "ACT-HOLDOUT-010-1",
+          "ACT-HOLDOUT-010-2"
+        ]
+      }
+    ],
+    "zero_action_reason": null,
+    "tool_identity_owned_by_output_route": true,
+    "read_actions_forbidden": true,
+    "lineage_expectation": {
+      "owner": "planning",
+      "based_on": [
+        "tool_route.output_plan",
+        "work_analysis_result",
+        "retrieval_result"
+      ]
+    }
+  },
+  "grader_ids": [
+    "grader.planning.deterministic",
+    "grader.planning.semantic"
+  ]
+}

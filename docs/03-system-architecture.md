@@ -15,7 +15,7 @@
 	</tr>
 	<tr>
 		<td>상태</td>
-		<td>Draft v3.4</td>
+		<td>Draft v3.5</td>
 	</tr>
 	<tr>
 		<td>기준일</td>
@@ -35,7 +35,7 @@
 	</tr>
 	<tr>
 		<td>핵심 Runtime</td>
-		<td>React · TypeScript · Vite · FastAPI · LangGraph · Google Work MCP Server `stdio` · SQLite · OS Keyring</td>
+		<td>React · TypeScript · Vite · FastAPI · LangGraph · Connector MCP Runtime `stdio` · SQLite · OS Keyring</td>
 	</tr>
 </table>
 
@@ -46,12 +46,16 @@ React UI → FastAPI Local Service → Deterministic Supervisor → Agent Subgra
                                             ↓
                                    Domain / Policy / Approval
                                             ↓
-                                  MCP → Google Workspace
+                           Connector Registry / MCP Runtime
+                              ├─ Google Workspace MCP (P0)
+                              └─ additional registered connectors
+                                            ↓
+                                Provider-specific Adapter
                                             ↓
                                       Verification
 ```
 
-- **판단은 Agent**, **허용·실행 사실은 Domain**, **외부 효과는 MCP/Google**, **재개 위치는 Checkpoint**가 소유한다.
+- **판단은 Agent**, **허용·실행 사실은 Domain**, **외부 효과는 Connector MCP 경계**, **재개 위치는 Checkpoint**가 소유한다. Google Workspace는 P0 첫 Connector다.
 - 원격 제품 Backend 없이 사용자 PC에서 동작한다.
 
 
@@ -74,7 +78,7 @@ React UI → FastAPI Local Service → Deterministic Supervisor → Agent Subgra
 - Runtime·Container 구조
 - React Frontend와 FastAPI Local Agent Service의 논리 구조
 - LangGraph 기반 Agent 실행 모델
-- Google Work MCP Server 연동 경계
+- Connector MCP Runtime과 Connector별 MCP Server 연동 경계
 - SQLite·Checkpointer·OS Keyring의 상태 소유권
 - 승인·Idempotency·실행·검증·복구 구조
 - API LLM·Ollama Runtime Router
@@ -105,7 +109,7 @@ Google Work Agent는 **로컬 Frontend와 Python Modular Monolith를 분리한 �
 1. **Launcher** — Local Service 시작, 동적 포트 선택, Health Check, 브라우저 열기와 종료 조정
 2. **React Frontend** — React + TypeScript + Vite 기반 UI; 운영에서는 FastAPI가 정적 산출물을 제공
 3. **FastAPI Local Agent Service** — REST Command·Query, SSE Event, Application, LangGraph, Policy, LLM Router, Persistence
-4. **Google Work MCP Server** — Gmail·Tasks·Calendar Tool과 Google OAuth·API Adapter
+4. **Connector MCP Runtime** — Connector별 MCP Server의 수명주기·Registry binding·Transport를 관리한다. P0에는 Google Workspace MCP Server가 포함되어 Gmail·Tasks·Calendar Tool과 Google OAuth·Provider Adapter를 제공한다.
 
 검증된 GPU 환경에서는 **Ollama Runtime**이 선택적으로 추가된다. 별도 원격 Backend, SaaS API, Queue, 원격 MCP Server는 두지 않는다.
 
@@ -124,7 +128,7 @@ Google Work Agent는 **로컬 Frontend와 Python Modular Monolith를 분리한 �
 - Secret 관리: OS Keyring
 - 분산 트랜잭션 방식: Action 단위 상태 전이를 사용하는 Saga형 실행
 
-### 2.2 Google Workspace 접근 단일 경계
+### 2.2 Connector 접근 단일 경계
 
 ```plain text
 React
@@ -248,7 +252,7 @@ React
 	<tr>
 		<td>ARC-006</td>
 		<td>Google 연동은 MCP `stdio`</td>
-		<td>Google Workspace 접근을 MCP `stdio` 단일 경계로 고정해 Provider SDK 결합과 우회 실행 경로를 Core 밖으로 격리한다.</td>
+		<td>Connector 접근을 MCP `stdio` 단일 경계로 고정해 Provider SDK 결합과 우회 실행 경로를 Core 밖으로 격리한다.</td>
 	</tr>
 	<tr>
 		<td>ARC-007</td>

@@ -8,12 +8,17 @@ from email.utils import parseaddr
 from enum import StrEnum
 from typing import cast
 
+from google_work_agent.adapters.connectors.google_workspace_execution import (
+    GoogleWorkspaceExecutionBackend,
+)
+from google_work_agent.application.ports import ConnectorWriteRequest, PreparedConnectorWrite
 from google_work_agent.ports import (
     FreeBusyCalendar,
     FreeBusyInterval,
     GmailAttachmentMetadata,
     GmailThreadDetail,
     GoogleWorkspaceErrorCode,
+    GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     ResourcePage,
     ResourceSnapshot,
@@ -72,6 +77,49 @@ class FakeGoogleGateway:
         }
         self._faults: dict[str, list[GoogleGatewayFault]] = {}
         self.call_log: list[GoogleGatewayCallRecord] = []
+
+    def prepare_write(
+        self,
+        *,
+        tool_name: str,
+        arguments: dict[str, object],
+        recovery_fingerprint: str | None,
+    ) -> PreparedConnectorWrite:
+        return self._execution_backend().prepare_write(
+            tool_name=tool_name,
+            arguments=arguments,
+            recovery_fingerprint=recovery_fingerprint,
+        )
+
+    def execute_write(self, request: ConnectorWriteRequest) -> ResourceSnapshot:
+        return self._execution_backend().execute_write(request)
+
+    def fetch_verification_snapshot(
+        self,
+        *,
+        tool_name: str,
+        arguments: dict[str, object],
+        fallback_resource_id: str | None,
+    ) -> ResourceSnapshot:
+        return self._execution_backend().fetch_verification_snapshot(
+            tool_name=tool_name,
+            arguments=arguments,
+            fallback_resource_id=fallback_resource_id,
+        )
+
+    def search_recovery_candidates(
+        self,
+        *,
+        tool_name: str,
+        recovery_fingerprint: str,
+    ) -> tuple[ResourceSnapshot, ...]:
+        return self._execution_backend().search_recovery_candidates(
+            tool_name=tool_name,
+            recovery_fingerprint=recovery_fingerprint,
+        )
+
+    def _execution_backend(self) -> GoogleWorkspaceExecutionBackend:
+        return GoogleWorkspaceExecutionBackend(gateway=cast(GoogleWorkspaceGateway, self))
 
     def queue_fault(self, *, operation: str, fault: GoogleGatewayFault) -> None:
         """Queue one deterministic fault for an operation."""
