@@ -1,8 +1,8 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.19`, `05 Retrieval v2.11`, `07 Interface v2.19`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.11`, `07 Interface v2.19`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v7.13 · **DB Schema:** v1.6 · **대상:** P0 MVP
+> **상태:** Draft v7.14 · **DB Schema:** v1.6 · **대상:** P0 MVP
 >
 > Main LangGraph는 결정적 Supervisor와 Versioned Typed Main State를 소유한다. 전문 Agent는 LangGraph Subgraph이며 Parent State에서 자기 책임에 필요한 필드만 Projection 받아 Local State를 단계적으로 채우고, 완료 시 공식 Typed Result만 Main State에 병합한다. Schema는 출력 가능 범위를 통제하고, State는 확정 정보를 기억하며, Prompt는 각 LLM Node의 단일 작업만 지시한다. 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -263,7 +263,6 @@ class MultiAgentGraphStateV2:
     execution_summary: ExecutionSummaryV1 | None
     verification_summary: VerificationSummaryV1 | None
 
-    user_interrupt: UserInterruptV1 | None
     policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
     workflow_signal: WorkflowSignalV1 | None
     retry_budget: RunBudgetV2
@@ -653,6 +652,10 @@ class RouteReconsiderationRequiredV1:
     kind: Literal["ROUTE_RECONSIDERATION_REQUIRED"]
     reason_codes: list[str]
 
+class RetrievalNeedV1:
+    required_information: str
+    reason_codes: list[str]
+
 class RetrievalRequiredV1:
     kind: Literal["RETRIEVAL_REQUIRED"]
     reason_codes: list[str]
@@ -665,6 +668,12 @@ class BlockedSignalV1:
 WorkflowSignalV1 = ConfirmationRequiredV1 | RouteReconsiderationRequiredV1 | RetrievalRequiredV1 | BlockedSignalV1
 ```
 Confirmation resume는 `owner_subgraph + resume_target + interrupt_id`로 결정하며 모든 확인 응답을 Request Understanding으로 되돌리지 않는다. Review `REVISE`는 별도 미정의 Signal을 만들지 않고 `ReviewReviseV2.issues`를 Planning Projection으로 전달한다.
+
+`RetrievalNeedV1`은 다른 Subgraph가 Retrieval owner에게 **추가로 필요한 정보의 의미**만 전달하는 최소 handoff다. `required_information`은 비어 있을 수 없고 `reason_codes`는 최소 1개여야 한다. Connector·Resource·Tool·raw query·page token·MCP argument를 이 타입에 넣지 않는다. Work Analysis `NEEDS_MORE_DATA`와 Review `RETRIEVE_MORE`는 결정적 Projection으로 `RetrievalNeedV1[] → RetrievalRequiredV1`을 만든다. Retrieval 자신의 `NEEDS_MORE_DATA`는 `RetrievalRequiredV1`을 만들지 않고 같은 frozen IN Route에서 bounded local loop를 수행한다. 현재 IN Route로 충족할 수 없으면 `RouteReconsiderationRequiredV1`을 사용한다.
+
+`RegisteredResumeTargetRefV1`의 authority는 active compiled Main Graph의 Resume Target Registry다. Registry는 Graph composition/compile boundary가 소유하며 LLM·Agent 자유 문자열·사용자 입력은 `subgraph_id`, `node_id`, `graph_version`을 발급할 수 없다. `graph_version`은 compiled Main Graph의 **resume-contract version**이며 Prompt·Dataset·DB Schema·Tool Registry version과 별개다. 등록 가능한 subgraph/node 또는 interrupt-resume topology가 바뀌면 새 graph version을 사용한다. Checkpoint의 `graph_version`이 현재 Registry와 다르거나 target이 등록되지 않았으면 임의 node로 resume하지 않고 Unknown Contract fail-closed 경로를 따른다.
+
+`ConfirmationRequiredV1.options=[]`는 자유 텍스트 응답을 뜻하고, 하나 이상의 option이 있으면 등록된 값 중 하나만 허용하는 닫힌 선택 응답을 뜻한다. 닫힌 선택에서 임의 텍스트를 승인·정책 동의로 추측하지 않는다. Core workflow truth는 `workflow_signal + LangGraph checkpoint + Domain confirmation state`이며, 기존 UI/API가 `UserInterruptV1` 형태를 요구하는 경우에만 Canonical confirmation state에서 **one-way presentation projection**으로 만들 수 있다. `UserInterruptV1`을 Main State의 독립 workflow authority로 저장하지 않는다.
 
 #### PolicyConfirmationReceiptV1
 ```python

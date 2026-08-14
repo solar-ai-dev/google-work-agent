@@ -15,11 +15,11 @@
 	</tr>
 	<tr>
 		<td>상태</td>
-		<td>Draft v3.5</td>
+		<td>Draft v3.6</td>
 	</tr>
 	<tr>
 		<td>기준일</td>
-		<td>2026-08-13</td>
+		<td>2026-08-14</td>
 	</tr>
 	<tr>
 		<td>대상 릴리스</td>
@@ -237,12 +237,12 @@ React
 	<tr>
 		<td>ARC-014</td>
 		<td>Versioned Prompt Registry</td>
-		<td>Supervisor는 Node를 Routing하고 선택된 Agent·Application Node가 Node·상태·목적별 PromptRef를 확정한다.</td>
+		<td>Supervisor는 Node만 Routing하고 선택된 Agent·Application Node가 Node·상태·목적별 PromptRef를 확정한다. 각 LLM Node에는 deterministic Typed Input Projection을 거쳐 Prompt Runtime Input Contract가 허용한 필드만 전달한다.</td>
 	</tr>
 	<tr>
 		<td>ARC-004</td>
 		<td>결정적 LangGraph Supervisor + Typed State 기반 평가 가능 Workflow</td>
-		<td>`SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE`을 같은 안전·Tool·Policy 계약으로 비교한다. Main Graph는 읽기 전용 `RunInput`을 기준점으로 `RequestIntent → ToolRoutePlan → RetrievalResult → WorkAnalysisResult → PlanningResult → PlanReviewResult`의 공식 Typed State를 누적하고 Back-edge·Interrupt 제어는 Typed `WorkflowSignal`로 분리하며, 각 Agent Subgraph는 필요한 State만 Projection 받아 자기 Local State에서 책임을 수행한다. IN/OUT Tool Route는 Tool Route Subgraph가 한 번 확정하고 Retrieval·Planning이 재선택하지 않는다. 승인·실행·검증·복구는 Graph 후보와 독립된 결정적 Engine이 통제한다.</td>
+		<td>`SINGLE_BASELINE`, `THREE_STAGE`, `SIX_ROLE_BASELINE`을 같은 안전·Tool·Policy 계약으로 비교한다. Main Graph는 읽기 전용 `RunInputV1`을 기준점으로 `RequestIntentV2 → ToolRoutePlanV2 → RetrievalResultV1 → WorkAnalysisResultV2 → AnswerDraftV2 | ActionPlanDraftV2 → PlanReviewResultV2`의 공식 Typed State를 누적하고 Back-edge·Interrupt 제어는 Typed `WorkflowSignal`로 분리하며, 각 Agent Subgraph는 필요한 State만 Projection 받아 자기 Local State에서 책임을 수행한다. Tool Route LLM은 먼저 semantic `RouteResourceCandidateV1`을 만들고, Signed Tool Registry binding과 결정적 `PolicyPreconditionResolver`가 final `ToolRoutePlanV2`를 확정한다. `ToolRoutePlanV2`의 `InputRoutePlanV1`과 `OutputPlanV1`은 독립 revision/freshness 단위로 관리하며 OUT-only revision은 기존 Retrieval을 자동 stale 처리하지 않는다. Retrieval·Planning은 확정된 Route를 재선택하지 않는다. 승인·실행·검증·복구는 Graph 후보와 독립된 결정적 Engine이 통제한다.</td>
 	</tr>
 	<tr>
 		<td>ARC-005</td>
@@ -251,7 +251,7 @@ React
 	</tr>
 	<tr>
 		<td>ARC-006</td>
-		<td>Google 연동은 MCP `stdio`</td>
+		<td>외부 Connector 연동은 MCP `stdio` 공통 경계</td>
 		<td>Connector 접근을 MCP `stdio` 단일 경계로 고정해 Provider SDK 결합과 우회 실행 경로를 Core 밖으로 격리한다.</td>
 	</tr>
 	<tr>
@@ -502,30 +502,6 @@ flowchart LR
 - Browser Storage와 Client State를 승인·실행 사실의 기준점으로 사용 금지
 - API Error·SSE Disconnect만으로 Domain 실패를 추정 금지
 
-#### 7.1.1 Frontend 내부 코드 조직
-
-React Frontend는 **feature-first(Feature Folder) 구조**를 사용한다. Bulletproof React의 feature ownership과 composition 원칙을 참고하되, 해당 프로젝트 구조를 그대로 복제하지 않는다. Feature-first 구조는 프로젝트 상황에 맞게 적용한다.
-
-```text
-frontend/src/
-├─ app/
-│  └─ App.tsx
-├─ features/
-│  ├─ conversation/
-│  ├─ gmail/
-│  ├─ tasks/
-│  ├─ calendar/
-│  └─ settings/
-├─ api/
-├─ styles/
-└─ test/
-```
-
-- `App.tsx`는 Composition Root다. Top-level layout, header·panel·tab composition, feature controller 생성·연결, global account/runtime/theme, OAuth·startup lifecycle, shared resource selection/focus/viewer, feature 간 callback 연결, top-level Conversation sidebar 조립을 소유한다.
-- Feature 전용 책임은 `features/<feature>/` 내부가 소유한다. Conversation은 Run/SSE 상태·orchestration과 전용 UI, Gmail은 browse/search/page/cache/count와 전용 UI, Tasks는 browse/materialization/sort/completed/cache/count와 전용 UI, Calendar는 month state/cache/prefetch/navigation/stale guard와 전용 UI, Settings는 settings/LLM/API key local state·API flow와 SettingsDrawer UI를 소유한다.
-- Feature 전용 state, API fetching, cache/pagination/prefetch/stale guard를 `App.tsx`에 다시 구현하지 않는다. Feature 간 조립은 App의 명시적 props/callback 연결을 기본으로 한다.
-- 단순 줄 수 감소를 목적으로 과도하게 파일을 분리하지 않는다. 실제 cross-feature 필요가 확인되기 전에는 새로운 global state management를 도입하지 않으며, 현재 `api/`, `styles/`, `test/` 구조는 유지할 수 있다.
-
 ### 7.2 FastAPI Route·Event Adapter
 
 책임:
@@ -588,63 +564,73 @@ frontend/src/
 
 ## 8. 제어형 Agent 실행 모델
 
-Google Work Agent는 자유 대화형 Agent 군집이나 Peer-to-Peer A2A를 사용하지 않는다. 하나의 결정적 LangGraph Supervisor가 6개 전문 Agent Subgraph, 일반 코드 검증, 사용자 Interrupt와 결정적 실행·검증 Engine을 조정한다.
+Google Work Agent는 자유 대화형 Agent 군집이나 Peer-to-Peer A2A를 사용하지 않는다. 하나의 결정적 LangGraph Supervisor가 **Profile에 따라 1·3·6개의 Agent Subgraph**를 조정하며, Profile과 무관하게 같은 Domain·Policy·Tool·승인·실행·검증 계약을 사용한다. Agent 수와 LLM Call 수는 동일한 개념이 아니다.
 
 ```mermaid
 flowchart TB
-    S(["시작"]) --> ENTRY{"요청 진입 방식"}
-    ENTRY -->|"선택 자원<br>RESOURCE_SELECTED"| SD["선택 자원 최신 상세 조회"]
-    ENTRY -->|"에이전트 검색<br>AGENT_SEARCH"| INT["요청 구조화<br>LLM + 스키마"]
-    INT --> RP["검색 계획 생성"]
-    RP --> RET["원본 서비스 기반 목록 검색"]
-    SD --> CTX["문맥 정규화"]
-    RET --> REDUCE["메타데이터 기반 후보 축소"]
-    REDUCE --> DETAIL["필요 후보 상세 조회"]
-    DETAIL --> CTX
-    CTX --> ENOUGH{"문맥이 충분한가?"}
-    ENOUGH -->|"아니오·재검색 가능"| RP
-    ENOUGH -->|"모호함"| Q["사용자 확인 대기<br>Interrupt"]
-    Q --> CTX
-    ENOUGH -->|"충분"| ANALYZE["관계·중복·충돌·가능성 분석"]
-    ANALYZE --> PLAN["실행 계획 초안"]
-    PLAN --> POLICY["스키마·정책·근거 검증"]
-    POLICY --> APPROVAL["사용자 승인 대기<br>Interrupt"]
-    APPROVAL --> PRE["승인·해시·원본·멱등성 재검증"]
-    PRE --> TOOL["MCP 쓰기 도구"]
-    TOOL --> GET["Google 자원 재조회"]
-    GET --> VER{"예상값과 실제값이 일치하는가?"}
-    VER -->|"일치"| DONE(["완료"])
-    VER -->|"불일치"| REC["복구 선택 대기<br>Interrupt"]
+    S(["시작"]) --> RU["Request Understanding<br/>semantic intent"]
+    RU --> TR["Tool Route LLM<br/>RouteResourceCandidateV1"]
+    TR --> RB["Signed Tool Registry Binding<br/>deterministic"]
+    RB --> PP["PolicyPreconditionResolver<br/>deterministic"]
+    PP --> ROUTE["ToolRoutePlanV2 확정"]
+    ROUTE -->|"IN Route 있음"| RET["Retrieval Subgraph<br/>Query → MCP Read → RAG → Evidence"]
+    ROUTE -->|"IN Route 없음"| EA{"effective_analysis_required?"}
+    RET --> EA
+    EA -->|"true"| ANA["Work Analysis Subgraph"]
+    EA -->|"false"| PB["Planning 입력 Binding"]
+    ANA --> PB
+    PB --> DCR["DefaultContainerResolver<br/>필요 시 deterministic binding"]
+    DCR --> PLAN["Planning Subgraph"]
+    PLAN -->|"Answer only"| RESP["Response Synthesis"]
+    PLAN -->|"Action plan"| REV["Review Subgraph / profile-equivalent review"]
+    REV --> DOM["Domain Validation"]
+    DOM --> APP["사용자 승인"]
+    APP --> PRE["Preflight + Claim"]
+    PRE --> EXEC["MCP Write"]
+    EXEC --> VER["Verification Read"]
+    VER -->|"VERIFIED"| RESP
+    VER -->|"UNKNOWN_RESULT / MISMATCH"| REC["Recovery"]
+    REC --> RESP
+    RESP --> DONE(["완료 또는 명시적 suspend/terminal"])
 ```
+
+- Confirmation, Retrieval local loop, Route reconsideration, Review revision, Reauth, Cancel, Recovery의 세부 Edge는 `06 Agent·Workflow`와 Domain 상태 전이 계약이 소유한다.
+- Tool Route LLM의 semantic candidate와 final `ToolRoutePlanV2`는 같은 단계가 아니다. Registry binding·Policy Precondition·scope confirmation materialization은 결정적 코드가 소유한다.
+- Work Analysis 호출 여부는 단순 ACTION 여부가 아니라 `effective_analysis_required`로 결정한다.
+- Planning은 고정 OUT Route를 소비하며 required container ID는 LLM 호출 전에 결정적으로 bind한다.
 
 ### 8.1 LLM 담당 영역
 
-- 자연어 의미와 목표 이해
-- 검색 Query·Source 후보 제안
-- Gmail Thread에서 업무 의미 추출
-- Context 관련도와 추가 검색 후보 제안
-- 사용자에게 보여줄 요약
-- Gmail Draft 본문 생성
-- Action Plan 초안 생성
+- 사용자 요청의 목표·완료 조건·명시적 제약·모호성 구조화
+- Tool Route에서 사용자 의미상의 IN/OUT Resource·Effect 후보 판단
+- 고정된 IN Route 안에서 Retrieval Query 의도·Evidence 선택·Sufficiency 판단
+- 필요한 경우 Work Analysis의 업무 사실·관계·누락·중복/충돌 후보·일정 위험 해석
+- 고정된 OUT Route의 Answer 또는 semantic Tool Arguments·Action Plan 초안 작성
+- 목표 충족·근거·과잉 Action·모순·Route 일관성 Review
+
+LLM은 실제 Tool ID를 새로 만들거나 Policy Precondition READ를 임의 추가하지 않고, Provider raw Query·Page Token·MCP Arguments·Approval·Claim·Verification·Domain 상태 전이를 최종 결정하지 않는다.
 
 ### 8.2 결정적 코드 담당 영역
 
-- Tool Allowlist와 금지 기능
-- 날짜·시간·Timezone 계산
-- Task 중복과 Calendar 충돌 최종 판정
-- Action Schema와 허용 필드
-- Approval Hash와 만료
-- Idempotency
-- MCP Write 실행 허용
-- Google 재조회 결과 정상화·비교
-- Secret 접근과 로그 마스킹
+- PromptRef 선택 이후 Node별 Typed Input Projection과 Prompt Runtime Input allowlist 적용
+- Signed Tool Registry binding, Tool eligibility, `PolicyPreconditionResolver`
+- 범위 확장 Confirmation Receipt 검증과 stale receipt 차단
+- 날짜·시간·Timezone·Calendar interval 산술
+- Query Builder, Page Token·MCP Arguments 검증과 실제 Connector MCP Read/Write 호출
+- Task 중복·Calendar 충돌 relation 최종 검증
+- `effective_analysis_required` 기반 Supervisor Routing
+- `DefaultContainerResolver`의 `tasklist_id`·`calendar_id` binding
+- Tool Allowlist, Action Schema, Approval Hash·만료, Idempotency, ClaimContextV2
+- Domain 상태 전이, Write 허용, Verification·Recovery 최종 판정
+- Secret 접근과 로그·Trace·Audit Sanitization
 
 ### 8.3 요청 진입 방식과 Source 조회
 
-- `RESOURCE_SELECTED`: 사용자가 사이드바에서 선택한 Resource ID를 시작점으로 최신 상세를 조회하고, 요청 수행에 필요할 때만 다른 Source를 확장한다.
-- `AGENT_SEARCH`: Query·기간·사람·이메일·Keyword를 구조화해 Google Source-native 목록 검색을 수행하고, Metadata로 후보를 축소한 뒤 필요한 후보만 상세 조회한다.
-- 사이드바 목록 페이지와 Page Token은 React Client Session Cache에만 유지하며 SQLite에 영구 저장하지 않는다.
-- 두 진입 방식은 Context 구성 이후 동일한 분석·계획·승인·실행·검증 Workflow를 사용한다.
+- 두 진입 방식 모두 `RunInputV1`을 만든 뒤 Request Understanding → Tool Route 순서로 진행한다.
+- `RESOURCE_SELECTED`: 선택된 ResourceRef와 optional container parent를 Tool Route의 고정 입력/대상 범위로 사용한다. Retrieval은 선택 ID를 검색 Query로 다시 추측하지 않고 고정 IN Route에서 최신 상세를 조회한다. 다른 Source가 필요하면 Route reconsideration 또는 scope confirmation을 거친다.
+- `AGENT_SEARCH`: RequestIntent와 확정된 IN Route를 기준으로 Connector-native 검색을 수행하고 Metadata로 후보를 축소한 뒤 필요한 상세만 조회·정규화·RAG한다.
+- 사이드바 목록 페이지와 Local API continuation은 React Client Session Cache에만 유지하며 SQLite Domain Store의 영속 사실로 승격하지 않는다.
+- 사용자 명시 Source·기간·Resource 범위를 벗어나는 Policy Precondition READ는 승인된 `SCOPE_EXPANSION_REQUIRED` Confirmation 없이 자동 실행하지 않는다.
 
 ## 9. 컴포넌트 책임
 
@@ -874,6 +860,7 @@ FAILED
 BLOCKED
 DEPENDENCY_BLOCKED
 MISMATCH
+CANCELLED
 ```
 
 허용되지 않은 상태 전이는 Application Service와 Repository에서 차단한다. UI는 상태를 변경하지 않고 명령만 제출한다.
@@ -908,16 +895,21 @@ flowchart TB
     B -->|"아님"| X["차단"]
     B -->|"승인"| C{"만료 여부"}
     C -->|"만료"| X
-    C -->|"유효"| D{"정책·스키마 버전 일치"}
+    C -->|"유효"| D{"정책·스키마·Receipt 일치"}
     D -->|"불일치"| X
     D -->|"일치"| E["원본 자원 최신 재조회"]
     E --> F{"원본 변경?"}
     F -->|"변경"| X
-    F -->|"미변경"| G{"인자 해시 일치"}
+    F -->|"미변경"| G{"승인 Arguments Hash 일치"}
     G -->|"불일치"| X
-    G -->|"일치"| H["중복·충돌·멱등성 재검증"]
-    H --> I["MCP 쓰기 도구 허용"]
+    G -->|"일치"| H["중복·충돌·Dependency·멱등성 재검증"]
+    H --> I["Domain ClaimExecution<br/>원자 Commit"]
+    I --> J["최종 MCP Payload canonicalize<br/>ClaimContextV2 발급"]
+    J --> K["MCP Signature·TTL·Binding·Nonce·실제 인자 Hash 검증"]
+    K --> L["MCP Write 허용"]
 ```
+
+`ClaimExecution`이 `applied=true`로 Commit되기 전에는 MCP Write를 호출하지 않는다. `ClaimContextV2`는 Claim Commit 이후 외부 MCP Write 직전의 실행권·인자 무결성 전달 계약이며 새로운 Domain 상태를 만들지 않는다.
 
 ### 12.3 MCP의 이중 방어
 
@@ -926,9 +918,9 @@ FastAPI Local Agent Service의 Application·Domain에서 승인과 Policy를 검
 - 등록된 Tool인지
 - Input Schema를 통과하는지
 - 허용된 필드만 포함하는지
-- Approval Token·Action ID·Tool Name이 일치하는지
-- Canonical Arguments Hash가 일치하는지
-- 현재 Google 계정과 대상 Resource가 일치하는지
+- `ClaimContextV2`의 Signature·Version·TTL·Service/MCP Process Instance·Action·Approval·Attempt·Tool binding이 일치하는지
+- 실제 수신 Tool Arguments를 재해시한 `execution_arguments_hash`가 Claim과 일치하는지
+- 현재 Connector 계정/주체와 대상 Resource가 일치하는지
 
 금지 Tool은 MCP Server에 등록하지 않는다.
 
@@ -936,8 +928,9 @@ FastAPI Local Agent Service의 Application·Domain에서 승인과 Policy를 검
 
 ```text
 Write Tool 실행
-→ Resource ID와 실행 Metadata 저장
-→ Google GET 재조회
+→ Action EXECUTED + Attempt SUCCEEDED 저장
+→ 첫 검증 진입에서 BeginVerification 적용
+→ Connector Verification Read 재조회
 → 공통 Resource Schema로 정상화
 → expected와 actual 필드 비교
 → VERIFIED 또는 MISMATCH 저장
@@ -1399,7 +1392,7 @@ GPU가 없는 팀원은 `API_ONLY`, Mock, 고정 Fixture로 공통 UI·Graph·Po
 
 - React Event Handler 또는 FastAPI Route에서 Google Write API 직접 호출
 - LangGraph Checkpoint만으로 Approval·Execution·Audit 관리
-- Gmail 전송·삭제 Tool을 등록한 뒤 Prompt로만 사용 금지
+- Gmail 원문 삭제·반복 Event 전체 일괄 수정 같은 금지 Tool을 등록한 뒤 Prompt로만 사용을 막는 구조
 - LLM이 Policy 결과나 승인 유효성을 최종 결정
 - React Client State·Browser Storage를 영구 Run 상태로 사용
 - 모델·Prompt·Graph 실험 기능을 제품 UI에 노출
@@ -1804,10 +1797,10 @@ flowchart TD
 ```
 
 - Main Graph는 전체 Run의 공식 Typed State와 다음 Subgraph Edge를 소유한다.
-- Tool Route Subgraph가 IN Resource/Read Tool 범위와 OUT Resource/Effect/Tool을 한 번 확정해 Main State에 저장한다. Resource·Effect 판단과 Signed Tool Registry 후보 결합을 분리하고 후보가 하나면 코드가 자동 선택한다.
+- Tool Route의 LLM 단계는 사용자 의미에서 IN/OUT Resource·Effect만 `RouteResourceCandidateV1`로 제안한다. 이후 Signed Tool Registry binding과 결정적 `PolicyPreconditionResolver`가 policy-precondition READ를 보강하고 final `ToolRoutePlanV2`를 확정한다. Route 변경은 Tool Route Owner의 새 revision으로만 수행한다. Retrieval·Planning은 이 Route를 재선택하지 않는다.
 - Retrieval Subgraph는 고정된 IN Route 안에서 Query·Read·Run-scoped RAG·Evidence·Sufficiency를 수행하고 Tool 종류를 다시 선택하지 않는다.
-- Work Analysis는 `analysis_requirement=REQUIRED` 또는 ACTION 경로에서만 업무 사실·관계를 해석하며 Tool·Arguments를 작성하지 않는다.
-- Planning Subgraph는 고정된 OUT Route를 사용해 Answer 또는 Tool Arguments·Action Plan을 작성하며 Tool을 다시 선택하지 않는다.
+- Work Analysis 호출 여부는 ACTION 여부가 아니라 `effective_analysis_required = request_analysis_required OR policy_precondition_analysis_required`로 결정한다. 단순 Action 자체는 분석을 강제하지 않으며, Work Analysis는 호출된 경우 업무 사실·관계·모호성·위험을 해석하되 Tool·Arguments를 작성하지 않는다.
+- Planning Subgraph는 고정된 OUT Route를 사용해 Answer 또는 Tool Arguments·Action Plan을 작성하며 Tool을 다시 선택하지 않는다. `tasklist_id`·`calendar_id` 같은 required container ID는 Planning LLM 호출 전에 결정적 `DefaultContainerResolver`가 selected parent 또는 configured default에서 bind하고, LLM은 해당 ID를 추측·변경하지 않는다.
 - 각 Subgraph 내부도 LangGraph이며 Node마다 필요한 State Projection이 다를 수 있다.
 - 중간 Query candidate·RAG score·LLM candidate는 Subgraph Local State/Run Retrieval Cache에 두고 Parent에는 공식 Typed Result와 필요한 Typed Workflow Signal만 반영한다.
 - Agent는 하나의 Run·Thread를 공유한다. 승인·실행·검증 사실은 Domain Store가 소유한다.
@@ -1878,6 +1871,7 @@ Agent 수와 LLM Call 수를 동일시하지 않는다. 하나의 Subgraph 안�
 - Ollama는 사용자가 별도 설치한 외부 Runtime이며 제품이 설치·시작·종료·업데이트하지 않는다.
 - FastAPI 내부에 Versioned Prompt Registry를 둔다.
 - Prompt Runtime Slot 선택 Key는 `agent_role + subgraph_name + node_name + node_state + purpose + input_schema_version + output_schema_version`다. `failure_reason_code`는 Base Prompt 선택 Key가 아니라 Failure-specific Instruction Block 조립 metadata다.
+- 각 LLM Node는 Main/Local State 전체를 직접 직렬화하지 않고 deterministic Typed Input Projection을 거친다. Prompt Assembler는 `prompt-runtime-input-contract-v1`의 root-field allowlist만 전달하며 `gold`, `grader`, `expected_route`, `end_state_gold`, benchmark/holdout/evaluator 전용 필드는 Product Prompt에 포함하지 않는다.
 - `ARC-014`: Supervisor는 Node만 Routing하고 선택된 Agent·Application Node가 PromptRef를 확정한다. Prompt Bundle Manifest로 Version·Hash·Schema를 고정한다.
 
 # 31. 무결성·Credential 아키텍처

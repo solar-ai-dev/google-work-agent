@@ -4,8 +4,8 @@
 
 ## 현재 기준
 
-- Workflow v7.13 / Interface v2.19 / Sequence v3.13
-- Test v3.30 / Evaluation v3.20 / Operations v2.17 / Prompt Contract v1.20
+- Workflow v7.14 / Interface v2.19 / Sequence v3.14
+- Test v3.31 / Evaluation v3.20 / Operations v2.17 / Prompt Contract v1.20
 - Dataset `rebuild-v1.17-r8.6-phase7.5-contract-correction`
 - Projection `projection-v1.1-r8.6-phase7.5`
 - Prompt `0.9.0-r8.6-phase6`

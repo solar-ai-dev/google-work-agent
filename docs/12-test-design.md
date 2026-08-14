@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.19`, `05 Retrieval v2.11`, `06 Workflow v7.13`, `07 Interface v2.19`, `08 Sequence v3.13`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.18`, `15 Agent Capability·Failure·Prompt v1.20`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.11`, `06 Workflow v7.14`, `07 Interface v2.19`, `08 Sequence v3.14`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.18`, `15 Agent Capability·Failure·Prompt v1.20`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v3.30 · **기준일:** 2026-08-14 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.31 · **기준일:** 2026-08-14 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -169,6 +169,10 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - Preflight/Claim `applied=false`가 ACTION_EXECUTION으로 fall-through하지 않고 Domain Result에 따라 재승인·Recovery·Terminal로만 라우팅되는지 검증
 - Recovery는 recheck 필요 시에만 Verification으로 복귀하고 `RECOVERY_REQUIRED` 유지 시 explicit resolve/re-auth까지 suspend하며, terminal failure/block/cancel에서 무한 Verification loop가 없음을 검증
 - Confirmation은 `interrupt_id + owner_subgraph + RegisteredResumeTargetRefV1`으로 발생 Subgraph checkpoint에 복귀하며 무조건 Request Understanding으로 재시작하지 않음. Resume target은 compiled Graph Registry 등록값만 허용하고 LLM 임의 Node ID는 차단
+- `RetrievalNeedV1`은 non-empty `required_information`과 최소 1개 `reason_codes`만 허용하며 Connector·Tool·raw query·page token·MCP argument를 포함하지 않음. Work Analysis `NEEDS_MORE_DATA`와 Review `RETRIEVE_MORE`만 결정적 `RetrievalRequiredV1` projection을 만들고 Retrieval 자신의 `NEEDS_MORE_DATA`는 같은 frozen IN Route의 local bounded loop로 남음
+- 현재 IN Route로 추가 정보 요구를 충족할 수 없으면 `RetrievalRequiredV1`로 우회하지 않고 `RouteReconsiderationRequiredV1`을 사용함
+- Resume target은 현재 compiled Main Graph Registry의 `(subgraph_id, node_id, graph_version)` 등록값만 허용. unknown target·wrong owner·wrong graph version은 fail-closed이며 LLM/User supplied resume authority를 허용하지 않음
+- `ConfirmationRequiredV1.options=[]`는 자유 텍스트, non-empty options는 등록값 중 하나만 허용하는 닫힌 선택으로 검증. `UserInterruptV1`이 필요한 경우 Canonical confirmation state에서 UI/API one-way projection으로만 생성하고 Main State의 독립 workflow truth로 저장하지 않음
 - 모든 공식 disposition은 정확히 하나의 Edge·Interrupt·Terminal 경로를 가지며 unknown disposition은 fail-closed
 - Synthetic Branch Completeness Fixture는 Request/Tool Route/Retrieval/Work Analysis/Planning/Review의 모든 공식 disposition과 Domain/Application의 Preflight·Verification·Recovery 결과 분기를 최소 1회 이상 통과해야 한다. 각 Case는 END, 사용자 interrupt/suspend 또는 명시된 owner back-edge 중 하나로 닫혀야 하며 implicit fall-through·무한 self-loop·정의되지 않은 terminal을 허용하지 않는다.
 - Retrieval에 Run-scoped RAG 단계 존재 및 후보 전체의 downstream 전달 금지

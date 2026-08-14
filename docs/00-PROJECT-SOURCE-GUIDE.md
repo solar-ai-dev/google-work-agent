@@ -31,10 +31,10 @@ Prompt·Failure 정규화   → 15
 
 - Project Overview v1.14
 - PRD v2.10 / Functional v2.15 / Policy v2.11 / UI·UX v2.11
-- Architecture v3.5 / Domain·DB v1.19 / DB Schema v1.6
-- Retrieval v2.11 / Workflow **v7.13** / Interface **v2.19** / Sequence **v3.13**
+- Architecture v3.6 / Domain·DB v1.19 / DB Schema v1.6
+- Retrieval v2.11 / Workflow **v7.14** / Interface **v2.19** / Sequence **v3.14**
 - Security v2.10 / Infrastructure v2.9 / Observability v2.18
-- Test **v3.30** / Evaluation **v3.20** / Operations **v2.17** / Agent Capability·Prompt **v1.20**
+- Test **v3.31** / Evaluation **v3.20** / Operations **v2.17** / Agent Capability·Prompt **v1.20**
 - Domain State Transition v1.5 / State Transition Test Matrix v1.5
 - Dataset candidate: `rebuild-v1.17-r8.6-phase7.5-contract-correction`
 - Projection candidate: `projection-v1.1-r8.6-phase7.5`
@@ -48,6 +48,13 @@ PHASE 7에서 발견된 세 blocker는 PHASE 7.5에서 계약 수준으로 교�
 3. `tasklist_id/calendar_id`는 LLM 추측이 아니라 deterministic default-container binding으로 고정.
 
 실제 Ollama/qwen benchmark와 Holdout tuning은 아직 수행하지 않았다.
+
+2026-08-14 Runtime alignment 과정에서 Workflow handoff의 미완성 계약을 닫았다.
+
+- `RetrievalNeedV1 = required_information + reason_codes`로 최소 handoff schema를 확정했다.
+- Work Analysis·Review의 추가 Retrieval 요청은 `RetrievalRequiredV1`로 정규화하고 Retrieval 내부 `NEEDS_MORE_DATA`는 같은 frozen IN Route의 bounded local loop로 유지한다.
+- Confirmation resume authority는 active compiled Main Graph의 registered resume target이며 `graph_version`은 resume-contract version이다.
+- `options=[]`는 자유 텍스트, non-empty options는 닫힌 선택 응답이다. `UserInterruptV1`은 Core workflow truth가 아니라 필요한 경우 UI/API one-way projection으로만 허용한다.
 
 ## 프로젝트 소스 25개 구성
 

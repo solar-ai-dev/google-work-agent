@@ -26,4 +26,4 @@ Google Work Agent는 Connector 확장 가능한 Work Agent Core 위에 Google Wo
 
 ## Canonical 문서 버전
 
-PRD 2.10 / Functional 2.15 / Policy 2.11 / UI 2.11 / Architecture 3.5 / Domain 1.19 / Retrieval 2.11 / Workflow 7.13 / Interface 2.19 / Sequence 3.13 / Security 2.10 / Infrastructure 2.9 / Observability 2.18 / Test 3.30 / Evaluation 3.20 / Operations 2.17 / Prompt Contract 1.20.
+PRD 2.10 / Functional 2.15 / Policy 2.11 / UI 2.11 / Architecture 3.6 / Domain 1.19 / Retrieval 2.11 / Workflow 7.14 / Interface 2.19 / Sequence 3.14 / Security 2.10 / Infrastructure 2.9 / Observability 2.18 / Test 3.31 / Evaluation 3.20 / Operations 2.17 / Prompt Contract 1.20.
