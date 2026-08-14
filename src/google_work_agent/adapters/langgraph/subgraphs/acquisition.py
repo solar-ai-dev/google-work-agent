@@ -38,6 +38,7 @@ from google_work_agent.application.workflows import (
     route_supervisor,
     validate_acquisition_result_v1,
 )
+from google_work_agent.application.workflows.retrieval_read_cache import RunScopedReadResultCache
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]
@@ -54,12 +55,14 @@ class AcquisitionSubgraph:
         graph_profile: GraphProfile,
         transition_run: TransitionRun,
         merge_decision: MergeDecision,
+        read_result_cache: RunScopedReadResultCache,
     ) -> None:
         self._agent = agent
         self._id_factory = id_factory
         self._graph_profile = graph_profile
         self._transition_run = transition_run
         self._merge_decision = merge_decision
+        self._read_result_cache = read_result_cache
 
     def build(self) -> Any:
         graph = StateGraph(
@@ -205,6 +208,8 @@ class AcquisitionSubgraph:
             request=request,
             request_intent=state.get("request_intent"),
             tool_route_plan=state.get("tool_route_plan"),
+            read_result_cache=self._read_result_cache,
+            read_handle_factory=self._id_factory,
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "READ_COMPLETE"

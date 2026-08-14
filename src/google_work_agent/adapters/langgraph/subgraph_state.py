@@ -22,6 +22,7 @@ from google_work_agent.application.workflows import (
     PlanReviewResultV1,
     RequestIntentV2,
     RequestUnderstandingOutputV1,
+    RetrievalResultV1,
     RunBudgetV1,
     SourceFetchPlanV1,
     SourcePlanningOutputV1,
@@ -32,6 +33,7 @@ from google_work_agent.application.workflows.profile_fused import (
     ProfileReasonPlanOutputV1,
     ProfileRequestSourceOutputV1,
 )
+from google_work_agent.application.workflows.retrieval_attempts import QueryAttempt
 from google_work_agent.application.workflows.retrieval_ranking import RagCandidateV1
 from google_work_agent.application.workflows.tool_routing import (
     RouteReconsiderationRequiredV1,
@@ -61,6 +63,12 @@ class ContextRetrievalLocalState(GraphState):
     __context_rag_candidates__: NotRequired[list[RagCandidateV1]]
     __context_selection_output__: NotRequired[EvidenceSelectionResultV2]
     __context_sufficiency_output__: NotRequired[SufficiencyResultV2]
+    __context_current_round_no__: NotRequired[int]
+    __context_read_result_handles__: NotRequired[list[str]
+    ]
+    __context_segment_handles__: NotRequired[list[str]]
+    __context_query_attempts__: NotRequired[list[QueryAttempt]]
+    __context_followup_planner_input__: NotRequired[dict[str, object]]
 
 
 class WorkAnalysisLocalState(GraphState):

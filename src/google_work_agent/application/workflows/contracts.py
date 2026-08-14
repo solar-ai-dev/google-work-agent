@@ -13,6 +13,7 @@ if TYPE_CHECKING:
         ContextRetrievalResultV1,
         PlanReviewResultV1,
         RequestIntentV2,
+        RetrievalResultV1,
         SourceFetchPlanV1,
         WorkAnalysisResultV1,
     )
@@ -125,6 +126,7 @@ class MultiAgentGraphState(TypedDict):
     workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
+    retrieval_result: RetrievalResultV1 | None
     context_result: ContextRetrievalResultV1 | None
     analysis_result: WorkAnalysisResultV1 | None
     answer_draft: AnswerDraftV1 | None
@@ -149,6 +151,7 @@ class GraphStateUpdateV1(TypedDict, total=False):
     workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
+    retrieval_result: RetrievalResultV1 | None
     context_result: ContextRetrievalResultV1 | None
     analysis_result: WorkAnalysisResultV1 | None
     answer_draft: AnswerDraftV1 | None

@@ -85,7 +85,7 @@ def test_source_planning_needs_confirmation_routes_to_waiting_confirmation() -> 
     assert user_interrupt["options"][0]["option_id"] == "gmail"
 
 
-def test_tool_route_ready_publishes_frozen_plan_to_source_planning() -> None:
+def test_tool_route_ready_enters_retrieval_for_initial_query_planning() -> None:
     plan = _tool_route_plan()
     decision = route_supervisor(
         phase=WorkflowPhase.TOOL_ROUTING,
@@ -99,7 +99,8 @@ def test_tool_route_ready_publishes_frozen_plan_to_source_planning() -> None:
         },
     )
 
-    assert decision["target"] == SupervisorTarget.SOURCE_PLANNING.value
+    assert decision["target"] == SupervisorTarget.CONTEXT_RETRIEVAL.value
+    assert decision["next_phase"] == WorkflowPhase.CONTEXT_RETRIEVAL.value
     assert decision["state_update"]["tool_route_plan"] == plan
 
 

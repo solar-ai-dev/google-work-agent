@@ -922,6 +922,11 @@ class RetrievalStateV1:
     final_result: RetrievalResultV1 | None
 ```
 
+`RetrievalQueryPlanV1.route_queries` uses the Retrieval-owned
+`RouteQueryIntentV1` contract in `05-context-retrieval.md`. Follow-up planner
+output remains local to the Retrieval invocation; only the final
+`RetrievalResultV1` is a Parent handoff.
+
 Node 입력:
 
 - `plan_query`: `user_request + request_intent + input_routes`

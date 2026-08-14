@@ -28,6 +28,16 @@
 
 ---
 
+### Retrieval follow-up `plan_query` prompt boundary
+
+The follow-up prompt may receive only `current_round_no`, prior `QueryAttempt`,
+unresolved `SufficiencyIssueV2`, and bounded read-result summaries. Its output
+is `RetrievalQueryPlanV1.route_queries[*]: RouteQueryIntentV1`: frozen route,
+operation kind, reason codes, optional semantic constraint delta, and optional
+bounded detail candidate reference. It must not receive or emit raw
+continuations, provider-native queries, MCP arguments, arbitrary tool IDs, or
+external resource IDs.
+
 ## 1. 기준 문서와 우선순위
 
 ### 1.1 유지하는 확정 계약

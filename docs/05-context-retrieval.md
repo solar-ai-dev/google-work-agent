@@ -100,6 +100,38 @@ class RetrievalQueryPlanV1:
     retrieval_order: list[str]
 ```
 
+`RouteQueryIntentV1` is the Retrieval-local semantic proposal for exactly one
+frozen IN Route. It is used for both the initial query plan and a follow-up
+round; it is not a Connector or MCP argument DTO.
+
+```python
+class ConstraintDeltaV1:
+    added_constraints: list[str]
+    removed_constraints: list[str]
+
+class RouteQueryIntentV1:
+    route_id: str
+    operation_kind: Literal["SEARCH", "NEXT_PAGE", "DETAIL_FETCH", "FREEBUSY"]
+    reason_codes: list[str]
+    constraint_delta: ConstraintDeltaV1 | None
+    detail_candidate_ref: str | None
+```
+
+Follow-up invariants:
+
+- `route_id` must name a member of frozen `input_routes`; an unknown route
+  requires `ROUTE_RECONSIDERATION_REQUIRED` and is never locally executed.
+- `reason_codes` must bind an unresolved `SufficiencyIssueV2`.
+- follow-up `SEARCH` requires a non-empty `constraint_delta`; unchanged search
+  is rejected before a Connector read.
+- `DETAIL_FETCH.detail_candidate_ref` is one opaque candidate reference from
+  the bounded read-result summary. It is resolved by Run Retrieval Cache; it
+  is not a provider resource ID.
+- `NEXT_PAGE` has neither `constraint_delta` nor `detail_candidate_ref` and
+  never contains a raw continuation or page token.
+- `FREEBUSY` retains its fixed CALENDAR-route meaning and has neither
+  follow-up-only field.
+
 책임:
 
 - 이미 허용된 IN Route 안에서 무엇을 어떤 순서로 찾을지 제안

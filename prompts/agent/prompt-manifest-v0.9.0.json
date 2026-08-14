@@ -17,12 +17,12 @@
   "failure_reason_prompt_key": "ASSEMBLY_METADATA_ONLY",
   "assembly_model": "ROLE_BASE_PLUS_NODE_BLOCK",
   "canonical_contract_refs": [
-    "05 Retrieval v2.11",
-    "06 Workflow v7.13",
-    "07 Interface v2.19",
-    "12 Test v3.30",
+    "05 Retrieval v2.12",
+    "06 Workflow v7.15",
+    "07 Interface v2.20",
+    "12 Test v3.32",
     "13 Evaluation v3.20",
-    "15 Agent Capability v1.20",
+    "15 Agent Capability v1.21",
     "CanonicalCaseV7",
     "projection-v1.1-r8.6-phase7.5",
     "PrePolicyToolRouteGoldV1"
@@ -275,9 +275,9 @@
       "input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/retrieval-plan-query-input-v1.schema.json",
       "output_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/retrieval-query-plan-v1.schema.json",
       "supported_failure_reason_codes": "ALLOWLISTED_BY_FAILURE_RECORD",
-      "content_hash": "a125829d9360f87e00542f4615cee0053e3263ce520884a1dce7a31b1b297b66",
+      "content_hash": "e9054f44122de8b5180f18f361791813ac47c4a1d8ed81ec9b513002d34300f8",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.plan_query.md",
-      "assembled_hash": "a125829d9360f87e00542f4615cee0053e3263ce520884a1dce7a31b1b297b66"
+      "assembled_hash": "e9054f44122de8b5180f18f361791813ac47c4a1d8ed81ec9b513002d34300f8"
     },
     {
       "slot_id": "retrieval.plan_query.repair",

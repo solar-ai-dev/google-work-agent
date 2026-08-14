@@ -31,7 +31,6 @@
     },
     "tool_route.determine_io_resources": {
       "allowed_root_fields": [
-        "user_request",
         "request_intent",
         "eligible_route_capabilities"
       ]
@@ -50,10 +49,13 @@
     },
     "retrieval.plan_query": {
       "allowed_root_fields": [
-        "user_request",
         "request_intent",
         "input_routes",
-        "retrieval_budget"
+        "retrieval_budget",
+        "current_round_no",
+        "prior_query_attempts",
+        "unresolved_sufficiency_issues",
+        "read_result_summaries"
       ]
     },
     "retrieval.select_evidence": {

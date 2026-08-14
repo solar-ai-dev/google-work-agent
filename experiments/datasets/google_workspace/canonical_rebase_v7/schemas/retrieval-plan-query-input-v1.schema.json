@@ -5,15 +5,11 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "user_request",
     "request_intent",
     "input_routes",
     "retrieval_budget"
   ],
   "properties": {
-    "user_request": {
-      "type": "string"
-    },
     "request_intent": {
       "$ref": "request-intent-v2.schema.json"
     },
@@ -65,6 +61,18 @@
     },
     "retrieval_budget": {
       "type": "object"
+    },
+    "current_round_no": {
+      "type": ["integer", "null"]
+    },
+    "prior_query_attempts": {
+      "type": "array"
+    },
+    "unresolved_sufficiency_issues": {
+      "type": "array"
+    },
+    "read_result_summaries": {
+      "type": "array"
     }
   }
 }

@@ -14,6 +14,17 @@ Unit → Contract → Integration → Component → E2E → Failure Injection �
 
 모든 상태 전이는 허용 Edge와 금지 Edge를 검증한다.
 
+### Retrieval follow-up planner contract
+
+Follow-up `retrieval.plan_query` tests must verify that `RouteQueryIntentV1`
+accepts only `SEARCH`, `NEXT_PAGE`, `DETAIL_FETCH`, or `FREEBUSY`; the route
+belongs to frozen `input_routes`; reason codes bind an unresolved
+`SufficiencyIssueV2`; and changed `SEARCH` has a non-empty constraint delta.
+`DETAIL_FETCH` must select only a bounded cache-backed candidate reference.
+Raw continuation, provider-native query, MCP arguments, and arbitrary external
+resource IDs are invalid output. Invalid output is repaired at most once, then
+fails closed before any Connector read.
+
 ## 2. Test ID·Traceability
 
 ```text

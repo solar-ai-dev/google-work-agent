@@ -21,23 +21,44 @@
         "additionalProperties": false,
         "required": [
           "route_id",
-          "intent_constraints",
-          "operation_preference"
+          "operation_kind",
+          "reason_codes",
+          "constraint_delta",
+          "detail_candidate_ref"
         ],
         "properties": {
           "route_id": {
             "type": "string"
           },
-          "intent_constraints": {
-            "type": "object"
-          },
-          "operation_preference": {
+          "operation_kind": {
             "enum": [
               "SEARCH",
+              "NEXT_PAGE",
               "DETAIL_FETCH",
-              "LIST",
               "FREEBUSY"
             ]
+          },
+          "reason_codes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string"}
+          },
+          "constraint_delta": {
+            "oneOf": [
+              {"type": "null"},
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["added_constraints", "removed_constraints"],
+                "properties": {
+                  "added_constraints": {"type": "array", "items": {"type": "string"}},
+                  "removed_constraints": {"type": "array", "items": {"type": "string"}}
+                }
+              }
+            ]
+          },
+          "detail_candidate_ref": {
+            "type": ["string", "null"]
           }
         }
       }

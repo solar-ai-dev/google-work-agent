@@ -33,7 +33,10 @@ from google_work_agent.adapters.langgraph.pre_analysis_composition import (
     build_pre_analysis_subgraphs,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.route_translation import GraphRouteTranslator
+from google_work_agent.adapters.langgraph.route_translation import (
+    GraphRouteTranslator,
+    build_resume_target_registry,
+)
 from google_work_agent.adapters.langgraph.subgraphs.planning import (
     PlanningSubgraph,
     planning_mode_from_request_intent,
@@ -135,6 +138,12 @@ from google_work_agent.application.workflows.profile_fused import (
     load_profile_three_stage1_prompt_reference,
     load_profile_three_stage2_prompt_reference,
 )
+from google_work_agent.application.workflows.retrieval_evidence_store import (
+    RunScopedEvidenceStore,
+    resolve_evidence_projection,
+)
+from google_work_agent.application.workflows.retrieval_read_cache import RunScopedReadResultCache
+from google_work_agent.application.workflows.retrieval_read_executor import RetrievalReadExecutor
 from google_work_agent.application.write_actions import (
     ClaimWriteActionService,
     ExecuteWriteActionService,
@@ -199,6 +208,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._checkpoint_database_path = checkpoint_database_path
         self._graph_profile = graph_profile
         self._route_translator = GraphRouteTranslator(graph_profile)
+        self._resume_target_registry = build_resume_target_registry(graph_profile)
         self._work_hours_provider = work_hours_provider or (
             lambda: CalendarWorkHours(timezone=(timezone_provider or (lambda: "Asia/Seoul"))())
         )
@@ -219,9 +229,11 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             tool_catalog=tool_catalog,
             manifest_path=prompt_manifest_path,
         )
+        self._read_result_cache = RunScopedReadResultCache()
+        connector_reader = GoogleWorkspaceConnectorReader(gateway=gateway)
         self._acquisition = ApiDiscoveryAcquisitionAgent(
             llm_runtime=llm_runtime,
-            connector_reader=GoogleWorkspaceConnectorReader(gateway=gateway),
+            connector_reader=connector_reader,
             manifest_path=prompt_manifest_path,
             now_ms=now_ms,
             timezone_provider=timezone_provider,
@@ -230,6 +242,13 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             llm_runtime=llm_runtime,
             manifest_path=prompt_manifest_path,
         )
+        self._retrieval_read_executor = RetrievalReadExecutor(
+            connector_reader=connector_reader,
+            read_result_cache=self._read_result_cache,
+            now_ms=now_ms,
+            timezone_provider=timezone_provider or (lambda: "Asia/Seoul"),
+        )
+        self._evidence_store = RunScopedEvidenceStore()
         self._analysis = WorkAnalysisAgent(
             llm_runtime=llm_runtime,
             manifest_path=prompt_manifest_path,
@@ -445,6 +464,9 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             graph_profile=self._graph_profile,
             transition_run=self._transition_run,
             merge_decision=self._merge_decision,
+            evidence_store=self._evidence_store,
+            read_result_cache=self._read_result_cache,
+            retrieval_read_executor=self._retrieval_read_executor,
         )
         self._request_subgraph = entry_subgraphs.request_understanding
         self._tool_route_subgraph = entry_subgraphs.tool_route
@@ -922,6 +944,8 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                     reason_code=finalize_intent["reason_code"],
                 )
             )
+        self._evidence_store.discard_run(run_id=run_id)
+        self._read_result_cache.discard_run(run_id=run_id)
         return {
             **state,
             "__target__": "end",
@@ -1028,8 +1052,15 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             evidence_id_map = {
                 evidence_id: self._id_factory() for evidence_id in plan_draft["evidence_refs"]
             }
-        context_result = _require_state_value(state["context_result"], "context_result")
-        evidence_drafts = {item["evidence_id"]: item for item in context_result["evidence_drafts"]}
+        retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
+        evidence_drafts = {
+            item["evidence_id"]: item
+            for item in resolve_evidence_projection(
+                store=self._evidence_store,
+                run_id=run_id,
+                retrieval_result=retrieval_result,
+            )
+        }
         mapped_evidence = []
         for evidence_id in plan_draft["evidence_refs"]:
             item = evidence_drafts[evidence_id]
@@ -1186,8 +1217,15 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
     def _persist_read_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         run_id = state["run_id"]
         run_version = self._current_run_version(run_id)
-        context_result = _require_state_value(state["context_result"], "context_result")
-        evidence_drafts = {item["evidence_id"]: item for item in context_result["evidence_drafts"]}
+        retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
+        evidence_drafts = {
+            item["evidence_id"]: item
+            for item in resolve_evidence_projection(
+                store=self._evidence_store,
+                run_id=run_id,
+                retrieval_result=retrieval_result,
+            )
+        }
         mapped_evidence = []
         for evidence_id in plan_draft["evidence_refs"]:
             item = evidence_drafts[evidence_id]
