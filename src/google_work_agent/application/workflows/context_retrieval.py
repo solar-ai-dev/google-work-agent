@@ -37,6 +37,7 @@ from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionRequestV1,
     ContextResult,
     GraphStateUpdateV1,
+    RunBudgetV1,
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
 )
@@ -50,7 +51,7 @@ from google_work_agent.application.workflows.handoff_contracts import (
     EvidenceRoleDraftV2,
     EvidenceSelectionResultV2,
     RequestIntentV2,
-    SufficiencyOutputV1,
+    SufficiencyResultV2,
 )
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
@@ -67,6 +68,18 @@ from google_work_agent.application.workflows.retrieval_ranking import (
 from google_work_agent.application.workflows.retrieval_ranking import (
     rank_segments as rank_segments,
 )
+from google_work_agent.application.workflows.retrieval_sufficiency import (
+    SUFFICIENCY_OUTPUT_SCHEMA,
+    budget_state_prompt_projection,
+    default_run_budget,
+    enforce_sufficiency_guard,
+    missing_information_projection,
+    selected_evidence_prompt_projection,
+    source_statuses_prompt_projection,
+    sufficiency_ambiguity_projection,
+    validate_sufficiency_result_v2,
+)
+from google_work_agent.application.workflows.tool_routing import ToolRoutePlanV2
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
@@ -116,31 +129,6 @@ EVIDENCE_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
         },
     },
 )
-SUFFICIENCY_OUTPUT_SCHEMA = OutputSchemaDefinition(
-    schema_version="context-sufficiency-v1",
-    json_schema={
-        "type": "object",
-        "required": ["schema_version", "status", "sufficiency", "missing_slots", "ambiguity"],
-        "additionalProperties": False,
-        "properties": {
-            "schema_version": {"type": "integer", "enum": [1]},
-            "status": {
-                "type": "string",
-                "enum": [
-                    "SUFFICIENT",
-                    "NEEDS_MORE_DATA",
-                    "NEEDS_CONFIRMATION",
-                    "PARTIAL",
-                    "BLOCKED",
-                ],
-            },
-            "sufficiency": {"type": "object"},
-            "missing_slots": {"type": "array", "items": {"type": "string"}},
-            "ambiguity": {"type": ["object", "null"]},
-        },
-    },
-)
-
 _CONTEXT_RESULT_VALUES = {item.value for item in ContextResult}
 _EVIDENCE_ROLE_VALUES = {"SUPPORTS", "CONTRADICTS", "CONTEXT"}
 
@@ -210,6 +198,8 @@ class ContextRetrievalAgent:
         request_intent: RequestIntentV2,
         acquisition_result: AcquisitionResultV1,
         request: WorkflowStartRequest,
+        tool_route_plan: ToolRoutePlanV2 | None = None,
+        retry_budget: RunBudgetV1 | None = None,
     ) -> ContextRetrievalResultV1:
         segments = cast(
             list[_SourceSegment],
@@ -222,16 +212,17 @@ class ContextRetrievalAgent:
             rag_candidates=rag_candidates,
             segments=segments,
         )
-        draft_bundle, evidence_drafts = self.build_draft_context_bundle(
+        _draft_bundle, evidence_drafts = self.build_draft_context_bundle(
             selection_result=selection_result,
             acquisition_result=acquisition_result,
         )
         sufficiency_result, llm_provider_result = self.assess_sufficiency(
             request_intent=request_intent,
-            acquisition_result=acquisition_result,
             request=request,
-            context_bundle=draft_bundle,
+            tool_route_plan=tool_route_plan,
+            acquisition_result=acquisition_result,
             evidence_drafts=evidence_drafts,
+            retry_budget=retry_budget or default_run_budget(),
         )
         return self.build_result_from_outputs(
             selection_result=selection_result,
@@ -358,20 +349,28 @@ class ContextRetrievalAgent:
         self,
         *,
         request_intent: RequestIntentV2,
-        acquisition_result: AcquisitionResultV1,
         request: WorkflowStartRequest,
-        context_bundle: ContextBundleV1,
+        tool_route_plan: ToolRoutePlanV2 | None,
+        acquisition_result: AcquisitionResultV1,
         evidence_drafts: list[EvidenceDraftV1],
-    ) -> tuple[SufficiencyOutputV1, dict[str, object]]:
+        retry_budget: RunBudgetV1,
+    ) -> tuple[SufficiencyResultV2, dict[str, object]]:
+        """retrieval.assess_sufficiency (docs/05-context-retrieval.md SS5.7):
+        request_intent + top rag candidates' materialized evidence. Never
+        re-sends the full context_bundle/acquisition_status opaque blob --
+        only the Candidate-pinned selected_evidence/source_statuses/
+        budget_state typed projections."""
         llm_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._sufficiency_prompt_ref,
             prompt_input={
+                "user_request": request.request_text,
                 "request_intent": request_intent,
-                "acquisition_status": acquisition_result["status"],
-                "acquisition_missing_slots": list(acquisition_result["missing_slots"]),
-                "context_bundle": context_bundle,
-                "evidence_drafts": evidence_drafts,
-                "source_content_is_untrusted": True,
+                "selected_evidence": selected_evidence_prompt_projection(evidence_drafts),
+                "source_statuses": source_statuses_prompt_projection(
+                    tool_route_plan=tool_route_plan,
+                    acquisition_result=acquisition_result,
+                ),
+                "budget_state": budget_state_prompt_projection(retry_budget),
             },
             output_schema=SUFFICIENCY_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -382,17 +381,22 @@ class ContextRetrievalAgent:
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:context.assess_sufficiency",
             ),
-            semantic_validate=validate_sufficiency_output_v1,
+            semantic_validate=validate_sufficiency_result_v2,
         )
-        return validate_sufficiency_output_v1(llm_result.structured_output), _provider_summary(
-            llm_result
+        validated = validate_sufficiency_result_v2(llm_result.structured_output)
+        enforced = enforce_sufficiency_guard(
+            validated,
+            request_intent=request_intent,
+            retry_budget=retry_budget,
+            evidence_supported_partial_possible=bool(evidence_drafts),
         )
+        return enforced, _provider_summary(llm_result)
 
     def build_result_from_outputs(
         self,
         *,
         selection_result: EvidenceSelectionResultV2,
-        sufficiency_result: SufficiencyOutputV1,
+        sufficiency_result: SufficiencyResultV2,
         acquisition_result: AcquisitionResultV1,
         llm_provider_result: dict[str, object],
     ) -> ContextRetrievalResultV1:
@@ -409,11 +413,13 @@ class ContextRetrievalAgent:
             segments=segments,
             context_budget=self._context_budget,
         )
+        missing_information = missing_information_projection(sufficiency_result["issues"])
+        missing_slots = [item["code"] for item in missing_information]
         context_bundle = _context_bundle(
             selected_segments=selected_segments,
             evidence_drafts=evidence_drafts,
-            missing_information=sufficiency_result["missing_slots"],
-            ambiguity=sufficiency_result["ambiguity"],
+            missing_information=missing_slots,
+            ambiguity=sufficiency_ambiguity_projection(sufficiency_result),
             context_budget=self._context_budget,
         )
         return {
@@ -426,14 +432,17 @@ class ContextRetrievalAgent:
                 selection_result["excluded_segment_ids"],
                 segments=segments,
             ),
-            "missing_slots": list(sufficiency_result["missing_slots"]),
+            "missing_slots": missing_slots,
             "additional_acquisition_request": _build_additional_acquisition_request(
                 status=sufficiency_result["status"],
-                missing_slots=sufficiency_result["missing_slots"],
+                missing_slots=missing_slots,
                 context_bundle=context_bundle,
                 evidence_drafts=evidence_drafts,
             ),
-            "sufficiency": dict(sufficiency_result["sufficiency"]),
+            "sufficiency": {
+                "status": sufficiency_result["status"],
+                "issues": list(sufficiency_result["issues"]),
+            },
             "llm_provider_result": llm_provider_result,
         }
 
@@ -588,26 +597,6 @@ def _validate_evidence_role_draft(
         "segment_id": segment_id,
         "role": cast(Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"], role),
         "relevance_reason": _require_string(draft, "relevance_reason", path),
-    }
-
-
-def validate_sufficiency_output_v1(value: object) -> SufficiencyOutputV1:
-    root = _require_mapping(value, "$")
-    _require_exact_keys(
-        root,
-        "$",
-        {"schema_version", "status", "sufficiency", "missing_slots", "ambiguity"},
-    )
-    _require_schema_version(root, "$")
-    status = _require_string(root, "status", "$")
-    if status not in _CONTEXT_RESULT_VALUES:
-        raise ContextRetrievalValidationError("$.status is invalid")
-    return {
-        "schema_version": 1,
-        "status": cast(ContextStatusValue, status),
-        "sufficiency": _require_mapping(root["sufficiency"], "$.sufficiency"),
-        "missing_slots": _require_string_list(root["missing_slots"], "$.missing_slots"),
-        "ambiguity": _nullable_mapping(root["ambiguity"], "$.ambiguity"),
     }
 
 

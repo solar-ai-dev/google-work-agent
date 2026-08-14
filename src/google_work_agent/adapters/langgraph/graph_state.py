@@ -30,7 +30,7 @@ from google_work_agent.application.workflows import (
     RunBudgetV1,
     SourceFetchPlanV1,
     SourcePlanningOutputV1,
-    SufficiencyOutputV1,
+    SufficiencyResultV2,
     WorkAnalysisResultV1,
     WorkflowPhase,
 )

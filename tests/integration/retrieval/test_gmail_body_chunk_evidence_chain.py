@@ -339,11 +339,9 @@ def test_evidence_selection_uses_only_the_selected_message_segment() -> None:
     context_runtime.queued.append(
         _llm_result(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "status": "SUFFICIENT",
-                "sufficiency": {"reason_codes": ["CONTEXT_READY"]},
-                "missing_slots": [],
-                "ambiguity": None,
+                "issues": [],
             }
         )
     )

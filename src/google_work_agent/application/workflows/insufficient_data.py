@@ -8,12 +8,14 @@ class ResolutionSource(StrEnum):
     USER = "USER"
     GOOGLE = "GOOGLE"
     POLICY = "POLICY"
+    ROUTE = "ROUTE"
 
 
 class InsufficientDataDisposition(StrEnum):
     CONTINUE = "CONTINUE"
     BLOCKED = "BLOCKED"
     NEEDS_CONFIRMATION = "NEEDS_CONFIRMATION"
+    ROUTE_RECONSIDERATION_REQUIRED = "ROUTE_RECONSIDERATION_REQUIRED"
     RETRIEVE_MORE = "RETRIEVE_MORE"
     PARTIAL = "PARTIAL"
 
@@ -47,6 +49,8 @@ def decide_insufficient_data(context: InsufficientDataContext) -> InsufficientDa
         return InsufficientDataDisposition.BLOCKED
     if any(issue.resolution_source is ResolutionSource.USER for issue in required):
         return InsufficientDataDisposition.NEEDS_CONFIRMATION
+    if any(issue.resolution_source is ResolutionSource.ROUTE for issue in required):
+        return InsufficientDataDisposition.ROUTE_RECONSIDERATION_REQUIRED
     if (
         any(issue.resolution_source is ResolutionSource.GOOGLE for issue in required)
         and context.budget_remaining > 0

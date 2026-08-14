@@ -417,9 +417,9 @@
       "input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/retrieval-sufficiency-input-v1.schema.json",
       "output_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/sufficiency-result-v2.schema.json",
       "supported_failure_reason_codes": "ALLOWLISTED_BY_FAILURE_RECORD",
-      "content_hash": "d3d4c1e64cea8694b092ddac0ce3ec945922e2c4b6d1fc9d618e8b7e55746ecc",
+      "content_hash": "543c4b7f7ffc1bfee610d41cb6238bc81d76e85cfeaf8cd4c5de7ba7a8793902",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.assess_sufficiency.md",
-      "assembled_hash": "d3d4c1e64cea8694b092ddac0ce3ec945922e2c4b6d1fc9d618e8b7e55746ecc"
+      "assembled_hash": "543c4b7f7ffc1bfee610d41cb6238bc81d76e85cfeaf8cd4c5de7ba7a8793902"
     },
     {
       "slot_id": "retrieval.assess_sufficiency.repair",

@@ -136,6 +136,7 @@ def test_context_result_values_match_workflow_document() -> None:
         "SUFFICIENT",
         "NEEDS_MORE_DATA",
         "NEEDS_CONFIRMATION",
+        "ROUTE_RECONSIDERATION_REQUIRED",
         "PARTIAL",
         "BLOCKED",
     )

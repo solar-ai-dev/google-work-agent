@@ -25,7 +25,7 @@ from google_work_agent.application.workflows import (
     RunBudgetV1,
     SourceFetchPlanV1,
     SourcePlanningOutputV1,
-    SufficiencyOutputV1,
+    SufficiencyResultV2,
     WorkAnalysisResultV1,
 )
 from google_work_agent.application.workflows.profile_fused import (
@@ -60,7 +60,7 @@ class ContextRetrievalLocalState(GraphState):
     __context_agent_local__: NotRequired[AgentLocalStateV1]
     __context_rag_candidates__: NotRequired[list[RagCandidateV1]]
     __context_selection_output__: NotRequired[EvidenceSelectionResultV2]
-    __context_sufficiency_output__: NotRequired[SufficiencyOutputV1]
+    __context_sufficiency_output__: NotRequired[SufficiencyResultV2]
 
 
 class WorkAnalysisLocalState(GraphState):

@@ -180,12 +180,13 @@ class ContextRetrieverSubgraph:
         local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
         sufficiency_result, llm_provider_result = self._agent.assess_sufficiency(
             request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            request=request,
+            tool_route_plan=state.get("tool_route_plan"),
             acquisition_result=_require_state_value(
                 state["acquisition_result"], "acquisition_result"
             ),
-            request=request,
-            context_bundle=state["context_bundle"],
             evidence_drafts=state["evidence_drafts"],
+            retry_budget=state["retry_budget"],
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "SUFFICIENCY_COMPLETE"

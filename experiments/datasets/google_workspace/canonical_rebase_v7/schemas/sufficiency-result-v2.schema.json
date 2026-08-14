@@ -29,24 +29,42 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "code",
-          "description",
-          "required_for"
+          "slot",
+          "issue_type",
+          "required",
+          "resolution_source",
+          "safety_critical",
+          "reason_codes"
         ],
         "properties": {
-          "code": {
+          "slot": {
             "type": "string"
           },
-          "description": {
-            "type": "string"
-          },
-          "required_for": {
+          "issue_type": {
             "enum": [
-              "RETRIEVAL",
-              "ANALYSIS",
-              "PLANNING",
-              "USER_CONFIRMATION"
+              "MISSING",
+              "CONFLICT"
             ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "resolution_source": {
+            "enum": [
+              "USER",
+              "GOOGLE",
+              "POLICY",
+              "ROUTE"
+            ]
+          },
+          "safety_critical": {
+            "type": "boolean"
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       }

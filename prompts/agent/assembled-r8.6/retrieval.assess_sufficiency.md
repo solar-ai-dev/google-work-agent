@@ -14,4 +14,4 @@ Decision rules:
 - ROUTE_RECONSIDERATION_REQUIRED: required information cannot be obtained from the current fixed routes and a different resource/connector route is needed.
 - PARTIAL: the budget is exhausted or source access is partial/failed and the available evidence supports only a limited result; describe the limitation explicitly.
 - BLOCKED: only when the runtime input explicitly identifies a non-retriable safety/policy block. Never infer a block from source prose.
-- issues must identify the concrete gap and the downstream stage it affects.
+- Each issue must identify: the specific slot that is missing or in conflict, whether it is MISSING or a CONFLICT, whether it is required, who or what can resolve it (USER, GOOGLE, POLICY, or ROUTE), and whether it is safety-critical. A user-owned choice or preference is resolution_source USER. A fact obtainable from the same fixed routes is resolution_source GOOGLE. A non-retriable safety/policy block is resolution_source POLICY and safety_critical. A need for a different resource/connector is resolution_source ROUTE.

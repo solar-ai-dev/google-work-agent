@@ -13,7 +13,17 @@ RelativeUnit = Literal["DAY", "WEEK"]
 Weekday = Literal["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 Daypart = Literal["MORNING", "AFTERNOON", "EVENING"]
 ContextStatusValue = Literal[
-    "SUFFICIENT", "NEEDS_MORE_DATA", "NEEDS_CONFIRMATION", "PARTIAL", "BLOCKED"
+    "SUFFICIENT",
+    "NEEDS_MORE_DATA",
+    "NEEDS_CONFIRMATION",
+    "ROUTE_RECONSIDERATION_REQUIRED",
+    "PARTIAL",
+    "BLOCKED",
+]
+SufficiencyIssueTypeValue = Literal["MISSING", "CONFLICT"]
+SufficiencyResolutionSourceValue = Literal["USER", "GOOGLE", "POLICY", "ROUTE"]
+MissingInformationRequiredForValue = Literal[
+    "RETRIEVAL", "ANALYSIS", "PLANNING", "USER_CONFIRMATION"
 ]
 AnalysisStatusValue = Literal["COMPLETE", "NEEDS_MORE_DATA", "NEEDS_CONFIRMATION", "BLOCKED"]
 AnalysisFindingKind = Literal[
@@ -225,12 +235,47 @@ class EvidenceSelectionResultV2(TypedDict):
     excluded_segment_ids: list[str]
 
 
-class SufficiencyOutputV1(TypedDict):
-    schema_version: Required[Literal[1]]
+class SufficiencyIssueV2(TypedDict):
+    """docs/05-context-retrieval.md SS19.1 SufficiencyIssue.
+
+    Retrieval's own internal judgment input to the SS19.2 deterministic
+    Guard -- not the Parent-facing handoff shape (see MissingInformationV1
+    below). The PHASE 7.5 sufficiency-result-v2.schema.json Candidate
+    Artifact originally reused MissingInformationV1's
+    {code,description,required_for} shape here by mistake (an
+    ARTIFACT_CONTRACT_CONFLICT against this exact Canonical section);
+    the Candidate schema was corrected to match Canonical instead of
+    weakening Canonical to match the mistaken Candidate."""
+
+    slot: str
+    issue_type: SufficiencyIssueTypeValue
+    required: bool
+    resolution_source: SufficiencyResolutionSourceValue
+    safety_critical: bool
+    reason_codes: list[str]
+
+
+class SufficiencyResultV2(TypedDict):
+    """docs/05-context-retrieval.md SS5.7 -- retrieval.assess_sufficiency
+    output, Retrieval Local State only (RetrievalStateV1.sufficiency)."""
+
+    schema_version: Required[Literal[2]]
     status: ContextStatusValue
-    sufficiency: dict[str, object]
-    missing_slots: list[str]
-    ambiguity: dict[str, object] | None
+    issues: list[SufficiencyIssueV2]
+
+
+class MissingInformationV1(TypedDict):
+    """docs/06-agent-workflow.md SS3.3 -- RetrievalResultV1.missing_information
+    item. Parent-facing handoff shape, deliberately not the same type as
+    SufficiencyIssueV2: a deterministic projection
+    (retrieval_sufficiency.missing_information_projection) converts one into
+    the other. Full RetrievalResultV1 finalization (wiring this field onto
+    the Parent result, renaming coverage/source_statuses/retrieval_rounds)
+    is Q2-E scope; this type only prepares the boundary."""
+
+    code: str
+    description: str
+    required_for: MissingInformationRequiredForValue
 
 
 class AnalysisFindingV1(TypedDict):
