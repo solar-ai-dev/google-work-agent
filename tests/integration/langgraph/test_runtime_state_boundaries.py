@@ -43,6 +43,8 @@ from tests.integration.langgraph.test_runtime import (
     write_manifest_with_overrides,
 )
 
+from google_work_agent.adapters.langgraph.graph_state import CONTEXT_RAG_CANDIDATES_KEY
+
 
 def test_single_and_three_stage_runtimes_still_reject_own_draft_prompts(
     tmp_path: Path,
@@ -316,6 +318,7 @@ def test_chain_context_analysis_planning_review_preserves_typed_outputs(
         context = runtime._context_subgraph.invoke(acquired)  # noqa: SLF001
         assert context["__target__"] == "work_analysis"
         assert context["context_result"]["evidence_drafts"][0]["evidence_id"] == "evidence-1"
+        assert CONTEXT_RAG_CANDIDATES_KEY not in context
 
         analysis = runtime._analysis_subgraph.invoke(context)  # noqa: SLF001
         assert analysis["__target__"] == "planning"

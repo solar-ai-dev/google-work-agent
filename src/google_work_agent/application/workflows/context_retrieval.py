@@ -60,6 +60,12 @@ from google_work_agent.application.workflows.prompt_registry import (
 from google_work_agent.application.workflows.request_understanding import (
     build_clarification_question_v1,
 )
+from google_work_agent.application.workflows.retrieval_ranking import (
+    RagCandidateV1 as RagCandidateV1,
+)
+from google_work_agent.application.workflows.retrieval_ranking import (
+    rank_segments as rank_segments,
+)
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
@@ -199,6 +205,21 @@ class ContextRetrievalAgent:
             _segments_from_acquisition(acquisition_result, self._context_budget),
         )
 
+    def rag_retrieve(
+        self,
+        segments: list[_SourceSegment],
+        *,
+        request_intent: RequestIntentV2,
+    ) -> list[RagCandidateV1]:
+        """retrieval.rag_retrieve (docs/05-context-retrieval.md SS5.5): rank
+        already-normalized Segments and bound them to the Context Budget.
+        Retrieval Local State only -- see rank_segments docstring."""
+        return rank_segments(
+            segments,
+            request_intent=request_intent,
+            top_k=self._context_budget.max_segments,
+        )
+
     def retrieve(
         self,
         *,
@@ -210,6 +231,7 @@ class ContextRetrievalAgent:
             list[_SourceSegment],
             self.build_segments_from_acquisition(acquisition_result),
         )
+        self.rag_retrieve(segments, request_intent=request_intent)
         selection_result = self.select_evidence(
             request_intent=request_intent,
             acquisition_result=acquisition_result,

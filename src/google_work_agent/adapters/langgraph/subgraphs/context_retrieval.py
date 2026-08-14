@@ -16,6 +16,7 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
 )
 from google_work_agent.adapters.langgraph.graph_state import (
     CONTEXT_AGENT_LOCAL_KEY,
+    CONTEXT_RAG_CANDIDATES_KEY,
     CONTEXT_SELECTION_OUTPUT_KEY,
     CONTEXT_SUFFICIENCY_OUTPUT_KEY,
     GraphState,
@@ -110,9 +111,13 @@ class ContextRetrieverSubgraph:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
         acquisition_result = _require_state_value(state["acquisition_result"], "acquisition_result")
+        request_intent = _require_state_value(state["request_intent"], "request_intent")
         segments = self._agent.build_segments_from_acquisition(acquisition_result)
+        rag_candidates = self._agent.rag_retrieve(
+            cast(list[Any], segments), request_intent=request_intent
+        )
         selection = self._agent.select_evidence(
-            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            request_intent=request_intent,
             acquisition_result=acquisition_result,
             request=request,
             segments=cast(list[Any], segments),
@@ -123,6 +128,7 @@ class ContextRetrieverSubgraph:
         return {
             **state,
             CONTEXT_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            CONTEXT_RAG_CANDIDATES_KEY: rag_candidates,
             CONTEXT_SELECTION_OUTPUT_KEY: selection,
             "trace_context": merge_trace_context(
                 state,
@@ -254,6 +260,7 @@ class ContextRetrieverSubgraph:
             decision,
         )
         merged.pop(CONTEXT_AGENT_LOCAL_KEY, None)
+        merged.pop(CONTEXT_RAG_CANDIDATES_KEY, None)
         merged.pop(CONTEXT_SELECTION_OUTPUT_KEY, None)
         merged.pop(CONTEXT_SUFFICIENCY_OUTPUT_KEY, None)
         merged.pop("evidence_drafts", None)
