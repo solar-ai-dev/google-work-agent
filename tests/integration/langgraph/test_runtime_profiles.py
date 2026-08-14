@@ -396,7 +396,7 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
                         "message": "Need a revision.",
                         "affected_action_ids": [],
                         "affected_field_paths": ["$.answer"],
-                        "evidence_refs": ["evidence-1"],
+                        "evidence_refs": ["evidence-seg-2"],
                         "resource_refs": ["task:task-followup"],
                         "reason_codes": ["EVIDENCE_SUPPORTED"],
                     }
@@ -471,7 +471,7 @@ def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
         "message": "Need a revision.",
         "affected_action_ids": [],
         "affected_field_paths": ["$.answer"],
-        "evidence_refs": ["evidence-1"],
+        "evidence_refs": ["evidence-seg-2"],
         "resource_refs": ["task:task-followup"],
         "reason_codes": ["EVIDENCE_SUPPORTED"],
     }

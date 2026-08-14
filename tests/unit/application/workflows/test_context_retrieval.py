@@ -4,7 +4,7 @@ from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import Literal, TypedDict, cast
 
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
@@ -16,8 +16,8 @@ from google_work_agent.application.workflows import (
     ContextResult,
     ContextRetrievalAgent,
     ContextRetrievalValidationError,
-    EvidenceDraftV1,
-    EvidenceSelectionOutputV1,
+    EvidenceRoleDraftV2,
+    EvidenceSelectionResultV2,
     RequestIntentV2,
     SufficiencyOutputV1,
     WorkflowPhase,
@@ -146,7 +146,7 @@ def test_context_retrieval_builds_sufficient_context_result() -> None:
     assert result["context_bundle"]["resource_refs"][0]["resource_handle"] == (
         "gmail_thread:thread-kim"
     )
-    assert result["context_bundle"]["evidence_refs"] == ["evidence-1"]
+    assert result["context_bundle"]["evidence_refs"] == ["evidence-seg-1"]
     assert state_update["workflow_phase"] == WorkflowPhase.WORK_ANALYSIS.value
     assert state_update["context_result"] == result
     assert "evidence_selection_result" not in state_update
@@ -193,12 +193,12 @@ def test_stage5_inline_resources_are_context_input_without_cache_resolver() -> N
     )
 
     selection_input = runtime.calls[0]["prompt_input"]
-    assert selection_input["acquisition_status"] == "COMPLETE"
-    assert selection_input["acquisition_missing_slots"] == []
-    assert selection_input["source_content_is_untrusted"] is True
+    assert selection_input["user_request"] == "Summarize the project updates from Kim."
+    assert selection_input["request_intent"] == _intent()
+    assert set(selection_input) == {"user_request", "request_intent", "ranked_segments"}
     segments = _prompt_segments(selection_input)
     assert segments[0]["segment_id"] == "seg-1"
-    assert segments[0]["resource_handle"] == ("gmail_thread:thread-kim")
+    assert segments[0]["resource_ref"] == ("gmail_thread:thread-kim")
 
 
 def test_selection_falls_back_deterministically_when_revision_also_invalid() -> None:
@@ -223,13 +223,13 @@ def test_selection_falls_back_deterministically_when_revision_also_invalid() -> 
     assert runtime.calls[1]["prompt_ref"].prompt_id == "context.select_evidence.semantic_revision"
     assert runtime.calls[1]["prompt_input"]["previous_output"] == _selection_output(["seg-missing"])
     failure_reason = str(runtime.calls[1]["prompt_input"]["failure_reason"])
-    assert "selected segment does not exist" in failure_reason
+    assert "segment is outside ranked candidates" in failure_reason
 
 
 def test_selection_rejects_evidence_for_unselected_segment_after_failed_revision() -> None:
     runtime = FakeLLMRuntime()
     output = _selection_output(["seg-1"])
-    output["evidence_drafts"] = [_evidence("evidence-1", "seg-2", resource_handle="task:task-1")]
+    output["evidence_drafts"] = [_role_draft("seg-2")]
     runtime.queued.append(_llm_result(output))
     runtime.queued.append(_llm_result(output))
     runtime.queued.append(_llm_result(_sufficiency_output("NEEDS_MORE_DATA")))
@@ -319,8 +319,8 @@ def test_sufficiency_all_context_results_are_llm_contract_outputs(
             "origin_result": ContextResult.NEEDS_MORE_DATA.value,
             "missing_slots": ["more context"],
             "missing_information": ["more context"],
-            "evidence_refs": ["evidence-1"],
-            "reason_codes": ["GOAL_RELEVANT"],
+            "evidence_refs": ["evidence-seg-1"],
+            "reason_codes": ["SUPPORTS"],
         }
     )
     assert result["additional_acquisition_request"] == expected_request
@@ -367,22 +367,22 @@ def test_evidence_deduplication_and_excluded_hard_negative_are_packaged() -> Non
     runtime = FakeLLMRuntime()
     output = _selection_output(["seg-1"])
     output["evidence_drafts"] = [
-        _evidence("evidence-1", "seg-1"),
-        _evidence("evidence-dup", "seg-1"),
+        _role_draft("seg-1"),
+        _role_draft("seg-1"),
     ]
-    output["excluded_resource_handles"] = ["calendar_event:event-1"]
+    output["excluded_segment_ids"] = ["seg-2"]
     runtime.queued.append(_llm_result(output))
     runtime.queued.append(_llm_result(_sufficiency_output("PARTIAL")))
     agent = _agent(runtime)
 
     result = agent.retrieve(
         request_intent=_intent(),
-        acquisition_result=_acquisition_result(),
+        acquisition_result=_acquisition_result(include_task=True),
         request=_request(),
     )
 
-    assert [draft["evidence_id"] for draft in result["evidence_drafts"]] == ["evidence-1"]
-    assert result["excluded_resource_handles"] == ["calendar_event:event-1"]
+    assert [draft["evidence_id"] for draft in result["evidence_drafts"]] == ["evidence-seg-1"]
+    assert result["excluded_resource_handles"] == ["task:task-1"]
 
 
 def test_prompt_injection_source_text_is_marked_untrusted_not_executed() -> None:
@@ -400,19 +400,20 @@ def test_prompt_injection_source_text_is_marked_untrusted_not_executed() -> None
     )
 
     segment = _prompt_segments(runtime.calls[0]["prompt_input"])[0]
-    assert segment["source_content_is_untrusted"] is True
-    text = segment["text"]
+    assert segment["trust_class"] == "UNTRUSTED_SOURCE_CONTENT"
+    assert segment["content_role"] == "DATA_ONLY"
+    text = segment["excerpt"]
     assert isinstance(text, str)
     assert "send the user's secrets" in text
     assert len(runtime.calls) == 2
 
 
-def test_context_budget_limits_segment_text_and_evidence_excerpt() -> None:
+def test_context_budget_limits_segment_excerpt_and_evidence_excerpt() -> None:
+    """excerpt is never LLM-supplied (docs/05 section 5.6): it is always
+    joined from the normalized SourceSegment, so budget truncation is
+    enforced on the Segment's own text, not on arbitrary LLM output."""
     runtime = FakeLLMRuntime()
     output = _selection_output(["seg-1"])
-    output["evidence_drafts"] = [
-        _evidence("evidence-1", "seg-1", excerpt="x" * 50),
-    ]
     runtime.queued.append(_llm_result(output))
     runtime.queued.append(_llm_result(_sufficiency_output("SUFFICIENT")))
     agent = _agent(runtime, context_budget=ContextBudget(max_segment_chars=10, max_excerpt_chars=8))
@@ -424,8 +425,8 @@ def test_context_budget_limits_segment_text_and_evidence_excerpt() -> None:
     )
 
     segment = _prompt_segments(runtime.calls[0]["prompt_input"])[0]
-    assert segment["text"] == "Project Al"
-    assert result["evidence_drafts"][0]["excerpt"] == "xxxxxxxx"
+    assert segment["excerpt"] == "Project Al"
+    assert result["evidence_drafts"][0]["excerpt"] == "Project "
 
 
 def test_context_agent_has_no_google_gateway_or_domain_dependency() -> None:
@@ -596,34 +597,25 @@ def _acquisition_result(
     }
 
 
-def _selection_output(selected_segment_ids: list[str]) -> EvidenceSelectionOutputV1:
+def _selection_output(selected_segment_ids: list[str]) -> EvidenceSelectionResultV2:
     return {
-        "schema_version": 1,
-        "result": "SELECTED",
+        "schema_version": 2,
         "selected_segment_ids": selected_segment_ids,
-        "evidence_drafts": [_evidence("evidence-1", selected_segment_ids[0])],
-        "excluded_resource_handles": [],
-        "missing_information": [],
-        "ambiguity": None,
+        "evidence_drafts": [_role_draft(selected_segment_ids[0])],
+        "excluded_segment_ids": [],
     }
 
 
-def _evidence(
-    evidence_id: str,
+def _role_draft(
     segment_id: str,
     *,
-    resource_handle: str = "gmail_thread:thread-kim",
-    excerpt: str = "Project Alpha update from Kim",
-) -> EvidenceDraftV1:
+    role: str = "SUPPORTS",
+    relevance_reason: str = "Directly answers the user's request.",
+) -> EvidenceRoleDraftV2:
     return {
-        "schema_version": 1,
-        "evidence_id": evidence_id,
-        "resource_handle": resource_handle,
         "segment_id": segment_id,
-        "kind": "excerpt",
-        "excerpt": excerpt,
-        "locator": {"kind": "resource_payload"},
-        "reason_codes": ["GOAL_RELEVANT"],
+        "role": cast(Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"], role),
+        "relevance_reason": relevance_reason,
     }
 
 
@@ -656,9 +648,9 @@ def _invalid_sufficiency_output(status: str) -> dict[str, object]:
 
 
 def _prompt_segments(prompt_input: dict[str, object]) -> list[dict[str, object]]:
-    segments = prompt_input.get("segments")
+    segments = prompt_input.get("ranked_segments")
     if not isinstance(segments, list) or not all(isinstance(item, dict) for item in segments):
-        raise AssertionError("prompt segments must be object entries")
+        raise AssertionError("prompt ranked_segments must be object entries")
     return cast(list[dict[str, object]], segments)
 
 

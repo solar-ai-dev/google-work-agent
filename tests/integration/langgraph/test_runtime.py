@@ -51,7 +51,7 @@ from google_work_agent.application.workflows import (
     ActionPlanDraftV1,
     AnswerDraftV1,
     ContextRetrievalResultV1,
-    EvidenceSelectionOutputV1,
+    EvidenceSelectionResultV2,
     RequestIntentV2,
     WorkAnalysisResultV1,
     determine_semantic_routes,
@@ -263,7 +263,7 @@ def _analysis_output() -> dict[str, object]:
                 "finding_id": "finding-1",
                 "kind": "RELATIONSHIP",
                 "statement": "The selected task provides enough context.",
-                "evidence_refs": ["evidence-1"],
+                "evidence_refs": ["evidence-seg-2"],
                 "resource_refs": ["task:task-followup"],
                 "segment_refs": ["seg-2"],
                 "related_resource_handles": ["task:task-followup"],
@@ -273,7 +273,7 @@ def _analysis_output() -> dict[str, object]:
         "missing_information": [],
         "confirmation": None,
         "blockers": [],
-        "evidence_refs": ["evidence-1"],
+        "evidence_refs": ["evidence-seg-2"],
         "resource_refs": [
             {
                 "resource_handle": "task:task-followup",
@@ -302,7 +302,7 @@ def _answer_output() -> AnswerDraftV1:
         "schema_version": 1,
         "status": "ANSWER_ONLY",
         "answer": "The follow-up task is identified and summarized for the user.",
-        "evidence_refs": ["evidence-1"],
+        "evidence_refs": ["evidence-seg-2"],
         "resource_refs": [
             {
                 "resource_handle": "task:task-followup",
@@ -342,14 +342,14 @@ def _write_plan_output() -> ActionPlanDraftV1:
                 "tool_name": "tasks_create_task",
                 "arguments": {"task_list_id": "task-list-default", "payload": payload},
                 "expected": expected,
-                "evidence_refs": ["evidence-1"],
+                "evidence_refs": ["evidence-seg-2"],
                 "resource_refs": ["task:task-followup"],
                 "target_resource_ref_id": None,
                 "depends_on_action_ids": [],
                 "user_visible_reason": "Create the requested follow-up task.",
             }
         ],
-        "evidence_refs": ["evidence-1"],
+        "evidence_refs": ["evidence-seg-2"],
         "resource_refs": [
             {
                 "resource_handle": "task:task-followup",
@@ -384,11 +384,13 @@ def _send_write_plan_output() -> ActionPlanDraftV1:
                     "resource_id": "sent-draft-followup",
                 },
             },
+            "evidence_refs": ["evidence-seg-3"],
             "resource_refs": ["gmail_message:message-project-1"],
             "user_visible_reason": "Send the approved Gmail draft.",
         }
     )
     plan["summary"] = "Send the approved Gmail draft requested by the user."
+    plan["evidence_refs"] = ["evidence-seg-3"]
     plan["resource_refs"] = [
         {
             "resource_handle": "gmail_message:message-project-1",
@@ -412,12 +414,14 @@ def _delete_write_plan_output() -> ActionPlanDraftV1:
                 "resource_id": "event-focus",
                 "absent": True,
             },
+            "evidence_refs": ["evidence-seg-1"],
             "resource_refs": ["calendar_event:event-focus"],
             "target_resource_ref_id": "calendar_event:event-focus",
             "user_visible_reason": "Delete the approved single calendar event.",
         }
     )
     plan["summary"] = "Delete the approved single calendar event requested by the user."
+    plan["evidence_refs"] = ["evidence-seg-1"]
     plan["resource_refs"] = [
         {
             "resource_handle": "calendar_event:event-focus",
@@ -465,14 +469,14 @@ def _read_plan_output() -> dict[str, object]:
                 "tool_name": "tasks_get_task",
                 "arguments": {"task_list_id": "task-list-default", "task_id": "task-followup"},
                 "expected": {"resource_type": "task"},
-                "evidence_refs": ["evidence-1"],
+                "evidence_refs": ["evidence-seg-2"],
                 "resource_refs": ["task:task-followup"],
                 "target_resource_ref_id": None,
                 "depends_on_action_ids": [],
                 "user_visible_reason": "Read the requested follow-up task.",
             }
         ],
-        "evidence_refs": ["evidence-1"],
+        "evidence_refs": ["evidence-seg-2"],
         "resource_refs": [
             {
                 "resource_handle": "task:task-followup",
@@ -484,26 +488,18 @@ def _read_plan_output() -> dict[str, object]:
     }
 
 
-def _selection_output() -> EvidenceSelectionOutputV1:
+def _selection_output() -> EvidenceSelectionResultV2:
     return {
-        "schema_version": 1,
-        "result": "SELECTED",
+        "schema_version": 2,
         "selected_segment_ids": ["seg-2"],
         "evidence_drafts": [
             {
-                "schema_version": 1,
-                "evidence_id": "evidence-1",
-                "resource_handle": "task:task-followup",
                 "segment_id": "seg-2",
-                "kind": "excerpt",
-                "excerpt": "Reply to project sync",
-                "locator": {"kind": "resource_payload"},
-                "reason_codes": ["GOAL_RELEVANT"],
+                "role": "SUPPORTS",
+                "relevance_reason": "Reply to project sync",
             }
         ],
-        "excluded_resource_handles": [],
-        "missing_information": [],
-        "ambiguity": None,
+        "excluded_segment_ids": [],
     }
 
 
@@ -530,12 +526,23 @@ def _context_result(
                     "resource_handle": "task:task-followup",
                 }
             ],
-            "evidence_refs": ["evidence-1"],
+            "evidence_refs": ["evidence-seg-2"],
             "normalized_context": [],
             "missing_information": [],
             "ambiguity": None,
         },
-        "evidence_drafts": list(_selection_output()["evidence_drafts"]),
+        "evidence_drafts": [
+            {
+                "schema_version": 1,
+                "evidence_id": "evidence-seg-2",
+                "resource_handle": "task:task-followup",
+                "segment_id": "seg-2",
+                "kind": "excerpt",
+                "excerpt": "Reply to project sync",
+                "locator": {"kind": "resource_payload"},
+                "reason_codes": ["SUPPORTS"],
+            }
+        ],
         "selected_segment_ids": ["seg-2"],
         "excluded_resource_handles": [],
         "missing_slots": [],
@@ -589,35 +596,29 @@ def _source_plan_output(result: str = "PLAN_READY") -> dict[str, object]:
     }
 
 
-def _calendar_selection_output() -> EvidenceSelectionOutputV1:
+def _calendar_selection_output() -> EvidenceSelectionResultV2:
     return {
-        "schema_version": 1,
-        "result": "SELECTED",
+        "schema_version": 2,
         "selected_segment_ids": ["seg-1"],
         "evidence_drafts": [
             {
-                "schema_version": 1,
-                "evidence_id": "evidence-1",
-                "resource_handle": "calendar_event:event-focus",
                 "segment_id": "seg-1",
-                "kind": "excerpt",
-                "excerpt": "Focus block",
-                "locator": {"kind": "resource_payload"},
-                "reason_codes": ["GOAL_RELEVANT"],
+                "role": "SUPPORTS",
+                "relevance_reason": "Focus block",
             }
         ],
-        "excluded_resource_handles": [],
-        "missing_information": [],
-        "ambiguity": None,
+        "excluded_segment_ids": [],
     }
 
 
 def _calendar_analysis_output() -> dict[str, object]:
     result = _validated_analysis_result()
     finding = result["findings"][0]
+    finding["evidence_refs"] = ["evidence-seg-1"]
     finding["resource_refs"] = ["calendar_event:event-focus"]
     finding["related_resource_handles"] = ["calendar_event:event-focus"]
     finding["segment_refs"] = ["seg-1"]
+    result["evidence_refs"] = ["evidence-seg-1"]
     result["resource_refs"] = [
         {
             "resource_handle": "calendar_event:event-focus",
@@ -633,35 +634,29 @@ def _calendar_analysis_output() -> dict[str, object]:
     return payload
 
 
-def _gmail_selection_output() -> EvidenceSelectionOutputV1:
+def _gmail_selection_output() -> EvidenceSelectionResultV2:
     return {
-        "schema_version": 1,
-        "result": "SELECTED",
+        "schema_version": 2,
         "selected_segment_ids": ["seg-3"],
         "evidence_drafts": [
             {
-                "schema_version": 1,
-                "evidence_id": "evidence-1",
-                "resource_handle": "gmail_message:message-project-1",
                 "segment_id": "seg-3",
-                "kind": "excerpt",
-                "excerpt": "Please summarize the open items and draft a calm reply.",
-                "locator": {"kind": "resource_payload"},
-                "reason_codes": ["GOAL_RELEVANT"],
+                "role": "SUPPORTS",
+                "relevance_reason": "Please summarize the open items and draft a calm reply.",
             }
         ],
-        "excluded_resource_handles": [],
-        "missing_information": [],
-        "ambiguity": None,
+        "excluded_segment_ids": [],
     }
 
 
 def _gmail_analysis_output() -> dict[str, object]:
     result = _validated_analysis_result()
     finding = result["findings"][0]
+    finding["evidence_refs"] = ["evidence-seg-3"]
     finding["resource_refs"] = ["gmail_message:message-project-1"]
     finding["related_resource_handles"] = ["gmail_message:message-project-1"]
     finding["segment_refs"] = ["seg-3"]
+    result["evidence_refs"] = ["evidence-seg-3"]
     result["resource_refs"] = [
         {
             "resource_handle": "gmail_message:message-project-1",

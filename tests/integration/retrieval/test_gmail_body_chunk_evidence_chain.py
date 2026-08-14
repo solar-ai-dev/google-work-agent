@@ -323,24 +323,16 @@ def test_evidence_selection_uses_only_the_selected_message_segment() -> None:
     context_runtime.queued.append(
         _llm_result(
             {
-                "schema_version": 1,
-                "result": "SELECTED",
+                "schema_version": 2,
                 "selected_segment_ids": [target_segment.segment_id],
                 "evidence_drafts": [
                     {
-                        "schema_version": 1,
-                        "evidence_id": "evidence-1",
-                        "resource_handle": target_segment.resource_handle,
                         "segment_id": target_segment.segment_id,
-                        "kind": "excerpt",
-                        "excerpt": "Please summarize the open items and draft a calm reply.",
-                        "locator": {"kind": "resource_payload"},
-                        "reason_codes": ["GOAL_RELEVANT"],
+                        "role": "SUPPORTS",
+                        "relevance_reason": "Directly answers the summary request.",
                     }
                 ],
-                "excluded_resource_handles": [],
-                "missing_information": [],
-                "ambiguity": None,
+                "excluded_segment_ids": [],
             }
         )
     )
@@ -363,7 +355,7 @@ def test_evidence_selection_uses_only_the_selected_message_segment() -> None:
     )
 
     assert result["status"] == "SUFFICIENT"
-    assert result["context_bundle"]["evidence_refs"] == ["evidence-1"]
+    assert result["context_bundle"]["evidence_refs"] == [f"evidence-{target_segment.segment_id}"]
     assert result["context_bundle"]["normalized_context"][0]["excerpt"] == (
         "Please summarize the open items and draft a calm reply."
     )

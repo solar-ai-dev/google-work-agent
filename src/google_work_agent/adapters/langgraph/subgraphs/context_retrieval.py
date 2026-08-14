@@ -118,8 +118,8 @@ class ContextRetrieverSubgraph:
         )
         selection = self._agent.select_evidence(
             request_intent=request_intent,
-            acquisition_result=acquisition_result,
             request=request,
+            rag_candidates=rag_candidates,
             segments=cast(list[Any], segments),
         )
         updated_local = dict(local_state)
@@ -153,8 +153,6 @@ class ContextRetrieverSubgraph:
         draft_bundle, evidence_drafts = self._agent.build_draft_context_bundle(
             selection_result=selection,
             acquisition_result=acquisition_result,
-            missing_information=selection["missing_information"],
-            ambiguity=selection["ambiguity"],
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "SELECTION_VALIDATED"

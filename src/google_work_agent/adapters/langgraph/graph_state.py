@@ -22,7 +22,7 @@ from google_work_agent.application.workflows import (
     ContextBundleV1,
     ContextRetrievalResultV1,
     EvidenceDraftV1,
-    EvidenceSelectionOutputV1,
+    EvidenceSelectionResultV2,
     MultiAgentGraphState,
     PlanReviewResultV1,
     RequestIntentV2,

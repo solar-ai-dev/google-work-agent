@@ -94,9 +94,11 @@ def _gmail_draft_plan() -> ActionPlanDraftV1:
                 "version": "1",
                 "payload": payload,
             },
+            "evidence_refs": ["evidence-seg-3"],
             "resource_refs": ["gmail_message:message-project-1"],
         }
     )
+    plan["evidence_refs"] = ["evidence-seg-3"]
     plan["resource_refs"] = [
         {
             "resource_handle": "gmail_message:message-project-1",
@@ -159,9 +161,11 @@ def _calendar_create_plan() -> ActionPlanDraftV1:
                 "payload": payload,
             },
             "target_resource_ref_id": None,
+            "evidence_refs": ["evidence-seg-1"],
             "resource_refs": ["calendar_event:event-focus"],
         }
     )
+    plan["evidence_refs"] = ["evidence-seg-1"]
     plan["resource_refs"] = [
         {
             "resource_handle": "calendar_event:event-focus",

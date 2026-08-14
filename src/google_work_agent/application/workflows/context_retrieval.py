@@ -47,7 +47,8 @@ from google_work_agent.application.workflows.handoff_contracts import (
     ContextRetrievalResultV1,
     ContextStatusValue,
     EvidenceDraftV1,
-    EvidenceSelectionOutputV1,
+    EvidenceRoleDraftV2,
+    EvidenceSelectionResultV2,
     RequestIntentV2,
     SufficiencyOutputV1,
 )
@@ -82,53 +83,36 @@ CONTEXT_RETRIEVAL_SCHEMA_VERSION = 1
 CONTEXT_BUNDLE_SCHEMA_VERSION = 1
 EVIDENCE_DRAFT_SCHEMA_VERSION = 1
 EVIDENCE_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
-    schema_version="evidence-selection-v1",
+    schema_version="evidence-selection-v2",
     json_schema={
         "type": "object",
         "required": [
             "schema_version",
-            "result",
-            "selected_segment_ids",
             "evidence_drafts",
-            "excluded_resource_handles",
-            "missing_information",
-            "ambiguity",
+            "selected_segment_ids",
+            "excluded_segment_ids",
         ],
         "additionalProperties": False,
         "properties": {
-            "schema_version": {"type": "integer", "enum": [1]},
-            "result": {"type": "string", "enum": ["SELECTED", "PARTIAL", "BLOCKED"]},
-            "selected_segment_ids": {"type": "array", "items": {"type": "string"}},
+            "schema_version": {"type": "integer", "enum": [2]},
             "evidence_drafts": {
                 "type": "array",
                 "items": {
                     "type": "object",
-                    "required": [
-                        "schema_version",
-                        "evidence_id",
-                        "resource_handle",
-                        "segment_id",
-                        "kind",
-                        "excerpt",
-                        "locator",
-                        "reason_codes",
-                    ],
+                    "required": ["segment_id", "role", "relevance_reason"],
                     "additionalProperties": False,
                     "properties": {
-                        "schema_version": {"type": "integer", "enum": [1]},
-                        "evidence_id": {"type": "string", "minLength": 1},
-                        "resource_handle": {"type": "string", "minLength": 1},
-                        "segment_id": {"type": "string", "minLength": 1},
-                        "kind": {"type": "string", "minLength": 1},
-                        "excerpt": {"type": "string", "minLength": 1},
-                        "locator": {"type": ["object", "null"]},
-                        "reason_codes": {"type": "array", "items": {"type": "string"}},
+                        "segment_id": {"type": "string"},
+                        "role": {
+                            "type": "string",
+                            "enum": ["SUPPORTS", "CONTRADICTS", "CONTEXT"],
+                        },
+                        "relevance_reason": {"type": "string"},
                     },
                 },
             },
-            "excluded_resource_handles": {"type": "array", "items": {"type": "string"}},
-            "missing_information": {"type": "array", "items": {"type": "string"}},
-            "ambiguity": {"type": ["object", "null"]},
+            "selected_segment_ids": {"type": "array", "items": {"type": "string"}},
+            "excluded_segment_ids": {"type": "array", "items": {"type": "string"}},
         },
     },
 )
@@ -158,7 +142,7 @@ SUFFICIENCY_OUTPUT_SCHEMA = OutputSchemaDefinition(
 )
 
 _CONTEXT_RESULT_VALUES = {item.value for item in ContextResult}
-_SELECTION_RESULT_VALUES = {"SELECTED", "PARTIAL", "BLOCKED"}
+_EVIDENCE_ROLE_VALUES = {"SUPPORTS", "CONTRADICTS", "CONTEXT"}
 
 
 class ContextRetrievalAgent:
@@ -231,25 +215,16 @@ class ContextRetrievalAgent:
             list[_SourceSegment],
             self.build_segments_from_acquisition(acquisition_result),
         )
-        self.rag_retrieve(segments, request_intent=request_intent)
+        rag_candidates = self.rag_retrieve(segments, request_intent=request_intent)
         selection_result = self.select_evidence(
             request_intent=request_intent,
-            acquisition_result=acquisition_result,
             request=request,
+            rag_candidates=rag_candidates,
             segments=segments,
         )
-        selected_segments = _selected_segments(
-            selection_result["selected_segment_ids"],
-            segments=segments,
-        )
-        evidence_drafts = _deduplicate_evidence(selection_result["evidence_drafts"])
-        _validate_evidence_references(evidence_drafts, selected_segments=selected_segments)
-        draft_bundle = _context_bundle(
-            selected_segments=selected_segments,
-            evidence_drafts=evidence_drafts,
-            missing_information=selection_result["missing_information"],
-            ambiguity=selection_result["ambiguity"],
-            context_budget=self._context_budget,
+        draft_bundle, evidence_drafts = self.build_draft_context_bundle(
+            selection_result=selection_result,
+            acquisition_result=acquisition_result,
         )
         sufficiency_result, llm_provider_result = self.assess_sufficiency(
             request_intent=request_intent,
@@ -286,19 +261,21 @@ class ContextRetrievalAgent:
         self,
         *,
         request_intent: RequestIntentV2,
-        acquisition_result: AcquisitionResultV1,
         request: WorkflowStartRequest,
+        rag_candidates: list[RagCandidateV1],
         segments: list[_SourceSegment],
-    ) -> EvidenceSelectionOutputV1:
+    ) -> EvidenceSelectionResultV2:
+        segments_by_id = {segment.segment_id: segment for segment in segments}
+        ranked_segments = _ranked_segments_prompt_projection(
+            rag_candidates, segments_by_id=segments_by_id
+        )
+        candidate_segment_ids = {candidate["segment_id"] for candidate in rag_candidates}
         llm_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._select_prompt_ref,
             prompt_input={
+                "user_request": request.request_text,
                 "request_intent": request_intent,
-                "acquisition_status": acquisition_result["status"],
-                "acquisition_missing_slots": list(acquisition_result["missing_slots"]),
-                "source_content_is_untrusted": True,
-                "segments": [_segment_prompt_projection(segment) for segment in segments],
-                "context_budget": _budget_projection(self._context_budget),
+                "ranked_segments": ranked_segments,
             },
             output_schema=EVIDENCE_SELECTION_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -311,17 +288,16 @@ class ContextRetrievalAgent:
             ),
         )
         try:
-            return validate_evidence_selection_output_v1(
+            return validate_evidence_selection_result_v2(
                 llm_result.structured_output,
-                segments=segments,
-                context_budget=self._context_budget,
+                candidate_segment_ids=candidate_segment_ids,
             )
         except ContextRetrievalValidationError as error:
             return self._revise_selection_once(
                 request_intent=request_intent,
-                acquisition_result=acquisition_result,
                 request=request,
-                segments=segments,
+                rag_candidates=rag_candidates,
+                segments_by_id=segments_by_id,
                 previous_output=llm_result.structured_output,
                 failure_detail=str(error),
             )
@@ -330,33 +306,34 @@ class ContextRetrievalAgent:
         self,
         *,
         request_intent: RequestIntentV2,
-        acquisition_result: AcquisitionResultV1,
         request: WorkflowStartRequest,
-        segments: list[_SourceSegment],
+        rag_candidates: list[RagCandidateV1],
+        segments_by_id: dict[str, _SourceSegment],
         previous_output: object,
         failure_detail: str,
-    ) -> EvidenceSelectionOutputV1:
+    ) -> EvidenceSelectionResultV2:
         """Bounded SEMANTIC_REVISION retry (docs/15 section 8.1: max 1 per Node per
         Failure Signature). The initial validator already rejected the output as
         SEMANTIC_INVALID; this never widens what counts as valid, it only gives the
         model one chance to re-ground its selection in the actually-supplied
-        segments. If the revision also fails validation, a deterministic empty
+        ranked_segments. If the revision also fails validation, a deterministic empty
         selection is returned -- the LLM never gets a second judgment call."""
+        ranked_segments = _ranked_segments_prompt_projection(
+            rag_candidates, segments_by_id=segments_by_id
+        )
+        candidate_segment_ids = {candidate["segment_id"] for candidate in rag_candidates}
         revision_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._select_revision_prompt_ref,
             prompt_input={
+                "user_request": request.request_text,
                 "request_intent": request_intent,
-                "acquisition_status": acquisition_result["status"],
-                "acquisition_missing_slots": list(acquisition_result["missing_slots"]),
-                "source_content_is_untrusted": True,
-                "segments": [_segment_prompt_projection(segment) for segment in segments],
-                "context_budget": _budget_projection(self._context_budget),
+                "ranked_segments": ranked_segments,
                 "previous_output": previous_output,
                 "failure_reason": failure_detail,
                 "changed_fields_allowed": [
                     "$.selected_segment_ids",
                     "$.evidence_drafts",
-                    "$.excluded_resource_handles",
+                    "$.excluded_segment_ids",
                 ],
             },
             output_schema=EVIDENCE_SELECTION_OUTPUT_SCHEMA,
@@ -370,10 +347,9 @@ class ContextRetrievalAgent:
             ),
         )
         try:
-            return validate_evidence_selection_output_v1(
+            return validate_evidence_selection_result_v2(
                 revision_result.structured_output,
-                segments=segments,
-                context_budget=self._context_budget,
+                candidate_segment_ids=candidate_segment_ids,
             )
         except ContextRetrievalValidationError:
             return _blocked_empty_selection()
@@ -415,29 +391,29 @@ class ContextRetrievalAgent:
     def build_result_from_outputs(
         self,
         *,
-        selection_result: EvidenceSelectionOutputV1,
+        selection_result: EvidenceSelectionResultV2,
         sufficiency_result: SufficiencyOutputV1,
         acquisition_result: AcquisitionResultV1,
         llm_provider_result: dict[str, object],
     ) -> ContextRetrievalResultV1:
-        context_bundle, evidence_drafts = self.build_draft_context_bundle(
-            selection_result=selection_result,
-            acquisition_result=acquisition_result,
-            missing_information=selection_result["missing_information"],
-            ambiguity=selection_result["ambiguity"],
+        segments = cast(
+            list[_SourceSegment],
+            self.build_segments_from_acquisition(acquisition_result),
+        )
+        selected_segments = _selected_segments(
+            selection_result["selected_segment_ids"],
+            segments=segments,
+        )
+        evidence_drafts = _materialize_evidence_drafts(
+            selection_result["evidence_drafts"],
+            segments=segments,
+            context_budget=self._context_budget,
         )
         context_bundle = _context_bundle(
-            selected_segments=cast(
-                list[_SourceSegment],
-                self.build_selected_segments(
-                    selection_result=selection_result,
-                    acquisition_result=acquisition_result,
-                ),
-            ),
+            selected_segments=selected_segments,
             evidence_drafts=evidence_drafts,
-            missing_information=sufficiency_result["missing_slots"]
-            or selection_result["missing_information"],
-            ambiguity=sufficiency_result["ambiguity"] or selection_result["ambiguity"],
+            missing_information=sufficiency_result["missing_slots"],
+            ambiguity=sufficiency_result["ambiguity"],
             context_budget=self._context_budget,
         )
         return {
@@ -446,7 +422,10 @@ class ContextRetrievalAgent:
             "context_bundle": context_bundle,
             "evidence_drafts": evidence_drafts,
             "selected_segment_ids": list(selection_result["selected_segment_ids"]),
-            "excluded_resource_handles": list(selection_result["excluded_resource_handles"]),
+            "excluded_resource_handles": _resource_handles_for_segment_ids(
+                selection_result["excluded_segment_ids"],
+                segments=segments,
+            ),
             "missing_slots": list(sufficiency_result["missing_slots"]),
             "additional_acquisition_request": _build_additional_acquisition_request(
                 status=sufficiency_result["status"],
@@ -461,7 +440,7 @@ class ContextRetrievalAgent:
     def build_selected_segments(
         self,
         *,
-        selection_result: EvidenceSelectionOutputV1,
+        selection_result: EvidenceSelectionResultV2,
         acquisition_result: AcquisitionResultV1,
     ) -> list[object]:
         segments = cast(
@@ -479,110 +458,136 @@ class ContextRetrievalAgent:
     def build_draft_context_bundle(
         self,
         *,
-        selection_result: EvidenceSelectionOutputV1,
+        selection_result: EvidenceSelectionResultV2,
         acquisition_result: AcquisitionResultV1,
-        missing_information: list[str],
-        ambiguity: dict[str, object] | None,
     ) -> tuple[ContextBundleV1, list[EvidenceDraftV1]]:
-        selected_segments = cast(
+        """Pre-sufficiency draft: assess_sufficiency has not run yet at this
+        point in the pipeline, so missing_information/ambiguity are not yet
+        known -- that judgment is entirely assess_sufficiency's (docs/05
+        section 5.7), not select_evidence's."""
+        segments = cast(
             list[_SourceSegment],
-            self.build_selected_segments(
-                selection_result=selection_result,
-                acquisition_result=acquisition_result,
-            ),
+            self.build_segments_from_acquisition(acquisition_result),
         )
-        evidence_drafts = _deduplicate_evidence(selection_result["evidence_drafts"])
-        _validate_evidence_references(evidence_drafts, selected_segments=selected_segments)
+        selected_segments = _selected_segments(
+            selection_result["selected_segment_ids"],
+            segments=segments,
+        )
+        evidence_drafts = _materialize_evidence_drafts(
+            selection_result["evidence_drafts"],
+            segments=segments,
+            context_budget=self._context_budget,
+        )
         return (
             _context_bundle(
                 selected_segments=selected_segments,
                 evidence_drafts=evidence_drafts,
-                missing_information=missing_information,
-                ambiguity=ambiguity,
+                missing_information=[],
+                ambiguity=None,
                 context_budget=self._context_budget,
             ),
             evidence_drafts,
         )
 
 
-def _blocked_empty_selection() -> EvidenceSelectionOutputV1:
+def _blocked_empty_selection() -> EvidenceSelectionResultV2:
     """Deterministic fallback once the bounded SEMANTIC_REVISION retry is exhausted.
 
     Trivially schema- and semantically-valid (empty lists are always a valid
-    subset of the supplied segments), so it never re-enters LLM judgment --
-    downstream sufficiency/supervisor routing treats it as insufficient context
-    and proceeds through the normal RETRIEVE_MORE/BLOCKED guard instead of the
-    node crashing.
+    subset of the supplied ranked_segments), so it never re-enters LLM
+    judgment -- downstream sufficiency/supervisor routing treats it as
+    insufficient context and proceeds through the normal
+    RETRIEVE_MORE/BLOCKED guard instead of the node crashing.
     """
 
     return {
-        "schema_version": 1,
-        "result": "BLOCKED",
-        "selected_segment_ids": [],
+        "schema_version": 2,
         "evidence_drafts": [],
-        "excluded_resource_handles": [],
-        "missing_information": ["context_selection_semantic_revision_failed"],
-        "ambiguity": None,
+        "selected_segment_ids": [],
+        "excluded_segment_ids": [],
     }
 
 
-def validate_evidence_selection_output_v1(
+def validate_evidence_selection_result_v2(
     value: object,
     *,
-    segments: list[_SourceSegment],
+    candidate_segment_ids: set[str],
     context_budget: ContextBudget = DEFAULT_CONTEXT_BUDGET,
-) -> EvidenceSelectionOutputV1:
+) -> EvidenceSelectionResultV2:
+    """evidence-selection-result-v2.schema.json. ``candidate_segment_ids`` is
+    the bounded RAG top-K set actually sent as ``ranked_segments`` (docs/05
+    section 5.6/5.5) -- selected/excluded ids outside it, or evidence
+    referencing an unselected segment, are rejected rather than silently
+    accepted, so select_evidence can never introduce a Segment/Resource RAG
+    never surfaced."""
     root = _require_mapping(value, "$")
     _require_exact_keys(
         root,
         "$",
         {
             "schema_version",
-            "result",
-            "selected_segment_ids",
             "evidence_drafts",
-            "excluded_resource_handles",
-            "missing_information",
-            "ambiguity",
+            "selected_segment_ids",
+            "excluded_segment_ids",
         },
     )
-    _require_schema_version(root, "$")
-    result = _require_string(root, "result", "$")
-    if result not in _SELECTION_RESULT_VALUES:
-        raise ContextRetrievalValidationError("$.result is invalid")
+    schema_version = _require_int(root, "schema_version", "$")
+    if schema_version != 2:
+        raise ContextRetrievalValidationError("$.schema_version must be 2")
     selected_segment_ids = _require_string_list(
         root["selected_segment_ids"],
         "$.selected_segment_ids",
     )
-    segment_ids = {segment.segment_id for segment in segments}
-    for segment_id in selected_segment_ids:
-        if segment_id not in segment_ids:
-            raise ContextRetrievalValidationError(f"selected segment does not exist: {segment_id}")
+    excluded_segment_ids = _require_string_list(
+        root["excluded_segment_ids"],
+        "$.excluded_segment_ids",
+    )
+    if len(set(selected_segment_ids)) != len(selected_segment_ids):
+        raise ContextRetrievalValidationError("$.selected_segment_ids has duplicates")
+    if len(set(excluded_segment_ids)) != len(excluded_segment_ids):
+        raise ContextRetrievalValidationError("$.excluded_segment_ids has duplicates")
+    for segment_id in (*selected_segment_ids, *excluded_segment_ids):
+        if segment_id not in candidate_segment_ids:
+            raise ContextRetrievalValidationError(
+                f"segment is outside ranked candidates: {segment_id}"
+            )
+    overlap = set(selected_segment_ids) & set(excluded_segment_ids)
+    if overlap:
+        raise ContextRetrievalValidationError(
+            f"segment is both selected and excluded: {sorted(overlap)}"
+        )
+    selected = set(selected_segment_ids)
     evidence = [
-        _validate_evidence_draft(item, f"$.evidence_drafts[{index}]", context_budget)
+        _validate_evidence_role_draft(item, f"$.evidence_drafts[{index}]", selected)
         for index, item in enumerate(_require_list(root["evidence_drafts"], "$.evidence_drafts"))
     ]
-    selected = set(selected_segment_ids)
-    for draft in evidence:
-        if draft["segment_id"] not in selected:
-            raise ContextRetrievalValidationError(
-                f"evidence references unselected segment: {draft['segment_id']}"
-            )
-    ambiguity = _nullable_mapping(root["ambiguity"], "$.ambiguity")
     return {
-        "schema_version": 1,
-        "result": cast(Literal["SELECTED", "PARTIAL", "BLOCKED"], result),
-        "selected_segment_ids": selected_segment_ids,
+        "schema_version": 2,
         "evidence_drafts": evidence[: context_budget.max_evidence],
-        "excluded_resource_handles": _require_string_list(
-            root["excluded_resource_handles"],
-            "$.excluded_resource_handles",
-        ),
-        "missing_information": _require_string_list(
-            root["missing_information"],
-            "$.missing_information",
-        ),
-        "ambiguity": ambiguity,
+        "selected_segment_ids": selected_segment_ids,
+        "excluded_segment_ids": excluded_segment_ids,
+    }
+
+
+def _validate_evidence_role_draft(
+    value: object,
+    path: str,
+    selected_segment_ids: set[str],
+) -> EvidenceRoleDraftV2:
+    draft = _require_mapping(value, path)
+    _require_exact_keys(draft, path, {"segment_id", "role", "relevance_reason"})
+    segment_id = _require_string(draft, "segment_id", path)
+    if segment_id not in selected_segment_ids:
+        raise ContextRetrievalValidationError(
+            f"evidence references unselected segment: {segment_id}"
+        )
+    role = _require_string(draft, "role", path)
+    if role not in _EVIDENCE_ROLE_VALUES:
+        raise ContextRetrievalValidationError(f"{path}.role is invalid")
+    return {
+        "segment_id": segment_id,
+        "role": cast(Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"], role),
+        "relevance_reason": _require_string(draft, "relevance_reason", path),
     }
 
 
@@ -740,18 +745,91 @@ def _selected_segments(
     return [by_id[segment_id] for segment_id in selected_ids]
 
 
-def _validate_evidence_references(
-    evidence_drafts: list[EvidenceDraftV1],
+def _ranked_segments_prompt_projection(
+    rag_candidates: list[RagCandidateV1],
     *,
-    selected_segments: list[_SourceSegment],
-) -> None:
-    selected_by_id = {segment.segment_id: segment for segment in selected_segments}
-    for draft in evidence_drafts:
-        segment = selected_by_id[draft["segment_id"]]
-        if draft["resource_handle"] != segment.resource_handle:
+    segments_by_id: dict[str, _SourceSegment],
+) -> list[dict[str, object]]:
+    """retrieval-evidence-selection-input-v1.schema.json ``ranked_segments``.
+
+    Joins each RagCandidateV1 back to its normalized SourceSegment by
+    segment_id -- docs/05 section 5.6/Q2-RAG boundary: RagCandidateV1 never
+    carries body text itself, and this never re-scores or re-orders what
+    Q2-RAG already ranked."""
+    projections: list[dict[str, object]] = []
+    for candidate in rag_candidates:
+        segment = segments_by_id.get(candidate["segment_id"])
+        if segment is None:
             raise ContextRetrievalValidationError(
-                f"evidence resource_handle mismatch: {draft['evidence_id']}"
+                f"RAG_SEGMENT_REFERENCE_INVALID: {candidate['segment_id']}"
             )
+        projections.append(
+            {
+                "segment_id": candidate["segment_id"],
+                "resource_ref": candidate["resource_ref"],
+                "excerpt": segment.text,
+                "retrieval_score": candidate["retrieval_score"],
+                "reason_codes": list(candidate["reason_codes"]),
+                "trust_class": "UNTRUSTED_SOURCE_CONTENT",
+                "content_role": "DATA_ONLY",
+            }
+        )
+    return projections
+
+
+def _materialize_evidence_drafts(
+    role_drafts: list[EvidenceRoleDraftV2],
+    *,
+    segments: list[_SourceSegment],
+    context_budget: ContextBudget,
+) -> list[EvidenceDraftV1]:
+    """Join the LLM's thin role/segment reference back to its normalized
+    SourceSegment -- docs/05-context-retrieval.md section 5.6 forbids the
+    LLM from copying Connector body text into its own output, so
+    resource_handle/excerpt/locator always come from the Segment, never
+    from the LLM."""
+    segments_by_id = {segment.segment_id: segment for segment in segments}
+    drafts: list[EvidenceDraftV1] = []
+    for role_draft in role_drafts:
+        segment = segments_by_id.get(role_draft["segment_id"])
+        if segment is None:
+            raise ContextRetrievalValidationError(
+                f"RAG_SEGMENT_REFERENCE_INVALID: {role_draft['segment_id']}"
+            )
+        drafts.append(
+            {
+                "schema_version": 1,
+                "evidence_id": f"evidence-{role_draft['segment_id']}",
+                "resource_handle": segment.resource_handle,
+                "segment_id": role_draft["segment_id"],
+                "kind": "excerpt",
+                "excerpt": _truncate(segment.text, context_budget.max_excerpt_chars),
+                "locator": dict(segment.locator),
+                "reason_codes": [role_draft["role"]],
+            }
+        )
+    return _deduplicate_evidence(drafts)
+
+
+def _resource_handles_for_segment_ids(
+    segment_ids: list[str],
+    *,
+    segments: list[_SourceSegment],
+) -> list[str]:
+    by_id = {segment.segment_id: segment for segment in segments}
+    handles: list[str] = []
+    seen: set[str] = set()
+    for segment_id in segment_ids:
+        segment = by_id.get(segment_id)
+        if segment is None:
+            raise ContextRetrievalValidationError(
+                f"RAG_SEGMENT_REFERENCE_INVALID: {segment_id}"
+            )
+        if segment.resource_handle in seen:
+            continue
+        seen.add(segment.resource_handle)
+        handles.append(segment.resource_handle)
+    return handles
 
 
 def _deduplicate_evidence(evidence: list[EvidenceDraftV1]) -> list[EvidenceDraftV1]:
@@ -869,62 +947,6 @@ def _segment_ref(segment: _SourceSegment) -> dict[str, object]:
         "resource_handle": segment.resource_handle,
         "source": segment.source,
         "locator": dict(segment.locator),
-    }
-
-
-def _segment_prompt_projection(segment: _SourceSegment) -> dict[str, object]:
-    return {
-        **_segment_ref(segment),
-        "resource_type": segment.resource_type,
-        "resource_id": segment.resource_id,
-        "text": segment.text,
-        "source_content_is_untrusted": True,
-    }
-
-
-def _budget_projection(budget: ContextBudget) -> dict[str, int]:
-    return {
-        "max_segments": budget.max_segments,
-        "max_segment_chars": budget.max_segment_chars,
-        "max_evidence": budget.max_evidence,
-        "max_excerpt_chars": budget.max_excerpt_chars,
-        "max_normalized_context_items": budget.max_normalized_context_items,
-    }
-
-
-def _validate_evidence_draft(
-    value: object,
-    path: str,
-    context_budget: ContextBudget,
-) -> EvidenceDraftV1:
-    draft = _require_mapping(value, path)
-    _require_exact_keys(
-        draft,
-        path,
-        {
-            "schema_version",
-            "evidence_id",
-            "resource_handle",
-            "segment_id",
-            "kind",
-            "excerpt",
-            "locator",
-            "reason_codes",
-        },
-    )
-    _require_schema_version(draft, path)
-    return {
-        "schema_version": 1,
-        "evidence_id": _require_string(draft, "evidence_id", path),
-        "resource_handle": _require_string(draft, "resource_handle", path),
-        "segment_id": _require_string(draft, "segment_id", path),
-        "kind": _require_string(draft, "kind", path),
-        "excerpt": _truncate(
-            _require_string(draft, "excerpt", path),
-            context_budget.max_excerpt_chars,
-        ),
-        "locator": _nullable_mapping(draft["locator"], f"{path}.locator"),
-        "reason_codes": _require_string_list(draft["reason_codes"], f"{path}.reason_codes"),
     }
 
 

@@ -202,14 +202,27 @@ class ContextRetrievalResultV1(TypedDict):
     llm_provider_result: NotRequired[dict[str, object]]
 
 
-class EvidenceSelectionOutputV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    result: Literal["SELECTED", "PARTIAL", "BLOCKED"]
+class EvidenceRoleDraftV2(TypedDict):
+    """docs/05-context-retrieval.md SS5.6 / evidence-selection-result-v2.schema.json.
+
+    Thin reference + classification only -- the LLM never re-supplies
+    resource_handle/excerpt/locator; those are joined back from the
+    normalized SourceSegment by segment_id (see context_retrieval.py
+    _materialize_evidence_drafts)."""
+
+    segment_id: str
+    role: Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"]
+    relevance_reason: str
+
+
+class EvidenceSelectionResultV2(TypedDict):
+    """docs/05-context-retrieval.md SS5.6 -- retrieval.select_evidence output,
+    Retrieval Local State only (RetrievalStateV1.evidence_selection)."""
+
+    schema_version: Required[Literal[2]]
+    evidence_drafts: list[EvidenceRoleDraftV2]
     selected_segment_ids: list[str]
-    evidence_drafts: list[EvidenceDraftV1]
-    excluded_resource_handles: list[str]
-    missing_information: list[str]
-    ambiguity: dict[str, object] | None
+    excluded_segment_ids: list[str]
 
 
 class SufficiencyOutputV1(TypedDict):

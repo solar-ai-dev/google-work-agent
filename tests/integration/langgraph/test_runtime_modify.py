@@ -253,7 +253,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
                         "message": "Revise the modified action.",
                         "affected_action_ids": ["action-1"],
                         "affected_field_paths": ["$.actions[0].arguments.payload.title"],
-                        "evidence_refs": ["evidence-1"],
+                        "evidence_refs": ["evidence-seg-2"],
                         "resource_refs": ["task:task-followup"],
                         "reason_codes": ["EVIDENCE_SUPPORTED"],
                     }
@@ -275,7 +275,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
                         "message": "Retrieve current task evidence.",
                         "affected_action_ids": ["action-1"],
                         "affected_field_paths": ["$.actions[0]"],
-                        "evidence_refs": ["evidence-1"],
+                        "evidence_refs": ["evidence-seg-2"],
                         "resource_refs": ["task:task-followup"],
                         "reason_codes": ["EVIDENCE_SUPPORTED"],
                     }
@@ -393,7 +393,7 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
         "message": "The modified plan needs another planning pass.",
         "affected_action_ids": ["action-1"],
         "affected_field_paths": ["$.actions[0]"],
-        "evidence_refs": ["evidence-1"],
+        "evidence_refs": ["evidence-seg-2"],
         "resource_refs": ["task:task-followup"],
         "reason_codes": ["EVIDENCE_SUPPORTED"],
     }

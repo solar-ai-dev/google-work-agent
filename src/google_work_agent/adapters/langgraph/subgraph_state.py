@@ -17,7 +17,7 @@ from google_work_agent.application.workflows import (
     ContextBundleV1,
     ContextRetrievalResultV1,
     EvidenceDraftV1,
-    EvidenceSelectionOutputV1,
+    EvidenceSelectionResultV2,
     MultiAgentGraphState,
     PlanReviewResultV1,
     RequestIntentV2,
@@ -59,7 +59,7 @@ class AcquisitionLocalState(GraphState):
 class ContextRetrievalLocalState(GraphState):
     __context_agent_local__: NotRequired[AgentLocalStateV1]
     __context_rag_candidates__: NotRequired[list[RagCandidateV1]]
-    __context_selection_output__: NotRequired[EvidenceSelectionOutputV1]
+    __context_selection_output__: NotRequired[EvidenceSelectionResultV2]
     __context_sufficiency_output__: NotRequired[SufficiencyOutputV1]
 
 
