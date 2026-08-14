@@ -1,8 +1,8 @@
 # 14. Google Work Agent · 예외 처리 · 운영 · 트러블슈팅 가이드
 
-> **문서 기준:** `03 Architecture v3.6`, `04 Domain·DB v1.19`, `05 Retrieval v2.12`, `06 Workflow v7.15`, `07 Interface v2.20`, `08 Sequence v3.14`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.19`, `12 Test v3.32`, `13 Evaluation v3.20`, `15 Agent Capability v1.21`를 따른다. 이 문서는 새 상태 전이·보안·Prompt 정책을 만들지 않는다.
+> **문서 기준:** `03 Architecture v3.6`, `04 Domain·DB v1.19`, `05 Retrieval v2.13`, `06 Workflow v7.16`, `07 Interface v2.20`, `08 Sequence v3.14`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.19`, `12 Test v3.33`, `13 Evaluation v3.20`, `15 Agent Capability v1.22`를 따른다. 이 문서는 새 상태 전이·보안·Prompt 정책을 만들지 않는다.
 
-> **상태:** Draft v2.17 · **기준일:** 2026-08-14 · **원격 운영 서버:** 없음
+> **상태:** Draft v2.17 · **기준일:** 2026-08-15 · **원격 운영 서버:** 없음
 
 ## 1. Severity
 

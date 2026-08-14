@@ -1,8 +1,8 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.12`, `07 Interface v2.20`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.13`, `07 Interface v2.20`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v7.15 · **DB Schema:** v1.6 · **대상:** P0 MVP
+> **상태:** Draft v7.16 · **기준일:** 2026-08-15 · **DB Schema:** v1.6 · **대상:** P0 MVP
 >
 > Main LangGraph는 결정적 Supervisor와 Versioned Typed Main State를 소유한다. 전문 Agent는 LangGraph Subgraph이며 Parent State에서 자기 책임에 필요한 필드만 Projection 받아 Local State를 단계적으로 채우고, 완료 시 공식 Typed Result만 Main State에 병합한다. Schema는 출력 가능 범위를 통제하고, State는 확정 정보를 기억하며, Prompt는 각 LLM Node의 단일 작업만 지시한다. 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -163,7 +163,8 @@ Retrieval.SUFFICIENT / NO_FETCH_NEEDED → Work Analysis 또는 Planning
 Retrieval.NEEDS_MORE_DATA + local budget → bounded Retrieval local loop
   - 이 Edge는 Parent Supervisor handoff가 아니라 Retrieval Subgraph 내부 Edge다.
   - self-loop 중 `workflow_signal`과 `RetrievalRequiredV1`을 만들지 않는다.
-  - 다음 Page/Detail은 05 Retrieval v2.12의 `read_result_handle → Run Retrieval Cache` continuation 계약으로 결정적 Read Node가 resolve한다.
+  - 다음 Page/Detail은 05 Retrieval v2.13의 `read_result_handle → Run Retrieval Cache` continuation 계약으로 결정적 Read Node가 resolve한다.
+  - changed SEARCH는 `ConstraintDeltaV2`의 typed semantic value를 사용하며 결정적 `SourceFetchPlanBuilder`가 prior effective constraints와 merge한다. QueryAttempt의 이름 summary는 실행 권위가 아니다.
 budget exhausted → NEEDS_CONFIRMATION | PARTIAL | BLOCKED 중 하나로 정규화
 Retrieval.PARTIAL + usable Evidence → Work Analysis 또는 Planning
 Retrieval.PARTIAL + usable Evidence 없음 → CompleteAnswerOnlyRun → FINALIZE
@@ -907,30 +908,26 @@ START
 권장 Local State:
 
 ```python
-class RetrievalStateV1:
-    user_request: str
+class RetrievalStateV2:
     request_intent: RequestIntentV2
     input_route_ref: StateArtifactRefV1
     input_routes: list[InputToolRouteV1]
-    query_plan: RetrievalQueryPlanV1 | None
+    query_plan: RetrievalQueryPlanV2 | None
     query_attempts: list[QueryAttempt]
+    source_statuses: list[SourceRetrievalStatusV1]
     read_result_handles: list[str]
     segment_handles: list[str]
+    availability_results: list[AvailableIntervalV1]
     rag_candidates: list[RagCandidateV1]
     evidence_selection: EvidenceSelectionResultV2 | None
     sufficiency: SufficiencyResultV2 | None
     final_result: RetrievalResultV1 | None
 ```
 
-`RetrievalQueryPlanV1.route_queries` uses the Retrieval-owned
-`RouteQueryIntentV1` contract in `05-context-retrieval.md`. Follow-up planner
-output remains local to the Retrieval invocation; only the final
-`RetrievalResultV1` is a Parent handoff.
-
 Node 입력:
 
-- `plan_query`: `user_request + request_intent + input_routes`
-- `build_query`: `query_plan + input_routes` — deterministic
+- `plan_query`: `request_intent + input_routes + retrieval_budget`; follow-up에서만 `current_round_no + prior QueryAttempt + unresolved SufficiencyIssueV2 + bounded read-result summary` 추가
+- `build_query`: `RetrievalQueryPlanV2 + input_routes + prior SourceFetchPlanV1` — deterministic. INITIAL/CHANGED SEARCH를 검증·merge해 `SourceFetchPlanV1`과 query identity를 materialize한다.
 - `execute_read`: 검증된 Query + `allowed_read_tool_ids` — deterministic
 - `normalize_segment`: Read Result Handle — deterministic
 - `rag_retrieve_rerank`: `request_intent + segment_handles`
@@ -1213,7 +1210,7 @@ SEND/DELETE → blind repeat 금지
 
 ## 13. Agent Failure 계약
 
-`15. Agent Capability · Failure · Prompt 공통 계약 v1.21`을 따른다.
+`15. Agent Capability · Failure · Prompt 공통 계약 v1.22`을 따른다.
 
 ```python
 class AgentFailureRecord:
@@ -1309,7 +1306,7 @@ Node Registry는 **Subgraph와 Node의 실제 책임**을 나타내며 Prompt �
 		<td>retrieval</td>
 		<td>LLM</td>
 		<td>intent + input routes</td>
-		<td>`RetrievalQueryPlanV1`</td>
+		<td>`RetrievalQueryPlanV2`</td>
 	</tr>
 	<tr>
 		<td>`retrieval.build_query`</td>

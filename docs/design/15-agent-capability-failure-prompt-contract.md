@@ -1,7 +1,7 @@
 # Google Work Agent · Agent Capability · Failure · Prompt 공통 계약
 
-> **상태:** Approved v1.21  
-> **기준일:** 2026-08-13  
+> **상태:** Approved v1.22  
+> **기준일:** 2026-08-15  
 > **대상:** P0 Agent 개별실험, Prompt·Repair·Revision 실험, E2E 통합실험  
 > **적용 범위:** Request Understanding, Tool Route, Retrieval, Work Analysis, Planning, Review  
 > **비적용 범위:** 승인, Claim, Google Write, GET Verification, UNKNOWN_RESULT 복구, Domain 상태 전이의 최종 판정
@@ -27,16 +27,6 @@
 이 문서는 제품 Runtime 계약을 대체하지 않는다. `05 Context·Retrieval`과 `06 Agent·Workflow`의 제품 계약을 실험 가능한 형태로 정규화하고, `11·12·13`에 필요한 실패·Prompt·Dataset 평가 계약을 제공한다.
 
 ---
-
-### Retrieval follow-up `plan_query` prompt boundary
-
-The follow-up prompt may receive only `current_round_no`, prior `QueryAttempt`,
-unresolved `SufficiencyIssueV2`, and bounded read-result summaries. Its output
-is `RetrievalQueryPlanV1.route_queries[*]: RouteQueryIntentV1`: frozen route,
-operation kind, reason codes, optional semantic constraint delta, and optional
-bounded detail candidate reference. It must not receive or emit raw
-continuations, provider-native queries, MCP arguments, arbitrary tool IDs, or
-external resource IDs.
 
 ## 1. 기준 문서와 우선순위
 
@@ -90,9 +80,9 @@ Prompt Slot 수, PromptRef 수, LLM Call 수는 Agent 수와 독립적이다. �
 
 공통 Runtime Envelope는 invocation metadata와 failure/repair counter만 보존한다. 업무 데이터는 Subgraph별 Typed Local State에 둔다. Local candidate·Query candidate·RAG score·Prompt 원문은 invocation 종료 후 다른 Agent 호출로 자동 승계하지 않는다. 제품의 장기 사실과 승인·실행·검증은 Main Graph Typed State와 Domain Store 계약을 따른다.
 
-각 Node는 Parent/Main State 전체를 받지 않고 자기 작업에 필요한 Typed Projection만 받는다. Retrieval Query Planner의 Initial Round는 `request_intent + input_routes + retrieval_budget`을 받고, Follow-up Round는 여기에 `current_round_no + prior QueryAttempt + unresolved SufficiencyIssueV2 + bounded read-result summary`만 추가한다. raw Provider continuation·Provider-native Query·MCP Arguments는 Product Prompt 입력이 아니다. Evidence Selector는 `request_intent + ranked_segments`, Planning Argument Writer는 `output_route + work_analysis + evidence_refs`만 받는다.
+각 Node는 Parent/Main State 전체를 받지 않고 자기 작업에 필요한 Typed Projection만 받는다. 공식 Main State Artifact는 단일 Owner만 새 revision을 만들며 downstream은 upstream Artifact를 read-only로 소비한다. Subgraph 반환은 owner field와 허용된 workflow signal만 patch merge하고 다른 Main State field를 `None` 또는 누락 값으로 초기화하지 않는다. Retrieval **초기 Round** Query Planner는 `request_intent + input_routes + retrieval_budget`만 받고, follow-up Round에서는 여기에 `current_round_no + prior QueryAttempt + unresolved SufficiencyIssueV2 + bounded read-result summary`만 추가로 받을 수 있다. Retrieval Product Prompt는 raw `user_request`를 별도 권위 입력으로 재주입하지 않는다. Raw Page Token·Provider-native Query·RFC3339·MCP Arguments는 어느 Round의 Product Prompt에도 전달하지 않는다. Evidence Selector는 `request_intent + ranked_segments`, Work Analysis는 `user_request + request_intent + optional evidence`, Planning Argument Writer는 `user_request + OutputToolRouteV1 1개 + optional work_analysis + evidence_refs`만 받는다.
 
-외부 READ는 Retrieval Subgraph의 결정적 Application Node가 Query Builder·Connector MCP Read Port를 호출한다. Retrieval LLM Node는 Raw Query·MCP Arguments를 직접 실행하지 않으며 `ToolRoutePlanV2.input_plan.input_routes` 밖의 Tool을 선택하거나 호출하지 않는다.
+외부 READ는 Retrieval Subgraph의 결정적 Application Node가 `connector_id`에 맞는 Query Builder·Connector MCP Read Port를 호출한다. Retrieval LLM Node는 Raw Query·MCP Arguments를 직접 실행하지 않으며 `ToolRoutePlanV2.input_plan.input_routes` 밖의 Tool을 선택하거나 호출하지 않는다. Release Retrieval planner output은 `05 Retrieval v2.13`의 `RetrievalQueryPlanV2 / RouteQueryIntentV2`를 사용한다. `SEARCH`에서는 Provider query 대신 typed `SemanticRetrievalConstraintV1`을 출력하고, follow-up changed SEARCH는 값이 포함된 `ConstraintDeltaV2`를 반환해야 한다. constraint 이름만 있는 delta, Provider-native Query 문자열, raw continuation, MCP Arguments를 planner authority로 반환하면 contract invalid다. 결정적 `SourceFetchPlanBuilder`만 prior effective constraints와 delta를 merge하고 `SourceFetchPlanV1` 및 query identity를 materialize한다.
 
 Connector identity는 Tool Route의 공식 Typed Route에 포함되고 downstream은 재선택하지 않는다. P0 첫 Connector는 `google_workspace`이며 Gmail·Tasks·Calendar의 Provider 세부는 Connector Adapter가 소유한다.
 
@@ -681,7 +671,7 @@ query_attempt:
 
 ### 11.1 반복 검색 판정
 
-- 같은 Query와 새로운 continuation state를 사용하는 `NEXT_PAGE`는 정상이다. raw Provider continuation은 05 Retrieval v2.12가 정의한 Run Retrieval Cache read-result entry에만 memory-only로 존재하며 QueryAttempt에는 `page_token_hash`/page-state hash만 남긴다.
+- 같은 Query와 새로운 continuation state를 사용하는 `NEXT_PAGE`는 정상이다. raw Provider continuation은 05 Retrieval v2.13가 정의한 Run Retrieval Cache read-result entry에만 memory-only로 존재하며 QueryAttempt에는 `page_token_hash`/page-state hash만 남긴다.
 - `NEXT_PAGE`의 실제 raw token resolve와 `run_id + route_id + query identity/hash + exhaustion` 검증은 결정적 Retrieval Read Node가 소유한다. LLM은 token을 생성·선택·복사하지 않는다.
 - 실패 후 같은 Query·같은 Page 상태로 `SEARCH`를 반복하면 `QUERY_REPEATED_WITHOUT_CHANGE`다.
 - `DETAIL_FETCH`는 Resource ID와 Run Cache를 기준으로 중복 호출을 판정한다.
@@ -810,6 +800,8 @@ Route 모호성 → NEEDS_CONFIRMATION
 ```
 
 ### 14.3 Retrieval
+
+Release v1.22 추가 Gate: `RetrievalQueryPlanV2 / RouteQueryIntentV2`, typed semantic constraint, `ConstraintDeltaV2`, `SourceFetchPlanV1` 경계를 검증하며 raw user_request 별도 authority·Provider query·raw continuation·name-only delta를 허용하지 않는다.
 
 ```text
 단일·복수 Input Route

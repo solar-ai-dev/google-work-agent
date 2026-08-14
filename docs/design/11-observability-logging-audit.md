@@ -1,6 +1,6 @@
 # 11. Google Work Agent · 관측성 · 로그 · 감사 설계서
 
-> **상태:** Draft v2.19 · **기준일:** 2026-08-14 · **외부 Telemetry:** Production 기본 OFF
+> **상태:** Draft v2.19 · **기준일:** 2026-08-15 · **외부 Telemetry:** Production 기본 OFF
 
 ## 먼저 읽기
 

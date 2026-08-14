@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.12`, `06 Workflow v7.15`, `07 Interface v2.20`, `08 Sequence v3.14`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.19`, `15 Agent Capability·Failure·Prompt v1.21`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.13`, `06 Workflow v7.16`, `07 Interface v2.20`, `08 Sequence v3.14`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.19`, `15 Agent Capability·Failure·Prompt v1.22`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v3.32 · **기준일:** 2026-08-14 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.33 · **기준일:** 2026-08-15 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -13,17 +13,6 @@ Unit → Contract → Integration → Component → E2E → Failure Injection �
 ```
 
 모든 상태 전이는 허용 Edge와 금지 Edge를 검증한다.
-
-### Retrieval follow-up planner contract
-
-Follow-up `retrieval.plan_query` tests must verify that `RouteQueryIntentV1`
-accepts only `SEARCH`, `NEXT_PAGE`, `DETAIL_FETCH`, or `FREEBUSY`; the route
-belongs to frozen `input_routes`; reason codes bind an unresolved
-`SufficiencyIssueV2`; and changed `SEARCH` has a non-empty constraint delta.
-`DETAIL_FETCH` must select only a bounded cache-backed candidate reference.
-Raw continuation, provider-native query, MCP arguments, and arbitrary external
-resource IDs are invalid output. Invalid output is repaired at most once, then
-fails closed before any Connector read.
 
 ## 2. Test ID·Traceability
 
@@ -185,6 +174,17 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - `NEXT_PAGE` 검증: prior handle의 `run_id + route_id + query identity/hash`가 현재 frozen IN Route와 일치하고 continuation이 미소진일 때만 MCP Read가 발생함. unknown/cross-run/wrong-route/wrong-query/exhausted handle은 Provider 호출 0건으로 fail-closed
 - Follow-up `retrieval.plan_query`는 `current_round_no + prior QueryAttempt + unresolved SufficiencyIssueV2 + bounded read-result summary`만 추가 소비하고 raw Page Token·Provider-native Query·MCP Arguments를 소비하지 않음
 - 동일 Query + 동일 continuation state 반복은 새 Retrieval Round로 인정하지 않으며 `NEXT_PAGE | DETAIL_FETCH | unresolved issue에 근거한 changed SEARCH`만 새 정보 획득 후보로 인정함
+- Release Retrieval planner output은 `RetrievalQueryPlanV2 / RouteQueryIntentV2`여야 하며 `RetrievalQueryPlanV1`을 새 Release authority로 사용하면 실패
+- Initial SEARCH는 값이 포함된 `SemanticRetrievalConstraintV1`을 요구하고 name-only constraint 또는 Provider-native query 문자열은 실패
+- CHANGED SEARCH upsert: prior `SourceFetchPlanV1.effective_constraints`와 `ConstraintDeltaV2.upsert_constraints`가 결정적으로 merge되어 새 `query_identity_hash`를 생성함
+- CHANGED SEARCH remove: `remove_constraint_kinds`가 허용된 optional kind만 제거하며 frozen Route/Policy-required constraint 제거는 Provider 호출 0건으로 실패
+- 같은 kind를 upsert/remove에 동시에 넣거나 unsupported/value-empty/contradictory temporal constraint는 Provider 호출 전에 fail-closed
+- 의미상 동일한 changed SEARCH는 `QUERY_UNCHANGED_AFTER_FAILURE`로 차단되고 Retrieval Round를 증가시키지 않음
+- 날짜 semantic value는 offset 없는 local ISO + IANA timezone이며 RFC3339/Gmail query syntax는 deterministic builder만 생성
+- `ParticipantConstraintV1`은 role별 participant를 보존하여 sender+recipient 동시 제약을 손실 없이 표현
+- `QueryAttempt.added_constraints/removed_constraints`는 관측 summary로만 사용하며 `SourceFetchPlanV1.effective_constraints` 재구성 권위로 사용하지 않음
+- Retrieval Product Prompt에 raw `user_request`를 별도 권위 입력으로 재주입하지 않음. Initial planner Projection은 `request_intent + input_routes + retrieval_budget`
+- Release Retrieval Local State는 `RetrievalStateV2`이며 `RetrievalStateV1` 이름에 V2 field contract를 덮어쓰지 않음
 - 현재 IN Route로 추가 정보 요구를 충족할 수 없으면 `RetrievalRequiredV1`로 우회하지 않고 `RouteReconsiderationRequiredV1`을 사용함
 - Resume target은 현재 compiled Main Graph Registry의 `(subgraph_id, node_id, graph_version)` 등록값만 허용. unknown target·wrong owner·wrong graph version은 fail-closed이며 LLM/User supplied resume authority를 허용하지 않음
 - `ConfirmationRequiredV1.options=[]`는 자유 텍스트, non-empty options는 등록값 중 하나만 허용하는 닫힌 선택으로 검증. `UserInterruptV1`이 필요한 경우 Canonical confirmation state에서 UI/API one-way projection으로만 생성하고 Main State의 독립 workflow truth로 저장하지 않음
@@ -911,3 +911,28 @@ PHASE 7의 20 CORE × 2 문체 = 40 요청은 실제 Ollama/qwen benchmark가 �
 - Task UPDATE Planning Gold의 required `tasklist_id` 누락 0건을 검증한다.
 - default `tasklist_id/calendar_id`는 deterministic resolver가 bind하며 Planning LLM hidden guess 0건을 검증한다.
 - Dataset `rebuild-v1.17-r8.6-phase7.5-contract-correction`, Projection `projection-v1.1-r8.6-phase7.5`의 92 Canonical + 736 Projection source equality를 검증한다.
+
+## 2026-08-15 Retrieval Contract Regression
+
+위 Test는 12가 새 제품 의미를 만들기 위한 것이 아니라 `05 v2.13 / 06 v7.16 / 15 v1.22`의 Canonical 계약을 검증하기 위한 회귀 Gate다.
+
+필수 결과:
+
+| Case | 기대 |
+|---|---|
+| Initial SEARCH typed semantic value | PASS |
+| CHANGED SEARCH upsert | PASS |
+| CHANGED SEARCH remove | PASS |
+| name-only delta | FAIL |
+| unsupported constraint | FAIL |
+| required constraint 제거 | FAIL |
+| upsert/remove 동일 kind 충돌 | FAIL |
+| unchanged SEARCH | FAIL |
+| Provider-native query leakage | FAIL |
+| raw continuation Prompt 유입 | FAIL |
+| 동일 semantic input → 동일 query hash | PASS |
+| NEXT_PAGE handle authority | PASS |
+| DETAIL_FETCH bounded candidate authority | PASS |
+| raw user_request planner authority 재주입 | FAIL |
+| QueryAttempt summary를 실행 권위로 사용 | FAIL |
+| RetrievalStateV1에 V2 계약 덮어쓰기 | FAIL |
