@@ -1,8 +1,8 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.5`, `04 Database v1.19`, `05 Retrieval v2.11`, `07 Interface v2.19`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.13`, `07 Interface v2.20`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v7.13 · **DB Schema:** v1.6 · **대상:** P0 MVP
+> **상태:** Draft v7.16 · **기준일:** 2026-08-15 · **DB Schema:** v1.6 · **대상:** P0 MVP
 >
 > Main LangGraph는 결정적 Supervisor와 Versioned Typed Main State를 소유한다. 전문 Agent는 LangGraph Subgraph이며 Parent State에서 자기 책임에 필요한 필드만 Projection 받아 Local State를 단계적으로 채우고, 완료 시 공식 Typed Result만 Main State에 병합한다. Schema는 출력 가능 범위를 통제하고, State는 확정 정보를 기억하며, Prompt는 각 LLM Node의 단일 작업만 지시한다. 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -161,6 +161,10 @@ ToolRoute.BLOCKED → BlockRun → FINALIZE
 
 Retrieval.SUFFICIENT / NO_FETCH_NEEDED → Work Analysis 또는 Planning
 Retrieval.NEEDS_MORE_DATA + local budget → bounded Retrieval local loop
+  - 이 Edge는 Parent Supervisor handoff가 아니라 Retrieval Subgraph 내부 Edge다.
+  - self-loop 중 `workflow_signal`과 `RetrievalRequiredV1`을 만들지 않는다.
+  - 다음 Page/Detail은 05 Retrieval v2.13의 `read_result_handle → Run Retrieval Cache` continuation 계약으로 결정적 Read Node가 resolve한다.
+  - changed SEARCH는 `ConstraintDeltaV2`의 typed semantic value를 사용하며 결정적 `SourceFetchPlanBuilder`가 prior effective constraints와 merge한다. QueryAttempt의 이름 summary는 실행 권위가 아니다.
 budget exhausted → NEEDS_CONFIRMATION | PARTIAL | BLOCKED 중 하나로 정규화
 Retrieval.PARTIAL + usable Evidence → Work Analysis 또는 Planning
 Retrieval.PARTIAL + usable Evidence 없음 → CompleteAnswerOnlyRun → FINALIZE
@@ -263,7 +267,6 @@ class MultiAgentGraphStateV2:
     execution_summary: ExecutionSummaryV1 | None
     verification_summary: VerificationSummaryV1 | None
 
-    user_interrupt: UserInterruptV1 | None
     policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
     workflow_signal: WorkflowSignalV1 | None
     retry_budget: RunBudgetV2
@@ -653,6 +656,10 @@ class RouteReconsiderationRequiredV1:
     kind: Literal["ROUTE_RECONSIDERATION_REQUIRED"]
     reason_codes: list[str]
 
+class RetrievalNeedV1:
+    required_information: str
+    reason_codes: list[str]
+
 class RetrievalRequiredV1:
     kind: Literal["RETRIEVAL_REQUIRED"]
     reason_codes: list[str]
@@ -665,6 +672,12 @@ class BlockedSignalV1:
 WorkflowSignalV1 = ConfirmationRequiredV1 | RouteReconsiderationRequiredV1 | RetrievalRequiredV1 | BlockedSignalV1
 ```
 Confirmation resume는 `owner_subgraph + resume_target + interrupt_id`로 결정하며 모든 확인 응답을 Request Understanding으로 되돌리지 않는다. Review `REVISE`는 별도 미정의 Signal을 만들지 않고 `ReviewReviseV2.issues`를 Planning Projection으로 전달한다.
+
+`RetrievalNeedV1`은 다른 Subgraph가 Retrieval owner에게 **추가로 필요한 정보의 의미**만 전달하는 최소 handoff다. `required_information`은 비어 있을 수 없고 `reason_codes`는 최소 1개여야 한다. Connector·Resource·Tool·raw query·page token·MCP argument를 이 타입에 넣지 않는다. Work Analysis `NEEDS_MORE_DATA`와 Review `RETRIEVE_MORE`는 결정적 Projection으로 `RetrievalNeedV1[] → RetrievalRequiredV1`을 만든다. Retrieval 자신의 `NEEDS_MORE_DATA`는 `RetrievalRequiredV1`을 만들지 않고 같은 frozen IN Route에서 bounded local loop를 수행한다. 현재 IN Route로 충족할 수 없으면 `RouteReconsiderationRequiredV1`을 사용한다.
+
+`RegisteredResumeTargetRefV1`의 authority는 active compiled Main Graph의 Resume Target Registry다. Registry는 Graph composition/compile boundary가 소유하며 LLM·Agent 자유 문자열·사용자 입력은 `subgraph_id`, `node_id`, `graph_version`을 발급할 수 없다. `graph_version`은 compiled Main Graph의 **resume-contract version**이며 Prompt·Dataset·DB Schema·Tool Registry version과 별개다. 등록 가능한 subgraph/node 또는 interrupt-resume topology가 바뀌면 새 graph version을 사용한다. Checkpoint의 `graph_version`이 현재 Registry와 다르거나 target이 등록되지 않았으면 임의 node로 resume하지 않고 Unknown Contract fail-closed 경로를 따른다.
+
+`ConfirmationRequiredV1.options=[]`는 자유 텍스트 응답을 뜻하고, 하나 이상의 option이 있으면 등록된 값 중 하나만 허용하는 닫힌 선택 응답을 뜻한다. 닫힌 선택에서 임의 텍스트를 승인·정책 동의로 추측하지 않는다. Core workflow truth는 `workflow_signal + LangGraph checkpoint + Domain confirmation state`이며, 기존 UI/API가 `UserInterruptV1` 형태를 요구하는 경우에만 Canonical confirmation state에서 **one-way presentation projection**으로 만들 수 있다. `UserInterruptV1`을 Main State의 독립 workflow authority로 저장하지 않는다.
 
 #### PolicyConfirmationReceiptV1
 ```python
@@ -895,15 +908,16 @@ START
 권장 Local State:
 
 ```python
-class RetrievalStateV1:
-    user_request: str
+class RetrievalStateV2:
     request_intent: RequestIntentV2
     input_route_ref: StateArtifactRefV1
     input_routes: list[InputToolRouteV1]
-    query_plan: RetrievalQueryPlanV1 | None
+    query_plan: RetrievalQueryPlanV2 | None
     query_attempts: list[QueryAttempt]
+    source_statuses: list[SourceRetrievalStatusV1]
     read_result_handles: list[str]
     segment_handles: list[str]
+    availability_results: list[AvailableIntervalV1]
     rag_candidates: list[RagCandidateV1]
     evidence_selection: EvidenceSelectionResultV2 | None
     sufficiency: SufficiencyResultV2 | None
@@ -912,8 +926,8 @@ class RetrievalStateV1:
 
 Node 입력:
 
-- `plan_query`: `user_request + request_intent + input_routes`
-- `build_query`: `query_plan + input_routes` — deterministic
+- `plan_query`: `request_intent + input_routes + retrieval_budget`; follow-up에서만 `current_round_no + prior QueryAttempt + unresolved SufficiencyIssueV2 + bounded read-result summary` 추가
+- `build_query`: `RetrievalQueryPlanV2 + input_routes + prior SourceFetchPlanV1` — deterministic. INITIAL/CHANGED SEARCH를 검증·merge해 `SourceFetchPlanV1`과 query identity를 materialize한다.
 - `execute_read`: 검증된 Query + `allowed_read_tool_ids` — deterministic
 - `normalize_segment`: Read Result Handle — deterministic
 - `rag_retrieve_rerank`: `request_intent + segment_handles`
@@ -1057,7 +1071,7 @@ Tool Route NO_TOOL_NEEDED + `analysis_requirement=NONE` → Planning(answer)
 Tool Route NO_TOOL_NEEDED + `analysis_requirement=REQUIRED` → Work Analysis → Planning(answer)
 Retrieval SUFFICIENT/NO_FETCH_NEEDED + effective analysis required → Work Analysis
 Retrieval SUFFICIENT/NO_FETCH_NEEDED + `analysis_requirement=NONE` + ANSWER → Planning
-Retrieval NEEDS_MORE_DATA + local budget → Retrieval local loop
+Retrieval NEEDS_MORE_DATA + local budget → Retrieval local loop (Parent 반환 없음, workflow_signal 없음)
 Retrieval NEEDS_MORE_DATA + budget exhausted → Confirmation 또는 PARTIAL/BLOCKED를 정책에 따라 반환
 Retrieval ROUTE_RECONSIDERATION_REQUIRED → Tool Route (RouteReconsiderationRequiredV1 전달)
 Analysis NEEDS_MORE_DATA → Retrieval (RetrievalRequiredV1 전달)
@@ -1196,7 +1210,7 @@ SEND/DELETE → blind repeat 금지
 
 ## 13. Agent Failure 계약
 
-`15. Agent Capability · Failure · Prompt 공통 계약 v1.11`을 따른다.
+`15. Agent Capability · Failure · Prompt 공통 계약 v1.22`을 따른다.
 
 ```python
 class AgentFailureRecord:
@@ -1292,7 +1306,7 @@ Node Registry는 **Subgraph와 Node의 실제 책임**을 나타내며 Prompt �
 		<td>retrieval</td>
 		<td>LLM</td>
 		<td>intent + input routes</td>
-		<td>`RetrievalQueryPlanV1`</td>
+		<td>`RetrievalQueryPlanV2`</td>
 	</tr>
 	<tr>
 		<td>`retrieval.build_query`</td>

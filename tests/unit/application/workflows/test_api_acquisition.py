@@ -528,7 +528,6 @@ def test_resource_selected_uses_direct_get_and_does_not_search() -> None:
     # has already frozen input_routes from that same RESOURCE_SELECTED
     # signal, so Retrieval must not re-derive or re-select a route from it.
     assert set(runtime.calls[0]["prompt_input"]) == {
-        "user_request",
         "request_intent",
         "input_routes",
         "retrieval_budget",
@@ -1043,7 +1042,6 @@ def test_additional_acquisition_request_is_accepted_but_not_leaked_into_plan_que
     assert "planning_mode" not in prompt_input
     assert "additional_acquisition_request" not in prompt_input
     assert set(prompt_input) == {
-        "user_request",
         "request_intent",
         "input_routes",
         "retrieval_budget",

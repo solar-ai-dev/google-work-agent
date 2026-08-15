@@ -6,3 +6,4 @@
 # entry was committed with LF; without pinning eol=lf, Windows core.autocrlf
 # checkout rewrites it to CRLF and breaks the manifest's assembled_hash.
 prompts/agent/assembled-r8.4/acquisition.plan_sources.md text eol=lf
+prompts/agent/assembled-r8.6/*.md text eol=lf

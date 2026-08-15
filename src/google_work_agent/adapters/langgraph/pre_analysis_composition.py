@@ -23,6 +23,13 @@ from google_work_agent.application.workflows import (
     RequestUnderstandingAgent,
     ToolRouteAgent,
 )
+from google_work_agent.application.workflows.retrieval_evidence_store import RunScopedEvidenceStore
+from google_work_agent.application.workflows.retrieval_query_planner import (
+    RetrievalQueryPlannerAgent,
+)
+from google_work_agent.application.workflows.retrieval_read_cache import RunScopedReadResultCache
+from google_work_agent.application.workflows.retrieval_read_executor import RetrievalReadExecutor
+from google_work_agent.application.workflows.source_fetch_plan_builder import SourceFetchPlanBuilder
 from google_work_agent.domain import ConnectorToolCatalog
 
 
@@ -39,12 +46,16 @@ def build_pre_analysis_subgraphs(
     request_agent: RequestUnderstandingAgent,
     tool_route_agent: ToolRouteAgent,
     acquisition_agent: ApiDiscoveryAcquisitionAgent,
+    retrieval_query_planner: RetrievalQueryPlannerAgent,
     context_agent: ContextRetrievalAgent,
     tool_catalog: ConnectorToolCatalog,
     id_factory: Callable[[], str],
     graph_profile: GraphProfile,
     transition_run: Callable[[str, str], None],
     merge_decision: Callable[..., Any],
+    evidence_store: RunScopedEvidenceStore,
+    read_result_cache: RunScopedReadResultCache,
+    retrieval_read_executor: RetrievalReadExecutor,
 ) -> PreAnalysisSubgraphs:
     """Create nodes only; workflow policy remains in their Application owners."""
 
@@ -68,12 +79,19 @@ def build_pre_analysis_subgraphs(
             graph_profile=graph_profile,
             transition_run=transition_run,
             merge_decision=merge_decision,
+            read_result_cache=read_result_cache,
         ).build(),
         context_retrieval=ContextRetrieverSubgraph(
             agent=context_agent,
             id_factory=id_factory,
             graph_profile=graph_profile,
             merge_decision=merge_decision,
+            evidence_store=evidence_store,
+            acquisition_agent=acquisition_agent,
+            retrieval_query_planner=retrieval_query_planner,
+            source_fetch_plan_builder=SourceFetchPlanBuilder(),
+            read_result_cache=read_result_cache,
+            retrieval_read_executor=retrieval_read_executor,
         ).build(),
     )
 

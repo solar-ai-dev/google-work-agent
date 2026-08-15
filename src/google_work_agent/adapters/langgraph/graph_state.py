@@ -27,6 +27,7 @@ from google_work_agent.application.workflows import (
     PlanReviewResultV1,
     RequestIntentV2,
     RequestUnderstandingOutputV1,
+    RetrievalResultV1,
     RunBudgetV1,
     SourceFetchPlanV1,
     SourcePlanningOutputV1,
@@ -74,6 +75,15 @@ CONTEXT_AGENT_LOCAL_KEY: Final = "__context_agent_local__"
 CONTEXT_RAG_CANDIDATES_KEY: Final = "__context_rag_candidates__"
 CONTEXT_SELECTION_OUTPUT_KEY: Final = "__context_selection_output__"
 CONTEXT_SUFFICIENCY_OUTPUT_KEY: Final = "__context_sufficiency_output__"
+CONTEXT_CURRENT_ROUND_NO_KEY: Final = "__context_current_round_no__"
+CONTEXT_READ_RESULT_HANDLES_KEY: Final = "__context_read_result_handles__"
+CONTEXT_SEGMENT_HANDLES_KEY: Final = "__context_segment_handles__"
+CONTEXT_QUERY_ATTEMPTS_KEY: Final = "__context_query_attempts__"
+CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY: Final = "__context_followup_planner_input__"
+CONTEXT_CANONICAL_PLANS_KEY: Final = "__context_canonical_plans__"
+CONTEXT_FOLLOWUP_OPERATION_KEY: Final = "__context_followup_operation__"
+CONTEXT_NEXT_PAGE_HANDLES_KEY: Final = "__context_next_page_handles__"
+CONTEXT_DETAIL_CANDIDATES_KEY: Final = "__context_detail_candidates__"
 ANALYSIS_AGENT_LOCAL_KEY: Final = "__analysis_agent_local__"
 PLANNING_AGENT_LOCAL_KEY: Final = "__planning_agent_local__"
 PLANNING_MODE_KEY: Final = "__planning_mode__"
@@ -102,6 +112,7 @@ def initial_graph_state(
         "workflow_signal": None,
         "source_fetch_plans": [],
         "acquisition_result": None,
+        "retrieval_result": None,
         "context_result": None,
         "analysis_result": None,
         "answer_draft": None,

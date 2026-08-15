@@ -301,10 +301,10 @@ def _route_tool_routing(
                 reason_code="TOOL_ROUTE_PLAN_MISSING",
             )
         return _decision(
-            target=SupervisorTarget.SOURCE_PLANNING,
-            next_phase=WorkflowPhase.SOURCE_PLANNING,
+            target=SupervisorTarget.CONTEXT_RETRIEVAL,
+            next_phase=WorkflowPhase.CONTEXT_RETRIEVAL,
             state_update=_base_state_update(
-                WorkflowPhase.SOURCE_PLANNING,
+                WorkflowPhase.CONTEXT_RETRIEVAL,
                 tool_route_plan=plan,
                 workflow_signal=None,
             ),

@@ -278,6 +278,79 @@ class MissingInformationV1(TypedDict):
     required_for: MissingInformationRequiredForValue
 
 
+class RetrievalSourceStatusV1(TypedDict):
+    route_id: str
+    status: Literal["COMPLETE", "PARTIAL", "FAILED", "NOT_ATTEMPTED"]
+    reason_codes: list[str]
+
+
+class RetrievalResultV1(TypedDict):
+    """Canonical Retrieval parent handoff (06-agent-workflow.md SS3.3)."""
+
+    schema_version: Required[Literal[1]]
+    meta: StateArtifactMetaV1
+    coverage: Literal["SUFFICIENT", "PARTIAL", "NO_FETCH_NEEDED"]
+    context_bundle_ref: str | None
+    evidence_refs: list[str]
+    selected_segment_ids: list[str]
+    source_resource_refs: list[str]
+    source_statuses: list[RetrievalSourceStatusV1]
+    missing_information: list[MissingInformationV1]
+    retrieval_rounds: int
+
+
+class RegisteredResumeTargetRefV1(TypedDict):
+    subgraph_id: Literal[
+        "REQUEST_UNDERSTANDING", "TOOL_ROUTE", "RETRIEVAL", "WORK_ANALYSIS", "PLANNING", "REVIEW"
+    ]
+    node_id: str
+    graph_version: str
+
+
+class ConfirmationRequiredV1(TypedDict):
+    kind: Required[Literal["CONFIRMATION_REQUIRED"]]
+    interrupt_id: str
+    owner_subgraph: str
+    resume_target: RegisteredResumeTargetRefV1
+    question: str
+    options: list[str]
+
+
+class RouteReconsiderationRequiredV1(TypedDict):
+    kind: Required[Literal["ROUTE_RECONSIDERATION_REQUIRED"]]
+    reason_codes: list[str]
+
+
+class RetrievalNeedV1(TypedDict):
+    required_information: str
+    reason_codes: list[str]
+
+
+class RetrievalRequiredV1(TypedDict):
+    kind: Required[Literal["RETRIEVAL_REQUIRED"]]
+    reason_codes: list[str]
+    needs: list[RetrievalNeedV1]
+
+
+class BlockedSignalV1(TypedDict):
+    kind: Required[Literal["BLOCKED"]]
+    reason_codes: list[str]
+
+
+WorkflowSignalV1 = (
+    ConfirmationRequiredV1
+    | RouteReconsiderationRequiredV1
+    | RetrievalRequiredV1
+    | BlockedSignalV1
+)
+
+
+class SubgraphReturnV2[TypedResultT](TypedDict):
+    disposition: str
+    typed_result: TypedResultT | None
+    workflow_signal: WorkflowSignalV1 | None
+
+
 class AnalysisFindingV1(TypedDict):
     schema_version: Required[Literal[1]]
     finding_id: str

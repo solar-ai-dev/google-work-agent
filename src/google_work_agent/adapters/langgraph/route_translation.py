@@ -6,13 +6,43 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.application.workflows.handoff_contracts import (
+    RegisteredResumeTargetRefV1,
+)
 from google_work_agent.application.workflows.supervisor import SupervisorTarget
+
+RESUME_CONTRACT_VERSION = "resume-contract-v1"
 
 
 @dataclass(frozen=True, slots=True)
 class RouteTranslation:
     logical_target: str
     node: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResumeTargetRegistry:
+    """Immutable compiled-graph authority for confirmation resume targets."""
+
+    graph_version: str
+    _targets: Mapping[tuple[str, str], str]
+
+    def issue(self, *, subgraph_id: str, node_id: str) -> RegisteredResumeTargetRefV1:
+        if (subgraph_id, node_id) not in self._targets:
+            raise ValueError("unregistered confirmation resume target")
+        return {
+            "subgraph_id": subgraph_id,  # type: ignore[typeddict-item]
+            "node_id": node_id,
+            "graph_version": self.graph_version,
+        }
+
+    def resolve(self, target: RegisteredResumeTargetRefV1) -> str:
+        if target["graph_version"] != self.graph_version:
+            raise ValueError("confirmation resume target graph version is invalid")
+        node = self._targets.get((target["subgraph_id"], target["node_id"]))
+        if node is None:
+            raise ValueError("confirmation resume target is not registered")
+        return node
 
 
 _COMMON_ROUTES = {
@@ -39,7 +69,6 @@ _PROFILE_TOPOLOGIES = {
     GraphProfile.THREE_STAGE: ("stage_one", "stage_two", "stage_three"),
     GraphProfile.SIX_ROLE_BASELINE: (
         "request_understanding",
-        "acquisition",
         "context_retriever",
         "work_analysis",
         "planning",
@@ -90,7 +119,7 @@ _PROFILE_ROUTES = {
     GraphProfile.SIX_ROLE_BASELINE: {
         **_COMMON_ROUTES,
         **{
-            target.value: RouteTranslation("acquisition", "acquisition")
+            target.value: RouteTranslation("context_retriever", "context_retriever")
             for target in (
                 SupervisorTarget.SOURCE_PLANNING,
                 SupervisorTarget.API_ACQUISITION,
@@ -117,6 +146,28 @@ _PROFILE_ROUTES = {
         },
     },
 }
+
+
+def build_resume_target_registry(profile: GraphProfile) -> ResumeTargetRegistry:
+    """Build the fixed registry together with the profile's compiled graph."""
+    topology = _PROFILE_TOPOLOGIES[profile]
+    if profile is GraphProfile.SINGLE_BASELINE:
+        retrieval_node = "single_workflow"
+    elif profile is GraphProfile.THREE_STAGE:
+        retrieval_node = "stage_two"
+    else:
+        retrieval_node = "context_retriever"
+    return ResumeTargetRegistry(
+        graph_version=RESUME_CONTRACT_VERSION,
+        _targets={
+            ("RETRIEVAL", "finalize"): retrieval_node,
+            ("REQUEST_UNDERSTANDING", "finalize"): topology[0],
+            ("TOOL_ROUTE", "finalize"): topology[0],
+            ("WORK_ANALYSIS", "finalize"): retrieval_node,
+            ("PLANNING", "finalize"): retrieval_node,
+            ("REVIEW", "finalize"): topology[-1],
+        },
+    )
 
 
 @dataclass(frozen=True, slots=True)

@@ -43,30 +43,32 @@ class GoogleWorkspaceConnectorReader(ConnectorReadPort):
             if selected:
                 return ConnectorReadResult(snapshots=tuple(selected))
         if plan["source"] == "GMAIL":
-            snapshots = _acquire_gmail(
+            snapshots, next_page_token = _acquire_gmail(
                 gateway=self._gateway,
                 plan=plan,
                 remaining=remaining,
-                allowed=allowed,
+                allowed=allowed, page_token=request.page_token,
             )
-            return ConnectorReadResult(snapshots=tuple(snapshots))
+            return ConnectorReadResult(snapshots=tuple(snapshots), next_page_token=next_page_token)
         if plan["source"] == "TASKS":
-            snapshots = _acquire_tasks(
+            snapshots, next_page_token = _acquire_tasks(
                 gateway=self._gateway,
                 plan=plan,
                 remaining=remaining,
-                allowed=allowed,
+                allowed=allowed, page_token=request.page_token,
             )
-            return ConnectorReadResult(snapshots=tuple(snapshots))
-        snapshots, error_code = _acquire_calendar(
+            return ConnectorReadResult(snapshots=tuple(snapshots), next_page_token=next_page_token)
+        snapshots, error_code, next_page_token = _acquire_calendar(
             gateway=self._gateway,
             plan=plan,
             remaining=remaining,
             now_ms=request.now_ms,
             timezone=request.timezone,
-            allowed=allowed,
+            allowed=allowed, page_token=request.page_token,
         )
-        return ConnectorReadResult(snapshots=tuple(snapshots), error_code=error_code)
+        return ConnectorReadResult(
+            snapshots=tuple(snapshots), error_code=error_code, next_page_token=next_page_token
+        )
 
 
 def _selected_snapshots(
@@ -164,12 +166,13 @@ def _acquire_gmail(
     plan: SourceFetchPlanV1,
     remaining: dict[str, int],
     allowed: frozenset[str] | None,
-) -> list[ResourceSnapshot]:
+    page_token: str | None,
+) -> tuple[list[ResourceSnapshot], str | None]:
     query = _query_from_constraints(plan["constraints"])
     _require_allowed("gmail_search_threads", allowed)
     page = gateway.search_gmail_threads(
         query=query,
-        page_token=None,
+        page_token=page_token,
         page_size=plan["page_size"],
     )
     remaining["pages"] -= 1
@@ -192,7 +195,7 @@ def _acquire_gmail(
                 allowed=allowed,
             )
         )
-    return details
+    return details, page.next_page_token
 
 
 def _acquire_gmail_thread_messages(
@@ -223,19 +226,20 @@ def _acquire_tasks(
     plan: SourceFetchPlanV1,
     remaining: dict[str, int],
     allowed: frozenset[str] | None,
-) -> list[ResourceSnapshot]:
+    page_token: str | None,
+) -> tuple[list[ResourceSnapshot], str | None]:
     task_list_id = _constraint_string(plan["constraints"], "task_list_id")
     if task_list_id is None:
         _require_allowed("tasks_list_tasklists", allowed)
         lists_page = gateway.list_task_lists(page_token=None, page_size=1)
         remaining["pages"] -= 1
         if not lists_page.items:
-            return []
+            return [], None
         task_list_id = lists_page.items[0].resource_id
     _require_allowed("tasks_list_tasks", allowed)
     page = gateway.list_tasks(
         task_list_id=task_list_id,
-        page_token=None,
+        page_token=page_token,
         page_size=plan["page_size"],
     )
     remaining["pages"] -= 1
@@ -247,7 +251,7 @@ def _acquire_tasks(
         _require_allowed("tasks_get_task", allowed)
         details.append(gateway.get_task(task_list_id=task_list_id, task_id=task_id))
     remaining["details"] -= len(details)
-    return details
+    return details, page.next_page_token
 
 
 def _acquire_calendar(
@@ -258,19 +262,20 @@ def _acquire_calendar(
     now_ms: int,
     timezone: str,
     allowed: frozenset[str] | None,
-) -> tuple[list[ResourceSnapshot], str | None]:
+    page_token: str | None,
+) -> tuple[list[ResourceSnapshot], str | None, str | None]:
     calendar_id = _constraint_string(plan["constraints"], "calendar_id")
     if calendar_id is None:
         _require_allowed("calendar_list_calendars", allowed)
         calendars_page = gateway.list_calendars(page_token=None, page_size=1)
         remaining["pages"] -= 1
         if not calendars_page.items:
-            return [], None
+            return [], None, None
         calendar_id = calendars_page.items[0].resource_id
     _require_allowed("calendar_list_events", allowed)
     page = gateway.list_calendar_events(
         calendar_id=calendar_id,
-        page_token=None,
+        page_token=page_token,
         page_size=plan["page_size"],
     )
     remaining["pages"] -= 1
@@ -293,7 +298,7 @@ def _acquire_calendar(
     )
     if freebusy_snapshot is not None:
         details.append(freebusy_snapshot)
-    return details, error_code
+    return details, error_code, page.next_page_token
 
 
 def _maybe_query_freebusy(

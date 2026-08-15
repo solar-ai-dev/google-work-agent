@@ -20,6 +20,10 @@ class ConnectorReadRequest:
     now_ms: int
     timezone: str
     allowed_read_tool_ids: frozenset[str] | None = None
+    # This value is only injected by Retrieval's deterministic local read
+    # node after resolving a run-scoped cache handle.  It must never be put in
+    # graph state or a prompt.
+    page_token: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +32,9 @@ class ConnectorReadResult:
 
     snapshots: tuple[ResourceSnapshot, ...]
     error_code: str | None = None
+    # Raw provider continuation.  The caller must immediately place it in the
+    # run-scoped Retrieval read cache and retain only that cache handle.
+    next_page_token: str | None = None
 
 
 class ConnectorReadPort(Protocol):

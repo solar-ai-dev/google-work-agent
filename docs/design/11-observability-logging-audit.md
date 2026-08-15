@@ -1,6 +1,6 @@
 # 11. Google Work Agent · 관측성 · 로그 · 감사 설계서
 
-> **상태:** Draft v2.18 · **기준일:** 2026-08-14 · **외부 Telemetry:** Production 기본 OFF
+> **상태:** Draft v2.19 · **기준일:** 2026-08-15 · **외부 Telemetry:** Production 기본 OFF
 
 ## 먼저 읽기
 
@@ -358,6 +358,8 @@ prompt_activation_status
 - 실험 Grader가 사후 발견한 실패는 `detected_by=EXPERIMENT_GRADER`로 기록하며 Runtime 감지처럼 표현하지 않는다.
 - Budget Profile과 실제 LLM Call 수를 함께 기록한다.
 - Query Attempt에는 Query 원문 전체 대신 정규화된 제약, Hash, Score·Confidence·Stop Reason을 저장한다.
+- Query Trace는 `SEARCH | NEXT_PAGE | DETAIL_FETCH | FREEBUSY`를 구분하고 Retrieval·Score·Threshold Config Version을 기록한다. Pagination 관측에는 `read_result_handle` 식별용 안전 hash, query/page state hash, `has_next_page`, exhaustion, result count 같은 bounded metadata만 기록한다.
+- raw Provider `next_page_token`/continuation 원문은 Operational Log·Trace·Audit·Diagnostic Bundle에 기록하지 않는다.
 
 
 ## 14. Effect·Transaction 관측

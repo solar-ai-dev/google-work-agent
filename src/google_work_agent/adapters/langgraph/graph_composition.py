@@ -60,7 +60,6 @@ class GraphNodeBindings:
         if profile is GraphProfile.SIX_ROLE_BASELINE:
             names = (
                 "request_understanding",
-                "acquisition",
                 "context_retriever",
                 "work_analysis",
                 "planning",

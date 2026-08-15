@@ -6,6 +6,8 @@ import time as _time_module
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
+from hashlib import sha256
+from json import dumps
 from pathlib import Path
 from typing import Literal, cast
 
@@ -15,6 +17,7 @@ from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.ports import (
     ConnectorReadPort,
     ConnectorReadRequest,
+    ConnectorReadResult,
 )
 from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionRequestV1,
@@ -45,6 +48,11 @@ from google_work_agent.application.workflows.prompt_registry import (
 )
 from google_work_agent.application.workflows.request_understanding import (
     build_clarification_question_v1,
+)
+from google_work_agent.application.workflows.retrieval_read_cache import (
+    DetailTargetCacheEntry,
+    ReadResultCacheEntry,
+    RunScopedReadResultCache,
 )
 from google_work_agent.application.workflows.temporal_query import resolve_temporal_query
 from google_work_agent.application.workflows.tool_routing import (
@@ -84,6 +92,15 @@ class RetrievalBudget:
             "candidates": self.max_sources * self.max_candidates_per_source,
             "details": self.max_sources * self.max_details_per_source,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class MaterializedRetrievalRead:
+    """Local-only result of converting one successful connector read."""
+
+    source_summary: dict[str, object]
+    read_result_handle: str | None
+    segment_handles: tuple[str, ...]
 
 
 DEFAULT_RETRIEVAL_BUDGET = RetrievalBudget()
@@ -252,6 +269,11 @@ class ApiDiscoveryAcquisitionAgent:
     def prompt_ref(self) -> PromptReference:
         return self._prompt_ref
 
+    @property
+    def retrieval_budget(self) -> RetrievalBudget:
+        """Expose the immutable executor budget to the V2 compatibility boundary."""
+        return self._retrieval_budget
+
     def plan_sources(
         self,
         *,
@@ -338,6 +360,9 @@ class ApiDiscoveryAcquisitionAgent:
         request: WorkflowStartRequest,
         request_intent: RequestIntentV2 | None = None,
         tool_route_plan: ToolRoutePlanV2 | None = None,
+        read_result_cache: RunScopedReadResultCache | None = None,
+        read_handle_factory: Callable[[], str] | None = None,
+        page_tokens_by_source: dict[str, str] | None = None,
     ) -> AcquisitionResultV1:
         remaining = self._retrieval_budget.as_remaining()
         if not plans:
@@ -375,6 +400,9 @@ class ApiDiscoveryAcquisitionAgent:
                     remaining=remaining,
                     request_intent=request_intent,
                     tool_route_plan=tool_route_plan,
+                    read_result_cache=read_result_cache,
+                    read_handle_factory=read_handle_factory,
+                    page_token=(page_tokens_by_source or {}).get(plan["source"]),
                 )
             except GoogleWorkspaceGatewayError as error:
                 mapped = _map_gateway_error(error)
@@ -453,6 +481,66 @@ class ApiDiscoveryAcquisitionAgent:
             },
         }
 
+    def materialize_retrieval_read(
+        self,
+        *,
+        plan: SourceFetchPlanV1,
+        request: WorkflowStartRequest,
+        tool_route_plan: ToolRoutePlanV2,
+        read_result: ConnectorReadResult,
+        read_result_cache: RunScopedReadResultCache,
+        read_handle_factory: Callable[[], str],
+    ) -> MaterializedRetrievalRead:
+        """Materialize an already-executed read without workflow decisions."""
+        snapshots = read_result.snapshots
+        summary: dict[str, object] = {
+            "schema_version": 1,
+            "source": plan["source"],
+            "status": "COMPLETE",
+            "required": plan["required"],
+            "reason_codes": list(plan["reason_codes"]),
+            "resource_count": len(snapshots),
+            "resource_handles": [_resource_handle(item) for item in snapshots],
+            "resources": [_snapshot_summary(item) for item in snapshots],
+        }
+        if read_result.error_code is not None:
+            summary["error_code"] = read_result.error_code
+        route_id = _route_id_for_source(tool_route_plan, source=plan["source"])
+        handle = read_handle_factory()
+        read_result_cache.put(
+            handle=handle,
+            entry=ReadResultCacheEntry(
+                run_id=request.run_id,
+                route_id=route_id,
+                query_hash=_query_hash(plan),
+                next_page_token=read_result.next_page_token,
+                exhausted=read_result.next_page_token is None,
+                result_handles=tuple(cast(list[str], summary["resource_handles"])),
+                result_count=len(snapshots),
+            ),
+        )
+        for snapshot in snapshots:
+            detail_tool_id = _detail_tool_id(snapshot.resource_type.value)
+            if detail_tool_id is None:
+                continue
+            read_result_cache.register_detail_target(
+                entry=DetailTargetCacheEntry(
+                    run_id=request.run_id,
+                    route_id=route_id,
+                    resource_handle=_resource_handle(snapshot),
+                    source=plan["source"],
+                    resource_type=snapshot.resource_type.value,
+                    resource_id=snapshot.resource_id,
+                    parent_resource_id=snapshot.parent_id,
+                    detail_tool_id=detail_tool_id,
+                )
+            )
+        return MaterializedRetrievalRead(
+            source_summary=summary,
+            read_result_handle=handle,
+            segment_handles=tuple(cast(list[str], summary["resource_handles"])),
+        )
+
     def _acquire_one(
         self,
         *,
@@ -461,6 +549,9 @@ class ApiDiscoveryAcquisitionAgent:
         remaining: dict[str, int],
         request_intent: RequestIntentV2 | None,
         tool_route_plan: ToolRoutePlanV2 | None,
+        read_result_cache: RunScopedReadResultCache | None,
+        read_handle_factory: Callable[[], str] | None,
+        page_token: str | None,
     ) -> dict[str, object]:
         del request_intent  # Calendar FreeBusy gating now uses only the
         # typed calendar_read_mode/temporal_query plan fields (see
@@ -482,6 +573,7 @@ class ApiDiscoveryAcquisitionAgent:
                     if tool_route_plan is None
                     else allowed_read_tool_ids(tool_route_plan, source=plan["source"])
                 ),
+                page_token=page_token,
             )
         )
         snapshots = read_result.snapshots
@@ -498,6 +590,40 @@ class ApiDiscoveryAcquisitionAgent:
         }
         if error_code is not None:
             summary["error_code"] = error_code
+        if (
+            read_result_cache is not None
+            and read_handle_factory is not None
+            and tool_route_plan is not None
+        ):
+            route_id = _route_id_for_source(tool_route_plan, source=plan["source"])
+            read_result_cache.put(
+                handle=read_handle_factory(),
+                entry=ReadResultCacheEntry(
+                    run_id=request.run_id,
+                    route_id=route_id,
+                    query_hash=_query_hash(plan),
+                    next_page_token=read_result.next_page_token,
+                    exhausted=read_result.next_page_token is None,
+                    result_handles=tuple(cast(list[str], summary["resource_handles"])),
+                    result_count=len(snapshots),
+                ),
+            )
+            for snapshot in snapshots:
+                detail_tool_id = _detail_tool_id(snapshot.resource_type.value)
+                if detail_tool_id is None:
+                    continue
+                read_result_cache.register_detail_target(
+                    entry=DetailTargetCacheEntry(
+                        run_id=request.run_id,
+                        route_id=route_id,
+                        resource_handle=_resource_handle(snapshot),
+                        source=plan["source"],
+                        resource_type=snapshot.resource_type.value,
+                        resource_id=snapshot.resource_id,
+                        parent_resource_id=snapshot.parent_id,
+                        detail_tool_id=detail_tool_id,
+                    )
+                )
         return summary
 
 
@@ -691,8 +817,8 @@ def _plan_query_prompt_input(
     frozen_input_routes = (
         () if tool_route_plan is None else tool_route_plan["input_plan"]["input_routes"]
     )
+    del request
     return {
-        "user_request": request.request_text,
         "request_intent": request_intent,
         "input_routes": [
             {**route, "resource_type": coarse_resource_category(route["resource_type"])}
@@ -912,6 +1038,54 @@ def _acquisition_result(
         "missing_slots": missing_slots,
         "remaining_budget": remaining_budget,
     }
+
+
+def retrieval_query_hash(plan: SourceFetchPlanV1) -> str:
+    """Stable identity for a frozen source plan; raw provider query is excluded."""
+    return sha256(
+        dumps(
+            {
+                "source": plan["source"],
+                "constraints": plan["constraints"],
+                "page_size": plan["page_size"],
+                "calendar_read_mode": plan["calendar_read_mode"],
+                "temporal_query": plan["temporal_query"],
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+
+def _query_hash(plan: SourceFetchPlanV1) -> str:
+    return retrieval_query_hash(plan)
+
+
+def _route_id_for_source(tool_route_plan: ToolRoutePlanV2 | None, *, source: str) -> str:
+    if tool_route_plan is None:
+        raise ValueError("read-result cache requires a frozen tool route")
+    matching = sorted(
+        route["route_id"]
+        for route in tool_route_plan["input_plan"]["input_routes"]
+        if coarse_resource_category(route["resource_type"]) == _source_category(source)
+    )
+    if not matching:
+        raise ValueError(f"source is outside frozen input route: {source}")
+    return matching[0]
+
+
+def _source_category(source: str) -> str:
+    return {"GMAIL": "EMAIL", "TASKS": "TASK", "CALENDAR": "CALENDAR"}[source]
+
+
+def _detail_tool_id(resource_type: str) -> str | None:
+    return {
+        "GMAIL_THREAD": "gmail_get_thread",
+        "GMAIL_MESSAGE": "gmail_get_message",
+        "TASK": "tasks_get_task",
+        "CALENDAR_EVENT": "calendar_get_event",
+    }.get(resource_type)
 
 
 def _failed_source_summary(

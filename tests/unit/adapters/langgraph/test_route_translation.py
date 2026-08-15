@@ -1,7 +1,10 @@
 import pytest
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.route_translation import GraphRouteTranslator
+from google_work_agent.adapters.langgraph.route_translation import (
+    GraphRouteTranslator,
+    build_resume_target_registry,
+)
 from google_work_agent.application.workflows import SupervisorTarget
 
 
@@ -14,7 +17,6 @@ from google_work_agent.application.workflows import SupervisorTarget
             GraphProfile.SIX_ROLE_BASELINE,
             (
                 "request_understanding",
-                "acquisition",
                 "context_retriever",
                 "work_analysis",
                 "planning",
@@ -66,8 +68,8 @@ def test_profile_topology_is_preserved(
         (
             GraphProfile.SIX_ROLE_BASELINE,
             SupervisorTarget.API_ACQUISITION,
-            "acquisition",
-            "acquisition",
+            "context_retriever",
+            "context_retriever",
         ),
         (
             GraphProfile.SIX_ROLE_BASELINE,
@@ -127,3 +129,28 @@ def test_confirmation_resume_target_is_preserved(
         GraphRouteTranslator(profile).confirmation_resume_target({"origin_target": origin_target})
         == expected
     )
+
+
+def test_resume_target_registry_issues_and_resolves_only_registered_target() -> None:
+    registry = build_resume_target_registry(GraphProfile.SIX_ROLE_BASELINE)
+
+    target = registry.issue(subgraph_id="RETRIEVAL", node_id="finalize")
+
+    assert registry.resolve(target) == "context_retriever"
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        {"subgraph_id": "RETRIEVAL", "node_id": "unknown", "graph_version": "resume-contract-v1"},
+        {"subgraph_id": "RETRIEVAL", "node_id": "finalize", "graph_version": "wrong"},
+        {"subgraph_id": "UNKNOWN", "node_id": "finalize", "graph_version": "resume-contract-v1"},
+    ],
+)
+def test_resume_target_registry_rejects_unregistered_or_wrong_version(
+    target: dict[str, str],
+) -> None:
+    registry = build_resume_target_registry(GraphProfile.SIX_ROLE_BASELINE)
+
+    with pytest.raises(ValueError):
+        registry.resolve(target)  # type: ignore[arg-type]
