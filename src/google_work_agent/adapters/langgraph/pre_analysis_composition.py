@@ -24,8 +24,12 @@ from google_work_agent.application.workflows import (
     ToolRouteAgent,
 )
 from google_work_agent.application.workflows.retrieval_evidence_store import RunScopedEvidenceStore
+from google_work_agent.application.workflows.retrieval_query_planner import (
+    RetrievalQueryPlannerAgent,
+)
 from google_work_agent.application.workflows.retrieval_read_cache import RunScopedReadResultCache
 from google_work_agent.application.workflows.retrieval_read_executor import RetrievalReadExecutor
+from google_work_agent.application.workflows.source_fetch_plan_builder import SourceFetchPlanBuilder
 from google_work_agent.domain import ConnectorToolCatalog
 
 
@@ -42,6 +46,7 @@ def build_pre_analysis_subgraphs(
     request_agent: RequestUnderstandingAgent,
     tool_route_agent: ToolRouteAgent,
     acquisition_agent: ApiDiscoveryAcquisitionAgent,
+    retrieval_query_planner: RetrievalQueryPlannerAgent,
     context_agent: ContextRetrievalAgent,
     tool_catalog: ConnectorToolCatalog,
     id_factory: Callable[[], str],
@@ -83,6 +88,8 @@ def build_pre_analysis_subgraphs(
             merge_decision=merge_decision,
             evidence_store=evidence_store,
             acquisition_agent=acquisition_agent,
+            retrieval_query_planner=retrieval_query_planner,
+            source_fetch_plan_builder=SourceFetchPlanBuilder(),
             read_result_cache=read_result_cache,
             retrieval_read_executor=retrieval_read_executor,
         ).build(),

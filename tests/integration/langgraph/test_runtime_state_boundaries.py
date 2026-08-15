@@ -8,7 +8,7 @@ from tests.integration.langgraph.test_runtime import (
     _ACTION_REQUIRED_SEMANTIC_CASES,
     _ANSWER_ONLY_SEMANTIC_CASES,
     _PROFILE_CANDIDATE_PROMPT_IDS,
-    _SIX_ROLE_BASELINE_PROMPT_IDS,
+    _RUNTIME_ACTIVE_PROMPT_IDS,
     FIXTURE_ROOT,
     DeterministicUUID,
     FakeClock,
@@ -40,8 +40,8 @@ from tests.integration.langgraph.test_runtime import (
     _tool_catalog,
     pytest,
     sqlite_unit_of_work_factory,
-    write_manifest_with_overrides,
 )
+from tests.support.prompt_manifests import write_manifest_with_legacy_profile_slots
 
 from google_work_agent.adapters.langgraph.graph_state import CONTEXT_RAG_CANDIDATES_KEY
 
@@ -51,9 +51,10 @@ def test_single_and_three_stage_runtimes_still_reject_own_draft_prompts(
 ) -> None:
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    manifest_path = write_manifest_with_overrides(
+    manifest_path = write_manifest_with_legacy_profile_slots(
         tmp_path,
-        active_prompt_ids=_SIX_ROLE_BASELINE_PROMPT_IDS,
+        legacy_prompt_ids=_PROFILE_CANDIDATE_PROMPT_IDS,
+        active_prompt_ids=_RUNTIME_ACTIVE_PROMPT_IDS,
         draft_prompt_ids=_PROFILE_CANDIDATE_PROMPT_IDS,
     )
 

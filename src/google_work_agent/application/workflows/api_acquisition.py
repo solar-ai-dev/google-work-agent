@@ -269,6 +269,11 @@ class ApiDiscoveryAcquisitionAgent:
     def prompt_ref(self) -> PromptReference:
         return self._prompt_ref
 
+    @property
+    def retrieval_budget(self) -> RetrievalBudget:
+        """Expose the immutable executor budget to the V2 compatibility boundary."""
+        return self._retrieval_budget
+
     def plan_sources(
         self,
         *,

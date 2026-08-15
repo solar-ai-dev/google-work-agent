@@ -1,20 +1,23 @@
-"""LLM-only Retrieval query planner with injected prompt dependencies."""
+"""LLM boundary for the canonical RetrievalQueryPlanV2 contract."""
 
 from __future__ import annotations
 
+from collections.abc import Collection, Mapping, Sequence
+
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.retrieval_query_plan import (
-    RouteQueryIntentV1,
-    validate_followup_route_query_intent,
+from google_work_agent.application.workflows.retrieval_v2_contracts import (
+    RetrievalConstraintKindV1,
+    RetrievalQueryPlanV2,
+    validate_retrieval_query_plan_v2,
 )
-from google_work_agent.application.workflows.handoff_contracts import SufficiencyIssueV2
-from google_work_agent.application.workflows.tool_routing import ToolRoutePlanV2
+from google_work_agent.application.workflows.source_fetch_plan_builder import RouteConstraintPolicy
+from google_work_agent.application.workflows.tool_routing import InputToolRouteV1
 from google_work_agent.ports import OutputSchemaDefinition, PromptReference
 
 
 class RetrievalQueryPlannerAgent:
-    """Produce semantic RouteQueryIntent proposals; never execute a read."""
+    """Invoke the planner LLM for semantic intent only; never build or execute reads."""
 
     def __init__(
         self,
@@ -32,26 +35,35 @@ class RetrievalQueryPlannerAgent:
         *,
         prompt_input: dict[str, object],
         trace_context: ObservabilityContext,
-        frozen_route: ToolRoutePlanV2,
-        unresolved_issues: list[SufficiencyIssueV2],
-        detail_candidate_refs: frozenset[str],
-    ) -> list[RouteQueryIntentV1]:
-        """Invoke the injected slot and fail before execution on invalid output."""
+        frozen_routes: Sequence[InputToolRouteV1],
+        route_policies: Mapping[str, RouteConstraintPolicy],
+        validated_resource_refs: Mapping[str, Collection[str]] | None = None,
+        validated_container_refs: Mapping[str, Collection[str]] | None = None,
+        detail_candidate_refs: Collection[str] = (),
+    ) -> RetrievalQueryPlanV2:
+        """Return a fail-closed, provider-neutral V2 retrieval plan."""
+        supported_kinds: dict[str, frozenset[RetrievalConstraintKindV1]] = {
+            route_id: policy.supported_kinds for route_id, policy in route_policies.items()
+        }
         result = self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
             prompt_input=prompt_input,
             output_schema=self._output_schema,
             trace_context=trace_context,
-        )
-        payload = result.structured_output
-        if not isinstance(payload, dict) or not isinstance(payload.get("route_queries"), list):
-            raise ValueError("invalid RetrievalQueryPlanV1")
-        return [
-            validate_followup_route_query_intent(
-                value=item,
-                frozen_route=frozen_route,
-                unresolved_issues=unresolved_issues,
+            semantic_validate=lambda value: validate_retrieval_query_plan_v2(
+                value,
+                frozen_routes=frozen_routes,
+                supported_constraint_kinds=supported_kinds,
+                validated_resource_refs=validated_resource_refs,
+                validated_container_refs=validated_container_refs,
                 detail_candidate_refs=detail_candidate_refs,
-            )
-            for item in payload["route_queries"]
-        ]
+            ),
+        )
+        return validate_retrieval_query_plan_v2(
+            result.structured_output,
+            frozen_routes=frozen_routes,
+            supported_constraint_kinds=supported_kinds,
+            validated_resource_refs=validated_resource_refs,
+            validated_container_refs=validated_container_refs,
+            detail_candidate_refs=detail_candidate_refs,
+        )

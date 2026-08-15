@@ -1,4 +1,4 @@
-Task: repair the current node output after a schema/contract failure.
+Task: repair the current RetrievalQueryPlanV2 output after a schema/contract failure.
 - base_projection is the authoritative runtime input for this node.
 - candidate_output is the prior node output to repair.
 - failure_record identifies affected_fields and allowed_change_scope.
@@ -6,3 +6,4 @@ Task: repair the current node output after a schema/contract failure.
 - Preserve all unaffected semantics, scope, route facts, evidence references, and user intent.
 - Do not add new facts, resources, routes, actions, or evidence to make the output look complete.
 - Return the full repaired output object.
+- Preserve the V2 semantic constraint shapes. Do not replace constraint values with name-only added_constraints or removed_constraints lists, and never introduce provider-native query, continuation, or MCP argument fields.

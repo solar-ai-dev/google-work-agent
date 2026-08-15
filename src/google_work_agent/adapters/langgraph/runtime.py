@@ -130,6 +130,9 @@ from google_work_agent.application.workflows import (
     WorkflowPhase,
     route_supervisor,
 )
+from google_work_agent.application.workflows.api_acquisition import (
+    load_acquisition_plan_sources_prompt_reference,
+)
 from google_work_agent.application.workflows.profile_fused import (
     load_profile_single_reason_plan_prompt_reference,
     load_profile_single_request_source_prompt_reference,
@@ -141,6 +144,12 @@ from google_work_agent.application.workflows.profile_fused import (
 from google_work_agent.application.workflows.retrieval_evidence_store import (
     RunScopedEvidenceStore,
     resolve_evidence_projection,
+)
+from google_work_agent.application.workflows.retrieval_query_plan_schema import (
+    RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
+)
+from google_work_agent.application.workflows.retrieval_query_planner import (
+    RetrievalQueryPlannerAgent,
 )
 from google_work_agent.application.workflows.retrieval_read_cache import RunScopedReadResultCache
 from google_work_agent.application.workflows.retrieval_read_executor import RetrievalReadExecutor
@@ -241,6 +250,11 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._context = ContextRetrievalAgent(
             llm_runtime=llm_runtime,
             manifest_path=prompt_manifest_path,
+        )
+        self._retrieval_query_planner = RetrievalQueryPlannerAgent(
+            llm_runtime=llm_runtime,
+            prompt_ref=load_acquisition_plan_sources_prompt_reference(prompt_manifest_path),
+            output_schema=RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
         )
         self._retrieval_read_executor = RetrievalReadExecutor(
             connector_reader=connector_reader,
@@ -458,6 +472,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             request_agent=self._request_understanding,
             tool_route_agent=self._tool_route_agent,
             acquisition_agent=self._acquisition,
+            retrieval_query_planner=self._retrieval_query_planner,
             context_agent=self._context,
             tool_catalog=tool_catalog,
             id_factory=id_factory,

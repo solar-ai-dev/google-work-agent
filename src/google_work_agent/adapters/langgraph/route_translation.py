@@ -119,7 +119,7 @@ _PROFILE_ROUTES = {
     GraphProfile.SIX_ROLE_BASELINE: {
         **_COMMON_ROUTES,
         **{
-            target.value: RouteTranslation("acquisition", "acquisition")
+            target.value: RouteTranslation("context_retriever", "context_retriever")
             for target in (
                 SupervisorTarget.SOURCE_PLANNING,
                 SupervisorTarget.API_ACQUISITION,

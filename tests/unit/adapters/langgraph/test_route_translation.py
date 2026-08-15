@@ -17,7 +17,6 @@ from google_work_agent.application.workflows import SupervisorTarget
             GraphProfile.SIX_ROLE_BASELINE,
             (
                 "request_understanding",
-                "acquisition",
                 "context_retriever",
                 "work_analysis",
                 "planning",
@@ -69,8 +68,8 @@ def test_profile_topology_is_preserved(
         (
             GraphProfile.SIX_ROLE_BASELINE,
             SupervisorTarget.API_ACQUISITION,
-            "acquisition",
-            "acquisition",
+            "context_retriever",
+            "context_retriever",
         ),
         (
             GraphProfile.SIX_ROLE_BASELINE,

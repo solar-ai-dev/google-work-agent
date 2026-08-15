@@ -108,6 +108,8 @@ class RetrievalReadExecutor:
         target: DetailTargetCacheEntry,
         context: RetrievalReadContext,
     ) -> ConnectorReadResult:
+        if target.detail_tool_id not in context.allowed_read_tool_ids:
+            raise PermissionError("detail tool is outside the frozen input route")
         return self._connector_reader.read(
             ConnectorReadRequest(
                 plan=plan,
