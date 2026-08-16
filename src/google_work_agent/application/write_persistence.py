@@ -6,6 +6,7 @@ from dataclasses import asdict
 from json import dumps, loads
 from typing import cast
 
+from google_work_agent.application.observability import sanitize_event_attributes
 from google_work_agent.application.write_execution_contracts import (
     WriteActionResponse,
     WriteRunResponse,
@@ -178,6 +179,7 @@ def audit_event(
     metadata: dict[str, object],
     created_at_ms: int,
 ) -> AuditEventRecord:
+    sanitized_metadata = sanitize_event_attributes(metadata).values
     return AuditEventRecord(
         account_id=None,
         run_id=run_id,
@@ -187,7 +189,7 @@ def audit_event(
         actor_display="WriteActionService",
         event_type=event_type,
         outcome=outcome,
-        metadata_json=dumps(metadata, sort_keys=True),
+        metadata_json=dumps(sanitized_metadata, sort_keys=True),
         created_at_ms=created_at_ms,
     )
 

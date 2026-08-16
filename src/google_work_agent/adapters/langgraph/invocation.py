@@ -34,6 +34,7 @@ class WorkflowInvocationCoordinator:
         recovery_node: Callable[[GraphState], GraphState],
         has_executed_action: Callable[[str], bool],
         recover_executed_actions: Callable[[GraphState, str], GraphState],
+        mark_stalled_claims_as_unknown: Callable[[str], bool],
         cancel_signal_lock: Any,
         cancel_signals: set[str],
     ) -> None:
@@ -45,6 +46,7 @@ class WorkflowInvocationCoordinator:
         self._recovery_node = recovery_node
         self._has_executed_action = has_executed_action
         self._recover_executed_actions = recover_executed_actions
+        self._mark_stalled_claims_as_unknown = mark_stalled_claims_as_unknown
         self._cancel_signal_lock = cancel_signal_lock
         self._cancel_signals = cancel_signals
 
@@ -73,8 +75,32 @@ class WorkflowInvocationCoordinator:
                 outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
                 payload={"graph_profile": self._graph_profile.value},
             )
-        self._graph.invoke(Command(resume=request.resume_payload), config=config)
-        return self.result_from_thread(
+        if snapshot.next:
+            # A real interrupt() is pending (e.g. WAITING_CONFIRMATION,
+            # PREFLIGHT_REAPPROVAL_REQUIRED) -- Command(resume=...) is the
+            # correct way to feed the user's response back into it.
+            self._graph.invoke(Command(resume=request.resume_payload), config=config)
+            return self.result_from_thread(
+                workflow_key=request.workflow_key,
+                run_id=request.run_id,
+            )
+        # No pending interrupt: the prior invocation already reached END via
+        # a normal conditional edge (e.g. REAUTH_REQUIRED, RECOVERY_REQUIRED
+        # ending the graph without ever calling interrupt()).
+        # Command(resume=...) is a no-op against a thread with no pending
+        # task, so this resume must instead continue from persisted Domain
+        # facts -- the same mechanism recover_open_run already uses.
+        state = self._continue_from_domain_facts(
+            values=cast(GraphState, snapshot.values),
+            run_id=request.run_id,
+        )
+        if state is None:
+            return self.result_from_thread(
+                workflow_key=request.workflow_key,
+                run_id=request.run_id,
+            )
+        return self.workflow_result_from_state(
+            state=state,
             workflow_key=request.workflow_key,
             run_id=request.run_id,
         )
@@ -106,12 +132,11 @@ class WorkflowInvocationCoordinator:
                 outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
                 payload={"graph_profile": self._graph_profile.value},
             )
-        values = cast(GraphState, snapshot.values)
-        if self._latest_unknown_action(request.run_id) is not None:
-            state = self._recovery_node(values)
-        elif self._has_executed_action(request.run_id):
-            state = self._recover_executed_actions(values, request.run_id)
-        else:
+        state = self._continue_from_domain_facts(
+            values=cast(GraphState, snapshot.values),
+            run_id=request.run_id,
+        )
+        if state is None:
             return self.result_from_thread(
                 workflow_key=request.workflow_key,
                 run_id=request.run_id,
@@ -121,6 +146,27 @@ class WorkflowInvocationCoordinator:
             workflow_key=request.workflow_key,
             run_id=request.run_id,
         )
+
+    def _continue_from_domain_facts(
+        self,
+        *,
+        values: GraphState,
+        run_id: str,
+    ) -> GraphState | None:
+        """Resolve the next state purely from persisted Domain facts.
+
+        Used whenever a thread must continue without a genuine pending
+        interrupt() to resume into -- startup recovery sweeps and any
+        manual resume (e.g. REAUTH_COMPLETED) that targets a run whose
+        prior invocation ended via a normal conditional edge.
+        """
+        if self._latest_unknown_action(run_id) is not None:
+            return self._recovery_node(values)
+        if self._has_executed_action(run_id):
+            return self._recover_executed_actions(values, run_id)
+        if self._mark_stalled_claims_as_unknown(run_id):
+            return self._recovery_node(values)
+        return None
 
     @staticmethod
     def config_for_thread(workflow_key: str) -> dict[str, object]:

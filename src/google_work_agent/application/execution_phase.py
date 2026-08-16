@@ -218,16 +218,21 @@ class WriteExecutionPhaseCoordinator:
         if not isinstance(stored.attempt_id, str) or not stored.attempt_id:
             raise ValueError("attempt_id is required")
         self._begin_verification(request.run_id)
-        verified = self._verify_write(
-            VerifyWriteActionCommand(
-                command_id=self._id_factory(),
-                request_hash=self._request_hash({"kind": "verify", "action_id": request.action_id}),
-                action_id=request.action_id,
-                attempt_id=stored.attempt_id,
-                expected_action_version=stored.action_version,
-                verification_id=self._id_factory(),
+        try:
+            verified = self._verify_write(
+                VerifyWriteActionCommand(
+                    command_id=self._id_factory(),
+                    request_hash=self._request_hash(
+                        {"kind": "verify", "action_id": request.action_id}
+                    ),
+                    action_id=request.action_id,
+                    attempt_id=stored.attempt_id,
+                    expected_action_version=stored.action_version,
+                    verification_id=self._id_factory(),
+                )
             )
-        )
+        except GoogleWorkspaceGatewayError as error:
+            return self._handle_verification_error(request=request, error=error)
         return WriteExecutionPhaseResult(
             disposition=WriteExecutionDisposition.VERIFIED,
             action_status=verified.action_status,
@@ -376,6 +381,41 @@ class WriteExecutionPhaseCoordinator:
             action_status=ActionStatus.FAILED.value,
             safe_error_code=error.code.value,
         )
+
+    def _handle_verification_error(
+        self,
+        *,
+        request: WriteExecutionPhaseRequest,
+        error: GoogleWorkspaceGatewayError,
+    ) -> WriteExecutionPhaseResult:
+        # The write itself already succeeded (Action is EXECUTED) by the time
+        # verification runs, so a lost/expired credential here must never be
+        # treated as a write failure or an unknown-result write outcome --
+        # only the read-only Verification GET is uncertain. Route to Reauth
+        # (same RequireWriteReauthService the execute-step error handler
+        # uses) so a resumed run re-attempts verification only, never a new
+        # Claim/Write. Any other verification error is out of this fix's
+        # scope and keeps propagating unchanged.
+        if error.code in {
+            GoogleWorkspaceErrorCode.AUTH_EXPIRED,
+            GoogleWorkspaceErrorCode.PERMISSION_DENIED,
+        }:
+            self._require_write_reauth(
+                RequireWriteReauthCommand(
+                    command_id=self._id_factory(),
+                    request_hash=self._request_hash(
+                        {"kind": "verify_reauth", "action_id": request.action_id}
+                    ),
+                    run_id=request.run_id,
+                    action_id=request.action_id,
+                    safe_error_code=error.code.value,
+                )
+            )
+            return WriteExecutionPhaseResult(
+                disposition=WriteExecutionDisposition.REAUTH_REQUIRED,
+                safe_error_code=error.code.value,
+            )
+        raise error
 
     def _action_status(self, action_id: str) -> str | None:
         with self._unit_of_work_factory() as unit_of_work:

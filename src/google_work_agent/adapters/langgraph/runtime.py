@@ -72,6 +72,7 @@ from google_work_agent.application import (
     FinalizeReadActionCommand,
     FinalizeReadActionService,
     MarkWriteActionFailedService,
+    MarkWriteActionUnknownResultCommand,
     MarkWriteActionUnknownResultService,
     PreflightWriteActionService,
     PublishReadOnlyPlanCommand,
@@ -161,11 +162,13 @@ from google_work_agent.domain import (
     ActionStatus,
     CalendarWorkHours,
     ConnectorToolCatalog,
+    ExecutionAttemptStatus,
     ResultCode,
     RunStatus,
 )
 from google_work_agent.ports import (
     EvidenceOriginType,
+    ExecutionAttemptRecord,
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     PlanRecord,
@@ -210,6 +213,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         default_tasklist_id_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._llm_runtime = llm_runtime
         self._gateway = gateway
         self._now_ms = now_ms
         self._id_factory = id_factory
@@ -598,6 +602,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             recovery_node=self._write_recovery.recover_unknown,
             has_executed_action=self._has_executed_action,
             recover_executed_actions=self._write_recovery.recover_executed,
+            mark_stalled_claims_as_unknown=self._mark_stalled_claims_as_unknown,
             cancel_signal_lock=self._cancel_signal_lock,
             cancel_signals=self._cancel_signals,
         )
@@ -1016,6 +1021,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             )
         self._evidence_store.discard_run(run_id=run_id)
         self._read_result_cache.discard_run(run_id=run_id)
+        self._llm_runtime.discard_run(run_id=run_id)
         return {
             **state,
             "__target__": "end",
@@ -1494,6 +1500,9 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
 
     def _latest_attempt_id(self, action_id: str) -> str:
+        return self._latest_attempt(action_id).id
+
+    def _latest_attempt(self, action_id: str) -> ExecutionAttemptRecord:
         with self._unit_of_work_factory() as unit_of_work:
             approvals = unit_of_work.approvals.list_by_action(action_id)
             attempts = [
@@ -1503,7 +1512,47 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             ]
             if not attempts:
                 raise LookupError(f"execution attempt not found for action: {action_id}")
-            return max(attempts, key=lambda item: (item.attempt_no, item.started_at_ms)).id
+            return max(attempts, key=lambda item: (item.attempt_no, item.started_at_ms))
+
+    def _mark_stalled_claims_as_unknown(self, run_id: str) -> bool:
+        # Startup/resume reconciliation for a crash between Claim-commit and
+        # either successful dispatch or MarkWriteActionUnknownResult ever
+        # running: the Action is left at EXECUTING with no terminal
+        # ExecutionAttempt. Whether the Provider actually received the
+        # dispatch is unknowable, so this is conservatively treated as
+        # ambiguous delivery (never assumed NOT_SENT) via the same
+        # MarkWriteActionUnknownResult command a live timeout/connection-
+        # closed error already uses -- it never re-claims or re-dispatches,
+        # only marks the existing Attempt/Action UNKNOWN_RESULT so the
+        # normal Recovery path (fingerprint search / GET-based, no blind
+        # resend) takes over.
+        marked_any = False
+        for plan in self._plans_for_run(run_id):
+            for action in self._list_actions(plan.id):
+                if action.status != ActionStatus.EXECUTING.value:
+                    continue
+                attempt = self._latest_attempt(action.id)
+                if attempt.status != ExecutionAttemptStatus.CLAIMED.value:
+                    continue
+                response = self._mark_write_unknown(
+                    MarkWriteActionUnknownResultCommand(
+                        command_id=self._id_factory(),
+                        request_hash=self._request_hash(
+                            {"kind": "restart_stalled_claim", "action_id": action.id}
+                        ),
+                        action_id=action.id,
+                        attempt_id=attempt.id,
+                        expected_action_version=action.version,
+                        expected_attempt_version=attempt.version,
+                        error_code="RESTART_DELIVERY_AMBIGUOUS",
+                        error_detail=(
+                            "process restarted with this action's write claimed but "
+                            "no terminal execution result recorded"
+                        ),
+                    )
+                )
+                marked_any = marked_any or response.applied
+        return marked_any
 
     def _complete_write_run_if_verified(self, plan_id: str, run_id: str) -> None:
         if self._has_persisted_cancel_intent(run_id):

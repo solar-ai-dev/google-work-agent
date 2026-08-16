@@ -462,6 +462,240 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
         restarted.close()
 
 
+def test_verification_auth_expired_reauths_and_resumes_to_verified_without_replaying_write(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    checkpoint_path = tmp_path / "checkpoints-verify-reauth.db"
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=checkpoint_path,
+        prompt_manifest_path=manifest_path,
+    )
+    assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    approved = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=lambda: 1000,
+    )(
+        ApproveWriteActionCommand(
+            command_id="approve-before-verify-reauth",
+            request_hash="e" * 64,
+            action_id="action-1",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-before-verify-reauth",
+            idempotency_key="f" * 64,
+        )
+    )
+    assert approved.applied is True
+
+    # A. Resuming the pending "waiting_approval" interrupt drives the real
+    # action_execution graph node. The write succeeds, then the
+    # Verification GET hits AUTH_EXPIRED.
+    gateway.queue_fault(
+        operation="get_task",
+        fault=GoogleGatewayFault(kind=GoogleGatewayFaultKind.HTTP_401),
+    )
+    approval_resumed = runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="APPROVAL",
+            resume_payload={"approved": True},
+            correlation=WorkflowCorrelationContext(
+                request_id="approval-resume-request",
+                command_id="approval-resume-command",
+                api_contract_version="1",
+            ),
+        )
+    )
+    assert approval_resumed.outcome is WorkflowOutcome.ACCEPTED
+    assert approval_resumed.payload["run_status"] == "REAUTH_REQUIRED"
+    assert gateway.count_calls("create_task") == 1
+
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT COUNT(*) FROM verifications);
+            """
+        ).fetchone()
+        assert tuple(row) == ("REAUTH_REQUIRED", "EXECUTED", 0)
+    finally:
+        connection.close()
+
+    # B. Reauth completes; resume re-attempts Verification only (the fault
+    # queue is one-shot, so the retried GET now succeeds) and reaches
+    # VERIFIED / COMPLETED.
+    resumed = runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="REAUTH_COMPLETED",
+            resume_payload={},
+            correlation=WorkflowCorrelationContext(
+                request_id="reauth-resume-request",
+                command_id="reauth-resume-command",
+                api_contract_version="1",
+            ),
+        )
+    )
+    assert resumed.outcome is WorkflowOutcome.COMPLETED
+
+    # C. The write was never replayed -- exactly one create_task call total,
+    # across both the original attempt and the reauth resume.
+    assert gateway.count_calls("create_task") == 1
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT COUNT(*) FROM execution_attempts),
+                (SELECT COUNT(*) FROM verifications);
+            """
+        ).fetchone()
+        assert tuple(row) == ("COMPLETED", "VERIFIED", 1, 1)
+    finally:
+        connection.close()
+        runtime.close()
+
+
+def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    checkpoint_path = tmp_path / "checkpoints-claim-stalled-restart.db"
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=checkpoint_path,
+        prompt_manifest_path=manifest_path,
+    )
+    assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    approved = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=lambda: 1000,
+    )(
+        ApproveWriteActionCommand(
+            command_id="approve-before-claim-stall",
+            request_hash="e" * 64,
+            action_id="action-1",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-before-claim-stall",
+            idempotency_key="f" * 64,
+        )
+    )
+    assert approved.applied is True
+
+    # Claim commits (Action -> EXECUTING, Attempt -> CLAIMED), then the
+    # process is simulated to crash before ExecuteWriteActionService (or
+    # any terminal execution result) ever runs -- dispatch's delivery is
+    # genuinely unknown, not "not sent".
+    runtime._preflight_write(action_id="action-1")  # noqa: SLF001
+    claim = runtime._claim_write(  # noqa: SLF001
+        ClaimWriteActionCommand(
+            command_id="claim-before-stall",
+            request_hash="1" * 64,
+            action_id="action-1",
+            expected_version=approved.action_version,
+            source_snapshot={},
+            attempt_id="attempt-before-stall",
+            nonce="nonce-before-stall",
+        )
+    )
+    assert claim.claim_token is not None
+    assert gateway.count_calls("create_task") == 0
+
+    connection = connect_sqlite(database_path)
+    try:
+        stalled_state = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT status FROM execution_attempts WHERE id = 'attempt-before-stall');
+            """
+        ).fetchone()
+        assert tuple(stalled_state) == ("WAITING_APPROVAL", "EXECUTING", "CLAIMED")
+    finally:
+        connection.close()
+    runtime.close()
+
+    restarted = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=gateway,
+        checkpoint_database_path=checkpoint_path,
+        prompt_manifest_path=manifest_path,
+    )
+    recovered = restarted.recover_open_run(
+        WorkflowRecoveryRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            domain_status="WAITING_APPROVAL",
+            domain_version=2,
+            correlation=WorkflowCorrelationContext(
+                request_id="startup-recovery-claim-stall",
+                command_id=None,
+                api_contract_version="1",
+            ),
+        )
+    )
+
+    # The run is no longer silently stalled: it reached a real, actionable
+    # Recovery outcome, and the write was never blindly retried/replayed.
+    assert recovered.outcome is WorkflowOutcome.RECOVERY_REQUIRED
+    assert gateway.count_calls("create_task") == 0
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT status FROM execution_attempts WHERE id = 'attempt-before-stall'),
+                (SELECT COUNT(*) FROM execution_attempts);
+            """
+        ).fetchone()
+        assert tuple(row) == ("RECOVERY_REQUIRED", "UNKNOWN_RESULT", "UNKNOWN_RESULT", 1)
+    finally:
+        connection.close()
+        restarted.close()
+
+
 @pytest.mark.parametrize(
     ("plan_output", "expected_operation", "context_family", "recovery_fault", "intent"),
     [

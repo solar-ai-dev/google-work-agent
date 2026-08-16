@@ -16,6 +16,7 @@ from google_work_agent.application.observability import (
     Severity,
 )
 from google_work_agent.application.schema_validation import validate_output_schema
+from google_work_agent.application.workflows.contracts import ABSOLUTE_MAX_LLM_CALLS
 from google_work_agent.ports import (
     ActualRuntime,
     ApprovedModelInfo,
@@ -105,6 +106,9 @@ class StructuredLLMRuntime(Protocol):
         ``invoke_structured``, except repair also stays in tool-calling mode.
         """
 
+    def discard_run(self, *, run_id: str) -> None:
+        """Release any per-run LLM call accounting held for ``run_id``."""
+
 
 @dataclass(frozen=True, slots=True)
 class NullLLMEventRecorder:
@@ -137,6 +141,35 @@ class LLMRuntimeService:
 
     def __post_init__(self) -> None:
         self._semaphore = threading.Semaphore(1)
+        self._llm_call_counts: dict[str, int] = {}
+        self._llm_call_counts_lock = threading.Lock()
+
+    def _consume_llm_call_budget(self, *, run_id: str | None) -> None:
+        # The Run-level ABSOLUTE_MAX_LLM_CALLS ceiling from the Canonical
+        # RunBudgetV1 contract (docs/06-agent-workflow.md), enforced here
+        # because this is the one boundary every real Provider LLM call --
+        # INITIAL, SCHEMA_REPAIR, SEMANTIC_REVISION, Planning revise, Review
+        # recheck, Retrieval follow-up rounds -- passes through, regardless
+        # of which Node/Agent issued it. Deliberately does not fail closed
+        # when run_id is absent (e.g. test doubles / tooling invocations
+        # with no Run context) -- production trace_context always carries
+        # run_id.
+        if run_id is None:
+            return
+        with self._llm_call_counts_lock:
+            used = self._llm_call_counts.get(run_id, 0)
+            if used + 1 > ABSOLUTE_MAX_LLM_CALLS:
+                raise LLMInvocationError(
+                    LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED,
+                    f"run {run_id} exhausted its absolute LLM call budget "
+                    f"({ABSOLUTE_MAX_LLM_CALLS} calls)",
+                    retryable=False,
+                )
+            self._llm_call_counts[run_id] = used + 1
+
+    def discard_run(self, *, run_id: str) -> None:
+        with self._llm_call_counts_lock:
+            self._llm_call_counts.pop(run_id, None)
 
     def invoke_structured(
         self,
@@ -147,6 +180,7 @@ class LLMRuntimeService:
         trace_context: ObservabilityContext,
         semantic_validate: Callable[[object], object] | None = None,
     ) -> StructuredLLMResult:
+        self._consume_llm_call_budget(run_id=trace_context.run_id)
         if not self._semaphore.acquire(
             timeout=max(
                 self.runtime_policy.local_timeout_seconds,
@@ -180,6 +214,7 @@ class LLMRuntimeService:
         trace_context: ObservabilityContext,
         semantic_validate: Callable[[object], object] | None = None,
     ) -> StructuredLLMResult:
+        self._consume_llm_call_budget(run_id=trace_context.run_id)
         if not self._semaphore.acquire(
             timeout=max(
                 self.runtime_policy.local_timeout_seconds,

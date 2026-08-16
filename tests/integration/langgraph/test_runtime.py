@@ -125,6 +125,9 @@ class _QueuedLLMRuntime:
     def invoke_tool_call(self, **kwargs: object) -> StructuredLLMResult:
         return self._invoke(**kwargs)
 
+    def discard_run(self, *, run_id: str) -> None:
+        del run_id
+
     def _invoke(self, **kwargs: object) -> StructuredLLMResult:
         if self._before_invoke is not None:
             self._before_invoke()

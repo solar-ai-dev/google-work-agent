@@ -13,6 +13,9 @@ from google_work_agent.application.write_action_arguments import (
 from google_work_agent.application.write_action_arguments import (
     required_argument_string as _required_argument_string,
 )
+from google_work_agent.application.write_cancellation import (
+    has_durable_cancel_intent as _has_durable_cancel_intent,
+)
 from google_work_agent.application.write_execution_contracts import (
     WriteActionResponse,
     WriteRunResponse,
@@ -836,6 +839,27 @@ class ResolveMismatchRecoveryService:
                     plan_id=plan.id,
                     plan_status=plan.status.value,
                     conflict_detail="recovery requires a MISMATCH action owned by the run",
+                )
+                return _finish_recovery_response(
+                    unit_of_work=unit_of_work,
+                    command_id=command.command_id,
+                    response=response,
+                    now_ms=now_ms,
+                )
+
+            if _has_durable_cancel_intent(unit_of_work, run.id):
+                response = WriteRunResponse(
+                    applied=False,
+                    result_code=ResultCode.STATE_CONFLICT.value,
+                    run_id=run.id,
+                    run_status=run.status.value,
+                    run_version=run.version,
+                    plan_id=plan.id,
+                    plan_status=plan.status.value,
+                    conflict_detail=(
+                        "ACCEPT_PARTIAL and CREATE_CORRECTIVE_PLAN require "
+                        "cancel_intent_active=false; use CANCEL instead"
+                    ),
                 )
                 return _finish_recovery_response(
                     unit_of_work=unit_of_work,

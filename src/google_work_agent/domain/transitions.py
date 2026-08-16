@@ -67,9 +67,14 @@ RUN_TRANSITIONS: dict[tuple[RunStatus, RunCommand], RunStatus] = {
     (RunStatus.RETRIEVING, RunCommand.REQUIRE_REAUTH): RunStatus.REAUTH_REQUIRED,
     (RunStatus.WAITING_APPROVAL, RunCommand.REQUIRE_REAUTH): RunStatus.REAUTH_REQUIRED,
     (RunStatus.EXECUTING, RunCommand.REQUIRE_REAUTH): RunStatus.REAUTH_REQUIRED,
+    (RunStatus.VERIFYING, RunCommand.REQUIRE_REAUTH): RunStatus.REAUTH_REQUIRED,
     (RunStatus.EXECUTING, RunCommand.BEGIN_VERIFICATION): RunStatus.VERIFYING,
     (RunStatus.WAITING_APPROVAL, RunCommand.BEGIN_VERIFICATION): RunStatus.VERIFYING,
     (RunStatus.CANCEL_REQUESTED, RunCommand.BEGIN_VERIFICATION): RunStatus.VERIFYING,
+    # Resuming after ResumeAfterReauth when the write already reached
+    # EXECUTED before the credential loss -- the safe checkpoint phase to
+    # resume into is re-verification, not re-dispatch.
+    (RunStatus.REAUTH_REQUIRED, RunCommand.BEGIN_VERIFICATION): RunStatus.VERIFYING,
 }
 
 RUN_COMMAND_ORDER = tuple(RunCommand)
