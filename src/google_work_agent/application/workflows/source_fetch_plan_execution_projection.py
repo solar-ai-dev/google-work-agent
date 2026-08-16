@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import cast
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from google_work_agent.application.workflows.api_acquisition import RetrievalBudget
 from google_work_agent.application.workflows.handoff_contracts import (
@@ -40,9 +41,9 @@ def project_for_legacy_read_executor(
         route = route_by_id.get(plan["route_id"])
         if route is None:
             raise SourceFetchPlanExecutionProjectionError("plan route is not frozen")
-        if plan["operation_kind"] != "SEARCH":
+        if plan["operation_kind"] not in {"SEARCH", "FREEBUSY"}:
             raise SourceFetchPlanExecutionProjectionError(
-                "legacy read executor projection currently supports SEARCH only"
+                "legacy read executor projection currently supports SEARCH and FREEBUSY only"
             )
         constraints, calendar_read_mode, temporal_query = _legacy_constraints(plan)
         source = {"EMAIL": "GMAIL", "TASK": "TASKS", "CALENDAR": "CALENDAR"}[plan["resource_type"]]
@@ -68,6 +69,10 @@ def project_for_legacy_read_executor(
 def _legacy_constraints(
     plan: SourceFetchPlanV1,
 ) -> tuple[dict[str, object], str | None, dict[str, object] | None]:
+    if plan["operation_kind"] == "FREEBUSY" and plan["resource_type"] != "CALENDAR":
+        raise SourceFetchPlanExecutionProjectionError(
+            "FREEBUSY is only supported for CALENDAR routes"
+        )
     if plan["resource_type"] == "EMAIL":
         return _gmail_constraints(plan), None, None
     if plan["resource_type"] == "TASK":
@@ -170,6 +175,10 @@ def _calendar_constraints(
         )
     )
     if temporal is None:
+        if plan["operation_kind"] == "FREEBUSY":
+            raise SourceFetchPlanExecutionProjectionError(
+                "FREEBUSY requires a temporal range constraint"
+            )
         return legacy_constraints, "EVENTS_ONLY", None
     if temporal["axis"] not in {"EVENT_TIME", "AVAILABILITY_WINDOW"}:
         raise SourceFetchPlanExecutionProjectionError("temporal axis is incompatible with CALENDAR")
@@ -177,6 +186,7 @@ def _calendar_constraints(
         raise SourceFetchPlanExecutionProjectionError(
             "calendar temporal translation requires both bounds"
         )
+    timezone_value = cast(str, temporal["timezone"])
     return (
         legacy_constraints,
         "EVENTS_AND_FREEBUSY",
@@ -187,7 +197,26 @@ def _calendar_constraints(
             "relative_offset": None,
             "weekday": None,
             "daypart": None,
-            "absolute_start": temporal["start_local"],
-            "absolute_end": temporal["end_local"],
+            "absolute_start": _local_to_rfc3339(
+                cast(str, temporal["start_local"]), timezone_value
+            ),
+            "absolute_end": _local_to_rfc3339(cast(str, temporal["end_local"]), timezone_value),
         },
     )
+
+
+def _local_to_rfc3339(local_iso: str, timezone: str) -> str:
+    """Attach the constraint's own IANA timezone to an offset-free local instant.
+
+    ``SemanticRetrievalConstraintV1`` TEMPORAL_RANGE values are validated as
+    offset-free local ISO (``_local_iso`` in retrieval_v2_contracts.py) so
+    the LLM never authors a provider-facing offset itself; this is the one
+    deterministic place that turns the (local, timezone) pair into the
+    offset-bearing RFC3339 instant ``TimeRange``/``FreeBusy`` require.
+    """
+    try:
+        return datetime.fromisoformat(local_iso).replace(tzinfo=ZoneInfo(timezone)).isoformat()
+    except (ValueError, ZoneInfoNotFoundError) as error:
+        raise SourceFetchPlanExecutionProjectionError(
+            "calendar temporal value could not be localized"
+        ) from error

@@ -206,7 +206,8 @@ def test_context_needs_more_data_routes_to_source_planning_with_budget_update() 
     decision = route_supervisor(
         phase=WorkflowPhase.CONTEXT_EVALUATION,
         state=state,
-        result=result,
+        result={"disposition": "NEEDS_MORE_DATA", "typed_result": None},
+        legacy_retrieval_result=result,
     )
 
     assert decision["target"] == SupervisorTarget.SOURCE_PLANNING.value
@@ -226,11 +227,13 @@ def test_context_needs_confirmation_becomes_user_interrupt() -> None:
         request_intent=_request_intent(),
         workflow_phase=WorkflowPhase.CONTEXT_EVALUATION,
     )
+    result = _context_result("NEEDS_CONFIRMATION")
 
     decision = route_supervisor(
         phase=WorkflowPhase.CONTEXT_EVALUATION,
         state=state,
-        result=_context_result("NEEDS_CONFIRMATION"),
+        result={"disposition": "NEEDS_CONFIRMATION", "typed_result": None},
+        legacy_retrieval_result=result,
     )
 
     assert decision["target"] == SupervisorTarget.WAITING_CONFIRMATION.value
@@ -255,6 +258,64 @@ def test_analysis_complete_routes_to_solution_planning() -> None:
     assert decision["next_phase"] == WorkflowPhase.SOLUTION_PLANNING.value
     assert decision["state_update"]["analysis_result"] is not None
     assert decision["state_update"]["analysis_result"]["status"] == "COMPLETE"
+
+
+def test_analysis_needs_more_data_with_frozen_route_becomes_retrieval_required() -> None:
+    """Q2-HANDOFF: WorkAnalysis NEEDS_MORE_DATA -> RetrievalRequiredV1 -> Retrieval,
+    only when a frozen IN Route already exists to retry within."""
+    plan = _tool_route_plan()
+    plan["input_plan"]["input_routes"] = [
+        {
+            "route_id": "route-1",
+            "resource_type": "TASK",
+            "connector_id": "google_workspace",
+            "allowed_read_tool_ids": ["tasks.list_tasks"],
+            "required": True,
+            "reason_codes": ["REQUIRED"],
+        }
+    ]
+    state = _state(workflow_phase=WorkflowPhase.WORK_ANALYSIS)
+    state["tool_route_plan"] = plan
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.WORK_ANALYSIS,
+        state=state,
+        result=_analysis_result("NEEDS_MORE_DATA"),
+    )
+
+    assert decision["target"] == SupervisorTarget.CONTEXT_RETRIEVAL.value
+    assert decision["next_phase"] == WorkflowPhase.CONTEXT_RETRIEVAL.value
+    signal = decision["state_update"]["workflow_signal"]
+    assert signal is not None
+    assert signal["kind"] == "RETRIEVAL_REQUIRED"
+    assert signal["needs"] == [
+        {"required_information": "Need the due date.", "reason_codes": ["EVIDENCE_GAP"]}
+    ]
+    assert decision["state_update"]["retry_budget"]["additional_acquisitions_used"] == 1
+
+
+def test_analysis_needs_more_data_without_frozen_route_becomes_route_reconsideration() -> None:
+    """Q2-HANDOFF: WorkAnalysis NEEDS_MORE_DATA with no frozen IN Route to retry
+    within -> RouteReconsiderationRequiredV1 -> Tool Route, not RetrievalRequiredV1."""
+    state = _state(workflow_phase=WorkflowPhase.WORK_ANALYSIS)
+    state["tool_route_plan"] = _tool_route_plan()  # input_routes == []
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.WORK_ANALYSIS,
+        state=state,
+        result=_analysis_result("NEEDS_MORE_DATA"),
+    )
+
+    assert decision["target"] == SupervisorTarget.TOOL_ROUTE.value
+    assert decision["next_phase"] == WorkflowPhase.TOOL_ROUTING.value
+    signal = decision["state_update"]["workflow_signal"]
+    assert signal is not None
+    assert signal["kind"] == "ROUTE_RECONSIDERATION_REQUIRED"
+    # Leading marker distinguishes this fail-closed executability-guard
+    # fallback from an official ROUTE_RECONSIDERATION_REQUIRED disposition
+    # (that channel is _route_reconsideration, tested separately above).
+    assert signal["reason_codes"] == ["RETRIEVAL_INPUT_ROUTE_UNAVAILABLE", "EVIDENCE_GAP"]
+    assert decision["reason_code"] == "RETRIEVAL_INPUT_ROUTE_UNAVAILABLE"
 
 
 def test_solution_planning_answer_only_routes_to_review_inspect() -> None:
@@ -595,6 +656,129 @@ def test_review_retrieve_more_budget_deny_blocks_instead_of_guessing_failure() -
     assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
 
 
+def test_review_retrieve_more_with_frozen_route_becomes_retrieval_required() -> None:
+    """Q2-HANDOFF: Review RETRIEVE_MORE -> RetrievalRequiredV1 -> Retrieval,
+    only when a frozen IN Route already exists to retry within."""
+    plan = _tool_route_plan()
+    plan["input_plan"]["input_routes"] = [
+        {
+            "route_id": "route-1",
+            "resource_type": "EMAIL",
+            "connector_id": "google_workspace",
+            "allowed_read_tool_ids": ["gmail.search_threads"],
+            "required": True,
+            "reason_codes": ["REQUIRED"],
+        }
+    ]
+    state = _state(
+        workflow_phase=WorkflowPhase.PLAN_REVIEW,
+        answer_draft=_answer_draft("ANSWER_ONLY"),
+    )
+    state["tool_route_plan"] = plan
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.PLAN_REVIEW,
+        state=state,
+        result=_review_result("RETRIEVE_MORE"),
+    )
+
+    assert decision["target"] == SupervisorTarget.CONTEXT_RETRIEVAL.value
+    assert decision["next_phase"] == WorkflowPhase.CONTEXT_RETRIEVAL.value
+    signal = decision["state_update"]["workflow_signal"]
+    assert signal is not None
+    assert signal["kind"] == "RETRIEVAL_REQUIRED"
+    assert signal["needs"] == [
+        {"required_information": "Need one more source.", "reason_codes": ["EVIDENCE_GAP"]}
+    ]
+
+
+def test_review_retrieve_more_without_frozen_route_becomes_route_reconsideration() -> None:
+    """Q2-HANDOFF: Review RETRIEVE_MORE with no frozen IN Route to retry within
+    -> RouteReconsiderationRequiredV1 -> Tool Route, not RetrievalRequiredV1."""
+    state = _state(
+        workflow_phase=WorkflowPhase.PLAN_REVIEW,
+        answer_draft=_answer_draft("ANSWER_ONLY"),
+    )
+    state["tool_route_plan"] = _tool_route_plan()  # input_routes == []
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.PLAN_REVIEW,
+        state=state,
+        result=_review_result("RETRIEVE_MORE"),
+    )
+
+    assert decision["target"] == SupervisorTarget.TOOL_ROUTE.value
+    assert decision["next_phase"] == WorkflowPhase.TOOL_ROUTING.value
+    signal = decision["state_update"]["workflow_signal"]
+    assert signal is not None
+    assert signal["kind"] == "ROUTE_RECONSIDERATION_REQUIRED"
+    assert signal["reason_codes"] == ["RETRIEVAL_INPUT_ROUTE_UNAVAILABLE", "EVIDENCE_GAP"]
+    assert decision["reason_code"] == "RETRIEVAL_INPUT_ROUTE_UNAVAILABLE"
+
+
+def test_work_analysis_route_reconsideration_required_routes_to_tool_route() -> None:
+    """Pre-Prompt Output Contract Alignment: WorkAnalysis's own official
+    ROUTE_RECONSIDERATION_REQUIRED disposition is intercepted by
+    _route_reconsideration before _route_analysis ever runs -- distinct from
+    the NEEDS_MORE_DATA executability-guard fallback tested above."""
+    state = _state(workflow_phase=WorkflowPhase.WORK_ANALYSIS)
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.WORK_ANALYSIS,
+        state=state,
+        result=_analysis_result("ROUTE_RECONSIDERATION_REQUIRED"),
+    )
+
+    assert decision["target"] == SupervisorTarget.TOOL_ROUTE.value
+    assert decision["next_phase"] == WorkflowPhase.TOOL_ROUTING.value
+    signal = decision["state_update"]["workflow_signal"]
+    assert signal is not None
+    assert signal["kind"] == "ROUTE_RECONSIDERATION_REQUIRED"
+    assert decision["state_update"]["analysis_result"] is None
+
+
+def test_solution_planning_route_reconsideration_required_routes_to_tool_route() -> None:
+    state = _state(workflow_phase=WorkflowPhase.SOLUTION_PLANNING)
+    result = _answer_draft("ANSWER_ONLY")
+    result["status"] = "ROUTE_RECONSIDERATION_REQUIRED"
+    result["reason_codes"] = ["NEW_RESOURCE_ROUTE_REQUIRED"]
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.SOLUTION_PLANNING,
+        state=state,
+        result=result,
+    )
+
+    assert decision["target"] == SupervisorTarget.TOOL_ROUTE.value
+    assert decision["next_phase"] == WorkflowPhase.TOOL_ROUTING.value
+    signal = decision["state_update"]["workflow_signal"]
+    assert signal is not None
+    assert signal["kind"] == "ROUTE_RECONSIDERATION_REQUIRED"
+    assert signal["reason_codes"] == ["NEW_RESOURCE_ROUTE_REQUIRED"]
+    assert decision["state_update"]["answer_draft"] is None
+    assert decision["state_update"]["plan_draft"] is None
+
+
+def test_review_route_reconsideration_routes_to_tool_route() -> None:
+    state = _state(
+        workflow_phase=WorkflowPhase.PLAN_REVIEW,
+        answer_draft=_answer_draft("ANSWER_ONLY"),
+    )
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.PLAN_REVIEW,
+        state=state,
+        result=_review_result("ROUTE_RECONSIDERATION"),
+    )
+
+    assert decision["target"] == SupervisorTarget.TOOL_ROUTE.value
+    assert decision["next_phase"] == WorkflowPhase.TOOL_ROUTING.value
+    signal = decision["state_update"]["workflow_signal"]
+    assert signal is not None
+    assert signal["kind"] == "ROUTE_RECONSIDERATION_REQUIRED"
+    assert decision["state_update"]["plan_review"] is None
+
+
 def test_additional_acquisition_budget_deny_preserves_partial_result_kind_when_present() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
@@ -810,11 +994,19 @@ def _context_result(
 
 
 def _analysis_result(
-    status: Literal["COMPLETE", "NEEDS_MORE_DATA", "NEEDS_CONFIRMATION", "BLOCKED"],
+    status: Literal[
+        "COMPLETE",
+        "NEEDS_MORE_DATA",
+        "NEEDS_CONFIRMATION",
+        "ROUTE_RECONSIDERATION_REQUIRED",
+        "BLOCKED",
+    ],
 ) -> WorkAnalysisResultV1:
     additional_request: AdditionalAcquisitionRequestV1 | None = None
     confirmation: dict[str, object] | None = None
+    missing_information: list[str] = []
     if status == "NEEDS_MORE_DATA":
+        missing_information = ["Need the due date."]
         additional_request = {
             "schema_version": 1,
             "origin_phase": WorkflowPhase.WORK_ANALYSIS.value,
@@ -824,6 +1016,8 @@ def _analysis_result(
             "evidence_refs": ["evidence-1"],
             "reason_codes": ["EVIDENCE_GAP"],
         }
+    if status == "ROUTE_RECONSIDERATION_REQUIRED":
+        missing_information = ["Requires a resource outside the current route."]
     if status == "NEEDS_CONFIRMATION":
         confirmation = {
             "question": "Should we focus on only this week?",
@@ -848,7 +1042,7 @@ def _analysis_result(
                 "reason_codes": ["EVIDENCE_SUPPORTED"],
             }
         ],
-        "missing_information": ["Need the due date."] if status == "NEEDS_MORE_DATA" else [],
+        "missing_information": missing_information,
         "confirmation": confirmation,
         "blockers": ["unsupported"] if status == "BLOCKED" else [],
         "evidence_refs": ["evidence-1"],
@@ -926,7 +1120,9 @@ def _action_draft() -> ActionDraftV1:
 
 
 def _review_result(
-    status: Literal["PASS", "REVISE", "RETRIEVE_MORE", "CONFIRM", "BLOCK"],
+    status: Literal[
+        "PASS", "REVISE", "RETRIEVE_MORE", "ROUTE_RECONSIDERATION", "CONFIRM", "BLOCK"
+    ],
 ) -> PlanReviewResultV1:
     request: AdditionalAcquisitionRequestV1 | None = None
     confirmation: dict[str, object] | None = None
@@ -969,6 +1165,20 @@ def _review_result(
             "evidence_refs": ["evidence-1"],
             "reason_codes": ["EVIDENCE_GAP"],
         }
+    if status == "ROUTE_RECONSIDERATION":
+        issues = [
+            {
+                "schema_version": 2,
+                "issue_id": "issue-1",
+                "kind": "ROUTE_CANNOT_SATISFY_REQUEST",
+                "message": "The fixed route cannot satisfy the request",
+                "affected_action_ids": [],
+                "affected_field_paths": ["answer"],
+                "evidence_refs": ["evidence-1"],
+                "resource_refs": ["message:1"],
+                "reason_codes": ["ROUTE_CANNOT_SATISFY_REQUEST"],
+            }
+        ]
     if status == "CONFIRM":
         confirmation = {
             "question": "Which interpretation is correct?",

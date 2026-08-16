@@ -91,30 +91,6 @@
       "assembled_hash": "1d84cc1993c75e2ef15a0c8889893169ebcc695f6c0dff7c2368c720a30e389b"
     },
     {
-      "slot_id": "request_understanding.classify.revise",
-      "prompt_id": "request_understanding.classify.revise",
-      "agent_role": "request_understanding",
-      "subgraph_name": "request_understanding",
-      "node_name": "classify",
-      "node_state": "SEMANTIC_REVISION",
-      "purpose": "revise",
-      "input_schema_version": "r8.6-runtime-input-snapshot-v1",
-      "output_schema_version": "r8.6-output-contract-snapshot-v1",
-      "prompt_version": "0.9.0",
-      "activation_status": "DRAFT",
-      "files": [
-        "prompts/agent/r8.6/six/request_understanding/base.md",
-        "prompts/agent/r8.6/six/request_understanding/revise.md"
-      ],
-      "input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/repair-revision-envelope-v1.schema.json",
-      "output_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/request-intent-candidate-v2.schema.json",
-      "base_input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/request-understanding-input-v1.schema.json",
-      "supported_failure_reason_codes": "ALLOWLISTED_BY_FAILURE_RECORD",
-      "content_hash": "ae66892027f1d1cb59d4235f4c4cc4a1508660d71d3b0a1879272f13e07a5127",
-      "assembled_path": "prompts/agent/assembled-r8.6/request_understanding.classify.revise.md",
-      "assembled_hash": "0aec6a09cdc0669e4a261609b239e84fdf73a4b60b666a792b7f7d02c4cc365d"
-    },
-    {
       "slot_id": "tool_route.determine_io_resources",
       "prompt_id": "tool_route.determine_io_resources",
       "agent_role": "tool_route",
@@ -444,30 +420,6 @@
       "content_hash": "6de12afc914548f2c9ff79814e7bc5cb5bae51643d1f40bd619dceab9481ed90",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.assess_sufficiency.repair.md",
       "assembled_hash": "f59b59116b67e872c4296b9f2c699369827f69dec3df0c54798190c6f391f0db"
-    },
-    {
-      "slot_id": "retrieval.assess_sufficiency.revise",
-      "prompt_id": "retrieval.assess_sufficiency.revise",
-      "agent_role": "retrieval",
-      "subgraph_name": "retrieval",
-      "node_name": "assess_sufficiency",
-      "node_state": "SEMANTIC_REVISION",
-      "purpose": "revise",
-      "input_schema_version": "r8.6-runtime-input-snapshot-v1",
-      "output_schema_version": "r8.6-output-contract-snapshot-v1",
-      "prompt_version": "0.9.0",
-      "activation_status": "DRAFT",
-      "files": [
-        "prompts/agent/r8.6/six/retrieval/base.md",
-        "prompts/agent/r8.6/six/retrieval/revise.md"
-      ],
-      "input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/repair-revision-envelope-v1.schema.json",
-      "output_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/sufficiency-result-v2.schema.json",
-      "base_input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/retrieval-sufficiency-input-v1.schema.json",
-      "supported_failure_reason_codes": "ALLOWLISTED_BY_FAILURE_RECORD",
-      "content_hash": "29bbb4279dacc2cde03fb15d422db10c30358e9add6f06ff73c72cdb5e2327e4",
-      "assembled_path": "prompts/agent/assembled-r8.6/retrieval.assess_sufficiency.revise.md",
-      "assembled_hash": "80b006dd261881d1acdd86d2547afe3ba9468105f517bdfec2a2627e4e7a6e4c"
     },
     {
       "slot_id": "work_analysis.analyze",

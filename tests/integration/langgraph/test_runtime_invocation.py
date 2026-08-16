@@ -11,9 +11,14 @@ from tests.integration.langgraph.test_runtime import (
     ApproveWriteActionService,
     Callable,
     ClaimWriteActionCommand,
+    DeterministicUUID,
+    FakeClock,
     FakeGoogleGateway,
     GoogleGatewayFault,
     GoogleGatewayFaultKind,
+    GoogleWorkspaceExecutionBackend,
+    GraphProfile,
+    LangGraphWorkflowRuntime,
     Path,
     ProductFixtureSnapshotLoader,
     RequestIntentV2,
@@ -35,7 +40,7 @@ from tests.integration.langgraph.test_runtime import (
     _gmail_analysis_output,
     _gmail_selection_output,
     _make_runtime,
-    _plan,
+    _QueuedLLMRuntime,
     _read_plan_output,
     _review_output,
     _runtime_active_manifest_path,
@@ -46,6 +51,7 @@ from tests.integration.langgraph.test_runtime import (
     _start_request,
     _start_write_request,
     _sufficiency_output,
+    _tool_catalog,
     _write_plan_output,
     connect_sqlite,
     pytest,
@@ -65,7 +71,6 @@ def test_langgraph_runtime_completes_answer_only_run(
         database_path=database_path,
         llm_payloads=[
             _clear_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -126,19 +131,40 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         connection.close()
 
     runtime.close()
-    resumed_runtime = _make_runtime(
-        database_path=database_path,
-        llm_payloads=[
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+    # Pre-Prompt Runtime Closure: the ambiguity originated in Request
+    # Understanding's own classify call (_ambiguous_intent's origin_target
+    # is "request_understanding.classify"), so resume must now re-enter
+    # classify with the user's answer bounded-projected into its prompt
+    # input -- not skip straight to acquisition/tool_route as it did before
+    # confirmation_resume_target's SIX_ROLE_BASELINE routing fix. Construct
+    # the fake LLM runtime directly (instead of via _make_runtime) so the
+    # test can inspect its `.calls` afterward and prove the confirmation
+    # answer actually reached classify's prompt_input.
+    resumed_llm_runtime = _QueuedLLMRuntime(
+        [
+            _clear_intent(),
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
             _answer_output(),
             _review_output("PASS"),
-        ],
-        gateway=FakeGoogleGateway(snapshot),
+        ]
+    )
+    resumed_gateway = FakeGoogleGateway(snapshot)
+    resumed_runtime = LangGraphWorkflowRuntime(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        llm_runtime=resumed_llm_runtime,
+        gateway=resumed_gateway,
+        connector_execution=GoogleWorkspaceExecutionBackend(gateway=resumed_gateway),
+        tool_catalog=_tool_catalog(),
+        now_ms=FakeClock(1000).now_ms,
+        id_factory=DeterministicUUID(prefix="runtime").next_id,
+        signing_secret="stage17-secret",
+        service_instance_id="stage17-service",
         checkpoint_database_path=tmp_path / "checkpoints-confirm.db",
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
+        default_tasklist_id_provider=lambda: "task-list-default",
     )
 
     resumed = resumed_runtime.resume(
@@ -173,6 +199,24 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         assert snapshot.values["prompt_context"]["confirmation_response"]["free_text"] == (
             "I mean Kim from project alpha."
         )
+        # The re-entered classify call's own prompt_input actually carried
+        # the bounded confirmation_response -- not just Main State.
+        classify_call = next(
+            call
+            for call in resumed_llm_runtime.calls
+            if getattr(call["prompt_ref"], "prompt_id", None) == "request_understanding.classify"
+        )
+        classify_prompt_input = classify_call["prompt_input"]
+        assert classify_prompt_input["confirmation_response"] == {
+            "schema_version": 1,
+            "response_kind": "FREE_TEXT",
+            "selected_option_ids": [],
+            "free_text": "I mean Kim from project alpha.",
+        }
+        # Ambiguity is resolved and the run reaches a normal next phase
+        # (COMPLETED, asserted above) rather than looping back into another
+        # confirmation.
+        assert snapshot.values["request_intent"]["ambiguity"]["requires_confirmation"] is False
     finally:
         connection.close()
         resumed_runtime.close()
@@ -190,7 +234,6 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(
         database_path=database_path,
         llm_payloads=[
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -307,7 +350,6 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
         database_path=database_path,
         llm_payloads=[
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -471,21 +513,18 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
     gateway = FakeGoogleGateway(snapshot)
     if context_family == "CALENDAR":
         context_payloads = [
-            [_plan("CALENDAR", {"calendar_id": "calendar-primary"})],
             _calendar_selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _calendar_analysis_output(),
         ]
     elif context_family == "GMAIL":
         context_payloads = [
-            [_plan("GMAIL", {})],
             _gmail_selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _gmail_analysis_output(),
         ]
     else:
         context_payloads = [
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -563,7 +602,6 @@ def test_langgraph_runtime_executes_read_only_plan_to_terminal(
         database_path=database_path,
         llm_payloads=[
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -607,7 +645,6 @@ def test_langgraph_runtime_supports_same_database_for_domain_and_checkpointer(
         database_path=database_path,
         llm_payloads=[
             _clear_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),

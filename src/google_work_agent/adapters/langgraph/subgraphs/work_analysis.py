@@ -33,6 +33,10 @@ from google_work_agent.application.workflows import (
     WorkflowPhase,
     route_supervisor,
 )
+from google_work_agent.application.workflows.retrieval_evidence_store import (
+    RunScopedEvidenceStore,
+    resolve_evidence_projection,
+)
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]
@@ -49,12 +53,14 @@ class WorkAnalysisSubgraph:
         graph_profile: GraphProfile,
         transition_run: TransitionRun,
         merge_decision: MergeDecision,
+        evidence_store: RunScopedEvidenceStore,
     ) -> None:
         self._agent = agent
         self._id_factory = id_factory
         self._graph_profile = graph_profile
         self._transition_run = transition_run
         self._merge_decision = merge_decision
+        self._evidence_store = evidence_store
 
     def build(self) -> Any:
         graph = StateGraph(
@@ -83,7 +89,9 @@ class WorkAnalysisSubgraph:
             node_state="INITIALIZED",
             input_projection={
                 "request_intent": _require_state_value(state["request_intent"], "request_intent"),
-                "context_result": _require_state_value(state["context_result"], "context_result"),
+                "retrieval_result": _require_state_value(
+                    state["retrieval_result"], "retrieval_result"
+                ),
             },
             prompt_ref=self._agent.analyze_prompt_ref,
         )
@@ -106,14 +114,22 @@ class WorkAnalysisSubgraph:
     def _analyze_node(self, state: WorkAnalysisLocalState) -> WorkAnalysisLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[ANALYSIS_AGENT_LOCAL_KEY])
-        llm_result = self._agent.invoke_analyze_llm(
+        retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
+        evidence_drafts = resolve_evidence_projection(
+            store=self._evidence_store,
+            run_id=state["run_id"],
+            retrieval_result=retrieval_result,
+        )
+        llm_result = self._agent.invoke_analyze_llm_from_retrieval_result(
             request_intent=_require_state_value(state["request_intent"], "request_intent"),
-            context_result=_require_state_value(state["context_result"], "context_result"),
+            retrieval_result=retrieval_result,
+            evidence_drafts=evidence_drafts,
             request=request,
         )
-        result = self._agent.build_output_from_llm_result(
+        result = self._agent.build_output_from_llm_result_from_retrieval_result(
             llm_result,
-            context_result=_require_state_value(state["context_result"], "context_result"),
+            retrieval_result=retrieval_result,
+            evidence_drafts=evidence_drafts,
         )
         updated_local = dict(record_llm_result(local_state, llm_result))
         updated_local["node_state"] = "ANALYZE_COMPLETE"

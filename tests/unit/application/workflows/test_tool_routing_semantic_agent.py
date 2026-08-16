@@ -172,6 +172,32 @@ def _agent(
             input_schema_version="v1",
             output_schema_version="v1",
         ),
+        determine_io_resources_revision_prompt_ref=PromptReference(
+            prompt_bundle_version="test",
+            prompt_id="tool_route.determine_io_resources.revise",
+            prompt_version="0.9.0",
+            content_hash="hash",
+            agent_role="tool_route",
+            subgraph_name="tool_route",
+            node_name="determine_io_resources",
+            node_state="SEMANTIC_REVISION",
+            purpose="determine_io_resources.revise",
+            input_schema_version="v1",
+            output_schema_version="v1",
+        ),
+        select_tool_revision_prompt_ref=PromptReference(
+            prompt_bundle_version="test",
+            prompt_id="tool_route.select_tool_if_needed.revise",
+            prompt_version="0.9.0",
+            content_hash="hash",
+            agent_role="tool_route",
+            subgraph_name="tool_route",
+            node_name="select_tool_if_needed",
+            node_state="SEMANTIC_REVISION",
+            purpose="select_tool_if_needed.revise",
+            input_schema_version="v1",
+            output_schema_version="v1",
+        ),
     )
 
 
@@ -354,6 +380,14 @@ def test_select_tool_if_needed_rejects_a_tool_outside_the_registry_candidates() 
             }
         )
     )
+    runtime.queued.append(
+        _llm_result(
+            {"schema_version": 1, "route_id": "route-0", "selected_tool_id": "gmail_send"}
+        )
+    )
+    # select_tool_if_needed gets one bounded SEMANTIC_REVISION retry before
+    # failing closed -- the revision attempt must also be queued (and also
+    # invalid) for this test to observe the final Registry-authority error.
     runtime.queued.append(
         _llm_result(
             {"schema_version": 1, "route_id": "route-0", "selected_tool_id": "gmail_send"}

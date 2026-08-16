@@ -41,10 +41,15 @@ FIXTURE_DIR = (
     / "CTXREADY-CORE-002"
 )
 PROMPT_IDS = {
-    "analysis.analyze",
-    "planning.answer_only",
-    "planning.draft_plan",
+    "work_analysis.analyze",
+    "planning.compose_answer",
+    "planning.compose_arguments",
     "review.inspect",
+    # e06b.* are E06-B controlled-experiment candidate prompts -- a
+    # separate Evaluation artifact bundle, not product manifest slots;
+    # write_runtime_active_manifest only activates slots that exist in the
+    # canonical product manifest, so these three stay unresolvable until
+    # that Evaluation artifact bundle exists (EVALUATION_ARTIFACT_PENDING).
     "e06b.b1.analysis_planning.initial",
     "e06b.b1.self_review.initial",
     "e06b.b2.analysis_planning.initial",

@@ -23,6 +23,7 @@ from google_work_agent.application.workflows.handoff_contracts import (
     AnswerDraftV1,
     ClarificationQuestionV1,
     ContextRetrievalResultV1,
+    EvidenceDraftV1,
     PlanDraftStatusValue,
     RequestIntentV2,
     WorkAnalysisResultV1,
@@ -113,7 +114,12 @@ ANSWER_DRAFT_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "schema_version": {"type": "integer", "enum": [1]},
             "status": {
                 "type": "string",
-                "enum": ["ANSWER_ONLY", "NEEDS_CONFIRMATION", "BLOCKED"],
+                "enum": [
+                    "ANSWER_ONLY",
+                    "NEEDS_CONFIRMATION",
+                    "ROUTE_RECONSIDERATION_REQUIRED",
+                    "BLOCKED",
+                ],
             },
             "answer": {"type": "string"},
             "evidence_refs": {"type": "array", "items": {"type": "string"}},
@@ -154,7 +160,12 @@ ACTION_PLAN_DRAFT_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "schema_version": {"type": "integer", "enum": [ACTION_PLAN_DRAFT_SCHEMA_VERSION]},
             "status": {
                 "type": "string",
-                "enum": ["PLAN_READY", "NEEDS_CONFIRMATION", "BLOCKED"],
+                "enum": [
+                    "PLAN_READY",
+                    "NEEDS_CONFIRMATION",
+                    "ROUTE_RECONSIDERATION_REQUIRED",
+                    "BLOCKED",
+                ],
             },
             "plan_id": {"type": "string"},
             "summary": {"type": "string"},
@@ -232,11 +243,13 @@ def _action_plan_draft_output_schema_for_routes(
 _ANSWER_RESULT_VALUES = {
     PlanningResult.ANSWER_ONLY.value,
     PlanningResult.NEEDS_CONFIRMATION.value,
+    PlanningResult.ROUTE_RECONSIDERATION_REQUIRED.value,
     PlanningResult.BLOCKED.value,
 }
 _PLAN_RESULT_VALUES = {
     PlanningResult.PLAN_READY.value,
     PlanningResult.NEEDS_CONFIRMATION.value,
+    PlanningResult.ROUTE_RECONSIDERATION_REQUIRED.value,
     PlanningResult.BLOCKED.value,
 }
 _ACTION_EFFECT_VALUES = {
@@ -353,6 +366,47 @@ class SolutionPlanningAgent:
             ),
         )
 
+    def invoke_answer_only_llm_from_evidence(
+        self,
+        *,
+        request_intent: RequestIntentV2,
+        evidence_drafts: list[EvidenceDraftV1],
+        analysis_result: WorkAnalysisResultV1,
+        request: WorkflowStartRequest,
+    ) -> StructuredLLMResult:
+        """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
+
+        Feeds ``compose_answer.md`` from the run's resolved
+        ``RunScopedEvidenceStore`` projection directly -- no
+        ``ContextRetrievalResultV1`` is constructed or received here.
+        ``invoke_answer_only_llm`` (above) stays the entry point for
+        THREE_STAGE/SINGLE_BASELINE, out of this migration's scope.
+        Validation is unaffected: ``validate_answer_draft_v1``'s reference
+        space is scraped off ``analysis_result``, never off context.
+        """
+        return self._llm_runtime.invoke_structured(
+            prompt_ref=self._answer_only_prompt_ref,
+            prompt_input={
+                "request_text": request.request_text,
+                "request_intent": request_intent,
+                "evidence_drafts": list(evidence_drafts),
+                "analysis_result": analysis_result,
+                "source_content_is_untrusted": True,
+            },
+            output_schema=ANSWER_DRAFT_OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(
+                request_id=request.correlation.request_id,
+                command_id=request.correlation.command_id,
+                conversation_id=request.conversation_id,
+                run_id=request.run_id,
+                langgraph_thread_id=request.workflow_key,
+                llm_call_id=f"{request.run_id}:planning.answer_only",
+            ),
+            semantic_validate=lambda candidate: validate_answer_draft_v1(
+                candidate, analysis_result=analysis_result
+            ),
+        )
+
     def build_answer_output_from_llm_result(
         self,
         llm_result: StructuredLLMResult,
@@ -403,6 +457,58 @@ class SolutionPlanningAgent:
                 "context_status": context_result["status"],
                 "context_bundle": context_result["context_bundle"],
                 "evidence_drafts": context_result["evidence_drafts"],
+                "analysis_result": analysis_result,
+                "source_content_is_untrusted": True,
+                "output_routes": list(frozen_output_routes or ()),
+            },
+            output_schema=(
+                _action_plan_draft_output_schema_for_registry(self._tool_registry)
+                if frozen_output_routes is None
+                else _action_plan_draft_output_schema_for_routes(
+                    frozen_output_routes,
+                    frozen_read_tool_ids,
+                )
+            ),
+            trace_context=ObservabilityContext(
+                request_id=request.correlation.request_id,
+                command_id=request.correlation.command_id,
+                conversation_id=request.conversation_id,
+                run_id=request.run_id,
+                langgraph_thread_id=request.workflow_key,
+                llm_call_id=f"{request.run_id}:planning.draft_plan",
+            ),
+            semantic_validate=lambda candidate: validate_action_plan_draft_v1(
+                candidate,
+                analysis_result=analysis_result,
+                tool_registry=self._tool_registry,
+                frozen_output_routes=frozen_output_routes,
+                frozen_read_tool_ids=frozen_read_tool_ids,
+            ),
+        )
+
+    def invoke_draft_plan_llm_from_evidence(
+        self,
+        *,
+        request_intent: RequestIntentV2,
+        evidence_drafts: list[EvidenceDraftV1],
+        analysis_result: WorkAnalysisResultV1,
+        request: WorkflowStartRequest,
+        frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
+        frozen_read_tool_ids: frozenset[str] = frozenset(),
+    ) -> StructuredLLMResult:
+        """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
+
+        See ``invoke_answer_only_llm_from_evidence`` docstring -- same
+        rationale, Argument Writer variant. ``output_routes``/the frozen
+        Tool Schema constraint on ``tool_name`` already carries what the
+        route needs; no context object is required here either.
+        """
+        return self._llm_runtime.invoke_structured(
+            prompt_ref=self._draft_plan_prompt_ref,
+            prompt_input={
+                "request_text": request.request_text,
+                "request_intent": request_intent,
+                "evidence_drafts": list(evidence_drafts),
                 "analysis_result": analysis_result,
                 "source_content_is_untrusted": True,
                 "output_routes": list(frozen_output_routes or ()),
@@ -511,6 +617,44 @@ class SolutionPlanningAgent:
             ),
         )
 
+    def invoke_revise_answer_llm_from_evidence(
+        self,
+        *,
+        request_intent: RequestIntentV2,
+        answer_draft: AnswerDraftV1,
+        review_issues: list[dict[str, object]],
+        review_summary: str | None,
+        evidence_drafts: list[EvidenceDraftV1],
+        analysis_result: WorkAnalysisResultV1,
+        request: WorkflowStartRequest,
+    ) -> StructuredLLMResult:
+        """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
+
+        See ``invoke_answer_only_llm_from_evidence`` docstring.
+        """
+        return self._llm_runtime.invoke_structured(
+            prompt_ref=self._revise_answer_prompt_ref,
+            prompt_input={
+                "request_text": request.request_text,
+                "request_intent": request_intent,
+                "answer_draft": answer_draft,
+                "review_summary": review_summary,
+                "review_issues": [dict(issue) for issue in review_issues],
+                "evidence_drafts": list(evidence_drafts),
+                "analysis_result": analysis_result,
+                "source_content_is_untrusted": True,
+            },
+            output_schema=ANSWER_DRAFT_OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(
+                request_id=request.correlation.request_id,
+                command_id=request.correlation.command_id,
+                conversation_id=request.conversation_id,
+                run_id=request.run_id,
+                langgraph_thread_id=request.workflow_key,
+                llm_call_id=f"{request.run_id}:planning.revise_answer",
+            ),
+        )
+
     def revise_plan(
         self,
         *,
@@ -560,6 +704,61 @@ class SolutionPlanningAgent:
                 "context_status": context_result["status"],
                 "context_bundle": context_result["context_bundle"],
                 "evidence_drafts": context_result["evidence_drafts"],
+                "analysis_result": analysis_result,
+                "source_content_is_untrusted": True,
+                "output_routes": list(frozen_output_routes or ()),
+            },
+            output_schema=(
+                ACTION_PLAN_DRAFT_OUTPUT_SCHEMA
+                if frozen_output_routes is None
+                else _action_plan_draft_output_schema_for_routes(
+                    frozen_output_routes,
+                    frozen_read_tool_ids,
+                )
+            ),
+            trace_context=ObservabilityContext(
+                request_id=request.correlation.request_id,
+                command_id=request.correlation.command_id,
+                conversation_id=request.conversation_id,
+                run_id=request.run_id,
+                langgraph_thread_id=request.workflow_key,
+                llm_call_id=f"{request.run_id}:planning.revise_plan",
+            ),
+            semantic_validate=lambda candidate: validate_action_plan_draft_v1(
+                candidate,
+                analysis_result=analysis_result,
+                tool_registry=self._tool_registry,
+                frozen_output_routes=frozen_output_routes,
+                frozen_read_tool_ids=frozen_read_tool_ids,
+            ),
+        )
+
+    def invoke_revise_plan_llm_from_evidence(
+        self,
+        *,
+        request_intent: RequestIntentV2,
+        plan_draft: ActionPlanDraftV1,
+        review_issues: list[dict[str, object]],
+        review_summary: str | None,
+        evidence_drafts: list[EvidenceDraftV1],
+        analysis_result: WorkAnalysisResultV1,
+        request: WorkflowStartRequest,
+        frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
+        frozen_read_tool_ids: frozenset[str] = frozenset(),
+    ) -> StructuredLLMResult:
+        """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
+
+        See ``invoke_draft_plan_llm_from_evidence`` docstring.
+        """
+        return self._llm_runtime.invoke_structured(
+            prompt_ref=self._revise_plan_prompt_ref,
+            prompt_input={
+                "request_text": request.request_text,
+                "request_intent": request_intent,
+                "plan_draft": plan_draft,
+                "review_summary": review_summary,
+                "review_issues": [dict(issue) for issue in review_issues],
+                "evidence_drafts": list(evidence_drafts),
                 "analysis_result": analysis_result,
                 "source_content_is_untrusted": True,
                 "output_routes": list(frozen_output_routes or ()),
@@ -998,6 +1197,10 @@ def _validate_answer_draft_invariant(result: AnswerDraftV1) -> None:
     if status is PlanningResult.NEEDS_CONFIRMATION and result["confirmation"] is None:
         raise SolutionPlanningValidationError(
             "$.confirmation NEEDS_CONFIRMATION requires confirmation"
+        )
+    if status is PlanningResult.ROUTE_RECONSIDERATION_REQUIRED and not result["reason_codes"]:
+        raise SolutionPlanningValidationError(
+            "$.reason_codes ROUTE_RECONSIDERATION_REQUIRED requires reason_codes"
         )
     if status is PlanningResult.BLOCKED and not result["blockers"]:
         raise SolutionPlanningValidationError("$.blockers BLOCKED requires blockers")

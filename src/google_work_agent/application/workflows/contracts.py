@@ -13,6 +13,7 @@ if TYPE_CHECKING:
         ContextRetrievalResultV1,
         PlanReviewResultV1,
         RequestIntentV2,
+        RetrievalRequiredV1,
         RetrievalResultV1,
         SourceFetchPlanV1,
         WorkAnalysisResultV1,
@@ -123,7 +124,9 @@ class MultiAgentGraphState(TypedDict):
     workflow_phase: str
     request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
-    workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
+    workflow_signal: (
+        ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | RetrievalRequiredV1 | None
+    )
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
@@ -148,7 +151,9 @@ class GraphStateUpdateV1(TypedDict, total=False):
     workflow_phase: str
     request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
-    workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
+    workflow_signal: (
+        ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | RetrievalRequiredV1 | None
+    )
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
@@ -236,6 +241,7 @@ class AnalysisResult(StrEnum):
     COMPLETE = "COMPLETE"
     NEEDS_MORE_DATA = "NEEDS_MORE_DATA"
     NEEDS_CONFIRMATION = "NEEDS_CONFIRMATION"
+    ROUTE_RECONSIDERATION_REQUIRED = "ROUTE_RECONSIDERATION_REQUIRED"
     BLOCKED = "BLOCKED"
 
 
@@ -245,6 +251,7 @@ class PlanningResult(StrEnum):
     ANSWER_ONLY = "ANSWER_ONLY"
     PLAN_READY = "PLAN_READY"
     NEEDS_CONFIRMATION = "NEEDS_CONFIRMATION"
+    ROUTE_RECONSIDERATION_REQUIRED = "ROUTE_RECONSIDERATION_REQUIRED"
     BLOCKED = "BLOCKED"
 
 
@@ -254,6 +261,7 @@ class ReviewResult(StrEnum):
     PASS = "PASS"
     REVISE = "REVISE"
     RETRIEVE_MORE = "RETRIEVE_MORE"
+    ROUTE_RECONSIDERATION = "ROUTE_RECONSIDERATION"
     CONFIRM = "CONFIRM"
     BLOCK = "BLOCK"
 

@@ -19,11 +19,13 @@ from tests.integration.langgraph.test_runtime import (
     _answer_output,
     _clear_intent,
     _context_result,
+    _evidence_drafts_seg_2,
     _make_runtime,
     _plan,
     _profile_reason_plan_output,
     _profile_request_source_output,
     _QueuedLLMRuntime,
+    _retrieval_result,
     _review_output,
     _runtime_active_manifest_path,
     _seed_runtime_database,
@@ -99,9 +101,14 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
         single.close()
 
 
-def test_six_role_runtime_exposes_six_native_agent_subgraphs(
+def test_six_role_runtime_exposes_five_native_agent_subgraphs(
     tmp_path: Path,
 ) -> None:
+    """SIX_ROLE_BASELINE's active agent set is request_understanding,
+    context_retriever, work_analysis, planning, review -- ``acquisition``
+    stays a registered node (resolvable via ``_node_handler``, used by other
+    profiles/legacy paths) but is not part of this profile's own topology
+    since Retrieval V2's context_retriever subgraph replaced it here."""
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
@@ -118,13 +125,12 @@ def test_six_role_runtime_exposes_six_native_agent_subgraphs(
     try:
         assert tuple(runtime._native_agent_subgraphs) == (  # noqa: SLF001
             "request_understanding",
-            "acquisition",
             "context_retriever",
             "work_analysis",
             "planning",
             "review",
         )
-        assert len(runtime._native_agent_subgraphs) == 6  # noqa: SLF001
+        assert len(runtime._native_agent_subgraphs) == 5  # noqa: SLF001
         assert runtime._node_handler("request_understanding") is runtime._request_subgraph  # noqa: SLF001
         assert runtime._node_handler("acquisition") is runtime._acquisition_subgraph  # noqa: SLF001
         assert runtime._node_handler("context_retriever") is runtime._context_subgraph  # noqa: SLF001
@@ -206,7 +212,7 @@ def test_request_subgraph_clears_local_state_and_records_trace_counts(
         runtime.close()
 
 
-def test_tool_route_subgraph_freezes_plan_before_acquisition(tmp_path: Path) -> None:
+def test_tool_route_subgraph_freezes_plan_before_context_retriever(tmp_path: Path) -> None:
     runtime = _make_runtime(
         database_path=_seed_runtime_database(tmp_path),
         llm_payloads=[_clear_intent()],
@@ -223,7 +229,7 @@ def test_tool_route_subgraph_freezes_plan_before_acquisition(tmp_path: Path) -> 
         )
         routed = runtime._tool_route_subgraph.invoke(understood)  # noqa: SLF001
 
-        assert routed["__target__"] == "acquisition"
+        assert routed["__target__"] == "context_retriever"
         assert routed["tool_route_plan"]["schema_version"] == 2
         input_routes = routed["tool_route_plan"]["input_plan"]["input_routes"]
         assert {route["resource_type"] for route in input_routes} == {"TASK", "TASK_LIST"}
@@ -290,9 +296,14 @@ def test_acquisition_subgraph_keeps_single_invocation_id_and_parent_isolation(
         runtime.close()
 
 
-def test_six_role_full_path_records_six_agent_invocations_and_seven_llm_calls(
+def test_six_role_full_path_records_five_agent_invocations_and_six_llm_calls(
     tmp_path: Path,
 ) -> None:
+    """SIX_ROLE_BASELINE's active agent set is request_understanding,
+    context_retriever, work_analysis, planning, review -- Tool Route is a
+    deterministic node, not an agent invocation, and ``acquisition`` is not
+    wired into this profile's topology (Retrieval V2's context_retriever
+    subgraph replaced it; see ``_native_subgraphs_for_profile``)."""
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
@@ -300,7 +311,6 @@ def test_six_role_full_path_records_six_agent_invocations_and_seven_llm_calls(
         database_path=database_path,
         llm_payloads=[
             _clear_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -320,8 +330,8 @@ def test_six_role_full_path_records_six_agent_invocations_and_seven_llm_calls(
 
         assert result.outcome is WorkflowOutcome.COMPLETED
         trace_context = values["trace_context"]
-        assert trace_context["agent_invocation_count"] == 6
-        assert trace_context["llm_call_count"] == 7
+        assert trace_context["agent_invocation_count"] == 5
+        assert trace_context["llm_call_count"] == 6
         init_log = [
             item["agent_subgraph_id"]
             for item in trace_context["agent_node_log"]
@@ -329,28 +339,38 @@ def test_six_role_full_path_records_six_agent_invocations_and_seven_llm_calls(
         ]
         assert init_log == [
             "request_understanding",
-            "acquisition",
             "context_retriever",
             "work_analysis",
             "planning",
             "review",
         ]
         invocation_ids = {item["agent_invocation_id"] for item in trace_context["agent_node_log"]}
-        assert len(invocation_ids) == 6
+        assert len(invocation_ids) == 5
     finally:
         runtime.close()
 
 
-def test_context_subgraph_routes_needs_more_data_back_to_parent_acquisition(
+def test_context_subgraph_routes_needs_more_data_back_to_source_planning(
     tmp_path: Path,
 ) -> None:
+    """Retrieval's own local-loop NEEDS_MORE_DATA (no frozen tool_route_plan
+    -- e.g. the compatibility entry point that already holds an
+    acquisition_result) stays on the pre-Q2-HANDOFF
+    ``_route_additional_acquisition`` path, unchanged, targeting
+    ``SupervisorTarget.SOURCE_PLANNING``. SIX_ROLE_BASELINE's own route
+    translation table (route_translation.py) maps SOURCE_PLANNING/
+    API_ACQUISITION to the "context_retriever" node for this profile --
+    Retrieval V2 replaced the standalone "acquisition" node here, so this
+    is a same-subgraph re-entry, not a peer handoff. This is deliberately
+    distinct from WorkAnalysis/Review's NEEDS_MORE_DATA/RETRIEVE_MORE, which
+    goes through ``_route_retrieval_required`` (see
+    test_review_subgraph_routes_revise_and_retrieve_more_through_parent)."""
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=[
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("NEEDS_MORE_DATA"),
         ],
@@ -363,11 +383,46 @@ def test_context_subgraph_routes_needs_more_data_back_to_parent_acquisition(
     try:
         state = runtime._initial_state(_start_request())  # noqa: SLF001
         state["request_intent"] = _clear_intent()
-        acquired = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
-        routed = runtime._context_subgraph.invoke(acquired)  # noqa: SLF001
+        # Hand-built in the same reference space _context_result() uses
+        # (task:task-followup -> seg-2), bypassing the legacy acquisition
+        # subgraph's own LLM-driven plan_sources node -- this test is about
+        # context_retriever's routing decision, not acquisition's planning.
+        state["acquisition_result"] = {
+            "schema_version": 1,
+            "status": "COMPLETE",
+            "resource_handles": ["task:task-billing", "task:task-followup"],
+            "source_summaries": [
+                {
+                    "schema_version": 1,
+                    "source": "TASKS",
+                    "status": "COMPLETE",
+                    "resources": [
+                        {
+                            "resource_handle": "task:task-billing",
+                            "resource_type": "task",
+                            "resource_id": "task-billing",
+                            "parent_id": "task-list-default",
+                            "version": "1",
+                            "payload": {"title": "Pay contractor invoice"},
+                        },
+                        {
+                            "resource_handle": "task:task-followup",
+                            "resource_type": "task",
+                            "resource_id": "task-followup",
+                            "parent_id": "task-list-default",
+                            "version": "1",
+                            "payload": {"title": "Reply to project sync"},
+                        },
+                    ],
+                }
+            ],
+            "missing_slots": [],
+            "remaining_budget": {"sources": 3, "pages": 3, "candidates": 60, "details": 30},
+        }
+        routed = runtime._context_subgraph.invoke(state)  # noqa: SLF001
 
-        assert routed["__logical_target__"] == "acquisition"
-        assert routed["__target__"] == "acquisition"
+        assert routed["__logical_target__"] == "context_retriever"
+        assert routed["__target__"] == "context_retriever"
         assert "__context_agent_local__" not in routed
     finally:
         runtime.close()
@@ -376,6 +431,14 @@ def test_context_subgraph_routes_needs_more_data_back_to_parent_acquisition(
 def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
     tmp_path: Path,
 ) -> None:
+    """SIX_ROLE_BASELINE's real topology is request_understanding ->
+    tool_route -> context_retriever -> work_analysis -> planning -> review
+    (``acquisition`` is a registered node but not part of this profile's own
+    edges -- see test_tool_route_subgraph_freezes_plan_before_context_retriever
+    and test_six_role_runtime_exposes_five_native_agent_subgraphs). Each
+    stage below calls exactly one subgraph directly and asserts it only ever
+    hands off via ``__target__`` -- never by invoking the next subgraph's
+    ``.invoke`` itself."""
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
@@ -383,9 +446,8 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
         database_path=database_path,
         llm_payloads=[
             _clear_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
-            _sufficiency_output("NEEDS_MORE_DATA"),
+            _sufficiency_output("SUFFICIENT"),
             _review_output(
                 "REVISE",
                 issues=[
@@ -418,33 +480,44 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
 
         return _raise
 
-    original_acquisition_invoke = runtime._acquisition_subgraph.invoke  # noqa: SLF001
+    original_tool_route_invoke = runtime._tool_route_subgraph.invoke  # noqa: SLF001
     original_context_invoke = runtime._context_subgraph.invoke  # noqa: SLF001
+    original_analysis_invoke = runtime._analysis_subgraph.invoke  # noqa: SLF001
     original_planning_invoke = runtime._planning_subgraph.invoke  # noqa: SLF001
 
     try:
-        runtime._acquisition_subgraph.invoke = _forbid_peer_invoke("acquisition")  # noqa: SLF001
+        runtime._tool_route_subgraph.invoke = _forbid_peer_invoke("tool_route")  # noqa: SLF001
         request_state = runtime._initial_state(_start_request())  # noqa: SLF001
         request_result = runtime._request_subgraph.invoke(request_state)  # noqa: SLF001
         assert request_result["__target__"] == "tool_route"
 
-        runtime._acquisition_subgraph.invoke = original_acquisition_invoke  # noqa: SLF001
+        runtime._tool_route_subgraph.invoke = original_tool_route_invoke  # noqa: SLF001
         runtime._context_subgraph.invoke = _forbid_peer_invoke("context_retriever")  # noqa: SLF001
-        acquisition_state = runtime._initial_state(_start_request())  # noqa: SLF001
-        acquisition_state["request_intent"] = _clear_intent()
-        acquisition_result = runtime._acquisition_subgraph.invoke(acquisition_state)  # noqa: SLF001
-        assert acquisition_result["__target__"] == "context_retriever"
+        tool_route_state = runtime._initial_state(_start_request())  # noqa: SLF001
+        tool_route_state["request_intent"] = _clear_intent()
+        tool_route_state["request_intent"]["meta"] = {
+            "artifact_id": "intent-1",
+            "revision": 1,
+            "based_on": [],
+        }
+        routed = runtime._tool_route_subgraph.invoke(tool_route_state)  # noqa: SLF001
+        assert routed["__target__"] == "context_retriever"
 
         runtime._context_subgraph.invoke = original_context_invoke  # noqa: SLF001
-        runtime._acquisition_subgraph.invoke = _forbid_peer_invoke("acquisition")  # noqa: SLF001
-        routed = runtime._context_subgraph.invoke(acquisition_result)  # noqa: SLF001
-        assert routed["__target__"] == "acquisition"
+        runtime._analysis_subgraph.invoke = _forbid_peer_invoke("work_analysis")  # noqa: SLF001
+        context = runtime._context_subgraph.invoke(routed)  # noqa: SLF001
+        assert context["__target__"] == "work_analysis"
 
-        runtime._acquisition_subgraph.invoke = original_acquisition_invoke  # noqa: SLF001
+        runtime._analysis_subgraph.invoke = original_analysis_invoke  # noqa: SLF001
         runtime._planning_subgraph.invoke = _forbid_peer_invoke("planning")  # noqa: SLF001
+        # The context_retriever stage above already materialized
+        # evidence-seg-2 into this run's RunScopedEvidenceStore -- no
+        # second ``put`` needed (and a conflicting duplicate ``put`` would
+        # fail-closed by design).
         review_state = runtime._initial_state(_start_request())  # noqa: SLF001
         review_state["request_intent"] = _clear_intent()
         review_state["context_result"] = _context_result()
+        review_state["retrieval_result"] = _retrieval_result()
         review_state["analysis_result"] = _validated_analysis_result()
         review_state["answer_draft"] = _answer_output()
         review_result = runtime._review_subgraph.invoke(review_state)  # noqa: SLF001
@@ -452,8 +525,9 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
 
         assert peer_invocations == []
     finally:
-        runtime._acquisition_subgraph.invoke = original_acquisition_invoke  # noqa: SLF001
+        runtime._tool_route_subgraph.invoke = original_tool_route_invoke  # noqa: SLF001
         runtime._context_subgraph.invoke = original_context_invoke  # noqa: SLF001
+        runtime._analysis_subgraph.invoke = original_analysis_invoke  # noqa: SLF001
         runtime._planning_subgraph.invoke = original_planning_invoke  # noqa: SLF001
         runtime.close()
 
@@ -488,9 +562,13 @@ def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
     )
 
     try:
+        runtime._evidence_store.put(  # noqa: SLF001
+            run_id="run-1", evidence_drafts=_evidence_drafts_seg_2()
+        )
         base_state = runtime._initial_state(_start_request())  # noqa: SLF001
         base_state["request_intent"] = _clear_intent()
         base_state["context_result"] = _context_result()
+        base_state["retrieval_result"] = _retrieval_result()
         base_state["analysis_result"] = _validated_analysis_result()
         base_state["answer_draft"] = _answer_output()
 
@@ -498,9 +576,13 @@ def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
         assert revise_state["__logical_target__"] == "planning"
         assert revise_state["__target__"] == "planning"
 
+        # This hand-built base_state never froze a tool_route_plan, so
+        # _route_retrieval_required's executability guard fails closed to
+        # Tool Route (supervisor.py) rather than re-entering Retrieval with
+        # no frozen input route to retry within.
         retrieve_state = runtime._review_subgraph.invoke(dict(base_state))  # noqa: SLF001
-        assert retrieve_state["__logical_target__"] == "acquisition"
-        assert retrieve_state["__target__"] == "acquisition"
+        assert retrieve_state["__logical_target__"] == "tool_route"
+        assert retrieve_state["__target__"] == "tool_route"
     finally:
         runtime.close()
 
@@ -526,7 +608,6 @@ def test_agent_subgraphs_do_not_issue_google_writes_before_approval(
     llm_payloads = (
         [
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),

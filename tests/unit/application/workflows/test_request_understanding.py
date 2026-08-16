@@ -18,7 +18,7 @@ from google_work_agent.application.workflows import (
     RequestUnderstandingValidationError,
     WorkflowPhase,
     build_user_interrupt_v1,
-    load_request_understanding_clarify_prompt_reference,
+    load_request_understanding_classify_prompt_reference,
     resolve_confirmation_origin_target,
     validate_confirmation_response_v1,
     validate_request_intent_v2,
@@ -319,28 +319,34 @@ def test_agent_surface_has_no_google_mcp_or_action_dependency() -> None:
     assert len(runtime.calls) == 1
 
 
-def test_clarify_prompt_ref_is_runtime_active(tmp_path: Path) -> None:
+def test_classify_prompt_ref_is_runtime_active(tmp_path: Path) -> None:
+    """``request_understanding.clarify`` is compatibility-only -- clarify()
+    is never wired into the active SIX_ROLE_BASELINE subgraph node (see the
+    constructor comment in request_understanding.py) and correctly has no
+    slot in the canonical manifest at all. This test exercises the same
+    runtime-active load-path behavior through classify, the request
+    understanding prompt that is actually wired."""
     manifest_path = write_runtime_active_manifest(
         tmp_path,
-        prompt_ids={"request_understanding.clarify"},
+        prompt_ids={"request_understanding.classify"},
     )
-    prompt_ref = load_request_understanding_clarify_prompt_reference(manifest_path)
+    prompt_ref = load_request_understanding_classify_prompt_reference(manifest_path)
 
-    assert prompt_ref.prompt_id == "request_understanding.clarify"
-    assert prompt_ref.prompt_version == "0.8.3"
+    assert prompt_ref.prompt_id == "request_understanding.classify"
+    assert prompt_ref.prompt_version == "0.9.0"
     assert prompt_ref.content_hash
-    assert prompt_ref.node_state == "CLARIFY"
-    assert prompt_ref.output_schema_version == "v2"
+    assert prompt_ref.node_state == "INITIAL"
+    assert prompt_ref.output_schema_version == "r8.6-output-contract-snapshot-v1"
 
 
 def test_default_product_loader_rejects_draft_request_understanding_prompt(tmp_path: Path) -> None:
     manifest_path = write_draft_manifest(
         tmp_path,
-        prompt_ids={"request_understanding.clarify"},
+        prompt_ids={"request_understanding.classify"},
     )
 
-    with pytest.raises(InactivePromptArtifactError, match="request_understanding.clarify"):
-        load_request_understanding_clarify_prompt_reference(manifest_path)
+    with pytest.raises(InactivePromptArtifactError, match="request_understanding.classify"):
+        load_request_understanding_classify_prompt_reference(manifest_path)
 
 
 def test_clarify_invokes_prompt_and_validates_question_output() -> None:

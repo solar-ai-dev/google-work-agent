@@ -201,14 +201,26 @@ class RequestUnderstandingAgent:
     def __call__(self, request: WorkflowStartRequest) -> RequestUnderstandingOutputV1:
         return self.classify(request)
 
-    def classify(self, request: WorkflowStartRequest) -> RequestUnderstandingOutputV1:
-        llm_result = self.invoke_classify_llm(request)
+    def classify(
+        self,
+        request: WorkflowStartRequest,
+        *,
+        confirmation_response: ConfirmationResponseV1 | None = None,
+    ) -> RequestUnderstandingOutputV1:
+        llm_result = self.invoke_classify_llm(request, confirmation_response=confirmation_response)
         return self.build_output_from_llm_result(llm_result)
 
-    def invoke_classify_llm(self, request: WorkflowStartRequest) -> StructuredLLMResult:
+    def invoke_classify_llm(
+        self,
+        request: WorkflowStartRequest,
+        *,
+        confirmation_response: ConfirmationResponseV1 | None = None,
+    ) -> StructuredLLMResult:
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
-            prompt_input=_prompt_input_from_request(request),
+            prompt_input=_prompt_input_from_request(
+                request, confirmation_response=confirmation_response
+            ),
             output_schema=REQUEST_INTENT_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,
@@ -604,8 +616,12 @@ _SELECTED_RESOURCE_SOURCE_TO_CATEGORY: Final = {
 _P0_CONNECTOR_ID: Final = "google_workspace"
 
 
-def _prompt_input_from_request(request: WorkflowStartRequest) -> dict[str, object]:
-    return {
+def _prompt_input_from_request(
+    request: WorkflowStartRequest,
+    *,
+    confirmation_response: ConfirmationResponseV1 | None = None,
+) -> dict[str, object]:
+    prompt_input: dict[str, object] = {
         "user_request": request.request_text,
         "entry_mode": request.entry_mode,
         # MISSING_UPSTREAM_FIELD: no deterministic request-language source
@@ -625,6 +641,16 @@ def _prompt_input_from_request(request: WorkflowStartRequest) -> dict[str, objec
             for ref in request.selected_resources
         ],
     }
+    if confirmation_response is not None:
+        # Pre-Prompt Runtime Closure: the already-canonical, already-bounded
+        # ConfirmationResponseV1 (schema_version/response_kind/
+        # selected_option_ids/free_text -- see validate_confirmation_response_v1)
+        # is the only thing that crosses this boundary on a WAITING_CONFIRMATION
+        # resume. The raw interrupt resume_payload dict is never forwarded
+        # as-is; it is always re-validated into this bounded shape first
+        # (see _classify_node in subgraphs/request_understanding.py).
+        prompt_input["confirmation_response"] = dict(confirmation_response)
+    return prompt_input
 
 
 def _phase_for_result(result: RequestUnderstandingResult) -> WorkflowPhase:

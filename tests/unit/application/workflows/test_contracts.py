@@ -54,6 +54,7 @@ def test_multi_agent_graph_state_fields_match_workflow_document() -> None:
         "workflow_signal",
         "source_fetch_plans",
         "acquisition_result",
+        "retrieval_result",
         "context_result",
         "analysis_result",
         "answer_draft",
@@ -68,7 +69,7 @@ def test_multi_agent_graph_state_fields_match_workflow_document() -> None:
         "prompt_context",
         "trace_context",
     } == MULTI_AGENT_GRAPH_STATE_FIELDS
-    assert len(MULTI_AGENT_GRAPH_STATE_FIELDS) == 23
+    assert len(MULTI_AGENT_GRAPH_STATE_FIELDS) == 24
 
 
 def test_multi_agent_graph_state_has_no_implementation_only_fields() -> None:
@@ -147,6 +148,7 @@ def test_analysis_result_values_match_workflow_document() -> None:
         "COMPLETE",
         "NEEDS_MORE_DATA",
         "NEEDS_CONFIRMATION",
+        "ROUTE_RECONSIDERATION_REQUIRED",
         "BLOCKED",
     )
 
@@ -156,6 +158,7 @@ def test_planning_result_values_match_workflow_document() -> None:
         "ANSWER_ONLY",
         "PLAN_READY",
         "NEEDS_CONFIRMATION",
+        "ROUTE_RECONSIDERATION_REQUIRED",
         "BLOCKED",
     )
 
@@ -165,6 +168,7 @@ def test_review_result_values_match_workflow_document() -> None:
         "PASS",
         "REVISE",
         "RETRIEVE_MORE",
+        "ROUTE_RECONSIDERATION",
         "CONFIRM",
         "BLOCK",
     )

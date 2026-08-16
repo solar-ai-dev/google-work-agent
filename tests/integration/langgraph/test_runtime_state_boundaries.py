@@ -315,7 +315,9 @@ def test_chain_context_analysis_planning_review_preserves_typed_outputs(
     try:
         state = runtime._initial_state(_start_request())  # noqa: SLF001
         state["request_intent"] = _clear_intent()
-        acquired = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
+        state["request_intent"]["meta"] = {"artifact_id": "intent-1", "revision": 1, "based_on": []}
+        routed = runtime._tool_route_subgraph.invoke(state)  # noqa: SLF001
+        acquired = runtime._acquisition_subgraph.invoke(routed)  # noqa: SLF001
         context = runtime._context_subgraph.invoke(acquired)  # noqa: SLF001
         assert context["__target__"] == "work_analysis"
         assert context["context_result"]["evidence_drafts"][0]["evidence_id"] == "evidence-seg-2"
@@ -332,7 +334,7 @@ def test_chain_context_analysis_planning_review_preserves_typed_outputs(
         reviewed = runtime._review_subgraph.invoke(planned)  # noqa: SLF001
         assert reviewed["__target__"] == "finalize"
         assert reviewed["plan_review"]["status"] == "PASS"
-        planning_input = llm_runtime.calls[4]["prompt_input"]
+        planning_input = llm_runtime.calls[5]["prompt_input"]
         assert isinstance(planning_input, dict)
         assert planning_input["analysis_result"]["findings"][0]["finding_id"] == "finding-1"
     finally:
@@ -359,7 +361,23 @@ def test_edge_analysis_confirmation_never_enters_planning(tmp_path: Path) -> Non
     try:
         state = runtime._initial_state(_start_request())  # noqa: SLF001
         state["request_intent"] = _clear_intent()
-        state["context_result"] = _context_result()
+        context_result = _context_result()
+        state["context_result"] = context_result
+        state["retrieval_result"] = {
+            "schema_version": 1,
+            "meta": {"artifact_id": "retrieval-1", "revision": 1, "based_on": []},
+            "coverage": "SUFFICIENT",
+            "context_bundle_ref": None,
+            "evidence_refs": ["evidence-seg-2"],
+            "selected_segment_ids": ["seg-2"],
+            "source_resource_refs": ["task:task-followup"],
+            "source_statuses": [],
+            "missing_information": [],
+            "retrieval_rounds": 1,
+        }
+        runtime._evidence_store.put(  # noqa: SLF001
+            run_id=state["run_id"], evidence_drafts=context_result["evidence_drafts"]
+        )
         result = runtime._analysis_subgraph.invoke(state)  # noqa: SLF001
         assert result["__target__"] == "waiting_confirmation"
         assert result["analysis_result"]["status"] == "NEEDS_CONFIRMATION"

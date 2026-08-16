@@ -40,6 +40,10 @@ from google_work_agent.application.workflows import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
+from google_work_agent.application.workflows.retrieval_evidence_store import (
+    RunScopedEvidenceStore,
+    resolve_evidence_projection,
+)
 from google_work_agent.application.workflows.tool_routing import (
     OutputToolRouteV1,
     ToolRoutePlanV2,
@@ -95,11 +99,13 @@ class PlanningSubgraph:
         id_factory: Callable[[], str],
         graph_profile: GraphProfile,
         merge_decision: MergeDecision,
+        evidence_store: RunScopedEvidenceStore,
     ) -> None:
         self._agent = agent
         self._id_factory = id_factory
         self._graph_profile = graph_profile
         self._merge_decision = merge_decision
+        self._evidence_store = evidence_store
 
     def build(self) -> Any:
         graph = StateGraph(
@@ -173,11 +179,17 @@ class PlanningSubgraph:
         if review_state is not None:
             review_issues = [dict(issue) for issue in review_state["issues"]]
             review_summary = review_state.get("summary")
+        retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
+        evidence_drafts = resolve_evidence_projection(
+            store=self._evidence_store,
+            run_id=state["run_id"],
+            retrieval_result=retrieval_result,
+        )
         result: AnswerDraftV1 | ActionPlanDraftV1
         if mode == "answer_only":
-            llm_result = self._agent.invoke_answer_only_llm(
+            llm_result = self._agent.invoke_answer_only_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
-                context_result=_require_state_value(state["context_result"], "context_result"),
+                evidence_drafts=evidence_drafts,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
             )
@@ -187,9 +199,9 @@ class PlanningSubgraph:
             )
             llm_call_id = f"{request.run_id}:planning.answer_only"
         elif mode == "draft_plan":
-            llm_result = self._agent.invoke_draft_plan_llm(
+            llm_result = self._agent.invoke_draft_plan_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
-                context_result=_require_state_value(state["context_result"], "context_result"),
+                evidence_drafts=evidence_drafts,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
                 frozen_output_routes=_frozen_output_routes(state),
@@ -203,12 +215,12 @@ class PlanningSubgraph:
             )
             llm_call_id = f"{request.run_id}:planning.draft_plan"
         elif mode == "revise_answer":
-            llm_result = self._agent.invoke_revise_answer_llm(
+            llm_result = self._agent.invoke_revise_answer_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
                 answer_draft=_require_state_value(state["answer_draft"], "answer_draft"),
                 review_issues=review_issues,
                 review_summary=review_summary,
-                context_result=_require_state_value(state["context_result"], "context_result"),
+                evidence_drafts=evidence_drafts,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
             )
@@ -218,12 +230,12 @@ class PlanningSubgraph:
             )
             llm_call_id = f"{request.run_id}:planning.revise_answer"
         else:
-            llm_result = self._agent.invoke_revise_plan_llm(
+            llm_result = self._agent.invoke_revise_plan_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
                 plan_draft=_require_state_value(state["plan_draft"], "plan_draft"),
                 review_issues=review_issues,
                 review_summary=review_summary,
-                context_result=_require_state_value(state["context_result"], "context_result"),
+                evidence_drafts=evidence_drafts,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
                 frozen_output_routes=_frozen_output_routes(state),

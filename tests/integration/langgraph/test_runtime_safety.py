@@ -16,7 +16,6 @@ from tests.integration.langgraph.test_runtime import (
     _action_required_intent,
     _analysis_output,
     _make_runtime,
-    _plan,
     _review_output,
     _runtime_active_manifest_path,
     _seed_runtime_database,
@@ -34,10 +33,16 @@ from tests.integration.langgraph.test_runtime import (
     ("profile", "profile_nodes"),
     [
         (
+            # "acquisition" is a registered GraphNodeBindings callable (used
+            # by _node_handler lookups and other profiles) but is not part
+            # of SIX_ROLE_BASELINE's own topology -- WorkflowGraphComposition
+            # .build() only calls graph.add_node() for _topology's own
+            # entries plus the fixed shared-node list, so it is never
+            # compiled into this profile's StateGraph (Retrieval V2's
+            # context_retriever replaced it here).
             GraphProfile.SIX_ROLE_BASELINE,
             {
                 "request_understanding",
-                "acquisition",
                 "context_retriever",
                 "work_analysis",
                 "planning",
@@ -93,7 +98,6 @@ def test_edge_rejected_approval_never_enters_preflight_or_claim(tmp_path: Path) 
         database_path=database_path,
         llm_payloads=[
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),

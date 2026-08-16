@@ -24,8 +24,10 @@ from google_work_agent.application.workflows.handoff_contracts import (
     AnalysisStatusValue,
     ClarificationQuestionV1,
     ContextRetrievalResultV1,
+    EvidenceDraftV1,
     FeasibilityScheduleConstraintsV1,
     RequestIntentV2,
+    RetrievalResultV1,
     WorkAnalysisResultV1,
 )
 from google_work_agent.application.workflows.prompt_registry import (
@@ -68,7 +70,13 @@ WORK_ANALYSIS_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "schema_version": {"type": "integer", "enum": [1]},
             "status": {
                 "type": "string",
-                "enum": ["COMPLETE", "NEEDS_MORE_DATA", "NEEDS_CONFIRMATION", "BLOCKED"],
+                "enum": [
+                    "COMPLETE",
+                    "NEEDS_MORE_DATA",
+                    "NEEDS_CONFIRMATION",
+                    "ROUTE_RECONSIDERATION_REQUIRED",
+                    "BLOCKED",
+                ],
             },
             "summary": {"type": "string"},
             # Nested finding shape mirrors AnalysisFindingV1 exactly (required
@@ -272,6 +280,69 @@ class WorkAnalysisAgent:
         result["llm_provider_result"] = _provider_summary(llm_result)
         return result
 
+    def invoke_analyze_llm_from_retrieval_result(
+        self,
+        *,
+        request_intent: RequestIntentV2,
+        retrieval_result: RetrievalResultV1,
+        evidence_drafts: list[EvidenceDraftV1],
+        request: WorkflowStartRequest,
+    ) -> StructuredLLMResult:
+        """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
+
+        Feeds ``analyze.md`` from ``RetrievalResultV1`` + the run's resolved
+        ``RunScopedEvidenceStore`` projection directly -- no ``ContextRetrievalResultV1``
+        is constructed or received here. ``invoke_analyze_llm`` (above) stays the
+        entry point for THREE_STAGE/SINGLE_BASELINE/Evaluation-harness callers,
+        which have their own real, LLM-fused or replay-derived
+        ``ContextRetrievalResultV1`` and are out of this migration's scope.
+        """
+        return self._llm_runtime.invoke_structured(
+            prompt_ref=self._analyze_prompt_ref,
+            prompt_input={
+                "request_text": request.request_text,
+                "request_intent": request_intent,
+                "retrieval_coverage": retrieval_result["coverage"],
+                "resource_refs": list(retrieval_result["source_resource_refs"]),
+                "segment_refs": list(retrieval_result["selected_segment_ids"]),
+                "evidence_refs": list(retrieval_result["evidence_refs"]),
+                "evidence_drafts": list(evidence_drafts),
+                "missing_information": list(retrieval_result["missing_information"]),
+                "source_content_is_untrusted": True,
+            },
+            output_schema=WORK_ANALYSIS_OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(
+                request_id=request.correlation.request_id,
+                command_id=request.correlation.command_id,
+                conversation_id=request.conversation_id,
+                run_id=request.run_id,
+                langgraph_thread_id=request.workflow_key,
+                llm_call_id=f"{request.run_id}:analysis.analyze",
+            ),
+            semantic_validate=(
+                lambda candidate: validate_work_analysis_result_v1_from_retrieval_result(
+                    candidate,
+                    retrieval_result=retrieval_result,
+                    evidence_drafts=evidence_drafts,
+                )
+            ),
+        )
+
+    def build_output_from_llm_result_from_retrieval_result(
+        self,
+        llm_result: StructuredLLMResult,
+        *,
+        retrieval_result: RetrievalResultV1,
+        evidence_drafts: list[EvidenceDraftV1],
+    ) -> WorkAnalysisResultV1:
+        result = validate_work_analysis_result_v1_from_retrieval_result(
+            llm_result.structured_output,
+            retrieval_result=retrieval_result,
+            evidence_drafts=evidence_drafts,
+        )
+        result["llm_provider_result"] = _provider_summary(llm_result)
+        return result
+
     def build_state_update(self, result: WorkAnalysisResultV1) -> GraphStateUpdateV1:
         phase = (
             WorkflowPhase.SOLUTION_PLANNING
@@ -295,6 +366,38 @@ def validate_work_analysis_result_v1(
     *,
     context_result: ContextRetrievalResultV1,
 ) -> WorkAnalysisResultV1:
+    """THREE_STAGE/SINGLE_BASELINE/Evaluation-harness entry point.
+
+    Reference space is scraped off a real (LLM-fused or replay-derived)
+    ``ContextRetrievalResultV1``. SIX_ROLE_BASELINE product runtime never
+    calls this -- see ``validate_work_analysis_result_v1_from_retrieval_result``.
+    """
+    return _validate_work_analysis_result_v1_core(value, refs=_reference_space(context_result))
+
+
+def validate_work_analysis_result_v1_from_retrieval_result(
+    value: object,
+    *,
+    retrieval_result: RetrievalResultV1,
+    evidence_drafts: list[EvidenceDraftV1],
+) -> WorkAnalysisResultV1:
+    """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
+
+    Reference space is derived directly from the canonical ``RetrievalResultV1``
+    and its ``RunScopedEvidenceStore``-resolved evidence -- no
+    ``ContextRetrievalResultV1`` is built or consumed.
+    """
+    return _validate_work_analysis_result_v1_core(
+        value,
+        refs=_reference_space_from_retrieval_result(retrieval_result, evidence_drafts),
+    )
+
+
+def _validate_work_analysis_result_v1_core(
+    value: object,
+    *,
+    refs: _ReferenceSpace,
+) -> WorkAnalysisResultV1:
     root = _require_mapping(value, "$")
     _require_allowed_keys(
         root,
@@ -314,7 +417,6 @@ def validate_work_analysis_result_v1(
         optional={"llm_provider_result", "schedule_constraints"},
     )
     _require_schema_version(root, "$", WORK_ANALYSIS_SCHEMA_VERSION)
-    refs = _reference_space(context_result)
     status = _require_string(root, "status", "$")
     if status not in _ANALYSIS_RESULT_VALUES:
         raise WorkAnalysisValidationError("$.status is invalid")
@@ -527,6 +629,13 @@ def _validate_result_invariant(result: WorkAnalysisResultV1) -> None:
         raise WorkAnalysisValidationError(
             "$.missing_information NEEDS_MORE_DATA requires missing_information"
         )
+    if (
+        status is AnalysisResult.ROUTE_RECONSIDERATION_REQUIRED
+        and not result["missing_information"]
+    ):
+        raise WorkAnalysisValidationError(
+            "$.missing_information ROUTE_RECONSIDERATION_REQUIRED requires missing_information"
+        )
     if status is AnalysisResult.NEEDS_CONFIRMATION and result["confirmation"] is None:
         raise WorkAnalysisValidationError("$.confirmation NEEDS_CONFIRMATION requires confirmation")
     if status is AnalysisResult.BLOCKED and not result["blockers"]:
@@ -609,6 +718,19 @@ def _reference_space(context_result: ContextRetrievalResultV1) -> _ReferenceSpac
     }
 
 
+def _reference_space_from_retrieval_result(
+    retrieval_result: RetrievalResultV1,
+    evidence_drafts: list[EvidenceDraftV1],
+) -> _ReferenceSpace:
+    evidence_ids = {draft["evidence_id"] for draft in evidence_drafts}
+    evidence_ids.update(retrieval_result["evidence_refs"])
+    return {
+        "evidence_ids": evidence_ids,
+        "resource_handles": set(retrieval_result["source_resource_refs"]),
+        "segment_ids": set(retrieval_result["selected_segment_ids"]),
+    }
+
+
 def _validated_evidence_refs(
     value: object,
     refs: _ReferenceSpace,
@@ -681,4 +803,5 @@ __all__ = [
     "WorkAnalysisValidationError",
     "load_work_analysis_analyze_prompt_reference",
     "validate_work_analysis_result_v1",
+    "validate_work_analysis_result_v1_from_retrieval_result",
 ]

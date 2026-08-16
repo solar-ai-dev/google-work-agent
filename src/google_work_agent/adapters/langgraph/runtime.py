@@ -207,6 +207,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         prompt_manifest_path: Path | None = None,
         timezone_provider: Callable[[], str] | None = None,
         work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
+        default_tasklist_id_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._gateway = gateway
@@ -221,6 +222,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._work_hours_provider = work_hours_provider or (
             lambda: CalendarWorkHours(timezone=(timezone_provider or (lambda: "Asia/Seoul"))())
         )
+        self._default_tasklist_id_provider = default_tasklist_id_provider
         self._cancel_signal_lock = Lock()
         self._cancel_signals: set[str] = set()
         self._checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -255,6 +257,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             llm_runtime=llm_runtime,
             prompt_ref=load_acquisition_plan_sources_prompt_reference(prompt_manifest_path),
             output_schema=RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
+            manifest_path=prompt_manifest_path,
         )
         self._retrieval_read_executor = RetrievalReadExecutor(
             connector_reader=connector_reader,
@@ -482,6 +485,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             evidence_store=self._evidence_store,
             read_result_cache=self._read_result_cache,
             retrieval_read_executor=self._retrieval_read_executor,
+            default_tasklist_id_provider=self._default_tasklist_id_provider,
         )
         self._request_subgraph = entry_subgraphs.request_understanding
         self._tool_route_subgraph = entry_subgraphs.tool_route
@@ -493,18 +497,21 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             graph_profile=self._graph_profile,
             transition_run=self._transition_run,
             merge_decision=self._merge_decision,
+            evidence_store=self._evidence_store,
         ).build()
         self._planning_subgraph = PlanningSubgraph(
             agent=self._planning,
             id_factory=id_factory,
             graph_profile=self._graph_profile,
             merge_decision=self._merge_decision,
+            evidence_store=self._evidence_store,
         ).build()
         self._review_subgraph = ReviewSubgraph(
             agent=self._review,
             id_factory=id_factory,
             graph_profile=self._graph_profile,
             merge_decision=self._merge_decision,
+            evidence_store=self._evidence_store,
         ).build()
         self._three_stage_one_subgraph: Any = None
         self._three_stage_two_subgraph: Any = None
@@ -836,6 +843,54 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "__modify_review_version__": state["__modify_review_version__"],
             "__modify_review_risks__": state["__modify_review_risks__"],
         }
+
+        route_reconsideration_signal = reviewed.get("workflow_signal")
+        if (
+            reviewed.get("plan_review") is None
+            and isinstance(route_reconsideration_signal, dict)
+            and route_reconsideration_signal.get("kind") == "ROUTE_RECONSIDERATION_REQUIRED"
+        ):
+            # Pre-Prompt LangGraph Code Completion: the re-invoked Review's
+            # own ROUTE_RECONSIDERATION disposition was already intercepted
+            # by supervisor._route_reconsideration (plan_review cleared,
+            # __target__ pointed at Tool Route, workflow_signal populated)
+            # before this node ever saw a PlanReviewResultV1 -- there is no
+            # `review["status"]` to read here. Canonical (04 SS25.5, 08
+            # SS Modify sequence) never specifies this edge for the
+            # post-approval modify-review gate; it only defines REVISE/
+            # RETRIEVE_MORE -> supersede + REPLAN-to-PLANNING. Per this
+            # task's explicit "no unconditional DB enum/migration" rule and
+            # since `plans.review_status` has a SQL CHECK enumerating only
+            # PASSED/REQUIRED/REVISE/RETRIEVE_MORE/BLOCKED (migration 0004,
+            # not modified here), a route-level defect discovered post-
+            # approval is folded into the existing RETRIEVE_MORE bucket and
+            # resolved through the same supersede+replan-to-PLANNING path
+            # already used for REVISE/RETRIEVE_MORE -- a documented,
+            # reported downgrade from the primary flow's Tool-Route
+            # redirect, not a silent one. Trusting the supervisor's own
+            # __target__ (Tool Route) here instead would durably strand
+            # `plans.review_status='REQUIRED'` and `Run.status=
+            # WAITING_APPROVAL`, since nothing else ever resolves that claim.
+            if not self._store_modify_review_result(reviewed, PlanReviewStatus.RETRIEVE_MORE):
+                return {
+                    **reviewed,
+                    "__target__": "end",
+                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                }
+            if not self._begin_modify_replan(reviewed, PlanReviewStatus.RETRIEVE_MORE):
+                return {
+                    **reviewed,
+                    "__target__": "end",
+                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                }
+            reviewed = cast(GraphState, dict(reviewed))
+            reviewed["__replan_from_plan_id__"] = cast(str, reviewed["__modify_review_plan_id__"])
+            reviewed["__modify_review_plan_id__"] = None
+            reviewed["__modify_review_version__"] = None
+            reviewed["__modify_review_risks__"] = None
+            reviewed["__target__"] = "end"
+            reviewed["execution_summary"] = {"result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"}
+            return reviewed
 
         review = _require_state_value(reviewed["plan_review"], "plan_review")
         if review["status"] == ReviewResult.PASS.value:
