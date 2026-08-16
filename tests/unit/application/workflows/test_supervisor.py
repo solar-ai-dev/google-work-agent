@@ -24,6 +24,7 @@ from google_work_agent.application.workflows import (
     WorkAnalysisResultV1,
     WorkflowPhase,
     build_default_run_budget,
+    build_semantic_failure_signature_v1,
     route_supervisor,
     validate_user_interrupt_v1,
 )
@@ -587,6 +588,85 @@ def test_review_revise_routes_answer_draft_to_revise_answer_with_shared_budget()
     assert decision["state_update"]["retry_budget"] is not None
     assert decision["budget_decision"]["decision"] == "ALLOW"
     assert decision["state_update"]["retry_budget"]["planning_revisions_used"] == 1
+
+
+def test_second_revise_with_the_same_failure_signature_is_blocked() -> None:
+    """G3 approve_semantic_revision dedup: same target Planning node (here
+    planning.revise_answer, since answer_draft is set) + the same normalized
+    Review failure signature must not get a second revision attempt, even
+    though the planning_revisions_used cap (2) alone would still allow it."""
+    state = _state(
+        workflow_phase=WorkflowPhase.PLAN_REVIEW,
+        answer_draft=_answer_draft("ANSWER_ONLY"),
+    )
+    first = route_supervisor(
+        phase=WorkflowPhase.PLAN_REVIEW,
+        state=state,
+        result=_review_result("REVISE"),
+    )
+    assert first["budget_decision"] is not None
+    assert first["budget_decision"]["decision"] == "ALLOW"
+    assert len(first["state_update"]["retry_budget"]["semantic_revision_signatures_used"]) == 1
+
+    state_after_revision = _state(
+        workflow_phase=WorkflowPhase.PLAN_REVIEW,
+        answer_draft=_answer_draft("ANSWER_ONLY"),
+        retry_budget=cast(RunBudgetV1, first["state_update"]["retry_budget"]),
+    )
+
+    second = route_supervisor(
+        phase=WorkflowPhase.PLAN_REVIEW,
+        state=state_after_revision,
+        result=_review_result("REVISE"),
+    )
+
+    assert second["target"] == SupervisorTarget.FINALIZE.value
+    assert second["budget_decision"] is not None
+    assert second["budget_decision"]["decision"] == "DENY"
+    assert (
+        second["budget_decision"]["budget_reason_code"]
+        == BudgetReasonCode.SEMANTIC_SAME_FAILURE_LIMIT_EXHAUSTED.value
+    )
+    assert second["state_update"]["finalize_intent"] is not None
+    assert second["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
+    # planning_revisions_used must not have been consumed for a revision
+    # attempt that never actually proceeds.
+    assert first["state_update"]["retry_budget"]["planning_revisions_used"] == 1
+
+
+def test_semantic_revision_dedup_survives_a_resumed_run() -> None:
+    """G3 resume persistence: a retry_budget restored from checkpoint with
+    the signature already recorded (as if the Run had revised, resumed
+    after an interrupt, and re-entered Review with the identical failure)
+    blocks the very first REVISE it sees in this invocation -- the dedup
+    marker is read straight off the passed-in state, not any in-process
+    cache."""
+    restored_signature = build_semantic_failure_signature_v1(
+        node_id="planning.revise_answer",
+        failure_reason_codes=["PLAN_REQUIRED_ACTION_MISSING"],
+    )
+    state = _state(
+        workflow_phase=WorkflowPhase.PLAN_REVIEW,
+        answer_draft=_answer_draft("ANSWER_ONLY"),
+        retry_budget={
+            **build_default_run_budget(),
+            "semantic_revision_signatures_used": [restored_signature],
+        },
+    )
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.PLAN_REVIEW,
+        state=state,
+        result=_review_result("REVISE"),
+    )
+
+    assert decision["target"] == SupervisorTarget.FINALIZE.value
+    assert decision["budget_decision"] is not None
+    assert decision["budget_decision"]["decision"] == "DENY"
+    assert (
+        decision["budget_decision"]["budget_reason_code"]
+        == BudgetReasonCode.SEMANTIC_SAME_FAILURE_LIMIT_EXHAUSTED.value
+    )
 
 
 def test_review_revise_routes_plan_draft_to_revise_plan() -> None:

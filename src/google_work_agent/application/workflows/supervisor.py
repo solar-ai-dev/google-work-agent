@@ -29,6 +29,8 @@ from google_work_agent.application.workflows.contracts import (
     approve_additional_acquisition,
     approve_planning_revision,
     approve_review_recheck,
+    approve_semantic_revision,
+    build_semantic_failure_signature_v1,
     validate_finalize_intent_v1,
 )
 from google_work_agent.application.workflows.handoff_contracts import (
@@ -749,16 +751,46 @@ def _route_plan_review(
             reason_code="PLAN_REVIEW_PASS",
         )
     if status is ReviewResult.REVISE:
-        budget = approve_planning_revision(state["retry_budget"])
-        if budget["decision"] == BudgetDecision.DENY.value:
+        revision_budget = approve_planning_revision(state["retry_budget"])
+        if revision_budget["decision"] == BudgetDecision.DENY.value:
             return _finalize(
                 state=state,
                 intent=FinalizeIntent.BLOCKED.value,
-                reason_code=_budget_reason_code(budget, default="PLANNING_REVISION_DENIED"),
-                budget_decision=budget,
+                reason_code=_budget_reason_code(
+                    revision_budget, default="PLANNING_REVISION_DENIED"
+                ),
+                budget_decision=revision_budget,
                 current_update=review_update,
             )
         target_kind, _draft = _review_target_from_state(state)
+        # Semantic Revision dedup (docs/06 SS10.1, contracts.approve_semantic_revision):
+        # same target Planning node + same normalized Review failure signature
+        # gets at most one revision attempt per Run, persisted in
+        # retry_budget.semantic_revision_signatures_used so it survives
+        # resume/re-entry/checkpoint restore. Only gated when Review actually
+        # reported a failure signature to dedup against -- an issue-free
+        # REVISE has nothing to record and falls back to the planning-revision
+        # cap alone.
+        node_id = "planning.revise_answer" if target_kind == "ANSWER" else "planning.revise_plan"
+        failure_reason_codes = [
+            reason_code for issue in result["issues"] for reason_code in issue["reason_codes"]
+        ]
+        if failure_reason_codes:
+            signature = build_semantic_failure_signature_v1(
+                node_id=node_id,
+                failure_reason_codes=failure_reason_codes,
+            )
+            budget = approve_semantic_revision(revision_budget["run_budget"], signature=signature)
+            if budget["decision"] == BudgetDecision.DENY.value:
+                return _finalize(
+                    state=state,
+                    intent=FinalizeIntent.BLOCKED.value,
+                    reason_code=_budget_reason_code(budget, default="SEMANTIC_REVISION_DENIED"),
+                    budget_decision=budget,
+                    current_update=review_update,
+                )
+        else:
+            budget = revision_budget
         target = (
             SupervisorTarget.PLANNING_REVISE_ANSWER
             if target_kind == "ANSWER"

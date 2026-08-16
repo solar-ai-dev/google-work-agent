@@ -12,6 +12,8 @@ from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import (
     build_agent_local_state,
+    consume_llm_call_budget,
+    ensure_llm_call_budget,
     merge_trace_context,
 )
 from google_work_agent.adapters.langgraph.graph_state import (
@@ -312,6 +314,7 @@ class ContextRetrieverSubgraph:
         rag_candidates = self._agent.rag_retrieve(
             cast(list[Any], segments), request_intent=request_intent
         )
+        ensure_llm_call_budget(state)
         selection = self._agent.select_evidence(
             request_intent=request_intent,
             request=request,
@@ -326,6 +329,7 @@ class ContextRetrieverSubgraph:
             CONTEXT_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             CONTEXT_RAG_CANDIDATES_KEY: rag_candidates,
             CONTEXT_SELECTION_OUTPUT_KEY: selection,
+            "retry_budget": consume_llm_call_budget(state, provider_calls_consumed=1),
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -374,6 +378,7 @@ class ContextRetrieverSubgraph:
     ) -> ContextRetrievalLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
+        ensure_llm_call_budget(state)
         sufficiency_result, llm_provider_result = self._agent.assess_sufficiency(
             request_intent=_require_state_value(state["request_intent"], "request_intent"),
             request=request,
@@ -392,6 +397,12 @@ class ContextRetrieverSubgraph:
             CONTEXT_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             CONTEXT_SUFFICIENCY_OUTPUT_KEY: sufficiency_result,
             "llm_provider_result": llm_provider_result,
+            "retry_budget": consume_llm_call_budget(
+                state,
+                provider_calls_consumed=cast(
+                    int, llm_provider_result["structured_output_attempts"]
+                ),
+            ),
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -481,6 +492,7 @@ class ContextRetrieverSubgraph:
                 validated_container_refs=validated_container_refs,
             )
         )
+        ensure_llm_call_budget(state)
         query_plan = self._retrieval_query_planner.plan(
             prompt_input=prompt_input,
             trace_context=_planner_trace_context(state),
@@ -503,6 +515,7 @@ class ContextRetrieverSubgraph:
                 frozen_routes=frozen_routes,
                 retrieval_budget=self._acquisition_agent.retrieval_budget,
             ),
+            "retry_budget": consume_llm_call_budget(state, provider_calls_consumed=1),
         }
 
     def _execute_initial_read_node(
@@ -613,6 +626,7 @@ class ContextRetrieverSubgraph:
             state.get(CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY), "follow-up planner input"
         )
         detail_candidate_refs = state.get(CONTEXT_SEGMENT_HANDLES_KEY, [])
+        ensure_llm_call_budget(state)
         query_plan = self._retrieval_query_planner.plan(
             prompt_input=followup_retrieval_planner_input(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
@@ -627,6 +641,13 @@ class ContextRetrieverSubgraph:
             validated_container_refs=validated_container_refs,
             detail_candidate_refs=detail_candidate_refs,
         )
+        # Reassigned onto state (not a one-off return key) so every exit
+        # branch below -- each spreads **state -- carries the consumed
+        # budget without repeating this call at every return site.
+        state = {
+            **state,
+            "retry_budget": consume_llm_call_budget(state, provider_calls_consumed=1),
+        }
         prior_canonical = state.get(CONTEXT_CANONICAL_PLANS_KEY, {})
         prior_legacy = cast(list[Any], state.get("source_fetch_plans", []))
         handles = {

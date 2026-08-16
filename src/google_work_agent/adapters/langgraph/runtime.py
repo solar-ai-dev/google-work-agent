@@ -114,6 +114,7 @@ from google_work_agent.application.workflows import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
     ApiDiscoveryAcquisitionAgent,
+    BudgetProfile,
     ContextRetrievalAgent,
     DomainValidationResult,
     DomainValidationService,
@@ -123,12 +124,14 @@ from google_work_agent.application.workflows import (
     PlanReviewResultV1,
     RequestUnderstandingAgent,
     ReviewResult,
+    RunBudgetV1,
     SolutionPlanningAgent,
     SupervisorDecisionV1,
     SupervisorTarget,
     ToolRouteAgent,
     WorkAnalysisAgent,
     WorkflowPhase,
+    promote_budget_profile,
     route_supervisor,
 )
 from google_work_agent.application.workflows.api_acquisition import (
@@ -735,6 +738,19 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 **cast(dict[str, object], state.get("prompt_context", {})),
                 "confirmation_response": cast(dict[str, object], resume_payload),
             },
+            # G3 RunBudgetV1: a Confirmation resume re-enters the owning
+            # Node (potentially as early as request_understanding.classify,
+            # per CONFIRMATION_ORIGIN_TARGETS) for another full round of real
+            # Provider calls beyond whatever a single straight-through pass
+            # already spent -- the same REVISION_HEAVY headroom Modify
+            # Review's re-entry needs (see _prepare_modify_review_state).
+            "retry_budget": {
+                **cast(RunBudgetV1, state["retry_budget"]),
+                "profile": promote_budget_profile(
+                    cast(RunBudgetV1, state["retry_budget"])["profile"],
+                    BudgetProfile.REVISION_HEAVY,
+                ).value,
+            },
         }
 
     def _waiting_approval_node(self, state: GraphState) -> GraphState:
@@ -814,6 +830,20 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "__target__": "modify_review",
             "__logical_target__": self._modify_review_profile_target(),
             "workflow_phase": WorkflowPhase.PLAN_REVIEW.value,
+            # G3 RunBudgetV1: Modify Review re-invokes Review with one more
+            # real Provider call outside the normal supervisor-mediated
+            # approve_planning_revision path (this is a user-initiated
+            # modify, not an LLM-driven REVISE), so it needs the same
+            # REVISION_HEAVY headroom a genuine planning revision gets --
+            # otherwise a Run that already spent its NORMAL(8) budget on one
+            # ordinary pass could never modify-and-rereview at all.
+            "retry_budget": {
+                **cast(RunBudgetV1, state["retry_budget"]),
+                "profile": promote_budget_profile(
+                    cast(RunBudgetV1, state["retry_budget"])["profile"],
+                    BudgetProfile.REVISION_HEAVY,
+                ).value,
+            },
         }
 
     def _modify_review_node(self, state: GraphState) -> GraphState:

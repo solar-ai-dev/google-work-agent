@@ -9,6 +9,8 @@ from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import (
     build_agent_local_state,
+    consume_llm_call_budget,
+    ensure_llm_call_budget,
     merge_trace_context,
     record_llm_result,
 )
@@ -112,6 +114,7 @@ class RequestUnderstandingSubgraph:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[REQUEST_AGENT_LOCAL_KEY])
         confirmation_response = _confirmation_response_from_state(state)
+        ensure_llm_call_budget(state)
         llm_result = self._agent.invoke_classify_llm(
             request, confirmation_response=confirmation_response
         )
@@ -123,6 +126,9 @@ class RequestUnderstandingSubgraph:
             **state,
             REQUEST_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             REQUEST_OUTPUT_KEY: output,
+            "retry_budget": consume_llm_call_budget(
+                state, provider_calls_consumed=llm_result.structured_output_attempts
+            ),
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,

@@ -160,20 +160,26 @@ def test_api_only_invokes_external_provider() -> None:
     assert not ollama_transport.invocations
 
 
-def test_absolute_llm_call_budget_is_enforced_per_run_and_reset_by_discard_run() -> None:
+def test_discard_run_is_a_harmless_noop() -> None:
+    """G3 RunBudgetV1: LLMRuntimeService no longer owns any per-run LLM call
+    accounting (that authority moved to the checkpoint-persistent
+    retry_budget/RunBudgetV1, gated by agent_kernel.ensure_llm_call_budget
+    at each native subgraph node -- see test_supervisor.py and
+    test_agent_kernel_budget.py). discard_run stays on the
+    StructuredLLMRuntime Protocol purely for its existing runtime.py caller
+    (Run finalize cleanup) and must not raise or affect any other run.
+    """
     api_transport = FakeAPIProviderTransport()
-    for index in range(18):
-        api_transport.queued_payloads.append(
-            ProviderResponsePayload(
-                content={"answer": "ok"},
-                model="api-model",
-                provider_request_id=f"req-{index}",
-                input_tokens=10,
-                output_tokens=5,
-                latency_ms=20,
-            )
+    api_transport.queued_payloads.append(
+        ProviderResponsePayload(
+            content={"answer": "ok"},
+            model="api-model",
+            provider_request_id="req-1",
+            input_tokens=10,
+            output_tokens=5,
+            latency_ms=20,
         )
-    ollama_transport = FakeOllamaTransport()
+    )
     credential_service = LLMCredentialService(
         provider_name="generic",
         environment="DEVELOPMENT",
@@ -192,7 +198,7 @@ def test_absolute_llm_call_budget_is_enforced_per_run_and_reset_by_discard_run()
             build_profile="API_ONLY",
             credential_service=credential_service,
             api_transport=api_transport,
-            ollama_transport=ollama_transport,
+            ollama_transport=FakeOllamaTransport(),
         ),
         credential_service=credential_service,
         api_provider=ApiStructuredLLMProvider(
@@ -202,54 +208,24 @@ def test_absolute_llm_call_budget_is_enforced_per_run_and_reset_by_discard_run()
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(  # noqa: ARG005
             provider_name="ollama",
-            transport=ollama_transport,
+            transport=FakeOllamaTransport(),
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
         ),
         router=DeterministicLLMRuntimeRouter(),
         runtime_policy=RuntimePolicy(),
     )
-    trace_context = ObservabilityContext(run_id="run-budget-1", llm_call_id="llm-1")
 
-    # ABSOLUTE_MAX_LLM_CALLS (16) real invocations succeed, covering the
-    # same shared boundary every INITIAL/SCHEMA_REPAIR/SEMANTIC_REVISION/
-    # revise/recheck/follow-up call passes through regardless of Node.
-    for _ in range(16):
-        service.invoke_structured(
-            prompt_ref=PROMPT_REF,
-            prompt_input={"topic": "hello"},
-            output_schema=OUTPUT_SCHEMA,
-            trace_context=trace_context,
-        )
-
-    invocations_before_denial = len(api_transport.invocations)
-    with pytest.raises(LLMInvocationError) as excinfo:
-        service.invoke_structured(
-            prompt_ref=PROMPT_REF,
-            prompt_input={"topic": "hello"},
-            output_schema=OUTPUT_SCHEMA,
-            trace_context=trace_context,
-        )
-    assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
-    # The 17th call was rejected before ever reaching the provider.
-    assert len(api_transport.invocations) == invocations_before_denial
-
-    # A different run is unaffected by run-budget-1's exhausted budget.
-    service.invoke_structured(
+    service.discard_run(run_id="run-never-started")
+    result = service.invoke_structured(
         prompt_ref=PROMPT_REF,
         prompt_input={"topic": "hello"},
         output_schema=OUTPUT_SCHEMA,
-        trace_context=ObservabilityContext(run_id="run-budget-2", llm_call_id="llm-2"),
+        trace_context=ObservabilityContext(run_id="run-1", llm_call_id="llm-1"),
     )
+    service.discard_run(run_id="run-1")
 
-    # discard_run releases run-budget-1's accounting (Run finalize does this).
-    service.discard_run(run_id="run-budget-1")
-    service.invoke_structured(
-        prompt_ref=PROMPT_REF,
-        prompt_input={"topic": "hello"},
-        output_schema=OUTPUT_SCHEMA,
-        trace_context=trace_context,
-    )
+    assert result.structured_output == {"answer": "ok"}
 
 
 def test_auto_falls_back_once_after_local_gpu_failure() -> None:
@@ -505,7 +481,11 @@ def test_schema_repair_is_limited_to_one_attempt() -> None:
 
     assert result.structured_output == {"answer": "fixed"}
     assert result.structured_output_attempts == 2
-    assert result.provider_calls_consumed == 1
+    # G3 RunBudgetV1: provider_calls_consumed now reflects the real attempt
+    # count (INITIAL + SCHEMA_REPAIR), matching structured_output_attempts,
+    # instead of the previous hardcoded 1 -- this is what lets a node's
+    # retry_budget accounting count the repair call too.
+    assert result.provider_calls_consumed == 2
     assert len(repairer.calls) == 1
 
 

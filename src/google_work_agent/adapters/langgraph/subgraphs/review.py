@@ -12,6 +12,8 @@ from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import (
     build_agent_local_state,
+    consume_llm_call_budget,
+    ensure_llm_call_budget,
     merge_trace_context,
     record_llm_result,
 )
@@ -128,6 +130,7 @@ class ReviewSubgraph:
             run_id=state["run_id"],
             retrieval_result=retrieval_result,
         )
+        ensure_llm_call_budget(state)
         if mode == "recheck":
             llm_result = self._agent.invoke_recheck_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
@@ -170,6 +173,9 @@ class ReviewSubgraph:
             **state,
             REVIEW_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             "plan_review": result,
+            "retry_budget": consume_llm_call_budget(
+                state, provider_calls_consumed=llm_result.structured_output_attempts
+            ),
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,

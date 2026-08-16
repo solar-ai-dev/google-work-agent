@@ -12,6 +12,8 @@ from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import (
     build_agent_local_state,
+    consume_llm_call_budget,
+    ensure_llm_call_budget,
     merge_trace_context,
     record_llm_result,
 )
@@ -120,6 +122,7 @@ class WorkAnalysisSubgraph:
             run_id=state["run_id"],
             retrieval_result=retrieval_result,
         )
+        ensure_llm_call_budget(state)
         llm_result = self._agent.invoke_analyze_llm_from_retrieval_result(
             request_intent=_require_state_value(state["request_intent"], "request_intent"),
             retrieval_result=retrieval_result,
@@ -138,6 +141,9 @@ class WorkAnalysisSubgraph:
             **state,
             ANALYSIS_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             "analysis_result": result,
+            "retry_budget": consume_llm_call_budget(
+                state, provider_calls_consumed=llm_result.structured_output_attempts
+            ),
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
