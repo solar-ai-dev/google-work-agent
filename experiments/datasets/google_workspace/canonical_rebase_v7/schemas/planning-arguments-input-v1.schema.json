@@ -38,9 +38,10 @@
         "resource_type": {
           "type": "string",
           "enum": [
-            "EMAIL",
+            "GMAIL_DRAFT",
+            "GMAIL_MESSAGE",
             "TASK",
-            "CALENDAR"
+            "CALENDAR_EVENT"
           ]
         },
         "effect": {
