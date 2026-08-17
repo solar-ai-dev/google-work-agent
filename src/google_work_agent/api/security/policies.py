@@ -95,6 +95,11 @@ DEFAULT_ENDPOINT_POLICY_REGISTRY = EndpointPolicyRegistry(
         ),
         EndpointRule.create(
             methods=("GET",),
+            template="/api/v1/conversations/{conversation_id}/history",
+            policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ),
+        EndpointRule.create(
+            methods=("GET",),
             template="/api/v1/conversations/{conversation_id}/latest-run",
             policy=EndpointPolicy.API_SESSION_REQUIRED,
         ),

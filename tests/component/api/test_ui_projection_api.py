@@ -313,6 +313,20 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         assert latest_run.status_code == 200
         assert latest_run.json()["run"]["run_id"] == "run-1"
 
+        history = client.get("/api/v1/conversations/conversation-1/history", headers=headers)
+        assert history.status_code == 200
+        history_body = history.json()
+        assert history_body["conversation"]["id"] == "conversation-1"
+        assert [(item["role"], item["content"]) for item in history_body["messages"]] == [
+            ("USER", "hello")
+        ]
+        assert history_body["messages"][0]["run_id"] == "run-1"
+        assert [item["run_id"] for item in history_body["runs"]] == ["run-1"]
+        assert history_body["truncated"] is False
+
+        missing_history = client.get("/api/v1/conversations/missing/history", headers=headers)
+        assert missing_history.status_code == 404
+
         context = client.get("/api/v1/runs/run-1/context", headers=headers)
         assert context.status_code == 200
         assert context.json()["context"]["request_text"] == "hello"

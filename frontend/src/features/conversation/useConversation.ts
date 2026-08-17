@@ -4,6 +4,7 @@ import {
   cancelRun,
   confirmRun,
   createConversation,
+  getConversationHistory,
   getLatestConversationRun,
   getRunContext,
   getRunSnapshot,
@@ -15,7 +16,7 @@ import {
   resumeRun,
   startRun,
 } from "../../api";
-import type { ConversationItem, CurrentGoogleAccountResponse, RunAction, RunContext, RunSnapshot } from "../../api/contract";
+import type { ConversationHistoryResponse, ConversationItem, ConversationMessage, CurrentGoogleAccountResponse, RunAction, RunContext, RunSnapshot } from "../../api/contract";
 import { ApiClientError } from "../../api/client";
 import { subscribeRunEvents } from "../../api/sse";
 
@@ -35,6 +36,7 @@ export function useConversation({ currentAccount, selectedResourceIds, onStatusL
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [runSnapshot, setRunSnapshot] = useState<RunSnapshot | null>(null);
   const [runContext, setRunContext] = useState<RunContext | null>(null);
+  const [historyMessages, setHistoryMessages] = useState<ConversationMessage[]>([]);
   const [composerText, setComposerText] = useState("");
   const [composerError, setComposerError] = useState<string | null>(null);
   const [busyCommand, setBusyCommand] = useState<string | null>(null);
@@ -43,6 +45,7 @@ export function useConversation({ currentAccount, selectedResourceIds, onStatusL
   const subscriptionRef = useRef<(() => void) | null>(null);
   const subscriptionRunIdRef = useRef<string | null>(null);
   const conversationProjectionRef = useRef({ generation: 0, conversationId: null as string | null });
+  const historySyncedRunIdsRef = useRef(new Set<string>());
 
   useEffect(() => () => subscriptionRef.current?.(), []);
 
@@ -57,7 +60,9 @@ export function useConversation({ currentAccount, selectedResourceIds, onStatusL
     subscriptionRef.current?.();
     subscriptionRef.current = null;
     subscriptionRunIdRef.current = null;
+    historySyncedRunIdsRef.current = new Set<string>();
     setSelectedConversationId(conversationId);
+    setHistoryMessages([]);
     setRunSnapshot(null);
     setRunContext(null);
     setPendingConfirmation(null);
@@ -65,6 +70,39 @@ export function useConversation({ currentAccount, selectedResourceIds, onStatusL
     setComposerError(null);
     return generation;
   }, []);
+
+  const isCurrentProjection = useCallback((conversationId: string, generation: number): boolean => (
+    conversationProjectionRef.current.generation === generation
+    && conversationProjectionRef.current.conversationId === conversationId
+  ), []);
+
+  // Stored Domain history only. Runs that already finished need no further sync,
+  // so their transient projection never re-fetches the same rows.
+  const applyConversationHistory = useCallback((
+    history: ConversationHistoryResponse,
+    conversationId: string,
+    generation: number,
+  ): boolean => {
+    if (!isCurrentProjection(conversationId, generation)) return false;
+    setHistoryMessages(history.messages);
+    for (const run of history.runs) {
+      if (run.finished_at_ms !== null) historySyncedRunIdsRef.current.add(run.run_id);
+    }
+    return true;
+  }, [isCurrentProjection]);
+
+  const reloadConversationHistory = useCallback(async (
+    conversationId: string,
+    generation: number,
+  ): Promise<void> => {
+    try {
+      applyConversationHistory(await getConversationHistory(conversationId), conversationId, generation);
+    } catch (error) {
+      if (isCurrentProjection(conversationId, generation)) {
+        onStatusLine(error instanceof ApiClientError ? error.message : "이전 대화를 복구하지 못했습니다.");
+      }
+    }
+  }, [applyConversationHistory, isCurrentProjection, onStatusLine]);
 
   const refreshRun = useCallback(async (
     runId: string,
@@ -76,15 +114,27 @@ export function useConversation({ currentAccount, selectedResourceIds, onStatusL
     setRunSnapshot(snapshotResponse.snapshot);
     setRunContext(contextResponse.context);
     setPendingConfirmation((current) => snapshotResponse.snapshot.status === "WAITING_CONFIRMATION" ? current : null);
+    if (
+      snapshotResponse.snapshot.finished_at_ms !== null
+      && snapshotResponse.snapshot.finished_at_ms !== undefined
+      && !historySyncedRunIdsRef.current.has(runId)
+    ) {
+      historySyncedRunIdsRef.current.add(runId);
+      await reloadConversationHistory(conversationId, generation);
+    }
     return true;
-  }, []);
+  }, [reloadConversationHistory]);
 
   const selectRun = useCallback(async (runId: string, conversationId = conversationProjectionRef.current.conversationId, generation = conversationProjectionRef.current.generation): Promise<void> => {
     if (conversationId === null) {
       const snapshotResponse = await getRunSnapshot(runId);
       if (conversationProjectionRef.current.generation !== generation) return;
       const resolvedConversationId = snapshotResponse.snapshot.conversation_id;
-      await selectRun(runId, resolvedConversationId, beginConversationProjection(resolvedConversationId));
+      const resolvedGeneration = beginConversationProjection(resolvedConversationId);
+      await Promise.all([
+        reloadConversationHistory(resolvedConversationId, resolvedGeneration),
+        selectRun(runId, resolvedConversationId, resolvedGeneration),
+      ]);
       return;
     }
     if (!await refreshRun(runId, conversationId, generation)) return;
@@ -104,13 +154,16 @@ export function useConversation({ currentAccount, selectedResourceIds, onStatusL
       },
     });
     subscriptionRunIdRef.current = runId;
-  }, [beginConversationProjection, onStatusLine, refreshRun]);
+  }, [beginConversationProjection, onStatusLine, refreshRun, reloadConversationHistory]);
 
   const selectConversation = useCallback(async (conversationId: string): Promise<void> => {
     const generation = beginConversationProjection(conversationId);
     try {
-      const latest = await getLatestConversationRun(conversationId);
-      if (conversationProjectionRef.current.generation !== generation || conversationProjectionRef.current.conversationId !== conversationId) return;
+      const [history, latest] = await Promise.all([
+        getConversationHistory(conversationId),
+        getLatestConversationRun(conversationId),
+      ]);
+      if (!applyConversationHistory(history, conversationId, generation)) return;
       if (latest.run) await selectRun(latest.run.run_id, conversationId, generation);
     } catch (error) {
       if (conversationProjectionRef.current.generation === generation && conversationProjectionRef.current.conversationId === conversationId) {
@@ -119,7 +172,7 @@ export function useConversation({ currentAccount, selectedResourceIds, onStatusL
         setComposerError(message);
       }
     }
-  }, [beginConversationProjection, onStatusLine, selectRun]);
+  }, [applyConversationHistory, beginConversationProjection, onStatusLine, selectRun]);
 
   const handleStartRun = useCallback(async (quickPrompt?: string): Promise<void> => {
     if (!currentAccount?.account_id) {
@@ -142,6 +195,7 @@ export function useConversation({ currentAccount, selectedResourceIds, onStatusL
       }
       const runId = crypto.randomUUID();
       const response = await startRun({ command_id: crypto.randomUUID(), conversation_id: conversationId, user_message_id: crypto.randomUUID(), run_id: runId, workflow_key: `workflow-${runId}`, request_text: requestText, entry_mode: selectedResourceIds.length > 0 ? "RESOURCE_SELECTED" : "AGENT_SEARCH", selected_resource_ids: selectedResourceIds, requested_mode: "AUTO" });
+      await reloadConversationHistory(conversationId, projectionGeneration);
       await selectRun(response.run_id, conversationId, projectionGeneration);
       setComposerText("");
     } catch (error) {
@@ -149,7 +203,7 @@ export function useConversation({ currentAccount, selectedResourceIds, onStatusL
       onStatusLine(message);
       setComposerError(message);
     } finally { setBusyCommand(null); }
-  }, [beginConversationProjection, busyCommand, composerText, currentAccount, onStatusLine, refreshConversations, selectRun, selectedConversationId, selectedResourceIds]);
+  }, [beginConversationProjection, busyCommand, composerText, currentAccount, onStatusLine, refreshConversations, reloadConversationHistory, selectRun, selectedConversationId, selectedResourceIds]);
 
   const refreshCurrentRun = useCallback(async (): Promise<void> => { if (runSnapshot) await selectRun(runSnapshot.run_id); }, [runSnapshot, selectRun]);
   const handleApprove = useCallback(async (action: RunAction, duplicateAcknowledged = false, calendarConflictAcknowledged = false): Promise<void> => {
@@ -167,5 +221,5 @@ export function useConversation({ currentAccount, selectedResourceIds, onStatusL
   const handleConfirmation = useCallback(async (): Promise<void> => { if (!runSnapshot || !pendingConfirmation || !confirmationText.trim() || busyCommand) return; setBusyCommand("confirm-run"); try { await confirmRun({ run_id: runSnapshot.run_id, command_id: crypto.randomUUID(), expected_version: runSnapshot.version, interrupt_id: pendingConfirmation.interruptId, response_kind: "FREE_TEXT", free_text: confirmationText.trim() }); setConfirmationText(""); await refreshRun(runSnapshot.run_id); } finally { setBusyCommand(null); } }, [busyCommand, confirmationText, pendingConfirmation, refreshRun, runSnapshot]);
   const handleResolveRecovery = useCallback(async (action: RunAction, resolutionKind: "ACCEPT_PARTIAL" | "CREATE_CORRECTIVE_PLAN"): Promise<void> => { if (!runSnapshot || busyCommand) return; setBusyCommand(`recovery-${resolutionKind}`); try { await resolveRecovery({ run_id: runSnapshot.run_id, command_id: crypto.randomUUID(), expected_version: runSnapshot.version, action_id: action.action_id, resolution_kind: resolutionKind }); await refreshRun(runSnapshot.run_id); } finally { setBusyCommand(null); } }, [busyCommand, refreshRun, runSnapshot]);
 
-  return { conversations, selectedConversationId, runSnapshot, runContext, composerText, composerError, busyCommand, pendingConfirmation, confirmationText, setComposerText, setComposerError, setConfirmationText, refreshConversations, beginConversationProjection, selectConversation, selectRun, refreshRun, handleStartRun, handleApprove, handleSimpleAction, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery };
+  return { conversations, selectedConversationId, historyMessages, runSnapshot, runContext, composerText, composerError, busyCommand, pendingConfirmation, confirmationText, setComposerText, setComposerError, setConfirmationText, refreshConversations, beginConversationProjection, selectConversation, selectRun, refreshRun, handleStartRun, handleApprove, handleSimpleAction, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery };
 }

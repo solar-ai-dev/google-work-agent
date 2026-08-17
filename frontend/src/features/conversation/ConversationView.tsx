@@ -1,5 +1,5 @@
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-import type { RunAction, RunContext, RunSnapshot } from "../../api/contract";
+import type { ConversationMessage, RunAction, RunContext, RunSnapshot } from "../../api/contract";
 import {
   calendarConflictDecision,
   feasibilityDecision,
@@ -11,6 +11,7 @@ import type { PendingConfirmation } from "./useConversation";
 export type ConversationViewModel = {
   controller: {
     selectedConversationId: string | null;
+    historyMessages: ConversationMessage[];
     runSnapshot: RunSnapshot | null;
     runContext: RunContext | null;
     pendingConfirmation: PendingConfirmation | null;
@@ -36,8 +37,12 @@ export type ConversationViewModel = {
 export type ConversationViewProps = { children: ReactNode; viewModel: ConversationViewModel };
 
 export function ConversationView({ children, viewModel }: ConversationViewProps): JSX.Element {
-  const { controller: { selectedConversationId, runSnapshot, runContext, pendingConfirmation, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery }, resourceContext: { selectedResourceIds, selectedResourceLabels, composerPrompt }, formatTime } = viewModel;
+  const { controller: { selectedConversationId, historyMessages, runSnapshot, runContext, pendingConfirmation, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery }, resourceContext: { selectedResourceIds, selectedResourceLabels, composerPrompt }, formatTime } = viewModel;
   const showRunHeader = runSnapshot !== null;
+  // The stored history already owns every persisted turn. The current run only
+  // contributes the request text that is not persisted into history yet.
+  const showTransientRequest = Boolean(runContext?.request_text)
+    && !historyMessages.some((message) => message.role === "USER" && message.run_id === runContext?.run_id);
 
   return (
     <>          {showRunHeader ? (
@@ -67,10 +72,20 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
         {children}
         <section className="agent-workspace" aria-label="에이전트 대화">
               <section className="card-list">
-              {runContext?.request_text ? (
+              {historyMessages.map((message) => (
+                <article
+                  key={message.id}
+                  className={message.role === "USER" ? "info-card user-request-card" : "info-card"}
+                >
+                  <strong>{historyMessageLabel(message.role)}</strong>
+                  <p>{message.content}</p>
+                </article>
+              ))}
+
+              {showTransientRequest ? (
                 <article className="info-card user-request-card">
                   <strong>사용자 요청</strong>
-                  <p>{runContext.request_text}</p>
+                  <p>{runContext!.request_text}</p>
                 </article>
               ) : null}
 
@@ -330,6 +345,17 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
     </>
   );
 }
+function historyMessageLabel(role: ConversationMessage["role"]): string {
+  switch (role) {
+    case "USER":
+      return "사용자 요청";
+    case "ASSISTANT":
+      return "에이전트 응답";
+    default:
+      return "시스템 메시지";
+  }
+}
+
 function runHeaderTitle(status: string | undefined, hasConversation: boolean): string {
   if (status === "FAILED") {
     return "실행 실패";

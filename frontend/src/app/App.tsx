@@ -131,6 +131,7 @@ export function App(): JSX.Element {
   const {
     conversations,
     selectedConversationId,
+    historyMessages,
     runSnapshot,
     runContext,
     composerText,
@@ -157,6 +158,7 @@ export function App(): JSX.Element {
   const conversationViewModel = {
     controller: {
       selectedConversationId,
+      historyMessages,
       runSnapshot,
       runContext,
       pendingConfirmation,

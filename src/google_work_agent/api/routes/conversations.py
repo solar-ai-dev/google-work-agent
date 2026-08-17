@@ -13,6 +13,7 @@ from google_work_agent.api.dependencies import (
 )
 from google_work_agent.api.errors import ApiError, http_status_for_result_code
 from google_work_agent.api.schemas.conversations import (
+    ConversationHistoryResponse,
     ConversationListResponse,
     ConversationResponse,
     CreateConversationRequest,
@@ -104,6 +105,36 @@ def get_conversation(
     return ConversationListResponse(
         items=[asdict(conversation)],
         next_cursor=None,
+        api_contract_version=dependencies.api_contract_version,
+    )
+
+
+@router.get("/{conversation_id}/history", response_model=ConversationHistoryResponse)
+def get_conversation_history(
+    conversation_id: str,
+    request: Request,
+    dependencies: ConversationRouteDependency,
+    x_api_contract_version: str | None = Header(default=None),
+) -> ConversationHistoryResponse:
+    enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
+        request_id=request.state.request_id,
+        request_version=x_api_contract_version,
+    )
+    history = dependencies.query_service().get_conversation_history(conversation_id)
+    if history is None:
+        raise ApiError(
+            error_code="NOT_FOUND",
+            user_message="대화를 찾을 수 없습니다.",
+            status_code=404,
+            request_id=request.state.request_id,
+        )
+    return ConversationHistoryResponse(
+        conversation=asdict(history.conversation),
+        messages=[asdict(item) for item in history.messages],
+        runs=[asdict(item) for item in history.runs],
+        truncated=history.truncated,
         api_contract_version=dependencies.api_contract_version,
     )
 
