@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from json import loads
 from pathlib import Path
 from threading import Barrier, Event, Lock, Thread
 
@@ -994,3 +995,57 @@ def test_concurrent_producer_cannot_steal_a_reserved_slot_during_the_commit_gap(
     other_thread.join(timeout=5)
 
     assert isinstance(other_producer_result.get("error"), QueueBusyError)
+
+
+def test_start_run_service_hash_mismatch_emits_exactly_one_rejection_event(
+    tmp_path: Path,
+) -> None:
+    """A/B: StartRunService is one of the direct resolve_json_receipt callers
+    (run_command_receipts.py) not covered by the first observability pass.
+    It now routes through the shared resolve_existing_receipt wrapper, so a
+    genuine different-hash conflict records exactly one
+    COMMAND_REJECTED_HASH_MISMATCH event, and a same-hash idempotent replay
+    records none.
+    """
+    database_path = tmp_path / "start-run-hash-mismatch.db"
+    _seed_conversation_database(database_path)
+    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+    service = StartRunService(unit_of_work_factory=unit_of_work_factory, now_ms=lambda: 9000)
+
+    first = service(
+        _start_run_command(command_id="command-hash-a", run_id="run-hash-a", request_hash="d1" * 32)
+    )
+    assert first.applied is True
+
+    replay = service(
+        _start_run_command(command_id="command-hash-a", run_id="run-hash-a", request_hash="d1" * 32)
+    )
+    assert replay.request_replayed is True
+    connection = connect_sqlite(database_path)
+    try:
+        replay_count = connection.execute(
+            "SELECT COUNT(*) FROM audit_events "
+            "WHERE event_type = 'COMMAND_REJECTED_HASH_MISMATCH';"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert replay_count == 0
+
+    conflict = service(
+        _start_run_command(command_id="command-hash-a", run_id="run-hash-a", request_hash="d2" * 32)
+    )
+    assert conflict.result_code == "DUPLICATE_COMMAND"
+
+    connection = connect_sqlite(database_path)
+    try:
+        rows = connection.execute(
+            "SELECT metadata_json FROM audit_events "
+            "WHERE event_type = 'COMMAND_REJECTED_HASH_MISMATCH';"
+        ).fetchall()
+    finally:
+        connection.close()
+    assert len(rows) == 1
+    envelope = loads(rows[0][0])
+    assert envelope["attributes"]["command_id"] == "command-hash-a"
+    assert envelope["attributes"]["command_type"] == "StartRun"
+    assert envelope["correlation"]["run_id"] == "run-hash-a"

@@ -163,6 +163,18 @@ class MarkWriteActionUnknownResultService:
                     "write action mark_unknown_result transition failed after attempt update"
                 )
             run = unit_of_work.runs.set_recovery_required(plan.run_id)
+            unknown_result_trace_payload: dict[str, object] = {
+                "attempt_id": attempt.id,
+                "error_code": command.error_code,
+                "run_status": run.status.value,
+            }
+            unknown_result_audit_metadata: dict[str, object] = {
+                "attempt_id": attempt.id,
+                "error_code": command.error_code,
+            }
+            if command.mcp_request_id is not None:
+                unknown_result_trace_payload["mcp_request_id"] = command.mcp_request_id
+                unknown_result_audit_metadata["mcp_request_id"] = command.mcp_request_id
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=plan.run_id,
@@ -170,14 +182,7 @@ class MarkWriteActionUnknownResultService:
                     event_type="WRITE_ACTION_UNKNOWN_RESULT",
                     status=ActionStatus.UNKNOWN_RESULT.value,
                     duration_ms=None,
-                    payload_json=dumps(
-                        {
-                            "attempt_id": attempt.id,
-                            "error_code": command.error_code,
-                            "run_status": run.status.value,
-                        },
-                        sort_keys=True,
-                    ),
+                    payload_json=dumps(unknown_result_trace_payload, sort_keys=True),
                     created_at_ms=now_ms,
                 )
             )
@@ -187,7 +192,7 @@ class MarkWriteActionUnknownResultService:
                     action_id=action.id,
                     event_type="WRITE_UNKNOWN_RESULT",
                     outcome=ResultCode.TRANSITION_APPLIED.value,
-                    metadata={"attempt_id": attempt.id, "error_code": command.error_code},
+                    metadata=unknown_result_audit_metadata,
                     created_at_ms=now_ms,
                 )
             )
@@ -1037,6 +1042,11 @@ class RequireWriteReauthService:
             )
             updated_run = unit_of_work.runs.set_reauth_required(command.run_id)
             plan = _require_latest_plan_for_run(unit_of_work, command.run_id)
+            reauth_trace_payload: dict[str, object] = {"safe_error_code": command.safe_error_code}
+            reauth_audit_metadata: dict[str, object] = {"safe_error_code": command.safe_error_code}
+            if command.mcp_request_id is not None:
+                reauth_trace_payload["mcp_request_id"] = command.mcp_request_id
+                reauth_audit_metadata["mcp_request_id"] = command.mcp_request_id
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=command.run_id,
@@ -1044,10 +1054,7 @@ class RequireWriteReauthService:
                     event_type="RUN_REAUTH_REQUIRED",
                     status=updated_run.status.value,
                     duration_ms=None,
-                    payload_json=dumps(
-                        {"safe_error_code": command.safe_error_code},
-                        sort_keys=True,
-                    ),
+                    payload_json=dumps(reauth_trace_payload, sort_keys=True),
                     created_at_ms=now_ms,
                 )
             )
@@ -1057,7 +1064,7 @@ class RequireWriteReauthService:
                     action_id=command.action_id,
                     event_type="RUN_REAUTH_REQUIRED",
                     outcome=ResultCode.TRANSITION_APPLIED.value,
-                    metadata={"safe_error_code": command.safe_error_code},
+                    metadata=reauth_audit_metadata,
                     created_at_ms=now_ms,
                 )
             )

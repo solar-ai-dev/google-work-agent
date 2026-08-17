@@ -439,6 +439,10 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         expected_audit_count = 6 if write_operation == "create_task" else 4
         if write_operation in {"create_calendar_event", "update_calendar_event"}:
             expected_audit_count += 2
+        # The intentional same-command_id/different-hash approve retry above
+        # (ttl_ms changed) now also records one COMMAND_REJECTED_HASH_MISMATCH
+        # audit event for this action.
+        expected_audit_count += 1
         assert tuple(counts) == (
             1,
             1,

@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+from json import loads as _loads
+
+from google_work_agent.adapters.mcp import MCPGoogleWorkspaceGateway
 from tests.integration.persistence.test_write_actions import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
@@ -48,6 +51,7 @@ from tests.integration.persistence.test_write_actions import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+from tests.support.fakes import FakeMCPTransport
 
 pytest_plugins = ("tests.integration.persistence.test_write_actions",)
 
@@ -1243,6 +1247,109 @@ def test_verify_write_action_get_runs_without_sqlite_write_transaction(
 
     assert verified.applied is True
     assert verified.action_status == "VERIFIED"
+
+
+def test_verify_write_action_success_persists_mcp_request_id_correlation(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    """C: a successful verification against a real MCP-backed gateway
+    persists the exact transport-assigned request_id on both the
+    WRITE_ACTION_VERIFIED trace and the WRITE_VERIFIED audit event -- not
+    just an ObservabilityContext built in isolation.
+    """
+    clock = FakeClock(1000)
+    claimed = _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="verify-mcp",
+    )
+    execute_service = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )
+    stored_service = StoreWriteActionSuccessService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    executed = execute_service(
+        action_id="action-verify-mcp",
+        claim_token=claimed.claim_token or "",
+    )
+    stored_service(
+        StoreWriteActionSuccessCommand(
+            command_id="store-verify-mcp",
+            request_hash="m1" * 32,
+            action_id="action-verify-mcp",
+            attempt_id="attempt-verify-mcp",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            snapshot=executed.snapshot,
+        )
+    )
+
+    transport = FakeMCPTransport()
+    transport.queue_response(
+        {
+            "item": {
+                "fixture_snapshot_id": "snap-verify-mcp",
+                "resource_type": "task",
+                "resource_id": "task-verify-mcp",
+                "parent_id": "task-list-default",
+                "related_resource_ids": [],
+                "version": "1",
+                "recovery_fingerprint": None,
+                "payload": {
+                    "resource_id": "task-verify-mcp",
+                    "title": "title-verify-mcp",
+                    "status": "needsAction",
+                },
+            }
+        }
+    )
+    mcp_gateway = MCPGoogleWorkspaceGateway(transport=transport)
+    verify_service = VerifyWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        gateway=GoogleWorkspaceExecutionBackend(gateway=mcp_gateway),
+    )
+
+    verified = verify_service(
+        VerifyWriteActionCommand(
+            command_id="verify-mcp",
+            request_hash="m2" * 32,
+            action_id="action-verify-mcp",
+            attempt_id="attempt-verify-mcp",
+            expected_action_version=3,
+            verification_id="verification-mcp",
+        )
+    )
+
+    assert verified.applied is True
+    assert verified.action_status == "VERIFIED"
+    transport_request_id = mcp_gateway.last_request_id
+    assert transport_request_id is not None
+
+    connection = connect_sqlite(write_database)
+    try:
+        trace_row = connection.execute(
+            "SELECT payload_json FROM trace_events "
+            "WHERE event_type = 'WRITE_ACTION_VERIFIED' AND action_id = 'action-verify-mcp';"
+        ).fetchone()
+        audit_row = connection.execute(
+            "SELECT metadata_json FROM audit_events "
+            "WHERE event_type = 'WRITE_VERIFIED' AND action_id = 'action-verify-mcp';"
+        ).fetchone()
+    finally:
+        connection.close()
+
+    trace_envelope = cast(dict[str, object], _loads(trace_row[0]))
+    audit_envelope = cast(dict[str, object], _loads(audit_row[0]))
+    assert trace_envelope["attributes"]["mcp_request_id"] == transport_request_id
+    assert audit_envelope["attributes"]["mcp_request_id"] == transport_request_id
 
 
 def test_verify_write_action_rechecks_version_after_external_get(

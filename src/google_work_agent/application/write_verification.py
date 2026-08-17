@@ -192,6 +192,11 @@ class VerifyWriteActionService:
             )
 
         delete_target_absent = False
+        # mcp_request_id correlates this verification's trace/audit event
+        # back to the specific MCP read that produced it. It stays None for
+        # the LookupError branch below, where no MCP call was ever made
+        # (the resource reference itself could not be resolved locally).
+        mcp_request_id: str | None = None
         if action.tool_name in DELETE_TOOL_TARGETS:
             try:
                 actual_snapshot = self._connector_execution.fetch_verification_snapshot(
@@ -199,6 +204,7 @@ class VerifyWriteActionService:
                     arguments=loads(action.arguments_json),
                     fallback_resource_id=fallback_resource_id,
                 )
+                mcp_request_id = getattr(self._connector_execution, "last_request_id", None)
             except LookupError:
                 delete_target_absent = True
                 actual_snapshot = None
@@ -207,12 +213,14 @@ class VerifyWriteActionService:
                     raise
                 delete_target_absent = True
                 actual_snapshot = None
+                mcp_request_id = error.mcp_request_id
         else:
             actual_snapshot = self._connector_execution.fetch_verification_snapshot(
                 tool_name=action.tool_name,
                 arguments=loads(action.arguments_json),
                 fallback_resource_id=fallback_resource_id,
             )
+            mcp_request_id = getattr(self._connector_execution, "last_request_id", None)
 
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -340,6 +348,12 @@ class VerifyWriteActionService:
                 # recovery decision may choose the next run transition.
                 unit_of_work.runs.set_recovery_required(plan.run_id)
 
+            verification_trace_payload: dict[str, object] = {
+                "attempt_id": attempt.id,
+                "verification_id": verification.id,
+            }
+            if mcp_request_id is not None:
+                verification_trace_payload["mcp_request_id"] = mcp_request_id
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=plan.run_id,
@@ -347,24 +361,24 @@ class VerifyWriteActionService:
                     event_type="WRITE_ACTION_VERIFIED",
                     status=verification_status.value,
                     duration_ms=None,
-                    payload_json=dumps(
-                        {"attempt_id": attempt.id, "verification_id": verification.id},
-                        sort_keys=True,
-                    ),
+                    payload_json=dumps(verification_trace_payload, sort_keys=True),
                     created_at_ms=now_ms,
                 )
             )
+            verification_audit_metadata: dict[str, object] = {
+                "attempt_id": attempt.id,
+                "verification_id": verification.id,
+                "verification_status": verification_status.value,
+            }
+            if mcp_request_id is not None:
+                verification_audit_metadata["mcp_request_id"] = mcp_request_id
             unit_of_work.audits.add(
                 _audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,
                     event_type="WRITE_VERIFIED",
                     outcome=ResultCode.TRANSITION_APPLIED.value,
-                    metadata={
-                        "attempt_id": attempt.id,
-                        "verification_id": verification.id,
-                        "verification_status": verification_status.value,
-                    },
+                    metadata=verification_audit_metadata,
                     created_at_ms=now_ms,
                 )
             )

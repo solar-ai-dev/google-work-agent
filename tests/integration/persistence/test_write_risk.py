@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from json import loads as _loads
+
 from tests.integration.persistence.test_write_actions import (
     EvidenceOriginType,
     FakeClock,
@@ -49,6 +51,51 @@ def test_reauth_core_command_marks_run_without_langgraph_dependency(
     )
     assert response.applied is True
     assert response.run_status == "REAUTH_REQUIRED"
+
+
+def test_reauth_command_mcp_request_id_persists_on_trace_and_audit(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    """D: an execution-phase AUTH_EXPIRED/PERMISSION_DENIED error's
+    mcp_request_id (as execution_phase.py forwards it from a real
+    GoogleWorkspaceGatewayError) reaches the persisted RUN_REAUTH_REQUIRED
+    trace/audit rows.
+    """
+    del fixture_gateway
+    clock = FakeClock(1000)
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix="reauth-mcp")
+    request_service = RequireWriteReauthService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    response = request_service(
+        RequireWriteReauthCommand(
+            command_id="reauth-mcp-1",
+            request_hash="z2" * 32,
+            run_id="run-1",
+            action_id="action-reauth-mcp",
+            safe_error_code=GoogleWorkspaceErrorCode.AUTH_EXPIRED.value,
+            mcp_request_id="req-simulated-42",
+        )
+    )
+    assert response.applied is True
+
+    connection = connect_sqlite(write_database)
+    try:
+        trace_row = connection.execute(
+            "SELECT payload_json FROM trace_events WHERE event_type = 'RUN_REAUTH_REQUIRED';"
+        ).fetchone()
+        audit_row = connection.execute(
+            "SELECT metadata_json FROM audit_events WHERE event_type = 'RUN_REAUTH_REQUIRED';"
+        ).fetchone()
+    finally:
+        connection.close()
+
+    trace_envelope = _loads(trace_row[0])
+    audit_envelope = _loads(audit_row[0])
+    assert trace_envelope["attributes"]["mcp_request_id"] == "req-simulated-42"
+    assert audit_envelope["attributes"]["mcp_request_id"] == "req-simulated-42"
 
 
 def test_action_risk_defaults_to_empty_object_on_insert(write_database: Path) -> None:

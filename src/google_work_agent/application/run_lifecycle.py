@@ -13,7 +13,7 @@ from google_work_agent.application.run_command_receipts import (
     finish_json_receipt as _finish_json_receipt,
 )
 from google_work_agent.application.run_command_receipts import (
-    resolve_json_receipt as _resolve_json_receipt,
+    resolve_existing_receipt as _resolve_existing_receipt,
 )
 from google_work_agent.application.run_contracts import (
     ResumeRunCommand,
@@ -58,10 +58,13 @@ class StartRunService:
             if existing is not None:
                 response = cast(
                     StartRunResponse,
-                    _resolve_json_receipt(
+                    _resolve_existing_receipt(
+                        unit_of_work=unit_of_work,
                         receipt=existing,
                         request_hash=command.request_hash,
                         response_type=StartRunResponse,
+                        run_id=command.run_id,
+                        now_ms=self._now_ms(),
                     ),
                 )
                 return StartRunResponse(
@@ -248,10 +251,13 @@ class ResumeRunService:
             if existing is not None:
                 response = cast(
                     ResumeRunResponse,
-                    _resolve_json_receipt(
+                    _resolve_existing_receipt(
+                        unit_of_work=unit_of_work,
                         receipt=existing,
                         request_hash=command.request_hash,
                         response_type=ResumeRunResponse,
+                        run_id=command.run_id,
+                        now_ms=self._now_ms(),
                     ),
                 )
                 return ResumeRunResponse(

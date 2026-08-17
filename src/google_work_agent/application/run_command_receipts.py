@@ -11,6 +11,9 @@ from google_work_agent.application.run_contracts import (
     ResumeRunResponse,
     StartRunResponse,
 )
+from google_work_agent.application.write_persistence import (
+    emit_command_rejected_hash_mismatch,
+)
 from google_work_agent.domain import ResultCode
 from google_work_agent.ports import (
     CommandReceiptRecord,
@@ -103,6 +106,40 @@ def resolve_json_receipt(
     if "next_allowed_commands" in payload:
         payload["next_allowed_commands"] = tuple(payload["next_allowed_commands"])
     return cast(ReceiptResponse, response_type(**payload))
+
+
+def resolve_existing_receipt(
+    *,
+    unit_of_work: UnitOfWork,
+    receipt: CommandReceiptRecord,
+    request_hash: str,
+    response_type: type[object],
+    run_id: str | None = None,
+    action_id: str | None = None,
+    now_ms: int,
+) -> ReceiptResponse:
+    """Thin wrapper shared by every CreateConversation/StartRun/ResumeRun/
+    ActionMutation caller of the pure resolve_json_receipt above.
+
+    Keeps resolve_json_receipt itself free of side effects; records
+    COMMAND_REJECTED_HASH_MISMATCH via the one shared observability boundary
+    (write_persistence.emit_command_rejected_hash_mismatch) only for a
+    genuine different-hash conflict, never for a same-hash idempotent
+    replay.
+    """
+    if receipt.request_hash != request_hash:
+        emit_command_rejected_hash_mismatch(
+            unit_of_work=unit_of_work,
+            receipt=receipt,
+            run_id=run_id,
+            action_id=action_id,
+            now_ms=now_ms,
+        )
+    return resolve_json_receipt(
+        receipt=receipt,
+        request_hash=request_hash,
+        response_type=response_type,
+    )
 
 
 def finish_json_receipt(

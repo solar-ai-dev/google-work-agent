@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import hmac
 import json
@@ -14,6 +13,8 @@ import secrets
 import sys
 import threading
 import time
+from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from email import policy
 from email.header import decode_header, make_header
@@ -473,7 +474,9 @@ def _gmail_search_threads(
     else:
         metadata_items = [{} for _ in thread_entries]
     items = []
-    for (thread_id, _list_snippet, history_id), metadata in zip(thread_entries, metadata_items, strict=True):
+    for (thread_id, _list_snippet, history_id), metadata in zip(
+        thread_entries, metadata_items, strict=True
+    ):
         items.append(
             _snapshot(
                 "gmail_thread",
@@ -1611,7 +1614,7 @@ def _google_api_call(
     method: str,
     url: str,
     *,
-    params: dict[str, str | list[str]] | None = None,
+    params: Mapping[str, str | list[str]] | None = None,
     body: dict[str, object] | None = None,
 ) -> dict[str, object]:
     try:
@@ -1660,7 +1663,7 @@ def _google_api_call(
 
 
 def _google_api(
-    state: _WorkspaceState, url: str, params: dict[str, str | list[str]] | None = None
+    state: _WorkspaceState, url: str, params: Mapping[str, str | list[str]] | None = None
 ) -> dict[str, object]:
     return _google_api_call(state, "GET", url, params=params)
 

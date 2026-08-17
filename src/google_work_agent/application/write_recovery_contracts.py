@@ -16,6 +16,7 @@ class MarkWriteActionUnknownResultCommand:
     expected_attempt_version: int
     error_code: str
     error_detail: str
+    mcp_request_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,3 +115,4 @@ class RequireWriteReauthCommand:
     run_id: str
     action_id: str | None
     safe_error_code: str
+    mcp_request_id: str | None = None
