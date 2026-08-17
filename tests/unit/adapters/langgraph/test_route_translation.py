@@ -4,8 +4,11 @@ from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.route_translation import (
     GraphRouteTranslator,
     build_resume_target_registry,
+    confirmation_owner,
+    confirmation_resume_status,
 )
 from google_work_agent.application.workflows import SupervisorTarget
+from google_work_agent.domain import RunStatus
 
 
 @pytest.mark.parametrize(
@@ -116,11 +119,15 @@ def test_profile_route_translation_is_preserved(
         (GraphProfile.THREE_STAGE, "request_understanding.classify", "stage_one"),
         (GraphProfile.THREE_STAGE, "analysis.analyze", "stage_two"),
         (GraphProfile.THREE_STAGE, "review.inspect", "stage_three"),
-        (GraphProfile.THREE_STAGE, "unknown", "source_planning"),
-        (GraphProfile.SIX_ROLE_BASELINE, "planning.draft_plan", "acquisition"),
+        (GraphProfile.SIX_ROLE_BASELINE, "request_understanding.classify", "request_understanding"),
+        (GraphProfile.SIX_ROLE_BASELINE, "tool_route.finalize", "tool_route"),
+        (GraphProfile.SIX_ROLE_BASELINE, "context.assess_sufficiency", "context_retriever"),
+        (GraphProfile.SIX_ROLE_BASELINE, "analysis.analyze", "work_analysis"),
+        (GraphProfile.SIX_ROLE_BASELINE, "planning.draft_plan", "planning"),
+        (GraphProfile.SIX_ROLE_BASELINE, "review.inspect", "review"),
     ],
 )
-def test_confirmation_resume_target_is_preserved(
+def test_confirmation_resume_target_returns_originating_owner(
     profile: GraphProfile,
     origin_target: str,
     expected: str,
@@ -129,6 +136,34 @@ def test_confirmation_resume_target_is_preserved(
         GraphRouteTranslator(profile).confirmation_resume_target({"origin_target": origin_target})
         == expected
     )
+
+
+def test_confirmation_resume_target_rejects_unknown_origin() -> None:
+    with pytest.raises(ValueError, match="no registered owner"):
+        GraphRouteTranslator(GraphProfile.SIX_ROLE_BASELINE).confirmation_resume_target(
+            {"origin_target": "unknown"}
+        )
+
+
+@pytest.mark.parametrize(
+    ("origin_target", "owner", "status"),
+    [
+        ("request_understanding.classify", "REQUEST_UNDERSTANDING", RunStatus.ANALYZING),
+        ("tool_route.finalize", "TOOL_ROUTE", RunStatus.ANALYZING),
+        ("retrieval.plan_query", "RETRIEVAL", RunStatus.RETRIEVING),
+        ("context.assess_sufficiency", "RETRIEVAL", RunStatus.RETRIEVING),
+        ("analysis.analyze", "WORK_ANALYSIS", RunStatus.PLANNING),
+        ("planning.draft_plan", "PLANNING", RunStatus.PLANNING),
+        ("review.inspect", "REVIEW", RunStatus.PLANNING),
+    ],
+)
+def test_confirmation_owner_and_domain_resume_status_are_canonical(
+    origin_target: str,
+    owner: str,
+    status: RunStatus,
+) -> None:
+    assert confirmation_owner(origin_target) == owner
+    assert confirmation_resume_status(owner) is status
 
 
 def test_resume_target_registry_issues_and_resolves_only_registered_target() -> None:
