@@ -80,7 +80,6 @@
     },
     "retrieval.assess_sufficiency": {
       "allowed_root_fields": [
-        "user_request",
         "request_intent",
         "selected_evidence",
         "source_statuses",
