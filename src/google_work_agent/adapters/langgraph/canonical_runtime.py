@@ -91,14 +91,10 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
         )
         interrupt_id = self._id_factory()
 
-        # A new question supersedes any prior pending one-shot answer for this Run.
         run_id = merged.get("run_id")
         if isinstance(run_id, str):
             self._confirmation_llm_runtime.clear(run_id=run_id)
 
-        # ``UserInterruptV1`` is the validated question payload. ``interrupt_id``
-        # is a controller-owned one-way UI/API projection added only after that
-        # workflow contract has already been validated.
         merged["user_interrupt"] = {
             **cast(dict[str, object], raw_interrupt),
             "interrupt_id": interrupt_id,
@@ -118,19 +114,10 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
         return merged
 
     def _clear_consumed_confirmation(self, *, state: GraphState, merged: GraphState) -> GraphState:
-        """Expire a confirmation answer after its originating owner returns once."""
+        """Expire the answer on the first non-confirmation disposition after resume."""
         prompt_context = state.get("prompt_context")
-        if not isinstance(prompt_context, Mapping):
+        if not isinstance(prompt_context, Mapping) or "confirmation_response" not in prompt_context:
             return merged
-        raw_meta = prompt_context.get("confirmation_interrupt")
-        if not isinstance(raw_meta, Mapping) or "confirmation_response" not in prompt_context:
-            return merged
-        owner_subgraph = raw_meta.get("owner_subgraph")
-        if not isinstance(owner_subgraph, str):
-            return merged
-        if state.get("workflow_phase") != _OWNER_WORKFLOW_PHASE.get(owner_subgraph):
-            return merged
-
         run_id = state.get("run_id")
         if isinstance(run_id, str):
             self._confirmation_llm_runtime.clear(run_id=run_id)
@@ -230,9 +217,6 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
                 }
             unit_of_work.commit()
 
-        # Register only after the Domain restore commits. The decorator sees the
-        # Run ID from trace_context and injects this answer solely into the
-        # semantic Prompt slot identified by origin_target.
         self._confirmation_llm_runtime.register(
             run_id=request.run_id,
             origin_target=expected_origin_target,
@@ -277,8 +261,6 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
             if unknown:
                 raise ValueError("confirmation selected_option_ids are outside the interrupt options")
         elif allowed_ids:
-            # Non-empty option sets are a closed-choice interrupt; accepting
-            # arbitrary text here would bypass the question's typed choice set.
             raise ValueError("closed-choice confirmation requires OPTION_SELECTION")
 
 
