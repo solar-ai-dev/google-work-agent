@@ -1,17 +1,18 @@
 {
   "schema_version": 2,
   "contract_id": "prompt-runtime-input-contract-v2-retrieval",
-  "source_of_truth": "05 Context-Retrieval v2.13 / 15 Prompt contract v1.23",
+  "source_of_truth": "05 Context-Retrieval v2.13 / 15 Prompt contract v1.24",
   "rules": [
     "Only declared runtime input fields may be serialized into a Product Prompt.",
     "Retrieval receives RequestIntentV2 and frozen input_routes; raw user_request is not a retrieval authority.",
+    "On same-owner confirmation resume, only validated ConfirmationResponseV1 may be added as confirmation_response; interrupt/checkpoint metadata remains forbidden.",
     "Raw provider query, continuation/page token, MCP arguments, and provider responses are never Product Prompt inputs.",
     "Repair/revision receives only base_projection + candidate_output + normalized failure_record."
   ],
   "slots": {
     "retrieval.plan_query": {
-      "initial_allowed_root_fields": ["request_intent", "input_routes", "retrieval_budget"],
-      "followup_allowed_root_fields": ["request_intent", "input_routes", "retrieval_budget", "current_round_no", "prior_query_attempts", "unresolved_sufficiency_issues", "read_result_summaries"]
+      "initial_allowed_root_fields": ["request_intent", "input_routes", "retrieval_budget", "confirmation_response"],
+      "followup_allowed_root_fields": ["request_intent", "input_routes", "retrieval_budget", "current_round_no", "prior_query_attempts", "unresolved_sufficiency_issues", "read_result_summaries", "confirmation_response"]
     },
     "retrieval.plan_query.repair": {
       "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"]
