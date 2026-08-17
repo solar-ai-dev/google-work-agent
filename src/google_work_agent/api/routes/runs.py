@@ -23,6 +23,7 @@ from google_work_agent.api.schemas.runs import (
     StartRunRequest,
     StartRunResponseModel,
 )
+from google_work_agent.application.coordinator import QueueBusyError
 from google_work_agent.application.start_run import ResumeRunCommand, StartRunCommand
 from google_work_agent.application.write_actions import (
     RecoveryResolutionKind,
@@ -57,12 +58,22 @@ def start_run(
         SelectedResourceRef(**item) for item in command_payload.pop("selected_resources")
     )
     command_payload["selected_resource_ids"] = tuple(command_payload["selected_resource_ids"])
-    result = dependencies.start_run_service()(
-        StartRunCommand(**command_payload, selected_resources=selected_resources)
-    )
+    try:
+        result = dependencies.start_run_service()(
+            StartRunCommand(**command_payload, selected_resources=selected_resources)
+        )
+    except QueueBusyError as error:
+        raise ApiError(
+            error_code="SERVICE_BUSY",
+            user_message="로컬 실행 대기열이 가득 찼습니다.",
+            status_code=503,
+            request_id=request.state.request_id,
+            retryable=True,
+            detail_code=type(error).__name__,
+        ) from error
     if result.applied and result.enqueued:
         try:
-            dependencies.local_run_coordinator.enqueue_start(
+            dependencies.local_run_coordinator.confirm_start(
                 run_id=result.run_id,
                 request_id=request.state.request_id,
                 command_id=payload.command_id,

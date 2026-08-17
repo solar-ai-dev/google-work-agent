@@ -492,7 +492,14 @@ def _google_error_from_transport(error: MCPTransportError) -> GoogleWorkspaceGat
     }
     return GoogleWorkspaceGatewayError(
         code=tool_error_map.get(str(error), code_map[error.code]),
-        message=dumps({"safe_error": error.code.value, "detail": str(error)}, sort_keys=True),
+        message=dumps(
+            {
+                "safe_error": error.code.value,
+                "detail": str(error),
+                "mcp_request_id": error.request_id,
+            },
+            sort_keys=True,
+        ),
         delivered=error.dispatch_started,
         mutated=False,
     )

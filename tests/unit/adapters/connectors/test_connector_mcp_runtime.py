@@ -14,10 +14,10 @@ class _Transport:
         self.closed = False
 
     def call_tool(self, *, tool_name: str, arguments: dict[str, Any]) -> MCPToolResponse:
-        return MCPToolResponse(payload={})
+        return MCPToolResponse(payload={}, request_id="req-fake-1")
 
     def call_control(self, *, method: str, arguments: dict[str, Any]) -> MCPControlResponse:
-        return MCPControlResponse(payload={})
+        return MCPControlResponse(payload={}, request_id="req-fake-1")
 
     def runtime_metadata(self) -> MCPRuntimeMetadata:
         return _metadata(restart_count=self.restart_count)

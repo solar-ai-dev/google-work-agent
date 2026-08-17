@@ -151,6 +151,7 @@ class VerifyWriteActionService:
                     receipt=existing,
                     request_hash=command.request_hash,
                     action_id=command.action_id,
+                    now_ms=self._now_ms(),
                 )
 
             action = _require_action(unit_of_work, command.action_id)
@@ -221,6 +222,7 @@ class VerifyWriteActionService:
                     receipt=existing,
                     request_hash=command.request_hash,
                     action_id=command.action_id,
+                    now_ms=self._now_ms(),
                 )
 
             now_ms = self._now_ms()

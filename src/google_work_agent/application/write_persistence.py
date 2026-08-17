@@ -194,6 +194,59 @@ def audit_event(
     )
 
 
+def emit_command_rejected_hash_mismatch(
+    *,
+    unit_of_work: UnitOfWork,
+    receipt: CommandReceiptRecord,
+    run_id: str | None,
+    action_id: str | None,
+    now_ms: int,
+) -> None:
+    """Record a genuine different-hash Command Receipt conflict exactly
+    once (docs/design/11 sec 12, COMMAND_REJECTED_HASH_MISMATCH).
+
+    Must only be called when ``receipt.request_hash != request_hash`` --
+    a same-hash idempotent replay is COMMAND_REPLAYED (no event here), not
+    a rejection. Only short identifiers pass through: no raw payload,
+    arguments, tokens, or secrets. trace_events requires a run_id (FK to
+    runs), so trace is only recorded when one is available; audit always
+    fires since audit_events.run_id is nullable.
+    """
+    metadata: dict[str, object] = {
+        "command_id": receipt.command_id,
+        "command_type": receipt.command_type,
+        "result_code": ResultCode.DUPLICATE_COMMAND.value,
+    }
+    sanitized_metadata = sanitize_event_attributes(metadata).values
+    unit_of_work.audits.add(
+        AuditEventRecord(
+            account_id=None,
+            run_id=run_id,
+            action_id=action_id,
+            actor_type="SYSTEM",
+            actor_id="command_receipt",
+            actor_display="CommandReceipt",
+            event_type="COMMAND_REJECTED_HASH_MISMATCH",
+            outcome=ResultCode.DUPLICATE_COMMAND.value,
+            metadata_json=dumps(sanitized_metadata, sort_keys=True),
+            created_at_ms=now_ms,
+        )
+    )
+    if run_id is not None:
+        unit_of_work.traces.add(
+            TraceEventRecord(
+                run_id=run_id,
+                action_id=action_id,
+                event_type="COMMAND_REJECTED_HASH_MISMATCH",
+                status=ResultCode.DUPLICATE_COMMAND.value,
+                duration_ms=None,
+                payload_json=dumps(sanitized_metadata, sort_keys=True),
+                created_at_ms=now_ms,
+            )
+        )
+    unit_of_work.commit()
+
+
 def cancel_pending_actions(
     *, unit_of_work: UnitOfWork, run_id: str, plan_id: str, updated_at_ms: int
 ) -> None:
@@ -237,17 +290,25 @@ def resolve_existing_run_receipt(
     receipt: CommandReceiptRecord,
     request_hash: str,
     run_id: str,
+    now_ms: int,
 ) -> WriteRunResponse:
+    if receipt.request_hash != request_hash:
+        emit_command_rejected_hash_mismatch(
+            unit_of_work=unit_of_work,
+            receipt=receipt,
+            run_id=run_id,
+            action_id=None,
+            now_ms=now_ms,
+        )
+        return cast(
+            WriteRunResponse,
+            resolve_json_receipt(
+                receipt=receipt,
+                request_hash=request_hash,
+                response_type=WriteRunResponse,
+            ),
+        )
     if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
-        if receipt.request_hash != request_hash:
-            return cast(
-                WriteRunResponse,
-                resolve_json_receipt(
-                    receipt=receipt,
-                    request_hash=request_hash,
-                    response_type=WriteRunResponse,
-                ),
-            )
         run = require_run(unit_of_work, run_id)
         plans = unit_of_work.plans.list_by_run(run_id)
         plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
@@ -415,17 +476,25 @@ def resolve_existing_action_receipt(
     receipt: CommandReceiptRecord,
     request_hash: str,
     action_id: str,
+    now_ms: int,
 ) -> WriteActionResponse:
+    if receipt.request_hash != request_hash:
+        emit_command_rejected_hash_mismatch(
+            unit_of_work=unit_of_work,
+            receipt=receipt,
+            run_id=None,
+            action_id=action_id,
+            now_ms=now_ms,
+        )
+        return cast(
+            WriteActionResponse,
+            resolve_json_receipt(
+                receipt=receipt,
+                request_hash=request_hash,
+                response_type=WriteActionResponse,
+            ),
+        )
     if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
-        if receipt.request_hash != request_hash:
-            return cast(
-                WriteActionResponse,
-                resolve_json_receipt(
-                    receipt=receipt,
-                    request_hash=request_hash,
-                    response_type=WriteActionResponse,
-                ),
-            )
         action = require_action(unit_of_work, action_id)
         applied_statuses = {
             ActionStatus.FAILED.value,

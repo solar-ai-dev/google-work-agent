@@ -79,6 +79,7 @@ class LocalRunCoordinator:
         self._id_factory = id_factory
         self._queue: Queue[_QueueItem | None] = Queue(maxsize=capacity)
         self._queued_or_running: set[str] = set()
+        self._reserved: set[str] = set()
         self._pending_items: dict[str, _QueueItem] = {}
         self._lock = Lock()
         self._stop_event = Event()
@@ -132,6 +133,55 @@ class LocalRunCoordinator:
             )
         )
 
+    def reserve_start(self, *, run_id: str) -> bool:
+        """Atomically claim admission for run_id before its Domain CREATED
+        row commits, so a full/stopped queue can never leave that row
+        behind with nothing to pick it up.
+
+        The admission check and the reservation record are one atomic
+        operation under the shared lock, and every other producer
+        (_enqueue, request_cancel) checks the same
+        ``qsize() + len(_reserved) < capacity`` invariant before claiming a
+        slot for itself -- so a reservation held here can never be starved
+        by another producer enqueuing in the window before confirm_start
+        runs. Pair a True result with confirm_start on success, or
+        release_reservation if the paired attempt does not end up
+        creating/enqueuing the run after all.
+        """
+        if self._stop_event.is_set():
+            return False
+        with self._lock:
+            if run_id in self._queued_or_running:
+                return False
+            if self._queue.qsize() + len(self._reserved) >= self._queue.maxsize:
+                return False
+            self._queued_or_running.add(run_id)
+            self._reserved.add(run_id)
+            return True
+
+    def confirm_start(self, *, run_id: str, request_id: str, command_id: str) -> None:
+        """Atomically convert a reserve_start() admission into a real queue item.
+
+        Releasing the reservation and performing the actual put happen
+        under the same lock acquisition, so no other producer can observe
+        an intermediate state where the slot is neither reserved nor
+        occupied.
+        """
+        item = _QueueItem(kind="start", run_id=run_id, request_id=request_id, command_id=command_id)
+        with self._lock:
+            self._reserved.discard(run_id)
+            try:
+                self._queue.put_nowait(item)
+            except Full as error:
+                self._queued_or_running.discard(run_id)
+                raise QueueBusyError() from error
+
+    def release_reservation(self, *, run_id: str) -> None:
+        """Release a reserve_start() admission that never reached confirm_start()."""
+        with self._lock:
+            self._reserved.discard(run_id)
+            self._queued_or_running.discard(run_id)
+
     def enqueue_resume(
         self,
         *,
@@ -184,13 +234,7 @@ class LocalRunCoordinator:
             if run_id in self._queued_or_running:
                 self._pending_items[run_id] = item
                 return
-            self._queued_or_running.add(run_id)
-        try:
-            self._queue.put_nowait(item)
-        except Full as error:
-            with self._lock:
-                self._queued_or_running.discard(run_id)
-            raise QueueBusyError() from error
+            self._claim_and_put_locked(item)
 
     def _enqueue(self, item: _QueueItem) -> None:
         if self._stop_event.is_set():
@@ -201,12 +245,26 @@ class LocalRunCoordinator:
                 if item.kind == "resume" and (pending is None or pending.kind != "cancel"):
                     self._pending_items[item.run_id] = item
                 return
-            self._queued_or_running.add(item.run_id)
+            self._claim_and_put_locked(item)
+
+    def _claim_and_put_locked(self, item: _QueueItem) -> None:
+        """Admit and physically enqueue item. Must be called while already
+        holding self._lock, with item.run_id confirmed absent from
+        _queued_or_running by the caller.
+
+        This is the single shared capacity gate for every producer
+        (_enqueue and request_cancel): admission is checked against actual
+        queue occupancy plus any outstanding reserve_start() reservations,
+        and the put happens in the same lock acquisition, so no other
+        thread can observe or race the capacity decision in between.
+        """
+        if self._queue.qsize() + len(self._reserved) >= self._queue.maxsize:
+            raise QueueBusyError()
+        self._queued_or_running.add(item.run_id)
         try:
             self._queue.put_nowait(item)
         except Full as error:
-            with self._lock:
-                self._queued_or_running.discard(item.run_id)
+            self._queued_or_running.discard(item.run_id)
             raise QueueBusyError() from error
 
     def _worker_loop(self) -> None:

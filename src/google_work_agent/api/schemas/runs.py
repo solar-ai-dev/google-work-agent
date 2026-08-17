@@ -60,7 +60,7 @@ class ResolveRecoveryRequestV1(ContractVersionedRequest):
     command_id: str
     expected_version: int
     action_id: str
-    resolution_kind: Literal["ACCEPT_PARTIAL", "CREATE_CORRECTIVE_PLAN"]
+    resolution_kind: Literal["ACCEPT_PARTIAL", "CREATE_CORRECTIVE_PLAN", "FAIL"]
 
 
 class RunCommandResponse(ApiModel):

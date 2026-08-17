@@ -204,18 +204,18 @@ class SubprocessMCPTransport:
         self._start_process()
 
     def call_tool(self, *, tool_name: str, arguments: dict[str, Any]) -> MCPToolResponse:
-        payload = self._request(
+        request_id, payload = self._request(
             message_type="tool_call",
             body={"tool_name": tool_name, "arguments": arguments},
         )
-        return MCPToolResponse(payload=payload)
+        return MCPToolResponse(payload=payload, request_id=request_id)
 
     def call_control(self, *, method: str, arguments: dict[str, Any]) -> MCPControlResponse:
-        payload = self._request(
+        request_id, payload = self._request(
             message_type="control_call",
             body={"method": method, "arguments": arguments},
         )
-        return MCPControlResponse(payload=payload)
+        return MCPControlResponse(payload=payload, request_id=request_id)
 
     def runtime_metadata(self) -> MCPRuntimeMetadata:
         return MCPRuntimeMetadata(
@@ -390,7 +390,7 @@ class SubprocessMCPTransport:
 
     def _perform_handshake(self) -> None:
         self._status = MCPProcessStatus.HANDSHAKING
-        handshake = self._request(
+        _, handshake = self._request(
             message_type="handshake",
             body={
                 "service_instance_id": self._config.service_instance_id,
@@ -399,7 +399,7 @@ class SubprocessMCPTransport:
             },
         )
         self._process_instance_id = str(handshake["process_instance_id"])
-        initialize = self._request(
+        _, initialize = self._request(
             message_type="initialize",
             body={
                 "manifest_version": self._manifest.manifest_version,
@@ -419,7 +419,7 @@ class SubprocessMCPTransport:
                 code=MCPTransportErrorCode.HANDSHAKE_FAILED,
                 message="remote protocol mismatch",
             )
-        remote_tools = self._request(message_type="list_tools", body={})
+        _, remote_tools = self._request(message_type="list_tools", body={})
         tool_names = tuple(str(name) for name in cast(list[object], remote_tools["tool_names"]))
         if tool_names != tuple(sorted(tool.tool_name for tool in self._manifest.tools)):
             raise MCPTransportError(
@@ -448,7 +448,7 @@ class SubprocessMCPTransport:
             child_env.update(self._config.extra_environment)
         return child_env
 
-    def _request(self, *, message_type: str, body: JsonObject) -> JsonObject:
+    def _request(self, *, message_type: str, body: JsonObject) -> tuple[str, JsonObject]:
         with self._lock:
             process = self._process
             if process is None or process.poll() is not None:
@@ -463,9 +463,13 @@ class SubprocessMCPTransport:
                         code=MCPTransportErrorCode.PROCESS_UNAVAILABLE,
                         message="mcp child process unavailable",
                     )
+            # A fresh request_id per call (never reused across restarts or
+            # retries) is the canonical MCP protocol correlation identifier:
+            # the child echoes it back on every response, and it is what
+            # ObservabilityContext.mcp_request_id should be populated from.
             self._request_counter += 1
             request_id = f"req-{self._request_counter}"
-            self._send_json({"id": request_id, "type": message_type, **body})
+            self._send_json({"id": request_id, "type": message_type, **body}, request_id=request_id)
             try:
                 payload = self._wait_for_response(request_id=request_id)
             except MCPTransportError as error:
@@ -481,14 +485,15 @@ class SubprocessMCPTransport:
                     self._restart_count += 1
                     self._start_process()
                 raise
-            return payload
+            return request_id, payload
 
-    def _send_json(self, payload: JsonObject) -> None:
+    def _send_json(self, payload: JsonObject, *, request_id: str | None = None) -> None:
         process = self._process
         if process is None or process.stdin is None:
             raise MCPTransportError(
                 code=MCPTransportErrorCode.PROCESS_UNAVAILABLE,
                 message="mcp child stdin unavailable",
+                request_id=request_id,
             )
         line = json.dumps(payload, sort_keys=True)
         try:
@@ -499,6 +504,7 @@ class SubprocessMCPTransport:
                 code=MCPTransportErrorCode.CONNECTION_CLOSED,
                 message="mcp child stdin closed during dispatch",
                 dispatch_started=True,
+                request_id=request_id,
             ) from error
 
     def _wait_for_response(self, *, request_id: str) -> JsonObject:
@@ -513,6 +519,7 @@ class SubprocessMCPTransport:
                         code=MCPTransportErrorCode.CONNECTION_CLOSED,
                         message="mcp child exited before responding",
                         dispatch_started=True,
+                        request_id=request_id,
                     ) from error
                 continue
             if str(message.get("id")) != request_id:
@@ -520,6 +527,7 @@ class SubprocessMCPTransport:
                     code=MCPTransportErrorCode.MALFORMED_RESPONSE,
                     message="unexpected response id",
                     dispatch_started=True,
+                    request_id=request_id,
                 )
             if "error" in message:
                 error_payload = cast(dict[str, object], message["error"])
@@ -532,6 +540,7 @@ class SubprocessMCPTransport:
                     ),
                     message=str(error_payload.get("message", "mcp request failed")),
                     dispatch_started=bool(error_payload.get("dispatch_started", True)),
+                    request_id=request_id,
                 )
             response_payload = cast(JsonObject, message.get("payload", {}))
             return response_payload
@@ -539,6 +548,7 @@ class SubprocessMCPTransport:
             code=MCPTransportErrorCode.TIMEOUT,
             message="mcp request timed out",
             dispatch_started=True,
+            request_id=request_id,
         )
 
     def _read_stdout(self) -> None:

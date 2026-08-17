@@ -14,6 +14,7 @@ class MCPToolResponse:
     """Minimal transport-level tool response."""
 
     payload: dict[str, JsonValue]
+    request_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +22,7 @@ class MCPControlResponse:
     """Transport-level response for non-tool control requests."""
 
     payload: dict[str, JsonValue]
+    request_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,10 +63,12 @@ class MCPTransportError(RuntimeError):
         code: MCPTransportErrorCode,
         message: str,
         dispatch_started: bool = False,
+        request_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.dispatch_started = dispatch_started
+        self.request_id = request_id
 
 
 class MCPTransport(Protocol):

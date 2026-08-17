@@ -94,6 +94,7 @@ class ClaimWriteActionService:
                     receipt=existing,
                     request_hash=command.request_hash,
                     action_id=command.action_id,
+                    now_ms=self._now_ms(),
                 )
 
             now_ms = self._now_ms()

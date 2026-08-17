@@ -93,6 +93,7 @@ class PrepareWriteRetryCommand:
 class RecoveryResolutionKind(StrEnum):
     ACCEPT_PARTIAL = "ACCEPT_PARTIAL"
     CREATE_CORRECTIVE_PLAN = "CREATE_CORRECTIVE_PLAN"
+    FAIL = "FAIL"
 
 
 @dataclass(frozen=True, slots=True)

@@ -36,6 +36,7 @@ from tests.integration.persistence.test_write_actions import (
     VerifyWriteActionService,
     WriteActionDraft,
     WriteEvidenceDraft,
+    _command_rejected_hash_mismatch_events,
     _expected_task_projection,
     _insert_action_sibling,
     _prepare_claimed_action,
@@ -797,6 +798,388 @@ def test_mismatch_recovery_accept_partial_fails_closed_when_cancel_intent_active
     assert run_status != "COMPLETED"
 
 
+def test_fail_recovery_transitions_recovery_required_to_failed(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    run_version = _prepare_mismatch(
+        write_database=write_database,
+        gateway=fixture_gateway,
+        suffix="fail-basic",
+    )
+    service = ResolveMismatchRecoveryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 2000,
+    )
+    result = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-fail-basic",
+            request_hash="f1" * 32,
+            run_id="run-1",
+            action_id="action-fail-basic",
+            expected_run_version=run_version,
+            resolution_kind=RecoveryResolutionKind.FAIL,
+        )
+    )
+
+    assert result.applied is True
+    assert result.run_status == "FAILED"
+    assert result.result_kind == "FAILED"
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute(
+            "SELECT status, finished_at_ms FROM runs WHERE id = 'run-1';"
+        ).fetchone()
+        assert row[0] == "FAILED"
+        assert row[1] is not None
+    finally:
+        connection.close()
+
+
+def test_fail_recovery_creates_no_new_plan_revision(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    run_version = _prepare_mismatch(
+        write_database=write_database,
+        gateway=fixture_gateway,
+        suffix="fail-plan",
+    )
+    connection = connect_sqlite(write_database)
+    try:
+        plans_before = [
+            tuple(row)
+            for row in connection.execute("SELECT id, revision_no, status FROM plans;")
+        ]
+    finally:
+        connection.close()
+
+    service = ResolveMismatchRecoveryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 2000,
+    )
+    result = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-fail-plan",
+            request_hash="f2" * 32,
+            run_id="run-1",
+            action_id="action-fail-plan",
+            expected_run_version=run_version,
+            resolution_kind=RecoveryResolutionKind.FAIL,
+        )
+    )
+
+    assert result.applied is True
+    connection = connect_sqlite(write_database)
+    try:
+        plans_after = [
+            tuple(row)
+            for row in connection.execute("SELECT id, revision_no, status FROM plans;")
+        ]
+    finally:
+        connection.close()
+    assert plans_after == plans_before
+
+
+def test_fail_recovery_creates_no_new_approval_claim_or_provider_write(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    run_version = _prepare_mismatch(
+        write_database=write_database,
+        gateway=fixture_gateway,
+        suffix="fail-safety",
+    )
+    connection = connect_sqlite(write_database)
+    try:
+        counts_before = connection.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM approvals),
+                (SELECT COUNT(*) FROM execution_attempts),
+                (SELECT COUNT(*) FROM verifications);
+            """
+        ).fetchone()
+    finally:
+        connection.close()
+    create_task_calls_before = fixture_gateway.count_calls("create_task")
+
+    service = ResolveMismatchRecoveryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 2000,
+    )
+    result = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-fail-safety",
+            request_hash="f3" * 32,
+            run_id="run-1",
+            action_id="action-fail-safety",
+            expected_run_version=run_version,
+            resolution_kind=RecoveryResolutionKind.FAIL,
+        )
+    )
+
+    assert result.applied is True
+    connection = connect_sqlite(write_database)
+    try:
+        counts_after = connection.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM approvals),
+                (SELECT COUNT(*) FROM execution_attempts),
+                (SELECT COUNT(*) FROM verifications);
+            """
+        ).fetchone()
+    finally:
+        connection.close()
+    assert tuple(counts_after) == tuple(counts_before)
+    assert fixture_gateway.count_calls("create_task") == create_task_calls_before
+
+
+def test_fail_recovery_preserves_verified_action_facts_in_partial_run(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    run_version = _prepare_mismatch(
+        write_database=write_database,
+        gateway=fixture_gateway,
+        suffix="fail-partial",
+    )
+    _insert_action_sibling(
+        database_path=write_database,
+        source_action_id="action-fail-partial",
+        sibling_action_id="action-fail-partial-verified",
+        status="VERIFIED",
+    )
+
+    service = ResolveMismatchRecoveryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 2000,
+    )
+    result = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-fail-partial",
+            request_hash="f4" * 32,
+            run_id="run-1",
+            action_id="action-fail-partial",
+            expected_run_version=run_version,
+            resolution_kind=RecoveryResolutionKind.FAIL,
+        )
+    )
+
+    assert result.applied is True
+    assert result.run_status == "FAILED"
+    connection = connect_sqlite(write_database)
+    try:
+        facts = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM actions WHERE id = 'action-fail-partial'),
+                (SELECT status FROM actions WHERE id = 'action-fail-partial-verified');
+            """
+        ).fetchone()
+    finally:
+        connection.close()
+    assert tuple(facts) == ("MISMATCH", "VERIFIED")
+
+
+def test_fail_recovery_same_command_and_payload_is_idempotent(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    run_version = _prepare_mismatch(
+        write_database=write_database,
+        gateway=fixture_gateway,
+        suffix="fail-idem",
+    )
+    service = ResolveMismatchRecoveryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 2000,
+    )
+    command = ResolveMismatchRecoveryCommand(
+        command_id="resolve-fail-idem",
+        request_hash="f5" * 32,
+        run_id="run-1",
+        action_id="action-fail-idem",
+        expected_run_version=run_version,
+        resolution_kind=RecoveryResolutionKind.FAIL,
+    )
+
+    first = service(command)
+    second = service(command)
+
+    assert first.applied is True
+    assert second.applied is True
+    assert second.run_status == "FAILED"
+    assert second.run_version == first.run_version
+    connection = connect_sqlite(write_database)
+    try:
+        run_row = connection.execute(
+            "SELECT status, version FROM runs WHERE id = 'run-1';"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert tuple(run_row) == ("FAILED", first.run_version)
+
+
+def test_fail_recovery_same_command_different_payload_is_fail_closed(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    run_version = _prepare_mismatch(
+        write_database=write_database,
+        gateway=fixture_gateway,
+        suffix="fail-conflict",
+    )
+    service = ResolveMismatchRecoveryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 2000,
+    )
+    first = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-fail-conflict",
+            request_hash="f6" * 32,
+            run_id="run-1",
+            action_id="action-fail-conflict",
+            expected_run_version=run_version,
+            resolution_kind=RecoveryResolutionKind.FAIL,
+        )
+    )
+    assert first.applied is True
+
+    second = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-fail-conflict",
+            request_hash="f7" * 32,
+            run_id="run-1",
+            action_id="action-fail-conflict",
+            expected_run_version=run_version,
+            resolution_kind=RecoveryResolutionKind.FAIL,
+        )
+    )
+
+    assert second.applied is False
+    assert second.result_code == "DUPLICATE_COMMAND"
+    connection = connect_sqlite(write_database)
+    try:
+        run_row = connection.execute(
+            "SELECT status, version FROM runs WHERE id = 'run-1';"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert tuple(run_row) == ("FAILED", first.run_version)
+
+
+def test_fail_recovery_terminal_blocks_accept_partial_and_corrective_replan(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    run_version = _prepare_mismatch(
+        write_database=write_database,
+        gateway=fixture_gateway,
+        suffix="fail-terminal",
+    )
+    service = ResolveMismatchRecoveryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 2000,
+    )
+    failed = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-fail-terminal",
+            request_hash="f8" * 32,
+            run_id="run-1",
+            action_id="action-fail-terminal",
+            expected_run_version=run_version,
+            resolution_kind=RecoveryResolutionKind.FAIL,
+        )
+    )
+    assert failed.applied is True
+    assert failed.run_status == "FAILED"
+
+    accept_partial = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-fail-terminal-accept-partial",
+            request_hash="f9" * 32,
+            run_id="run-1",
+            action_id="action-fail-terminal",
+            expected_run_version=failed.run_version,
+            resolution_kind=RecoveryResolutionKind.ACCEPT_PARTIAL,
+        )
+    )
+    corrective = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-fail-terminal-corrective",
+            request_hash="fa" * 32,
+            run_id="run-1",
+            action_id="action-fail-terminal",
+            expected_run_version=failed.run_version,
+            resolution_kind=RecoveryResolutionKind.CREATE_CORRECTIVE_PLAN,
+            corrective_plan_id="plan-fail-terminal-v2",
+        )
+    )
+
+    assert accept_partial.applied is False
+    assert corrective.applied is False
+    connection = connect_sqlite(write_database)
+    try:
+        run_status = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()[
+            0
+        ]
+    finally:
+        connection.close()
+    assert run_status == "FAILED"
+
+
+def test_fail_recovery_fails_closed_when_cancel_intent_active(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    run_version = _prepare_mismatch(
+        write_database=write_database,
+        gateway=fixture_gateway,
+        suffix="fail-cancel",
+    )
+    cancel_service = RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 1500,
+    )
+    cancelled = cancel_service(
+        RequestRunCancellationCommand(
+            command_id="cancel-before-fail",
+            request_hash="fb" * 32,
+            run_id="run-1",
+            expected_run_version=run_version,
+        )
+    )
+    assert cancelled.applied is True
+
+    service = ResolveMismatchRecoveryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 2000,
+    )
+    result = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-fail-cancel",
+            request_hash="fc" * 32,
+            run_id="run-1",
+            action_id="action-fail-cancel",
+            expected_run_version=cancelled.run_version,
+            resolution_kind=RecoveryResolutionKind.FAIL,
+        )
+    )
+
+    assert result.applied is False
+    assert result.result_code == "STATE_CONFLICT"
+    connection = connect_sqlite(write_database)
+    try:
+        run_status = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()[
+            0
+        ]
+    finally:
+        connection.close()
+    assert run_status != "FAILED"
+
+
 def test_verify_write_action_get_runs_without_sqlite_write_transaction(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
@@ -944,3 +1327,81 @@ def test_verify_write_action_rechecks_version_after_external_get(
         assert tuple(receipt) == ("REJECTED", ResultCode.VERSION_CONFLICT.value)
     finally:
         connection.close()
+
+
+def test_claim_hash_mismatch_emits_exactly_one_rejection_audit_event(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix="claim-reject")
+    ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        ApproveWriteActionCommand(
+            command_id="approve-claim-reject",
+            request_hash="a1" * 32,
+            action_id="action-claim-reject",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-claim-reject",
+            idempotency_key="a2" * 32,
+        )
+    )
+    claim_service = ClaimWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )
+    command = ClaimWriteActionCommand(
+        command_id="claim-reject-command",
+        request_hash="a3" * 32,
+        action_id="action-claim-reject",
+        expected_version=1,
+        source_snapshot={},
+        attempt_id="attempt-claim-reject",
+        nonce="nonce-claim-reject",
+    )
+    first = claim_service(command)
+    replay = claim_service(command)
+
+    assert first == replay
+    # B: a same-hash idempotent replay is not a rejection.
+    assert _command_rejected_hash_mismatch_events(write_database) == ()
+
+    hash_conflict = claim_service(
+        ClaimWriteActionCommand(
+            command_id=command.command_id,
+            request_hash="a4" * 32,
+            action_id=command.action_id,
+            expected_version=command.expected_version,
+            source_snapshot={},
+            attempt_id=command.attempt_id,
+            nonce=command.nonce,
+        )
+    )
+
+    assert hash_conflict.result_code == ResultCode.DUPLICATE_COMMAND.value
+
+    # A: exactly one rejection event, action-scoped (no run_id available
+    # without an extra lookup, so audit fires with run_id=None -- trace is
+    # skipped since trace_events.run_id is NOT NULL).
+    rejection_events = _command_rejected_hash_mismatch_events(write_database)
+    assert len(rejection_events) == 1
+    envelope, outcome = rejection_events[0]
+    assert outcome == ResultCode.DUPLICATE_COMMAND.value
+    assert envelope["attributes"] == {
+        "command_id": command.command_id,
+        "command_type": "ClaimWriteAction",
+        "result_code": ResultCode.DUPLICATE_COMMAND.value,
+    }
+    assert envelope["correlation"]["run_id"] is None
+    assert envelope["correlation"]["action_id"] == command.action_id
+    raw = str(envelope)
+    assert "nonce" not in raw
+    assert "claim_token" not in raw.lower()
+    assert "secret" not in raw.lower()
