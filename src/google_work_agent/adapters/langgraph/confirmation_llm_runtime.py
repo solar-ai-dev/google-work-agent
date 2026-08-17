@@ -1,7 +1,7 @@
 """LLM runtime decorator for bounded same-owner confirmation re-entry.
 
 The parent graph may have to restart an already-completed nested subgraph after
-LangGraph resumes from the outer interrupt.  This decorator keeps that restart
+LangGraph resumes from the outer interrupt. This decorator keeps that restart
 semantically equivalent to a same-owner checkpoint resume: the validated user
 answer is injected only into the Prompt slot that originally requested the
 confirmation, never into unrelated nodes and never with interrupt metadata.
@@ -52,28 +52,38 @@ class ConfirmationAwareLLMRuntime:
             self._pending.pop(run_id, None)
 
     def invoke_structured(self, **kwargs: Any) -> Any:
+        return self._delegate.invoke_structured(**self._with_confirmation(kwargs))
+
+    def invoke_tool_call(self, **kwargs: Any) -> Any:
+        return self._delegate.invoke_tool_call(**self._with_confirmation(kwargs))
+
+    def _with_confirmation(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         prompt_ref = kwargs.get("prompt_ref")
         prompt_input = kwargs.get("prompt_input")
         trace_context = kwargs.get("trace_context")
         run_id = getattr(trace_context, "run_id", None)
         prompt_id = getattr(prompt_ref, "prompt_id", None)
 
-        if isinstance(run_id, str) and isinstance(prompt_id, str) and isinstance(
-            prompt_input, Mapping
+        if not (
+            isinstance(run_id, str)
+            and isinstance(prompt_id, str)
+            and isinstance(prompt_input, Mapping)
         ):
-            with self._lock:
-                pending = self._pending.get(run_id)
-            if pending is not None:
-                origin_target, response = pending
-                if prompt_id in _ORIGIN_PROMPT_IDS[origin_target]:
-                    kwargs = {
-                        **kwargs,
-                        "prompt_input": {
-                            **dict(prompt_input),
-                            "confirmation_response": dict(response),
-                        },
-                    }
-        return self._delegate.invoke_structured(**kwargs)
+            return kwargs
+        with self._lock:
+            pending = self._pending.get(run_id)
+        if pending is None:
+            return kwargs
+        origin_target, response = pending
+        if prompt_id not in _ORIGIN_PROMPT_IDS[origin_target]:
+            return kwargs
+        return {
+            **kwargs,
+            "prompt_input": {
+                **dict(prompt_input),
+                "confirmation_response": dict(response),
+            },
+        }
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._delegate, name)
