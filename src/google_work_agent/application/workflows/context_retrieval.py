@@ -35,10 +35,13 @@ from google_work_agent.application.workflows.context_segmentation import (
 from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
+    BudgetDecision,
     ContextResult,
     GraphStateUpdateV1,
     RunBudgetV1,
     WorkflowPhase,
+    approve_semantic_revision,
+    build_semantic_failure_signature_v1,
     validate_additional_acquisition_request_v1,
 )
 from google_work_agent.application.workflows.handoff_contracts import (
@@ -206,11 +209,12 @@ class ContextRetrievalAgent:
             self.build_segments_from_acquisition(acquisition_result),
         )
         rag_candidates = self.rag_retrieve(segments, request_intent=request_intent)
-        selection_result = self.select_evidence(
+        selection_result, revised_retry_budget = self.select_evidence(
             request_intent=request_intent,
             request=request,
             rag_candidates=rag_candidates,
             segments=segments,
+            retry_budget=retry_budget or default_run_budget(),
         )
         _draft_bundle, evidence_drafts = self.build_draft_context_bundle(
             selection_result=selection_result,
@@ -222,7 +226,7 @@ class ContextRetrievalAgent:
             tool_route_plan=tool_route_plan,
             acquisition_result=acquisition_result,
             evidence_drafts=evidence_drafts,
-            retry_budget=retry_budget or default_run_budget(),
+            retry_budget=revised_retry_budget,
         )
         return self.build_result_from_outputs(
             selection_result=selection_result,
@@ -255,7 +259,8 @@ class ContextRetrievalAgent:
         request: WorkflowStartRequest,
         rag_candidates: list[RagCandidateV1],
         segments: list[_SourceSegment],
-    ) -> EvidenceSelectionResultV2:
+        retry_budget: RunBudgetV1,
+    ) -> tuple[EvidenceSelectionResultV2, RunBudgetV1]:
         segments_by_id = {segment.segment_id: segment for segment in segments}
         ranked_segments = _ranked_segments_prompt_projection(
             rag_candidates, segments_by_id=segments_by_id
@@ -279,9 +284,12 @@ class ContextRetrievalAgent:
             ),
         )
         try:
-            return validate_evidence_selection_result_v2(
-                llm_result.structured_output,
-                candidate_segment_ids=candidate_segment_ids,
+            return (
+                validate_evidence_selection_result_v2(
+                    llm_result.structured_output,
+                    candidate_segment_ids=candidate_segment_ids,
+                ),
+                retry_budget,
             )
         except ContextRetrievalValidationError as error:
             return self._revise_selection_once(
@@ -291,6 +299,7 @@ class ContextRetrievalAgent:
                 segments_by_id=segments_by_id,
                 previous_output=llm_result.structured_output,
                 failure_detail=str(error),
+                retry_budget=retry_budget,
             )
 
     def _revise_selection_once(
@@ -302,13 +311,29 @@ class ContextRetrievalAgent:
         segments_by_id: dict[str, _SourceSegment],
         previous_output: object,
         failure_detail: str,
-    ) -> EvidenceSelectionResultV2:
+        retry_budget: RunBudgetV1,
+    ) -> tuple[EvidenceSelectionResultV2, RunBudgetV1]:
         """Bounded SEMANTIC_REVISION retry (docs/15 section 8.1: max 1 per Node per
         Failure Signature). The initial validator already rejected the output as
         SEMANTIC_INVALID; this never widens what counts as valid, it only gives the
         model one chance to re-ground its selection in the actually-supplied
         ranked_segments. If the revision also fails validation, a deterministic empty
-        selection is returned -- the LLM never gets a second judgment call."""
+        selection is returned -- the LLM never gets a second judgment call.
+
+        G3: same-Run/same-node dedup via approve_semantic_revision -- once this
+        node has already spent its one revision attempt for the normalized
+        failure signature below (persisted in
+        retry_budget.semantic_revision_signatures_used, so it survives
+        resume/checkpoint restore), a second occurrence is denied before any
+        Provider call and falls back to the same deterministic empty
+        selection a failed revision would produce."""
+        signature = build_semantic_failure_signature_v1(
+            node_id="context.select_evidence",
+            failure_reason_codes=["EVIDENCE_SELECTION_SEMANTIC_INVALID"],
+        )
+        decision = approve_semantic_revision(retry_budget, signature=signature)
+        if decision["decision"] == BudgetDecision.DENY.value:
+            return _blocked_empty_selection(), decision["run_budget"]
         ranked_segments = _ranked_segments_prompt_projection(
             rag_candidates, segments_by_id=segments_by_id
         )
@@ -338,12 +363,15 @@ class ContextRetrievalAgent:
             ),
         )
         try:
-            return validate_evidence_selection_result_v2(
-                revision_result.structured_output,
-                candidate_segment_ids=candidate_segment_ids,
+            return (
+                validate_evidence_selection_result_v2(
+                    revision_result.structured_output,
+                    candidate_segment_ids=candidate_segment_ids,
+                ),
+                decision["run_budget"],
             )
         except ContextRetrievalValidationError:
-            return _blocked_empty_selection()
+            return _blocked_empty_selection(), decision["run_budget"]
 
     def assess_sufficiency(
         self,

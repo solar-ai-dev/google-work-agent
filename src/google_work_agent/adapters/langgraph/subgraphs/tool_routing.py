@@ -85,18 +85,25 @@ class ToolRoutingSubgraph:
         def _semantic_candidate_provider() -> Any:
             nonlocal retry_budget
             _ensure_budget()
-            candidate = self._semantic_agent.determine_semantic_candidate(
+            candidate, revised_retry_budget = self._semantic_agent.determine_semantic_candidate(
                 request_intent=request_intent,
                 request=request,
+                retry_budget=retry_budget,
             )
-            retry_budget = consume_llm_provider_calls(retry_budget, provider_calls_consumed=1)
+            retry_budget = consume_llm_provider_calls(
+                revised_retry_budget, provider_calls_consumed=1
+            )
             return candidate
 
         def _select_tool(**kwargs: Any) -> Any:
             nonlocal retry_budget
             _ensure_budget()
-            selected = self._semantic_agent.select_tool_if_needed(request=request, **kwargs)
-            retry_budget = consume_llm_provider_calls(retry_budget, provider_calls_consumed=1)
+            selected, revised_retry_budget = self._semantic_agent.select_tool_if_needed(
+                request=request, retry_budget=retry_budget, **kwargs
+            )
+            retry_budget = consume_llm_provider_calls(
+                revised_retry_budget, provider_calls_consumed=1
+            )
             return selected
 
         result = self._coordinator.route(

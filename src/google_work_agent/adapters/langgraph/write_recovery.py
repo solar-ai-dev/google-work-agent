@@ -48,6 +48,7 @@ class WriteRecoveryCoordinator:
         action, attempt_id, attempt_version = unknown_action
         response = self._execution_phase.recover_unknown(
             UnknownRecoveryPhaseRequest(
+                run_id=cast(str, state["run_id"]),
                 action_id=action.id,
                 effect_type=action.effect_type,
                 action_version=action.version,
@@ -57,11 +58,12 @@ class WriteRecoveryCoordinator:
         )
         if response.applied and response.action_status == ActionStatus.VERIFIED.value:
             self._complete_write_run_if_verified(action.plan_id, cast(str, state["run_id"]))
-        outcome = (
-            "RECOVERY_REQUIRED"
-            if response.result_code == ResultCode.RECOVERY_REQUIRED.value
-            else "RECOVERED"
-        )
+        if response.safe_error_code in {"AUTH_EXPIRED", "PERMISSION_DENIED"}:
+            outcome = "REAUTH_REQUIRED"
+        elif response.result_code == ResultCode.RECOVERY_REQUIRED.value:
+            outcome = "RECOVERY_REQUIRED"
+        else:
+            outcome = "RECOVERED"
         return {
             **state,
             "__target__": "end",

@@ -506,9 +506,11 @@ PLANNING_REVISION_PER_RUN=2
 REVIEW_RECHECK_PER_PLANNING_REVISION=1
 ```
 
+`REVISION_HEAVY`는 Review REVISE 승인 또는 mandatory Modify Review(둘 다 `PLANNING_REVISION_PER_RUN` 카운터 공유) 발생 시에만 선택하고, Confirmation만으로는 선택하지 않는다. `planning_revisions_used`와 `additional_acquisitions_used`가 동시에 0을 넘으면 effective cap은 `ABSOLUTE_MAX_LLM_CALLS`(16)이다.
+
 ### 18.1 필수 회귀
 
-- 동일 실패 Signature에 Semantic Revision을 두 번 호출하지 않는다.
+- 동일 실패 Signature에 Semantic Revision을 두 번 호출하지 않는다. 이 회귀는 Planning Revision 경로뿐 아니라 `context.select_evidence`·`retrieval.plan_query`·`tool_route.determine_io_resources`·`tool_route.select_tool_if_needed`를 포함한 모든 production Semantic Revision 경로에 적용한다.
 - Schema Repair가 Goal·Evidence·Action 의미를 변경하면 실패다.
 - 비재시도 오류에 LLM Prompt를 호출하지 않는다.
 - `AUTH_REQUIRED`를 Retrieval Revision이나 Tool Route 재판단으로 해결하려 하지 않는다.

@@ -31,7 +31,7 @@ from google_work_agent.application.write_actions import (
     VerifyWriteActionService,
     WriteActionResponse,
 )
-from google_work_agent.domain import ActionStatus, PolicyViolationError, RunStatus
+from google_work_agent.domain import ActionStatus, PolicyViolationError, ResultCode, RunStatus
 from google_work_agent.ports import (
     DeliveryCertainty,
     GoogleWorkspaceErrorCode,
@@ -68,6 +68,7 @@ class WriteExecutionPhaseResult:
 
 @dataclass(frozen=True, slots=True)
 class UnknownRecoveryPhaseRequest:
+    run_id: str
     action_id: str
     effect_type: str
     action_version: int
@@ -244,50 +245,88 @@ class WriteExecutionPhaseCoordinator:
         request_hash = self._request_hash(
             {"kind": f"recover_{request.effect_type.lower()}", "action_id": request.action_id}
         )
-        if request.effect_type == "CREATE":
-            response = self._recover_unknown_create(
-                RecoverUnknownCreateActionCommand(
-                    command_id=command_id,
-                    request_hash=request_hash,
-                    action_id=request.action_id,
-                    attempt_id=request.attempt_id,
-                    expected_action_version=request.action_version,
-                    expected_attempt_version=request.attempt_version,
+        try:
+            if request.effect_type == "CREATE":
+                response = self._recover_unknown_create(
+                    RecoverUnknownCreateActionCommand(
+                        command_id=command_id,
+                        request_hash=request_hash,
+                        action_id=request.action_id,
+                        attempt_id=request.attempt_id,
+                        expected_action_version=request.action_version,
+                        expected_attempt_version=request.attempt_version,
+                    )
                 )
-            )
-        elif request.effect_type == "SEND":
-            response = self._recover_unknown_send(
-                RecoverUnknownSendActionCommand(
-                    command_id=command_id,
-                    request_hash=request_hash,
-                    action_id=request.action_id,
-                    attempt_id=request.attempt_id,
-                    expected_action_version=request.action_version,
-                    expected_attempt_version=request.attempt_version,
+            elif request.effect_type == "SEND":
+                response = self._recover_unknown_send(
+                    RecoverUnknownSendActionCommand(
+                        command_id=command_id,
+                        request_hash=request_hash,
+                        action_id=request.action_id,
+                        attempt_id=request.attempt_id,
+                        expected_action_version=request.action_version,
+                        expected_attempt_version=request.attempt_version,
+                    )
                 )
-            )
-        elif request.effect_type == "DELETE":
-            response = self._recover_unknown_delete(
-                RecoverUnknownDeleteActionCommand(
-                    command_id=command_id,
-                    request_hash=request_hash,
-                    action_id=request.action_id,
-                    attempt_id=request.attempt_id,
-                    expected_action_version=request.action_version,
-                    expected_attempt_version=request.attempt_version,
+            elif request.effect_type == "DELETE":
+                response = self._recover_unknown_delete(
+                    RecoverUnknownDeleteActionCommand(
+                        command_id=command_id,
+                        request_hash=request_hash,
+                        action_id=request.action_id,
+                        attempt_id=request.attempt_id,
+                        expected_action_version=request.action_version,
+                        expected_attempt_version=request.attempt_version,
+                    )
                 )
-            )
-        else:
-            response = self._recover_unknown_update(
-                RecoverUnknownUpdateActionCommand(
-                    command_id=command_id,
-                    request_hash=request_hash,
-                    action_id=request.action_id,
-                    attempt_id=request.attempt_id,
-                    expected_action_version=request.action_version,
-                    expected_attempt_version=request.attempt_version,
+            else:
+                response = self._recover_unknown_update(
+                    RecoverUnknownUpdateActionCommand(
+                        command_id=command_id,
+                        request_hash=request_hash,
+                        action_id=request.action_id,
+                        attempt_id=request.attempt_id,
+                        expected_action_version=request.action_version,
+                        expected_attempt_version=request.attempt_version,
+                    )
                 )
-            )
+        except GoogleWorkspaceGatewayError as error:
+            # RECOVERY_REQUIRED -> REAUTH_REQUIRED (docs/06 Reauth Canonical):
+            # every recovery-service branch above only ever performs a
+            # read-only GET/search (fetch_verification_snapshot /
+            # search_recovery_candidates) -- never the original write -- so
+            # routing a lost/expired credential here through the same
+            # RequireWriteReauthService the execute/verify phases already
+            # use is safe: the next resume re-enters this same recover_unknown
+            # call (via WorkflowInvocationCoordinator._continue_from_domain_facts,
+            # which keys off the still-unresolved UNKNOWN_RESULT action, not
+            # off Run status) and retries only the read, never a new Claim/Write.
+            if error.code in {
+                GoogleWorkspaceErrorCode.AUTH_EXPIRED,
+                GoogleWorkspaceErrorCode.PERMISSION_DENIED,
+            }:
+                self._require_write_reauth(
+                    RequireWriteReauthCommand(
+                        command_id=self._id_factory(),
+                        request_hash=self._request_hash(
+                            {"kind": "recover_reauth", "action_id": request.action_id}
+                        ),
+                        run_id=request.run_id,
+                        action_id=request.action_id,
+                        safe_error_code=error.code.value,
+                    )
+                )
+                return WriteActionResponse(
+                    applied=False,
+                    result_code=ResultCode.RECOVERY_REQUIRED.value,
+                    action_id=request.action_id,
+                    action_status=ActionStatus.UNKNOWN_RESULT.value,
+                    action_version=request.action_version,
+                    next_allowed_commands=(),
+                    attempt_id=request.attempt_id,
+                    safe_error_code=error.code.value,
+                )
+            raise
         if response.applied and response.action_status == ActionStatus.EXECUTED.value:
             return self.verify_executed(
                 action_id=request.action_id,

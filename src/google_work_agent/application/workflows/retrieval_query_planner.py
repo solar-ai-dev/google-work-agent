@@ -7,6 +7,12 @@ from pathlib import Path
 
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.application.workflows.contracts import (
+    BudgetDecision,
+    RunBudgetV1,
+    approve_semantic_revision,
+    build_semantic_failure_signature_v1,
+)
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )
@@ -60,10 +66,11 @@ class RetrievalQueryPlannerAgent:
         trace_context: ObservabilityContext,
         frozen_routes: Sequence[InputToolRouteV1],
         route_policies: Mapping[str, RouteConstraintPolicy],
+        retry_budget: RunBudgetV1,
         validated_resource_refs: Mapping[str, Collection[str]] | None = None,
         validated_container_refs: Mapping[str, Collection[str]] | None = None,
         detail_candidate_refs: Collection[str] = (),
-    ) -> RetrievalQueryPlanV2:
+    ) -> tuple[RetrievalQueryPlanV2, RunBudgetV1]:
         """Return a fail-closed, provider-neutral V2 retrieval plan."""
         supported_kinds: dict[str, frozenset[RetrievalConstraintKindV1]] = {
             route_id: policy.supported_kinds for route_id, policy in route_policies.items()
@@ -75,13 +82,16 @@ class RetrievalQueryPlannerAgent:
             trace_context=trace_context,
         )
         try:
-            return validate_retrieval_query_plan_v2(
-                result.structured_output,
-                frozen_routes=frozen_routes,
-                supported_constraint_kinds=supported_kinds,
-                validated_resource_refs=validated_resource_refs,
-                validated_container_refs=validated_container_refs,
-                detail_candidate_refs=detail_candidate_refs,
+            return (
+                validate_retrieval_query_plan_v2(
+                    result.structured_output,
+                    frozen_routes=frozen_routes,
+                    supported_constraint_kinds=supported_kinds,
+                    validated_resource_refs=validated_resource_refs,
+                    validated_container_refs=validated_container_refs,
+                    detail_candidate_refs=detail_candidate_refs,
+                ),
+                retry_budget,
             )
         except RetrievalV2ValidationError as error:
             return self._revise_plan_once(
@@ -94,6 +104,7 @@ class RetrievalQueryPlannerAgent:
                 detail_candidate_refs=detail_candidate_refs,
                 previous_output=result.structured_output,
                 failure_detail=str(error),
+                retry_budget=retry_budget,
             )
 
     def _revise_plan_once(
@@ -108,13 +119,29 @@ class RetrievalQueryPlannerAgent:
         detail_candidate_refs: Collection[str],
         previous_output: object,
         failure_detail: str,
-    ) -> RetrievalQueryPlanV2:
+        retry_budget: RunBudgetV1,
+    ) -> tuple[RetrievalQueryPlanV2, RunBudgetV1]:
         """Bounded SEMANTIC_REVISION retry (max 1 per Node/Failure Signature):
         a schema-shaped plan that fails RetrievalQueryPlanV2's own semantic
         checks (frozen-route/constraint-policy/validated-ref violations) gets
         one re-grounding attempt against the dedicated .revise prompt --
         never the generic SCHEMA_REPAIR path. If the revision also fails,
-        the error propagates to the caller's existing fail-closed handling."""
+        the error propagates to the caller's existing fail-closed handling.
+
+        G3: dedup via approve_semantic_revision -- a second occurrence of the
+        same normalized failure signature for this node, anywhere in the Run
+        (including after resume/checkpoint restore), is denied before any
+        Provider call and raises the same RetrievalV2ValidationError a failed
+        revision attempt would."""
+        signature = build_semantic_failure_signature_v1(
+            node_id="retrieval.plan_query",
+            failure_reason_codes=["RETRIEVAL_QUERY_PLAN_SEMANTIC_INVALID"],
+        )
+        decision = approve_semantic_revision(retry_budget, signature=signature)
+        if decision["decision"] == BudgetDecision.DENY.value:
+            raise RetrievalV2ValidationError(
+                "retrieval query plan revision denied: same failure signature already used"
+            )
         revision_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._revision_prompt_ref,
             prompt_input={
@@ -125,11 +152,14 @@ class RetrievalQueryPlannerAgent:
             output_schema=self._output_schema,
             trace_context=trace_context,
         )
-        return validate_retrieval_query_plan_v2(
-            revision_result.structured_output,
-            frozen_routes=frozen_routes,
-            supported_constraint_kinds=supported_kinds,
-            validated_resource_refs=validated_resource_refs,
-            validated_container_refs=validated_container_refs,
-            detail_candidate_refs=detail_candidate_refs,
+        return (
+            validate_retrieval_query_plan_v2(
+                revision_result.structured_output,
+                frozen_routes=frozen_routes,
+                supported_constraint_kinds=supported_kinds,
+                validated_resource_refs=validated_resource_refs,
+                validated_container_refs=validated_container_refs,
+                detail_candidate_refs=detail_candidate_refs,
+            ),
+            decision["run_budget"],
         )

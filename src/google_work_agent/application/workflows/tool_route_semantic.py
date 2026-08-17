@@ -18,6 +18,12 @@ from typing import Literal, cast
 
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.application.workflows.contracts import (
+    BudgetDecision,
+    RunBudgetV1,
+    approve_semantic_revision,
+    build_semantic_failure_signature_v1,
+)
 from google_work_agent.application.workflows.handoff_contracts import RequestIntentV2
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
@@ -173,7 +179,8 @@ class ToolRouteAgent:
         *,
         request_intent: RequestIntentV2,
         request: WorkflowStartRequest,
-    ) -> SemanticRouteCandidate:
+        retry_budget: RunBudgetV1,
+    ) -> tuple[SemanticRouteCandidate, RunBudgetV1]:
         eligible_route_capabilities = _eligible_route_capabilities(self._tool_catalog)
         llm_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
@@ -195,18 +202,22 @@ class ToolRouteAgent:
         try:
             candidate = _validate_route_resource_candidate(llm_result.structured_output)
         except ToolRouteValidationError as error:
-            candidate = self._revise_semantic_candidate_once(
+            candidate, retry_budget = self._revise_semantic_candidate_once(
                 request_intent=request_intent,
                 request=request,
                 eligible_route_capabilities=eligible_route_capabilities,
                 previous_output=llm_result.structured_output,
                 failure_detail=str(error),
+                retry_budget=retry_budget,
             )
         if candidate["disposition"] in {"NEEDS_CONFIRMATION", "BLOCKED"}:
             raise ToolRouteValidationError(
                 f"tool route semantic candidate is not ready: {candidate['disposition']}"
             )
-        return _semantic_candidate_from_llm_candidate(candidate, request_intent=request_intent)
+        return (
+            _semantic_candidate_from_llm_candidate(candidate, request_intent=request_intent),
+            retry_budget,
+        )
 
     def _revise_semantic_candidate_once(
         self,
@@ -216,14 +227,31 @@ class ToolRouteAgent:
         eligible_route_capabilities: list[dict[str, object]],
         previous_output: object,
         failure_detail: str,
-    ) -> Mapping[str, object]:
+        retry_budget: RunBudgetV1,
+    ) -> tuple[Mapping[str, object], RunBudgetV1]:
         """Bounded SEMANTIC_REVISION retry: schema-valid but semantically
         invalid output (e.g. an unsupported resource/effect combination) gets
         exactly one re-grounding attempt against a dedicated .revise prompt,
         never the generic SCHEMA_REPAIR path. If the revision also fails
         validation, the failure propagates -- ToolRouteCoordinator.route()
         already turns it into a deterministic NEEDS_CONFIRMATION/BLOCKED
-        disposition rather than crashing the run."""
+        disposition rather than crashing the run.
+
+        G3: dedup via approve_semantic_revision -- a second occurrence of the
+        same normalized failure signature anywhere in the Run (including
+        after resume/checkpoint restore) is denied before any Provider call
+        and raises the same ToolRouteValidationError a failed revision would,
+        which the coordinator already turns into NEEDS_CONFIRMATION/BLOCKED."""
+        signature = build_semantic_failure_signature_v1(
+            node_id="tool_route.determine_io_resources",
+            failure_reason_codes=["SEMANTIC_CANDIDATE_INVALID"],
+        )
+        decision = approve_semantic_revision(retry_budget, signature=signature)
+        if decision["decision"] == BudgetDecision.DENY.value:
+            raise ToolRouteValidationError(
+                "tool route semantic candidate revision denied: "
+                "same failure signature already used"
+            )
         revision_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._determine_io_resources_revision_prompt_ref,
             prompt_input={
@@ -243,7 +271,10 @@ class ToolRouteAgent:
                 llm_call_id=f"{request.run_id}:tool_route.determine_io_resources.semantic_revision",
             ),
         )
-        return _validate_route_resource_candidate(revision_result.structured_output)
+        return (
+            _validate_route_resource_candidate(revision_result.structured_output),
+            decision["run_budget"],
+        )
 
     def select_tool_if_needed(
         self,
@@ -254,7 +285,8 @@ class ToolRouteAgent:
         effect: str,
         eligible_tool_ids: tuple[str, ...],
         request: WorkflowStartRequest,
-    ) -> str:
+        retry_budget: RunBudgetV1,
+    ) -> tuple[str, RunBudgetV1]:
         prompt_input = {
             "route_id": route_id,
             "connector_id": connector_id,
@@ -279,7 +311,21 @@ class ToolRouteAgent:
             llm_result.structured_output, eligible_tool_ids=eligible_tool_ids
         )
         if selected_tool_id is not None:
-            return selected_tool_id
+            return selected_tool_id, retry_budget
+        # G3: dedup via approve_semantic_revision -- a second occurrence of
+        # the same normalized failure signature anywhere in the Run
+        # (including after resume/checkpoint restore) is denied before any
+        # Provider call and raises the same ToolRouteValidationError a
+        # failed revision would.
+        signature = build_semantic_failure_signature_v1(
+            node_id="tool_route.select_tool_if_needed",
+            failure_reason_codes=["TOOL_SELECTION_INVALID"],
+        )
+        decision = approve_semantic_revision(retry_budget, signature=signature)
+        if decision["decision"] == BudgetDecision.DENY.value:
+            raise ToolRouteValidationError(
+                "tool selection revision denied: same failure signature already used"
+            )
         revision_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._select_tool_revision_prompt_ref,
             prompt_input={
@@ -303,7 +349,7 @@ class ToolRouteAgent:
             raise ToolRouteValidationError(
                 "selected tool is not a Registry-eligible candidate after revision"
             )
-        return revised_tool_id
+        return revised_tool_id, decision["run_budget"]
 
     def _validated_tool_selection(
         self, value: object, *, eligible_tool_ids: tuple[str, ...]

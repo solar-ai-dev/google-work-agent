@@ -68,6 +68,7 @@ def test_run_recovery_commands_use_domain_transitions(write_database: Path) -> N
     assert required.current_status is RunStatus.RECOVERY_REQUIRED
     assert required.next_allowed_commands == (
         RunCommand.REQUEST_CANCEL,
+        RunCommand.REQUIRE_REAUTH,
         RunCommand.RESOLVE_RECOVERY,
     )
     assert resolved.applied is True

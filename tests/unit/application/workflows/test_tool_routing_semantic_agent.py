@@ -15,6 +15,7 @@ import pytest
 from tests.support.prompt_manifests import write_runtime_active_manifest
 
 from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.application.workflows.contracts import build_default_run_budget
 from google_work_agent.application.workflows.handoff_contracts import RequestIntentV2
 from google_work_agent.application.workflows.tool_route_semantic import (
     ToolRouteAgent,
@@ -238,7 +239,9 @@ def test_semantic_candidate_from_llm_drives_task_create_with_deterministic_polic
     request_intent = _intent()
     request = _request()
 
-    candidate = agent.determine_semantic_candidate(request_intent=request_intent, request=request)
+    candidate, _ = agent.determine_semantic_candidate(
+        request_intent=request_intent, request=request, retry_budget=build_default_run_budget()
+    )
 
     assert runtime.calls[0]["prompt_id"] == "tool_route.determine_io_resources"
     prompt_input = cast("dict[str, object]", runtime.calls[0]["prompt_input"])
@@ -275,8 +278,8 @@ def test_semantic_candidate_from_llm_drives_calendar_create_with_deterministic_c
     )
     agent = _agent(runtime)
     request_intent = _intent()
-    candidate = agent.determine_semantic_candidate(
-        request_intent=request_intent, request=_request()
+    candidate, _ = agent.determine_semantic_candidate(
+        request_intent=request_intent, request=_request(), retry_budget=build_default_run_budget()
     )
 
     sequence = iter(f"route-{index}" for index in range(30))
@@ -339,14 +342,18 @@ def test_select_tool_if_needed_invoked_when_registry_has_multiple_candidates() -
     agent = _agent(runtime, tool_catalog=catalog)
     request_intent = _intent()
     request = _request()
-    candidate = agent.determine_semantic_candidate(request_intent=request_intent, request=request)
+    candidate, _ = agent.determine_semantic_candidate(
+        request_intent=request_intent, request=request, retry_budget=build_default_run_budget()
+    )
 
     sequence = iter(f"route-{index}" for index in range(30))
     coordinator = ToolRouteCoordinator(tool_catalog=catalog, id_factory=lambda: next(sequence))
     result = coordinator.route(
         request_intent=request_intent,
         semantic_candidate=candidate,
-        select_tool=lambda **kwargs: agent.select_tool_if_needed(request=request, **kwargs),
+        select_tool=lambda **kwargs: agent.select_tool_if_needed(
+            request=request, retry_budget=build_default_run_budget(), **kwargs
+        )[0],
     )
 
     assert result["disposition"] == "ROUTE_READY"
@@ -396,7 +403,9 @@ def test_select_tool_if_needed_rejects_a_tool_outside_the_registry_candidates() 
     agent = _agent(runtime, tool_catalog=catalog)
     request_intent = _intent()
     request = _request()
-    candidate = agent.determine_semantic_candidate(request_intent=request_intent, request=request)
+    candidate, _ = agent.determine_semantic_candidate(
+        request_intent=request_intent, request=request, retry_budget=build_default_run_budget()
+    )
 
     sequence = iter(f"route-{index}" for index in range(30))
     coordinator = ToolRouteCoordinator(tool_catalog=catalog, id_factory=lambda: next(sequence))
@@ -404,12 +413,107 @@ def test_select_tool_if_needed_rejects_a_tool_outside_the_registry_candidates() 
     result = coordinator.route(
         request_intent=request_intent,
         semantic_candidate=candidate,
-        select_tool=lambda **kwargs: agent.select_tool_if_needed(request=request, **kwargs),
+        select_tool=lambda **kwargs: agent.select_tool_if_needed(
+            request=request, retry_budget=build_default_run_budget(), **kwargs
+        )[0],
     )
 
     assert result["disposition"] == "BLOCKED"
     assert result["tool_route_plan"] is None
     assert any("Registry-eligible" in code for code in result["reason_codes"])
+
+
+def test_determine_semantic_candidate_semantic_revision_dedup_blocks_second_occurrence() -> None:
+    """G3 Final Closure G/H: tool_route.determine_io_resources's
+    SEMANTIC_REVISION retry is deduped Run-wide via approve_semantic_revision
+    -- a second occurrence of the same normalized failure signature, from a
+    separate determine_semantic_candidate() call chaining the same
+    retry_budget (as a resumed/re-entered Run would), is denied before any
+    Provider call and raises the same ToolRouteValidationError a failed
+    revision would (which the coordinator already turns into
+    NEEDS_CONFIRMATION)."""
+    runtime = FakeLLMRuntime()
+    invalid_candidate = {
+        "schema_version": 1,
+        "input_resource_types": [],
+        "output_resource_types": ["INVALID"],
+        "output_effects": ["CREATE"],
+        "disposition": "ROUTE_READY",
+    }
+    valid_candidate = {
+        "schema_version": 1,
+        "input_resource_types": [],
+        "output_resource_types": ["TASK"],
+        "output_effects": ["CREATE"],
+        "disposition": "ROUTE_READY",
+    }
+    runtime.queued.append(_llm_result(invalid_candidate))
+    runtime.queued.append(_llm_result(valid_candidate))
+    agent = _agent(runtime)
+    request_intent = _intent()
+    request = _request()
+
+    _candidate, first_budget = agent.determine_semantic_candidate(
+        request_intent=request_intent, request=request, retry_budget=build_default_run_budget()
+    )
+
+    assert len(runtime.calls) == 2
+    assert len(first_budget["semantic_revision_signatures_used"]) == 1
+
+    runtime.queued.append(_llm_result(invalid_candidate))
+    with pytest.raises(ToolRouteValidationError, match="same failure signature already used"):
+        agent.determine_semantic_candidate(
+            request_intent=request_intent, request=request, retry_budget=first_budget
+        )
+
+    assert len(runtime.calls) == 3  # only the initial call -- no second revise Provider call
+
+
+def test_select_tool_if_needed_semantic_revision_dedup_blocks_second_occurrence() -> None:
+    """G3 Final Closure G/H: tool_route.select_tool_if_needed's
+    SEMANTIC_REVISION retry is deduped Run-wide the same way."""
+    catalog = _catalog_with_duplicate_task_create()
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result({"schema_version": 1, "route_id": "route-0", "selected_tool_id": "gmail_send"})
+    )
+    runtime.queued.append(
+        _llm_result(
+            {"schema_version": 1, "route_id": "route-0", "selected_tool_id": "tasks_create_task_v2"}
+        )
+    )
+    agent = _agent(runtime, tool_catalog=catalog)
+    request = _request()
+    eligible_tool_ids = ("tasks_create_task", "tasks_create_task_v2")
+
+    _tool_id, first_budget = agent.select_tool_if_needed(
+        route_id="route-0",
+        connector_id="google_workspace",
+        resource_type="TASK",
+        effect="CREATE",
+        eligible_tool_ids=eligible_tool_ids,
+        request=request,
+        retry_budget=build_default_run_budget(),
+    )
+
+    assert len(runtime.calls) == 2
+    assert len(first_budget["semantic_revision_signatures_used"]) == 1
+
+    runtime.queued.append(
+        _llm_result({"schema_version": 1, "route_id": "route-0", "selected_tool_id": "gmail_send"})
+    )
+    with pytest.raises(ToolRouteValidationError, match="same failure signature already used"):
+        agent.select_tool_if_needed(
+            route_id="route-0",
+            connector_id="google_workspace",
+            resource_type="TASK",
+            effect="CREATE",
+            eligible_tool_ids=eligible_tool_ids,
+            request=request,
+            retry_budget=first_budget,
+        )
+
+    assert len(runtime.calls) == 3  # only the initial call -- no second revise Provider call
 
 
 def test_determine_semantic_candidate_rejects_needs_confirmation_disposition() -> None:
@@ -428,4 +532,6 @@ def test_determine_semantic_candidate_rejects_needs_confirmation_disposition() -
     agent = _agent(runtime)
 
     with pytest.raises(ToolRouteValidationError, match="not ready"):
-        agent.determine_semantic_candidate(request_intent=_intent(), request=_request())
+        agent.determine_semantic_candidate(
+            request_intent=_intent(), request=_request(), retry_budget=build_default_run_budget()
+        )

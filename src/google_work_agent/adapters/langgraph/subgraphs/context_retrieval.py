@@ -44,6 +44,7 @@ from google_work_agent.application.workflows import (
     GraphStateUpdateV1,
     MultiAgentGraphState,
     RetrievalRouteResultV1,
+    RunBudgetV1,
     SupervisorDecisionV1,
     WorkflowPhase,
     finalize_retrieval_result,
@@ -315,11 +316,12 @@ class ContextRetrieverSubgraph:
             cast(list[Any], segments), request_intent=request_intent
         )
         ensure_llm_call_budget(state)
-        selection = self._agent.select_evidence(
+        selection, revised_retry_budget = self._agent.select_evidence(
             request_intent=request_intent,
             request=request,
             rag_candidates=rag_candidates,
             segments=cast(list[Any], segments),
+            retry_budget=cast(RunBudgetV1, state["retry_budget"]),
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "SELECT_EVIDENCE_COMPLETE"
@@ -329,7 +331,9 @@ class ContextRetrieverSubgraph:
             CONTEXT_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             CONTEXT_RAG_CANDIDATES_KEY: rag_candidates,
             CONTEXT_SELECTION_OUTPUT_KEY: selection,
-            "retry_budget": consume_llm_call_budget(state, provider_calls_consumed=1),
+            "retry_budget": consume_llm_call_budget(
+                {**state, "retry_budget": revised_retry_budget}, provider_calls_consumed=1
+            ),
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -493,11 +497,12 @@ class ContextRetrieverSubgraph:
             )
         )
         ensure_llm_call_budget(state)
-        query_plan = self._retrieval_query_planner.plan(
+        query_plan, revised_retry_budget = self._retrieval_query_planner.plan(
             prompt_input=prompt_input,
             trace_context=_planner_trace_context(state),
             frozen_routes=frozen_routes,
             route_policies=route_policies,
+            retry_budget=cast(RunBudgetV1, state["retry_budget"]),
             validated_container_refs=validated_container_refs,
         )
         canonical_plans = self._source_fetch_plan_builder.build(
@@ -515,7 +520,9 @@ class ContextRetrieverSubgraph:
                 frozen_routes=frozen_routes,
                 retrieval_budget=self._acquisition_agent.retrieval_budget,
             ),
-            "retry_budget": consume_llm_call_budget(state, provider_calls_consumed=1),
+            "retry_budget": consume_llm_call_budget(
+                {**state, "retry_budget": revised_retry_budget}, provider_calls_consumed=1
+            ),
         }
 
     def _execute_initial_read_node(
@@ -627,7 +634,7 @@ class ContextRetrieverSubgraph:
         )
         detail_candidate_refs = state.get(CONTEXT_SEGMENT_HANDLES_KEY, [])
         ensure_llm_call_budget(state)
-        query_plan = self._retrieval_query_planner.plan(
+        query_plan, revised_retry_budget = self._retrieval_query_planner.plan(
             prompt_input=followup_retrieval_planner_input(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
                 input_routes=frozen_routes,
@@ -638,6 +645,7 @@ class ContextRetrieverSubgraph:
             trace_context=_planner_trace_context(state),
             frozen_routes=frozen_routes,
             route_policies=route_policies,
+            retry_budget=cast(RunBudgetV1, state["retry_budget"]),
             validated_container_refs=validated_container_refs,
             detail_candidate_refs=detail_candidate_refs,
         )
@@ -646,7 +654,9 @@ class ContextRetrieverSubgraph:
         # budget without repeating this call at every return site.
         state = {
             **state,
-            "retry_budget": consume_llm_call_budget(state, provider_calls_consumed=1),
+            "retry_budget": consume_llm_call_budget(
+                {**state, "retry_budget": revised_retry_budget}, provider_calls_consumed=1
+            ),
         }
         prior_canonical = state.get(CONTEXT_CANONICAL_PLANS_KEY, {})
         prior_legacy = cast(list[Any], state.get("source_fetch_plans", []))

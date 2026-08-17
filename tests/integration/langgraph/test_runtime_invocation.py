@@ -58,7 +58,7 @@ from tests.integration.langgraph.test_runtime import (
     sqlite_unit_of_work_factory,
 )
 
-from google_work_agent.ports import ResourceSnapshot
+from google_work_agent.ports import LLMErrorCode, LLMInvocationError, ResourceSnapshot
 
 
 def test_langgraph_runtime_completes_answer_only_run(
@@ -167,56 +167,66 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         default_tasklist_id_provider=lambda: "task-list-default",
     )
 
-    resumed = resumed_runtime.resume(
-        WorkflowResumeRequest(
-            run_id="run-1",
-            workflow_key="thread-1",
-            resume_kind="CONFIRMATION",
-            resume_payload={
-                "schema_version": 1,
-                "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
-                "free_text": "I mean Kim from project alpha.",
-            },
-            correlation=WorkflowCorrelationContext(
-                request_id="request-2",
-                command_id="command-2",
-                api_contract_version="1",
-            ),
+    # G3 Final Closure: Confirmation resume alone never promotes the Run's
+    # LLM budget profile past NORMAL (docs/06 SS11, docs/15 SS8.2 --
+    # REVISION_HEAVY requires an approved Review REVISE or mandatory Modify
+    # Review, RETRIEVAL_HEAVY requires an approved Additional Retrieval;
+    # neither ever happens in this Run). Re-entering classify with the
+    # confirmation answer restarts the *entire* SIX_ROLE_BASELINE pipeline
+    # (7 more real Provider calls: classify, tool_route, plan_query,
+    # select_evidence, assess_sufficiency, analyze, answer_only) on top of
+    # the 1 already spent on the original ambiguous classify call before the
+    # interrupt -- 8 total, exactly NORMAL_MAX_LLM_CALLS. The 9th real call
+    # (review) is therefore correctly denied before any Provider call, and
+    # the Run fails closed rather than silently completing over budget.
+    with pytest.raises(LLMInvocationError) as excinfo:
+        resumed_runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="CONFIRMATION",
+                resume_payload={
+                    "schema_version": 1,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option_ids": [],
+                    "free_text": "I mean Kim from project alpha.",
+                },
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-2",
+                    command_id="command-2",
+                    api_contract_version="1",
+                ),
+            )
         )
-    )
 
-    assert resumed.outcome is WorkflowOutcome.COMPLETED
+    assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+    assert "PROFILE_LLM_LIMIT_EXHAUSTED" in str(excinfo.value)
+    # Exactly the 7 real calls before review were made -- proving the 8th
+    # (review) was blocked at the NORMAL ceiling specifically, not the
+    # higher REVISION_HEAVY(12)/RETRIEVAL_HEAVY(14) ceiling a premature
+    # promotion would have allowed.
+    assert len(resumed_llm_runtime.calls) == 7
+
+    # The re-entered classify call's own prompt_input actually carried the
+    # bounded confirmation_response -- not just Main State -- even though
+    # the Run later exhausts its budget at review.
+    classify_call = next(
+        call
+        for call in resumed_llm_runtime.calls
+        if getattr(call["prompt_ref"], "prompt_id", None) == "request_understanding.classify"
+    )
+    classify_prompt_input = classify_call["prompt_input"]
+    assert classify_prompt_input["confirmation_response"] == {
+        "schema_version": 1,
+        "response_kind": "FREE_TEXT",
+        "selected_option_ids": [],
+        "free_text": "I mean Kim from project alpha.",
+    }
+
     connection = connect_sqlite(database_path)
     try:
         run_row = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()
-        assert run_row[0] == "COMPLETED"
-        snapshot = resumed_runtime._graph.get_state(  # noqa: SLF001
-            resumed_runtime._config_for_thread("thread-1")  # noqa: SLF001
-        )
-        request = snapshot.values["__request__"]
-        assert request.request_text == "Please handle the follow-up."
-        assert snapshot.values["prompt_context"]["confirmation_response"]["free_text"] == (
-            "I mean Kim from project alpha."
-        )
-        # The re-entered classify call's own prompt_input actually carried
-        # the bounded confirmation_response -- not just Main State.
-        classify_call = next(
-            call
-            for call in resumed_llm_runtime.calls
-            if getattr(call["prompt_ref"], "prompt_id", None) == "request_understanding.classify"
-        )
-        classify_prompt_input = classify_call["prompt_input"]
-        assert classify_prompt_input["confirmation_response"] == {
-            "schema_version": 1,
-            "response_kind": "FREE_TEXT",
-            "selected_option_ids": [],
-            "free_text": "I mean Kim from project alpha.",
-        }
-        # Ambiguity is resolved and the run reaches a normal next phase
-        # (COMPLETED, asserted above) rather than looping back into another
-        # confirmation.
-        assert snapshot.values["request_intent"]["ambiguity"]["requires_confirmation"] is False
+        assert run_row[0] != "COMPLETED"
     finally:
         connection.close()
         resumed_runtime.close()
@@ -562,6 +572,138 @@ def test_verification_auth_expired_reauths_and_resumes_to_verified_without_repla
     # C. The write was never replayed -- exactly one create_task call total,
     # across both the original attempt and the reauth resume.
     assert gateway.count_calls("create_task") == 1
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT COUNT(*) FROM execution_attempts),
+                (SELECT COUNT(*) FROM verifications);
+            """
+        ).fetchone()
+        assert tuple(row) == ("COMPLETED", "VERIFIED", 1, 1)
+    finally:
+        connection.close()
+        runtime.close()
+
+
+def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_write(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    checkpoint_path = tmp_path / "checkpoints-recovery-reauth.db"
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=checkpoint_path,
+        prompt_manifest_path=manifest_path,
+    )
+    assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    approved = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=lambda: 1000,
+    )(
+        ApproveWriteActionCommand(
+            command_id="approve-recovery-reauth",
+            request_hash="a" * 64,
+            action_id="action-1",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-recovery-reauth",
+            idempotency_key="b" * 64,
+        )
+    )
+    assert approved.applied is True
+
+    # A. The write itself actually reaches the provider (the fake gateway
+    # records the created task before raising) but the client-side response
+    # is lost, so the Action lands on UNKNOWN_RESULT and the Run moves to
+    # RECOVERY_REQUIRED. The same resume call auto-continues into recovery,
+    # where the recovery search itself now hits AUTH_EXPIRED.
+    gateway.queue_fault(
+        operation="create_task",
+        fault=GoogleGatewayFault(kind=GoogleGatewayFaultKind.HTTP_500),
+    )
+    gateway.queue_fault(
+        operation="search_by_recovery_fingerprint",
+        fault=GoogleGatewayFault(kind=GoogleGatewayFaultKind.HTTP_401),
+    )
+    approval_resumed = runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="APPROVAL",
+            resume_payload={"approved": True},
+            correlation=WorkflowCorrelationContext(
+                request_id="approval-resume-recovery-reauth",
+                command_id="approval-resume-recovery-reauth-command",
+                api_contract_version="1",
+            ),
+        )
+    )
+    assert approval_resumed.outcome is WorkflowOutcome.ACCEPTED
+    assert approval_resumed.payload["run_status"] == "REAUTH_REQUIRED"
+    assert gateway.count_calls("create_task") == 1
+    # The fake gateway's fault-raising branch for this operation does not
+    # append to call_log (only its success path does), so the failed
+    # AUTH_EXPIRED attempt is invisible to count_calls here by construction.
+    assert gateway.count_calls("search_by_recovery_fingerprint") == 0
+
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1');
+            """
+        ).fetchone()
+        assert tuple(row) == ("REAUTH_REQUIRED", "UNKNOWN_RESULT")
+    finally:
+        connection.close()
+
+    # B. Reauth completes; resume re-enters recover_unknown via the same
+    # domain-facts continuation the crash-restart path uses (the still
+    # unresolved UNKNOWN_RESULT action, not Run status, drives re-entry).
+    # The fault queue is one-shot, so the retried search now succeeds,
+    # finds the already-created task, and reaches VERIFIED/COMPLETED
+    # without ever calling create_task again.
+    resumed = runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="REAUTH_COMPLETED",
+            resume_payload={},
+            correlation=WorkflowCorrelationContext(
+                request_id="reauth-resume-recovery-reauth",
+                command_id="reauth-resume-recovery-reauth-command",
+                api_contract_version="1",
+            ),
+        )
+    )
+    assert resumed.outcome is WorkflowOutcome.COMPLETED
+
+    # C. The write was never replayed -- exactly one create_task call total,
+    # across both the original attempt and the reauth resume. The retried
+    # search now succeeds (fault queue exhausted), so it is the first call
+    # to actually reach call_log.
+    assert gateway.count_calls("create_task") == 1
+    assert gateway.count_calls("search_by_recovery_fingerprint") == 1
     connection = connect_sqlite(database_path)
     try:
         row = connection.execute(

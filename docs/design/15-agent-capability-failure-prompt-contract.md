@@ -511,8 +511,9 @@ ABSOLUTE_MAX_LLM_CALLS=16
 
 - 기본 Profile은 `NORMAL`이다.
 - `RETRIEVAL_HEAVY`는 `NEEDS_MORE_DATA` 또는 Additional Retrieval이 실제 발생한 경우에만 선택한다.
-- `REVISION_HEAVY`는 Review가 `REVISE`를 반환하고 Domain·Policy가 Revision을 허용한 경우에만 선택한다.
-- Profile 승격은 Supervisor의 결정적 규칙으로 수행한다.
+- `REVISION_HEAVY`는 다음 중 하나가 실제 발생한 경우에만 선택한다: (1) Review가 `REVISE`를 반환하고 Domain·Policy가 Revision을 허용, (2) 이미 `PASS`된 Action/Plan을 사용자가 Modify하여 기존 Review가 무효화되고 mandatory Modify Review가 필요한 경우. 두 트리거는 `PLANNING_REVISION_PER_RUN` 카운터를 공유한다 -- Modify Review 전용 카운터를 별도로 두지 않는다. Modify Review의 재-Review 호출 자체가 Domain 안전 Gate(호출하지 않으면 Approval로 진행 불가)이므로 이 경우에 한해 호출 전 승격이 허용된다. Confirmation 재진입은 어떤 경우에도 Profile을 승격하지 않는다.
+- Revision Heavy 조건과 Retrieval Heavy 조건이 동일 Run에서 모두 실제 발생(`planning_revisions_used>0` 그리고 `additional_acquisitions_used>0`)하면 그 Run의 effective LLM call cap은 `ABSOLUTE_MAX_LLM_CALLS`(16)이다. 두 조건 중 하나만 발생한 상태에서는 해당 단일 Profile의 cap만 적용된다. 새 Profile 값이나 새 카운터를 추가하지 않고 기존 두 카운터로만 결정한다.
+- Profile 승격은 Supervisor(또는 Supervisor가 위임한 동일 Run-level 결정 지점)의 결정적 규칙으로 수행하며, 임의 Node/Agent가 자체 판단으로 승격하지 않는다.
 - `ABSOLUTE_MAX_LLM_CALLS`를 넘으면 Prompt를 더 호출하지 않는다.
 
 ### 8.3 Budget 소진 처리
