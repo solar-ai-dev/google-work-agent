@@ -12,10 +12,13 @@ rewriting it. It replaces only the confirmation boundary that owns:
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
+from typing import Any, cast
 
 from langgraph.types import interrupt
 
+from google_work_agent.adapters.langgraph.confirmation_llm_runtime import (
+    ConfirmationAwareLLMRuntime,
+)
 from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.adapters.langgraph.route_translation import (
     confirmation_owner,
@@ -53,6 +56,15 @@ _OWNER_WORKFLOW_PHASE = {
 class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
     """Legacy runtime with the canonical same-owner confirmation boundary."""
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        llm_runtime = kwargs.get("llm_runtime")
+        if llm_runtime is None:
+            raise TypeError("llm_runtime is required")
+        confirmation_llm_runtime = ConfirmationAwareLLMRuntime(llm_runtime)
+        kwargs["llm_runtime"] = confirmation_llm_runtime
+        self._confirmation_llm_runtime = confirmation_llm_runtime
+        super().__init__(*args, **kwargs)
+
     def _merge_decision(
         self,
         state: GraphState,
@@ -79,6 +91,11 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
         )
         interrupt_id = self._id_factory()
 
+        # A new question supersedes any prior pending one-shot answer for this Run.
+        run_id = merged.get("run_id")
+        if isinstance(run_id, str):
+            self._confirmation_llm_runtime.clear(run_id=run_id)
+
         # ``UserInterruptV1`` is the validated question payload. ``interrupt_id``
         # is a controller-owned one-way UI/API projection added only after that
         # workflow contract has already been validated.
@@ -97,12 +114,10 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
                 "resume_status": confirmation_resume_status(owner_subgraph).value,
             },
         }
-        # A fresh interrupt supersedes any prior one-shot answer.
         cast(dict[str, object], merged["prompt_context"]).pop("confirmation_response", None)
         return merged
 
-    @staticmethod
-    def _clear_consumed_confirmation(*, state: GraphState, merged: GraphState) -> GraphState:
+    def _clear_consumed_confirmation(self, *, state: GraphState, merged: GraphState) -> GraphState:
         """Expire a confirmation answer after its originating owner returns once."""
         prompt_context = state.get("prompt_context")
         if not isinstance(prompt_context, Mapping):
@@ -116,6 +131,9 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
         if state.get("workflow_phase") != _OWNER_WORKFLOW_PHASE.get(owner_subgraph):
             return merged
 
+        run_id = state.get("run_id")
+        if isinstance(run_id, str):
+            self._confirmation_llm_runtime.clear(run_id=run_id)
         next_prompt_context = dict(cast(Mapping[str, object], merged.get("prompt_context", {})))
         next_prompt_context.pop("confirmation_response", None)
         next_prompt_context.pop("confirmation_interrupt", None)
@@ -211,6 +229,15 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
                     },
                 }
             unit_of_work.commit()
+
+        # Register only after the Domain restore commits. The decorator sees the
+        # Run ID from trace_context and injects this answer solely into the
+        # semantic Prompt slot identified by origin_target.
+        self._confirmation_llm_runtime.register(
+            run_id=request.run_id,
+            origin_target=expected_origin_target,
+            response=confirmation_response,
+        )
 
         return {
             **state,
