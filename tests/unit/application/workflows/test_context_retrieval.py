@@ -229,9 +229,16 @@ def test_selection_falls_back_deterministically_when_revision_also_invalid() -> 
     assert result["evidence_drafts"] == []
     assert len(runtime.calls) == 3  # select_evidence + semantic_revision + assess_sufficiency
     assert runtime.calls[1]["prompt_ref"].prompt_id == "context.select_evidence.semantic_revision"
-    assert runtime.calls[1]["prompt_input"]["previous_output"] == _selection_output(["seg-missing"])
-    failure_reason = str(runtime.calls[1]["prompt_input"]["failure_reason"])
-    assert "segment is outside ranked candidates" in failure_reason
+    revision_input = runtime.calls[1]["prompt_input"]
+    assert set(revision_input) == {"base_projection", "candidate_output", "failure_record"}
+    assert revision_input["candidate_output"] == _selection_output(["seg-missing"])
+    base_projection = cast(dict[str, object], revision_input["base_projection"])
+    assert set(base_projection) == {"request_intent", "ranked_segments"}
+    assert "user_request" not in base_projection
+    failure_record = cast(dict[str, object], revision_input["failure_record"])
+    assert failure_record["failure_reason_code"] == "EVIDENCE_SELECTION_SEMANTIC_INVALID"
+    validation_errors = cast(list[str], failure_record["validation_errors"])
+    assert "segment is outside ranked candidates" in validation_errors[0]
 
 
 def test_selection_rejects_evidence_for_unselected_segment_after_failed_revision() -> None:
@@ -546,9 +553,9 @@ def test_context_retrieval_exports_do_not_change_existing_workflow_contracts() -
 
 
 def test_assess_sufficiency_prompt_input_matches_candidate_root_fields() -> None:
-    """retrieval-sufficiency-input-v1.schema.json root fields: user_request,
-    request_intent, selected_evidence, source_statuses, budget_state --
-    never the old opaque context_bundle/acquisition_status blob."""
+    """retrieval-sufficiency-input-v1.schema.json root fields are the
+    canonical intent/evidence/source/budget projection; raw user_request and
+    the old opaque context_bundle/acquisition_status blob are not allowed."""
     runtime = FakeLLMRuntime()
     runtime.queued.append(_llm_result(_sufficiency_output("SUFFICIENT")))
     agent = _agent(runtime)
@@ -576,12 +583,12 @@ def test_assess_sufficiency_prompt_input_matches_candidate_root_fields() -> None
 
     prompt_input = runtime.calls[0]["prompt_input"]
     assert set(prompt_input) == {
-        "user_request",
         "request_intent",
         "selected_evidence",
         "source_statuses",
         "budget_state",
     }
+    assert "user_request" not in prompt_input
     assert prompt_input["selected_evidence"] == [
         {
             "evidence_ref": "evidence-seg-1",
