@@ -92,9 +92,6 @@ from google_work_agent.ports import (
 JsonObject = dict[str, object]
 
 
-
-
-
 CONTEXT_RETRIEVAL_SCHEMA_VERSION = 1
 CONTEXT_BUNDLE_SCHEMA_VERSION = 1
 EVIDENCE_DRAFT_SCHEMA_VERSION = 1
@@ -337,19 +334,25 @@ class ContextRetrievalAgent:
             rag_candidates, segments_by_id=segments_by_id
         )
         candidate_segment_ids = {candidate["segment_id"] for candidate in rag_candidates}
+        affected_fields = [
+            "$.selected_segment_ids",
+            "$.evidence_drafts",
+            "$.excluded_segment_ids",
+        ]
         revision_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._select_revision_prompt_ref,
             prompt_input={
-                "user_request": request.request_text,
-                "request_intent": request_intent,
-                "ranked_segments": ranked_segments,
-                "previous_output": previous_output,
-                "failure_reason": failure_detail,
-                "changed_fields_allowed": [
-                    "$.selected_segment_ids",
-                    "$.evidence_drafts",
-                    "$.excluded_segment_ids",
-                ],
+                "base_projection": {
+                    "request_intent": request_intent,
+                    "ranked_segments": ranked_segments,
+                },
+                "candidate_output": previous_output,
+                "failure_record": {
+                    "failure_reason_code": "EVIDENCE_SELECTION_SEMANTIC_INVALID",
+                    "affected_fields": affected_fields,
+                    "allowed_change_scope": affected_fields,
+                    "validation_errors": [failure_detail],
+                },
             },
             output_schema=EVIDENCE_SELECTION_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -390,7 +393,6 @@ class ContextRetrievalAgent:
         llm_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._sufficiency_prompt_ref,
             prompt_input={
-                "user_request": request.request_text,
                 "request_intent": request_intent,
                 "selected_evidence": selected_evidence_prompt_projection(evidence_drafts),
                 "source_statuses": source_statuses_prompt_projection(
@@ -708,9 +710,6 @@ def load_context_select_evidence_semantic_revision_prompt_reference(
     )
 
 
-
-
-
 # Common quoted-reply and signature markers across Gmail clients (English and
 # Korean). Best-effort/heuristic by nature -- docs/05 section 6 requires
 # "Gmail HTML 안전 텍스트 변환, 인용·서명 제거" as a Context Retriever
@@ -749,7 +748,6 @@ def load_context_select_evidence_semantic_revision_prompt_reference(
 # never-exceeds guarantee without adding a tokenizer dependency; it is not
 # a per-script/per-language heuristic -- the same byte-count formula runs
 # unconditionally for every Unicode input.
-
 
 
 def _selected_segments(
