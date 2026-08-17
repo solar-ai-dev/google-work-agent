@@ -194,6 +194,41 @@ def test_answer_draft_rejects_invalid_status_and_unknown_refs() -> None:
     with pytest.raises(SolutionPlanningValidationError, match="evidence reference does not exist"):
         validate_answer_draft_v1(output, analysis_result=_analysis_result())
 
+
+def test_answer_draft_accepts_route_reconsideration_required_with_reason_codes() -> None:
+    """Pre-Prompt Output Contract Alignment: 06-agent-workflow.md SS3.5/3.7
+    documents ROUTE_RECONSIDERATION_REQUIRED as a Planning disposition; the
+    structured output schema/validator must actually accept it."""
+    output = _answer_output(PlanningResult.ROUTE_RECONSIDERATION_REQUIRED.value)
+
+    result = validate_answer_draft_v1(output, analysis_result=_analysis_result())
+
+    assert result["status"] == PlanningResult.ROUTE_RECONSIDERATION_REQUIRED.value
+
+
+def test_answer_draft_route_reconsideration_required_without_reason_codes_is_rejected() -> None:
+    output = _answer_output(PlanningResult.ROUTE_RECONSIDERATION_REQUIRED.value)
+    output["reason_codes"] = []
+
+    with pytest.raises(SolutionPlanningValidationError, match="reason_codes"):
+        validate_answer_draft_v1(output, analysis_result=_analysis_result())
+
+
+def test_plan_draft_accepts_route_reconsideration_required_with_no_actions() -> None:
+    output = _plan_output(PlanningResult.ROUTE_RECONSIDERATION_REQUIRED.value, actions=[])
+
+    result = validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
+
+    assert result["status"] == PlanningResult.ROUTE_RECONSIDERATION_REQUIRED.value
+    assert result["actions"] == []
+
+
+def test_plan_draft_route_reconsideration_required_with_actions_is_rejected() -> None:
+    output = _plan_output(PlanningResult.ROUTE_RECONSIDERATION_REQUIRED.value)
+
+    with pytest.raises(SolutionPlanningValidationError, match="actions"):
+        validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
+
     output = _answer_output(PlanningResult.ANSWER_ONLY.value)
     cast(list[dict[str, object]], output["resource_refs"])[0]["resource_handle"] = "task:missing"
 

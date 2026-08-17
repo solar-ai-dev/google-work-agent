@@ -22,6 +22,7 @@ from google_work_agent.application.workflows.handoff_contracts import (
     AnswerDraftV1,
     ClarificationQuestionV1,
     ContextRetrievalResultV1,
+    EvidenceDraftV1,
     PlanReviewResultV1,
     PolicyReviewContextV1,
     RequestIntentV2,
@@ -78,7 +79,14 @@ PLAN_REVIEW_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "schema_version": {"type": "integer", "enum": [PLAN_REVIEW_SCHEMA_VERSION]},
             "status": {
                 "type": "string",
-                "enum": ["PASS", "REVISE", "RETRIEVE_MORE", "CONFIRM", "BLOCK"],
+                "enum": [
+                    "PASS",
+                    "REVISE",
+                    "RETRIEVE_MORE",
+                    "ROUTE_RECONSIDERATION",
+                    "CONFIRM",
+                    "BLOCK",
+                ],
             },
             "summary": {"type": "string"},
             "issues": {
@@ -200,6 +208,21 @@ REVIEW_RETRIEVE_MORE_TOOL: Final = ToolDefinition(
         "required": ["summary", "issues"],
     },
 )
+REVIEW_ROUTE_RECONSIDERATION_TOOL: Final = ToolDefinition(
+    name="review_route_reconsideration",
+    description=(
+        "The fixed route cannot satisfy the request; a different Resource/Connector route "
+        "is needed."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "issues": {"type": "array", "items": _REVIEW_ISSUE_PARAMETER_SCHEMA},
+        },
+        "required": ["summary", "issues"],
+    },
+)
 REVIEW_CONFIRM_TOOL: Final = ToolDefinition(
     name="review_confirm",
     description=(
@@ -234,6 +257,7 @@ _REVIEW_FUNCTION_TO_STATUS: Final = {
     "review_pass": ReviewResult.PASS.value,
     "review_revise": ReviewResult.REVISE.value,
     "review_retrieve_more": ReviewResult.RETRIEVE_MORE.value,
+    "review_route_reconsideration": ReviewResult.ROUTE_RECONSIDERATION.value,
     "review_confirm": ReviewResult.CONFIRM.value,
     "review_block": ReviewResult.BLOCK.value,
 }
@@ -241,6 +265,7 @@ REVIEW_INSPECT_TOOLS: Final = (
     REVIEW_PASS_TOOL,
     REVIEW_REVISE_TOOL,
     REVIEW_RETRIEVE_MORE_TOOL,
+    REVIEW_ROUTE_RECONSIDERATION_TOOL,
     REVIEW_CONFIRM_TOOL,
     REVIEW_BLOCK_TOOL,
 )
@@ -268,7 +293,7 @@ def _review_tool_call_to_result_v1(response: ToolCallProviderResponse) -> dict[s
         raise ValueError(f"{call.name} arguments.summary must be a string")
 
     issues: list[dict[str, object]] = []
-    if call.name in ("review_revise", "review_retrieve_more"):
+    if call.name in ("review_revise", "review_retrieve_more", "review_route_reconsideration"):
         raw_issues = arguments.get("issues")
         if not isinstance(raw_issues, list):
             raise ValueError(f"{call.name} arguments.issues must be a list")
@@ -423,6 +448,68 @@ class PlanReviewAgent:
             ),
         )
 
+    def invoke_inspect_llm_from_evidence(
+        self,
+        *,
+        request_intent: RequestIntentV2,
+        evidence_drafts: list[EvidenceDraftV1],
+        analysis_result: WorkAnalysisResultV1,
+        answer_draft: AnswerDraftV1 | None,
+        plan_draft: ActionPlanDraftV1 | None,
+        request: WorkflowStartRequest,
+        policy_review_context: PolicyReviewContextV1 | None = None,
+        deterministic_action_risks: dict[str, dict[str, object]] | None = None,
+    ) -> StructuredLLMResult:
+        """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
+
+        Feeds ``review.inspect.md`` from the run's resolved
+        ``RunScopedEvidenceStore`` projection directly -- no
+        ``ContextRetrievalResultV1`` is constructed or received here.
+        ``invoke_inspect_llm`` (above) stays the entry point for
+        THREE_STAGE/SINGLE_BASELINE, out of this migration's scope.
+        Validation is unaffected: ``validate_plan_review_result_v1``'s
+        reference space is scraped off ``analysis_result``/``plan_draft``,
+        never off context.
+        """
+        target_kind, draft = resolve_review_target(
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+        )
+        return self._llm_runtime.invoke_tool_call(
+            prompt_ref=self._inspect_prompt_ref,
+            prompt_input=_build_review_prompt_input_from_evidence(
+                request=request,
+                request_intent=request_intent,
+                evidence_drafts=evidence_drafts,
+                analysis_result=analysis_result,
+                draft=draft,
+                target_kind=target_kind,
+                policy_review_context=policy_review_context
+                or _shortlisted_policy_review_context_v1(
+                    tool_registry=self._tool_registry, target_kind=target_kind, draft=draft
+                ),
+                deterministic_action_risks=deterministic_action_risks,
+            ),
+            tools=REVIEW_INSPECT_TOOLS,
+            mapper=_review_tool_call_to_result_v1,
+            output_schema=PLAN_REVIEW_OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(
+                request_id=request.correlation.request_id,
+                command_id=request.correlation.command_id,
+                conversation_id=request.conversation_id,
+                run_id=request.run_id,
+                langgraph_thread_id=request.workflow_key,
+                llm_call_id=f"{request.run_id}:review.inspect",
+            ),
+            semantic_validate=lambda candidate: validate_plan_review_result_v1(
+                candidate,
+                target_kind=target_kind,
+                analysis_result=analysis_result,
+                answer_draft=answer_draft,
+                plan_draft=plan_draft,
+            ),
+        )
+
     def recheck(
         self,
         *,
@@ -479,6 +566,62 @@ class PlanReviewAgent:
                 request=request,
                 request_intent=request_intent,
                 context_result=context_result,
+                analysis_result=analysis_result,
+                draft=draft,
+                target_kind=target_kind,
+                policy_review_context=policy_review_context
+                or _shortlisted_policy_review_context_v1(
+                    tool_registry=self._tool_registry, target_kind=target_kind, draft=draft
+                ),
+                deterministic_action_risks=deterministic_action_risks,
+            ),
+            tools=REVIEW_RECHECK_TOOLS,
+            mapper=_review_tool_call_to_result_v1,
+            output_schema=PLAN_REVIEW_OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(
+                request_id=request.correlation.request_id,
+                command_id=request.correlation.command_id,
+                conversation_id=request.conversation_id,
+                run_id=request.run_id,
+                langgraph_thread_id=request.workflow_key,
+                llm_call_id=f"{request.run_id}:review.recheck",
+            ),
+            semantic_validate=lambda candidate: validate_plan_review_result_v1(
+                candidate,
+                target_kind=target_kind,
+                analysis_result=analysis_result,
+                answer_draft=answer_draft,
+                plan_draft=plan_draft,
+                allowed_statuses=_RECHECK_ALLOWED_STATUSES,
+            ),
+        )
+
+    def invoke_recheck_llm_from_evidence(
+        self,
+        *,
+        request_intent: RequestIntentV2,
+        evidence_drafts: list[EvidenceDraftV1],
+        analysis_result: WorkAnalysisResultV1,
+        answer_draft: AnswerDraftV1 | None,
+        plan_draft: ActionPlanDraftV1 | None,
+        request: WorkflowStartRequest,
+        policy_review_context: PolicyReviewContextV1 | None = None,
+        deterministic_action_risks: dict[str, dict[str, object]] | None = None,
+    ) -> StructuredLLMResult:
+        """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
+
+        See ``invoke_inspect_llm_from_evidence`` docstring.
+        """
+        target_kind, draft = resolve_review_target(
+            answer_draft=answer_draft,
+            plan_draft=plan_draft,
+        )
+        return self._llm_runtime.invoke_tool_call(
+            prompt_ref=self._recheck_prompt_ref,
+            prompt_input=_build_review_prompt_input_from_evidence(
+                request=request,
+                request_intent=request_intent,
+                evidence_drafts=evidence_drafts,
                 analysis_result=analysis_result,
                 draft=draft,
                 target_kind=target_kind,
@@ -773,6 +916,37 @@ def _build_review_prompt_input(
     return prompt_input
 
 
+def _build_review_prompt_input_from_evidence(
+    *,
+    request: WorkflowStartRequest,
+    request_intent: RequestIntentV2,
+    evidence_drafts: list[EvidenceDraftV1],
+    analysis_result: WorkAnalysisResultV1,
+    draft: AnswerDraftV1 | ActionPlanDraftV1,
+    target_kind: ReviewTargetValue,
+    policy_review_context: PolicyReviewContextV1,
+    deterministic_action_risks: dict[str, dict[str, object]] | None = None,
+) -> JsonObject:
+    """SIX_ROLE_BASELINE product runtime prompt input (Q2-HANDOFF cleanup).
+
+    Intent + plan/answer draft + bounded evidence/policy projection only --
+    no ``ContextRetrievalResultV1``-shaped ``context_status``/``context_bundle``.
+    """
+    prompt_input: JsonObject = {
+        "request_text": request.request_text,
+        "request_intent": request_intent,
+        "review_target": target_kind,
+        "draft": draft,
+        "evidence_drafts": list(evidence_drafts),
+        "analysis_result": analysis_result,
+        "policy_review_context": policy_review_context,
+        "source_content_is_untrusted": True,
+    }
+    if deterministic_action_risks is not None:
+        prompt_input["deterministic_action_risks"] = deterministic_action_risks
+    return prompt_input
+
+
 def _validate_review_issue(
     value: object,
     *,
@@ -866,6 +1040,8 @@ def _validate_plan_review_invariant(
         raise PlanReviewValidationError("$.issues REVISE requires issues")
     if status is ReviewResult.RETRIEVE_MORE and not result["issues"]:
         raise PlanReviewValidationError("$.issues RETRIEVE_MORE requires issues")
+    if status is ReviewResult.ROUTE_RECONSIDERATION and not result["issues"]:
+        raise PlanReviewValidationError("$.issues ROUTE_RECONSIDERATION requires issues")
     if status is ReviewResult.CONFIRM and result["confirmation"] is None:
         raise PlanReviewValidationError("$.confirmation CONFIRM requires confirmation")
     if status is ReviewResult.BLOCK and not result["blockers"]:

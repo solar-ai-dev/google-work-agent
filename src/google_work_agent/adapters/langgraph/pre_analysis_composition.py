@@ -56,6 +56,7 @@ def build_pre_analysis_subgraphs(
     evidence_store: RunScopedEvidenceStore,
     read_result_cache: RunScopedReadResultCache,
     retrieval_read_executor: RetrievalReadExecutor,
+    default_tasklist_id_provider: Callable[[], str | None] | None = None,
 ) -> PreAnalysisSubgraphs:
     """Create nodes only; workflow policy remains in their Application owners."""
 
@@ -85,6 +86,7 @@ def build_pre_analysis_subgraphs(
             agent=context_agent,
             id_factory=id_factory,
             graph_profile=graph_profile,
+            transition_run=transition_run,
             merge_decision=merge_decision,
             evidence_store=evidence_store,
             acquisition_agent=acquisition_agent,
@@ -92,6 +94,7 @@ def build_pre_analysis_subgraphs(
             source_fetch_plan_builder=SourceFetchPlanBuilder(),
             read_result_cache=read_result_cache,
             retrieval_read_executor=retrieval_read_executor,
+            default_tasklist_id_provider=default_tasklist_id_provider,
         ).build(),
     )
 

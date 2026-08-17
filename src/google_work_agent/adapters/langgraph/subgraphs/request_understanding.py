@@ -9,6 +9,8 @@ from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import (
     build_agent_local_state,
+    consume_llm_call_budget,
+    ensure_llm_call_budget,
     merge_trace_context,
     record_llm_result,
 )
@@ -25,12 +27,14 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
 )
 from google_work_agent.application.workflows import (
     AgentLocalStateV1,
+    ConfirmationResponseV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
     RequestUnderstandingAgent,
     SupervisorDecisionV1,
     WorkflowPhase,
     route_supervisor,
+    validate_confirmation_response_v1,
 )
 from google_work_agent.application.workflows.request_understanding import (
     materialize_request_intent_artifact,
@@ -109,7 +113,11 @@ class RequestUnderstandingSubgraph:
     ) -> RequestUnderstandingLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[REQUEST_AGENT_LOCAL_KEY])
-        llm_result = self._agent.invoke_classify_llm(request)
+        confirmation_response = _confirmation_response_from_state(state)
+        ensure_llm_call_budget(state)
+        llm_result = self._agent.invoke_classify_llm(
+            request, confirmation_response=confirmation_response
+        )
         output = self._agent.build_output_from_llm_result(llm_result)
         updated_local = dict(record_llm_result(local_state, llm_result))
         updated_local["node_state"] = "CLASSIFY_COMPLETE"
@@ -118,6 +126,9 @@ class RequestUnderstandingSubgraph:
             **state,
             REQUEST_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             REQUEST_OUTPUT_KEY: output,
+            "retry_budget": consume_llm_call_budget(
+                state, provider_calls_consumed=llm_result.structured_output_attempts
+            ),
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -179,3 +190,23 @@ class RequestUnderstandingSubgraph:
         merged.pop(REQUEST_AGENT_LOCAL_KEY, None)
         merged.pop(REQUEST_OUTPUT_KEY, None)
         return cast(RequestUnderstandingLocalState, merged)
+
+
+def _confirmation_response_from_state(
+    state: RequestUnderstandingLocalState,
+) -> ConfirmationResponseV1 | None:
+    """Pre-Prompt Runtime Closure: bounded confirmation-answer re-entry.
+
+    ``_waiting_confirmation_node`` (runtime.py) stores the raw resume
+    payload under ``prompt_context.confirmation_response`` before routing
+    back into this subgraph. Re-validating it here (rather than trusting the
+    stored dict as-is) keeps the boundary fail-closed and guarantees only
+    the canonical, already-bounded ``ConfirmationResponseV1`` shape
+    (schema_version/response_kind/selected_option_ids/free_text) ever
+    reaches the LLM -- never the raw interrupt payload.
+    """
+    prompt_context = cast(dict[str, object], state.get("prompt_context") or {})
+    raw = prompt_context.get("confirmation_response")
+    if raw is None:
+        return None
+    return validate_confirmation_response_v1(raw)

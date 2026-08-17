@@ -211,7 +211,7 @@ class FinalizeRunCancellationService:
                 return response
             finalize_expected_version = command.expected_run_version
             if run.status is RunStatus.VERIFYING:
-                if not _has_successful_cancel_marker(unit_of_work, run.id):
+                if not has_durable_cancel_intent(unit_of_work, run.id):
                     response = WriteRunResponse(
                         applied=False,
                         result_code=ResultCode.STATE_CONFLICT.value,
@@ -364,7 +364,7 @@ class FinalizeRunCancellationService:
             return response
 
 
-def _has_successful_cancel_marker(unit_of_work: UnitOfWork, run_id: str) -> bool:
+def has_durable_cancel_intent(unit_of_work: UnitOfWork, run_id: str) -> bool:
     cursor: int | None = None
     while True:
         events = unit_of_work.audits.list_by_aggregate(

@@ -5,8 +5,20 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
-from google_work_agent.application.workflows import AgentLocalStateV1, PromptRef
-from google_work_agent.ports import PromptReference, StructuredLLMResult
+from google_work_agent.application.workflows import (
+    AgentLocalStateV1,
+    BudgetDecision,
+    PromptRef,
+    RunBudgetV1,
+    check_llm_call_budget,
+    consume_llm_provider_calls,
+)
+from google_work_agent.ports import (
+    LLMErrorCode,
+    LLMInvocationError,
+    PromptReference,
+    StructuredLLMResult,
+)
 
 GraphState = Mapping[str, object]
 
@@ -105,6 +117,52 @@ def record_llm_result(
     updated["candidate_output"] = candidate if isinstance(candidate, dict) else None
     updated["schema_repair_count"] = max(0, llm_result.structured_output_attempts - 1)
     return cast(AgentLocalStateV1, updated)
+
+
+def ensure_llm_call_budget(
+    state: GraphState,
+    *,
+    provider_calls_requested: int = 1,
+) -> None:
+    """Deterministic Run-level LLM budget gate (RunBudgetV1), checked
+    immediately before every real Provider call that any native subgraph
+    node issues -- INITIAL, SCHEMA_REPAIR (bundled into one node call's
+    attempt count), SEMANTIC_REVISION, retrieval follow-up, planning
+    revision, review recheck.
+
+    Denial raises before the node calls its Agent, so zero Provider calls
+    happen: the same terminal-failure path
+    (``application/coordinator.py``'s catch-all -> ``RunStatus.FAILED``)
+    already used for any other real ``LLMInvocationError``.
+    """
+    retry_budget = cast(RunBudgetV1, state["retry_budget"])
+    decision = check_llm_call_budget(
+        retry_budget, provider_calls_requested=provider_calls_requested
+    )
+    if decision["decision"] == BudgetDecision.DENY.value:
+        raise LLMInvocationError(
+            LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED,
+            f"run LLM call budget exhausted: {decision['budget_reason_code']}",
+            retryable=False,
+        )
+
+
+def consume_llm_call_budget(
+    state: GraphState,
+    *,
+    provider_calls_consumed: int = 1,
+) -> RunBudgetV1:
+    """Authoritative post-call accounting: increments ``retry_budget``'s
+    ``llm_calls_used`` by the number of real Provider calls the just-completed
+    node invocation actually made (``StructuredLLMResult.provider_calls_consumed``
+    for that invocation -- 1 normally, 2 when a SCHEMA_REPAIR attempt fired).
+    Callers must fold the returned ``RunBudgetV1`` into their node's
+    ``retry_budget`` state update so it survives the LangGraph checkpoint.
+    """
+    retry_budget = cast(RunBudgetV1, state["retry_budget"])
+    return consume_llm_provider_calls(
+        retry_budget, provider_calls_consumed=provider_calls_consumed
+    )
 
 
 def _counter_value(item: dict[str, object], field: str) -> int:

@@ -20,7 +20,6 @@ from tests.integration.langgraph.test_runtime import (
     _action_required_intent,
     _analysis_output,
     _make_runtime,
-    _plan,
     _profile_reason_plan_output,
     _profile_request_source_output,
     _review_output,
@@ -46,7 +45,6 @@ def test_edge_preflight_google_read_failure_blocks_claim_and_write(tmp_path: Pat
         database_path=database_path,
         llm_payloads=[
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -144,7 +142,6 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
     initial_payloads = (
         [
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -291,7 +288,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
                     "resource_hints": ["task:task-followup"],
                 },
             ),
-            "acquisition",
+            "context_retriever",
             "RETRIEVE_MORE",
             "SUPERSEDED",
             "PLANNING",
@@ -323,7 +320,6 @@ def test_modify_review_branches_use_existing_supervisor_routes(
         database_path=database_path,
         llm_payloads=[
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -376,6 +372,96 @@ def test_modify_review_branches_use_existing_supervisor_routes(
         runtime.close()
 
 
+def test_modify_review_route_reconsideration_folds_into_retrieve_more(tmp_path: Path) -> None:
+    """Pre-Prompt Runtime Closure item 6: a post-approval modify-review re-run
+    that itself resolves to ROUTE_RECONSIDERATION (a live route-level defect
+    discovered on the re-invoked Review) has no dedicated
+    ``plans.review_status`` value -- migration 0004's CHECK constraint only
+    enumerates PASSED/REQUIRED/REVISE/RETRIEVE_MORE/BLOCKED, and this task's
+    "no unconditional DB enum/migration" rule forbids adding one just for
+    this edge. It is folded into the existing RETRIEVE_MORE
+    supersede+replan-to-PLANNING path instead of stranding the run. This
+    locks that fold down as a deliberate policy, not an accident: same
+    persisted review_status/plan_status/run_status as a genuine
+    RETRIEVE_MORE, but ``__target__`` stays "end" (Tool Route reconsideration
+    is reported, not silently redirected to) and execution_summary names the
+    downgrade explicitly."""
+    database_path = _seed_runtime_database(tmp_path)
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+            _review_output(
+                "ROUTE_RECONSIDERATION",
+                issues=[
+                    {
+                        "schema_version": 2,
+                        "issue_id": "route-reconsideration-action",
+                        "kind": "MISSING_EVIDENCE",
+                        "message": "The frozen route can no longer serve this modified action.",
+                        "affected_action_ids": ["action-1"],
+                        "affected_field_paths": ["$.actions[0]"],
+                        "evidence_refs": ["evidence-seg-2"],
+                        "resource_refs": ["task:task-followup"],
+                        "reason_codes": ["EVIDENCE_SUPPORTED"],
+                    }
+                ],
+            ),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-modify-review-route-reconsideration.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        modified = ModifyWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            now_ms=lambda: 1000,
+            gateway=gateway,
+        )(
+            ModifyWriteActionCommand(
+                command_id="modify-route-reconsideration",
+                request_hash="1" * 64,
+                action_id="action-1",
+                expected_version=0,
+                arguments_patch={"title": "Branch-reviewed title"},
+            )
+        )
+        assert modified["applied"] is True
+        snapshot = runtime._graph.get_state(  # noqa: SLF001
+            runtime._config_for_thread("thread-1")  # noqa: SLF001
+        )
+        prepared = runtime._prepare_modify_review_state(  # noqa: SLF001
+            snapshot.values,
+            plan_id="plan-1",
+            review_version=1,
+        )
+        reviewed = runtime._modify_review_node(prepared)  # noqa: SLF001
+
+        assert reviewed["__target__"] == "end"
+        assert reviewed["execution_summary"] == {"result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"}
+        with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+            plan = unit_of_work.plans.get_by_id("plan-1")
+            run = unit_of_work.runs.get_by_id("run-1")
+            approvals = unit_of_work.approvals.list_by_action("action-1")
+        assert plan is not None and plan.review_status.value == "RETRIEVE_MORE"
+        assert plan.status.value == "SUPERSEDED"
+        assert run is not None and run.status.value == "PLANNING"
+        assert approvals == ()
+        assert gateway.count_calls("create_task") == 0
+    finally:
+        runtime.close()
+
+
 @pytest.mark.parametrize("review_status", ["REVISE", "RETRIEVE_MORE"])
 def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
     tmp_path: Path, review_status: str
@@ -418,7 +504,56 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
     )
     continuation = (
         [
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+            # RETRIEVE_MORE now folds through _route_retrieval_required
+            # (supervisor.py), which re-enters context_retriever directly
+            # within the same resume() call (SIX_ROLE_BASELINE's route
+            # translation maps SOURCE_PLANNING to "context_retriever" --
+            # see test_context_subgraph_routes_needs_more_data_back_to_source_planning).
+            # Re-entry carries a RetrievalRequiredV1 signal, so
+            # context_retriever's init node treats this as a FOLLOWUP round
+            # (not a synthesizable INITIAL one) and calls retrieval.plan_query
+            # for real -- this queued response must be a valid FOLLOWUP
+            # RetrievalQueryPlanV2 covering both routes the first run froze.
+            # The route_ids are deterministic for this exact llm_payloads/
+            # call sequence (DeterministicUUID(prefix="runtime"), confirmed
+            # by inspecting the checkpointed tool_route_plan before resume).
+            {
+                "schema_version": 2,
+                "route_queries": [
+                    {
+                        "route_id": "runtime-0004",
+                        "operation": "SEARCH",
+                        "reason_codes": ["REQUIRED"],
+                        "search_spec": {
+                            "mode": "INITIAL",
+                            "constraints": [
+                                {
+                                    "kind": "CONTAINER_REF",
+                                    "container_refs": ["task-list-default"],
+                                }
+                            ],
+                        },
+                        "detail_candidate_ref": None,
+                    },
+                    {
+                        "route_id": "runtime-0005",
+                        "operation": "SEARCH",
+                        "reason_codes": ["REQUIRED"],
+                        "search_spec": {
+                            "mode": "INITIAL",
+                            "constraints": [
+                                {
+                                    "kind": "CONTAINER_REF",
+                                    "container_refs": ["task-list-default"],
+                                }
+                            ],
+                        },
+                        "detail_candidate_ref": None,
+                    },
+                ],
+                "required_information": ["current task evidence"],
+                "retrieval_order": ["runtime-0004", "runtime-0005"],
+            },
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -432,7 +567,6 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
         database_path=database_path,
         llm_payloads=[
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -509,7 +643,6 @@ def test_modify_review_block_finalizes_without_approval_or_write(tmp_path: Path)
         database_path=database_path,
         llm_payloads=[
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -585,7 +718,6 @@ def test_modify_during_review_discards_the_stale_llm_result(tmp_path: Path) -> N
         database_path=database_path,
         llm_payloads=[
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),

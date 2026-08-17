@@ -12,6 +12,8 @@ from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import (
     build_agent_local_state,
+    consume_llm_call_budget,
+    ensure_llm_call_budget,
     merge_trace_context,
 )
 from google_work_agent.adapters.langgraph.graph_state import (
@@ -41,6 +43,8 @@ from google_work_agent.application.workflows import (
     ContextRetrievalAgent,
     GraphStateUpdateV1,
     MultiAgentGraphState,
+    RetrievalRouteResultV1,
+    RunBudgetV1,
     SupervisorDecisionV1,
     WorkflowPhase,
     finalize_retrieval_result,
@@ -48,6 +52,10 @@ from google_work_agent.application.workflows import (
     retrieval_query_hash,
     route_supervisor,
     validate_context_retrieval_result_v1,
+)
+from google_work_agent.application.workflows.handoff_contracts import (
+    RetrievalNeedV1,
+    RetrievalRequiredV1,
 )
 from google_work_agent.application.workflows.retrieval_attempts import (
     QueryAttempt,
@@ -145,6 +153,7 @@ class ContextRetrieverSubgraph:
         agent: ContextRetrievalAgent,
         id_factory: Callable[[], str],
         graph_profile: GraphProfile,
+        transition_run: Callable[[str, str], None],
         merge_decision: MergeDecision,
         evidence_store: RunScopedEvidenceStore,
         acquisition_agent: Any,
@@ -152,10 +161,12 @@ class ContextRetrieverSubgraph:
         source_fetch_plan_builder: SourceFetchPlanBuilder,
         read_result_cache: RunScopedReadResultCache,
         retrieval_read_executor: RetrievalReadExecutor,
+        default_tasklist_id_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self._agent = agent
         self._id_factory = id_factory
         self._graph_profile = graph_profile
+        self._transition_run = transition_run
         self._merge_decision = merge_decision
         self._evidence_store = evidence_store
         self._acquisition_agent = acquisition_agent
@@ -163,6 +174,16 @@ class ContextRetrieverSubgraph:
         self._source_fetch_plan_builder = source_fetch_plan_builder
         self._read_result_cache = read_result_cache
         self._retrieval_read_executor = retrieval_read_executor
+        # Pre-Prompt Runtime Closure: TASK routes' only supported semantic
+        # constraint kind is CONTAINER_REF (_runtime_route_constraint_policies
+        # below), but nothing ever populated validated_container_refs for the
+        # planner call, so a TASK-resource plan_query could never validate.
+        # Reuses the existing per-account Settings default_tasklist_id
+        # concept (already the authoritative source resource_queries.py's
+        # own _resolve_task_list_id falls back to) rather than adding a new
+        # discovery Port/authority. When unset, TASK routes keep today's
+        # existing (pre-existing, unrelated to this change) behavior.
+        self._default_tasklist_id_provider = default_tasklist_id_provider
 
     def build(self) -> Any:
         graph = StateGraph(
@@ -187,7 +208,14 @@ class ContextRetrieverSubgraph:
             self._route_after_init,
             {"plan_query": "plan_query", "select_evidence": "select_evidence"},
         )
-        graph.add_edge("plan_query", "execute_initial_read")
+        graph.add_conditional_edges(
+            "plan_query",
+            self._route_after_plan_query,
+            {
+                "execute_initial_read": "execute_initial_read",
+                "execute_followup_search": "execute_followup_search",
+            },
+        )
         graph.add_edge("execute_initial_read", "select_evidence")
         graph.add_edge("select_evidence", "selection_validate")
         graph.add_edge("selection_validate", "assess_sufficiency")
@@ -213,6 +241,8 @@ class ContextRetrieverSubgraph:
         return graph.compile(name="context_retriever_subgraph")
 
     def _init_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
+        request = request_from_state(state)
+        self._transition_run(request.run_id, "begin_retrieval")
         invocation_id = self._id_factory()
         tool_route_plan = state.get("tool_route_plan")
         # Compatibility fixtures without a frozen route cannot continue a
@@ -254,6 +284,24 @@ class ContextRetrieverSubgraph:
                 agent_invocation_increment=1,
             ),
         }
+        # Q2-HANDOFF: WorkAnalysis/Review's RetrievalRequiredV1 re-entry --
+        # the signal is consumed and cleared right here, and (only when a
+        # prior read already exists to extend) turned into a genuine new
+        # follow-up round via the same plan_followup machinery Retrieval's
+        # own local loop uses. RetrievalRequiredV1 is never produced inside
+        # this subgraph -- only Supervisor constructs it.
+        retrieval_required = _retrieval_required_signal(state.get("workflow_signal"))
+        if retrieval_required is not None:
+            next_state["workflow_signal"] = None
+            if state.get("acquisition_result") is not None:
+                next_state[CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY] = followup_planner_projection(
+                    current_round_no=current_round_no,
+                    prior_query_attempts=[],
+                    unresolved_sufficiency_issues=_needs_as_sufficiency_issues(
+                        retrieval_required["needs"]
+                    ),
+                    read_result_summaries=self._bounded_read_result_summaries(next_state),
+                )
         return next_state
 
     def _select_evidence_node(
@@ -267,11 +315,13 @@ class ContextRetrieverSubgraph:
         rag_candidates = self._agent.rag_retrieve(
             cast(list[Any], segments), request_intent=request_intent
         )
-        selection = self._agent.select_evidence(
+        ensure_llm_call_budget(state)
+        selection, revised_retry_budget = self._agent.select_evidence(
             request_intent=request_intent,
             request=request,
             rag_candidates=rag_candidates,
             segments=cast(list[Any], segments),
+            retry_budget=cast(RunBudgetV1, state["retry_budget"]),
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "SELECT_EVIDENCE_COMPLETE"
@@ -281,6 +331,9 @@ class ContextRetrieverSubgraph:
             CONTEXT_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             CONTEXT_RAG_CANDIDATES_KEY: rag_candidates,
             CONTEXT_SELECTION_OUTPUT_KEY: selection,
+            "retry_budget": consume_llm_call_budget(
+                {**state, "retry_budget": revised_retry_budget}, provider_calls_consumed=1
+            ),
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -329,6 +382,7 @@ class ContextRetrieverSubgraph:
     ) -> ContextRetrievalLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
+        ensure_llm_call_budget(state)
         sufficiency_result, llm_provider_result = self._agent.assess_sufficiency(
             request_intent=_require_state_value(state["request_intent"], "request_intent"),
             request=request,
@@ -347,6 +401,12 @@ class ContextRetrieverSubgraph:
             CONTEXT_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             CONTEXT_SUFFICIENCY_OUTPUT_KEY: sufficiency_result,
             "llm_provider_result": llm_provider_result,
+            "retry_budget": consume_llm_call_budget(
+                state,
+                provider_calls_consumed=cast(
+                    int, llm_provider_result["structured_output_attempts"]
+                ),
+            ),
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -372,7 +432,45 @@ class ContextRetrieverSubgraph:
         return next_state
 
     def _route_after_init(self, state: ContextRetrievalLocalState) -> str:
+        # Q2-HANDOFF: an incoming RetrievalRequiredV1 always plans a fresh
+        # query (never select_evidence-only), even though acquisition_result
+        # already holds a prior invocation's reads -- there is no
+        # invocation-local canonical plan left to run a CHANGED merge
+        # against, so this is INITIAL-capable planning, not the local loop's
+        # plan_followup.
+        if state.get(CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY) is not None:
+            return "plan_query"
         return "select_evidence" if state.get("acquisition_result") is not None else "plan_query"
+
+    def _route_after_plan_query(self, state: ContextRetrievalLocalState) -> str:
+        return (
+            "execute_followup_search"
+            if state.get("acquisition_result") is not None
+            else "execute_initial_read"
+        )
+
+    def _validated_task_container_refs(
+        self, frozen_routes: list[InputToolRouteV1]
+    ) -> dict[str, list[str]]:
+        """TASK routes' only supported semantic constraint kind, resolved.
+
+        Reuses the account's already-configured ``default_tasklist_id``
+        Setting (the same authoritative source ``resource_queries.py``'s
+        own ``_resolve_task_list_id`` falls back to) instead of adding a new
+        discovery capability to the Retrieval read boundary. Empty when the
+        provider is unset or returns ``None`` -- a TASK route then simply
+        stays unable to satisfy CONTAINER_REF, exactly as before this fix.
+        """
+        if self._default_tasklist_id_provider is None:
+            return {}
+        default_tasklist_id = self._default_tasklist_id_provider()
+        if not default_tasklist_id:
+            return {}
+        return {
+            route["route_id"]: [default_tasklist_id]
+            for route in frozen_routes
+            if coarse_resource_category(route["resource_type"]) == "TASK"
+        }
 
     def _plan_initial_query_node(
         self, state: ContextRetrievalLocalState
@@ -380,20 +478,38 @@ class ContextRetrieverSubgraph:
         tool_route_plan = _require_state_value(state.get("tool_route_plan"), "tool_route_plan")
         frozen_routes = tool_route_plan["input_plan"]["input_routes"]
         route_policies = _runtime_route_constraint_policies(frozen_routes)
-        query_plan = self._retrieval_query_planner.plan(
-            prompt_input=initial_retrieval_planner_input(
+        validated_container_refs = self._validated_task_container_refs(frozen_routes)
+        followup = state.get(CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY)
+        prompt_input = (
+            initial_retrieval_planner_input(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
                 input_routes=frozen_routes,
                 retrieval_budget=self._acquisition_agent.retrieval_budget,
-            ),
+                validated_container_refs=validated_container_refs,
+            )
+            if followup is None
+            else followup_retrieval_planner_input(
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                input_routes=frozen_routes,
+                retrieval_budget=self._acquisition_agent.retrieval_budget,
+                followup=followup,
+                validated_container_refs=validated_container_refs,
+            )
+        )
+        ensure_llm_call_budget(state)
+        query_plan, revised_retry_budget = self._retrieval_query_planner.plan(
+            prompt_input=prompt_input,
             trace_context=_planner_trace_context(state),
             frozen_routes=frozen_routes,
             route_policies=route_policies,
+            retry_budget=cast(RunBudgetV1, state["retry_budget"]),
+            validated_container_refs=validated_container_refs,
         )
         canonical_plans = self._source_fetch_plan_builder.build(
             query_plan,
             frozen_routes=frozen_routes,
             route_policies=route_policies,
+            validated_container_refs=validated_container_refs,
             detail_candidate_refs=state.get(CONTEXT_SEGMENT_HANDLES_KEY, []),
         )
         return {
@@ -403,6 +519,9 @@ class ContextRetrieverSubgraph:
                 canonical_plans,
                 frozen_routes=frozen_routes,
                 retrieval_budget=self._acquisition_agent.retrieval_budget,
+            ),
+            "retry_budget": consume_llm_call_budget(
+                {**state, "retry_budget": revised_retry_budget}, provider_calls_consumed=1
             ),
         }
 
@@ -456,10 +575,19 @@ class ContextRetrieverSubgraph:
             "source_summaries": cast(list[dict[str, object]], previous["source_summaries"])
             + cast(list[dict[str, object]], result["source_summaries"]),
         }
+        # Q2-HANDOFF: reached via init->plan_query (external RetrievalRequiredV1
+        # re-entry) rather than the local loop's assess_sufficiency->
+        # plan_followup, _init_node already set CONTEXT_CURRENT_ROUND_NO_KEY to
+        # this invocation's own round -- CONTEXT_FOLLOWUP_OPERATION_KEY (only
+        # ever set by _plan_followup_node) distinguishes the two paths, so the
+        # round is not double-counted.
+        round_no = state[CONTEXT_CURRENT_ROUND_NO_KEY]
+        if state.get(CONTEXT_FOLLOWUP_OPERATION_KEY) is not None:
+            round_no += 1
         published_state = {
             **state,
             "acquisition_result": cast(Any, combined),
-            CONTEXT_CURRENT_ROUND_NO_KEY: state[CONTEXT_CURRENT_ROUND_NO_KEY] + 1,
+            CONTEXT_CURRENT_ROUND_NO_KEY: round_no,
             CONTEXT_READ_RESULT_HANDLES_KEY: self._latest_read_handles(
                 state, state["source_fetch_plans"]
             ),
@@ -500,20 +628,36 @@ class ContextRetrieverSubgraph:
         tool_route_plan = _require_state_value(state.get("tool_route_plan"), "tool_route_plan")
         frozen_routes = tool_route_plan["input_plan"]["input_routes"]
         route_policies = _runtime_route_constraint_policies(frozen_routes)
+        validated_container_refs = self._validated_task_container_refs(frozen_routes)
         followup = _require_state_value(
             state.get(CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY), "follow-up planner input"
         )
-        query_plan = self._retrieval_query_planner.plan(
+        detail_candidate_refs = state.get(CONTEXT_SEGMENT_HANDLES_KEY, [])
+        ensure_llm_call_budget(state)
+        query_plan, revised_retry_budget = self._retrieval_query_planner.plan(
             prompt_input=followup_retrieval_planner_input(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
                 input_routes=frozen_routes,
                 retrieval_budget=self._acquisition_agent.retrieval_budget,
                 followup=followup,
+                validated_container_refs=validated_container_refs,
             ),
             trace_context=_planner_trace_context(state),
             frozen_routes=frozen_routes,
             route_policies=route_policies,
+            retry_budget=cast(RunBudgetV1, state["retry_budget"]),
+            validated_container_refs=validated_container_refs,
+            detail_candidate_refs=detail_candidate_refs,
         )
+        # Reassigned onto state (not a one-off return key) so every exit
+        # branch below -- each spreads **state -- carries the consumed
+        # budget without repeating this call at every return site.
+        state = {
+            **state,
+            "retry_budget": consume_llm_call_budget(
+                {**state, "retry_budget": revised_retry_budget}, provider_calls_consumed=1
+            ),
+        }
         prior_canonical = state.get(CONTEXT_CANONICAL_PLANS_KEY, {})
         prior_legacy = cast(list[Any], state.get("source_fetch_plans", []))
         handles = {
@@ -535,7 +679,8 @@ class ContextRetrieverSubgraph:
                 route_policies=route_policies,
                 prior_plans=prior_canonical,
                 prior_read_result_handles=handles,
-                detail_candidate_refs=state.get(CONTEXT_SEGMENT_HANDLES_KEY, []),
+                validated_container_refs=validated_container_refs,
+                detail_candidate_refs=detail_candidate_refs,
             )
         except Exception:
             return {**state, CONTEXT_FOLLOWUP_OPERATION_KEY: "FINALIZE"}
@@ -549,7 +694,7 @@ class ContextRetrieverSubgraph:
                     for plan in canonical_plans
                 },
             }
-        if operations == {"SEARCH"}:
+        if operations in ({"SEARCH"}, {"FREEBUSY"}):
             try:
                 legacy_plans = project_for_legacy_read_executor(
                     canonical_plans,
@@ -761,8 +906,16 @@ class ContextRetrieverSubgraph:
                 llm_provider_result=llm_provider_result,
             )
         )
+        # Q2-HANDOFF: RetrievalResultV1 is only materialized for a disposition
+        # a Parent may actually consume (SUFFICIENT/PARTIAL). Unfinished
+        # candidates (NEEDS_MORE_DATA/NEEDS_CONFIRMATION/
+        # ROUTE_RECONSIDERATION_REQUIRED/BLOCKED) are never forced into it --
+        # Supervisor routes those purely on `disposition` below.
         retrieval_result = None
-        if state.get("tool_route_plan") is not None:
+        if state.get("tool_route_plan") is not None and result["status"] in {
+            "SUFFICIENT",
+            "PARTIAL",
+        }:
             retrieval_result = finalize_retrieval_result(
                 artifact_id=self._id_factory(),
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
@@ -776,10 +929,15 @@ class ContextRetrieverSubgraph:
                 current_round_no=state[CONTEXT_CURRENT_ROUND_NO_KEY],
             )
         self._evidence_store.put(run_id=state["run_id"], evidence_drafts=state["evidence_drafts"])
+        retrieval_return: RetrievalRouteResultV1 = {
+            "disposition": cast(str, result["status"]),
+            "typed_result": retrieval_result,
+        }
         decision = route_supervisor(
             phase=WorkflowPhase.CONTEXT_RETRIEVAL,
             state=cast(MultiAgentGraphState, state),
-            result=result,
+            result=retrieval_return,
+            legacy_retrieval_result=result,
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "FINALIZED"
@@ -805,13 +963,7 @@ class ContextRetrieverSubgraph:
                 ),
             },
             self._agent.build_state_update(result),
-            {
-                **decision,
-                "state_update": {
-                    **decision["state_update"],
-                    **({} if retrieval_result is None else {"retrieval_result": retrieval_result}),
-                },
-            },
+            decision,
         )
         merged.pop(CONTEXT_AGENT_LOCAL_KEY, None)
         merged.pop(CONTEXT_RAG_CANDIDATES_KEY, None)
@@ -919,3 +1071,28 @@ def _connector_id_for_route(state: ContextRetrievalLocalState, route_id: str) ->
         if route["route_id"] == route_id:
             return route["connector_id"]
     raise ValueError("input route is missing")
+
+
+def _retrieval_required_signal(signal: object) -> RetrievalRequiredV1 | None:
+    if isinstance(signal, dict) and signal.get("kind") == "RETRIEVAL_REQUIRED":
+        return cast(RetrievalRequiredV1, signal)
+    return None
+
+
+def _needs_as_sufficiency_issues(needs: list[RetrievalNeedV1]) -> list[dict[str, object]]:
+    """Project an incoming WorkAnalysis/Review need into the same bounded,
+    Retrieval-local ``unresolved_sufficiency_issues`` shape the internal
+    local loop already feeds ``retrieval.plan_query`` with (SufficiencyIssue,
+    docs/05-context-retrieval.md SS19.1) -- reusing the existing follow-up
+    channel rather than adding a second, differently-shaped planner input."""
+    return [
+        {
+            "slot": need["required_information"],
+            "issue_type": "MISSING",
+            "required": True,
+            "resolution_source": "GOOGLE",
+            "safety_critical": False,
+            "reason_codes": list(need["reason_codes"]),
+        }
+        for need in needs
+    ]

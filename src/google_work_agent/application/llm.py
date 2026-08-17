@@ -105,6 +105,9 @@ class StructuredLLMRuntime(Protocol):
         ``invoke_structured``, except repair also stays in tool-calling mode.
         """
 
+    def discard_run(self, *, run_id: str) -> None:
+        """Release any per-run LLM call accounting held for ``run_id``."""
+
 
 @dataclass(frozen=True, slots=True)
 class NullLLMEventRecorder:
@@ -137,6 +140,18 @@ class LLMRuntimeService:
 
     def __post_init__(self) -> None:
         self._semaphore = threading.Semaphore(1)
+
+    def discard_run(self, *, run_id: str) -> None:
+        # No-op: the authoritative, checkpoint-persistent Run-level LLM call
+        # budget lives in RunBudgetV1 (state["retry_budget"]), gated by each
+        # native subgraph node via agent_kernel.ensure_llm_call_budget /
+        # consume_llm_call_budget before/after its real Provider call. This
+        # service used to keep its own in-memory per-run counter here (reset
+        # on Run finalize via this method); that counter was a second,
+        # non-checkpoint-safe source of truth for the same ABSOLUTE_MAX_LLM_CALLS
+        # ceiling and has been removed. The method stays to satisfy the
+        # StructuredLLMRuntime Protocol and its existing runtime.py caller.
+        del run_id
 
     def invoke_structured(
         self,
@@ -514,7 +529,7 @@ class LLMRuntimeService:
             structured_output_attempts=attempts,
             provider_request_id=payload.provider_request_id,
             safe_error_code=None,
-            provider_calls_consumed=1,
+            provider_calls_consumed=attempts,
         )
         self.event_recorder.record(
             event_name="LLM_CALL_COMPLETED",
@@ -694,7 +709,7 @@ class LLMRuntimeService:
             structured_output_attempts=attempts,
             provider_request_id=response.provider_request_id,
             safe_error_code=None,
-            provider_calls_consumed=1,
+            provider_calls_consumed=attempts,
         )
         self.event_recorder.record(
             event_name="LLM_CALL_COMPLETED",

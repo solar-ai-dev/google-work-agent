@@ -25,7 +25,13 @@ SufficiencyResolutionSourceValue = Literal["USER", "GOOGLE", "POLICY", "ROUTE"]
 MissingInformationRequiredForValue = Literal[
     "RETRIEVAL", "ANALYSIS", "PLANNING", "USER_CONFIRMATION"
 ]
-AnalysisStatusValue = Literal["COMPLETE", "NEEDS_MORE_DATA", "NEEDS_CONFIRMATION", "BLOCKED"]
+AnalysisStatusValue = Literal[
+    "COMPLETE",
+    "NEEDS_MORE_DATA",
+    "NEEDS_CONFIRMATION",
+    "ROUTE_RECONSIDERATION_REQUIRED",
+    "BLOCKED",
+]
 AnalysisFindingKind = Literal[
     "FACT",
     "RELATIONSHIP",
@@ -35,10 +41,16 @@ AnalysisFindingKind = Literal[
     "SCHEDULE_RISK",
     "EVIDENCE_GAP",
 ]
-AnswerDraftStatusValue = Literal["ANSWER_ONLY", "NEEDS_CONFIRMATION", "BLOCKED"]
-PlanDraftStatusValue = Literal["PLAN_READY", "NEEDS_CONFIRMATION", "BLOCKED"]
+AnswerDraftStatusValue = Literal[
+    "ANSWER_ONLY", "NEEDS_CONFIRMATION", "ROUTE_RECONSIDERATION_REQUIRED", "BLOCKED"
+]
+PlanDraftStatusValue = Literal[
+    "PLAN_READY", "NEEDS_CONFIRMATION", "ROUTE_RECONSIDERATION_REQUIRED", "BLOCKED"
+]
 ActionEffectValue = Literal["READ", "CREATE", "UPDATE", "SEND", "DELETE"]
-ReviewStatusValue = Literal["PASS", "REVISE", "RETRIEVE_MORE", "CONFIRM", "BLOCK"]
+ReviewStatusValue = Literal[
+    "PASS", "REVISE", "RETRIEVE_MORE", "ROUTE_RECONSIDERATION", "CONFIRM", "BLOCK"
+]
 RecheckStatusValue = Literal["PASS", "BLOCK"]
 ReviewTargetValue = Literal["ANSWER", "PLAN"]
 ConstraintKindValue = Literal[

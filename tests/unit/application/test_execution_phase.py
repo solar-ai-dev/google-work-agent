@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import cast
 
 from google_work_agent.application.execution_phase import (
+    UnknownRecoveryPhaseRequest,
     WriteExecutionDisposition,
     WriteExecutionPhaseCoordinator,
     WriteExecutionPhaseRequest,
@@ -116,10 +117,94 @@ def test_not_sent_failure_does_not_begin_verification() -> None:
     assert calls == ["preflight", "claim", "execute", "mark_failed"]
 
 
+def test_verification_credential_loss_routes_to_reauth_without_marking_write_failed() -> None:
+    calls: list[str] = []
+    coordinator = _coordinator(
+        calls=calls,
+        verify_error=GoogleWorkspaceGatewayError(
+            code=GoogleWorkspaceErrorCode.AUTH_EXPIRED,
+            message="credential expired during verification",
+            delivered=True,
+            mutated=False,
+        ),
+    )
+
+    result = coordinator.execute(
+        WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
+    )
+
+    assert result.disposition is WriteExecutionDisposition.REAUTH_REQUIRED
+    assert calls == [
+        "preflight",
+        "claim",
+        "execute",
+        "store",
+        "begin_verification",
+        "verify",
+        "require_reauth",
+    ]
+
+
+def test_verification_non_reauth_gateway_error_still_propagates() -> None:
+    calls: list[str] = []
+    coordinator = _coordinator(
+        calls=calls,
+        verify_error=GoogleWorkspaceGatewayError(
+            code=GoogleWorkspaceErrorCode.UPSTREAM_5XX,
+            message="verification GET failed",
+            delivered=True,
+            mutated=False,
+        ),
+    )
+
+    try:
+        coordinator.execute(
+            WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
+        )
+        raised = False
+    except GoogleWorkspaceGatewayError:
+        raised = True
+
+    assert raised is True
+    assert calls == ["preflight", "claim", "execute", "store", "begin_verification", "verify"]
+
+
+def test_recover_unknown_credential_loss_routes_to_reauth_without_replaying_write() -> None:
+    calls: list[str] = []
+    coordinator = _coordinator(
+        calls=calls,
+        recover_unknown_create_error=GoogleWorkspaceGatewayError(
+            code=GoogleWorkspaceErrorCode.AUTH_EXPIRED,
+            message="credential expired during recovery search",
+            delivered=True,
+            mutated=False,
+        ),
+    )
+
+    result = coordinator.recover_unknown(
+        UnknownRecoveryPhaseRequest(
+            run_id="run-1",
+            action_id="action-1",
+            effect_type="CREATE",
+            action_version=2,
+            attempt_id="attempt-1",
+            attempt_version=0,
+        )
+    )
+
+    assert result.applied is False
+    assert result.safe_error_code == "AUTH_EXPIRED"
+    assert result.action_status == ActionStatus.UNKNOWN_RESULT.value
+    assert result.result_code == ResultCode.RECOVERY_REQUIRED.value
+    assert calls == ["recover_unknown_create", "require_reauth"]
+
+
 def _coordinator(
     *,
     calls: list[str],
     execute_error: Exception | None = None,
+    verify_error: Exception | None = None,
+    recover_unknown_create_error: Exception | None = None,
 ) -> WriteExecutionPhaseCoordinator:
     claim = _response(
         status=ActionStatus.EXECUTING.value,
@@ -185,7 +270,7 @@ def _coordinator(
         ),
         verify_write=cast(
             VerifyWriteActionService,
-            _RecordedCall(name="verify", calls=calls, result=verified),
+            _RecordedCall(name="verify", calls=calls, result=verified, error=verify_error),
         ),
         mark_write_failed=cast(
             MarkWriteActionFailedService,
@@ -195,8 +280,18 @@ def _coordinator(
             MarkWriteActionUnknownResultService,
             _RecordedCall(name="mark_unknown", calls=calls, result=unknown),
         ),
-        require_write_reauth=cast(RequireWriteReauthService, unused),
-        recover_unknown_create=cast(RecoverUnknownCreateActionService, unused),
+        require_write_reauth=cast(
+            RequireWriteReauthService,
+            _RecordedCall(name="require_reauth", calls=calls),
+        ),
+        recover_unknown_create=cast(
+            RecoverUnknownCreateActionService,
+            _RecordedCall(
+                name="recover_unknown_create", calls=calls, error=recover_unknown_create_error
+            )
+            if recover_unknown_create_error is not None
+            else unused,
+        ),
         recover_unknown_send=cast(RecoverUnknownSendActionService, unused),
         recover_unknown_delete=cast(RecoverUnknownDeleteActionService, unused),
         recover_unknown_update=cast(RecoverUnknownUpdateActionService, unused),

@@ -4,7 +4,7 @@ from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, TypedDict, cast
+from typing import Any, Literal, TypedDict, cast
 
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
@@ -26,6 +26,7 @@ from google_work_agent.application.workflows import (
     SufficiencyResultV2,
     WorkflowPhase,
     build_context_clarification_question,
+    build_default_run_budget,
     load_context_assess_sufficiency_prompt_reference,
     load_context_select_evidence_prompt_reference,
 )
@@ -274,6 +275,54 @@ def test_selection_semantic_revision_recovers_corrected_output() -> None:
         "context.select_evidence.semantic_revision",
         "context.assess_sufficiency",
     ]
+
+
+def test_select_evidence_semantic_revision_dedup_blocks_second_occurrence_in_same_run() -> None:
+    """G3 Final Closure G/H: context.select_evidence's SEMANTIC_REVISION
+    retry is deduped Run-wide via approve_semantic_revision (not just
+    bounded to one attempt per call) -- a second occurrence of the same
+    normalized failure signature, from a separate select_evidence() call
+    chaining the same retry_budget (as a resumed/re-entered Run would),
+    gets zero further Provider calls and falls back to the same
+    deterministic empty selection a failed revision would produce."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result(_selection_output(["seg-missing"])))
+    runtime.queued.append(_llm_result(_selection_output(["seg-still-missing"])))
+    agent = _agent(runtime)
+    request_intent = _intent()
+    acquisition_result = _acquisition_result()
+    segments = cast(list[Any], agent.build_segments_from_acquisition(acquisition_result))
+    rag_candidates = agent.rag_retrieve(segments, request_intent=request_intent)
+
+    first_result, first_budget = agent.select_evidence(
+        request_intent=request_intent,
+        request=_request(),
+        rag_candidates=rag_candidates,
+        segments=segments,
+        retry_budget=build_default_run_budget(),
+    )
+
+    assert len(runtime.calls) == 2
+    assert first_result["selected_segment_ids"] == []
+    assert len(first_budget["semantic_revision_signatures_used"]) == 1
+
+    # Same Run (retry_budget threaded through from the first call), same
+    # node, identical failure again.
+    runtime.queued.append(_llm_result(_selection_output(["seg-missing-again"])))
+    second_result, second_budget = agent.select_evidence(
+        request_intent=request_intent,
+        request=_request(),
+        rag_candidates=rag_candidates,
+        segments=segments,
+        retry_budget=first_budget,
+    )
+
+    assert len(runtime.calls) == 3  # only the initial call -- no second revise Provider call
+    assert second_result["selected_segment_ids"] == []
+    assert (
+        second_budget["semantic_revision_signatures_used"]
+        == first_budget["semantic_revision_signatures_used"]
+    )
 
 
 def test_sufficiency_rejects_invalid_context_result_enum() -> None:

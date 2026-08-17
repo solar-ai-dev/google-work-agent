@@ -21,6 +21,8 @@ from tests.integration.persistence.test_write_actions import (
     PublishWritePlanCommand,
     PublishWritePlanService,
     RecoveryResolutionKind,
+    RequestRunCancellationCommand,
+    RequestRunCancellationService,
     ResolveMismatchRecoveryCommand,
     ResolveMismatchRecoveryService,
     ResultCode,
@@ -66,6 +68,7 @@ def test_run_recovery_commands_use_domain_transitions(write_database: Path) -> N
     assert required.current_status is RunStatus.RECOVERY_REQUIRED
     assert required.next_allowed_commands == (
         RunCommand.REQUEST_CANCEL,
+        RunCommand.REQUIRE_REAUTH,
         RunCommand.RESOLVE_RECOVERY,
     )
     assert resolved.applied is True
@@ -672,6 +675,126 @@ def test_corrective_recovery_creates_fresh_plan_revision_without_reusing_facts(
         assert pending_approval_status == "REVOKED"
     finally:
         connection.close()
+
+
+def test_mismatch_recovery_create_corrective_plan_fails_closed_when_cancel_intent_active(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    run_version = _prepare_mismatch(
+        write_database=write_database,
+        gateway=fixture_gateway,
+        suffix="corrective-cancel",
+    )
+    cancel_service = RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 1500,
+    )
+    cancelled = cancel_service(
+        RequestRunCancellationCommand(
+            command_id="cancel-before-corrective",
+            request_hash="e1" * 32,
+            run_id="run-1",
+            expected_run_version=run_version,
+        )
+    )
+    assert cancelled.applied is True
+
+    connection = connect_sqlite(write_database)
+    try:
+        plan_count_before = connection.execute("SELECT COUNT(*) FROM plans;").fetchone()[0]
+        approval_count_before = connection.execute(
+            "SELECT COUNT(*) FROM approvals;"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    create_task_calls_before = fixture_gateway.count_calls("create_task")
+
+    service = ResolveMismatchRecoveryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 2000,
+    )
+    result = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-corrective-cancel",
+            request_hash="e2" * 32,
+            run_id="run-1",
+            action_id="action-corrective-cancel",
+            expected_run_version=cancelled.run_version,
+            resolution_kind=RecoveryResolutionKind.CREATE_CORRECTIVE_PLAN,
+            corrective_plan_id="plan-corrective-cancel-v2",
+        )
+    )
+
+    assert result.applied is False
+    assert result.result_code == "STATE_CONFLICT"
+    connection = connect_sqlite(write_database)
+    try:
+        plan_count_after = connection.execute("SELECT COUNT(*) FROM plans;").fetchone()[0]
+        approval_count_after = connection.execute("SELECT COUNT(*) FROM approvals;").fetchone()[0]
+        action_status = connection.execute(
+            "SELECT status FROM actions WHERE id = 'action-corrective-cancel';"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert plan_count_after == plan_count_before
+    assert approval_count_after == approval_count_before
+    assert action_status == "MISMATCH"
+    assert fixture_gateway.count_calls("create_task") == create_task_calls_before
+
+
+def test_mismatch_recovery_accept_partial_fails_closed_when_cancel_intent_active(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    run_version = _prepare_mismatch(
+        write_database=write_database,
+        gateway=fixture_gateway,
+        suffix="accept-partial-cancel",
+    )
+    cancel_service = RequestRunCancellationService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 1500,
+    )
+    cancelled = cancel_service(
+        RequestRunCancellationCommand(
+            command_id="cancel-before-accept-partial",
+            request_hash="e3" * 32,
+            run_id="run-1",
+            expected_run_version=run_version,
+        )
+    )
+    assert cancelled.applied is True
+
+    service = ResolveMismatchRecoveryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 2000,
+    )
+    result = service(
+        ResolveMismatchRecoveryCommand(
+            command_id="resolve-accept-partial-cancel",
+            request_hash="e4" * 32,
+            run_id="run-1",
+            action_id="action-accept-partial-cancel",
+            expected_run_version=cancelled.run_version,
+            resolution_kind=RecoveryResolutionKind.ACCEPT_PARTIAL,
+        )
+    )
+
+    assert result.applied is False
+    assert result.result_code == "STATE_CONFLICT"
+    connection = connect_sqlite(write_database)
+    try:
+        action_status = connection.execute(
+            "SELECT status FROM actions WHERE id = 'action-accept-partial-cancel';"
+        ).fetchone()[0]
+        run_status = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()[
+            0
+        ]
+    finally:
+        connection.close()
+    assert action_status == "MISMATCH"
+    assert run_status != "COMPLETED"
 
 
 def test_verify_write_action_get_runs_without_sqlite_write_transaction(

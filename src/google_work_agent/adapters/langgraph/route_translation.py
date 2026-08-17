@@ -197,5 +197,21 @@ class GraphRouteTranslator:
         if self.profile is GraphProfile.SINGLE_BASELINE:
             return "single_workflow"
         if self.profile is GraphProfile.SIX_ROLE_BASELINE:
+            # Pre-Prompt Runtime Closure: a confirmation whose ambiguity
+            # originated in Request Understanding's own classify call must
+            # re-enter classify (with the user's now-available answer) so
+            # the ambiguity can actually be resolved into an updated
+            # RequestIntentV2 -- resuming straight into "acquisition" (the
+            # prior unconditional default) skipped classify entirely and
+            # left request_understanding.classify's NEEDS_CONFIRMATION
+            # branch permanently unreachable for this profile. Other
+            # confirmation origins (acquisition.plan_sources,
+            # context.assess_sufficiency, analysis.analyze, planning.*,
+            # review.inspect) keep the existing "acquisition" resume target
+            # unchanged -- that is a separate, out-of-scope gap.
+            if isinstance(origin_target, str) and origin_target.startswith(
+                "request_understanding."
+            ):
+                return "request_understanding"
             return "acquisition"
         return "source_planning"

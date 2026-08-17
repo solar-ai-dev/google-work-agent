@@ -301,7 +301,7 @@ def test_invoke_recheck_llm_wires_semantic_validate_with_recheck_allowed_statuse
         semantic_validate(revise_only_valid_for_inspect)
 
 
-def test_invoke_inspect_llm_offers_all_five_review_functions() -> None:
+def test_invoke_inspect_llm_offers_all_six_review_functions() -> None:
     runtime = FakeLLMRuntime()
     answer_draft = _answer_draft()
     runtime.queued.append(_llm_result(_review_output(ReviewResult.PASS.value)))
@@ -321,6 +321,7 @@ def test_invoke_inspect_llm_offers_all_five_review_functions() -> None:
         "review_pass",
         "review_revise",
         "review_retrieve_more",
+        "review_route_reconsideration",
         "review_confirm",
         "review_block",
     }
@@ -347,6 +348,63 @@ def test_invoke_recheck_llm_offers_only_pass_and_block_functions() -> None:
 
     tools = cast("tuple[ToolDefinition, ...]", runtime.calls[0]["tools"])
     assert {tool.name for tool in tools} == {"review_pass", "review_block"}
+
+
+def test_route_reconsideration_tool_call_maps_and_validates() -> None:
+    """Pre-Prompt Output Contract Alignment: 06-agent-workflow.md SS3.6/3.7
+    documents ROUTE_RECONSIDERATION as a Review disposition; the native
+    tool-calling discriminator, mapper, and validator must all accept it."""
+    answer_draft = _answer_draft()
+    response = ToolCallProviderResponse(
+        calls=(
+            LLMToolCall(
+                name="review_route_reconsideration",
+                arguments={
+                    "summary": "The fixed route cannot satisfy the request.",
+                    "issues": [dict(_review_issue())],
+                },
+            ),
+        ),
+        model="m",
+        provider_request_id=None,
+        input_tokens=None,
+        output_tokens=None,
+        latency_ms=0,
+    )
+    mapped = _review_tool_call_to_result_v1(response)
+    assert mapped["status"] == ReviewResult.ROUTE_RECONSIDERATION.value
+
+    result = _validate_review_result(mapped, answer_draft=answer_draft, plan_draft=None)
+    assert result["status"] == ReviewResult.ROUTE_RECONSIDERATION.value
+    assert result["additional_acquisition_request"] is None
+
+
+def test_route_reconsideration_without_issues_is_rejected() -> None:
+    answer_draft = _answer_draft()
+
+    with pytest.raises(PlanReviewValidationError, match="issues"):
+        _validate_review_result(
+            _review_output(ReviewResult.ROUTE_RECONSIDERATION.value, issues=[]),
+            answer_draft=answer_draft,
+            plan_draft=None,
+        )
+
+
+def test_recheck_rejects_route_reconsideration_status() -> None:
+    """ROUTE_RECONSIDERATION is inspect-only, like RETRIEVE_MORE/REVISE --
+    recheck()'s allowed_statuses={PASS, BLOCK} must still fail closed."""
+    answer_draft = _answer_draft()
+
+    with pytest.raises(PlanReviewValidationError, match="status is invalid"):
+        _validate_review_result(
+            _review_output(
+                ReviewResult.ROUTE_RECONSIDERATION.value,
+                issues=[dict(_review_issue())],
+            ),
+            answer_draft=answer_draft,
+            plan_draft=None,
+            recheck=True,
+        )
 
 
 def test_review_tool_call_mapper_rejects_zero_tool_calls() -> None:

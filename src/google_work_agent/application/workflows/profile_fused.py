@@ -44,7 +44,13 @@ from google_work_agent.ports import OutputSchemaDefinition, PromptReference
 
 class ProfilePlanningProjectionV1(TypedDict):
     schema_version: Required[Literal[2]]
-    status: Literal["ANSWER_ONLY", "PLAN_READY", "NEEDS_CONFIRMATION", "BLOCKED"]
+    status: Literal[
+        "ANSWER_ONLY",
+        "PLAN_READY",
+        "NEEDS_CONFIRMATION",
+        "ROUTE_RECONSIDERATION_REQUIRED",
+        "BLOCKED",
+    ]
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None
 

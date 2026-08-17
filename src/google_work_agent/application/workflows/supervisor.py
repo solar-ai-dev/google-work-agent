@@ -14,6 +14,7 @@ from google_work_agent.application.workflows.context_retrieval import (
     build_context_clarification_question,
 )
 from google_work_agent.application.workflows.contracts import (
+    AdditionalAcquisitionRequestV1,
     BudgetDecision,
     BudgetDecisionV1,
     DomainValidationOutputV1,
@@ -28,6 +29,8 @@ from google_work_agent.application.workflows.contracts import (
     approve_additional_acquisition,
     approve_planning_revision,
     approve_review_recheck,
+    approve_semantic_revision,
+    build_semantic_failure_signature_v1,
     validate_finalize_intent_v1,
 )
 from google_work_agent.application.workflows.handoff_contracts import (
@@ -39,6 +42,9 @@ from google_work_agent.application.workflows.handoff_contracts import (
     PlanReviewResultV1,
     RequestIntentV2,
     RequestUnderstandingOutputV1,
+    RetrievalNeedV1,
+    RetrievalRequiredV1,
+    RetrievalResultV1,
     SourcePlanningOutputV1,
     WorkAnalysisResultV1,
 )
@@ -105,11 +111,26 @@ class SupervisorDecisionV1(TypedDict):
     budget_decision: BudgetDecisionV1 | None
 
 
+class RetrievalRouteResultV1(TypedDict):
+    """Retrieval's own SubgraphReturnV2-shaped routing input (Q2-HANDOFF).
+
+    ``disposition`` is Retrieval's guard-corrected sufficiency status; when
+    it is SUFFICIENT/PARTIAL, ``typed_result`` carries the canonical,
+    already-materialized ``RetrievalResultV1`` and is the sole authority for
+    the WORK_ANALYSIS handoff. Retrieval's own local loop never sets a
+    signal here -- ``RetrievalRequiredV1`` is only ever constructed by
+    Supervisor itself, for the Work Analysis/Review edges."""
+
+    disposition: str
+    typed_result: RetrievalResultV1 | None
+
+
 def route_supervisor(
     *,
     phase: WorkflowPhase | str,
     state: MultiAgentGraphState,
     result: object | None = None,
+    legacy_retrieval_result: ContextRetrievalResultV1 | None = None,
 ) -> SupervisorDecisionV1:
     current_phase = WorkflowPhase(phase)
     reconsideration = _route_reconsideration(current_phase, result)
@@ -138,9 +159,12 @@ def route_supervisor(
         WorkflowPhase.CONTEXT_RETRIEVAL,
         WorkflowPhase.CONTEXT_EVALUATION,
     }:
-        return _route_context(
+        if legacy_retrieval_result is None:
+            raise ValueError("retrieval routing requires legacy_retrieval_result")
+        return _route_retrieval(
             state=state,
-            result=cast(ContextRetrievalResultV1, _require_mapping(result, "result")),
+            retrieval_return=cast(RetrievalRouteResultV1, _require_mapping(result, "result")),
+            legacy_result=legacy_retrieval_result,
         )
     if current_phase is WorkflowPhase.WORK_ANALYSIS:
         return _route_analysis(
@@ -193,7 +217,7 @@ def _route_reconsideration(
 ) -> SupervisorDecisionV1 | None:
     if not isinstance(result, Mapping):
         return None
-    status = result.get("status", result.get("result"))
+    status = result.get("disposition", result.get("status", result.get("result")))
     expected = {
         WorkflowPhase.CONTEXT_RETRIEVAL: "ROUTE_RECONSIDERATION_REQUIRED",
         WorkflowPhase.CONTEXT_EVALUATION: "ROUTE_RECONSIDERATION_REQUIRED",
@@ -429,32 +453,49 @@ def _route_api_acquisition(
     )
 
 
-def _route_context(
+def _route_retrieval(
     *,
     state: MultiAgentGraphState,
-    result: ContextRetrievalResultV1,
+    retrieval_return: RetrievalRouteResultV1,
+    legacy_result: ContextRetrievalResultV1,
 ) -> SupervisorDecisionV1:
-    status = str(result["status"])
-    if status in {"SUFFICIENT", "PARTIAL"}:
+    """Route Retrieval's outcome on ``retrieval_return`` alone (Q2-HANDOFF).
+
+    ``legacy_result`` is still threaded through for the off-ramps below
+    (NEEDS_MORE_DATA/NEEDS_CONFIRMATION/BLOCKED), which keep their existing
+    mechanisms unchanged and out of this migration's scope; it is stored in
+    Main State only as a one-way compatibility by-product, never read back
+    as routing authority.
+    """
+    disposition = retrieval_return["disposition"]
+    retrieval_result = retrieval_return["typed_result"]
+    if disposition in {"SUFFICIENT", "PARTIAL"}:
+        # A frozen tool_route_plan is required to materialize RetrievalResultV1
+        # (Q2-HANDOFF coverage gating); compatibility fixtures without one
+        # still route on disposition alone, same as before this migration --
+        # they simply have no canonical artifact to attach.
+        work_analysis_update: GraphStateUpdateV1 = {"context_result": legacy_result}
+        if retrieval_result is not None:
+            work_analysis_update["retrieval_result"] = retrieval_result
         return _decision(
             target=SupervisorTarget.WORK_ANALYSIS,
             next_phase=WorkflowPhase.WORK_ANALYSIS,
             state_update=_base_state_update(
                 WorkflowPhase.WORK_ANALYSIS,
-                context_result=result,
+                current_update=work_analysis_update,
             ),
-            reason_code=status,
+            reason_code=disposition,
         )
-    if status == "NEEDS_MORE_DATA":
+    if disposition == "NEEDS_MORE_DATA":
         return _route_additional_acquisition(
             state=state,
             reason_code="CONTEXT_NEEDS_MORE_DATA",
-            current_update={"context_result": result},
-            request=result["additional_acquisition_request"],
+            current_update={"context_result": legacy_result},
+            request=legacy_result["additional_acquisition_request"],
         )
-    if status == "NEEDS_CONFIRMATION":
+    if disposition == "NEEDS_CONFIRMATION":
         question = build_context_clarification_question(
-            result=result,
+            result=legacy_result,
             request_intent=_request_intent_from_state(state),
         )
         return _decision(
@@ -462,7 +503,7 @@ def _route_context(
             next_phase=WorkflowPhase.WAITING_CONFIRMATION,
             state_update=_confirmation_state_update(
                 question=question,
-                context_result=result,
+                context_result=legacy_result,
             ),
             reason_code=question["reason_code"],
         )
@@ -470,7 +511,128 @@ def _route_context(
         state=state,
         intent=FinalizeIntent.BLOCKED.value,
         reason_code="CONTEXT_BLOCKED",
-        context_result=result,
+        context_result=legacy_result,
+    )
+
+
+def _route_retrieval_required(
+    *,
+    state: MultiAgentGraphState,
+    reason_code: str,
+    current_update: GraphStateUpdateV1,
+    request: AdditionalAcquisitionRequestV1 | None,
+) -> SupervisorDecisionV1:
+    """WorkAnalysis NEEDS_MORE_DATA / Review RETRIEVE_MORE -> Retrieval, almost always.
+
+    NEEDS_MORE_DATA/RETRIEVE_MORE is *itself* the "same fixed route, more
+    evidence" disposition (06-agent-workflow.md SS3 -- distinct from the
+    official ``ROUTE_RECONSIDERATION_REQUIRED``/``ROUTE_RECONSIDERATION``
+    disposition, which ``_route_reconsideration`` already intercepts at the
+    top of ``route_supervisor`` *before* ``_route_analysis``/``_route_plan_review``
+    ever call this function). This function is therefore never the place
+    that decides "a new Resource/Connector/Route is needed" -- that
+    decision belongs solely to the official reconsideration disposition.
+
+    What this function *does* do, after reusing the same budget/PARTIAL-fallback
+    guard ``_route_additional_acquisition`` uses: check whether a frozen IN
+    Route actually exists to retry the (by-definition same-route) request
+    within. This is a pure **executability guard**, not a route-adequacy
+    judgment -- ``missing_information`` strings are never interpreted to infer
+    whether the current route can serve them. If the guard passes,
+    ``RetrievalRequiredV1`` re-enters Retrieval. If the guard fails (no frozen
+    input route exists to retry within, which should not normally happen for
+    a same-route disposition), this falls back to Tool Route as a fail-closed
+    recovery -- tagged with a distinct guard-failure reason code so it is
+    never mistaken for an official reconsideration signal in traces/logs.
+    Retrieval's own local-loop NEEDS_MORE_DATA never reaches this function --
+    it stays inside the Retrieval subgraph.
+    """
+    if request is None:
+        raise ValueError("retrieval-required route requires a structured acquisition request")
+    budget = approve_additional_acquisition(state["retry_budget"])
+    disposition = decide_insufficient_data(
+        InsufficientDataContext(
+            issues=(
+                InsufficientDataIssue(
+                    issue_type=reason_code,
+                    required=True,
+                    resolution_source=ResolutionSource.GOOGLE,
+                ),
+            ),
+            budget_remaining=1 if budget["decision"] == BudgetDecision.ALLOW.value else 0,
+            read_only=state.get("requested_effect_type") == "READ",
+            evidence_supported_partial_possible=_has_supported_evidence(current_update),
+            write_required_data_missing=state.get("requested_effect_type") != "READ",
+        )
+    )
+    if disposition is InsufficientDataDisposition.PARTIAL:
+        return _finalize(
+            state=state,
+            intent=FinalizeIntent.COMPLETED.value,
+            reason_code="EVIDENCE_SUPPORTED_PARTIAL",
+            result_kind="PARTIAL",
+            budget_decision=budget,
+            current_update=current_update,
+        )
+    if budget["decision"] == BudgetDecision.DENY.value:
+        return _finalize(
+            state=state,
+            intent=FinalizeIntent.BLOCKED.value,
+            reason_code=_budget_reason_code(budget, default=reason_code),
+            budget_decision=budget,
+            current_update=current_update,
+        )
+    reason_codes = list(request["reason_codes"]) or [reason_code]
+    tool_route_plan = state.get("tool_route_plan")
+    # Pure executability guard: NEEDS_MORE_DATA/RETRIEVE_MORE is definitionally
+    # "same route" already -- this only checks whether a route to retry within
+    # actually exists, never whether the route is the *right* one.
+    has_frozen_input_route = bool(
+        tool_route_plan is not None and tool_route_plan["input_plan"]["input_routes"]
+    )
+    if not has_frozen_input_route:
+        # Fail-closed fallback, not an official ROUTE_RECONSIDERATION_REQUIRED
+        # signal -- the leading reason code marks the guard failure so it is
+        # distinguishable from a genuine reconsideration disposition (that
+        # channel is _route_reconsideration, above).
+        guard_reason_codes = ["RETRIEVAL_INPUT_ROUTE_UNAVAILABLE", *reason_codes]
+        route_signal: RouteReconsiderationRequiredV1 = {
+            "schema_version": 1,
+            "kind": "ROUTE_RECONSIDERATION_REQUIRED",
+            "reason_codes": guard_reason_codes,
+        }
+        return _decision(
+            target=SupervisorTarget.TOOL_ROUTE,
+            next_phase=WorkflowPhase.TOOL_ROUTING,
+            state_update=_base_state_update(
+                WorkflowPhase.TOOL_ROUTING,
+                retry_budget=budget["run_budget"],
+                current_update=current_update,
+                workflow_signal=route_signal,
+            ),
+            reason_code=guard_reason_codes[0],
+            budget_decision=budget,
+        )
+    needs: list[RetrievalNeedV1] = [
+        {"required_information": info, "reason_codes": reason_codes}
+        for info in request["missing_information"]
+    ] or [{"required_information": reason_code, "reason_codes": reason_codes}]
+    retrieval_signal: RetrievalRequiredV1 = {
+        "kind": "RETRIEVAL_REQUIRED",
+        "reason_codes": reason_codes,
+        "needs": needs,
+    }
+    return _decision(
+        target=SupervisorTarget.CONTEXT_RETRIEVAL,
+        next_phase=WorkflowPhase.CONTEXT_RETRIEVAL,
+        state_update=_base_state_update(
+            WorkflowPhase.CONTEXT_RETRIEVAL,
+            retry_budget=budget["run_budget"],
+            current_update=current_update,
+            workflow_signal=retrieval_signal,
+        ),
+        reason_code=reason_codes[0],
+        budget_decision=budget,
     )
 
 
@@ -491,7 +653,7 @@ def _route_analysis(
             reason_code=status,
         )
     if status == "NEEDS_MORE_DATA":
-        return _route_additional_acquisition(
+        return _route_retrieval_required(
             state=state,
             reason_code="WORK_ANALYSIS_NEEDS_MORE_DATA",
             current_update={"analysis_result": result},
@@ -589,16 +751,46 @@ def _route_plan_review(
             reason_code="PLAN_REVIEW_PASS",
         )
     if status is ReviewResult.REVISE:
-        budget = approve_planning_revision(state["retry_budget"])
-        if budget["decision"] == BudgetDecision.DENY.value:
+        revision_budget = approve_planning_revision(state["retry_budget"])
+        if revision_budget["decision"] == BudgetDecision.DENY.value:
             return _finalize(
                 state=state,
                 intent=FinalizeIntent.BLOCKED.value,
-                reason_code=_budget_reason_code(budget, default="PLANNING_REVISION_DENIED"),
-                budget_decision=budget,
+                reason_code=_budget_reason_code(
+                    revision_budget, default="PLANNING_REVISION_DENIED"
+                ),
+                budget_decision=revision_budget,
                 current_update=review_update,
             )
         target_kind, _draft = _review_target_from_state(state)
+        # Semantic Revision dedup (docs/06 SS10.1, contracts.approve_semantic_revision):
+        # same target Planning node + same normalized Review failure signature
+        # gets at most one revision attempt per Run, persisted in
+        # retry_budget.semantic_revision_signatures_used so it survives
+        # resume/re-entry/checkpoint restore. Only gated when Review actually
+        # reported a failure signature to dedup against -- an issue-free
+        # REVISE has nothing to record and falls back to the planning-revision
+        # cap alone.
+        node_id = "planning.revise_answer" if target_kind == "ANSWER" else "planning.revise_plan"
+        failure_reason_codes = [
+            reason_code for issue in result["issues"] for reason_code in issue["reason_codes"]
+        ]
+        if failure_reason_codes:
+            signature = build_semantic_failure_signature_v1(
+                node_id=node_id,
+                failure_reason_codes=failure_reason_codes,
+            )
+            budget = approve_semantic_revision(revision_budget["run_budget"], signature=signature)
+            if budget["decision"] == BudgetDecision.DENY.value:
+                return _finalize(
+                    state=state,
+                    intent=FinalizeIntent.BLOCKED.value,
+                    reason_code=_budget_reason_code(budget, default="SEMANTIC_REVISION_DENIED"),
+                    budget_decision=budget,
+                    current_update=review_update,
+                )
+        else:
+            budget = revision_budget
         target = (
             SupervisorTarget.PLANNING_REVISE_ANSWER
             if target_kind == "ANSWER"
@@ -616,7 +808,7 @@ def _route_plan_review(
             budget_decision=budget,
         )
     if status is ReviewResult.RETRIEVE_MORE:
-        return _route_additional_acquisition(
+        return _route_retrieval_required(
             state=state,
             reason_code="PLAN_REVIEW_RETRIEVE_MORE",
             current_update=review_update,
@@ -1060,6 +1252,7 @@ def _claim_result_mapping(value: object, name: str) -> JsonObject:
 
 
 __all__ = [
+    "RetrievalRouteResultV1",
     "SupervisorDecisionV1",
     "SupervisorTarget",
     "route_supervisor",

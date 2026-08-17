@@ -22,6 +22,7 @@ from google_work_agent.application.workflows import (
     PlanReviewResultV1,
     RequestIntentV2,
     RequestUnderstandingOutputV1,
+    RetrievalRequiredV1,
     RetrievalResultV1,
     RunBudgetV1,
     SourceFetchPlanV1,

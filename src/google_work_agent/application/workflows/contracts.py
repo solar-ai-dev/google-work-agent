@@ -13,6 +13,7 @@ if TYPE_CHECKING:
         ContextRetrievalResultV1,
         PlanReviewResultV1,
         RequestIntentV2,
+        RetrievalRequiredV1,
         RetrievalResultV1,
         SourceFetchPlanV1,
         WorkAnalysisResultV1,
@@ -123,7 +124,9 @@ class MultiAgentGraphState(TypedDict):
     workflow_phase: str
     request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
-    workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
+    workflow_signal: (
+        ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | RetrievalRequiredV1 | None
+    )
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
@@ -148,7 +151,9 @@ class GraphStateUpdateV1(TypedDict, total=False):
     workflow_phase: str
     request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
-    workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
+    workflow_signal: (
+        ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | RetrievalRequiredV1 | None
+    )
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
@@ -236,6 +241,7 @@ class AnalysisResult(StrEnum):
     COMPLETE = "COMPLETE"
     NEEDS_MORE_DATA = "NEEDS_MORE_DATA"
     NEEDS_CONFIRMATION = "NEEDS_CONFIRMATION"
+    ROUTE_RECONSIDERATION_REQUIRED = "ROUTE_RECONSIDERATION_REQUIRED"
     BLOCKED = "BLOCKED"
 
 
@@ -245,6 +251,7 @@ class PlanningResult(StrEnum):
     ANSWER_ONLY = "ANSWER_ONLY"
     PLAN_READY = "PLAN_READY"
     NEEDS_CONFIRMATION = "NEEDS_CONFIRMATION"
+    ROUTE_RECONSIDERATION_REQUIRED = "ROUTE_RECONSIDERATION_REQUIRED"
     BLOCKED = "BLOCKED"
 
 
@@ -254,6 +261,7 @@ class ReviewResult(StrEnum):
     PASS = "PASS"
     REVISE = "REVISE"
     RETRIEVE_MORE = "RETRIEVE_MORE"
+    ROUTE_RECONSIDERATION = "ROUTE_RECONSIDERATION"
     CONFIRM = "CONFIRM"
     BLOCK = "BLOCK"
 
@@ -604,6 +612,24 @@ def promote_budget_profile(
     return current
 
 
+def _effective_llm_call_cap(budget: RunBudgetV1) -> int:
+    """Combined Revision+Retrieval cap (docs/15 SS8.2, docs/06 SS11).
+
+    When a Run has actually triggered both a planning revision
+    (``planning_revisions_used`` -- shared by Review REVISE approval and
+    mandatory Modify Review, both via ``approve_planning_revision``) and an
+    additional acquisition (``additional_acquisitions_used`` via
+    ``approve_additional_acquisition``), neither single profile's own
+    ceiling applies -- the Run may use up to ``ABSOLUTE_MAX_LLM_CALLS``.
+    Reads only the two existing persisted counters; no new Profile value or
+    counter is introduced.
+    """
+    if budget["planning_revisions_used"] > 0 and budget["additional_acquisitions_used"] > 0:
+        return ABSOLUTE_MAX_LLM_CALLS
+    current_profile = BudgetProfile(budget["profile"])
+    return BUDGET_PROFILE_LIMITS[current_profile]
+
+
 def check_llm_call_budget(
     run_budget: object,
     *,
@@ -618,8 +644,7 @@ def check_llm_call_budget(
     prospective_calls = budget["llm_calls_used"] + requested
     if prospective_calls > ABSOLUTE_MAX_LLM_CALLS:
         return _deny_budget(budget, BudgetReasonCode.ABSOLUTE_LLM_LIMIT_EXHAUSTED)
-    current_profile = BudgetProfile(budget["profile"])
-    if prospective_calls > BUDGET_PROFILE_LIMITS[current_profile]:
+    if prospective_calls > _effective_llm_call_cap(budget):
         return _deny_budget(budget, BudgetReasonCode.PROFILE_LLM_LIMIT_EXHAUSTED)
     return _allow_budget(budget)
 

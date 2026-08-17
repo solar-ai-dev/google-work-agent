@@ -1157,13 +1157,20 @@ SEMANTIC_REVISION_SAME_FAILURE=1
 MAX_ADDITIONAL_RETRIEVAL_ROUNDS=2
 PLANNING_REVISION_PER_RUN=2
 REVIEW_RECHECK_PER_PLANNING_REVISION=1
-NORMAL_TARGET_LLM_CALLS<=10
+NORMAL_MAX_LLM_CALLS=8
+RETRIEVAL_HEAVY_MAX_LLM_CALLS=14
+REVISION_HEAVY_MAX_LLM_CALLS=12
 ABSOLUTE_MAX_LLM_CALLS=16
 ```
 
 - 책임 분리를 위해 Subgraph 내부 Node 수가 증가해도 모든 Node가 LLM Call일 필요는 없다.
 - Query Builder, Registry Binding, Read 실행, Segment Normalize, Plan Assembly, Validator는 결정적 코드 우선이다.
 - LLM Call 수가 Agent 수 또는 Node 수와 같다고 가정하지 않는다.
+- 기본 Profile은 `NORMAL`이다.
+- `REVISION_HEAVY`는 다음 중 하나가 실제 발생했을 때만 승격한다: (1) Review가 `REVISE`를 반환하고 Domain·Policy가 Planning Revision을 허용, (2) 이미 Review `PASS`된 Action/Plan을 사용자가 Modify하여 기존 Review가 무효화되고 mandatory Modify Review가 필요한 경우. 두 조건 모두 `PLANNING_REVISION_PER_RUN` 카운터를 공유하며 별도 카운터를 두지 않는다. Modify Review는 재-Review 호출 자체가 Domain 안전 Gate이므로 호출 전에 승격할 수 있다. Confirmation만으로는 승격하지 않는다.
+- `RETRIEVAL_HEAVY`는 `NEEDS_MORE_DATA` 또는 Additional Retrieval이 실제 발생한 경우에만 승격한다.
+- Revision Heavy 조건과 Retrieval Heavy 조건이 동일 Run에서 모두 실제 발생하면 effective cap은 `ABSOLUTE_MAX_LLM_CALLS`(16)이다. 새 Profile 값을 만들지 않고 기존 `planning_revisions_used`·`additional_acquisitions_used` 카운터가 모두 0을 넘는지로 결정적으로 판단한다.
+- `ABSOLUTE_MAX_LLM_CALLS`를 넘으면 어떤 경로에서도 Prompt를 더 호출하지 않는다.
 
 ## 12. 실행·검증 경계
 

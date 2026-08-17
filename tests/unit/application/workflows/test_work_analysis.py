@@ -4,7 +4,7 @@ from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
@@ -14,13 +14,16 @@ from google_work_agent.application.workflows import (
     WORK_ANALYSIS_OUTPUT_SCHEMA,
     AnalysisResult,
     ContextRetrievalResultV1,
+    EvidenceDraftV1,
     RequestIntentV2,
+    RetrievalResultV1,
     WorkAnalysisAgent,
     WorkAnalysisValidationError,
     WorkflowPhase,
     build_work_analysis_clarification_question,
     load_work_analysis_analyze_prompt_reference,
     validate_work_analysis_result_v1,
+    validate_work_analysis_result_v1_from_retrieval_result,
 )
 from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports import (
@@ -115,6 +118,49 @@ def test_work_analysis_builds_complete_result_and_state_handoff() -> None:
     assert runtime.calls[0]["output_schema"] == WORK_ANALYSIS_OUTPUT_SCHEMA
 
 
+def test_work_analysis_from_retrieval_result_builds_complete_result() -> None:
+    """Q2-HANDOFF: SIX_ROLE_BASELINE product runtime entry point -- no
+    ContextRetrievalResultV1 is built or consumed anywhere in this path."""
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(_llm_result(_analysis_output(AnalysisResult.COMPLETE.value)))
+    agent = _agent(runtime)
+
+    llm_result = agent.invoke_analyze_llm_from_retrieval_result(
+        request_intent=_intent(),
+        retrieval_result=_retrieval_result(),
+        evidence_drafts=_evidence_drafts(),
+        request=_request(),
+    )
+    result = agent.build_output_from_llm_result_from_retrieval_result(
+        llm_result,
+        retrieval_result=_retrieval_result(),
+        evidence_drafts=_evidence_drafts(),
+    )
+
+    assert result["status"] == AnalysisResult.COMPLETE.value
+    assert result["evidence_refs"] == ["evidence-1"]
+
+    prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
+    assert prompt_input["retrieval_coverage"] == "SUFFICIENT"
+    assert prompt_input["resource_refs"] == ["gmail_thread:thread-kim"]
+    assert prompt_input["segment_refs"] == ["seg-1"]
+    assert prompt_input["evidence_drafts"] == _evidence_drafts()
+    assert "context_status" not in prompt_input
+    assert "context_bundle" not in prompt_input
+
+
+def test_work_analysis_from_retrieval_result_rejects_reference_outside_retrieval_result() -> None:
+    output = _analysis_output(AnalysisResult.COMPLETE.value)
+    cast(list[dict[str, object]], output["findings"])[0]["evidence_refs"] = ["evidence-x"]
+
+    with pytest.raises(WorkAnalysisValidationError, match="evidence reference does not exist"):
+        validate_work_analysis_result_v1_from_retrieval_result(
+            output,
+            retrieval_result=_retrieval_result(),
+            evidence_drafts=_evidence_drafts(),
+        )
+
+
 @pytest.mark.parametrize("source", ["USER", "GMAIL_EVIDENCE"])
 def test_schedule_constraints_accept_only_explicit_business_deadline_sources(
     source: str,
@@ -180,6 +226,28 @@ def test_invalid_status_is_rejected() -> None:
     output["status"] = "FAILED"
 
     with pytest.raises(WorkAnalysisValidationError, match="status is invalid"):
+        validate_work_analysis_result_v1(output, context_result=_context_result())
+
+
+def test_route_reconsideration_required_is_accepted_with_missing_information() -> None:
+    """Pre-Prompt Output Contract Alignment: 06-agent-workflow.md SS3.4/3.7
+    documents ROUTE_RECONSIDERATION_REQUIRED as a Work Analysis disposition;
+    the structured output schema/validator must actually accept it."""
+    output = _analysis_output(
+        "ROUTE_RECONSIDERATION_REQUIRED",
+        missing_information=["Requires a resource outside the current route."],
+    )
+
+    result = validate_work_analysis_result_v1(output, context_result=_context_result())
+
+    assert result["status"] == "ROUTE_RECONSIDERATION_REQUIRED"
+    assert result["additional_acquisition_request"] is None
+
+
+def test_route_reconsideration_required_without_missing_information_is_rejected() -> None:
+    output = _analysis_output("ROUTE_RECONSIDERATION_REQUIRED", missing_information=[])
+
+    with pytest.raises(WorkAnalysisValidationError, match="missing_information"):
         validate_work_analysis_result_v1(output, context_result=_context_result())
 
 
@@ -513,6 +581,41 @@ def _context_result(
         },
         "llm_provider_result": {"provider": "fake"},
     }
+
+
+def _retrieval_result(*, coverage: str = "SUFFICIENT") -> RetrievalResultV1:
+    """Canonical Q2-HANDOFF fixture -- same resource/segment/evidence ids as
+    ``_context_result()`` so ``_analysis_output()``'s echoed refs stay valid
+    against either reference space."""
+    return {
+        "schema_version": 1,
+        "meta": {"artifact_id": "retrieval-1", "revision": 1, "based_on": []},
+        "coverage": cast(Literal["SUFFICIENT", "PARTIAL", "NO_FETCH_NEEDED"], coverage),
+        "context_bundle_ref": None,
+        "evidence_refs": ["evidence-1"],
+        "selected_segment_ids": ["seg-1"],
+        "source_resource_refs": ["gmail_thread:thread-kim"],
+        "source_statuses": [],
+        "missing_information": [],
+        "retrieval_rounds": 1,
+    }
+
+
+def _evidence_drafts(
+    *, excerpt: str = "Kim is waiting for the follow-up task."
+) -> list[EvidenceDraftV1]:
+    return [
+        {
+            "schema_version": 1,
+            "evidence_id": "evidence-1",
+            "resource_handle": "gmail_thread:thread-kim",
+            "segment_id": "seg-1",
+            "kind": "excerpt",
+            "excerpt": excerpt,
+            "locator": {"kind": "resource_payload"},
+            "reason_codes": ["GOAL_RELEVANT"],
+        }
+    ]
 
 
 def _analysis_output(

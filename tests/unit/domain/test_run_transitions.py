@@ -53,9 +53,14 @@ from google_work_agent.domain import (
         (RunStatus.RETRIEVING, RunCommand.REQUIRE_REAUTH, RunStatus.REAUTH_REQUIRED),
         (RunStatus.WAITING_APPROVAL, RunCommand.REQUIRE_REAUTH, RunStatus.REAUTH_REQUIRED),
         (RunStatus.EXECUTING, RunCommand.REQUIRE_REAUTH, RunStatus.REAUTH_REQUIRED),
+        (RunStatus.VERIFYING, RunCommand.REQUIRE_REAUTH, RunStatus.REAUTH_REQUIRED),
+        (RunStatus.ANALYZING, RunCommand.REQUIRE_REAUTH, RunStatus.REAUTH_REQUIRED),
+        (RunStatus.PLANNING, RunCommand.REQUIRE_REAUTH, RunStatus.REAUTH_REQUIRED),
+        (RunStatus.RECOVERY_REQUIRED, RunCommand.REQUIRE_REAUTH, RunStatus.REAUTH_REQUIRED),
         (RunStatus.EXECUTING, RunCommand.BEGIN_VERIFICATION, RunStatus.VERIFYING),
         (RunStatus.WAITING_APPROVAL, RunCommand.BEGIN_VERIFICATION, RunStatus.VERIFYING),
         (RunStatus.CANCEL_REQUESTED, RunCommand.BEGIN_VERIFICATION, RunStatus.VERIFYING),
+        (RunStatus.REAUTH_REQUIRED, RunCommand.BEGIN_VERIFICATION, RunStatus.VERIFYING),
         (RunStatus.EXECUTING, RunCommand.REQUIRE_RECOVERY, RunStatus.RECOVERY_REQUIRED),
         (RunStatus.RECOVERY_REQUIRED, RunCommand.RESOLVE_RECOVERY, RunStatus.VERIFYING),
         (
@@ -196,8 +201,6 @@ def test_terminal_run_status_blocks_commands(terminal_status: RunStatus) -> None
         (RunStatus.VERIFYING, RunCommand.BLOCK_RUN),
         (RunStatus.EXECUTING, RunCommand.FAIL_RUN),
         (RunStatus.VERIFYING, RunCommand.FAIL_RUN),
-        (RunStatus.ANALYZING, RunCommand.REQUIRE_REAUTH),
-        (RunStatus.PLANNING, RunCommand.REQUIRE_REAUTH),
     ),
 )
 def test_new_run_commands_reject_out_of_scope_statuses(
@@ -239,6 +242,7 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
                 RunCommand.FAIL_RUN,
                 RunCommand.COMPLETE_ANSWER_ONLY_RUN,
                 RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_REAUTH,
                 RunCommand.REQUIRE_RECOVERY,
             ),
         ),
@@ -272,6 +276,7 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
                 RunCommand.PUBLISH_PLAN,
                 RunCommand.COMPLETE_ANSWER_ONLY_RUN,
                 RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_REAUTH,
                 RunCommand.REQUIRE_RECOVERY,
             ),
         ),
@@ -299,6 +304,7 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
             (
                 RunCommand.COMPLETE_WRITE_RUN,
                 RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_REAUTH,
                 RunCommand.REQUIRE_RECOVERY,
             ),
         ),
@@ -312,8 +318,22 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
         ),
         (RunStatus.COMPLETED, ()),
         (RunStatus.CANCELLED, ()),
-        (RunStatus.REAUTH_REQUIRED, (RunCommand.REQUEST_CANCEL, RunCommand.REQUIRE_RECOVERY)),
-        (RunStatus.RECOVERY_REQUIRED, (RunCommand.REQUEST_CANCEL, RunCommand.RESOLVE_RECOVERY)),
+        (
+            RunStatus.REAUTH_REQUIRED,
+            (
+                RunCommand.BEGIN_VERIFICATION,
+                RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_RECOVERY,
+            ),
+        ),
+        (
+            RunStatus.RECOVERY_REQUIRED,
+            (
+                RunCommand.REQUEST_CANCEL,
+                RunCommand.REQUIRE_REAUTH,
+                RunCommand.RESOLVE_RECOVERY,
+            ),
+        ),
         (RunStatus.FAILED, ()),
         (RunStatus.BLOCKED, ()),
     ),

@@ -72,6 +72,7 @@ from google_work_agent.application import (
     FinalizeReadActionCommand,
     FinalizeReadActionService,
     MarkWriteActionFailedService,
+    MarkWriteActionUnknownResultCommand,
     MarkWriteActionUnknownResultService,
     PreflightWriteActionService,
     PublishReadOnlyPlanCommand,
@@ -113,6 +114,7 @@ from google_work_agent.application.workflows import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
     ApiDiscoveryAcquisitionAgent,
+    BudgetDecision,
     ContextRetrievalAgent,
     DomainValidationResult,
     DomainValidationService,
@@ -128,6 +130,7 @@ from google_work_agent.application.workflows import (
     ToolRouteAgent,
     WorkAnalysisAgent,
     WorkflowPhase,
+    approve_planning_revision,
     route_supervisor,
 )
 from google_work_agent.application.workflows.api_acquisition import (
@@ -161,11 +164,13 @@ from google_work_agent.domain import (
     ActionStatus,
     CalendarWorkHours,
     ConnectorToolCatalog,
+    ExecutionAttemptStatus,
     ResultCode,
     RunStatus,
 )
 from google_work_agent.ports import (
     EvidenceOriginType,
+    ExecutionAttemptRecord,
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     PlanRecord,
@@ -207,8 +212,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         prompt_manifest_path: Path | None = None,
         timezone_provider: Callable[[], str] | None = None,
         work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
+        default_tasklist_id_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._llm_runtime = llm_runtime
         self._gateway = gateway
         self._now_ms = now_ms
         self._id_factory = id_factory
@@ -221,6 +228,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._work_hours_provider = work_hours_provider or (
             lambda: CalendarWorkHours(timezone=(timezone_provider or (lambda: "Asia/Seoul"))())
         )
+        self._default_tasklist_id_provider = default_tasklist_id_provider
         self._cancel_signal_lock = Lock()
         self._cancel_signals: set[str] = set()
         self._checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -255,6 +263,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             llm_runtime=llm_runtime,
             prompt_ref=load_acquisition_plan_sources_prompt_reference(prompt_manifest_path),
             output_schema=RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
+            manifest_path=prompt_manifest_path,
         )
         self._retrieval_read_executor = RetrievalReadExecutor(
             connector_reader=connector_reader,
@@ -482,6 +491,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             evidence_store=self._evidence_store,
             read_result_cache=self._read_result_cache,
             retrieval_read_executor=self._retrieval_read_executor,
+            default_tasklist_id_provider=self._default_tasklist_id_provider,
         )
         self._request_subgraph = entry_subgraphs.request_understanding
         self._tool_route_subgraph = entry_subgraphs.tool_route
@@ -493,18 +503,21 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             graph_profile=self._graph_profile,
             transition_run=self._transition_run,
             merge_decision=self._merge_decision,
+            evidence_store=self._evidence_store,
         ).build()
         self._planning_subgraph = PlanningSubgraph(
             agent=self._planning,
             id_factory=id_factory,
             graph_profile=self._graph_profile,
             merge_decision=self._merge_decision,
+            evidence_store=self._evidence_store,
         ).build()
         self._review_subgraph = ReviewSubgraph(
             agent=self._review,
             id_factory=id_factory,
             graph_profile=self._graph_profile,
             merge_decision=self._merge_decision,
+            evidence_store=self._evidence_store,
         ).build()
         self._three_stage_one_subgraph: Any = None
         self._three_stage_two_subgraph: Any = None
@@ -591,6 +604,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             recovery_node=self._write_recovery.recover_unknown,
             has_executed_action=self._has_executed_action,
             recover_executed_actions=self._write_recovery.recover_executed,
+            mark_stalled_claims_as_unknown=self._mark_stalled_claims_as_unknown,
             cancel_signal_lock=self._cancel_signal_lock,
             cancel_signals=self._cancel_signals,
         )
@@ -781,6 +795,24 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 for action in actions
             }
 
+        # G3 RunBudgetV1 (docs/06 SS11, docs/15 SS8.2): mandatory Modify
+        # Review re-invokes Review with one more real Provider call because
+        # the user's edit invalidated the prior PASS -- that re-review call
+        # is itself the Domain safety gate Approval cannot proceed without,
+        # so it is authorized before it runs. Reuses approve_planning_revision
+        # directly (same planning_revisions_used counter and REVISION_HEAVY
+        # promotion a Review-REVISE-triggered revision gets) instead of a
+        # separate counter/rule -- Modify Review and Review REVISE both
+        # consume the same Run-level "how many times was this plan revised"
+        # budget.
+        budget = approve_planning_revision(state["retry_budget"])
+        if budget["decision"] == BudgetDecision.DENY.value:
+            return {
+                **state,
+                "__target__": "end",
+                "execution_summary": {"result": "MODIFY_REVIEW_BUDGET_EXHAUSTED"},
+            }
+
         draft = deepcopy(_require_state_value(state["plan_draft"], "plan_draft"))
         persisted = {action.id: action for action in actions}
         for action_draft in draft["actions"]:
@@ -802,6 +834,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "__target__": "modify_review",
             "__logical_target__": self._modify_review_profile_target(),
             "workflow_phase": WorkflowPhase.PLAN_REVIEW.value,
+            "retry_budget": budget["run_budget"],
         }
 
     def _modify_review_node(self, state: GraphState) -> GraphState:
@@ -836,6 +869,54 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             "__modify_review_version__": state["__modify_review_version__"],
             "__modify_review_risks__": state["__modify_review_risks__"],
         }
+
+        route_reconsideration_signal = reviewed.get("workflow_signal")
+        if (
+            reviewed.get("plan_review") is None
+            and isinstance(route_reconsideration_signal, dict)
+            and route_reconsideration_signal.get("kind") == "ROUTE_RECONSIDERATION_REQUIRED"
+        ):
+            # Pre-Prompt LangGraph Code Completion: the re-invoked Review's
+            # own ROUTE_RECONSIDERATION disposition was already intercepted
+            # by supervisor._route_reconsideration (plan_review cleared,
+            # __target__ pointed at Tool Route, workflow_signal populated)
+            # before this node ever saw a PlanReviewResultV1 -- there is no
+            # `review["status"]` to read here. Canonical (04 SS25.5, 08
+            # SS Modify sequence) never specifies this edge for the
+            # post-approval modify-review gate; it only defines REVISE/
+            # RETRIEVE_MORE -> supersede + REPLAN-to-PLANNING. Per this
+            # task's explicit "no unconditional DB enum/migration" rule and
+            # since `plans.review_status` has a SQL CHECK enumerating only
+            # PASSED/REQUIRED/REVISE/RETRIEVE_MORE/BLOCKED (migration 0004,
+            # not modified here), a route-level defect discovered post-
+            # approval is folded into the existing RETRIEVE_MORE bucket and
+            # resolved through the same supersede+replan-to-PLANNING path
+            # already used for REVISE/RETRIEVE_MORE -- a documented,
+            # reported downgrade from the primary flow's Tool-Route
+            # redirect, not a silent one. Trusting the supervisor's own
+            # __target__ (Tool Route) here instead would durably strand
+            # `plans.review_status='REQUIRED'` and `Run.status=
+            # WAITING_APPROVAL`, since nothing else ever resolves that claim.
+            if not self._store_modify_review_result(reviewed, PlanReviewStatus.RETRIEVE_MORE):
+                return {
+                    **reviewed,
+                    "__target__": "end",
+                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                }
+            if not self._begin_modify_replan(reviewed, PlanReviewStatus.RETRIEVE_MORE):
+                return {
+                    **reviewed,
+                    "__target__": "end",
+                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                }
+            reviewed = cast(GraphState, dict(reviewed))
+            reviewed["__replan_from_plan_id__"] = cast(str, reviewed["__modify_review_plan_id__"])
+            reviewed["__modify_review_plan_id__"] = None
+            reviewed["__modify_review_version__"] = None
+            reviewed["__modify_review_risks__"] = None
+            reviewed["__target__"] = "end"
+            reviewed["execution_summary"] = {"result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"}
+            return reviewed
 
         review = _require_state_value(reviewed["plan_review"], "plan_review")
         if review["status"] == ReviewResult.PASS.value:
@@ -961,6 +1042,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             )
         self._evidence_store.discard_run(run_id=run_id)
         self._read_result_cache.discard_run(run_id=run_id)
+        self._llm_runtime.discard_run(run_id=run_id)
         return {
             **state,
             "__target__": "end",
@@ -1439,6 +1521,9 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         )
 
     def _latest_attempt_id(self, action_id: str) -> str:
+        return self._latest_attempt(action_id).id
+
+    def _latest_attempt(self, action_id: str) -> ExecutionAttemptRecord:
         with self._unit_of_work_factory() as unit_of_work:
             approvals = unit_of_work.approvals.list_by_action(action_id)
             attempts = [
@@ -1448,7 +1533,47 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             ]
             if not attempts:
                 raise LookupError(f"execution attempt not found for action: {action_id}")
-            return max(attempts, key=lambda item: (item.attempt_no, item.started_at_ms)).id
+            return max(attempts, key=lambda item: (item.attempt_no, item.started_at_ms))
+
+    def _mark_stalled_claims_as_unknown(self, run_id: str) -> bool:
+        # Startup/resume reconciliation for a crash between Claim-commit and
+        # either successful dispatch or MarkWriteActionUnknownResult ever
+        # running: the Action is left at EXECUTING with no terminal
+        # ExecutionAttempt. Whether the Provider actually received the
+        # dispatch is unknowable, so this is conservatively treated as
+        # ambiguous delivery (never assumed NOT_SENT) via the same
+        # MarkWriteActionUnknownResult command a live timeout/connection-
+        # closed error already uses -- it never re-claims or re-dispatches,
+        # only marks the existing Attempt/Action UNKNOWN_RESULT so the
+        # normal Recovery path (fingerprint search / GET-based, no blind
+        # resend) takes over.
+        marked_any = False
+        for plan in self._plans_for_run(run_id):
+            for action in self._list_actions(plan.id):
+                if action.status != ActionStatus.EXECUTING.value:
+                    continue
+                attempt = self._latest_attempt(action.id)
+                if attempt.status != ExecutionAttemptStatus.CLAIMED.value:
+                    continue
+                response = self._mark_write_unknown(
+                    MarkWriteActionUnknownResultCommand(
+                        command_id=self._id_factory(),
+                        request_hash=self._request_hash(
+                            {"kind": "restart_stalled_claim", "action_id": action.id}
+                        ),
+                        action_id=action.id,
+                        attempt_id=attempt.id,
+                        expected_action_version=action.version,
+                        expected_attempt_version=attempt.version,
+                        error_code="RESTART_DELIVERY_AMBIGUOUS",
+                        error_detail=(
+                            "process restarted with this action's write claimed but "
+                            "no terminal execution result recorded"
+                        ),
+                    )
+                )
+                marked_any = marked_any or response.applied
+        return marked_any
 
     def _complete_write_run_if_verified(self, plan_id: str, run_id: str) -> None:
         if self._has_persisted_cancel_intent(run_id):

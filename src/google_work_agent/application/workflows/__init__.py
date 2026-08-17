@@ -152,16 +152,16 @@ from google_work_agent.application.workflows.handoff_contracts import (
     RequestIntentV2,
     RequestUnderstandingFailureV1,
     RequestUnderstandingOutputV1,
-    RetrievalResultV1,
     RetrievalNeedV1,
     RetrievalRequiredV1,
+    RetrievalResultV1,
     RetrievalSourceStatusV1,
     ReviewIssueV1,
     SourceFetchPlanV1,
     SourcePlanningOutputV1,
+    SubgraphReturnV2,
     SufficiencyIssueV2,
     SufficiencyResultV2,
-    SubgraphReturnV2,
     TemporalQueryV1,
     TemporalRelation,
     Weekday,
@@ -221,6 +221,7 @@ from google_work_agent.application.workflows.solution_planning import (
     validate_answer_draft_v1,
 )
 from google_work_agent.application.workflows.supervisor import (
+    RetrievalRouteResultV1,
     SupervisorDecisionV1,
     SupervisorTarget,
     route_supervisor,
@@ -261,6 +262,7 @@ from google_work_agent.application.workflows.work_analysis import (
     build_work_analysis_clarification_question,
     load_work_analysis_analyze_prompt_reference,
     validate_work_analysis_result_v1,
+    validate_work_analysis_result_v1_from_retrieval_result,
 )
 
 __all__ = [
@@ -441,6 +443,7 @@ __all__ = [
     "UserInterruptOptionV1",
     "UserInterruptV1",
     "Weekday",
+    "RetrievalRouteResultV1",
     "SupervisorDecisionV1",
     "SupervisorTarget",
     "WorkflowPhase",
@@ -488,6 +491,7 @@ __all__ = [
     "validate_semantic_failure_signature_v1",
     "validate_user_interrupt_v1",
     "validate_work_analysis_result_v1",
+    "validate_work_analysis_result_v1_from_retrieval_result",
     "resolve_confirmation_origin_target",
     "resolve_review_target",
     "route_supervisor",

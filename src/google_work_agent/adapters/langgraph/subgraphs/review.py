@@ -12,6 +12,8 @@ from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import (
     build_agent_local_state,
+    consume_llm_call_budget,
+    ensure_llm_call_budget,
     merge_trace_context,
     record_llm_result,
 )
@@ -35,6 +37,10 @@ from google_work_agent.application.workflows import (
     WorkflowPhase,
     route_supervisor,
 )
+from google_work_agent.application.workflows.retrieval_evidence_store import (
+    RunScopedEvidenceStore,
+    resolve_evidence_projection,
+)
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 
@@ -49,11 +55,13 @@ class ReviewSubgraph:
         id_factory: Callable[[], str],
         graph_profile: GraphProfile,
         merge_decision: MergeDecision,
+        evidence_store: RunScopedEvidenceStore,
     ) -> None:
         self._agent = agent
         self._id_factory = id_factory
         self._graph_profile = graph_profile
         self._merge_decision = merge_decision
+        self._evidence_store = evidence_store
 
     def build(self) -> Any:
         graph = StateGraph(
@@ -116,10 +124,17 @@ class ReviewSubgraph:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[REVIEW_AGENT_LOCAL_KEY])
         mode = state[REVIEW_MODE_KEY]
+        retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
+        evidence_drafts = resolve_evidence_projection(
+            store=self._evidence_store,
+            run_id=state["run_id"],
+            retrieval_result=retrieval_result,
+        )
+        ensure_llm_call_budget(state)
         if mode == "recheck":
-            llm_result = self._agent.invoke_recheck_llm(
+            llm_result = self._agent.invoke_recheck_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
-                context_result=_require_state_value(state["context_result"], "context_result"),
+                evidence_drafts=evidence_drafts,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 answer_draft=state["answer_draft"],
                 plan_draft=state["plan_draft"],
@@ -135,9 +150,9 @@ class ReviewSubgraph:
             )
             llm_call_id = f"{request.run_id}:review.recheck"
         else:
-            llm_result = self._agent.invoke_inspect_llm(
+            llm_result = self._agent.invoke_inspect_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
-                context_result=_require_state_value(state["context_result"], "context_result"),
+                evidence_drafts=evidence_drafts,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 answer_draft=state["answer_draft"],
                 plan_draft=state["plan_draft"],
@@ -158,6 +173,9 @@ class ReviewSubgraph:
             **state,
             REVIEW_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             "plan_review": result,
+            "retry_budget": consume_llm_call_budget(
+                state, provider_calls_consumed=llm_result.structured_output_attempts
+            ),
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,

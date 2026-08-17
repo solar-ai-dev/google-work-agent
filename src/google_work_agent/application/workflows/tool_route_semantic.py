@@ -18,6 +18,12 @@ from typing import Literal, cast
 
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.application.workflows.contracts import (
+    BudgetDecision,
+    RunBudgetV1,
+    approve_semantic_revision,
+    build_semantic_failure_signature_v1,
+)
 from google_work_agent.application.workflows.handoff_contracts import RequestIntentV2
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
@@ -53,6 +59,24 @@ def load_tool_route_select_tool_if_needed_prompt_reference(
 ) -> PromptReference:
     return _load_registry_prompt_reference(
         "tool_route.select_tool_if_needed",
+        manifest_path or _registry_default_prompt_manifest_path(),
+    )
+
+
+def load_tool_route_determine_io_resources_revision_prompt_reference(
+    manifest_path: Path | None = None,
+) -> PromptReference:
+    return _load_registry_prompt_reference(
+        "tool_route.determine_io_resources.revise",
+        manifest_path or _registry_default_prompt_manifest_path(),
+    )
+
+
+def load_tool_route_select_tool_if_needed_revision_prompt_reference(
+    manifest_path: Path | None = None,
+) -> PromptReference:
+    return _load_registry_prompt_reference(
+        "tool_route.select_tool_if_needed.revise",
         manifest_path or _registry_default_prompt_manifest_path(),
     )
 
@@ -124,6 +148,8 @@ class ToolRouteAgent:
         tool_catalog: ConnectorToolCatalog,
         prompt_ref: PromptReference | None = None,
         select_tool_prompt_ref: PromptReference | None = None,
+        determine_io_resources_revision_prompt_ref: PromptReference | None = None,
+        select_tool_revision_prompt_ref: PromptReference | None = None,
         manifest_path: Path | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
@@ -135,6 +161,14 @@ class ToolRouteAgent:
             select_tool_prompt_ref
             or load_tool_route_select_tool_if_needed_prompt_reference(manifest_path)
         )
+        self._determine_io_resources_revision_prompt_ref = (
+            determine_io_resources_revision_prompt_ref
+            or load_tool_route_determine_io_resources_revision_prompt_reference(manifest_path)
+        )
+        self._select_tool_revision_prompt_ref = (
+            select_tool_revision_prompt_ref
+            or load_tool_route_select_tool_if_needed_revision_prompt_reference(manifest_path)
+        )
 
     @property
     def prompt_ref(self) -> PromptReference:
@@ -145,13 +179,15 @@ class ToolRouteAgent:
         *,
         request_intent: RequestIntentV2,
         request: WorkflowStartRequest,
-    ) -> SemanticRouteCandidate:
+        retry_budget: RunBudgetV1,
+    ) -> tuple[SemanticRouteCandidate, RunBudgetV1]:
+        eligible_route_capabilities = _eligible_route_capabilities(self._tool_catalog)
         llm_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
             prompt_input={
                 "user_request": request.request_text,
                 "request_intent": request_intent,
-                "eligible_route_capabilities": _eligible_route_capabilities(self._tool_catalog),
+                "eligible_route_capabilities": eligible_route_capabilities,
             },
             output_schema=ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -162,14 +198,83 @@ class ToolRouteAgent:
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:tool_route.determine_io_resources",
             ),
-            semantic_validate=_validate_route_resource_candidate,
         )
-        candidate = _validate_route_resource_candidate(llm_result.structured_output)
+        try:
+            candidate = _validate_route_resource_candidate(llm_result.structured_output)
+        except ToolRouteValidationError as error:
+            candidate, retry_budget = self._revise_semantic_candidate_once(
+                request_intent=request_intent,
+                request=request,
+                eligible_route_capabilities=eligible_route_capabilities,
+                previous_output=llm_result.structured_output,
+                failure_detail=str(error),
+                retry_budget=retry_budget,
+            )
         if candidate["disposition"] in {"NEEDS_CONFIRMATION", "BLOCKED"}:
             raise ToolRouteValidationError(
                 f"tool route semantic candidate is not ready: {candidate['disposition']}"
             )
-        return _semantic_candidate_from_llm_candidate(candidate, request_intent=request_intent)
+        return (
+            _semantic_candidate_from_llm_candidate(candidate, request_intent=request_intent),
+            retry_budget,
+        )
+
+    def _revise_semantic_candidate_once(
+        self,
+        *,
+        request_intent: RequestIntentV2,
+        request: WorkflowStartRequest,
+        eligible_route_capabilities: list[dict[str, object]],
+        previous_output: object,
+        failure_detail: str,
+        retry_budget: RunBudgetV1,
+    ) -> tuple[Mapping[str, object], RunBudgetV1]:
+        """Bounded SEMANTIC_REVISION retry: schema-valid but semantically
+        invalid output (e.g. an unsupported resource/effect combination) gets
+        exactly one re-grounding attempt against a dedicated .revise prompt,
+        never the generic SCHEMA_REPAIR path. If the revision also fails
+        validation, the failure propagates -- ToolRouteCoordinator.route()
+        already turns it into a deterministic NEEDS_CONFIRMATION/BLOCKED
+        disposition rather than crashing the run.
+
+        G3: dedup via approve_semantic_revision -- a second occurrence of the
+        same normalized failure signature anywhere in the Run (including
+        after resume/checkpoint restore) is denied before any Provider call
+        and raises the same ToolRouteValidationError a failed revision would,
+        which the coordinator already turns into NEEDS_CONFIRMATION/BLOCKED."""
+        signature = build_semantic_failure_signature_v1(
+            node_id="tool_route.determine_io_resources",
+            failure_reason_codes=["SEMANTIC_CANDIDATE_INVALID"],
+        )
+        decision = approve_semantic_revision(retry_budget, signature=signature)
+        if decision["decision"] == BudgetDecision.DENY.value:
+            raise ToolRouteValidationError(
+                "tool route semantic candidate revision denied: "
+                "same failure signature already used"
+            )
+        revision_result = self._llm_runtime.invoke_structured(
+            prompt_ref=self._determine_io_resources_revision_prompt_ref,
+            prompt_input={
+                "user_request": request.request_text,
+                "request_intent": request_intent,
+                "eligible_route_capabilities": eligible_route_capabilities,
+                "previous_output": previous_output,
+                "failure_reason": failure_detail,
+            },
+            output_schema=ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(
+                request_id=request.correlation.request_id,
+                command_id=request.correlation.command_id,
+                conversation_id=request.conversation_id,
+                run_id=request.run_id,
+                langgraph_thread_id=request.workflow_key,
+                llm_call_id=f"{request.run_id}:tool_route.determine_io_resources.semantic_revision",
+            ),
+        )
+        return (
+            _validate_route_resource_candidate(revision_result.structured_output),
+            decision["run_budget"],
+        )
 
     def select_tool_if_needed(
         self,
@@ -180,16 +285,18 @@ class ToolRouteAgent:
         effect: str,
         eligible_tool_ids: tuple[str, ...],
         request: WorkflowStartRequest,
-    ) -> str:
+        retry_budget: RunBudgetV1,
+    ) -> tuple[str, RunBudgetV1]:
+        prompt_input = {
+            "route_id": route_id,
+            "connector_id": connector_id,
+            "resource_type": resource_type,
+            "effect": effect,
+            "eligible_tool_ids": list(eligible_tool_ids),
+        }
         llm_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._select_tool_prompt_ref,
-            prompt_input={
-                "route_id": route_id,
-                "connector_id": connector_id,
-                "resource_type": resource_type,
-                "effect": effect,
-                "eligible_tool_ids": list(eligible_tool_ids),
-            },
+            prompt_input=prompt_input,
             output_schema=TOOL_SELECTION_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,
@@ -199,15 +306,66 @@ class ToolRouteAgent:
                 langgraph_thread_id=request.workflow_key,
                 llm_call_id=f"{request.run_id}:tool_route.select_tool_if_needed",
             ),
-            semantic_validate=_validate_tool_selection,
         )
-        selection = _validate_tool_selection(llm_result.structured_output)
+        selected_tool_id = self._validated_tool_selection(
+            llm_result.structured_output, eligible_tool_ids=eligible_tool_ids
+        )
+        if selected_tool_id is not None:
+            return selected_tool_id, retry_budget
+        # G3: dedup via approve_semantic_revision -- a second occurrence of
+        # the same normalized failure signature anywhere in the Run
+        # (including after resume/checkpoint restore) is denied before any
+        # Provider call and raises the same ToolRouteValidationError a
+        # failed revision would.
+        signature = build_semantic_failure_signature_v1(
+            node_id="tool_route.select_tool_if_needed",
+            failure_reason_codes=["TOOL_SELECTION_INVALID"],
+        )
+        decision = approve_semantic_revision(retry_budget, signature=signature)
+        if decision["decision"] == BudgetDecision.DENY.value:
+            raise ToolRouteValidationError(
+                "tool selection revision denied: same failure signature already used"
+            )
+        revision_result = self._llm_runtime.invoke_structured(
+            prompt_ref=self._select_tool_revision_prompt_ref,
+            prompt_input={
+                **prompt_input,
+                "previous_output": llm_result.structured_output,
+            },
+            output_schema=TOOL_SELECTION_OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(
+                request_id=request.correlation.request_id,
+                command_id=request.correlation.command_id,
+                conversation_id=request.conversation_id,
+                run_id=request.run_id,
+                langgraph_thread_id=request.workflow_key,
+                llm_call_id=f"{request.run_id}:tool_route.select_tool_if_needed.semantic_revision",
+            ),
+        )
+        revised_tool_id = self._validated_tool_selection(
+            revision_result.structured_output, eligible_tool_ids=eligible_tool_ids
+        )
+        if revised_tool_id is None:
+            raise ToolRouteValidationError(
+                "selected tool is not a Registry-eligible candidate after revision"
+            )
+        return revised_tool_id, decision["run_budget"]
+
+    def _validated_tool_selection(
+        self, value: object, *, eligible_tool_ids: tuple[str, ...]
+    ) -> str | None:
+        """Bounded SEMANTIC_REVISION retry: schema-valid but semantically
+        invalid output (a selected_tool_id outside the Registry-validated
+        eligible set) gets exactly one re-grounding attempt, never the
+        generic SCHEMA_REPAIR path -- returns None (never raises) so the
+        caller can distinguish "try the .revise prompt" from a genuine
+        JSON-schema shape failure, which still raises through
+        ``output_schema`` as before."""
+        selection = _validate_tool_selection(value)
         selected_tool_id = selection["selected_tool_id"]
         if selected_tool_id not in eligible_tool_ids:
-            raise ToolRouteValidationError(
-                f"selected tool is not a Registry-eligible candidate: {selected_tool_id}"
-            )
-        return selected_tool_id
+            return None
+        return cast(str, selected_tool_id)
 
 
 def _validate_route_resource_candidate(value: object) -> Mapping[str, object]:

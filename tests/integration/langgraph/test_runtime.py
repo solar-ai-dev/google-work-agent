@@ -51,8 +51,10 @@ from google_work_agent.application.workflows import (
     ActionPlanDraftV1,
     AnswerDraftV1,
     ContextRetrievalResultV1,
+    EvidenceDraftV1,
     EvidenceSelectionResultV2,
     RequestIntentV2,
+    RetrievalResultV1,
     WorkAnalysisResultV1,
     determine_semantic_routes,
     validate_work_analysis_result_v1,
@@ -75,8 +77,11 @@ FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
 _RUNTIME_ACTIVE_PROMPT_IDS = {
     "request_understanding.classify",
     "tool_route.determine_io_resources",
+    "tool_route.determine_io_resources.revise",
     "tool_route.select_tool_if_needed",
+    "tool_route.select_tool_if_needed.revise",
     "retrieval.plan_query",
+    "retrieval.plan_query.revise",
     "retrieval.select_evidence",
     "retrieval.select_evidence.revise",
     "retrieval.assess_sufficiency",
@@ -120,6 +125,9 @@ class _QueuedLLMRuntime:
     def invoke_tool_call(self, **kwargs: object) -> StructuredLLMResult:
         return self._invoke(**kwargs)
 
+    def discard_run(self, *, run_id: str) -> None:
+        del run_id
+
     def _invoke(self, **kwargs: object) -> StructuredLLMResult:
         if self._before_invoke is not None:
             self._before_invoke()
@@ -137,6 +145,38 @@ class _QueuedLLMRuntime:
             prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
             request_intent = cast(RequestIntentV2, prompt_input["request_intent"])
             return _llm_result(_synthesize_tool_route_candidate(request_intent))
+        if getattr(prompt_ref, "prompt_id", None) == "retrieval.plan_query":
+            prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
+            # Retrieval V2's INITIAL plan_query call also has no
+            # fixture-authored payload in these ~50 pre-existing tests --
+            # they predate the Tool Route -> Retrieval V2 topology and were
+            # written against an older acquisition.plan_sources-first flow.
+            # Synthesize a structurally valid INITIAL SEARCH plan over
+            # whatever routes Tool Route actually froze, same rationale as
+            # the tool_route.determine_io_resources synthesis above: these
+            # tests control their actual semantic outcome via the queued
+            # select_evidence/assess_sufficiency payloads, not via
+            # plan_query's content. Only INITIAL is synthesized -- a
+            # follow-up (CHANGED search) call still consumes the queue
+            # normally, so tests that intentionally queue one keep working.
+            # ``load_acquisition_plan_sources_prompt_reference`` (the
+            # legacy Source Planning agent) resolves the very same
+            # "retrieval.plan_query" slot id with an identically-shaped
+            # prompt_input (request_intent/input_routes/retrieval_budget),
+            # so neither prompt_id nor prompt_input alone can distinguish
+            # the two callers. Their output_schema differs though --
+            # RetrievalQueryPlannerAgent uses
+            # RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA ("retrieval-query-plan-v2"),
+            # legacy plan_sources uses SOURCE_FETCH_PLAN_OUTPUT_SCHEMA
+            # ("source-fetch-plan-v2-list") -- a bare prompt_id match would
+            # wrongly intercept the legacy call too and feed it a
+            # RetrievalQueryPlanV2 dict instead of the SourceFetchPlanV1
+            # list it actually expects.
+            output_schema = kwargs.get("output_schema")
+            schema_version = getattr(output_schema, "schema_version", None)
+            is_v2_plan_call = schema_version == "retrieval-query-plan-v2"
+            if is_v2_plan_call and "current_round_no" not in prompt_input:
+                return _llm_result(_synthesize_retrieval_query_plan(prompt_input))
         if not self._queued:
             raise RuntimeError("no queued llm result")
         return self._queued.popleft()
@@ -166,6 +206,77 @@ def _synthesize_tool_route_candidate(request_intent: RequestIntentV2) -> dict[st
         ),
         "output_effects": [effect.value for _resource, effect in candidate.output_pairs],
         "disposition": "ROUTE_READY",
+    }
+
+
+def _synthesize_retrieval_query_plan(prompt_input: Mapping[str, object]) -> dict[str, object]:
+    """Fake response for retrieval.plan_query's INITIAL round.
+
+    A structurally valid RetrievalQueryPlanV2 SEARCH over every route Tool
+    Route actually froze -- see the synthesis rationale next to its call
+    site in ``_QueuedLLMRuntime._invoke``. The constraint kind is picked per
+    coarse resource_type since each resource_type has its own
+    RouteConstraintPolicy.supported_kinds (context_retrieval.py's
+    ``_runtime_route_constraint_policies``). TASK routes only support
+    CONTAINER_REF, which real production code can never actually validate
+    today unless the runtime was constructed with a
+    ``default_tasklist_id_provider`` (Pre-Prompt Runtime Closure --
+    ``_validated_task_container_refs`` in context_retrieval.py): when the
+    caller configured one, each TASK route's projected ``input_routes``
+    entry now carries a real, already-validated ``container_refs`` list
+    (see ``_prompt_route`` in retrieval_planner_input.py), which this fake
+    echoes back verbatim -- exactly what a real planner LLM would do,
+    never inventing its own container id. Without a configured provider, a
+    TASK route still gets a best-effort placeholder CONTAINER_REF
+    constraint so it fails with the same, correctly-diagnosed validation
+    error rather than a confusing unrelated one from misaligning the rest
+    of the fixture's queue.
+    """
+    input_routes = cast(list[dict[str, object]], prompt_input["input_routes"])
+    route_ids = [route["route_id"] for route in input_routes]
+
+    def _constraint(route: dict[str, object]) -> dict[str, object]:
+        # ``route["resource_type"]`` here is already the prompt-facing
+        # coarse EMAIL/TASK/CALENDAR value (``_prompt_route`` in
+        # retrieval_planner_input.py already coarsens it) -- it must be
+        # compared directly, not re-coarsened, since ``coarse_resource_category``
+        # only accepts fine-grained Registry types (e.g. "GMAIL_THREAD") and
+        # raises for an already-coarse "EMAIL".
+        resource_type = route.get("resource_type")
+        if resource_type == "CALENDAR":
+            return {
+                "kind": "TEMPORAL_RANGE",
+                "axis": "EVENT_TIME",
+                "start_local": "2026-11-01T00:00:00",
+                "end_local": "2026-11-02T00:00:00",
+                "timezone": "UTC",
+            }
+        if resource_type == "TASK":
+            container_refs = route.get("container_refs") or ["synthesized-container"]
+            return {"kind": "CONTAINER_REF", "container_refs": container_refs}
+        # FakeGoogleGateway.search_gmail_threads special-cases this exact
+        # query as "match everything in the default fixture inbox" -- a
+        # synthesized EMAIL SEARCH constraint value shouldn't assume any
+        # particular fixture participant/subject content is present.
+        return {"kind": "KEYWORD", "terms": ["in:inbox category:primary"], "match_mode": "ANY"}
+
+    return {
+        "schema_version": 2,
+        "route_queries": [
+            {
+                "route_id": route["route_id"],
+                "operation": "SEARCH",
+                "reason_codes": ["REQUIRED"],
+                "search_spec": {
+                    "mode": "INITIAL",
+                    "constraints": [_constraint(route)],
+                },
+                "detail_candidate_ref": None,
+            }
+            for route in input_routes
+        ],
+        "required_information": ["synthesized-initial-search"],
+        "retrieval_order": route_ids,
     }
 
 
@@ -565,6 +676,49 @@ def _context_result(
     }
 
 
+def _evidence_drafts_seg_2() -> list[EvidenceDraftV1]:
+    """The one evidence draft ``_retrieval_result()`` references -- same
+    seg-2/evidence-seg-2/task:task-followup reference space as
+    ``_context_result()``, so callers using both stay consistent."""
+    return [
+        {
+            "schema_version": 1,
+            "evidence_id": "evidence-seg-2",
+            "resource_handle": "task:task-followup",
+            "segment_id": "seg-2",
+            "kind": "excerpt",
+            "excerpt": "Reply to project sync",
+            "locator": {"kind": "resource_payload"},
+            "reason_codes": ["SUPPORTS"],
+        }
+    ]
+
+
+def _retrieval_result(
+    coverage: Literal["SUFFICIENT", "PARTIAL", "NO_FETCH_NEEDED"] = "SUFFICIENT",
+) -> RetrievalResultV1:
+    """Canonical Retrieval->Parent handoff (06-agent-workflow.md SS3.3).
+
+    Callers must also seed the run's ``RunScopedEvidenceStore`` with
+    ``_evidence_drafts_seg_2()`` before invoking a node that resolves this
+    result's ``evidence_refs`` (e.g. ``runtime._evidence_store.put(run_id=...,
+    evidence_drafts=_evidence_drafts_seg_2())``) -- this handoff type only
+    carries references, never materialized evidence.
+    """
+    return {
+        "schema_version": 1,
+        "meta": {"artifact_id": "retrieval-1", "revision": 1, "based_on": []},
+        "coverage": coverage,
+        "context_bundle_ref": None,
+        "evidence_refs": ["evidence-seg-2"],
+        "selected_segment_ids": ["seg-2"],
+        "source_resource_refs": ["task:task-followup"],
+        "source_statuses": [],
+        "missing_information": [],
+        "retrieval_rounds": 1,
+    }
+
+
 def _source_plan_output(result: str = "PLAN_READY") -> dict[str, object]:
     fetch_plans = (
         [_plan("TASKS", {"task_list_id": "task-list-default"})] if result == "PLAN_READY" else []
@@ -713,6 +867,7 @@ def _make_runtime(
     graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
     prompt_manifest_path: Path | None = None,
     before_llm_invoke: Callable[[], None] | None = None,
+    default_tasklist_id: str | None = "task-list-default",
 ) -> LangGraphWorkflowRuntime:
     clock = FakeClock(1000)
     ids = DeterministicUUID(prefix="runtime")
@@ -729,6 +884,9 @@ def _make_runtime(
         checkpoint_database_path=checkpoint_database_path,
         graph_profile=graph_profile,
         prompt_manifest_path=prompt_manifest_path,
+        default_tasklist_id_provider=(
+            None if default_tasklist_id is None else (lambda: default_tasklist_id)
+        ),
     )
 
 
@@ -827,19 +985,26 @@ def _start_read_request() -> WorkflowStartRequest:
 
 
 _SIX_ROLE_BASELINE_PROMPT_IDS = {
+    # request_understanding.clarify is intentionally absent: it is
+    # compatibility-only, never wired into the active SIX_ROLE_BASELINE
+    # subgraph node, and correctly has no slot in the canonical manifest.
     "request_understanding.classify",
-    "request_understanding.clarify",
-    "acquisition.plan_sources",
-    "context.select_evidence",
-    "context.select_evidence.semantic_revision",
-    "context.assess_sufficiency",
-    "analysis.analyze",
-    "planning.answer_only",
-    "planning.draft_plan",
-    "planning.revise_plan",
-    "planning.revise_answer",
+    "tool_route.determine_io_resources",
+    "tool_route.determine_io_resources.revise",
+    "tool_route.select_tool_if_needed",
+    "tool_route.select_tool_if_needed.revise",
+    "retrieval.plan_query",
+    "retrieval.plan_query.revise",
+    "retrieval.select_evidence",
+    "retrieval.select_evidence.revise",
+    "retrieval.assess_sufficiency",
+    "work_analysis.analyze",
+    "planning.compose_answer",
+    "planning.compose_arguments",
+    "planning.compose_arguments.revise",
+    "planning.compose_answer.revise",
     "review.inspect",
-    "review.recheck",
+    "review.inspect.recheck",
 }
 _PROFILE_CANDIDATE_PROMPT_IDS = {
     "profile.single.request_source.initial",

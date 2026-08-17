@@ -11,9 +11,14 @@ from tests.integration.langgraph.test_runtime import (
     ApproveWriteActionService,
     Callable,
     ClaimWriteActionCommand,
+    DeterministicUUID,
+    FakeClock,
     FakeGoogleGateway,
     GoogleGatewayFault,
     GoogleGatewayFaultKind,
+    GoogleWorkspaceExecutionBackend,
+    GraphProfile,
+    LangGraphWorkflowRuntime,
     Path,
     ProductFixtureSnapshotLoader,
     RequestIntentV2,
@@ -35,7 +40,7 @@ from tests.integration.langgraph.test_runtime import (
     _gmail_analysis_output,
     _gmail_selection_output,
     _make_runtime,
-    _plan,
+    _QueuedLLMRuntime,
     _read_plan_output,
     _review_output,
     _runtime_active_manifest_path,
@@ -46,13 +51,14 @@ from tests.integration.langgraph.test_runtime import (
     _start_request,
     _start_write_request,
     _sufficiency_output,
+    _tool_catalog,
     _write_plan_output,
     connect_sqlite,
     pytest,
     sqlite_unit_of_work_factory,
 )
 
-from google_work_agent.ports import ResourceSnapshot
+from google_work_agent.ports import LLMErrorCode, LLMInvocationError, ResourceSnapshot
 
 
 def test_langgraph_runtime_completes_answer_only_run(
@@ -65,7 +71,6 @@ def test_langgraph_runtime_completes_answer_only_run(
         database_path=database_path,
         llm_payloads=[
             _clear_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -126,53 +131,102 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         connection.close()
 
     runtime.close()
-    resumed_runtime = _make_runtime(
-        database_path=database_path,
-        llm_payloads=[
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
+    # Pre-Prompt Runtime Closure: the ambiguity originated in Request
+    # Understanding's own classify call (_ambiguous_intent's origin_target
+    # is "request_understanding.classify"), so resume must now re-enter
+    # classify with the user's answer bounded-projected into its prompt
+    # input -- not skip straight to acquisition/tool_route as it did before
+    # confirmation_resume_target's SIX_ROLE_BASELINE routing fix. Construct
+    # the fake LLM runtime directly (instead of via _make_runtime) so the
+    # test can inspect its `.calls` afterward and prove the confirmation
+    # answer actually reached classify's prompt_input.
+    resumed_llm_runtime = _QueuedLLMRuntime(
+        [
+            _clear_intent(),
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
             _answer_output(),
             _review_output("PASS"),
-        ],
-        gateway=FakeGoogleGateway(snapshot),
+        ]
+    )
+    resumed_gateway = FakeGoogleGateway(snapshot)
+    resumed_runtime = LangGraphWorkflowRuntime(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        llm_runtime=resumed_llm_runtime,
+        gateway=resumed_gateway,
+        connector_execution=GoogleWorkspaceExecutionBackend(gateway=resumed_gateway),
+        tool_catalog=_tool_catalog(),
+        now_ms=FakeClock(1000).now_ms,
+        id_factory=DeterministicUUID(prefix="runtime").next_id,
+        signing_secret="stage17-secret",
+        service_instance_id="stage17-service",
         checkpoint_database_path=tmp_path / "checkpoints-confirm.db",
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
+        default_tasklist_id_provider=lambda: "task-list-default",
     )
 
-    resumed = resumed_runtime.resume(
-        WorkflowResumeRequest(
-            run_id="run-1",
-            workflow_key="thread-1",
-            resume_kind="CONFIRMATION",
-            resume_payload={
-                "schema_version": 1,
-                "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
-                "free_text": "I mean Kim from project alpha.",
-            },
-            correlation=WorkflowCorrelationContext(
-                request_id="request-2",
-                command_id="command-2",
-                api_contract_version="1",
-            ),
+    # G3 Final Closure: Confirmation resume alone never promotes the Run's
+    # LLM budget profile past NORMAL (docs/06 SS11, docs/15 SS8.2 --
+    # REVISION_HEAVY requires an approved Review REVISE or mandatory Modify
+    # Review, RETRIEVAL_HEAVY requires an approved Additional Retrieval;
+    # neither ever happens in this Run). Re-entering classify with the
+    # confirmation answer restarts the *entire* SIX_ROLE_BASELINE pipeline
+    # (7 more real Provider calls: classify, tool_route, plan_query,
+    # select_evidence, assess_sufficiency, analyze, answer_only) on top of
+    # the 1 already spent on the original ambiguous classify call before the
+    # interrupt -- 8 total, exactly NORMAL_MAX_LLM_CALLS. The 9th real call
+    # (review) is therefore correctly denied before any Provider call, and
+    # the Run fails closed rather than silently completing over budget.
+    with pytest.raises(LLMInvocationError) as excinfo:
+        resumed_runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="CONFIRMATION",
+                resume_payload={
+                    "schema_version": 1,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option_ids": [],
+                    "free_text": "I mean Kim from project alpha.",
+                },
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-2",
+                    command_id="command-2",
+                    api_contract_version="1",
+                ),
+            )
         )
-    )
 
-    assert resumed.outcome is WorkflowOutcome.COMPLETED
+    assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+    assert "PROFILE_LLM_LIMIT_EXHAUSTED" in str(excinfo.value)
+    # Exactly the 7 real calls before review were made -- proving the 8th
+    # (review) was blocked at the NORMAL ceiling specifically, not the
+    # higher REVISION_HEAVY(12)/RETRIEVAL_HEAVY(14) ceiling a premature
+    # promotion would have allowed.
+    assert len(resumed_llm_runtime.calls) == 7
+
+    # The re-entered classify call's own prompt_input actually carried the
+    # bounded confirmation_response -- not just Main State -- even though
+    # the Run later exhausts its budget at review.
+    classify_call = next(
+        call
+        for call in resumed_llm_runtime.calls
+        if getattr(call["prompt_ref"], "prompt_id", None) == "request_understanding.classify"
+    )
+    classify_prompt_input = classify_call["prompt_input"]
+    assert classify_prompt_input["confirmation_response"] == {
+        "schema_version": 1,
+        "response_kind": "FREE_TEXT",
+        "selected_option_ids": [],
+        "free_text": "I mean Kim from project alpha.",
+    }
+
     connection = connect_sqlite(database_path)
     try:
         run_row = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()
-        assert run_row[0] == "COMPLETED"
-        snapshot = resumed_runtime._graph.get_state(  # noqa: SLF001
-            resumed_runtime._config_for_thread("thread-1")  # noqa: SLF001
-        )
-        request = snapshot.values["__request__"]
-        assert request.request_text == "Please handle the follow-up."
-        assert snapshot.values["prompt_context"]["confirmation_response"]["free_text"] == (
-            "I mean Kim from project alpha."
-        )
+        assert run_row[0] != "COMPLETED"
     finally:
         connection.close()
         resumed_runtime.close()
@@ -190,7 +244,6 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(
         database_path=database_path,
         llm_payloads=[
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -307,7 +360,6 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
         database_path=database_path,
         llm_payloads=[
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -420,6 +472,372 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
         restarted.close()
 
 
+def test_verification_auth_expired_reauths_and_resumes_to_verified_without_replaying_write(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    checkpoint_path = tmp_path / "checkpoints-verify-reauth.db"
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=checkpoint_path,
+        prompt_manifest_path=manifest_path,
+    )
+    assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    approved = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=lambda: 1000,
+    )(
+        ApproveWriteActionCommand(
+            command_id="approve-before-verify-reauth",
+            request_hash="e" * 64,
+            action_id="action-1",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-before-verify-reauth",
+            idempotency_key="f" * 64,
+        )
+    )
+    assert approved.applied is True
+
+    # A. Resuming the pending "waiting_approval" interrupt drives the real
+    # action_execution graph node. The write succeeds, then the
+    # Verification GET hits AUTH_EXPIRED.
+    gateway.queue_fault(
+        operation="get_task",
+        fault=GoogleGatewayFault(kind=GoogleGatewayFaultKind.HTTP_401),
+    )
+    approval_resumed = runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="APPROVAL",
+            resume_payload={"approved": True},
+            correlation=WorkflowCorrelationContext(
+                request_id="approval-resume-request",
+                command_id="approval-resume-command",
+                api_contract_version="1",
+            ),
+        )
+    )
+    assert approval_resumed.outcome is WorkflowOutcome.ACCEPTED
+    assert approval_resumed.payload["run_status"] == "REAUTH_REQUIRED"
+    assert gateway.count_calls("create_task") == 1
+
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT COUNT(*) FROM verifications);
+            """
+        ).fetchone()
+        assert tuple(row) == ("REAUTH_REQUIRED", "EXECUTED", 0)
+    finally:
+        connection.close()
+
+    # B. Reauth completes; resume re-attempts Verification only (the fault
+    # queue is one-shot, so the retried GET now succeeds) and reaches
+    # VERIFIED / COMPLETED.
+    resumed = runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="REAUTH_COMPLETED",
+            resume_payload={},
+            correlation=WorkflowCorrelationContext(
+                request_id="reauth-resume-request",
+                command_id="reauth-resume-command",
+                api_contract_version="1",
+            ),
+        )
+    )
+    assert resumed.outcome is WorkflowOutcome.COMPLETED
+
+    # C. The write was never replayed -- exactly one create_task call total,
+    # across both the original attempt and the reauth resume.
+    assert gateway.count_calls("create_task") == 1
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT COUNT(*) FROM execution_attempts),
+                (SELECT COUNT(*) FROM verifications);
+            """
+        ).fetchone()
+        assert tuple(row) == ("COMPLETED", "VERIFIED", 1, 1)
+    finally:
+        connection.close()
+        runtime.close()
+
+
+def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_write(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    checkpoint_path = tmp_path / "checkpoints-recovery-reauth.db"
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=checkpoint_path,
+        prompt_manifest_path=manifest_path,
+    )
+    assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    approved = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=lambda: 1000,
+    )(
+        ApproveWriteActionCommand(
+            command_id="approve-recovery-reauth",
+            request_hash="a" * 64,
+            action_id="action-1",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-recovery-reauth",
+            idempotency_key="b" * 64,
+        )
+    )
+    assert approved.applied is True
+
+    # A. The write itself actually reaches the provider (the fake gateway
+    # records the created task before raising) but the client-side response
+    # is lost, so the Action lands on UNKNOWN_RESULT and the Run moves to
+    # RECOVERY_REQUIRED. The same resume call auto-continues into recovery,
+    # where the recovery search itself now hits AUTH_EXPIRED.
+    gateway.queue_fault(
+        operation="create_task",
+        fault=GoogleGatewayFault(kind=GoogleGatewayFaultKind.HTTP_500),
+    )
+    gateway.queue_fault(
+        operation="search_by_recovery_fingerprint",
+        fault=GoogleGatewayFault(kind=GoogleGatewayFaultKind.HTTP_401),
+    )
+    approval_resumed = runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="APPROVAL",
+            resume_payload={"approved": True},
+            correlation=WorkflowCorrelationContext(
+                request_id="approval-resume-recovery-reauth",
+                command_id="approval-resume-recovery-reauth-command",
+                api_contract_version="1",
+            ),
+        )
+    )
+    assert approval_resumed.outcome is WorkflowOutcome.ACCEPTED
+    assert approval_resumed.payload["run_status"] == "REAUTH_REQUIRED"
+    assert gateway.count_calls("create_task") == 1
+    # The fake gateway's fault-raising branch for this operation does not
+    # append to call_log (only its success path does), so the failed
+    # AUTH_EXPIRED attempt is invisible to count_calls here by construction.
+    assert gateway.count_calls("search_by_recovery_fingerprint") == 0
+
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1');
+            """
+        ).fetchone()
+        assert tuple(row) == ("REAUTH_REQUIRED", "UNKNOWN_RESULT")
+    finally:
+        connection.close()
+
+    # B. Reauth completes; resume re-enters recover_unknown via the same
+    # domain-facts continuation the crash-restart path uses (the still
+    # unresolved UNKNOWN_RESULT action, not Run status, drives re-entry).
+    # The fault queue is one-shot, so the retried search now succeeds,
+    # finds the already-created task, and reaches VERIFIED/COMPLETED
+    # without ever calling create_task again.
+    resumed = runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="REAUTH_COMPLETED",
+            resume_payload={},
+            correlation=WorkflowCorrelationContext(
+                request_id="reauth-resume-recovery-reauth",
+                command_id="reauth-resume-recovery-reauth-command",
+                api_contract_version="1",
+            ),
+        )
+    )
+    assert resumed.outcome is WorkflowOutcome.COMPLETED
+
+    # C. The write was never replayed -- exactly one create_task call total,
+    # across both the original attempt and the reauth resume. The retried
+    # search now succeeds (fault queue exhausted), so it is the first call
+    # to actually reach call_log.
+    assert gateway.count_calls("create_task") == 1
+    assert gateway.count_calls("search_by_recovery_fingerprint") == 1
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT COUNT(*) FROM execution_attempts),
+                (SELECT COUNT(*) FROM verifications);
+            """
+        ).fetchone()
+        assert tuple(row) == ("COMPLETED", "VERIFIED", 1, 1)
+    finally:
+        connection.close()
+        runtime.close()
+
+
+def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    checkpoint_path = tmp_path / "checkpoints-claim-stalled-restart.db"
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    gateway = FakeGoogleGateway(snapshot)
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[
+            _action_required_intent(),
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ],
+        gateway=gateway,
+        checkpoint_database_path=checkpoint_path,
+        prompt_manifest_path=manifest_path,
+    )
+    assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    approved = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=lambda: 1000,
+    )(
+        ApproveWriteActionCommand(
+            command_id="approve-before-claim-stall",
+            request_hash="e" * 64,
+            action_id="action-1",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id="approval-before-claim-stall",
+            idempotency_key="f" * 64,
+        )
+    )
+    assert approved.applied is True
+
+    # Claim commits (Action -> EXECUTING, Attempt -> CLAIMED), then the
+    # process is simulated to crash before ExecuteWriteActionService (or
+    # any terminal execution result) ever runs -- dispatch's delivery is
+    # genuinely unknown, not "not sent".
+    runtime._preflight_write(action_id="action-1")  # noqa: SLF001
+    claim = runtime._claim_write(  # noqa: SLF001
+        ClaimWriteActionCommand(
+            command_id="claim-before-stall",
+            request_hash="1" * 64,
+            action_id="action-1",
+            expected_version=approved.action_version,
+            source_snapshot={},
+            attempt_id="attempt-before-stall",
+            nonce="nonce-before-stall",
+        )
+    )
+    assert claim.claim_token is not None
+    assert gateway.count_calls("create_task") == 0
+
+    connection = connect_sqlite(database_path)
+    try:
+        stalled_state = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT status FROM execution_attempts WHERE id = 'attempt-before-stall');
+            """
+        ).fetchone()
+        assert tuple(stalled_state) == ("WAITING_APPROVAL", "EXECUTING", "CLAIMED")
+    finally:
+        connection.close()
+    runtime.close()
+
+    restarted = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=gateway,
+        checkpoint_database_path=checkpoint_path,
+        prompt_manifest_path=manifest_path,
+    )
+    recovered = restarted.recover_open_run(
+        WorkflowRecoveryRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            domain_status="WAITING_APPROVAL",
+            domain_version=2,
+            correlation=WorkflowCorrelationContext(
+                request_id="startup-recovery-claim-stall",
+                command_id=None,
+                api_contract_version="1",
+            ),
+        )
+    )
+
+    # The run is no longer silently stalled: it reached a real, actionable
+    # Recovery outcome, and the write was never blindly retried/replayed.
+    assert recovered.outcome is WorkflowOutcome.RECOVERY_REQUIRED
+    assert gateway.count_calls("create_task") == 0
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id = 'run-1'),
+                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT status FROM execution_attempts WHERE id = 'attempt-before-stall'),
+                (SELECT COUNT(*) FROM execution_attempts);
+            """
+        ).fetchone()
+        assert tuple(row) == ("RECOVERY_REQUIRED", "UNKNOWN_RESULT", "UNKNOWN_RESULT", 1)
+    finally:
+        connection.close()
+        restarted.close()
+
+
 @pytest.mark.parametrize(
     ("plan_output", "expected_operation", "context_family", "recovery_fault", "intent"),
     [
@@ -471,21 +889,18 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
     gateway = FakeGoogleGateway(snapshot)
     if context_family == "CALENDAR":
         context_payloads = [
-            [_plan("CALENDAR", {"calendar_id": "calendar-primary"})],
             _calendar_selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _calendar_analysis_output(),
         ]
     elif context_family == "GMAIL":
         context_payloads = [
-            [_plan("GMAIL", {})],
             _gmail_selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _gmail_analysis_output(),
         ]
     else:
         context_payloads = [
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -563,7 +978,6 @@ def test_langgraph_runtime_executes_read_only_plan_to_terminal(
         database_path=database_path,
         llm_payloads=[
             _action_required_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
@@ -607,7 +1021,6 @@ def test_langgraph_runtime_supports_same_database_for_domain_and_checkpointer(
         database_path=database_path,
         llm_payloads=[
             _clear_intent(),
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),

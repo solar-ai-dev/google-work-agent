@@ -147,6 +147,32 @@ class _ChangedSearchLLM(_InitialSearchLLM):
         return super().invoke_structured(**kwargs)
 
 
+class _ExternalRetrievalRequiredLLM(_ChangedSearchLLM):
+    """Round 1 is a clean SUFFICIENT (no Retrieval-local loop); the second
+    ``retrieval.plan_query`` call is only reached via an external
+    RetrievalRequiredV1 re-entry (Q2-HANDOFF), never Retrieval's own loop.
+    That second call has no invocation-local prior canonical plan to merge
+    against (a fresh subgraph invocation), so -- unlike the local-loop
+    CHANGED SEARCH in ``_ChangedSearchLLM`` -- it must return INITIAL."""
+
+    def invoke_structured(self, **kwargs: object) -> object:
+        prompt_id = kwargs["prompt_ref"].prompt_id
+        if prompt_id == "retrieval.plan_query":
+            self.calls.append(dict(kwargs))
+            self.planner_calls += 1
+            prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
+            route_id = cast(list[dict[str, object]], prompt_input["input_routes"])[0]["route_id"]
+            if self.planner_calls == 1:
+                return _llm_result(_search_plan(route_id, "INITIAL", "Project"))
+            self.followup_input = prompt_input
+            return _llm_result(_search_plan(route_id, "INITIAL", "Invoice"))
+        if prompt_id == "retrieval.assess_sufficiency":
+            self.calls.append(dict(kwargs))
+            self.sufficiency_calls += 1
+            return _llm_result({"schema_version": 2, "status": "SUFFICIENT", "issues": []})
+        return super().invoke_structured(**kwargs)
+
+
 def _search_plan(route_id: object, mode: str, term: str) -> dict[str, object]:
     spec: dict[str, object] = {"mode": mode}
     if mode == "INITIAL":
@@ -318,5 +344,81 @@ def test_ret_int_03_next_page_reaches_second_page_evidence(tmp_path: Any) -> Non
         assert llm.followup_input is not None
         assert "opaque-ret-int-03" not in repr(llm.followup_input)
         assert "opaque-ret-int-03" not in repr(result)
+    finally:
+        runtime.close()
+
+
+def test_work_analysis_retrieval_required_reenters_retrieval_with_new_search(
+    tmp_path: Any,
+) -> None:
+    """Q2-HANDOFF: an external RetrievalRequiredV1 signal (as Supervisor would
+    build from WorkAnalysis NEEDS_MORE_DATA) makes Retrieval run a genuine new
+    CHANGED SEARCH round, not just re-select evidence from the first round --
+    and Retrieval's own local loop never produces this signal (round 1 here
+    completes as a clean SUFFICIENT, no NEEDS_MORE_DATA involved)."""
+    llm = _ExternalRetrievalRequiredLLM()
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = LangGraphWorkflowRuntime(
+        unit_of_work_factory=sqlite_unit_of_work_factory(_seed_runtime_database(tmp_path)),
+        llm_runtime=llm,
+        gateway=gateway,
+        connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
+        tool_catalog=_tool_catalog(),
+        now_ms=FakeClock(1000).now_ms,
+        id_factory=DeterministicUUID(prefix="ret-required").next_id,
+        signing_secret="test",
+        service_instance_id="test",
+        checkpoint_database_path=tmp_path / "checkpoints.db",
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+    try:
+        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        state["request_intent"] = _clear_intent()
+        state["request_intent"]["requested_resource_hints"] = ["GMAIL_THREAD"]
+        state["request_intent"]["meta"] = {
+            "artifact_id": "intent-required",
+            "revision": 1,
+            "based_on": [],
+        }
+        routed = runtime._tool_route_subgraph.invoke(state)  # noqa: SLF001
+        round_one = runtime._context_subgraph.invoke(routed)  # noqa: SLF001
+        assert round_one["context_result"]["status"] == "SUFFICIENT"
+        assert round_one["retrieval_result"]["retrieval_rounds"] == 1
+        assert llm.planner_calls == llm.sufficiency_calls == 1
+        assert [item.operation for item in gateway.call_log].count("search_gmail_threads") == 1
+
+        round_one["workflow_signal"] = {
+            "kind": "RETRIEVAL_REQUIRED",
+            "reason_codes": ["WORK_ANALYSIS_NEEDS_MORE_DATA"],
+            "needs": [
+                {
+                    "required_information": "Need the invoice total.",
+                    "reason_codes": ["WORK_ANALYSIS_NEEDS_MORE_DATA"],
+                }
+            ],
+        }
+        result = runtime._context_subgraph.invoke(round_one)  # noqa: SLF001
+
+        assert [item.operation for item in gateway.call_log].count("search_gmail_threads") == 2
+        assert llm.planner_calls == 2
+        assert llm.followup_input is not None
+        issues = cast(
+            list[dict[str, object]], llm.followup_input["unresolved_sufficiency_issues"]
+        )
+        assert issues == [
+            {
+                "slot": "Need the invoice total.",
+                "issue_type": "MISSING",
+                "required": True,
+                "resolution_source": "GOOGLE",
+                "safety_critical": False,
+                "reason_codes": ["WORK_ANALYSIS_NEEDS_MORE_DATA"],
+            }
+        ]
+        assert result["retrieval_result"]["retrieval_rounds"] == 2
+        assert "gmail_thread:thread-finance" in result["retrieval_result"]["source_resource_refs"]
+        assert result["workflow_signal"] is None
     finally:
         runtime.close()
