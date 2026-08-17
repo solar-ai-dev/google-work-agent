@@ -133,21 +133,28 @@ class RetrievalQueryPlannerAgent:
         (including after resume/checkpoint restore), is denied before any
         Provider call and raises the same RetrievalV2ValidationError a failed
         revision attempt would."""
+        failure_code = "RETRIEVAL_QUERY_PLAN_SEMANTIC_INVALID"
         signature = build_semantic_failure_signature_v1(
             node_id="retrieval.plan_query",
-            failure_reason_codes=["RETRIEVAL_QUERY_PLAN_SEMANTIC_INVALID"],
+            failure_reason_codes=[failure_code],
         )
         decision = approve_semantic_revision(retry_budget, signature=signature)
         if decision["decision"] == BudgetDecision.DENY.value:
             raise RetrievalV2ValidationError(
                 "retrieval query plan revision denied: same failure signature already used"
             )
+        mutable_fields = ["$.route_queries", "$.required_information", "$.retrieval_order"]
         revision_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._revision_prompt_ref,
             prompt_input={
-                **prompt_input,
-                "previous_output": previous_output,
-                "failure_reason": failure_detail,
+                "base_projection": dict(prompt_input),
+                "candidate_output": previous_output,
+                "failure_record": {
+                    "failure_reason_code": failure_code,
+                    "affected_fields": mutable_fields,
+                    "allowed_change_scope": mutable_fields,
+                    "validation_errors": [failure_detail],
+                },
             },
             output_schema=self._output_schema,
             trace_context=trace_context,
