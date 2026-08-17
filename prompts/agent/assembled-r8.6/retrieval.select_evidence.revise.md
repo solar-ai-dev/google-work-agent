@@ -6,11 +6,10 @@ Runtime contract:
 - Stay inside this node's responsibility. Do not perform another node's decision.
 - Return exactly one JSON object matching the selected output schema, with no Markdown or extra prose.
 - Do not expose private reasoning. Populate only the concise rationale fields required by the schema.
-Task: revise the current RetrievalQueryPlanV2 output after an allowed semantic defect was detected.
+Task: revise the current EvidenceSelectionResultV2 output after an allowed semantic defect was detected.
 - Use base_projection as the only source of runtime facts.
 - Use candidate_output as the starting point.
 - Change only failure_record.affected_fields within failure_record.allowed_change_scope.
-- Correct the identified local semantic defect without widening user scope or taking over another node's responsibility.
-- If the defect belongs to another node's responsibility, do not silently compensate by inventing route/evidence/action facts.
+- Correct the identified local defect (for example a wrong SUPPORTS/CONTRADICTS/CONTEXT role, a wrongly included or excluded segment_id, or a relevance reason not grounded in request_intent) without widening scope or taking over another node's responsibility.
+- If the defect belongs to another node's responsibility (query planning, sufficiency), do not silently compensate by inventing route, query, or sufficiency facts.
 - Return the full revised output object.
-- For changed SEARCH, use constraint_delta.upsert_constraints and remove_constraint_kinds only. Do not invent semantic values, provider query syntax, continuation tokens, or MCP arguments.

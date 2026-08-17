@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 from tests.support.prompt_manifests import (
     canonical_prompt_manifest_path,
+    canonical_prompt_runtime_input_contract_v1_path,
     write_draft_manifest,
     write_runtime_active_manifest,
 )
@@ -17,6 +20,8 @@ from google_work_agent.application.workflows.prompt_registry import (
     discover_canonical_prompt_manifest_path,
     load_prompt_reference,
 )
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 def test_default_prompt_manifest_path_uses_canonical_r90_bundle(
@@ -122,3 +127,138 @@ def test_legacy_slot_format_uses_runtime_activation_boundary(tmp_path: Path) -> 
 
     with pytest.raises(InactivePromptArtifactError, match="analysis.analyze"):
         load_prompt_reference("analysis.analyze", manifest_path)
+
+
+def _load_json(path: Path) -> dict[str, object]:
+    return cast(dict[str, object], json.loads(path.read_text(encoding="utf-8")))
+
+
+def _contract_slot_ids(contract: dict[str, object]) -> set[str]:
+    return set(cast(dict[str, object], contract["slots"]))
+
+
+def _manifest_slots(manifest: dict[str, object]) -> list[dict[str, object]]:
+    return cast(list[dict[str, object]], manifest["slots"])
+
+
+def _manifest_slot_ids(manifest: dict[str, object]) -> set[str]:
+    return {cast(str, slot["slot_id"]) for slot in _manifest_slots(manifest)}
+
+
+def test_canonical_required_slot_set_equals_manifest_slot_set() -> None:
+    """Prompt Runtime Contract Closure: the required-set fixture is
+    prompt-runtime-input-contract-v1.json's own "slots" keys -- the single
+    source of truth this repo has for "which PromptRefs must exist" -- and
+    it must be a set-equal match against the manifest, not just a count
+    match (30/30 with different names would not be PASS)."""
+    contract = _load_json(canonical_prompt_runtime_input_contract_v1_path())
+    manifest = _load_json(canonical_prompt_manifest_path())
+
+    canonical_slots = _contract_slot_ids(contract)
+    manifest_slots = _manifest_slot_ids(manifest)
+
+    assert canonical_slots - manifest_slots == set()
+    assert manifest_slots - canonical_slots == set()
+    assert canonical_slots == manifest_slots
+
+
+def test_retired_slots_are_not_present_in_manifest_or_contract_slots() -> None:
+    """The 3 slots Prompt Runtime Contract Closure determined
+    DETERMINISTICALLY_REPLACED must not reappear as live PromptRefs in
+    either artifact, and the retirement itself must be documented in the
+    contract's own retired_slots record."""
+    contract = _load_json(canonical_prompt_runtime_input_contract_v1_path())
+    manifest = _load_json(canonical_prompt_manifest_path())
+
+    retired = {
+        "request_understanding.classify.revise",
+        "retrieval.assess_sufficiency.revise",
+        "work_analysis.analyze.reassess",
+    }
+    manifest_slots = _manifest_slot_ids(manifest)
+    contract_slots = _contract_slot_ids(contract)
+    retired_slots_record = set(cast(dict[str, object], contract["retired_slots"]))
+
+    assert retired.isdisjoint(manifest_slots)
+    assert retired.isdisjoint(contract_slots)
+    assert retired == retired_slots_record
+
+
+def test_manifest_source_and_assembled_artifacts_exist_and_hash_validate() -> None:
+    """Manifest closure invariant (Prompt Runtime Contract Closure section 12):
+    every manifest slot's source files and assembled file exist on disk, and
+    content_hash/assembled_hash match what's actually there -- using the same
+    concat-then-sha256 / CRLF-normalize-then-sha256 algorithm
+    prompt_registry.py's own _read_instruction_text enforces at call time."""
+    manifest = _load_json(canonical_prompt_manifest_path())
+
+    for slot in _manifest_slots(manifest):
+        source_paths = [_REPO_ROOT / cast(str, f) for f in cast(list[object], slot["files"])]
+        for source_path in source_paths:
+            assert source_path.is_file(), f"{slot['slot_id']}: missing source {source_path}"
+        concatenated = b"".join(path.read_bytes() for path in source_paths)
+        assert hashlib.sha256(concatenated).hexdigest() == slot["content_hash"], slot["slot_id"]
+
+        assembled_path = _REPO_ROOT / cast(str, slot["assembled_path"])
+        assert assembled_path.is_file(), f"{slot['slot_id']}: missing assembled {assembled_path}"
+        assembled_bytes = assembled_path.read_bytes()
+        assert hashlib.sha256(assembled_bytes).hexdigest() == slot["assembled_hash"], slot[
+            "slot_id"
+        ]
+        assert assembled_bytes == concatenated.replace(b"\r\n", b"\n"), slot["slot_id"]
+
+
+def test_every_manifest_slot_has_an_input_contract_entry() -> None:
+    """Required PromptRef has input contract (section 12 Manifest closure)."""
+    contract = _load_json(canonical_prompt_runtime_input_contract_v1_path())
+    manifest = _load_json(canonical_prompt_manifest_path())
+
+    contract_slots = _contract_slot_ids(contract)
+    for slot in _manifest_slots(manifest):
+        assert slot["slot_id"] in contract_slots, slot["slot_id"]
+
+
+@pytest.mark.parametrize(
+    ("slot_id", "own_type", "foreign_types"),
+    [
+        (
+            "retrieval.plan_query.repair",
+            "RetrievalQueryPlanV2",
+            ("EvidenceSelectionResultV2", "SufficiencyResultV2"),
+        ),
+        (
+            "retrieval.plan_query.revise",
+            "RetrievalQueryPlanV2",
+            ("EvidenceSelectionResultV2", "SufficiencyResultV2"),
+        ),
+        (
+            "retrieval.select_evidence.repair",
+            "EvidenceSelectionResultV2",
+            ("RetrievalQueryPlanV2", "SufficiencyResultV2"),
+        ),
+        (
+            "retrieval.select_evidence.revise",
+            "EvidenceSelectionResultV2",
+            ("RetrievalQueryPlanV2", "SufficiencyResultV2"),
+        ),
+        (
+            "retrieval.assess_sufficiency.repair",
+            "SufficiencyResultV2",
+            ("RetrievalQueryPlanV2", "EvidenceSelectionResultV2"),
+        ),
+    ],
+)
+def test_retrieval_repair_revise_prompts_reference_only_their_own_output_type(
+    slot_id: str, own_type: str, foreign_types: tuple[str, ...]
+) -> None:
+    """PHASE 3 closure: the assembled repair/revise instruction for each
+    retrieval node must name only its own Output Type, never another
+    retrieval node's (e.g. select_evidence.repair must not tell the model
+    to repair a RetrievalQueryPlanV2)."""
+    manifest = _load_json(canonical_prompt_manifest_path())
+    slot = next(s for s in _manifest_slots(manifest) if s["slot_id"] == slot_id)
+    assembled_text = (_REPO_ROOT / cast(str, slot["assembled_path"])).read_text(encoding="utf-8")
+
+    assert own_type in assembled_text
+    for foreign_type in foreign_types:
+        assert foreign_type not in assembled_text

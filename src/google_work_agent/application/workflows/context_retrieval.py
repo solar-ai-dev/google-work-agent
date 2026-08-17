@@ -269,7 +269,6 @@ class ContextRetrievalAgent:
         llm_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._select_prompt_ref,
             prompt_input={
-                "user_request": request.request_text,
                 "request_intent": request_intent,
                 "ranked_segments": ranked_segments,
             },
