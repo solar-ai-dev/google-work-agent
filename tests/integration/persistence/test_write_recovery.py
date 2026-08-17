@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from json import loads as _loads
+
 from tests.integration.persistence.test_write_actions import (
     DeliveryCertainty,
     ExecuteWriteActionService,
@@ -450,6 +452,78 @@ def test_unknown_result_create_recovery_and_retry_flow(
         assert tuple(rows) == ("VERIFYING", "EXECUTED", "SUCCEEDED")
     finally:
         connection.close()
+
+
+def test_unknown_result_mcp_request_id_persists_on_trace_and_audit(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    """E: an execution-phase TIMEOUT/other error's mcp_request_id (as
+    execution_phase.py forwards it from a real GoogleWorkspaceGatewayError)
+    reaches the persisted WRITE_ACTION_UNKNOWN_RESULT trace and
+    WRITE_UNKNOWN_RESULT audit rows.
+    """
+    clock = FakeClock(1000)
+    claimed = _prepare_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="recover-unknown-mcp",
+    )
+    execute_service = ExecuteWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        gateway=fixture_gateway,
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+    )
+    fixture_gateway.queue_fault(
+        operation="create_task",
+        fault=GoogleGatewayFault(GoogleGatewayFaultKind.TIMEOUT_AFTER_DELIVERY),
+    )
+    with pytest.raises(GoogleWorkspaceGatewayError) as error_info:
+        execute_service(
+            action_id="action-recover-unknown-mcp",
+            claim_token=claimed.claim_token or "",
+        )
+
+    unknown_service = MarkWriteActionUnknownResultService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    unknown = unknown_service(
+        MarkWriteActionUnknownResultCommand(
+            command_id="unknown-mcp-1",
+            request_hash="u9" * 32,
+            action_id="action-recover-unknown-mcp",
+            attempt_id="attempt-recover-unknown-mcp",
+            expected_action_version=2,
+            expected_attempt_version=0,
+            error_code=error_info.value.code.value,
+            error_detail=str(error_info.value),
+            mcp_request_id="req-simulated-77",
+        )
+    )
+    assert unknown.applied is True
+
+    connection = connect_sqlite(write_database)
+    try:
+        trace_row = connection.execute(
+            "SELECT payload_json FROM trace_events "
+            "WHERE event_type = 'WRITE_ACTION_UNKNOWN_RESULT' "
+            "AND action_id = 'action-recover-unknown-mcp';"
+        ).fetchone()
+        audit_row = connection.execute(
+            "SELECT metadata_json FROM audit_events "
+            "WHERE event_type = 'WRITE_UNKNOWN_RESULT' "
+            "AND action_id = 'action-recover-unknown-mcp';"
+        ).fetchone()
+    finally:
+        connection.close()
+
+    trace_envelope = _loads(trace_row[0])
+    audit_envelope = _loads(audit_row[0])
+    assert trace_envelope["attributes"]["mcp_request_id"] == "req-simulated-77"
+    assert audit_envelope["attributes"]["mcp_request_id"] == "req-simulated-77"
 
 
 def test_update_recovery_can_resolve_unknown_as_failed_when_source_is_unchanged(

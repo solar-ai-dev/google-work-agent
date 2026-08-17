@@ -312,6 +312,21 @@ def _action_cancelled_audit_count(database_path: Path) -> int:
         connection.close()
 
 
+def _command_rejected_hash_mismatch_events(
+    database_path: Path,
+) -> tuple[tuple[dict[str, object], str], ...]:
+    connection = connect_sqlite(database_path)
+    try:
+        rows = connection.execute(
+            "SELECT metadata_json, outcome FROM audit_events "
+            "WHERE event_type = 'COMMAND_REJECTED_HASH_MISMATCH' "
+            "ORDER BY id;"
+        ).fetchall()
+        return tuple((cast(dict[str, object], loads(row[0])), str(row[1])) for row in rows)
+    finally:
+        connection.close()
+
+
 def _cancel_child_snapshot(database_path: Path) -> tuple[object, ...]:
     connection = connect_sqlite(database_path)
     try:

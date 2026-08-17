@@ -200,6 +200,17 @@ class _DeferredCoordinator:
             run_id=run_id, request_id=request_id, command_id=command_id
         )
 
+    def reserve_start(self, *, run_id: str) -> bool:
+        return self._require_delegate().reserve_start(run_id=run_id)
+
+    def confirm_start(self, *, run_id: str, request_id: str, command_id: str) -> None:
+        self._require_delegate().confirm_start(
+            run_id=run_id, request_id=request_id, command_id=command_id
+        )
+
+    def release_reservation(self, *, run_id: str) -> None:
+        self._require_delegate().release_reservation(run_id=run_id)
+
     def enqueue_resume(
         self,
         *,
@@ -554,6 +565,8 @@ def build_container(
         start_run_service=StartRunService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
+            reserve_queue_slot=lambda run_id: coordinator.reserve_start(run_id=run_id),
+            release_queue_slot=lambda run_id: coordinator.release_reservation(run_id=run_id),
         ),
         approve_action_service=ApproveWriteActionService(
             unit_of_work_factory=unit_of_work_factory,

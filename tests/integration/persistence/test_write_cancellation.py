@@ -34,6 +34,7 @@ from tests.integration.persistence.test_write_actions import (
     _action_cancelled_audit_count,
     _cancel_child_snapshot,
     _cancel_marker_count,
+    _command_rejected_hash_mismatch_events,
     _insert_action_sibling,
     _prepare_claimed_action,
     _prepare_write_plan,
@@ -218,6 +219,11 @@ def test_cancel_version_and_hash_conflicts_are_atomic_and_replay_is_idempotent(
     first = service(command)
     snapshot = _cancel_child_snapshot(write_database)
     replay = service(command)
+
+    assert first == replay
+    # B: a same-hash idempotent replay is not a rejection.
+    assert _command_rejected_hash_mismatch_events(write_database) == ()
+
     hash_conflict = service(
         RequestRunCancellationCommand(
             command_id=command.command_id,
@@ -227,11 +233,29 @@ def test_cancel_version_and_hash_conflicts_are_atomic_and_replay_is_idempotent(
         )
     )
 
-    assert first == replay
     assert hash_conflict.result_code == ResultCode.DUPLICATE_COMMAND.value
     assert _cancel_marker_count(write_database) == 1
     assert _action_cancelled_audit_count(write_database) == 1
     assert _cancel_child_snapshot(write_database) == snapshot
+
+    # A: exactly one rejection event for the genuine different-hash conflict.
+    rejection_events = _command_rejected_hash_mismatch_events(write_database)
+    assert len(rejection_events) == 1
+    envelope, outcome = rejection_events[0]
+    assert outcome == ResultCode.DUPLICATE_COMMAND.value
+    assert envelope["attributes"] == {
+        "command_id": command.command_id,
+        "command_type": "RequestRunCancellation",
+        "result_code": ResultCode.DUPLICATE_COMMAND.value,
+    }
+    assert envelope["result_code"] == ResultCode.DUPLICATE_COMMAND.value
+    assert envelope["correlation"]["run_id"] == command.run_id
+    assert envelope["correlation"]["action_id"] is None
+    # No raw payload/secret sneaks in beyond the allowlisted identifiers.
+    raw = str(envelope)
+    assert "arguments" not in raw
+    assert "token" not in raw.lower()
+    assert "secret" not in raw.lower()
 
 
 def test_executing_cancel_waits_for_external_result_without_new_attempt(

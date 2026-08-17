@@ -105,6 +105,19 @@ class MCPGmailUiReadGateway:
 class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
     def __init__(self, *, transport: MCPTransport) -> None:
         self._transport = transport
+        self._last_request_id: str | None = None
+
+    @property
+    def last_request_id(self) -> str | None:
+        """The mcp_request_id of the most recently completed successful call.
+
+        An optional, duck-typed capability (mirrors prepare_claim_context)
+        so callers that want to correlate a just-completed read/write with
+        its originating MCP request can do so without every
+        ConnectorExecutionPort implementation (including fakes) needing to
+        support it.
+        """
+        return self._last_request_id
 
     def prepare_claim_context(
         self,
@@ -446,10 +459,11 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
 
     def _call(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, object]:
         try:
-            payload = self._transport.call_tool(tool_name=tool_name, arguments=arguments).payload
+            response = self._transport.call_tool(tool_name=tool_name, arguments=arguments)
         except MCPTransportError as error:
             raise _google_error_from_transport(error) from error
-        return cast(dict[str, object], payload)
+        self._last_request_id = response.request_id
+        return cast(dict[str, object], response.payload)
 
     def _resource_snapshot(self, item: dict[str, object]) -> ResourceSnapshot:
         return ResourceSnapshot(
@@ -492,9 +506,17 @@ def _google_error_from_transport(error: MCPTransportError) -> GoogleWorkspaceGat
     }
     return GoogleWorkspaceGatewayError(
         code=tool_error_map.get(str(error), code_map[error.code]),
-        message=dumps({"safe_error": error.code.value, "detail": str(error)}, sort_keys=True),
+        message=dumps(
+            {
+                "safe_error": error.code.value,
+                "detail": str(error),
+                "mcp_request_id": error.request_id,
+            },
+            sort_keys=True,
+        ),
         delivered=error.dispatch_started,
         mutated=False,
+        mcp_request_id=error.request_id,
     )
 
 

@@ -18,6 +18,14 @@ class GoogleWorkspaceExecutionBackend(ConnectorExecutionPort):
     def __init__(self, *, gateway: GoogleWorkspaceGateway) -> None:
         self._gateway = gateway
 
+    @property
+    def last_request_id(self) -> str | None:
+        """Proxy the MCP correlation id of the most recent call, if the
+        wrapped gateway supports it (duck-typed; fakes need not implement
+        this).
+        """
+        return cast(str | None, getattr(self._gateway, "last_request_id", None))
+
     def prepare_write(
         self,
         *,

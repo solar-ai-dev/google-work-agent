@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from json import loads
 from pathlib import Path
-from threading import Event
+from threading import Barrier, Event, Lock, Thread
 
 import pytest
 from tests.support.fakes import FakeWorkflowRuntime, WorkflowFailure
@@ -11,8 +12,10 @@ from tests.support.fakes import FakeWorkflowRuntime, WorkflowFailure
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
-from google_work_agent.application.coordinator import LocalRunCoordinator
+from google_work_agent.application.coordinator import LocalRunCoordinator, QueueBusyError
 from google_work_agent.application.queries import OpenRunRecord, QueryService, RunExecutionContext
+from google_work_agent.application.run_contracts import StartRunCommand
+from google_work_agent.application.run_lifecycle import StartRunService
 from google_work_agent.application.write_actions import WriteRunResponse
 from google_work_agent.ports import (
     WorkflowCancelRequest,
@@ -604,3 +607,445 @@ def test_recovery_resolution_continues_existing_cancel_intent_to_cancelled() -> 
         event.event_type == "completed" and event.payload.get("result_kind") == "PARTIAL"
         for event in events
     )
+
+
+def _seed_conversation_database(database_path: Path) -> None:
+    connection = connect_sqlite(database_path)
+    try:
+        apply_migrations(connection, now_ms=lambda: 1)
+        connection.execute(
+            "INSERT INTO google_accounts (id, email, display_name, connected_at_ms) "
+            "VALUES ('account-1', 'user@example.com', 'User', 1);"
+        )
+        connection.execute(
+            "INSERT INTO conversations (id, account_id, title, created_at_ms, updated_at_ms) "
+            "VALUES ('conversation-1', 'account-1', 'Conversation', 1, 1);"
+        )
+    finally:
+        connection.close()
+
+
+def _start_run_command(*, command_id: str, run_id: str, request_hash: str) -> StartRunCommand:
+    return StartRunCommand(
+        command_id=command_id,
+        request_hash=request_hash,
+        conversation_id="conversation-1",
+        user_message_id=f"message-{run_id}",
+        run_id=run_id,
+        workflow_key=f"thread-{run_id}",
+        request_text="Hello",
+        entry_mode="AGENT_SEARCH",
+        selected_resource_ids=(),
+        requested_mode="AUTO",
+        api_contract_version="1",
+    )
+
+
+def test_reserve_start_dedups_and_release_frees_the_run_id() -> None:
+    coordinator = LocalRunCoordinator(
+        query_service=_QueryStub("CREATED"),  # type: ignore[arg-type]
+        unit_of_work_factory=lambda: None,  # type: ignore[arg-type,return-value]
+        workflow_runtime=FakeWorkflowRuntime(),
+        event_publisher=InMemoryRunEventPublisher(
+            service_instance_id="service-1",
+            capacity_per_run=8,
+        ),
+        now_ms=lambda: 1000,
+        api_contract_version="1",
+    )
+
+    assert coordinator.reserve_start(run_id="run-1") is True
+    assert coordinator.reserve_start(run_id="run-1") is False
+
+    coordinator.release_reservation(run_id="run-1")
+
+    assert coordinator.reserve_start(run_id="run-1") is True
+
+
+def test_reserve_start_denies_admission_once_the_bounded_queue_is_full() -> None:
+    coordinator = LocalRunCoordinator(
+        query_service=_QueryStub("CREATED"),  # type: ignore[arg-type]
+        unit_of_work_factory=lambda: None,  # type: ignore[arg-type,return-value]
+        workflow_runtime=FakeWorkflowRuntime(),
+        event_publisher=InMemoryRunEventPublisher(
+            service_instance_id="service-1",
+            capacity_per_run=8,
+        ),
+        now_ms=lambda: 1000,
+        api_contract_version="1",
+        capacity=1,
+    )
+    assert coordinator.reserve_start(run_id="run-occupant") is True
+    coordinator.confirm_start(
+        run_id="run-occupant", request_id="request-occupant", command_id="command-occupant"
+    )
+
+    assert coordinator.reserve_start(run_id="run-new") is False
+
+
+def test_reserve_start_denies_admission_after_coordinator_is_stopped() -> None:
+    coordinator = LocalRunCoordinator(
+        query_service=_QueryStub("CREATED"),  # type: ignore[arg-type]
+        unit_of_work_factory=lambda: None,  # type: ignore[arg-type,return-value]
+        workflow_runtime=FakeWorkflowRuntime(),
+        event_publisher=InMemoryRunEventPublisher(
+            service_instance_id="service-1",
+            capacity_per_run=8,
+        ),
+        now_ms=lambda: 1000,
+        api_contract_version="1",
+    )
+
+    coordinator.stop()
+
+    assert coordinator.reserve_start(run_id="run-1") is False
+
+
+def test_start_run_service_reservation_failure_leaves_zero_orphan_rows(tmp_path: Path) -> None:
+    """Closes the commit -> enqueue-fails -> orphan CREATED window: when the
+    coordinator's queue has no room, StartRunService must reject before
+    writing anything, so there is nothing left to recover even while the
+    service stays alive (no restart needed to reclaim it).
+    """
+    database_path = tmp_path / "coordinator-reserve-full.db"
+    _seed_conversation_database(database_path)
+    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+
+    coordinator = LocalRunCoordinator(
+        query_service=_QueryStub("CREATED"),  # type: ignore[arg-type]
+        unit_of_work_factory=lambda: None,  # type: ignore[arg-type,return-value]
+        workflow_runtime=FakeWorkflowRuntime(),
+        event_publisher=InMemoryRunEventPublisher(
+            service_instance_id="service-1",
+            capacity_per_run=8,
+        ),
+        now_ms=lambda: 1000,
+        api_contract_version="1",
+        capacity=1,
+    )
+    assert coordinator.reserve_start(run_id="run-occupant") is True
+    coordinator.confirm_start(
+        run_id="run-occupant", request_id="request-occupant", command_id="command-occupant"
+    )
+
+    service = StartRunService(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=lambda: 2000,
+        reserve_queue_slot=lambda run_id: coordinator.reserve_start(run_id=run_id),
+        release_queue_slot=lambda run_id: coordinator.release_reservation(run_id=run_id),
+    )
+
+    with pytest.raises(QueueBusyError):
+        service(
+            _start_run_command(command_id="command-new", run_id="run-new", request_hash="a1" * 32)
+        )
+
+    connection = connect_sqlite(database_path)
+    try:
+        run_count = connection.execute("SELECT COUNT(*) FROM runs;").fetchone()[0]
+        receipt_count = connection.execute(
+            "SELECT COUNT(*) FROM command_receipts WHERE command_id = 'command-new';"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert run_count == 0
+    assert receipt_count == 0
+
+
+def test_start_run_service_reserved_run_enqueues_and_starts_normally(tmp_path: Path) -> None:
+    database_path = tmp_path / "coordinator-reserve-success.db"
+    _seed_conversation_database(database_path)
+    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+    query_service = QueryService(
+        database_path=database_path,
+        connection_factory=connect_sqlite,
+        runtime_status_provider=None,  # type: ignore[arg-type]
+    )
+
+    runtime = FakeWorkflowRuntime()
+    runtime.queue_result(
+        WorkflowInvocationResult(
+            run_id="run-ok",
+            workflow_key="thread-run-ok",
+            outcome=WorkflowOutcome.ACCEPTED,
+            payload={"phase": "ANALYZING"},
+        )
+    )
+    coordinator = LocalRunCoordinator(
+        query_service=query_service,
+        unit_of_work_factory=unit_of_work_factory,
+        workflow_runtime=runtime,
+        event_publisher=InMemoryRunEventPublisher(
+            service_instance_id="service-1",
+            capacity_per_run=8,
+        ),
+        now_ms=lambda: 4000,
+        api_contract_version="1",
+    )
+    coordinator.start()
+
+    service = StartRunService(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=lambda: 4000,
+        reserve_queue_slot=lambda run_id: coordinator.reserve_start(run_id=run_id),
+        release_queue_slot=lambda run_id: coordinator.release_reservation(run_id=run_id),
+    )
+
+    result = service(
+        _start_run_command(command_id="command-ok", run_id="run-ok", request_hash="b1" * 32)
+    )
+    assert result.applied is True
+    assert result.enqueued is True
+
+    coordinator.confirm_start(run_id="run-ok", request_id="request-ok", command_id="command-ok")
+
+    deadline = time.time() + 2
+    while not runtime.call_log and time.time() < deadline:
+        time.sleep(0.01)
+    coordinator.stop()
+
+    assert len(runtime.call_log) == 1
+    assert runtime.call_log[0].operation == "start"
+
+
+def test_start_run_service_replay_skips_reservation_and_creates_no_duplicate_run(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "coordinator-reserve-replay.db"
+    _seed_conversation_database(database_path)
+    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+
+    reserve_calls: list[str] = []
+
+    def reserve(run_id: str) -> bool:
+        reserve_calls.append(run_id)
+        return True
+
+    service = StartRunService(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=lambda: 5000,
+        reserve_queue_slot=reserve,
+        release_queue_slot=lambda run_id: None,
+    )
+    command = _start_run_command(
+        command_id="command-replay", run_id="run-replay", request_hash="c1" * 32
+    )
+
+    first = service(command)
+    second = service(command)
+
+    assert first.applied is True
+    assert first.enqueued is True
+    assert first.request_replayed is False
+    assert second.applied is True
+    assert second.enqueued is False
+    assert second.request_replayed is True
+    assert reserve_calls == ["run-replay"]
+
+    connection = connect_sqlite(database_path)
+    try:
+        run_count = connection.execute(
+            "SELECT COUNT(*) FROM runs WHERE id = 'run-replay';"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert run_count == 1
+
+
+def _bounded_coordinator(*, capacity: int) -> LocalRunCoordinator:
+    return LocalRunCoordinator(
+        query_service=_QueryStub("CREATED"),  # type: ignore[arg-type]
+        unit_of_work_factory=lambda: None,  # type: ignore[arg-type,return-value]
+        workflow_runtime=FakeWorkflowRuntime(),
+        event_publisher=InMemoryRunEventPublisher(
+            service_instance_id="service-1",
+            capacity_per_run=8,
+        ),
+        now_ms=lambda: 1000,
+        api_contract_version="1",
+        capacity=capacity,
+    )
+
+
+def test_outstanding_reservation_blocks_other_producers_from_stealing_the_slot() -> None:
+    """The core TOCTOU fix (test A): while a start reservation is held
+    (before confirm_start), no other producer -- resume/recover/cancel --
+    can claim the one remaining physical queue slot. Otherwise
+    confirm_start would fail after the paired StartRunService DB commit
+    already happened, leaving a CREATED orphan behind.
+    """
+    coordinator = _bounded_coordinator(capacity=1)
+
+    assert coordinator.reserve_start(run_id="run-a") is True
+
+    with pytest.raises(QueueBusyError):
+        coordinator.enqueue_resume(
+            run_id="run-other",
+            request_id="request-other",
+            command_id="command-other",
+            resume_kind="REAUTH_COMPLETED",
+            resume_payload={},
+        )
+
+    # The reservation still holds its slot -- confirming it must succeed.
+    coordinator.confirm_start(run_id="run-a", request_id="request-a", command_id="command-a")
+
+
+def test_release_reservation_frees_the_slot_for_a_different_producer() -> None:
+    """Test B: releasing an unconfirmed reservation returns its capacity so
+    a different producer can use it.
+    """
+    coordinator = _bounded_coordinator(capacity=1)
+
+    assert coordinator.reserve_start(run_id="run-a") is True
+    coordinator.release_reservation(run_id="run-a")
+
+    coordinator.enqueue_resume(
+        run_id="run-other",
+        request_id="request-other",
+        command_id="command-other",
+        resume_kind="REAUTH_COMPLETED",
+        resume_payload={},
+    )
+
+    # The freed slot is now occupied by run-other, not empty again.
+    assert coordinator.reserve_start(run_id="run-yet-another") is False
+
+
+def test_concurrent_reserve_start_calls_only_admit_up_to_capacity() -> None:
+    """Test C: N concurrent reserve_start calls against a smaller capacity
+    admit exactly `capacity` of them, never more.
+    """
+    capacity = 2
+    run_ids = [f"run-{index}" for index in range(5)]
+    coordinator = _bounded_coordinator(capacity=capacity)
+    barrier = Barrier(len(run_ids))
+    results: dict[str, bool] = {}
+    results_lock = Lock()
+
+    def attempt(run_id: str) -> None:
+        barrier.wait(timeout=5)
+        admitted = coordinator.reserve_start(run_id=run_id)
+        with results_lock:
+            results[run_id] = admitted
+
+    threads = [Thread(target=attempt, args=(run_id,)) for run_id in run_ids]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert len(results) == len(run_ids)
+    assert sum(1 for admitted in results.values() if admitted) == capacity
+
+
+def test_confirm_start_atomically_converts_reservation_into_queue_occupancy() -> None:
+    """Test D: confirm_start must transfer the reservation's claim on
+    capacity to the real queue item, not release it -- the slot stays
+    fully consumed across the reservation-to-queue-item conversion.
+    """
+    coordinator = _bounded_coordinator(capacity=1)
+
+    assert coordinator.reserve_start(run_id="run-a") is True
+    coordinator.confirm_start(run_id="run-a", request_id="request-a", command_id="command-a")
+
+    assert coordinator.reserve_start(run_id="run-b") is False
+
+
+def test_concurrent_producer_cannot_steal_a_reserved_slot_during_the_commit_gap() -> None:
+    """Reproduces the exact TOCTOU with real concurrent threads: thread 1
+    reserves a start slot and pauses (simulating the StartRunService DB
+    commit window) while thread 2 concurrently tries to enqueue something
+    else into the same one-slot queue. Thread 2 must be rejected, and
+    thread 1's confirm must still succeed once it resumes -- proving the
+    reservation genuinely holds the slot across the gap instead of being a
+    stale precheck that a concurrent producer can slip past.
+    """
+    coordinator = _bounded_coordinator(capacity=1)
+    reserved_event = Event()
+    proceed_event = Event()
+    other_producer_result: dict[str, object] = {}
+
+    def start_flow() -> None:
+        assert coordinator.reserve_start(run_id="run-a") is True
+        reserved_event.set()
+        assert proceed_event.wait(timeout=5)
+        coordinator.confirm_start(run_id="run-a", request_id="request-a", command_id="command-a")
+
+    def other_producer() -> None:
+        assert reserved_event.wait(timeout=5)
+        try:
+            coordinator.enqueue_resume(
+                run_id="run-b",
+                request_id="request-b",
+                command_id="command-b",
+                resume_kind="REAUTH_COMPLETED",
+                resume_payload={},
+            )
+        except QueueBusyError as error:
+            other_producer_result["error"] = error
+        finally:
+            proceed_event.set()
+
+    start_thread = Thread(target=start_flow)
+    other_thread = Thread(target=other_producer)
+    start_thread.start()
+    other_thread.start()
+    start_thread.join(timeout=5)
+    other_thread.join(timeout=5)
+
+    assert isinstance(other_producer_result.get("error"), QueueBusyError)
+
+
+def test_start_run_service_hash_mismatch_emits_exactly_one_rejection_event(
+    tmp_path: Path,
+) -> None:
+    """A/B: StartRunService is one of the direct resolve_json_receipt callers
+    (run_command_receipts.py) not covered by the first observability pass.
+    It now routes through the shared resolve_existing_receipt wrapper, so a
+    genuine different-hash conflict records exactly one
+    COMMAND_REJECTED_HASH_MISMATCH event, and a same-hash idempotent replay
+    records none.
+    """
+    database_path = tmp_path / "start-run-hash-mismatch.db"
+    _seed_conversation_database(database_path)
+    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+    service = StartRunService(unit_of_work_factory=unit_of_work_factory, now_ms=lambda: 9000)
+
+    first = service(
+        _start_run_command(command_id="command-hash-a", run_id="run-hash-a", request_hash="d1" * 32)
+    )
+    assert first.applied is True
+
+    replay = service(
+        _start_run_command(command_id="command-hash-a", run_id="run-hash-a", request_hash="d1" * 32)
+    )
+    assert replay.request_replayed is True
+    connection = connect_sqlite(database_path)
+    try:
+        replay_count = connection.execute(
+            "SELECT COUNT(*) FROM audit_events "
+            "WHERE event_type = 'COMMAND_REJECTED_HASH_MISMATCH';"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert replay_count == 0
+
+    conflict = service(
+        _start_run_command(command_id="command-hash-a", run_id="run-hash-a", request_hash="d2" * 32)
+    )
+    assert conflict.result_code == "DUPLICATE_COMMAND"
+
+    connection = connect_sqlite(database_path)
+    try:
+        rows = connection.execute(
+            "SELECT metadata_json FROM audit_events "
+            "WHERE event_type = 'COMMAND_REJECTED_HASH_MISMATCH';"
+        ).fetchall()
+    finally:
+        connection.close()
+    assert len(rows) == 1
+    envelope = loads(rows[0][0])
+    assert envelope["attributes"]["command_id"] == "command-hash-a"
+    assert envelope["attributes"]["command_type"] == "StartRun"
+    assert envelope["correlation"]["run_id"] == "run-hash-a"

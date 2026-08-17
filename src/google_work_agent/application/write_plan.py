@@ -14,6 +14,9 @@ from google_work_agent.application.write_persistence import (
     audit_event as _audit_event,
 )
 from google_work_agent.application.write_persistence import (
+    emit_command_rejected_hash_mismatch as _emit_command_rejected_hash_mismatch,
+)
+from google_work_agent.application.write_persistence import (
     finish_json_receipt as _finish_json_receipt,
 )
 from google_work_agent.application.write_persistence import (
@@ -74,6 +77,7 @@ class SaveWritePlanService:
                     request_hash=command.request_hash,
                     plan_id=command.plan_id,
                     run_id=command.run_id,
+                    now_ms=self._now_ms(),
                     response_type=SaveWritePlanResponse,
                 )
 
@@ -266,6 +270,7 @@ class PublishWritePlanService:
                     request_hash=command.request_hash,
                     plan_id=command.plan_id,
                     run_id=command.run_id,
+                    now_ms=self._now_ms(),
                     response_type=PublishWritePlanResponse,
                 )
 
@@ -413,8 +418,17 @@ def resolve_existing_save_receipt(
     plan_id: str,
     run_id: str,
     response_type: type[SaveWritePlanResponse],
+    now_ms: int,
 ) -> SaveWritePlanResponse:
-    del unit_of_work, plan_id, run_id
+    del plan_id
+    if receipt.request_hash != request_hash:
+        _emit_command_rejected_hash_mismatch(
+            unit_of_work=unit_of_work,
+            receipt=receipt,
+            run_id=run_id,
+            action_id=None,
+            now_ms=now_ms,
+        )
     return cast(
         SaveWritePlanResponse,
         _resolve_json_receipt(
@@ -433,8 +447,17 @@ def resolve_existing_plan_receipt(
     plan_id: str,
     run_id: str,
     response_type: type[PublishWritePlanResponse],
+    now_ms: int,
 ) -> PublishWritePlanResponse:
-    del unit_of_work, plan_id, run_id
+    del plan_id
+    if receipt.request_hash != request_hash:
+        _emit_command_rejected_hash_mismatch(
+            unit_of_work=unit_of_work,
+            receipt=receipt,
+            run_id=run_id,
+            action_id=None,
+            now_ms=now_ms,
+        )
     return cast(
         PublishWritePlanResponse,
         _resolve_json_receipt(

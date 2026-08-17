@@ -139,6 +139,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
                 "start": lambda self: None,
                 "stop": lambda self: None,
                 "enqueue_start": lambda self, **kwargs: None,
+                "confirm_start": lambda self, **kwargs: None,
                 "enqueue_resume": lambda self, **kwargs: None,
                 "request_cancel": lambda self, **kwargs: None,
             },

@@ -314,6 +314,7 @@ class WriteExecutionPhaseCoordinator:
                         run_id=request.run_id,
                         action_id=request.action_id,
                         safe_error_code=error.code.value,
+                        mcp_request_id=error.mcp_request_id,
                     )
                 )
                 return WriteActionResponse(
@@ -376,6 +377,7 @@ class WriteExecutionPhaseCoordinator:
                     run_id=request.run_id,
                     action_id=request.action_id,
                     safe_error_code=error.code.value,
+                    mcp_request_id=error.mcp_request_id,
                 )
             )
             return WriteExecutionPhaseResult(
@@ -395,6 +397,7 @@ class WriteExecutionPhaseCoordinator:
                     expected_attempt_version=0,
                     error_code=error.code.value,
                     error_detail=str(error),
+                    mcp_request_id=error.mcp_request_id,
                 )
             )
             return WriteExecutionPhaseResult(
@@ -448,6 +451,7 @@ class WriteExecutionPhaseCoordinator:
                     run_id=request.run_id,
                     action_id=request.action_id,
                     safe_error_code=error.code.value,
+                    mcp_request_id=error.mcp_request_id,
                 )
             )
             return WriteExecutionPhaseResult(

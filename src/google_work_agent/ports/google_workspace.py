@@ -139,7 +139,15 @@ class DeliveryCertainty(StrEnum):
 
 
 class GoogleWorkspaceGatewayError(RuntimeError):
-    """Gateway error that preserves delivery and mutation semantics."""
+    """Gateway error that preserves delivery and mutation semantics.
+
+    ``mcp_request_id`` is transport-level correlation metadata (which MCP
+    request this failure came from), not a Google-provider-specific
+    request id -- Core is not expected to interpret it beyond correlating
+    it back to the originating MCP call. It is optional because non-MCP
+    gateway implementations (e.g. fakes) have no such transport to
+    correlate against.
+    """
 
     def __init__(
         self,
@@ -148,11 +156,13 @@ class GoogleWorkspaceGatewayError(RuntimeError):
         message: str,
         delivered: bool,
         mutated: bool,
+        mcp_request_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.delivered = delivered
         self.mutated = mutated
+        self.mcp_request_id = mcp_request_id
         self.delivery_certainty = (
             DeliveryCertainty.NOT_SENT
             if not delivered

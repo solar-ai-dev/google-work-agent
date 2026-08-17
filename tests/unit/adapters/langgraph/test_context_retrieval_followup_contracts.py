@@ -18,6 +18,7 @@ from google_work_agent.adapters.langgraph.subgraphs.context_retrieval import (
     ContextRetrieverSubgraph,
 )
 from google_work_agent.application.ports import ConnectorReadResult
+from google_work_agent.application.workflows import build_default_run_budget
 from google_work_agent.application.workflows.api_acquisition import (
     RetrievalBudget,
     retrieval_query_hash,
@@ -71,9 +72,9 @@ class _Planner:
     result: dict[str, object]
     calls: int = 0
 
-    def plan(self, **_: object) -> dict[str, object]:
+    def plan(self, *, retry_budget: object, **_: object) -> tuple[dict[str, object], object]:
         self.calls += 1
-        return self.result
+        return self.result, retry_budget
 
 
 @dataclass
@@ -360,6 +361,7 @@ def _subgraph(
     subgraph._retrieval_query_planner = cast(Any, planner)  # noqa: SLF001
     subgraph._source_fetch_plan_builder = SourceFetchPlanBuilder()  # noqa: SLF001
     subgraph._id_factory = lambda: "attempt-1"  # noqa: SLF001
+    subgraph._default_tasklist_id_provider = None  # noqa: SLF001
     return subgraph
 
 
@@ -388,6 +390,7 @@ def _state() -> dict[str, object]:
         },
         CONTEXT_CURRENT_ROUND_NO_KEY: 0,
         CONTEXT_QUERY_ATTEMPTS_KEY: [],
+        "retry_budget": build_default_run_budget(),
     }
 
 

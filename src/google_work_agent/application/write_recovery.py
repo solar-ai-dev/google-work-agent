@@ -131,6 +131,7 @@ class MarkWriteActionUnknownResultService:
                     receipt=existing,
                     request_hash=command.request_hash,
                     action_id=command.action_id,
+                    now_ms=self._now_ms(),
                 )
 
             now_ms = self._now_ms()
@@ -162,6 +163,18 @@ class MarkWriteActionUnknownResultService:
                     "write action mark_unknown_result transition failed after attempt update"
                 )
             run = unit_of_work.runs.set_recovery_required(plan.run_id)
+            unknown_result_trace_payload: dict[str, object] = {
+                "attempt_id": attempt.id,
+                "error_code": command.error_code,
+                "run_status": run.status.value,
+            }
+            unknown_result_audit_metadata: dict[str, object] = {
+                "attempt_id": attempt.id,
+                "error_code": command.error_code,
+            }
+            if command.mcp_request_id is not None:
+                unknown_result_trace_payload["mcp_request_id"] = command.mcp_request_id
+                unknown_result_audit_metadata["mcp_request_id"] = command.mcp_request_id
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=plan.run_id,
@@ -169,14 +182,7 @@ class MarkWriteActionUnknownResultService:
                     event_type="WRITE_ACTION_UNKNOWN_RESULT",
                     status=ActionStatus.UNKNOWN_RESULT.value,
                     duration_ms=None,
-                    payload_json=dumps(
-                        {
-                            "attempt_id": attempt.id,
-                            "error_code": command.error_code,
-                            "run_status": run.status.value,
-                        },
-                        sort_keys=True,
-                    ),
+                    payload_json=dumps(unknown_result_trace_payload, sort_keys=True),
                     created_at_ms=now_ms,
                 )
             )
@@ -186,7 +192,7 @@ class MarkWriteActionUnknownResultService:
                     action_id=action.id,
                     event_type="WRITE_UNKNOWN_RESULT",
                     outcome=ResultCode.TRANSITION_APPLIED.value,
-                    metadata={"attempt_id": attempt.id, "error_code": command.error_code},
+                    metadata=unknown_result_audit_metadata,
                     created_at_ms=now_ms,
                 )
             )
@@ -227,6 +233,7 @@ class RecoverExistingWriteResultService:
                     receipt=existing,
                     request_hash=command.request_hash,
                     action_id=command.action_id,
+                    now_ms=self._now_ms(),
                 )
 
             now_ms = self._now_ms()
@@ -361,6 +368,7 @@ class ResolveUnknownWriteAsFailedService:
                     receipt=existing,
                     request_hash=command.request_hash,
                     action_id=command.action_id,
+                    now_ms=self._now_ms(),
                 )
             now_ms = self._now_ms()
             unit_of_work.command_receipts.add_received(
@@ -653,6 +661,7 @@ class RecoverUnknownUpdateActionService:
                     receipt=existing,
                     request_hash=command.request_hash,
                     action_id=command.action_id,
+                    now_ms=self._now_ms(),
                 )
             action = _require_action(unit_of_work, command.action_id)
             attempt = _require_attempt(unit_of_work, command.attempt_id)
@@ -729,6 +738,7 @@ class PrepareWriteRetryService:
                     receipt=existing,
                     request_hash=command.request_hash,
                     action_id=command.action_id,
+                    now_ms=self._now_ms(),
                 )
             now_ms = self._now_ms()
             unit_of_work.command_receipts.add_received(
@@ -815,6 +825,7 @@ class ResolveMismatchRecoveryService:
                     receipt=existing,
                     request_hash=command.request_hash,
                     run_id=command.run_id,
+                    now_ms=self._now_ms(),
                 )
 
             now_ms = self._now_ms()
@@ -829,7 +840,14 @@ class ResolveMismatchRecoveryService:
             run = _require_run(unit_of_work, command.run_id)
             action = _require_action(unit_of_work, command.action_id)
             plan = _require_plan(unit_of_work, action.plan_id)
-            if plan.run_id != run.id or action.status != ActionStatus.MISMATCH.value:
+            # FAIL is a general "recovery is unresolvable" exit shared by every
+            # RECOVERY_REQUIRED reason (MISMATCH, UNKNOWN_RESULT, CONTRACT_VIOLATION,
+            # ...), unlike ACCEPT_PARTIAL/CREATE_CORRECTIVE_PLAN which only make sense
+            # against a specific MISMATCH action -- so it does not require one.
+            requires_mismatch_action = command.resolution_kind is not RecoveryResolutionKind.FAIL
+            if plan.run_id != run.id or (
+                requires_mismatch_action and action.status != ActionStatus.MISMATCH.value
+            ):
                 response = WriteRunResponse(
                     applied=False,
                     result_code=ResultCode.STATE_CONFLICT.value,
@@ -838,7 +856,11 @@ class ResolveMismatchRecoveryService:
                     run_version=run.version,
                     plan_id=plan.id,
                     plan_status=plan.status.value,
-                    conflict_detail="recovery requires a MISMATCH action owned by the run",
+                    conflict_detail=(
+                        "recovery requires a MISMATCH action owned by the run"
+                        if requires_mismatch_action
+                        else "recovery requires an action owned by the run"
+                    ),
                 )
                 return _finish_recovery_response(
                     unit_of_work=unit_of_work,
@@ -857,7 +879,7 @@ class ResolveMismatchRecoveryService:
                     plan_id=plan.id,
                     plan_status=plan.status.value,
                     conflict_detail=(
-                        "ACCEPT_PARTIAL and CREATE_CORRECTIVE_PLAN require "
+                        "ACCEPT_PARTIAL, CREATE_CORRECTIVE_PLAN, and FAIL require "
                         "cancel_intent_active=false; use CANCEL instead"
                     ),
                 )
@@ -868,11 +890,10 @@ class ResolveMismatchRecoveryService:
                     now_ms=now_ms,
                 )
 
-            next_status = (
-                RunStatus.COMPLETED
-                if command.resolution_kind is RecoveryResolutionKind.ACCEPT_PARTIAL
-                else RunStatus.PLANNING
-            )
+            next_status = {
+                RecoveryResolutionKind.ACCEPT_PARTIAL: RunStatus.COMPLETED,
+                RecoveryResolutionKind.FAIL: RunStatus.FAILED,
+            }.get(command.resolution_kind, RunStatus.PLANNING)
             preview = transition_run(
                 run.status,
                 command=RunCommand.RESOLVE_RECOVERY,
@@ -909,6 +930,13 @@ class ResolveMismatchRecoveryService:
                 result_plan = plan.id
                 result_plan_status = PlanStatus.COMPLETED.value
                 result_kind = "PARTIAL"
+            elif command.resolution_kind is RecoveryResolutionKind.FAIL:
+                # No Plan/Action mutation -- FAIL only closes the Run terminal
+                # status. Existing Action facts (including already-VERIFIED
+                # ones) and the current Plan are preserved exactly as-is.
+                result_plan = plan.id
+                result_plan_status = plan.status.value
+                result_kind = "FAILED"
             else:
                 if not command.corrective_plan_id:
                     raise ValueError("corrective_plan_id is required for CREATE_CORRECTIVE_PLAN")
@@ -937,7 +965,9 @@ class ResolveMismatchRecoveryService:
                 run.id,
                 expected_version=command.expected_run_version,
                 recovery_next_status=next_status,
-                finished_at_ms=now_ms if next_status is RunStatus.COMPLETED else None,
+                finished_at_ms=(
+                    now_ms if next_status in {RunStatus.COMPLETED, RunStatus.FAILED} else None
+                ),
             )
             if not resolved.applied:
                 raise RuntimeError("validated recovery transition was not applied")
@@ -999,6 +1029,7 @@ class RequireWriteReauthService:
                     receipt=existing,
                     request_hash=command.request_hash,
                     run_id=command.run_id,
+                    now_ms=self._now_ms(),
                 )
             now_ms = self._now_ms()
             unit_of_work.command_receipts.add_received(
@@ -1011,6 +1042,11 @@ class RequireWriteReauthService:
             )
             updated_run = unit_of_work.runs.set_reauth_required(command.run_id)
             plan = _require_latest_plan_for_run(unit_of_work, command.run_id)
+            reauth_trace_payload: dict[str, object] = {"safe_error_code": command.safe_error_code}
+            reauth_audit_metadata: dict[str, object] = {"safe_error_code": command.safe_error_code}
+            if command.mcp_request_id is not None:
+                reauth_trace_payload["mcp_request_id"] = command.mcp_request_id
+                reauth_audit_metadata["mcp_request_id"] = command.mcp_request_id
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=command.run_id,
@@ -1018,10 +1054,7 @@ class RequireWriteReauthService:
                     event_type="RUN_REAUTH_REQUIRED",
                     status=updated_run.status.value,
                     duration_ms=None,
-                    payload_json=dumps(
-                        {"safe_error_code": command.safe_error_code},
-                        sort_keys=True,
-                    ),
+                    payload_json=dumps(reauth_trace_payload, sort_keys=True),
                     created_at_ms=now_ms,
                 )
             )
@@ -1031,7 +1064,7 @@ class RequireWriteReauthService:
                     action_id=command.action_id,
                     event_type="RUN_REAUTH_REQUIRED",
                     outcome=ResultCode.TRANSITION_APPLIED.value,
-                    metadata={"safe_error_code": command.safe_error_code},
+                    metadata=reauth_audit_metadata,
                     created_at_ms=now_ms,
                 )
             )

@@ -19,7 +19,7 @@ from google_work_agent.adapters.persistence.errors import (
 OFFICIAL_NORMALIZED_CHECKSUM = "77386baca1badadd6a79860823250836f7a6464e7f01bd865c3a84af094aa928"
 OFFICIAL_V2_NORMALIZED_CHECKSUM = "0cbd43fbaa351b19540128f860c4e88e827b263329b102cbe9016c1190145624"
 RUNTIME_MIGRATIONS_DIR = Path("src/google_work_agent/adapters/persistence/migrations")
-DOCUMENTATION_MIGRATIONS_DIR = Path("docs")
+DOCUMENTATION_MIGRATIONS_DIR = Path("docs/database/migrations")
 
 
 def test_lf_and_crlf_sql_have_same_official_checksum() -> None:

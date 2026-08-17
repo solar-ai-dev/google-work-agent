@@ -50,6 +50,7 @@ class RequestRunCancellationService:
                     receipt=existing,
                     request_hash=command.request_hash,
                     run_id=command.run_id,
+                    now_ms=self._now_ms(),
                 )
             now_ms = self._now_ms()
             unit_of_work.command_receipts.add_received(
@@ -180,6 +181,7 @@ class FinalizeRunCancellationService:
                     receipt=existing,
                     request_hash=command.request_hash,
                     run_id=command.run_id,
+                    now_ms=self._now_ms(),
                 )
             now_ms = self._now_ms()
             unit_of_work.command_receipts.add_received(

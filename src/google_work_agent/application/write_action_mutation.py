@@ -29,7 +29,7 @@ from google_work_agent.application.run_command_receipts import (
     finish_json_receipt as _finish_json_receipt,
 )
 from google_work_agent.application.run_command_receipts import (
-    resolve_json_receipt as _resolve_json_receipt,
+    resolve_existing_receipt as _resolve_existing_receipt,
 )
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
@@ -136,10 +136,13 @@ class ModifyWriteActionService:
                     asdict(
                         cast(
                             _ActionMutationResponse,
-                            _resolve_json_receipt(
+                            _resolve_existing_receipt(
+                                unit_of_work=unit_of_work,
                                 receipt=existing,
                                 request_hash=command.request_hash,
                                 response_type=_ActionMutationResponse,
+                                action_id=command.action_id,
+                                now_ms=self._now_ms(),
                             ),
                         )
                     ),
@@ -191,10 +194,13 @@ class ModifyWriteActionService:
                     asdict(
                         cast(
                             _ActionMutationResponse,
-                            _resolve_json_receipt(
+                            _resolve_existing_receipt(
+                                unit_of_work=unit_of_work,
                                 receipt=existing,
                                 request_hash=command.request_hash,
                                 response_type=_ActionMutationResponse,
+                                action_id=command.action_id,
+                                now_ms=self._now_ms(),
                             ),
                         )
                     ),
@@ -733,10 +739,13 @@ class RejectWriteActionService:
                     asdict(
                         cast(
                             _ActionMutationResponse,
-                            _resolve_json_receipt(
+                            _resolve_existing_receipt(
+                                unit_of_work=unit_of_work,
                                 receipt=existing,
                                 request_hash=command.request_hash,
                                 response_type=_ActionMutationResponse,
+                                action_id=command.action_id,
+                                now_ms=self._now_ms(),
                             ),
                         )
                     ),
@@ -885,10 +894,13 @@ def _mutate_write_action(
                 asdict(
                     cast(
                         _ActionMutationResponse,
-                        _resolve_json_receipt(
+                        _resolve_existing_receipt(
+                            unit_of_work=unit_of_work,
                             receipt=existing,
                             request_hash=request_hash,
                             response_type=_ActionMutationResponse,
+                            action_id=action_id,
+                            now_ms=now_ms(),
                         ),
                     )
                 ),

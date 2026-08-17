@@ -155,7 +155,7 @@ def test_resume_rejects_arbitrary_payload_and_confirmation_kind() -> None:
         ResumeRunRequestV2.model_validate({**base, "resume_kind": "CONFIRMATION"})
 
 
-def test_recovery_schema_allows_only_two_canonical_choices() -> None:
+def test_recovery_schema_allows_only_three_canonical_choices() -> None:
     base = {
         "command_id": "recovery-1",
         "expected_version": 4,
@@ -164,6 +164,10 @@ def test_recovery_schema_allows_only_two_canonical_choices() -> None:
         "api_contract_version": VERSION,
     }
     assert ResolveRecoveryRequestV1.model_validate(base)
+    assert ResolveRecoveryRequestV1.model_validate(
+        {**base, "resolution_kind": "CREATE_CORRECTIVE_PLAN"}
+    )
+    assert ResolveRecoveryRequestV1.model_validate({**base, "resolution_kind": "FAIL"})
 
     with pytest.raises(ValidationError):
         ResolveRecoveryRequestV1.model_validate({**base, "resolution_kind": "RETRY_WRITE"})
