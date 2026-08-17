@@ -1,16 +1,11 @@
-"""G3 Final Closure: retrieval.plan_query SEMANTIC_REVISION dedup.
-
-RetrievalQueryPlannerAgent has no other dedicated unit test file (it is
-otherwise exercised only through the SIX_ROLE_BASELINE integration suite),
-so this file covers only the RunBudgetV1 wiring this task adds: the
-same-node/same-failure-signature dedup gate around ``_revise_plan_once``.
-"""
+"""G3 Final Closure: retrieval.plan_query SEMANTIC_REVISION dedup and envelope."""
 
 from __future__ import annotations
 
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from typing import cast
 
 import pytest
 
@@ -110,13 +105,6 @@ _INVALID_PLAN: dict[str, object] = {
 
 
 def test_plan_query_semantic_revision_dedup_blocks_second_occurrence_after_resume() -> None:
-    """G3 Final Closure G/H/I: retrieval.plan_query's SEMANTIC_REVISION retry
-    is deduped Run-wide via approve_semantic_revision. A retry_budget that
-    already carries this node's failure signature -- exactly what a
-    resumed/re-entered Run or a freshly recreated runtime reading the
-    checkpointed retry_budget would have -- denies the revise attempt before
-    any Provider call, even on the very first plan() invocation this
-    process/runtime instance ever makes."""
     signature = build_semantic_failure_signature_v1(
         node_id="retrieval.plan_query",
         failure_reason_codes=["RETRIEVAL_QUERY_PLAN_SEMANTIC_INVALID"],
@@ -144,14 +132,10 @@ def test_plan_query_semantic_revision_dedup_blocks_second_occurrence_after_resum
             retry_budget=already_used_budget,
         )
 
-    # Only the initial call was made -- the revise attempt was denied before
-    # any second Provider call.
     assert len(runtime.calls) == 1
 
 
 def test_plan_query_semantic_revision_allowed_on_first_occurrence() -> None:
-    """Sanity check for the dedup test above: a fresh budget (no prior
-    signature) does let the bounded one revise attempt happen."""
     runtime = _FakeLLMRuntime()
     runtime.queued.append(_llm_result(_INVALID_PLAN))
     runtime.queued.append(_llm_result(_INVALID_PLAN))
@@ -161,15 +145,33 @@ def test_plan_query_semantic_revision_allowed_on_first_occurrence() -> None:
         output_schema=_OUTPUT_SCHEMA,
         revision_prompt_ref=_REVISION_PROMPT_REF,
     )
+    base_projection = {
+        "request_intent": {"schema_version": 2},
+        "input_routes": [],
+        "retrieval_budget": {"max_rounds": 1},
+    }
 
     with pytest.raises(RetrievalV2ValidationError, match="route_queries must be non-empty"):
         agent.plan(
-            prompt_input={},
+            prompt_input=base_projection,
             trace_context=ObservabilityContext(run_id="run-1", llm_call_id="llm-1"),
             frozen_routes=[],
             route_policies={},
             retry_budget=build_default_run_budget(),
         )
 
-    # Initial call + one bounded revise attempt, both consumed from the queue.
     assert len(runtime.calls) == 2
+    revision_input = cast(dict[str, object], runtime.calls[1]["prompt_input"])
+    assert set(revision_input) == {"base_projection", "candidate_output", "failure_record"}
+    assert revision_input["base_projection"] == base_projection
+    assert revision_input["candidate_output"] == _INVALID_PLAN
+    failure_record = cast(dict[str, object], revision_input["failure_record"])
+    assert failure_record["failure_reason_code"] == "RETRIEVAL_QUERY_PLAN_SEMANTIC_INVALID"
+    assert failure_record["affected_fields"] == [
+        "$.route_queries",
+        "$.required_information",
+        "$.retrieval_order",
+    ]
+    assert failure_record["allowed_change_scope"] == failure_record["affected_fields"]
+    assert "previous_output" not in revision_input
+    assert "failure_reason" not in revision_input
