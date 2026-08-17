@@ -2,7 +2,7 @@
 
 > **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.13`, `07 Interface v2.20`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v7.16 · **기준일:** 2026-08-15 · **DB Schema:** v1.6 · **대상:** P0 MVP
+> **상태:** Draft v7.17 · **기준일:** 2026-08-18 · **DB Schema:** v1.6 · **대상:** P0 MVP
 >
 > Main LangGraph는 결정적 Supervisor와 Versioned Typed Main State를 소유한다. 전문 Agent는 LangGraph Subgraph이며 Parent State에서 자기 책임에 필요한 필드만 Projection 받아 Local State를 단계적으로 채우고, 완료 시 공식 Typed Result만 Main State에 병합한다. Schema는 출력 가능 범위를 통제하고, State는 확정 정보를 기억하며, Prompt는 각 LLM Node의 단일 작업만 지시한다. 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -753,6 +753,13 @@ Review inspect                ← request_intent + action_plan + evidence/policy
 
 Node는 자신의 Output Schema에 필요한 최소 State만 본다. Request Subgraph는 `run_input`을 projection하고, Back-edge로 재진입한 Subgraph는 필요한 `workflow_signal`만 추가 projection한다.
 
+### 4.3-A Prompt Runtime Contract Closure (2026-08-18)
+
+- Retrieval Product Prompt에는 raw `user_request`를 별도 권위 입력으로 재주입하지 않는다.
+- `select_evidence`는 `request_intent + ranked/top RAG candidates`만 소비한다.
+- `assess_sufficiency`도 Retrieval 내부의 typed intent/evidence projection만 소비한다.
+- Prompt Slot topology는 Workflow가 숫자로 소유하지 않는다. 실제 Runtime caller와 deterministic owner를 기준으로 `15 Prompt Contract`가 Active/Retired PromptRef를 정규화한다.
+
 ### 4.4 Local Loop
 
 - Schema Repair는 해당 Node의 Output Shape만 고친다.
@@ -931,8 +938,8 @@ Node 입력:
 - `execute_read`: 검증된 Query + `allowed_read_tool_ids` — deterministic
 - `normalize_segment`: Read Result Handle — deterministic
 - `rag_retrieve_rerank`: `request_intent + segment_handles`
-- `select_evidence`: `user_request + request_intent + top rag candidates`
-- `assess_sufficiency`: `user_request + request_intent + selected evidence`
+- `select_evidence`: `request_intent + top rag candidates`
+- `assess_sufficiency`: `request_intent + selected evidence`
 
 같은 IN Route 안에서 Query·Page·상세 조회를 추가하는 것은 Retrieval Subgraph Local Loop다. 새로운 Provider/Resource Route가 필요하면 `ROUTE_RECONSIDERATION_REQUIRED`를 Parent에 반환한다.
 
@@ -1157,20 +1164,13 @@ SEMANTIC_REVISION_SAME_FAILURE=1
 MAX_ADDITIONAL_RETRIEVAL_ROUNDS=2
 PLANNING_REVISION_PER_RUN=2
 REVIEW_RECHECK_PER_PLANNING_REVISION=1
-NORMAL_MAX_LLM_CALLS=8
-RETRIEVAL_HEAVY_MAX_LLM_CALLS=14
-REVISION_HEAVY_MAX_LLM_CALLS=12
+NORMAL_TARGET_LLM_CALLS<=10
 ABSOLUTE_MAX_LLM_CALLS=16
 ```
 
 - 책임 분리를 위해 Subgraph 내부 Node 수가 증가해도 모든 Node가 LLM Call일 필요는 없다.
 - Query Builder, Registry Binding, Read 실행, Segment Normalize, Plan Assembly, Validator는 결정적 코드 우선이다.
 - LLM Call 수가 Agent 수 또는 Node 수와 같다고 가정하지 않는다.
-- 기본 Profile은 `NORMAL`이다.
-- `REVISION_HEAVY`는 다음 중 하나가 실제 발생했을 때만 승격한다: (1) Review가 `REVISE`를 반환하고 Domain·Policy가 Planning Revision을 허용, (2) 이미 Review `PASS`된 Action/Plan을 사용자가 Modify하여 기존 Review가 무효화되고 mandatory Modify Review가 필요한 경우. 두 조건 모두 `PLANNING_REVISION_PER_RUN` 카운터를 공유하며 별도 카운터를 두지 않는다. Modify Review는 재-Review 호출 자체가 Domain 안전 Gate이므로 호출 전에 승격할 수 있다. Confirmation만으로는 승격하지 않는다.
-- `RETRIEVAL_HEAVY`는 `NEEDS_MORE_DATA` 또는 Additional Retrieval이 실제 발생한 경우에만 승격한다.
-- Revision Heavy 조건과 Retrieval Heavy 조건이 동일 Run에서 모두 실제 발생하면 effective cap은 `ABSOLUTE_MAX_LLM_CALLS`(16)이다. 새 Profile 값을 만들지 않고 기존 `planning_revisions_used`·`additional_acquisitions_used` 카운터가 모두 0을 넘는지로 결정적으로 판단한다.
-- `ABSOLUTE_MAX_LLM_CALLS`를 넘으면 어떤 경로에서도 Prompt를 더 호출하지 않는다.
 
 ## 12. 실행·검증 경계
 
@@ -1217,7 +1217,7 @@ SEND/DELETE → blind repeat 금지
 
 ## 13. Agent Failure 계약
 
-`15. Agent Capability · Failure · Prompt 공통 계약 v1.22`을 따른다.
+`15. Agent Capability · Failure · Prompt 공통 계약 v1.23`을 따른다.
 
 ```python
 class AgentFailureRecord:

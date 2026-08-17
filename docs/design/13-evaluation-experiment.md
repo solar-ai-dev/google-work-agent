@@ -1,8 +1,8 @@
 # 13. Google Work Agent · 평가 · 실험 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `03 Architecture v3.6`, `05 Retrieval v2.13`, `06 Workflow v7.16`, `07 Interface v2.20`, `10 Infrastructure v2.9`, `11 Observability v2.19`, `12 Test v3.33`, `15 Agent Capability·Failure·Prompt v1.22`를 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `03 Architecture v3.6`, `05 Retrieval v2.13`, `06 Workflow v7.17`, `07 Interface v2.21`, `10 Infrastructure v2.10`, `11 Observability v2.20`, `12 Test v3.36`, `15 Agent Capability·Failure·Prompt v1.23`를 기준으로 한다.
 >
-> **상태:** Draft v3.20 · **기준일:** 2026-08-15 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
+> **상태:** Draft v3.23 · **기준일:** 2026-08-18 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
 
 ## 먼저 읽기 — 이 문서가 결정하는 것
 
@@ -1503,14 +1503,16 @@ Semantic Completion
 - E2E는 `E2EProjectionV5`, Product Episode는 `ProductEpisodeE2EProjectionV1`.
 - Source Equality / Traceability / Role Boundary 736/736 PASS.
 
-### PHASE 6 — Prompt
+### PHASE 6 — Prompt / Runtime Contract Closure
 
-- Prompt Bundle: `0.9.0-r8.6-phase6`
-- Semantic Bundle: `semantic-r8.6-v2`
-- 30 Slot topology 유지.
-- 상태: `DRAFT_STATIC_VALIDATED_NOT_ACTIVE`.
+- **Historical PHASE 6 candidate:** `0.9.0-r8.6-phase6 / semantic-r8.6-v2`, 상태 `DRAFT_STATIC_VALIDATED_NOT_ACTIVE`. R8.5의 30 Slot topology와 `Slot 30/30` 정적 Rebase 결과는 실험 재현 이력으로 보존한다.
+- **Current Runtime-aligned candidate:** `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`, 상태 `DRAFT_RUNTIME_CONTRACT_ALIGNED_NOT_ACTIVE`.
+- 현재 Active Runtime PromptRef는 **27개**다. `request_understanding.classify.revise`, `retrieval.assess_sufficiency.revise`, `work_analysis.analyze.reassess`는 deterministic/current owner가 책임을 닫는 것으로 확인되어 **Retired 3개**로 기록한다.
+- Current candidate의 정적 Gate는 `Canonical required = Runtime caller = Manifest = Source = Assembled = v1 Input Contract = 27` set equality다. Retired 3개는 Active set에서 명시적으로 제외되어야 한다.
+- Evidence Selector는 raw `user_request`를 받지 않고 `request_intent + ranked_segments`만 사용한다. Retrieval repair/revision instruction은 각 Node Output Type과 일치해야 한다.
 - Product Prompt에 Evaluation 전용 Gold/Grader/Expected Route/End-state/Decision Script를 넣지 않는다.
 - Tool Route LLM은 policy-precondition READ를 materialize하지 않고 Review는 supplied policy summary 밖의 정책을 만들지 않는다.
+- 실제 Model DEV Pilot, Holdout, Safety Gate와 Runtime activation은 아직 수행하지 않았다.
 
 ### PHASE 7 — Runner / manual Local-SLLM style pilot
 
@@ -1544,7 +1546,7 @@ Dataset     rebuild-v1.17-r8.6-phase7.5-contract-correction
 Canonical   CanonicalCaseV7
 Projection  projection-v1.1-r8.6-phase7.5
 Pre-policy  PrePolicyToolRouteGoldV1
-Prompt      0.9.0-r8.6-phase6 (content unchanged)
+Prompt      0.9.0-r8.6-phase6 (historical content baseline); current runtime-aligned candidate 0.9.1-r8.6-runtime-closure
 Status      CONTRACT_CORRECTED_READY_FOR_REAL_MODEL_PILOT_NOT_ACTIVE
 ```
 
