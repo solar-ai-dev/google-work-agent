@@ -12,7 +12,7 @@ rewriting it. It replaces only the confirmation boundary that owns:
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from langgraph.types import interrupt
 
@@ -41,6 +41,21 @@ from google_work_agent.application.workflows.handoff_contracts import (
     RegisteredResumeTargetRefV1,
 )
 from google_work_agent.domain import RunStatus
+
+
+class _ConfirmationRunRepository(Protocol):
+    """Narrow repository surface required by the canonical confirmation controller."""
+
+    def get_by_id(self, run_id: str) -> Any: ...
+
+    def resume_confirmation(
+        self,
+        run_id: str,
+        *,
+        expected_version: int,
+        resume_status: RunStatus,
+        finished_at_ms: int | None = None,
+    ) -> Any: ...
 
 
 _OWNER_WORKFLOW_PHASE = {
@@ -194,13 +209,11 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
             raise ValueError("confirmation resume status metadata is invalid")
 
         with self._unit_of_work_factory() as unit_of_work:
-            run = unit_of_work.runs.get_by_id(request.run_id)
+            repository = cast(_ConfirmationRunRepository, unit_of_work.runs)
+            run = repository.get_by_id(request.run_id)
             if run is None:
                 raise LookupError(f"run not found: {request.run_id}")
-            repository_resume = getattr(unit_of_work.runs, "resume_confirmation", None)
-            if repository_resume is None:
-                raise RuntimeError("run repository does not implement resume_confirmation")
-            transition = repository_resume(
+            transition = repository.resume_confirmation(
                 request.run_id,
                 expected_version=run.version,
                 resume_status=expected_resume_status,
