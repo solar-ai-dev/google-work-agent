@@ -44,6 +44,10 @@ from google_work_agent.application.write_persistence import (
 from google_work_agent.application.write_persistence import (
     resolve_snapshot_fallback_resource_id as _resolve_snapshot_fallback_resource_id,
 )
+from google_work_agent.application.write_verification_projection import (
+    calculate_verification_subset_diff,
+    normalize_actual_verification_projection,
+)
 from google_work_agent.domain import (
     ActionCommand,
     ActionStatus,
@@ -291,8 +295,11 @@ class VerifyWriteActionService:
             else:
                 if actual_snapshot is None:
                     raise RuntimeError("verification snapshot is required")
-                actual_projection = normalize_verification_projection(actual_snapshot)
-                diff = calculate_verification_diff(expected, actual_projection)
+                actual_projection = normalize_actual_verification_projection(
+                    tool_name=action.tool_name,
+                    actual=normalize_verification_projection(actual_snapshot),
+                )
+                diff = calculate_verification_subset_diff(expected, actual_projection)
                 verification_status = (
                     VerificationStatus.VERIFIED if len(diff) == 0 else VerificationStatus.MISMATCH
                 )
