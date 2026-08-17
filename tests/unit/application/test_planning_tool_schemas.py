@@ -40,6 +40,21 @@ def test_container_bound_tools_expose_required_container_fields() -> None:
         assert field in required
 
 
+def test_gmail_optional_recipient_fields_cannot_be_explicit_empty_lists() -> None:
+    schema = planning_tool_argument_schema("gmail_create_draft")
+    properties = schema["properties"]
+    assert isinstance(properties, dict)
+    payload = properties["payload"]
+    assert isinstance(payload, dict)
+    payload_properties = payload["properties"]
+    assert isinstance(payload_properties, dict)
+
+    for field in ("to", "cc", "bcc"):
+        field_schema = payload_properties[field]
+        assert isinstance(field_schema, dict)
+        assert field_schema["minItems"] == 1
+
+
 def test_planning_schemas_never_expose_dispatch_only_metadata() -> None:
     forbidden = {
         "claim_context",
