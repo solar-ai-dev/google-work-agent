@@ -1,8 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.13`, `06 Workflow v7.16`, `07 Interface v2.20`, `08 Sequence v3.14`, `09 Security v2.10`, `10 Infrastructure v2.9`, `11 Observability v2.19`, `15 Agent Capability·Failure·Prompt v1.22`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.13`, `06 Workflow v7.17`, `07 Interface v2.21`, `08 Sequence v3.15`, `09 Security v2.10`, `10 Infrastructure v2.10`, `11 Observability v2.20`, `15 Agent Capability·Failure·Prompt v1.23`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
-> **상태:** Draft v3.33 · **기준일:** 2026-08-15 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.36 · **기준일:** 2026-08-18 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -506,11 +506,9 @@ PLANNING_REVISION_PER_RUN=2
 REVIEW_RECHECK_PER_PLANNING_REVISION=1
 ```
 
-`REVISION_HEAVY`는 Review REVISE 승인 또는 mandatory Modify Review(둘 다 `PLANNING_REVISION_PER_RUN` 카운터 공유) 발생 시에만 선택하고, Confirmation만으로는 선택하지 않는다. `planning_revisions_used`와 `additional_acquisitions_used`가 동시에 0을 넘으면 effective cap은 `ABSOLUTE_MAX_LLM_CALLS`(16)이다.
-
 ### 18.1 필수 회귀
 
-- 동일 실패 Signature에 Semantic Revision을 두 번 호출하지 않는다. 이 회귀는 Planning Revision 경로뿐 아니라 `context.select_evidence`·`retrieval.plan_query`·`tool_route.determine_io_resources`·`tool_route.select_tool_if_needed`를 포함한 모든 production Semantic Revision 경로에 적용한다.
+- 동일 실패 Signature에 Semantic Revision을 두 번 호출하지 않는다.
 - Schema Repair가 Goal·Evidence·Action 의미를 변경하면 실패다.
 - 비재시도 오류에 LLM Prompt를 호출하지 않는다.
 - `AUTH_REQUIRED`를 Retrieval Revision이나 Tool Route 재판단으로 해결하려 하지 않는다.
@@ -916,7 +914,7 @@ PHASE 7의 20 CORE × 2 문체 = 40 요청은 실제 Ollama/qwen benchmark가 �
 
 ## 2026-08-15 Retrieval Contract Regression
 
-위 Test는 12가 새 제품 의미를 만들기 위한 것이 아니라 `05 v2.13 / 06 v7.16 / 15 v1.22`의 Canonical 계약을 검증하기 위한 회귀 Gate다.
+위 Test는 12가 새 제품 의미를 만들기 위한 것이 아니라 `05 v2.13 / 06 v7.17 / 15 v1.23`의 Canonical 계약을 검증하기 위한 회귀 Gate다.
 
 필수 결과:
 
@@ -938,3 +936,32 @@ PHASE 7의 20 CORE × 2 문체 = 40 요청은 실제 Ollama/qwen benchmark가 �
 | raw user_request planner authority 재주입 | FAIL |
 | QueryAttempt summary를 실행 권위로 사용 | FAIL |
 | RetrievalStateV1에 V2 계약 덮어쓰기 | FAIL |
+## Prompt Runtime Contract Closure Gate (2026-08-18)
+
+PHASE 6 historical `0.9.0-r8.6-phase6`의 30 Slot 정적 검증 결과는 재현 이력으로 보존한다. 현재 Runtime-aligned candidate는 `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`다.
+
+현재 Gate:
+
+```text
+Canonical required Active PromptRef
+= Production Runtime caller
+= Manifest
+= Source
+= Assembled
+= prompt-runtime-input-contract-v1
+= 27
+
+Retired = 3
+- request_understanding.classify.revise
+- retrieval.assess_sufficiency.revise
+- work_analysis.analyze.reassess
+```
+
+검증 규칙:
+
+- Retired PromptRef는 Active set/Manifest/Runtime caller에 다시 등장하면 실패다.
+- `retrieval.select_evidence` Prompt input은 `request_intent + ranked_segments`만 허용하며 raw `user_request`를 root field로 받으면 실패다.
+- Retrieval Repair/Revision은 각 Node의 실제 Output Type과 일치해야 한다: `RetrievalQueryPlanV2`, `EvidenceSelectionResultV2`, `SufficiencyResultV2`.
+- Active PromptRef set equality, source/assembled 존재, content/assembled hash, Input Contract 연결을 정적으로 검증한다.
+- 아직 Model DEV/Holdout/Safety Gate를 통과하지 않았으므로 `RUNTIME_ACTIVE`로 승격하지 않는다.
+

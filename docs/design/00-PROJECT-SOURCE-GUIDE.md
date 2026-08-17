@@ -2,7 +2,7 @@
 
 ## 목적
 
-이 묶음은 설계 검토·구현 질의·실험/평가 검토에 사용하는 **Canonical 프로젝트 소스 25개**다. 공식 원본은 Notion이며 이 Markdown은 **2026-08-15 Retrieval semantic constraint 계약 정합화 이후 Export Snapshot**이다.
+이 묶음은 설계 검토·구현 질의·실험/평가 검토에 사용하는 **Canonical 프로젝트 소스 25개**다. 공식 원본은 Notion이며 이 Markdown은 **2026-08-18 Prompt Runtime Contract Closure 및 Notion Canonical 정합화 이후 Export Snapshot**이다.
 
 ## 문서 권위·책임 소유 규칙
 
@@ -27,18 +27,19 @@ Prompt·Failure 정규화   → 15
 
 같은 Concern에서는 해당 소유 계약과 실행 가능한 Domain/SQL Constraint가 우선한다.
 
-## 현재 Canonical 기준 — 2026-08-15 Retrieval Contract Alignment
+## 현재 Canonical 기준 — 2026-08-18 Prompt Runtime Contract Closure
 
 - Project Overview v1.14
 - PRD v2.10 / Functional v2.15 / Policy v2.11 / UI·UX v2.11
 - Architecture v3.6 / Domain·DB v1.19 / DB Schema v1.6
-- Retrieval **v2.13** / Workflow **v7.16** / Interface **v2.20** / Sequence **v3.14**
-- Security v2.10 / Infrastructure v2.9 / Observability **v2.19**
-- Test **v3.33** / Evaluation **v3.20** / Operations **v2.17** / Agent Capability·Prompt **v1.22**
+- Retrieval **v2.13** / Workflow **v7.17** / Interface **v2.21** / Sequence **v3.15**
+- Security v2.10 / Infrastructure **v2.10** / Observability **v2.20**
+- Test **v3.36** / Evaluation **v3.23** / Operations **v2.19** / Agent Capability·Prompt **v1.23**
 - Domain State Transition v1.5 / State Transition Test Matrix v1.5
 - Dataset candidate: `rebuild-v1.17-r8.6-phase7.5-contract-correction`
 - Projection candidate: `projection-v1.1-r8.6-phase7.5`
-- Prompt candidate: `0.9.0-r8.6-phase6 / semantic-r8.6-v2` (Runtime 파일은 아직 미재생성, Canonical Prompt 계약은 v1.22로 정합)
+- Historical Prompt candidate: `0.9.0-r8.6-phase6 / semantic-r8.6-v2` — 30 Slot 정적 Rebase 이력 보존
+- Current Runtime-aligned Prompt candidate: `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3` — **27 Active Runtime Slot + 3 Retired Slot**, `DRAFT_RUNTIME_CONTRACT_ALIGNED_NOT_ACTIVE`
 - 상태: `CONTRACT_CORRECTED_READY_FOR_REAL_MODEL_PILOT_NOT_ACTIVE`
 
 PHASE 7에서 발견된 세 blocker는 PHASE 7.5에서 계약 수준으로 교정했다.
@@ -73,7 +74,7 @@ PHASE 7에서 발견된 세 blocker는 PHASE 7.5에서 계약 수준으로 교�
 - Retrieval Local State는 field/type 변경에 맞춰 `RetrievalStateV2`로 승격했다.
 - `QueryAttempt.added_constraints/removed_constraints`는 관측·follow-up summary이며 다음 실행계획의 값 권위가 아니다.
 - `NEXT_PAGE`의 raw continuation owner는 기존대로 Run Retrieval Cache read-result entry 하나이며, `DETAIL_FETCH`는 bounded candidate ref만 Planner가 제안한다.
-- 위 변경의 제품 회귀 Gate는 `12 Test v3.33`, Prompt/Failure 정규화는 `15 v1.22`가 검증·소비한다.
+- 위 변경의 제품 회귀 Gate는 `12 Test v3.36`, Prompt/Failure 정규화는 `15 v1.23`가 검증·소비한다.
 
 ## 프로젝트 소스 25개 구성
 

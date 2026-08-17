@@ -1,11 +1,11 @@
 # 07. Google Work Agent · Tool · MCP · 내부 인터페이스 명세서
 
-> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `05. Context·Retrieval 설계서 Draft v2.13`, `06. Agent·Workflow 설계서 Draft v7.16`를 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, Connector MCP Tool, Python 내부 인터페이스 계약을 정의한다.
+> **문서 기준:** `01`~`06`의 React + FastAPI Local Agent Service 구조와 `05. Context·Retrieval 설계서 Draft v2.13`, `06. Agent·Workflow 설계서 Draft v7.17`를 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, Connector MCP Tool, Python 내부 인터페이스 계약을 정의한다.
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.20
-- **기준일:** 2026-08-15
+- **상태:** Draft v2.21
+- **기준일:** 2026-08-18
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
 
