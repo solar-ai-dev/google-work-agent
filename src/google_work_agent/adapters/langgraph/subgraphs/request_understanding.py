@@ -14,6 +14,9 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     merge_trace_context,
     record_llm_result,
 )
+from google_work_agent.adapters.langgraph.confirmation_projection import (
+    confirmation_response_from_state,
+)
 from google_work_agent.adapters.langgraph.graph_state import (
     REQUEST_AGENT_LOCAL_KEY,
     REQUEST_OUTPUT_KEY,
@@ -27,14 +30,12 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
 )
 from google_work_agent.application.workflows import (
     AgentLocalStateV1,
-    ConfirmationResponseV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
     RequestUnderstandingAgent,
     SupervisorDecisionV1,
     WorkflowPhase,
     route_supervisor,
-    validate_confirmation_response_v1,
 )
 from google_work_agent.application.workflows.request_understanding import (
     materialize_request_intent_artifact,
@@ -113,7 +114,10 @@ class RequestUnderstandingSubgraph:
     ) -> RequestUnderstandingLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[REQUEST_AGENT_LOCAL_KEY])
-        confirmation_response = _confirmation_response_from_state(state)
+        confirmation_response = confirmation_response_from_state(
+            state,
+            owner_subgraph="REQUEST_UNDERSTANDING",
+        )
         ensure_llm_call_budget(state)
         llm_result = self._agent.invoke_classify_llm(
             request, confirmation_response=confirmation_response
@@ -190,23 +194,3 @@ class RequestUnderstandingSubgraph:
         merged.pop(REQUEST_AGENT_LOCAL_KEY, None)
         merged.pop(REQUEST_OUTPUT_KEY, None)
         return cast(RequestUnderstandingLocalState, merged)
-
-
-def _confirmation_response_from_state(
-    state: RequestUnderstandingLocalState,
-) -> ConfirmationResponseV1 | None:
-    """Pre-Prompt Runtime Closure: bounded confirmation-answer re-entry.
-
-    ``_waiting_confirmation_node`` (runtime.py) stores the raw resume
-    payload under ``prompt_context.confirmation_response`` before routing
-    back into this subgraph. Re-validating it here (rather than trusting the
-    stored dict as-is) keeps the boundary fail-closed and guarantees only
-    the canonical, already-bounded ``ConfirmationResponseV1`` shape
-    (schema_version/response_kind/selected_option_ids/free_text) ever
-    reaches the LLM -- never the raw interrupt payload.
-    """
-    prompt_context = cast(dict[str, object], state.get("prompt_context") or {})
-    raw = prompt_context.get("confirmation_response")
-    if raw is None:
-        return None
-    return validate_confirmation_response_v1(raw)
