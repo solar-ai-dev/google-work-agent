@@ -201,9 +201,9 @@ def test_stage5_inline_resources_are_context_input_without_cache_resolver() -> N
     )
 
     selection_input = runtime.calls[0]["prompt_input"]
-    assert selection_input["user_request"] == "Summarize the project updates from Kim."
     assert selection_input["request_intent"] == _intent()
-    assert set(selection_input) == {"user_request", "request_intent", "ranked_segments"}
+    assert set(selection_input) == {"request_intent", "ranked_segments"}
+    assert "user_request" not in selection_input
     segments = _prompt_segments(selection_input)
     assert segments[0]["segment_id"] == "seg-1"
     assert segments[0]["resource_ref"] == ("gmail_thread:thread-kim")
