@@ -136,17 +136,21 @@ def test_orchestrator_invokes_writer_once_per_route_in_frozen_order() -> None:
         request=_request(),
         request_intent={  # type: ignore[arg-type]
             "schema_version": 2,
-            "goal": "Create a task and draft an email",
-            "requested_effect_hints": ["CREATE"],
-            "analysis_requirement": "NONE",
-            "constraints": [],
-            "ambiguities": [],
-            "selected_resource_refs": [],
             "meta": {
                 "artifact_id": "intent-1",
                 "revision": 1,
-                "owner": "REQUEST_UNDERSTANDING",
                 "based_on": [],
+            },
+            "goal": "Create a task and draft an email",
+            "completion_conditions": ["A task and an email draft exist."],
+            "constraints": [],
+            "requested_effect_hints": ["CREATE"],
+            "requested_resource_hints": ["TASK", "GMAIL_DRAFT"],
+            "analysis_requirement": "NONE",
+            "ambiguity": {
+                "requires_confirmation": False,
+                "reason_codes": [],
+                "missing_fields": [],
             },
         },
         output_routes=routes,  # type: ignore[arg-type]
