@@ -6,7 +6,7 @@ rewriting it. It replaces only the confirmation boundary that owns:
 * durable interrupt metadata projection,
 * interrupt-id/owner/resume-target validation,
 * the explicit Domain ``ResumeConfirmation`` transition, and
-* same-owner graph re-entry with a bounded ``ConfirmationResponseV1``.
+* same-owner graph re-entry with a bounded, one-shot ``ConfirmationResponseV1``.
 """
 
 from __future__ import annotations
@@ -60,9 +60,11 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
         decision: SupervisorDecisionV1,
     ) -> GraphState:
         merged = super()._merge_decision(state, update, decision)
-        if decision["target"] != SupervisorTarget.WAITING_CONFIRMATION.value:
-            return merged
+        if decision["target"] == SupervisorTarget.WAITING_CONFIRMATION.value:
+            return self._materialize_confirmation_interrupt(merged)
+        return self._clear_consumed_confirmation(state=state, merged=merged)
 
+    def _materialize_confirmation_interrupt(self, merged: GraphState) -> GraphState:
         raw_interrupt = merged.get("user_interrupt")
         if not isinstance(raw_interrupt, Mapping):
             raise ValueError("confirmation route requires a user_interrupt projection")
@@ -95,6 +97,29 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
                 "resume_status": confirmation_resume_status(owner_subgraph).value,
             },
         }
+        # A fresh interrupt supersedes any prior one-shot answer.
+        cast(dict[str, object], merged["prompt_context"]).pop("confirmation_response", None)
+        return merged
+
+    @staticmethod
+    def _clear_consumed_confirmation(*, state: GraphState, merged: GraphState) -> GraphState:
+        """Expire a confirmation answer after its originating owner returns once."""
+        prompt_context = state.get("prompt_context")
+        if not isinstance(prompt_context, Mapping):
+            return merged
+        raw_meta = prompt_context.get("confirmation_interrupt")
+        if not isinstance(raw_meta, Mapping) or "confirmation_response" not in prompt_context:
+            return merged
+        owner_subgraph = raw_meta.get("owner_subgraph")
+        if not isinstance(owner_subgraph, str):
+            return merged
+        if state.get("workflow_phase") != _OWNER_WORKFLOW_PHASE.get(owner_subgraph):
+            return merged
+
+        next_prompt_context = dict(cast(Mapping[str, object], merged.get("prompt_context", {})))
+        next_prompt_context.pop("confirmation_response", None)
+        next_prompt_context.pop("confirmation_interrupt", None)
+        merged["prompt_context"] = next_prompt_context
         return merged
 
     def _waiting_confirmation_node(self, state: GraphState) -> GraphState:
