@@ -5,16 +5,12 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "user_request",
     "request_intent",
     "selected_evidence",
     "source_statuses",
     "budget_state"
   ],
   "properties": {
-    "user_request": {
-      "type": "string"
-    },
     "request_intent": {
       "$ref": "request-intent-v2.schema.json"
     },
