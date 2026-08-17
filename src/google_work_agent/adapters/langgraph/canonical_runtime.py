@@ -1,7 +1,7 @@
 """Canonical confirmation interrupt/resume behavior for the LangGraph runtime.
 
 This module deliberately subclasses the large legacy runtime instead of
-rewriting it.  It replaces only the confirmation boundary that owns:
+rewriting it. It replaces only the confirmation boundary that owns:
 
 * durable interrupt metadata projection,
 * interrupt-id/owner/resume-target validation,
@@ -12,7 +12,7 @@ rewriting it.  It replaces only the confirmation boundary that owns:
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import cast
 
 from langgraph.types import interrupt
 
@@ -31,6 +31,7 @@ from google_work_agent.application.workflows import (
     WorkflowPhase,
 )
 from google_work_agent.application.workflows.contracts import (
+    ConfirmationResponseV1,
     validate_confirmation_response_v1,
 )
 from google_work_agent.application.workflows.handoff_contracts import (
@@ -76,9 +77,9 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
         )
         interrupt_id = self._id_factory()
 
-        # ``UserInterruptV1`` is the question payload.  ``interrupt_id`` is a
-        # controller-owned UI/API projection added only after the typed question
-        # has already been validated by the owner workflow.
+        # ``UserInterruptV1`` is the validated question payload. ``interrupt_id``
+        # is a controller-owned one-way UI/API projection added only after that
+        # workflow contract has already been validated.
         merged["user_interrupt"] = {
             **cast(dict[str, object], raw_interrupt),
             "interrupt_id": interrupt_id,
@@ -153,6 +154,10 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
                 "free_text": raw_resume.get("free_text"),
             }
         )
+        self._validate_confirmation_option_scope(
+            interrupt_payload=raw_interrupt,
+            response=confirmation_response,
+        )
 
         expected_resume_status = confirmation_resume_status(owner_subgraph)
         if raw_meta.get("resume_status") != expected_resume_status.value:
@@ -185,7 +190,7 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
         return {
             **state,
             "__target__": resume_node,
-            "__logical_target__": owner_subgraph.lower(),
+            "__logical_target__": resume_node,
             "user_interrupt": None,
             "workflow_phase": _OWNER_WORKFLOW_PHASE[owner_subgraph],
             "prompt_context": {
@@ -193,6 +198,36 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
                 "confirmation_response": dict(confirmation_response),
             },
         }
+
+    @staticmethod
+    def _validate_confirmation_option_scope(
+        *,
+        interrupt_payload: Mapping[str, object],
+        response: ConfirmationResponseV1,
+    ) -> None:
+        """Bind OPTION_SELECTION to the exact options exposed by this interrupt."""
+        raw_options = interrupt_payload.get("options", [])
+        if not isinstance(raw_options, list):
+            raise ValueError("confirmation options must be a list")
+        allowed_ids: set[str] = set()
+        for option in raw_options:
+            if not isinstance(option, Mapping):
+                raise ValueError("confirmation option must be an object")
+            option_id = option.get("option_id")
+            if not isinstance(option_id, str) or not option_id:
+                raise ValueError("confirmation option_id is invalid")
+            allowed_ids.add(option_id)
+
+        if response["response_kind"] == "OPTION_SELECTION":
+            if not allowed_ids:
+                raise ValueError("free-text confirmation does not accept option selection")
+            unknown = set(response["selected_option_ids"]) - allowed_ids
+            if unknown:
+                raise ValueError("confirmation selected_option_ids are outside the interrupt options")
+        elif allowed_ids:
+            # Non-empty option sets are a closed-choice interrupt; accepting
+            # arbitrary text here would bypass the question's typed choice set.
+            raise ValueError("closed-choice confirmation requires OPTION_SELECTION")
 
 
 __all__ = ["LangGraphWorkflowRuntime"]
