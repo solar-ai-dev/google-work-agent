@@ -89,17 +89,21 @@ def _request() -> WorkflowStartRequest:
 def _request_intent() -> dict[str, object]:
     return {
         "schema_version": 2,
-        "goal": "Prepare report task",
-        "requested_effect_hints": ["CREATE"],
-        "analysis_requirement": "NONE",
-        "constraints": [],
-        "ambiguities": [],
-        "selected_resource_refs": [],
         "meta": {
             "artifact_id": "intent-1",
             "revision": 1,
-            "owner": "REQUEST_UNDERSTANDING",
             "based_on": [],
+        },
+        "goal": "Prepare report task",
+        "completion_conditions": ["A task exists with the requested title."],
+        "constraints": [],
+        "requested_effect_hints": ["CREATE"],
+        "requested_resource_hints": ["TASK"],
+        "analysis_requirement": "NONE",
+        "ambiguity": {
+            "requires_confirmation": False,
+            "reason_codes": [],
+            "missing_fields": [],
         },
     }
 
