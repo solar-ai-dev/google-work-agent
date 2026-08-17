@@ -28,7 +28,7 @@ _EMAIL_LIST = {
     "minItems": 1,
     "uniqueItems": True,
 }
-_OPTIONAL_EMAIL_LIST = {
+_ATTENDEE_LIST = {
     "type": "array",
     "items": {"type": "string", "minLength": 1},
     "uniqueItems": True,
@@ -52,8 +52,10 @@ _GMAIL_DRAFT_PAYLOAD = {
     "required": ["to", "subject", "body"],
     "properties": {
         "to": _EMAIL_LIST,
-        "cc": _OPTIONAL_EMAIL_LIST,
-        "bcc": _OPTIONAL_EMAIL_LIST,
+        # MCP rejects an explicitly-present empty cc/bcc list.  Omitting the
+        # field is the representation for "no cc/bcc".
+        "cc": _EMAIL_LIST,
+        "bcc": _EMAIL_LIST,
         "subject": _STRING,
         "body": _STRING,
         "thread_id": _NON_EMPTY_STRING,
@@ -92,7 +94,7 @@ _CALENDAR_CREATE_PAYLOAD = {
         "start": _NON_EMPTY_STRING,
         "end": _NON_EMPTY_STRING,
         "description": _STRING,
-        "attendees": _OPTIONAL_EMAIL_LIST,
+        "attendees": _ATTENDEE_LIST,
     },
 }
 _CALENDAR_UPDATE_PAYLOAD = {
