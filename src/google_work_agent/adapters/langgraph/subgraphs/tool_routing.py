@@ -7,6 +7,9 @@ from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
 
+from google_work_agent.adapters.langgraph.confirmation_projection import (
+    confirmation_response_from_state,
+)
 from google_work_agent.adapters.langgraph.graph_state import (
     TOOL_ROUTE_RESULT_KEY,
     GraphState,
@@ -65,13 +68,11 @@ class ToolRoutingSubgraph:
     def _route_node(self, state: ToolRoutingLocalState) -> ToolRoutingLocalState:
         request_intent = _require_state_value(state["request_intent"], "request_intent")
         request = request_from_state(state)
-        # ToolRouteCoordinator.route() invokes these callbacks lazily and
-        # zero-or-more times (only when catalog binding is genuinely
-        # ambiguous) -- unlike the other five native subgraphs' single
-        # linear LLM call, so the Run-level budget gate is tracked locally
-        # here instead of through agent_kernel's state-shaped helpers, and
-        # re-checked against the running total before each callback fires.
         retry_budget = cast(RunBudgetV1, state["retry_budget"])
+        confirmation_response = confirmation_response_from_state(
+            state,
+            owner_subgraph="TOOL_ROUTE",
+        )
 
         def _ensure_budget() -> None:
             decision = check_llm_call_budget(retry_budget)
@@ -89,6 +90,7 @@ class ToolRoutingSubgraph:
                 request_intent=request_intent,
                 request=request,
                 retry_budget=retry_budget,
+                confirmation_response=confirmation_response,
             )
             retry_budget = consume_llm_provider_calls(
                 revised_retry_budget, provider_calls_consumed=1
