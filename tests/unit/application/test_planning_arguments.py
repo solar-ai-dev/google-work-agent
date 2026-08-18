@@ -24,7 +24,10 @@ def _route(*, tool_id: str, resource_type: str, effect: str = "CREATE") -> Outpu
 def _schema(*properties: str) -> dict[str, object]:
     return {
         "type": "object",
-        "properties": {name: {"type": "string"} for name in properties},
+        "properties": {
+            name: ({"type": "object"} if name == "payload" else {"type": "string"})
+            for name in properties
+        },
         "required": list(properties),
     }
 
