@@ -56,7 +56,7 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
     node.style.height = `${node.scrollHeight}px`;
   }, [composerText]);
 
-  const timelineRef = useRef<HTMLElement | null>(null);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const node = timelineRef.current;
     if (!node) return;
@@ -90,8 +90,9 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
             </div>
           ) : null}
       <div className="panel-body">
+        <div className="central-scroll-area" ref={timelineRef}>
         {children}
-        <section className="agent-workspace" aria-label="에이전트 대화" ref={timelineRef}>
+        <section className="agent-workspace" aria-label="에이전트 대화">
               <section className="card-list">
               {messagesWithSeparators.map(({ message, separatorLabel }) => (
                 <Fragment key={message.id}>
@@ -330,6 +331,7 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
               ) : null}
               </section>
         </section>
+        </div>
 
             <div className="composer-dock">
               <div className="composer-surface">

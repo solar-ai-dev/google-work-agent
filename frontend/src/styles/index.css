@@ -175,10 +175,20 @@ button {
 }
 
 main.panel .panel-body {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
   overflow: hidden;
+}
+
+.central-scroll-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  overflow-y: auto;
 }
 
 .panel-title {
@@ -307,10 +317,7 @@ main.panel .panel-header > div:first-child .muted {
 
 .resource-viewer {
   position: relative;
-  flex: 0 1 auto;
-  max-height: 44%;
-  min-height: 11rem;
-  overflow: auto;
+  flex: 0 0 auto;
   margin: 0.1rem 0.15rem 0;
   border: 1px solid var(--border);
   border-radius: 0.9rem;
@@ -318,9 +325,25 @@ main.panel .panel-header > div:first-child .muted {
   background: color-mix(in srgb, var(--panel), var(--bg) 35%);
 }
 .resource-viewer.resource-viewer--empty {
-  flex: 0 0 auto;
-  max-height: none;
   min-height: 4.5rem;
+}
+/* The toggle is rendered as the literal last word of the (JS-truncated)
+   preview text, so it's always fused right after the last visible
+   character rather than pinned to a fixed offset. Styled as muted body
+   text, not an accent/link color, so it reads as part of the sentence. */
+.resource-inline-toggle {
+  all: unset;
+  display: inline;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.resource-inline-toggle:hover,
+.resource-inline-toggle:focus-visible {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .resource-viewer h2 { font-size: 1.3rem; letter-spacing: -0.02em; margin: 0.6rem 2.5rem 0 0; }
 .section-heading { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
@@ -449,10 +472,8 @@ main.panel .panel-header > div:first-child .muted {
 .resource-tab-count { margin-left: 0.25rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .agent-workspace {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
   display: block;
-  overflow: auto;
   border: 0;
 }
 
@@ -711,6 +732,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 
 .icon-button:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent), var(--border) 55%); }
+.icon-button--plain { border-color: transparent; background: transparent; }
+.icon-button--plain:hover { border-color: transparent; background: color-mix(in srgb, var(--panel-strong), transparent 34%); }
 .topbar-icon-button { width: 2.4rem; height: 2.4rem; padding: 0; border-color: transparent; background: transparent; box-shadow: none; }
 .topbar-icon-button:hover { border-color: transparent; background: color-mix(in srgb, var(--panel-strong), transparent 34%); }
 .topbar-action-icon { width: 1.35rem; height: 1.35rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
