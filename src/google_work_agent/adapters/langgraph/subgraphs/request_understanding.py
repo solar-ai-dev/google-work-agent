@@ -20,12 +20,12 @@ from google_work_agent.adapters.langgraph.confirmation_projection import (
 from google_work_agent.adapters.langgraph.graph_state import (
     REQUEST_AGENT_LOCAL_KEY,
     REQUEST_OUTPUT_KEY,
-    GraphState,
     ParentGraphState,
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import (
+    RequestUnderstandingInputState,
     RequestUnderstandingLocalState,
 )
 from google_work_agent.application.workflows import (
@@ -66,7 +66,7 @@ class RequestUnderstandingSubgraph:
     def build(self) -> Any:
         graph = StateGraph(
             RequestUnderstandingLocalState,
-            input_schema=GraphState,
+            input_schema=RequestUnderstandingInputState,
             output_schema=ParentGraphState,
         )
         graph.add_node("init", self._init_node)
