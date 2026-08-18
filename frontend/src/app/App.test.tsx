@@ -425,6 +425,88 @@ test("restores every stored turn of a selected conversation in order", async () 
   expect(screen.getAllByText("에이전트 응답")).toHaveLength(3);
 });
 
+test("groups the message timeline by date and shows one separator per day", async () => {
+  const dayOneMs = new Date(2020, 2, 5, 12, 0, 0).getTime();
+  const dayOneLaterMs = dayOneMs + 60_000;
+  const dayTwoMs = new Date(2020, 2, 6, 12, 0, 0).getTime();
+  installConversationHistoryFetch({
+    "conversation-a": historyPayload(
+      [
+        { id: "message-1", run_id: "run-1", role: "USER", content: "요청 1", created_at_ms: dayOneMs },
+        { id: "message-2", run_id: "run-1", role: "USER", content: "요청 2", created_at_ms: dayOneLaterMs },
+        { id: "message-3", run_id: "run-2", role: "USER", content: "요청 3", created_at_ms: dayTwoMs },
+      ],
+      [],
+      "conversation-a",
+    ),
+    "conversation-b": historyPayload([], [], "conversation-b"),
+  }, {});
+
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: /대화 A/ }));
+
+  const separators = await screen.findAllByRole("separator");
+  expect(separators).toHaveLength(2);
+  expect(separators[0]).toHaveTextContent(
+    new Date(dayOneMs).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" }),
+  );
+  expect(separators[1]).toHaveTextContent(
+    new Date(dayTwoMs).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" }),
+  );
+});
+
+test("moves a conversation to the top of the list after sending a message to it", async () => {
+  const started: RequestInit[] = [];
+  let conversationListItems = [
+    { id: "conversation-b", account_id: "account-1", title: "대화 B", created_at_ms: 1, updated_at_ms: 200 },
+    { id: "conversation-a", account_id: "account-1", title: "대화 A", created_at_ms: 1, updated_at_ms: 100 },
+  ];
+  installFetch((path, init) => {
+    if (path === "/health/live") return jsonResponse(liveResponse());
+    if (path === "/health/ready") return jsonResponse(readyResponse());
+    if (path === "/api/v1/runtime") return jsonResponse({ summary: runtimeSummary([]), api_contract_version: "1" });
+    if (path === "/api/v1/google/connection") return jsonResponse(googleConnection());
+    if (path === "/api/v1/identity/google-account") return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
+    if (path.startsWith("/api/v1/conversations?")) {
+      return jsonResponse({ items: conversationListItems, next_cursor: null, api_contract_version: "1" });
+    }
+    if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
+    if (path === "/api/v1/conversations/conversation-a/latest-run") {
+      return jsonResponse({ run: null, api_contract_version: "1" });
+    }
+    if (path === "/api/v1/runs" && init?.method === "POST") {
+      started.push(init);
+      conversationListItems = [
+        { id: "conversation-a", account_id: "account-1", title: "대화 A", created_at_ms: 1, updated_at_ms: 300 },
+        { id: "conversation-b", account_id: "account-1", title: "대화 B", created_at_ms: 1, updated_at_ms: 200 },
+      ];
+      return jsonResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-a", conversation_id: "conversation-a", run_status: "PLANNING", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-a", enqueued: true, request_replayed: false });
+    }
+    if (path === "/api/v1/runs/run-a") return jsonResponse(snapshotPayload({ run_id: "run-a", conversation_id: "conversation-a", status: "PLANNING" }));
+    if (path === "/api/v1/runs/run-a/context") return jsonResponse({ context: null, api_contract_version: "1" });
+    throw new Error(`Unhandled path ${path}`);
+  }, () => jsonResponse(historyPayload([], [], "conversation-a")));
+
+  const user = userEvent.setup();
+  render(<App />);
+
+  const initialOrder = await screen.findAllByRole("button", { name: /^대화 [AB]/ });
+  expect(initialOrder[0]).toHaveTextContent("대화 B");
+  expect(initialOrder[1]).toHaveTextContent("대화 A");
+
+  await user.click(screen.getByRole("button", { name: /대화 A/ }));
+  await user.type(screen.getByRole("textbox", { name: /요청/ }), "새 요청");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
+
+  await waitFor(() => {
+    const updatedOrder = screen.getAllByRole("button", { name: /^대화 [AB]/ });
+    expect(updatedOrder[0]).toHaveTextContent("대화 A");
+    expect(updatedOrder[1]).toHaveTextContent("대화 B");
+  });
+  expect(started).toHaveLength(1);
+});
+
 test("renders an empty conversation history without an error", async () => {
   installConversationHistoryFetch({
     "conversation-a": historyPayload([], [], "conversation-a"),
@@ -725,7 +807,7 @@ test("TST-UI-212 reloads a snapshot after SSE recovery without replaying a write
 
   render(<App />);
 
-  await screen.findByText("사용자 요청");
+  await screen.findByText("Prepare the weekly follow-up");
   const instance = FakeEventSource.instances[0];
   instance.emit("snapshot_required", { reason: "cursor expired" }, "evt-1");
 

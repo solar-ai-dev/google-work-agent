@@ -191,11 +191,14 @@ export function useConversation({ currentAccount, selectedResourceIds, onStatusL
       if (!selectedConversationId) {
         await createConversation({ command_id: crypto.randomUUID(), conversation_id: conversationId, account_id: currentAccount.account_id, title: requestText.slice(0, 80) });
         projectionGeneration = beginConversationProjection(conversationId);
-        await refreshConversations(currentAccount.account_id);
       }
       const runId = crypto.randomUUID();
       const response = await startRun({ command_id: crypto.randomUUID(), conversation_id: conversationId, user_message_id: crypto.randomUUID(), run_id: runId, workflow_key: `workflow-${runId}`, request_text: requestText, entry_mode: selectedResourceIds.length > 0 ? "RESOURCE_SELECTED" : "AGENT_SEARCH", selected_resource_ids: selectedResourceIds, requested_mode: "AUTO" });
       await reloadConversationHistory(conversationId, projectionGeneration);
+      // The just-started run advances the conversation's server-side
+      // updated_at_ms, so the sidebar list (sorted by that field) needs a
+      // refetch here regardless of whether this conversation is new.
+      await refreshConversations(currentAccount.account_id);
       await selectRun(response.run_id, conversationId, projectionGeneration);
       setComposerText("");
     } catch (error) {

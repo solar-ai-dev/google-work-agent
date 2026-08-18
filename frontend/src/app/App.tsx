@@ -19,17 +19,17 @@ import {
 import type {
   CurrentGoogleAccountResponse,
   GoogleConnectionResponse,
-  GmailResourceDetailResponse,
   ResourceItem,
   RuntimeSummary,
   StartupCheck,
 } from "../api/contract";
 import { ApiClientError } from "../api/client";
 import { CalendarPanel, useCalendar } from "../features/calendar";
-import { ConversationSidebar, ConversationView, useConversation } from "../features/conversation";
+import { ConversationSidebar, useConversation } from "../features/conversation";
 import { GmailPanel, useGmail } from "../features/gmail";
 import { SettingsDrawer } from "../features/settings";
 import { TasksPanel, useTasks } from "../features/tasks";
+import { CenterWorkspace, type GmailDetailState } from "../features/workspace";
 
 type StartupState = {
   phase: string;
@@ -45,13 +45,6 @@ type ResourceState = {
   selectedIds: string[];
   focusItem: ResourceItem | null;
   parentId: string | null;
-};
-
-type GmailDetailState = {
-  resourceId: string | null;
-  status: "idle" | "loading" | "ready" | "error";
-  detail: GmailResourceDetailResponse | null;
-  error: string | null;
 };
 
 const SIDEBAR_VISIBLE_PAGE_SIZE = 20;
@@ -556,80 +549,22 @@ export function App(): JSX.Element {
           </div>
         </aside>
 
-        <main className="panel">
-          <ConversationView viewModel={conversationViewModel}>
-            <section className="resource-viewer" aria-label="선택 자료 상세">
-              {resourceState.focusItem ? (
-                <div className="viewer-actions viewer-actions-floating">
-                    {hasCanonicalGoogleUrl(
-                      gmailDetail.detail?.resource_id === resourceState.focusItem.resource_id
-                        ? gmailDetail.detail.canonical_url
-                        : resourceState.focusItem.link_url,
-                    ) ? (
-                      <button
-                        className="icon-button"
-                        type="button"
-                        aria-label="원본 열기"
-                        title="원본 열기"
-                        onClick={() => window.open(
-                          safeGoogleLink(
-                            gmailDetail.detail?.resource_id === resourceState.focusItem!.resource_id
-                              ? gmailDetail.detail.canonical_url
-                              : resourceState.focusItem!.link_url,
-                          ),
-                          "_blank",
-                          "noopener,noreferrer",
-                        )}
-                      >
-                        ↗
-                      </button>
-                    ) : null}
-                    {(resourceState.focusItem.resource_type === "task_list" || resourceState.focusItem.resource_type === "calendar") ? (
-                      <button
-                        className="icon-button"
-                        type="button"
-                        aria-label="하위 자료 보기"
-                        title="하위 자료 보기"
-                        onClick={() => {
-                          setResourceState((current) => ({
-                            ...current,
-                            parentId: resourceState.focusItem!.resource_id,
-                          }));
-                        }}
-                      >
-                        →
-                      </button>
-                    ) : null}
-                </div>
-              ) : (
-                <div className="section-heading"><strong>자료 상세</strong></div>
-              )}
-              {resourceState.focusItem ? (
-                resourceState.focusItem.resource_type === "gmail_thread" ? (
-                  <GmailDetailViewer
-                    state={gmailDetail}
-                    onRetry={() => void loadGmailDetail(resourceState.focusItem!.resource_id)}
-                  />
-                ) : (
-                  <>
-                    <h2>{resourcePresentation(resourceState.focusItem).title ?? "제목 없음"}</h2>
-                    {resourcePresentation(resourceState.focusItem).secondary ? <p>{resourcePresentation(resourceState.focusItem).secondary}</p> : null}
-                    {viewerMetadataEntries(resourceState.focusItem).length > 0 ? (
-                      <dl className="metadata-list">
-                        {viewerMetadataEntries(resourceState.focusItem).map(([key, value]) => (
-                          <div key={key}>
-                            <dt>{key}</dt>
-                            <dd>{value}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    ) : <p className="muted">현재 목록에서 제공된 상세 정보가 없습니다.</p>}
-                  </>
-                )
-              ) : <p className="muted">{resourceViewerEmptyMessage(resourceState.tab)}</p>}
-            </section>
-          </ConversationView>
-        </main>
+        <CenterWorkspace
+          resourceDetail={{
+            focusItem: resourceState.focusItem,
+            gmailDetail,
+            onRetryGmailDetail: () => void loadGmailDetail(resourceState.focusItem!.resource_id),
+            onDrillInto: () => setResourceState((current) => ({
+              ...current,
+              parentId: resourceState.focusItem!.resource_id,
+            })),
+            presentResource: resourcePresentation,
+            metadataEntriesFor: viewerMetadataEntries,
+            emptyMessage: resourceViewerEmptyMessage(resourceState.tab),
+            formatMailboxIdentity,
+          }}
+          conversationViewModel={conversationViewModel}
+        />
 
         <ConversationSidebar
           conversations={conversations}
@@ -776,69 +711,6 @@ function resourceItemsForSelection(resourceState: ResourceState, gmailItems: Res
   return resourceState.tab === "gmail"
     ? gmailItems
     : resourceState.tab === "tasks" ? taskItems : [];
-}
-
-function GmailDetailViewer({
-  state,
-  onRetry,
-}: {
-  state: GmailDetailState;
-  onRetry: () => void;
-}): JSX.Element {
-  if (state.status === "loading") {
-    return <div className="viewer-state" role="status">메일 내용을 불러오는 중입니다.</div>;
-  }
-  if (state.status === "error") {
-    return (
-      <div className="viewer-state" role="alert">
-        <p>{state.error ?? "메일 내용을 불러오지 못했습니다."}</p>
-        <button className="button-secondary" type="button" onClick={onRetry}>다시 시도</button>
-      </div>
-    );
-  }
-  if (state.status !== "ready" || !state.detail) {
-    return <div className="viewer-state">메일 내용을 선택해 주세요.</div>;
-  }
-
-  const detail = state.detail;
-  const sender = formatMailboxIdentity(detail.sender_name, detail.sender_email);
-  const receivedAt = formatDetailDate(detail.received_at);
-  return (
-    <article className="gmail-detail">
-      <header className="gmail-detail-header">
-        <div className="gmail-detail-sender">
-          {sender ? <strong>{sender}</strong> : <strong className="muted">보낸 사람 정보가 없습니다.</strong>}
-          <div className="gmail-detail-meta">
-            {detail.recipients.length > 0 ? <span>받는 사람 {detail.recipients.join(", ")}</span> : null}
-            {detail.cc.length > 0 ? <span>참조 {detail.cc.join(", ")}</span> : null}
-            {receivedAt ? <time>{receivedAt}</time> : null}
-          </div>
-        </div>
-        {detail.subject ? <h2>{detail.subject}</h2> : null}
-      </header>
-      {detail.body ? (
-        <div className="gmail-detail-body">{detail.body}</div>
-      ) : (
-        <p className="viewer-empty">표시할 메일 내용이 없습니다.</p>
-      )}
-      {detail.attachments.length > 0 ? (
-        <section className="gmail-attachments" aria-label="첨부파일">
-          <strong>첨부파일</strong>
-          <ul>
-            {detail.attachments.map((attachment) => (
-              <li key={`${attachment.message_id}:${attachment.attachment_id}`}>
-                <span>{attachment.filename}</span>
-                <small>
-                  {attachment.mime_type}
-                  {attachment.size_bytes !== null ? ` · ${formatFileSize(attachment.size_bytes)}` : ""}
-                </small>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-    </article>
-  );
 }
 
 function resourcePresentation(item: ResourceItem): {
@@ -1027,25 +899,6 @@ function formatSidebarDate(value: string | null, now = new Date()): string | nul
   return date.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
-function formatDetailDate(value: string | null): string | null {
-  const date = parsedResourceDate(value);
-  return date?.toLocaleString("ko-KR", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }) ?? null;
-}
-
-function formatFileSize(sizeBytes: number): string {
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
-  if (sizeBytes < 1024 * 1024) return `${Math.round(sizeBytes / 1024)} KB`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function viewerMetadataEntries(item: ResourceItem): Array<[string, string]> {
   const metadata = item.metadata;
   const source = item.source.toLowerCase();
@@ -1173,23 +1026,6 @@ function resourceSourceLabel(source: string): string {
       return "캘린더";
     default:
       return "Google 자료";
-  }
-}
-
-function safeGoogleLink(url: string): string {
-  if (!hasCanonicalGoogleUrl(url)) {
-    return "https://calendar.google.com/";
-  }
-  return new URL(url).toString();
-}
-
-function hasCanonicalGoogleUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    const allowedHosts = new Set(["mail.google.com", "tasks.google.com", "calendar.google.com"]);
-    return parsed.protocol === "https:" && allowedHosts.has(parsed.host);
-  } catch {
-    return false;
   }
 }
 
