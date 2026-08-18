@@ -345,6 +345,7 @@ def test_gmail_ui_detail_uses_latest_message_and_plain_body(monkeypatch) -> None
     assert detail == {
         "thread_id": "thread-1",
         "message_id": "message-new",
+        "rfc822_message_id": "<msg-id@example.com>",
         "sender_name": "Kim Daeri",
         "sender_email": "kim.daeri@example.com",
         "recipients": ["User <user@example.com>"],
@@ -405,12 +406,26 @@ def test_gmail_ui_detail_allows_missing_or_malformed_body(monkeypatch) -> None: 
     assert "body" not in detail or detail["body"] is None
 
 
+def test_gmail_ui_detail_omits_rfc822_message_id_when_header_is_absent(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    message = _gmail_message("message-1", "2000", "Body")
+    headers = cast(list[dict[str, object]], cast(dict[str, object], message["payload"])["headers"])
+    cast(dict[str, object], message["payload"])["headers"] = [
+        header for header in headers if header["name"] != "Message-ID"
+    ]
+    monkeypatch.setattr(server, "_google_api", lambda *_args, **_kwargs: {"messages": [message]})
+
+    detail = server._gmail_get_ui_thread_detail(_state(), {"thread_id": "thread-1"})
+
+    assert detail["rfc822_message_id"] is None
+
+
 def test_gmail_ui_gateway_maps_the_additive_detail_payload() -> None:
     transport = FakeMCPTransport()
     transport.queue_response(
         {
             "thread_id": "thread-1",
             "message_id": "message-1",
+            "rfc822_message_id": "<msg-id@example.com>",
             "sender_name": "Kim Daeri",
             "sender_email": "kim@example.com",
             "recipients": ["user@example.com"],
@@ -427,6 +442,7 @@ def test_gmail_ui_gateway_maps_the_additive_detail_payload() -> None:
 
     assert detail.thread_id == "thread-1"
     assert detail.message_id == "message-1"
+    assert detail.rfc822_message_id == "<msg-id@example.com>"
     assert detail.body == "Actual body"
     assert transport.call_log[0].tool_name == "gmail_get_ui_thread_detail"
 
@@ -446,6 +462,7 @@ def _gmail_message(
             {"name": "Cc", "value": "team@example.com"},
             {"name": "Subject", "value": "Project update"},
             {"name": "Date", "value": "Mon, 10 Aug 2026 09:15:00 +0900"},
+            {"name": "Message-ID", "value": "<msg-id@example.com>"},
         ],
         "body": {"data": _gmail_b64(body)} if body is not None else {},
     }

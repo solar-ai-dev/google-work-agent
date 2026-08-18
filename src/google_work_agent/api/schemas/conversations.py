@@ -29,3 +29,11 @@ class ConversationListResponse(ApiModel):
 class LatestConversationRunResponse(ApiModel):
     run: dict[str, object] | None
     api_contract_version: str
+
+
+class ConversationHistoryResponse(ApiModel):
+    conversation: dict[str, object]
+    messages: list[dict[str, object]]
+    runs: list[dict[str, object]]
+    truncated: bool
+    api_contract_version: str

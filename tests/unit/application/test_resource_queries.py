@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+
 import pytest
 
-from google_work_agent.application.resource_queries import ResourceQueryService
+from google_work_agent.application.resource_queries import (
+    ResourceQueryService,
+    _gmail_search_permalink,
+)
 from google_work_agent.ports import (
     GmailAttachmentMetadata,
     GmailThreadDetail,
@@ -51,6 +55,7 @@ class _DetailGateway:
         return GmailThreadDetail(
             thread_id=thread_id,
             message_id="message-2",
+            rfc822_message_id="<message-2@example.com>",
             sender_name="Kim Daeri",
             sender_email="kim.daeri@example.com",
             recipients=("user@example.com",),
@@ -257,8 +262,17 @@ def test_gmail_detail_projection_is_ui_only_and_preserves_thread_identity() -> N
     assert detail.sender_name == "Kim Daeri"
     assert detail.recipients == ("user@example.com",)
     assert detail.body == "Actual message body"
-    assert detail.canonical_url.endswith("/#inbox/thread-1")
+    # rfc822msgid: search was verified to resolve the exact message
+    # regardless of Gmail label/session state, unlike #inbox/{thread_id} or
+    # #all/{message_id}, which were both verified to fail on a cold click.
+    assert detail.canonical_url == (
+        "https://mail.google.com/mail/u/0/#search/rfc822msgid%3A%3Cmessage-2%40example.com%3E"
+    )
     assert detail.attachments[0].attachment_id == "attachment-1"
+
+
+def test_gmail_search_permalink_falls_back_to_all_mail_when_rfc822_message_id_is_missing() -> None:
+    assert _gmail_search_permalink(None) == "https://mail.google.com/mail/u/0/#all"
 
 
 def test_tasks_sidebar_uses_configured_default_task_list_for_actual_tasks() -> None:

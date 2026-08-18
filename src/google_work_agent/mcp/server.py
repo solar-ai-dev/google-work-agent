@@ -539,6 +539,7 @@ def _gmail_get_ui_thread_detail(
     return {
         "thread_id": thread_id,
         "message_id": message_id,
+        "rfc822_message_id": _optional_text(headers.get("message-id")),
         "sender_name": sender_name,
         "sender_email": sender_email,
         "recipients": list(recipients),

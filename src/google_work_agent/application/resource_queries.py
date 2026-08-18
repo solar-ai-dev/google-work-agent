@@ -92,7 +92,6 @@ class ResourceQueryService:
         if self._gmail_detail_gateway is None:
             raise RuntimeError("Gmail detail provider is not configured")
         detail = self._gmail_detail_gateway.get_thread_detail(thread_id=resource_id)
-        canonical_resource_id = quote(detail.thread_id, safe="")
         return GmailResourceDetail(
             resource_id=detail.thread_id,
             message_id=detail.message_id,
@@ -104,7 +103,7 @@ class ResourceQueryService:
             received_at=detail.received_at,
             body=detail.body,
             attachments=detail.attachments,
-            canonical_url=f"https://mail.google.com/mail/u/0/#inbox/{canonical_resource_id}",
+            canonical_url=_gmail_search_permalink(detail.rfc822_message_id),
         )
 
     def list_gmail_threads(
@@ -410,6 +409,20 @@ def _google_link(snapshot: ResourceSnapshot) -> str:
     if snapshot.resource_type in {ResourceType.TASK_LIST, ResourceType.TASK}:
         return "https://tasks.google.com/embed/"
     return "https://calendar.google.com/"
+
+
+def _gmail_search_permalink(rfc822_message_id: str | None) -> str:
+    # #inbox/{thread_id} and #all/{message_id} were both verified to fail on
+    # a cold click (label-scoped / session-scoped Gmail Web internals). A
+    # rfc822msgid: search against the message's own RFC822 Message-ID header
+    # was verified to resolve the exact message every time, regardless of
+    # label or session state.
+    if not rfc822_message_id:
+        # Not #all/{message_id} (a direct-open attempt, already verified to
+        # fail on a cold click) -- just the All Mail list view, with no id.
+        return "https://mail.google.com/mail/u/0/#all"
+    query = quote(f"rfc822msgid:{rfc822_message_id}", safe="")
+    return f"https://mail.google.com/mail/u/0/#search/{query}"
 
 
 def _optional_text(value: object) -> str | None:

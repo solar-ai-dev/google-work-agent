@@ -42,6 +42,9 @@ class ConversationRepository(Protocol):
     def add(self, conversation: ConversationRecord) -> None:
         """Persist a new conversation row."""
 
+    def touch(self, conversation_id: str, *, updated_at_ms: int) -> None:
+        """Advance the conversation's last-activity timestamp, never backward."""
+
 
 class RunRepository(Protocol):
     """Run access and state transition persistence."""

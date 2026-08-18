@@ -62,6 +62,7 @@ class GmailThreadDetail:
 
     thread_id: str
     message_id: str
+    rfc822_message_id: str | None
     sender_name: str | None
     sender_email: str | None
     recipients: tuple[str, ...]

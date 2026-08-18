@@ -88,6 +88,7 @@ class MCPGmailUiReadGateway:
         return GmailThreadDetail(
             thread_id=str(values["thread_id"]),
             message_id=str(values["message_id"]),
+            rfc822_message_id=_optional_string(values.get("rfc822_message_id")),
             sender_name=_optional_string(values.get("sender_name")),
             sender_email=_optional_string(values.get("sender_email")),
             recipients=tuple(

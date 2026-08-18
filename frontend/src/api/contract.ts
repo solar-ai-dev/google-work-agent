@@ -122,6 +122,29 @@ export type ConversationListResponse = {
   api_contract_version: string;
 };
 
+export type ConversationMessage = {
+  id: string;
+  run_id: string | null;
+  role: "USER" | "ASSISTANT" | "SYSTEM";
+  content: string;
+  created_at_ms: number;
+};
+
+export type ConversationHistoryRun = {
+  run_id: string;
+  status: string;
+  started_at_ms: number;
+  finished_at_ms: number | null;
+};
+
+export type ConversationHistoryResponse = {
+  conversation: ConversationItem;
+  messages: ConversationMessage[];
+  runs: ConversationHistoryRun[];
+  truncated: boolean;
+  api_contract_version: string;
+};
+
 export type LatestConversationRunResponse = {
   run: {
     run_id: string;
