@@ -338,6 +338,9 @@ test("keeps the last selected conversation when earlier latest-run responses arr
   let resolveLatestA: (response: MockResponse) => void = () => {
     throw new Error("Conversation A request did not start");
   };
+  let resolveHistoryA: (response: MockResponse) => void = () => {
+    throw new Error("Conversation A history request did not start");
+  };
   installFetch((path) => {
     if (path === "/health/live") return jsonResponse(liveResponse());
     if (path === "/health/ready") return jsonResponse(readyResponse());
@@ -368,6 +371,11 @@ test("keeps the last selected conversation when earlier latest-run responses arr
       return jsonResponse({ context: { run_id: "run-b", conversation_id: "conversation-b", workflow_key: "workflow-b", entry_mode: "AGENT_SEARCH", requested_mode: "AUTO", status: "WAITING_APPROVAL", version: 1, request_text: "대화 B 요청", selected_resource_ids: [] }, api_contract_version: "1" });
     }
     throw new Error(`Unhandled path ${path}`);
+  }, (path) => {
+    if (path === "/api/v1/conversations/conversation-a/history") {
+      return new Promise<MockResponse>((resolve) => { resolveHistoryA = resolve; });
+    }
+    return jsonResponse(historyPayload([], [], "conversation-b"));
   });
 
   const user = userEvent.setup();
@@ -376,10 +384,285 @@ test("keeps the last selected conversation when earlier latest-run responses arr
   await user.click(screen.getByRole("button", { name: /대화 B/ }));
   expect(await screen.findByText("대화 B 요청")).toBeInTheDocument();
 
+  resolveHistoryA(jsonResponse(historyPayload(
+    [{ id: "message-a", run_id: "run-a", role: "USER", content: "대화 A 요청", created_at_ms: 1 }],
+    [{ run_id: "run-a", status: "COMPLETED", started_at_ms: 1, finished_at_ms: 2 }],
+    "conversation-a",
+  )));
   resolveLatestA(jsonResponse({ run: { run_id: "run-a" }, api_contract_version: "1" }));
 
   await waitFor(() => expect(screen.getByText("대화 B 요청")).toBeInTheDocument());
   expect(screen.queryByText("대화 A 요청")).not.toBeInTheDocument();
+});
+
+test("restores every stored turn of a selected conversation in order", async () => {
+  installConversationHistoryFetch({
+    "conversation-a": historyPayload(
+      [
+        { id: "message-1", run_id: "run-1", role: "USER", content: "요청 1", created_at_ms: 1 },
+        { id: "message-2", run_id: "run-1", role: "ASSISTANT", content: "응답 1", created_at_ms: 2 },
+        { id: "message-3", run_id: "run-2", role: "USER", content: "요청 2", created_at_ms: 3 },
+        { id: "message-4", run_id: "run-2", role: "ASSISTANT", content: "응답 2", created_at_ms: 4 },
+        { id: "message-5", run_id: "run-3", role: "USER", content: "요청 3", created_at_ms: 5 },
+        { id: "message-6", run_id: "run-3", role: "ASSISTANT", content: "응답 3", created_at_ms: 6 },
+      ],
+      [
+        { run_id: "run-1", status: "COMPLETED", started_at_ms: 1, finished_at_ms: 2 },
+        { run_id: "run-2", status: "FAILED", started_at_ms: 3, finished_at_ms: 4 },
+        { run_id: "run-3", status: "COMPLETED", started_at_ms: 5, finished_at_ms: 6 },
+      ],
+      "conversation-a",
+    ),
+    "conversation-b": historyPayload([], [], "conversation-b"),
+  }, { "conversation-a": "run-3" });
+
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: /대화 A/ }));
+
+  const cards = await screen.findAllByText(/^(요청|응답) \d$/);
+  expect(cards.map((card) => card.textContent)).toEqual(["요청 1", "응답 1", "요청 2", "응답 2", "요청 3", "응답 3"]);
+  expect(screen.getAllByText("에이전트 응답")).toHaveLength(3);
+});
+
+test("groups the message timeline by date and shows one separator per day", async () => {
+  const dayOneMs = new Date(2020, 2, 5, 12, 0, 0).getTime();
+  const dayOneLaterMs = dayOneMs + 60_000;
+  const dayTwoMs = new Date(2020, 2, 6, 12, 0, 0).getTime();
+  installConversationHistoryFetch({
+    "conversation-a": historyPayload(
+      [
+        { id: "message-1", run_id: "run-1", role: "USER", content: "요청 1", created_at_ms: dayOneMs },
+        { id: "message-2", run_id: "run-1", role: "USER", content: "요청 2", created_at_ms: dayOneLaterMs },
+        { id: "message-3", run_id: "run-2", role: "USER", content: "요청 3", created_at_ms: dayTwoMs },
+      ],
+      [],
+      "conversation-a",
+    ),
+    "conversation-b": historyPayload([], [], "conversation-b"),
+  }, {});
+
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: /대화 A/ }));
+
+  const separators = await screen.findAllByRole("separator");
+  expect(separators).toHaveLength(2);
+  expect(separators[0]).toHaveTextContent(
+    new Date(dayOneMs).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" }),
+  );
+  expect(separators[1]).toHaveTextContent(
+    new Date(dayTwoMs).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" }),
+  );
+});
+
+test("moves a conversation to the top of the list after sending a message to it", async () => {
+  const started: RequestInit[] = [];
+  let conversationListItems = [
+    { id: "conversation-b", account_id: "account-1", title: "대화 B", created_at_ms: 1, updated_at_ms: 200 },
+    { id: "conversation-a", account_id: "account-1", title: "대화 A", created_at_ms: 1, updated_at_ms: 100 },
+  ];
+  installFetch((path, init) => {
+    if (path === "/health/live") return jsonResponse(liveResponse());
+    if (path === "/health/ready") return jsonResponse(readyResponse());
+    if (path === "/api/v1/runtime") return jsonResponse({ summary: runtimeSummary([]), api_contract_version: "1" });
+    if (path === "/api/v1/google/connection") return jsonResponse(googleConnection());
+    if (path === "/api/v1/identity/google-account") return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
+    if (path.startsWith("/api/v1/conversations?")) {
+      return jsonResponse({ items: conversationListItems, next_cursor: null, api_contract_version: "1" });
+    }
+    if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
+    if (path === "/api/v1/conversations/conversation-a/latest-run") {
+      return jsonResponse({ run: null, api_contract_version: "1" });
+    }
+    if (path === "/api/v1/runs" && init?.method === "POST") {
+      started.push(init);
+      conversationListItems = [
+        { id: "conversation-a", account_id: "account-1", title: "대화 A", created_at_ms: 1, updated_at_ms: 300 },
+        { id: "conversation-b", account_id: "account-1", title: "대화 B", created_at_ms: 1, updated_at_ms: 200 },
+      ];
+      return jsonResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-a", conversation_id: "conversation-a", run_status: "PLANNING", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-a", enqueued: true, request_replayed: false });
+    }
+    if (path === "/api/v1/runs/run-a") return jsonResponse(snapshotPayload({ run_id: "run-a", conversation_id: "conversation-a", status: "PLANNING" }));
+    if (path === "/api/v1/runs/run-a/context") return jsonResponse({ context: null, api_contract_version: "1" });
+    throw new Error(`Unhandled path ${path}`);
+  }, () => jsonResponse(historyPayload([], [], "conversation-a")));
+
+  const user = userEvent.setup();
+  render(<App />);
+
+  const initialOrder = await screen.findAllByRole("button", { name: /^대화 [AB]/ });
+  expect(initialOrder[0]).toHaveTextContent("대화 B");
+  expect(initialOrder[1]).toHaveTextContent("대화 A");
+
+  await user.click(screen.getByRole("button", { name: /대화 A/ }));
+  await user.type(screen.getByRole("textbox", { name: /요청/ }), "새 요청");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
+
+  await waitFor(() => {
+    const updatedOrder = screen.getAllByRole("button", { name: /^대화 [AB]/ });
+    expect(updatedOrder[0]).toHaveTextContent("대화 A");
+    expect(updatedOrder[1]).toHaveTextContent("대화 B");
+  });
+  expect(started).toHaveLength(1);
+});
+
+test("renders an empty conversation history without an error", async () => {
+  installConversationHistoryFetch({
+    "conversation-a": historyPayload([], [], "conversation-a"),
+    "conversation-b": historyPayload([], [], "conversation-b"),
+  }, {});
+
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: /대화 A/ }));
+
+  await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  expect(screen.queryByText("사용자 요청")).not.toBeInTheDocument();
+});
+
+test("switches conversation history back and forth without mixing turns", async () => {
+  installConversationHistoryFetch({
+    "conversation-a": historyPayload(
+      [{ id: "message-a", run_id: "run-a", role: "USER", content: "A 요청", created_at_ms: 1 }],
+      [{ run_id: "run-a", status: "COMPLETED", started_at_ms: 1, finished_at_ms: 2 }],
+      "conversation-a",
+    ),
+    "conversation-b": historyPayload(
+      [{ id: "message-b", run_id: "run-b", role: "USER", content: "B 요청", created_at_ms: 1 }],
+      [{ run_id: "run-b", status: "COMPLETED", started_at_ms: 1, finished_at_ms: 2 }],
+      "conversation-b",
+    ),
+  }, {});
+
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: /대화 A/ }));
+  expect(await screen.findByText("A 요청")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: /대화 B/ }));
+  expect(await screen.findByText("B 요청")).toBeInTheDocument();
+  expect(screen.queryByText("A 요청")).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: /대화 A/ }));
+  expect(await screen.findByText("A 요청")).toBeInTheDocument();
+  expect(screen.queryByText("B 요청")).not.toBeInTheDocument();
+});
+
+test("does not render the in-progress request twice once it is stored history", async () => {
+  installConversationHistoryFetch({
+    "conversation-a": historyPayload(
+      [{ id: "message-a", run_id: "run-a", role: "USER", content: "진행 중 요청", created_at_ms: 1 }],
+      [{ run_id: "run-a", status: "WAITING_APPROVAL", started_at_ms: 1, finished_at_ms: null }],
+      "conversation-a",
+    ),
+    "conversation-b": historyPayload([], [], "conversation-b"),
+  }, { "conversation-a": "run-a" }, "진행 중 요청");
+
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: /대화 A/ }));
+
+  expect(await screen.findByText("진행 중 요청")).toBeInTheDocument();
+  await waitFor(() => expect(screen.getAllByText("진행 중 요청")).toHaveLength(1));
+});
+
+test("continues an existing conversation with a new run and keeps the earlier history", async () => {
+  const started: RequestInit[] = [];
+  let storedMessages = [
+    { id: "message-1", run_id: "run-a", role: "USER", content: "이전 요청", created_at_ms: 1 },
+    { id: "message-2", run_id: "run-a", role: "ASSISTANT", content: "이전 응답", created_at_ms: 2 },
+  ];
+  installFetch((path, init) => {
+    if (path === "/health/live") return jsonResponse(liveResponse());
+    if (path === "/health/ready") return jsonResponse(readyResponse());
+    if (path === "/api/v1/runtime") return jsonResponse({ summary: runtimeSummary([]), api_contract_version: "1" });
+    if (path === "/api/v1/google/connection") return jsonResponse(googleConnection());
+    if (path === "/api/v1/identity/google-account") return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
+    if (path.startsWith("/api/v1/conversations?")) {
+      return jsonResponse({ items: [{ id: "conversation-a", account_id: "account-1", title: "대화 A", created_at_ms: 1, updated_at_ms: 1 }], next_cursor: null, api_contract_version: "1" });
+    }
+    if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
+    if (path === "/api/v1/conversations/conversation-a/latest-run") {
+      return jsonResponse({ run: { run_id: "run-a" }, api_contract_version: "1" });
+    }
+    if (path === "/api/v1/runs" && init?.method === "POST") {
+      started.push(init);
+      storedMessages = [...storedMessages, { id: "message-3", run_id: "run-b", role: "USER", content: "새 요청", created_at_ms: 3 }];
+      return jsonResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-b", conversation_id: "conversation-a", run_status: "PLANNING", run_version: 1, user_message_id: "message-3", workflow_key: "workflow-b", enqueued: true, request_replayed: false });
+    }
+    if (path === "/api/v1/runs/run-a") return jsonResponse(snapshotPayload({ run_id: "run-a", conversation_id: "conversation-a", status: "COMPLETED", finished_at_ms: 2 }));
+    if (path === "/api/v1/runs/run-b") return jsonResponse(snapshotPayload({ run_id: "run-b", conversation_id: "conversation-a", status: "PLANNING" }));
+    if (path === "/api/v1/runs/run-a/context" || path === "/api/v1/runs/run-b/context") {
+      return jsonResponse({ context: null, api_contract_version: "1" });
+    }
+    throw new Error(`Unhandled path ${path}`);
+  }, () => jsonResponse(historyPayload(storedMessages, [
+    { run_id: "run-a", status: "COMPLETED", started_at_ms: 1, finished_at_ms: 2 },
+  ], "conversation-a")));
+
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: /대화 A/ }));
+  expect(await screen.findByText("이전 응답")).toBeInTheDocument();
+
+  await user.type(screen.getByRole("textbox", { name: /요청/ }), "새 요청");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
+
+  expect(await screen.findByText("새 요청")).toBeInTheDocument();
+  expect(screen.getByText("이전 요청")).toBeInTheDocument();
+  expect(started).toHaveLength(1);
+  expect(JSON.parse(String(started[0].body)).conversation_id).toBe("conversation-a");
+});
+
+test("adds the stored assistant answer once the open run reaches a terminal state", async () => {
+  let runFinished = false;
+  let historyRequests = 0;
+  installFetch((path) => {
+    if (path === "/health/live") return jsonResponse(liveResponse());
+    if (path === "/health/ready") return jsonResponse(readyResponse());
+    if (path === "/api/v1/runtime") return jsonResponse({ summary: runtimeSummary(["run-1"]), api_contract_version: "1" });
+    if (path === "/api/v1/google/connection") return jsonResponse(googleConnection());
+    if (path === "/api/v1/identity/google-account") return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
+    if (path.startsWith("/api/v1/conversations?")) {
+      return jsonResponse({ items: [{ id: "conversation-1", account_id: "account-1", title: "업무 대화", created_at_ms: 1, updated_at_ms: 2 }], next_cursor: null, api_contract_version: "1" });
+    }
+    if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
+    if (path === "/api/v1/runs/run-1") {
+      return jsonResponse(snapshotPayload(runFinished
+        ? { status: "COMPLETED", finished_at_ms: 20, next_allowed_commands: [] }
+        : {}));
+    }
+    if (path === "/api/v1/runs/run-1/context") {
+      return jsonResponse({ context: { run_id: "run-1", conversation_id: "conversation-1", workflow_key: "workflow-run-1", entry_mode: "AGENT_SEARCH", requested_mode: "AUTO", status: "PLANNING", version: 1, request_text: "이번 주 요약", selected_resource_ids: [] }, api_contract_version: "1" });
+    }
+    throw new Error(`Unhandled path ${path}`);
+  }, () => {
+    historyRequests += 1;
+    return jsonResponse(historyPayload(
+      [
+        { id: "message-1", run_id: "run-1", role: "USER", content: "이번 주 요약", created_at_ms: 10 },
+        ...(runFinished ? [{ id: "message-2", run_id: "run-1", role: "ASSISTANT", content: "요약 결과입니다.", created_at_ms: 20 }] : []),
+      ],
+      [{ run_id: "run-1", status: runFinished ? "COMPLETED" : "PLANNING", started_at_ms: 10, finished_at_ms: runFinished ? 20 : null }],
+    ));
+  });
+
+  render(<App />);
+
+  expect(await screen.findByText("이번 주 요약")).toBeInTheDocument();
+  expect(screen.getAllByText("이번 주 요약")).toHaveLength(1);
+  expect(screen.queryByText("요약 결과입니다.")).not.toBeInTheDocument();
+  const requestsBeforeCompletion = historyRequests;
+
+  runFinished = true;
+  FakeEventSource.instances[0].emit("completed", { outcome: "COMPLETED" }, "evt-completed");
+
+  expect(await screen.findByText("요약 결과입니다.")).toBeInTheDocument();
+  expect(screen.getAllByText("이번 주 요약")).toHaveLength(1);
+
+  FakeEventSource.instances[0].emit("run_status", { run_status: "COMPLETED" }, "evt-status");
+  await waitFor(() => expect(historyRequests).toBe(requestsBeforeCompletion + 1));
 });
 
 test("shows approve button for write actions and posts approve command", async () => {
@@ -524,7 +807,7 @@ test("TST-UI-212 reloads a snapshot after SSE recovery without replaying a write
 
   render(<App />);
 
-  await screen.findByText("사용자 요청");
+  await screen.findByText("Prepare the weekly follow-up");
   const instance = FakeEventSource.instances[0];
   instance.emit("snapshot_required", { reason: "cursor expired" }, "evt-1");
 
@@ -2772,6 +3055,8 @@ function installUiContractFetch(options: {
   gmailCount?: number;
   gmailCountError?: boolean;
   gmailCountResponse?: Promise<Response>;
+  historyMessages?: Array<{ id: string; run_id: string | null; role: string; content: string; created_at_ms: number }>;
+  historyRuns?: Array<{ run_id: string; status: string; started_at_ms: number; finished_at_ms: number | null }>;
   run?: boolean;
   runError?: boolean;
   resource?: Partial<ReturnType<typeof gmailThread>>;
@@ -2817,6 +3102,9 @@ function installUiContractFetch(options: {
     if (path === "/api/v1/settings") return jsonFetchResponse({ settings: settingsPayload(), api_contract_version: "1" });
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonFetchResponse({ items: options.conversations ? [{ id: "conversation-1", account_id: "account-1", title: "업무 대화", updated_at_ms: 1, created_at_ms: 1 }] : [], next_cursor: null, api_contract_version: "1" });
+    }
+    if (path.endsWith("/history")) {
+      return jsonFetchResponse(historyPayload(options.historyMessages, options.historyRuns));
     }
     if (path.startsWith("/api/v1/resources/gmail/") && !path.includes("?") && !path.endsWith("/count")) {
       detailAttempts += 1;
@@ -3033,9 +3321,17 @@ function calendarEventItem(overrides: Record<string, unknown> = {}): Record<stri
   };
 }
 
-function installFetch(handler: (path: string, init?: RequestInit) => MockResponse | Promise<MockResponse>): void {
+// Conversation history is requested by every hydrate path, so tests that do not
+// exercise it get an empty stored history instead of an unhandled-path failure.
+function installFetch(
+  handler: (path: string, init?: RequestInit) => MockResponse | Promise<MockResponse>,
+  history?: (path: string) => MockResponse | Promise<MockResponse>,
+): void {
   globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
-    const response = await handler(String(input), init);
+    const path = String(input);
+    const response = path.endsWith("/history")
+      ? await (history ?? (() => jsonResponse(historyPayload())))(path)
+      : await handler(path, init);
     return new Response(JSON.stringify(response.json ?? {}), {
       status: response.status ?? 200,
       headers: {
@@ -3048,6 +3344,77 @@ function installFetch(handler: (path: string, init?: RequestInit) => MockRespons
 
 function jsonResponse(json: unknown, status = 200): MockResponse {
   return { status, json };
+}
+
+function installConversationHistoryFetch(
+  histories: Record<string, Record<string, unknown>>,
+  latestRuns: Record<string, string>,
+  requestText: string | null = null,
+): void {
+  installFetch((path) => {
+    if (path === "/health/live") return jsonResponse(liveResponse());
+    if (path === "/health/ready") return jsonResponse(readyResponse());
+    if (path === "/api/v1/runtime") return jsonResponse({ summary: runtimeSummary([]), api_contract_version: "1" });
+    if (path === "/api/v1/google/connection") return jsonResponse(googleConnection());
+    if (path === "/api/v1/identity/google-account") return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
+    if (path.startsWith("/api/v1/conversations?")) {
+      return jsonResponse({
+        items: [
+          { id: "conversation-a", account_id: "account-1", title: "대화 A", created_at_ms: 1, updated_at_ms: 1 },
+          { id: "conversation-b", account_id: "account-1", title: "대화 B", created_at_ms: 2, updated_at_ms: 2 },
+        ],
+        next_cursor: null,
+        api_contract_version: "1",
+      });
+    }
+    if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
+    const latestRunMatch = /^\/api\/v1\/conversations\/([^/]+)\/latest-run$/.exec(path);
+    if (latestRunMatch) {
+      const runId = latestRuns[latestRunMatch[1]];
+      return jsonResponse({ run: runId ? { run_id: runId } : null, api_contract_version: "1" });
+    }
+    const runMatch = /^\/api\/v1\/runs\/([^/]+)$/.exec(path);
+    if (runMatch) {
+      const conversationId = Object.keys(latestRuns).find((key) => latestRuns[key] === runMatch[1]) ?? "conversation-a";
+      return jsonResponse(snapshotPayload({ run_id: runMatch[1], conversation_id: conversationId }));
+    }
+    const contextMatch = /^\/api\/v1\/runs\/([^/]+)\/context$/.exec(path);
+    if (contextMatch) {
+      const conversationId = Object.keys(latestRuns).find((key) => latestRuns[key] === contextMatch[1]) ?? "conversation-a";
+      return jsonResponse({
+        context: requestText === null ? null : {
+          run_id: contextMatch[1],
+          conversation_id: conversationId,
+          workflow_key: `workflow-${contextMatch[1]}`,
+          entry_mode: "AGENT_SEARCH",
+          requested_mode: "AUTO",
+          status: "WAITING_APPROVAL",
+          version: 1,
+          request_text: requestText,
+          selected_resource_ids: [],
+        },
+        api_contract_version: "1",
+      });
+    }
+    throw new Error(`Unhandled path ${path}`);
+  }, (path) => {
+    const conversationId = /^\/api\/v1\/conversations\/([^/]+)\/history$/.exec(path)?.[1] ?? "";
+    return jsonResponse(histories[conversationId] ?? historyPayload([], [], conversationId));
+  });
+}
+
+function historyPayload(
+  messages: Array<{ id: string; run_id: string | null; role: string; content: string; created_at_ms: number }> = [],
+  runs: Array<{ run_id: string; status: string; started_at_ms: number; finished_at_ms: number | null }> = [],
+  conversationId = "conversation-1",
+): Record<string, unknown> {
+  return {
+    conversation: { id: conversationId, account_id: "account-1", title: "업무 대화", created_at_ms: 1, updated_at_ms: 1 },
+    messages,
+    runs,
+    truncated: false,
+    api_contract_version: "1",
+  };
 }
 
 function jsonFetchResponse(json: unknown, status = 200): Response {

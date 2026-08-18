@@ -1,5 +1,6 @@
-import type { Dispatch, ReactNode, SetStateAction } from "react";
-import type { RunAction, RunContext, RunSnapshot } from "../../api/contract";
+import { Fragment, useEffect, useRef, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import type { ConversationMessage, RunAction, RunContext, RunSnapshot } from "../../api/contract";
+import { DateSeparator, UserMessageBubble } from "./MessageBubble";
 import {
   calendarConflictDecision,
   feasibilityDecision,
@@ -11,6 +12,7 @@ import type { PendingConfirmation } from "./useConversation";
 export type ConversationViewModel = {
   controller: {
     selectedConversationId: string | null;
+    historyMessages: ConversationMessage[];
     runSnapshot: RunSnapshot | null;
     runContext: RunContext | null;
     pendingConfirmation: PendingConfirmation | null;
@@ -36,12 +38,36 @@ export type ConversationViewModel = {
 export type ConversationViewProps = { children: ReactNode; viewModel: ConversationViewModel };
 
 export function ConversationView({ children, viewModel }: ConversationViewProps): JSX.Element {
-  const { controller: { selectedConversationId, runSnapshot, runContext, pendingConfirmation, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery }, resourceContext: { selectedResourceIds, selectedResourceLabels, composerPrompt }, formatTime } = viewModel;
+  const { controller: { selectedConversationId, historyMessages, runSnapshot, runContext, pendingConfirmation, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery }, resourceContext: { selectedResourceIds, selectedResourceLabels, composerPrompt }, formatTime } = viewModel;
   const showRunHeader = runSnapshot !== null;
+  const isFailedRun = runSnapshot?.status === "FAILED";
+  // The stored history already owns every persisted turn. The current run only
+  // contributes the request text that is not persisted into history yet.
+  const showTransientRequest = Boolean(runContext?.request_text)
+    && !historyMessages.some((message) => message.role === "USER" && message.run_id === runContext?.run_id);
+
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const node = composerTextareaRef.current;
+    if (!node) return;
+    // CSS max-height clamps the rendered height, so this only needs to grow
+    // to fit content -- it never needs to know the cap itself.
+    node.style.height = "auto";
+    node.style.height = `${node.scrollHeight}px`;
+  }, [composerText]);
+
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const node = timelineRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [selectedConversationId, historyMessages, showTransientRequest]);
+
+  const messagesWithSeparators = groupMessagesByDate(historyMessages);
 
   return (
     <>          {showRunHeader ? (
-            <div className="panel-header run-header">
+            <div className={`panel-header run-header${isFailedRun ? " run-header--failed" : ""}`}>
               <div>
                 <strong>{runHeaderTitle(runSnapshot.status, Boolean(selectedConversationId))}</strong>
                 <div className="muted">{userRunStatus(runSnapshot.status)}</div>
@@ -64,14 +90,26 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
             </div>
           ) : null}
       <div className="panel-body">
+        <div className="central-scroll-area" ref={timelineRef}>
         {children}
         <section className="agent-workspace" aria-label="에이전트 대화">
               <section className="card-list">
-              {runContext?.request_text ? (
-                <article className="info-card user-request-card">
-                  <strong>사용자 요청</strong>
-                  <p>{runContext.request_text}</p>
-                </article>
+              {messagesWithSeparators.map(({ message, separatorLabel }) => (
+                <Fragment key={message.id}>
+                  {separatorLabel ? <DateSeparator label={separatorLabel} /> : null}
+                  {message.role === "USER" ? (
+                    <UserMessageBubble content={message.content} createdAtMs={message.created_at_ms} />
+                  ) : (
+                    <article className="info-card">
+                      <strong>{historyMessageLabel(message.role)}</strong>
+                      <p>{message.content}</p>
+                    </article>
+                  )}
+                </Fragment>
+              ))}
+
+              {showTransientRequest ? (
+                <UserMessageBubble content={runContext!.request_text} />
               ) : null}
 
               {runSnapshot?.status === "WAITING_CONFIRMATION" ? (
@@ -293,6 +331,7 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
               ) : null}
               </section>
         </section>
+        </div>
 
             <div className="composer-dock">
               <div className="composer-surface">
@@ -304,25 +343,31 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
                     ) : null}
                   </div>
                 ) : null}
-                <textarea
-                  className="composer"
-                  aria-label={composerPrompt}
-                  placeholder={composerPrompt}
-                  value={composerText}
-                  onChange={(event) => {
-                    setComposerText(event.target.value);
-                    setComposerError(null);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void handleStartRun();
-                    }
-                  }}
-                />
-                <button className="button-primary icon-button composer-send" type="button" aria-label="보내기" title="보내기" disabled={busyCommand === "start-run"} onClick={() => void handleStartRun()}>
-                  <span aria-hidden="true">➤</span>
-                </button>
+                <div className="composer-input-row">
+                  <textarea
+                    ref={composerTextareaRef}
+                    className="composer composer--main"
+                    aria-label={composerPrompt}
+                    placeholder={composerPrompt}
+                    rows={1}
+                    value={composerText}
+                    onChange={(event) => {
+                      setComposerText(event.target.value);
+                      setComposerError(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void handleStartRun();
+                      }
+                    }}
+                  />
+                  <button className="icon-button composer-send" type="button" aria-label="보내기" title="보내기" disabled={busyCommand === "start-run"} onClick={() => void handleStartRun()}>
+                    <svg className="composer-send-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                      <path d="M4 4v16l16-8z" />
+                    </svg>
+                  </button>
+                </div>
               </div>
               {composerError ? <p className="status-bad" role="alert">{composerError}</p> : null}
             </div>
@@ -330,6 +375,48 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
     </>
   );
 }
+type MessageWithSeparator = { message: ConversationMessage; separatorLabel: string | null };
+
+function groupMessagesByDate(messages: ConversationMessage[]): MessageWithSeparator[] {
+  let lastDateKey: string | null = null;
+  return messages.map((message) => {
+    const dateKey = localDateKey(message.created_at_ms);
+    const separatorLabel = dateKey === lastDateKey ? null : dateSeparatorLabel(message.created_at_ms);
+    lastDateKey = dateKey;
+    return { message, separatorLabel };
+  });
+}
+
+function localDateKey(value: number): string {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function dateSeparatorLabel(value: number, now = new Date()): string {
+  const date = new Date(value);
+  const isSameDay = (a: Date, b: Date) => (
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  );
+  if (isSameDay(date, now)) return "오늘";
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (isSameDay(date, yesterday)) return "어제";
+  const sameYear = date.getFullYear() === now.getFullYear();
+  return date.toLocaleDateString("ko-KR", sameYear
+    ? { month: "long", day: "numeric" }
+    : { year: "numeric", month: "long", day: "numeric" });
+}
+
+function historyMessageLabel(role: ConversationMessage["role"]): string {
+  switch (role) {
+    case "USER":
+      return "사용자 요청";
+    case "ASSISTANT":
+      return "에이전트 응답";
+    default:
+      return "시스템 메시지";
+  }
+}
+
 function runHeaderTitle(status: string | undefined, hasConversation: boolean): string {
   if (status === "FAILED") {
     return "실행 실패";

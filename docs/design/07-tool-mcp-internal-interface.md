@@ -4,7 +4,7 @@
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.21
+- **상태:** Draft v2.22
 - **기준일:** 2026-08-18
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
@@ -145,6 +145,10 @@ Windows Installer
 #### Gmail UI Detail Projection
 
 `GET /api/v1/resources/gmail/{resource_id}`는 Sidebar의 `gmail_thread` ID를 받아 해당 Thread에서 `internalDate` 기준 최신 Message 1개를 표시한다. 응답은 `resource_id`, `message_id`, `sender_name`, `sender_email`, `recipients`, `cc`, `subject`, `received_at`, `body`, `attachments`, `canonical_url`을 포함한다. 본문은 `text/plain`을 우선하고 HTML만 있으면 안전한 readable text로 변환하며 raw HTML을 Browser에 전달하지 않는다.
+
+`canonical_url`의 Gmail P0 의미: RFC822 Message-ID가 있으면 `rfc822msgid:` 기반 Gmail 검색 URL이고, 없으면 Gmail All Mail 목록 fallback이다. Gmail REST `thread_id`/`message_id`로 구성한 direct-open hash URL(`#inbox/{id}`, `#all/{id}` 등)은 cold click에서 신뢰할 수 없어 사용하지 않는다. `canonical_url`은 direct Thread permalink를 보장하지 않는다.
+
+이 계산을 위해 내부 MCP Gmail UI Detail 계약(`GmailThreadDetail`)은 `format=full` 응답에서 프로젝션한 RFC822 `Message-ID` header를 `rfc822_message_id`로 추가 전달한다. 이 필드는 MCP/Port 내부 계약에만 존재하며 위 API response schema(`GmailResourceDetailResponse`)에는 노출하지 않는다.
 
 이 Endpoint는 UI 전용 Application Query다. `gmail_get_thread`, `gmail_get_message`, Agent Context, Retrieval Workflow와 `selected_resources` 계약을 변경하지 않는다.
 

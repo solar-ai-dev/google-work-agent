@@ -2,6 +2,7 @@ import {
   API_CONTRACT_VERSION,
   type ActionCommandResponse,
   type BootstrapResponse,
+  type ConversationHistoryResponse,
   type ConversationListResponse,
   type CurrentGoogleAccountResponse,
   type GoogleConnectionResponse,
@@ -118,6 +119,10 @@ export function createConversation(payload: {
     method: "POST",
     body: { ...payload, api_contract_version: API_CONTRACT_VERSION },
   });
+}
+
+export function getConversationHistory(conversationId: string): Promise<ConversationHistoryResponse> {
+  return requestJson(`/api/v1/conversations/${encodeURIComponent(conversationId)}/history`);
 }
 
 export function getLatestConversationRun(conversationId: string): Promise<LatestConversationRunResponse> {

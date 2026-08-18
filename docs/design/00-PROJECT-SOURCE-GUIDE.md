@@ -30,9 +30,9 @@ Prompt·Failure 정규화   → 15
 ## 현재 Canonical 기준 — 2026-08-15 Retrieval Contract Alignment
 
 - Project Overview v1.14
-- PRD v2.10 / Functional v2.15 / Policy v2.11 / UI·UX v2.11
+- PRD v2.10 / Functional v2.17 / Policy v2.11 / UI·UX v2.13
 - Architecture v3.6 / Domain·DB v1.19 / DB Schema v1.6
-- Retrieval **v2.13** / Workflow **v7.17** / Interface **v2.21** / Sequence **v3.15**
+- Retrieval **v2.13** / Workflow **v7.17** / Interface **v2.22** / Sequence **v3.15**
 - Security v2.10 / Infrastructure **v2.10** / Observability **v2.20**
 - Test **v3.36** / Evaluation **v3.23** / Operations **v2.19** / Agent Capability·Prompt **v1.23**
 - Domain State Transition v1.5 / State Transition Test Matrix v1.5
@@ -75,6 +75,14 @@ PHASE 7에서 발견된 세 blocker는 PHASE 7.5에서 계약 수준으로 교�
 - `QueryAttempt.added_constraints/removed_constraints`는 관측·follow-up summary이며 다음 실행계획의 값 권위가 아니다.
 - `NEXT_PAGE`의 raw continuation owner는 기존대로 Run Retrieval Cache read-result entry 하나이며, `DETAIL_FETCH`는 bounded candidate ref만 Planner가 제안한다.
 - 위 변경의 제품 회귀 Gate는 `12 Test v3.36`, Prompt/Failure 정규화는 `15 v1.23`가 검증·소비한다.
+
+2026-08-18 Gmail `↗` 정합화에서 원본 링크류 UI 계약을 실제 구현과 맞췄다.
+
+- Gmail ResourceDetail의 `↗`은 `원본 스레드 직접 열기`가 아니라 `Gmail에서 찾기`다. RFC822 Message-ID가 있으면 `rfc822msgid:` 기반 Gmail 검색 URL, 없으면 All Mail 목록 fallback이며, Gmail REST `thread_id`/`message_id` 기반 direct-open hash URL은 사용하지 않는다.
+- `02 UI·UX`·`01-A Functional`의 `원본 Google 서비스에서 열기`/`원본 링크가 보존된다` 표현을 Provider capability에 따라 직접 열기 또는 찾기일 수 있다는 의미로 정합화했다(`02 v2.13`, `01-A v2.17`).
+- `07 Interface`는 `canonical_url`의 Gmail P0 의미와, 이를 위해 내부 MCP Gmail UI Detail 계약(`GmailThreadDetail`)에 `rfc822_message_id`가 추가로 전달됨을 반영했다(`07 v2.22`). API response schema(`GmailResourceDetailResponse`)는 변경하지 않았다.
+- `01 PRD`는 검토 결과 direct-open permalink를 명시적으로 주장하는 충돌 문구가 없어 버전 변경 없이 유지한다.
+- DB schema/migration, LangGraph, Prompt는 이 정합화의 대상이 아니다.
 
 ## 프로젝트 소스 25개 구성
 
