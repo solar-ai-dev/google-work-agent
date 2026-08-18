@@ -71,15 +71,15 @@ class PlanningArgumentWriter:
         manifest_path: Path | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
-        manifest = manifest_path or _default_prompt_manifest_path()
+        self._manifest_path = manifest_path or _default_prompt_manifest_path()
         self._prompt_ref = prompt_ref or _load_prompt_reference(
             "planning.compose_arguments",
-            manifest,
+            self._manifest_path,
         )
-        self._revise_prompt_ref = revise_prompt_ref or _load_prompt_reference(
-            "planning.compose_arguments.revise",
-            manifest,
-        )
+        # Initial-only callers/tests must not be forced through the semantic
+        # revision activation gate. Resolve this PromptRef only when revision
+        # is actually selected by the Planning subgraph.
+        self._revise_prompt_ref = revise_prompt_ref
 
     @property
     def prompt_ref(self) -> PromptReference:
@@ -87,6 +87,11 @@ class PlanningArgumentWriter:
 
     @property
     def revise_prompt_ref(self) -> PromptReference:
+        if self._revise_prompt_ref is None:
+            self._revise_prompt_ref = _load_prompt_reference(
+                "planning.compose_arguments.revise",
+                self._manifest_path,
+            )
         return self._revise_prompt_ref
 
     def invoke(
@@ -148,7 +153,7 @@ class PlanningArgumentWriter:
             review_summary=review_summary,
         )
         return self._llm_runtime.invoke_structured(
-            prompt_ref=self._revise_prompt_ref,
+            prompt_ref=self.revise_prompt_ref,
             prompt_input={
                 "base_projection": base_projection,
                 "candidate_output": dict(candidate_output),
@@ -227,9 +232,6 @@ def _normalized_failure_record(
             if normalized is not None and normalized not in affected_fields:
                 affected_fields.append(normalized)
 
-    # Some Review defects are action-scoped but do not nominate a leaf path.
-    # In that case the revision remains bounded to the two fields owned by the
-    # Argument Writer instead of granting access to tool/effect/id/dependency.
     if not affected_fields:
         affected_fields.extend(_ALLOWED_REVISION_SCOPE)
 
