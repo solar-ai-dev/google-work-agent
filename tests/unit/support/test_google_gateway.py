@@ -119,7 +119,7 @@ def test_fake_google_gateway_can_emit_verification_mismatch_and_version_change()
     )
     changed = gateway.get_calendar_event(calendar_id="calendar-primary", event_id="event-focus")
 
-    assert mismatched.payload["verification_marker"] == "mismatch"
+    assert mismatched.payload["title"].endswith(" (mismatch)")
     assert changed.version == "8"
 
 

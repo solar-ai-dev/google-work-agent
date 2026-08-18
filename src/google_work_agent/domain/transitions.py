@@ -282,6 +282,22 @@ def transition_action(
     return _action_success(next_status, current_version + 1)
 
 
+def _resolve_action_next_status(
+    current_status: ActionStatus,
+    command: ActionCommand,
+    effect_type: EffectType,
+    verification_status: VerificationStatus | None,
+) -> ActionStatus | None:
+    if _is_store_verification_candidate(effect_type, current_status, command):
+        if verification_status is VerificationStatus.VERIFIED:
+            return ActionStatus.VERIFIED
+        if verification_status is VerificationStatus.MISMATCH:
+            return ActionStatus.MISMATCH
+        return None
+
+    return _action_transition_table(effect_type).get((current_status, command))
+
+
 def _resolve_run_next_status(
     current_status: RunStatus,
     command: RunCommand,
@@ -308,18 +324,28 @@ def _is_publish_plan_candidate(current_status: RunStatus, command: RunCommand) -
 
 
 def _is_cancel_candidate(current_status: RunStatus, command: RunCommand) -> bool:
-    return command is RunCommand.REQUEST_CANCEL and current_status not in RUN_TERMINAL_STATUSES
+    return (
+        command is RunCommand.REQUEST_CANCEL
+        and current_status not in RUN_TERMINAL_STATUSES
+        and current_status is not RunStatus.CANCEL_REQUESTED
+    )
 
 
 def _is_require_recovery_candidate(current_status: RunStatus, command: RunCommand) -> bool:
-    return command is RunCommand.REQUIRE_RECOVERY and current_status not in RUN_TERMINAL_STATUSES
+    return (
+        command is RunCommand.REQUIRE_RECOVERY
+        and current_status not in RUN_TERMINAL_STATUSES
+        and current_status is not RunStatus.RECOVERY_REQUIRED
+    )
 
 
 def _is_resolve_recovery_candidate(current_status: RunStatus, command: RunCommand) -> bool:
     return current_status is RunStatus.RECOVERY_REQUIRED and command is RunCommand.RESOLVE_RECOVERY
 
 
-def _action_transition_table(effect_type: EffectType) -> dict[tuple[ActionStatus, ActionCommand], ActionStatus]:
+def _action_transition_table(
+    effect_type: EffectType,
+) -> dict[tuple[ActionStatus, ActionCommand], ActionStatus]:
     return READ_ACTION_TRANSITIONS if effect_type is EffectType.READ else WRITE_ACTION_TRANSITIONS
 
 
@@ -342,15 +368,16 @@ def _validate_action_invariants(
     verification_status: VerificationStatus | None,
     result_not_executed_confirmed: bool,
 ) -> str | None:
-    if command is ActionCommand.CLAIM_EXECUTION and effect_type is EffectType.READ:
-        return "READ actions do not require approval execution claims"
-    if command is ActionCommand.CLAIM_READ_ACTION and effect_type is not EffectType.READ:
-        return "only READ actions use read claims"
+    # CLAIM_EXECUTION only appears in WRITE_ACTION_TRANSITIONS and
+    # CLAIM_READ_ACTION only in READ_ACTION_TRANSITIONS (see the tables
+    # above), so a mismatched effect_type already fails closed as a normal
+    # STATE_CONFLICT via _resolve_action_next_status -- no separate
+    # invariant-violation special case is needed here.
     if command is ActionCommand.STORE_VERIFICATION:
         if effect_type is EffectType.READ:
             return "READ actions do not create write verification rows"
-        if verification_status is None:
-            return "verification_status is required"
+        if verification_status not in {VerificationStatus.VERIFIED, VerificationStatus.MISMATCH}:
+            return "verification_status must be VERIFIED or MISMATCH"
     if (
         current_status is ActionStatus.UNKNOWN_RESULT
         and command is ActionCommand.RESOLVE_AS_FAILED
@@ -398,7 +425,11 @@ def _action_success(
         current_version=next_version,
         next_allowed_commands=next_allowed_action_commands(
             next_status,
-            effect_type=EffectType.READ if next_status in {ActionStatus.EXECUTING, ActionStatus.EXECUTED} else EffectType.CREATE,
+            effect_type=(
+                EffectType.READ
+                if next_status in {ActionStatus.EXECUTING, ActionStatus.EXECUTED}
+                else EffectType.CREATE
+            ),
         ),
         conflict_detail=None,
     )

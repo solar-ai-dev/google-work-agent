@@ -983,15 +983,27 @@ def _build_repair_input(
     failure_reason_code: str,
     validator_errors: tuple[str, ...],
 ) -> dict[str, object]:
-    """Shared repair-input shape for both the free-JSON and tool-calling repair boundaries."""
+    """Shared repair-input shape for both the free-JSON and tool-calling repair boundaries.
 
+    Root shape is exactly base_projection + candidate_output + failure_record
+    (15 section 9.2 / prompt-runtime-input-contract-v1.json's repair/revise
+    slots' allowed_root_fields) -- no legacy original_input/previous_output/
+    validator_errors/changed_fields_allowed/attempt_no root fields. attempt_no
+    and max_attempts stay function parameters only (attempt_no folds into
+    failure_id below; max_attempts is Runtime/Trace-only and Schema Repair is
+    bounded to one attempt anyway, so the model never needs it). The raw
+    validator_errors message text is normalized away -- affected_field_paths
+    already carries the actionable signal, matching failure_record's fixed
+    schema (15 section 5).
+    """
+
+    del max_attempts
     affected_field_paths = sorted(
         {path for message in validator_errors if (path := _leading_json_path(message)) is not None}
     )
     return {
-        "schema_version": 1,
-        "original_input": dict(prompt_input),
-        "previous_output": failed_output,
+        "base_projection": dict(prompt_input),
+        "candidate_output": failed_output,
         "failure_record": {
             "schema_version": 1,
             "failure_id": f"{prompt_ref.prompt_id}:{attempt_no}",
@@ -1003,10 +1015,6 @@ def _build_repair_input(
             "affected_field_paths": affected_field_paths,
             "evidence_refs": [],
         },
-        "validator_errors": list(validator_errors),
-        "changed_fields_allowed": affected_field_paths,
-        "attempt_no": attempt_no,
-        "max_attempts": max_attempts,
     }
 
 

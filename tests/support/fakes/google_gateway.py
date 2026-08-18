@@ -579,7 +579,15 @@ class FakeGoogleGateway:
                 resource = updated
             elif fault.kind is GoogleGatewayFaultKind.VERIFICATION_MISMATCH:
                 mismatched = self._copy_snapshot(resource)
-                mismatched.payload["verification_marker"] = "mismatch"
+                # Real verification (calculate_verification_subset_diff) compares
+                # only fields Expected declares -- an extra Actual key is benign
+                # by design, so it would never trigger a MISMATCH. Mutate an
+                # existing, commonly-expected field instead; fall back to the
+                # extraneous marker only when no such field is present.
+                if isinstance(mismatched.payload.get("title"), str):
+                    mismatched.payload["title"] = f"{mismatched.payload['title']} (mismatch)"
+                else:
+                    mismatched.payload["verification_marker"] = "mismatch"
                 self.call_log.append(
                     GoogleGatewayCallRecord(
                         operation=operation,

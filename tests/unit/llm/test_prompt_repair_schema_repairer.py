@@ -91,15 +91,17 @@ def test_repair_dispatches_the_sibling_repair_prompt_with_full_input_shape(
     call = transport.invocations[0]
     assert call["prompt_id"] == "work_analysis.analyze.repair"
     repair_input = cast(dict[str, object], call["prompt_input"])
-    assert repair_input["schema_version"] == 1
-    assert repair_input["original_input"] == {"topic": "hello"}
-    assert repair_input["previous_output"] == {"answer": 123}
-    assert repair_input["validator_errors"] == ["$.answer must be string"]
-    assert repair_input["changed_fields_allowed"] == ["$.answer"]
-    assert repair_input["attempt_no"] == 1
-    assert repair_input["max_attempts"] == 1
+    # 15 section 9.2 / prompt-runtime-input-contract-v1.json: exactly
+    # base_projection + candidate_output + failure_record at root -- no
+    # legacy original_input/previous_output/validator_errors/
+    # changed_fields_allowed/attempt_no/schema_version root fields.
+    assert set(repair_input) == {"base_projection", "candidate_output", "failure_record"}
+    assert repair_input["base_projection"] == {"topic": "hello"}
+    assert repair_input["candidate_output"] == {"answer": 123}
     failure_record = cast(dict[str, object], repair_input["failure_record"])
     assert failure_record["failure_reason_code"] == "OUTPUT_SCHEMA_INVALID"
+    assert failure_record["affected_field_paths"] == ["$.answer"]
+    assert failure_record["failure_id"] == "work_analysis.analyze:1"
 
 
 def test_repair_is_derived_from_prompt_id_not_subgraph_name(tmp_path: Path) -> None:

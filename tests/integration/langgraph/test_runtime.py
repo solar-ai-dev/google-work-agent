@@ -94,11 +94,11 @@ _RUNTIME_ACTIVE_PROMPT_IDS = {
     "review.inspect.recheck",
 }
 # SINGLE_BASELINE/THREE_STAGE profile prompts ("profile.single.*",
-# "profile.three.*") and "request_understanding.clarify" have no v0.9.0
-# slot in prompt-manifest-v0.9.0.json -- the PHASE 7.5 bundle only ships
-# the SIX_ROLE_BASELINE-role prompts above. Tests that construct those
+# "profile.three.*") and "request_understanding.clarify" have no
+# slot in prompt-manifest-v0.9.1.json -- the runtime-closure bundle only
+# ships the SIX_ROLE_BASELINE-role prompts above. Tests that construct those
 # profiles fail closed on InactivePromptArtifactError/LookupError until
-# Prompt Authoring ships matching PHASE 7.5 artifacts for them; that is a
+# Prompt Authoring ships matching artifacts for them; that is a
 # Prompt Artifact gap, not something this integration pass can invent.
 
 
