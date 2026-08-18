@@ -105,9 +105,11 @@ class PlanningSubgraph:
         self._graph_profile = graph_profile
         self._merge_decision = merge_decision
         self._evidence_store = evidence_store
+        # The base runtime can construct this subgraph before the canonical
+        # composition layer injects the per-route orchestrator.  The public
+        # canonical runtime replaces the Planning binding and recompiles the
+        # graph before any invocation is exposed to callers.
         self._argument_orchestrator = argument_orchestrator
-        if graph_profile is GraphProfile.SIX_ROLE_BASELINE and argument_orchestrator is None:
-            raise ValueError("SIX_ROLE_BASELINE Planning requires PlanningArgumentOrchestrator")
 
     def build(self) -> Any:
         graph = StateGraph(
