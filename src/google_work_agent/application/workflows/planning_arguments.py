@@ -17,6 +17,7 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from typing import Literal, Required, TypedDict, cast
 
+from google_work_agent.application.schema_validation import validate_output_schema
 from google_work_agent.application.workflows.tool_routing import OutputToolRouteV1
 
 JsonObject = dict[str, object]
@@ -159,6 +160,13 @@ def validate_tool_argument_candidate_v1(
                 f"argument candidate attempts to override immutable {name}"
             )
         arguments[name] = expected
+
+    schema_errors = validate_output_schema(arguments, bound_tool_schema["argument_schema"])
+    if schema_errors:
+        raise PlanningArgumentBindingError(
+            "argument candidate does not satisfy selected Tool schema: "
+            + "; ".join(schema_errors[:8])
+        )
 
     evidence_refs = _require_string_list(candidate["evidence_refs"], "candidate.evidence_refs")
     unknown_evidence = set(evidence_refs) - allowed_evidence_refs
