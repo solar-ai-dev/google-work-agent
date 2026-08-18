@@ -1,6 +1,6 @@
 # 01-A. Google Work Agent 기능 정의서
 
-> **상태:** Draft v2.15 · **기준일:** 2026-08-13
+> **상태:** Draft v2.16 · **기준일:** 2026-08-18
 
 ## 1. 문서 목적
 
@@ -171,6 +171,7 @@
 - **처리:** 요청을 `AGENT_SEARCH` 또는 `RESOURCE_SELECTED` 진입 방식으로 구분하고 Run과 LangGraph Thread ID를 생성한다.
 - **출력:** 진입 방식, 처리 단계, 현재 Source, 진행 상태.
 - **예외:** Runtime 미설정, Google 연결 없음.
+- **완료 조건:** 같은 Conversation에는 여러 USER 요청과 이에 대응하는 여러 Run이 순차적으로 존재할 수 있다. 이전 Run이 종료된 후에는 후속 요청뿐 아니라 이전 요청과 업무적으로 무관한 새 요청도 같은 Conversation에서 시작할 수 있으며, 요청의 업무 관련성을 기준으로 새 Conversation을 강제하지 않는다. 동일 Conversation에 Active Run이 있는 동안에는 두 번째 Run을 동시에 시작하지 않는다.
 
 ### FN-011 요청 범위 제한
 
@@ -634,7 +635,7 @@ Supervisor는 Phase, Agent Result, Domain Result와 Budget으로만 Routing한�
 ### FN-076 대화 이름 변경
 
 - **상태:** P1
-- P0에서는 자동 생성 제목을 표시하며 이름 변경 API를 제공하지 않는다.
+- P0에서는 최초 USER 요청을 기반으로 대화 생성 시 한 번 자동 생성한 title을 표시하며 이름 변경 API를 제공하지 않는다. title은 이후 같은 Conversation에 추가되는 후속 요청이나 업무적으로 무관한 새 요청으로 자동 재생성하거나 최신 메시지로 덮어쓰지 않는다.
 
 ### FN-077 대화 삭제
 

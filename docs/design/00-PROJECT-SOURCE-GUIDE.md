@@ -30,7 +30,7 @@ Prompt·Failure 정규화   → 15
 ## 현재 Canonical 기준 — 2026-08-18 Prompt Runtime Contract Closure
 
 - Project Overview v1.14
-- PRD v2.10 / Functional v2.15 / Policy v2.11 / UI·UX v2.11
+- PRD v2.10 / Functional v2.16 / Policy v2.11 / UI·UX v2.12
 - Architecture v3.6 / Domain·DB v1.19 / DB Schema v1.6
 - Retrieval **v2.13** / Workflow **v7.17** / Interface **v2.21** / Sequence **v3.15**
 - Security v2.10 / Infrastructure **v2.10** / Observability **v2.20**

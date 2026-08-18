@@ -1,6 +1,6 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.13`, `07 Interface v2.20`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.16`, `01-B v2.11`, `02 UI·UX v2.12`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.13`, `07 Interface v2.20`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
 > **상태:** Draft v7.17 · **기준일:** 2026-08-18 · **DB Schema:** v1.6 · **대상:** P0 MVP
 >

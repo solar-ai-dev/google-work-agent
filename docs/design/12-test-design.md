@@ -1,6 +1,6 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.15`, `01-B v2.11`, `02 UI·UX v2.11`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.13`, `06 Workflow v7.17`, `07 Interface v2.21`, `08 Sequence v3.15`, `09 Security v2.10`, `10 Infrastructure v2.10`, `11 Observability v2.20`, `15 Agent Capability·Failure·Prompt v1.23`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.16`, `01-B v2.11`, `02 UI·UX v2.12`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.13`, `06 Workflow v7.17`, `07 Interface v2.21`, `08 Sequence v3.15`, `09 Security v2.10`, `10 Infrastructure v2.10`, `11 Observability v2.20`, `15 Agent Capability·Failure·Prompt v1.23`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
 >
 > **상태:** Draft v3.36 · **기준일:** 2026-08-18 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
@@ -738,7 +738,7 @@ Gate는 고정 Sampling 조건에서 Item당 1회 평가한다. Temperature는 G
 
 ## 22. Frontend Main UI 회귀 계약
 
-이 절의 테스트는 `01-A v2.15`, `02 UI·UX v2.11`의 Frontend 구현 계약을 추적한다. 기존 Safety, Verification Diff, `UNKNOWN_RESULT`, Recovery, Chrome/Edge, Sanitization 회귀를 대체하거나 제거하지 않는다.
+이 절의 테스트는 `01-A v2.16`, `02 UI·UX v2.12`의 Frontend 구현 계약을 추적한다. 기존 Safety, Verification Diff, `UNKNOWN_RESULT`, Recovery, Chrome/Edge, Sanitization 회귀를 대체하거나 제거하지 않는다.
 
 <table fit-page-width="true" header-row="true">
 	<tr>
