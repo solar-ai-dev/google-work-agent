@@ -1,7 +1,18 @@
 # Google Work Agent · Agent Capability · Failure · Prompt 공통 계약
 
-> **상태:** Approved v1.23  
-> **기준일:** 2026-08-18  
+> **2026-08-19 Canonical Sync — Prompt Runtime v1.26**
+>
+> - 현재 candidate는 `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`, 상태 `DRAFT_RUNTIME_CONTRACT_ALIGNED_NOT_ACTIVE`다.
+> - Runtime Active set은 **27 Slot**, Retired set은 **3 Slot**이다.
+> - Retired: `request_understanding.classify.revise`, `retrieval.assess_sufficiency.revise`, `work_analysis.analyze.reassess`.
+> - Generic Product schema repair 입력은 `base_projection`, `candidate_output`, `failure_record`만 사용한다. `original_input`, `previous_output`, `validator_errors`, `changed_fields_allowed`, `attempt_no` 같은 legacy root field를 새 authority로 사용하지 않는다.
+> - Planning Argument Writer는 `user_request + OutputToolRouteV1 한 개 + optional work_analysis + evidence_refs`만 업무 입력으로 받고 Tool identity/effect를 재선택하지 않는다.
+> - Confirmation resume에서는 bounded `ConfirmationResponseV1`을 `confirmation_response` optional root field로 **originating owner Product Prompt에만** 추가한다.
+> - Raw resume payload, `interrupt_id`, checkpoint metadata, `RegisteredResumeTargetRefV1`은 Product Prompt 입력이 아니다.
+> - 같은 Conversation의 과거 Message/Artifact를 새 Run Product Prompt에 자동 승계하지 않는다.
+
+> **상태:** Approved v1.26  
+> **기준일:** 2026-08-19  
 > **대상:** P0 Agent 개별실험, Prompt·Repair·Revision 실험, E2E 통합실험  
 > **적용 범위:** Request Understanding, Tool Route, Retrieval, Work Analysis, Planning, Review  
 > **비적용 범위:** 승인, Claim, Connector Write, Verification, UNKNOWN_RESULT 복구, Domain 상태 전이의 최종 판정

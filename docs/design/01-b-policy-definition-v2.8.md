@@ -1,6 +1,14 @@
 # 01-B. Google Work Agent 정책 정의서
 
-> **상태:** Draft v2.11 · **기준일:** 2026-08-13
+> **2026-08-19 Canonical Sync — Cross-Run Context 정책**
+>
+> - Conversation History는 표시·탐색용이며 새 Run의 Prompt/Agent Context에 암묵적으로 주입하지 않는다.
+> - 새 Run은 과거 Run의 Message 전체, Agent Artifact, Evidence, Plan/Review, Confirmation/Approval Snapshot, Checkpoint를 상속하지 않는다.
+> - 사용자가 과거 Resource를 이번 Run에 명시적으로 다시 선택한 경우 현재 Run에서 필요한 최소 Resource/Evidence만 다시 조회·검증한다.
+> - 외부 LLM 전송도 현재 Run의 allowlisted Typed Projection으로 제한한다.
+> - 동일 Run의 Confirmation·재인증·Recovery resume는 이 cross-run 금지와 다른 계약이며 기존 안전 Checkpoint를 이어 간다.
+
+> **상태:** Draft v2.12 · **기준일:** 2026-08-19
 
 ## 0. 사람이 먼저 볼 핵심 정책
 

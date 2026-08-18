@@ -1,131 +1,75 @@
 {
-  "export_date": "2026-08-15",
-  "count": 25,
+  "schema_version": 2,
+  "generated_at": "2026-08-19T01:07:00+09:00",
+  "source_of_truth": "Notion Canonical",
+  "snapshot_status": "EXPORT_READY",
+  "canonical_count": 25,
+  "versions": {
+    "00-PROJECT-SOURCE-GUIDE.md": "v1.16",
+    "01-requirements-prd.md": "v2.11",
+    "01-a-functional-definition.md": "v2.18",
+    "01-b-policy-definition-v2.8.md": "v2.12",
+    "02-ui-ux-design.md": "v2.14",
+    "03-system-architecture.md": "v3.7",
+    "04-domain-database-design.md": "v1.20",
+    "05-context-retrieval.md": "v2.13",
+    "06-agent-workflow.md": "v7.20",
+    "07-tool-mcp-internal-interface.md": "v2.23",
+    "08-sequence-design.md": "v3.17",
+    "09-security-auth-v2.5.md": "v2.11",
+    "10-infrastructure-environment-v2.7.md": "v2.11",
+    "11-observability-logging-audit.md": "v2.20",
+    "12-test-design.md": "v3.39",
+    "13-evaluation-experiment.md": "v3.26",
+    "14-operations-troubleshooting.md": "v2.20",
+    "15-agent-capability-failure-prompt-contract.md": "v1.26",
+    "state-transition-contract-v1.4.md": "v1.5",
+    "state-transition-test-matrix-v1.4.md": "v1.5"
+  },
+  "prompt_runtime": {
+    "candidate": "0.9.1-r8.6-runtime-closure",
+    "semantic_bundle": "semantic-r8.6-v3",
+    "status": "DRAFT_RUNTIME_CONTRACT_ALIGNED_NOT_ACTIVE",
+    "active_slots": 27,
+    "retired_slots": 3
+  },
+  "dataset": {
+    "candidate": "rebuild-v1.17-r8.6-phase7.5-contract-correction",
+    "canonical": "CanonicalCaseV7",
+    "projection": "projection-v1.1-r8.6-phase7.5"
+  },
+  "notes": [
+    "Conversation is UI/persistence timeline, not implicit long-term semantic memory.",
+    "New USER request starts a new run_id + langgraph_thread_id + RunInputV1.",
+    "Same-run Confirmation/Reauth/Recovery resumes the existing checkpoint.",
+    "Migrations 0001-0005 are immutable historical/checksum artifacts.",
+    "State transition filenames retain v1.4 for repository compatibility; document canonical version is v1.5."
+  ],
   "files": [
-    {
-      "file": "00-PROJECT-SOURCE-GUIDE.md",
-      "bytes": 6653,
-      "sha256": "f9f4dbd7cc2b3b2717d20196eb09cab345933afabb6b6df97fcc615a4c77d86d"
-    },
-    {
-      "file": "0001_initial.sql",
-      "bytes": 18986,
-      "sha256": "77386baca1badadd6a79860823250836f7a6464e7f01bd865c3a84af094aa928"
-    },
-    {
-      "file": "0002_action_effect_send_delete.sql",
-      "bytes": 5111,
-      "sha256": "0cbd43fbaa351b19540128f860c4e88e827b263329b102cbe9016c1190145624"
-    },
-    {
-      "file": "0003_action_cancelled.sql",
-      "bytes": 3008,
-      "sha256": "ad125d03d703e2ac199e327fa06dd73077818eecf599b6f4d730841d63984f09"
-    },
-    {
-      "file": "0004_plan_review_gate.sql",
-      "bytes": 319,
-      "sha256": "d12a4fc67101c3d14ff0ec57175c9d19ba765fe0eab41e0d5b3875b48b388f95"
-    },
-    {
-      "file": "0005_cross_aggregate_invariants.sql",
-      "bytes": 12088,
-      "sha256": "ff2508e23c238a1b7bb3ec604031f7598cceff2285378767b61651590f5b109b"
-    },
-    {
-      "file": "01-a-functional-definition.md",
-      "bytes": 43232,
-      "sha256": "3fc6d81d1791d8372274f7b33bbab04faa82107b1dc320622c6eabb5eddcc8a0"
-    },
-    {
-      "file": "01-b-policy-definition-v2.8.md",
-      "bytes": 45001,
-      "sha256": "3435ee539e44fa67d25e7f66fce76c0e2fb079ff10264db188535e46166a00df"
-    },
-    {
-      "file": "01-requirements-prd.md",
-      "bytes": 46891,
-      "sha256": "04ab914fd11b6559c49277c278b1642f51222d859c6ed8b60634ab05b2761d90"
-    },
-    {
-      "file": "02-ui-ux-design.md",
-      "bytes": 40687,
-      "sha256": "da9313b3cded69055e4468eddad339fb1fae70d82ffe380681f0885e79916b93"
-    },
-    {
-      "file": "03-system-architecture.md",
-      "bytes": 74775,
-      "sha256": "6d3a7eff517b2ccb49674523dafe4aaec87f778f8dcb531bd3c3c77b90e7f0e7"
-    },
-    {
-      "file": "04-domain-database-design.md",
-      "bytes": 63893,
-      "sha256": "54c0812eb39e59826d457bfe2b253f03785d3aec52e2774243bd9541381bcc46"
-    },
-    {
-      "file": "05-context-retrieval.md",
-      "bytes": 31092,
-      "sha256": "0bd5d1a65665b09253226884cdadb6770837dc77d9e6f26529d1fdc6fd1992f4"
-    },
-    {
-      "file": "06-agent-workflow.md",
-      "bytes": 61515,
-      "sha256": "b1e12f962bc96fd29bf5e251def161c4169464b6e5e0cd73195882531819ba66"
-    },
-    {
-      "file": "07-tool-mcp-internal-interface.md",
-      "bytes": 47251,
-      "sha256": "002aa50ab4cd707ea4bcce8811f03989ee46b77ffb4d8b524d39508773045992"
-    },
-    {
-      "file": "08-sequence-design.md",
-      "bytes": 52692,
-      "sha256": "afef86b4ca262b16a96c97bcc9f4db63f8bc728ac770037da9cb969d23434392"
-    },
-    {
-      "file": "09-security-auth-v2.5.md",
-      "bytes": 12823,
-      "sha256": "8d2501b756b85724ff8a23bea36a47b15808f4c81a1d5227a6520b3883a29709"
-    },
-    {
-      "file": "10-infrastructure-environment-v2.7.md",
-      "bytes": 11533,
-      "sha256": "397adc8491cdf7fb73b4d9bb74f2153450fdb2615770f9c602c154824e36ae8d"
-    },
-    {
-      "file": "11-observability-logging-audit.md",
-      "bytes": 14662,
-      "sha256": "8c012728f2b645f880370ec5ce87e3b8071ac35b703633893c1db2502fd23270"
-    },
-    {
-      "file": "12-test-design.md",
-      "bytes": 46573,
-      "sha256": "b269a5a060e2a0aac6703d15951b1095b83c311fd7da7262c1e3fcc6db6a1429"
-    },
-    {
-      "file": "13-evaluation-experiment.md",
-      "bytes": 50694,
-      "sha256": "aae74bdef4772b9fc35fc28b0b8505f58e12bed1d7e41c3fbca0f80e4f1eb1a7"
-    },
-    {
-      "file": "14-operations-troubleshooting.md",
-      "bytes": 12924,
-      "sha256": "fd95610cba0f7ab813371dd2d40dd066a03a8990ac059a2d454e5ddcca865654"
-    },
-    {
-      "file": "15-agent-capability-failure-prompt-contract.md",
-      "bytes": 39116,
-      "sha256": "32ef821b76c0f318281771b563e3019de349dd0e107949506a5670ac0f4f6eee"
-    },
-    {
-      "file": "state-transition-contract-v1.4.md",
-      "bytes": 9993,
-      "sha256": "c22fe2f44ebd52cc2eb24bb53751935d86f688aea421760675c92cf6c05e3bfa"
-    },
-    {
-      "file": "state-transition-test-matrix-v1.4.md",
-      "bytes": 6741,
-      "sha256": "a76db7c1bf35e51820ab3f4d2c917c94e56c88d48c24e2ad8d2316cc83d97d11"
-    }
+    "00-PROJECT-SOURCE-GUIDE.md",
+    "0001_initial.sql",
+    "0002_action_effect_send_delete.sql",
+    "0003_action_cancelled.sql",
+    "0004_plan_review_gate.sql",
+    "0005_cross_aggregate_invariants.sql",
+    "01-requirements-prd.md",
+    "01-a-functional-definition.md",
+    "01-b-policy-definition-v2.8.md",
+    "02-ui-ux-design.md",
+    "03-system-architecture.md",
+    "04-domain-database-design.md",
+    "05-context-retrieval.md",
+    "06-agent-workflow.md",
+    "07-tool-mcp-internal-interface.md",
+    "08-sequence-design.md",
+    "09-security-auth-v2.5.md",
+    "10-infrastructure-environment-v2.7.md",
+    "11-observability-logging-audit.md",
+    "12-test-design.md",
+    "13-evaluation-experiment.md",
+    "14-operations-troubleshooting.md",
+    "15-agent-capability-failure-prompt-contract.md",
+    "state-transition-contract-v1.4.md",
+    "state-transition-test-matrix-v1.4.md"
   ]
 }

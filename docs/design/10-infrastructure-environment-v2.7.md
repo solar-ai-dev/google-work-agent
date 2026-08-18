@@ -1,8 +1,12 @@
 # 10. Google Work Agent · 인프라 · 환경 설정 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.17`, `01-B Policy v2.11`, `03 Architecture v3.6`, `04 Domain·DB v1.19`, `05 Retrieval v2.13`, `06 Workflow v7.17`, `07 Interface v2.22`, `08 Sequence v3.15`, `09 Security v2.10`의 제품·보안·실행 계약을 기준으로 한다. `11 Observability`, `12 Test`, `14 Operations`는 본 인프라 계약을 관측·검증·운영 절차로 소비하는 downstream 문서이며 본 문서의 기준 계약이 아니다.
+> **2026-08-19 Canonical Sync — Runtime Identity**
+>
+> Conversation은 저장·탐색 단위이고 새 USER 요청의 Runtime identity는 새 Run/Thread다. Launcher/Service 재시작 후에도 Domain Run snapshot과 해당 Run checkpoint를 결합해 Open Run만 복원하며 Terminal Run checkpoint를 새 요청에 재사용하지 않는다.
 
-> **상태:** Draft v2.10 · **기준일:** 2026-08-18 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B Policy v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Domain·DB v1.20`, `05 Retrieval v2.13`, `06 Workflow v7.20`, `07 Interface v2.23`, `08 Sequence v3.17`, `09 Security v2.11`의 제품·보안·실행 계약을 기준으로 한다. `11 Observability`, `12 Test`, `14 Operations`는 본 인프라 계약을 관측·검증·운영 절차로 소비하는 downstream 문서이며 본 문서의 기준 계약이 아니다.
+
+> **상태:** Draft v2.11 · **기준일:** 2026-08-19 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 확정 결정
 

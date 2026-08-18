@@ -1,6 +1,10 @@
 # 09. Google Work Agent · 보안 · Auth 설계서
 
-> **상태:** Draft v2.10 · **기준일:** 2026-08-13 · **대상:** P0 MVP
+> **2026-08-19 Canonical Sync — Prompt/LLM 전송 범위**
+>
+> 외부 LLM 전송은 현재 Run의 allowlisted Typed Projection으로 제한한다. 같은 Conversation의 과거 Message 전체나 이전 Run의 Agent Artifact·Evidence·Plan·Confirmation/Approval Snapshot·Checkpoint를 새 Run Prompt에 자동 전송하지 않는다. 과거 Resource를 사용자가 이번 Run에 명시적으로 다시 선택해도 현재 Run에 필요한 최소 Resource/Evidence만 새로 조회·Projection한다.
+
+> **상태:** Draft v2.11 · **기준일:** 2026-08-19 · **대상:** P0 MVP
 
 ## 1. 핵심 결정
 
@@ -214,4 +218,3 @@ Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credentia
 - `PolicyConfirmationReceiptV1`은 LLM·Agent·Browser가 권위 값으로 생성하지 않는다. 검증된 Local Session의 실제 사용자 응답을 Application/Confirmation Controller가 canonicalize해 생성한다.
 - `SCOPE_EXPANSION`, `DUPLICATE_OVERRIDE`, `CONFLICT_OVERRIDE` Receipt는 `meta.based_on`과 `decision_context_hash`가 현재 Route/Evidence/Action revision에 맞아야 한다. upstream 변경 후 stale Receipt 재사용을 금지한다.
 - Approval Snapshot은 필요한 Receipt ID·Context Hash를 고정한다. Domain Validation/Preflight는 누락·DECLINED·stale·hash mismatch를 Claim 발급 전에 차단한다. Receipt는 MCP Write payload의 권위 확장 수단이 아니며 ClaimContextV2의 execution hash 역할과 분리한다.
-

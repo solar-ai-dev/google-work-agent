@@ -1,6 +1,13 @@
 # 02. Google Work Agent UI · UX 설계서
 
-> **상태:** Draft v2.13 · **기준일:** 2026-08-18 · **대상:** P0 MVP
+> **2026-08-19 Canonical Sync — Timeline과 Agent Context 분리**
+>
+> - 오른쪽 Conversation History와 중앙 Timeline은 저장된 대화의 표시·탐색 UI이며 Agent의 암묵적 장기 Memory가 아니다.
+> - 선택한 Conversation에 비Terminal Open Run이 있으면 그 Run의 Thread/Checkpoint를 복원할 수 있다.
+> - Terminal인 과거 Run의 Thread/Checkpoint는 새 USER 요청에 재사용하지 않는다. 새 요청은 같은 Conversation을 유지할 수 있지만 새 Run·새 Thread로 시작한다.
+> - 사용자가 과거 Resource를 명시적으로 다시 선택하는 것은 허용하되 과거 Run의 판단 결과를 자동 승계하지 않는다.
+
+> **상태:** Draft v2.14 · **기준일:** 2026-08-19 · **대상:** P0 MVP
 
 > **핵심 UX 원칙:** 사용자는 최소한의 행동으로 최대한의 결과를 얻어야 한다. 사용자가 이미 보고 있는 항목과 작업 흐름 안에서 다음 행동을 수행할 수 있어야 하며, 불필요한 화면 이동·재입력·반복 승인은 UX 실패로 본다.
 

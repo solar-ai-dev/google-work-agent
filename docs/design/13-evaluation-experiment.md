@@ -1,8 +1,19 @@
 # 13. Google Work Agent · 평가 · 실험 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.17`, `01-B v2.11`, `03 Architecture v3.6`, `05 Retrieval v2.13`, `06 Workflow v7.17`, `07 Interface v2.22`, `10 Infrastructure v2.10`, `11 Observability v2.20`, `12 Test v3.36`, `15 Agent Capability·Failure·Prompt v1.23`를 기준으로 한다.
+> **2026-08-19 Canonical Sync — 현재 후보 상태**
 >
-> **상태:** Draft v3.23 · **기준일:** 2026-08-18 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
+> - Dataset candidate: `rebuild-v1.17-r8.6-phase7.5-contract-correction`
+> - Canonical Gold: `CanonicalCaseV7`
+> - Projection: `projection-v1.1-r8.6-phase7.5`
+> - Prompt candidate: `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`
+> - Prompt 상태: `DRAFT_RUNTIME_CONTRACT_ALIGNED_NOT_ACTIVE`
+> - Active Runtime Slot: 27, Retired Slot: 3
+> - Conversation History 자체를 모델 성능 향상을 위한 hidden context로 사용하지 않는다. 각 평가 Episode의 Run 입력은 해당 Item의 명시적 projection만 사용한다.
+> - 실제 qwen2.5:7b DEV 실험은 Runtime/Contract/Regression closure 이후 수행하며 Holdout·Safety Gate 전 Production Active로 승격하지 않는다.
+
+> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B v2.12`, `03 Architecture v3.7`, `05 Retrieval v2.13`, `06 Workflow v7.20`, `07 Interface v2.23`, `09 Security v2.11`, `10 Infrastructure v2.11`, `11 Observability v2.20`, `12 Test v3.39`, `15 Agent Capability·Failure·Prompt v1.26`를 기준으로 한다.
+>
+> **상태:** Draft v3.26 · **기준일:** 2026-08-19 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
 
 ## 먼저 읽기 — 이 문서가 결정하는 것
 
