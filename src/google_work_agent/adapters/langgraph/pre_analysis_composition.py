@@ -8,8 +8,8 @@ from typing import Any
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.acquisition import AcquisitionSubgraph
-from google_work_agent.adapters.langgraph.subgraphs.context_retrieval import (
-    ContextRetrieverSubgraph,
+from google_work_agent.adapters.langgraph.subgraphs.projected_context_retrieval import (
+    ProjectedContextRetrieverSubgraph,
 )
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding import (
     RequestUnderstandingSubgraph,
@@ -82,7 +82,7 @@ def build_pre_analysis_subgraphs(
             merge_decision=merge_decision,
             read_result_cache=read_result_cache,
         ).build(),
-        context_retrieval=ContextRetrieverSubgraph(
+        context_retrieval=ProjectedContextRetrieverSubgraph(
             agent=context_agent,
             id_factory=id_factory,
             graph_profile=graph_profile,
