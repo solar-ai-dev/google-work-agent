@@ -1,9 +1,17 @@
-"""Canonical Planning runtime layered over confirmation/runtime composition.
+"""Canonical Planning persistence boundary layered over confirmation runtime.
 
-The downstream Review/Domain/Persistence boundary still consumes the legacy
-``ActionPlanDraftV1`` shape, but the public SIX_ROLE_BASELINE runtime now
-rebinds Planning before first invocation so ACTION authoring is performed by
-the canonical per-output-route Argument Writer and deterministic assembler.
+The current release graph still carries the legacy ``ActionPlanDraftV1``
+shape through Review/Domain Validation.  This wrapper removes one remaining
+legacy authority before the full PlanningStateV2 migration: an LLM-authored
+``expected`` snapshot is never persisted as verification truth.  Instead the
+expected projection is rebuilt deterministically from the final business
+arguments immediately before the legacy persistence service is invoked.
+
+It also materializes the deterministic Task/Calendar container resolver that
+the canonical Planning subgraph will consume.  The Task-list provider is
+already injected by the legacy runtime; Calendar defaults are resolved from an
+explicit provider or, in the current production composition, the LLM runtime's
+shared SettingsService.
 """
 
 from __future__ import annotations
@@ -16,14 +24,7 @@ from google_work_agent.adapters.langgraph.canonical_runtime import (
     LangGraphWorkflowRuntime as _ConfirmationLangGraphWorkflowRuntime,
 )
 from google_work_agent.adapters.langgraph.graph_state import GraphState
-from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCoordinator
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.subgraphs.planning import PlanningSubgraph
 from google_work_agent.application.workflows.handoff_contracts import ActionPlanDraftV1
-from google_work_agent.application.workflows.planning_argument_orchestrator import (
-    PlanningArgumentOrchestrator,
-)
-from google_work_agent.application.workflows.planning_argument_writer import PlanningArgumentWriter
 from google_work_agent.application.workflows.planning_arguments import DefaultContainerResolver
 from google_work_agent.application.write_verification_projection import (
     build_expected_verification_projection,
@@ -51,6 +52,7 @@ def replace_llm_expected_with_deterministic_projection(
         if not isinstance(arguments, Mapping):
             raise ValueError(f"plan_draft.actions[{index}].arguments must be an object")
         if effect == "READ":
+            # Legacy READ-only plans are outside the write verification contract.
             continue
         raw_action["expected"] = build_expected_verification_projection(
             tool_name=tool_name,
@@ -77,49 +79,9 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
                 )
         self._default_calendar_id_provider = default_calendar_id_provider
         super().__init__(*args, **kwargs)
-
         self._planning_default_container_resolver = DefaultContainerResolver(
             default_tasklist_id_provider=self._default_tasklist_id_provider,
             default_calendar_id_provider=self._default_calendar_id_provider,
-        )
-        if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE:
-            self._install_canonical_planning_subgraph(
-                prompt_manifest_path=kwargs.get("prompt_manifest_path")
-            )
-
-    def _install_canonical_planning_subgraph(self, *, prompt_manifest_path: Any) -> None:
-        writer = PlanningArgumentWriter(
-            llm_runtime=self._llm_runtime,
-            manifest_path=prompt_manifest_path,
-        )
-        self._planning_argument_writer = writer
-        self._planning_argument_orchestrator = PlanningArgumentOrchestrator(
-            writer=writer,
-            default_container_resolver=self._planning_default_container_resolver,
-        )
-        self._planning_subgraph = PlanningSubgraph(
-            agent=self._planning,
-            id_factory=self._id_factory,
-            graph_profile=self._graph_profile,
-            merge_decision=self._merge_decision,
-            evidence_store=self._evidence_store,
-            argument_orchestrator=self._planning_argument_orchestrator,
-        ).build()
-        self._graph_composition.replace_binding("planning", self._planning_subgraph)
-        self._native_agent_subgraphs = self._graph_composition.native_subgraphs()
-        self._graph = self._build_graph()
-        self._invocation = WorkflowInvocationCoordinator(
-            graph=self._graph,
-            graph_profile=self._graph_profile,
-            initial_state=self._initial_state,
-            current_run_status=self._current_run_status,
-            latest_unknown_action=self._latest_unknown_action,
-            recovery_node=self._write_recovery.recover_unknown,
-            has_executed_action=self._has_executed_action,
-            recover_executed_actions=self._write_recovery.recover_executed,
-            mark_stalled_claims_as_unknown=self._mark_stalled_claims_as_unknown,
-            cancel_signal_lock=self._cancel_signal_lock,
-            cancel_signals=self._cancel_signals,
         )
 
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
