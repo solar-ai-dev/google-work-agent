@@ -1,10 +1,10 @@
 # Google Work Agent · Agent Capability · Failure · Prompt 공통 계약
 
-> **상태:** Approved v1.22  
-> **기준일:** 2026-08-15  
+> **상태:** Approved v1.23  
+> **기준일:** 2026-08-18  
 > **대상:** P0 Agent 개별실험, Prompt·Repair·Revision 실험, E2E 통합실험  
 > **적용 범위:** Request Understanding, Tool Route, Retrieval, Work Analysis, Planning, Review  
-> **비적용 범위:** 승인, Claim, Google Write, GET Verification, UNKNOWN_RESULT 복구, Domain 상태 전이의 최종 판정
+> **비적용 범위:** 승인, Claim, Connector Write, Verification, UNKNOWN_RESULT 복구, Domain 상태 전이의 최종 판정
 
 ## 먼저 읽기 — Prompt가 알아도 되는 것
 
@@ -12,7 +12,7 @@
 - `gold`, `grader`, `expected_route`, benchmark score는 Product Prompt 입력이 아니다.
 - Failure-specific Prompt는 별도 전체 Prompt가 아니라 **Base Slot + Failure Instruction Block**으로 조립한다.
 - E06-B의 모델 입력과 Gold는 파일 수준에서도 분리한다.
-- 재현용 Prompt Baseline은 `0.8.2-r8.3`이다. R8.5 Rebase Candidate는 `0.8.4-r8.5`이며 비활성이다. PHASE 6 Prompt Candidate는 `0.9.0-r8.6-phase6 / semantic-r8.6-v2`, 상태 `DRAFT_STATIC_VALIDATED_NOT_ACTIVE`다. DEV·Holdout·Safety Gate 전에는 Runtime 활성화하지 않는다.
+- 재현용 Prompt Baseline은 `0.8.2-r8.3`이다. R8.5 Rebase Candidate는 `0.8.4-r8.5`이며 비활성이다. PHASE 6의 `0.9.0-r8.6-phase6 / semantic-r8.6-v2`는 **30 Slot 정적 Rebase 이력을 보존하는 historical candidate**이며 상태 `DRAFT_STATIC_VALIDATED_NOT_ACTIVE`다. 2026-08-18 Prompt Runtime Contract Closure 이후 현재 Canonical candidate는 `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`, 상태 `DRAFT_RUNTIME_CONTRACT_ALIGNED_NOT_ACTIVE`이며 **27 Active Runtime Slot + 3 Retired Slot**을 사용한다. DEV·Holdout·Safety Gate 전에는 Runtime 활성화하지 않는다.
 
 ## 0. 문서 목적
 
@@ -511,9 +511,8 @@ ABSOLUTE_MAX_LLM_CALLS=16
 
 - 기본 Profile은 `NORMAL`이다.
 - `RETRIEVAL_HEAVY`는 `NEEDS_MORE_DATA` 또는 Additional Retrieval이 실제 발생한 경우에만 선택한다.
-- `REVISION_HEAVY`는 다음 중 하나가 실제 발생한 경우에만 선택한다: (1) Review가 `REVISE`를 반환하고 Domain·Policy가 Revision을 허용, (2) 이미 `PASS`된 Action/Plan을 사용자가 Modify하여 기존 Review가 무효화되고 mandatory Modify Review가 필요한 경우. 두 트리거는 `PLANNING_REVISION_PER_RUN` 카운터를 공유한다 -- Modify Review 전용 카운터를 별도로 두지 않는다. Modify Review의 재-Review 호출 자체가 Domain 안전 Gate(호출하지 않으면 Approval로 진행 불가)이므로 이 경우에 한해 호출 전 승격이 허용된다. Confirmation 재진입은 어떤 경우에도 Profile을 승격하지 않는다.
-- Revision Heavy 조건과 Retrieval Heavy 조건이 동일 Run에서 모두 실제 발생(`planning_revisions_used>0` 그리고 `additional_acquisitions_used>0`)하면 그 Run의 effective LLM call cap은 `ABSOLUTE_MAX_LLM_CALLS`(16)이다. 두 조건 중 하나만 발생한 상태에서는 해당 단일 Profile의 cap만 적용된다. 새 Profile 값이나 새 카운터를 추가하지 않고 기존 두 카운터로만 결정한다.
-- Profile 승격은 Supervisor(또는 Supervisor가 위임한 동일 Run-level 결정 지점)의 결정적 규칙으로 수행하며, 임의 Node/Agent가 자체 판단으로 승격하지 않는다.
+- `REVISION_HEAVY`는 Review가 `REVISE`를 반환하고 Domain·Policy가 Revision을 허용한 경우에만 선택한다.
+- Profile 승격은 Supervisor의 결정적 규칙으로 수행한다.
 - `ABSOLUTE_MAX_LLM_CALLS`를 넘으면 Prompt를 더 호출하지 않는다.
 
 ### 8.3 Budget 소진 처리
@@ -802,7 +801,7 @@ Route 모호성 → NEEDS_CONFIRMATION
 
 ### 14.3 Retrieval
 
-Release v1.22 추가 Gate: `RetrievalQueryPlanV2 / RouteQueryIntentV2`, typed semantic constraint, `ConstraintDeltaV2`, `SourceFetchPlanV1` 경계를 검증하며 raw user_request 별도 authority·Provider query·raw continuation·name-only delta를 허용하지 않는다.
+Release v1.23 추가 Gate: `RetrievalQueryPlanV2 / RouteQueryIntentV2`, typed semantic constraint, `ConstraintDeltaV2`, `SourceFetchPlanV1` 경계를 검증하며 raw user_request 별도 authority·Provider query·raw continuation·name-only delta를 허용하지 않는다.
 
 ```text
 단일·복수 Input Route
@@ -1146,7 +1145,28 @@ prompt_assembly: BASE_PLUS_FAILURE_BLOCK
 
 ## PHASE 6 · Prompt Runtime Input Contract
 
-Prompt Bundle `0.9.0-r8.6-phase6`은 기존 30 Slot topology를 유지한다.
+
+### Prompt Runtime Contract Closure · Active/Retired Slot
+
+Current candidate의 Active set은 27개이며 Runtime caller·Manifest·Source·Assembled·Input Contract가 동일 집합이어야 한다. 다음 3개는 Retired다.
+
+| Retired PromptRef | 현재 책임 owner | 처리 |
+|---|---|---|
+| `request_understanding.classify.revise` | Request Understanding deterministic confirmation/redirection | Active caller/Manifest에서 제외 |
+| `retrieval.assess_sufficiency.revise` | deterministic sufficiency guard | Active caller/Manifest에서 제외 |
+| `work_analysis.analyze.reassess` | 기존 bounded repair path | Active caller/Manifest에서 제외 |
+
+Retirement는 semantic responsibility 삭제가 아니라 **책임 owner 정규화**다. 30이라는 historical 숫자를 유지하기 위해 사용되지 않는 LLM Prompt caller를 추가하지 않는다.
+
+Retrieval Prompt 입력 계약:
+- Initial `plan_query`: `request_intent + input_routes + retrieval_budget`
+- Follow-up: 위 입력 + `current_round_no + prior QueryAttempt + unresolved SufficiencyIssueV2 + bounded read-result summary`
+- `select_evidence`: `request_intent + ranked_segments`
+- Retrieval Product Prompt에 raw `user_request`, raw Provider query, raw continuation/page token, MCP arguments를 별도 authority로 전달하지 않는다.
+
+Repair/Revision은 Node별 실제 Output Type에 맞는 instruction을 사용해야 하며 Query Planner 전용 `RetrievalQueryPlanV2` 수정 지시를 Evidence Selection/Sufficiency에 재사용하지 않는다.
+
+PHASE 6 historical Prompt Bundle `0.9.0-r8.6-phase6`의 30 Slot topology와 30/30 정적 검증 결과는 재현 이력으로 보존한다. 현재 Runtime-aligned Prompt Bundle은 `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`이며 **27 Active Runtime Slot + 3 Retired Slot**을 사용한다.
 
 - Request Understanding은 사용자만 해결 가능한 ambiguity/선호만 Confirmation으로 보낸다.
 - Tool Route LLM은 semantic Resource/Effect를 판단하며 policy-precondition READ, scope-expansion receipt를 만들지 않는다.
@@ -1194,7 +1214,7 @@ PHASE 7 manual pilot은 20 CORE × 2 문체, Holdout 0이며 실제 Ollama/qwen 
 
 ## PHASE 7.5 · Slot Gold와 deterministic binding
 
-Prompt Bundle 내용은 `0.9.0-r8.6-phase6` 그대로 유지한다. 변경은 Runtime/Grader 계약이다.
+PHASE 7.5 당시에는 `0.9.0-r8.6-phase6` Prompt 내용을 유지했다. 이후 2026-08-18 Runtime Contract Closure에서 실제 caller/deterministic owner를 재대조해 현재 candidate를 `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`로 분리했다.
 
 ### Tool Route Slot
 

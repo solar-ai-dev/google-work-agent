@@ -15,6 +15,16 @@ def canonical_prompt_manifest_path() -> Path:
     )
 
 
+def canonical_prompt_runtime_input_contract_v1_path() -> Path:
+    return (
+        Path(__file__).resolve().parents[2]
+        / "prompts"
+        / "agent"
+        / "contracts"
+        / "prompt-runtime-input-contract-v1.json"
+    )
+
+
 def write_runtime_active_manifest(
     tmp_path: Path,
     *,

@@ -322,9 +322,9 @@
       "input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/retrieval-evidence-selection-input-v1.schema.json",
       "output_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/evidence-selection-result-v2.schema.json",
       "supported_failure_reason_codes": "ALLOWLISTED_BY_FAILURE_RECORD",
-      "content_hash": "f4c0397eabb5e1bce5d811bd4b5a744006d5955c850017580c32004f3360d42f",
+      "content_hash": "0fb630a0651e1bab210eed7014d0c8739ca729c11f27f64efc479956e42db218",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.select_evidence.md",
-      "assembled_hash": "1733b530e949b4b0a71c66ac0c61fd2fde1042ac77ceea114da690d164a4311d"
+      "assembled_hash": "4333f4b17a005072742f8cb8217785b7b87bb6c91f15acebeed2cccfb96a3565"
     },
     {
       "slot_id": "retrieval.select_evidence.repair",
@@ -340,15 +340,15 @@
       "activation_status": "DRAFT",
       "files": [
         "prompts/agent/r8.6/six/retrieval/base.md",
-        "prompts/agent/r8.6/six/retrieval/repair.md"
+        "prompts/agent/r8.6/six/retrieval/select_evidence_repair.md"
       ],
       "input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/repair-revision-envelope-v1.schema.json",
       "output_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/evidence-selection-result-v2.schema.json",
       "base_input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/retrieval-evidence-selection-input-v1.schema.json",
       "supported_failure_reason_codes": "ALLOWLISTED_BY_FAILURE_RECORD",
-      "content_hash": "6de12afc914548f2c9ff79814e7bc5cb5bae51643d1f40bd619dceab9481ed90",
+      "content_hash": "088c207b17beb03abd5416c73299a286939c514e85f64438f8bbe4404bafe128",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.select_evidence.repair.md",
-      "assembled_hash": "f59b59116b67e872c4296b9f2c699369827f69dec3df0c54798190c6f391f0db"
+      "assembled_hash": "064014b33d51d26170541a27d1a05cfbf02361b7fd62a1f44ec70b402e15e4ac"
     },
     {
       "slot_id": "retrieval.select_evidence.revise",
@@ -364,15 +364,15 @@
       "activation_status": "DRAFT",
       "files": [
         "prompts/agent/r8.6/six/retrieval/base.md",
-        "prompts/agent/r8.6/six/retrieval/revise.md"
+        "prompts/agent/r8.6/six/retrieval/select_evidence_revise.md"
       ],
       "input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/repair-revision-envelope-v1.schema.json",
       "output_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/evidence-selection-result-v2.schema.json",
       "base_input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/retrieval-evidence-selection-input-v1.schema.json",
       "supported_failure_reason_codes": "ALLOWLISTED_BY_FAILURE_RECORD",
-      "content_hash": "29bbb4279dacc2cde03fb15d422db10c30358e9add6f06ff73c72cdb5e2327e4",
+      "content_hash": "6f72725e941a5ce3fb2cbbae059983ca71c22510835ac7cf3810751bd1e237ef",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.select_evidence.revise.md",
-      "assembled_hash": "80b006dd261881d1acdd86d2547afe3ba9468105f517bdfec2a2627e4e7a6e4c"
+      "assembled_hash": "49965239aa8ee71aafbcbb504aa8420823266ca20d3531f73842f43b65345179"
     },
     {
       "slot_id": "retrieval.assess_sufficiency",
@@ -411,15 +411,15 @@
       "activation_status": "DRAFT",
       "files": [
         "prompts/agent/r8.6/six/retrieval/base.md",
-        "prompts/agent/r8.6/six/retrieval/repair.md"
+        "prompts/agent/r8.6/six/retrieval/assess_sufficiency_repair.md"
       ],
       "input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/repair-revision-envelope-v1.schema.json",
       "output_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/sufficiency-result-v2.schema.json",
       "base_input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/retrieval-sufficiency-input-v1.schema.json",
       "supported_failure_reason_codes": "ALLOWLISTED_BY_FAILURE_RECORD",
-      "content_hash": "6de12afc914548f2c9ff79814e7bc5cb5bae51643d1f40bd619dceab9481ed90",
+      "content_hash": "c3380dd4c49ab8342727f8c07be80b7887fb5ef5d194d14dd7aa3628e6e426ad",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.assess_sufficiency.repair.md",
-      "assembled_hash": "f59b59116b67e872c4296b9f2c699369827f69dec3df0c54798190c6f391f0db"
+      "assembled_hash": "610947ec106e40dfa358d0e85a8c7b8be6e8c384e3c1243425dbc85060986701"
     },
     {
       "slot_id": "work_analysis.analyze",
@@ -467,30 +467,6 @@
       "content_hash": "7d6859086ab8cb944cfa894e193d481628593489724715b0a55f36d30ba880b0",
       "assembled_path": "prompts/agent/assembled-r8.6/work_analysis.analyze.repair.md",
       "assembled_hash": "d39c468f4d468e75b64153345cf798e08e5f2bb580584acdc9074acdaa2bb5be"
-    },
-    {
-      "slot_id": "work_analysis.analyze.reassess",
-      "prompt_id": "work_analysis.analyze.reassess",
-      "agent_role": "work_analysis",
-      "subgraph_name": "work_analysis",
-      "node_name": "analyze",
-      "node_state": "SEMANTIC_REVISION",
-      "purpose": "reassess",
-      "input_schema_version": "r8.6-runtime-input-snapshot-v1",
-      "output_schema_version": "r8.6-output-contract-snapshot-v1",
-      "prompt_version": "0.9.0",
-      "activation_status": "DRAFT",
-      "files": [
-        "prompts/agent/r8.6/six/work_analysis/base.md",
-        "prompts/agent/r8.6/six/work_analysis/reassess.md"
-      ],
-      "input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/repair-revision-envelope-v1.schema.json",
-      "output_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/work-analysis-candidate-v2.schema.json",
-      "base_input_schema": "experiments/datasets/google_workspace/canonical_rebase_v7/schemas/work-analysis-input-v1.schema.json",
-      "supported_failure_reason_codes": "ALLOWLISTED_BY_FAILURE_RECORD",
-      "content_hash": "8bd835795c028eb5d7db3606838e89848c082a94d60429fac52e6adf87540a47",
-      "assembled_path": "prompts/agent/assembled-r8.6/work_analysis.analyze.reassess.md",
-      "assembled_hash": "2a67ff88460942d6558ca1c084a76316a7c49fe048ad5cf569b36031ea085e6f"
     },
     {
       "slot_id": "planning.compose_answer",

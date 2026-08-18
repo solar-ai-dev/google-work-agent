@@ -20,6 +20,20 @@
     "Connector source text stays DATA_ONLY and cannot grant authority.",
     "Holdout data is not used for prompt authoring or tuning."
   ],
+  "retired_slots": {
+    "request_understanding.classify.revise": {
+      "reason": "Schema-valid-but-semantically-incomplete RequestIntentV2 candidates (missing goal, missing completion_conditions, unresolved ambiguity) are routed deterministically to NEEDS_CONFIRMATION by request_understanding.py::_classify_valid_intent, which builds the clarification question in Python -- no LLM re-judgment call is issued. This is WORKFLOW_REDIRECTION (15 section 7), not SEMANTIC_REVISION.",
+      "replaced_by": "google_work_agent.application.workflows.request_understanding._classify_valid_intent"
+    },
+    "retrieval.assess_sufficiency.revise": {
+      "reason": "The LLM's SufficiencyResultV2.status is a candidate only. retrieval_sufficiency.py::enforce_sufficiency_guard deterministically recomputes the authoritative disposition via the same decide_insufficient_data engine supervisor._route_additional_acquisition uses, and overrides the LLM status whenever they disagree -- no LLM re-judgment call is issued.",
+      "replaced_by": "google_work_agent.application.workflows.retrieval_sufficiency.enforce_sufficiency_guard"
+    },
+    "work_analysis.analyze.reassess": {
+      "reason": "work_analysis's semantic_validate failures (finding cross-reference / invariant violations) share the same one-attempt repair budget as shape failures by explicit framework design (application/llm.py StructuredLLMRuntime.invoke_structured docstring cites work_analysis as the reference case) -- there is no separate SEMANTIC_REVISION call site for this node.",
+      "replaced_by": "google_work_agent.application.llm.SchemaRepairer (generic .repair budget covers semantic_validate failures for this node)"
+    }
+  },
   "slots": {
     "request_understanding.classify": {
       "allowed_root_fields": [
@@ -60,7 +74,6 @@
     },
     "retrieval.select_evidence": {
       "allowed_root_fields": [
-        "user_request",
         "request_intent",
         "ranked_segments"
       ]
@@ -112,16 +125,6 @@
       ]
     },
     "request_understanding.classify.repair": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
-    },
-    "request_understanding.classify.revise": {
       "allowed_root_fields": [
         "base_projection",
         "candidate_output",
@@ -221,27 +224,7 @@
         "failure_record is runtime-normalized and allowlisted"
       ]
     },
-    "retrieval.assess_sufficiency.revise": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
-    },
     "work_analysis.analyze.repair": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
-    },
-    "work_analysis.analyze.reassess": {
       "allowed_root_fields": [
         "base_projection",
         "candidate_output",

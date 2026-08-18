@@ -5,14 +5,10 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "user_request",
     "request_intent",
     "ranked_segments"
   ],
   "properties": {
-    "user_request": {
-      "type": "string"
-    },
     "request_intent": {
       "$ref": "request-intent-v2.schema.json"
     },
