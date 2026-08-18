@@ -11,22 +11,30 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
+_RECOVERY_MARKER_PREFIX = "\u200bgwa-recovery-fingerprint:"
+
 
 def build_expected_verification_projection(
     *,
     tool_name: str,
     arguments: Mapping[str, object],
 ) -> dict[str, object]:
-    """Build the deterministic expected subset for one approved write."""
+    """Build the deterministic expected subset for one approved write.
+
+    Only fields exposed by the current verification READ projection belong in
+    Expected.  A business argument that the Connector verification snapshot
+    cannot currently observe must not be fabricated into Expected, otherwise a
+    correct write would be forced into MISMATCH for a field Actual can never
+    contain.
+    """
 
     args = dict(arguments)
     if tool_name == "gmail_send":
-        return {
-            "payload": {
-                "sent": True,
-                "draft_id": _required_string(args, "draft_id"),
-            }
-        }
+        # SENT_LOOKUP verifies the exact message resource returned by the
+        # successful dispatch via its persisted fallback resource id.  A fresh
+        # gmail_get_message snapshot does not expose the pre-send draft_id, so
+        # existence + resource type is the deterministic comparable surface.
+        return {"resource_type": "gmail_message"}
     if tool_name in {"calendar_delete_event", "tasks_delete_task"}:
         # DELETE verification owns its explicit absent projection in
         # VerifyWriteActionService; no provider-generated Expected is needed.
@@ -42,14 +50,13 @@ def build_expected_verification_projection(
             expected_payload["thread_id"] = _string(
                 payload["thread_id"], "payload.thread_id"
             )
-        # Current Gmail verification snapshot is metadata-only. Body/cc/bcc and
-        # attachment-content verification are intentionally not claimed here;
-        # those require a richer Connector verification snapshot before they
-        # can become deterministic expected fields.
+        # Current Gmail draft verification snapshot is metadata-only. Body,
+        # cc/bcc and attachment-content verification require a richer
+        # Connector verification projection before they can be claimed here.
         return {"payload": expected_payload}
     if tool_name in {"tasks_create_task", "tasks_update_task"}:
         payload = _mapping(args.get("payload"), "payload")
-        expected_payload = {}
+        expected_payload: dict[str, object] = {}
         for name in ("title", "notes", "status"):
             if name in payload:
                 expected_payload[name] = payload[name]
@@ -58,20 +65,15 @@ def build_expected_verification_projection(
         return {"payload": expected_payload}
     if tool_name in {"calendar_create_event", "calendar_update_event"}:
         payload = _mapping(args.get("payload"), "payload")
-        expected_payload = {}
-        mapping = {
-            "title": "title",
-            "start": "start",
-            "end": "end",
-            "description": "description",
-        }
-        for argument_name, snapshot_name in mapping.items():
+        expected_payload: dict[str, object] = {}
+        # The current Event verification snapshot exposes only title/start/end
+        # from the mutable business fields. description/attendees are approved
+        # business arguments but are intentionally omitted until the Connector
+        # verification snapshot exposes them; comparing an unobservable field
+        # would turn every otherwise-correct write into MISMATCH.
+        for argument_name in ("title", "start", "end"):
             if argument_name in payload:
-                expected_payload[snapshot_name] = payload[argument_name]
-        if "attendees" in payload:
-            expected_payload["attendees"] = _string_list(
-                payload["attendees"], "payload.attendees"
-            )
+                expected_payload[argument_name] = payload[argument_name]
         return {"payload": expected_payload}
     raise LookupError(f"unsupported write tool for expected verification: {tool_name}")
 
@@ -127,7 +129,7 @@ def normalize_actual_verification_projection(
     tool_name: str,
     actual: Mapping[str, object],
 ) -> dict[str, object]:
-    """Normalize provider-facing representation before subset comparison."""
+    """Normalize Connector execution metadata before subset comparison."""
 
     normalized = _deep_mapping_copy(actual)
     payload_value = normalized.get("payload")
@@ -138,11 +140,30 @@ def normalize_actual_verification_projection(
         due = payload.get("due")
         if isinstance(due, str) and len(due) >= 10:
             payload["due"] = due[:10]
+        notes = payload.get("notes")
+        if isinstance(notes, str):
+            payload["notes"] = _strip_recovery_marker(notes)
     if tool_name in {"calendar_create_event", "calendar_update_event"}:
+        description = payload.get("description")
+        if isinstance(description, str):
+            payload["description"] = _strip_recovery_marker(description)
         attendees = payload.get("attendees")
         if isinstance(attendees, list):
             payload["attendees"] = sorted(str(item) for item in attendees)
     return normalized
+
+
+def _strip_recovery_marker(value: str) -> str:
+    """Remove only the server-generated recovery suffix, preserving business text."""
+
+    marker_index = value.find(_RECOVERY_MARKER_PREFIX)
+    if marker_index < 0:
+        return value
+    visible = value[:marker_index]
+    # CREATE appends the marker with two newlines.  Remove those separator
+    # characters as execution metadata too, without trimming user whitespace
+    # in the no-marker case.
+    return visible[:-2] if visible.endswith("\n\n") else visible
 
 
 def _mapping(value: object, path: str) -> dict[str, object]:
