@@ -19,13 +19,15 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
 )
 from google_work_agent.adapters.langgraph.graph_state import (
     ANALYSIS_AGENT_LOCAL_KEY,
-    GraphState,
     ParentGraphState,
     _require_state_value,
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.subgraph_state import WorkAnalysisLocalState
+from google_work_agent.adapters.langgraph.subgraph_state import (
+    WorkAnalysisInputState,
+    WorkAnalysisLocalState,
+)
 from google_work_agent.application.workflows import (
     AgentLocalStateV1,
     GraphStateUpdateV1,
@@ -67,7 +69,7 @@ class WorkAnalysisSubgraph:
     def build(self) -> Any:
         graph = StateGraph(
             WorkAnalysisLocalState,
-            input_schema=GraphState,
+            input_schema=WorkAnalysisInputState,
             output_schema=ParentGraphState,
         )
         graph.add_node("init", self._init_node)
