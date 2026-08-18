@@ -59,11 +59,35 @@ def test_expected_never_contains_provider_generated_identity() -> None:
         assert "version" not in expected
 
 
-def test_gmail_send_expected_is_deterministic_from_approved_draft_id() -> None:
+def test_gmail_send_expected_matches_fresh_sent_message_lookup_surface() -> None:
     assert build_expected_verification_projection(
         tool_name="gmail_send",
         arguments={"draft_id": "draft-1"},
-    ) == {"payload": {"sent": True, "draft_id": "draft-1"}}
+    ) == {"resource_type": "gmail_message"}
+
+
+def test_calendar_expected_omits_fields_current_verification_snapshot_cannot_observe() -> None:
+    expected = build_expected_verification_projection(
+        tool_name="calendar_create_event",
+        arguments={
+            "calendar_id": "calendar-1",
+            "payload": {
+                "title": "Focus",
+                "start": "2026-08-20T09:00:00+09:00",
+                "end": "2026-08-20T10:00:00+09:00",
+                "description": "Deep work",
+                "attendees": ["a@example.com"],
+            },
+        },
+    )
+
+    assert expected == {
+        "payload": {
+            "title": "Focus",
+            "start": "2026-08-20T09:00:00+09:00",
+            "end": "2026-08-20T10:00:00+09:00",
+        }
+    }
 
 
 def test_delete_expected_is_absence_only() -> None:
@@ -117,4 +141,21 @@ def test_task_due_actual_is_normalized_to_product_date() -> None:
     assert actual["payload"] == {
         "title": "Prepare report",
         "due": "2026-08-20",
+    }
+
+
+def test_task_create_actual_strips_only_server_generated_recovery_marker() -> None:
+    actual = normalize_actual_verification_projection(
+        tool_name="tasks_create_task",
+        actual={
+            "payload": {
+                "title": "Prepare report",
+                "notes": "Use Q3 numbers\n\n\u200bgwa-recovery-fingerprint:abc123",
+            }
+        },
+    )
+
+    assert actual["payload"] == {
+        "title": "Prepare report",
+        "notes": "Use Q3 numbers",
     }
