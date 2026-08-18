@@ -27,14 +27,14 @@ Prompt·Failure 정규화   → 15
 
 같은 Concern에서는 해당 소유 계약과 실행 가능한 Domain/SQL Constraint가 우선한다.
 
-## 현재 Canonical 기준 — 2026-08-18 Planning Dependency Contract Alignment
+## 현재 Canonical 기준 — 2026-08-15 Retrieval Contract Alignment
 
 - Project Overview v1.14
 - PRD v2.10 / Functional v2.15 / Policy v2.11 / UI·UX v2.11
 - Architecture v3.6 / Domain·DB v1.19 / DB Schema v1.6
-- Retrieval **v2.13** / Workflow **v7.19** / Interface **v2.21** / Sequence **v3.16**
+- Retrieval **v2.13** / Workflow **v7.17** / Interface **v2.21** / Sequence **v3.15**
 - Security v2.10 / Infrastructure **v2.10** / Observability **v2.20**
-- Test **v3.38** / Evaluation **v3.25** / Operations **v2.19** / Agent Capability·Prompt **v1.25**
+- Test **v3.36** / Evaluation **v3.23** / Operations **v2.19** / Agent Capability·Prompt **v1.23**
 - Domain State Transition v1.5 / State Transition Test Matrix v1.5
 - Dataset candidate: `rebuild-v1.17-r8.6-phase7.5-contract-correction`
 - Projection candidate: `projection-v1.1-r8.6-phase7.5`
@@ -49,13 +49,6 @@ PHASE 7에서 발견된 세 blocker는 PHASE 7.5에서 계약 수준으로 교�
 3. `tasklist_id/calendar_id`는 LLM 추측이 아니라 deterministic default-container binding으로 고정.
 
 실제 Ollama/qwen benchmark와 Holdout tuning은 아직 수행하지 않았다.
-
-2026-08-18 Planning dependency contract alignment에서 Prompt topology와 Workflow 책임을 다시 맞췄다.
-
-- `planning.compose_dependencies`를 별도 Product LLM/PromptRef로 추가하지 않는다.
-- 27 Active Runtime Prompt Slot + 3 Retired Slot topology를 유지한다.
-- 각 Action의 Business Arguments만 route별 Planning LLM이 작성하고, 다중 Action Dependency 생성·정규화·DAG cycle 검증과 최종 `ActionPlanDraftV2` 조립은 deterministic Planning Application Node가 소유한다.
-- Confirmation resume는 validated `ConfirmationResponseV1`만 originating owner의 resumed Product Prompt에 one-shot optional projection으로 전달하며 raw resume/checkpoint metadata는 Prompt에 전달하지 않는다.
 
 2026-08-14 Runtime alignment 과정에서 Workflow handoff의 미완성 계약을 닫았다.
 
@@ -81,7 +74,7 @@ PHASE 7에서 발견된 세 blocker는 PHASE 7.5에서 계약 수준으로 교�
 - Retrieval Local State는 field/type 변경에 맞춰 `RetrievalStateV2`로 승격했다.
 - `QueryAttempt.added_constraints/removed_constraints`는 관측·follow-up summary이며 다음 실행계획의 값 권위가 아니다.
 - `NEXT_PAGE`의 raw continuation owner는 기존대로 Run Retrieval Cache read-result entry 하나이며, `DETAIL_FETCH`는 bounded candidate ref만 Planner가 제안한다.
-- 위 변경의 제품 회귀 Gate는 현재 `12 Test v3.38`, Prompt/Failure 정규화는 `15 v1.25`가 검증·소비한다.
+- 위 변경의 제품 회귀 Gate는 `12 Test v3.36`, Prompt/Failure 정규화는 `15 v1.23`가 검증·소비한다.
 
 ## 프로젝트 소스 25개 구성
 
