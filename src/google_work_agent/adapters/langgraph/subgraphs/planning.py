@@ -20,13 +20,15 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
 from google_work_agent.adapters.langgraph.graph_state import (
     PLANNING_AGENT_LOCAL_KEY,
     PLANNING_MODE_KEY,
-    GraphState,
     ParentGraphState,
     _require_state_value,
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.subgraph_state import PlanningLocalState
+from google_work_agent.adapters.langgraph.subgraph_state import (
+    PlanningInputState,
+    PlanningLocalState,
+)
 from google_work_agent.application.workflows import (
     ActionPlanDraftV1,
     AgentLocalStateV1,
@@ -112,7 +114,7 @@ class PlanningSubgraph:
     def build(self) -> Any:
         graph = StateGraph(
             PlanningLocalState,
-            input_schema=GraphState,
+            input_schema=PlanningInputState,
             output_schema=ParentGraphState,
         )
         graph.add_node("init", self._init_node)
