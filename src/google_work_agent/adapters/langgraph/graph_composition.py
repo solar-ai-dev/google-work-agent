@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Hashable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
@@ -118,13 +118,6 @@ class WorkflowGraphComposition:
         ):
             graph.add_conditional_edges(name, self._route_next_node, edges)
         return graph.compile(checkpointer=self._checkpointer)
-
-    def replace_binding(self, name: str, handler: Any) -> None:
-        """Replace one registered node before recompiling the parent graph."""
-
-        if name not in GraphNodeBindings.__dataclass_fields__:
-            raise KeyError(f"unknown graph node binding: {name}")
-        self._bindings = replace(self._bindings, **{name: handler})
 
     def edge_map(self) -> dict[Hashable, str]:
         edges: dict[Hashable, str] = {
