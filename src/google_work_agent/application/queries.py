@@ -25,6 +25,8 @@ from google_work_agent.ports import (
 )
 
 MAX_PAGE_SIZE = 100
+MAX_HISTORY_MESSAGES = 200
+MAX_HISTORY_RUNS = 200
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +110,31 @@ class ConversationRunRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class ConversationMessageItem:
+    id: str
+    run_id: str | None
+    role: str
+    content: str
+    created_at_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationHistoryRunItem:
+    run_id: str
+    status: str
+    started_at_ms: int
+    finished_at_ms: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationHistory:
+    conversation: ConversationListItem
+    messages: tuple[ConversationMessageItem, ...]
+    runs: tuple[ConversationHistoryRunItem, ...]
+    truncated: bool
+
+
+@dataclass(frozen=True, slots=True)
 class GoogleAccountRecord:
     account_id: str
     email: str
@@ -174,6 +201,73 @@ class QueryService:
         if row is None:
             return None
         return _conversation_item_from_row(row)
+
+    def get_conversation_history(self, conversation_id: str) -> ConversationHistory | None:
+        """Return the stored message/run history projection for one conversation.
+
+        Uses three bounded queries on a single connection so that opening a
+        conversation never scales its query count with message or run count.
+        """
+        with self._connection_factory(self._database_path) as connection:
+            conversation_row = connection.execute(
+                """
+                SELECT id, account_id, title, created_at_ms, updated_at_ms
+                FROM conversations
+                WHERE id = ?;
+                """,
+                (conversation_id,),
+            ).fetchone()
+            if conversation_row is None:
+                return None
+            message_rows = connection.execute(
+                """
+                SELECT id, run_id, role, content, created_at_ms
+                FROM messages
+                WHERE conversation_id = ?
+                ORDER BY created_at_ms DESC, id DESC
+                LIMIT ?;
+                """,
+                (conversation_id, MAX_HISTORY_MESSAGES + 1),
+            ).fetchall()
+            run_rows = connection.execute(
+                """
+                SELECT id, status, started_at_ms, finished_at_ms
+                FROM runs
+                WHERE conversation_id = ?
+                ORDER BY started_at_ms DESC, id DESC
+                LIMIT ?;
+                """,
+                (conversation_id, MAX_HISTORY_RUNS),
+            ).fetchall()
+        truncated = len(message_rows) > MAX_HISTORY_MESSAGES
+        retained = message_rows[:MAX_HISTORY_MESSAGES]
+        messages = tuple(
+            ConversationMessageItem(
+                id=str(row["id"]),
+                run_id=None if row["run_id"] is None else str(row["run_id"]),
+                role=str(row["role"]),
+                content=str(row["content"]),
+                created_at_ms=int(row["created_at_ms"]),
+            )
+            for row in reversed(retained)
+        )
+        runs = tuple(
+            ConversationHistoryRunItem(
+                run_id=str(row["id"]),
+                status=str(row["status"]),
+                started_at_ms=int(row["started_at_ms"]),
+                finished_at_ms=(
+                    None if row["finished_at_ms"] is None else int(row["finished_at_ms"])
+                ),
+            )
+            for row in reversed(run_rows)
+        )
+        return ConversationHistory(
+            conversation=_conversation_item_from_row(conversation_row),
+            messages=messages,
+            runs=runs,
+            truncated=truncated,
+        )
 
     def get_run_snapshot(self, run_id: str) -> RunSnapshot | None:
         with self._connection_factory(self._database_path) as connection:

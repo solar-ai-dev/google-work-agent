@@ -169,6 +169,7 @@ class StartRunService:
                         created_at_ms=now_ms,
                     )
                 )
+                unit_of_work.conversations.touch(command.conversation_id, updated_at_ms=now_ms)
                 unit_of_work.traces.add(
                     TraceEventRecord(
                         run_id=command.run_id,

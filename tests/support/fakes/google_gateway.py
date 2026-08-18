@@ -194,6 +194,11 @@ class FakeGoogleGateway:
         return GmailThreadDetail(
             thread_id=thread_id,
             message_id=message.resource_id,
+            rfc822_message_id=(
+                str(message.payload["rfc822_message_id"])
+                if message.payload.get("rfc822_message_id")
+                else None
+            ),
             sender_name=sender_name or None,
             sender_email=sender_email or None,
             recipients=recipients,

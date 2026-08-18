@@ -1,6 +1,6 @@
 # 02. Google Work Agent UI · UX 설계서
 
-> **상태:** Draft v2.11 · **기준일:** 2026-08-13 · **대상:** P0 MVP
+> **상태:** Draft v2.13 · **기준일:** 2026-08-18 · **대상:** P0 MVP
 
 > **핵심 UX 원칙:** 사용자는 최소한의 행동으로 최대한의 결과를 얻어야 한다. 사용자가 이미 보고 있는 항목과 작업 흐름 안에서 다음 행동을 수행할 수 있어야 하며, 불필요한 화면 이동·재입력·반복 승인은 UX 실패로 본다.
 
@@ -235,7 +235,7 @@ Gmail·Tasks·Calendar를 확인하는 동시에 현재 항목에서 바로 Agen
 - Gmail·Tasks는 페이지당 **20개**의 Resource 목록. Calendar는 Month View visible grid를 사용하며 numeric pagination을 사용하지 않음
 - Gmail·Tasks는 이전·다음 목록 페이지 이동, Calendar는 이전·다음 월 이동
 - 단일 선택과 다중 선택
-- 원본 Google 서비스에서 열기
+- 원본 서비스에서 열기 또는 찾기 — 실제 동작은 Provider capability에 따르며 direct Thread permalink를 보장하지 않는다. Gmail P0는 `Gmail에서 찾기`이며 원본 Thread를 직접 열지 않고 Gmail 검색 결과 화면으로 이동한다.
 - 현재 채팅 Context로 추가
 - 선택된 항목에서 Agent 요청 시작
 
@@ -341,9 +341,11 @@ Gmail·Tasks·Calendar를 확인하는 동시에 현재 항목에서 바로 Agen
 - 현재 첨부된 Gmail·Task·Event 수
 - 실행 중일 때 중단
 - Enter 전송, Shift+Enter 줄바꿈
+- 기본 상태는 1줄 높이의 compact 입력창이며 입력 내용에 따라 높이가 자동으로 늘어난다. 최대 높이에 도달하면 Composer 전체가 계속 커지지 않고 입력창 내부 scroll로 전환한다. 전송 후 입력값이 비워지면 다시 1줄 높이로 돌아온다.
+- 전송 Button은 입력창과 같은 행에 위치하며 Composer는 Center 하단에서 항상 접근 가능하다.
 - 하나의 대화에서 동시에 하나의 Active Run만 허용
 
-새 요청이 현재 Run과 관련 없으면 새 대화에서 시작하도록 안내한다.
+같은 Conversation에는 여러 번의 USER 요청과 그에 대응하는 여러 Run이 순차적으로 존재할 수 있다. 이전 Run이 종료되면 사용자는 같은 Conversation에서 후속 요청뿐 아니라 이전 요청과 업무적으로 무관한 새 요청도 이어서 입력할 수 있다. Frontend는 새 요청의 업무 관련성을 판단해 새 대화를 강제하거나 자동으로 유도하지 않는다. 대화 맥락을 의도적으로 분리하고 싶을 때는 사용자가 직접 `+ 새 대화`를 선택한다.
 
 ## 11. 진행 상태 UX
 
@@ -412,11 +414,13 @@ Local Agent Service가 응답하지 않으면 화면 전체를 초기화하지 �
 ### 12.3 대화 항목
 
 - 자동 생성 대화 제목
-- 마지막 실행 시각
+- 마지막 활동 시각
 - 현재 상태
 - Action 수 또는 실패 수
-- 이름 변경
-- 삭제
+- 이름 변경 (P1, 27절 참고)
+- 삭제 (P1, 27절 참고)
+
+`Conversation.title`은 최초 USER 요청을 기반으로 대화 생성 시 한 번 생성되는 안정적인 식별 제목이다. 같은 Conversation에 후속 요청이나 업무적으로 무관한 새 요청이 여러 Run으로 추가되어도 title을 자동 재생성하거나 최신 USER 메시지로 덮어쓰지 않는다. "마지막 활동 시각"은 `Conversation.updated_at_ms`이며 개별 Message 내용과는 다른 값이다. 최근 USER 메시지 preview 표시는 P0 요구사항이 아니다.
 
 대화를 선택하면 중앙 채팅에서 해당 Thread와 Checkpoint를 복원한다. 과거 승인은 다시 실행에 사용하지 않는다.
 
@@ -436,6 +440,15 @@ Local Agent Service가 응답하지 않으면 화면 전체를 초기화하지 �
 10. 검증 결과 Card
 11. 오류·Recovery Card
 12. 완료 요약 Card
+
+### 13.1 사용자 메시지와 Timeline 표시
+
+- 사용자 메시지는 중앙 Conversation에서 우측 정렬 Message Bubble로 표시하며, 메시지마다 역할 이름을 반복 표시하지 않는다. Bubble 배경은 오른쪽 선택된 Conversation row와 같은 계열의 연한 accent 색을 사용한다.
+- 각 메시지에는 저장된 `created_at_ms`를 사용자 Local Timezone으로 변환한 짧은 시간만 표시한다. 현재 시각으로 대체하지 않는다.
+- Timeline은 사용자 Local Calendar Date 기준으로 메시지를 묶고, 날짜가 바뀌는 지점에만 Date Separator를 표시한다. 같은 날짜 안에서는 반복하지 않는다.
+- Date Separator 문구는 오늘 `오늘`, 어제 `어제`, 올해의 다른 날짜는 `8월 13일` 형태이며 연도가 다르면 연도를 포함한다.
+- 오래된 Conversation을 다시 사용하면 이전 날짜 그룹은 유지되고 새 활동 날짜에 새 Date Separator가 추가된다. Timeline 전체가 Conversation의 최초 날짜에 고정되지 않는다.
+- Conversation을 선택·복원하면 Timeline은 최신 메시지가 보이는 위치를 기본 viewport로 사용한다. 같은 Conversation에 새 USER 메시지가 추가되면 Timeline은 다시 최신 메시지가 보이도록 이동한다. 이 범위를 넘는 unread-scroll 상태 관리는 P0 요구사항이 아니다.
 
 모든 Card는 같은 대화 흐름 안에서 상태가 갱신되고, 결정 완료 후 기존 Button은 비활성화된다.
 
@@ -828,6 +841,7 @@ Right:  Conversation (새 대화·검색·목록) → Recent Execution
 - Center가 주 작업 공간이며 Dashboard나 개발자 Runtime 상태를 우선하지 않는다.
 - Header는 제품명, 사용자 이해가 가능한 Google 연결 상태, 현재 계정, Settings만 기본 노출한다. `WAITING_APPROVAL`, node 이름, profile(`SINGLE/THREE/SIX`), `API_LLM`, `LOCAL_GPU`, `MCP READY`, `SSE CONNECTED` 같은 개발·Runtime 문자열은 Main에서 숨기고 Settings/Diagnostics로 옮긴다.
 - Browser P0에서 창 최소화·최대화·닫기 표식은 시각 장식이나 제품 Window Control 기능으로 정의하지 않는다.
+- App shell(상단 Bar·3 Panel)은 고정되고 페이지 단위로 스크롤되지 않는다. 좌·우 Panel과 Center Conversation Timeline은 각자 영역 안에서 독립적으로 scroll하며, Composer는 Center 하단에서 항상 접근 가능하다.
 
 ### 29.2 Left Resource Panel
 
@@ -836,6 +850,9 @@ Right:  Conversation (새 대화·검색·목록) → Recent Execution
 - Tasks 기본 목록은 **미완료 Task 전체**를 대상으로 하고, Calendar 기본 Upcoming 범위는 사용자 Timezone 기준 **현재부터 향후 90일** Event다.
 - Gmail badge는 기본 `INBOX + PRIMARY` scope의 exact count가 확정된 경우에만 exact로 표시한다. Tasks badge는 incomplete batch의 terminal/continuation 상태에서 계산하고 terminal까지 materialize되면 exact total을 확정한다. Calendar tab에는 numeric badge가 없다. Frontend 전체 페이지 순회·hard code count는 금지한다.
 - 행을 선택하면 Center 상단 Viewer에 제공 가능한 Resource 상세를 표시한다. Gmail sender/recipient/subject/received time/body/attachment metadata, Task title/task_status/scheduled_date/list/notes, Calendar title/start/end/attendees/location/description/calendar는 제공된 필드만 표시한다. 누락값의 추정·생성은 금지한다.
+- 선택 Resource는 Center 상단의 독립 Card/Box로 표시해 아래 Conversation Timeline과의 시각적 경계를 명확히 한다.
+- Resource Detail Viewer 기본 상태는 compact preview다. 제목·주요 Metadata와 제한된 길이의 본문 preview를 표시하고 `...`로 자르며 원문 접근을 막지 않는다. 전체 내용은 `펼치기`로 확인한다.
+- 펼친 상태는 `접기`로 되돌릴 수 있고 bounded 영역 안에서 내부 scroll을 사용한다. Resource Detail이 Center 높이의 상당 부분을 항상 차지하지 않게 하여, 일반 상태에서는 Conversation Timeline이 남은 공간을 사용하고 Composer 접근성을 우선한다.
 - Focus Resource와 다중 선택 Resource 집합을 분리한다. Focus는 Viewer용이며 다중 선택은 기존 Agent Context 기능을 보존한다.
 
 ### 29.3 Center Conversation과 Approval

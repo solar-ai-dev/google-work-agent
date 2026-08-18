@@ -94,6 +94,16 @@ class SQLiteConversationRepository:
             ),
         )
 
+    def touch(self, conversation_id: str, *, updated_at_ms: int) -> None:
+        self._connection.execute(
+            """
+            UPDATE conversations
+            SET updated_at_ms = ?
+            WHERE id = ? AND updated_at_ms < ?;
+            """,
+            (updated_at_ms, conversation_id, updated_at_ms),
+        )
+
 
 class SQLiteRunRepository:
     """SQLite run repository with optimistic state transitions."""
