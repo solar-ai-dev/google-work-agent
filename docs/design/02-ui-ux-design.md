@@ -1,6 +1,6 @@
 # 02. Google Work Agent UI · UX 설계서
 
-> **상태:** Draft v2.12 · **기준일:** 2026-08-18 · **대상:** P0 MVP
+> **상태:** Draft v2.13 · **기준일:** 2026-08-18 · **대상:** P0 MVP
 
 > **핵심 UX 원칙:** 사용자는 최소한의 행동으로 최대한의 결과를 얻어야 한다. 사용자가 이미 보고 있는 항목과 작업 흐름 안에서 다음 행동을 수행할 수 있어야 하며, 불필요한 화면 이동·재입력·반복 승인은 UX 실패로 본다.
 
@@ -235,7 +235,7 @@ Gmail·Tasks·Calendar를 확인하는 동시에 현재 항목에서 바로 Agen
 - Gmail·Tasks는 페이지당 **20개**의 Resource 목록. Calendar는 Month View visible grid를 사용하며 numeric pagination을 사용하지 않음
 - Gmail·Tasks는 이전·다음 목록 페이지 이동, Calendar는 이전·다음 월 이동
 - 단일 선택과 다중 선택
-- 원본 Google 서비스에서 열기
+- 원본 서비스에서 열기 또는 찾기 — 실제 동작은 Provider capability에 따르며 direct Thread permalink를 보장하지 않는다. Gmail P0는 `Gmail에서 찾기`이며 원본 Thread를 직접 열지 않고 Gmail 검색 결과 화면으로 이동한다.
 - 현재 채팅 Context로 추가
 - 선택된 항목에서 Agent 요청 시작
 

@@ -1,6 +1,6 @@
 # 01-A. Google Work Agent 기능 정의서
 
-> **상태:** Draft v2.16 · **기준일:** 2026-08-18
+> **상태:** Draft v2.17 · **기준일:** 2026-08-18
 
 ## 1. 문서 목적
 
@@ -276,7 +276,7 @@
 
 - **상태:** P0
 - **처리:** Source별 결과를 공통 WorkItem·Evidence Schema로 변환한다.
-- **완료 조건:** Source, Resource ID, 제목, 시간, 사람, 상태, 원본 링크가 보존된다.
+- **완료 조건:** Source, Resource ID, 제목, 시간, 사람, 상태, 원본 서비스 참조 링크가 보존된다. 원본 서비스 참조 링크는 Provider capability에 따라 직접 열기 또는 찾기(예: Gmail 검색)로 연결될 수 있으며 direct permalink를 보장하지 않는다.
 
 ### FN-025 Chunking
 

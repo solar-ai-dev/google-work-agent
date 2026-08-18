@@ -1,6 +1,6 @@
 # 10. Google Work Agent · 인프라 · 환경 설정 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.16`, `01-B Policy v2.11`, `03 Architecture v3.6`, `04 Domain·DB v1.19`, `05 Retrieval v2.13`, `06 Workflow v7.17`, `07 Interface v2.21`, `08 Sequence v3.15`, `09 Security v2.10`의 제품·보안·실행 계약을 기준으로 한다. `11 Observability`, `12 Test`, `14 Operations`는 본 인프라 계약을 관측·검증·운영 절차로 소비하는 downstream 문서이며 본 문서의 기준 계약이 아니다.
+> **문서 기준:** `01 PRD v2.10`, `01-A v2.17`, `01-B Policy v2.11`, `03 Architecture v3.6`, `04 Domain·DB v1.19`, `05 Retrieval v2.13`, `06 Workflow v7.17`, `07 Interface v2.22`, `08 Sequence v3.15`, `09 Security v2.10`의 제품·보안·실행 계약을 기준으로 한다. `11 Observability`, `12 Test`, `14 Operations`는 본 인프라 계약을 관측·검증·운영 절차로 소비하는 downstream 문서이며 본 문서의 기준 계약이 아니다.
 
 > **상태:** Draft v2.10 · **기준일:** 2026-08-18 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
