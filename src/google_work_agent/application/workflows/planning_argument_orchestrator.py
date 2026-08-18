@@ -32,7 +32,7 @@ from google_work_agent.application.workflows.planning_tool_schemas import (
     planning_tool_argument_schema,
 )
 from google_work_agent.application.workflows.tool_routing import OutputToolRouteV1
-from google_work_agent.ports import StructuredLLMResult, WorkflowStartRequest
+from google_work_agent.ports import PromptReference, StructuredLLMResult, WorkflowStartRequest
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,11 +58,11 @@ class PlanningArgumentOrchestrator:
         self._explicit_container_provider = explicit_container_provider
 
     @property
-    def prompt_ref(self):  # type: ignore[no-untyped-def]
+    def prompt_ref(self) -> PromptReference:
         return self._writer.prompt_ref
 
     @property
-    def revise_prompt_ref(self):  # type: ignore[no-untyped-def]
+    def revise_prompt_ref(self) -> PromptReference:
         return self._writer.revise_prompt_ref
 
     def compose(
