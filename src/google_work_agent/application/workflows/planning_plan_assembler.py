@@ -4,15 +4,29 @@ LLM argument candidates contribute only business arguments/evidence references.
 Frozen Tool Route contributes connector-independent route/tool/effect identity.
 Dependency generation, normalization, cycle validation, and final typed-plan
 assembly are deterministic code responsibilities.
+
+The release runtime still carries ``ActionPlanDraftV1`` through Review/Domain
+Validation.  ``assemble_action_plan_draft_v1_compat`` is a one-way compatibility
+projection from the canonical V2 plan; it does not return any of the removed
+legacy authoring authority to the LLM.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from typing import Literal, Required, TypedDict, cast
 
+from google_work_agent.application.workflows.handoff_contracts import (
+    ActionPlanDraftV1,
+    EvidenceDraftV1,
+    RequestIntentV2,
+    WorkAnalysisResultV1,
+)
 from google_work_agent.application.workflows.planning_arguments import ToolArgumentCandidateV1
 from google_work_agent.application.workflows.tool_routing import OutputToolRouteV1
+from google_work_agent.application.write_verification_projection import (
+    build_expected_verification_projection,
+)
 
 
 class PlanningAssemblyError(ValueError):
@@ -76,12 +90,21 @@ _TARGET_IDENTITY_FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
     "calendar_delete_event": ("CALENDAR_EVENT", ("calendar_id", "event_id")),
 }
 
+_TARGET_RESOURCE_MATCH: dict[str, tuple[str, str]] = {
+    "gmail_update_draft": ("draft_id", "gmail_draft:"),
+    "tasks_update_task": ("task_id", "task:"),
+    "tasks_delete_task": ("task_id", "task:"),
+    "calendar_update_event": ("event_id", "calendar_event:"),
+    "calendar_delete_event": ("event_id", "calendar_event:"),
+}
+
 
 def materialize_action_seeds(
     *,
     output_routes: Iterable[OutputToolRouteV1],
     argument_candidates: Iterable[ToolArgumentCandidateV1],
     action_id_factory: Callable[[], str],
+    action_id_by_route: Mapping[str, str] | None = None,
 ) -> tuple[PlanningActionSeedV1, ...]:
     """Join exactly one argument candidate to each frozen output route."""
 
@@ -97,6 +120,12 @@ def materialize_action_seeds(
             f"argument candidates must match frozen output routes; missing={sorted(missing)}, "
             f"extra={sorted(extra)}"
         )
+    if action_id_by_route is not None:
+        extra_action_ids = set(action_id_by_route) - set(route_by_id)
+        if extra_action_ids:
+            raise PlanningAssemblyError(
+                f"action id mapping references unknown routes: {sorted(extra_action_ids)}"
+            )
 
     seeds: list[PlanningActionSeedV1] = []
     for route in routes:
@@ -105,9 +134,13 @@ def materialize_action_seeds(
         effect = route["effect"]
         if effect not in _WRITE_EFFECTS:
             raise PlanningAssemblyError(f"output route is not a write effect: {route_id}")
-        action_id = action_id_factory()
+        action_id = (
+            action_id_by_route.get(route_id, "")
+            if action_id_by_route is not None
+            else action_id_factory()
+        )
         if not action_id:
-            raise PlanningAssemblyError("action id factory returned an empty id")
+            raise PlanningAssemblyError("action id factory/mapping returned an empty id")
         seeds.append(
             {
                 "action_id": action_id,
@@ -219,6 +252,178 @@ def assemble_action_plan_draft_v2(
     }
 
 
+def assemble_action_plan_draft_v1_compat(
+    *,
+    request_intent: RequestIntentV2,
+    analysis_result: WorkAnalysisResultV1,
+    evidence_drafts: list[EvidenceDraftV1],
+    output_routes: tuple[OutputToolRouteV1, ...],
+    argument_candidates: tuple[ToolArgumentCandidateV1, ...],
+    plan_id_factory: Callable[[], str],
+    action_id_factory: Callable[[], str],
+    revision: int = 1,
+    previous_plan: ActionPlanDraftV1 | None = None,
+) -> ActionPlanDraftV1:
+    """Project canonical per-route Planning output into the legacy review shape.
+
+    Tool/effect/action identity, dependency and Expected are code-owned here.
+    LLM candidates contribute only validated business arguments and evidence
+    references.  Revision preserves the previous plan/action ids after exact
+    frozen-route alignment so Review references cannot be silently retargeted.
+    """
+
+    plan_id = previous_plan["plan_id"] if previous_plan is not None else plan_id_factory()
+    if not plan_id:
+        raise PlanningAssemblyError("plan id must not be empty")
+    action_id_by_route = _previous_action_ids_by_route(
+        output_routes=output_routes,
+        previous_plan=previous_plan,
+    )
+    seeds = materialize_action_seeds(
+        output_routes=output_routes,
+        argument_candidates=argument_candidates,
+        action_id_factory=action_id_factory,
+        action_id_by_route=action_id_by_route,
+    )
+    intent_meta = request_intent["meta"]
+    canonical = assemble_action_plan_draft_v2(
+        artifact_id=plan_id,
+        revision=revision,
+        based_on=[
+            {
+                "artifact_id": intent_meta["artifact_id"],
+                "revision": intent_meta["revision"],
+            }
+        ],
+        action_seeds=seeds,
+    )
+
+    evidence_by_id = {draft["evidence_id"]: draft for draft in evidence_drafts}
+    resource_refs_by_handle = {
+        str(ref["resource_handle"]): dict(ref)
+        for ref in analysis_result["resource_refs"]
+        if isinstance(ref.get("resource_handle"), str)
+    }
+    plan_evidence_refs = _stable_unique(
+        evidence_ref
+        for action in canonical["actions"]
+        for evidence_ref in action["evidence_refs"]
+    )
+    plan_resource_handles = _stable_unique(
+        evidence_by_id[evidence_ref]["resource_handle"]
+        for evidence_ref in plan_evidence_refs
+        if evidence_ref in evidence_by_id
+        and evidence_by_id[evidence_ref]["resource_handle"] in resource_refs_by_handle
+    )
+    plan_resource_refs = [resource_refs_by_handle[handle] for handle in plan_resource_handles]
+
+    legacy_actions: list[dict[str, object]] = []
+    for position, action in enumerate(canonical["actions"], start=1):
+        action_resource_handles = _stable_unique(
+            evidence_by_id[evidence_ref]["resource_handle"]
+            for evidence_ref in action["evidence_refs"]
+            if evidence_ref in evidence_by_id
+            and evidence_by_id[evidence_ref]["resource_handle"] in resource_refs_by_handle
+        )
+        target_resource_ref_id = _target_resource_handle(
+            tool_id=action["tool_id"],
+            arguments=action["arguments"],
+            resource_refs_by_handle=resource_refs_by_handle,
+        )
+        legacy_actions.append(
+            {
+                "schema_version": 2,
+                "action_id": action["action_id"],
+                "position": position,
+                "effect": action["effect"],
+                "tool_name": action["tool_id"],
+                "arguments": dict(action["arguments"]),
+                "expected": build_expected_verification_projection(
+                    tool_name=action["tool_id"],
+                    arguments=action["arguments"],
+                ),
+                "evidence_refs": list(action["evidence_refs"]),
+                "resource_refs": action_resource_handles,
+                "target_resource_ref_id": target_resource_ref_id,
+                "depends_on_action_ids": list(action["depends_on_action_ids"]),
+                "user_visible_reason": request_intent["goal"],
+            }
+        )
+
+    return cast(
+        ActionPlanDraftV1,
+        {
+            "schema_version": 2,
+            "status": "PLAN_READY",
+            "plan_id": plan_id,
+            "summary": analysis_result["summary"] or request_intent["goal"],
+            "objective": request_intent["goal"],
+            "actions": legacy_actions,
+            "evidence_refs": plan_evidence_refs,
+            "resource_refs": plan_resource_refs,
+            "confirmation": None,
+        },
+    )
+
+
+def _previous_action_ids_by_route(
+    *,
+    output_routes: tuple[OutputToolRouteV1, ...],
+    previous_plan: ActionPlanDraftV1 | None,
+) -> dict[str, str] | None:
+    if previous_plan is None:
+        return None
+    write_actions = [action for action in previous_plan["actions"] if action["effect"] != "READ"]
+    if len(write_actions) != len(output_routes):
+        raise PlanningAssemblyError(
+            "previous plan does not have exactly one write action per frozen output route"
+        )
+    result: dict[str, str] = {}
+    for route, action in zip(output_routes, write_actions, strict=True):
+        if action["tool_name"] != route["selected_tool_id"] or action["effect"] != route["effect"]:
+            raise PlanningAssemblyError(
+                f"previous action does not align with frozen output route: {route['route_id']}"
+            )
+        result[route["route_id"]] = action["action_id"]
+    return result
+
+
+def _target_resource_handle(
+    *,
+    tool_id: str,
+    arguments: Mapping[str, object],
+    resource_refs_by_handle: Mapping[str, dict[str, object]],
+) -> str | None:
+    match = _TARGET_RESOURCE_MATCH.get(tool_id)
+    if match is None:
+        return None
+    argument_name, handle_prefix = match
+    target_id = arguments.get(argument_name)
+    if not isinstance(target_id, str) or not target_id:
+        return None
+    matches = [
+        handle
+        for handle, resource_ref in resource_refs_by_handle.items()
+        if handle.startswith(handle_prefix) and resource_ref.get("resource_id") == target_id
+    ]
+    if len(matches) > 1:
+        raise PlanningAssemblyError(
+            f"multiple resource refs match selected Tool target: {tool_id}/{target_id}"
+        )
+    return matches[0] if matches else None
+
+
+def _stable_unique(values: Iterable[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
 def _stable_target_identity(seed: PlanningActionSeedV1) -> tuple[str, ...] | None:
     identity_spec = _TARGET_IDENTITY_FIELDS.get(seed["tool_id"])
     if identity_spec is None:
@@ -228,9 +433,6 @@ def _stable_target_identity(seed: PlanningActionSeedV1) -> tuple[str, ...] | Non
     for field in fields:
         value = seed["arguments"].get(field)
         if not isinstance(value, str) or not value.strip():
-            # The selected Tool schema should already require these values, but
-            # fail closed here as well rather than derive a dependency from an
-            # incomplete identity.
             raise PlanningAssemblyError(
                 f"stable target identity is missing {field}: {seed['tool_id']}"
             )
@@ -289,6 +491,7 @@ __all__ = [
     "PlanningAssemblyError",
     "StateArtifactMetaV1",
     "StateArtifactRefV1",
+    "assemble_action_plan_draft_v1_compat",
     "assemble_action_plan_draft_v2",
     "derive_action_dependencies_deterministically",
     "materialize_action_seeds",
