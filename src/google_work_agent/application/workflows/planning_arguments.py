@@ -169,6 +169,8 @@ def validate_tool_argument_candidate_v1(
         )
 
     evidence_refs = _require_string_list(candidate["evidence_refs"], "candidate.evidence_refs")
+    if not evidence_refs:
+        raise PlanningArgumentBindingError("argument candidate requires at least one evidence ref")
     unknown_evidence = set(evidence_refs) - allowed_evidence_refs
     if unknown_evidence:
         raise PlanningArgumentBindingError("argument candidate references unavailable evidence")
