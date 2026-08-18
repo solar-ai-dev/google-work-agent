@@ -1,6 +1,6 @@
 """LangGraph-backed workflow runtime adapters."""
 
-from google_work_agent.adapters.langgraph.canonical_runtime import LangGraphWorkflowRuntime
+from google_work_agent.adapters.langgraph.canonical_planning_runtime import LangGraphWorkflowRuntime
 from google_work_agent.adapters.langgraph.profiles import (
     GraphProfile,
     PromptArtifactGapError,
