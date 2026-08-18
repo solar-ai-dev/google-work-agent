@@ -2,8 +2,8 @@
 
 LLM argument candidates contribute only business arguments/evidence references.
 Frozen Tool Route contributes connector-independent route/tool/effect identity.
-Dependency candidates may be produced conditionally, but DAG validation and the
-final typed plan are deterministic code responsibilities.
+Dependency generation, normalization, cycle validation, and final typed-plan
+assembly are deterministic code responsibilities.
 """
 
 from __future__ import annotations
@@ -63,6 +63,19 @@ class PlanningActionSeedV1(TypedDict):
 
 _WRITE_EFFECTS = frozenset({"CREATE", "UPDATE", "SEND", "DELETE"})
 
+# Only resources whose stable external identity is already present in approved
+# business arguments are eligible for automatic dependency derivation. CREATE
+# actions intentionally have no entry: their provider-generated resource id is
+# not known before execution and must never be invented by Planning.
+_TARGET_IDENTITY_FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "gmail_update_draft": ("GMAIL_DRAFT", ("draft_id",)),
+    "gmail_send": ("GMAIL_DRAFT", ("draft_id",)),
+    "tasks_update_task": ("TASK", ("task_list_id", "task_id")),
+    "tasks_delete_task": ("TASK", ("task_list_id", "task_id")),
+    "calendar_update_event": ("CALENDAR_EVENT", ("calendar_id", "event_id")),
+    "calendar_delete_event": ("CALENDAR_EVENT", ("calendar_id", "event_id")),
+}
+
 
 def materialize_action_seeds(
     *,
@@ -110,15 +123,46 @@ def materialize_action_seeds(
     return tuple(seeds)
 
 
+def derive_action_dependencies_deterministically(
+    action_seeds: Iterable[PlanningActionSeedV1],
+) -> tuple[ActionDependencyCandidateV1, ...]:
+    """Derive the minimal safe DAG from stable same-resource identities.
+
+    Frozen route order is the only ordering input. Two actions are linked only
+    when both target the same already-identifiable external resource. The
+    later action depends on the immediately preceding action for that target;
+    unrelated resources remain parallel. CREATE actions are deliberately not
+    linked because their provider-generated id does not exist at plan time.
+    """
+
+    previous_action_by_target: dict[tuple[str, ...], str] = {}
+    dependencies: list[ActionDependencyCandidateV1] = []
+    for seed in action_seeds:
+        target = _stable_target_identity(seed)
+        if target is None:
+            continue
+        previous_action_id = previous_action_by_target.get(target)
+        if previous_action_id is not None:
+            dependencies.append(
+                {
+                    "action_id": seed["action_id"],
+                    "depends_on_action_id": previous_action_id,
+                    "reason": "SAME_RESOURCE_ORDER",
+                }
+            )
+        previous_action_by_target[target] = seed["action_id"]
+    return tuple(dependencies)
+
+
 def assemble_action_plan_draft_v2(
     *,
     artifact_id: str,
     revision: int,
     based_on: Iterable[StateArtifactRefV1],
     action_seeds: Iterable[PlanningActionSeedV1],
-    dependency_candidates: Iterable[ActionDependencyCandidateV1] = (),
+    dependency_candidates: Iterable[ActionDependencyCandidateV1] | None = None,
 ) -> ActionPlanDraftV2:
-    """Validate dependencies and assemble the final immutable Planning artifact."""
+    """Derive/validate dependencies and assemble the immutable Planning artifact."""
 
     if not artifact_id:
         raise PlanningAssemblyError("artifact_id must not be empty")
@@ -131,9 +175,14 @@ def assemble_action_plan_draft_v2(
     if len(set(action_ids)) != len(action_ids):
         raise PlanningAssemblyError("duplicate action_id in action seeds")
 
+    dependencies = (
+        derive_action_dependencies_deterministically(seeds)
+        if dependency_candidates is None
+        else tuple(dependency_candidates)
+    )
     dependencies_by_action: dict[str, list[str]] = {action_id: [] for action_id in action_ids}
     seen_edges: set[tuple[str, str]] = set()
-    for candidate in dependency_candidates:
+    for candidate in dependencies:
         action_id = candidate["action_id"]
         dependency_id = candidate["depends_on_action_id"]
         if action_id not in dependencies_by_action or dependency_id not in dependencies_by_action:
@@ -168,6 +217,25 @@ def assemble_action_plan_draft_v2(
         },
         "actions": actions,
     }
+
+
+def _stable_target_identity(seed: PlanningActionSeedV1) -> tuple[str, ...] | None:
+    identity_spec = _TARGET_IDENTITY_FIELDS.get(seed["tool_id"])
+    if identity_spec is None:
+        return None
+    resource_type, fields = identity_spec
+    values: list[str] = [resource_type]
+    for field in fields:
+        value = seed["arguments"].get(field)
+        if not isinstance(value, str) or not value.strip():
+            # The selected Tool schema should already require these values, but
+            # fail closed here as well rather than derive a dependency from an
+            # incomplete identity.
+            raise PlanningAssemblyError(
+                f"stable target identity is missing {field}: {seed['tool_id']}"
+            )
+        values.append(value.strip())
+    return tuple(values)
 
 
 def _unique_routes(routes: tuple[OutputToolRouteV1, ...]) -> dict[str, OutputToolRouteV1]:
@@ -222,5 +290,6 @@ __all__ = [
     "StateArtifactMetaV1",
     "StateArtifactRefV1",
     "assemble_action_plan_draft_v2",
+    "derive_action_dependencies_deterministically",
     "materialize_action_seeds",
 ]
