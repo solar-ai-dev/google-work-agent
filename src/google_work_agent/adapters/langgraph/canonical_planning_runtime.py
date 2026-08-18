@@ -7,9 +7,11 @@ legacy authority before the full PlanningStateV2 migration: an LLM-authored
 expected projection is rebuilt deterministically from the final business
 arguments immediately before the legacy persistence service is invoked.
 
-The wrapper also exposes the configured default Calendar provider for the
-upcoming canonical Planning subgraph wiring.  The existing Task-list provider
-is already injected by the legacy runtime.
+It also materializes the deterministic Task/Calendar container resolver that
+the canonical Planning subgraph will consume.  The Task-list provider is
+already injected by the legacy runtime; Calendar defaults are resolved from an
+explicit provider or, in the current production composition, the LLM runtime's
+shared SettingsService.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from google_work_agent.adapters.langgraph.canonical_runtime import (
 )
 from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.application.workflows.handoff_contracts import ActionPlanDraftV1
+from google_work_agent.application.workflows.planning_arguments import DefaultContainerResolver
 from google_work_agent.application.write_verification_projection import (
     build_expected_verification_projection,
 )
@@ -59,7 +62,7 @@ def replace_llm_expected_with_deterministic_projection(
 
 
 class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
-    """Canonical runtime with deterministic write Expected persistence."""
+    """Canonical runtime with deterministic write Expected/container boundaries."""
 
     def __init__(
         self,
@@ -76,6 +79,10 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
                 )
         self._default_calendar_id_provider = default_calendar_id_provider
         super().__init__(*args, **kwargs)
+        self._planning_default_container_resolver = DefaultContainerResolver(
+            default_tasklist_id_provider=self._default_tasklist_id_provider,
+            default_calendar_id_provider=self._default_calendar_id_provider,
+        )
 
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         deterministic_plan = replace_llm_expected_with_deterministic_projection(plan_draft)
