@@ -888,6 +888,7 @@ class LLMRuntimeService:
 
 
 _JSON_PATH_PREFIX = re.compile(r"^\$[\w.\[\]]*")
+_SEMANTIC_VARIANT_SUFFIXES = (".revise", ".recheck")
 
 
 def _leading_json_path(message: str) -> str | None:
@@ -897,36 +898,25 @@ def _leading_json_path(message: str) -> str | None:
     return match.group(0)
 
 
+def _repair_prompt_id(prompt_id: str) -> str:
+    """Return the registered SCHEMA_REPAIR slot for one semantic node variant."""
+
+    for suffix in _SEMANTIC_VARIANT_SUFFIXES:
+        if prompt_id.endswith(suffix):
+            return f"{prompt_id[:-len(suffix)]}.repair"
+    return f"{prompt_id}.repair"
+
+
 @dataclass(frozen=True, slots=True)
 class PromptRepairSchemaRepairer:
     """Real Schema Repair boundary.
 
-    Re-invokes the same routed ``provider`` with the failed prompt's sibling
-    ``<prompt_id>.repair`` slot (``prompt_id`` with ``.repair`` appended,
-    e.g. ``work_analysis.analyze`` -> ``work_analysis.analyze.repair``) for
-    one bounded attempt, using the exact ``repair_input`` shape already
-    proven by
-    ``experiments/runner/r84_gate_runner.py::_run_repair_case`` against the
-    matching ``*-repair-input.schema.json`` contracts (see e.g.
-    ``experiments/datasets/google_workspace/schemas/work-analysis-repair-input.schema.json``).
-
-    By default (``prompt_loader=None``) this uses ``load_prompt_reference``,
-    which enforces ``RUNTIME_ACTIVE``: while a subgraph's ``.repair`` slot is
-    still ``DRAFT`` (prompts/agent/README.md's Node DEV -> Node HOLDOUT ->
-    G01 Safety Gate has not promoted it yet), this raises the same
-    ``LLMInvocationError`` a caller with no repairer configured at all would
-    raise, instead of using an unapproved prompt in production. Repair
-    activates automatically, with no further code change, the moment a
-    subgraph's ``.repair`` slot is promoted to ``RUNTIME_ACTIVE``.
-
-    ``prompt_loader`` is an explicit DEV-only escape hatch: passing
-    ``load_prompt_reference_for_evaluation`` (the same official,
-    already-approved evaluation loader ``r84_gate_runner.py`` uses to read
-    DRAFT slots for Gate scoring) lets an offline Contract DEV Runner
-    actually exercise a DRAFT ``.repair`` prompt's real content, without
-    touching any prompt's ``activation_status`` in the manifest. Production
-    callers must never set this -- leaving it ``None`` is what preserves the
-    fail-closed guarantee above.
+    Re-invokes the same routed ``provider`` with the failed semantic node's
+    registered SCHEMA_REPAIR sibling. Initial prompts resolve to
+    ``<prompt_id>.repair``; ``.revise``/``.recheck`` prompts normalize back to
+    the owning node's ``<node>.repair`` slot. This preserves the 27-slot
+    Runtime Prompt contract without inventing ``.revise.repair`` or
+    ``.recheck.repair`` PromptRefs.
     """
 
     manifest_path: Path | None = None
@@ -955,12 +945,7 @@ class PromptRepairSchemaRepairer:
 
         manifest_path = self.manifest_path or default_prompt_manifest_path()
         loader = self.prompt_loader or load_prompt_reference
-        # The sibling repair slot's id is the failed prompt's own prompt_id
-        # with ".repair" appended -- e.g. "work_analysis.analyze" ->
-        # "work_analysis.analyze.repair". Each node owns its own repair slot
-        # in prompt-manifest-v0.9.0.json (unlike v0.8.3.json's one
-        # generic "<namespace>.repair" slot per agent role).
-        repair_prompt_id = f"{prompt_ref.prompt_id}.repair"
+        repair_prompt_id = _repair_prompt_id(prompt_ref.prompt_id)
         try:
             repair_prompt_ref = loader(repair_prompt_id, manifest_path)
         except (LookupError, InactivePromptArtifactError) as error:
@@ -1029,14 +1014,10 @@ def _build_repair_input(
 class PromptRepairToolCallRepairer:
     """Real Schema Repair boundary for the native tool-calling invocation path.
 
-    Structurally parallel to ``PromptRepairSchemaRepairer`` (same sibling
-    ``<prompt_id>.repair`` slot lookup, same DRAFT fail-closed default, same
-    DEV-only ``prompt_loader`` escape hatch), except the repair call stays in
-    tool-calling mode: it re-invokes ``provider.invoke_tool_call`` with the
-    same ``tools`` list, then applies ``mapper`` to the repaired tool call
-    before returning -- so the result is already the Node's Typed-Result
-    candidate, exactly like ``PromptRepairSchemaRepairer.repair`` returns an
-    already-parsed candidate.
+    Structurally parallel to ``PromptRepairSchemaRepairer`` and uses the same
+    semantic-variant normalization to the owning node's registered ``.repair``
+    slot. The repair call stays in tool-calling mode and is mapped back to the
+    node's Typed Result before validation resumes.
     """
 
     manifest_path: Path | None = None
@@ -1068,7 +1049,7 @@ class PromptRepairToolCallRepairer:
 
         manifest_path = self.manifest_path or default_prompt_manifest_path()
         loader = self.prompt_loader or load_prompt_reference
-        repair_prompt_id = f"{prompt_ref.prompt_id}.repair"
+        repair_prompt_id = _repair_prompt_id(prompt_ref.prompt_id)
         try:
             repair_prompt_ref = loader(repair_prompt_id, manifest_path)
         except (LookupError, InactivePromptArtifactError) as error:
