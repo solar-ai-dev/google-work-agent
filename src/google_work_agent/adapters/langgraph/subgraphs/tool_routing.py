@@ -12,12 +12,14 @@ from google_work_agent.adapters.langgraph.confirmation_projection import (
 )
 from google_work_agent.adapters.langgraph.graph_state import (
     TOOL_ROUTE_RESULT_KEY,
-    GraphState,
     ParentGraphState,
     _require_state_value,
     request_from_state,
 )
-from google_work_agent.adapters.langgraph.subgraph_state import ToolRoutingLocalState
+from google_work_agent.adapters.langgraph.subgraph_state import (
+    ToolRoutingInputState,
+    ToolRoutingLocalState,
+)
 from google_work_agent.application.workflows import (
     BudgetDecision,
     GraphStateUpdateV1,
@@ -55,7 +57,7 @@ class ToolRoutingSubgraph:
     def build(self) -> Any:
         graph = StateGraph(
             ToolRoutingLocalState,
-            input_schema=GraphState,
+            input_schema=ToolRoutingInputState,
             output_schema=ParentGraphState,
         )
         graph.add_node("route", self._route_node)
