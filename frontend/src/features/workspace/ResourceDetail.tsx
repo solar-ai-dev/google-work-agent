@@ -169,8 +169,8 @@ export function ResourceDetail({
             <button
               className="icon-button icon-button--plain"
               type="button"
-              aria-label="원본 열기"
-              title="원본 열기"
+              aria-label="Gmail에서 찾기"
+              title="Gmail에서 찾기"
               onClick={() => window.open(safeGoogleLink(canonicalUrl), "_blank", "noopener,noreferrer")}
             >
               ↗

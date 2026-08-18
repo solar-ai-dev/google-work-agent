@@ -232,7 +232,10 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
                 "Real task: send the update by tomorrow."
             ),
             "attachments": [],
-            "canonical_url": "https://mail.google.com/mail/u/0/#inbox/thread-project",
+            "canonical_url": (
+                "https://mail.google.com/mail/u/0/"
+                "#search/rfc822msgid%3A%3Cmessage-project-2%40example.com%3E"
+            ),
             "api_contract_version": "1",
         }
 
