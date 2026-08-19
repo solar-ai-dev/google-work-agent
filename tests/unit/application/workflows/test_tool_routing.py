@@ -6,7 +6,11 @@ from google_work_agent.application.workflows.api_acquisition import (
     SourcePlanningValidationError,
     validate_source_fetch_plans_for_route,
 )
-from google_work_agent.application.workflows.handoff_contracts import RequestIntentV2
+from google_work_agent.application.workflows.contracts import PolicyConfirmationReceiptV1
+from google_work_agent.application.workflows.handoff_contracts import ConstraintV1, RequestIntentV2
+from google_work_agent.application.workflows.scope_expansion import (
+    build_policy_confirmation_receipt,
+)
 from google_work_agent.application.workflows.tool_routing import (
     ToolRouteCoordinator,
     ToolRouteValidationError,
@@ -23,13 +27,15 @@ def _catalog() -> ConnectorToolCatalog:
     return catalog
 
 
-def _intent(*, resource: str, effect: str) -> RequestIntentV2:
+def _intent(
+    *, resource: str, effect: str, constraints: list[ConstraintV1] | None = None
+) -> RequestIntentV2:
     return {
         "schema_version": 2,
         "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
         "goal": "goal",
         "completion_conditions": ["done"],
-        "constraints": [],
+        "constraints": constraints or [],
         "ambiguity": {
             "requires_confirmation": False,
             "reason_codes": [],
@@ -138,3 +144,148 @@ def test_source_planning_cannot_escape_frozen_input_route() -> None:
 
     with pytest.raises(SourcePlanningValidationError, match="outside frozen input route"):
         validate_source_fetch_plans_for_route([calendar_plan], tool_route_plan=plan)
+
+
+def test_task_create_out_of_scope_requires_confirmation_before_merge() -> None:
+    intent = _intent(
+        resource="TASK",
+        effect="CREATE",
+        constraints=[{"kind": "SCOPE", "field": "forbidden_sources", "value": ["TASK"]}],
+    )
+    result = _coordinator().route(request_intent=intent)
+
+    assert result["disposition"] == "NEEDS_CONFIRMATION"
+    assert result["tool_route_plan"] is None
+    signal = result["workflow_signal"]
+    assert signal is not None
+    assert signal["kind"] == "SCOPE_EXPANSION_REQUIRED"
+    assert set(signal["required_resource_types"]) == {"TASK", "TASK_LIST"}
+
+
+def test_calendar_create_out_of_scope_requires_confirmation_before_merge() -> None:
+    intent = _intent(
+        resource="CALENDAR_EVENT",
+        effect="CREATE",
+        constraints=[{"kind": "SCOPE", "field": "forbidden_sources", "value": ["CALENDAR"]}],
+    )
+    result = _coordinator().route(request_intent=intent)
+
+    assert result["disposition"] == "NEEDS_CONFIRMATION"
+    assert result["tool_route_plan"] is None
+    signal = result["workflow_signal"]
+    assert signal is not None
+    assert set(signal["required_resource_types"]) == {
+        "CALENDAR",
+        "CALENDAR_EVENT",
+        "CALENDAR_FREEBUSY",
+    }
+
+
+def test_scope_expansion_never_partially_materializes_before_approval() -> None:
+    """The requested (non-policy) input routes still bind normally, but the
+    out-of-scope policy precondition reads must not appear anywhere in the
+    NEEDS_CONFIRMATION result -- there is no tool_route_plan at all yet."""
+    intent = _intent(
+        resource="TASK",
+        effect="CREATE",
+        constraints=[{"kind": "SCOPE", "field": "forbidden_sources", "value": ["TASK"]}],
+    )
+    result = _coordinator().route(request_intent=intent)
+
+    assert result["tool_route_plan"] is None
+
+
+def test_scope_expansion_approved_receipt_unlocks_merge() -> None:
+    intent = _intent(
+        resource="TASK",
+        effect="CREATE",
+        constraints=[{"kind": "SCOPE", "field": "forbidden_sources", "value": ["TASK"]}],
+    )
+    coordinator = _coordinator()
+    blocked = coordinator.route(request_intent=intent)
+    signal = blocked["workflow_signal"]
+    assert signal is not None
+
+    id_counter = iter(f"receipt-{index}" for index in range(5))
+    receipt: PolicyConfirmationReceiptV1 = build_policy_confirmation_receipt(
+        id_factory=lambda: next(id_counter),
+        interrupt_id="interrupt-1",
+        decision="APPROVED",
+        request_intent=intent,
+        required_resource_types=tuple(signal["required_resource_types"]),
+        reason_codes=tuple(signal["reason_codes"]),
+        affected_route_ids=["TASK:CREATE"],
+    )
+
+    unlocked = coordinator.route(
+        request_intent=intent,
+        policy_confirmation_receipts=[receipt],
+        current_interrupt_id="interrupt-1",
+    )
+    assert unlocked["disposition"] == "ROUTE_READY"
+    plan = unlocked["tool_route_plan"]
+    assert plan is not None
+    resources = {route["resource_type"] for route in plan["input_plan"]["input_routes"]}
+    assert resources == {"TASK", "TASK_LIST"}
+
+
+def test_scope_expansion_declined_receipt_does_not_unlock_merge() -> None:
+    intent = _intent(
+        resource="TASK",
+        effect="CREATE",
+        constraints=[{"kind": "SCOPE", "field": "forbidden_sources", "value": ["TASK"]}],
+    )
+    coordinator = _coordinator()
+    blocked = coordinator.route(request_intent=intent)
+    signal = blocked["workflow_signal"]
+    assert signal is not None
+
+    id_counter = iter(f"receipt-{index}" for index in range(5))
+    receipt: PolicyConfirmationReceiptV1 = build_policy_confirmation_receipt(
+        id_factory=lambda: next(id_counter),
+        interrupt_id="interrupt-1",
+        decision="DECLINED",
+        request_intent=intent,
+        required_resource_types=tuple(signal["required_resource_types"]),
+        reason_codes=tuple(signal["reason_codes"]),
+        affected_route_ids=["TASK:CREATE"],
+    )
+
+    still_blocked = coordinator.route(
+        request_intent=intent,
+        policy_confirmation_receipts=[receipt],
+        current_interrupt_id="interrupt-1",
+    )
+    assert still_blocked["disposition"] == "NEEDS_CONFIRMATION"
+    assert still_blocked["tool_route_plan"] is None
+
+
+def test_scope_expansion_receipt_for_wrong_interrupt_does_not_unlock_merge() -> None:
+    intent = _intent(
+        resource="TASK",
+        effect="CREATE",
+        constraints=[{"kind": "SCOPE", "field": "forbidden_sources", "value": ["TASK"]}],
+    )
+    coordinator = _coordinator()
+    blocked = coordinator.route(request_intent=intent)
+    signal = blocked["workflow_signal"]
+    assert signal is not None
+
+    id_counter = iter(f"receipt-{index}" for index in range(5))
+    receipt: PolicyConfirmationReceiptV1 = build_policy_confirmation_receipt(
+        id_factory=lambda: next(id_counter),
+        interrupt_id="interrupt-FOREIGN",
+        decision="APPROVED",
+        request_intent=intent,
+        required_resource_types=tuple(signal["required_resource_types"]),
+        reason_codes=tuple(signal["reason_codes"]),
+        affected_route_ids=["TASK:CREATE"],
+    )
+
+    still_blocked = coordinator.route(
+        request_intent=intent,
+        policy_confirmation_receipts=[receipt],
+        current_interrupt_id="interrupt-1",
+    )
+    assert still_blocked["disposition"] == "NEEDS_CONFIRMATION"
+    assert still_blocked["tool_route_plan"] is None

@@ -11,6 +11,7 @@ import google_work_agent.application.workflows._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.contracts import (
+    ConfirmationResponseV1,
     GraphStateUpdateV1,
     PlanningResult,
     WorkflowPhase,
@@ -373,6 +374,7 @@ class SolutionPlanningAgent:
         evidence_drafts: list[EvidenceDraftV1],
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
+        confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> StructuredLLMResult:
         """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
 
@@ -383,16 +385,24 @@ class SolutionPlanningAgent:
         THREE_STAGE/SINGLE_BASELINE, out of this migration's scope.
         Validation is unaffected: ``validate_answer_draft_v1``'s reference
         space is scraped off ``analysis_result``, never off context.
+
+        ``confirmation_response`` is only present on a same-owner
+        nested-checkpoint resume (C5) -- this is the one Product Prompt
+        NEEDS_CONFIRMATION actually originates from, so it is the only one
+        that needs to see the bounded answer.
         """
+        prompt_input: dict[str, object] = {
+            "request_text": request.request_text,
+            "request_intent": request_intent,
+            "evidence_drafts": list(evidence_drafts),
+            "analysis_result": analysis_result,
+            "source_content_is_untrusted": True,
+        }
+        if confirmation_response is not None:
+            prompt_input["confirmation_response"] = dict(confirmation_response)
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._answer_only_prompt_ref,
-            prompt_input={
-                "request_text": request.request_text,
-                "request_intent": request_intent,
-                "evidence_drafts": list(evidence_drafts),
-                "analysis_result": analysis_result,
-                "source_content_is_untrusted": True,
-            },
+            prompt_input=prompt_input,
             output_schema=ANSWER_DRAFT_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,
@@ -495,6 +505,7 @@ class SolutionPlanningAgent:
         request: WorkflowStartRequest,
         frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
         frozen_read_tool_ids: frozenset[str] = frozenset(),
+        confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> StructuredLLMResult:
         """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
 
@@ -503,16 +514,19 @@ class SolutionPlanningAgent:
         Tool Schema constraint on ``tool_name`` already carries what the
         route needs; no context object is required here either.
         """
+        prompt_input: dict[str, object] = {
+            "request_text": request.request_text,
+            "request_intent": request_intent,
+            "evidence_drafts": list(evidence_drafts),
+            "analysis_result": analysis_result,
+            "source_content_is_untrusted": True,
+            "output_routes": list(frozen_output_routes or ()),
+        }
+        if confirmation_response is not None:
+            prompt_input["confirmation_response"] = dict(confirmation_response)
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._draft_plan_prompt_ref,
-            prompt_input={
-                "request_text": request.request_text,
-                "request_intent": request_intent,
-                "evidence_drafts": list(evidence_drafts),
-                "analysis_result": analysis_result,
-                "source_content_is_untrusted": True,
-                "output_routes": list(frozen_output_routes or ()),
-            },
+            prompt_input=prompt_input,
             output_schema=(
                 _action_plan_draft_output_schema_for_registry(self._tool_registry)
                 if frozen_output_routes is None
@@ -627,23 +641,27 @@ class SolutionPlanningAgent:
         evidence_drafts: list[EvidenceDraftV1],
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
+        confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> StructuredLLMResult:
         """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
 
         See ``invoke_answer_only_llm_from_evidence`` docstring.
         """
+        prompt_input: dict[str, object] = {
+            "request_text": request.request_text,
+            "request_intent": request_intent,
+            "answer_draft": answer_draft,
+            "review_summary": review_summary,
+            "review_issues": [dict(issue) for issue in review_issues],
+            "evidence_drafts": list(evidence_drafts),
+            "analysis_result": analysis_result,
+            "source_content_is_untrusted": True,
+        }
+        if confirmation_response is not None:
+            prompt_input["confirmation_response"] = dict(confirmation_response)
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._revise_answer_prompt_ref,
-            prompt_input={
-                "request_text": request.request_text,
-                "request_intent": request_intent,
-                "answer_draft": answer_draft,
-                "review_summary": review_summary,
-                "review_issues": [dict(issue) for issue in review_issues],
-                "evidence_drafts": list(evidence_drafts),
-                "analysis_result": analysis_result,
-                "source_content_is_untrusted": True,
-            },
+            prompt_input=prompt_input,
             output_schema=ANSWER_DRAFT_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,
@@ -745,24 +763,28 @@ class SolutionPlanningAgent:
         request: WorkflowStartRequest,
         frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
         frozen_read_tool_ids: frozenset[str] = frozenset(),
+        confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> StructuredLLMResult:
         """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
 
         See ``invoke_draft_plan_llm_from_evidence`` docstring.
         """
+        prompt_input: dict[str, object] = {
+            "request_text": request.request_text,
+            "request_intent": request_intent,
+            "plan_draft": plan_draft,
+            "review_summary": review_summary,
+            "review_issues": [dict(issue) for issue in review_issues],
+            "evidence_drafts": list(evidence_drafts),
+            "analysis_result": analysis_result,
+            "source_content_is_untrusted": True,
+            "output_routes": list(frozen_output_routes or ()),
+        }
+        if confirmation_response is not None:
+            prompt_input["confirmation_response"] = dict(confirmation_response)
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._revise_plan_prompt_ref,
-            prompt_input={
-                "request_text": request.request_text,
-                "request_intent": request_intent,
-                "plan_draft": plan_draft,
-                "review_summary": review_summary,
-                "review_issues": [dict(issue) for issue in review_issues],
-                "evidence_drafts": list(evidence_drafts),
-                "analysis_result": analysis_result,
-                "source_content_is_untrusted": True,
-                "output_routes": list(frozen_output_routes or ()),
-            },
+            prompt_input=prompt_input,
             output_schema=(
                 ACTION_PLAN_DRAFT_OUTPUT_SCHEMA
                 if frozen_output_routes is None

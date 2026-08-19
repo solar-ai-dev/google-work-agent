@@ -75,7 +75,11 @@ class ProjectedContextRetrieverSubgraph(ContextRetrieverSubgraph):
         graph.add_edge("execute_next_page", "select_evidence")
         graph.add_edge("execute_followup_search", "select_evidence")
         graph.add_edge("execute_detail", "select_evidence")
-        graph.add_edge("finalize", END)
+        graph.add_conditional_edges(
+            "finalize",
+            self._route_after_finalize,
+            {"finalize": "finalize", "end": END},
+        )
         return graph.compile(name="context_retriever_subgraph")
 
 

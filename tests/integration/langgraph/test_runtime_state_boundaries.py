@@ -271,12 +271,20 @@ def test_edge_required_confirmation_stops_before_acquisition(tmp_path: Path) -> 
     )
 
     try:
+        # I1: NEEDS_CONFIRMATION now pauses via a real interrupt() called
+        # from *inside* this nested subgraph's own finalize node (not a
+        # "please route to waiting_confirmation" signal the Main Graph acts
+        # on afterwards) -- invoked standalone like this (no parent graph,
+        # no checkpointer), the subgraph genuinely suspends mid-execution
+        # and never reaches a point that would set __target__, so LangGraph's
+        # own __interrupt__ signal is the correct thing to assert on here.
         result = runtime._request_subgraph.invoke(  # noqa: SLF001
             runtime._initial_state(_start_request())  # noqa: SLF001
         )
-        assert result["__target__"] == "waiting_confirmation"
         assert result["workflow_phase"] == "WAITING_CONFIRMATION"
         assert result["user_interrupt"]["origin_target"] == "request_understanding.classify"
+        assert "__interrupt__" in result
+        assert result["__interrupt__"][0].value["origin_target"] == "request_understanding.classify"
         assert gateway.call_log == []
     finally:
         runtime.close()
@@ -349,7 +357,16 @@ def test_edge_analysis_confirmation_never_enters_planning(tmp_path: Path) -> Non
         "question": "Which task should be primary?",
     }
     runtime = _make_runtime(
-        database_path=_seed_runtime_database(tmp_path),
+        # C4: Work Analysis's confirmation now performs a real Domain
+        # RequestConfirmation transition (PLANNING -> WAITING_CONFIRMATION)
+        # from *inside* the nested "finalize" node itself, rather than only
+        # as a routing decision resolved later by the shared Main-Graph
+        # waiting_confirmation node. Seeding the run's real DB status as
+        # PLANNING (what a run driven through Tool Route/Retrieval would
+        # actually have) is required for that guarded transition to apply --
+        # matching how request_confirmation is fail-closed against an
+        # unexpected source status (docs Write-safety invariants).
+        database_path=_seed_runtime_database(tmp_path, status="PLANNING"),
         llm_payloads=[output],
         gateway=FakeGoogleGateway(
             ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
@@ -378,10 +395,20 @@ def test_edge_analysis_confirmation_never_enters_planning(tmp_path: Path) -> Non
         runtime._evidence_store.put(  # noqa: SLF001
             run_id=state["run_id"], evidence_drafts=context_result["evidence_drafts"]
         )
+        # C4: the interrupt now genuinely lives inside work_analysis's own
+        # "finalize" node -- invoking the compiled subgraph standalone (no
+        # checkpointer attached here, unlike the full runtime.start()/
+        # resume() path) surfaces that pause as LangGraph's "__interrupt__"
+        # marker rather than a merge_decision-assigned "__target__", since
+        # _finalize_resolved (which sets "__target__") is never reached.
         result = runtime._analysis_subgraph.invoke(state)  # noqa: SLF001
-        assert result["__target__"] == "waiting_confirmation"
+        assert "__interrupt__" in result
+        assert result["user_interrupt"]["origin_target"] == "analysis.analyze"
+        assert result["workflow_phase"] == "WAITING_CONFIRMATION"
         assert result["analysis_result"]["status"] == "NEEDS_CONFIRMATION"
-        assert result["plan_draft"] is None
-        assert result["answer_draft"] is None
+        # Planning never ran: _finalize_resolved (the only place that would
+        # merge plan_draft/answer_draft into state) was never reached.
+        assert "plan_draft" not in result
+        assert "answer_draft" not in result
     finally:
         runtime.close()

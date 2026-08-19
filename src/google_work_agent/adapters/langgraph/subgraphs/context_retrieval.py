@@ -5,7 +5,7 @@ init -> select_evidence -> selection_validate -> assess_sufficiency -> finalize
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
@@ -36,17 +36,24 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.route_translation import (
+    RESUME_CONTRACT_VERSION,
+    confirmation_resume_status,
+)
 from google_work_agent.adapters.langgraph.subgraph_state import ContextRetrievalLocalState
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows import (
     AgentLocalStateV1,
+    ConfirmationResponseV1,
     ContextRetrievalAgent,
     GraphStateUpdateV1,
     MultiAgentGraphState,
     RetrievalRouteResultV1,
     RunBudgetV1,
+    SufficiencyResultV2,
     SupervisorDecisionV1,
     WorkflowPhase,
+    build_context_clarification_question,
     finalize_retrieval_result,
     initialize_current_round_no,
     retrieval_query_hash,
@@ -54,8 +61,13 @@ from google_work_agent.application.workflows import (
     validate_context_retrieval_result_v1,
 )
 from google_work_agent.application.workflows.handoff_contracts import (
+    ContextRetrievalResultV1,
+    RequestIntentV2,
     RetrievalNeedV1,
     RetrievalRequiredV1,
+)
+from google_work_agent.application.workflows.request_understanding import (
+    build_user_interrupt_v1,
 )
 from google_work_agent.application.workflows.retrieval_attempts import (
     QueryAttempt,
@@ -90,6 +102,10 @@ from google_work_agent.application.workflows.tool_routing import (
 )
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
+ConfirmInline = Callable[
+    [ContextRetrievalLocalState],
+    tuple[ConfirmationResponseV1 | None, dict[str, object] | None],
+]
 
 
 def _runtime_route_constraint_policies(
@@ -161,6 +177,7 @@ class ContextRetrieverSubgraph:
         source_fetch_plan_builder: SourceFetchPlanBuilder,
         read_result_cache: RunScopedReadResultCache,
         retrieval_read_executor: RetrievalReadExecutor,
+        confirm_inline: ConfirmInline,
         default_tasklist_id_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self._agent = agent
@@ -174,6 +191,7 @@ class ContextRetrieverSubgraph:
         self._source_fetch_plan_builder = source_fetch_plan_builder
         self._read_result_cache = read_result_cache
         self._retrieval_read_executor = retrieval_read_executor
+        self._confirm_inline = confirm_inline
         # Pre-Prompt Runtime Closure: TASK routes' only supported semantic
         # constraint kind is CONTAINER_REF (_runtime_route_constraint_policies
         # below), but nothing ever populated validated_container_refs for the
@@ -237,8 +255,18 @@ class ContextRetrieverSubgraph:
         graph.add_edge("execute_next_page", "select_evidence")
         graph.add_edge("execute_followup_search", "select_evidence")
         graph.add_edge("execute_detail", "select_evidence")
-        graph.add_edge("finalize", END)
+        graph.add_conditional_edges(
+            "finalize",
+            self._route_after_finalize,
+            {"finalize": "finalize", "end": END},
+        )
         return graph.compile(name="context_retriever_subgraph")
+
+    @staticmethod
+    def _route_after_finalize(state: ContextRetrievalLocalState) -> str:
+        if state.get("__context_retrieval_retry_confirmation__"):
+            return "finalize"
+        return "end"
 
     def _init_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         request = request_from_state(state)
@@ -377,11 +405,19 @@ class ContextRetrieverSubgraph:
             ),
         }
 
-    def _assess_sufficiency_node(
-        self, state: ContextRetrievalLocalState
-    ) -> ContextRetrievalLocalState:
+    def _run_sufficiency_attempt(
+        self,
+        state: ContextRetrievalLocalState,
+        *,
+        confirmation_response: ConfirmationResponseV1 | None,
+    ) -> tuple[SufficiencyResultV2, dict[str, object], RunBudgetV1]:
+        """One ``retrieval.assess_sufficiency`` LLM call. Safe to call again
+        for a later confirmation round -- ``select_evidence``/
+        ``selection_validate`` already completed and committed before any
+        pause, so ``evidence_drafts`` here is always the same already-frozen
+        selection, never re-derived or re-fetched.
+        """
         request = request_from_state(state)
-        local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
         ensure_llm_call_budget(state)
         sufficiency_result, llm_provider_result = self._agent.assess_sufficiency(
             request_intent=_require_state_value(state["request_intent"], "request_intent"),
@@ -391,7 +427,23 @@ class ContextRetrieverSubgraph:
                 state["acquisition_result"], "acquisition_result"
             ),
             evidence_drafts=state["evidence_drafts"],
-            retry_budget=state["retry_budget"],
+            retry_budget=cast(RunBudgetV1, state["retry_budget"]),
+            confirmation_response=confirmation_response,
+        )
+        retry_budget = consume_llm_call_budget(
+            state,
+            provider_calls_consumed=cast(
+                int, llm_provider_result["structured_output_attempts"]
+            ),
+        )
+        return sufficiency_result, llm_provider_result, retry_budget
+
+    def _assess_sufficiency_node(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalLocalState:
+        local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
+        sufficiency_result, llm_provider_result, retry_budget = self._run_sufficiency_attempt(
+            state, confirmation_response=None
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "SUFFICIENCY_COMPLETE"
@@ -401,12 +453,7 @@ class ContextRetrieverSubgraph:
             CONTEXT_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             CONTEXT_SUFFICIENCY_OUTPUT_KEY: sufficiency_result,
             "llm_provider_result": llm_provider_result,
-            "retry_budget": consume_llm_call_budget(
-                state,
-                provider_calls_consumed=cast(
-                    int, llm_provider_result["structured_output_attempts"]
-                ),
-            ),
+            "retry_budget": retry_budget,
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -415,7 +462,7 @@ class ContextRetrieverSubgraph:
                 agent_invocation_id=local_state["invocation_id"],
                 subgraph_namespace="context",
                 node_name="assess_sufficiency",
-                llm_call_id=f"{request.run_id}:context.assess_sufficiency",
+                llm_call_id=f"{request_from_state(state).run_id}:context.assess_sufficiency",
                 prompt_ref=self._agent.sufficiency_prompt_ref,
                 llm_call_increment=1,
             ),
@@ -429,6 +476,22 @@ class ContextRetrieverSubgraph:
                 ),
                 read_result_summaries=self._bounded_read_result_summaries(state),
             )
+        elif sufficiency_result["status"] == "NEEDS_CONFIRMATION":
+            # Materialized here -- not in finalize -- because this node never
+            # replays on resume (it completes and commits before any pause),
+            # so interrupt_id is generated exactly once and stays stable
+            # across finalize's node-replay.
+            result = self._build_context_result(next_state)
+            request_intent = _require_state_value(state["request_intent"], "request_intent")
+            user_interrupt, confirmation_interrupt = self._materialize_confirmation_interrupt(
+                result=result, request_intent=request_intent
+            )
+            next_state["workflow_phase"] = WorkflowPhase.WAITING_CONFIRMATION.value
+            next_state["user_interrupt"] = cast(Any, user_interrupt)
+            next_state["prompt_context"] = {
+                **cast(dict[str, object], state.get("prompt_context", {})),
+                "confirmation_interrupt": confirmation_interrupt,
+            }
         return next_state
 
     def _route_after_init(self, state: ContextRetrievalLocalState) -> str:
@@ -889,23 +952,166 @@ class ContextRetrieverSubgraph:
             return cast(ContextRetrievalLocalState, published_state)
         return state
 
-    def _finalize_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
-        local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
-        selection = state[CONTEXT_SELECTION_OUTPUT_KEY]
-        sufficiency = state[CONTEXT_SUFFICIENCY_OUTPUT_KEY]
+    def _build_context_result(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalResultV1:
+        """Pure projection of ``state`` (selection/sufficiency/acquisition_result/
+        llm_provider_result) into one ``ContextRetrievalResultV1``. Safe to
+        call repeatedly -- including on every ``finalize`` node-replay before
+        a pause -- since it never calls ``self._id_factory()`` or performs
+        any I/O; ``evidence_id`` values are content-derived
+        (``_materialize_evidence_drafts``), not freshly minted."""
         llm_provider_result = _require_state_value(
             state.get("llm_provider_result"), "llm_provider_result"
         )
-        result = validate_context_retrieval_result_v1(
+        return validate_context_retrieval_result_v1(
             self._agent.build_result_from_outputs(
-                selection_result=selection,
-                sufficiency_result=sufficiency,
+                selection_result=state[CONTEXT_SELECTION_OUTPUT_KEY],
+                sufficiency_result=state[CONTEXT_SUFFICIENCY_OUTPUT_KEY],
                 acquisition_result=_require_state_value(
                     state["acquisition_result"], "acquisition_result"
                 ),
                 llm_provider_result=llm_provider_result,
             )
         )
+
+    def _materialize_confirmation_interrupt(
+        self, *, result: ContextRetrievalResultV1, request_intent: RequestIntentV2
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        """Build one round's ``(user_interrupt, confirmation_interrupt metadata)``.
+
+        Safe to call with ``self._id_factory()``-backed identifiers only from
+        an invocation that has not itself called ``interrupt()`` yet: true
+        for ``assess_sufficiency`` (round 1, never replays) and for a
+        *freshly self-looped* ``finalize`` invocation about to materialize
+        round N+1 and return (not yet resumed, so not yet replayed either).
+        ``origin_target`` stays ``context.assess_sufficiency`` -- the
+        already-allowlisted (``CONFIRMATION_ORIGIN_TARGETS``) value this
+        question always had, even though ``interrupt()`` itself now lives in
+        ``finalize``; Tool Route's own ``tool_route.finalize`` shows this
+        origin_target/interrupt-owning-node split is already an accepted
+        convention, not a new one.
+        """
+        question = build_context_clarification_question(
+            result=result, request_intent=request_intent
+        )
+        interrupt_id = self._id_factory()
+        user_interrupt = {
+            **build_user_interrupt_v1(question),
+            "interrupt_id": interrupt_id,
+        }
+        confirmation_interrupt = {
+            "schema_version": 1,
+            "interrupt_id": interrupt_id,
+            "owner_subgraph": "RETRIEVAL",
+            "origin_target": question["origin_target"],
+            "resume_target": {
+                "subgraph_id": "RETRIEVAL",
+                "node_id": "finalize",
+                "graph_version": RESUME_CONTRACT_VERSION,
+            },
+            "resume_status": confirmation_resume_status("RETRIEVAL").value,
+        }
+        return user_interrupt, confirmation_interrupt
+
+    def _finalize_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
+        result = self._build_context_result(state)
+
+        if result["status"] == "NEEDS_CONFIRMATION" and isinstance(
+            state.get("user_interrupt"), Mapping
+        ):
+            state, result = self._resolve_confirmation_inline(state)
+            if result is None:
+                # RequestConfirmation not applied / ResumeConfirmation
+                # conflict -- the confirm_inline callback already built the
+                # correct end-of-run state patch. Never loop back from here.
+                return cast(
+                    ContextRetrievalLocalState,
+                    {**state, "__context_retrieval_retry_confirmation__": False},
+                )
+            if result["status"] == "NEEDS_CONFIRMATION":
+                # Still ambiguous after this round's answer. Do NOT call
+                # interrupt() again inside this already-resumed task -- see
+                # module docstring / Tool Route's established rationale.
+                # Materialize the next round's payload (self._id_factory()
+                # is safe here: this "finalize" invocation has not itself
+                # paused yet) and cleanly return so the self-loop
+                # conditional edge re-enters "finalize" as a fresh, separate
+                # task for that round.
+                request_intent = _require_state_value(
+                    state["request_intent"], "request_intent"
+                )
+                user_interrupt, confirmation_interrupt = self._materialize_confirmation_interrupt(
+                    result=result, request_intent=request_intent
+                )
+                prompt_context = dict(cast(dict[str, object], state.get("prompt_context", {})))
+                prompt_context["confirmation_interrupt"] = confirmation_interrupt
+                return cast(
+                    ContextRetrievalLocalState,
+                    {
+                        **state,
+                        "workflow_phase": WorkflowPhase.WAITING_CONFIRMATION.value,
+                        "user_interrupt": cast(Any, user_interrupt),
+                        "prompt_context": prompt_context,
+                        "__context_retrieval_retry_confirmation__": True,
+                    },
+                )
+
+        return self._finalize_resolved(state, result=result)
+
+    def _resolve_confirmation_inline(
+        self, state: ContextRetrievalLocalState
+    ) -> tuple[ContextRetrievalLocalState, Any]:
+        """Pause via a real nested-subgraph ``interrupt()``, then resolve the
+        bounded ``ConfirmationResponseV1`` with exactly one more
+        ``retrieval.assess_sufficiency`` call -- not by re-entering
+        ``select_evidence``/``selection_validate`` or re-reading any
+        provider data. Returns ``(state, None)`` when the caller must return
+        ``state`` immediately (not-applied/conflict end state); otherwise
+        ``(updated_state, resolved_result)``.
+
+        This whole method's body replays from the top on resume (LangGraph's
+        standard node-replay semantics for the node containing
+        ``interrupt()``) -- every value it depends on before the interrupt
+        call is either read unchanged from state (set once by
+        ``assess_sufficiency``, a node that itself never replays) or is
+        itself the idempotency-guarded, side-effect-free core in
+        ``confirm_inline``.
+        """
+        confirmation_response, early_return_patch = self._confirm_inline(state)
+        if early_return_patch is not None:
+            return cast(
+                ContextRetrievalLocalState, {**state, **early_return_patch}
+            ), None
+        assert confirmation_response is not None
+
+        sufficiency_result, llm_provider_result, retry_budget = self._run_sufficiency_attempt(
+            state, confirmation_response=confirmation_response
+        )
+
+        prompt_context = dict(cast(dict[str, object], state.get("prompt_context", {})))
+        prompt_context.pop("confirmation_interrupt", None)
+
+        updated_state = cast(
+            ContextRetrievalLocalState,
+            {
+                **state,
+                CONTEXT_SUFFICIENCY_OUTPUT_KEY: sufficiency_result,
+                "llm_provider_result": llm_provider_result,
+                "retry_budget": retry_budget,
+                "user_interrupt": None,
+                "prompt_context": prompt_context,
+            },
+        )
+        resolved_result = self._build_context_result(updated_state)
+        return updated_state, resolved_result
+
+    def _finalize_resolved(
+        self, state: ContextRetrievalLocalState, *, result: ContextRetrievalResultV1
+    ) -> ContextRetrievalLocalState:
+        local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
+        selection = state[CONTEXT_SELECTION_OUTPUT_KEY]
+        sufficiency = state[CONTEXT_SUFFICIENCY_OUTPUT_KEY]
         # Q2-HANDOFF: RetrievalResultV1 is only materialized for a disposition
         # a Parent may actually consume (SUFFICIENT/PARTIAL). Unfinished
         # candidates (NEEDS_MORE_DATA/NEEDS_CONFIRMATION/
@@ -961,6 +1167,7 @@ class ContextRetrieverSubgraph:
                     subgraph_namespace="context",
                     node_name="finalize",
                 ),
+                "__context_retrieval_retry_confirmation__": False,
             },
             self._agent.build_state_update(result),
             decision,

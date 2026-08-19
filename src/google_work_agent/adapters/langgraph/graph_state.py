@@ -124,6 +124,7 @@ def initial_graph_state(
         "verification_summary": None,
         "finalize_intent": None,
         "user_interrupt": None,
+        "policy_confirmation_receipts": [],
         "retry_budget": {
             "schema_version": 1,
             "profile": "NORMAL",

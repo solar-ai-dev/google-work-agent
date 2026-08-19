@@ -36,6 +36,7 @@ from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
     BudgetDecision,
+    ConfirmationResponseV1,
     ContextResult,
     GraphStateUpdateV1,
     RunBudgetV1,
@@ -384,23 +385,30 @@ class ContextRetrievalAgent:
         acquisition_result: AcquisitionResultV1,
         evidence_drafts: list[EvidenceDraftV1],
         retry_budget: RunBudgetV1,
+        confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> tuple[SufficiencyResultV2, dict[str, object]]:
         """retrieval.assess_sufficiency (docs/05-context-retrieval.md SS5.7):
         request_intent + top rag candidates' materialized evidence. Never
         re-sends the full context_bundle/acquisition_status opaque blob --
         only the Candidate-pinned selected_evidence/source_statuses/
-        budget_state typed projections."""
+        budget_state typed projections. ``confirmation_response`` is only
+        present on a same-owner nested-checkpoint resume (C3) -- this is the
+        one Product Prompt NEEDS_CONFIRMATION actually originates from, so
+        it is the only one that needs to see the bounded answer."""
+        prompt_input: dict[str, object] = {
+            "request_intent": request_intent,
+            "selected_evidence": selected_evidence_prompt_projection(evidence_drafts),
+            "source_statuses": source_statuses_prompt_projection(
+                tool_route_plan=tool_route_plan,
+                acquisition_result=acquisition_result,
+            ),
+            "budget_state": budget_state_prompt_projection(retry_budget),
+        }
+        if confirmation_response is not None:
+            prompt_input["confirmation_response"] = dict(confirmation_response)
         llm_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._sufficiency_prompt_ref,
-            prompt_input={
-                "request_intent": request_intent,
-                "selected_evidence": selected_evidence_prompt_projection(evidence_drafts),
-                "source_statuses": source_statuses_prompt_projection(
-                    tool_route_plan=tool_route_plan,
-                    acquisition_result=acquisition_result,
-                ),
-                "budget_state": budget_state_prompt_projection(retry_budget),
-            },
+            prompt_input=prompt_input,
             output_schema=SUFFICIENCY_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,

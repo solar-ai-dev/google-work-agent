@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, cast
 
 from langgraph.types import Command
@@ -187,8 +187,20 @@ class WorkflowInvocationCoordinator:
 
     def result_from_thread(self, *, workflow_key: str, run_id: str) -> WorkflowInvocationResult:
         snapshot = self._graph.get_state(self.config_for_thread(workflow_key))
+        state = cast(dict[str, object], dict(snapshot.values))
+        # A nested Agent Subgraph's own interrupt() (e.g. Request
+        # Understanding's confirm_inline) never gets a chance to commit
+        # user_interrupt into the OUTER Main State -- the subgraph is still
+        # mid-execution when it pauses, so its return never happens. LangGraph
+        # still bubbles the pending interrupt's payload up to the top-level
+        # task list regardless of nesting depth, so that is the fallback
+        # source of truth for the paused-run projection.
+        if not state.get("user_interrupt"):
+            pending = _first_pending_confirmation_interrupt(snapshot.tasks)
+            if pending is not None:
+                state["user_interrupt"] = pending
         return self.result_from_state(
-            state=cast(GraphState, snapshot.values),
+            state=cast(GraphState, state),
             workflow_key=workflow_key,
             run_id=run_id,
         )
@@ -241,3 +253,16 @@ class WorkflowInvocationCoordinator:
         if not isinstance(persisted_profile, str):
             return True
         return persisted_profile == self._graph_profile.value
+
+
+def _first_pending_confirmation_interrupt(tasks: Sequence[Any]) -> dict[str, object] | None:
+    """Find a paused CONFIRMATION interrupt's own payload anywhere in the
+    task list, regardless of nesting depth -- LangGraph bubbles a nested
+    subgraph's pending interrupt up to its containing top-level task
+    automatically, no ``subgraphs=True`` snapshot required."""
+    for task in tasks:
+        for pending in task.interrupts:
+            value = pending.value
+            if isinstance(value, Mapping) and value.get("interrupt_kind") == "CONFIRMATION":
+                return {key: item for key, item in value.items() if key != "run_id"}
+    return None

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
         RetrievalRequiredV1,
         RetrievalResultV1,
         SourceFetchPlanV1,
+        StateArtifactMetaV1,
         WorkAnalysisResultV1,
     )
     from google_work_agent.application.workflows.tool_routing import (
@@ -140,6 +141,7 @@ class MultiAgentGraphState(TypedDict):
     verification_summary: dict[str, object] | None
     finalize_intent: FinalizeIntentV1 | None
     user_interrupt: UserInterruptV1 | None
+    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
     retry_budget: RunBudgetV1
     prompt_context: dict[str, object]
     trace_context: dict[str, object]
@@ -167,6 +169,7 @@ class GraphStateUpdateV1(TypedDict, total=False):
     verification_summary: dict[str, object] | None
     finalize_intent: FinalizeIntentV1 | None
     user_interrupt: UserInterruptV1 | None
+    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
     retry_budget: RunBudgetV1
     prompt_context: dict[str, object]
     trace_context: dict[str, object]
@@ -345,6 +348,28 @@ class UserInterruptV1(TypedDict):
     reason_code: str
     known_context_summary: str
     options: list[UserInterruptOptionV1]
+
+
+class PolicyConfirmationReceiptV1(TypedDict):
+    """Immutable proof that a real, validated user response resolved one
+    SCOPE_EXPANSION/DUPLICATE_OVERRIDE/CONFLICT_OVERRIDE Confirmation
+    (06-agent-workflow.md SS3.7 PolicyConfirmationReceiptV1). LLM/Agent code
+    never constructs this -- only the Application/Confirmation Controller
+    layer does, from an already-validated ConfirmationResponseV1.
+    ``decision_context_hash`` binds the receipt to the exact scope-expansion
+    request content it answered, so a stale or forged receipt fails closed
+    when re-verified against different content.
+    """
+
+    schema_version: Required[Literal[1]]
+    meta: StateArtifactMetaV1
+    confirmation_receipt_id: str
+    interrupt_id: str
+    confirmation_kind: Literal["SCOPE_EXPANSION", "DUPLICATE_OVERRIDE", "CONFLICT_OVERRIDE"]
+    decision: Literal["APPROVED", "DECLINED"]
+    decision_context_hash: str
+    affected_route_ids: list[str]
+    affected_resource_refs: list[str]
 
 
 class FinalizeIntentV1(TypedDict):

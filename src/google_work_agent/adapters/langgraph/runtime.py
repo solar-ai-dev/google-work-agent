@@ -115,6 +115,7 @@ from google_work_agent.application.workflows import (
     ActionPlanDraftV1,
     ApiDiscoveryAcquisitionAgent,
     BudgetDecision,
+    ConfirmationResponseV1,
     ContextRetrievalAgent,
     DomainValidationResult,
     DomainValidationService,
@@ -122,6 +123,7 @@ from google_work_agent.application.workflows import (
     MultiAgentGraphState,
     PlanReviewAgent,
     PlanReviewResultV1,
+    PolicyConfirmationReceiptV1,
     RequestUnderstandingAgent,
     ReviewResult,
     SolutionPlanningAgent,
@@ -488,6 +490,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             graph_profile=self._graph_profile,
             transition_run=self._transition_run,
             merge_decision=self._merge_decision,
+            confirm_request_understanding_inline=self._confirm_request_understanding_inline,
+            confirm_tool_route_inline=self._confirm_tool_route_inline,
+            confirm_context_retrieval_inline=self._confirm_context_retrieval_inline,
+            record_policy_confirmation_receipt=self._record_policy_confirmation_receipt,
             evidence_store=self._evidence_store,
             read_result_cache=self._read_result_cache,
             retrieval_read_executor=self._retrieval_read_executor,
@@ -504,6 +510,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             transition_run=self._transition_run,
             merge_decision=self._merge_decision,
             evidence_store=self._evidence_store,
+            confirm_inline=self._confirm_work_analysis_inline,
         ).build()
         self._planning_subgraph = PlanningSubgraph(
             agent=self._planning,
@@ -511,6 +518,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             graph_profile=self._graph_profile,
             merge_decision=self._merge_decision,
             evidence_store=self._evidence_store,
+            confirm_inline=self._confirm_planning_inline,
         ).build()
         self._review_subgraph = ReviewSubgraph(
             agent=self._review,
@@ -518,6 +526,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             graph_profile=self._graph_profile,
             merge_decision=self._merge_decision,
             evidence_store=self._evidence_store,
+            confirm_inline=self._confirm_review_inline,
         ).build()
         self._three_stage_one_subgraph: Any = None
         self._three_stage_two_subgraph: Any = None
@@ -738,6 +747,82 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 "confirmation_response": cast(dict[str, object], resume_payload),
             },
         }
+
+    def _confirm_request_understanding_inline(
+        self, state: GraphState
+    ) -> tuple[ConfirmationResponseV1 | None, dict[str, object] | None]:
+        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime``, the
+        only subclass production ever constructs. This legacy base has no
+        nested-subgraph interrupt/ResumeConfirmation implementation of its
+        own -- kept here (rather than omitted) only so the type is visible on
+        this class and a direct construction of the legacy runtime fails
+        loudly instead of hitting an ``AttributeError`` deep inside a
+        LangGraph node replay.
+        """
+        raise NotImplementedError(
+            "Request Understanding nested confirmation resume requires "
+            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
+        )
+
+    def _confirm_tool_route_inline(
+        self, state: GraphState
+    ) -> tuple[ConfirmationResponseV1 | None, dict[str, object] | None]:
+        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
+        ``_confirm_request_understanding_inline`` above for the rationale."""
+        raise NotImplementedError(
+            "Tool Route nested confirmation resume requires "
+            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
+        )
+
+    def _confirm_context_retrieval_inline(
+        self, state: GraphState
+    ) -> tuple[ConfirmationResponseV1 | None, dict[str, object] | None]:
+        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
+        ``_confirm_request_understanding_inline`` above for the rationale."""
+        raise NotImplementedError(
+            "Retrieval nested confirmation resume requires "
+            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
+        )
+
+    def _confirm_work_analysis_inline(
+        self, state: GraphState
+    ) -> tuple[ConfirmationResponseV1 | None, dict[str, object] | None]:
+        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
+        ``_confirm_request_understanding_inline`` above for the rationale."""
+        raise NotImplementedError(
+            "Work Analysis nested confirmation resume requires "
+            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
+        )
+
+    def _confirm_planning_inline(
+        self, state: GraphState
+    ) -> tuple[ConfirmationResponseV1 | None, dict[str, object] | None]:
+        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
+        ``_confirm_request_understanding_inline`` above for the rationale."""
+        raise NotImplementedError(
+            "Planning nested confirmation resume requires "
+            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
+        )
+
+    def _confirm_review_inline(
+        self, state: GraphState
+    ) -> tuple[ConfirmationResponseV1 | None, dict[str, object] | None]:
+        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
+        ``_confirm_request_understanding_inline`` above for the rationale."""
+        raise NotImplementedError(
+            "Review nested confirmation resume requires "
+            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
+        )
+
+    def _record_policy_confirmation_receipt(
+        self, run_id: str, receipt: PolicyConfirmationReceiptV1
+    ) -> None:
+        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
+        ``_confirm_request_understanding_inline`` above for the rationale."""
+        raise NotImplementedError(
+            "POLICY_CONFIRMATION_RECORDED audit requires "
+            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
+        )
 
     def _waiting_approval_node(self, state: GraphState) -> GraphState:
         plan_id = cast(str | None, state.get("approved_plan_id"))

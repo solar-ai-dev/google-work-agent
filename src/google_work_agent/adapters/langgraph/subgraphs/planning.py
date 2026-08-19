@@ -1,11 +1,31 @@
 """Planning native LangGraph subgraph.
 
 init -> plan -> result_validate -> finalize
+
+``plan`` -> ``NEEDS_CONFIRMATION`` (possible from all four modes -- see
+``ANSWER_DRAFT_OUTPUT_SCHEMA``/``ACTION_PLAN_DRAFT_OUTPUT_SCHEMA``, both of
+which allow it) resolves with a real, nested-checkpoint ``interrupt()``
+called from *inside* this compiled subgraph (in ``finalize``, via the
+injected ``confirm_inline`` callback), not from the shared Main-Graph
+``waiting_confirmation`` node. ``plan``/``result_validate`` never re-run on
+resume: they already completed and committed before the pause, so
+``finalize``'s node-replay on resume only re-derives its own (pure) decision
+from that committed output, then makes exactly one more direct Planning
+semantic call (whichever of the four ``invoke_*_llm_from_evidence`` methods
+matches the already-frozen ``mode``) carrying the validated
+``ConfirmationResponseV1`` -- not a second traversal of ``plan``.
+
+If that resolution is *itself* still ambiguous, ``finalize`` does NOT call
+``interrupt()`` a second time within the same (already-resumed) task -- see
+Request Understanding/Tool Route/Retrieval/Work Analysis's own established
+rationale. Instead ``finalize`` cleanly returns with the next round's
+interrupt payload already materialized, and a conditional self-loop edge
+re-enters "finalize" as a genuinely new, separate task.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
@@ -25,6 +45,10 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.route_translation import (
+    RESUME_CONTRACT_VERSION,
+    confirmation_resume_status,
+)
 from google_work_agent.adapters.langgraph.subgraph_state import (
     PlanningInputState,
     PlanningLocalState,
@@ -33,6 +57,7 @@ from google_work_agent.application.workflows import (
     ActionPlanDraftV1,
     AgentLocalStateV1,
     AnswerDraftV1,
+    ConfirmationResponseV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
     RequestIntentV2,
@@ -40,9 +65,13 @@ from google_work_agent.application.workflows import (
     SolutionPlanningAgent,
     SupervisorDecisionV1,
     WorkflowPhase,
+    build_solution_planning_clarification_question,
     route_supervisor,
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
+)
+from google_work_agent.application.workflows.request_understanding import (
+    build_user_interrupt_v1,
 )
 from google_work_agent.application.workflows.retrieval_evidence_store import (
     RunScopedEvidenceStore,
@@ -53,8 +82,13 @@ from google_work_agent.application.workflows.tool_routing import (
     ToolRoutePlanV2,
     output_routes,
 )
+from google_work_agent.ports import StructuredLLMResult
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
+ConfirmInline = Callable[
+    [PlanningLocalState],
+    tuple[ConfirmationResponseV1 | None, dict[str, object] | None],
+]
 
 
 _WRITE_EFFECT_HINTS = frozenset({"CREATE", "UPDATE", "SEND", "DELETE"})
@@ -104,12 +138,14 @@ class PlanningSubgraph:
         graph_profile: GraphProfile,
         merge_decision: MergeDecision,
         evidence_store: RunScopedEvidenceStore,
+        confirm_inline: ConfirmInline,
     ) -> None:
         self._agent = agent
         self._id_factory = id_factory
         self._graph_profile = graph_profile
         self._merge_decision = merge_decision
         self._evidence_store = evidence_store
+        self._confirm_inline = confirm_inline
 
     def build(self) -> Any:
         graph = StateGraph(
@@ -125,8 +161,18 @@ class PlanningSubgraph:
         graph.add_edge("init", "plan")
         graph.add_edge("plan", "result_validate")
         graph.add_edge("result_validate", "finalize")
-        graph.add_edge("finalize", END)
+        graph.add_conditional_edges(
+            "finalize",
+            self._route_after_finalize,
+            {"finalize": "finalize", "end": END},
+        )
         return graph.compile(name="planning_subgraph")
+
+    @staticmethod
+    def _route_after_finalize(state: PlanningLocalState) -> str:
+        if state.get("__planning_retry_confirmation__"):
+            return "finalize"
+        return "end"
 
     def _init_node(self, state: PlanningLocalState) -> PlanningLocalState:
         invocation_id = self._id_factory()
@@ -173,10 +219,22 @@ class PlanningSubgraph:
             ),
         }
 
-    def _plan_node(self, state: PlanningLocalState) -> PlanningLocalState:
+    def _run_plan_attempt(
+        self,
+        state: PlanningLocalState,
+        *,
+        mode: str,
+        confirmation_response: ConfirmationResponseV1 | None,
+    ) -> tuple[AnswerDraftV1 | ActionPlanDraftV1, StructuredLLMResult]:
+        """One Planning semantic LLM call for the already-frozen ``mode``.
+
+        Safe to call again for a later confirmation round -- ``mode``,
+        ``retrieval_result``'s resolved evidence projection,
+        ``tool_route_plan``'s frozen output routes/read tool ids, and any
+        ``answer_draft``/``plan_draft``/``plan_review`` inputs are already
+        frozen in state, never re-derived or re-fetched.
+        """
         request = request_from_state(state)
-        local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
-        mode = state[PLANNING_MODE_KEY]
         review_state = state["plan_review"]
         review_issues: list[dict[str, object]] = []
         review_summary: str | None = None
@@ -197,12 +255,12 @@ class PlanningSubgraph:
                 evidence_drafts=evidence_drafts,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
+                confirmation_response=confirmation_response,
             )
             result = self._agent.build_answer_output_from_llm_result(
                 llm_result,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
             )
-            llm_call_id = f"{request.run_id}:planning.answer_only"
         elif mode == "draft_plan":
             llm_result = self._agent.invoke_draft_plan_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
@@ -211,6 +269,7 @@ class PlanningSubgraph:
                 request=request,
                 frozen_output_routes=_frozen_output_routes(state),
                 frozen_read_tool_ids=_frozen_read_tool_ids(state),
+                confirmation_response=confirmation_response,
             )
             result = self._agent.build_plan_output_from_llm_result(
                 llm_result,
@@ -218,7 +277,6 @@ class PlanningSubgraph:
                 frozen_output_routes=_frozen_output_routes(state),
                 frozen_read_tool_ids=_frozen_read_tool_ids(state),
             )
-            llm_call_id = f"{request.run_id}:planning.draft_plan"
         elif mode == "revise_answer":
             llm_result = self._agent.invoke_revise_answer_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
@@ -228,12 +286,12 @@ class PlanningSubgraph:
                 evidence_drafts=evidence_drafts,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 request=request,
+                confirmation_response=confirmation_response,
             )
             result = self._agent.build_answer_output_from_llm_result(
                 llm_result,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
             )
-            llm_call_id = f"{request.run_id}:planning.revise_answer"
         else:
             llm_result = self._agent.invoke_revise_plan_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
@@ -245,6 +303,7 @@ class PlanningSubgraph:
                 request=request,
                 frozen_output_routes=_frozen_output_routes(state),
                 frozen_read_tool_ids=_frozen_read_tool_ids(state),
+                confirmation_response=confirmation_response,
             )
             result = self._agent.build_plan_output_from_llm_result(
                 llm_result,
@@ -252,11 +311,17 @@ class PlanningSubgraph:
                 frozen_output_routes=_frozen_output_routes(state),
                 frozen_read_tool_ids=_frozen_read_tool_ids(state),
             )
-            llm_call_id = f"{request.run_id}:planning.revise_plan"
+        return result, llm_result
+
+    def _plan_node(self, state: PlanningLocalState) -> PlanningLocalState:
+        request = request_from_state(state)
+        local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
+        mode = state[PLANNING_MODE_KEY]
+        result, llm_result = self._run_plan_attempt(state, mode=mode, confirmation_response=None)
         updated_local = dict(record_llm_result(local_state, llm_result))
         updated_local["node_state"] = "PLAN_COMPLETE"
         updated_local["typed_result"] = cast(dict[str, object], result)
-        return {
+        next_state: PlanningLocalState = {
             **state,
             PLANNING_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             "__planning_result__": result,
@@ -271,11 +336,65 @@ class PlanningSubgraph:
                 agent_invocation_id=local_state["invocation_id"],
                 subgraph_namespace="planning",
                 node_name="plan",
-                llm_call_id=llm_call_id,
+                llm_call_id=f"{request.run_id}:planning.{mode}",
                 llm_call_increment=llm_result.structured_output_attempts,
                 repair_increment=max(0, llm_result.structured_output_attempts - 1),
             ),
         }
+        if result["status"] == "NEEDS_CONFIRMATION":
+            # Materialized here -- not in finalize -- because this node never
+            # replays on resume (it completes and commits before any pause),
+            # so interrupt_id is generated exactly once and stays stable
+            # across finalize's node-replay.
+            request_intent = _require_state_value(state["request_intent"], "request_intent")
+            user_interrupt, confirmation_interrupt = self._materialize_confirmation_interrupt(
+                result=result, request_intent=request_intent
+            )
+            next_state["workflow_phase"] = WorkflowPhase.WAITING_CONFIRMATION.value
+            next_state["user_interrupt"] = cast(Any, user_interrupt)
+            next_state["prompt_context"] = {
+                **cast(dict[str, object], state.get("prompt_context", {})),
+                "confirmation_interrupt": confirmation_interrupt,
+            }
+        return next_state
+
+    def _materialize_confirmation_interrupt(
+        self, *, result: AnswerDraftV1 | ActionPlanDraftV1, request_intent: RequestIntentV2
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        """Build one round's ``(user_interrupt, confirmation_interrupt metadata)``.
+
+        Safe to call with ``self._id_factory()``-backed identifiers only from
+        an invocation that has not itself called ``interrupt()`` yet: true
+        for ``plan`` (round 1, never replays) and for a *freshly self-looped*
+        ``finalize`` invocation about to materialize round N+1 and return
+        (not yet resumed, so not yet replayed either). ``origin_target`` is
+        ``planning.answer_only`` for answer_only/revise_answer or
+        ``planning.draft_plan`` for draft_plan/revise_plan (already
+        allowlisted in ``CONFIRMATION_ORIGIN_TARGETS``) -- Retrieval/Work
+        Analysis's own origin_target/interrupt-owning-node split shows this
+        is already an accepted convention, not a new one.
+        """
+        question = build_solution_planning_clarification_question(
+            result=result, request_intent=request_intent
+        )
+        interrupt_id = self._id_factory()
+        user_interrupt = {
+            **build_user_interrupt_v1(question),
+            "interrupt_id": interrupt_id,
+        }
+        confirmation_interrupt = {
+            "schema_version": 1,
+            "interrupt_id": interrupt_id,
+            "owner_subgraph": "PLANNING",
+            "origin_target": question["origin_target"],
+            "resume_target": {
+                "subgraph_id": "PLANNING",
+                "node_id": "finalize",
+                "graph_version": RESUME_CONTRACT_VERSION,
+            },
+            "resume_status": confirmation_resume_status("PLANNING").value,
+        }
+        return user_interrupt, confirmation_interrupt
 
     def _result_validate_node(self, state: PlanningLocalState) -> PlanningLocalState:
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
@@ -298,9 +417,119 @@ class PlanningSubgraph:
         }
 
     def _finalize_node(self, state: PlanningLocalState) -> PlanningLocalState:
+        result = state["__planning_result__"]
+
+        if result["status"] == "NEEDS_CONFIRMATION" and isinstance(
+            state.get("user_interrupt"), Mapping
+        ):
+            state, result = self._resolve_confirmation_inline(state)
+            if result is None:
+                # RequestConfirmation not applied / ResumeConfirmation
+                # conflict -- the confirm_inline callback already built the
+                # correct end-of-run state patch. Never loop back from here.
+                return cast(
+                    PlanningLocalState,
+                    {**state, "__planning_retry_confirmation__": False},
+                )
+            if result["status"] == "NEEDS_CONFIRMATION":
+                # Still ambiguous after this round's answer. Do NOT call
+                # interrupt() again inside this already-resumed task -- see
+                # module docstring / the other owners' established
+                # rationale. Materialize the next round's payload
+                # (self._id_factory() is safe here: this "finalize"
+                # invocation has not itself paused yet) and cleanly return so
+                # the self-loop conditional edge re-enters "finalize" as a
+                # fresh, separate task for that round.
+                request_intent = _require_state_value(
+                    state["request_intent"], "request_intent"
+                )
+                user_interrupt, confirmation_interrupt = self._materialize_confirmation_interrupt(
+                    result=result, request_intent=request_intent
+                )
+                prompt_context = dict(cast(dict[str, object], state.get("prompt_context", {})))
+                prompt_context["confirmation_interrupt"] = confirmation_interrupt
+                return cast(
+                    PlanningLocalState,
+                    {
+                        **state,
+                        "workflow_phase": WorkflowPhase.WAITING_CONFIRMATION.value,
+                        "user_interrupt": cast(Any, user_interrupt),
+                        "prompt_context": prompt_context,
+                        "__planning_retry_confirmation__": True,
+                    },
+                )
+
+        return self._finalize_resolved(state, result=result)
+
+    def _resolve_confirmation_inline(
+        self, state: PlanningLocalState
+    ) -> tuple[PlanningLocalState, Any]:
+        """Pause via a real nested-subgraph ``interrupt()``, then resolve the
+        bounded ``ConfirmationResponseV1`` with exactly one more Planning
+        semantic call for the already-frozen ``mode`` -- not by re-entering
+        ``plan`` or re-deriving ``retrieval_result``/evidence/frozen output
+        routes. Returns ``(state, None)`` when the caller must return
+        ``state`` immediately (not-applied/conflict end state); otherwise
+        ``(updated_state, resolved_result)``.
+
+        This whole method's body replays from the top on resume (LangGraph's
+        standard node-replay semantics for the node containing ``interrupt()``)
+        -- every value it depends on before the interrupt call is either read
+        unchanged from state (set once by ``plan``, a node that itself never
+        replays) or is itself the idempotency-guarded, side-effect-free core
+        in ``confirm_inline``.
+        """
+        confirmation_response, early_return_patch = self._confirm_inline(state)
+        if early_return_patch is not None:
+            return cast(
+                PlanningLocalState, {**state, **early_return_patch}
+            ), None
+        assert confirmation_response is not None
+
+        local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
+        request = request_from_state(state)
+        mode = state[PLANNING_MODE_KEY]
+        resolved_result, llm_result = self._run_plan_attempt(
+            state, mode=mode, confirmation_response=confirmation_response
+        )
+        updated_local = dict(record_llm_result(local_state, llm_result))
+        updated_local["node_state"] = "PLAN_COMPLETE"
+        updated_local["typed_result"] = cast(dict[str, object], resolved_result)
+
+        prompt_context = dict(cast(dict[str, object], state.get("prompt_context", {})))
+        prompt_context.pop("confirmation_interrupt", None)
+
+        updated_state = cast(
+            PlanningLocalState,
+            {
+                **state,
+                PLANNING_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+                "__planning_result__": resolved_result,
+                "user_interrupt": None,
+                "prompt_context": prompt_context,
+                "retry_budget": consume_llm_call_budget(
+                    state, provider_calls_consumed=llm_result.structured_output_attempts
+                ),
+                "trace_context": merge_trace_context(
+                    state,
+                    graph_profile=self._graph_profile.value,
+                    agent_subgraph_id="planning",
+                    agent_role="planning",
+                    agent_invocation_id=local_state["invocation_id"],
+                    subgraph_namespace="planning",
+                    node_name="finalize",
+                    llm_call_id=f"{request.run_id}:planning.{mode}.confirm",
+                    llm_call_increment=llm_result.structured_output_attempts,
+                ),
+            },
+        )
+        return updated_state, resolved_result
+
+    def _finalize_resolved(
+        self, state: PlanningLocalState, *, result: AnswerDraftV1 | ActionPlanDraftV1
+    ) -> PlanningLocalState:
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
         mode = state[PLANNING_MODE_KEY]
-        result = state["__planning_result__"]
         if "answer" in result:
             answer_result = validate_answer_draft_v1(
                 result,
@@ -342,6 +571,7 @@ class PlanningSubgraph:
                     node_name="finalize",
                     revision_increment=1 if mode == "revise_plan" else 0,
                 ),
+                "__planning_retry_confirmation__": False,
             },
             state_update,
             decision,

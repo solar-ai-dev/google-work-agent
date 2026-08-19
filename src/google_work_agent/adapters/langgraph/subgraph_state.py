@@ -134,10 +134,19 @@ class ReviewInputState(AgentSubgraphInputEnvelope, total=False):
 class RequestUnderstandingLocalState(GraphState):
     __request_agent_local__: NotRequired[AgentLocalStateV1]
     __request_output__: NotRequired[RequestUnderstandingOutputV1]
+    # Set only when a resolved-but-still-ambiguous confirmation round needs
+    # another nested interrupt: routes the self-loop conditional edge back
+    # into "finalize" as a genuinely new task (never consumed outside this
+    # subgraph -- explicitly popped before the final merge_decision return).
+    __request_understanding_retry_confirmation__: NotRequired[bool]
 
 
 class ToolRoutingLocalState(GraphState):
     __tool_route_result__: NotRequired[ToolRouteResultV1]
+    # Same purpose as RequestUnderstandingLocalState's retry marker: routes
+    # the self-loop conditional edge back into "finalize" as a fresh task
+    # for the next confirmation round.
+    __tool_route_retry_confirmation__: NotRequired[bool]
 
 
 class AcquisitionLocalState(GraphState):
@@ -159,21 +168,38 @@ class ContextRetrievalLocalState(GraphState):
     __context_followup_operation__: NotRequired[str]
     __context_next_page_handles__: NotRequired[dict[str, str]]
     __context_detail_candidates__: NotRequired[dict[str, str]]
+    # Same purpose as ToolRoutingLocalState/RequestUnderstandingLocalState's
+    # retry markers: routes the self-loop conditional edge back into
+    # "finalize" as a fresh task for the next confirmation round.
+    __context_retrieval_retry_confirmation__: NotRequired[bool]
 
 
 class WorkAnalysisLocalState(GraphState):
     __analysis_agent_local__: NotRequired[AgentLocalStateV1]
+    # Same purpose as ContextRetrievalLocalState/ToolRoutingLocalState/
+    # RequestUnderstandingLocalState's retry markers: routes the self-loop
+    # conditional edge back into "finalize" as a fresh task for the next
+    # confirmation round.
+    __work_analysis_retry_confirmation__: NotRequired[bool]
 
 
 class PlanningLocalState(GraphState):
     __planning_agent_local__: NotRequired[AgentLocalStateV1]
     __planning_mode__: NotRequired[str]
     __planning_result__: NotRequired[AnswerDraftV1 | ActionPlanDraftV1]
+    # Same purpose as the other native subgraphs' retry markers: routes the
+    # self-loop conditional edge back into "finalize" as a fresh task for
+    # the next confirmation round.
+    __planning_retry_confirmation__: NotRequired[bool]
 
 
 class ReviewLocalState(GraphState):
     __review_agent_local__: NotRequired[AgentLocalStateV1]
     __review_mode__: NotRequired[str]
+    # Same purpose as the other native subgraphs' retry markers: routes the
+    # self-loop conditional edge back into "finalize" as a fresh task for
+    # the next confirmation round.
+    __review_retry_confirmation__: NotRequired[bool]
 
 
 class ProfileRequestSourceLocalState(GraphState):

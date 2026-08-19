@@ -65,11 +65,12 @@ def test_multi_agent_graph_state_fields_match_workflow_document() -> None:
         "verification_summary",
         "finalize_intent",
         "user_interrupt",
+        "policy_confirmation_receipts",
         "retry_budget",
         "prompt_context",
         "trace_context",
     } == MULTI_AGENT_GRAPH_STATE_FIELDS
-    assert len(MULTI_AGENT_GRAPH_STATE_FIELDS) == 24
+    assert len(MULTI_AGENT_GRAPH_STATE_FIELDS) == 25
 
 
 def test_multi_agent_graph_state_has_no_implementation_only_fields() -> None:
