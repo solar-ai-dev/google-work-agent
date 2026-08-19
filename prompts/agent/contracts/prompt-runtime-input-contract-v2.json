@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "contract_id": "prompt-runtime-input-contract-v2-retrieval",
-  "source_of_truth": "05 Context-Retrieval v2.13 / 15 Prompt contract v1.22",
+  "source_of_truth": "05 Context-Retrieval v2.13 / 15 Prompt contract v1.23",
   "rules": [
     "Only declared runtime input fields may be serialized into a Product Prompt.",
     "Retrieval receives RequestIntentV2 and frozen input_routes; raw user_request is not a retrieval authority.",

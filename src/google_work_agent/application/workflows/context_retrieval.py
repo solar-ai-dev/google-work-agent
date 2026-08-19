@@ -36,6 +36,7 @@ from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
     BudgetDecision,
+    ConfirmationResponseV1,
     ContextResult,
     GraphStateUpdateV1,
     RunBudgetV1,
@@ -90,9 +91,6 @@ from google_work_agent.ports import (
 )
 
 JsonObject = dict[str, object]
-
-
-
 
 
 CONTEXT_RETRIEVAL_SCHEMA_VERSION = 1
@@ -337,19 +335,25 @@ class ContextRetrievalAgent:
             rag_candidates, segments_by_id=segments_by_id
         )
         candidate_segment_ids = {candidate["segment_id"] for candidate in rag_candidates}
+        affected_fields = [
+            "$.selected_segment_ids",
+            "$.evidence_drafts",
+            "$.excluded_segment_ids",
+        ]
         revision_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._select_revision_prompt_ref,
             prompt_input={
-                "user_request": request.request_text,
-                "request_intent": request_intent,
-                "ranked_segments": ranked_segments,
-                "previous_output": previous_output,
-                "failure_reason": failure_detail,
-                "changed_fields_allowed": [
-                    "$.selected_segment_ids",
-                    "$.evidence_drafts",
-                    "$.excluded_segment_ids",
-                ],
+                "base_projection": {
+                    "request_intent": request_intent,
+                    "ranked_segments": ranked_segments,
+                },
+                "candidate_output": previous_output,
+                "failure_record": {
+                    "failure_reason_code": "EVIDENCE_SELECTION_SEMANTIC_INVALID",
+                    "affected_fields": affected_fields,
+                    "allowed_change_scope": affected_fields,
+                    "validation_errors": [failure_detail],
+                },
             },
             output_schema=EVIDENCE_SELECTION_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -381,24 +385,30 @@ class ContextRetrievalAgent:
         acquisition_result: AcquisitionResultV1,
         evidence_drafts: list[EvidenceDraftV1],
         retry_budget: RunBudgetV1,
+        confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> tuple[SufficiencyResultV2, dict[str, object]]:
         """retrieval.assess_sufficiency (docs/05-context-retrieval.md SS5.7):
         request_intent + top rag candidates' materialized evidence. Never
         re-sends the full context_bundle/acquisition_status opaque blob --
         only the Candidate-pinned selected_evidence/source_statuses/
-        budget_state typed projections."""
+        budget_state typed projections. ``confirmation_response`` is only
+        present on a same-owner nested-checkpoint resume (C3) -- this is the
+        one Product Prompt NEEDS_CONFIRMATION actually originates from, so
+        it is the only one that needs to see the bounded answer."""
+        prompt_input: dict[str, object] = {
+            "request_intent": request_intent,
+            "selected_evidence": selected_evidence_prompt_projection(evidence_drafts),
+            "source_statuses": source_statuses_prompt_projection(
+                tool_route_plan=tool_route_plan,
+                acquisition_result=acquisition_result,
+            ),
+            "budget_state": budget_state_prompt_projection(retry_budget),
+        }
+        if confirmation_response is not None:
+            prompt_input["confirmation_response"] = dict(confirmation_response)
         llm_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._sufficiency_prompt_ref,
-            prompt_input={
-                "user_request": request.request_text,
-                "request_intent": request_intent,
-                "selected_evidence": selected_evidence_prompt_projection(evidence_drafts),
-                "source_statuses": source_statuses_prompt_projection(
-                    tool_route_plan=tool_route_plan,
-                    acquisition_result=acquisition_result,
-                ),
-                "budget_state": budget_state_prompt_projection(retry_budget),
-            },
+            prompt_input=prompt_input,
             output_schema=SUFFICIENCY_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,
@@ -708,9 +718,6 @@ def load_context_select_evidence_semantic_revision_prompt_reference(
     )
 
 
-
-
-
 # Common quoted-reply and signature markers across Gmail clients (English and
 # Korean). Best-effort/heuristic by nature -- docs/05 section 6 requires
 # "Gmail HTML 안전 텍스트 변환, 인용·서명 제거" as a Context Retriever
@@ -749,7 +756,6 @@ def load_context_select_evidence_semantic_revision_prompt_reference(
 # never-exceeds guarantee without adding a tokenizer dependency; it is not
 # a per-script/per-language heuristic -- the same byte-count formula runs
 # unconditionally for every Unicode input.
-
 
 
 def _selected_segments(

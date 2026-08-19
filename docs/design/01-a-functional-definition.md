@@ -1,6 +1,14 @@
 # 01-A. Google Work Agent 기능 정의서
 
-> **상태:** Draft v2.17 · **기준일:** 2026-08-18
+> **2026-08-19 Canonical Sync — Conversation History / StartRun**
+>
+> - 같은 Conversation에는 여러 Run이 순차적으로 존재할 수 있으나 동시에 비Terminal Run은 하나만 허용한다.
+> - 새 Run은 새 `run_id`, 새 `langgraph_thread_id`/검증된 workflow identity, 독립 `RunInputV1`을 가진다.
+> - `GET /api/v1/conversations/{conversation_id}/history`는 저장된 Message/Run Timeline을 복원하기 위한 bounded read-only 기능이다. 현재 구현 bound는 Message 200, Run 200이며 Message 초과는 `truncated=true`다.
+> - Conversation History는 Prompt Context 획득 기능이 아니다. 새 Run의 Agent 입력은 현재 `request_text`와 현재 Run에서 resolve한 `selected_resource_ids → selected_resource_refs`만 사용한다.
+> - Conversation title은 최초 USER 요청 기반으로 한 번 생성하고 후속 Run 때문에 자동 재생성하지 않는다. 최근 활동은 `Conversation.updated_at_ms`로 갱신한다.
+
+> **상태:** Draft v2.18 · **기준일:** 2026-08-19
 
 ## 1. 문서 목적
 

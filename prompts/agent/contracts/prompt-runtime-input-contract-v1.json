@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contract_id": "prompt-runtime-input-contract-v1-r8.6-phase6",
+  "contract_id": "prompt-runtime-input-contract-v1-r8.6-runtime-closure",
   "source_of_truth": "Runtime typed projection schemas, not evaluation projections",
   "forbidden_runtime_fields": [
     "end_state_gold",
@@ -11,11 +11,16 @@
     "expected_route",
     "benchmark_score",
     "dataset_split",
-    "holdout_label"
+    "holdout_label",
+    "interrupt_id",
+    "owner_subgraph",
+    "resume_target",
+    "checkpoint_metadata"
   ],
   "rules": [
     "Only declared runtime input fields may be serialized into a Product Prompt.",
     "Evaluation projection objects are never passed directly to Product Prompt assembly.",
+    "On same-owner confirmation resume, only validated ConfirmationResponseV1 may be serialized as confirmation_response into the semantic Prompt slot that originated the question; raw resume payload and interrupt/checkpoint metadata remain forbidden.",
     "Repair/revision receives only base_projection + candidate_output + normalized failure_record.",
     "Connector source text stays DATA_ONLY and cannot grant authority.",
     "Holdout data is not used for prompt authoring or tuning."
@@ -36,263 +41,103 @@
   },
   "slots": {
     "request_understanding.classify": {
-      "allowed_root_fields": [
-        "user_request",
-        "entry_mode",
-        "language",
-        "selected_resources"
-      ]
+      "allowed_root_fields": ["user_request", "entry_mode", "language", "selected_resources", "confirmation_response"]
     },
     "tool_route.determine_io_resources": {
-      "allowed_root_fields": [
-        "request_intent",
-        "eligible_route_capabilities"
-      ]
+      "allowed_root_fields": ["request_intent", "eligible_route_capabilities", "confirmation_response"]
     },
     "tool_route.select_tool_if_needed": {
-      "allowed_root_fields": [
-        "route_id",
-        "connector_id",
-        "resource_type",
-        "effect",
-        "eligible_tool_ids"
-      ],
-      "preconditions": [
-        "eligible_tool_ids are registry-validated for the fixed connector/resource/effect"
-      ]
+      "allowed_root_fields": ["route_id", "connector_id", "resource_type", "effect", "eligible_tool_ids"],
+      "preconditions": ["eligible_tool_ids are registry-validated for the fixed connector/resource/effect"]
     },
     "retrieval.plan_query": {
-      "allowed_root_fields": [
-        "request_intent",
-        "input_routes",
-        "retrieval_budget",
-        "current_round_no",
-        "prior_query_attempts",
-        "unresolved_sufficiency_issues",
-        "read_result_summaries"
-      ]
+      "allowed_root_fields": ["request_intent", "input_routes", "retrieval_budget", "current_round_no", "prior_query_attempts", "unresolved_sufficiency_issues", "read_result_summaries"]
     },
     "retrieval.select_evidence": {
-      "allowed_root_fields": [
-        "request_intent",
-        "ranked_segments"
-      ]
+      "allowed_root_fields": ["request_intent", "ranked_segments"]
     },
     "retrieval.assess_sufficiency": {
-      "allowed_root_fields": [
-        "user_request",
-        "request_intent",
-        "selected_evidence",
-        "source_statuses",
-        "budget_state"
-      ]
+      "allowed_root_fields": ["request_intent", "selected_evidence", "source_statuses", "budget_state", "confirmation_response"]
     },
     "work_analysis.analyze": {
-      "allowed_root_fields": [
-        "user_request",
-        "request_intent",
-        "evidence",
-        "availability_results",
-        "policy_confirmation_receipt_refs"
-      ]
+      "allowed_root_fields": ["user_request", "request_intent", "evidence", "availability_results", "policy_confirmation_receipt_refs", "confirmation_response"]
     },
     "planning.compose_answer": {
-      "allowed_root_fields": [
-        "user_request",
-        "request_intent",
-        "work_analysis",
-        "evidence"
-      ]
+      "allowed_root_fields": ["user_request", "request_intent", "work_analysis", "evidence", "confirmation_response"]
     },
     "planning.compose_arguments": {
-      "allowed_root_fields": [
-        "user_request",
-        "request_intent",
-        "output_route",
-        "selected_tool_schema",
-        "work_analysis",
-        "evidence"
-      ]
+      "allowed_root_fields": ["user_request", "request_intent", "output_route", "selected_tool_schema", "work_analysis", "evidence", "confirmation_response"]
     },
     "review.inspect": {
-      "allowed_root_fields": [
-        "user_request",
-        "request_intent",
-        "output_plan",
-        "planning_result",
-        "evidence",
-        "policy_summary"
-      ]
+      "allowed_root_fields": ["user_request", "request_intent", "output_plan", "planning_result", "evidence", "policy_summary", "confirmation_response"]
     },
     "request_understanding.classify.repair": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "tool_route.determine_io_resources.repair": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "tool_route.determine_io_resources.revise": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "tool_route.select_tool_if_needed.repair": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "tool_route.select_tool_if_needed.revise": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "retrieval.plan_query.repair": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "retrieval.plan_query.revise": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "retrieval.select_evidence.repair": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "retrieval.select_evidence.revise": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "retrieval.assess_sufficiency.repair": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "work_analysis.analyze.repair": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "planning.compose_answer.repair": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "planning.compose_answer.revise": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "planning.compose_arguments.repair": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "planning.compose_arguments.revise": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "review.inspect.repair": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     },
     "review.inspect.recheck": {
-      "allowed_root_fields": [
-        "base_projection",
-        "candidate_output",
-        "failure_record"
-      ],
-      "preconditions": [
-        "failure_record is runtime-normalized and allowlisted"
-      ]
+      "allowed_root_fields": ["base_projection", "candidate_output", "failure_record"],
+      "preconditions": ["failure_record is runtime-normalized and allowlisted"]
     }
   }
 }

@@ -309,10 +309,15 @@ def test_invalid_first_output_is_repaired_and_run_continues(tmp_path: Path) -> N
     assert invoke_calls[0]["prompt_id"] == "work_analysis.analyze"
     assert invoke_calls[1]["prompt_id"] == "work_analysis.analyze.repair"
     repair_input = cast(dict[str, object], invoke_calls[1]["prompt_input"])
-    assert repair_input["attempt_no"] == 1
-    assert repair_input["max_attempts"] == 1
-    validator_errors = cast(list[str], repair_input["validator_errors"])
-    assert any("resource_refs" in message for message in validator_errors)
+    # 15 section 9.2: exactly base_projection + candidate_output +
+    # failure_record at root -- attempt_no/max_attempts/validator_errors are
+    # not Product Prompt input; the actionable signal lives in
+    # failure_record.affected_field_paths instead.
+    assert set(repair_input) == {"base_projection", "candidate_output", "failure_record"}
+    failure_record = cast(dict[str, object], repair_input["failure_record"])
+    assert failure_record["failure_id"] == "work_analysis.analyze:1"
+    affected_field_paths = cast(list[str], failure_record["affected_field_paths"])
+    assert any("resource_refs" in path for path in affected_field_paths)
 
 
 def test_still_invalid_after_repair_raises_typed_error_not_unlimited_retry(

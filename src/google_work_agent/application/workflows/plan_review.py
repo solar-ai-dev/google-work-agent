@@ -12,6 +12,7 @@ from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
+    ConfirmationResponseV1,
     GraphStateUpdateV1,
     ReviewResult,
     WorkflowPhase,
@@ -459,6 +460,7 @@ class PlanReviewAgent:
         request: WorkflowStartRequest,
         policy_review_context: PolicyReviewContextV1 | None = None,
         deterministic_action_risks: dict[str, dict[str, object]] | None = None,
+        confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> StructuredLLMResult:
         """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
 
@@ -470,26 +472,35 @@ class PlanReviewAgent:
         Validation is unaffected: ``validate_plan_review_result_v1``'s
         reference space is scraped off ``analysis_result``/``plan_draft``,
         never off context.
+
+        ``confirmation_response`` is only present on a same-owner
+        nested-checkpoint resume (C6) -- ``review.inspect`` is the only
+        Review prompt that can ever produce ``CONFIRM`` (``review.recheck``'s
+        tool set has no ``review_confirm`` function), so it is the only one
+        that needs to see the bounded answer.
         """
         target_kind, draft = resolve_review_target(
             answer_draft=answer_draft,
             plan_draft=plan_draft,
         )
+        prompt_input = _build_review_prompt_input_from_evidence(
+            request=request,
+            request_intent=request_intent,
+            evidence_drafts=evidence_drafts,
+            analysis_result=analysis_result,
+            draft=draft,
+            target_kind=target_kind,
+            policy_review_context=policy_review_context
+            or _shortlisted_policy_review_context_v1(
+                tool_registry=self._tool_registry, target_kind=target_kind, draft=draft
+            ),
+            deterministic_action_risks=deterministic_action_risks,
+        )
+        if confirmation_response is not None:
+            prompt_input["confirmation_response"] = dict(confirmation_response)
         return self._llm_runtime.invoke_tool_call(
             prompt_ref=self._inspect_prompt_ref,
-            prompt_input=_build_review_prompt_input_from_evidence(
-                request=request,
-                request_intent=request_intent,
-                evidence_drafts=evidence_drafts,
-                analysis_result=analysis_result,
-                draft=draft,
-                target_kind=target_kind,
-                policy_review_context=policy_review_context
-                or _shortlisted_policy_review_context_v1(
-                    tool_registry=self._tool_registry, target_kind=target_kind, draft=draft
-                ),
-                deterministic_action_risks=deterministic_action_risks,
-            ),
+            prompt_input=prompt_input,
             tools=REVIEW_INSPECT_TOOLS,
             mapper=_review_tool_call_to_result_v1,
             output_schema=PLAN_REVIEW_OUTPUT_SCHEMA,

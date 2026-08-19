@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal, cast
 
 from tests.integration.langgraph.test_runtime import (
     FIXTURE_ROOT,
@@ -107,6 +107,17 @@ def test_langgraph_runtime_completes_answer_only_run(
 def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     tmp_path: Path,
 ) -> None:
+    """I1: Request Understanding's NEEDS_CONFIRMATION now pauses via a real
+    ``interrupt()`` called from *inside* the compiled ``request_understanding``
+    nested subgraph (in its own ``finalize`` node), not the shared Main-Graph
+    ``waiting_confirmation`` node. Resume must continue that same nested
+    checkpoint -- ``init``/``classify`` (already completed before the pause)
+    must NOT run again -- not restart the whole subgraph from START as the
+    pre-I1 architecture did. A single final-result comparison cannot tell
+    these two apart, so this test proves it via the actual checkpoint task
+    hierarchy, Local State identity (``invocation_id``) held constant across
+    the pause, and per-node call bookkeeping -- not just "the run completed".
+    """
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
@@ -124,22 +135,41 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     connection = connect_sqlite(database_path)
     try:
         run_row = connection.execute(
-            "SELECT status, version FROM runs WHERE id = 'run-1';"
+            "SELECT status, langgraph_thread_id FROM runs WHERE id = 'run-1';"
         ).fetchone()
-        assert tuple(run_row) == ("WAITING_CONFIRMATION", 2)
+        assert run_row[0] == "WAITING_CONFIRMATION"
+        thread_id_before = run_row[1]
     finally:
         connection.close()
 
+    # Q4/E: the paused checkpoint's own task hierarchy proves WHERE the
+    # interrupt actually lives -- not just that the thread_id is unchanged.
+    thread_config = runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
+    paused_snapshot = runtime._graph.get_state(thread_config, subgraphs=True)  # noqa: SLF001
+    assert paused_snapshot.next == ("request_understanding",)
+    assert len(paused_snapshot.tasks) == 1
+    outer_task = paused_snapshot.tasks[0]
+    assert outer_task.name == "request_understanding"
+    nested_snapshot = outer_task.state
+    # The nested subgraph's OWN pending task is "finalize" -- proof that
+    # "init" and "classify" (which run before finalize) already completed
+    # and committed, and are not what is paused.
+    assert nested_snapshot.next == ("finalize",)
+    local_state_before = nested_snapshot.values["__request_agent_local__"]
+    invocation_id_before = local_state_before["invocation_id"]
+
+    # The API-facing paused-run projection (WorkflowInvocationResult.payload)
+    # must still surface the confirmation question even though it never got
+    # a chance to commit into the OUTER Main State's user_interrupt channel
+    # (the nested subgraph never returned to the parent before pausing).
+    assert first.payload["user_interrupt"] is not None
+    interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
+    assert first.payload["user_interrupt"]["origin_target"] == "request_understanding.classify"
+
     runtime.close()
-    # Pre-Prompt Runtime Closure: the ambiguity originated in Request
-    # Understanding's own classify call (_ambiguous_intent's origin_target
-    # is "request_understanding.classify"), so resume must now re-enter
-    # classify with the user's answer bounded-projected into its prompt
-    # input -- not skip straight to acquisition/tool_route as it did before
-    # confirmation_resume_target's SIX_ROLE_BASELINE routing fix. Construct
-    # the fake LLM runtime directly (instead of via _make_runtime) so the
-    # test can inspect its `.calls` afterward and prove the confirmation
-    # answer actually reached classify's prompt_input.
+    # Reconnect with a fresh runtime instance sharing the same checkpoint DB
+    # (simulating a process restart) so the test can inspect a fresh
+    # `.calls` log and prove nothing from before the pause is replayed.
     resumed_llm_runtime = _QueuedLLMRuntime(
         [
             _clear_intent(),
@@ -167,18 +197,16 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         default_tasklist_id_provider=lambda: "task-list-default",
     )
 
-    # G3 Final Closure: Confirmation resume alone never promotes the Run's
-    # LLM budget profile past NORMAL (docs/06 SS11, docs/15 SS8.2 --
-    # REVISION_HEAVY requires an approved Review REVISE or mandatory Modify
-    # Review, RETRIEVAL_HEAVY requires an approved Additional Retrieval;
-    # neither ever happens in this Run). Re-entering classify with the
-    # confirmation answer restarts the *entire* SIX_ROLE_BASELINE pipeline
-    # (7 more real Provider calls: classify, tool_route, plan_query,
-    # select_evidence, assess_sufficiency, analyze, answer_only) on top of
-    # the 1 already spent on the original ambiguous classify call before the
-    # interrupt -- 8 total, exactly NORMAL_MAX_LLM_CALLS. The 9th real call
-    # (review) is therefore correctly denied before any Provider call, and
-    # the Run fails closed rather than silently completing over budget.
+    # G3 Final Closure budget accounting (docs/06 SS11, docs/15 SS8.2) is
+    # unchanged by I1: the SAME real semantic work has to happen either way
+    # -- one more classify-shaped call to resolve the ambiguity, then
+    # tool_route/plan_query/select_evidence/assess_sufficiency/analyze/
+    # answer_only for the first time (Request Understanding had not
+    # completed before the pause, so nothing downstream had run yet, in
+    # either architecture). 1 (pre-pause) + 7 (post-resume) = 8, exactly
+    # NORMAL_MAX_LLM_CALLS, so the 9th real call (review) is still correctly
+    # denied before any Provider call -- this proves I1 did not silently
+    # change RunBudgetV1 behavior while replacing the resume mechanism.
     with pytest.raises(LLMInvocationError) as excinfo:
         resumed_runtime.resume(
             WorkflowResumeRequest(
@@ -187,6 +215,7 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
                 resume_kind="CONFIRMATION",
                 resume_payload={
                     "schema_version": 1,
+                    "interrupt_id": interrupt_id,
                     "response_kind": "FREE_TEXT",
                     "selected_option_ids": [],
                     "free_text": "I mean Kim from project alpha.",
@@ -198,38 +227,241 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
                 ),
             )
         )
-
     assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
     assert "PROFILE_LLM_LIMIT_EXHAUSTED" in str(excinfo.value)
-    # Exactly the 7 real calls before review were made -- proving the 8th
-    # (review) was blocked at the NORMAL ceiling specifically, not the
-    # higher REVISION_HEAVY(12)/RETRIEVAL_HEAVY(14) ceiling a premature
-    # promotion would have allowed.
     assert len(resumed_llm_runtime.calls) == 7
 
-    # The re-entered classify call's own prompt_input actually carried the
-    # bounded confirmation_response -- not just Main State -- even though
-    # the Run later exhausts its budget at review.
-    classify_call = next(
+    # Exactly one more real Provider call resolves the ambiguity -- not a
+    # second traversal of the "classify" *node* the way the pre-I1
+    # architecture's full-subgraph-restart resume required.
+    classify_calls = [
         call
         for call in resumed_llm_runtime.calls
         if getattr(call["prompt_ref"], "prompt_id", None) == "request_understanding.classify"
-    )
-    classify_prompt_input = classify_call["prompt_input"]
+    ]
+    assert len(classify_calls) == 1
+    classify_prompt_input = cast(dict[str, object], classify_calls[0]["prompt_input"])
+
+    # Prompt resume boundary (15 SS10-11): only the bounded
+    # ConfirmationResponseV1 crosses into the Product Prompt input -- no raw
+    # resume payload, interrupt_id, checkpoint metadata, or
+    # RegisteredResumeTargetRefV1. classify's own input shape is exactly
+    # {user_request, entry_mode, language, selected_resources,
+    # confirmation_response} (_prompt_input_from_request) -- assert both the
+    # bounded value is present and every disallowed field is absent.
     assert classify_prompt_input["confirmation_response"] == {
         "schema_version": 1,
         "response_kind": "FREE_TEXT",
         "selected_option_ids": [],
         "free_text": "I mean Kim from project alpha.",
     }
+    for forbidden_key in ("interrupt_id", "resume_target", "checkpoint", "owner_subgraph"):
+        assert forbidden_key not in classify_prompt_input
 
     connection = connect_sqlite(database_path)
     try:
-        run_row = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()
-        assert run_row[0] != "COMPLETED"
+        run_row = connection.execute(
+            "SELECT status, langgraph_thread_id FROM runs WHERE id = 'run-1';"
+        ).fetchone()
+        assert run_row[0] not in {"COMPLETED", "WAITING_CONFIRMATION"}
+        # same run_id + same langgraph_thread_id end to end.
+        assert run_row[1] == thread_id_before == "thread-1"
     finally:
         connection.close()
         resumed_runtime.close()
+
+    assert invocation_id_before is not None
+
+
+def _nested_request_understanding_task(runtime: LangGraphWorkflowRuntime) -> Any:
+    """The paused checkpoint's own task for the nested request_understanding
+    subgraph -- asserting on this (rather than only on the final result) is
+    what actually distinguishes "same nested checkpoint resume" from a full
+    subgraph restart that happens to produce the same final answer."""
+    thread_config = runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
+    snapshot = runtime._graph.get_state(thread_config, subgraphs=True)  # noqa: SLF001
+    assert snapshot.next == ("request_understanding",)
+    assert len(snapshot.tasks) == 1
+    outer_task = snapshot.tasks[0]
+    assert outer_task.name == "request_understanding"
+    return outer_task
+
+
+def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_same_nested_checkpoint(
+    tmp_path: Path,
+) -> None:
+    """I1 follow-up: a resolved-but-still-ambiguous confirmation answer must
+    trigger a SECOND real nested interrupt/resume inside Request
+    Understanding's own subgraph (a fresh "finalize" task via its
+    conditional self-loop edge) -- not a fall back to the shared Main-Graph
+    owner-restart mechanism, and not a second interrupt() call replayed
+    inside the same already-resumed task (which would silently re-run the
+    round-1 Provider call and Domain write). Proves the full
+    NEEDS_CONFIRMATION -> response -> NEEDS_CONFIRMATION -> response ->
+    COMPLETE cycle stays on the same run_id/thread_id/owner, with init and
+    classify never re-entered as separate tasks for either round.
+    """
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    checkpoint_path = tmp_path / "checkpoints-two-round-confirm.db"
+
+    # --- Round 1: start, pause on the first ambiguity. ---
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[_ambiguous_intent()],
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=checkpoint_path,
+        prompt_manifest_path=manifest_path,
+    )
+    first = runtime.start(_start_request())
+    assert first.outcome is WorkflowOutcome.ACCEPTED
+    round1_task = _nested_request_understanding_task(runtime)
+    assert round1_task.state.next == ("finalize",)
+    round1_invocation_id = round1_task.state.values["__request_agent_local__"]["invocation_id"]
+    round1_interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
+    assert first.payload["user_interrupt"]["origin_target"] == "request_understanding.classify"
+    runtime.close()
+
+    # --- Round 2: resume round 1's answer, but the reclassify is ITSELF
+    # still ambiguous. This must pause again, still inside the same nested
+    # subgraph -- proving the self-loop (not a shared-path fallback) fired.
+    round2_llm_runtime = _QueuedLLMRuntime([_ambiguous_intent()])
+    round2_gateway = FakeGoogleGateway(snapshot)
+    round2_runtime = LangGraphWorkflowRuntime(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        llm_runtime=round2_llm_runtime,
+        gateway=round2_gateway,
+        connector_execution=GoogleWorkspaceExecutionBackend(gateway=round2_gateway),
+        tool_catalog=_tool_catalog(),
+        now_ms=FakeClock(1000).now_ms,
+        id_factory=DeterministicUUID(prefix="round2").next_id,
+        signing_secret="stage17-secret",
+        service_instance_id="stage17-service",
+        checkpoint_database_path=checkpoint_path,
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        prompt_manifest_path=manifest_path,
+        default_tasklist_id_provider=lambda: "task-list-default",
+    )
+    second = round2_runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="CONFIRMATION",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": round1_interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "round-1 answer, still ambiguous apparently.",
+            },
+            correlation=WorkflowCorrelationContext(
+                request_id="request-2", command_id="command-2", api_contract_version="1"
+            ),
+        )
+    )
+    # A second real pause, NOT an error and NOT the run silently completing.
+    assert second.outcome is WorkflowOutcome.ACCEPTED
+    # Exactly the one round-1 reclassify call happened in this instance --
+    # no re-entry of "classify" as a node, no restart of tool_route etc.
+    assert len(round2_llm_runtime.calls) == 1
+    round1_reclassify_input = cast(dict[str, object], round2_llm_runtime.calls[0]["prompt_input"])
+    round1_reclassify_response = cast(
+        dict[str, object], round1_reclassify_input["confirmation_response"]
+    )
+    assert round1_reclassify_response["free_text"] == "round-1 answer, still ambiguous apparently."
+
+    round2_task = _nested_request_understanding_task(round2_runtime)
+    # Still "finalize" pending -- the self-loop re-entered "finalize" as a
+    # fresh task for round 2, it did not fall back through
+    # init -> classify -> finalize (which "next" would show as ("init",) or
+    # ("classify",) immediately after a resume, not "finalize").
+    assert round2_task.state.next == ("finalize",)
+    round2_invocation_id = round2_task.state.values["__request_agent_local__"]["invocation_id"]
+    # Same Local State identity across both rounds -- "init" never re-ran.
+    assert round2_invocation_id == round1_invocation_id
+    round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
+    assert second.payload["user_interrupt"]["origin_target"] == "request_understanding.classify"
+    # A genuinely new interrupt instance for round 2, not a stale replay of
+    # round 1's.
+    assert round2_interrupt_id != round1_interrupt_id
+    round2_runtime.close()
+
+    # --- Round 3: resume round 2's answer with a resolved (non-ambiguous)
+    # reclassify -- Request Understanding completes and the run proceeds
+    # into the downstream pipeline for the first time.
+    round3_llm_runtime = _QueuedLLMRuntime(
+        [
+            _clear_intent(),
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _analysis_output(),
+            _answer_output(),
+            _review_output("PASS"),
+        ]
+    )
+    round3_gateway = FakeGoogleGateway(snapshot)
+    round3_runtime = LangGraphWorkflowRuntime(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        llm_runtime=round3_llm_runtime,
+        gateway=round3_gateway,
+        connector_execution=GoogleWorkspaceExecutionBackend(gateway=round3_gateway),
+        tool_catalog=_tool_catalog(),
+        now_ms=FakeClock(1000).now_ms,
+        id_factory=DeterministicUUID(prefix="round3").next_id,
+        signing_secret="stage17-secret",
+        service_instance_id="stage17-service",
+        checkpoint_database_path=checkpoint_path,
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        prompt_manifest_path=manifest_path,
+        default_tasklist_id_provider=lambda: "task-list-default",
+    )
+    # G3 budget accounting is cumulative across all 3 resumes on this one
+    # Run (RunBudgetV1 is Domain-persisted, not per-invocation): classify +
+    # round-1 reclassify + round-2 reclassify + tool_route + plan_query +
+    # select_evidence + assess_sufficiency + analyze = 8, exactly
+    # NORMAL_MAX_LLM_CALLS, so answer_only (the 9th) is correctly denied --
+    # two confirmation rounds cost real budget like any other real call,
+    # with no special exemption.
+    with pytest.raises(LLMInvocationError) as excinfo:
+        round3_runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="CONFIRMATION",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": round2_interrupt_id,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option_ids": [],
+                    "free_text": "round-2 answer, resolves it.",
+                },
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-3", command_id="command-3", api_contract_version="1"
+                ),
+            )
+        )
+    assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+    assert len(round3_llm_runtime.calls) == 6
+
+    round2_reclassify_input = cast(dict[str, object], round3_llm_runtime.calls[0]["prompt_input"])
+    round2_reclassify_response = cast(
+        dict[str, object], round2_reclassify_input["confirmation_response"]
+    )
+    assert round2_reclassify_response["free_text"] == "round-2 answer, resolves it."
+
+    connection = connect_sqlite(database_path)
+    try:
+        run_row = connection.execute(
+            "SELECT status, langgraph_thread_id FROM runs WHERE id = 'run-1';"
+        ).fetchone()
+        # Forward progress happened (past WAITING_CONFIRMATION) but the run
+        # never reached COMPLETED -- same run_id + same thread_id throughout.
+        assert run_row[0] not in {"COMPLETED", "WAITING_CONFIRMATION"}
+        assert run_row[1] == "thread-1"
+    finally:
+        connection.close()
+        round3_runtime.close()
 
 
 def test_langgraph_runtime_executes_verified_write_after_approval_resume(

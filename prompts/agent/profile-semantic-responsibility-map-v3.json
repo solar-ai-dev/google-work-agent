@@ -1,6 +1,6 @@
 {
   "schema_version": 3,
-  "prompt_semantic_bundle_version": "semantic-r8.6-v2",
+  "prompt_semantic_bundle_version": "semantic-r8.6-v3",
   "roles": {
     "request_understanding": {
       "owns": [

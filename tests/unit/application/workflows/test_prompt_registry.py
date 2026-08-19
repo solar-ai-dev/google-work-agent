@@ -24,7 +24,7 @@ from google_work_agent.application.workflows.prompt_registry import (
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
-def test_default_prompt_manifest_path_uses_canonical_r90_bundle(
+def test_default_prompt_manifest_path_uses_canonical_r91_bundle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
@@ -33,7 +33,7 @@ def test_default_prompt_manifest_path_uses_canonical_r90_bundle(
     )
 
     assert default_prompt_manifest_path() == canonical_prompt_manifest_path()
-    assert default_prompt_manifest_path().name == "prompt-manifest-v0.9.0.json"
+    assert default_prompt_manifest_path().name == "prompt-manifest-v0.9.1.json"
 
 
 def test_discover_canonical_prompt_manifest_path_picks_highest_semver(tmp_path: Path) -> None:

@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import cast
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.confirmation_run_repository import (
+    SQLiteConfirmationRunRepository,
+)
 from google_work_agent.adapters.persistence.repositories import (
     SQLiteActionDependencyRepository,
     SQLiteActionRepository,
@@ -18,7 +21,6 @@ from google_work_agent.adapters.persistence.repositories import (
     SQLiteMessageRepository,
     SQLitePlanRepository,
     SQLiteResourceRefRepository,
-    SQLiteRunRepository,
     SQLiteTraceRepository,
     SQLiteVerificationRepository,
 )
@@ -38,7 +40,7 @@ class SQLiteUnitOfWork:
         connection.execute("BEGIN IMMEDIATE;")
         self._connection = connection
         self.conversations = SQLiteConversationRepository(connection)
-        self.runs = SQLiteRunRepository(connection)
+        self.runs = SQLiteConfirmationRunRepository(connection)
         self.messages = SQLiteMessageRepository(connection)
         self.command_receipts = SQLiteCommandReceiptRepository(connection)
         self.plans = SQLitePlanRepository(connection)

@@ -1,8 +1,18 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.17`, `01-B v2.11`, `02 UI·UX v2.13`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.13`, `06 Workflow v7.17`, `07 Interface v2.22`, `08 Sequence v3.15`, `09 Security v2.10`, `10 Infrastructure v2.10`, `11 Observability v2.20`, `15 Agent Capability·Failure·Prompt v1.23`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **2026-08-19 Canonical Sync — 필수 회귀 Gate**
 >
-> **상태:** Draft v3.36 · **기준일:** 2026-08-18 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> - 같은 Conversation에서 Terminal Run A 뒤 업무적으로 무관한 Run B를 시작할 수 있고 A/B의 `run_id`와 `langgraph_thread_id`가 달라야 한다.
+> - Run B가 `관련 메일 찾아줘`처럼 이전 Run 없이는 의미가 정해지지 않고 명시적 Resource가 없다면 과거 Conversation History를 암묵적으로 Prompt에 주입하지 않아야 한다.
+> - Conversation History API는 저장된 Message/Run Timeline을 반환하되 Agent StartRun 입력과 분리되어야 한다.
+> - 6개 owner 모두 `NEEDS_CONFIRMATION → same owner nested checkpoint resume`를 통합 테스트한다.
+> - Prompt Runtime은 Canonical required = runtime caller = manifest = source = assembled = input contract **27 Active Slot** exact equality를 만족하고 3 Retired Slot runtime caller는 0이어야 한다.
+> - Generic Repair는 `base_projection + candidate_output + failure_record` 이외 legacy root field를 Product Prompt에 전달하지 않는다.
+> - Planning ACTION은 OutputRoute별 Argument Writer 호출, deterministic Tool Schema binding, affected-route-only revision, DAG validation, deterministic expected verification을 검증한다.
+
+> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Database v1.20`, `05 Retrieval v2.13`, `06 Workflow v7.20`, `07 Interface v2.23`, `08 Sequence v3.17`, `09 Security v2.11`, `10 Infrastructure v2.11`, `11 Observability v2.20`, `15 Agent Capability·Failure·Prompt v1.26`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5를 기준으로 한다.
+>
+> **상태:** Draft v3.39 · **기준일:** 2026-08-19 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -964,4 +974,3 @@ Retired = 3
 - Retrieval Repair/Revision은 각 Node의 실제 Output Type과 일치해야 한다: `RetrievalQueryPlanV2`, `EvidenceSelectionResultV2`, `SufficiencyResultV2`.
 - Active PromptRef set equality, source/assembled 존재, content/assembled hash, Input Contract 연결을 정적으로 검증한다.
 - 아직 Model DEV/Holdout/Safety Gate를 통과하지 않았으므로 `RUNTIME_ACTIVE`로 승격하지 않는다.
-

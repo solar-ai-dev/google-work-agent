@@ -6,10 +6,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.application.workflows.handoff_contracts import (
-    RegisteredResumeTargetRefV1,
-)
+from google_work_agent.application.workflows.handoff_contracts import RegisteredResumeTargetRefV1
 from google_work_agent.application.workflows.supervisor import SupervisorTarget
+from google_work_agent.domain import RunStatus
 
 RESUME_CONTRACT_VERSION = "resume-contract-v1"
 
@@ -147,26 +146,74 @@ _PROFILE_ROUTES = {
     },
 }
 
+_OWNER_BY_PREFIX = {
+    "request_understanding.": "REQUEST_UNDERSTANDING",
+    "tool_route.": "TOOL_ROUTE",
+    "acquisition.": "RETRIEVAL",
+    "context.": "RETRIEVAL",
+    "retrieval.": "RETRIEVAL",
+    "analysis.": "WORK_ANALYSIS",
+    "work_analysis.": "WORK_ANALYSIS",
+    "planning.": "PLANNING",
+    "review.": "REVIEW",
+}
+
+_OWNER_DOMAIN_STATUS = {
+    "REQUEST_UNDERSTANDING": RunStatus.ANALYZING,
+    "TOOL_ROUTE": RunStatus.ANALYZING,
+    "RETRIEVAL": RunStatus.RETRIEVING,
+    "WORK_ANALYSIS": RunStatus.PLANNING,
+    "PLANNING": RunStatus.PLANNING,
+    "REVIEW": RunStatus.PLANNING,
+}
+
+
+def confirmation_owner(origin_target: str) -> str:
+    for prefix, owner in _OWNER_BY_PREFIX.items():
+        if origin_target.startswith(prefix):
+            return owner
+    raise ValueError(f"confirmation origin target has no registered owner: {origin_target}")
+
+
+def confirmation_resume_status(owner_subgraph: str) -> RunStatus:
+    try:
+        return _OWNER_DOMAIN_STATUS[owner_subgraph]
+    except KeyError as error:
+        raise ValueError(f"unknown confirmation owner: {owner_subgraph}") from error
+
 
 def build_resume_target_registry(profile: GraphProfile) -> ResumeTargetRegistry:
-    """Build the fixed registry together with the profile's compiled graph."""
-    topology = _PROFILE_TOPOLOGIES[profile]
+    """Build the fixed owner-to-compiled-node registry with the graph profile."""
     if profile is GraphProfile.SINGLE_BASELINE:
-        retrieval_node = "single_workflow"
+        targets = {
+            ("REQUEST_UNDERSTANDING", "finalize"): "single_workflow",
+            ("TOOL_ROUTE", "finalize"): "tool_route",
+            ("RETRIEVAL", "finalize"): "single_workflow",
+            ("WORK_ANALYSIS", "finalize"): "single_workflow",
+            ("PLANNING", "finalize"): "single_workflow",
+            ("REVIEW", "finalize"): "single_workflow",
+        }
     elif profile is GraphProfile.THREE_STAGE:
-        retrieval_node = "stage_two"
+        targets = {
+            ("REQUEST_UNDERSTANDING", "finalize"): "stage_one",
+            ("TOOL_ROUTE", "finalize"): "tool_route",
+            ("RETRIEVAL", "finalize"): "stage_two",
+            ("WORK_ANALYSIS", "finalize"): "stage_two",
+            ("PLANNING", "finalize"): "stage_two",
+            ("REVIEW", "finalize"): "stage_three",
+        }
     else:
-        retrieval_node = "context_retriever"
+        targets = {
+            ("REQUEST_UNDERSTANDING", "finalize"): "request_understanding",
+            ("TOOL_ROUTE", "finalize"): "tool_route",
+            ("RETRIEVAL", "finalize"): "context_retriever",
+            ("WORK_ANALYSIS", "finalize"): "work_analysis",
+            ("PLANNING", "finalize"): "planning",
+            ("REVIEW", "finalize"): "review",
+        }
     return ResumeTargetRegistry(
         graph_version=RESUME_CONTRACT_VERSION,
-        _targets={
-            ("RETRIEVAL", "finalize"): retrieval_node,
-            ("REQUEST_UNDERSTANDING", "finalize"): topology[0],
-            ("TOOL_ROUTE", "finalize"): topology[0],
-            ("WORK_ANALYSIS", "finalize"): retrieval_node,
-            ("PLANNING", "finalize"): retrieval_node,
-            ("REVIEW", "finalize"): topology[-1],
-        },
+        _targets=targets,
     )
 
 
@@ -184,34 +231,11 @@ class GraphRouteTranslator:
         return _PROFILE_ROUTES.get(self.profile, {}).get(target, RouteTranslation("end", "end"))
 
     def confirmation_resume_target(self, interrupt_payload: Mapping[str, object]) -> str:
+        """Resolve confirmation resume through the compiled owner registry only."""
         origin_target = interrupt_payload.get("origin_target")
-        if origin_target == "tool_route.finalize":
-            return self.topology()[0]
-        if self.profile is GraphProfile.THREE_STAGE and isinstance(origin_target, str):
-            if origin_target.startswith(("request_understanding.", "acquisition.")):
-                return "stage_one"
-            if origin_target.startswith(("context.", "analysis.", "planning.")):
-                return "stage_two"
-            if origin_target.startswith("review."):
-                return "stage_three"
-        if self.profile is GraphProfile.SINGLE_BASELINE:
-            return "single_workflow"
-        if self.profile is GraphProfile.SIX_ROLE_BASELINE:
-            # Pre-Prompt Runtime Closure: a confirmation whose ambiguity
-            # originated in Request Understanding's own classify call must
-            # re-enter classify (with the user's now-available answer) so
-            # the ambiguity can actually be resolved into an updated
-            # RequestIntentV2 -- resuming straight into "acquisition" (the
-            # prior unconditional default) skipped classify entirely and
-            # left request_understanding.classify's NEEDS_CONFIRMATION
-            # branch permanently unreachable for this profile. Other
-            # confirmation origins (acquisition.plan_sources,
-            # context.assess_sufficiency, analysis.analyze, planning.*,
-            # review.inspect) keep the existing "acquisition" resume target
-            # unchanged -- that is a separate, out-of-scope gap.
-            if isinstance(origin_target, str) and origin_target.startswith(
-                "request_understanding."
-            ):
-                return "request_understanding"
-            return "acquisition"
-        return "source_planning"
+        if not isinstance(origin_target, str):
+            raise ValueError("confirmation interrupt is missing origin_target")
+        owner_subgraph = confirmation_owner(origin_target)
+        registry = build_resume_target_registry(self.profile)
+        resume_ref = registry.issue(subgraph_id=owner_subgraph, node_id="finalize")
+        return registry.resolve(resume_ref)

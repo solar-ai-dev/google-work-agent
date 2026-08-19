@@ -138,6 +138,7 @@ def next_allowed_run_commands(current_status: RunStatus) -> tuple[RunCommand, ..
         if command not in {RunCommand.REPLAN, RunCommand.FINALIZE_ACTION_OUTCOMES}
         and (
             (current_status, command) in RUN_TRANSITIONS
+            or _is_confirmation_resume_candidate(current_status, command)
             or _is_publish_plan_candidate(current_status, command)
             or _is_cancel_candidate(current_status, command)
             or _is_require_recovery_candidate(current_status, command)
@@ -145,6 +146,14 @@ def next_allowed_run_commands(current_status: RunStatus) -> tuple[RunCommand, ..
         )
     ]
     return tuple(dict.fromkeys(commands))
+
+
+def _is_confirmation_resume_candidate(current_status: RunStatus, command: RunCommand) -> bool:
+    """ResumeConfirmation has a dynamic target status owned by checkpoint metadata."""
+    return (
+        current_status is RunStatus.WAITING_CONFIRMATION
+        and command is RunCommand.RESUME_CONFIRMATION
+    )
 
 
 def next_allowed_action_commands(
@@ -267,45 +276,10 @@ def transition_action(
             current_version,
             effect_type,
             ResultCode.STATE_CONFLICT,
-            f"{command.value} is not allowed from {current_status.value} for {effect_type.value}",
+            f"{command.value} is not allowed from {current_status.value}",
         )
 
-    return _action_success(next_status, current_version + 1, effect_type=effect_type)
-
-
-def _is_non_negative_version(version: int) -> bool:
-    return version >= 0
-
-
-def _resolve_run_next_status(
-    current_status: RunStatus,
-    command: RunCommand,
-    plan_requires_approval: bool | None,
-    recovery_next_status: RunStatus | None,
-) -> RunStatus | None:
-    if command is RunCommand.PUBLISH_PLAN and current_status is RunStatus.PLANNING:
-        if plan_requires_approval is None:
-            return None
-        return RunStatus.WAITING_APPROVAL if plan_requires_approval else RunStatus.EXECUTING
-
-    if _is_cancel_candidate(current_status, command):
-        return RunStatus.CANCEL_REQUESTED
-
-    if _is_require_recovery_candidate(current_status, command):
-        return RunStatus.RECOVERY_REQUIRED
-
-    if command is RunCommand.RESOLVE_RECOVERY and current_status is RunStatus.RECOVERY_REQUIRED:
-        if recovery_next_status in {
-            RunStatus.VERIFYING,
-            RunStatus.PLANNING,
-            RunStatus.COMPLETED,
-            RunStatus.FAILED,
-            RunStatus.CANCELLED,
-        }:
-            return recovery_next_status
-        return None
-
-    return RUN_TRANSITIONS.get((current_status, command))
+    return _action_success(next_status, current_version + 1)
 
 
 def _resolve_action_next_status(
@@ -324,35 +298,25 @@ def _resolve_action_next_status(
     return _action_transition_table(effect_type).get((current_status, command))
 
 
-def _validate_action_invariants(
-    current_status: ActionStatus,
-    command: ActionCommand,
-    effect_type: EffectType,
-    verification_status: VerificationStatus | None,
-    result_not_executed_confirmed: bool,
-) -> str | None:
+def _resolve_run_next_status(
+    current_status: RunStatus,
+    command: RunCommand,
+    plan_requires_approval: bool | None,
+    recovery_next_status: RunStatus | None,
+) -> RunStatus | None:
     if (
-        command is ActionCommand.RESOLVE_AS_FAILED
-        and effect_type in WRITE_EFFECTS
-        and current_status is ActionStatus.UNKNOWN_RESULT
-        and not result_not_executed_confirmed
+        current_status is RunStatus.PLANNING
+        and command is RunCommand.PUBLISH_PLAN
+        and plan_requires_approval is not None
     ):
-        return "result_not_executed_confirmed is required"
-
-    if command is ActionCommand.STORE_VERIFICATION and (
-        verification_status not in {VerificationStatus.VERIFIED, VerificationStatus.MISMATCH}
-    ):
-        return "verification_status must be VERIFIED or MISMATCH"
-
-    return None
-
-
-def _action_transition_table(
-    effect_type: EffectType,
-) -> dict[tuple[ActionStatus, ActionCommand], ActionStatus]:
-    if effect_type is EffectType.READ:
-        return READ_ACTION_TRANSITIONS
-    return WRITE_ACTION_TRANSITIONS
+        return RunStatus.WAITING_APPROVAL if plan_requires_approval else RunStatus.EXECUTING
+    if _is_cancel_candidate(current_status, command):
+        return RunStatus.CANCEL_REQUESTED
+    if _is_require_recovery_candidate(current_status, command):
+        return RunStatus.RECOVERY_REQUIRED
+    if _is_resolve_recovery_candidate(current_status, command):
+        return recovery_next_status
+    return RUN_TRANSITIONS.get((current_status, command))
 
 
 def _is_publish_plan_candidate(current_status: RunStatus, command: RunCommand) -> bool:
@@ -379,6 +343,12 @@ def _is_resolve_recovery_candidate(current_status: RunStatus, command: RunComman
     return current_status is RunStatus.RECOVERY_REQUIRED and command is RunCommand.RESOLVE_RECOVERY
 
 
+def _action_transition_table(
+    effect_type: EffectType,
+) -> dict[tuple[ActionStatus, ActionCommand], ActionStatus]:
+    return READ_ACTION_TRANSITIONS if effect_type is EffectType.READ else WRITE_ACTION_TRANSITIONS
+
+
 def _is_store_verification_candidate(
     effect_type: EffectType,
     current_status: ActionStatus,
@@ -391,53 +361,83 @@ def _is_store_verification_candidate(
     )
 
 
-def _run_success(
-    status: RunStatus,
-    version: int,
-) -> CommandResult[RunStatus, RunCommand]:
+def _validate_action_invariants(
+    current_status: ActionStatus,
+    command: ActionCommand,
+    effect_type: EffectType,
+    verification_status: VerificationStatus | None,
+    result_not_executed_confirmed: bool,
+) -> str | None:
+    # CLAIM_EXECUTION only appears in WRITE_ACTION_TRANSITIONS and
+    # CLAIM_READ_ACTION only in READ_ACTION_TRANSITIONS (see the tables
+    # above), so a mismatched effect_type already fails closed as a normal
+    # STATE_CONFLICT via _resolve_action_next_status -- no separate
+    # invariant-violation special case is needed here.
+    if command is ActionCommand.STORE_VERIFICATION:
+        if effect_type is EffectType.READ:
+            return "READ actions do not create write verification rows"
+        if verification_status not in {VerificationStatus.VERIFIED, VerificationStatus.MISMATCH}:
+            return "verification_status must be VERIFIED or MISMATCH"
+    if (
+        current_status is ActionStatus.UNKNOWN_RESULT
+        and command is ActionCommand.RESOLVE_AS_FAILED
+        and not result_not_executed_confirmed
+    ):
+        return "UNKNOWN_RESULT can resolve to FAILED only when non-execution is confirmed"
+    return None
+
+
+def _run_success(next_status: RunStatus, next_version: int) -> CommandResult[RunStatus, RunCommand]:
     return CommandResult(
         applied=True,
         result_code=ResultCode.TRANSITION_APPLIED,
-        current_status=status,
-        current_version=version,
-        next_allowed_commands=next_allowed_run_commands(status),
+        current_status=next_status,
+        current_version=next_version,
+        next_allowed_commands=next_allowed_run_commands(next_status),
+        conflict_detail=None,
     )
 
 
 def _run_failure(
-    status: RunStatus,
-    version: int,
+    current_status: RunStatus,
+    current_version: int,
     result_code: ResultCode,
     conflict_detail: str,
 ) -> CommandResult[RunStatus, RunCommand]:
     return CommandResult(
         applied=False,
         result_code=result_code,
-        current_status=status,
-        current_version=version,
-        next_allowed_commands=next_allowed_run_commands(status),
+        current_status=current_status,
+        current_version=current_version,
+        next_allowed_commands=next_allowed_run_commands(current_status),
         conflict_detail=conflict_detail,
     )
 
 
 def _action_success(
-    status: ActionStatus,
-    version: int,
-    *,
-    effect_type: EffectType,
+    next_status: ActionStatus,
+    next_version: int,
 ) -> CommandResult[ActionStatus, ActionCommand]:
     return CommandResult(
         applied=True,
         result_code=ResultCode.TRANSITION_APPLIED,
-        current_status=status,
-        current_version=version,
-        next_allowed_commands=next_allowed_action_commands(status, effect_type=effect_type),
+        current_status=next_status,
+        current_version=next_version,
+        next_allowed_commands=next_allowed_action_commands(
+            next_status,
+            effect_type=(
+                EffectType.READ
+                if next_status in {ActionStatus.EXECUTING, ActionStatus.EXECUTED}
+                else EffectType.CREATE
+            ),
+        ),
+        conflict_detail=None,
     )
 
 
 def _action_failure(
-    status: ActionStatus,
-    version: int,
+    current_status: ActionStatus,
+    current_version: int,
     effect_type: EffectType,
     result_code: ResultCode,
     conflict_detail: str,
@@ -445,8 +445,12 @@ def _action_failure(
     return CommandResult(
         applied=False,
         result_code=result_code,
-        current_status=status,
-        current_version=version,
-        next_allowed_commands=next_allowed_action_commands(status, effect_type=effect_type),
+        current_status=current_status,
+        current_version=current_version,
+        next_allowed_commands=next_allowed_action_commands(current_status, effect_type=effect_type),
         conflict_detail=conflict_detail,
     )
+
+
+def _is_non_negative_version(value: int) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0

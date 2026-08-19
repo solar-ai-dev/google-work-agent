@@ -1,8 +1,15 @@
 # 08. Google Work Agent · 시퀀스 설계서
 
-> **문서 기준:** `01. 요구사항 정의서·PRD v2.10`, `01-A. 기능 정의서 v2.15`, `01-B. 정책 정의서 v2.11`, `02. UI·UX 설계서 v2.11`, `03. 시스템 아키텍처 설계서 v3.6`, `04. 도메인·데이터베이스 설계서 Draft v1.19`, `05. Context·Retrieval 설계서 Draft v2.13`, `06. Agent·Workflow 설계서 Draft v7.17`, `07. Tool·MCP·내부 인터페이스 명세서 Draft v2.21`, Domain 상태 전이 계약 v1.5를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
+> **2026-08-19 Canonical Sync — 새 요청 vs 동일 Run Resume**
+>
+> - 새 USER 요청: 같은 `conversation_id`를 유지할 수 있지만 StartRun이 새 `run_id + langgraph_thread_id + RunInputV1`을 만든다. 과거 Run Main State/Checkpoint를 복사하지 않는다.
+> - Conversation 선택: Open Run이 있으면 해당 Run의 snapshot/checkpoint를 복원할 수 있다.
+> - Confirmation/재인증/Recovery: 새 Run을 만들지 않고 동일 Run·동일 Thread의 안전 checkpoint에서 resume한다.
+> - History Query 결과는 Frontend Timeline Projection이며 Supervisor/Prompt 입력으로 자동 전달하지 않는다.
 
-> **상태:** Draft v3.15 · **기준일:** 2026-08-18
+> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Domain·DB v1.20`, `05 Retrieval v2.13`, `06 Workflow v7.20`, `07 Interface v2.23`, Domain 상태 전이 계약 v1.5를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
+
+> **상태:** Draft v3.17 · **기준일:** 2026-08-19
 > **대상:** P0 MVP  
 > **구조:** 결정적 Supervisor + 1/3/6 Agent Subgraph Profile + 결정적 실행·검증 Engine  
 > **상태 기준:** SQLite Domain Store가 승인·실행·검증 사실의 기준점이며 LangGraph Checkpoint는 재개 위치, SSE는 UI Projection이다.

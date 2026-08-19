@@ -9,17 +9,23 @@ revision, and freezing into a ``ToolRoutePlanV2``.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal, Required, TypedDict, cast
+from typing import TYPE_CHECKING, Literal, Required, TypedDict, cast
 
 from google_work_agent.application.workflows.handoff_contracts import (
     RequestIntentV2,
     StateArtifactMetaV1,
     StateArtifactRefV1,
 )
+from google_work_agent.application.workflows.scope_expansion import ScopeExpansionResolver
 from google_work_agent.domain import ConnectorToolCatalog, EffectType
+
+if TYPE_CHECKING:
+    from google_work_agent.application.workflows.contracts import (
+        PolicyConfirmationReceiptV1,
+    )
 
 ToolRouteEffect = Literal["CREATE", "UPDATE", "SEND", "DELETE"]
 ToolSelector = Callable[..., str]
@@ -192,11 +198,13 @@ class ToolRouteCoordinator:
         id_factory: Callable[[], str],
         policy_preconditions: PolicyPreconditionResolver | None = None,
         read_dependencies: ReadDependencyResolver | None = None,
+        scope_expansion: ScopeExpansionResolver | None = None,
     ) -> None:
         self._tool_catalog = tool_catalog
         self._id_factory = id_factory
         self._policy_preconditions = policy_preconditions or PolicyPreconditionResolver()
         self._read_dependencies = read_dependencies or ReadDependencyResolver()
+        self._scope_expansion = scope_expansion or ScopeExpansionResolver()
 
     def route(
         self,
@@ -206,6 +214,8 @@ class ToolRouteCoordinator:
         semantic_candidate: SemanticRouteCandidate | None = None,
         semantic_candidate_provider: Callable[[], SemanticRouteCandidate] | None = None,
         select_tool: ToolSelector | None = None,
+        policy_confirmation_receipts: Sequence[PolicyConfirmationReceiptV1] = (),
+        current_interrupt_id: str | None = None,
     ) -> ToolRouteResultV1:
         """Bind a frozen ``ToolRoutePlanV2`` from a semantic route candidate.
 
@@ -247,6 +257,19 @@ class ToolRouteCoordinator:
                 input_routes=input_routes,
                 requested_resource_types=candidate.input_resource_types,
             )
+            scope_signal = self._evaluate_scope_expansion(
+                request_intent=request_intent,
+                output_routes=output_routes,
+                policy_confirmation_receipts=policy_confirmation_receipts,
+                current_interrupt_id=current_interrupt_id,
+            )
+            if scope_signal is not None:
+                return _route_result(
+                    disposition=ToolRouteDisposition.NEEDS_CONFIRMATION,
+                    plan=None,
+                    reason_codes=["SCOPE_EXPANSION_REQUIRED"],
+                    workflow_signal=scope_signal,
+                )
             input_routes = self._merge_policy_preconditions(
                 input_routes=input_routes,
                 output_routes=output_routes,
@@ -400,6 +423,47 @@ class ToolRouteCoordinator:
             }
             by_key[key] = route
         return sorted(by_key.values(), key=lambda route: route["route_id"])
+
+    def _evaluate_scope_expansion(
+        self,
+        *,
+        request_intent: RequestIntentV2,
+        output_routes: list[OutputToolRouteV1],
+        policy_confirmation_receipts: Sequence[PolicyConfirmationReceiptV1],
+        current_interrupt_id: str | None,
+    ) -> ScopeExpansionRequiredV1 | None:
+        """``None`` means the mandatory Policy Precondition reads (if any)
+        are either already within the user's own explicit scope or already
+        covered by a valid, just-approved receipt -- safe to merge. A
+        non-``None`` result must reach the caller as ``NEEDS_CONFIRMATION``
+        without merging anything: the expanded reads are never materialized
+        before approval.
+        """
+        required_reads = self._policy_preconditions.required_reads(output_routes)
+        out_of_scope = self._scope_expansion.out_of_scope_reads(
+            request_intent=request_intent,
+            required_reads=required_reads,
+            category_of=coarse_resource_category,
+        )
+        if not out_of_scope:
+            return None
+        required_resource_types = tuple(sorted({read[1] for read in out_of_scope}))
+        reason_codes = tuple(sorted({read[2] for read in out_of_scope}))
+        approval = self._scope_expansion.find_valid_approval(
+            request_intent=request_intent,
+            required_resource_types=required_resource_types,
+            reason_codes=reason_codes,
+            receipts=policy_confirmation_receipts,
+            current_interrupt_id=current_interrupt_id,
+        )
+        if approval is not None:
+            return None
+        return {
+            "schema_version": 1,
+            "kind": "SCOPE_EXPANSION_REQUIRED",
+            "reason_codes": list(reason_codes),
+            "required_resource_types": list(required_resource_types),
+        }
 
     def _eligible_bindings(
         self,
@@ -655,12 +719,13 @@ def _route_result(
     disposition: ToolRouteDisposition,
     plan: ToolRoutePlanV2 | None,
     reason_codes: list[str],
+    workflow_signal: ScopeExpansionRequiredV1 | None = None,
 ) -> ToolRouteResultV1:
     return {
         "schema_version": 1,
         "disposition": disposition.value,
         "tool_route_plan": plan,
-        "workflow_signal": None,
+        "workflow_signal": workflow_signal,
         "reason_codes": reason_codes,
     }
 

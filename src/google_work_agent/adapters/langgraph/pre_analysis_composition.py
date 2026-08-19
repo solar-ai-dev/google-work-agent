@@ -8,8 +8,8 @@ from typing import Any
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.acquisition import AcquisitionSubgraph
-from google_work_agent.adapters.langgraph.subgraphs.context_retrieval import (
-    ContextRetrieverSubgraph,
+from google_work_agent.adapters.langgraph.subgraphs.projected_context_retrieval import (
+    ProjectedContextRetrieverSubgraph,
 )
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding import (
     RequestUnderstandingSubgraph,
@@ -19,7 +19,9 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing import (
 )
 from google_work_agent.application.workflows import (
     ApiDiscoveryAcquisitionAgent,
+    ConfirmationResponseV1,
     ContextRetrievalAgent,
+    PolicyConfirmationReceiptV1,
     RequestUnderstandingAgent,
     ToolRouteAgent,
 )
@@ -53,6 +55,16 @@ def build_pre_analysis_subgraphs(
     graph_profile: GraphProfile,
     transition_run: Callable[[str, str], None],
     merge_decision: Callable[..., Any],
+    confirm_request_understanding_inline: Callable[
+        [Any], tuple[ConfirmationResponseV1 | None, dict[str, object] | None]
+    ],
+    confirm_tool_route_inline: Callable[
+        [Any], tuple[ConfirmationResponseV1 | None, dict[str, object] | None]
+    ],
+    confirm_context_retrieval_inline: Callable[
+        [Any], tuple[ConfirmationResponseV1 | None, dict[str, object] | None]
+    ],
+    record_policy_confirmation_receipt: Callable[[str, PolicyConfirmationReceiptV1], None],
     evidence_store: RunScopedEvidenceStore,
     read_result_cache: RunScopedReadResultCache,
     retrieval_read_executor: RetrievalReadExecutor,
@@ -67,12 +79,15 @@ def build_pre_analysis_subgraphs(
             graph_profile=graph_profile,
             transition_run=transition_run,
             merge_decision=merge_decision,
+            confirm_inline=confirm_request_understanding_inline,
         ).build(),
         tool_route=build_tool_routing_subgraph(
             tool_catalog=tool_catalog,
             id_factory=id_factory,
             merge_decision=merge_decision,
             semantic_agent=tool_route_agent,
+            confirm_inline=confirm_tool_route_inline,
+            record_policy_confirmation_receipt=record_policy_confirmation_receipt,
         ),
         acquisition=AcquisitionSubgraph(
             agent=acquisition_agent,
@@ -82,7 +97,7 @@ def build_pre_analysis_subgraphs(
             merge_decision=merge_decision,
             read_result_cache=read_result_cache,
         ).build(),
-        context_retrieval=ContextRetrieverSubgraph(
+        context_retrieval=ProjectedContextRetrieverSubgraph(
             agent=context_agent,
             id_factory=id_factory,
             graph_profile=graph_profile,
@@ -94,6 +109,7 @@ def build_pre_analysis_subgraphs(
             source_fetch_plan_builder=SourceFetchPlanBuilder(),
             read_result_cache=read_result_cache,
             retrieval_read_executor=retrieval_read_executor,
+            confirm_inline=confirm_context_retrieval_inline,
             default_tasklist_id_provider=default_tasklist_id_provider,
         ).build(),
     )

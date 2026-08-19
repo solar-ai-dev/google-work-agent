@@ -1,13 +1,20 @@
 # 04. Google Work Agent 도메인 · 데이터베이스 설계서
 
+> **2026-08-19 Canonical Sync — Conversation Aggregate 경계**
+>
+> - Conversation은 Message와 여러 Run을 보존하는 이력 Aggregate이며 Agent Semantic Memory가 아니다.
+> - Conversation당 `finished_at_ms IS NULL` Run은 최대 1개다.
+> - 새 USER 요청의 새 Run은 독립 `langgraph_thread_id`를 사용한다. Terminal Run의 Checkpoint/Main State를 새 Run에 상속하지 않는다.
+> - 현재 DB Schema v1.6의 Conversation→Google Account 소유권은 P0 Google Workspace-first 호환 계약이다. 신규 Connector 계정 모델이 필요하면 새 Migration을 추가하며 `0001~0005`를 수정하지 않는다.
+
 > **문서 기준:** `01 PRD §1.1`의 Concern Owner 규칙을 따른다. 이 문서는 Domain 상태·영속 사실·DB 불변조건을 소유하며 현재 Canonical DB Schema v1.6과 Domain 상태 전이 계약 v1.5을 기준으로 한다.
 
 ## 0. 문서 정보
 
 | 항목 | 내용 |
 |---|---|
-| 상태 | Draft v1.19 |
-| 기준일 | 2026-08-13 |
+| 상태 | Draft v1.20 |
+| 기준일 | 2026-08-19 |
 | 대상 | P0 MVP |
 | Database | SQLite |
 | 저장 형태 | 하나의 제품 DB 파일 |

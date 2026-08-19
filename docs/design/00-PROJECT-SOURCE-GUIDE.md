@@ -2,7 +2,8 @@
 
 ## 목적
 
-이 묶음은 설계 검토·구현 질의·실험/평가 검토에 사용하는 **Canonical 프로젝트 소스 25개**다. 공식 원본은 Notion이며 이 Markdown은 **2026-08-18 Prompt Runtime Contract Closure 및 Notion Canonical 정합화 이후 Export Snapshot**이다.
+이 묶음은 설계 검토·구현 질의·실험/평가 검토에 사용하는 **Canonical 프로젝트 소스 25개**다.  
+공식 원본은 **Notion Canonical**이며 이 Markdown 묶음은 **2026-08-19 Conversation · Run Context Isolation + Team UI/History + Prompt Runtime Contract Closure 정합화 이후 Export Snapshot**이다.
 
 ## 문서 권위·책임 소유 규칙
 
@@ -25,64 +26,67 @@ Tool·MCP·내부 Interface → 07
 Prompt·Failure 정규화   → 15
 ```
 
-같은 Concern에서는 해당 소유 계약과 실행 가능한 Domain/SQL Constraint가 우선한다.
+같은 Concern에서는 해당 소유 계약과 실행 가능한 Domain/SQL Constraint가 우선한다.  
+`00-A/00-B/00-C`와 변경 이력은 설명·요약·역사 자료이며 규범 권위가 아니다.
 
-## 현재 Canonical 기준 — 2026-08-18 Prompt Runtime Contract Closure
+## 현재 Canonical 기준 — 2026-08-19
 
-- Project Overview v1.14
-- PRD v2.10 / Functional v2.17 / Policy v2.11 / UI·UX v2.13
-- Architecture v3.6 / Domain·DB v1.19 / DB Schema v1.6
-- Retrieval **v2.13** / Workflow **v7.17** / Interface **v2.22** / Sequence **v3.15**
-- Security v2.10 / Infrastructure **v2.10** / Observability **v2.20**
-- Test **v3.36** / Evaluation **v3.23** / Operations **v2.19** / Agent Capability·Prompt **v1.23**
-- Domain State Transition v1.5 / State Transition Test Matrix v1.5
+- Project Overview **v1.16**
+- PRD **v2.11** / Functional **v2.18** / Policy **v2.12** / UI·UX **v2.14**
+- Architecture **v3.7** / Domain·DB **v1.20** / DB Schema **v1.6**
+- Retrieval **v2.13** / Workflow **v7.20** / Interface **v2.23** / Sequence **v3.17**
+- Security **v2.11** / Infrastructure **v2.11** / Observability **v2.20**
+- Test **v3.39** / Evaluation **v3.26** / Operations **v2.20**
+- Agent Capability·Failure·Prompt **v1.26**
+- Domain State Transition **v1.5** / State Transition Test Matrix **v1.5**
 - Dataset candidate: `rebuild-v1.17-r8.6-phase7.5-contract-correction`
 - Projection candidate: `projection-v1.1-r8.6-phase7.5`
-- Historical Prompt candidate: `0.9.0-r8.6-phase6 / semantic-r8.6-v2` — 30 Slot 정적 Rebase 이력 보존
-- Current Runtime-aligned Prompt candidate: `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3` — **27 Active Runtime Slot + 3 Retired Slot**, `DRAFT_RUNTIME_CONTRACT_ALIGNED_NOT_ACTIVE`
-- 상태: `CONTRACT_CORRECTED_READY_FOR_REAL_MODEL_PILOT_NOT_ACTIVE`
+- Current Runtime-aligned Prompt candidate: `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`
+  - **27 Active Runtime Slot + 3 Retired Slot**
+  - 상태 `DRAFT_RUNTIME_CONTRACT_ALIGNED_NOT_ACTIVE`
+- 실제 Prompt 활성화는 Node DEV → Holdout → Safety Gate 이후에만 허용한다.
 
-PHASE 7에서 발견된 세 blocker는 PHASE 7.5에서 계약 수준으로 교정했다.
+## 2026-08-19 핵심 정합화
 
-1. RequestIntent `analysis_requirement` legacy Gold 9건 교정, CORE-057은 human review 후 REQUIRED 유지.
-2. Tool Route LLM용 `PrePolicyToolRouteGoldV1`을 final `ToolRoutePlanV2`와 분리.
-3. `tasklist_id/calendar_id`는 LLM 추측이 아니라 deterministic default-container binding으로 고정.
+### Conversation · Run 의미 경계
 
-실제 Ollama/qwen benchmark와 Holdout tuning은 아직 수행하지 않았다.
+- `Conversation`은 여러 USER/ASSISTANT Message와 여러 Run을 시간순으로 보여 주는 **UI·영속 Timeline**이다.
+- Conversation 자체는 Agent의 장기 Semantic Memory가 아니다.
+- Terminal Run 뒤 같은 Conversation에서 후속 요청 또는 업무적으로 무관한 새 요청을 시작할 수 있다.
+- 새 USER 요청은 **새 `run_id + langgraph_thread_id + RunInputV1`**로 시작한다.
+- 과거 Run의 Message, Agent Artifact, Evidence, Plan/Review, Approval, Confirmation Receipt, Checkpoint를 새 Run에 암묵적으로 승계하지 않는다.
+- 사용자가 과거 Resource를 이번 Run에 명시적으로 다시 선택하면 현재 Run에서 최소 자료를 다시 조회·검증한다.
+- 동일 Run의 Confirmation·재인증·Recovery만 기존 Thread/Checkpoint를 resume한다.
+- Conversation History 조회 결과를 StartRun/Prompt 입력으로 자동 주입하지 않는다.
 
-2026-08-14 Runtime alignment 과정에서 Workflow handoff의 미완성 계약을 닫았다.
+### 팀원 Conversation/UI 구현 반영
 
-- `RetrievalNeedV1 = required_information + reason_codes`로 최소 handoff schema를 확정했다.
-- Work Analysis·Review의 추가 Retrieval 요청은 `RetrievalRequiredV1`로 정규화하고 Retrieval 내부 `NEEDS_MORE_DATA`는 같은 frozen IN Route의 bounded local loop로 유지한다.
-- Confirmation resume authority는 active compiled Main Graph의 registered resume target이며 `graph_version`은 resume-contract version이다.
-- `options=[]`는 자유 텍스트, non-empty options는 닫힌 선택 응답이다. `UserInterruptV1`은 Core workflow truth가 아니라 필요한 경우 UI/API one-way projection으로만 허용한다.
+- `GET /api/v1/conversations/{conversation_id}/history`를 저장된 Message/Run Timeline용 bounded read-only projection으로 사용한다.
+- 현재 구현 bound는 Message 200, Run 200이며 Message 초과는 `truncated=true`로 표시한다.
+- Conversation title은 최초 USER 요청 기반의 안정적 제목이며 이후 Run 추가로 자동 재생성하지 않는다.
+- `Conversation.updated_at_ms`는 마지막 활동 시각이며 Conversation 목록 정렬의 기준이다.
+- USER Message Bubble, 저장 시각 기반 표시, 날짜별 Separator, 최신 Timeline scroll, compact/autosize Composer를 유지한다.
+- Gmail 원본 참조는 direct Thread permalink 보장이 아니라 RFC822 Message-ID 기반 `Gmail에서 찾기`이며 없으면 All Mail fallback이다.
 
-2026-08-14 Retrieval local-loop continuation alignment에서 구현 가능성을 막던 continuation owner 계약을 추가로 닫았다.
+### Prompt Runtime Contract Closure
 
-- Retrieval self-loop의 raw Provider continuation은 **Run Retrieval Cache의 read-result entry만 memory-only로 소유**하며 Local/Main State·Checkpoint·Domain DB·Prompt·Trace·Audit에 raw token을 복제하지 않는다.
-- Retrieval Local State는 `read_result_handle`만 보존하고, 결정적 Read Node가 handle의 `run_id + route_id + query identity/hash`를 검증한 뒤 `NEXT_PAGE` continuation을 resolve한다.
-- Follow-up `retrieval.plan_query`는 `current_round_no + prior QueryAttempt + unresolved SufficiencyIssueV2 + bounded read-result summary`를 추가로 보되 raw Page Token·Provider-native Query·MCP Arguments는 보지 않는다.
-- 동일 Query + 동일 continuation state 재실행은 새 Retrieval Round로 인정하지 않으며 `NEXT_PAGE | DETAIL_FETCH | unresolved issue에 근거한 changed SEARCH`만 새 정보 획득 후보가 된다.
+- Product Prompt는 Node별 allowlisted Typed Projection만 본다.
+- Generic schema repair 입력은 `base_projection + candidate_output + failure_record` 표준 envelope 하나를 사용한다.
+- Confirmation resume 시 originating owner Product Prompt에만 bounded `ConfirmationResponseV1`을 optional `confirmation_response`으로 추가한다.
+- Raw resume payload, `interrupt_id`, checkpoint metadata, `RegisteredResumeTargetRefV1`은 Product Prompt 입력이 아니다.
+- Planning Argument Writer는 **OutputToolRouteV1 한 개씩** 처리한다.
+- Tool identity/effect는 Tool Route 권위이며 Planning LLM이 Tool을 재선택하지 않는다.
+- Planning LLM은 business arguments + evidence만 작성하고 Action ID, dependency authority, approval, execution, expected verification authority는 결정적 코드가 소유한다.
+- Dependency는 frozen route order를 기준으로 같은 stable external resource의 downstream Action에만 결정적으로 생성한다.
+- `planning.compose_dependencies` Product Prompt는 두지 않는다.
+- Review.REVISE는 affected route/action candidate만 수정하고 나머지는 보존한 뒤 결정적으로 plan을 재조립한다.
 
-2026-08-15 Retrieval semantic constraint alignment에서 changed SEARCH의 구현 blocker를 Canonical 계약으로 닫았다.
+### Retrieval V2 유지
 
-- Release Retrieval planner output은 `RetrievalQueryPlanV2 / RouteQueryIntentV2`다.
-- `SEARCH`에서 LLM은 Provider-native query가 아니라 값이 포함된 `SemanticRetrievalConstraintV1`을 출력한다.
-- Follow-up changed SEARCH는 `ConstraintDeltaV2(upsert_constraints, remove_constraint_kinds)`를 사용한다.
-- `SourceFetchPlanBuilder`가 prior effective constraints와 delta를 결정적으로 merge하여 `SourceFetchPlanV1`과 query identity를 materialize한다.
-- constraint 이름만 있는 delta, raw Gmail query, RFC3339 Provider 표현, raw continuation, MCP Arguments를 LLM 실행 권위로 사용하지 않는다.
-- Retrieval Local State는 field/type 변경에 맞춰 `RetrievalStateV2`로 승격했다.
-- `QueryAttempt.added_constraints/removed_constraints`는 관측·follow-up summary이며 다음 실행계획의 값 권위가 아니다.
-- `NEXT_PAGE`의 raw continuation owner는 기존대로 Run Retrieval Cache read-result entry 하나이며, `DETAIL_FETCH`는 bounded candidate ref만 Planner가 제안한다.
-- 위 변경의 제품 회귀 Gate는 `12 Test v3.36`, Prompt/Failure 정규화는 `15 v1.23`가 검증·소비한다.
-
-2026-08-18 Gmail `↗` 정합화에서 원본 링크류 UI 계약을 실제 구현과 맞췄다.
-
-- Gmail ResourceDetail의 `↗`은 `원본 스레드 직접 열기`가 아니라 `Gmail에서 찾기`다. RFC822 Message-ID가 있으면 `rfc822msgid:` 기반 Gmail 검색 URL, 없으면 All Mail 목록 fallback이며, Gmail REST `thread_id`/`message_id` 기반 direct-open hash URL은 사용하지 않는다.
-- `02 UI·UX`·`01-A Functional`의 `원본 Google 서비스에서 열기`/`원본 링크가 보존된다` 표현을 Provider capability에 따라 직접 열기 또는 찾기일 수 있다는 의미로 정합화했다(`02 v2.13`, `01-A v2.17`).
-- `07 Interface`는 `canonical_url`의 Gmail P0 의미와, 이를 위해 내부 MCP Gmail UI Detail 계약(`GmailThreadDetail`)에 `rfc822_message_id`가 추가로 전달됨을 반영했다(`07 v2.22`). API response schema(`GmailResourceDetailResponse`)는 변경하지 않았다.
-- `01 PRD`는 검토 결과 direct-open permalink를 명시적으로 주장하는 충돌 문구가 없어 버전 변경 없이 유지한다.
-- DB schema/migration, LangGraph, Prompt는 이 정합화의 대상이 아니다.
+- Release Retrieval은 기존 `RetrievalQueryPlanV2 / RouteQueryIntentV2 / ConstraintDeltaV2 / SemanticRetrievalConstraintV1`을 유지한다.
+- Provider-native query, RFC3339 변환, MCP Arguments, raw continuation은 LLM 권위가 아니다.
+- raw continuation은 현재 Run의 Run Retrieval Cache read-result entry만 memory-only로 소유한다.
+- Retrieval V2를 별도 재구현하지 않는다.
 
 ## 프로젝트 소스 25개 구성
 
@@ -112,4 +116,5 @@ PHASE 7에서 발견된 세 blocker는 PHASE 7.5에서 계약 수준으로 교�
 24. `state-transition-contract-v1.4.md`
 25. `state-transition-test-matrix-v1.4.md`
 
-상태 전이 파일명은 호환성 때문에 `v1.4` 문자열을 유지하지만 본문 Canonical은 v1.5다. 적용 Migration `0001~0005`는 이력/checksum Artifact이므로 소급 수정하지 않는다.
+상태 전이 파일명은 Repository 호환성 때문에 `v1.4` 문자열을 유지하지만 본문 Canonical은 **v1.5**다.  
+적용 Migration `0001~0005`는 이력/checksum Artifact이므로 소급 수정하지 않는다.

@@ -263,6 +263,7 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
             RunStatus.WAITING_CONFIRMATION,
             (
                 RunCommand.BEGIN_RETRIEVAL,
+                RunCommand.RESUME_CONFIRMATION,
                 RunCommand.REQUEST_CANCEL,
                 RunCommand.REQUIRE_RECOVERY,
             ),

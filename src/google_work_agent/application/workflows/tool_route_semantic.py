@@ -20,6 +20,7 @@ from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.contracts import (
     BudgetDecision,
+    ConfirmationResponseV1,
     RunBudgetV1,
     approve_semantic_revision,
     build_semantic_failure_signature_v1,
@@ -180,15 +181,18 @@ class ToolRouteAgent:
         request_intent: RequestIntentV2,
         request: WorkflowStartRequest,
         retry_budget: RunBudgetV1,
+        confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> tuple[SemanticRouteCandidate, RunBudgetV1]:
         eligible_route_capabilities = _eligible_route_capabilities(self._tool_catalog)
+        base_projection: dict[str, object] = {
+            "request_intent": request_intent,
+            "eligible_route_capabilities": eligible_route_capabilities,
+        }
+        if confirmation_response is not None:
+            base_projection["confirmation_response"] = dict(confirmation_response)
         llm_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
-            prompt_input={
-                "user_request": request.request_text,
-                "request_intent": request_intent,
-                "eligible_route_capabilities": eligible_route_capabilities,
-            },
+            prompt_input=base_projection,
             output_schema=ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,
@@ -203,9 +207,8 @@ class ToolRouteAgent:
             candidate = _validate_route_resource_candidate(llm_result.structured_output)
         except ToolRouteValidationError as error:
             candidate, retry_budget = self._revise_semantic_candidate_once(
-                request_intent=request_intent,
+                base_projection=base_projection,
                 request=request,
-                eligible_route_capabilities=eligible_route_capabilities,
                 previous_output=llm_result.structured_output,
                 failure_detail=str(error),
                 retry_budget=retry_budget,
@@ -222,29 +225,17 @@ class ToolRouteAgent:
     def _revise_semantic_candidate_once(
         self,
         *,
-        request_intent: RequestIntentV2,
+        base_projection: dict[str, object],
         request: WorkflowStartRequest,
-        eligible_route_capabilities: list[dict[str, object]],
         previous_output: object,
         failure_detail: str,
         retry_budget: RunBudgetV1,
     ) -> tuple[Mapping[str, object], RunBudgetV1]:
-        """Bounded SEMANTIC_REVISION retry: schema-valid but semantically
-        invalid output (e.g. an unsupported resource/effect combination) gets
-        exactly one re-grounding attempt against a dedicated .revise prompt,
-        never the generic SCHEMA_REPAIR path. If the revision also fails
-        validation, the failure propagates -- ToolRouteCoordinator.route()
-        already turns it into a deterministic NEEDS_CONFIRMATION/BLOCKED
-        disposition rather than crashing the run.
-
-        G3: dedup via approve_semantic_revision -- a second occurrence of the
-        same normalized failure signature anywhere in the Run (including
-        after resume/checkpoint restore) is denied before any Provider call
-        and raises the same ToolRouteValidationError a failed revision would,
-        which the coordinator already turns into NEEDS_CONFIRMATION/BLOCKED."""
+        """Bounded semantic revision using the frozen runtime envelope."""
+        failure_code = "SEMANTIC_CANDIDATE_INVALID"
         signature = build_semantic_failure_signature_v1(
             node_id="tool_route.determine_io_resources",
-            failure_reason_codes=["SEMANTIC_CANDIDATE_INVALID"],
+            failure_reason_codes=[failure_code],
         )
         decision = approve_semantic_revision(retry_budget, signature=signature)
         if decision["decision"] == BudgetDecision.DENY.value:
@@ -252,14 +243,23 @@ class ToolRouteAgent:
                 "tool route semantic candidate revision denied: "
                 "same failure signature already used"
             )
+        mutable_fields = [
+            "$.input_resource_types",
+            "$.output_resource_types",
+            "$.output_effects",
+            "$.disposition",
+        ]
         revision_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._determine_io_resources_revision_prompt_ref,
             prompt_input={
-                "user_request": request.request_text,
-                "request_intent": request_intent,
-                "eligible_route_capabilities": eligible_route_capabilities,
-                "previous_output": previous_output,
-                "failure_reason": failure_detail,
+                "base_projection": dict(base_projection),
+                "candidate_output": previous_output,
+                "failure_record": {
+                    "failure_reason_code": failure_code,
+                    "affected_fields": mutable_fields,
+                    "allowed_change_scope": mutable_fields,
+                    "validation_errors": [failure_detail],
+                },
             },
             output_schema=ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -312,25 +312,30 @@ class ToolRouteAgent:
         )
         if selected_tool_id is not None:
             return selected_tool_id, retry_budget
-        # G3: dedup via approve_semantic_revision -- a second occurrence of
-        # the same normalized failure signature anywhere in the Run
-        # (including after resume/checkpoint restore) is denied before any
-        # Provider call and raises the same ToolRouteValidationError a
-        # failed revision would.
+        failure_code = "TOOL_SELECTION_INVALID"
         signature = build_semantic_failure_signature_v1(
             node_id="tool_route.select_tool_if_needed",
-            failure_reason_codes=["TOOL_SELECTION_INVALID"],
+            failure_reason_codes=[failure_code],
         )
         decision = approve_semantic_revision(retry_budget, signature=signature)
         if decision["decision"] == BudgetDecision.DENY.value:
             raise ToolRouteValidationError(
                 "tool selection revision denied: same failure signature already used"
             )
+        mutable_fields = ["$.selected_tool_id"]
         revision_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._select_tool_revision_prompt_ref,
             prompt_input={
-                **prompt_input,
-                "previous_output": llm_result.structured_output,
+                "base_projection": dict(prompt_input),
+                "candidate_output": llm_result.structured_output,
+                "failure_record": {
+                    "failure_reason_code": failure_code,
+                    "affected_fields": mutable_fields,
+                    "allowed_change_scope": mutable_fields,
+                    "validation_errors": [
+                        "selected_tool_id is not a Registry-eligible candidate"
+                    ],
+                },
             },
             output_schema=TOOL_SELECTION_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -354,13 +359,6 @@ class ToolRouteAgent:
     def _validated_tool_selection(
         self, value: object, *, eligible_tool_ids: tuple[str, ...]
     ) -> str | None:
-        """Bounded SEMANTIC_REVISION retry: schema-valid but semantically
-        invalid output (a selected_tool_id outside the Registry-validated
-        eligible set) gets exactly one re-grounding attempt, never the
-        generic SCHEMA_REPAIR path -- returns None (never raises) so the
-        caller can distinguish "try the .revise prompt" from a genuine
-        JSON-schema shape failure, which still raises through
-        ``output_schema`` as before."""
         selection = _validate_tool_selection(value)
         selected_tool_id = selection["selected_tool_id"]
         if selected_tool_id not in eligible_tool_ids:
@@ -428,18 +426,7 @@ def _eligible_route_capabilities(
 
 
 def _normalize_output_resource_type(coarse_resource: str, effect: EffectType) -> str:
-    """Expand a coarse output resource type using its paired effect.
-
-    The manifest's ``route-resource-candidate-v1`` schema only has a 3-value
-    resource taxonomy (EMAIL/TASK/CALENDAR/) for both input and output, but
-    the Registry's write tools split "EMAIL" writes across two distinct
-    resource types the schema cannot express directly: ``gmail_send``
-    targets GMAIL_MESSAGE, while ``gmail_create_draft``/``gmail_update_draft``
-    target GMAIL_DRAFT -- neither is GMAIL_THREAD (``normalize_resource_type``'s
-    plain default, correct only for reads). The effect already pins which one
-    is meant, so it is used here to disambiguate.
-    """
-
+    """Expand a coarse output resource type using its paired effect."""
     if coarse_resource == "EMAIL":
         if effect is EffectType.SEND:
             return "GMAIL_MESSAGE"

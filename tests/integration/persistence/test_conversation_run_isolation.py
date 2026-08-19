@@ -1,0 +1,230 @@
+"""Integration tests for Conversation/Run Context Isolation (2026-08-19 Canonical,
+docs/design/00-PROJECT-SOURCE-GUIDE.md "Conversation - Run 의미 경계").
+
+A Conversation is a UI/persisted Timeline, not Agent semantic memory. After a
+Run reaches a terminal status, a new USER request in the same conversation
+must get a fresh run_id + langgraph_thread_id, and must not implicitly
+inherit the prior Run's message/context. Only an open Run's own
+Confirmation/Reauth/Recovery resumes the same Run.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.application.queries import QueryService
+from google_work_agent.application.run_contracts import StartRunCommand
+from google_work_agent.application.run_lifecycle import StartRunService
+from google_work_agent.domain import ResultCode
+
+
+class _UnusedRuntimeStatusProvider:
+    def get_summary(self) -> object:
+        raise NotImplementedError
+
+
+def _seeded_database(tmp_path: Path) -> Path:
+    database_path = tmp_path / "conversation-run-isolation.db"
+    connection = connect_sqlite(database_path)
+    try:
+        apply_migrations(connection)
+        connection.execute(
+            "INSERT INTO google_accounts (id, email, display_name, connected_at_ms) "
+            "VALUES ('account-1', 'user@example.com', 'User', 1);"
+        )
+        connection.execute(
+            "INSERT INTO conversations (id, account_id, title, created_at_ms, updated_at_ms) "
+            "VALUES ('conversation-1', 'account-1', 'Conversation', 1, 1);"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return database_path
+
+
+def _mark_run_terminal(database_path: Path, *, run_id: str, finished_at_ms: int) -> None:
+    connection = connect_sqlite(database_path)
+    try:
+        connection.execute(
+            "UPDATE runs SET status = 'COMPLETED', finished_at_ms = ? WHERE id = ?;",
+            (finished_at_ms, run_id),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_new_run_in_continuing_conversation_gets_fresh_run_and_thread_id(
+    tmp_path: Path,
+) -> None:
+    """Case A: Run A completes (terminal) -> an independent new request in the
+    same conversation gets a genuinely new run_id + langgraph_thread_id, and
+    StartRun succeeds rather than hitting the open-run conflict."""
+    database_path = _seeded_database(tmp_path)
+    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+    service = StartRunService(unit_of_work_factory=unit_of_work_factory, now_ms=lambda: 1_000)
+
+    run_a = service(
+        StartRunCommand(
+            command_id="command-a",
+            request_hash="a" * 64,
+            conversation_id="conversation-1",
+            user_message_id="message-a",
+            run_id="run-a",
+            workflow_key="workflow-a",
+            request_text="오늘 일정 알려줘",
+            entry_mode="AGENT_SEARCH",
+            selected_resource_ids=(),
+            requested_mode="AUTO",
+            api_contract_version="1",
+        )
+    )
+    assert run_a.applied is True
+    _mark_run_terminal(database_path, run_id="run-a", finished_at_ms=2_000)
+
+    run_b = service(
+        StartRunCommand(
+            command_id="command-b",
+            request_hash="b" * 64,
+            conversation_id="conversation-1",
+            user_message_id="message-b",
+            run_id="run-b",
+            workflow_key="workflow-b",
+            request_text="관련 메일 찾아줘",
+            entry_mode="AGENT_SEARCH",
+            selected_resource_ids=(),
+            requested_mode="AUTO",
+            api_contract_version="1",
+        )
+    )
+
+    assert run_b.applied is True
+    assert run_b.run_id != run_a.run_id
+    assert run_b.workflow_key != run_a.workflow_key
+
+    connection = connect_sqlite(database_path)
+    try:
+        thread_ids = connection.execute(
+            "SELECT id, langgraph_thread_id FROM runs ORDER BY started_at_ms ASC;"
+        ).fetchall()
+    finally:
+        connection.close()
+    assert [row["id"] for row in thread_ids] == ["run-a", "run-b"]
+    assert thread_ids[0]["langgraph_thread_id"] != thread_ids[1]["langgraph_thread_id"]
+
+
+def test_new_run_execution_context_excludes_prior_run_content(tmp_path: Path) -> None:
+    """Case B: Run B's RunExecutionContext (the source of its LLM prompt
+    input) is built strictly from Run B's own run_id-scoped rows -- it must
+    not surface Run A's request_text, even though both runs share the same
+    conversation_id."""
+    database_path = _seeded_database(tmp_path)
+    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+    service = StartRunService(unit_of_work_factory=unit_of_work_factory, now_ms=lambda: 1_000)
+
+    service(
+        StartRunCommand(
+            command_id="command-a",
+            request_hash="a" * 64,
+            conversation_id="conversation-1",
+            user_message_id="message-a",
+            run_id="run-a",
+            workflow_key="workflow-a",
+            request_text="오늘 일정 알려줘",
+            entry_mode="AGENT_SEARCH",
+            selected_resource_ids=(),
+            requested_mode="AUTO",
+            api_contract_version="1",
+        )
+    )
+    _mark_run_terminal(database_path, run_id="run-a", finished_at_ms=2_000)
+    service(
+        StartRunCommand(
+            command_id="command-b",
+            request_hash="b" * 64,
+            conversation_id="conversation-1",
+            user_message_id="message-b",
+            run_id="run-b",
+            workflow_key="workflow-b",
+            request_text="관련 메일 찾아줘",
+            entry_mode="AGENT_SEARCH",
+            selected_resource_ids=(),
+            requested_mode="AUTO",
+            api_contract_version="1",
+        )
+    )
+
+    query_service = QueryService(
+        database_path=database_path,
+        connection_factory=connect_sqlite,
+        runtime_status_provider=_UnusedRuntimeStatusProvider(),
+    )
+    context_a = query_service.get_run_execution_context("run-a")
+    context_b = query_service.get_run_execution_context("run-b")
+
+    assert context_a is not None
+    assert context_b is not None
+    assert context_a.request_text == "오늘 일정 알려줘"
+    assert context_b.request_text == "관련 메일 찾아줘"
+    assert context_b.request_text != context_a.request_text
+    assert "일정" not in context_b.request_text
+
+
+def test_start_run_rejects_second_open_run_in_same_conversation(tmp_path: Path) -> None:
+    """Case C boundary: while Run A is still open (non-terminal), a second
+    StartRun in the same conversation is rejected as STATE_CONFLICT rather
+    than silently creating a second concurrent Run -- this is the
+    uq_runs_one_open_per_conversation invariant the "runs 409" conflict
+    response comes from."""
+    database_path = _seeded_database(tmp_path)
+    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+    service = StartRunService(unit_of_work_factory=unit_of_work_factory, now_ms=lambda: 1_000)
+
+    run_a = service(
+        StartRunCommand(
+            command_id="command-a",
+            request_hash="a" * 64,
+            conversation_id="conversation-1",
+            user_message_id="message-a",
+            run_id="run-a",
+            workflow_key="workflow-a",
+            request_text="오늘 일정 알려줘",
+            entry_mode="AGENT_SEARCH",
+            selected_resource_ids=(),
+            requested_mode="AUTO",
+            api_contract_version="1",
+        )
+    )
+    assert run_a.applied is True
+    # Run A is left open (no _mark_run_terminal call) -- mirrors a Run still
+    # mid-flight (CREATED/PLANNING/WAITING_CONFIRMATION/...).
+
+    conflict = service(
+        StartRunCommand(
+            command_id="command-b",
+            request_hash="b" * 64,
+            conversation_id="conversation-1",
+            user_message_id="message-b",
+            run_id="run-b",
+            workflow_key="workflow-b",
+            request_text="관련 메일 찾아줘",
+            entry_mode="AGENT_SEARCH",
+            selected_resource_ids=(),
+            requested_mode="AUTO",
+            api_contract_version="1",
+        )
+    )
+
+    assert conflict.applied is False
+    assert conflict.result_code == ResultCode.STATE_CONFLICT.value
+    assert conflict.enqueued is False
+    assert conflict.conflict_detail == "conversation already has an open run"
+
+    with unit_of_work_factory() as unit_of_work:
+        stored_run_a = unit_of_work.runs.get_by_id("run-a")
+        stored_run_b = unit_of_work.runs.get_by_id("run-b")
+    assert stored_run_a is not None
+    assert stored_run_a.status.value == "CREATED"
+    assert stored_run_b is None

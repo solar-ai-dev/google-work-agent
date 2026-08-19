@@ -1,8 +1,16 @@
 # 01. Google Work Agent 요구사항 정의서 · PRD
 
+> **2026-08-19 Canonical Sync — Conversation · Run 의미 경계**
+>
+> - `Conversation`은 여러 USER/ASSISTANT Message와 여러 Run을 시간순으로 묶는 UI·영속 이력 컨테이너다. Agent 장기 Semantic Memory가 아니다.
+> - 같은 Conversation에서 Terminal Run 이후 후속 요청 또는 업무적으로 무관한 새 요청을 시작할 수 있다.
+> - 새 USER 요청은 새 `run_id + langgraph_thread_id + RunInputV1`로 시작하며 과거 Run의 Message·Agent Artifact·Evidence·Plan/Review·Approval·Confirmation·Checkpoint를 암묵적으로 상속하지 않는다.
+> - 이전 Run 없이는 의미가 정해지지 않는 표현이 새 Run에 단독 제출되고 이번 Run의 명시적 Resource가 없으면 과거 Conversation 이력을 자동 읽어 해석하지 않는다. 현재 Run에서 확인 질문 또는 명시적 Resource 선택으로 해소한다.
+> - 동일 Run의 Confirmation·재인증·Recovery만 기존 Thread/Checkpoint를 resume한다.
+
 > **문서 기준:** 2026-08-10 Claim V2·Attachment·Task 날짜 의미 설계 결정을 제품 목표·범위의 기준으로 한다. 문서 간 충돌은 §1.1의 권위·책임 소유 규칙으로 판정하며, PRD가 다른 Concern의 전문 권위 계약을 임의로 덮어쓰지 않는다.
 >
-> **상태:** Draft v2.10 · **기준일:** 2026-08-13 · **대상:** P0 MVP
+> **상태:** Draft v2.11 · **기준일:** 2026-08-19 · **대상:** P0 MVP
 
 ## 0. 한눈에 보기
 

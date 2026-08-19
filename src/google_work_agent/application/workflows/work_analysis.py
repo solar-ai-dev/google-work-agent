@@ -14,6 +14,7 @@ from google_work_agent.application.workflows.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
     AnalysisResult,
+    ConfirmationResponseV1,
     GraphStateUpdateV1,
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
@@ -287,6 +288,7 @@ class WorkAnalysisAgent:
         retrieval_result: RetrievalResultV1,
         evidence_drafts: list[EvidenceDraftV1],
         request: WorkflowStartRequest,
+        confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> StructuredLLMResult:
         """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
 
@@ -296,20 +298,27 @@ class WorkAnalysisAgent:
         entry point for THREE_STAGE/SINGLE_BASELINE/Evaluation-harness callers,
         which have their own real, LLM-fused or replay-derived
         ``ContextRetrievalResultV1`` and are out of this migration's scope.
+
+        ``confirmation_response`` is only present on a same-owner nested-checkpoint
+        resume (C4) -- this is the one Product Prompt NEEDS_CONFIRMATION actually
+        originates from, so it is the only one that needs to see the bounded answer.
         """
+        prompt_input: dict[str, object] = {
+            "request_text": request.request_text,
+            "request_intent": request_intent,
+            "retrieval_coverage": retrieval_result["coverage"],
+            "resource_refs": list(retrieval_result["source_resource_refs"]),
+            "segment_refs": list(retrieval_result["selected_segment_ids"]),
+            "evidence_refs": list(retrieval_result["evidence_refs"]),
+            "evidence_drafts": list(evidence_drafts),
+            "missing_information": list(retrieval_result["missing_information"]),
+            "source_content_is_untrusted": True,
+        }
+        if confirmation_response is not None:
+            prompt_input["confirmation_response"] = dict(confirmation_response)
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._analyze_prompt_ref,
-            prompt_input={
-                "request_text": request.request_text,
-                "request_intent": request_intent,
-                "retrieval_coverage": retrieval_result["coverage"],
-                "resource_refs": list(retrieval_result["source_resource_refs"]),
-                "segment_refs": list(retrieval_result["selected_segment_ids"]),
-                "evidence_refs": list(retrieval_result["evidence_refs"]),
-                "evidence_drafts": list(evidence_drafts),
-                "missing_information": list(retrieval_result["missing_information"]),
-                "source_content_is_untrusted": True,
-            },
+            prompt_input=prompt_input,
             output_schema=WORK_ANALYSIS_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
                 request_id=request.correlation.request_id,

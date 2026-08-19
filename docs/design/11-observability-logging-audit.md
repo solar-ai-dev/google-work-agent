@@ -1,5 +1,9 @@
 # 11. Google Work Agent · 관측성 · 로그 · 감사 설계서
 
+> **2026-08-19 Canonical Sync — Context Isolation 관측**
+>
+> `conversation_id`, `run_id`, `langgraph_thread_id`, `agent_invocation_id`를 분리 기록한다. Conversation이 같아도 새 USER 요청의 새 Run/Thread는 별도 실행 단위다. Prompt Trace에는 allowlisted projection metadata만 남기며 과거 Conversation 본문 전체를 새 Run 입력으로 기록하지 않는다.
+
 > **상태:** Draft v2.20 · **기준일:** 2026-08-18 · **외부 Telemetry:** Production 기본 OFF
 
 ## 먼저 읽기

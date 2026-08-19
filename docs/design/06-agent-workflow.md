@@ -1,8 +1,20 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **문서 기준:** `01 PRD v2.10`, `01-A v2.17`, `01-B v2.11`, `02 UI·UX v2.13`, `03 Architecture v3.6`, `04 Database v1.19`, `05 Retrieval v2.13`, `07 Interface v2.20`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+> **2026-08-19 Canonical Sync — Runtime Closure**
 >
-> **상태:** Draft v7.17 · **기준일:** 2026-08-18 · **DB Schema:** v1.6 · **대상:** P0 MVP
+> - `conversation_id`는 Main State 상속 Key가 아니다. Terminal Run 뒤 새 USER 요청은 새 `run_id + langgraph_thread_id + RunInputV1`로 시작한다.
+> - 6개 native Agent Subgraph는 Parent/Main State 전체가 아니라 역할별 Typed Input Projection만 받으며 owner field + 허용 workflow signal만 patch merge한다.
+> - Confirmation은 `RequestConfirmation → WAITING_CONFIRMATION → interrupt → ConfirmationResponseV1 검증 → ResumeConfirmation → same owner subgraph checkpoint` 순서다. 모든 확인을 Request Understanding부터 재시작하지 않는다.
+> - Product Prompt resume 입력에는 originating owner의 bounded `confirmation_response`만 추가할 수 있다. Raw resume payload, `interrupt_id`, checkpoint metadata, `RegisteredResumeTargetRefV1`은 Prompt 입력이 아니다.
+> - Planning은 frozen `ToolRoutePlanV2.output_plan.output_routes`를 순회해 `OutputToolRouteV1` **한 개씩** Argument Writer에 전달한다.
+> - Planning LLM은 business arguments + evidence만 작성한다. Tool identity/effect, Action ID, dependency authority, approval, execution, expected verification authority는 결정적 코드가 소유한다.
+> - Dependency는 frozen route order에서 **같은 stable external resource의 downstream Action**에만 결정적으로 생성하며 CREATE 또는 다른 Resource 사이에는 추론하지 않는다.
+> - `planning.compose_dependencies` Product Prompt를 두지 않는다.
+> - Review.REVISE는 affected route/action candidate만 다시 작성하고 unaffected candidate는 보존한 뒤 deterministic Plan Assembler가 `ActionPlanDraftV2`를 다시 만든다.
+
+> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Database v1.20`, `05 Retrieval v2.13`, `07 Interface v2.23`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5를 기준으로 한다.
+>
+> **상태:** Draft v7.20 · **기준일:** 2026-08-19 · **DB Schema:** v1.6 · **대상:** P0 MVP
 >
 > Main LangGraph는 결정적 Supervisor와 Versioned Typed Main State를 소유한다. 전문 Agent는 LangGraph Subgraph이며 Parent State에서 자기 책임에 필요한 필드만 Projection 받아 Local State를 단계적으로 채우고, 완료 시 공식 Typed Result만 Main State에 병합한다. Schema는 출력 가능 범위를 통제하고, State는 확정 정보를 기억하며, Prompt는 각 LLM Node의 단일 작업만 지시한다. 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 

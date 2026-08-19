@@ -48,3 +48,12 @@
 1. 현재 계약을 찾을 때는 00 개요 → Concern Owner 문서 → 세부 계약 순서로 읽는다.
 2. 이 페이지는 설계 의도·변경 배경을 추적할 때만 사용한다.
 3. 과거 수치·Enum·버전이 현재 문서와 다르면 현재 권위 문서가 우선한다.
+
+## 2026-08-19 · Conversation/Run Context Isolation + Runtime Contract Sync
+
+- Conversation History를 UI·영속 Timeline으로 고정하고 Agent 장기 Semantic Memory와 분리.
+- 새 USER 요청은 새 Run/Thread/RunInput으로 격리; Terminal Run checkpoint 자동 상속 금지.
+- 팀원 구현 `GET /api/v1/conversations/{conversation_id}/history`, stable title, updated_at, Timeline UI 계약 반영.
+- Prompt Runtime 27 Active + 3 Retired, bounded confirmation projection, generic repair envelope 정합화.
+- Planning Argument Writer를 OutputToolRouteV1 단위로 고정하고 Tool 재선택·LLM dependency authority를 금지.
+- Canonical versions: PRD 2.11, Functional 2.18, Policy 2.12, UI 2.14, Architecture 3.7, Domain 1.20, Workflow 7.20, Interface 2.23, Sequence 3.17, Security 2.11, Infrastructure 2.11, Test 3.39, Evaluation 3.26, Operations 2.20, Prompt 1.26.
