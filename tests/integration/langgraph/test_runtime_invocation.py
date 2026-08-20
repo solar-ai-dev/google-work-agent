@@ -205,31 +205,34 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     # answer_only for the first time (Request Understanding had not
     # completed before the pause, so nothing downstream had run yet, in
     # either architecture). 1 (pre-pause) + 7 (post-resume) = 8, exactly
-    # NORMAL_MAX_LLM_CALLS, so the 9th real call (review) is still correctly
-    # denied before any Provider call -- this proves I1 did not silently
-    # change RunBudgetV1 behavior while replacing the resume mechanism.
-    with pytest.raises(LLMInvocationError) as excinfo:
-        resumed_runtime.resume(
-            WorkflowResumeRequest(
-                run_id="run-1",
-                workflow_key="thread-1",
-                resume_kind="CONFIRMATION",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option_ids": [],
-                    "free_text": "I mean Kim from project alpha.",
-                },
-                correlation=WorkflowCorrelationContext(
-                    request_id="request-2",
-                    command_id="command-2",
-                    api_contract_version="1",
-                ),
-            )
+    # NORMAL_MAX_LLM_CALLS. The resolved answer_draft is ANSWER_ONLY, so
+    # Planning->Review is the Canonical ANSWER_ONLY->Response Synthesis edge
+    # (canonical_response_runtime.canonicalize_answer_only_decision,
+    # docs/design/06-agent-workflow.md "Planning ANSWER_ONLY -> Response
+    # Synthesis") -- Review is never dispatched, so the run completes at
+    # exactly the 8-call cap instead of a 9th (review) call being denied.
+    # The unchanged 7-call count below proves I1 did not silently change
+    # RunBudgetV1 behavior while replacing the resume mechanism.
+    result = resumed_runtime.resume(
+        WorkflowResumeRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            resume_kind="CONFIRMATION",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "I mean Kim from project alpha.",
+            },
+            correlation=WorkflowCorrelationContext(
+                request_id="request-2",
+                command_id="command-2",
+                api_contract_version="1",
+            ),
         )
-    assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
-    assert "PROFILE_LLM_LIMIT_EXHAUSTED" in str(excinfo.value)
+    )
+    assert result.outcome is WorkflowOutcome.COMPLETED
     assert len(resumed_llm_runtime.calls) == 7
 
     # Exactly one more real Provider call resolves the ambiguity -- not a
@@ -264,7 +267,7 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         run_row = connection.execute(
             "SELECT status, langgraph_thread_id FROM runs WHERE id = 'run-1';"
         ).fetchone()
-        assert run_row[0] not in {"COMPLETED", "WAITING_CONFIRMATION"}
+        assert run_row[0] == "COMPLETED"
         # same run_id + same langgraph_thread_id end to end.
         assert run_row[1] == thread_id_before == "thread-1"
     finally:

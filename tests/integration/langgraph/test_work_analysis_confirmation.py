@@ -290,31 +290,36 @@ def test_work_analysis_resume_does_not_re_execute_retrieval(tmp_path: Path) -> N
         # 1 (classify) + 1 (tool_route auto-synth) + 1 (retrieval.plan_query
         # auto-synth) + 1 (select_evidence) + 1 (assess_sufficiency) +
         # 1 (analyze round1) = 6, + 1 (analyze round2 resolved) + 1 (answer)
-        # = 8 = NORMAL_MAX_LLM_CALLS, so "review" (the 9th) is correctly
-        # denied -- not queuing it and asserting budget-exhausted here
-        # (rather than reaching COMPLETED) proves this is ordinary,
-        # unchanged RunBudgetV1 accounting, matching C2-A/C2-B/C3's own
-        # established arithmetic.
+        # = 8 = NORMAL_MAX_LLM_CALLS. The resolved analysis is COMPLETE, and
+        # answer_draft is ANSWER_ONLY, so Planning->Review is the Canonical
+        # ANSWER_ONLY->Response Synthesis edge (canonical_response_runtime.
+        # canonicalize_answer_only_decision, docs/design/06-agent-workflow.md
+        # "Planning ANSWER_ONLY -> Response Synthesis") -- Review is never
+        # dispatched, so the run completes exactly at the 8-call cap rather
+        # than a 9th (review) call being denied. Asserting COMPLETED here
+        # (with exactly the calls below) proves the same thing the old
+        # exhaustion assertion proved: ordinary, unchanged RunBudgetV1
+        # accounting across the confirmation boundary -- no call is lost,
+        # duplicated, or invented.
         _queue_more(llm_runtime, [_analysis_output("COMPLETE"), _answer_output()])
-        with pytest.raises(LLMInvocationError) as excinfo:
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "The follow-up task is the primary one.",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
+        result = runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="CONFIRMATION",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": interrupt_id,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option_ids": [],
+                    "free_text": "The follow-up task is the primary one.",
+                },
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-2", command_id="command-2", api_contract_version="1"
+                ),
             )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+        )
+        assert result.outcome is WorkflowOutcome.COMPLETED
 
         # T3: zero provider reads happened on resume -- Retrieval's
         # already-completed read from round 1 is never re-issued.
@@ -373,26 +378,29 @@ def test_work_analysis_resume_preserves_retrieval_result_and_invocation_id(
     retrieval_result_before = nested_before["retrieval_result"]
 
     try:
+        # analysis_result COMPLETE + answer_draft ANSWER_ONLY means Review is
+        # never dispatched (Canonical ANSWER_ONLY->Response Synthesis edge --
+        # see the sibling T3+T4 test above for the full accounting), so the
+        # run completes rather than hitting the 8-call budget cap.
         _queue_more(llm_runtime, [_analysis_output("COMPLETE"), _answer_output()])
-        with pytest.raises(LLMInvocationError) as excinfo:
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "The follow-up task is the primary one.",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
+        result = runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="CONFIRMATION",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": interrupt_id,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option_ids": [],
+                    "free_text": "The follow-up task is the primary one.",
+                },
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-2", command_id="command-2", api_contract_version="1"
+                ),
             )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+        )
+        assert result.outcome is WorkflowOutcome.COMPLETED
 
         state = runtime._graph.get_state(  # noqa: SLF001
             runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
@@ -443,26 +451,29 @@ def test_work_analysis_resume_applies_confirmation_response_within_prompt_bounda
     calls_before_resume = len(llm_runtime.calls)
 
     try:
+        # analysis_result COMPLETE + answer_draft ANSWER_ONLY means Review is
+        # never dispatched (Canonical ANSWER_ONLY->Response Synthesis edge --
+        # see the T3+T4 test above for the full accounting), so the run
+        # completes rather than hitting the 8-call budget cap.
         _queue_more(llm_runtime, [_analysis_output("COMPLETE"), _answer_output()])
-        with pytest.raises(LLMInvocationError) as excinfo:
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "The follow-up task is the primary one.",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
+        result = runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="CONFIRMATION",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": interrupt_id,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option_ids": [],
+                    "free_text": "The follow-up task is the primary one.",
+                },
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-2", command_id="command-2", api_contract_version="1"
+                ),
             )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+        )
+        assert result.outcome is WorkflowOutcome.COMPLETED
 
         calls_during_resume = llm_runtime.calls[calls_before_resume:]
         analyze_calls = [

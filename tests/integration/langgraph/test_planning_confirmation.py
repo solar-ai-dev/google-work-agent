@@ -295,28 +295,32 @@ def test_planning_answer_resume_does_not_re_execute_upstream(tmp_path: Path) -> 
         # 7 real calls already spent (classify + tool_route auto-synth +
         # retrieval.plan_query auto-synth + select_evidence +
         # assess_sufficiency + work_analysis.analyze + planning round1) +
-        # round2 (resolved) = 8 = NORMAL_MAX_LLM_CALLS, so "review" (the 9th)
-        # is correctly denied.
+        # round2 (resolved) = 8 = NORMAL_MAX_LLM_CALLS. round2's answer_draft
+        # is ANSWER_ONLY, so Planning->Review is the Canonical ANSWER_ONLY->
+        # Response Synthesis edge (canonical_response_runtime.
+        # canonicalize_answer_only_decision, docs/design/06-agent-workflow.md
+        # "Planning ANSWER_ONLY -> Response Synthesis") -- Review is never
+        # dispatched, so the run completes exactly at the 8-call cap rather
+        # than a 9th (review) call being denied.
         _queue_more(llm_runtime, [_answer_output("ANSWER_ONLY")])
-        with pytest.raises(LLMInvocationError) as excinfo:
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "Use tomorrow as the due date.",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
+        result = runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="CONFIRMATION",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": interrupt_id,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option_ids": [],
+                    "free_text": "Use tomorrow as the due date.",
+                },
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-2", command_id="command-2", api_contract_version="1"
+                ),
             )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+        )
+        assert result.outcome is WorkflowOutcome.COMPLETED
 
         # T4: zero provider reads happened on resume.
         assert len(gateway.call_log) == reads_before_resume
@@ -399,26 +403,29 @@ def test_planning_resume_applies_confirmation_response_within_prompt_boundary(
     calls_before_resume = len(llm_runtime.calls)
 
     try:
+        # answer_draft is ANSWER_ONLY, so Planning->Review is the Canonical
+        # ANSWER_ONLY->Response Synthesis edge (see the T4+T5 test above for
+        # the full accounting) -- the run completes rather than hitting the
+        # budget cap.
         _queue_more(llm_runtime, [_answer_output("ANSWER_ONLY")])
-        with pytest.raises(LLMInvocationError) as excinfo:
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "Use tomorrow as the due date.",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
+        result = runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="CONFIRMATION",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": interrupt_id,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option_ids": [],
+                    "free_text": "Use tomorrow as the due date.",
+                },
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-2", command_id="command-2", api_contract_version="1"
+                ),
             )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+        )
+        assert result.outcome is WorkflowOutcome.COMPLETED
 
         calls_during_resume = llm_runtime.calls[calls_before_resume:]
         answer_calls = [
