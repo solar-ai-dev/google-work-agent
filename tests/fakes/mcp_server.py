@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import cast
 
@@ -48,6 +49,8 @@ def main() -> None:
             payload = _control_payload(str(request.get("method", "")))
         elif message_type == "tool_call":
             arguments = cast(dict[str, object], request.get("arguments") or {})
+            if arguments.get("__test_exit_after_dispatch") is True:
+                os._exit(0)
             certainty = arguments.get("__test_delivery_certainty")
             if isinstance(certainty, str):
                 sys.stdout.write(
