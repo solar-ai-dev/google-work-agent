@@ -1,9 +1,9 @@
 """Capability-verified Google Workspace MCP child entrypoint.
 
-The legacy server continues to own OAuth/provider mechanics and individual tool
-handlers. This entrypoint owns only the callable surface: Agent tools come from
-the signed Tool Registry, non-Agent UI/attachment/recovery tools come from the
-explicit internal capability registry, and no other handler is dispatchable.
+The legacy server owns OAuth/provider mechanics and individual handlers. This
+entrypoint owns the callable/schema surface: public Agent tools and internal
+UI/attachment/recovery capabilities must be declared, schema-bound, and
+validated before/after every handler invocation.
 """
 
 from __future__ import annotations
@@ -19,6 +19,12 @@ from google_work_agent.adapters.mcp.capabilities import (
 )
 from google_work_agent.adapters.mcp.transport import PROTOCOL_VERSION
 from google_work_agent.domain import build_p0_tool_registry
+from google_work_agent.domain.google_workspace_tool_contracts import (
+    ToolContractViolation,
+    google_workspace_tool_contract,
+    validate_tool_input,
+    validate_tool_output,
+)
 from google_work_agent.mcp import server as legacy_server
 from google_work_agent.ports import DeliveryCertainty
 
@@ -26,6 +32,13 @@ type ToolHandler = Callable[
     [legacy_server._WorkspaceState, dict[str, object]],
     dict[str, object],
 ]
+
+
+class _VerifiedToolContractError(RuntimeError):
+    def __init__(self, *, safe_code: str, certainty: DeliveryCertainty) -> None:
+        super().__init__(safe_code)
+        self.safe_code = safe_code
+        self.certainty = certainty
 
 
 def main() -> None:
@@ -55,6 +68,17 @@ def main() -> None:
             continue
         try:
             legacy_server._write({"id": request_id, "payload": _dispatch(state, request)})
+        except _VerifiedToolContractError as error:
+            legacy_server._write(
+                {
+                    "id": request_id,
+                    "error": _error_payload(
+                        code="TOOL_REJECTED",
+                        message=error.safe_code,
+                        certainty=error.certainty,
+                    ),
+                }
+            )
         except legacy_server._OAuthConfigurationError as error:
             legacy_server._write(
                 {
@@ -176,6 +200,9 @@ def _dispatch(
                 ),
                 "internal_capability_names": list(_declared_internal_capability_names()),
             }
+        if method == "mcp.list_capability_contracts":
+            _validate_declared_surface()
+            return {"contracts": list(_declared_contract_descriptors())}
         return legacy_server._control_call(state, method=method)
     if message_type == "tool_call":
         return _tool_call(
@@ -197,8 +224,30 @@ def _tool_call(
     )
     if tool_name not in allowed:
         raise legacy_server._WorkspaceToolError("TOOL_NOT_AVAILABLE")
-    handler = _handler_for(tool_name)
-    return handler(state, arguments)
+    try:
+        validate_tool_input(tool_name, arguments)
+    except ToolContractViolation as error:
+        raise _VerifiedToolContractError(
+            safe_code="INVALID_ARGUMENT",
+            certainty=DeliveryCertainty.NOT_SENT,
+        ) from error
+
+    result = _handler_for(tool_name)(state, arguments)
+    try:
+        validate_tool_output(tool_name, result)
+    except ToolContractViolation as error:
+        raise _VerifiedToolContractError(
+            safe_code="INVALID_MCP_OUTPUT",
+            certainty=_output_contract_failure_certainty(tool_name),
+        ) from error
+    return result
+
+
+def _output_contract_failure_certainty(tool_name: str) -> DeliveryCertainty:
+    entry = build_p0_tool_registry().get(tool_name)
+    if entry is None or entry.effect_type.value == "READ":
+        return DeliveryCertainty.MAY_HAVE_BEEN_SENT
+    return DeliveryCertainty.SENT_RESPONSE_LOST
 
 
 def _declared_public_tool_names() -> tuple[str, ...]:
@@ -214,6 +263,26 @@ def _declared_internal_capability_names() -> tuple[str, ...]:
     )
 
 
+def _declared_contract_descriptors() -> tuple[dict[str, object], ...]:
+    internal = {
+        capability.tool_name: capability.category.value
+        for capability in build_google_workspace_internal_capabilities()
+    }
+    descriptors: list[dict[str, object]] = []
+    for tool_name in sorted(set(_declared_public_tool_names()) | set(internal)):
+        contract = google_workspace_tool_contract(tool_name)
+        descriptors.append(
+            {
+                "tool_name": tool_name,
+                "category": internal.get(tool_name, "AGENT_TOOL"),
+                "input_schema_version": contract.input_schema_version,
+                "output_schema_version": contract.output_schema_version,
+                "tool_schema_hash": contract.schema_hash,
+            }
+        )
+    return tuple(descriptors)
+
+
 def _validate_declared_surface() -> None:
     public_names = frozenset(_declared_public_tool_names())
     internal_names = frozenset(_declared_internal_capability_names())
@@ -221,6 +290,7 @@ def _validate_declared_surface() -> None:
         raise legacy_server._WorkspaceToolError("CAPABILITY_SURFACE_MISMATCH")
     for tool_name in public_names | internal_names:
         _handler_for(tool_name)
+        google_workspace_tool_contract(tool_name)
 
 
 def _handler_for(tool_name: str) -> ToolHandler:
