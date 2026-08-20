@@ -67,8 +67,8 @@ def test_action_and_resource_ref_use_explicit_frozen_connector_binding(tmp_path:
         tool_name="github_create_issue",
         effect_type="CREATE",
         approval_requirement="REQUIRED",
-        verification_policy="GET_MATCH",
-        recovery_policy="GET_TARGET",
+        verification_policy="GET_COMPARE",
+        recovery_policy="RESOURCE_SEARCH",
         target_resource_ref_id=None,
         status="PROPOSED",
         arguments_json='{"title":"Issue"}',
@@ -162,7 +162,7 @@ def test_read_action_and_completion_resource_keep_same_connector(tmp_path: Path)
     response = service(
         CompleteReadActionCommand(
             command_id="complete-read-1",
-            request_hash="hash-read-1",
+            request_hash="r1" * 32,
             action_id="read-action-1",
             expected_version=0,
             output_json="{}",
