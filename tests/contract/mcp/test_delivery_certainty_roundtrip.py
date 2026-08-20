@@ -17,6 +17,7 @@ from google_work_agent.adapters.mcp.delivery_transport import DeliveryAwareSubpr
 from google_work_agent.ports import (
     DeliveryCertainty,
     MCPTransportError,
+    MCPTransportErrorCode,
 )
 
 
@@ -75,15 +76,9 @@ def test_delivery_certainty_roundtrips_server_transport_gateway(
 
 def test_legacy_dispatch_started_fallback_remains_conservative() -> None:
     error = MCPTransportError(
-        code=captured_code(),
+        code=MCPTransportErrorCode.TIMEOUT,
         message="legacy",
         dispatch_started=True,
     )
 
     assert error.delivery_certainty is DeliveryCertainty.MAY_HAVE_BEEN_SENT
-
-
-def captured_code():  # type: ignore[no-untyped-def]
-    from google_work_agent.ports import MCPTransportErrorCode
-
-    return MCPTransportErrorCode.TIMEOUT
