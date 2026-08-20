@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from google_work_agent.application.workflows.prompt_input_contract import (
     PromptInputContractError,
@@ -51,6 +51,11 @@ class _ToolCallingProvider(Protocol):
         runtime_policy: RuntimePolicy,
         api_key: str | None,
     ) -> ToolCallProviderResponse: ...
+
+
+@runtime_checkable
+class _RuntimeToolCallingProvider(_ToolCallingProvider, Protocol):
+    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,11 +134,6 @@ class PromptInputGuardedProvider:
                 LLMErrorCode.RUNTIME_VERSION_MISMATCH,
                 f"prompt runtime input contract violation: {error}",
             ) from error
-
-
-@__import__("typing").runtime_checkable
-class _RuntimeToolCallingProvider(_ToolCallingProvider, Protocol):
-    pass
 
 
 __all__ = ["PromptInputGuardedProvider"]
