@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from google_work_agent.adapters.mcp.capabilities import (
+    INTERNAL_CAPABILITY_REGISTRY_VERSION,
+    build_google_workspace_internal_capabilities,
+)
 from google_work_agent.adapters.mcp.transport import (
     MCPArtifactConfig,
     MCPConnectorDescriptor,
@@ -17,7 +21,13 @@ from google_work_agent.ports import ArtifactSignatureVerifier
 
 
 def build_manifest_payload() -> dict[str, object]:
-    return build_manifest_payload_for_registry(build_google_workspace_tool_registry())
+    payload = build_manifest_payload_for_registry(build_google_workspace_tool_registry())
+    capabilities = build_google_workspace_internal_capabilities()
+    payload["internal_capability_registry_version"] = INTERNAL_CAPABILITY_REGISTRY_VERSION
+    payload["internal_capabilities"] = [
+        capability.to_manifest_payload() for capability in capabilities
+    ]
+    return payload
 
 
 class SubprocessMCPTransport(DescriptorSubprocessMCPTransport):
