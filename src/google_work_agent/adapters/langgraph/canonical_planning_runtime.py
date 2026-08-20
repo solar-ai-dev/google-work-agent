@@ -13,8 +13,13 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from typing import Any, cast
 
+from google_work_agent.adapters.connectors.execution_router import ConnectorExecutionRouter
+from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
 from google_work_agent.adapters.langgraph.canonical_runtime import (
     LangGraphWorkflowRuntime as _ConfirmationLangGraphWorkflowRuntime,
+)
+from google_work_agent.adapters.langgraph.connector_execution_scope import (
+    ConnectorBoundWriteExecutionPhaseCoordinator,
 )
 from google_work_agent.adapters.langgraph.connector_read_result import (
     ConnectorBoundCompleteReadActionService,
@@ -26,6 +31,7 @@ from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.adapters.persistence.connector_identity import (
     bind_action_connector_ids,
 )
+from google_work_agent.application.ports import ConnectorExecutionPort
 from google_work_agent.application.workflows.handoff_contracts import ActionPlanDraftV1
 from google_work_agent.application.write_verification_projection import (
     build_expected_verification_projection,
@@ -175,6 +181,7 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
         self,
         *args: Any,
         default_calendar_id_provider: Callable[[], str | None] | None = None,
+        connector_execution_backends: Mapping[str, ConnectorExecutionPort] | None = None,
         **kwargs: Any,
     ) -> None:
         llm_runtime = kwargs.get("llm_runtime")
@@ -184,9 +191,29 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
                 default_calendar_id_provider = lambda: getattr(
                     settings_service(), "default_calendar_id", None
                 )
+
+        legacy_execution = kwargs.get("connector_execution")
+        if connector_execution_backends is None:
+            if isinstance(legacy_execution, ConnectorExecutionRouter):
+                execution_router = legacy_execution
+            else:
+                if legacy_execution is None:
+                    raise TypeError("connector_execution is required")
+                execution_router = ConnectorExecutionRouter(
+                    {
+                        GOOGLE_WORKSPACE_CONNECTOR_ID: cast(
+                            ConnectorExecutionPort, legacy_execution
+                        )
+                    }
+                )
+        else:
+            execution_router = ConnectorExecutionRouter(connector_execution_backends)
+        kwargs["connector_execution"] = execution_router
+
         super().__init__(
             *args, default_calendar_id_provider=default_calendar_id_provider, **kwargs
         )
+        self._connector_execution_router = execution_router
 
         connector_bound_store = ConnectorBoundStoreWriteActionSuccessService(
             delegate=self._store_write_success,
@@ -199,6 +226,15 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
             delegate=self._complete_read,
             unit_of_work_factory=self._unit_of_work_factory,
         )
+
+        raw_execution_phase = self._write_execution_phase
+        connector_bound_phase = ConnectorBoundWriteExecutionPhaseCoordinator(
+            delegate=raw_execution_phase,
+            unit_of_work_factory=self._unit_of_work_factory,
+        )
+        self._write_execution_phase = connector_bound_phase
+        self._write_execution_node._execution_phase = connector_bound_phase
+        self._write_recovery._execution_phase = connector_bound_phase
 
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         deterministic_plan = replace_llm_expected_with_deterministic_projection(plan_draft)
