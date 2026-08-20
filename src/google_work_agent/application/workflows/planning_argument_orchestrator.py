@@ -1,38 +1,73 @@
 """Deterministic orchestration of per-output-route Planning argument calls.
 
-Tool Route has already frozen connector/resource/effect/tool identity.  The
-orchestrator binds each route's selected business-argument schema, invokes the
-Argument Writer for that route, validates the thin candidate, and preserves
-frozen route order.  Revision maps an already-assembled plan back to those
-same route candidates only when route/tool/effect alignment is exact.
+Tool Route freezes connector/resource/effect/tool identity. Canonical Workflow
+v7.21 / Interface v2.24 add an invocation-local preparation boundary above the
+business-argument writer: only READY routes may invoke the writer. A missing
+required deterministic container yields NEEDS_CONFIRMATION without an LLM call.
+The legacy ``compose`` entry point is intentionally retained unchanged until the
+atomic production cut-over.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import Literal, TypedDict, cast
 
 from google_work_agent.application.workflows.handoff_contracts import (
     ActionPlanDraftV1,
+    ConfirmationRequiredV1,
     EvidenceDraftV1,
+    RegisteredResumeTargetRefV1,
     ReviewIssueV1,
     RequestIntentV2,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.workflows.planning_argument_writer import (
-    PlanningArgumentWriter,
-)
+from google_work_agent.application.workflows.planning_argument_writer import PlanningArgumentWriter
 from google_work_agent.application.workflows.planning_arguments import (
     BoundSelectedToolSchemaV1,
     DefaultContainerResolver,
+    PlanningArgumentBindingError,
     ToolArgumentCandidateV1,
     validate_tool_argument_candidate_v1,
 )
-from google_work_agent.application.workflows.planning_tool_schemas import (
-    planning_tool_argument_schema,
-)
+from google_work_agent.application.workflows.planning_tool_schemas import planning_tool_argument_schema
 from google_work_agent.application.workflows.tool_routing import OutputToolRouteV1
 from google_work_agent.ports import PromptReference, StructuredLLMResult, WorkflowStartRequest
+
+
+class PlanningActionPreparationReadyV1(TypedDict):
+    disposition: Literal["READY"]
+    route_id: str
+    bound_tool_schema: BoundSelectedToolSchemaV1
+
+
+class PlanningActionPreparationNeedsConfirmationV1(TypedDict):
+    disposition: Literal["NEEDS_CONFIRMATION"]
+    route_id: str
+    question: str
+    options: list[str]
+    reason_codes: list[str]
+
+
+class PlanningActionPreparationRouteReconsiderationV1(TypedDict):
+    disposition: Literal["ROUTE_RECONSIDERATION_REQUIRED"]
+    route_id: str
+    reason_codes: list[str]
+
+
+class PlanningActionPreparationBlockedV1(TypedDict):
+    disposition: Literal["BLOCKED"]
+    route_id: str
+    reason_codes: list[str]
+
+
+PlanningActionPreparationResultV1 = (
+    PlanningActionPreparationReadyV1
+    | PlanningActionPreparationNeedsConfirmationV1
+    | PlanningActionPreparationRouteReconsiderationV1
+    | PlanningActionPreparationBlockedV1
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +100,52 @@ class PlanningArgumentOrchestrator:
     def revise_prompt_ref(self) -> PromptReference:
         return self._writer.revise_prompt_ref
 
+    def prepare_actions(
+        self,
+        *,
+        output_routes: tuple[OutputToolRouteV1, ...],
+    ) -> tuple[PlanningActionPreparationResultV1, ...]:
+        """Resolve deterministic prerequisites without invoking the Argument Writer."""
+        self._validate_output_routes(output_routes)
+        return tuple(self._prepare_route(route) for route in output_routes)
+
+    def compose_prepared(
+        self,
+        *,
+        request: WorkflowStartRequest,
+        request_intent: RequestIntentV2,
+        output_routes: tuple[OutputToolRouteV1, ...],
+        preparations: tuple[PlanningActionPreparationResultV1, ...],
+        evidence_drafts: list[EvidenceDraftV1],
+        analysis_result: WorkAnalysisResultV1 | None,
+    ) -> tuple[RouteArgumentResult, ...]:
+        """Invoke per-route writers only after every route is locally READY."""
+        self._validate_output_routes(output_routes)
+        if len(preparations) != len(output_routes):
+            raise ValueError("PlanningActionPreparationResultV1 count must match output routes")
+        results: list[RouteArgumentResult] = []
+        for route, raw_preparation in zip(output_routes, preparations, strict=True):
+            preparation = validate_planning_action_preparation_result_v1(raw_preparation)
+            if preparation["route_id"] != route["route_id"]:
+                raise ValueError("PlanningActionPreparationResultV1 route_id escapes frozen route")
+            if preparation["disposition"] != "READY":
+                raise ValueError("Argument Writer may only be invoked for READY preparation")
+            bound_schema = preparation["bound_tool_schema"]
+            llm_result = self._writer.invoke(
+                request=request,
+                request_intent=request_intent,
+                bound_tool_schema=bound_schema,
+                evidence_drafts=evidence_drafts,
+                analysis_result=analysis_result,
+            )
+            candidate = self._writer.validated_candidate(
+                llm_result,
+                bound_tool_schema=bound_schema,
+                evidence_drafts=evidence_drafts,
+            )
+            results.append(RouteArgumentResult(route, bound_schema, candidate, llm_result))
+        return tuple(results)
+
     def compose(
         self,
         *,
@@ -74,6 +155,7 @@ class PlanningArgumentOrchestrator:
         evidence_drafts: list[EvidenceDraftV1],
         analysis_result: WorkAnalysisResultV1 | None,
     ) -> tuple[RouteArgumentResult, ...]:
+        """Legacy production entry point; retained unchanged until atomic cut-over."""
         self._validate_output_routes(output_routes)
         results: list[RouteArgumentResult] = []
         for route in output_routes:
@@ -90,14 +172,7 @@ class PlanningArgumentOrchestrator:
                 bound_tool_schema=bound_schema,
                 evidence_drafts=evidence_drafts,
             )
-            results.append(
-                RouteArgumentResult(
-                    route=route,
-                    bound_tool_schema=bound_schema,
-                    candidate=candidate,
-                    llm_result=llm_result,
-                )
-            )
+            results.append(RouteArgumentResult(route, bound_schema, candidate, llm_result))
         return tuple(results)
 
     def revise(
@@ -113,21 +188,16 @@ class PlanningArgumentOrchestrator:
         review_summary: str | None,
     ) -> tuple[RouteArgumentResult, ...]:
         """Revise only affected per-route candidates under frozen route identity."""
-
         self._validate_output_routes(output_routes)
         write_actions = [action for action in plan_draft["actions"] if action["effect"] != "READ"]
         if len(write_actions) != len(output_routes):
             raise ValueError(
                 "planning revision requires exactly one existing write action per frozen output route"
             )
-
         allowed_evidence_refs = {draft["evidence_id"] for draft in evidence_drafts}
         results: list[RouteArgumentResult] = []
         for route, action in zip(output_routes, write_actions, strict=True):
-            if (
-                action["tool_name"] != route["selected_tool_id"]
-                or action["effect"] != route["effect"]
-            ):
+            if action["tool_name"] != route["selected_tool_id"] or action["effect"] != route["effect"]:
                 raise ValueError(
                     f"existing plan action no longer aligns with frozen output route: {route['route_id']}"
                 )
@@ -144,16 +214,8 @@ class PlanningArgumentOrchestrator:
             )
             relevant_issues = _issues_for_action(review_issues, action_id=action["action_id"])
             if not relevant_issues:
-                results.append(
-                    RouteArgumentResult(
-                        route=route,
-                        bound_tool_schema=bound_schema,
-                        candidate=candidate,
-                        llm_result=None,
-                    )
-                )
+                results.append(RouteArgumentResult(route, bound_schema, candidate, None))
                 continue
-
             llm_result = self._writer.revise(
                 request=request,
                 request_intent=request_intent,
@@ -169,15 +231,32 @@ class PlanningArgumentOrchestrator:
                 bound_tool_schema=bound_schema,
                 evidence_drafts=evidence_drafts,
             )
-            results.append(
-                RouteArgumentResult(
-                    route=route,
-                    bound_tool_schema=bound_schema,
-                    candidate=revised_candidate,
-                    llm_result=llm_result,
-                )
-            )
+            results.append(RouteArgumentResult(route, bound_schema, revised_candidate, llm_result))
         return tuple(results)
+
+    def _prepare_route(self, route: OutputToolRouteV1) -> PlanningActionPreparationResultV1:
+        try:
+            bound_schema = self._bound_schema(route)
+        except PlanningArgumentBindingError as error:
+            message = str(error)
+            if " is required for selected tool: " in message:
+                return {
+                    "disposition": "NEEDS_CONFIRMATION",
+                    "route_id": route["route_id"],
+                    "question": "Select the required destination container for this action.",
+                    "options": [],
+                    "reason_codes": ["PLANNING_REQUIRED_CONTAINER_UNRESOLVED"],
+                }
+            return {
+                "disposition": "BLOCKED",
+                "route_id": route["route_id"],
+                "reason_codes": ["PLAN_ARGUMENT_CONSTRAINT_VIOLATION"],
+            }
+        return {
+            "disposition": "READY",
+            "route_id": route["route_id"],
+            "bound_tool_schema": bound_schema,
+        }
 
     def _bound_schema(self, route: OutputToolRouteV1) -> BoundSelectedToolSchemaV1:
         explicit_container_id = (
@@ -200,6 +279,72 @@ class PlanningArgumentOrchestrator:
             raise ValueError("duplicate output route id")
 
 
+def validate_planning_action_preparation_result_v1(
+    value: object,
+) -> PlanningActionPreparationResultV1:
+    if not isinstance(value, Mapping):
+        raise ValueError("PlanningActionPreparationResultV1 must be an object")
+    root = dict(value)
+    disposition = root.get("disposition")
+    route_id = root.get("route_id")
+    if not isinstance(route_id, str) or not route_id:
+        raise ValueError("PlanningActionPreparationResultV1.route_id is required")
+    if disposition == "READY":
+        if set(root) != {"disposition", "route_id", "bound_tool_schema"}:
+            raise ValueError("READY preparation keys are invalid")
+        if not isinstance(root["bound_tool_schema"], Mapping):
+            raise ValueError("READY preparation requires bound_tool_schema")
+        return cast(PlanningActionPreparationReadyV1, root)
+    if disposition == "NEEDS_CONFIRMATION":
+        if set(root) != {"disposition", "route_id", "question", "options", "reason_codes"}:
+            raise ValueError("NEEDS_CONFIRMATION preparation keys are invalid")
+        if not isinstance(root["question"], str) or not root["question"]:
+            raise ValueError("NEEDS_CONFIRMATION question is required")
+        _string_list(root["options"], allow_empty=True)
+        _string_list(root["reason_codes"], allow_empty=False)
+        return cast(PlanningActionPreparationNeedsConfirmationV1, root)
+    if disposition in {"ROUTE_RECONSIDERATION_REQUIRED", "BLOCKED"}:
+        if set(root) != {"disposition", "route_id", "reason_codes"}:
+            raise ValueError("non-ready preparation keys are invalid")
+        _string_list(root["reason_codes"], allow_empty=False)
+        return cast(PlanningActionPreparationResultV1, root)
+    raise ValueError("PlanningActionPreparationResultV1.disposition is invalid")
+
+
+def project_planning_action_confirmation_required_v1(
+    preparation: PlanningActionPreparationResultV1,
+    *,
+    interrupt_id: str,
+    resume_target: RegisteredResumeTargetRefV1,
+) -> ConfirmationRequiredV1:
+    preparation = validate_planning_action_preparation_result_v1(preparation)
+    if preparation["disposition"] != "NEEDS_CONFIRMATION":
+        raise ValueError("Planning confirmation projection requires NEEDS_CONFIRMATION")
+    if not interrupt_id:
+        raise ValueError("interrupt_id is required")
+    if resume_target.get("subgraph_id") != "PLANNING":
+        raise ValueError("Planning confirmation must resume PLANNING")
+    return {
+        "kind": "CONFIRMATION_REQUIRED",
+        "interrupt_id": interrupt_id,
+        "owner_subgraph": "PLANNING",
+        "resume_target": cast(RegisteredResumeTargetRefV1, dict(resume_target)),
+        "question": preparation["question"],
+        "options": list(preparation["options"]),
+    }
+
+
+def _string_list(value: object, *, allow_empty: bool) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+        raise ValueError("expected a list of non-empty strings")
+    result = cast(list[str], list(value))
+    if not allow_empty and not result:
+        raise ValueError("string list must not be empty")
+    if len(result) != len(set(result)):
+        raise ValueError("string list contains duplicates")
+    return result
+
+
 def _issues_for_action(
     review_issues: list[ReviewIssueV1], *, action_id: str
 ) -> list[ReviewIssueV1]:
@@ -211,4 +356,10 @@ def _issues_for_action(
     return result
 
 
-__all__ = ["PlanningArgumentOrchestrator", "RouteArgumentResult"]
+__all__ = [
+    "PlanningActionPreparationResultV1",
+    "PlanningArgumentOrchestrator",
+    "RouteArgumentResult",
+    "project_planning_action_confirmation_required_v1",
+    "validate_planning_action_preparation_result_v1",
+]
