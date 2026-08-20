@@ -61,12 +61,7 @@ _TOOL_ROUTE_SUCCESS_REASONS = frozenset({"ROUTE_READY", "NO_TOOL_NEEDED"})
 def canonicalize_answer_only_decision(
     decision: SupervisorDecisionV1,
 ) -> SupervisorDecisionV1:
-    """Rewrite only the legacy ANSWER_ONLY-to-Review edge.
-
-    PLAN_READY and every non-Planning decision pass through byte-for-byte.
-    A stale Review result is cleared when an old checkpoint resumes through
-    the compatibility path so it cannot remain a second routing authority.
-    """
+    """Rewrite only the legacy ANSWER_ONLY-to-Review edge."""
 
     if decision["target"] not in _REVIEW_TARGETS:
         return decision
@@ -96,7 +91,7 @@ def canonicalize_optional_stage_decision(
     """Apply Canonical ToolRoute/Retrieval skip edges deterministically.
 
     Only already-frozen typed facts are consulted:
-    ``ToolRoutePlanV2.input_plan.input_routes`` and
+    ``ToolRoutePlanV2.input_plan.input_routes``, its frozen ``output_mode``, and
     ``RequestIntentV2.analysis_requirement``. No natural-language field,
     missing-information string, tool prefix, or provider name is interpreted.
     """
@@ -113,7 +108,18 @@ def canonicalize_optional_stage_decision(
         input_routes = _input_routes(raw_plan)
         if input_routes:
             return decision
-        next_target, next_phase = _post_route_target(state)
+        output_mode = _output_mode(raw_plan)
+        analysis_requirement = _analysis_requirement(state)
+        if output_mode == "ANSWER" and analysis_requirement == "NONE":
+            next_target = SupervisorTarget.SOLUTION_PLANNING
+            next_phase = WorkflowPhase.SOLUTION_PLANNING
+        elif analysis_requirement == "REQUIRED":
+            next_target = SupervisorTarget.WORK_ANALYSIS
+            next_phase = WorkflowPhase.WORK_ANALYSIS
+        else:
+            # Canonical does not authorize skipping Retrieval for an ACTION
+            # route merely because its current frozen IN set is empty.
+            return decision
         state_update.update(
             {
                 "workflow_phase": next_phase.value,
@@ -137,6 +143,9 @@ def canonicalize_optional_stage_decision(
         and reason_code in _RETRIEVAL_SUCCESS_REASONS
         and _analysis_requirement(state) == "NONE"
     ):
+        raw_plan = state.get("tool_route_plan")
+        if _output_mode(raw_plan) != "ANSWER":
+            return decision
         state_update.update(
             {
                 "workflow_phase": WorkflowPhase.SOLUTION_PLANNING.value,
@@ -168,6 +177,18 @@ def _input_routes(raw_plan: object) -> list[object]:
     return list(raw_routes)
 
 
+def _output_mode(raw_plan: object) -> str:
+    if not isinstance(raw_plan, Mapping):
+        raise ValueError("canonical routing requires frozen tool_route_plan")
+    raw_output_plan = raw_plan.get("output_plan")
+    if not isinstance(raw_output_plan, Mapping):
+        raise ValueError("canonical routing requires output_plan")
+    output_mode = raw_output_plan.get("output_mode")
+    if output_mode not in {"ANSWER", "ACTION"}:
+        raise ValueError("canonical routing requires a valid output_mode")
+    return cast(str, output_mode)
+
+
 def _analysis_requirement(state: GraphState) -> str:
     raw_intent = state.get("request_intent")
     if not isinstance(raw_intent, Mapping):
@@ -176,12 +197,6 @@ def _analysis_requirement(state: GraphState) -> str:
     if requirement not in {"NONE", "REQUIRED"}:
         raise ValueError("request_intent.analysis_requirement is invalid")
     return cast(str, requirement)
-
-
-def _post_route_target(state: GraphState) -> tuple[SupervisorTarget, WorkflowPhase]:
-    if _analysis_requirement(state) == "REQUIRED":
-        return SupervisorTarget.WORK_ANALYSIS, WorkflowPhase.WORK_ANALYSIS
-    return SupervisorTarget.SOLUTION_PLANNING, WorkflowPhase.SOLUTION_PLANNING
 
 
 def response_synthesis_state(state: GraphState) -> GraphState:
