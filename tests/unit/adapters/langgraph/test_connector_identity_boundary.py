@@ -5,6 +5,7 @@ import pytest
 from google_work_agent.adapters.langgraph.canonical_planning_runtime import (
     connector_ids_for_read_actions_from_frozen_routes,
     connector_ids_from_frozen_routes,
+    target_resource_connector_ids_from_actions,
 )
 from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.application.workflows.handoff_contracts import ActionPlanDraftV1
@@ -121,6 +122,61 @@ def test_connector_binding_fails_closed_when_connector_is_missing() -> None:
 
     with pytest.raises(ValueError, match="connector_id is required"):
         connector_ids_from_frozen_routes(state=state, plan_draft=_plan())
+
+
+def test_target_resource_connectors_are_bound_per_action() -> None:
+    plan = _plan()
+    first = plan["actions"][0]
+    first["target_resource_ref_id"] = "task:123"
+    plan["actions"].append(
+        cast(
+            object,
+            {
+                **first,
+                "action_id": "action-2",
+                "position": 2,
+                "tool_name": "github_update_issue",
+                "target_resource_ref_id": "issue:456",
+            },
+        )
+    )
+
+    assert target_resource_connector_ids_from_actions(
+        plan_draft=plan,
+        action_connector_ids={
+            "action-1": "google_workspace",
+            "action-2": "github",
+        },
+    ) == {
+        "task:123": "google_workspace",
+        "issue:456": "github",
+    }
+
+
+def test_target_resource_binding_fails_closed_on_cross_connector_handle_reuse() -> None:
+    plan = _plan()
+    first = plan["actions"][0]
+    first["target_resource_ref_id"] = "shared:123"
+    plan["actions"].append(
+        cast(
+            object,
+            {
+                **first,
+                "action_id": "action-2",
+                "position": 2,
+                "target_resource_ref_id": "shared:123",
+            },
+        )
+    )
+
+    with pytest.raises(ValueError, match="multiple connectors"):
+        target_resource_connector_ids_from_actions(
+            plan_draft=plan,
+            action_connector_ids={
+                "action-1": "google_workspace",
+                "action-2": "github",
+            },
+        )
 
 
 def test_read_connector_id_is_rejoined_from_frozen_input_route() -> None:
