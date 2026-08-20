@@ -3,6 +3,7 @@ from typing import cast
 import pytest
 
 from google_work_agent.adapters.langgraph.canonical_planning_runtime import (
+    connector_ids_for_read_actions_from_frozen_routes,
     connector_ids_from_frozen_routes,
 )
 from google_work_agent.adapters.langgraph.graph_state import GraphState
@@ -69,6 +70,34 @@ def _state() -> GraphState:
     )
 
 
+def _read_plan() -> ActionPlanDraftV1:
+    plan = _plan()
+    action = plan["actions"][0]
+    action["effect"] = "READ"
+    action["tool_name"] = "tasks_list_tasks"
+    return plan
+
+
+def _read_state() -> GraphState:
+    state = _state()
+    route_plan = cast(dict[str, object], state["tool_route_plan"])
+    route_plan["input_plan"] = {
+        "schema_version": 1,
+        "meta": {},
+        "input_routes": [
+            {
+                "route_id": "read-route-1",
+                "resource_type": "TASK",
+                "connector_id": "google_workspace",
+                "allowed_read_tool_ids": ["tasks_list_tasks"],
+                "required": True,
+                "reason_codes": [],
+            }
+        ],
+    }
+    return state
+
+
 def test_connector_id_is_rejoined_from_frozen_output_route() -> None:
     assert connector_ids_from_frozen_routes(state=_state(), plan_draft=_plan()) == {
         "action-1": "github"
@@ -92,3 +121,41 @@ def test_connector_binding_fails_closed_when_connector_is_missing() -> None:
 
     with pytest.raises(ValueError, match="connector_id is required"):
         connector_ids_from_frozen_routes(state=state, plan_draft=_plan())
+
+
+def test_read_connector_id_is_rejoined_from_frozen_input_route() -> None:
+    assert connector_ids_for_read_actions_from_frozen_routes(
+        state=_read_state(), plan_draft=_read_plan()
+    ) == {"action-1": "google_workspace"}
+
+
+def test_read_connector_binding_fails_closed_without_matching_route() -> None:
+    plan = _read_plan()
+    plan["actions"][0]["tool_name"] = "gmail_get_message"
+
+    with pytest.raises(ValueError, match="exactly one frozen connector"):
+        connector_ids_for_read_actions_from_frozen_routes(
+            state=_read_state(), plan_draft=plan
+        )
+
+
+def test_read_connector_binding_fails_closed_on_ambiguous_connectors() -> None:
+    state = _read_state()
+    route_plan = cast(dict[str, object], state["tool_route_plan"])
+    input_plan = cast(dict[str, object], route_plan["input_plan"])
+    routes = cast(list[dict[str, object]], input_plan["input_routes"])
+    routes.append(
+        {
+            "route_id": "read-route-2",
+            "resource_type": "TASK",
+            "connector_id": "github",
+            "allowed_read_tool_ids": ["tasks_list_tasks"],
+            "required": True,
+            "reason_codes": [],
+        }
+    )
+
+    with pytest.raises(ValueError, match="exactly one frozen connector"):
+        connector_ids_for_read_actions_from_frozen_routes(
+            state=state, plan_draft=_read_plan()
+        )
