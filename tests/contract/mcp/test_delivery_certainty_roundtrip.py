@@ -33,6 +33,55 @@ def test_delivery_certainty_roundtrips_server_transport_gateway(
     tmp_path: Path,
     certainty: DeliveryCertainty,
 ) -> None:
+    transport = _transport(tmp_path)
+    try:
+        with pytest.raises(MCPTransportError) as captured:
+            transport.call_tool(
+                tool_name="gmail_get_thread",
+                arguments={"__test_delivery_certainty": certainty.value},
+            )
+    finally:
+        transport.close()
+
+    assert captured.value.delivery_certainty is certainty
+    mapped = _delivery_aware_google_error(captured.value)
+    assert mapped.delivery_certainty is certainty
+    assert mapped.delivered is (certainty is not DeliveryCertainty.NOT_SENT)
+    assert mapped.mutated is (certainty is DeliveryCertainty.SENT_RESPONSE_LOST)
+
+
+def test_child_restart_does_not_resend_in_flight_tool_call(tmp_path: Path) -> None:
+    transport = _transport(tmp_path)
+    try:
+        with pytest.raises(MCPTransportError) as captured:
+            transport.call_tool(
+                tool_name="tasks_create_task",
+                arguments={"__test_exit_after_dispatch": True},
+            )
+
+        assert captured.value.delivery_certainty is DeliveryCertainty.MAY_HAVE_BEEN_SENT
+        assert transport.runtime_metadata().restart_count == 1
+
+        # The restarted child is available for a later, independently-authorized
+        # request, but the failed in-flight request above was never replayed.
+        response = transport.call_tool(tool_name="gmail_get_thread", arguments={})
+        assert response.payload == {}
+        assert transport.runtime_metadata().restart_count == 1
+    finally:
+        transport.close()
+
+
+def test_legacy_dispatch_started_fallback_remains_conservative() -> None:
+    error = MCPTransportError(
+        code=MCPTransportErrorCode.TIMEOUT,
+        message="legacy",
+        dispatch_started=True,
+    )
+
+    assert error.delivery_certainty is DeliveryCertainty.MAY_HAVE_BEEN_SENT
+
+
+def _transport(tmp_path: Path) -> DeliveryAwareSubprocessMCPTransport:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(
         json.dumps(build_manifest_payload(), sort_keys=True),
@@ -57,28 +106,4 @@ def test_delivery_certainty_roundtrips_server_transport_gateway(
             module_name="tests.fakes.mcp_server",
         )
     )
-    transport = DeliveryAwareSubprocessMCPTransport(descriptor=descriptor)
-    try:
-        with pytest.raises(MCPTransportError) as captured:
-            transport.call_tool(
-                tool_name="gmail_get_thread",
-                arguments={"__test_delivery_certainty": certainty.value},
-            )
-    finally:
-        transport.close()
-
-    assert captured.value.delivery_certainty is certainty
-    mapped = _delivery_aware_google_error(captured.value)
-    assert mapped.delivery_certainty is certainty
-    assert mapped.delivered is (certainty is not DeliveryCertainty.NOT_SENT)
-    assert mapped.mutated is (certainty is DeliveryCertainty.SENT_RESPONSE_LOST)
-
-
-def test_legacy_dispatch_started_fallback_remains_conservative() -> None:
-    error = MCPTransportError(
-        code=MCPTransportErrorCode.TIMEOUT,
-        message="legacy",
-        dispatch_started=True,
-    )
-
-    assert error.delivery_certainty is DeliveryCertainty.MAY_HAVE_BEEN_SENT
+    return DeliveryAwareSubprocessMCPTransport(descriptor=descriptor)
