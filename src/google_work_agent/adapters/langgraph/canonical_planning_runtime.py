@@ -1,31 +1,10 @@
 """Canonical Planning persistence boundary layered over confirmation runtime.
 
 The current release graph still carries the legacy ``ActionPlanDraftV1``
-shape through Review/Domain Validation.  This wrapper removes one remaining
-legacy authority before the full PlanningStateV2 migration: an LLM-authored
-``expected`` snapshot is never persisted as verification truth.  Instead the
-expected projection is rebuilt deterministically from the final business
-arguments immediately before the legacy persistence service is invoked.
-
-Note: since the Canonical Planning Production Migration, the ACTION
-assembler (``planning_plan_assembler.assemble_action_plan_draft_v1_compat``)
-already builds this same deterministic projection at *assembly* time -- this
-override is a defensive, idempotent re-derivation of an already-correct
-value immediately before persistence (calling the same pure function twice
-with the same arguments), not a second, potentially-diverging authority. It
-still matters for the ANSWER-only-adjacent revision path and as a
-persistence-boundary safety net; removing it is a separate, optional
-cleanup, not required for migration CLOSED.
-
-Resolving the Task/Calendar container defaults themselves (used to bind the
-per-route selected Tool schema before the canonical Argument Writer ever
-sees it) is owned by the base runtime's own construction -- see
-``runtime.py``'s ``default_tasklist_id_provider``/
-``default_calendar_id_provider`` handling, which is where the
-``PlanningArgumentOrchestrator`` is actually built and injected into
-``PlanningSubgraph``. This subclass only resolves the Calendar default from
-the LLM runtime's shared SettingsService when the caller does not supply one
-explicitly, then forwards it down.
+shape through Review/Domain Validation. This wrapper removes remaining
+legacy authority immediately before persistence: Expected is rebuilt from
+business arguments, while connector identity is rejoined from the frozen
+ToolRoutePlanV2 rather than authored or inferred by an LLM/persistence layer.
 """
 
 from __future__ import annotations
@@ -38,6 +17,12 @@ from google_work_agent.adapters.langgraph.canonical_runtime import (
     LangGraphWorkflowRuntime as _ConfirmationLangGraphWorkflowRuntime,
 )
 from google_work_agent.adapters.langgraph.graph_state import GraphState
+from google_work_agent.adapters.persistence.connector_identity import (
+    bind_action_connector_ids,
+)
+from google_work_agent.application.connector_write_result import (
+    ConnectorBoundStoreWriteActionSuccessService,
+)
 from google_work_agent.application.workflows.handoff_contracts import ActionPlanDraftV1
 from google_work_agent.application.write_verification_projection import (
     build_expected_verification_projection,
@@ -65,7 +50,6 @@ def replace_llm_expected_with_deterministic_projection(
         if not isinstance(arguments, Mapping):
             raise ValueError(f"plan_draft.actions[{index}].arguments must be an object")
         if effect == "READ":
-            # Legacy READ-only plans are outside the write verification contract.
             continue
         raw_action["expected"] = build_expected_verification_projection(
             tool_name=tool_name,
@@ -74,8 +58,54 @@ def replace_llm_expected_with_deterministic_projection(
     return cast(ActionPlanDraftV1, projected)
 
 
+def connector_ids_from_frozen_routes(
+    *,
+    state: GraphState,
+    plan_draft: ActionPlanDraftV1,
+) -> dict[str, str]:
+    """Join legacy write actions back to their frozen OutputToolRouteV1 identities.
+
+    The join is intentionally strict and positional because canonical Planning
+    preserves frozen output-route order. Any tool/effect/count mismatch fails
+    closed instead of guessing a connector from a tool name or provider.
+    """
+
+    raw_route_plan = state.get("tool_route_plan")
+    if not isinstance(raw_route_plan, Mapping):
+        raise ValueError("write persistence requires frozen tool_route_plan")
+    output_plan = raw_route_plan.get("output_plan")
+    if not isinstance(output_plan, Mapping) or output_plan.get("output_mode") != "ACTION":
+        raise ValueError("write persistence requires ACTION output_plan")
+    raw_routes = output_plan.get("output_routes")
+    if not isinstance(raw_routes, list):
+        raise ValueError("ACTION output_plan.output_routes must be a list")
+
+    write_actions = [action for action in plan_draft["actions"] if action["effect"] != "READ"]
+    if len(write_actions) != len(raw_routes):
+        raise ValueError("write actions must align exactly with frozen output routes")
+
+    connector_ids: dict[str, str] = {}
+    for index, (action, raw_route) in enumerate(zip(write_actions, raw_routes, strict=True)):
+        if not isinstance(raw_route, Mapping):
+            raise ValueError(f"output_routes[{index}] must be an object")
+        if action["tool_name"] != raw_route.get("selected_tool_id"):
+            raise ValueError(f"write action tool does not match frozen route at index {index}")
+        if action["effect"] != raw_route.get("effect"):
+            raise ValueError(f"write action effect does not match frozen route at index {index}")
+        connector_id = raw_route.get("connector_id")
+        if not isinstance(connector_id, str) or not connector_id:
+            raise ValueError(f"output_routes[{index}].connector_id is required")
+        action_id = action["action_id"]
+        if not action_id:
+            raise ValueError(f"write action id is empty at index {index}")
+        if action_id in connector_ids:
+            raise ValueError(f"duplicate write action id: {action_id}")
+        connector_ids[action_id] = connector_id
+    return connector_ids
+
+
 class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
-    """Canonical runtime with deterministic write Expected/container boundaries."""
+    """Canonical runtime with deterministic Expected and connector boundaries."""
 
     def __init__(
         self,
@@ -94,9 +124,29 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
             *args, default_calendar_id_provider=default_calendar_id_provider, **kwargs
         )
 
+        # The base runtime constructs WriteExecutionPhaseCoordinator during
+        # super().__init__. Replace only its success-persistence delegate with
+        # a subtype that resolves connector_id from the already-persisted
+        # Action, then binds that identity while ResourceRef is written.
+        connector_bound_store = ConnectorBoundStoreWriteActionSuccessService(
+            delegate=self._store_write_success,
+            unit_of_work_factory=self._unit_of_work_factory,
+        )
+        self._store_write_success = connector_bound_store
+        self._write_execution_phase._store_write_success = connector_bound_store
+
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         deterministic_plan = replace_llm_expected_with_deterministic_projection(plan_draft)
-        return super()._persist_write_plan(state, deterministic_plan)
+        connector_ids = connector_ids_from_frozen_routes(
+            state=state,
+            plan_draft=deterministic_plan,
+        )
+        with bind_action_connector_ids(connector_ids):
+            return super()._persist_write_plan(state, deterministic_plan)
 
 
-__all__ = ["LangGraphWorkflowRuntime", "replace_llm_expected_with_deterministic_projection"]
+__all__ = [
+    "LangGraphWorkflowRuntime",
+    "connector_ids_from_frozen_routes",
+    "replace_llm_expected_with_deterministic_projection",
+]
