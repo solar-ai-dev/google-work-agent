@@ -9,16 +9,21 @@ from typing import Protocol
 class PlanEvidenceDraft(Protocol):
     """Minimal evidence shape required by the aggregate validator."""
 
-    evidence_id: str
+    @property
+    def evidence_id(self) -> str: ...
 
 
 class PlanActionDraft(Protocol):
     """Minimal action shape required by the aggregate validator."""
 
-    action_id: str
-    position: int
-    evidence_ids: tuple[str, ...]
-    depends_on_action_ids: tuple[str, ...]
+    @property
+    def action_id(self) -> str: ...
+    @property
+    def position(self) -> int: ...
+    @property
+    def evidence_ids(self) -> tuple[str, ...]: ...
+    @property
+    def depends_on_action_ids(self) -> tuple[str, ...]: ...
 
 
 def validate_plan_structure(
