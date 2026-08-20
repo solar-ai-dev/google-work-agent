@@ -8,6 +8,9 @@ from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
+from google_work_agent.adapters.langgraph.checkpoint_secret_boundary import (
+    SecretBoundaryCheckpointer,
+)
 from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 
@@ -49,10 +52,6 @@ class GraphNodeBindings:
             "modify_review": self.modify_review,
             "action_execution": self.action_execution,
             "recovery": self.recovery,
-            # Response Synthesis is a deterministic pre-finalize boundary.
-            # The canonical runtime's finalize handler distinguishes this
-            # graph target and materializes a FinalizeIntent before the real
-            # finalize node performs durable completion/cleanup.
             "response_synthesis": self.finalize,
             "finalize": self.finalize,
             "stage_one": self.stage_one,
@@ -91,7 +90,13 @@ class WorkflowGraphComposition:
         self._topology = topology
         self._bindings = bindings
         self._route_next_node = route_next_node
-        self._checkpointer = checkpointer
+        self._checkpointer = (
+            None
+            if checkpointer is None
+            else checkpointer
+            if isinstance(checkpointer, SecretBoundaryCheckpointer)
+            else SecretBoundaryCheckpointer(checkpointer)
+        )
 
     def build(self) -> Any:
         graph = StateGraph(GraphState)
