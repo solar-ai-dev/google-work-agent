@@ -49,6 +49,11 @@ class GraphNodeBindings:
             "modify_review": self.modify_review,
             "action_execution": self.action_execution,
             "recovery": self.recovery,
+            # Response Synthesis is a deterministic pre-finalize boundary.
+            # The canonical runtime's finalize handler distinguishes this
+            # graph target and materializes a FinalizeIntent before the real
+            # finalize node performs durable completion/cleanup.
+            "response_synthesis": self.finalize,
             "finalize": self.finalize,
             "stage_one": self.stage_one,
             "stage_two": self.stage_two,
@@ -100,6 +105,7 @@ class WorkflowGraphComposition:
             "modify_review",
             "action_execution",
             "recovery",
+            "response_synthesis",
             "finalize",
         ):
             graph.add_node(name, self._bindings.for_name(name))
@@ -114,6 +120,7 @@ class WorkflowGraphComposition:
             "modify_review",
             "action_execution",
             "recovery",
+            "response_synthesis",
             "finalize",
         ):
             graph.add_conditional_edges(name, self._route_next_node, edges)
@@ -128,6 +135,7 @@ class WorkflowGraphComposition:
             "modify_review": "modify_review",
             "action_execution": "action_execution",
             "recovery": "recovery",
+            "response_synthesis": "response_synthesis",
             "finalize": "finalize",
             "end": END,
         }
