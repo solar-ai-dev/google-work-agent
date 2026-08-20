@@ -60,9 +60,9 @@ def resource_ref_from_snapshot(
     """Build the durable Google compatibility ResourceRef without raw payload storage.
 
     Connector-neutral identity persistence is owned by the connector-aware
-    schema migration. Until Task 5 supplies connector_id on the runtime action
-    contract, this function intentionally does not infer connector identity
-    from ``source``.
+    persistence boundary. The caller supplies the already-authoritative
+    connector identity; this projection intentionally never infers a connector
+    from ``source`` or from a tool/provider name.
     """
     source_map = {
         ResourceType.GMAIL_DRAFT: (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
