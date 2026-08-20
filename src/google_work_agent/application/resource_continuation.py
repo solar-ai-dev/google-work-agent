@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from secrets import token_urlsafe
 from threading import RLock
-from typing import Any
+from typing import Protocol
 
 from google_work_agent.application.resource_queries import (
     GmailResourceDetail,
@@ -21,6 +21,52 @@ from google_work_agent.application.resource_queries import (
 from google_work_agent.ports import GoogleWorkspaceErrorCode, GoogleWorkspaceGatewayError
 
 ContinuationScope = tuple[str, ...]
+
+
+class ResourceQueryServiceLike(Protocol):
+    """Narrow UI query surface required by the local continuation facade."""
+
+    def get_gmail_thread_detail(self, *, resource_id: str) -> GmailResourceDetail: ...
+
+    def list_gmail_threads(
+        self,
+        *,
+        query: str,
+        page_token: str | None,
+        page_size: int,
+        include_thread_metadata: bool = True,
+    ) -> ResourceListPage: ...
+
+    def list_tasks(
+        self,
+        *,
+        task_list_id: str | None,
+        page_token: str | None,
+        page_size: int,
+        status_scope: str = "incomplete",
+    ) -> ResourceListPage: ...
+
+    def list_calendar_resources(
+        self,
+        *,
+        calendar_id: str | None,
+        time_min: str | None,
+        time_max: str | None,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourceListPage: ...
+
+    def count_gmail_threads(self, *, query: str = "") -> ResourceCount: ...
+
+    def count_tasks(self, *, task_list_id: str | None) -> ResourceCount: ...
+
+    def count_calendar_resources(
+        self,
+        *,
+        calendar_id: str | None,
+        time_min: str | None,
+        time_max: str | None,
+    ) -> ResourceCount: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +116,7 @@ class OpaqueResourceQueryService:
 
     def __init__(
         self,
-        service: Any,
+        service: ResourceQueryServiceLike,
         *,
         continuation_store: LocalResourceContinuationStore | None = None,
     ) -> None:
