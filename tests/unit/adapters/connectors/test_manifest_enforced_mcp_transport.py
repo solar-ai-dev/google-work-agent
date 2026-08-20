@@ -11,6 +11,7 @@ from google_work_agent.adapters.mcp.capabilities import (
     build_google_workspace_internal_capabilities,
 )
 from google_work_agent.adapters.mcp.manifest_guard import ManifestEnforcedMCPTransport
+from google_work_agent.adapters.mcp.transport import MCPConnectorDescriptor
 from google_work_agent.ports import (
     MCPControlResponse,
     MCPRuntimeMetadata,
@@ -178,7 +179,7 @@ def _write_manifest(tmp_path: Path) -> Path:
     return manifest_path
 
 
-def _descriptor(manifest_path: Path):  # type: ignore[no-untyped-def]
+def _descriptor(manifest_path: Path) -> MCPConnectorDescriptor:
     executable = Path("/tmp/fake-python").resolve()
     return build_google_workspace_connector_descriptor(
         MCPArtifactConfig(
