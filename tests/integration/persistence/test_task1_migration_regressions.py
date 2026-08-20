@@ -101,7 +101,22 @@ def test_populated_v1_2_upgrade_preserves_action_children_and_approval(tmp_path:
 
         results = apply_migrations(connection, now_ms=lambda: 2)
 
-        assert [result.applied for result in results] == [False, True, True, True, True, True]
+        # 0001 is already applied (False); 0002-0007 apply in order (True
+        # x6). This test was added alongside 0006 (b8ea2f5c, before 0007
+        # -- connector-neutral persistence, adapters/persistence/migrations/
+        # 0007_connector_neutral_persistence.sql -- existed), so its
+        # expected length predates 0007; origin/main only has 0001-0005 and
+        # doesn't carry this test file at all (Task 1 only), so there is no
+        # baseline expectation to match here.
+        assert [result.applied for result in results] == [
+            False,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+        ]
         assert connection.execute("SELECT COUNT(*) FROM actions;").fetchone()[0] == 2
         assert connection.execute("SELECT COUNT(*) FROM action_dependencies;").fetchone()[0] == 1
         assert connection.execute("SELECT COUNT(*) FROM evidence;").fetchone()[0] == 1
