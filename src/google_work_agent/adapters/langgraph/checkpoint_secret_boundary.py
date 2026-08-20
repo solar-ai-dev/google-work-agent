@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import Any
 
-from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.base import BaseCheckpointSaver, get_checkpoint_metadata
 
 from google_work_agent.application.observability import (
     SanitizationError,
@@ -16,12 +15,16 @@ from google_work_agent.application.observability import (
 
 
 class SecretBoundaryCheckpointer(BaseCheckpointSaver[Any]):
-    """Guard every LangGraph checkpoint write before delegating to the real saver.
+    """Guard every sync LangGraph checkpoint write before delegating to the real saver.
 
-    The underlying SQLite saver serializes checkpoint metadata separately from the
-    checkpoint blob and persists pending-write channel names as plaintext. Guarding
-    only the serializer would therefore leave bypasses. This wrapper validates all
-    write surfaces before the delegate can persist any bytes.
+    The production runtime uses the synchronous ``SqliteSaver``. This decorator
+    intentionally implements only the sync capabilities that saver supports; async
+    methods remain the ``BaseCheckpointSaver`` fail-closed ``NotImplementedError``
+    methods rather than converting the sync saver into an async-capable one.
+
+    SQLite persists checkpoint metadata separately from the checkpoint blob and
+    pending-write channel names as plaintext. Guarding only the serializer would
+    therefore leave bypasses.
     """
 
     def __init__(self, delegate: Any) -> None:
@@ -32,14 +35,14 @@ class SecretBoundaryCheckpointer(BaseCheckpointSaver[Any]):
 
     @property
     def config_specs(self) -> list[Any]:
-        return list(self._delegate.config_specs)
+        return self._delegate.config_specs
 
     def get_tuple(self, config: Any) -> Any:
         return self._delegate.get_tuple(config)
 
     def list(
         self,
-        config: Any,
+        config: Any | None,
         *,
         filter: dict[str, Any] | None = None,
         before: Any = None,
@@ -54,10 +57,12 @@ class SecretBoundaryCheckpointer(BaseCheckpointSaver[Any]):
         metadata: Any,
         new_versions: Any,
     ) -> Any:
-        assert_persistence_value_secret_free(config)
+        _assert_persisted_config_identity_secret_free(config)
         assert_persistence_value_secret_free(checkpoint)
-        assert_persistence_value_secret_free(metadata)
-        assert_persistence_value_secret_free(new_versions)
+        # SqliteSaver persists get_checkpoint_metadata(config, metadata), not the
+        # full RunnableConfig. Validating that exact projection avoids rejecting
+        # non-persistent runtime objects while still covering user metadata.
+        assert_persistence_value_secret_free(get_checkpoint_metadata(config, metadata))
         return self._delegate.put(config, checkpoint, metadata, new_versions)
 
     def put_writes(
@@ -67,7 +72,7 @@ class SecretBoundaryCheckpointer(BaseCheckpointSaver[Any]):
         task_id: str,
         task_path: str = "",
     ) -> None:
-        assert_persistence_value_secret_free(config)
+        _assert_persisted_config_identity_secret_free(config)
         assert_persistence_value_secret_free(task_id)
         assert_persistence_value_secret_free(task_path)
         for channel, value in writes:
@@ -82,37 +87,23 @@ class SecretBoundaryCheckpointer(BaseCheckpointSaver[Any]):
     def get_next_version(self, current: Any, channel: Any) -> Any:
         return self._delegate.get_next_version(current, channel)
 
-    async def aget_tuple(self, config: Any) -> Any:
-        return await asyncio.to_thread(self.get_tuple, config)
-
-    async def alist(
+    def get_delta_channel_history(
         self,
-        config: Any,
         *,
-        filter: dict[str, Any] | None = None,
-        before: Any = None,
-        limit: int | None = None,
-    ) -> AsyncIterator[Any]:
-        items = await asyncio.to_thread(
-            lambda: list(self.list(config, filter=filter, before=before, limit=limit))
-        )
-        for item in items:
-            yield item
-
-    async def aput(
-        self,
         config: Any,
-        checkpoint: Any,
-        metadata: Any,
-        new_versions: Any,
+        channels: Sequence[str],
     ) -> Any:
-        return await asyncio.to_thread(self.put, config, checkpoint, metadata, new_versions)
+        return self._delegate.get_delta_channel_history(config=config, channels=channels)
 
-    async def aput_writes(
-        self,
-        config: Any,
-        writes: Sequence[tuple[str, Any]],
-        task_id: str,
-        task_path: str = "",
-    ) -> None:
-        await asyncio.to_thread(self.put_writes, config, writes, task_id, task_path)
+
+def _assert_persisted_config_identity_secret_free(config: Any) -> None:
+    """Validate only config fields that the synchronous SQLite saver persists."""
+
+    if not isinstance(config, Mapping):
+        return
+    configurable = config.get("configurable")
+    if not isinstance(configurable, Mapping):
+        return
+    for key in ("thread_id", "checkpoint_ns", "checkpoint_id"):
+        if key in configurable:
+            assert_persistence_value_secret_free(configurable[key])
