@@ -139,6 +139,26 @@ class WriteExecutionPhaseCoordinator:
         try:
             self._preflight_write(action_id=request.action_id)
         except (GoogleWorkspaceGatewayError, LookupError, PolicyViolationError) as error:
+            if isinstance(error, GoogleWorkspaceGatewayError) and error.code in {
+                GoogleWorkspaceErrorCode.AUTH_EXPIRED,
+                GoogleWorkspaceErrorCode.PERMISSION_DENIED,
+            }:
+                self._require_write_reauth(
+                    RequireWriteReauthCommand(
+                        command_id=self._id_factory(),
+                        request_hash=self._request_hash(
+                            {"kind": "preflight_reauth", "action_id": request.action_id}
+                        ),
+                        run_id=request.run_id,
+                        action_id=request.action_id,
+                        safe_error_code=error.code.value,
+                        mcp_request_id=error.mcp_request_id,
+                    )
+                )
+                return WriteExecutionPhaseResult(
+                    disposition=WriteExecutionDisposition.REAUTH_REQUIRED,
+                    safe_error_code=error.code.value,
+                )
             if self._action_status(request.action_id) == ActionStatus.MODIFIED.value:
                 return WriteExecutionPhaseResult(
                     disposition=WriteExecutionDisposition.PREFLIGHT_REAPPROVAL_REQUIRED,
@@ -291,16 +311,6 @@ class WriteExecutionPhaseCoordinator:
                     )
                 )
         except GoogleWorkspaceGatewayError as error:
-            # RECOVERY_REQUIRED -> REAUTH_REQUIRED (docs/06 Reauth Canonical):
-            # every recovery-service branch above only ever performs a
-            # read-only GET/search (fetch_verification_snapshot /
-            # search_recovery_candidates) -- never the original write -- so
-            # routing a lost/expired credential here through the same
-            # RequireWriteReauthService the execute/verify phases already
-            # use is safe: the next resume re-enters this same recover_unknown
-            # call (via WorkflowInvocationCoordinator._continue_from_domain_facts,
-            # which keys off the still-unresolved UNKNOWN_RESULT action, not
-            # off Run status) and retries only the read, never a new Claim/Write.
             if error.code in {
                 GoogleWorkspaceErrorCode.AUTH_EXPIRED,
                 GoogleWorkspaceErrorCode.PERMISSION_DENIED,
@@ -430,14 +440,6 @@ class WriteExecutionPhaseCoordinator:
         request: WriteExecutionPhaseRequest,
         error: GoogleWorkspaceGatewayError,
     ) -> WriteExecutionPhaseResult:
-        # The write itself already succeeded (Action is EXECUTED) by the time
-        # verification runs, so a lost/expired credential here must never be
-        # treated as a write failure or an unknown-result write outcome --
-        # only the read-only Verification GET is uncertain. Route to Reauth
-        # (same RequireWriteReauthService the execute-step error handler
-        # uses) so a resumed run re-attempts verification only, never a new
-        # Claim/Write. Any other verification error is out of this fix's
-        # scope and keeps propagating unchanged.
         if error.code in {
             GoogleWorkspaceErrorCode.AUTH_EXPIRED,
             GoogleWorkspaceErrorCode.PERMISSION_DENIED,

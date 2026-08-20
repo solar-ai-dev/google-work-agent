@@ -35,6 +35,7 @@ from google_work_agent.adapters.langgraph.pre_analysis_composition import (
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.route_translation import (
     GraphRouteTranslator,
+    UnroutableSupervisorTargetError,
     build_resume_target_registry,
 )
 from google_work_agent.adapters.langgraph.subgraphs.planning import (
@@ -138,6 +139,15 @@ from google_work_agent.application.workflows import (
 from google_work_agent.application.workflows.api_acquisition import (
     load_acquisition_plan_sources_prompt_reference,
 )
+from google_work_agent.application.workflows.planning_argument_orchestrator import (
+    PlanningArgumentOrchestrator,
+)
+from google_work_agent.application.workflows.planning_argument_writer import (
+    PlanningArgumentWriter,
+)
+from google_work_agent.application.workflows.planning_arguments import (
+    DefaultContainerResolver,
+)
 from google_work_agent.application.workflows.profile_fused import (
     load_profile_single_reason_plan_prompt_reference,
     load_profile_single_request_source_prompt_reference,
@@ -215,6 +225,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         timezone_provider: Callable[[], str] | None = None,
         work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
         default_tasklist_id_provider: Callable[[], str | None] | None = None,
+        default_calendar_id_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._llm_runtime = llm_runtime
@@ -231,6 +242,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             lambda: CalendarWorkHours(timezone=(timezone_provider or (lambda: "Asia/Seoul"))())
         )
         self._default_tasklist_id_provider = default_tasklist_id_provider
+        self._default_calendar_id_provider = default_calendar_id_provider
         self._cancel_signal_lock = Lock()
         self._cancel_signals: set[str] = set()
         self._checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -281,6 +293,20 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         self._planning = SolutionPlanningAgent(
             llm_runtime=llm_runtime,
             manifest_path=prompt_manifest_path,
+        )
+        # Canonical ACTION Planning: Tool Route already froze output_routes'
+        # connector/resource/effect/tool identity -- the orchestrator only
+        # binds each route's selected business-argument schema and invokes
+        # the per-route Argument Writer, never re-selecting a Tool.
+        self._planning_argument_orchestrator = PlanningArgumentOrchestrator(
+            writer=PlanningArgumentWriter(
+                llm_runtime=llm_runtime,
+                manifest_path=prompt_manifest_path,
+            ),
+            default_container_resolver=DefaultContainerResolver(
+                default_tasklist_id_provider=self._default_tasklist_id_provider,
+                default_calendar_id_provider=self._default_calendar_id_provider,
+            ),
         )
         self._review = PlanReviewAgent(
             llm_runtime=llm_runtime,
@@ -519,6 +545,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             merge_decision=self._merge_decision,
             evidence_store=self._evidence_store,
             confirm_inline=self._confirm_planning_inline,
+            argument_orchestrator=self._planning_argument_orchestrator,
         ).build()
         self._review_subgraph = ReviewSubgraph(
             agent=self._review,
@@ -1159,17 +1186,23 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             **update.get("trace_context", {}),
             **decision_state.get("trace_context", {}),
         }
-        logical_target = self._logical_target_name(cast(str, decision["target"]))
-        target = self._target_to_node(cast(str, decision["target"]))
-        merged["__logical_target__"] = logical_target
-        merged["__target__"] = target
+        try:
+            translation = self._route_translator.translate(cast(str, decision["target"]))
+        except UnroutableSupervisorTargetError:
+            # Fail-closed: an unmapped Supervisor target must never silently
+            # fall through to a normal "end" termination. Route into
+            # Recovery the same way Supervisor itself already handles an
+            # unrecognized contract (see supervisor.py's
+            # TOOL_ROUTE_CONTRACT_VIOLATION handling) -- "recovery" is
+            # always mapped for every profile, so this cannot recurse.
+            merged["execution_summary"] = {"result": "CONTRACT_VIOLATION"}
+            merged["workflow_phase"] = WorkflowPhase.RECOVERY.value
+            merged["__logical_target__"] = "recovery"
+            merged["__target__"] = "recovery"
+            return merged
+        merged["__logical_target__"] = translation.logical_target
+        merged["__target__"] = translation.node
         return merged
-
-    def _logical_target_name(self, target: str) -> str:
-        return self._route_translator.translate(target).logical_target
-
-    def _target_to_node(self, target: str) -> str:
-        return self._route_translator.translate(target).node
 
     def _confirmation_resume_target(self, interrupt_payload: dict[str, object]) -> str:
         return self._route_translator.confirmation_resume_target(interrupt_payload)

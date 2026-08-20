@@ -3,21 +3,35 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 
 from google_work_agent.adapters.connectors.runtime import (
     ConnectorMcpRuntime,
     RestartableMCPTransport,
 )
+from google_work_agent.adapters.mcp.capabilities import (
+    build_google_workspace_internal_capabilities,
+)
+from google_work_agent.adapters.mcp.delivery_gateway import (
+    DeliveryAwareMCPGoogleWorkspaceGateway,
+)
+from google_work_agent.adapters.mcp.delivery_transport import (
+    DeliveryAwareSubprocessMCPTransport,
+)
+from google_work_agent.adapters.mcp.dispatch_contract import DispatchContractMCPTransport
 from google_work_agent.adapters.mcp.gateway import (
     MCPGmailAttachmentGateway,
     MCPGmailUiReadGateway,
     MCPGoogleWorkspaceGateway,
 )
+from google_work_agent.adapters.mcp.manifest_guard import (
+    ManifestEnforcedMCPTransport,
+    RestartableManifestDelegate,
+)
 from google_work_agent.adapters.mcp.oauth import MCPGoogleOAuthCredentialProvider
 from google_work_agent.adapters.mcp.transport import (
     MCPArtifactConfig,
     MCPConnectorDescriptor,
-    SubprocessMCPTransport,
 )
 from google_work_agent.domain.google_workspace_tool_registry import (
     build_google_workspace_tool_registry,
@@ -26,6 +40,8 @@ from google_work_agent.domain.tool_registry import SignedToolRegistry
 from google_work_agent.ports import MCPRuntimeMetadata, MCPTransport
 
 GOOGLE_WORKSPACE_CONNECTOR_ID = "google_workspace"
+_VERIFIED_MCP_MODULE_NAME = "google_work_agent.mcp.verified_server"
+_LEGACY_MCP_MODULE_NAME = "google_work_agent.mcp.server"
 
 
 def build_google_workspace_connector_descriptor(
@@ -33,11 +49,43 @@ def build_google_workspace_connector_descriptor(
     *,
     tool_registry: SignedToolRegistry | None = None,
 ) -> MCPConnectorDescriptor:
+    if artifact_config.module_name == _LEGACY_MCP_MODULE_NAME:
+        artifact_config = replace(artifact_config, module_name=_VERIFIED_MCP_MODULE_NAME)
     return MCPConnectorDescriptor(
         connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
         artifact_config=artifact_config,
         expected_tool_registry=tool_registry or build_google_workspace_tool_registry(),
     )
+
+
+def _default_transport_factory(
+    descriptor: MCPConnectorDescriptor,
+) -> RestartableManifestDelegate:
+    return DeliveryAwareSubprocessMCPTransport(descriptor=descriptor)
+
+
+def _guarded_transport_factory(
+    base_factory: Callable[[MCPConnectorDescriptor], RestartableManifestDelegate],
+) -> Callable[[MCPConnectorDescriptor], RestartableMCPTransport]:
+    """Wrap every connector transport in immutable-manifest and schema guards."""
+
+    def build(descriptor: MCPConnectorDescriptor) -> RestartableMCPTransport:
+        raw_delegate = base_factory(descriptor)
+        try:
+            manifest_guard = ManifestEnforcedMCPTransport(
+                delegate=raw_delegate,
+                descriptor=descriptor,
+                expected_internal_capabilities=build_google_workspace_internal_capabilities(),
+            )
+            return DispatchContractMCPTransport(
+                delegate=manifest_guard,
+                descriptor=descriptor,
+            )
+        except Exception:
+            raw_delegate.close()
+            raise
+
+    return build
 
 
 class GoogleWorkspaceConnector:
@@ -46,15 +94,15 @@ class GoogleWorkspaceConnector:
         *,
         descriptor: MCPConnectorDescriptor,
         transport_factory: (
-            Callable[[MCPConnectorDescriptor], RestartableMCPTransport] | None
+            Callable[[MCPConnectorDescriptor], RestartableManifestDelegate] | None
         ) = None,
     ) -> None:
         if descriptor.connector_id != GOOGLE_WORKSPACE_CONNECTOR_ID:
             raise ValueError("Google Workspace connector descriptor id mismatch")
+        base_factory = transport_factory or _default_transport_factory
         self._runtime = ConnectorMcpRuntime(
             descriptor=descriptor,
-            transport_factory=transport_factory
-            or (lambda value: SubprocessMCPTransport(descriptor=value)),
+            transport_factory=_guarded_transport_factory(base_factory),
         )
         self._gateway: MCPGoogleWorkspaceGateway | None = None
         self._oauth_provider: MCPGoogleOAuthCredentialProvider | None = None
@@ -100,7 +148,7 @@ class GoogleWorkspaceConnector:
     def start(self) -> MCPTransport:
         transport = self._runtime.start()
         if self._gateway is None:
-            self._gateway = MCPGoogleWorkspaceGateway(transport=transport)
+            self._gateway = DeliveryAwareMCPGoogleWorkspaceGateway(transport=transport)
             self._oauth_provider = MCPGoogleOAuthCredentialProvider(transport=transport)
             self._gmail_ui_gateway = MCPGmailUiReadGateway(transport=transport)
             self._gmail_attachment_gateway = MCPGmailAttachmentGateway(transport=transport)

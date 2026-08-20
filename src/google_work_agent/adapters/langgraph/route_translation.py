@@ -11,6 +11,23 @@ from google_work_agent.application.workflows.supervisor import SupervisorTarget
 from google_work_agent.domain import RunStatus
 
 RESUME_CONTRACT_VERSION = "resume-contract-v1"
+RESPONSE_SYNTHESIS_TARGET = "RESPONSE_SYNTHESIS"
+
+
+class UnroutableSupervisorTargetError(ValueError):
+    """A Supervisor-decided target has no compiled-node mapping for this profile.
+
+    Fail-closed: the caller must route this into Recovery
+    (``CONTRACT_VIOLATION``), never silently reinterpret it as a normal
+    "end" termination.
+    """
+
+    def __init__(self, *, target: str, profile: GraphProfile) -> None:
+        self.target = target
+        self.profile = profile
+        super().__init__(
+            f"unroutable supervisor target {target!r} for graph profile {profile.value!r}"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +75,7 @@ _COMMON_ROUTES = {
     SupervisorTarget.ACTION_EXECUTION.value: RouteTranslation(
         "action_execution", "action_execution"
     ),
+    RESPONSE_SYNTHESIS_TARGET: RouteTranslation("response_synthesis", "response_synthesis"),
     SupervisorTarget.REAUTH.value: RouteTranslation("end", "end"),
     SupervisorTarget.RECOVERY.value: RouteTranslation("recovery", "recovery"),
     SupervisorTarget.FINALIZE.value: RouteTranslation("finalize", "finalize"),
@@ -228,7 +246,13 @@ class GraphRouteTranslator:
             raise ValueError(f"unsupported graph profile: {self.profile}") from error
 
     def translate(self, target: str) -> RouteTranslation:
-        return _PROFILE_ROUTES.get(self.profile, {}).get(target, RouteTranslation("end", "end"))
+        routes = _PROFILE_ROUTES.get(self.profile)
+        if routes is None:
+            raise UnroutableSupervisorTargetError(target=target, profile=self.profile)
+        translation = routes.get(target)
+        if translation is None:
+            raise UnroutableSupervisorTargetError(target=target, profile=self.profile)
+        return translation
 
     def confirmation_resume_target(self, interrupt_payload: Mapping[str, object]) -> str:
         """Resolve confirmation resume through the compiled owner registry only."""

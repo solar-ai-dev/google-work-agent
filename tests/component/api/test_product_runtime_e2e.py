@@ -34,9 +34,12 @@ from google_work_agent.adapters.readiness.composite import (
     StaticReadinessAggregator,
     StaticRuntimeStatusProvider,
 )
+from google_work_agent.adapters.runtime import BuildProfile
+from google_work_agent.adapters.runtime.settings import FileSettingsStore, SettingsService
 from google_work_agent.api import ApiContainer, create_app
 from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.queries import QueryService
+from google_work_agent.application.settings import GetSettingsService, PatchSettingsService
 from google_work_agent.application.start_run import (
     CreateConversationService,
     ModifyWriteActionService,
@@ -76,17 +79,22 @@ class _AllowGuard:
 
 def _gmail_draft_plan() -> ActionPlanDraftV1:
     plan = _write_plan_output()
-    payload = {
-        "resource_id": "draft-product-e2e",
+    # "resource_id" is provider-generated (assigned only after the write
+    # dispatches) and is never a business argument Planning may author --
+    # see planning_tool_schemas._GMAIL_DRAFT_PAYLOAD's additionalProperties:
+    # False allowlist. It belongs only in "expected" (the verification
+    # target), not in "arguments" (the Tool call input).
+    arguments_payload = {
         "to": ["pm@example.com"],
         "subject": "Product E2E draft",
         "body": "Deterministic product integration draft.",
     }
+    payload = {"resource_id": "draft-product-e2e", **arguments_payload}
     plan["actions"][0].update(
         {
             "effect": "CREATE",
             "tool_name": "gmail_create_draft",
-            "arguments": {"payload": payload},
+            "arguments": {"payload": arguments_payload},
             "expected": {
                 "resource_type": "gmail_draft",
                 "resource_id": "draft-product-e2e",
@@ -141,18 +149,25 @@ def _task_update_plan() -> ActionPlanDraftV1:
 
 def _calendar_create_plan() -> ActionPlanDraftV1:
     plan = _write_plan_output()
-    payload = {
-        "resource_id": "event-product-e2e",
+    # "resource_id" (provider-generated) and "status" (not in
+    # planning_tool_schemas._CALENDAR_CREATE_PAYLOAD's allowlist -- Google
+    # always creates events as "confirmed") are not business arguments
+    # Planning may author; they belong only in "expected", not "arguments".
+    arguments_payload = {
         "title": "Product E2E event",
-        "status": "confirmed",
         "start": "2026-11-02T09:00:00-08:00",
         "end": "2026-11-02T09:30:00-08:00",
+    }
+    payload = {
+        "resource_id": "event-product-e2e",
+        "status": "confirmed",
+        **arguments_payload,
     }
     plan["actions"][0].update(
         {
             "effect": "CREATE",
             "tool_name": "calendar_create_event",
-            "arguments": {"calendar_id": "calendar-primary", "payload": payload},
+            "arguments": {"calendar_id": "calendar-primary", "payload": arguments_payload},
             "expected": {
                 "resource_type": "calendar_event",
                 "resource_id": "event-product-e2e",
@@ -335,9 +350,17 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         api_contract_version="1",
         capacity=8,
     )
+    settings_service = SettingsService(
+        store=FileSettingsStore(tmp_path / "settings" / "app-settings.json"),
+        deployment_profile=BuildProfile.LOCAL_CAPABLE,
+        approved_model_ids=frozenset(),
+        has_active_runs=lambda: False,
+    )
     container = ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
         query_service=query_service,
+        get_settings_service=GetSettingsService(service=settings_service),
+        patch_settings_service=PatchSettingsService(service=settings_service),
         create_conversation_service=CreateConversationService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -396,6 +419,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         _create_conversation_and_run(client)
         waiting = _wait_for_snapshot(client, "WAITING_APPROVAL")
         action = _first_action(waiting)
+        action_id = cast(str, action["action_id"])
         reads_before_approval = gateway.count_calls(verification_operation)
 
         approval_body = {
@@ -406,7 +430,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
             "calendar_conflict_acknowledged": write_operation
             in {"create_calendar_event", "update_calendar_event"},
         }
-        approved = client.post("/api/v1/actions/action-1/approve", json=approval_body)
+        approved = client.post(f"/api/v1/actions/{action_id}/approve", json=approval_body)
         assert approved.status_code == 200
         effective_approval_body = approval_body
         completed = _wait_for_snapshot(client, "COMPLETED")
@@ -414,11 +438,17 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         assert _first_action(completed)["status"] == "VERIFIED"
         assert gateway.count_calls(write_operation) == 1
         assert gateway.count_calls(verification_operation) >= reads_before_approval + 1
-        replay = client.post("/api/v1/actions/action-1/approve", json=effective_approval_body)
+        replay = client.post(f"/api/v1/actions/{action_id}/approve", json=effective_approval_body)
         assert replay.status_code == 200
+        # ttl_ms is deprecated/server-ignored and excluded from the request
+        # hash (approval lifetime is server-owned via
+        # AppSettings.approval_ttl_minutes -- see
+        # api/routes/actions.py:approve, which pops it before hashing), so
+        # varying only ttl_ms can no longer produce a hash mismatch.
+        # duplicate_acknowledged is an actual hashed request field.
         conflict = client.post(
-            "/api/v1/actions/action-1/approve",
-            json={**effective_approval_body, "ttl_ms": 60_000},
+            f"/api/v1/actions/{action_id}/approve",
+            json={**effective_approval_body, "duplicate_acknowledged": True},
         )
         assert conflict.status_code == 409
         time.sleep(0.05)
@@ -432,9 +462,10 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
                 (SELECT COUNT(*) FROM approvals),
                 (SELECT COUNT(*) FROM execution_attempts),
                 (SELECT COUNT(*) FROM verifications),
-                (SELECT COUNT(*) FROM audit_events WHERE action_id = 'action-1'),
-                (SELECT COUNT(*) FROM trace_events WHERE action_id = 'action-1');
-            """
+                (SELECT COUNT(*) FROM audit_events WHERE action_id = ?),
+                (SELECT COUNT(*) FROM trace_events WHERE action_id = ?);
+            """,
+            (action_id, action_id),
         ).fetchone()
         expected_audit_count = 6 if write_operation == "create_task" else 4
         if write_operation in {"create_calendar_event", "update_calendar_event"}:

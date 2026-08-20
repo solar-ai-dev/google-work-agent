@@ -7,6 +7,7 @@ from __future__ import annotations
 from json import loads as _loads
 
 from google_work_agent.adapters.mcp import MCPGoogleWorkspaceGateway
+from google_work_agent.application.write_approval_contracts import DEFAULT_APPROVAL_TTL_MS
 from tests.integration.persistence.test_write_actions import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
@@ -427,7 +428,15 @@ def test_claim_token_binding_expiry_and_replay_are_blocked(
         suffix="token-b",
         run_id="run-2",
     )
-    clock.advance_ms(30_001)
+    # Claim expiry is derived from the approval's own expires_at_ms
+    # (application/write_claim.py), and approval TTL is now server-owned via
+    # AppSettings.approval_ttl_minutes (default 30 minutes -- see
+    # DEFAULT_APPROVAL_TTL_MS) rather than the old 30-second default this
+    # advance used to target (origin/main still has
+    # DEFAULT_APPROVAL_TTL_MS = 30_000). Advance strictly past whatever the
+    # real current default is, so this keeps proving genuine expiry
+    # rejection instead of silently no-op'ing.
+    clock.advance_ms(DEFAULT_APPROVAL_TTL_MS + 1)
     expiring_service = ExecuteWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         gateway=fixture_gateway,

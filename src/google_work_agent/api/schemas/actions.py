@@ -8,7 +8,9 @@ from .common import ApiModel, ContractVersionedRequest
 class ApproveActionRequestV2(ContractVersionedRequest):
     command_id: str
     expected_version: int
-    ttl_ms: int = 30000
+    # Compatibility-only field. Production approval lifetime is server-owned
+    # through AppSettings.approval_ttl_minutes and this value is ignored.
+    ttl_ms: int | None = Field(default=None, deprecated=True)
     duplicate_acknowledged: bool = False
     calendar_conflict_acknowledged: bool = False
 

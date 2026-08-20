@@ -35,7 +35,13 @@ def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path
     )
     staging_dir = runtime_root / "attachments" / "staging"
     assert (staging_dir / f"{descriptor.staged_attachment_id}.bin").is_file()
-    assert container.readiness_aggregator.transport._config.extra_environment == {  # noqa: SLF001
+    # connector.transport is now DispatchContractMCPTransport wrapping
+    # ManifestEnforcedMCPTransport wrapping the actual
+    # DeliveryAwareSubprocessMCPTransport that owns _config (Task 7's MCP
+    # manifest/schema/dispatch contract guards -- see
+    # adapters/connectors/google_workspace.py:_guarded_transport_factory).
+    base_transport = container.readiness_aggregator.transport._delegate._delegate  # noqa: SLF001
+    assert base_transport._config.extra_environment == {  # noqa: SLF001
         ATTACHMENT_STAGING_DIR_ENV: str(staging_dir.resolve()),
     }
 

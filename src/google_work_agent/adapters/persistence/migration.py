@@ -40,6 +40,17 @@ class MigrationResult:
     applied: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _MigrationExecutionPlan:
+    """Preserve the migration-authored PRAGMA/transaction lifecycle."""
+
+    pre_transaction_statements: tuple[str, ...]
+    begin_statement: str
+    transaction_statements: tuple[str, ...]
+    commit_statement: str
+    post_transaction_statements: tuple[str, ...]
+
+
 def normalize_migration_bytes(raw: bytes) -> bytes:
     """Normalize migration bytes for logical checksum calculation."""
     return raw.replace(b"\r\n", b"\n")
@@ -208,26 +219,14 @@ def _apply_single_migration(
     applied_at_ms: int,
 ) -> None:
     statements = _split_sql_statements(raw.decode("utf-8"))
-    pre_transaction_statements = [
-        statement for statement in statements if _is_pre_transaction_statement(statement)
-    ]
-    post_transaction_statements = [
-        statement for statement in statements if _is_post_transaction_statement(statement)
-    ]
-    ddl_statements = [
-        statement
-        for statement in statements
-        if not _is_pre_transaction_statement(statement)
-        and not _is_post_transaction_statement(statement)
-        and not _is_transaction_control_statement(statement)
-    ]
+    execution = _build_migration_execution_plan(statements)
 
     try:
-        for statement in pre_transaction_statements:
-            connection.execute(statement)
+        for statement in execution.pre_transaction_statements:
+            _execute_outside_transaction_statement(connection, migration, statement)
 
-        connection.execute("BEGIN IMMEDIATE;")
-        for statement in ddl_statements:
+        connection.execute(execution.begin_statement)
+        for statement in execution.transaction_statements:
             connection.execute(statement)
         connection.execute(
             """
@@ -236,16 +235,10 @@ def _apply_single_migration(
             """,
             (migration.version, migration.name, migration.checksum, applied_at_ms),
         )
-        connection.execute("COMMIT;")
-        for statement in post_transaction_statements:
-            if _is_foreign_key_check_statement(statement):
-                if connection.execute(statement).fetchall():
-                    raise MigrationIntegrityError(
-                        "migration foreign key check failed: "
-                        f"version={migration.version} name={migration.name}"
-                    )
-                continue
-            connection.execute(statement)
+        connection.execute(execution.commit_statement)
+
+        for statement in execution.post_transaction_statements:
+            _execute_outside_transaction_statement(connection, migration, statement)
     except sqlite3.Error as exc:
         if connection.in_transaction:
             connection.execute("ROLLBACK;")
@@ -254,6 +247,80 @@ def _apply_single_migration(
         ) from exc
     finally:
         connection.execute("PRAGMA foreign_keys = ON;")
+
+
+def _build_migration_execution_plan(statements: tuple[str, ...]) -> _MigrationExecutionPlan:
+    control_indexes = [
+        index
+        for index, statement in enumerate(statements)
+        if _is_transaction_control_statement(statement)
+    ]
+    if control_indexes:
+        controls = tuple(_statement_keyword(statements[index]) for index in control_indexes)
+        if controls != ("BEGIN", "COMMIT"):
+            raise MigrationDiscoveryError(
+                "explicit migration transaction must contain exactly BEGIN then COMMIT"
+            )
+        begin_index, commit_index = control_indexes
+        pre_transaction = statements[:begin_index]
+        transaction_statements = statements[begin_index + 1 : commit_index]
+        post_transaction = statements[commit_index + 1 :]
+        if not all(_is_pragma_statement(statement) for statement in pre_transaction):
+            raise MigrationDiscoveryError(
+                "only PRAGMA statements may precede an explicit migration BEGIN"
+            )
+        if not all(_is_pragma_statement(statement) for statement in post_transaction):
+            raise MigrationDiscoveryError(
+                "only PRAGMA statements may follow an explicit migration COMMIT"
+            )
+        return _MigrationExecutionPlan(
+            pre_transaction_statements=pre_transaction,
+            begin_statement=statements[begin_index],
+            transaction_statements=transaction_statements,
+            commit_statement=statements[commit_index],
+            post_transaction_statements=post_transaction,
+        )
+
+    leading_pragma_count = 0
+    for statement in statements:
+        if not _is_pragma_statement(statement):
+            break
+        leading_pragma_count += 1
+
+    trailing_pragma_start = len(statements)
+    while trailing_pragma_start > leading_pragma_count and _is_pragma_statement(
+        statements[trailing_pragma_start - 1]
+    ):
+        trailing_pragma_start -= 1
+
+    transaction_statements = statements[leading_pragma_count:trailing_pragma_start]
+    if any(_is_pragma_statement(statement) for statement in transaction_statements):
+        raise MigrationDiscoveryError(
+            "mid-migration PRAGMA requires explicit BEGIN/COMMIT lifecycle markers"
+        )
+
+    return _MigrationExecutionPlan(
+        pre_transaction_statements=statements[:leading_pragma_count],
+        begin_statement="BEGIN IMMEDIATE;",
+        transaction_statements=transaction_statements,
+        commit_statement="COMMIT;",
+        post_transaction_statements=statements[trailing_pragma_start:],
+    )
+
+
+def _execute_outside_transaction_statement(
+    connection: sqlite3.Connection,
+    migration: MigrationFile,
+    statement: str,
+) -> None:
+    if _is_foreign_key_check_statement(statement):
+        if connection.execute(statement).fetchall():
+            raise MigrationIntegrityError(
+                "migration foreign key check failed: "
+                f"version={migration.version} name={migration.name}"
+            )
+        return
+    connection.execute(statement)
 
 
 def _split_sql_statements(sql: str) -> tuple[str, ...]:
@@ -283,14 +350,6 @@ def _is_pragma_statement(statement: str) -> bool:
 def _is_transaction_control_statement(statement: str) -> bool:
     keyword = _statement_keyword(statement)
     return keyword in {"BEGIN", "COMMIT", "ROLLBACK"}
-
-
-def _is_pre_transaction_statement(statement: str) -> bool:
-    return _is_pragma_statement(statement) and not _is_foreign_key_check_statement(statement)
-
-
-def _is_post_transaction_statement(statement: str) -> bool:
-    return _is_foreign_key_check_statement(statement)
 
 
 def _is_foreign_key_check_statement(statement: str) -> bool:

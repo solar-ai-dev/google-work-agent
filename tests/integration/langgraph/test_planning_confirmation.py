@@ -1,19 +1,24 @@
 """C5: Planning Confirmation -- nested subgraph checkpoint resume
 integration tests.
 
-Planning's NEEDS_CONFIRMATION can originate from any of its four modes --
-``planning.compose_answer`` (answer_only/revise_answer) or
-``planning.compose_arguments`` (draft_plan/revise_plan) -- since both
-``ANSWER_DRAFT_OUTPUT_SCHEMA`` and ``ACTION_PLAN_DRAFT_OUTPUT_SCHEMA`` allow
-the status. These tests exercise both the ANSWER path (``answer_only``) and
-the ACTION path (``draft_plan``) separately: the interrupt genuinely living
-inside Planning's own nested task (not the shared Main-Graph
-``waiting_confirmation`` node), zero re-execution of Tool Route/Retrieval/
-Work Analysis on resume, exactly one more real Planning semantic call per
-round, frozen ``tool_route_plan``/output-route/tool identity preservation
-for the ACTION path, repeated confirmation rounds resolving inline, no
-premature Review/Persistence/Approval entry while paused, and fail-closed
-invalid resume.
+Planning's NEEDS_CONFIRMATION originates from ``planning.compose_answer``
+(answer_only/revise_answer) via ``ANSWER_DRAFT_OUTPUT_SCHEMA``. These tests
+exercise the ANSWER path: the interrupt genuinely living inside Planning's
+own nested task (not the shared Main-Graph ``waiting_confirmation`` node),
+zero re-execution of Tool Route/Retrieval/Work Analysis on resume, exactly
+one more real Planning semantic call per round, repeated confirmation
+rounds resolving inline, no premature Review/Persistence/Approval entry
+while paused, and fail-closed invalid resume.
+
+Since the Canonical Planning Production Migration, ACTION Planning
+(draft_plan/revise_plan) runs through the per-route
+``PlanningArgumentOrchestrator``/``PlanningArgumentWriter`` and can no
+longer produce ``NEEDS_CONFIRMATION`` -- ``ToolArgumentCandidateV1`` has no
+status/confirmation field and no canonical orchestration-level wrapper
+exists for it. The ACTION-path confirmation tests formerly here were
+removed as no-longer-reachable production scenarios; see
+``test_canonical_planning_migration.py`` for the ACTION path's own
+(canonical, per-route) coverage, including its ANSWER-unaffected framing.
 """
 
 from __future__ import annotations
@@ -33,10 +38,8 @@ from tests.integration.langgraph.test_runtime import (
     WorkflowCorrelationContext,
     WorkflowOutcome,
     WorkflowResumeRequest,
-    _action_required_intent,
     _analysis_output,
     _clear_intent,
-    _expected_task_projection,
     _llm_result,
     _make_runtime,
     _QueuedLLMRuntime,
@@ -88,59 +91,6 @@ def _answer_output(
             if blockers is not None
             else (["Cannot answer."] if status == "BLOCKED" else [])
         ),
-    }
-
-
-def _plan_output(
-    status: str,
-    *,
-    confirmation: dict[str, object] | None = None,
-) -> dict[str, object]:
-    """Status-parameterized ``planning.compose_arguments`` payload, same
-    reference space as ``_answer_output`` above and the same action shape
-    ``test_runtime.py``'s own fixed ``_write_plan_output()`` uses."""
-    actions: list[dict[str, object]] = []
-    if status == "PLAN_READY":
-        payload = {
-            "resource_id": "task-created-1",
-            "title": "Send summary",
-            "status": "needsAction",
-        }
-        expected = _expected_task_projection(
-            resource_id="task-created-1", payload=payload, version="1"
-        )
-        actions = [
-            {
-                "schema_version": 2,
-                "action_id": "action-1",
-                "position": 1,
-                "effect": "CREATE",
-                "tool_name": "tasks_create_task",
-                "arguments": {"task_list_id": "task-list-default", "payload": payload},
-                "expected": expected,
-                "evidence_refs": ["evidence-seg-2"],
-                "resource_refs": ["task:task-followup"],
-                "target_resource_ref_id": None,
-                "depends_on_action_ids": [],
-                "user_visible_reason": "Create the requested follow-up task.",
-            }
-        ]
-    return {
-        "schema_version": 2,
-        "status": status,
-        "plan_id": "plan-1",
-        "summary": "Create the follow-up task requested by the user.",
-        "objective": "Persist the follow-up task.",
-        "actions": actions,
-        "evidence_refs": ["evidence-seg-2"],
-        "resource_refs": [
-            {
-                "resource_handle": "task:task-followup",
-                "resource_type": "task",
-                "resource_id": "task-followup",
-            }
-        ],
-        "confirmation": confirmation,
     }
 
 
@@ -294,53 +244,16 @@ def test_planning_answer_needs_confirmation_pauses_inside_own_nested_task(
         runtime.close()
 
 
-# --- T2: ACTION-path NEEDS_CONFIRMATION pauses inside the same nested
-# checkpoint mechanism. ---
-
-
-def test_planning_action_needs_confirmation_pauses_inside_own_nested_task(
-    tmp_path: Path,
-) -> None:
-    manifest_path = _runtime_active_manifest_path(tmp_path)
-    database_path = _seed_runtime_database(tmp_path)
-    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    checkpoint_path = tmp_path / "checkpoints-planning-action-confirm.db"
-
-    gateway = FakeGoogleGateway(snapshot)
-    runtime, llm_runtime, payload = _start_to_first_confirmation(
-        database_path=database_path,
-        gateway=gateway,
-        checkpoint_path=checkpoint_path,
-        manifest_path=manifest_path,
-        llm_payloads=[
-            _action_required_intent(),
-            _selection_output(),
-            _sufficiency_output("SUFFICIENT"),
-            _analysis_output(),
-            _plan_output("NEEDS_CONFIRMATION", confirmation=_confirmation()),
-        ],
-    )
-    try:
-        interrupt = payload["user_interrupt"]
-        assert interrupt is not None
-        assert interrupt["origin_target"] == "planning.draft_plan"
-        assert interrupt["interrupt_id"] is not None
-
-        outer_task = _nested_planning_task(runtime)
-        assert outer_task.state.next == ("finalize",)
-
-        connection = connect_sqlite(database_path)
-        try:
-            run_row = connection.execute(
-                "SELECT status FROM runs WHERE id = 'run-1';"
-            ).fetchone()
-            assert run_row[0] == "WAITING_CONFIRMATION"
-        finally:
-            connection.close()
-
-        assert len(_planning_calls(llm_runtime, "planning.compose_arguments")) == 1
-    finally:
-        runtime.close()
+# --- T2 (superseded by the Canonical Planning Production Migration):
+# ACTION-path NEEDS_CONFIRMATION is no longer reachable in production.
+# ``PlanningArgumentWriter``'s ``ToolArgumentCandidateV1`` schema has no
+# status/confirmation field, and ``assemble_action_plan_draft_v1_compat``
+# always returns ``status="PLAN_READY"`` -- this is a structural,
+# BLOCKED_BY_CANONICAL_GAP consequence documented in
+# ``adapters/langgraph/subgraphs/planning.py``'s module docstring, not a
+# regression. See ``test_canonical_planning_migration.py`` for the ACTION
+# path's own (canonical, per-route) coverage; ANSWER-path NEEDS_CONFIRMATION
+# (this file's other tests) is completely unaffected.
 
 
 # --- T4 + T5: resume re-executes no upstream, invocation_id proves
@@ -382,28 +295,32 @@ def test_planning_answer_resume_does_not_re_execute_upstream(tmp_path: Path) -> 
         # 7 real calls already spent (classify + tool_route auto-synth +
         # retrieval.plan_query auto-synth + select_evidence +
         # assess_sufficiency + work_analysis.analyze + planning round1) +
-        # round2 (resolved) = 8 = NORMAL_MAX_LLM_CALLS, so "review" (the 9th)
-        # is correctly denied.
+        # round2 (resolved) = 8 = NORMAL_MAX_LLM_CALLS. round2's answer_draft
+        # is ANSWER_ONLY, so Planning->Review is the Canonical ANSWER_ONLY->
+        # Response Synthesis edge (canonical_response_runtime.
+        # canonicalize_answer_only_decision, docs/design/06-agent-workflow.md
+        # "Planning ANSWER_ONLY -> Response Synthesis") -- Review is never
+        # dispatched, so the run completes exactly at the 8-call cap rather
+        # than a 9th (review) call being denied.
         _queue_more(llm_runtime, [_answer_output("ANSWER_ONLY")])
-        with pytest.raises(LLMInvocationError) as excinfo:
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "Use tomorrow as the due date.",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
+        result = runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="CONFIRMATION",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": interrupt_id,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option_ids": [],
+                    "free_text": "Use tomorrow as the due date.",
+                },
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-2", command_id="command-2", api_contract_version="1"
+                ),
             )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+        )
+        assert result.outcome is WorkflowOutcome.COMPLETED
 
         # T4: zero provider reads happened on resume.
         assert len(gateway.call_log) == reads_before_resume
@@ -446,69 +363,14 @@ def test_planning_answer_resume_does_not_re_execute_upstream(tmp_path: Path) -> 
         runtime.close()
 
 
-# --- T6: ACTION path -- frozen tool_route_plan/output route/tool identity
-# preserved across resume. ---
-
-
-def test_planning_action_resume_preserves_frozen_tool_route_plan(tmp_path: Path) -> None:
-    manifest_path = _runtime_active_manifest_path(tmp_path)
-    database_path = _seed_runtime_database(tmp_path)
-    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    checkpoint_path = tmp_path / "checkpoints-planning-action-resume.db"
-
-    gateway = FakeGoogleGateway(snapshot)
-    runtime, llm_runtime, payload = _start_to_first_confirmation(
-        database_path=database_path,
-        gateway=gateway,
-        checkpoint_path=checkpoint_path,
-        manifest_path=manifest_path,
-        llm_payloads=[
-            _action_required_intent(),
-            _selection_output(),
-            _sufficiency_output("SUFFICIENT"),
-            _analysis_output(),
-            _plan_output("NEEDS_CONFIRMATION", confirmation=_confirmation()),
-        ],
-    )
-    interrupt_id = payload["user_interrupt"]["interrupt_id"]
-
-    state_before = runtime._graph.get_state(  # noqa: SLF001
-        runtime._invocation.config_for_thread("thread-1"), subgraphs=True  # noqa: SLF001
-    )
-    tool_route_plan_before = state_before.tasks[0].state.values["tool_route_plan"]
-
-    try:
-        _queue_more(llm_runtime, [_plan_output("PLAN_READY")])
-        with pytest.raises(LLMInvocationError) as excinfo:
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "Use tomorrow as the due date.",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
-            )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
-
-        state = runtime._graph.get_state(  # noqa: SLF001
-            runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-        ).values
-        assert state["tool_route_plan"] == tool_route_plan_before
-        plan_draft = state["plan_draft"]
-        assert plan_draft is not None
-        assert plan_draft["actions"][0]["tool_name"] == "tasks_create_task"
-        assert plan_draft["actions"][0]["effect"] == "CREATE"
-    finally:
-        runtime.close()
+# --- T6 (superseded by the Canonical Planning Production Migration):
+# ACTION-path pause/resume no longer applies (see T2 note above -- ACTION
+# NEEDS_CONFIRMATION is structurally unreachable). Frozen tool_route_plan/
+# output-route/tool identity preservation for the ACTION path is instead
+# proven directly, without needing a Confirmation pause at all, by
+# ``test_canonical_planning_migration.py``'s Tool-authority coverage (T3) --
+# the canonical Argument Writer never sees Tool/effect/route selection in
+# the first place, so there is nothing for a resume to preserve or corrupt.
 
 
 # --- T7: confirmation_response reaches planning.compose_answer's
@@ -541,26 +403,29 @@ def test_planning_resume_applies_confirmation_response_within_prompt_boundary(
     calls_before_resume = len(llm_runtime.calls)
 
     try:
+        # answer_draft is ANSWER_ONLY, so Planning->Review is the Canonical
+        # ANSWER_ONLY->Response Synthesis edge (see the T4+T5 test above for
+        # the full accounting) -- the run completes rather than hitting the
+        # budget cap.
         _queue_more(llm_runtime, [_answer_output("ANSWER_ONLY")])
-        with pytest.raises(LLMInvocationError) as excinfo:
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "Use tomorrow as the due date.",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
+        result = runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="CONFIRMATION",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": interrupt_id,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option_ids": [],
+                    "free_text": "Use tomorrow as the due date.",
+                },
+                correlation=WorkflowCorrelationContext(
+                    request_id="request-2", command_id="command-2", api_contract_version="1"
+                ),
             )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+        )
+        assert result.outcome is WorkflowOutcome.COMPLETED
 
         calls_during_resume = llm_runtime.calls[calls_before_resume:]
         answer_calls = [
@@ -810,37 +675,15 @@ def test_planning_answer_only_happy_path_completes(tmp_path: Path) -> None:
         runtime.close()
 
 
-# --- T11: existing PLAN_READY -> Review happy path unaffected. ---
-
-
-def test_planning_plan_ready_happy_path_reaches_review(tmp_path: Path) -> None:
-    manifest_path = _runtime_active_manifest_path(tmp_path)
-    database_path = _seed_runtime_database(tmp_path)
-    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    runtime = _make_runtime(
-        database_path=database_path,
-        llm_payloads=[
-            _action_required_intent(),
-            _selection_output(),
-            _sufficiency_output("SUFFICIENT"),
-            _analysis_output(),
-            _plan_output("PLAN_READY"),
-            _review_output("PASS"),
-        ],
-        gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-planning-action-happy.db",
-        prompt_manifest_path=manifest_path,
-    )
-    try:
-        result = runtime.start(_start_request())
-        assert result.outcome is WorkflowOutcome.ACCEPTED
-        connection = connect_sqlite(database_path)
-        try:
-            run_row = connection.execute(
-                "SELECT status FROM runs WHERE id = 'run-1';"
-            ).fetchone()
-            assert run_row[0] != "PLANNING"
-        finally:
-            connection.close()
-    finally:
-        runtime.close()
+# --- T11 (superseded by the Canonical Planning Production Migration):
+# existing PLAN_READY -> Review happy path. ACTION Planning no longer
+# accepts a whole-plan free-form ``planning.compose_arguments`` payload
+# (``_plan_output(...)``) -- draft_plan now runs the canonical per-route
+# Argument Writer via ``PlanningArgumentOrchestrator``, one call per frozen
+# output route, assembled deterministically into ``ActionPlanDraftV1`` by
+# ``planning_plan_assembler``. This scenario -- a real ``runtime.start()``
+# ACTION run reaching ``PLAN_READY`` and then Review -- is covered by
+# ``test_canonical_planning_migration.py``'s
+# ``test_single_action_route_uses_canonical_writer_exactly_once`` (T1),
+# which additionally asserts the per-route call shape and Review PASS
+# transition. ANSWER-path PLAN_READY-equivalent (T10 above) is unaffected.

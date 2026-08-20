@@ -43,6 +43,7 @@ from tests.integration.langgraph.test_runtime import (
     WorkflowCorrelationContext,
     WorkflowOutcome,
     WorkflowResumeRequest,
+    _action_required_intent,
     _analysis_output,
     _answer_output,
     _clear_intent,
@@ -54,8 +55,10 @@ from tests.integration.langgraph.test_runtime import (
     _seed_runtime_database,
     _selection_output,
     _start_request,
+    _start_write_request,
     _sufficiency_output,
     _tool_catalog,
+    _write_plan_output,
     connect_sqlite,
     pytest,
     sqlite_unit_of_work_factory,
@@ -167,7 +170,7 @@ def _start_to_first_confirmation(
         manifest_path=manifest_path,
         id_prefix="run",
     )
-    first = runtime.start(_start_request())
+    first = runtime.start(_start_write_request())
     assert first.outcome is WorkflowOutcome.ACCEPTED
     return runtime, llm_runtime, first.payload
 
@@ -178,6 +181,23 @@ _ANSWER_QUEUE_TO_REVIEW = [
     _sufficiency_output("SUFFICIENT"),
     _analysis_output(),
     _answer_output(),
+]
+
+# canonical_response_runtime.canonicalize_answer_only_decision() routes a
+# Planning ANSWER_ONLY result straight to Response Synthesis instead of
+# Review (docs/design/06-agent-workflow.md: "Planning ANSWER_ONLY ->
+# Response Synthesis"), so this module's actual purpose -- testing Review's
+# own CONFIRM/BLOCK/resume mechanics -- needs a plan Review will actually
+# see. Every test below that pauses/resumes/blocks *inside Review* uses
+# this ACTION queue; only test_review_pass_answer_target_completes (which
+# specifically covers the ANSWER-target PASS->Finalize happy path,
+# unaffected by C6) still uses _ANSWER_QUEUE_TO_REVIEW above.
+_ACTION_QUEUE_TO_REVIEW = [
+    _action_required_intent(),
+    _selection_output(),
+    _sufficiency_output("SUFFICIENT"),
+    _analysis_output(),
+    _write_plan_output(),
 ]
 
 
@@ -198,7 +218,7 @@ def test_review_confirm_pauses_inside_own_nested_task(tmp_path: Path) -> None:
         checkpoint_path=checkpoint_path,
         manifest_path=manifest_path,
         llm_payloads=[
-            *_ANSWER_QUEUE_TO_REVIEW,
+            *_ACTION_QUEUE_TO_REVIEW,
             _review_output("CONFIRM", confirmation=_confirmation()),
         ],
     )
@@ -245,7 +265,7 @@ def test_review_resume_does_not_re_execute_upstream(tmp_path: Path) -> None:
         checkpoint_path=checkpoint_path,
         manifest_path=manifest_path,
         llm_payloads=[
-            *_ANSWER_QUEUE_TO_REVIEW,
+            *_ACTION_QUEUE_TO_REVIEW,
             _review_output("CONFIRM", confirmation=_confirmation()),
         ],
     )
@@ -280,7 +300,10 @@ def test_review_resume_does_not_re_execute_upstream(tmp_path: Path) -> None:
                 ),
             )
         )
-        assert second.outcome is WorkflowOutcome.COMPLETED
+        # ACTION plan + PASS stops at WAITING_APPROVAL, not COMPLETED --
+        # Review having run and rendered a real PASS decision (not full
+        # write execution) is what this test proves.
+        assert second.outcome is WorkflowOutcome.ACCEPTED
 
         # T4: zero provider reads happened on resume.
         assert len(gateway.call_log) == reads_before_resume
@@ -332,7 +355,7 @@ def test_review_resume_applies_confirmation_response_within_prompt_boundary(
         checkpoint_path=checkpoint_path,
         manifest_path=manifest_path,
         llm_payloads=[
-            *_ANSWER_QUEUE_TO_REVIEW,
+            *_ACTION_QUEUE_TO_REVIEW,
             _review_output("CONFIRM", confirmation=_confirmation()),
         ],
     )
@@ -404,7 +427,7 @@ def test_review_resumes_second_consecutive_confirmation_round_via_same_nested_ch
         checkpoint_path=checkpoint_path,
         manifest_path=manifest_path,
         llm_payloads=[
-            *_ANSWER_QUEUE_TO_REVIEW,
+            *_ACTION_QUEUE_TO_REVIEW,
             _review_output("CONFIRM", confirmation=_confirmation()),
         ],
     )
@@ -442,7 +465,7 @@ def test_review_resumes_second_consecutive_confirmation_round_via_same_nested_ch
         assert round2_interrupt_id != round1_interrupt_id
 
         # --- Round 3: resolved -- Review completes, run proceeds
-        # downstream. ---
+        # downstream to WAITING_APPROVAL (ACTION plan + PASS). ---
         _queue_more(llm_runtime, [_review_output("PASS")])
         third = runtime.resume(
             WorkflowResumeRequest(
@@ -461,7 +484,7 @@ def test_review_resumes_second_consecutive_confirmation_round_via_same_nested_ch
                 ),
             )
         )
-        assert third.outcome is WorkflowOutcome.COMPLETED
+        assert third.outcome is WorkflowOutcome.ACCEPTED
 
         # No upstream re-execution at any point across rounds 2-3.
         assert _upstream_calls(llm_runtime) == upstream_before
@@ -486,7 +509,7 @@ def test_review_resume_rejects_wrong_interrupt_id(tmp_path: Path) -> None:
         checkpoint_path=checkpoint_path,
         manifest_path=manifest_path,
         llm_payloads=[
-            *_ANSWER_QUEUE_TO_REVIEW,
+            *_ACTION_QUEUE_TO_REVIEW,
             _review_output("CONFIRM", confirmation=_confirmation()),
         ],
     )
@@ -528,7 +551,7 @@ def test_review_resume_rejects_option_id_outside_allowed_scope(tmp_path: Path) -
         checkpoint_path=checkpoint_path,
         manifest_path=manifest_path,
         llm_payloads=[
-            *_ANSWER_QUEUE_TO_REVIEW,
+            *_ACTION_QUEUE_TO_REVIEW,
             _review_output("CONFIRM", confirmation=_confirmation()),
         ],
     )
@@ -610,7 +633,7 @@ def test_review_block_finalizes_blocked(tmp_path: Path) -> None:
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=[
-            *_ANSWER_QUEUE_TO_REVIEW,
+            *_ACTION_QUEUE_TO_REVIEW,
             _review_output("BLOCK", blockers=["The requested operation is prohibited."]),
         ],
         gateway=FakeGoogleGateway(snapshot),
@@ -618,7 +641,7 @@ def test_review_block_finalizes_blocked(tmp_path: Path) -> None:
         prompt_manifest_path=manifest_path,
     )
     try:
-        result = runtime.start(_start_request())
+        result = runtime.start(_start_write_request())
         assert result.outcome is WorkflowOutcome.COMPLETED
         connection = connect_sqlite(database_path)
         try:

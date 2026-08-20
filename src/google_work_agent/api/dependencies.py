@@ -26,6 +26,7 @@ from google_work_agent.api.route_dependencies import (
 )
 from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
 from google_work_agent.application.readiness import compose_readiness
+from google_work_agent.application.write_actions import ResolveMismatchRecoveryService
 from google_work_agent.domain import calculate_canonical_json_hash
 from google_work_agent.ports import (
     AccessDecision,
@@ -120,15 +121,13 @@ def get_conversation_route_dependencies(request: Request) -> ConversationRouteDe
 
 
 def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
-    from google_work_agent.application.write_actions import ResolveMismatchRecoveryService
-
     container = get_container(request)
 
     def resolve_recovery_service() -> ResolveMismatchRecoveryService:
-        return container.resolve_recovery_service or ResolveMismatchRecoveryService(
-            unit_of_work_factory=container.unit_of_work_factory,
-            now_ms=container.clock.now_ms,
-        )
+        service = container.resolve_recovery_service
+        if service is None:
+            raise RuntimeError("resolve_recovery_service is not configured")
+        return cast(ResolveMismatchRecoveryService, service)
 
     return RunRouteDependencies(
         api_contract_version=container.api_contract_version,
@@ -150,6 +149,7 @@ def get_action_route_dependencies(request: Request) -> ActionRouteDependencies:
         modify_action_service=lambda: container.modify_action_service,
         reject_action_service=lambda: container.reject_action_service,
         prepare_retry_service=lambda: container.prepare_retry_service,
+        get_settings_service=lambda: container.get_settings_service,
         unit_of_work_factory=lambda: container.unit_of_work_factory(),
         local_run_coordinator=container.local_run_coordinator,
         event_publisher=lambda: container.event_publisher,

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 
 import pytest
 from tests.support.fakes import (
@@ -60,6 +62,31 @@ OUTPUT_SCHEMA = OutputSchemaDefinition(
 )
 
 
+def _manifest(tmp_path: Path) -> Path:
+    """Isolated Prompt Runtime Input Contract for this module's synthetic
+    PROMPT_REF ("node.plan") -- these tests exercise LLMRuntimeService
+    routing/fallback/repair mechanics generically and were never meant to
+    be validated against the real production Product Prompt contract."""
+    agent_dir = tmp_path / "prompts" / "agent"
+    contract_dir = agent_dir / "contracts"
+    contract_dir.mkdir(parents=True, exist_ok=True)
+    manifest = agent_dir / "prompt-manifest-v1.0.0.json"
+    manifest.write_text(
+        json.dumps({"runtime_input_contract": "prompts/agent/contracts/input.json"}),
+        encoding="utf-8",
+    )
+    (contract_dir / "input.json").write_text(
+        json.dumps(
+            {
+                "forbidden_runtime_fields": [],
+                "slots": {"node.plan": {"allowed_root_fields": ["topic"]}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return manifest
+
+
 @dataclass
 class RecordingEventRecorder:
     events: list[str] = field(default_factory=list)
@@ -97,7 +124,7 @@ def _status_service(
     )
 
 
-def test_api_only_invokes_external_provider() -> None:
+def test_api_only_invokes_external_provider(tmp_path: Path) -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -135,12 +162,14 @@ def test_api_only_invokes_external_provider() -> None:
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(  # noqa: ARG005
             provider_name="ollama",
             transport=ollama_transport,
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=DeterministicLLMRuntimeRouter(),
         runtime_policy=RuntimePolicy(),
@@ -160,7 +189,7 @@ def test_api_only_invokes_external_provider() -> None:
     assert not ollama_transport.invocations
 
 
-def test_discard_run_is_a_harmless_noop() -> None:
+def test_discard_run_is_a_harmless_noop(tmp_path: Path) -> None:
     """G3 RunBudgetV1: LLMRuntimeService no longer owns any per-run LLM call
     accounting (that authority moved to the checkpoint-persistent
     retry_budget/RunBudgetV1, gated by agent_kernel.ensure_llm_call_budget
@@ -205,12 +234,14 @@ def test_discard_run_is_a_harmless_noop() -> None:
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(  # noqa: ARG005
             provider_name="ollama",
             transport=FakeOllamaTransport(),
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=DeterministicLLMRuntimeRouter(),
         runtime_policy=RuntimePolicy(),
@@ -228,7 +259,7 @@ def test_discard_run_is_a_harmless_noop() -> None:
     assert result.structured_output == {"answer": "ok"}
 
 
-def test_auto_falls_back_once_after_local_gpu_failure() -> None:
+def test_auto_falls_back_once_after_local_gpu_failure(tmp_path: Path) -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -272,12 +303,14 @@ def test_auto_falls_back_once_after_local_gpu_failure() -> None:
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
             provider_name="ollama",
             transport=ollama_transport,
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=DeterministicLLMRuntimeRouter(),
         runtime_policy=RuntimePolicy(),
@@ -297,7 +330,7 @@ def test_auto_falls_back_once_after_local_gpu_failure() -> None:
     assert "LLM_FALLBACK_COMPLETED" in recorder.events
 
 
-def test_local_gpu_mode_never_falls_back_to_api() -> None:
+def test_local_gpu_mode_never_falls_back_to_api(tmp_path: Path) -> None:
     api_transport = FakeAPIProviderTransport()
     ollama_transport = FakeOllamaTransport()
     ollama_transport.queued_payloads.append(
@@ -330,12 +363,14 @@ def test_local_gpu_mode_never_falls_back_to_api() -> None:
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
             provider_name="ollama",
             transport=ollama_transport,
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=DeterministicLLMRuntimeRouter(),
         runtime_policy=RuntimePolicy(),
@@ -422,7 +457,7 @@ def test_local_gpu_blocked_when_hardware_not_validated() -> None:
     assert len([call for call in ollama_transport.invocations if call["kind"] == "invoke"]) == 0
 
 
-def test_schema_repair_is_limited_to_one_attempt() -> None:
+def test_schema_repair_is_limited_to_one_attempt(tmp_path: Path) -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -460,12 +495,14 @@ def test_schema_repair_is_limited_to_one_attempt() -> None:
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
             provider_name="ollama",
             transport=FakeOllamaTransport(),
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=DeterministicLLMRuntimeRouter(),
         runtime_policy=RuntimePolicy(structured_output_repair_budget=1),
@@ -489,7 +526,7 @@ def test_schema_repair_is_limited_to_one_attempt() -> None:
     assert len(repairer.calls) == 1
 
 
-def test_semantic_validate_failure_is_repaired_through_the_same_boundary() -> None:
+def test_semantic_validate_failure_is_repaired_through_the_same_boundary(tmp_path: Path) -> None:
     """A candidate that satisfies output_schema's JSON-shape but fails a
     caller-supplied semantic_validate (e.g. work_analysis's cross-reference
     checks) must share the exact same repair call and one-attempt budget as
@@ -531,12 +568,14 @@ def test_semantic_validate_failure_is_repaired_through_the_same_boundary() -> No
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
             provider_name="ollama",
             transport=FakeOllamaTransport(),
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=DeterministicLLMRuntimeRouter(),
         runtime_policy=RuntimePolicy(structured_output_repair_budget=1),
@@ -562,7 +601,9 @@ def test_semantic_validate_failure_is_repaired_through_the_same_boundary() -> No
     assert repairer.calls[0]["validator_errors"] == ["$.answer must be 'correct-value'"]
 
 
-def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attempt() -> None:
+def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attempt(
+    tmp_path: Path,
+) -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -599,12 +640,14 @@ def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attemp
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
             provider_name="ollama",
             transport=FakeOllamaTransport(),
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
+            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=DeterministicLLMRuntimeRouter(),
         runtime_policy=RuntimePolicy(),

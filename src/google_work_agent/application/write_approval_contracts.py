@@ -2,7 +2,10 @@
 
 from dataclasses import dataclass
 
-DEFAULT_APPROVAL_TTL_MS = 30_000
+# Canonical AppSettings default: 30 minutes. API compatibility fields may still
+# carry a ttl value, but production routes derive this command value from the
+# server-owned settings boundary rather than trusting the browser.
+DEFAULT_APPROVAL_TTL_MS = 30 * 60 * 1000
 
 
 @dataclass(frozen=True, slots=True)

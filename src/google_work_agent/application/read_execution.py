@@ -15,6 +15,10 @@ from google_work_agent.application.read_persistence import (
     require_plan,
     require_run,
 )
+from google_work_agent.application.resource_ref_projection import (
+    minimal_resource_metadata,
+    snapshot_title,
+)
 from google_work_agent.domain import ActionStatus
 from google_work_agent.ports import (
     EvidenceOriginType,
@@ -263,7 +267,7 @@ def _projection_from_snapshot(
     snapshot: ResourceSnapshot,
 ) -> tuple[CompletedResourceRef, CompletedEvidence]:
     source, resource_type = _map_snapshot_identity(snapshot)
-    title = _snapshot_title(snapshot)
+    title = snapshot_title(snapshot)
     excerpt = _snapshot_excerpt(snapshot)
     return (
         CompletedResourceRef(
@@ -276,7 +280,7 @@ def _projection_from_snapshot(
             title=title,
             event_time_ms=None,
             version_token=snapshot.version,
-            metadata_json=dumps(_snapshot_metadata(snapshot), sort_keys=True),
+            metadata_json=dumps(minimal_resource_metadata(snapshot), sort_keys=True),
         ),
         CompletedEvidence(
             id=f"evidence-{run_id}-{snapshot.resource_type.value}-{snapshot.resource_id}",
@@ -303,14 +307,6 @@ def _map_snapshot_identity(snapshot: ResourceSnapshot) -> tuple[ResourceSource, 
     return mapping[snapshot.resource_type.value]
 
 
-def _snapshot_title(snapshot: ResourceSnapshot) -> str | None:
-    for key in ("subject", "title", "snippet"):
-        value = snapshot.payload.get(key)
-        if isinstance(value, str) and value:
-            return value[:200]
-    return None
-
-
 def _snapshot_excerpt(snapshot: ResourceSnapshot) -> str:
     if snapshot.resource_type.value == "gmail_message":
         subject = _optional_str(snapshot.payload.get("subject"))
@@ -323,42 +319,6 @@ def _snapshot_excerpt(snapshot: ResourceSnapshot) -> str:
     return str(
         snapshot.payload.get("title", snapshot.payload.get("subject", snapshot.resource_id))
     )[:512]
-
-
-def _snapshot_metadata(snapshot: ResourceSnapshot) -> dict[str, object]:
-    if snapshot.resource_type.value == "gmail_message":
-        return {
-            "from": _optional_str(snapshot.payload.get("from")),
-            "to_count": len(snapshot.payload.get("to", []))
-            if isinstance(snapshot.payload.get("to"), list)
-            else 0,
-            "attachment_count": (
-                len(snapshot.payload.get("attachments", []))
-                if isinstance(snapshot.payload.get("attachments"), list)
-                else 0
-            ),
-        }
-    if snapshot.resource_type.value == "gmail_thread":
-        return {
-            "subject": _optional_str(snapshot.payload.get("subject")),
-            "participant_count": (
-                len(snapshot.payload.get("participants", []))
-                if isinstance(snapshot.payload.get("participants"), list)
-                else 0
-            ),
-        }
-    if snapshot.resource_type.value == "task":
-        return {
-            "status": _optional_str(snapshot.payload.get("status")),
-            "due": snapshot.payload.get("due"),
-        }
-    if snapshot.resource_type.value == "calendar_event":
-        return {
-            "status": _optional_str(snapshot.payload.get("status")),
-            "event_kind": _optional_str(snapshot.payload.get("event_kind")),
-            "transparency": _optional_str(snapshot.payload.get("transparency")),
-        }
-    return {"title": _snapshot_title(snapshot)}
 
 
 def _optional_str(value: object) -> str | None:

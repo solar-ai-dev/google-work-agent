@@ -9,20 +9,24 @@ from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.confirmation_run_repository import (
     SQLiteConfirmationRunRepository,
 )
+from google_work_agent.adapters.persistence.connector_identity import (
+    ConnectorAwareActionRepository,
+    ConnectorAwareResourceRefRepository,
+)
 from google_work_agent.adapters.persistence.repositories import (
     SQLiteActionDependencyRepository,
-    SQLiteActionRepository,
     SQLiteApprovalRepository,
-    SQLiteAuditRepository,
     SQLiteCommandReceiptRepository,
     SQLiteConversationRepository,
     SQLiteEvidenceRepository,
     SQLiteExecutionAttemptRepository,
     SQLiteMessageRepository,
     SQLitePlanRepository,
-    SQLiteResourceRefRepository,
-    SQLiteTraceRepository,
     SQLiteVerificationRepository,
+)
+from google_work_agent.adapters.persistence.secret_boundary import (
+    SecretBoundaryAuditRepository,
+    SecretBoundaryTraceRepository,
 )
 from google_work_agent.ports import UnitOfWork
 
@@ -44,15 +48,15 @@ class SQLiteUnitOfWork:
         self.messages = SQLiteMessageRepository(connection)
         self.command_receipts = SQLiteCommandReceiptRepository(connection)
         self.plans = SQLitePlanRepository(connection)
-        self.actions = SQLiteActionRepository(connection)
-        self.resource_refs = SQLiteResourceRefRepository(connection)
+        self.actions = ConnectorAwareActionRepository(connection)
+        self.resource_refs = ConnectorAwareResourceRefRepository(connection)
         self.evidence = SQLiteEvidenceRepository(connection)
         self.action_dependencies = SQLiteActionDependencyRepository(connection)
         self.approvals = SQLiteApprovalRepository(connection)
         self.execution_attempts = SQLiteExecutionAttemptRepository(connection)
         self.verifications = SQLiteVerificationRepository(connection)
-        self.audits = SQLiteAuditRepository(connection)
-        self.traces = SQLiteTraceRepository(connection)
+        self.audits = SecretBoundaryAuditRepository(connection)
+        self.traces = SecretBoundaryTraceRepository(connection)
         return self
 
     def commit(self) -> None:

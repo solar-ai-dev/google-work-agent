@@ -49,13 +49,22 @@ def approve(
     enforce_runtime_operation(request, operation="APPROVALS")
     from google_work_agent.application.write_actions import ApproveWriteActionCommand
 
+    settings_service = dependencies.get_settings_service()
+    if settings_service is None:
+        raise RuntimeError("get_settings_service is not configured")
+    approval_ttl_ms = settings_service().approval_ttl_minutes * 60_000
+    if approval_ttl_ms <= 0:
+        raise RuntimeError("approval_ttl_minutes must be positive")
+
     approved_by_account_id, run_id = _account_and_run_id_for_action(dependencies, action_id)
+    request_payload = payload.model_dump()
+    request_payload.pop("ttl_ms", None)
     result = dependencies.approve_action_service()(
         ApproveWriteActionCommand(
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
                 operation="ApproveActionRequestV2",
-                payload={"action_id": action_id, **payload.model_dump()},
+                payload={"action_id": action_id, **request_payload},
             ),
             action_id=action_id,
             expected_version=payload.expected_version,
@@ -67,7 +76,7 @@ def approve(
                 operation="ApproveActionIdempotencyKeyV1",
                 payload={"action_id": action_id, "command_id": payload.command_id},
             ),
-            ttl_ms=payload.ttl_ms,
+            ttl_ms=approval_ttl_ms,
             duplicate_acknowledged=payload.duplicate_acknowledged,
             calendar_conflict_acknowledged=payload.calendar_conflict_acknowledged,
         )

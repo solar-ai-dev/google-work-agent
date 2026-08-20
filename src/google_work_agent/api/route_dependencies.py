@@ -136,6 +136,7 @@ class ActionRouteDependencies:
     modify_action_service: RouteDependencyProvider[ModifyWriteActionService]
     reject_action_service: RouteDependencyProvider[RejectWriteActionService]
     prepare_retry_service: RouteDependencyProvider[PrepareWriteRetryService]
+    get_settings_service: RouteDependencyProvider[GetSettingsService | None]
     unit_of_work_factory: UnitOfWorkFactory
     local_run_coordinator: LocalRunCoordinator
     event_publisher: RouteDependencyProvider[RunEventPublisher]

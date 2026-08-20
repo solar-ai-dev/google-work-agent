@@ -31,6 +31,9 @@ from google_work_agent.application.workflows.handoff_contracts import (
     RetrievalResultV1,
     WorkAnalysisResultV1,
 )
+from google_work_agent.application.workflows.planning_argument_writer import (
+    _planning_evidence_projection,
+)
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )
@@ -244,15 +247,11 @@ class WorkAnalysisAgent:
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._analyze_prompt_ref,
             prompt_input={
-                "request_text": request.request_text,
+                "user_request": request.request_text,
                 "request_intent": request_intent,
-                "context_status": context_result["status"],
-                "context_bundle": context_result["context_bundle"],
-                "evidence_drafts": context_result["evidence_drafts"],
-                "selected_segment_ids": list(context_result["selected_segment_ids"]),
-                "missing_slots": list(context_result["missing_slots"]),
-                "sufficiency": dict(context_result["sufficiency"]),
-                "source_content_is_untrusted": True,
+                "evidence": _planning_evidence_projection(context_result["evidence_drafts"]),
+                "availability_results": [],
+                "policy_confirmation_receipt_refs": [],
             },
             output_schema=WORK_ANALYSIS_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -288,6 +287,7 @@ class WorkAnalysisAgent:
         retrieval_result: RetrievalResultV1,
         evidence_drafts: list[EvidenceDraftV1],
         request: WorkflowStartRequest,
+        policy_confirmation_receipt_refs: list[str],
         confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> StructuredLLMResult:
         """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
@@ -304,15 +304,11 @@ class WorkAnalysisAgent:
         originates from, so it is the only one that needs to see the bounded answer.
         """
         prompt_input: dict[str, object] = {
-            "request_text": request.request_text,
+            "user_request": request.request_text,
             "request_intent": request_intent,
-            "retrieval_coverage": retrieval_result["coverage"],
-            "resource_refs": list(retrieval_result["source_resource_refs"]),
-            "segment_refs": list(retrieval_result["selected_segment_ids"]),
-            "evidence_refs": list(retrieval_result["evidence_refs"]),
-            "evidence_drafts": list(evidence_drafts),
-            "missing_information": list(retrieval_result["missing_information"]),
-            "source_content_is_untrusted": True,
+            "evidence": _planning_evidence_projection(evidence_drafts),
+            "availability_results": [],
+            "policy_confirmation_receipt_refs": list(policy_confirmation_receipt_refs),
         }
         if confirmation_response is not None:
             prompt_input["confirmation_response"] = dict(confirmation_response)
