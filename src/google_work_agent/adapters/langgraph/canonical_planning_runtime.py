@@ -280,6 +280,7 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
         self._write_execution_phase = connector_bound_phase
         self._write_execution_node._execution_phase = connector_bound_phase
         self._write_recovery._execution_phase = connector_bound_phase
+        self._invocation._resume_reauth_execution = self._write_execution_node
 
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         deterministic_plan = replace_llm_expected_with_deterministic_projection(plan_draft)
