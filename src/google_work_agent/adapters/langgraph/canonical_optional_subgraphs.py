@@ -4,12 +4,12 @@ Workflow v7.20 allows two paths the legacy release subgraphs could not execute:
 
 * Tool Route may enter Work Analysis without Retrieval when analysis is required
   but no frozen input route exists.
-* Planning may run without Work Analysis when RequestIntent.analysis_requirement
-  is NONE, with or without a RetrievalResult.
+* Planning may run without Work Analysis when analysis is not required, and
+  may run after no-Retrieval Work Analysis without fabricating RetrievalResult.
 
 These subclasses change only those optional-input boundaries. They never
-materialize fake Retrieval/Analysis artifacts and delegate every legacy-present
-path back to the existing production subgraphs.
+materialize fake Retrieval/Analysis artifacts and delegate fully-populated
+legacy paths back to the existing production subgraphs.
 """
 
 from __future__ import annotations
@@ -19,10 +19,8 @@ from typing import Any, cast
 
 from google_work_agent.adapters.langgraph.agent_kernel import (
     build_agent_local_state,
-    consume_llm_call_budget,
     ensure_llm_call_budget,
     merge_trace_context,
-    record_llm_result,
 )
 from google_work_agent.adapters.langgraph.graph_state import (
     ANALYSIS_AGENT_LOCAL_KEY,
@@ -51,7 +49,6 @@ from google_work_agent.application.workflows import (
     EvidenceDraftV1,
     GraphStateUpdateV1,
     ReviewIssueV1,
-    SolutionPlanningAgent,
     SupervisorDecisionV1,
     WorkAnalysisResultV1,
     WorkflowPhase,
@@ -137,7 +134,7 @@ class CanonicalOptionalWorkAnalysisSubgraph(WorkAnalysisSubgraph):
 
 
 class CanonicalOptionalPlanningSubgraph(PlanningSubgraph):
-    """Planning that accepts absent Retrieval/Work Analysis when Canonical permits it."""
+    """Planning that accepts Canonical optional Retrieval/Work Analysis inputs."""
 
     def _init_node(self, state: PlanningLocalState) -> PlanningLocalState:
         invocation_id = self._id_factory()
@@ -202,7 +199,8 @@ class CanonicalOptionalPlanningSubgraph(PlanningSubgraph):
         confirmation_response: ConfirmationResponseV1 | None,
     ) -> tuple[AnswerDraftV1 | ActionPlanDraftV1, list[StructuredLLMResult]]:
         analysis_result = state.get("analysis_result")
-        if analysis_result is not None:
+        retrieval_result = state.get("retrieval_result")
+        if analysis_result is not None and retrieval_result is not None:
             return super()._run_plan_attempt(
                 state,
                 mode=mode,
@@ -215,10 +213,10 @@ class CanonicalOptionalPlanningSubgraph(PlanningSubgraph):
         request_intent = _require_state_value(state["request_intent"], "request_intent")
         evidence_drafts = self._evidence_drafts(state)
         review_state = state["plan_review"]
-        review_issues: list[dict[str, object]] = []
+        review_issues: list[ReviewIssueV1] = []
         review_summary: str | None = None
         if review_state is not None:
-            review_issues = [dict(issue) for issue in review_state["issues"]]
+            review_issues = [cast(ReviewIssueV1, dict(issue)) for issue in review_state["issues"]]
             review_summary = review_state.get("summary")
 
         if mode == "answer_only":
@@ -226,20 +224,20 @@ class CanonicalOptionalPlanningSubgraph(PlanningSubgraph):
             llm_result = self._agent.invoke_answer_with_optional_analysis(
                 request_intent=request_intent,
                 evidence_drafts=evidence_drafts,
-                analysis_result=None,
+                analysis_result=analysis_result,
                 request=request,
                 confirmation_response=confirmation_response,
             )
             result = self._agent.build_answer_with_optional_analysis(
                 llm_result,
-                analysis_result=None,
+                analysis_result=analysis_result,
                 evidence_drafts=evidence_drafts,
             )
             return result, [llm_result]
 
         if mode == "revise_answer":
             raise ValueError(
-                "ANSWER_ONLY bypasses Review; revise_answer without Work Analysis is unreachable"
+                "ANSWER_ONLY bypasses Review; optional-input revise_answer is unreachable"
             )
 
         frozen_routes = _require_state_value(
@@ -252,7 +250,7 @@ class CanonicalOptionalPlanningSubgraph(PlanningSubgraph):
                 request_intent=request_intent,
                 output_routes=frozen_routes,
                 evidence_drafts=evidence_drafts,
-                analysis_result=None,
+                analysis_result=analysis_result,
             )
             previous_plan = None
         else:
@@ -261,16 +259,16 @@ class CanonicalOptionalPlanningSubgraph(PlanningSubgraph):
                 request_intent=request_intent,
                 output_routes=frozen_routes,
                 evidence_drafts=evidence_drafts,
-                analysis_result=None,
+                analysis_result=analysis_result,
                 plan_draft=_require_state_value(state["plan_draft"], "plan_draft"),
-                review_issues=cast("list[ReviewIssueV1]", review_issues),
+                review_issues=review_issues,
                 review_summary=review_summary,
             )
             previous_plan = _require_state_value(state["plan_draft"], "plan_draft")
 
         result = assemble_plan_with_optional_analysis(
             request_intent=request_intent,
-            analysis_result=None,
+            analysis_result=analysis_result,
             evidence_drafts=evidence_drafts,
             output_routes=tuple(route_result.route for route_result in route_results),
             argument_candidates=tuple(route_result.candidate for route_result in route_results),
@@ -287,7 +285,8 @@ class CanonicalOptionalPlanningSubgraph(PlanningSubgraph):
         result: AnswerDraftV1 | ActionPlanDraftV1,
     ) -> PlanningLocalState:
         analysis_result = state.get("analysis_result")
-        if analysis_result is not None:
+        retrieval_result = state.get("retrieval_result")
+        if analysis_result is not None and retrieval_result is not None:
             return super()._finalize_resolved(state, result=result)
 
         evidence_drafts = self._evidence_drafts(state)
@@ -296,14 +295,14 @@ class CanonicalOptionalPlanningSubgraph(PlanningSubgraph):
         if "answer" in result:
             answer_result = validate_answer_with_optional_analysis(
                 result,
-                analysis_result=None,
+                analysis_result=analysis_result,
                 evidence_drafts=evidence_drafts,
             )
             state_update = self._agent.build_answer_state_update(answer_result)
         else:
             plan_result = validate_plan_with_optional_analysis(
                 result,
-                analysis_result=None,
+                analysis_result=analysis_result,
                 evidence_drafts=evidence_drafts,
                 frozen_output_routes=_frozen_output_routes(state),
                 frozen_read_tool_ids=_frozen_read_tool_ids(state),
