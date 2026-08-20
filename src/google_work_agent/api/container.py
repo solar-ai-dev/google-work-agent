@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import Request
 
 from google_work_agent.api.security import DEFAULT_ENDPOINT_POLICY_REGISTRY
+from google_work_agent.application.resource_continuation import OpaqueResourceQueryService
 from google_work_agent.ports import (
     ApiAccessGuard,
     Clock,
@@ -89,3 +90,12 @@ class ApiContainer:
     stage_attachment_service: StageAttachmentService | None = None
     startup_callbacks: tuple[Callable[[], Awaitable[None]], ...] = ()
     shutdown_callbacks: tuple[Callable[[], None], ...] = ()
+
+    def __post_init__(self) -> None:
+        service = self.resource_query_service
+        if service is not None and not isinstance(service, OpaqueResourceQueryService):
+            object.__setattr__(
+                self,
+                "resource_query_service",
+                OpaqueResourceQueryService(service),
+            )
