@@ -3,12 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+import pytest
+
 from google_work_agent.application.workflows.planning_argument_orchestrator import (
     PlanningArgumentOrchestrator,
+    project_planning_action_confirmation_required_v1,
 )
-from google_work_agent.application.workflows.planning_argument_writer import (
-    PlanningArgumentWriter,
-)
+from google_work_agent.application.workflows.planning_argument_writer import PlanningArgumentWriter
 from google_work_agent.application.workflows.planning_arguments import DefaultContainerResolver
 from google_work_agent.ports import (
     ActualRuntime,
@@ -93,75 +94,133 @@ def _request() -> WorkflowStartRequest:
     )
 
 
+def _intent():
+    return {
+        "schema_version": 2,
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "Create a task and draft an email",
+        "completion_conditions": ["A task and an email draft exist."],
+        "constraints": [],
+        "requested_effect_hints": ["CREATE"],
+        "requested_resource_hints": ["TASK", "GMAIL_DRAFT"],
+        "analysis_requirement": "NONE",
+        "ambiguity": {"requires_confirmation": False, "reason_codes": [], "missing_fields": []},
+    }
+
+
+def _task_route():
+    return {
+        "route_id": "route-task",
+        "resource_type": "TASK",
+        "connector_id": "google_workspace",
+        "effect": "CREATE",
+        "selected_tool_id": "tasks_create_task",
+        "reason_codes": ["USER_REQUEST"],
+    }
+
+
+def _gmail_route():
+    return {
+        "route_id": "route-gmail",
+        "resource_type": "GMAIL_DRAFT",
+        "connector_id": "google_workspace",
+        "effect": "CREATE",
+        "selected_tool_id": "gmail_create_draft",
+        "reason_codes": ["USER_REQUEST"],
+    }
+
+
+def _evidence():
+    return [{
+        "schema_version": 1,
+        "evidence_id": "ev-1",
+        "resource_handle": "resource-1",
+        "segment_id": "segment-1",
+        "kind": "excerpt",
+        "excerpt": "Source",
+        "locator": None,
+        "reason_codes": ["SUPPORTS"],
+    }]
+
+
 def test_orchestrator_invokes_writer_once_per_route_in_frozen_order() -> None:
     runtime = _Runtime()
     orchestrator = PlanningArgumentOrchestrator(
         writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),  # type: ignore[arg-type]
-        default_container_resolver=DefaultContainerResolver(
-            default_tasklist_id_provider=lambda: "default-list",
-        ),
+        default_container_resolver=DefaultContainerResolver(default_tasklist_id_provider=lambda: "default-list"),
     )
-    routes = (
-        {
-            "route_id": "route-task",
-            "resource_type": "TASK",
-            "connector_id": "google_workspace",
-            "effect": "CREATE",
-            "selected_tool_id": "tasks_create_task",
-            "reason_codes": ["USER_REQUEST"],
-        },
-        {
-            "route_id": "route-gmail",
-            "resource_type": "GMAIL_DRAFT",
-            "connector_id": "google_workspace",
-            "effect": "CREATE",
-            "selected_tool_id": "gmail_create_draft",
-            "reason_codes": ["USER_REQUEST"],
-        },
-    )
-    evidence = [
-        {
-            "schema_version": 1,
-            "evidence_id": "ev-1",
-            "resource_handle": "resource-1",
-            "segment_id": "segment-1",
-            "kind": "excerpt",
-            "excerpt": "Source",
-            "locator": None,
-            "reason_codes": ["SUPPORTS"],
-        }
-    ]
-
+    routes = (_task_route(), _gmail_route())
     results = orchestrator.compose(
         request=_request(),
-        request_intent={  # type: ignore[arg-type]
-            "schema_version": 2,
-            "meta": {
-                "artifact_id": "intent-1",
-                "revision": 1,
-                "based_on": [],
-            },
-            "goal": "Create a task and draft an email",
-            "completion_conditions": ["A task and an email draft exist."],
-            "constraints": [],
-            "requested_effect_hints": ["CREATE"],
-            "requested_resource_hints": ["TASK", "GMAIL_DRAFT"],
-            "analysis_requirement": "NONE",
-            "ambiguity": {
-                "requires_confirmation": False,
-                "reason_codes": [],
-                "missing_fields": [],
-            },
-        },
+        request_intent=_intent(),  # type: ignore[arg-type]
         output_routes=routes,  # type: ignore[arg-type]
-        evidence_drafts=evidence,  # type: ignore[arg-type]
+        evidence_drafts=_evidence(),  # type: ignore[arg-type]
         analysis_result=None,
     )
-
     assert runtime.route_ids == ["route-task", "route-gmail"]
-    assert [item.candidate["route_id"] for item in results] == [
-        "route-task",
-        "route-gmail",
-    ]
+    assert [item.candidate["route_id"] for item in results] == ["route-task", "route-gmail"]
     assert results[0].candidate["arguments"]["task_list_id"] == "default-list"
     assert "task_list_id" not in results[1].candidate["arguments"]
+
+
+def test_missing_required_container_prepares_confirmation_without_writer_call() -> None:
+    runtime = _Runtime()
+    orchestrator = PlanningArgumentOrchestrator(
+        writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),  # type: ignore[arg-type]
+        default_container_resolver=DefaultContainerResolver(),
+    )
+    preparations = orchestrator.prepare_actions(output_routes=(_task_route(),))  # type: ignore[arg-type]
+    assert runtime.route_ids == []
+    preparation = preparations[0]
+    assert preparation["disposition"] == "NEEDS_CONFIRMATION"
+    assert preparation["route_id"] == "route-task"
+    assert preparation["reason_codes"] == ["PLANNING_REQUIRED_CONTAINER_UNRESOLVED"]
+    signal = project_planning_action_confirmation_required_v1(
+        preparation,
+        interrupt_id="interrupt-1",
+        resume_target={"subgraph_id": "PLANNING", "node_id": "finalize", "graph_version": "v1"},
+    )
+    assert signal["kind"] == "CONFIRMATION_REQUIRED"
+    assert signal["owner_subgraph"] == "PLANNING"
+    assert signal["question"] == preparation["question"]
+
+
+def test_only_ready_preparation_may_invoke_writer() -> None:
+    runtime = _Runtime()
+    orchestrator = PlanningArgumentOrchestrator(
+        writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),  # type: ignore[arg-type]
+        default_container_resolver=DefaultContainerResolver(default_tasklist_id_provider=lambda: "default-list"),
+    )
+    route = _task_route()
+    preparations = orchestrator.prepare_actions(output_routes=(route,))  # type: ignore[arg-type]
+    assert preparations[0]["disposition"] == "READY"
+    results = orchestrator.compose_prepared(
+        request=_request(),
+        request_intent=_intent(),  # type: ignore[arg-type]
+        output_routes=(route,),  # type: ignore[arg-type]
+        preparations=preparations,
+        evidence_drafts=_evidence(),  # type: ignore[arg-type]
+        analysis_result=None,
+    )
+    assert runtime.route_ids == ["route-task"]
+    assert results[0].candidate["arguments"]["task_list_id"] == "default-list"
+
+
+def test_non_ready_preparation_is_rejected_by_writer_boundary() -> None:
+    runtime = _Runtime()
+    orchestrator = PlanningArgumentOrchestrator(
+        writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),  # type: ignore[arg-type]
+        default_container_resolver=DefaultContainerResolver(),
+    )
+    route = _task_route()
+    preparation = orchestrator.prepare_actions(output_routes=(route,))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="READY preparation"):
+        orchestrator.compose_prepared(
+            request=_request(),
+            request_intent=_intent(),  # type: ignore[arg-type]
+            output_routes=(route,),  # type: ignore[arg-type]
+            preparations=preparation,
+            evidence_drafts=_evidence(),  # type: ignore[arg-type]
+            analysis_result=None,
+        )
+    assert runtime.route_ids == []
