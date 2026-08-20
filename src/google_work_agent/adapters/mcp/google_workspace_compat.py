@@ -14,6 +14,9 @@ from google_work_agent.adapters.mcp.transport import (
 from google_work_agent.adapters.mcp.transport import (
     SubprocessMCPTransport as DescriptorSubprocessMCPTransport,
 )
+from google_work_agent.domain.google_workspace_tool_contracts import (
+    google_workspace_tool_contract,
+)
 from google_work_agent.domain.google_workspace_tool_registry import (
     build_google_workspace_tool_registry,
 )
@@ -21,7 +24,17 @@ from google_work_agent.ports import ArtifactSignatureVerifier
 
 
 def build_manifest_payload() -> dict[str, object]:
-    payload = build_manifest_payload_for_registry(build_google_workspace_tool_registry())
+    registry = build_google_workspace_tool_registry()
+    payload = build_manifest_payload_for_registry(registry)
+    raw_tools = payload.get("tools")
+    if not isinstance(raw_tools, list):
+        raise RuntimeError("MCP manifest builder produced an invalid public tool surface")
+    for item in raw_tools:
+        if not isinstance(item, dict):
+            raise RuntimeError("MCP manifest builder produced an invalid tool entry")
+        tool_name = str(item.get("tool_name", ""))
+        item.update(google_workspace_tool_contract(tool_name).manifest_schema_payload())
+
     capabilities = build_google_workspace_internal_capabilities()
     payload["internal_capability_registry_version"] = INTERNAL_CAPABILITY_REGISTRY_VERSION
     payload["internal_capabilities"] = [
