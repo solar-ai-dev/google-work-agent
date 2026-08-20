@@ -28,6 +28,7 @@ from google_work_agent.application.workflows.planning_arguments import (
     BoundSelectedToolSchemaV1,
     DefaultContainerResolver,
     PlanningArgumentBindingError,
+    RequiredContainerUnresolvedError,
     ToolArgumentCandidateV1,
     validate_tool_argument_candidate_v1,
 )
@@ -237,16 +238,15 @@ class PlanningArgumentOrchestrator:
     def _prepare_route(self, route: OutputToolRouteV1) -> PlanningActionPreparationResultV1:
         try:
             bound_schema = self._bound_schema(route)
-        except PlanningArgumentBindingError as error:
-            message = str(error)
-            if " is required for selected tool: " in message:
-                return {
-                    "disposition": "NEEDS_CONFIRMATION",
-                    "route_id": route["route_id"],
-                    "question": "Select the required destination container for this action.",
-                    "options": [],
-                    "reason_codes": ["PLANNING_REQUIRED_CONTAINER_UNRESOLVED"],
-                }
+        except RequiredContainerUnresolvedError:
+            return {
+                "disposition": "NEEDS_CONFIRMATION",
+                "route_id": route["route_id"],
+                "question": "Select the required destination container for this action.",
+                "options": [],
+                "reason_codes": ["PLANNING_REQUIRED_CONTAINER_UNRESOLVED"],
+            }
+        except PlanningArgumentBindingError:
             return {
                 "disposition": "BLOCKED",
                 "route_id": route["route_id"],
