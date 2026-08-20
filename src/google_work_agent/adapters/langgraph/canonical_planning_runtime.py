@@ -42,9 +42,6 @@ from google_work_agent.application.write_verification_projection import (
     build_expected_verification_projection,
 )
 
-_active_write_connector_ids: ContextVar[dict[str, str] | None] = ContextVar(
-    "active_write_connector_ids", default=None
-)
 _active_target_resource_connector_ids: ContextVar[dict[str, str] | None] = ContextVar(
     "active_target_resource_connector_ids", default=None
 )
@@ -294,7 +291,6 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
             plan_draft=deterministic_plan,
             action_connector_ids=connector_ids,
         )
-        connector_token = _active_write_connector_ids.set(dict(connector_ids))
         target_token = _active_target_resource_connector_ids.set(
             dict(target_resource_connectors)
         )
@@ -303,7 +299,6 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
                 return super()._persist_write_plan(state, deterministic_plan)
         finally:
             _active_target_resource_connector_ids.reset(target_token)
-            _active_write_connector_ids.reset(connector_token)
 
     def _persist_read_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         connector_ids = connector_ids_for_read_actions_from_frozen_routes(
