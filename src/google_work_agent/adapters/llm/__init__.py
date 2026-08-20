@@ -8,6 +8,8 @@ from pathlib import Path
 from google_work_agent.adapters.llm.api_provider import (
     APIProviderConnectionService,
     APIProviderTransport,
+)
+from google_work_agent.adapters.llm.api_provider import (
     ApiStructuredLLMProvider as _ApiStructuredLLMProvider,
 )
 from google_work_agent.adapters.llm.credentials import (
@@ -22,8 +24,10 @@ from google_work_agent.adapters.llm.gemini import (
 )
 from google_work_agent.adapters.llm.ollama import (
     OllamaHTTPClient,
-    OllamaStructuredLLMProvider as _OllamaStructuredLLMProvider,
     OllamaTransport,
+)
+from google_work_agent.adapters.llm.ollama import (
+    OllamaStructuredLLMProvider as _OllamaStructuredLLMProvider,
 )
 from google_work_agent.adapters.llm.probes import (
     DefaultHardwareProbe,

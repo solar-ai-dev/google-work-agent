@@ -173,7 +173,8 @@ class ManifestEnforcedMCPTransport:
                     code=MCPTransportErrorCode.TOOL_REJECTED,
                     message=f"manifest public tool schema mismatch: {tool_name}",
                 )
-        if tuple(sorted(actual_names)) != expected_names or len(actual_names) != len(set(actual_names)):
+        no_duplicates = len(actual_names) == len(set(actual_names))
+        if tuple(sorted(actual_names)) != expected_names or not no_duplicates:
             raise MCPTransportError(
                 code=MCPTransportErrorCode.TOOL_REJECTED,
                 message="manifest public tool surface mismatch",

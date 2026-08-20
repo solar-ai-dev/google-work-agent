@@ -74,7 +74,9 @@ def _repo_root_for_manifest(manifest_path: Path) -> Path:
     # Canonical location: <repo>/prompts/agent/prompt-manifest-vX.Y.Z.json.
     # Resolve structurally rather than depending on the process working directory.
     if resolved.parent.name != "agent" or resolved.parent.parent.name != "prompts":
-        raise PromptInputContractError("prompt manifest is outside the canonical prompts/agent path")
+        raise PromptInputContractError(
+            "prompt manifest is outside the canonical prompts/agent path"
+        )
     return resolved.parent.parent.parent
 
 

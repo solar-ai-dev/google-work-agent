@@ -12,9 +12,8 @@ import json
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import TypeAlias
 
-JsonSchema: TypeAlias = dict[str, object]
+type JsonSchema = dict[str, object]
 
 
 def _object_schema(
@@ -233,7 +232,9 @@ def _validate_contract_phase(*, tool_name: str, phase: str, value: object) -> No
         raise ToolContractViolation(tool_name=tool_name, phase=phase, errors=errors)
 
 
-def _contract(tool_name: str, input_schema: JsonSchema, output_schema: JsonSchema) -> GoogleWorkspaceToolContract:
+def _contract(
+    tool_name: str, input_schema: JsonSchema, output_schema: JsonSchema
+) -> GoogleWorkspaceToolContract:
     return GoogleWorkspaceToolContract(
         tool_name=tool_name,
         input_schema_version="v1",

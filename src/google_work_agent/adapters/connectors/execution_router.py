@@ -110,4 +110,6 @@ class ConnectorExecutionRouter(ConnectorExecutionPort):
         try:
             return self._backends[connector_id]
         except KeyError as error:
-            raise LookupError(f"connector execution backend not registered: {connector_id}") from error
+            raise LookupError(
+                f"connector execution backend not registered: {connector_id}"
+            ) from error
