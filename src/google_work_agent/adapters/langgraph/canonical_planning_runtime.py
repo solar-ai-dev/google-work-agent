@@ -16,6 +16,9 @@ from typing import Any, cast
 from google_work_agent.adapters.langgraph.canonical_runtime import (
     LangGraphWorkflowRuntime as _ConfirmationLangGraphWorkflowRuntime,
 )
+from google_work_agent.adapters.langgraph.connector_read_result import (
+    ConnectorBoundCompleteReadActionService,
+)
 from google_work_agent.adapters.langgraph.connector_write_result import (
     ConnectorBoundStoreWriteActionSuccessService,
 )
@@ -104,6 +107,67 @@ def connector_ids_from_frozen_routes(
     return connector_ids
 
 
+def connector_ids_for_read_actions_from_frozen_routes(
+    *,
+    state: GraphState,
+    plan_draft: ActionPlanDraftV1,
+) -> dict[str, str]:
+    """Resolve READ action connector identity from frozen InputToolRouteV1 capabilities.
+
+    Legacy READ ActionDrafts do not carry route_id/connector_id. Until that DTO
+    disappears, a READ tool is accepted only when the frozen input plan maps it
+    to exactly one connector identity. Zero or multiple connector candidates
+    fail closed instead of inferring from a tool-name prefix or ResourceSource.
+    """
+
+    raw_route_plan = state.get("tool_route_plan")
+    if not isinstance(raw_route_plan, Mapping):
+        raise ValueError("read persistence requires frozen tool_route_plan")
+    input_plan = raw_route_plan.get("input_plan")
+    if not isinstance(input_plan, Mapping):
+        raise ValueError("read persistence requires input_plan")
+    raw_routes = input_plan.get("input_routes")
+    if not isinstance(raw_routes, list):
+        raise ValueError("input_plan.input_routes must be a list")
+
+    read_actions = [action for action in plan_draft["actions"] if action["effect"] == "READ"]
+    if not read_actions:
+        raise ValueError("read persistence requires at least one READ action")
+
+    connector_ids: dict[str, str] = {}
+    for action_index, action in enumerate(read_actions):
+        tool_name = action["tool_name"]
+        if not isinstance(tool_name, str) or not tool_name:
+            raise ValueError(f"read action tool is required at index {action_index}")
+        matching_connectors: set[str] = set()
+        for route_index, raw_route in enumerate(raw_routes):
+            if not isinstance(raw_route, Mapping):
+                raise ValueError(f"input_routes[{route_index}] must be an object")
+            allowed_tools = raw_route.get("allowed_read_tool_ids")
+            if not isinstance(allowed_tools, list):
+                raise ValueError(
+                    f"input_routes[{route_index}].allowed_read_tool_ids must be a list"
+                )
+            if tool_name not in allowed_tools:
+                continue
+            connector_id = raw_route.get("connector_id")
+            if not isinstance(connector_id, str) or not connector_id:
+                raise ValueError(f"input_routes[{route_index}].connector_id is required")
+            matching_connectors.add(connector_id)
+        if len(matching_connectors) != 1:
+            raise ValueError(
+                "read action must map to exactly one frozen connector; "
+                f"tool={tool_name!r}, connectors={sorted(matching_connectors)}"
+            )
+        action_id = action["action_id"]
+        if not action_id:
+            raise ValueError(f"read action id is empty at index {action_index}")
+        if action_id in connector_ids:
+            raise ValueError(f"duplicate read action id: {action_id}")
+        connector_ids[action_id] = next(iter(matching_connectors))
+    return connector_ids
+
+
 class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
     """Canonical runtime with deterministic Expected and connector boundaries."""
 
@@ -131,6 +195,11 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
         self._store_write_success = connector_bound_store
         self._write_execution_phase._store_write_success = connector_bound_store
 
+        self._complete_read = ConnectorBoundCompleteReadActionService(
+            delegate=self._complete_read,
+            unit_of_work_factory=self._unit_of_work_factory,
+        )
+
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         deterministic_plan = replace_llm_expected_with_deterministic_projection(plan_draft)
         connector_ids = connector_ids_from_frozen_routes(
@@ -140,9 +209,18 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
         with bind_action_connector_ids(connector_ids):
             return super()._persist_write_plan(state, deterministic_plan)
 
+    def _persist_read_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
+        connector_ids = connector_ids_for_read_actions_from_frozen_routes(
+            state=state,
+            plan_draft=plan_draft,
+        )
+        with bind_action_connector_ids(connector_ids):
+            return super()._persist_read_plan(state, plan_draft)
+
 
 __all__ = [
     "LangGraphWorkflowRuntime",
+    "connector_ids_for_read_actions_from_frozen_routes",
     "connector_ids_from_frozen_routes",
     "replace_llm_expected_with_deterministic_projection",
 ]
