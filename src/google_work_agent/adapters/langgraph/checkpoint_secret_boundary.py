@@ -35,7 +35,7 @@ class SecretBoundaryCheckpointer(BaseCheckpointSaver[Any]):
 
     @property
     def config_specs(self) -> list[Any]:
-        return self._delegate.config_specs
+        return list(self._delegate.config_specs)
 
     def get_tuple(self, config: Any) -> Any:
         return self._delegate.get_tuple(config)
