@@ -75,6 +75,8 @@ class ApproveWriteActionService:
         self._registry = build_p0_tool_registry()
 
     def __call__(self, command: ApproveWriteActionCommand) -> WriteActionResponse:
+        if command.ttl_ms <= 0:
+            raise ValueError("approval ttl must be positive")
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
@@ -322,7 +324,7 @@ class ApproveWriteActionService:
                     source_snapshot_hash=calculate_canonical_json_hash(approval_source_snapshot),
                 ),
                 approved_at_ms=now_ms,
-                expires_at_ms=now_ms + min(command.ttl_ms, 60_000),
+                expires_at_ms=now_ms + command.ttl_ms,
                 consumed_at_ms=None,
             )
             unit_of_work.approvals.insert(approval)
