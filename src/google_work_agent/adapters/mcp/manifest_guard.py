@@ -1,9 +1,9 @@
 """Manifest-enforced MCP transport boundary.
 
-The underlying subprocess transport verifies the executable, manifest hash,
-public Agent tool registry, and startup public tool list. This wrapper adds the
-separate non-Agent capability surface and performs the final fail-closed
-membership check immediately before every tool dispatch.
+Public Agent tools and non-Agent capabilities stay separate, but both must be
+present in the verified manifest. Actual input/output schemas are verified
+against the connector schema authority, and every tool call rechecks the
+negotiated manifest/registry versions immediately before delegate dispatch.
 """
 
 from __future__ import annotations
@@ -15,6 +15,9 @@ from typing import Protocol, cast
 
 from google_work_agent.adapters.mcp.capabilities import MCPInternalCapability
 from google_work_agent.adapters.mcp.transport import MCPConnectorDescriptor
+from google_work_agent.domain.google_workspace_tool_contracts import (
+    google_workspace_tool_contract,
+)
 from google_work_agent.ports import (
     MCPControlResponse,
     MCPRuntimeMetadata,
@@ -57,12 +60,7 @@ class ManifestEnforcedMCPTransport:
         self._verify_remote_internal_surface()
 
     def call_tool(self, *, tool_name: str, arguments: dict[str, object]) -> MCPToolResponse:
-        if tool_name not in self._verified_callable_names:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.TOOL_REJECTED,
-                message=f"tool is outside verified connector capability surface: {tool_name}",
-                dispatch_started=False,
-            )
+        self._require_current_callable(tool_name)
         return self._delegate.call_tool(tool_name=tool_name, arguments=arguments)
 
     def call_control(
@@ -95,6 +93,26 @@ class ManifestEnforcedMCPTransport:
     def sign_claim_context(self, payload: dict[str, object]) -> str:
         return self._delegate.sign_claim_context(payload)
 
+    def _require_current_callable(self, tool_name: str) -> None:
+        if tool_name not in self._verified_callable_names:
+            raise MCPTransportError(
+                code=MCPTransportErrorCode.TOOL_REJECTED,
+                message=f"tool is outside verified connector capability surface: {tool_name}",
+                dispatch_started=False,
+            )
+        metadata = self._delegate.runtime_metadata()
+        config = self._descriptor.artifact_config
+        if (
+            metadata.manifest_version != config.expected_manifest_version
+            or metadata.protocol_version != config.expected_protocol_version
+            or metadata.tool_registry_version != config.expected_tool_registry_version
+        ):
+            raise MCPTransportError(
+                code=MCPTransportErrorCode.SCHEMA_MISMATCH,
+                message="MCP negotiated manifest/registry version is stale",
+                dispatch_started=False,
+            )
+
     def _load_verified_manifest_surface(self) -> frozenset[str]:
         manifest_path = Path(self._descriptor.artifact_config.manifest_path)
         raw = manifest_path.read_bytes()
@@ -104,31 +122,66 @@ class ManifestEnforcedMCPTransport:
                 message="manifest changed after transport verification",
             )
         payload = cast(dict[str, object], json.loads(raw.decode("utf-8")))
+        public_names = self._verify_public_manifest_tools(payload)
+        internal_names = self._verify_internal_manifest_capabilities(payload)
+        if public_names & internal_names:
+            raise MCPTransportError(
+                code=MCPTransportErrorCode.TOOL_REJECTED,
+                message="public and internal MCP capability surfaces overlap",
+            )
+        return public_names | internal_names
 
+    def _verify_public_manifest_tools(self, payload: dict[str, object]) -> frozenset[str]:
         raw_tools = payload.get("tools")
         if not isinstance(raw_tools, list):
             raise MCPTransportError(
                 code=MCPTransportErrorCode.SCHEMA_MISMATCH,
                 message="manifest public tool surface is missing",
             )
-        manifest_public_names = tuple(
-            sorted(
-                str(item["tool_name"])
-                for item in raw_tools
-                if isinstance(item, dict) and "tool_name" in item
-            )
-        )
-        expected_public_names = tuple(
+        expected_names = tuple(
             entry.tool_name for entry in self._descriptor.expected_tool_registry.list_entries()
         )
-        if manifest_public_names != expected_public_names or len(manifest_public_names) != len(
-            raw_tools
-        ):
+        actual_names: list[str] = []
+        for raw_item in raw_tools:
+            if not isinstance(raw_item, dict):
+                raise MCPTransportError(
+                    code=MCPTransportErrorCode.SCHEMA_MISMATCH,
+                    message="manifest public tool entry is malformed",
+                )
+            item = cast(dict[str, object], raw_item)
+            tool_name = str(item.get("tool_name", ""))
+            actual_names.append(tool_name)
+            try:
+                registry_entry = self._descriptor.expected_tool_registry.require(tool_name)
+                contract = google_workspace_tool_contract(tool_name)
+            except (KeyError, LookupError) as error:
+                raise MCPTransportError(
+                    code=MCPTransportErrorCode.TOOL_REJECTED,
+                    message=f"manifest public tool is not registered: {tool_name}",
+                ) from error
+            if (
+                item.get("input_schema_version") != contract.input_schema_version
+                or item.get("output_schema_version") != contract.output_schema_version
+                or item.get("tool_schema_hash") != contract.schema_hash
+                or item.get("tool_schema_hash") != registry_entry.tool_schema_hash
+                or item.get("input_schema") != contract.input_schema
+                or item.get("output_schema") != contract.output_schema
+            ):
+                raise MCPTransportError(
+                    code=MCPTransportErrorCode.TOOL_REJECTED,
+                    message=f"manifest public tool schema mismatch: {tool_name}",
+                )
+        if tuple(sorted(actual_names)) != expected_names or len(actual_names) != len(set(actual_names)):
             raise MCPTransportError(
                 code=MCPTransportErrorCode.TOOL_REJECTED,
-                message="manifest public tool surface changed after transport verification",
+                message="manifest public tool surface mismatch",
             )
+        return frozenset(actual_names)
 
+    def _verify_internal_manifest_capabilities(
+        self,
+        payload: dict[str, object],
+    ) -> frozenset[str]:
         if payload.get("internal_capability_registry_version") != self._internal_registry_version:
             raise MCPTransportError(
                 code=MCPTransportErrorCode.TOOL_REJECTED,
@@ -140,45 +193,31 @@ class ManifestEnforcedMCPTransport:
                 code=MCPTransportErrorCode.SCHEMA_MISMATCH,
                 message="manifest internal capability surface is missing",
             )
-        manifest_internal = tuple(
-            sorted(
-                (
-                    str(item.get("tool_name", "")),
-                    str(item.get("category", "")),
-                    str(item.get("input_schema_version", "")),
-                    str(item.get("output_schema_version", "")),
-                    str(item.get("registry_version", "")),
+        expected = {
+            capability.tool_name: capability.to_manifest_payload()
+            for capability in self._expected_internal_capabilities
+        }
+        actual_names: list[str] = []
+        for raw_item in raw_internal:
+            if not isinstance(raw_item, dict):
+                raise MCPTransportError(
+                    code=MCPTransportErrorCode.SCHEMA_MISMATCH,
+                    message="manifest internal capability entry is malformed",
                 )
-                for item in raw_internal
-                if isinstance(item, dict)
-            )
-        )
-        expected_internal = tuple(
-            sorted(
-                (
-                    capability.tool_name,
-                    capability.category.value,
-                    capability.input_schema_version,
-                    capability.output_schema_version,
-                    capability.registry_version,
+            item = cast(dict[str, object], raw_item)
+            tool_name = str(item.get("tool_name", ""))
+            actual_names.append(tool_name)
+            if expected.get(tool_name) != item:
+                raise MCPTransportError(
+                    code=MCPTransportErrorCode.TOOL_REJECTED,
+                    message=f"manifest internal capability mismatch: {tool_name}",
                 )
-                for capability in self._expected_internal_capabilities
-            )
-        )
-        if manifest_internal != expected_internal or len(manifest_internal) != len(raw_internal):
+        if len(actual_names) != len(set(actual_names)) or set(actual_names) != set(expected):
             raise MCPTransportError(
                 code=MCPTransportErrorCode.TOOL_REJECTED,
-                message="manifest internal capability contract mismatch",
+                message="manifest internal capability surface mismatch",
             )
-
-        public_names = frozenset(manifest_public_names)
-        internal_names = frozenset(item[0] for item in manifest_internal)
-        if public_names & internal_names:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.TOOL_REJECTED,
-                message="public and internal MCP capability surfaces overlap",
-            )
-        return public_names | internal_names
+        return frozenset(actual_names)
 
     def _verify_remote_internal_surface(self) -> None:
         response = self._delegate.call_control(
