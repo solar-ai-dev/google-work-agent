@@ -11,6 +11,7 @@ from google_work_agent.application.workflows.supervisor import SupervisorTarget
 from google_work_agent.domain import RunStatus
 
 RESUME_CONTRACT_VERSION = "resume-contract-v1"
+RESPONSE_SYNTHESIS_TARGET = "RESPONSE_SYNTHESIS"
 
 
 class UnroutableSupervisorTargetError(ValueError):
@@ -74,6 +75,7 @@ _COMMON_ROUTES = {
     SupervisorTarget.ACTION_EXECUTION.value: RouteTranslation(
         "action_execution", "action_execution"
     ),
+    RESPONSE_SYNTHESIS_TARGET: RouteTranslation("response_synthesis", "response_synthesis"),
     SupervisorTarget.REAUTH.value: RouteTranslation("end", "end"),
     SupervisorTarget.RECOVERY.value: RouteTranslation("recovery", "recovery"),
     SupervisorTarget.FINALIZE.value: RouteTranslation("finalize", "finalize"),
