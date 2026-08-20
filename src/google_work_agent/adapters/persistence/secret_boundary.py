@@ -13,12 +13,12 @@ from google_work_agent.adapters.persistence.repositories import (
 from google_work_agent.ports import AuditEventRecord, TraceEventRecord
 
 _SENSITIVE_KEY_FRAGMENTS = (
-    "page_token",
-    "attachment_bytes",
-    "raw_attachment",
-    "provider_payload",
-    "raw_provider_response",
-    "raw_provider_request",
+    "pagetoken",
+    "attachmentbytes",
+    "rawattachment",
+    "providerpayload",
+    "rawproviderresponse",
+    "rawproviderrequest",
 )
 _SENSITIVE_VALUE_FRAGMENTS = (
     "canary_access_token",
@@ -70,10 +70,10 @@ def _scrub_value(value: Any) -> Any:
         attachment_projection = _looks_like_attachment_projection(value)
         result: dict[str, Any] = {}
         for key, item in value.items():
-            normalized = str(key).strip().lower().replace("-", "_")
-            if any(fragment in normalized for fragment in _SENSITIVE_KEY_FRAGMENTS):
+            compact_key = _compact_key(key)
+            if any(fragment in compact_key for fragment in _SENSITIVE_KEY_FRAGMENTS):
                 continue
-            if attachment_projection and normalized == "data":
+            if attachment_projection and compact_key == "data":
                 continue
             result[str(key)] = _scrub_value(item)
         return result
@@ -88,10 +88,11 @@ def _scrub_value(value: Any) -> Any:
 
 
 def _looks_like_attachment_projection(value: dict[object, object]) -> bool:
-    normalized_keys = {
-        str(key).strip().lower().replace("-", "_")
-        for key in value
-    }
-    return "data" in normalized_keys and bool(
-        {"filename", "mime_type", "attachment_id"} & normalized_keys
+    compact_keys = {_compact_key(key) for key in value}
+    return "data" in compact_keys and bool(
+        {"filename", "mimetype", "attachmentid"} & compact_keys
     )
+
+
+def _compact_key(value: object) -> str:
+    return "".join(character for character in str(value).lower() if character.isalnum())
