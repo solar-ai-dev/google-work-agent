@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import cast
 
 import pytest
@@ -6,8 +7,17 @@ from google_work_agent.adapters.connectors.execution_router import (
     ConnectorExecutionRouter,
     bind_execution_connector_id,
 )
+from google_work_agent.adapters.langgraph.connector_execution_scope import (
+    ConnectorBoundWriteExecutionPhaseCoordinator,
+)
+from google_work_agent.application.execution_phase import (
+    WriteExecutionDisposition,
+    WriteExecutionPhaseCoordinator,
+    WriteExecutionPhaseRequest,
+    WriteExecutionPhaseResult,
+)
 from google_work_agent.application.ports import ConnectorWriteRequest, PreparedConnectorWrite
-from google_work_agent.ports import ResourceSnapshot
+from google_work_agent.ports import ResourceSnapshot, UnitOfWork
 
 
 class _FakeExecutionBackend:
@@ -49,6 +59,42 @@ class _FakeExecutionBackend:
     ) -> tuple[ResourceSnapshot, ...]:
         self.calls.append(f"recover:{tool_name}")
         return (self.snapshot,)
+
+
+class _ConnectorActionRepository:
+    def __init__(self, connector_id: str) -> None:
+        self._connector_id = connector_id
+
+    def connector_id_for_action(self, action_id: str) -> str:
+        assert action_id == "action-1"
+        return self._connector_id
+
+
+class _ConnectorUnitOfWork:
+    def __init__(self, connector_id: str) -> None:
+        self.actions = _ConnectorActionRepository(connector_id)
+
+    def __enter__(self) -> "_ConnectorUnitOfWork":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, exc_tb: object) -> None:
+        return None
+
+
+class _PhaseDelegate:
+    def __init__(self, router: ConnectorExecutionRouter) -> None:
+        self._router = router
+
+    def execute(self, request: WriteExecutionPhaseRequest) -> WriteExecutionPhaseResult:
+        self._router.prepare_write(
+            tool_name="github_create_issue",
+            arguments={"title": request.action_id},
+            recovery_fingerprint=None,
+        )
+        return WriteExecutionPhaseResult(
+            disposition=WriteExecutionDisposition.VERIFIED,
+            action_status="VERIFIED",
+        )
 
 
 def test_router_dispatches_only_to_bound_connector() -> None:
@@ -96,3 +142,32 @@ def test_router_fails_closed_for_unregistered_connector() -> None:
                 arguments={},
                 fallback_resource_id="issue-1",
             )
+
+
+def test_phase_scope_routes_from_persisted_action_connector() -> None:
+    google = _FakeExecutionBackend("google")
+    github = _FakeExecutionBackend("github")
+    router = ConnectorExecutionRouter(
+        {"google_workspace": google, "github": github}
+    )
+    delegate = cast(WriteExecutionPhaseCoordinator, _PhaseDelegate(router))
+    factory = cast(
+        Callable[[], UnitOfWork],
+        lambda: _ConnectorUnitOfWork("github"),
+    )
+    coordinator = ConnectorBoundWriteExecutionPhaseCoordinator(
+        delegate=delegate,
+        unit_of_work_factory=factory,
+    )
+
+    result = coordinator.execute(
+        WriteExecutionPhaseRequest(
+            run_id="run-1",
+            action_id="action-1",
+            action_version=0,
+        )
+    )
+
+    assert result.disposition is WriteExecutionDisposition.VERIFIED
+    assert google.calls == []
+    assert github.calls == ["prepare:github_create_issue"]
