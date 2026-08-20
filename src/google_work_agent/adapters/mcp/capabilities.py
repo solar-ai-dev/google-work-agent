@@ -1,14 +1,19 @@
 """Explicit non-Agent MCP capability registry for Google Workspace.
 
 Agent routing continues to use ``SignedToolRegistry``. UI, attachment, and
-recovery-only callables live here so they can be signed/versioned in the MCP
-manifest without becoming eligible Agent tools.
+recovery-only callables live here so they can be signed/versioned/schema-bound
+without becoming eligible Agent tools.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+
+from google_work_agent.domain.google_workspace_tool_contracts import (
+    GoogleWorkspaceToolContract,
+    google_workspace_tool_contract,
+)
 
 INTERNAL_CAPABILITY_REGISTRY_VERSION = "2026-08-20.p0"
 
@@ -23,26 +28,34 @@ class MCPInternalCapabilityCategory(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class MCPInternalCapability:
-    """Versioned declaration for one non-Agent MCP callable.
-
-    Input/output schema versions are explicit here, while the actual schema
-    authority/hash is closed separately by Task 7-B. This registry must not be
-    used by Tool Route candidate selection.
-    """
+    """Versioned declaration for one non-Agent MCP callable."""
 
     tool_name: str
     category: MCPInternalCapabilityCategory
-    input_schema_version: str = "v1"
-    output_schema_version: str = "v1"
     registry_version: str = INTERNAL_CAPABILITY_REGISTRY_VERSION
+
+    @property
+    def contract(self) -> GoogleWorkspaceToolContract:
+        return google_workspace_tool_contract(self.tool_name)
+
+    @property
+    def input_schema_version(self) -> str:
+        return self.contract.input_schema_version
+
+    @property
+    def output_schema_version(self) -> str:
+        return self.contract.output_schema_version
+
+    @property
+    def tool_schema_hash(self) -> str:
+        return self.contract.schema_hash
 
     def to_manifest_payload(self) -> dict[str, object]:
         return {
             "tool_name": self.tool_name,
             "category": self.category.value,
-            "input_schema_version": self.input_schema_version,
-            "output_schema_version": self.output_schema_version,
             "registry_version": self.registry_version,
+            **self.contract.manifest_schema_payload(),
         }
 
 
