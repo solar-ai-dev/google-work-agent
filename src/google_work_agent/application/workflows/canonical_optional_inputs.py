@@ -15,12 +15,11 @@ to satisfy legacy function signatures.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable
 from typing import cast
 
 import google_work_agent.application.workflows.solution_planning as _planning
 import google_work_agent.application.workflows.work_analysis as _analysis
-from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.contracts import ConfirmationResponseV1
 from google_work_agent.application.workflows.handoff_contracts import (
@@ -198,7 +197,7 @@ def validate_answer_with_optional_analysis(
             for ref in analysis_result["resource_refs"]
             if isinstance(ref.get("resource_handle"), str)
         )
-    refs = {
+    refs: _planning._ReferenceSpace = {
         "evidence_ids": evidence_ids,
         "resource_handles": resource_handles,
     }
@@ -308,28 +307,28 @@ def assemble_plan_with_optional_analysis(
     resource_refs = [{"resource_handle": handle} for handle in resource_handles]
 
     legacy_actions: list[dict[str, object]] = []
-    for position, action in enumerate(canonical["actions"], start=1):
+    for position, planned_action in enumerate(canonical["actions"], start=1):
         action_resource_handles = _stable_unique(
             evidence_by_id[evidence_ref]["resource_handle"]
-            for evidence_ref in action["evidence_refs"]
+            for evidence_ref in planned_action["evidence_refs"]
             if evidence_ref in evidence_by_id
             and evidence_by_id[evidence_ref]["resource_handle"]
         )
         legacy_actions.append(
             {
                 "schema_version": 2,
-                "action_id": action["action_id"],
+                "action_id": planned_action["action_id"],
                 "position": position,
-                "effect": action["effect"],
-                "tool_name": action["tool_id"],
-                "arguments": dict(action["arguments"]),
+                "effect": planned_action["effect"],
+                "tool_name": planned_action["tool_id"],
+                "arguments": dict(planned_action["arguments"]),
                 "expected": build_expected_verification_projection(
-                    tool_name=action["tool_id"], arguments=action["arguments"]
+                    tool_name=planned_action["tool_id"], arguments=planned_action["arguments"]
                 ),
-                "evidence_refs": list(action["evidence_refs"]),
+                "evidence_refs": list(planned_action["evidence_refs"]),
                 "resource_refs": action_resource_handles,
                 "target_resource_ref_id": None,
-                "depends_on_action_ids": list(action["depends_on_action_ids"]),
+                "depends_on_action_ids": list(planned_action["depends_on_action_ids"]),
                 "user_visible_reason": request_intent["goal"],
             }
         )

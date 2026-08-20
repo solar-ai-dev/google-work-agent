@@ -228,10 +228,12 @@ class CanonicalOptionalPlanningSubgraph(PlanningSubgraph):
                 request=request,
                 confirmation_response=confirmation_response,
             )
-            result = self._agent.build_answer_with_optional_analysis(
-                llm_result,
-                analysis_result=analysis_result,
-                evidence_drafts=evidence_drafts,
+            result: AnswerDraftV1 | ActionPlanDraftV1 = (
+                self._agent.build_answer_with_optional_analysis(
+                    llm_result,
+                    analysis_result=analysis_result,
+                    evidence_drafts=evidence_drafts,
+                )
             )
             return result, [llm_result]
 
