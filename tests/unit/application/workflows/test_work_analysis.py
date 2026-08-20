@@ -226,12 +226,24 @@ def test_analysis_prompt_input_uses_stage6_context_and_marks_source_untrusted() 
 
     prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
     assert prompt_input["request_intent"] == _intent()
-    assert prompt_input["context_status"] == "SUFFICIENT"
-    assert prompt_input["context_bundle"] == _context_result()["context_bundle"]
-    assert prompt_input["evidence_drafts"] == _context_result()["evidence_drafts"]
-    assert prompt_input["source_content_is_untrusted"] is True
-    assert "acquisition_result" not in prompt_input
-    assert "source_fetch_plans" not in prompt_input
+    assert prompt_input["user_request"] == _request().request_text
+    assert prompt_input["evidence"] == [
+        {
+            "evidence_ref": "evidence-1",
+            "excerpt": "Kim is waiting for the follow-up task.",
+            "role": "CONTEXT",
+            "resource_ref": "gmail_thread:thread-kim",
+        }
+    ]
+    assert prompt_input["availability_results"] == []
+    assert prompt_input["policy_confirmation_receipt_refs"] == []
+    assert set(prompt_input) == {
+        "user_request",
+        "request_intent",
+        "evidence",
+        "availability_results",
+        "policy_confirmation_receipt_refs",
+    }
 
 
 def test_invalid_status_is_rejected() -> None:
@@ -444,8 +456,8 @@ def test_prompt_injection_source_text_is_data_not_instruction() -> None:
     )
 
     prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
-    assert prompt_input["source_content_is_untrusted"] is True
-    assert "delete tasks" in str(prompt_input["evidence_drafts"])
+    assert "source_content_is_untrusted" not in prompt_input
+    assert "delete tasks" in str(prompt_input["evidence"])
 
 
 def test_work_analysis_agent_has_no_google_mcp_domain_or_repository_dependency() -> None:

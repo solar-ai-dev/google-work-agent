@@ -247,15 +247,11 @@ class WorkAnalysisAgent:
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._analyze_prompt_ref,
             prompt_input={
-                "request_text": request.request_text,
+                "user_request": request.request_text,
                 "request_intent": request_intent,
-                "context_status": context_result["status"],
-                "context_bundle": context_result["context_bundle"],
-                "evidence_drafts": context_result["evidence_drafts"],
-                "selected_segment_ids": list(context_result["selected_segment_ids"]),
-                "missing_slots": list(context_result["missing_slots"]),
-                "sufficiency": dict(context_result["sufficiency"]),
-                "source_content_is_untrusted": True,
+                "evidence": _planning_evidence_projection(context_result["evidence_drafts"]),
+                "availability_results": [],
+                "policy_confirmation_receipt_refs": [],
             },
             output_schema=WORK_ANALYSIS_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
