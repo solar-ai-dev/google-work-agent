@@ -24,6 +24,7 @@ from google_work_agent.adapters.llm.probes import (
     DefaultHardwareProbe,
     LoopbackOllamaProbe,
 )
+from google_work_agent.adapters.llm.prompt_input_guard import PromptInputGuardedProvider
 from google_work_agent.adapters.llm.router import DeterministicLLMRuntimeRouter
 from google_work_agent.adapters.llm.schema import validate_output_schema
 from google_work_agent.adapters.llm.status import LLMRuntimeStatusService
@@ -44,6 +45,7 @@ __all__ = [
     "OllamaHTTPClient",
     "OllamaStructuredLLMProvider",
     "OllamaTransport",
+    "PromptInputGuardedProvider",
     "SessionMemorySecretStore",
     "validate_output_schema",
 ]
