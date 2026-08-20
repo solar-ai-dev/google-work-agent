@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import pytest
 
@@ -8,7 +8,11 @@ from google_work_agent.application.resource_continuation import (
     LocalResourceContinuationStore,
     OpaqueResourceQueryService,
 )
-from google_work_agent.application.resource_queries import ResourceCount, ResourceListPage
+from google_work_agent.application.resource_queries import (
+    GmailResourceDetail,
+    ResourceCount,
+    ResourceListPage,
+)
 from google_work_agent.ports import GoogleWorkspaceErrorCode, GoogleWorkspaceGatewayError
 
 
@@ -16,6 +20,9 @@ class _ResourceServiceStub:
     def __init__(self) -> None:
         self.gmail_page_tokens: list[str | None] = []
         self.task_page_tokens: list[str | None] = []
+
+    def get_gmail_thread_detail(self, *, resource_id: str) -> GmailResourceDetail:
+        raise AssertionError(f"detail path not expected in this test: {resource_id}")
 
     def list_gmail_threads(
         self,
@@ -49,8 +56,16 @@ class _ResourceServiceStub:
             next_page_token="provider-next-tasks" if page_token is None else None,
         )
 
-    def list_calendar_resources(self, **kwargs: object) -> ResourceListPage:
-        page_token = kwargs.get("page_token")
+    def list_calendar_resources(
+        self,
+        *,
+        calendar_id: str | None,
+        time_min: str | None,
+        time_max: str | None,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourceListPage:
+        del calendar_id, time_min, time_max, page_size
         return ResourceListPage(
             source="calendar",
             items=(),
@@ -65,12 +80,18 @@ class _ResourceServiceStub:
         del task_list_id
         return ResourceCount(source="tasks", total_count=1)
 
-    def count_calendar_resources(self, **kwargs: object) -> ResourceCount:
-        del kwargs
+    def count_calendar_resources(
+        self,
+        *,
+        calendar_id: str | None,
+        time_min: str | None,
+        time_max: str | None,
+    ) -> ResourceCount:
+        del calendar_id, time_min, time_max
         return ResourceCount(source="calendar", total_count=1)
 
 
-def _token_factory(values: Iterator[str]):
+def _token_factory(values: Iterator[str]) -> Callable[[], str]:
     return lambda: next(values)
 
 
