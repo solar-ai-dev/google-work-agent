@@ -1,12 +1,5 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **2026-08-21 Canonical Amendment — Runtime V2 Gap Closure Regression**
->
-> - Work Analysis `assess_analysis_gaps`만 `WorkAnalysisGapDecisionV1`의 retrieval need / confirmation semantic payload / risk candidate를 생산하는지 검증한다.
-> - `WorkRelationV1.left_ref/right_ref`가 same-invocation `fact_id`만 허용하고 guarded relation이 current-run normalized identity로 exact resolve되지 않으면 official relation이 생성되지 않는지 검증한다.
-> - Planning ACTION은 `PlanningActionPreparationResultV1.READY`에서만 Argument Writer를 호출하고 required default container 미해결 시 Writer 0회 + same-owner confirmation으로 전환하는지 검증한다.
-> - Revision budget DENY는 exact `BlockRun` reason을 사용하고 `applied=true`에서만 FINALIZE, `applied=false`에서는 Domain reconciliation으로 가는지 검증한다.
->
 > **2026-08-19 Canonical Sync — 필수 회귀 Gate**
 >
 > - 같은 Conversation에서 Terminal Run A 뒤 업무적으로 무관한 Run B를 시작할 수 있고 A/B의 `run_id`와 `langgraph_thread_id`가 달라야 한다.
@@ -17,9 +10,9 @@
 > - Generic Repair는 `base_projection + candidate_output + failure_record` 이외 legacy root field를 Product Prompt에 전달하지 않는다.
 > - Planning ACTION은 OutputRoute별 Argument Writer 호출, deterministic Tool Schema binding, affected-route-only revision, DAG validation, deterministic expected verification을 검증한다.
 
-> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Database v1.20`, `05 Retrieval v2.13`, `06 Workflow v7.21`, `07 Interface v2.24`, `08 Sequence v3.17`, `09 Security v2.11`, `10 Infrastructure v2.11`, `11 Observability v2.20`, `15 Agent Capability·Failure·Prompt v1.27`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5를 기준으로 한다.
+> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Database v1.20`, `05 Retrieval v2.13`, `06 Workflow v7.20`, `07 Interface v2.23`, `08 Sequence v3.17`, `09 Security v2.11`, `10 Infrastructure v2.11`, `11 Observability v2.20`, `15 Agent Capability·Failure·Prompt v1.26`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5를 기준으로 한다.
 >
-> **상태:** Draft v3.40 · **기준일:** 2026-08-21 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.39 · **기준일:** 2026-08-19 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -176,10 +169,6 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - 위 필수 READ가 사용자의 명시적 Source·기간·Resource 범위를 벗어나면 자동 확장 금지. `SCOPE_EXPANSION_REQUIRED` APPROVED Receipt 전에는 Route 실행 불가, 거절 후 검사를 생략한 Write Plan은 실패다.
 - `PolicyConfirmationReceiptV1`은 Agent/LLM이 생성할 수 없고 `meta.based_on + decision_context_hash`가 active revision과 일치해야 한다. stale/DECLINED Receipt, Audit/Checkpoint Receipt ID 불일치는 실패다.
 - Work Analysis의 `relation_candidates`는 결정적 validator를 거쳐 `validated_relations`로 승격되어야 한다. 검증 전 `DUPLICATES`/`CONFLICTS_WITH`가 최종 Result에 직접 들어가면 실패다.
-- `WorkAnalysisGapDecisionV1`은 Local State 전용이다. `NEEDS_MORE_DATA.needs`는 non-empty `RetrievalNeedV1[]`여야 하고 finalize가 내용을 바꾸지 않고 `RetrievalRequiredV1`로 projection해야 한다. ambiguity/summary에서 `required_information`을 새로 합성하면 실패다.
-- Work Analysis `NEEDS_CONFIRMATION`의 `question + options + reason_codes`는 `assess_analysis_gaps` semantic payload만 사용한다. LLM/local payload가 `interrupt_id`, `owner_subgraph`, `resume_target`, `graph_version`을 발급하면 실패다.
-- `WorkRelationV1.left_ref/right_ref`는 같은 Work Analysis invocation의 존재하는 `fact_id`여야 한다. Provider ID/resource_handle/raw snapshot key operand는 실패다. Guarded relation의 양 fact가 각각 정확히 하나의 current-run normalized identity로 resolve되지 않으면 `validated_relations`에 들어가면 실패다.
-- Work Analysis risk는 `risk_candidates + relation_validation_risks → deterministic validation/dedup → validated_risks` 순서를 지켜야 한다. invalid severity, empty code/description, cross-run/unknown evidence, duplicate risk가 official `.risks`에 들어가면 실패다. unresolved `BLOCKING` risk가 Domain status를 직접 변경하면 실패다.
 - 정확 Task 중복은 기본 `action_necessity=NOT_REQUIRED`이며 새 Action 0. 추가 생성은 `DUPLICATE_OVERRIDE_REQUIRED` 2차 Confirmation 후에만 가능하다.
 - 검증된 Calendar 충돌 Action은 `CONFLICT_OVERRIDE_REQUIRED` 2차 Confirmation 후에만 가능하다.
 - Override Action은 `WorkAnalysisResultV2.policy_confirmation_receipt_refs`와 Approval Snapshot이 같은 APPROVED Receipt를 참조해야 하며 누락/stale이면 Claim 전에 차단한다.
@@ -242,9 +231,6 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - `Retrieval.PARTIAL + usable Evidence 없음`은 `CompleteAnswerOnlyRun → COMPLETED` 이후 FINALIZE해야 하며 비Terminal Run의 직접 FINALIZE는 실패다.
 - unknown Enum/Version/Disposition은 bounded repair 후 `RequireRecovery(CONTRACT_VIOLATION)`로 fail-closed한다.
 - `BlockRun`은 Claim 전 + Active/Unknown/미검증 Write Attempt 없음일 때만 적용한다. Plan이 존재하면 Action terminalize → ACTIVE Approval revoke → Plan CANCELLED → Run BLOCKED 순서를 같은 UoW에서 지켜 `0005` cross-aggregate trigger를 만족해야 한다.
-- Planning Revision budget DENY는 정확히 `BlockRun(reason_code=PLANNING_REVISION_BUDGET_EXHAUSTED)`을 호출하고 `applied=true`에서만 FINALIZE해야 한다.
-- Semantic Revision budget DENY는 정확히 `BlockRun(reason_code=SEMANTIC_REVISION_BUDGET_EXHAUSTED)`을 호출하고 `applied=true`에서만 FINALIZE해야 한다.
-- 위 두 BlockRun이 `applied=false`이면 FINALIZE/Write로 fall-through하지 않고 `current_status + next_allowed_commands` 기반 `DOMAIN_RECONCILE`로 가야 한다. CONTRACT_VIOLATION/RECOVERY_REQUIRED/FAILED/COMPLETED로 임의 재분류하면 실패다.
 
 ## 9. UI
 
@@ -573,8 +559,6 @@ Gate는 고정 Sampling 조건에서 Item당 1회 평가한다. Temperature는 G
 - Retrieval Subgraph는 `input_routes` 안에서 Query→결정적 Read→Normalize/Segment→Run-scoped RAG→Evidence→Sufficiency를 완료한 뒤 공식 `RetrievalResultV1`과 필요한 Typed `WorkflowSignalV1`만 반환한다.
 - Retrieval의 Query candidate·Page Token·RAG score·repair candidate를 Main State에 승격하지 않는다.
 - Planning은 `output_routes[].selected_tool_id`와 해당 Tool Schema만 사용해 Arguments를 작성하고 Tool을 다시 선택하지 않는다.
-- `ToolArgumentCandidateV1`에 status/disposition/workflow signal/confirmation/interrupt field를 추가하면 실패다.
-- ACTION route preparation은 `PlanningActionPreparationResultV1`만 사용하며 `READY`에서만 per-route Argument Writer를 호출한다. required container가 unresolved인 `NEEDS_CONFIRMATION` case는 해당 route Writer call count=0이고 `route_id + question + options + reason_codes`를 보존해야 한다.
 - upstream State revision 시 의존 downstream State가 stale 처리되고 재생성되는지 검증한다.
 - `SINGLE_BASELINE`은 Planning 결과에 대해 같은 Unified Agent 내부 self-review 책임을 수행한다.
 - E06-B는 `CONTEXT_READY_V1` 호환 Snapshot 이후만 실행하며 MCP Read Tool 호출 수가 0이어야 한다.
@@ -920,8 +904,8 @@ LLM candidate를 final ToolRoutePlanV2의 policy-precondition READ와 직접 비
 
 `tasklist_id`, `calendar_id` 같은 default container ID를 LLM이 숨은 값으로 추측하면 실패다. 실제 Local model Planning pilot 전 다음 중 하나를 고정한다.
 
-1. deterministic `DefaultContainerResolver`가 explicit/configured default ID를 바인딩하고 `PlanningActionPreparationResultV1.READY`를 반환한다.
-2. required container를 resolve하지 못하면 `PlanningActionPreparationResultV1.NEEDS_CONFIRMATION`을 반환하고 해당 route의 Argument Writer를 호출하지 않는다.
+1. deterministic Plan/Argument Assembler가 default ID를 바인딩한다.
+2. 또는 allowlisted `runtime_context/default_resource_bindings`를 Planning input에 명시한다.
 
 ### Manual style smoke
 

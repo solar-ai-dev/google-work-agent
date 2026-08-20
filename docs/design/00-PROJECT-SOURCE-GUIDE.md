@@ -3,7 +3,7 @@
 ## 목적
 
 이 묶음은 설계 검토·구현 질의·실험/평가 검토에 사용하는 **Canonical 프로젝트 소스 25개**다.  
-공식 원본은 **Notion Canonical**이며 이 Markdown 묶음은 **2026-08-21 Runtime V2 Authority Gap A–F Canonical Amendment 정합화 이후 Export Snapshot**이다.
+공식 원본은 **Notion Canonical**이며 이 Markdown 묶음은 **2026-08-19 Conversation · Run Context Isolation + Team UI/History + Prompt Runtime Contract Closure 정합화 이후 Export Snapshot**이다.
 
 ## 문서 권위·책임 소유 규칙
 
@@ -29,15 +29,15 @@ Prompt·Failure 정규화   → 15
 같은 Concern에서는 해당 소유 계약과 실행 가능한 Domain/SQL Constraint가 우선한다.  
 `00-A/00-B/00-C`와 변경 이력은 설명·요약·역사 자료이며 규범 권위가 아니다.
 
-## 현재 Canonical 기준 — 2026-08-21
+## 현재 Canonical 기준 — 2026-08-19
 
 - Project Overview **v1.16**
 - PRD **v2.11** / Functional **v2.18** / Policy **v2.12** / UI·UX **v2.14**
 - Architecture **v3.7** / Domain·DB **v1.20** / DB Schema **v1.6**
-- Retrieval **v2.13** / Workflow **v7.21** / Interface **v2.24** / Sequence **v3.17**
+- Retrieval **v2.13** / Workflow **v7.20** / Interface **v2.23** / Sequence **v3.17**
 - Security **v2.11** / Infrastructure **v2.11** / Observability **v2.20**
-- Test **v3.40** / Evaluation **v3.26** / Operations **v2.20**
-- Agent Capability·Failure·Prompt **v1.27**
+- Test **v3.39** / Evaluation **v3.26** / Operations **v2.20**
+- Agent Capability·Failure·Prompt **v1.26**
 - Domain State Transition **v1.5** / State Transition Test Matrix **v1.5**
 - Dataset candidate: `rebuild-v1.17-r8.6-phase7.5-contract-correction`
 - Projection candidate: `projection-v1.1-r8.6-phase7.5`
@@ -45,15 +45,6 @@ Prompt·Failure 정규화   → 15
   - **27 Active Runtime Slot + 3 Retired Slot**
   - 상태 `DRAFT_RUNTIME_CONTRACT_ALIGNED_NOT_ACTIVE`
 - 실제 Prompt 활성화는 Node DEV → Holdout → Safety Gate 이후에만 허용한다.
-
-## 2026-08-21 Runtime V2 Authority Gap A–F Canonical Amendment
-
-- `06 Workflow v7.21`: Work Analysis gap decision/risk owner, relation `fact_id` operand namespace, Planning ACTION preparation contract, revision budget BlockRun routing을 고정한다.
-- `07 Interface v2.24`: `PlanningActionPreparationResultV1`과 DefaultContainerResolver → READY/NEEDS_CONFIRMATION 경계를 고정한다.
-- `15 Agent Capability·Failure·Prompt v1.27`: Planning/Semantic Revision budget DENY의 exact BlockRun reason과 `applied=false → DOMAIN_RECONCILE`를 고정한다.
-- `12 Test v3.40`: A–F contract regression gate를 추가한다.
-- Policy Override Receipt provenance P는 별도 implementation wave이며 이 amendment가 Claim/Approval provenance를 완성한 것으로 간주하지 않는다.
-
 
 ## 2026-08-19 핵심 정합화
 
