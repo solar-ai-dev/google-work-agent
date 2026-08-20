@@ -17,6 +17,12 @@ from google_work_agent.adapters.mcp.capabilities import (
 )
 from google_work_agent.adapters.mcp.manifest_guard import ManifestEnforcedMCPTransport
 from google_work_agent.adapters.mcp.transport import MCPConnectorDescriptor
+from google_work_agent.domain.google_workspace_tool_contracts import (
+    google_workspace_tool_contract,
+)
+from google_work_agent.domain.google_workspace_tool_registry import (
+    build_google_workspace_tool_registry,
+)
 from google_work_agent.ports import (
     MCPControlResponse,
     MCPRuntimeMetadata,
@@ -32,9 +38,13 @@ class _FakeVerifiedDelegate:
         *,
         internal_names: tuple[str, ...],
         internal_registry_version: str = INTERNAL_CAPABILITY_REGISTRY_VERSION,
+        corrupt_contract_hash_for: str | None = None,
+        runtime_registry_version: str = "2026-08-06.p0",
     ) -> None:
         self.internal_names = internal_names
         self.internal_registry_version = internal_registry_version
+        self.corrupt_contract_hash_for = corrupt_contract_hash_for
+        self.runtime_registry_version = runtime_registry_version
         self.tool_calls: list[str] = []
         self.control_calls: list[str] = []
         self.closed = False
@@ -72,6 +82,16 @@ class _FakeVerifiedDelegate:
                 },
                 request_id="req-control",
             )
+        if method == "mcp.list_capability_contracts":
+            contracts = _expected_contract_descriptors_payload()
+            if self.corrupt_contract_hash_for is not None:
+                for item in contracts:
+                    if item["tool_name"] == self.corrupt_contract_hash_for:
+                        item["tool_schema_hash"] = "stale-schema-hash"
+            return MCPControlResponse(
+                payload={"contracts": contracts},
+                request_id="req-control",
+            )
         return MCPControlResponse(payload={}, request_id="req-control")
 
     def runtime_metadata(self) -> MCPRuntimeMetadata:
@@ -79,7 +99,7 @@ class _FakeVerifiedDelegate:
             process_status="READY",
             protocol_version="2026-08-07.p0",
             manifest_version="2026-08-07.p0",
-            tool_registry_version="2026-08-06.p0",
+            tool_registry_version=self.runtime_registry_version,
             available_tool_count=20,
             last_safe_error_code=None,
             restart_count=0,
@@ -123,17 +143,32 @@ def test_declared_agent_tool_is_dispatchable(tmp_path: Path) -> None:
     assert delegate.tool_calls == ["gmail_get_thread"]
 
 
+def test_stale_runtime_registry_version_rejects_before_dispatch(tmp_path: Path) -> None:
+    manifest_path = _write_manifest(tmp_path)
+    delegate = _FakeVerifiedDelegate(
+        internal_names=_expected_internal_names(),
+        runtime_registry_version="stale-version",
+    )
+    guard = ManifestEnforcedMCPTransport(
+        delegate=delegate,
+        descriptor=_descriptor(manifest_path),
+        expected_internal_capabilities=build_google_workspace_internal_capabilities(),
+    )
+
+    with pytest.raises(MCPTransportError) as captured:
+        guard.call_tool(tool_name="gmail_get_thread", arguments={"thread_id": "t1"})
+
+    assert captured.value.code is MCPTransportErrorCode.SCHEMA_MISMATCH
+    assert captured.value.dispatch_started is False
+    assert delegate.tool_calls == []
+
+
 def test_remote_internal_surface_mismatch_fails_closed(tmp_path: Path) -> None:
     manifest_path = _write_manifest(tmp_path)
-    descriptor = _descriptor(manifest_path)
     delegate = _FakeVerifiedDelegate(internal_names=("gmail_get_attachment",))
 
     with pytest.raises(MCPTransportError) as captured:
-        ManifestEnforcedMCPTransport(
-            delegate=delegate,
-            descriptor=descriptor,
-            expected_internal_capabilities=build_google_workspace_internal_capabilities(),
-        )
+        _build_guard(manifest_path, delegate)
 
     assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
     assert delegate.tool_calls == []
@@ -141,18 +176,27 @@ def test_remote_internal_surface_mismatch_fails_closed(tmp_path: Path) -> None:
 
 def test_remote_internal_registry_version_mismatch_fails_closed(tmp_path: Path) -> None:
     manifest_path = _write_manifest(tmp_path)
-    descriptor = _descriptor(manifest_path)
     delegate = _FakeVerifiedDelegate(
         internal_names=_expected_internal_names(),
         internal_registry_version="stale-version",
     )
 
     with pytest.raises(MCPTransportError) as captured:
-        ManifestEnforcedMCPTransport(
-            delegate=delegate,
-            descriptor=descriptor,
-            expected_internal_capabilities=build_google_workspace_internal_capabilities(),
-        )
+        _build_guard(manifest_path, delegate)
+
+    assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
+    assert delegate.tool_calls == []
+
+
+def test_remote_schema_hash_mismatch_fails_closed(tmp_path: Path) -> None:
+    manifest_path = _write_manifest(tmp_path)
+    delegate = _FakeVerifiedDelegate(
+        internal_names=_expected_internal_names(),
+        corrupt_contract_hash_for="tasks_create_task",
+    )
+
+    with pytest.raises(MCPTransportError) as captured:
+        _build_guard(manifest_path, delegate)
 
     assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
     assert delegate.tool_calls == []
@@ -167,15 +211,30 @@ def test_stale_internal_manifest_contract_fails_closed(tmp_path: Path) -> None:
     first["registry_version"] = "stale-version"
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
-    descriptor = _descriptor(manifest_path)
     delegate = _FakeVerifiedDelegate(internal_names=_expected_internal_names())
 
     with pytest.raises(MCPTransportError) as captured:
-        ManifestEnforcedMCPTransport(
-            delegate=delegate,
-            descriptor=descriptor,
-            expected_internal_capabilities=build_google_workspace_internal_capabilities(),
-        )
+        _build_guard(manifest_path, delegate)
+
+    assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
+    assert delegate.tool_calls == []
+
+
+def test_public_manifest_actual_schema_mismatch_fails_closed(tmp_path: Path) -> None:
+    payload = build_manifest_payload()
+    raw_tools = payload["tools"]
+    assert isinstance(raw_tools, list)
+    first = raw_tools[0]
+    assert isinstance(first, dict)
+    input_schema = first.get("input_schema")
+    assert isinstance(input_schema, dict)
+    input_schema["required"] = ["invented_required_field"]
+    manifest_path = tmp_path / "mcp-manifest.json"
+    manifest_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    delegate = _FakeVerifiedDelegate(internal_names=_expected_internal_names())
+
+    with pytest.raises(MCPTransportError) as captured:
+        _build_guard(manifest_path, delegate)
 
     assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
     assert delegate.tool_calls == []
@@ -202,13 +261,17 @@ def test_manifest_bytes_changed_after_descriptor_hash_are_rejected(tmp_path: Pat
 def _guard(tmp_path: Path) -> tuple[ManifestEnforcedMCPTransport, _FakeVerifiedDelegate]:
     manifest_path = _write_manifest(tmp_path)
     delegate = _FakeVerifiedDelegate(internal_names=_expected_internal_names())
-    return (
-        ManifestEnforcedMCPTransport(
-            delegate=delegate,
-            descriptor=_descriptor(manifest_path),
-            expected_internal_capabilities=build_google_workspace_internal_capabilities(),
-        ),
-        delegate,
+    return _build_guard(manifest_path, delegate), delegate
+
+
+def _build_guard(
+    manifest_path: Path,
+    delegate: _FakeVerifiedDelegate,
+) -> ManifestEnforcedMCPTransport:
+    return ManifestEnforcedMCPTransport(
+        delegate=delegate,
+        descriptor=_descriptor(manifest_path),
+        expected_internal_capabilities=build_google_workspace_internal_capabilities(),
     )
 
 
@@ -219,6 +282,26 @@ def _expected_internal_names() -> tuple[str, ...]:
             for capability in build_google_workspace_internal_capabilities()
         )
     )
+
+
+def _expected_contract_descriptors_payload() -> list[dict[str, object]]:
+    internal_categories = {
+        capability.tool_name: capability.category.value
+        for capability in build_google_workspace_internal_capabilities()
+    }
+    names = {
+        entry.tool_name for entry in build_google_workspace_tool_registry().list_entries()
+    } | set(internal_categories)
+    return [
+        {
+            "tool_name": name,
+            "category": internal_categories.get(name, "AGENT_TOOL"),
+            "input_schema_version": google_workspace_tool_contract(name).input_schema_version,
+            "output_schema_version": google_workspace_tool_contract(name).output_schema_version,
+            "tool_schema_hash": google_workspace_tool_contract(name).schema_hash,
+        }
+        for name in sorted(names)
+    ]
 
 
 def _write_manifest(tmp_path: Path) -> Path:
