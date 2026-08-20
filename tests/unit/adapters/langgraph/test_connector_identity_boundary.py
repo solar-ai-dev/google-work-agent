@@ -129,16 +129,13 @@ def test_target_resource_connectors_are_bound_per_action() -> None:
     first = plan["actions"][0]
     first["target_resource_ref_id"] = "task:123"
     plan["actions"].append(
-        cast(
-            object,
-            {
-                **first,
-                "action_id": "action-2",
-                "position": 2,
-                "tool_name": "github_update_issue",
-                "target_resource_ref_id": "issue:456",
-            },
-        )
+        {
+            **first,
+            "action_id": "action-2",
+            "position": 2,
+            "tool_name": "github_update_issue",
+            "target_resource_ref_id": "issue:456",
+        }
     )
 
     assert target_resource_connector_ids_from_actions(
@@ -158,15 +155,12 @@ def test_target_resource_binding_fails_closed_on_cross_connector_handle_reuse() 
     first = plan["actions"][0]
     first["target_resource_ref_id"] = "shared:123"
     plan["actions"].append(
-        cast(
-            object,
-            {
-                **first,
-                "action_id": "action-2",
-                "position": 2,
-                "target_resource_ref_id": "shared:123",
-            },
-        )
+        {
+            **first,
+            "action_id": "action-2",
+            "position": 2,
+            "target_resource_ref_id": "shared:123",
+        }
     )
 
     with pytest.raises(ValueError, match="multiple connectors"):
