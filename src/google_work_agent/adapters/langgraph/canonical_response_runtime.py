@@ -1,26 +1,36 @@
-"""Canonical Response Synthesis boundary for ANSWER_ONLY Planning results.
+"""Canonical Response Synthesis and optional-stage boundaries for SIX_ROLE.
 
-The release runtime still contains a legacy Supervisor branch that sends both
-``ANSWER_ONLY`` and ``PLAN_READY`` through Review. Canonical Workflow v7.20
-owns a stricter edge: ``Planning.ANSWER_ONLY -> RESPONSE_SYNTHESIS`` while
-only ``PLAN_READY`` enters Review.
+The release runtime still contains legacy Supervisor branches that:
 
-This compatibility layer corrects the production decision at the runtime
-boundary without adding another LLM call or changing Planning output. The
-Response Synthesis node validates the already-produced answer, materializes a
-code-owned ``FinalizeIntent(COMPLETED)``, and then delegates durable assistant
-message persistence / Run completion to the existing Finalize boundary.
+* send both ``ANSWER_ONLY`` and ``PLAN_READY`` through Review,
+* send every successful Tool Route through Retrieval, and
+* send every usable Retrieval result through Work Analysis.
+
+Canonical Workflow v7.20 owns stricter deterministic edges. This compatibility
+layer corrects those production decisions without adding LLM authority or
+inventing placeholder artifacts. SIX_ROLE Work Analysis/Planning are rebuilt
+with optional-input subgraphs; SINGLE/THREE experimental profiles are untouched.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
+from pathlib import Path
+from typing import Any, cast
 
+from google_work_agent.adapters.langgraph.canonical_optional_subgraphs import (
+    CanonicalOptionalPlanningSubgraph,
+    CanonicalOptionalWorkAnalysisSubgraph,
+)
 from google_work_agent.adapters.langgraph.canonical_planning_runtime import (
     LangGraphWorkflowRuntime as _CanonicalPlanningRuntime,
 )
+from google_work_agent.adapters.langgraph.graph_composition import (
+    GraphNodeBindings,
+    WorkflowGraphComposition,
+)
 from google_work_agent.adapters.langgraph.graph_state import GraphState
+from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.route_translation import (
     RESPONSE_SYNTHESIS_TARGET,
 )
@@ -33,6 +43,10 @@ from google_work_agent.application.workflows import (
     WorkflowPhase,
     validate_finalize_intent_v1,
 )
+from google_work_agent.application.workflows.canonical_optional_inputs import (
+    CanonicalOptionalInputPlanningAgent,
+    CanonicalOptionalInputWorkAnalysisAgent,
+)
 
 _REVIEW_TARGETS = frozenset(
     {
@@ -40,6 +54,8 @@ _REVIEW_TARGETS = frozenset(
         SupervisorTarget.PLAN_REVIEW_RECHECK.value,
     }
 )
+_RETRIEVAL_SUCCESS_REASONS = frozenset({"SUFFICIENT", "PARTIAL"})
+_TOOL_ROUTE_SUCCESS_REASONS = frozenset({"ROUTE_READY", "NO_TOOL_NEEDED"})
 
 
 def canonicalize_answer_only_decision(
@@ -71,6 +87,101 @@ def canonicalize_answer_only_decision(
         "state_update": cast(GraphStateUpdateV1, state_update),
         "reason_code": "ANSWER_ONLY_RESPONSE_READY",
     }
+
+
+def canonicalize_optional_stage_decision(
+    state: GraphState,
+    decision: SupervisorDecisionV1,
+) -> SupervisorDecisionV1:
+    """Apply Canonical ToolRoute/Retrieval skip edges deterministically.
+
+    Only already-frozen typed facts are consulted:
+    ``ToolRoutePlanV2.input_plan.input_routes`` and
+    ``RequestIntentV2.analysis_requirement``. No natural-language field,
+    missing-information string, tool prefix, or provider name is interpreted.
+    """
+
+    target = decision["target"]
+    reason_code = decision.get("reason_code")
+    state_update = dict(decision["state_update"])
+
+    if (
+        target == SupervisorTarget.CONTEXT_RETRIEVAL.value
+        and reason_code in _TOOL_ROUTE_SUCCESS_REASONS
+    ):
+        raw_plan = state_update.get("tool_route_plan", state.get("tool_route_plan"))
+        input_routes = _input_routes(raw_plan)
+        if input_routes:
+            return decision
+        next_target, next_phase = _post_route_target(state)
+        state_update.update(
+            {
+                "workflow_phase": next_phase.value,
+                "retrieval_result": None,
+                "context_result": None,
+                "analysis_result": None,
+                "answer_draft": None,
+                "plan_draft": None,
+                "plan_review": None,
+            }
+        )
+        return {
+            **decision,
+            "target": next_target.value,
+            "next_phase": next_phase.value,
+            "state_update": cast(GraphStateUpdateV1, state_update),
+        }
+
+    if (
+        target == SupervisorTarget.WORK_ANALYSIS.value
+        and reason_code in _RETRIEVAL_SUCCESS_REASONS
+        and _analysis_requirement(state) == "NONE"
+    ):
+        state_update.update(
+            {
+                "workflow_phase": WorkflowPhase.SOLUTION_PLANNING.value,
+                "analysis_result": None,
+                "answer_draft": None,
+                "plan_draft": None,
+                "plan_review": None,
+            }
+        )
+        return {
+            **decision,
+            "target": SupervisorTarget.SOLUTION_PLANNING.value,
+            "next_phase": WorkflowPhase.SOLUTION_PLANNING.value,
+            "state_update": cast(GraphStateUpdateV1, state_update),
+        }
+
+    return decision
+
+
+def _input_routes(raw_plan: object) -> list[object]:
+    if not isinstance(raw_plan, Mapping):
+        raise ValueError("canonical routing requires frozen tool_route_plan")
+    raw_input_plan = raw_plan.get("input_plan")
+    if not isinstance(raw_input_plan, Mapping):
+        raise ValueError("canonical routing requires input_plan")
+    raw_routes = raw_input_plan.get("input_routes")
+    if not isinstance(raw_routes, list):
+        raise ValueError("canonical routing requires input_plan.input_routes")
+    return list(raw_routes)
+
+
+def _analysis_requirement(state: GraphState) -> str:
+    raw_intent = state.get("request_intent")
+    if not isinstance(raw_intent, Mapping):
+        raise ValueError("canonical routing requires request_intent")
+    requirement = raw_intent.get("analysis_requirement")
+    if requirement not in {"NONE", "REQUIRED"}:
+        raise ValueError("request_intent.analysis_requirement is invalid")
+    return cast(str, requirement)
+
+
+def _post_route_target(state: GraphState) -> tuple[SupervisorTarget, WorkflowPhase]:
+    if _analysis_requirement(state) == "REQUIRED":
+        return SupervisorTarget.WORK_ANALYSIS, WorkflowPhase.WORK_ANALYSIS
+    return SupervisorTarget.SOLUTION_PLANNING, WorkflowPhase.SOLUTION_PLANNING
 
 
 def response_synthesis_state(state: GraphState) -> GraphState:
@@ -114,7 +225,74 @@ def _response_contract_violation(state: GraphState, reason_code: str) -> GraphSt
 
 
 class LangGraphWorkflowRuntime(_CanonicalPlanningRuntime):
-    """Canonical runtime with explicit deterministic Response Synthesis."""
+    """Canonical runtime with response synthesis and optional-stage routing."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        manifest_path = cast(Path | None, kwargs.get("prompt_manifest_path"))
+        super().__init__(*args, **kwargs)
+        if self._graph_profile is not GraphProfile.SIX_ROLE_BASELINE:
+            return
+
+        optional_analysis_agent = CanonicalOptionalInputWorkAnalysisAgent(
+            llm_runtime=self._confirmation_llm_runtime,
+            manifest_path=manifest_path,
+        )
+        optional_planning_agent = CanonicalOptionalInputPlanningAgent(
+            llm_runtime=self._confirmation_llm_runtime,
+            manifest_path=manifest_path,
+        )
+        self._analysis = optional_analysis_agent
+        self._planning = optional_planning_agent
+        self._analysis_subgraph = CanonicalOptionalWorkAnalysisSubgraph(
+            agent=optional_analysis_agent,
+            id_factory=self._id_factory,
+            graph_profile=self._graph_profile,
+            transition_run=self._transition_run,
+            merge_decision=self._merge_decision,
+            evidence_store=self._evidence_store,
+            confirm_inline=self._confirm_work_analysis_inline,
+        ).build()
+        self._planning_subgraph = CanonicalOptionalPlanningSubgraph(
+            agent=optional_planning_agent,
+            id_factory=self._id_factory,
+            graph_profile=self._graph_profile,
+            merge_decision=self._merge_decision,
+            evidence_store=self._evidence_store,
+            confirm_inline=self._confirm_planning_inline,
+            argument_orchestrator=self._planning_argument_orchestrator,
+        ).build()
+        self._rebuild_six_role_graph_with_optional_subgraphs()
+
+    def _rebuild_six_role_graph_with_optional_subgraphs(self) -> None:
+        self._graph_composition = WorkflowGraphComposition(
+            profile=self._graph_profile,
+            topology=self._topology,
+            bindings=GraphNodeBindings(
+                request_understanding=self._request_subgraph,
+                tool_route=self._tool_route_subgraph,
+                acquisition=self._acquisition_subgraph,
+                context_retriever=self._context_subgraph,
+                work_analysis=self._analysis_subgraph,
+                planning=self._planning_subgraph,
+                review=self._review_subgraph,
+                single_workflow=self._single_workflow_subgraph,
+                domain_validation=self._domain_validation_node,
+                waiting_confirmation=self._waiting_confirmation_node,
+                waiting_approval=self._waiting_approval_node,
+                modify_review=self._modify_review_node,
+                action_execution=self._write_execution_node,
+                recovery=self._write_recovery.recover_unknown,
+                finalize=self._finalize_node,
+                stage_one=self._three_stage_one_subgraph,
+                stage_two=self._three_stage_two_subgraph,
+                stage_three=self._three_stage_review_subgraph,
+            ),
+            route_next_node=self._route_next_node,
+            checkpointer=self._checkpointer,
+        )
+        self._native_agent_subgraphs = self._graph_composition.native_subgraphs()
+        self._graph = self._build_graph()
+        self._invocation._graph = self._graph
 
     def _merge_decision(
         self,
@@ -122,11 +300,9 @@ class LangGraphWorkflowRuntime(_CanonicalPlanningRuntime):
         update: GraphStateUpdateV1,
         decision: SupervisorDecisionV1,
     ) -> GraphState:
-        return super()._merge_decision(
-            state,
-            update,
-            canonicalize_answer_only_decision(decision),
-        )
+        canonical_decision = canonicalize_optional_stage_decision(state, decision)
+        canonical_decision = canonicalize_answer_only_decision(canonical_decision)
+        return super()._merge_decision(state, update, canonical_decision)
 
     def _finalize_node(self, state: GraphState) -> GraphState:
         if state.get("__target__") == "response_synthesis":
@@ -137,5 +313,6 @@ class LangGraphWorkflowRuntime(_CanonicalPlanningRuntime):
 __all__ = [
     "LangGraphWorkflowRuntime",
     "canonicalize_answer_only_decision",
+    "canonicalize_optional_stage_decision",
     "response_synthesis_state",
 ]
