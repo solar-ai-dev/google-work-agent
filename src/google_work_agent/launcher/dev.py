@@ -97,6 +97,7 @@ from google_work_agent.application.write_actions import (
     FinalizeRunCancellationService,
     PrepareWriteRetryService,
     RequestRunCancellationService,
+    ResolveMismatchRecoveryService,
 )
 from google_work_agent.domain import CalendarWorkHours
 from google_work_agent.launcher.connector_composition import build_connectors
@@ -593,6 +594,10 @@ def build_container(
         ),
         cancel_run_service=request_cancel_service,
         resume_run_service=ResumeRunService(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
+        ),
+        resolve_recovery_service=ResolveMismatchRecoveryService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
