@@ -149,6 +149,7 @@ def get_action_route_dependencies(request: Request) -> ActionRouteDependencies:
         modify_action_service=lambda: container.modify_action_service,
         reject_action_service=lambda: container.reject_action_service,
         prepare_retry_service=lambda: container.prepare_retry_service,
+        get_settings_service=lambda: container.get_settings_service,
         unit_of_work_factory=lambda: container.unit_of_work_factory(),
         local_run_coordinator=container.local_run_coordinator,
         event_publisher=lambda: container.event_publisher,
