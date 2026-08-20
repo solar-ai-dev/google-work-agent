@@ -1,19 +1,16 @@
 """Pure canonical routing for Work Analysis, Planning, and Review V2 returns.
 
 The router consumes only validated ``SubgraphReturnV2`` envelopes. Unknown
-versions/dispositions and impossible artifact combinations fail closed to the
-RECOVERY target with ``CONTRACT_VIOLATION``; there is no ``status``/``result``
-string fallback.
-
-Revision-budget exhaustion is deliberately *not* assigned a workflow target
-here. Canonical fixes the numeric limits and says exhaustion must not be hidden
-as COMPLETED, but it does not select one exact terminal/suspend edge for
-Planning/semantic-revision DENY. The caller must not guess that missing policy.
+versions/dispositions and impossible artifact combinations fail closed to
+RECOVERY/CONTRACT_VIOLATION. Revision-budget exhaustion is a Domain transition,
+not a contract violation: Workflow v7.21 / Failure Contract v1.27 require an
+Application BlockRun boundary and FINALIZE only when that transition applied.
 """
 
 from __future__ import annotations
 
-from typing import Literal, TypedDict, cast
+from collections.abc import Callable
+from typing import Literal, Protocol, TypedDict, cast
 
 from google_work_agent.application.workflows.contracts import (
     BudgetDecision,
@@ -39,6 +36,7 @@ PostRetrievalTargetV2 = Literal[
     "DOMAIN_VALIDATION",
     "RESPONSE_SYNTHESIS",
     "WAITING_CONFIRMATION",
+    "DOMAIN_RECONCILE",
     "RECOVERY",
     "FINALIZE",
 ]
@@ -53,13 +51,23 @@ class PostRetrievalRouteDecisionV2(TypedDict):
     revision_mode: RevisionModeV2 | None
 
 
-class RevisionBudgetRoutingCanonicalGap(RuntimeError):
-    """A real budget DENY occurred, but Canonical does not define its exact edge."""
+class RevisionBudgetBlockContextV1(TypedDict):
+    command_id: str
+    request_hash: str
+    run_id: str
+    expected_version: int
 
-    def __init__(self, *, reason_code: str, budget_decision: BudgetDecisionV1) -> None:
-        super().__init__(reason_code)
-        self.reason_code = reason_code
-        self.budget_decision = budget_decision
+
+class BlockRunResult(Protocol):
+    applied: bool
+    run_status: str
+
+
+BlockRunExecutor = Callable[[object], BlockRunResult]
+
+
+class RevisionBudgetBlockBoundaryRequired(RuntimeError):
+    """Raised when F routing cannot invoke the required Application BlockRun boundary."""
 
 
 def route_work_analysis_return_v2(value: object) -> PostRetrievalRouteDecisionV2:
@@ -110,6 +118,8 @@ def route_review_return_v2(
     *,
     planning_result: PlanningResultV2,
     retry_budget: RunBudgetV1,
+    block_run: BlockRunExecutor | None = None,
+    budget_block_context: RevisionBudgetBlockContextV1 | None = None,
 ) -> PostRetrievalRouteDecisionV2:
     try:
         envelope = validate_review_return_v2(value)
@@ -125,6 +135,8 @@ def route_review_return_v2(
             envelope,
             planning_result=planning_result,
             retry_budget=retry_budget,
+            block_run=block_run,
+            budget_block_context=budget_block_context,
         )
     if disposition == "RETRIEVE_MORE":
         if _signal_kind(envelope) == "RETRIEVAL_REQUIRED":
@@ -148,12 +160,16 @@ def _route_review_revise(
     *,
     planning_result: PlanningResultV2,
     retry_budget: RunBudgetV1,
+    block_run: BlockRunExecutor | None,
+    budget_block_context: RevisionBudgetBlockContextV1 | None,
 ) -> PostRetrievalRouteDecisionV2:
     revision = approve_planning_revision(retry_budget)
     if revision["decision"] == BudgetDecision.DENY.value:
-        raise RevisionBudgetRoutingCanonicalGap(
-            reason_code=_budget_reason(revision, "PLANNING_REVISION_DENIED"),
-            budget_decision=revision,
+        return _route_revision_budget_deny(
+            decision=revision,
+            reason_code="PLANNING_REVISION_BUDGET_EXHAUSTED",
+            block_run=block_run,
+            context=budget_block_context,
         )
 
     review = cast(dict[str, object], envelope["typed_result"])
@@ -175,9 +191,11 @@ def _route_review_revise(
         )
         semantic = approve_semantic_revision(revision["run_budget"], signature=signature)
         if semantic["decision"] == BudgetDecision.DENY.value:
-            raise RevisionBudgetRoutingCanonicalGap(
-                reason_code=_budget_reason(semantic, "SEMANTIC_REVISION_DENIED"),
-                budget_decision=semantic,
+            return _route_revision_budget_deny(
+                decision=semantic,
+                reason_code="SEMANTIC_REVISION_BUDGET_EXHAUSTED",
+                block_run=block_run,
+                context=budget_block_context,
             )
         return _decision(
             "PLANNING",
@@ -192,6 +210,46 @@ def _route_review_revise(
         retry_budget=revision["run_budget"],
         budget_decision=revision,
         revision_mode=revision_mode,
+    )
+
+
+def _route_revision_budget_deny(
+    *,
+    decision: BudgetDecisionV1,
+    reason_code: Literal[
+        "PLANNING_REVISION_BUDGET_EXHAUSTED",
+        "SEMANTIC_REVISION_BUDGET_EXHAUSTED",
+    ],
+    block_run: BlockRunExecutor | None,
+    context: RevisionBudgetBlockContextV1 | None,
+) -> PostRetrievalRouteDecisionV2:
+    if block_run is None or context is None:
+        raise RevisionBudgetBlockBoundaryRequired(
+            f"{reason_code} requires injected Application BlockRun boundary and command context"
+        )
+    from google_work_agent.application.run_terminal import BlockRunCommand
+
+    response = block_run(
+        BlockRunCommand(
+            command_id=context["command_id"],
+            request_hash=context["request_hash"],
+            run_id=context["run_id"],
+            expected_version=context["expected_version"],
+            reason_code=reason_code,
+        )
+    )
+    if response.applied:
+        return _decision(
+            "FINALIZE",
+            reason_code,
+            retry_budget=decision["run_budget"],
+            budget_decision=decision,
+        )
+    return _decision(
+        "DOMAIN_RECONCILE",
+        reason_code,
+        retry_budget=decision["run_budget"],
+        budget_decision=decision,
     )
 
 
@@ -212,11 +270,6 @@ def _first_signal_reason(envelope: SubgraphReturnV2[object], default: str) -> st
             if isinstance(reason, str) and reason:
                 return reason
     return default
-
-
-def _budget_reason(decision: BudgetDecisionV1, default: str) -> str:
-    reason = decision.get("budget_reason_code")
-    return reason if isinstance(reason, str) and reason else default
 
 
 def _contract_violation() -> PostRetrievalRouteDecisionV2:
@@ -241,9 +294,11 @@ def _decision(
 
 
 __all__ = [
+    "BlockRunExecutor",
     "PostRetrievalRouteDecisionV2",
     "PostRetrievalTargetV2",
-    "RevisionBudgetRoutingCanonicalGap",
+    "RevisionBudgetBlockBoundaryRequired",
+    "RevisionBudgetBlockContextV1",
     "RevisionModeV2",
     "route_planning_return_v2",
     "route_review_return_v2",
