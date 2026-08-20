@@ -12,6 +12,12 @@ from google_work_agent.adapters.connectors.runtime import (
 from google_work_agent.adapters.mcp.capabilities import (
     build_google_workspace_internal_capabilities,
 )
+from google_work_agent.adapters.mcp.delivery_gateway import (
+    DeliveryAwareMCPGoogleWorkspaceGateway,
+)
+from google_work_agent.adapters.mcp.delivery_transport import (
+    DeliveryAwareSubprocessMCPTransport,
+)
 from google_work_agent.adapters.mcp.gateway import (
     MCPGmailAttachmentGateway,
     MCPGmailUiReadGateway,
@@ -22,7 +28,6 @@ from google_work_agent.adapters.mcp.oauth import MCPGoogleOAuthCredentialProvide
 from google_work_agent.adapters.mcp.transport import (
     MCPArtifactConfig,
     MCPConnectorDescriptor,
-    SubprocessMCPTransport,
 )
 from google_work_agent.domain.google_workspace_tool_registry import (
     build_google_workspace_tool_registry,
@@ -52,7 +57,7 @@ def build_google_workspace_connector_descriptor(
 def _build_manifest_enforced_transport(
     descriptor: MCPConnectorDescriptor,
 ) -> RestartableMCPTransport:
-    delegate = SubprocessMCPTransport(descriptor=descriptor)
+    delegate = DeliveryAwareSubprocessMCPTransport(descriptor=descriptor)
     return ManifestEnforcedMCPTransport(
         delegate=delegate,
         descriptor=descriptor,
@@ -119,7 +124,7 @@ class GoogleWorkspaceConnector:
     def start(self) -> MCPTransport:
         transport = self._runtime.start()
         if self._gateway is None:
-            self._gateway = MCPGoogleWorkspaceGateway(transport=transport)
+            self._gateway = DeliveryAwareMCPGoogleWorkspaceGateway(transport=transport)
             self._oauth_provider = MCPGoogleOAuthCredentialProvider(transport=transport)
             self._gmail_ui_gateway = MCPGmailUiReadGateway(transport=transport)
             self._gmail_attachment_gateway = MCPGmailAttachmentGateway(transport=transport)
