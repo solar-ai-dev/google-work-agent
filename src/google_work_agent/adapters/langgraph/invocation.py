@@ -35,9 +35,9 @@ class WorkflowInvocationCoordinator:
         has_executed_action: Callable[[str], bool],
         recover_executed_actions: Callable[[GraphState, str], GraphState],
         mark_stalled_claims_as_unknown: Callable[[str], bool],
-        resume_reauth_execution: Callable[[GraphState], GraphState],
         cancel_signal_lock: Any,
         cancel_signals: set[str],
+        resume_reauth_execution: Callable[[GraphState], GraphState] | None = None,
     ) -> None:
         self._graph = graph
         self._graph_profile = graph_profile
@@ -162,6 +162,8 @@ class WorkflowInvocationCoordinator:
             return None
         action_id = execution_summary.get("action_id")
         if not isinstance(action_id, str) or not action_id:
+            return None
+        if self._resume_reauth_execution is None:
             return None
         return self._resume_reauth_execution(values)
 
