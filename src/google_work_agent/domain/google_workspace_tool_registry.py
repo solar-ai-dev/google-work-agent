@@ -8,6 +8,9 @@ from google_work_agent.domain.enums import (
     RecoveryPolicy,
     VerificationPolicy,
 )
+from google_work_agent.domain.google_workspace_tool_contracts import (
+    google_workspace_tool_contract,
+)
 from google_work_agent.domain.tool_registry import SignedToolRegistry, ToolRegistryEntry
 
 _GMAIL_DRAFT_MODIFY_FIELDS: frozenset[str] = frozenset({"to", "cc", "subject", "body"})
@@ -119,6 +122,7 @@ def build_google_workspace_tool_registry() -> SignedToolRegistry:
 
 
 def _read_tool(*, tool_name: str, resource_type: str, scope: str) -> ToolRegistryEntry:
+    contract = google_workspace_tool_contract(tool_name)
     return ToolRegistryEntry(
         tool_name=tool_name,
         resource_type=resource_type,
@@ -128,6 +132,9 @@ def _read_tool(*, tool_name: str, resource_type: str, scope: str) -> ToolRegistr
         recovery_policy=RecoveryPolicy.NONE,
         scope=scope,
         retryable=True,
+        input_schema_version=contract.input_schema_version,
+        output_schema_version=contract.output_schema_version,
+        tool_schema_hash=contract.schema_hash,
     )
 
 
@@ -138,6 +145,7 @@ def _create_tool(
     scope: str,
     modify_patchable_fields: frozenset[str] = frozenset(),
 ) -> ToolRegistryEntry:
+    contract = google_workspace_tool_contract(tool_name)
     return ToolRegistryEntry(
         tool_name=tool_name,
         resource_type=resource_type,
@@ -147,6 +155,9 @@ def _create_tool(
         recovery_policy=RecoveryPolicy.RESOURCE_SEARCH,
         scope=scope,
         retryable=False,
+        input_schema_version=contract.input_schema_version,
+        output_schema_version=contract.output_schema_version,
+        tool_schema_hash=contract.schema_hash,
         modify_patchable_fields=modify_patchable_fields,
     )
 
@@ -158,6 +169,7 @@ def _update_tool(
     scope: str,
     modify_patchable_fields: frozenset[str] = frozenset(),
 ) -> ToolRegistryEntry:
+    contract = google_workspace_tool_contract(tool_name)
     return ToolRegistryEntry(
         tool_name=tool_name,
         resource_type=resource_type,
@@ -167,11 +179,15 @@ def _update_tool(
         recovery_policy=RecoveryPolicy.GET_TARGET,
         scope=scope,
         retryable=False,
+        input_schema_version=contract.input_schema_version,
+        output_schema_version=contract.output_schema_version,
+        tool_schema_hash=contract.schema_hash,
         modify_patchable_fields=modify_patchable_fields,
     )
 
 
 def _send_tool(*, tool_name: str, resource_type: str, scope: str) -> ToolRegistryEntry:
+    contract = google_workspace_tool_contract(tool_name)
     return ToolRegistryEntry(
         tool_name=tool_name,
         resource_type=resource_type,
@@ -181,10 +197,14 @@ def _send_tool(*, tool_name: str, resource_type: str, scope: str) -> ToolRegistr
         recovery_policy=RecoveryPolicy.MESSAGE_SEARCH,
         scope=scope,
         retryable=False,
+        input_schema_version=contract.input_schema_version,
+        output_schema_version=contract.output_schema_version,
+        tool_schema_hash=contract.schema_hash,
     )
 
 
 def _delete_tool(*, tool_name: str, resource_type: str, scope: str) -> ToolRegistryEntry:
+    contract = google_workspace_tool_contract(tool_name)
     return ToolRegistryEntry(
         tool_name=tool_name,
         resource_type=resource_type,
@@ -194,4 +214,7 @@ def _delete_tool(*, tool_name: str, resource_type: str, scope: str) -> ToolRegis
         recovery_policy=RecoveryPolicy.GET_TARGET,
         scope=scope,
         retryable=False,
+        input_schema_version=contract.input_schema_version,
+        output_schema_version=contract.output_schema_version,
+        tool_schema_hash=contract.schema_hash,
     )
