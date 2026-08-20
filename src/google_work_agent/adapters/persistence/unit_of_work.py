@@ -13,7 +13,6 @@ from google_work_agent.adapters.persistence.repositories import (
     SQLiteActionDependencyRepository,
     SQLiteActionRepository,
     SQLiteApprovalRepository,
-    SQLiteAuditRepository,
     SQLiteCommandReceiptRepository,
     SQLiteConversationRepository,
     SQLiteEvidenceRepository,
@@ -21,8 +20,11 @@ from google_work_agent.adapters.persistence.repositories import (
     SQLiteMessageRepository,
     SQLitePlanRepository,
     SQLiteResourceRefRepository,
-    SQLiteTraceRepository,
     SQLiteVerificationRepository,
+)
+from google_work_agent.adapters.persistence.secret_boundary import (
+    SecretBoundaryAuditRepository,
+    SecretBoundaryTraceRepository,
 )
 from google_work_agent.ports import UnitOfWork
 
@@ -51,8 +53,8 @@ class SQLiteUnitOfWork:
         self.approvals = SQLiteApprovalRepository(connection)
         self.execution_attempts = SQLiteExecutionAttemptRepository(connection)
         self.verifications = SQLiteVerificationRepository(connection)
-        self.audits = SQLiteAuditRepository(connection)
-        self.traces = SQLiteTraceRepository(connection)
+        self.audits = SecretBoundaryAuditRepository(connection)
+        self.traces = SecretBoundaryTraceRepository(connection)
         return self
 
     def commit(self) -> None:
