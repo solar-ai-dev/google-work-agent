@@ -140,6 +140,36 @@ def test_checkpoint_boundary_rejects_random_secret_in_checkpoint_metadata_and_wr
         connection.close()
 
 
+def test_checkpoint_boundary_rejects_raw_credential_object_fail_closed() -> None:
+    class ProviderCredential:
+        def __init__(self, secret_value: str) -> None:
+            self.access_token = secret_value
+            self.expires_at_ms = 1234
+
+    connection, checkpointer = _checkpointer()
+    try:
+        secret_value = _secret("opaque-credential")
+        checkpoint = empty_checkpoint()
+        checkpoint["channel_values"] = {
+            "state": {"credential_object": ProviderCredential(secret_value)}
+        }
+        checkpoint["channel_versions"] = {"state": 1}
+        config = {"configurable": {"thread_id": "thread-raw", "checkpoint_ns": ""}}
+
+        with pytest.raises(SanitizationError):
+            checkpointer.put(
+                config,
+                checkpoint,
+                {"source": "input", "step": -1, "parents": {}},
+                {"state": 1},
+            )
+
+        database_dump = "\n".join(connection.iterdump())
+        assert secret_value not in database_dump
+    finally:
+        connection.close()
+
+
 def test_workflow_graph_composition_wraps_product_checkpointer() -> None:
     from google_work_agent.adapters.langgraph.graph_composition import (
         GraphNodeBindings,
