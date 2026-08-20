@@ -40,6 +40,11 @@ from google_work_agent.application.workflows.prompt_registry import default_prom
 from google_work_agent.ports import ActualRuntime, PromptReference
 
 
+def _no_instruction_text(prompt_ref: PromptReference) -> str:
+    del prompt_ref
+    return ""
+
+
 class ApiStructuredLLMProvider(PromptInputGuardedProvider):
     """Production API provider with mandatory Product Prompt input validation."""
 
@@ -52,7 +57,7 @@ class ApiStructuredLLMProvider(PromptInputGuardedProvider):
         transport: APIProviderTransport,
         model: str,
         runtime: ActualRuntime = ActualRuntime.API_LLM,
-        resolve_instruction_text: Callable[[PromptReference], str],
+        resolve_instruction_text: Callable[[PromptReference], str] = _no_instruction_text,
         prompt_manifest_path: Path | None = None,
     ) -> None:
         manifest_path = prompt_manifest_path or default_prompt_manifest_path()
@@ -81,7 +86,7 @@ class OllamaStructuredLLMProvider(PromptInputGuardedProvider):
         endpoint: str,
         model_id: str,
         runtime: ActualRuntime = ActualRuntime.LOCAL_GPU,
-        resolve_instruction_text: Callable[[PromptReference], str],
+        resolve_instruction_text: Callable[[PromptReference], str] = _no_instruction_text,
         prompt_manifest_path: Path | None = None,
     ) -> None:
         manifest_path = prompt_manifest_path or default_prompt_manifest_path()
