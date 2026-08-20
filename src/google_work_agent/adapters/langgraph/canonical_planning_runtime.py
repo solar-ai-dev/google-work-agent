@@ -45,6 +45,9 @@ from google_work_agent.application.write_verification_projection import (
 _active_write_connector_ids: ContextVar[dict[str, str] | None] = ContextVar(
     "active_write_connector_ids", default=None
 )
+_active_target_resource_connector_ids: ContextVar[dict[str, str] | None] = ContextVar(
+    "active_target_resource_connector_ids", default=None
+)
 
 
 def replace_llm_expected_with_deterministic_projection(
@@ -120,6 +123,42 @@ def connector_ids_from_frozen_routes(
             raise ValueError(f"duplicate write action id: {action_id}")
         connector_ids[action_id] = connector_id
     return connector_ids
+
+
+def target_resource_connector_ids_from_actions(
+    *,
+    plan_draft: ActionPlanDraftV1,
+    action_connector_ids: Mapping[str, str],
+) -> dict[str, str]:
+    """Bind each legacy target resource handle to its frozen action connector.
+
+    The legacy persistence hook receives only ``resource_handle`` and cannot see
+    the action being materialized. Build that association before delegating to
+    the legacy runtime. Reusing one handle on different connectors is ambiguous
+    and therefore fails closed instead of selecting a plan-wide default.
+    """
+
+    resource_connectors: dict[str, str] = {}
+    for index, action in enumerate(plan_draft["actions"]):
+        if action["effect"] == "READ":
+            continue
+        resource_handle = action.get("target_resource_ref_id")
+        if resource_handle is None:
+            continue
+        if not isinstance(resource_handle, str) or not resource_handle:
+            raise ValueError(f"write action target resource handle is invalid at index {index}")
+        action_id = action["action_id"]
+        connector_id = action_connector_ids.get(action_id)
+        if not isinstance(connector_id, str) or not connector_id:
+            raise ValueError(f"write action connector binding is missing: {action_id}")
+        existing = resource_connectors.get(resource_handle)
+        if existing is not None and existing != connector_id:
+            raise ValueError(
+                "target resource handle maps to multiple connectors; "
+                f"handle={resource_handle!r}, connectors={sorted({existing, connector_id})}"
+            )
+        resource_connectors[resource_handle] = connector_id
+    return resource_connectors
 
 
 def connector_ids_for_read_actions_from_frozen_routes(
@@ -251,12 +290,20 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
             state=state,
             plan_draft=deterministic_plan,
         )
-        token = _active_write_connector_ids.set(dict(connector_ids))
+        target_resource_connectors = target_resource_connector_ids_from_actions(
+            plan_draft=deterministic_plan,
+            action_connector_ids=connector_ids,
+        )
+        connector_token = _active_write_connector_ids.set(dict(connector_ids))
+        target_token = _active_target_resource_connector_ids.set(
+            dict(target_resource_connectors)
+        )
         try:
             with bind_action_connector_ids(connector_ids):
                 return super()._persist_write_plan(state, deterministic_plan)
         finally:
-            _active_write_connector_ids.reset(token)
+            _active_target_resource_connector_ids.reset(target_token)
+            _active_write_connector_ids.reset(connector_token)
 
     def _persist_read_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         connector_ids = connector_ids_for_read_actions_from_frozen_routes(
@@ -275,20 +322,19 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
     ) -> str | None:
         if resource_handle is None:
             return None
-        connector_ids = _active_write_connector_ids.get()
-        if connector_ids is None:
+        resource_connectors = _active_target_resource_connector_ids.get()
+        if resource_connectors is None:
             return super()._resolve_target_resource_ref_id(
                 run_id=run_id,
                 resource_handle=resource_handle,
                 acquisition_result=acquisition_result,
             )
-        unique_connectors = set(connector_ids.values())
-        if len(unique_connectors) != 1:
+        connector_id = resource_connectors.get(resource_handle)
+        if connector_id is None:
             raise ValueError(
-                "legacy target ResourceRef projection cannot select a connector for a "
-                "multi-connector write plan"
+                "target ResourceRef has no action-scoped connector binding; "
+                f"handle={resource_handle!r}"
             )
-        connector_id = next(iter(unique_connectors))
         with bind_resource_connector_id(connector_id):
             return super()._resolve_target_resource_ref_id(
                 run_id=run_id,
@@ -302,4 +348,5 @@ __all__ = [
     "connector_ids_for_read_actions_from_frozen_routes",
     "connector_ids_from_frozen_routes",
     "replace_llm_expected_with_deterministic_projection",
+    "target_resource_connector_ids_from_actions",
 ]
