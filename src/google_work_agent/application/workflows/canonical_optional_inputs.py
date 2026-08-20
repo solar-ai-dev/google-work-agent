@@ -15,7 +15,7 @@ to satisfy legacy function signatures.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import cast
 
 import google_work_agent.application.workflows.solution_planning as _planning
@@ -231,8 +231,8 @@ def assemble_plan_with_optional_analysis(
     evidence_drafts: list[EvidenceDraftV1],
     output_routes: tuple[OutputToolRouteV1, ...],
     argument_candidates: tuple[object, ...],
-    plan_id_factory: callable,
-    action_id_factory: callable,
+    plan_id_factory: Callable[[], str],
+    action_id_factory: Callable[[], str],
     previous_plan: ActionPlanDraftV1 | None,
 ) -> ActionPlanDraftV1:
     """Assemble an ACTION plan without inventing a Work Analysis artifact."""
@@ -368,8 +368,6 @@ def validate_plan_with_optional_analysis(
             frozen_read_tool_ids=frozen_read_tool_ids,
         )
 
-    # The no-analysis branch is code-assembled above; validate every reference
-    # against actual supplied Evidence and then re-run the frozen-route guard.
     allowed_evidence = {draft["evidence_id"] for draft in evidence_drafts}
     allowed_resources = {
         draft["resource_handle"]
@@ -444,10 +442,10 @@ def _planning_plan_with_analysis(**kwargs: object) -> ActionPlanDraftV1:
     return assemble_action_plan_draft_v1_compat(**kwargs)  # type: ignore[arg-type]
 
 
-def _stable_unique(values: object) -> list[str]:
+def _stable_unique(values: Iterable[object]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
-    for value in cast(object, values):  # type: ignore[union-attr]
+    for value in values:
         text = str(value)
         if not text or text in seen:
             continue
