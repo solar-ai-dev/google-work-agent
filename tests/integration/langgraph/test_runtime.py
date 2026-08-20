@@ -108,6 +108,74 @@ def _tool_catalog() -> ConnectorToolCatalog:
     return catalog
 
 
+class _PendingPlanActionsState:
+    """Mutable box for the canonical-writer-synthesis carry-over state.
+
+    Shared (via composition, not inheritance) between ``_QueuedLLMRuntime``
+    and any other test LLM double that needs the same
+    ``planning.compose_arguments``/``.revise`` -> per-route
+    ``ToolArgumentCandidateV1`` synthesis (see
+    ``_synthesize_action_argument_candidate`` below) without duplicating its
+    ~35 lines of logic.
+    """
+
+    def __init__(self) -> None:
+        self.pending: list[dict[str, object]] | None = None
+
+
+def _synthesize_action_argument_candidate(
+    queued: "deque[StructuredLLMResult]",
+    state: _PendingPlanActionsState,
+    *,
+    route_id: str,
+    tool_id: str,
+    effect: str,
+) -> dict[str, object]:
+    """Synthesize one canonical ``ToolArgumentCandidateV1`` from a queued
+    legacy whole-plan ``ActionPlanDraftV1`` payload's matching action.
+
+    Canonical ACTION Planning calls the per-route Argument Writer once per
+    frozen output route instead of one whole-plan generation call. These
+    ~50 pre-existing fixtures still queue a single legacy whole-plan
+    payload (authored before that migration) -- this synthesizes each
+    route's thin candidate from that same queued plan's matching action
+    instead of asking every fixture to be rewritten.
+    """
+
+    if state.pending is None:
+        if not queued:
+            raise RuntimeError("no queued llm result")
+        payload = queued.popleft().structured_output
+        if not (isinstance(payload, Mapping) and isinstance(payload.get("actions"), list)):
+            raise RuntimeError(
+                "planning.compose_arguments expects a legacy whole-plan "
+                "ActionPlanDraftV1 payload (with an 'actions' list) at the "
+                f"front of the queue to synthesize a canonical "
+                f"ToolArgumentCandidateV1 from; got {payload!r}"
+            )
+        state.pending = [dict(action) for action in payload["actions"]]
+    matches = [
+        action
+        for action in state.pending
+        if action.get("tool_name") == tool_id and action.get("effect") == effect
+    ]
+    if not matches:
+        raise RuntimeError(
+            f"no queued whole-plan action matches frozen route tool={tool_id!r} "
+            f"effect={effect!r}; remaining queued actions: {state.pending!r}"
+        )
+    action = matches[0]
+    state.pending.remove(action)
+    if not state.pending:
+        state.pending = None
+    return {
+        "schema_version": 1,
+        "route_id": route_id,
+        "arguments": dict(cast(Mapping[str, object], action["arguments"])),
+        "evidence_refs": list(cast("list[str]", action["evidence_refs"])),
+    }
+
+
 class _QueuedLLMRuntime:
     def __init__(
         self,
@@ -118,6 +186,7 @@ class _QueuedLLMRuntime:
         self._queued = deque(_llm_result(item) for item in payloads)
         self.calls: list[dict[str, object]] = []
         self._before_invoke = before_invoke
+        self._pending_plan_actions_state = _PendingPlanActionsState()
 
     def invoke_structured(self, **kwargs: object) -> StructuredLLMResult:
         return self._invoke(**kwargs)
@@ -177,6 +246,32 @@ class _QueuedLLMRuntime:
             is_v2_plan_call = schema_version == "retrieval-query-plan-v2"
             if is_v2_plan_call and "current_round_no" not in prompt_input:
                 return _llm_result(_synthesize_retrieval_query_plan(prompt_input))
+        if getattr(prompt_ref, "prompt_id", None) == "planning.compose_arguments":
+            prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
+            output_route = cast(Mapping[str, object], prompt_input["output_route"])
+            return _llm_result(
+                _synthesize_action_argument_candidate(
+                    self._queued,
+                    self._pending_plan_actions_state,
+                    route_id=cast(str, output_route["route_id"]),
+                    tool_id=cast(str, output_route["selected_tool_id"]),
+                    effect=cast(str, output_route["effect"]),
+                )
+            )
+        if getattr(prompt_ref, "prompt_id", None) == "planning.compose_arguments.revise":
+            prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
+            base_projection = cast(Mapping[str, object], prompt_input["base_projection"])
+            output_route = cast(Mapping[str, object], base_projection["output_route"])
+            candidate_output = cast(Mapping[str, object], prompt_input["candidate_output"])
+            return _llm_result(
+                _synthesize_action_argument_candidate(
+                    self._queued,
+                    self._pending_plan_actions_state,
+                    route_id=cast(str, candidate_output["route_id"]),
+                    tool_id=cast(str, output_route["selected_tool_id"]),
+                    effect=cast(str, output_route["effect"]),
+                )
+            )
         if not self._queued:
             raise RuntimeError("no queued llm result")
         return self._queued.popleft()
@@ -428,8 +523,14 @@ def _answer_output() -> AnswerDraftV1:
 
 
 def _write_plan_output() -> ActionPlanDraftV1:
+    # ``resource_id`` is server-assigned on CREATE and was never a valid
+    # ``tasks_create_task`` argument (``_TASK_CREATE_PAYLOAD`` has
+    # ``additionalProperties: False`` and no ``resource_id`` property) --
+    # ``_expected_task_projection`` already takes it as its own explicit
+    # kwarg below. The canonical Argument Writer's fail-closed schema check
+    # (T4) now correctly rejects it if it stays inside the arguments
+    # payload; legacy validation never checked ``additionalProperties``.
     payload = {
-        "resource_id": "task-created-1",
         "title": "Send summary",
         "status": "needsAction",
     }
@@ -562,41 +663,6 @@ def _delete_task_write_plan_output() -> ActionPlanDraftV1:
     )
     plan["summary"] = "Delete the approved follow-up task requested by the user."
     return plan
-
-
-def _read_plan_output() -> dict[str, object]:
-    return {
-        "schema_version": 2,
-        "status": "PLAN_READY",
-        "plan_id": "plan-read-1",
-        "summary": "Read the follow-up task details for the user.",
-        "objective": "Retrieve the requested Google Tasks item.",
-        "actions": [
-            {
-                "schema_version": 2,
-                "action_id": "action-read-1",
-                "position": 1,
-                "effect": "READ",
-                "tool_name": "tasks_get_task",
-                "arguments": {"task_list_id": "task-list-default", "task_id": "task-followup"},
-                "expected": {"resource_type": "task"},
-                "evidence_refs": ["evidence-seg-2"],
-                "resource_refs": ["task:task-followup"],
-                "target_resource_ref_id": None,
-                "depends_on_action_ids": [],
-                "user_visible_reason": "Read the requested follow-up task.",
-            }
-        ],
-        "evidence_refs": ["evidence-seg-2"],
-        "resource_refs": [
-            {
-                "resource_handle": "task:task-followup",
-                "resource_type": "task",
-                "resource_id": "task-followup",
-            }
-        ],
-        "confirmation": None,
-    }
 
 
 def _selection_output() -> EvidenceSelectionResultV2:
@@ -868,6 +934,7 @@ def _make_runtime(
     prompt_manifest_path: Path | None = None,
     before_llm_invoke: Callable[[], None] | None = None,
     default_tasklist_id: str | None = "task-list-default",
+    default_calendar_id: str | None = "calendar-primary",
 ) -> LangGraphWorkflowRuntime:
     clock = FakeClock(1000)
     ids = DeterministicUUID(prefix="runtime")
@@ -887,7 +954,65 @@ def _make_runtime(
         default_tasklist_id_provider=(
             None if default_tasklist_id is None else (lambda: default_tasklist_id)
         ),
+        default_calendar_id_provider=(
+            None if default_calendar_id is None else (lambda: default_calendar_id)
+        ),
     )
+
+
+def _sole_persisted_action_id(database_path: Path, *, run_id: str = "run-1") -> str:
+    """The single write action's real, assembler-generated id.
+
+    These ~50 pre-existing fixtures were authored when Planning's own LLM
+    output supplied a literal ``action_id`` (e.g. ``"action-1"``) verbatim
+    through to persistence. Canonical Planning's ``PlanAssembler`` now owns
+    Action ID generation deterministically (via the runtime's shared
+    ``id_factory``) instead of trusting the LLM candidate, so tests must
+    look the real id up rather than assume a literal string.
+    """
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT actions.id FROM actions
+            JOIN plans ON plans.id = actions.plan_id
+            WHERE plans.run_id = ?
+            ORDER BY plans.revision_no DESC, actions.position ASC
+            LIMIT 1;
+            """,
+            (run_id,),
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        raise AssertionError(f"no persisted action found for run_id={run_id!r}")
+    return cast(str, row[0])
+
+
+def _sole_persisted_plan_id(database_path: Path, *, run_id: str = "run-1") -> str:
+    """The current (latest-revision) plan's real, assembler-generated id.
+
+    Same rationale as ``_sole_persisted_action_id`` -- canonical Planning's
+    ``PlanAssembler`` owns Plan ID generation via the shared ``id_factory``
+    for a fresh plan (a revision reuses the previous plan's id instead), so
+    tests must look the real id up rather than assume a literal
+    ``"plan-1"``.
+    """
+    connection = connect_sqlite(database_path)
+    try:
+        row = connection.execute(
+            """
+            SELECT id FROM plans WHERE run_id = ?
+            ORDER BY revision_no DESC
+            LIMIT 1;
+            """,
+            (run_id,),
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        raise AssertionError(f"no persisted plan found for run_id={run_id!r}")
+    return cast(str, row[0])
 
 
 def _runtime_active_manifest_path(tmp_path: Path) -> Path:
@@ -958,23 +1083,6 @@ def _start_write_request() -> WorkflowStartRequest:
         entry_mode="AGENT_SEARCH",
         requested_mode="AUTO",
         request_text="Create the follow-up task in Google Tasks.",
-        selected_resource_ids=(),
-        correlation=WorkflowCorrelationContext(
-            request_id="request-1",
-            command_id="command-1",
-            api_contract_version="1",
-        ),
-    )
-
-
-def _start_read_request() -> WorkflowStartRequest:
-    return WorkflowStartRequest(
-        run_id="run-1",
-        conversation_id="conversation-1",
-        workflow_key="thread-1",
-        entry_mode="AGENT_SEARCH",
-        requested_mode="AUTO",
-        request_text="Get the follow-up task details from Google Tasks.",
         selected_resource_ids=(),
         correlation=WorkflowCorrelationContext(
             request_id="request-1",

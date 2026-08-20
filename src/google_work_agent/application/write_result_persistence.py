@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
+from google_work_agent.application.resource_ref_projection import (
+    resource_ref_from_snapshot as _resource_ref_from_snapshot,
+)
 from google_work_agent.application.write_execution_contracts import (
     MarkWriteActionFailedCommand,
     StoreWriteActionSuccessCommand,
@@ -30,9 +33,6 @@ from google_work_agent.application.write_persistence import (
 )
 from google_work_agent.application.write_persistence import (
     resolve_existing_action_receipt as _resolve_existing_action_receipt,
-)
-from google_work_agent.application.write_persistence import (
-    resource_ref_from_snapshot as _resource_ref_from_snapshot,
 )
 from google_work_agent.application.write_persistence import (
     upsert_resource_ref as _upsert_resource_ref,

@@ -132,6 +132,46 @@ class PreflightWriteActionService:
                 else unit_of_work.resource_refs.get_by_id(action.target_resource_ref_id)
             )
 
+        if action.tool_name == "gmail_update_draft":
+            draft_id = _required_argument_string(arguments, "draft_id")
+            draft = self._gateway.get_gmail_draft(draft_id=draft_id)
+            validate_preflight_target(
+                snapshot=draft,
+                target_ref=target_ref,
+                expected_resource_type=ResourceType.GMAIL_DRAFT,
+                expected_parent_id=None,
+                require_target_ref=True,
+                require_version_token=True,
+            )
+            return
+
+        if action.tool_name == "tasks_update_task":
+            task_list_id = _required_argument_string(arguments, "task_list_id")
+            task_id = _required_argument_string(arguments, "task_id")
+            task = self._gateway.get_task(task_list_id=task_list_id, task_id=task_id)
+            validate_preflight_target(
+                snapshot=task,
+                target_ref=target_ref,
+                expected_resource_type=ResourceType.TASK,
+                expected_parent_id=task_list_id,
+                require_target_ref=True,
+                require_version_token=True,
+            )
+            return
+
+        if action.tool_name == "calendar_update_event":
+            calendar_id = _required_argument_string(arguments, "calendar_id")
+            event_id = _required_argument_string(arguments, "event_id")
+            event = self._gateway.get_calendar_event(calendar_id=calendar_id, event_id=event_id)
+            validate_preflight_target(
+                snapshot=event,
+                target_ref=target_ref,
+                expected_resource_type=ResourceType.CALENDAR_EVENT,
+                expected_parent_id=calendar_id,
+                require_target_ref=True,
+                require_version_token=True,
+            )
+
         if action.tool_name == TASK_CREATE_TOOL:
             try:
                 fresh_duplicate_risk = self._task_duplicates.fresh_risk(arguments)
@@ -389,12 +429,16 @@ def validate_preflight_target(
     target_ref: ResourceRefRecord | None,
     expected_resource_type: ResourceType,
     expected_parent_id: str | None,
+    require_target_ref: bool = False,
+    require_version_token: bool = False,
 ) -> None:
     if snapshot.resource_type is not expected_resource_type:
         raise PolicyViolationError("preflight target resource type mismatch")
     if expected_parent_id is not None and snapshot.parent_id != expected_parent_id:
         raise PolicyViolationError("preflight target parent mismatch")
     if target_ref is None:
+        if require_target_ref:
+            raise PolicyViolationError("write update requires a persisted target reference")
         if expected_resource_type is ResourceType.CALENDAR_EVENT:
             raise PolicyViolationError("calendar delete requires a persisted target reference")
         if expected_resource_type is ResourceType.TASK:
@@ -402,6 +446,8 @@ def validate_preflight_target(
         return
     if target_ref.resource_id != snapshot.resource_id:
         raise PolicyViolationError("preflight target identity mismatch")
+    if require_version_token and target_ref.version_token is None:
+        raise PolicyViolationError("write update requires a persisted target version")
     if target_ref.version_token is not None and target_ref.version_token != snapshot.version:
         raise PolicyViolationError("preflight target version mismatch")
     if (

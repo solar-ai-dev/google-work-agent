@@ -6,6 +6,7 @@ from collections.abc import Callable
 from json import dumps
 from typing import cast
 
+from google_work_agent.application.plan_invariants import validate_plan_structure
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     duplicate_authority,
@@ -391,9 +392,11 @@ def validate_write_plan(
     command: SaveWritePlanCommand,
     registry: SignedToolRegistry,
 ) -> None:
-    if len(command.actions) == 0:
-        raise ValueError("write plan requires at least one action")
-    evidence_count = len(command.evidence)
+    validate_plan_structure(
+        actions=command.actions,
+        evidence=command.evidence,
+        plan_label="write plan",
+    )
     for action in command.actions:
         canonicalize_action_risk(action.risk)
         entry = registry.require(action.tool_name)
@@ -401,7 +404,7 @@ def validate_write_plan(
             raise ValueError(f"write plan cannot contain read-only tool: {action.tool_name}")
         validate_evidence_policy(
             policy_input=EvidencePolicyInput(
-                evidence_count=evidence_count,
+                evidence_count=len(action.evidence_ids),
                 requires_existing_resource=entry.effect_type
                 in {EffectType.UPDATE, EffectType.DELETE},
                 has_user_selected_resource=action.target_resource_ref_id is not None,

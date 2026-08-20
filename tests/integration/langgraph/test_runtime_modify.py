@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from tests.integration.langgraph.test_runtime import (
     FIXTURE_ROOT,
     ApproveWriteActionCommand,
@@ -26,6 +28,8 @@ from tests.integration.langgraph.test_runtime import (
     _runtime_active_manifest_path,
     _seed_runtime_database,
     _selection_output,
+    _sole_persisted_action_id,
+    _sole_persisted_plan_id,
     _start_write_request,
     _sufficiency_output,
     _write_plan_output,
@@ -58,6 +62,7 @@ def test_edge_preflight_google_read_failure_blocks_claim_and_write(tmp_path: Pat
 
     try:
         assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        action_id = _sole_persisted_action_id(database_path)
         approved = ApproveWriteActionService(
             unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
             now_ms=lambda: 1000,
@@ -65,7 +70,7 @@ def test_edge_preflight_google_read_failure_blocks_claim_and_write(tmp_path: Pat
             ApproveWriteActionCommand(
                 command_id="approve-preflight-failure-edge",
                 request_hash="d" * 64,
-                action_id="action-1",
+                action_id=action_id,
                 expected_version=0,
                 approved_by_account_id="account-1",
                 approved_by_display="User",
@@ -97,7 +102,7 @@ def test_edge_preflight_google_read_failure_blocks_claim_and_write(tmp_path: Pat
         connection = connect_sqlite(database_path)
         try:
             action_status = connection.execute(
-                "SELECT status FROM actions WHERE id = 'action-1';"
+                "SELECT status FROM actions WHERE id = ?;", (action_id,)
             ).fetchone()[0]
             attempt_count = connection.execute(
                 "SELECT COUNT(*) FROM execution_attempts;"
@@ -167,6 +172,8 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
 
     try:
         assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        action_id = _sole_persisted_action_id(database_path)
+        plan_id = _sole_persisted_plan_id(database_path)
         modified = ModifyWriteActionService(
             unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
             now_ms=lambda: 1000,
@@ -175,7 +182,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
             ModifyWriteActionCommand(
                 command_id=f"modify-{profile.value}",
                 request_hash="f" * 64,
-                action_id="action-1",
+                action_id=action_id,
                 expected_version=0,
                 arguments_patch={"title": "Send reviewed summary"},
             )
@@ -189,7 +196,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
                 resume_kind="MODIFY_REVIEW",
                 resume_payload={
                     "resume_kind": "MODIFY_REVIEW",
-                    "plan_id": "plan-1",
+                    "plan_id": plan_id,
                     "review_version": 1,
                 },
                 correlation=WorkflowCorrelationContext(
@@ -202,8 +209,8 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
 
         assert resumed.outcome is WorkflowOutcome.ACCEPTED
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            plan = unit_of_work.plans.get_by_id("plan-1")
-            action = unit_of_work.actions.get_by_id("action-1")
+            plan = unit_of_work.plans.get_by_id(plan_id)
+            action = unit_of_work.actions.get_by_id(action_id)
         assert plan is not None and plan.review_status.value == "PASSED"
         assert action is not None and action.status == "MODIFIED"
         assert llm_transaction_checks
@@ -216,7 +223,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
             ApproveWriteActionCommand(
                 command_id=f"approve-after-review-{profile.value}",
                 request_hash="0" * 64,
-                action_id="action-1",
+                action_id=action_id,
                 expected_version=1,
                 approved_by_account_id="account-1",
                 approved_by_display="User",
@@ -334,6 +341,14 @@ def test_modify_review_branches_use_existing_supervisor_routes(
 
     try:
         assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        action_id = _sole_persisted_action_id(database_path)
+        plan_id = _sole_persisted_plan_id(database_path)
+        # Placeholder "action-1" affected_action_ids (fixed at parametrize
+        # collection time, before the real assembler-generated id exists)
+        # are retargeted to the real id now that it is known -- canonical
+        # PlanAssembler owns Action ID, the LLM candidate never supplies it.
+        for issue in cast("list[dict[str, object]]", review_output.get("issues", [])):
+            issue["affected_action_ids"] = [action_id]
         modified = ModifyWriteActionService(
             unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
             now_ms=lambda: 1000,
@@ -342,7 +357,7 @@ def test_modify_review_branches_use_existing_supervisor_routes(
             ModifyWriteActionCommand(
                 command_id=f"modify-{expected_review_status}",
                 request_hash="1" * 64,
-                action_id="action-1",
+                action_id=action_id,
                 expected_version=0,
                 arguments_patch={"title": "Branch-reviewed title"},
             )
@@ -353,16 +368,16 @@ def test_modify_review_branches_use_existing_supervisor_routes(
         )
         prepared = runtime._prepare_modify_review_state(  # noqa: SLF001
             snapshot.values,
-            plan_id="plan-1",
+            plan_id=plan_id,
             review_version=1,
         )
         reviewed = runtime._modify_review_node(prepared)  # noqa: SLF001
 
         assert reviewed["__target__"] == expected_target
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            plan = unit_of_work.plans.get_by_id("plan-1")
+            plan = unit_of_work.plans.get_by_id(plan_id)
             run = unit_of_work.runs.get_by_id("run-1")
-            approvals = unit_of_work.approvals.list_by_action("action-1")
+            approvals = unit_of_work.approvals.list_by_action(action_id)
         assert plan is not None and plan.review_status.value == expected_review_status
         assert plan.status.value == expected_plan_status
         assert run is not None and run.status.value == expected_run_status
@@ -390,6 +405,25 @@ def test_modify_review_route_reconsideration_folds_into_retrieve_more(tmp_path: 
     gateway = FakeGoogleGateway(
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     )
+    route_reconsideration_review_output = _review_output(
+        "ROUTE_RECONSIDERATION",
+        issues=[
+            {
+                "schema_version": 2,
+                "issue_id": "route-reconsideration-action",
+                "kind": "MISSING_EVIDENCE",
+                "message": "The frozen route can no longer serve this modified action.",
+                # Placeholder -- retargeted below once the real,
+                # assembler-generated action id is known (canonical
+                # PlanAssembler owns Action ID, not the LLM).
+                "affected_action_ids": ["action-1"],
+                "affected_field_paths": ["$.actions[0]"],
+                "evidence_refs": ["evidence-seg-2"],
+                "resource_refs": ["task:task-followup"],
+                "reason_codes": ["EVIDENCE_SUPPORTED"],
+            }
+        ],
+    )
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=[
@@ -399,22 +433,7 @@ def test_modify_review_route_reconsideration_folds_into_retrieve_more(tmp_path: 
             _analysis_output(),
             _write_plan_output(),
             _review_output("PASS"),
-            _review_output(
-                "ROUTE_RECONSIDERATION",
-                issues=[
-                    {
-                        "schema_version": 2,
-                        "issue_id": "route-reconsideration-action",
-                        "kind": "MISSING_EVIDENCE",
-                        "message": "The frozen route can no longer serve this modified action.",
-                        "affected_action_ids": ["action-1"],
-                        "affected_field_paths": ["$.actions[0]"],
-                        "evidence_refs": ["evidence-seg-2"],
-                        "resource_refs": ["task:task-followup"],
-                        "reason_codes": ["EVIDENCE_SUPPORTED"],
-                    }
-                ],
-            ),
+            route_reconsideration_review_output,
         ],
         gateway=gateway,
         checkpoint_database_path=tmp_path / "checkpoints-modify-review-route-reconsideration.db",
@@ -423,6 +442,11 @@ def test_modify_review_route_reconsideration_folds_into_retrieve_more(tmp_path: 
 
     try:
         assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        action_id = _sole_persisted_action_id(database_path)
+        plan_id = _sole_persisted_plan_id(database_path)
+        cast(
+            "list[dict[str, object]]", route_reconsideration_review_output["issues"]
+        )[0]["affected_action_ids"] = [action_id]
         modified = ModifyWriteActionService(
             unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
             now_ms=lambda: 1000,
@@ -431,7 +455,7 @@ def test_modify_review_route_reconsideration_folds_into_retrieve_more(tmp_path: 
             ModifyWriteActionCommand(
                 command_id="modify-route-reconsideration",
                 request_hash="1" * 64,
-                action_id="action-1",
+                action_id=action_id,
                 expected_version=0,
                 arguments_patch={"title": "Branch-reviewed title"},
             )
@@ -442,7 +466,7 @@ def test_modify_review_route_reconsideration_folds_into_retrieve_more(tmp_path: 
         )
         prepared = runtime._prepare_modify_review_state(  # noqa: SLF001
             snapshot.values,
-            plan_id="plan-1",
+            plan_id=plan_id,
             review_version=1,
         )
         reviewed = runtime._modify_review_node(prepared)  # noqa: SLF001
@@ -450,9 +474,9 @@ def test_modify_review_route_reconsideration_folds_into_retrieve_more(tmp_path: 
         assert reviewed["__target__"] == "end"
         assert reviewed["execution_summary"] == {"result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"}
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            plan = unit_of_work.plans.get_by_id("plan-1")
+            plan = unit_of_work.plans.get_by_id(plan_id)
             run = unit_of_work.runs.get_by_id("run-1")
-            approvals = unit_of_work.approvals.list_by_action("action-1")
+            approvals = unit_of_work.approvals.list_by_action(action_id)
         assert plan is not None and plan.review_status.value == "RETRIEVE_MORE"
         assert plan.status.value == "SUPERSEDED"
         assert run is not None and run.status.value == "PLANNING"
@@ -477,6 +501,9 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
         "issue_id": f"{review_status.lower()}-action",
         "kind": "MISSING_EVIDENCE" if review_status == "RETRIEVE_MORE" else "MISSING_GOAL_COVERAGE",
         "message": "The modified plan needs another planning pass.",
+        # Placeholder -- retargeted below once the real,
+        # assembler-generated action id is known (canonical PlanAssembler
+        # owns Action ID, not the LLM).
         "affected_action_ids": ["action-1"],
         "affected_field_paths": ["$.actions[0]"],
         "evidence_refs": ["evidence-seg-2"],
@@ -582,6 +609,9 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
 
     try:
         assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        action_id = _sole_persisted_action_id(database_path)
+        plan_id = _sole_persisted_plan_id(database_path)
+        branch_review["issues"][0]["affected_action_ids"] = [action_id]  # type: ignore[index]
         modified = ModifyWriteActionService(
             unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
             now_ms=lambda: 1000,
@@ -590,7 +620,7 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
             ModifyWriteActionCommand(
                 command_id=f"modify-{review_status.lower()}-chain",
                 request_hash="4" * 64,
-                action_id="action-1",
+                action_id=action_id,
                 expected_version=0,
                 arguments_patch={"title": "Review branch title"},
             )
@@ -604,7 +634,7 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
                 resume_kind="MODIFY_REVIEW",
                 resume_payload={
                     "resume_kind": "MODIFY_REVIEW",
-                    "plan_id": "plan-1",
+                    "plan_id": plan_id,
                     "review_version": 1,
                 },
                 correlation=WorkflowCorrelationContext(
@@ -619,7 +649,7 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
             plans = unit_of_work.plans.list_by_run("run-1")
             run = unit_of_work.runs.get_by_id("run-1")
-            old_actions = unit_of_work.actions.list_by_plan("plan-1")
+            old_actions = unit_of_work.actions.list_by_plan(plan_id)
             new_actions = unit_of_work.actions.list_by_plan(plans[-1].id)
         assert [(plan.revision_no, plan.status.value) for plan in plans] == [
             (1, "SUPERSEDED"),
@@ -627,7 +657,7 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
         ]
         assert run is not None and run.status.value == "WAITING_APPROVAL"
         assert old_actions[0].status == "MODIFIED"
-        assert new_actions[0].id != "action-1"
+        assert new_actions[0].id != action_id
         assert new_actions[0].status == "PROPOSED"
         assert gateway.count_calls("create_task") == 0
     finally:
@@ -657,6 +687,8 @@ def test_modify_review_block_finalizes_without_approval_or_write(tmp_path: Path)
 
     try:
         assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        action_id = _sole_persisted_action_id(database_path)
+        plan_id = _sole_persisted_plan_id(database_path)
         modified = ModifyWriteActionService(
             unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
             now_ms=lambda: 1000,
@@ -665,7 +697,7 @@ def test_modify_review_block_finalizes_without_approval_or_write(tmp_path: Path)
             ModifyWriteActionCommand(
                 command_id="modify-block-chain",
                 request_hash="5" * 64,
-                action_id="action-1",
+                action_id=action_id,
                 expected_version=0,
                 arguments_patch={"title": "Unsafe branch title"},
             )
@@ -679,7 +711,7 @@ def test_modify_review_block_finalizes_without_approval_or_write(tmp_path: Path)
                 resume_kind="MODIFY_REVIEW",
                 resume_payload={
                     "resume_kind": "MODIFY_REVIEW",
-                    "plan_id": "plan-1",
+                    "plan_id": plan_id,
                     "review_version": 1,
                 },
                 correlation=WorkflowCorrelationContext(
@@ -693,8 +725,8 @@ def test_modify_review_block_finalizes_without_approval_or_write(tmp_path: Path)
         assert resumed.outcome is WorkflowOutcome.COMPLETED
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
             run = unit_of_work.runs.get_by_id("run-1")
-            plan = unit_of_work.plans.get_by_id("plan-1")
-            approvals = unit_of_work.approvals.list_by_action("action-1")
+            plan = unit_of_work.plans.get_by_id(plan_id)
+            approvals = unit_of_work.approvals.list_by_action(action_id)
             attempts = [
                 attempt
                 for approval in approvals
@@ -737,12 +769,14 @@ def test_modify_during_review_discards_the_stale_llm_result(tmp_path: Path) -> N
 
     try:
         assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        action_id = _sole_persisted_action_id(database_path)
+        plan_id = _sole_persisted_plan_id(database_path)
         assert (
             modify_service(
                 ModifyWriteActionCommand(
                     command_id="modify-before-review",
                     request_hash="2" * 64,
-                    action_id="action-1",
+                    action_id=action_id,
                     expected_version=0,
                     arguments_patch={"title": "First review title"},
                 )
@@ -754,7 +788,7 @@ def test_modify_during_review_discards_the_stale_llm_result(tmp_path: Path) -> N
         )
         first_generation = runtime._prepare_modify_review_state(  # noqa: SLF001
             snapshot.values,
-            plan_id="plan-1",
+            plan_id=plan_id,
             review_version=1,
         )
 
@@ -763,7 +797,7 @@ def test_modify_during_review_discards_the_stale_llm_result(tmp_path: Path) -> N
                 ModifyWriteActionCommand(
                     command_id="modify-during-review",
                     request_hash="3" * 64,
-                    action_id="action-1",
+                    action_id=action_id,
                     expected_version=1,
                     arguments_patch={"title": "Latest review title"},
                 )
@@ -776,7 +810,7 @@ def test_modify_during_review_discards_the_stale_llm_result(tmp_path: Path) -> N
         assert stale_domain_result["__target__"] == "end"
         assert stale_domain_result["execution_summary"] == {"result": "STALE_MODIFY_REVIEW"}
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            plan = unit_of_work.plans.get_by_id("plan-1")
+            plan = unit_of_work.plans.get_by_id(plan_id)
         assert plan is not None and plan.review_status.value == "REQUIRED"
         assert plan.review_version == 2
     finally:

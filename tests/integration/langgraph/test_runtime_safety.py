@@ -20,6 +20,8 @@ from tests.integration.langgraph.test_runtime import (
     _runtime_active_manifest_path,
     _seed_runtime_database,
     _selection_output,
+    _sole_persisted_action_id,
+    _start_request,
     _start_write_request,
     _sufficiency_output,
     _write_plan_output,
@@ -111,6 +113,7 @@ def test_edge_rejected_approval_never_enters_preflight_or_claim(tmp_path: Path) 
 
     try:
         assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+        action_id = _sole_persisted_action_id(database_path)
         preflight_reads_before_resume = gateway.count_calls("list_tasks")
         rejected = RejectWriteActionService(
             unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
@@ -119,7 +122,7 @@ def test_edge_rejected_approval_never_enters_preflight_or_claim(tmp_path: Path) 
             RejectWriteActionCommand(
                 command_id="reject-edge",
                 request_hash="c" * 64,
-                action_id="action-1",
+                action_id=action_id,
                 expected_version=0,
             )
         )
@@ -142,7 +145,7 @@ def test_edge_rejected_approval_never_enters_preflight_or_claim(tmp_path: Path) 
         connection = connect_sqlite(database_path)
         try:
             action_status = connection.execute(
-                "SELECT status FROM actions WHERE id = 'action-1';"
+                "SELECT status FROM actions WHERE id = ?;", (action_id,)
             ).fetchone()[0]
             attempt_count = connection.execute(
                 "SELECT COUNT(*) FROM execution_attempts;"
@@ -153,5 +156,43 @@ def test_edge_rejected_approval_never_enters_preflight_or_claim(tmp_path: Path) 
         assert gateway.count_calls("list_tasks") == preflight_reads_before_resume
         assert gateway.count_calls("create_task") == 0
         assert attempt_count == 0
+    finally:
+        runtime.close()
+
+
+def test_merge_decision_fails_closed_for_unroutable_supervisor_target(tmp_path: Path) -> None:
+    """An unmapped Supervisor target must route into Recovery, never a
+    silent "end" termination. ``GraphRouteTranslator.translate`` used to
+    default to ``RouteTranslation("end", "end")`` for any target it
+    couldn't resolve for the current profile -- a real, confirmed
+    fail-closed gap (0~6 stage audit, Batch A)."""
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    gateway = FakeGoogleGateway(
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    )
+    runtime = _make_runtime(
+        database_path=database_path,
+        llm_payloads=[],
+        gateway=gateway,
+        checkpoint_database_path=tmp_path / "checkpoints-unroutable-target.db",
+        prompt_manifest_path=manifest_path,
+    )
+    try:
+        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        merged = runtime._merge_decision(  # noqa: SLF001
+            state,
+            {},
+            {
+                "target": "NOT_A_REAL_SUPERVISOR_TARGET",
+                "next_phase": None,
+                "state_update": {},
+                "reason_code": None,
+                "budget_decision": None,
+            },
+        )
+        assert merged["__target__"] == "recovery"
+        assert merged["__logical_target__"] == "recovery"
+        assert merged["execution_summary"] == {"result": "CONTRACT_VIOLATION"}
     finally:
         runtime.close()

@@ -37,6 +37,7 @@ class WorkflowInvocationCoordinator:
         mark_stalled_claims_as_unknown: Callable[[str], bool],
         cancel_signal_lock: Any,
         cancel_signals: set[str],
+        resume_reauth_execution: Callable[[GraphState], GraphState] | None = None,
     ) -> None:
         self._graph = graph
         self._graph_profile = graph_profile
@@ -47,6 +48,7 @@ class WorkflowInvocationCoordinator:
         self._has_executed_action = has_executed_action
         self._recover_executed_actions = recover_executed_actions
         self._mark_stalled_claims_as_unknown = mark_stalled_claims_as_unknown
+        self._resume_reauth_execution = resume_reauth_execution
         self._cancel_signal_lock = cancel_signal_lock
         self._cancel_signals = cancel_signals
 
@@ -93,6 +95,7 @@ class WorkflowInvocationCoordinator:
         state = self._continue_from_domain_facts(
             values=cast(GraphState, snapshot.values),
             run_id=request.run_id,
+            allow_reauth_resume=request.resume_kind == "REAUTH_COMPLETED",
         )
         if state is None:
             return self.result_from_thread(
@@ -135,6 +138,7 @@ class WorkflowInvocationCoordinator:
         state = self._continue_from_domain_facts(
             values=cast(GraphState, snapshot.values),
             run_id=request.run_id,
+            allow_reauth_resume=False,
         )
         if state is None:
             return self.result_from_thread(
@@ -152,13 +156,14 @@ class WorkflowInvocationCoordinator:
         *,
         values: GraphState,
         run_id: str,
+        allow_reauth_resume: bool = True,
     ) -> GraphState | None:
-        """Resolve the next state purely from persisted Domain facts.
+        """Resolve the next state from durable facts plus an explicit reauth resume gate.
 
-        Used whenever a thread must continue without a genuine pending
-        interrupt() to resume into -- startup recovery sweeps and any
-        manual resume (e.g. REAUTH_COMPLETED) that targets a run whose
-        prior invocation ended via a normal conditional edge.
+        Unknown-result, already-executed, and stalled-claim facts always take
+        precedence so a credential pause after Claim can never cause a blind
+        write resend. A pre-Claim REAUTH_REQUIRED checkpoint is re-entered only
+        for the explicit REAUTH_COMPLETED resume path, never startup recovery.
         """
         if self._latest_unknown_action(run_id) is not None:
             return self._recovery_node(values)
@@ -166,7 +171,21 @@ class WorkflowInvocationCoordinator:
             return self._recover_executed_actions(values, run_id)
         if self._mark_stalled_claims_as_unknown(run_id):
             return self._recovery_node(values)
-        return None
+        if not allow_reauth_resume:
+            return None
+        if self._current_run_status(run_id) != RunStatus.REAUTH_REQUIRED.value:
+            return None
+        execution_summary = values.get("execution_summary")
+        if not isinstance(execution_summary, Mapping):
+            return None
+        if execution_summary.get("result") != "REAUTH_REQUIRED":
+            return None
+        action_id = execution_summary.get("action_id")
+        if not isinstance(action_id, str) or not action_id:
+            return None
+        if self._resume_reauth_execution is None:
+            return None
+        return self._resume_reauth_execution(values)
 
     @staticmethod
     def config_for_thread(workflow_key: str) -> dict[str, object]:

@@ -3,6 +3,7 @@ import pytest
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.route_translation import (
     GraphRouteTranslator,
+    UnroutableSupervisorTargetError,
     build_resume_target_registry,
     confirmation_owner,
     confirmation_resume_status,
@@ -110,6 +111,26 @@ def test_profile_route_translation_is_preserved(
 
     assert route.logical_target == logical_target
     assert route.node == node
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        # A SupervisorTarget enum member that is defined but has no entry
+        # for this profile's route table (e.g. PREFLIGHT is never present
+        # in any _PROFILE_ROUTES map -- runtime.py's domain_validation node
+        # always rewrites it to ACTION_EXECUTION before this is reached in
+        # production, but translate() itself must still fail closed rather
+        # than silently defaulting to "end" if that override is ever
+        # bypassed or a future target is added without a route entry).
+        SupervisorTarget.PREFLIGHT.value,
+        # A string that is not even a valid SupervisorTarget at all.
+        "NOT_A_REAL_TARGET",
+    ],
+)
+def test_translate_fails_closed_for_unmapped_target(target: str) -> None:
+    with pytest.raises(UnroutableSupervisorTargetError):
+        GraphRouteTranslator(GraphProfile.SIX_ROLE_BASELINE).translate(target)
 
 
 @pytest.mark.parametrize(

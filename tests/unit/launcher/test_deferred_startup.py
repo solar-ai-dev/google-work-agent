@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.runtime import SafeModeController
 from google_work_agent.api import ApiContainer, create_app
+from google_work_agent.application.write_actions import ResolveMismatchRecoveryService
 from google_work_agent.launcher.dev import (
     CoreInitializationError,
     _DeferredApiContainer,
@@ -102,6 +103,11 @@ def test_initializing_window_is_live_blocked_then_becomes_ready(tmp_path: Path) 
 
         release.set()
         assert _wait_for_ready(client, headers) == "READY"
+        assert container._core is not None
+        assert isinstance(
+            container._core.resolve_recovery_service,
+            ResolveMismatchRecoveryService,
+        )
 
 
 def test_start_run_reaches_the_real_coordinator_once_core_initialization_completes(

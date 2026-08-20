@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
+from google_work_agent.application.plan_invariants import validate_plan_structure
 from google_work_agent.application.read_contracts import (
     PublishReadOnlyPlanCommand,
     PublishReadOnlyPlanResponse,
@@ -369,19 +370,11 @@ def _validate_read_only_plan(
     command: SaveReadOnlyPlanCommand,
     registry: SignedToolRegistry,
 ) -> None:
-    if len(command.actions) == 0:
-        raise ValueError("read-only plan requires at least one action")
-    action_ids = {item.action_id for item in command.actions}
-    if len(action_ids) != len(command.actions):
-        raise ValueError("duplicate action_id in read-only plan")
-    positions = {item.position for item in command.actions}
-    if len(positions) != len(command.actions):
-        raise ValueError("duplicate action position in read-only plan")
-    evidence_ids = {item.evidence_id for item in command.evidence}
-    if len(evidence_ids) != len(command.evidence):
-        raise ValueError("duplicate evidence_id in read-only plan")
-
-    adjacency: dict[str, tuple[str, ...]] = {}
+    validate_plan_structure(
+        actions=command.actions,
+        evidence=command.evidence,
+        plan_label="read-only plan",
+    )
     for action in command.actions:
         entry = registry.get(action.tool_name)
         if entry is None:
@@ -410,35 +403,6 @@ def _validate_read_only_plan(
                 },
             )()
         )
-        for evidence_id in action.evidence_ids:
-            if evidence_id not in evidence_ids:
-                raise LookupError(f"action references missing evidence: {evidence_id}")
-        for depends_on_action_id in action.depends_on_action_ids:
-            if depends_on_action_id == action.action_id:
-                raise ValueError("action cannot depend on itself")
-            if depends_on_action_id not in action_ids:
-                raise LookupError(f"action dependency not found: {depends_on_action_id}")
-        adjacency[action.action_id] = action.depends_on_action_ids
-    _validate_no_dependency_cycle(adjacency)
-
-
-def _validate_no_dependency_cycle(adjacency: dict[str, tuple[str, ...]]) -> None:
-    visiting: set[str] = set()
-    visited: set[str] = set()
-
-    def _visit(node: str) -> None:
-        if node in visited:
-            return
-        if node in visiting:
-            raise ValueError("action dependency cycle detected")
-        visiting.add(node)
-        for dependency in adjacency[node]:
-            _visit(dependency)
-        visiting.remove(node)
-        visited.add(node)
-
-    for node in adjacency:
-        _visit(node)
 
 
 def _validate_published_actions_are_read(actions: tuple[ActionRecord, ...]) -> None:

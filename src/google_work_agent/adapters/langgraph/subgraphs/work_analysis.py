@@ -181,12 +181,20 @@ class WorkAnalysisSubgraph:
             run_id=state["run_id"],
             retrieval_result=retrieval_result,
         )
+        receipt_refs: list[str] = []
+        for receipt in state.get("policy_confirmation_receipts", []):
+            if not isinstance(receipt, Mapping):
+                continue
+            receipt_id = receipt.get("confirmation_receipt_id")
+            if isinstance(receipt_id, str) and receipt_id:
+                receipt_refs.append(receipt_id)
         ensure_llm_call_budget(state)
         llm_result = self._agent.invoke_analyze_llm_from_retrieval_result(
             request_intent=_require_state_value(state["request_intent"], "request_intent"),
             retrieval_result=retrieval_result,
             evidence_drafts=evidence_drafts,
             request=request_from_state(state),
+            policy_confirmation_receipt_refs=receipt_refs,
             confirmation_response=confirmation_response,
         )
         result = self._agent.build_output_from_llm_result_from_retrieval_result(
