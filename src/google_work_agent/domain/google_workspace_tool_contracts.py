@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import TypeAlias
 
@@ -180,12 +181,20 @@ class GoogleWorkspaceToolContract:
         return hashlib.sha256(canonical).hexdigest()
 
     def manifest_schema_payload(self) -> dict[str, object]:
+        # input_schema/output_schema are the SAME dict objects stored on this
+        # frozen, process-wide-singleton contract (_CONTRACTS, built once at
+        # import time) -- frozen only prevents reassigning the fields, not
+        # mutating their contents. Callers that build a manifest payload and
+        # then mutate it (as a "corrupt the delivered manifest" test fixture
+        # legitimately does) would otherwise permanently corrupt the
+        # canonical contract for the rest of the process. Deep-copy here so
+        # every caller gets an independent value.
         return {
             "input_schema_version": self.input_schema_version,
             "output_schema_version": self.output_schema_version,
             "tool_schema_hash": self.schema_hash,
-            "input_schema": self.input_schema,
-            "output_schema": self.output_schema,
+            "input_schema": deepcopy(self.input_schema),
+            "output_schema": deepcopy(self.output_schema),
         }
 
 
