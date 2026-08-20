@@ -58,6 +58,7 @@ class ManifestEnforcedMCPTransport:
         )
         self._verified_callable_names = self._load_verified_manifest_surface()
         self._verify_remote_internal_surface()
+        self._verify_remote_contract_surface()
 
     def call_tool(self, *, tool_name: str, arguments: dict[str, object]) -> MCPToolResponse:
         self._require_current_callable(tool_name)
@@ -80,6 +81,7 @@ class ManifestEnforcedMCPTransport:
     def restart(self) -> MCPRuntimeMetadata:
         metadata = self._delegate.restart()
         self._verify_remote_internal_surface()
+        self._verify_remote_contract_surface()
         return metadata
 
     @property
@@ -246,6 +248,60 @@ class ManifestEnforcedMCPTransport:
                 code=MCPTransportErrorCode.TOOL_REJECTED,
                 message="remote internal capability surface mismatch",
             )
+
+    def _verify_remote_contract_surface(self) -> None:
+        response = self._delegate.call_control(
+            method="mcp.list_capability_contracts",
+            arguments={},
+        )
+        raw_contracts = response.payload.get("contracts")
+        if not isinstance(raw_contracts, list):
+            raise MCPTransportError(
+                code=MCPTransportErrorCode.HANDSHAKE_FAILED,
+                message="remote MCP capability contract list is missing",
+            )
+        expected = self._expected_contract_descriptors()
+        actual: list[tuple[str, str, str, str, str]] = []
+        for raw_item in raw_contracts:
+            if not isinstance(raw_item, dict):
+                raise MCPTransportError(
+                    code=MCPTransportErrorCode.SCHEMA_MISMATCH,
+                    message="remote MCP capability contract is malformed",
+                )
+            item = cast(dict[str, object], raw_item)
+            actual.append(
+                (
+                    str(item.get("tool_name", "")),
+                    str(item.get("category", "")),
+                    str(item.get("input_schema_version", "")),
+                    str(item.get("output_schema_version", "")),
+                    str(item.get("tool_schema_hash", "")),
+                )
+            )
+        if tuple(sorted(actual)) != expected or len(actual) != len(set(actual)):
+            raise MCPTransportError(
+                code=MCPTransportErrorCode.TOOL_REJECTED,
+                message="remote MCP capability schema surface mismatch",
+            )
+
+    def _expected_contract_descriptors(self) -> tuple[tuple[str, str, str, str, str], ...]:
+        internal_categories = {
+            capability.tool_name: capability.category.value
+            for capability in self._expected_internal_capabilities
+        }
+        descriptors: list[tuple[str, str, str, str, str]] = []
+        for tool_name in sorted(self._verified_callable_names):
+            contract = google_workspace_tool_contract(tool_name)
+            descriptors.append(
+                (
+                    tool_name,
+                    internal_categories.get(tool_name, "AGENT_TOOL"),
+                    contract.input_schema_version,
+                    contract.output_schema_version,
+                    contract.schema_hash,
+                )
+            )
+        return tuple(descriptors)
 
 
 def _single_internal_registry_version(
