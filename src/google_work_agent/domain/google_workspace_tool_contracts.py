@@ -1,9 +1,8 @@
 """Schema-authoritative Google Workspace MCP tool contracts.
 
-These contracts are connector-local protocol facts. Agent routing policy still
-lives in ``SignedToolRegistry``; this module owns only the actual JSON input and
-output shapes used at the MCP boundary. The same schemas are used to calculate
-tool schema hashes, serialize the manifest, and validate server calls/results.
+Agent routing policy remains in ``SignedToolRegistry``. This module owns the
+actual JSON input/output shapes used at the MCP boundary. The same contracts
+feed schema hashing, manifest serialization, and server pre/post validation.
 """
 
 from __future__ import annotations
@@ -16,6 +15,21 @@ from typing import TypeAlias
 
 JsonSchema: TypeAlias = dict[str, object]
 
+
+def _object_schema(
+    properties: Mapping[str, object],
+    *,
+    required: tuple[str, ...] = (),
+    additional_properties: bool = False,
+) -> JsonSchema:
+    return {
+        "type": "object",
+        "properties": dict(properties),
+        "required": list(required),
+        "additionalProperties": additional_properties,
+    }
+
+
 _STRING: JsonSchema = {"type": "string"}
 _NONEMPTY_STRING: JsonSchema = {"type": "string", "minLength": 1}
 _NULLABLE_STRING: JsonSchema = {"type": ["string", "null"]}
@@ -24,9 +38,8 @@ _PAGE_SIZE: JsonSchema = {"type": "integer", "minimum": 1, "maximum": 100}
 _OPEN_OBJECT: JsonSchema = {"type": "object"}
 _NULLABLE_OBJECT: JsonSchema = {"type": ["object", "null"]}
 
-_SNAPSHOT_SCHEMA: JsonSchema = {
-    "type": "object",
-    "properties": {
+_SNAPSHOT_SCHEMA: JsonSchema = _object_schema(
+    {
         "fixture_snapshot_id": _NONEMPTY_STRING,
         "resource_type": _NONEMPTY_STRING,
         "resource_id": _NONEMPTY_STRING,
@@ -36,7 +49,7 @@ _SNAPSHOT_SCHEMA: JsonSchema = {
         "recovery_fingerprint": _NULLABLE_STRING,
         "payload": _OPEN_OBJECT,
     },
-    "required": [
+    required=(
         "fixture_snapshot_id",
         "resource_type",
         "resource_id",
@@ -45,22 +58,17 @@ _SNAPSHOT_SCHEMA: JsonSchema = {
         "version",
         "recovery_fingerprint",
         "payload",
-    ],
-    "additionalProperties": False,
-}
-
-_SNAPSHOT_ENVELOPE: JsonSchema = _object_schema(
-    {"item": _SNAPSHOT_SCHEMA},
-    required=("item",),
+    ),
 )
-_PAGE_ENVELOPE: JsonSchema = _object_schema(
+_SNAPSHOT_ENVELOPE = _object_schema({"item": _SNAPSHOT_SCHEMA}, required=("item",))
+_PAGE_ENVELOPE = _object_schema(
     {
         "items": {"type": "array", "items": _SNAPSHOT_SCHEMA},
         "next_page_token": _NULLABLE_STRING,
     },
     required=("items", "next_page_token"),
 )
-_FREEBUSY_ENVELOPE: JsonSchema = _object_schema(
+_FREEBUSY_ENVELOPE = _object_schema(
     {
         "calendars": {
             "type": "array",
@@ -85,7 +93,7 @@ _FREEBUSY_ENVELOPE: JsonSchema = _object_schema(
     },
     required=("calendars",),
 )
-_UI_THREAD_DETAIL_ENVELOPE: JsonSchema = _object_schema(
+_UI_THREAD_DETAIL_ENVELOPE = _object_schema(
     {
         "thread_id": _NONEMPTY_STRING,
         "message_id": _NONEMPTY_STRING,
@@ -133,7 +141,7 @@ _UI_THREAD_DETAIL_ENVELOPE: JsonSchema = _object_schema(
         "version",
     ),
 )
-_ATTACHMENT_ENVELOPE: JsonSchema = _object_schema(
+_ATTACHMENT_ENVELOPE = _object_schema(
     {
         "message_id": _NONEMPTY_STRING,
         "attachment_id": _NONEMPTY_STRING,
@@ -143,7 +151,7 @@ _ATTACHMENT_ENVELOPE: JsonSchema = _object_schema(
     },
     required=("message_id", "attachment_id", "size_bytes", "sha256", "data_base64url"),
 )
-_RECOVERY_SEARCH_ENVELOPE: JsonSchema = _object_schema(
+_RECOVERY_SEARCH_ENVELOPE = _object_schema(
     {"items": {"type": "array", "items": _SNAPSHOT_SCHEMA}},
     required=("items",),
 )
@@ -182,8 +190,6 @@ class GoogleWorkspaceToolContract:
 
 
 class ToolContractViolation(ValueError):
-    """One MCP input/output value failed its declared connector schema."""
-
     def __init__(self, *, tool_name: str, phase: str, errors: tuple[str, ...]) -> None:
         super().__init__(f"{tool_name} {phase} contract violation: {'; '.join(errors)}")
         self.tool_name = tool_name
@@ -203,24 +209,22 @@ def list_google_workspace_tool_contracts() -> tuple[GoogleWorkspaceToolContract,
 
 
 def validate_tool_input(tool_name: str, value: object) -> None:
-    contract = google_workspace_tool_contract(tool_name)
-    errors = tuple(_schema_errors(value, contract.input_schema, path="$"))
-    if errors:
-        raise ToolContractViolation(tool_name=tool_name, phase="input", errors=errors)
+    _validate_contract_phase(tool_name=tool_name, phase="input", value=value)
 
 
 def validate_tool_output(tool_name: str, value: object) -> None:
+    _validate_contract_phase(tool_name=tool_name, phase="output", value=value)
+
+
+def _validate_contract_phase(*, tool_name: str, phase: str, value: object) -> None:
     contract = google_workspace_tool_contract(tool_name)
-    errors = tuple(_schema_errors(value, contract.output_schema, path="$"))
+    schema = contract.input_schema if phase == "input" else contract.output_schema
+    errors = tuple(_schema_errors(value, schema, path="$"))
     if errors:
-        raise ToolContractViolation(tool_name=tool_name, phase="output", errors=errors)
+        raise ToolContractViolation(tool_name=tool_name, phase=phase, errors=errors)
 
 
-def _contract(
-    tool_name: str,
-    input_schema: JsonSchema,
-    output_schema: JsonSchema,
-) -> GoogleWorkspaceToolContract:
+def _contract(tool_name: str, input_schema: JsonSchema, output_schema: JsonSchema) -> GoogleWorkspaceToolContract:
     return GoogleWorkspaceToolContract(
         tool_name=tool_name,
         input_schema_version="v1",
@@ -230,23 +234,9 @@ def _contract(
     )
 
 
-def _object_schema(
-    properties: Mapping[str, object],
-    *,
-    required: tuple[str, ...] = (),
-    additional_properties: bool = False,
-) -> JsonSchema:
-    return {
-        "type": "object",
-        "properties": dict(properties),
-        "required": list(required),
-        "additionalProperties": additional_properties,
-    }
-
-
 def _id_input(*names: str, optional: Mapping[str, object] | None = None) -> JsonSchema:
     properties: dict[str, object] = {name: _NONEMPTY_STRING for name in names}
-    if optional is not None:
+    if optional:
         properties.update(optional)
     return _object_schema(properties, required=tuple(names))
 
@@ -264,188 +254,155 @@ def _write_input(*ids: str, payload_required: bool) -> JsonSchema:
 def _page_input(*ids: str, extra: Mapping[str, object] | None = None) -> JsonSchema:
     properties: dict[str, object] = {name: _NONEMPTY_STRING for name in ids}
     properties.update({"page_token": _NULLABLE_STRING, "page_size": _PAGE_SIZE})
-    if extra is not None:
+    if extra:
         properties.update(extra)
     return _object_schema(properties, required=tuple(ids))
 
 
 def _build_contracts() -> dict[str, GoogleWorkspaceToolContract]:
-    contracts = {
-        "calendar_get_event": _contract(
-            "calendar_get_event",
-            _id_input("calendar_id", "event_id"),
-            _SNAPSHOT_ENVELOPE,
+    contracts: dict[str, GoogleWorkspaceToolContract] = {}
+
+    def add(name: str, input_schema: JsonSchema, output_schema: JsonSchema) -> None:
+        contracts[name] = _contract(name, input_schema, output_schema)
+
+    add("calendar_get_event", _id_input("calendar_id", "event_id"), _SNAPSHOT_ENVELOPE)
+    add(
+        "calendar_create_event",
+        _write_input("calendar_id", payload_required=True),
+        _SNAPSHOT_ENVELOPE,
+    )
+    add(
+        "calendar_delete_event",
+        _write_input("calendar_id", "event_id", payload_required=False),
+        _SNAPSHOT_ENVELOPE,
+    )
+    add("calendar_list_calendars", _page_input(), _PAGE_ENVELOPE)
+    add(
+        "calendar_list_events",
+        _page_input(
+            "calendar_id",
+            extra={
+                "time_min": _NULLABLE_STRING,
+                "time_max": _NULLABLE_STRING,
+                "single_events": _BOOLEAN,
+                "order_by": _NULLABLE_STRING,
+            },
         ),
-        "calendar_create_event": _contract(
-            "calendar_create_event",
-            _write_input("calendar_id", payload_required=True),
-            _SNAPSHOT_ENVELOPE,
-        ),
-        "calendar_delete_event": _contract(
-            "calendar_delete_event",
-            _write_input("calendar_id", "event_id", payload_required=False),
-            _SNAPSHOT_ENVELOPE,
-        ),
-        "calendar_list_calendars": _contract(
-            "calendar_list_calendars",
-            _page_input(),
-            _PAGE_ENVELOPE,
-        ),
-        "calendar_list_events": _contract(
-            "calendar_list_events",
-            _page_input(
-                "calendar_id",
-                extra={
-                    "time_min": _NULLABLE_STRING,
-                    "time_max": _NULLABLE_STRING,
-                    "single_events": _BOOLEAN,
-                    "order_by": _NULLABLE_STRING,
+        _PAGE_ENVELOPE,
+    )
+    add(
+        "calendar_query_freebusy",
+        _object_schema(
+            {
+                "calendar_ids": {
+                    "type": "array",
+                    "items": _NONEMPTY_STRING,
+                    "minItems": 1,
+                    "maxItems": 20,
                 },
-            ),
-            _PAGE_ENVELOPE,
+                "time_min": _NONEMPTY_STRING,
+                "time_max": _NONEMPTY_STRING,
+            },
+            required=("calendar_ids", "time_min", "time_max"),
         ),
-        "calendar_query_freebusy": _contract(
-            "calendar_query_freebusy",
-            _object_schema(
-                {
-                    "calendar_ids": {
-                        "type": "array",
-                        "items": _NONEMPTY_STRING,
-                        "minItems": 1,
-                        "maxItems": 20,
-                    },
-                    "time_min": _NONEMPTY_STRING,
-                    "time_max": _NONEMPTY_STRING,
+        _FREEBUSY_ENVELOPE,
+    )
+    add(
+        "calendar_update_event",
+        _write_input("calendar_id", "event_id", payload_required=True),
+        _SNAPSHOT_ENVELOPE,
+    )
+    add("gmail_create_draft", _write_input(payload_required=True), _SNAPSHOT_ENVELOPE)
+    add("gmail_get_draft", _id_input("draft_id"), _SNAPSHOT_ENVELOPE)
+    add("gmail_get_message", _id_input("message_id"), _SNAPSHOT_ENVELOPE)
+    add("gmail_get_thread", _id_input("thread_id"), _SNAPSHOT_ENVELOPE)
+    add(
+        "gmail_search_threads",
+        _object_schema(
+            {
+                "query": _STRING,
+                "page_token": _NULLABLE_STRING,
+                "page_size": _PAGE_SIZE,
+                "include_thread_metadata": _BOOLEAN,
+            },
+            required=("query",),
+        ),
+        _PAGE_ENVELOPE,
+    )
+    add(
+        "gmail_send",
+        _id_input(
+            "draft_id",
+            optional={
+                "recovery_fingerprint": _NULLABLE_STRING,
+                "claim_context": _NULLABLE_OBJECT,
+            },
+        ),
+        _SNAPSHOT_ENVELOPE,
+    )
+    add(
+        "gmail_update_draft",
+        _write_input("draft_id", payload_required=True),
+        _SNAPSHOT_ENVELOPE,
+    )
+    add(
+        "tasks_create_task",
+        _write_input("task_list_id", payload_required=True),
+        _SNAPSHOT_ENVELOPE,
+    )
+    add("tasks_get_task", _id_input("task_list_id", "task_id"), _SNAPSHOT_ENVELOPE)
+    add("tasks_list_tasklists", _page_input(), _PAGE_ENVELOPE)
+    add(
+        "tasks_list_tasks",
+        _page_input(
+            "task_list_id",
+            extra={
+                "show_completed": _BOOLEAN,
+                "show_hidden": _BOOLEAN,
+                "show_deleted": _BOOLEAN,
+            },
+        ),
+        _PAGE_ENVELOPE,
+    )
+    add(
+        "tasks_update_task",
+        _write_input("task_list_id", "task_id", payload_required=True),
+        _SNAPSHOT_ENVELOPE,
+    )
+    add(
+        "tasks_delete_task",
+        _write_input("task_list_id", "task_id", payload_required=False),
+        _SNAPSHOT_ENVELOPE,
+    )
+    add("gmail_get_ui_thread_detail", _id_input("thread_id"), _UI_THREAD_DETAIL_ENVELOPE)
+    add(
+        "gmail_get_attachment",
+        _id_input("message_id", "attachment_id"),
+        _ATTACHMENT_ENVELOPE,
+    )
+    add(
+        "search_by_recovery_fingerprint",
+        _object_schema(
+            {
+                "resource_type": {
+                    "type": "string",
+                    "enum": [
+                        "gmail_thread",
+                        "gmail_message",
+                        "gmail_draft",
+                        "task_list",
+                        "task",
+                        "calendar",
+                        "calendar_event",
+                        "calendar_freebusy",
+                    ],
                 },
-                required=("calendar_ids", "time_min", "time_max"),
-            ),
-            _FREEBUSY_ENVELOPE,
+                "recovery_fingerprint": _NONEMPTY_STRING,
+            },
+            required=("resource_type", "recovery_fingerprint"),
         ),
-        "calendar_update_event": _contract(
-            "calendar_update_event",
-            _write_input("calendar_id", "event_id", payload_required=True),
-            _SNAPSHOT_ENVELOPE,
-        ),
-        "gmail_create_draft": _contract(
-            "gmail_create_draft",
-            _write_input(payload_required=True),
-            _SNAPSHOT_ENVELOPE,
-        ),
-        "gmail_get_draft": _contract(
-            "gmail_get_draft",
-            _id_input("draft_id"),
-            _SNAPSHOT_ENVELOPE,
-        ),
-        "gmail_get_message": _contract(
-            "gmail_get_message",
-            _id_input("message_id"),
-            _SNAPSHOT_ENVELOPE,
-        ),
-        "gmail_get_thread": _contract(
-            "gmail_get_thread",
-            _id_input("thread_id"),
-            _SNAPSHOT_ENVELOPE,
-        ),
-        "gmail_search_threads": _contract(
-            "gmail_search_threads",
-            _object_schema(
-                {
-                    "query": _STRING,
-                    "page_token": _NULLABLE_STRING,
-                    "page_size": _PAGE_SIZE,
-                    "include_thread_metadata": _BOOLEAN,
-                },
-                required=("query",),
-            ),
-            _PAGE_ENVELOPE,
-        ),
-        "gmail_send": _contract(
-            "gmail_send",
-            _id_input(
-                "draft_id",
-                optional={
-                    "recovery_fingerprint": _NULLABLE_STRING,
-                    "claim_context": _NULLABLE_OBJECT,
-                },
-            ),
-            _SNAPSHOT_ENVELOPE,
-        ),
-        "gmail_update_draft": _contract(
-            "gmail_update_draft",
-            _write_input("draft_id", payload_required=True),
-            _SNAPSHOT_ENVELOPE,
-        ),
-        "tasks_create_task": _contract(
-            "tasks_create_task",
-            _write_input("task_list_id", payload_required=True),
-            _SNAPSHOT_ENVELOPE,
-        ),
-        "tasks_get_task": _contract(
-            "tasks_get_task",
-            _id_input("task_list_id", "task_id"),
-            _SNAPSHOT_ENVELOPE,
-        ),
-        "tasks_list_tasklists": _contract(
-            "tasks_list_tasklists",
-            _page_input(),
-            _PAGE_ENVELOPE,
-        ),
-        "tasks_list_tasks": _contract(
-            "tasks_list_tasks",
-            _page_input(
-                "task_list_id",
-                extra={
-                    "show_completed": _BOOLEAN,
-                    "show_hidden": _BOOLEAN,
-                    "show_deleted": _BOOLEAN,
-                },
-            ),
-            _PAGE_ENVELOPE,
-        ),
-        "tasks_update_task": _contract(
-            "tasks_update_task",
-            _write_input("task_list_id", "task_id", payload_required=True),
-            _SNAPSHOT_ENVELOPE,
-        ),
-        "tasks_delete_task": _contract(
-            "tasks_delete_task",
-            _write_input("task_list_id", "task_id", payload_required=False),
-            _SNAPSHOT_ENVELOPE,
-        ),
-        "gmail_get_ui_thread_detail": _contract(
-            "gmail_get_ui_thread_detail",
-            _id_input("thread_id"),
-            _UI_THREAD_DETAIL_ENVELOPE,
-        ),
-        "gmail_get_attachment": _contract(
-            "gmail_get_attachment",
-            _id_input("message_id", "attachment_id"),
-            _ATTACHMENT_ENVELOPE,
-        ),
-        "search_by_recovery_fingerprint": _contract(
-            "search_by_recovery_fingerprint",
-            _object_schema(
-                {
-                    "resource_type": {
-                        "type": "string",
-                        "enum": [
-                            "gmail_thread",
-                            "gmail_message",
-                            "gmail_draft",
-                            "task_list",
-                            "task",
-                            "calendar",
-                            "calendar_event",
-                            "calendar_freebusy",
-                        ],
-                    },
-                    "recovery_fingerprint": _NONEMPTY_STRING,
-                },
-                required=("resource_type", "recovery_fingerprint"),
-            ),
-            _RECOVERY_SEARCH_ENVELOPE,
-        ),
-    }
+        _RECOVERY_SEARCH_ENVELOPE,
+    )
     return contracts
 
 
@@ -495,11 +452,8 @@ def _schema_errors(value: object, schema: Mapping[str, object], *, path: str) ->
 
     if isinstance(value, str):
         min_length = schema.get("minLength")
-        max_length = schema.get("maxLength")
         if isinstance(min_length, int) and len(value) < min_length:
             errors.append(f"{path} must have length >= {min_length}")
-        if isinstance(max_length, int) and len(value) > max_length:
-            errors.append(f"{path} must have length <= {max_length}")
 
     if isinstance(value, int) and not isinstance(value, bool):
         minimum = schema.get("minimum")
