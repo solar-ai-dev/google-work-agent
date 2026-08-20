@@ -54,7 +54,7 @@ _REVIEW_TARGETS = frozenset(
         SupervisorTarget.PLAN_REVIEW_RECHECK.value,
     }
 )
-_RETRIEVAL_SUCCESS_REASONS = frozenset({"SUFFICIENT", "PARTIAL"})
+_RETRIEVAL_SUCCESS_REASONS = frozenset({"SUFFICIENT", "PARTIAL", "NO_FETCH_NEEDED"})
 _TOOL_ROUTE_SUCCESS_REASONS = frozenset({"ROUTE_READY", "NO_TOOL_NEEDED"})
 
 
@@ -117,8 +117,6 @@ def canonicalize_optional_stage_decision(
             next_target = SupervisorTarget.WORK_ANALYSIS
             next_phase = WorkflowPhase.WORK_ANALYSIS
         else:
-            # Canonical does not authorize skipping Retrieval for an ACTION
-            # route merely because its current frozen IN set is empty.
             return decision
         state_update.update(
             {
