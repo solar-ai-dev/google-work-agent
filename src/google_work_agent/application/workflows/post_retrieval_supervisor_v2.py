@@ -4,6 +4,11 @@ The router consumes only validated ``SubgraphReturnV2`` envelopes. Unknown
 versions/dispositions and impossible artifact combinations fail closed to the
 RECOVERY target with ``CONTRACT_VIOLATION``; there is no ``status``/``result``
 string fallback.
+
+Revision-budget exhaustion is deliberately *not* assigned a workflow target
+here. Canonical fixes the numeric limits and says exhaustion must not be hidden
+as COMPLETED, but it does not select one exact terminal/suspend edge for
+Planning/semantic-revision DENY. The caller must not guess that missing policy.
 """
 
 from __future__ import annotations
@@ -46,6 +51,15 @@ class PostRetrievalRouteDecisionV2(TypedDict):
     retry_budget: RunBudgetV1 | None
     budget_decision: BudgetDecisionV1 | None
     revision_mode: RevisionModeV2 | None
+
+
+class RevisionBudgetRoutingCanonicalGap(RuntimeError):
+    """A real budget DENY occurred, but Canonical does not define its exact edge."""
+
+    def __init__(self, *, reason_code: str, budget_decision: BudgetDecisionV1) -> None:
+        super().__init__(reason_code)
+        self.reason_code = reason_code
+        self.budget_decision = budget_decision
 
 
 def route_work_analysis_return_v2(value: object) -> PostRetrievalRouteDecisionV2:
@@ -137,10 +151,8 @@ def _route_review_revise(
 ) -> PostRetrievalRouteDecisionV2:
     revision = approve_planning_revision(retry_budget)
     if revision["decision"] == BudgetDecision.DENY.value:
-        return _decision(
-            "FINALIZE",
-            _budget_reason(revision, "PLANNING_REVISION_DENIED"),
-            retry_budget=revision["run_budget"],
+        raise RevisionBudgetRoutingCanonicalGap(
+            reason_code=_budget_reason(revision, "PLANNING_REVISION_DENIED"),
             budget_decision=revision,
         )
 
@@ -163,12 +175,9 @@ def _route_review_revise(
         )
         semantic = approve_semantic_revision(revision["run_budget"], signature=signature)
         if semantic["decision"] == BudgetDecision.DENY.value:
-            return _decision(
-                "FINALIZE",
-                _budget_reason(semantic, "SEMANTIC_REVISION_DENIED"),
-                retry_budget=semantic["run_budget"],
+            raise RevisionBudgetRoutingCanonicalGap(
+                reason_code=_budget_reason(semantic, "SEMANTIC_REVISION_DENIED"),
                 budget_decision=semantic,
-                revision_mode=revision_mode,
             )
         return _decision(
             "PLANNING",
@@ -234,6 +243,7 @@ def _decision(
 __all__ = [
     "PostRetrievalRouteDecisionV2",
     "PostRetrievalTargetV2",
+    "RevisionBudgetRoutingCanonicalGap",
     "RevisionModeV2",
     "route_planning_return_v2",
     "route_review_return_v2",

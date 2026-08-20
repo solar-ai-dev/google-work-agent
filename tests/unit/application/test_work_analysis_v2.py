@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import pytest
 
+import google_work_agent.application.workflows.work_analysis_v2 as work_analysis_v2
 from google_work_agent.application.workflows.work_analysis_v2 import (
     WorkAnalysisV2ValidationError,
     materialize_complete_work_analysis_result_v2,
-    validate_work_analysis_candidate_v2,
+    validate_work_analysis_local_aggregation,
 )
 
 
-def _candidate(*, relation_type: str = "DEPENDS_ON", disposition: str = "COMPLETE"):
+def _local(*, relation_type: str = "DEPENDS_ON"):
     return {
-        "schema_version": 2,
-        "work_facts": [
+        "fact_candidates": [
             {
                 "fact_id": "fact-1",
                 "fact_type": "TASK",
@@ -28,10 +28,9 @@ def _candidate(*, relation_type: str = "DEPENDS_ON", disposition: str = "COMPLET
                 "evidence_refs": ["ev-1"],
             }
         ],
-        "ambiguities": [],
-        "risks": [],
+        "relation_validation_ambiguities": [],
+        "ambiguity_candidates": [],
         "evidence_refs": ["ev-1"],
-        "disposition": disposition,
     }
 
 
@@ -39,30 +38,40 @@ def _meta():
     return {
         "artifact_id": "analysis-1",
         "revision": 1,
-        "based_on": [
-            {"artifact_id": "retrieval-1", "revision": 1},
-        ],
+        "based_on": [{"artifact_id": "retrieval-1", "revision": 1}],
     }
 
 
-def test_candidate_rejects_nested_evidence_not_declared_at_top_level() -> None:
-    candidate = _candidate()
-    candidate["evidence_refs"] = []
-
-    with pytest.raises(WorkAnalysisV2ValidationError, match="top-level evidence_refs"):
-        validate_work_analysis_candidate_v2(candidate, allowed_evidence_refs={"ev-1"})
-
-
-def test_complete_non_guarded_relation_materializes_without_policy_authority() -> None:
-    candidate = validate_work_analysis_candidate_v2(
-        _candidate(), allowed_evidence_refs={"ev-1"}
-    )
-
-    result = materialize_complete_work_analysis_result_v2(
-        candidate,
+def _materialize(local, *, relation_validator=None):
+    return materialize_complete_work_analysis_result_v2(
+        local,
         meta=_meta(),
         allowed_evidence_refs={"ev-1"},
+        validated_risks=[],
+        policy_confirmation_receipt_refs=[],
+        relation_validator=relation_validator,
     )
+
+
+def test_local_aggregation_is_not_a_product_prompt_output_schema() -> None:
+    assert not hasattr(work_analysis_v2, "WORK_ANALYSIS_CANDIDATE_OUTPUT_SCHEMA")
+    assert not hasattr(work_analysis_v2, "WorkAnalysisCandidateV2")
+
+
+def test_local_aggregation_rejects_nested_evidence_not_declared_at_top_level() -> None:
+    local = _local()
+    local["evidence_refs"] = []
+
+    with pytest.raises(WorkAnalysisV2ValidationError, match="top-level evidence_refs"):
+        validate_work_analysis_local_aggregation(local, allowed_evidence_refs={"ev-1"})
+
+
+def test_complete_non_guarded_relation_materializes_from_local_state() -> None:
+    local = validate_work_analysis_local_aggregation(
+        _local(), allowed_evidence_refs={"ev-1"}
+    )
+
+    result = _materialize(local)
 
     assert result["schema_version"] == 2
     assert result["relations"] == [
@@ -74,6 +83,7 @@ def test_complete_non_guarded_relation_materializes_without_policy_authority() -
             "validator_codes": [],
         }
     ]
+    assert result["risks"] == []
     assert result["action_necessity"] == "REQUIRED"
 
 
@@ -81,27 +91,21 @@ def test_complete_non_guarded_relation_materializes_without_policy_authority() -
 def test_guarded_relation_fails_closed_without_deterministic_validator(
     relation_type: str,
 ) -> None:
-    candidate = validate_work_analysis_candidate_v2(
-        _candidate(relation_type=relation_type), allowed_evidence_refs={"ev-1"}
+    local = validate_work_analysis_local_aggregation(
+        _local(relation_type=relation_type), allowed_evidence_refs={"ev-1"}
     )
 
     with pytest.raises(WorkAnalysisV2ValidationError, match="deterministic relation validation"):
-        materialize_complete_work_analysis_result_v2(
-            candidate,
-            meta=_meta(),
-            allowed_evidence_refs={"ev-1"},
-        )
+        _materialize(local)
 
 
 def test_exact_duplicate_validator_can_promote_relation_and_suppress_action() -> None:
-    candidate = validate_work_analysis_candidate_v2(
-        _candidate(relation_type="DUPLICATES"), allowed_evidence_refs={"ev-1"}
+    local = validate_work_analysis_local_aggregation(
+        _local(relation_type="DUPLICATES"), allowed_evidence_refs={"ev-1"}
     )
 
-    result = materialize_complete_work_analysis_result_v2(
-        candidate,
-        meta=_meta(),
-        allowed_evidence_refs={"ev-1"},
+    result = _materialize(
+        local,
         relation_validator=lambda relation: {
             "accepted": True,
             "validator_codes": ["TASK_EXACT_DUPLICATE_VALIDATED"],
@@ -117,14 +121,12 @@ def test_exact_duplicate_validator_can_promote_relation_and_suppress_action() ->
 
 
 def test_rejected_guarded_relation_is_not_promoted() -> None:
-    candidate = validate_work_analysis_candidate_v2(
-        _candidate(relation_type="CONFLICTS_WITH"), allowed_evidence_refs={"ev-1"}
+    local = validate_work_analysis_local_aggregation(
+        _local(relation_type="CONFLICTS_WITH"), allowed_evidence_refs={"ev-1"}
     )
 
-    result = materialize_complete_work_analysis_result_v2(
-        candidate,
-        meta=_meta(),
-        allowed_evidence_refs={"ev-1"},
+    result = _materialize(
+        local,
         relation_validator=lambda relation: {
             "accepted": False,
             "validator_codes": ["CALENDAR_CONFLICT_NOT_CONFIRMED"],
@@ -140,14 +142,22 @@ def test_rejected_guarded_relation_is_not_promoted() -> None:
     assert result["ambiguities"][0]["code"] == "CALENDAR_RELATION_UNCONFIRMED"
 
 
-def test_non_complete_candidate_cannot_become_main_state_artifact() -> None:
-    candidate = validate_work_analysis_candidate_v2(
-        _candidate(disposition="NEEDS_CONFIRMATION"), allowed_evidence_refs={"ev-1"}
+def test_risk_requires_explicit_validated_input_not_local_candidate_field() -> None:
+    local = validate_work_analysis_local_aggregation(
+        _local(), allowed_evidence_refs={"ev-1"}
     )
-
-    with pytest.raises(WorkAnalysisV2ValidationError, match="only COMPLETE"):
-        materialize_complete_work_analysis_result_v2(
-            candidate,
-            meta=_meta(),
-            allowed_evidence_refs={"ev-1"},
-        )
+    result = materialize_complete_work_analysis_result_v2(
+        local,
+        meta=_meta(),
+        allowed_evidence_refs={"ev-1"},
+        validated_risks=[
+            {
+                "code": "SCHEDULE_RISK_VALIDATED",
+                "severity": "WARNING",
+                "description": "validated outside Product Prompt candidate authority",
+                "evidence_refs": ["ev-1"],
+            }
+        ],
+        policy_confirmation_receipt_refs=[],
+    )
+    assert result["risks"][0]["code"] == "SCHEDULE_RISK_VALIDATED"

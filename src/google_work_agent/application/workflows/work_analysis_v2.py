@@ -1,22 +1,16 @@
-"""Canonical Work Analysis V2 candidate validation and artifact assembly.
+"""Work Analysis V2 official-artifact assembly from invocation-local state.
 
-This module deliberately does not switch the production LangGraph owner field.
-It prepares the V2 boundary so the later runtime cut-over can be atomic:
-
-LLM WorkAnalysisCandidateV2
-    -> structural/reference validation
-    -> deterministic guarded-relation validation
-    -> WorkAnalysisResultV2 (COMPLETE only)
-
-Incomplete candidates (confirmation/retrieval/route/block) are never promoted
-to an official State Artifact; the owning subgraph projects those dispositions
-to WorkflowSignalV1 during the runtime cut-over.
+Only ``WorkAnalysisResultV2`` is a canonical Main-State artifact. The local
+aggregation below is an implementation detail: it is not a Product Prompt
+output schema, is never stored in Main State, and must not be registered in the
+Prompt Manifest. Canonical gaps for control-signal payloads, guarded-relation
+operand namespaces, and risk production are intentionally not guessed here.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from typing import Literal, NotRequired, Required, TypedDict, cast
+from typing import Literal, NotRequired, TypedDict, cast
 
 from google_work_agent.application.workflows.handoff_contracts import (
     StateArtifactMetaV1,
@@ -29,53 +23,30 @@ from google_work_agent.application.workflows.state_artifacts_v2 import (
     WorkRelationV1,
     WorkRiskV1,
 )
-from google_work_agent.ports import OutputSchemaDefinition
 
-
-WorkAnalysisDispositionV2 = Literal[
-    "COMPLETE",
-    "NEEDS_MORE_DATA",
-    "NEEDS_CONFIRMATION",
-    "ROUTE_RECONSIDERATION_REQUIRED",
-    "BLOCKED",
-]
 ActionNecessityV1 = Literal["REQUIRED", "NOT_REQUIRED"]
-
-_DISPOSITIONS = {
-    "COMPLETE",
-    "NEEDS_MORE_DATA",
-    "NEEDS_CONFIRMATION",
-    "ROUTE_RECONSIDERATION_REQUIRED",
-    "BLOCKED",
-}
 _GUARDED_RELATION_TYPES = {"DUPLICATES", "CONFLICTS_WITH"}
 _RISK_SEVERITIES = {"INFO", "WARNING", "BLOCKING"}
 
 
-class WorkRelationCandidateV2(TypedDict):
+class WorkRelationLocalCandidate(TypedDict):
     relation_type: str
     left_ref: str
     right_ref: str
     evidence_refs: list[str]
 
 
-class WorkAnalysisCandidateV2(TypedDict):
-    schema_version: Required[Literal[2]]
-    work_facts: list[dict[str, object]]
-    relation_candidates: list[WorkRelationCandidateV2]
-    ambiguities: list[dict[str, object]]
-    risks: list[dict[str, object]]
+class WorkAnalysisLocalAggregation(TypedDict):
+    """Invocation-local scratch matching the canonical Work Analysis Local State."""
+
+    fact_candidates: list[dict[str, object]]
+    relation_candidates: list[WorkRelationLocalCandidate]
+    relation_validation_ambiguities: list[dict[str, object]]
+    ambiguity_candidates: list[dict[str, object]]
     evidence_refs: list[str]
-    disposition: WorkAnalysisDispositionV2
 
 
 class RelationValidationOutcomeV1(TypedDict):
-    """Deterministic adapter output for a guarded relation candidate.
-
-    The adapter may reuse the existing Task/Calendar domain evaluators, but
-    Work Analysis never depends on Planning/Write argument adapters.
-    """
-
     accepted: bool
     validator_codes: list[str]
     ambiguity: NotRequired[WorkAmbiguityV1 | None]
@@ -83,183 +54,105 @@ class RelationValidationOutcomeV1(TypedDict):
     action_necessity: NotRequired[ActionNecessityV1]
 
 
-RelationValidator = Callable[[WorkRelationCandidateV2], RelationValidationOutcomeV1]
-
-
-WORK_ANALYSIS_CANDIDATE_OUTPUT_SCHEMA = OutputSchemaDefinition(
-    schema_version="work-analysis-candidate-v2",
-    json_schema={
-        "type": "object",
-        "additionalProperties": False,
-        "required": [
-            "schema_version",
-            "work_facts",
-            "relation_candidates",
-            "ambiguities",
-            "risks",
-            "evidence_refs",
-            "disposition",
-        ],
-        "properties": {
-            "schema_version": {"type": "integer", "enum": [2]},
-            "work_facts": {"type": "array", "items": {"type": "object"}},
-            "relation_candidates": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": [
-                        "relation_type",
-                        "left_ref",
-                        "right_ref",
-                        "evidence_refs",
-                    ],
-                    "properties": {
-                        "relation_type": {"type": "string"},
-                        "left_ref": {"type": "string"},
-                        "right_ref": {"type": "string"},
-                        "evidence_refs": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "minItems": 1,
-                        },
-                    },
-                },
-            },
-            "ambiguities": {"type": "array", "items": {"type": "object"}},
-            "risks": {"type": "array", "items": {"type": "object"}},
-            "evidence_refs": {"type": "array", "items": {"type": "string"}},
-            "disposition": {"type": "string", "enum": sorted(_DISPOSITIONS)},
-        },
-    },
-)
+RelationValidator = Callable[[WorkRelationLocalCandidate], RelationValidationOutcomeV1]
 
 
 class WorkAnalysisV2ValidationError(ValueError):
-    """Candidate or deterministic post-validation result violates V2 contract."""
+    pass
 
 
-def validate_work_analysis_candidate_v2(
+def validate_work_analysis_local_aggregation(
     value: object,
     *,
     allowed_evidence_refs: set[str],
-) -> WorkAnalysisCandidateV2:
+) -> WorkAnalysisLocalAggregation:
     root = _mapping(value, "$")
-    _exact_keys(
+    _exact(
         root,
-        path="$",
-        required={
-            "schema_version",
-            "work_facts",
+        {
+            "fact_candidates",
             "relation_candidates",
-            "ambiguities",
-            "risks",
+            "relation_validation_ambiguities",
+            "ambiguity_candidates",
             "evidence_refs",
-            "disposition",
         },
+        "$",
     )
-    if root["schema_version"] != 2:
-        raise WorkAnalysisV2ValidationError("$.schema_version must be 2")
-    disposition = _text(root["disposition"], "$.disposition")
-    if disposition not in _DISPOSITIONS:
-        raise WorkAnalysisV2ValidationError("$.disposition is invalid")
+    top = _evidence_refs(root["evidence_refs"], "$.evidence_refs", allowed_evidence_refs)
+    top_set = set(top)
 
-    top_evidence = _evidence_refs(
-        root["evidence_refs"], path="$.evidence_refs", allowed=allowed_evidence_refs
-    )
-    top_evidence_set = set(top_evidence)
+    facts: list[dict[str, object]] = []
+    for i, raw in enumerate(_list(root["fact_candidates"], "$.fact_candidates")):
+        path = f"$.fact_candidates[{i}]"
+        fact = _fact(_mapping(raw, path), path, allowed_evidence_refs)
+        _nested(fact["evidence_refs"], top_set, f"{path}.evidence_refs")
+        facts.append(cast(dict[str, object], fact))
 
-    work_facts: list[dict[str, object]] = []
-    for index, raw in enumerate(_list(root["work_facts"], "$.work_facts")):
-        fact = _project_fact_candidate(raw, f"$.work_facts[{index}]", allowed_evidence_refs)
-        _require_nested_refs_in_top_level(
-            fact["evidence_refs"], top_evidence_set, f"$.work_facts[{index}].evidence_refs"
-        )
-        work_facts.append(cast(dict[str, object], fact))
-
-    relation_candidates: list[WorkRelationCandidateV2] = []
-    for index, raw in enumerate(
-        _list(root["relation_candidates"], "$.relation_candidates")
-    ):
-        relation = _relation_candidate(
-            raw, f"$.relation_candidates[{index}]", allowed_evidence_refs
-        )
-        _require_nested_refs_in_top_level(
-            relation["evidence_refs"],
-            top_evidence_set,
-            f"$.relation_candidates[{index}].evidence_refs",
-        )
-        relation_candidates.append(relation)
-
-    ambiguities: list[dict[str, object]] = []
-    for index, raw in enumerate(_list(root["ambiguities"], "$.ambiguities")):
-        ambiguity = _project_ambiguity_candidate(
-            raw, f"$.ambiguities[{index}]", allowed_evidence_refs
-        )
-        _require_nested_refs_in_top_level(
-            ambiguity["evidence_refs"],
-            top_evidence_set,
-            f"$.ambiguities[{index}].evidence_refs",
-        )
-        ambiguities.append(cast(dict[str, object], ambiguity))
-
-    risks: list[dict[str, object]] = []
-    for index, raw in enumerate(_list(root["risks"], "$.risks")):
-        risk = _project_risk_candidate(raw, f"$.risks[{index}]", allowed_evidence_refs)
-        _require_nested_refs_in_top_level(
-            risk["evidence_refs"], top_evidence_set, f"$.risks[{index}].evidence_refs"
-        )
-        risks.append(cast(dict[str, object], risk))
+    relations: list[WorkRelationLocalCandidate] = []
+    for i, raw in enumerate(_list(root["relation_candidates"], "$.relation_candidates")):
+        path = f"$.relation_candidates[{i}]"
+        relation = _relation(raw, path, allowed_evidence_refs)
+        _nested(relation["evidence_refs"], top_set, f"{path}.evidence_refs")
+        relations.append(relation)
 
     return {
-        "schema_version": 2,
-        "work_facts": work_facts,
-        "relation_candidates": relation_candidates,
-        "ambiguities": ambiguities,
-        "risks": risks,
-        "evidence_refs": top_evidence,
-        "disposition": cast(WorkAnalysisDispositionV2, disposition),
+        "fact_candidates": facts,
+        "relation_candidates": relations,
+        "relation_validation_ambiguities": _ambiguities(
+            root["relation_validation_ambiguities"],
+            "$.relation_validation_ambiguities",
+            allowed_evidence_refs,
+            top_set,
+        ),
+        "ambiguity_candidates": _ambiguities(
+            root["ambiguity_candidates"],
+            "$.ambiguity_candidates",
+            allowed_evidence_refs,
+            top_set,
+        ),
+        "evidence_refs": top,
     }
 
 
 def materialize_complete_work_analysis_result_v2(
-    candidate: WorkAnalysisCandidateV2,
+    local: WorkAnalysisLocalAggregation,
     *,
     meta: StateArtifactMetaV1,
     allowed_evidence_refs: set[str],
-    policy_confirmation_receipt_refs: Sequence[StateArtifactRefV1] = (),
+    validated_risks: Sequence[WorkRiskV1],
+    policy_confirmation_receipt_refs: Sequence[StateArtifactRefV1],
     relation_validator: RelationValidator | None = None,
 ) -> WorkAnalysisResultV2:
-    """Promote one COMPLETE candidate into the official V2 artifact.
+    """Create only the official COMPLETE artifact from validated local data.
 
-    Non-COMPLETE candidates intentionally cannot become Main-State business
-    artifacts. Guarded duplicate/conflict relations fail closed unless a
-    deterministic adapter is supplied.
+    Risks are explicit validated input because Canonical does not yet define a
+    Product Prompt/local candidate producer. DUPLICATES/CONFLICTS_WITH fail
+    closed without deterministic validation; their ref namespace is not parsed.
     """
 
-    if candidate["disposition"] != "COMPLETE":
-        raise WorkAnalysisV2ValidationError(
-            "only COMPLETE Work Analysis candidates may become official artifacts"
-        )
-
+    local = validate_work_analysis_local_aggregation(
+        local, allowed_evidence_refs=allowed_evidence_refs
+    )
     facts = [
-        _fact_from_projected(value, f"$.work_facts[{index}]", allowed_evidence_refs)
-        for index, value in enumerate(candidate["work_facts"])
+        _fact(v, f"$.fact_candidates[{i}]", allowed_evidence_refs)
+        for i, v in enumerate(local["fact_candidates"])
     ]
     ambiguities = [
-        _ambiguity_from_projected(
-            value, f"$.ambiguities[{index}]", allowed_evidence_refs
-        )
-        for index, value in enumerate(candidate["ambiguities"])
+        _ambiguity(v, f"$.relation_validation_ambiguities[{i}]", allowed_evidence_refs)
+        for i, v in enumerate(local["relation_validation_ambiguities"])
+    ]
+    ambiguities += [
+        _ambiguity(v, f"$.ambiguity_candidates[{i}]", allowed_evidence_refs)
+        for i, v in enumerate(local["ambiguity_candidates"])
     ]
     risks = [
-        _risk_from_projected(value, f"$.risks[{index}]", allowed_evidence_refs)
-        for index, value in enumerate(candidate["risks"])
+        _risk(cast(Mapping[str, object], v), f"$.validated_risks[{i}]", allowed_evidence_refs)
+        for i, v in enumerate(validated_risks)
     ]
 
     relations: list[WorkRelationV1] = []
     action_necessity: ActionNecessityV1 = "REQUIRED"
-    for relation in candidate["relation_candidates"]:
+    for relation in local["relation_candidates"]:
         if relation["relation_type"] not in _GUARDED_RELATION_TYPES:
             relations.append({**relation, "validator_codes": []})
             continue
@@ -268,203 +161,153 @@ def materialize_complete_work_analysis_result_v2(
                 f"{relation['relation_type']} requires deterministic relation validation"
             )
         outcome = relation_validator(relation)
-        validator_codes = _string_list(
-            outcome.get("validator_codes"), "$.relation_validation.validator_codes"
-        )
-        if not validator_codes:
-            raise WorkAnalysisV2ValidationError(
-                "guarded relation validation requires at least one validator code"
-            )
+        codes = _strings(outcome.get("validator_codes"), "$.relation_validation.validator_codes")
+        if not codes:
+            raise WorkAnalysisV2ValidationError("guarded relation validation requires validator code")
         if outcome.get("accepted") is True:
-            relations.append({**relation, "validator_codes": validator_codes})
+            relations.append({**relation, "validator_codes": codes})
         else:
-            ambiguity = outcome.get("ambiguity")
-            risk = outcome.get("risk")
-            if ambiguity is not None:
+            if outcome.get("ambiguity") is not None:
                 ambiguities.append(
-                    _ambiguity_from_projected(
-                        cast(Mapping[str, object], ambiguity),
+                    _ambiguity(
+                        cast(Mapping[str, object], outcome["ambiguity"]),
                         "$.relation_validation.ambiguity",
                         allowed_evidence_refs,
                     )
                 )
-            if risk is not None:
+            if outcome.get("risk") is not None:
                 risks.append(
-                    _risk_from_projected(
-                        cast(Mapping[str, object], risk),
+                    _risk(
+                        cast(Mapping[str, object], outcome["risk"]),
                         "$.relation_validation.risk",
                         allowed_evidence_refs,
                     )
                 )
-        requested_necessity = outcome.get("action_necessity")
-        if requested_necessity is not None:
-            if requested_necessity not in {"REQUIRED", "NOT_REQUIRED"}:
-                raise WorkAnalysisV2ValidationError(
-                    "relation validator returned invalid action_necessity"
-                )
-            if requested_necessity == "NOT_REQUIRED":
-                action_necessity = "NOT_REQUIRED"
+        necessity = outcome.get("action_necessity")
+        if necessity not in {None, "REQUIRED", "NOT_REQUIRED"}:
+            raise WorkAnalysisV2ValidationError("invalid action_necessity")
+        if necessity == "NOT_REQUIRED":
+            action_necessity = "NOT_REQUIRED"
 
     return {
         "schema_version": 2,
-        "meta": _artifact_meta(meta),
+        "meta": _meta(meta),
         "work_facts": facts,
         "relations": relations,
         "ambiguities": ambiguities,
         "risks": risks,
-        "evidence_refs": _evidence_refs(
-            candidate["evidence_refs"],
-            path="$.evidence_refs",
-            allowed=allowed_evidence_refs,
-        ),
+        "evidence_refs": _evidence_refs(local["evidence_refs"], "$.evidence_refs", allowed_evidence_refs),
         "policy_confirmation_receipt_refs": [
-            _artifact_ref(value, f"$.policy_confirmation_receipt_refs[{index}]")
-            for index, value in enumerate(policy_confirmation_receipt_refs)
+            _artifact_ref(v, f"$.policy_confirmation_receipt_refs[{i}]")
+            for i, v in enumerate(policy_confirmation_receipt_refs)
         ],
         "action_necessity": action_necessity,
     }
 
 
-def _project_fact_candidate(
-    value: object, path: str, allowed: set[str]
-) -> WorkFactV1:
-    item = _mapping(value, path)
-    return _fact_from_projected(item, path, allowed)
-
-
-def _fact_from_projected(
-    value: Mapping[str, object], path: str, allowed: set[str]
-) -> WorkFactV1:
-    fact_id = _text(value.get("fact_id"), f"{path}.fact_id")
-    fact_type = _text(value.get("fact_type"), f"{path}.fact_type")
-    raw_value = value.get("value")
-    if isinstance(raw_value, str):
-        fact_value: str | list[str] = _text(raw_value, f"{path}.value")
-    else:
-        fact_value = _string_list(raw_value, f"{path}.value")
+def _fact(value: Mapping[str, object], path: str, allowed: set[str]) -> WorkFactV1:
+    _exact(value, {"fact_id", "fact_type", "value", "evidence_refs"}, path)
+    raw = value["value"]
+    fact_value: str | list[str] = _text(raw, f"{path}.value") if isinstance(raw, str) else _strings(raw, f"{path}.value")
     return {
-        "fact_id": fact_id,
-        "fact_type": fact_type,
+        "fact_id": _text(value["fact_id"], f"{path}.fact_id"),
+        "fact_type": _text(value["fact_type"], f"{path}.fact_type"),
         "value": fact_value,
-        "evidence_refs": _evidence_refs(
-            value.get("evidence_refs"), path=f"{path}.evidence_refs", allowed=allowed
-        ),
+        "evidence_refs": _evidence_refs(value["evidence_refs"], f"{path}.evidence_refs", allowed),
     }
 
 
-def _relation_candidate(
-    value: object, path: str, allowed: set[str]
-) -> WorkRelationCandidateV2:
+def _relation(value: object, path: str, allowed: set[str]) -> WorkRelationLocalCandidate:
     item = _mapping(value, path)
-    _exact_keys(
-        item,
-        path=path,
-        required={"relation_type", "left_ref", "right_ref", "evidence_refs"},
-    )
-    evidence_refs = _evidence_refs(
-        item["evidence_refs"], path=f"{path}.evidence_refs", allowed=allowed
-    )
-    if not evidence_refs:
+    _exact(item, {"relation_type", "left_ref", "right_ref", "evidence_refs"}, path)
+    refs = _evidence_refs(item["evidence_refs"], f"{path}.evidence_refs", allowed)
+    if not refs:
         raise WorkAnalysisV2ValidationError(f"{path}.evidence_refs must not be empty")
     return {
         "relation_type": _text(item["relation_type"], f"{path}.relation_type"),
         "left_ref": _text(item["left_ref"], f"{path}.left_ref"),
         "right_ref": _text(item["right_ref"], f"{path}.right_ref"),
-        "evidence_refs": evidence_refs,
+        "evidence_refs": refs,
     }
 
 
-def _project_ambiguity_candidate(
-    value: object, path: str, allowed: set[str]
-) -> WorkAmbiguityV1:
-    return _ambiguity_from_projected(_mapping(value, path), path, allowed)
+def _ambiguities(value: object, path: str, allowed: set[str], top: set[str]) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    for i, raw in enumerate(_list(value, path)):
+        item_path = f"{path}[{i}]"
+        item = _ambiguity(_mapping(raw, item_path), item_path, allowed)
+        _nested(item["evidence_refs"], top, f"{item_path}.evidence_refs")
+        result.append(cast(dict[str, object], item))
+    return result
 
 
-def _ambiguity_from_projected(
-    value: Mapping[str, object], path: str, allowed: set[str]
-) -> WorkAmbiguityV1:
+def _ambiguity(value: Mapping[str, object], path: str, allowed: set[str]) -> WorkAmbiguityV1:
+    _exact(value, {"code", "description", "evidence_refs"}, path)
     return {
-        "code": _text(value.get("code"), f"{path}.code"),
-        "description": _text(value.get("description"), f"{path}.description"),
-        "evidence_refs": _evidence_refs(
-            value.get("evidence_refs"), path=f"{path}.evidence_refs", allowed=allowed
-        ),
+        "code": _text(value["code"], f"{path}.code"),
+        "description": _text(value["description"], f"{path}.description"),
+        "evidence_refs": _evidence_refs(value["evidence_refs"], f"{path}.evidence_refs", allowed),
     }
 
 
-def _project_risk_candidate(value: object, path: str, allowed: set[str]) -> WorkRiskV1:
-    return _risk_from_projected(_mapping(value, path), path, allowed)
-
-
-def _risk_from_projected(
-    value: Mapping[str, object], path: str, allowed: set[str]
-) -> WorkRiskV1:
-    severity = _text(value.get("severity"), f"{path}.severity")
+def _risk(value: Mapping[str, object], path: str, allowed: set[str]) -> WorkRiskV1:
+    _exact(value, {"code", "severity", "description", "evidence_refs"}, path)
+    severity = _text(value["severity"], f"{path}.severity")
     if severity not in _RISK_SEVERITIES:
         raise WorkAnalysisV2ValidationError(f"{path}.severity is invalid")
     return {
-        "code": _text(value.get("code"), f"{path}.code"),
+        "code": _text(value["code"], f"{path}.code"),
         "severity": cast(Literal["INFO", "WARNING", "BLOCKING"], severity),
-        "description": _text(value.get("description"), f"{path}.description"),
-        "evidence_refs": _evidence_refs(
-            value.get("evidence_refs"), path=f"{path}.evidence_refs", allowed=allowed
-        ),
+        "description": _text(value["description"], f"{path}.description"),
+        "evidence_refs": _evidence_refs(value["evidence_refs"], f"{path}.evidence_refs", allowed),
     }
 
 
-def _artifact_meta(value: Mapping[str, object]) -> StateArtifactMetaV1:
+def _meta(value: object) -> StateArtifactMetaV1:
     item = _mapping(value, "$.meta")
-    _exact_keys(item, path="$.meta", required={"artifact_id", "revision", "based_on"})
+    _exact(item, {"artifact_id", "revision", "based_on"}, "$.meta")
     revision = item["revision"]
     if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
-        raise WorkAnalysisV2ValidationError("$.meta.revision must be a positive integer")
-    based_on = _list(item["based_on"], "$.meta.based_on")
+        raise WorkAnalysisV2ValidationError("$.meta.revision is invalid")
     return {
         "artifact_id": _text(item["artifact_id"], "$.meta.artifact_id"),
         "revision": revision,
         "based_on": [
-            _artifact_ref(raw, f"$.meta.based_on[{index}]")
-            for index, raw in enumerate(based_on)
+            _artifact_ref(v, f"$.meta.based_on[{i}]")
+            for i, v in enumerate(_list(item["based_on"], "$.meta.based_on"))
         ],
     }
 
 
 def _artifact_ref(value: object, path: str) -> StateArtifactRefV1:
     item = _mapping(value, path)
-    _exact_keys(item, path=path, required={"artifact_id", "revision"})
+    _exact(item, {"artifact_id", "revision"}, path)
     revision = item["revision"]
     if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
-        raise WorkAnalysisV2ValidationError(f"{path}.revision must be a positive integer")
-    return {
-        "artifact_id": _text(item["artifact_id"], f"{path}.artifact_id"),
-        "revision": revision,
-    }
+        raise WorkAnalysisV2ValidationError(f"{path}.revision is invalid")
+    return {"artifact_id": _text(item["artifact_id"], f"{path}.artifact_id"), "revision": revision}
 
 
-def _evidence_refs(value: object, *, path: str, allowed: set[str]) -> list[str]:
-    refs = _string_list(value, path)
+def _evidence_refs(value: object, path: str, allowed: set[str]) -> list[str]:
+    refs = _strings(value, path)
+    if len(refs) != len(set(refs)):
+        raise WorkAnalysisV2ValidationError(f"{path} contains duplicates")
     unknown = [ref for ref in refs if ref not in allowed]
     if unknown:
         raise WorkAnalysisV2ValidationError(f"{path} contains unknown evidence refs: {unknown}")
-    if len(refs) != len(set(refs)):
-        raise WorkAnalysisV2ValidationError(f"{path} contains duplicate evidence refs")
     return refs
 
 
-def _require_nested_refs_in_top_level(
-    refs: Sequence[str], top_level: set[str], path: str
-) -> None:
-    missing = [ref for ref in refs if ref not in top_level]
+def _nested(refs: Sequence[str], top: set[str], path: str) -> None:
+    missing = [ref for ref in refs if ref not in top]
     if missing:
-        raise WorkAnalysisV2ValidationError(
-            f"{path} must also be listed in top-level evidence_refs: {missing}"
-        )
+        raise WorkAnalysisV2ValidationError(f"{path} must also be listed in top-level evidence_refs: {missing}")
 
 
 def _mapping(value: object, path: str) -> dict[str, object]:
-    if not isinstance(value, Mapping):
-        raise WorkAnalysisV2ValidationError(f"{path} must be an object")
-    return {str(key): item for key, item in value.items()}
+    if not isinstance(value, Mapping) or not all(isinstance(k, str) for k in value):
+        raise WorkAnalysisV2ValidationError(f"{path} must be an object with string keys")
+    return dict(value)
 
 
 def _list(value: object, path: str) -> list[object]:
@@ -473,41 +316,28 @@ def _list(value: object, path: str) -> list[object]:
     return list(value)
 
 
+def _strings(value: object, path: str) -> list[str]:
+    return [_text(v, f"{path}[{i}]") for i, v in enumerate(_list(value, path))]
+
+
 def _text(value: object, path: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise WorkAnalysisV2ValidationError(f"{path} must be a non-empty string")
     return value
 
 
-def _string_list(value: object, path: str) -> list[str]:
-    values = _list(value, path)
-    result: list[str] = []
-    for index, item in enumerate(values):
-        result.append(_text(item, f"{path}[{index}]"))
-    return result
-
-
-def _exact_keys(
-    value: Mapping[str, object], *, path: str, required: set[str]
-) -> None:
-    actual = set(value)
-    missing = required - actual
-    extra = actual - required
-    if missing or extra:
-        raise WorkAnalysisV2ValidationError(
-            f"{path} keys mismatch: missing={sorted(missing)} extra={sorted(extra)}"
-        )
+def _exact(value: Mapping[str, object], expected: set[str], path: str) -> None:
+    if set(value) != expected:
+        raise WorkAnalysisV2ValidationError(f"{path} keys are invalid")
 
 
 __all__ = [
     "ActionNecessityV1",
     "RelationValidationOutcomeV1",
     "RelationValidator",
-    "WORK_ANALYSIS_CANDIDATE_OUTPUT_SCHEMA",
-    "WorkAnalysisCandidateV2",
-    "WorkAnalysisDispositionV2",
+    "WorkAnalysisLocalAggregation",
     "WorkAnalysisV2ValidationError",
-    "WorkRelationCandidateV2",
+    "WorkRelationLocalCandidate",
     "materialize_complete_work_analysis_result_v2",
-    "validate_work_analysis_candidate_v2",
+    "validate_work_analysis_local_aggregation",
 ]

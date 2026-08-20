@@ -1,7 +1,13 @@
 from __future__ import annotations
 
-from google_work_agent.application.workflows.contracts import build_default_run_budget
+import pytest
+
+from google_work_agent.application.workflows.contracts import (
+    build_default_run_budget,
+    build_semantic_failure_signature_v1,
+)
 from google_work_agent.application.workflows.post_retrieval_supervisor_v2 import (
+    RevisionBudgetRoutingCanonicalGap,
     route_planning_return_v2,
     route_review_return_v2,
     route_work_analysis_return_v2,
@@ -27,6 +33,21 @@ def _plan():
                 "depends_on_action_ids": [],
             }
         ],
+    }
+
+
+def _revise_return():
+    return {
+        "disposition": "REVISE",
+        "typed_result": {
+            "schema_version": 2,
+            "meta": _meta("review-1"),
+            "status": "REVISE",
+            "issues": [
+                {"code": "PLAN_WRONG_TARGET", "description": "wrong", "action_id": "a1"}
+            ],
+        },
+        "workflow_signal": None,
     }
 
 
@@ -87,21 +108,43 @@ def test_review_pass_routes_action_plan_to_domain_validation() -> None:
 
 def test_review_revise_uses_canonical_issue_code_for_semantic_budget() -> None:
     decision = route_review_return_v2(
-        {
-            "disposition": "REVISE",
-            "typed_result": {
-                "schema_version": 2,
-                "meta": _meta("review-1"),
-                "status": "REVISE",
-                "issues": [
-                    {"code": "PLAN_WRONG_TARGET", "description": "wrong", "action_id": "a1"}
-                ],
-            },
-            "workflow_signal": None,
-        },
+        _revise_return(),
         planning_result=_plan(),
         retry_budget=build_default_run_budget(),
     )
     assert decision["target"] == "PLANNING"
     assert decision["revision_mode"] == "PLAN"
     assert decision["retry_budget"] is not None
+
+
+def test_planning_revision_budget_deny_has_no_guessed_workflow_edge() -> None:
+    budget = build_default_run_budget()
+    budget["planning_revisions_used"] = 2
+
+    with pytest.raises(RevisionBudgetRoutingCanonicalGap) as raised:
+        route_review_return_v2(
+            _revise_return(),
+            planning_result=_plan(),
+            retry_budget=budget,
+        )
+
+    assert raised.value.reason_code == "PLANNING_REVISION_LIMIT_EXHAUSTED"
+
+
+def test_semantic_revision_budget_deny_has_no_guessed_workflow_edge() -> None:
+    budget = build_default_run_budget()
+    budget["semantic_revision_signatures_used"] = [
+        build_semantic_failure_signature_v1(
+            node_id="planning.revise_plan",
+            failure_reason_codes=["PLAN_WRONG_TARGET"],
+        )
+    ]
+
+    with pytest.raises(RevisionBudgetRoutingCanonicalGap) as raised:
+        route_review_return_v2(
+            _revise_return(),
+            planning_result=_plan(),
+            retry_budget=budget,
+        )
+
+    assert raised.value.reason_code == "SEMANTIC_SAME_FAILURE_LIMIT_EXHAUSTED"
