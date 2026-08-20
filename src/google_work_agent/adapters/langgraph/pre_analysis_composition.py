@@ -25,6 +25,9 @@ from google_work_agent.application.workflows import (
     RequestUnderstandingAgent,
     ToolRouteAgent,
 )
+from google_work_agent.application.workflows.retrieval_data_boundary import (
+    CheckpointSafeAcquisitionFacade,
+)
 from google_work_agent.application.workflows.retrieval_evidence_store import RunScopedEvidenceStore
 from google_work_agent.application.workflows.retrieval_query_planner import (
     RetrievalQueryPlannerAgent,
@@ -39,6 +42,9 @@ from google_work_agent.domain import ConnectorToolCatalog
 class PreAnalysisSubgraphs:
     request_understanding: Any
     tool_route: Any
+    # Compatibility-only direct acquisition graph.  No SINGLE/THREE/SIX
+    # production topology routes to this field; it remains only for older
+    # direct callers and is not accepted as a production privacy proof.
     acquisition: Any
     context_retrieval: Any
 
@@ -72,6 +78,10 @@ def build_pre_analysis_subgraphs(
 ) -> PreAnalysisSubgraphs:
     """Create nodes only; workflow policy remains in their Application owners."""
 
+    checkpoint_safe_acquisition = CheckpointSafeAcquisitionFacade(
+        agent=acquisition_agent,
+        read_result_cache=read_result_cache,
+    )
     return PreAnalysisSubgraphs(
         request_understanding=RequestUnderstandingSubgraph(
             agent=request_agent,
@@ -89,6 +99,9 @@ def build_pre_analysis_subgraphs(
             confirm_inline=confirm_tool_route_inline,
             record_policy_confirmation_receipt=record_policy_confirmation_receipt,
         ),
+        # Legacy standalone acquisition is intentionally left as an isolated
+        # compatibility object: no production profile topology routes here.
+        # Production Retrieval owns the checkpoint-safe facade below.
         acquisition=AcquisitionSubgraph(
             agent=acquisition_agent,
             id_factory=id_factory,
@@ -104,7 +117,7 @@ def build_pre_analysis_subgraphs(
             transition_run=transition_run,
             merge_decision=merge_decision,
             evidence_store=evidence_store,
-            acquisition_agent=acquisition_agent,
+            acquisition_agent=checkpoint_safe_acquisition,
             retrieval_query_planner=retrieval_query_planner,
             source_fetch_plan_builder=SourceFetchPlanBuilder(),
             read_result_cache=read_result_cache,

@@ -1,27 +1,40 @@
 """Typed parent-input boundary for the Retrieval V2 native subgraph.
 
 The Retrieval implementation remains in ``context_retrieval.py``. This class
-only replaces the LangGraph parent input schema so the subgraph receives its
-role-scoped projection instead of the entire Main Graph state.
+narrows the parent input schema and enforces the raw-source checkpoint boundary:
+provider payload is resolved from the run cache only for synchronous
+segmentation/materialization calls and is restored to bounded state before a
+LangGraph node returns.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
 
-from google_work_agent.adapters.langgraph.graph_state import ParentGraphState
+from google_work_agent.adapters.langgraph.graph_state import (
+    CONTEXT_READ_RESULT_HANDLES_KEY,
+    ParentGraphState,
+)
 from google_work_agent.adapters.langgraph.subgraph_state import (
     ContextRetrievalInputState,
     ContextRetrievalLocalState,
+)
+from google_work_agent.application.workflows.handoff_contracts import (
+    AcquisitionResultV1,
+    ContextRetrievalResultV1,
+)
+from google_work_agent.application.workflows.retrieval_data_boundary import (
+    hydrate_acquisition_for_segmentation,
+    sanitize_acquisition_result,
 )
 
 from .context_retrieval import ContextRetrieverSubgraph
 
 
 class ProjectedContextRetrieverSubgraph(ContextRetrieverSubgraph):
-    """ContextRetrieverSubgraph with a narrowed typed parent projection."""
+    """ContextRetrieverSubgraph with typed projection and ephemeral raw reads."""
 
     def build(self) -> Any:
         graph = StateGraph(
@@ -81,6 +94,65 @@ class ProjectedContextRetrieverSubgraph(ContextRetrieverSubgraph):
             {"finalize": "finalize", "end": END},
         )
         return graph.compile(name="context_retriever_subgraph")
+
+    def _select_evidence_node(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalLocalState:
+        acquisition = state.get("acquisition_result")
+        safe_acquisition = (
+            None
+            if acquisition is None
+            else sanitize_acquisition_result(cast(AcquisitionResultV1, acquisition))
+        )
+        result = super()._select_evidence_node(self._ephemeral_raw_state(state))
+        return cast(
+            ContextRetrievalLocalState,
+            {**result, "acquisition_result": safe_acquisition},
+        )
+
+    def _selection_validate_node(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalLocalState:
+        acquisition = state.get("acquisition_result")
+        safe_acquisition = (
+            None
+            if acquisition is None
+            else sanitize_acquisition_result(cast(AcquisitionResultV1, acquisition))
+        )
+        result = super()._selection_validate_node(self._ephemeral_raw_state(state))
+        return cast(
+            ContextRetrievalLocalState,
+            {**result, "acquisition_result": safe_acquisition},
+        )
+
+    def _build_context_result(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalResultV1:
+        return super()._build_context_result(self._ephemeral_raw_state(state))
+
+    def _ephemeral_raw_state(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalLocalState:
+        acquisition = state.get("acquisition_result")
+        if acquisition is None:
+            return state
+        safe = sanitize_acquisition_result(cast(AcquisitionResultV1, acquisition))
+        if state.get(CONTEXT_READ_RESULT_HANDLES_KEY):
+            # Native production Retrieval publishes read-result handles before
+            # entering segmentation. Missing cache content is therefore a
+            # boundary violation and resolve must fail closed.
+            hydrated = hydrate_acquisition_for_segmentation(
+                run_id=state["run_id"],
+                result=safe,
+                read_result_cache=self._read_result_cache,
+            )
+        else:
+            # Compatibility-only standalone AcquisitionSubgraph direct calls
+            # have no canonical read-result handle. They are not a production
+            # topology authority; consume their legacy result transiently and
+            # sanitize it before this node returns.
+            hydrated = cast(AcquisitionResultV1, acquisition)
+        return cast(ContextRetrievalLocalState, {**state, "acquisition_result": hydrated})
 
 
 __all__ = ["ProjectedContextRetrieverSubgraph"]
