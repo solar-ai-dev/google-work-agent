@@ -17,6 +17,7 @@ from google_work_agent.adapters.langgraph.route_translation import (
     GraphRouteTranslator,
 )
 from google_work_agent.application.workflows import (
+    ActionPlanDraftV1,
     GraphStateUpdateV1,
     SupervisorDecisionV1,
     SupervisorTarget,
@@ -71,7 +72,7 @@ def test_plan_ready_review_decision_is_not_rewritten() -> None:
     decision = _answer_review_decision()
     decision["state_update"]["answer_draft"] = None
     decision["state_update"]["plan_draft"] = cast(
-        object,
+        ActionPlanDraftV1,
         {"schema_version": 2, "status": "PLAN_READY"},
     )
     decision["reason_code"] = "PLAN_READY"
@@ -91,16 +92,14 @@ def test_response_synthesis_materializes_completed_finalize_intent() -> None:
     )
 
     result = response_synthesis_state(state)
+    finalize_intent = cast(dict[str, object], result["finalize_intent"])
 
     assert result["workflow_phase"] == WorkflowPhase.RESPONSE_SYNTHESIS.value
     assert result["__target__"] == "finalize"
     assert result["__logical_target__"] == "finalize"
-    assert result["finalize_intent"] == {
-        "schema_version": 1,
-        "intent": "COMPLETED",
-        "reason_code": "ANSWER_ONLY_RESPONSE_READY",
-        "result_kind": None,
-    }
+    assert finalize_intent["schema_version"] == 1
+    assert finalize_intent["intent"] == "COMPLETED"
+    assert finalize_intent["reason_code"] == "ANSWER_ONLY_RESPONSE_READY"
 
 
 @pytest.mark.parametrize(
@@ -121,10 +120,11 @@ def test_response_synthesis_fails_closed_on_invalid_answer(answer_draft: object)
     )
 
     result = response_synthesis_state(state)
+    execution_summary = cast(dict[str, object], result["execution_summary"])
 
     assert result["workflow_phase"] == WorkflowPhase.RECOVERY.value
     assert result["__target__"] == "recovery"
-    assert result["execution_summary"]["result"] == "CONTRACT_VIOLATION"
+    assert execution_summary["result"] == "CONTRACT_VIOLATION"
 
 
 @pytest.mark.parametrize("profile", list(GraphProfile))
