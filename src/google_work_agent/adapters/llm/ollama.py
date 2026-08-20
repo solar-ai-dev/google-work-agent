@@ -19,8 +19,6 @@ from google_work_agent.ports import (
     PromptReference,
     ProviderResponsePayload,
     RuntimePolicy,
-    StructuredLLMProvider,
-    ToolCallingLLMProvider,
     ToolCallProviderResponse,
     ToolDefinition,
 )
@@ -67,8 +65,13 @@ def _no_instruction_text(prompt_ref: PromptReference) -> str:
 
 
 @dataclass(frozen=True, slots=True)
-class OllamaStructuredLLMProvider(StructuredLLMProvider, ToolCallingLLMProvider):
+class OllamaStructuredLLMProvider:
     """Dispatches one structured Ollama call.
+
+    Structurally satisfies ``StructuredLLMProvider``/``ToolCallingLLMProvider``
+    (not a nominal base class: subclassing a ``Protocol`` here would make its
+    members real inherited descriptors, which collides with this dataclass's
+    own field ordering).
 
     ``resolve_instruction_text`` is called here, immediately before dispatch,
     and its result lives only as a local variable for the duration of this

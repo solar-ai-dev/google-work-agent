@@ -24,8 +24,10 @@ from google_work_agent.ports import (
 
 
 class _StructuredProvider(Protocol):
-    provider_name: str
-    runtime: ActualRuntime
+    @property
+    def provider_name(self) -> str: ...
+    @property
+    def runtime(self) -> ActualRuntime: ...
 
     def invoke_structured(
         self,

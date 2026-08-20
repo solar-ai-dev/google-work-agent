@@ -257,8 +257,10 @@ class LLMInvocationError(RuntimeError):
 class StructuredLLMProvider(Protocol):
     """Provider that can produce structured JSON output."""
 
-    provider_name: str
-    runtime: ActualRuntime
+    @property
+    def provider_name(self) -> str: ...
+    @property
+    def runtime(self) -> ActualRuntime: ...
 
     def invoke_structured(
         self,
