@@ -78,14 +78,24 @@ class WorkflowInvocationCoordinator:
                 payload={"graph_profile": self._graph_profile.value},
             )
         if snapshot.next:
+            # A real interrupt() is pending (e.g. WAITING_CONFIRMATION,
+            # PREFLIGHT_REAPPROVAL_REQUIRED) -- Command(resume=...) is the
+            # correct way to feed the user's response back into it.
             self._graph.invoke(Command(resume=request.resume_payload), config=config)
             return self.result_from_thread(
                 workflow_key=request.workflow_key,
                 run_id=request.run_id,
             )
+        # No pending interrupt: the prior invocation already reached END via
+        # a normal conditional edge (e.g. REAUTH_REQUIRED, RECOVERY_REQUIRED
+        # ending the graph without ever calling interrupt()).
+        # Command(resume=...) is a no-op against a thread with no pending
+        # task, so this resume must instead continue from persisted Domain
+        # facts -- the same mechanism recover_open_run already uses.
         state = self._continue_from_domain_facts(
             values=cast(GraphState, snapshot.values),
             run_id=request.run_id,
+            allow_reauth_resume=request.resume_kind == "REAUTH_COMPLETED",
         )
         if state is None:
             return self.result_from_thread(
@@ -128,6 +138,7 @@ class WorkflowInvocationCoordinator:
         state = self._continue_from_domain_facts(
             values=cast(GraphState, snapshot.values),
             run_id=request.run_id,
+            allow_reauth_resume=False,
         )
         if state is None:
             return self.result_from_thread(
@@ -145,14 +156,23 @@ class WorkflowInvocationCoordinator:
         *,
         values: GraphState,
         run_id: str,
+        allow_reauth_resume: bool = True,
     ) -> GraphState | None:
-        """Continue only from durable action facts or an explicit safe reauth checkpoint."""
+        """Resolve the next state from durable facts plus an explicit reauth resume gate.
+
+        Unknown-result, already-executed, and stalled-claim facts always take
+        precedence so a credential pause after Claim can never cause a blind
+        write resend. A pre-Claim REAUTH_REQUIRED checkpoint is re-entered only
+        for the explicit REAUTH_COMPLETED resume path, never startup recovery.
+        """
         if self._latest_unknown_action(run_id) is not None:
             return self._recovery_node(values)
         if self._has_executed_action(run_id):
             return self._recover_executed_actions(values, run_id)
         if self._mark_stalled_claims_as_unknown(run_id):
             return self._recovery_node(values)
+        if not allow_reauth_resume:
+            return None
         if self._current_run_status(run_id) != RunStatus.REAUTH_REQUIRED.value:
             return None
         execution_summary = values.get("execution_summary")
@@ -187,6 +207,13 @@ class WorkflowInvocationCoordinator:
     def result_from_thread(self, *, workflow_key: str, run_id: str) -> WorkflowInvocationResult:
         snapshot = self._graph.get_state(self.config_for_thread(workflow_key))
         state = cast(dict[str, object], dict(snapshot.values))
+        # A nested Agent Subgraph's own interrupt() (e.g. Request
+        # Understanding's confirm_inline) never gets a chance to commit
+        # user_interrupt into the OUTER Main State -- the subgraph is still
+        # mid-execution when it pauses, so its return never happens. LangGraph
+        # still bubbles the pending interrupt's payload up to the top-level
+        # task list regardless of nesting depth, so that is the fallback
+        # source of truth for the paused-run projection.
         if not state.get("user_interrupt"):
             pending = _first_pending_confirmation_interrupt(snapshot.tasks)
             if pending is not None:
@@ -248,7 +275,10 @@ class WorkflowInvocationCoordinator:
 
 
 def _first_pending_confirmation_interrupt(tasks: Sequence[Any]) -> dict[str, object] | None:
-    """Find a paused CONFIRMATION interrupt's own payload anywhere in the task list."""
+    """Find a paused CONFIRMATION interrupt's own payload anywhere in the
+    task list, regardless of nesting depth -- LangGraph bubbles a nested
+    subgraph's pending interrupt up to its containing top-level task
+    automatically, no ``subgraphs=True`` snapshot required."""
     for task in tasks:
         for pending in task.interrupts:
             value = pending.value
