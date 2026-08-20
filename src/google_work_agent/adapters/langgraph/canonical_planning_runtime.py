@@ -10,6 +10,7 @@ ToolRoutePlanV2 rather than authored or inferred by an LLM/persistence layer.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from contextvars import ContextVar
 from copy import deepcopy
 from typing import Any, cast
 
@@ -30,11 +31,19 @@ from google_work_agent.adapters.langgraph.connector_write_result import (
 from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.adapters.persistence.connector_identity import (
     bind_action_connector_ids,
+    bind_resource_connector_id,
 )
 from google_work_agent.application.ports import ConnectorExecutionPort
-from google_work_agent.application.workflows.handoff_contracts import ActionPlanDraftV1
+from google_work_agent.application.workflows.handoff_contracts import (
+    AcquisitionResultV1,
+    ActionPlanDraftV1,
+)
 from google_work_agent.application.write_verification_projection import (
     build_expected_verification_projection,
+)
+
+_active_write_connector_ids: ContextVar[dict[str, str] | None] = ContextVar(
+    "active_write_connector_ids", default=None
 )
 
 
@@ -242,8 +251,12 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
             state=state,
             plan_draft=deterministic_plan,
         )
-        with bind_action_connector_ids(connector_ids):
-            return super()._persist_write_plan(state, deterministic_plan)
+        token = _active_write_connector_ids.set(dict(connector_ids))
+        try:
+            with bind_action_connector_ids(connector_ids):
+                return super()._persist_write_plan(state, deterministic_plan)
+        finally:
+            _active_write_connector_ids.reset(token)
 
     def _persist_read_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         connector_ids = connector_ids_for_read_actions_from_frozen_routes(
@@ -252,6 +265,36 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
         )
         with bind_action_connector_ids(connector_ids):
             return super()._persist_read_plan(state, plan_draft)
+
+    def _resolve_target_resource_ref_id(
+        self,
+        *,
+        run_id: str,
+        resource_handle: str | None,
+        acquisition_result: AcquisitionResultV1,
+    ) -> str | None:
+        if resource_handle is None:
+            return None
+        connector_ids = _active_write_connector_ids.get()
+        if connector_ids is None:
+            return super()._resolve_target_resource_ref_id(
+                run_id=run_id,
+                resource_handle=resource_handle,
+                acquisition_result=acquisition_result,
+            )
+        unique_connectors = set(connector_ids.values())
+        if len(unique_connectors) != 1:
+            raise ValueError(
+                "legacy target ResourceRef projection cannot select a connector for a "
+                "multi-connector write plan"
+            )
+        connector_id = next(iter(unique_connectors))
+        with bind_resource_connector_id(connector_id):
+            return super()._resolve_target_resource_ref_id(
+                run_id=run_id,
+                resource_handle=resource_handle,
+                acquisition_result=acquisition_result,
+            )
 
 
 __all__ = [
