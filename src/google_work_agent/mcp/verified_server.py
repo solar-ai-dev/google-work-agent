@@ -20,6 +20,7 @@ from google_work_agent.adapters.mcp.capabilities import (
 from google_work_agent.adapters.mcp.transport import PROTOCOL_VERSION
 from google_work_agent.domain import build_p0_tool_registry
 from google_work_agent.mcp import server as legacy_server
+from google_work_agent.ports import DeliveryCertainty
 
 type ToolHandler = Callable[
     [legacy_server._WorkspaceState, dict[str, object]],
@@ -44,10 +45,11 @@ def main() -> None:
             legacy_server._write(
                 {
                     "id": request_id,
-                    "error": {
-                        "code": "CONFIGURATION_ERROR",
-                        "message": "OS keyring is unavailable.",
-                    },
+                    "error": _error_payload(
+                        code="CONFIGURATION_ERROR",
+                        message="OS keyring is unavailable.",
+                        certainty=DeliveryCertainty.NOT_SENT,
+                    ),
                 }
             )
             continue
@@ -57,56 +59,89 @@ def main() -> None:
             legacy_server._write(
                 {
                     "id": request_id,
-                    "error": {
-                        "code": "CONFIGURATION_ERROR",
-                        "message": error.safe_code,
-                    },
+                    "error": _error_payload(
+                        code="CONFIGURATION_ERROR",
+                        message=error.safe_code,
+                        certainty=DeliveryCertainty.NOT_SENT,
+                    ),
                 }
             )
         except legacy_server._OAuthExchangeError:
             legacy_server._write(
                 {
                     "id": request_id,
-                    "error": {
-                        "code": "TOOL_REJECTED",
-                        "message": "Google OAuth token exchange failed.",
-                        "dispatch_started": False,
-                    },
+                    "error": _error_payload(
+                        code="TOOL_REJECTED",
+                        message="Google OAuth token exchange failed.",
+                        certainty=DeliveryCertainty.NOT_SENT,
+                    ),
                 }
             )
         except legacy_server._WorkspaceToolError as error:
             legacy_server._write(
                 {
                     "id": request_id,
-                    "error": {
-                        "code": "TOOL_REJECTED",
-                        "message": error.safe_code,
-                        "dispatch_started": error.dispatch_started,
-                    },
+                    "error": _error_payload(
+                        code="TOOL_REJECTED",
+                        message=error.safe_code,
+                        certainty=_legacy_error_delivery_certainty(error),
+                    ),
                 }
             )
         except KeyError as error:
             legacy_server._write(
                 {
                     "id": request_id,
-                    "error": {
-                        "code": "NOT_FOUND",
-                        "message": str(error),
-                        "dispatch_started": True,
-                    },
+                    "error": _error_payload(
+                        code="NOT_FOUND",
+                        message=str(error),
+                        certainty=DeliveryCertainty.MAY_HAVE_BEEN_SENT,
+                    ),
                 }
             )
         except Exception:
             legacy_server._write(
                 {
                     "id": request_id,
-                    "error": {
-                        "code": "MALFORMED_RESPONSE",
-                        "message": "MCP request failed.",
-                        "dispatch_started": True,
-                    },
+                    "error": _error_payload(
+                        code="MALFORMED_RESPONSE",
+                        message="MCP request failed.",
+                        certainty=DeliveryCertainty.MAY_HAVE_BEEN_SENT,
+                    ),
                 }
             )
+
+
+def _error_payload(
+    *,
+    code: str,
+    message: str,
+    certainty: DeliveryCertainty,
+) -> dict[str, object]:
+    return {
+        "code": code,
+        "message": message,
+        "delivery_certainty": certainty.value,
+        "dispatch_started": certainty is not DeliveryCertainty.NOT_SENT,
+    }
+
+
+def _legacy_error_delivery_certainty(
+    error: legacy_server._WorkspaceToolError,
+) -> DeliveryCertainty:
+    explicit = getattr(error, "delivery_certainty", None)
+    if isinstance(explicit, DeliveryCertainty):
+        return explicit
+    if isinstance(explicit, str):
+        try:
+            return DeliveryCertainty(explicit)
+        except ValueError:
+            pass
+    return (
+        DeliveryCertainty.MAY_HAVE_BEEN_SENT
+        if error.dispatch_started
+        else DeliveryCertainty.NOT_SENT
+    )
 
 
 def _dispatch(
