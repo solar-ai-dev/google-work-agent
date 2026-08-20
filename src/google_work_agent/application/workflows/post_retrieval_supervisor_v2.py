@@ -1,9 +1,9 @@
 """Pure canonical routing for Work Analysis, Planning, and Review V2 returns.
 
-This is the cut-over target for the legacy Supervisor's post-Retrieval status
-inspection.  It consumes only validated SubgraphReturnV2 envelopes plus the
-current Planning artifact where Review revision budgeting needs to identify the
-Planning revision node.  It does not mutate Main State.
+The router consumes only validated ``SubgraphReturnV2`` envelopes.  Unknown
+versions/dispositions and impossible artifact combinations fail closed to the
+RECOVERY target with ``CONTRACT_VIOLATION``; there is no ``status``/``result``
+string fallback.
 """
 
 from __future__ import annotations
@@ -18,15 +18,14 @@ from google_work_agent.application.workflows.contracts import (
     approve_semantic_revision,
     build_semantic_failure_signature_v1,
 )
+from google_work_agent.application.workflows.handoff_contracts import SubgraphReturnV2
 from google_work_agent.application.workflows.planning_plan_assembler import ActionPlanDraftV2
 from google_work_agent.application.workflows.post_retrieval_envelopes_v2 import (
-    CanonicalSubgraphReturnV2,
     PlanningResultV2,
     validate_planning_return_v2,
     validate_review_return_v2,
     validate_work_analysis_return_v2,
 )
-from google_work_agent.application.workflows.state_artifacts_v2 import AnswerDraftV2
 
 PostRetrievalTargetV2 = Literal[
     "TOOL_ROUTE",
@@ -36,6 +35,7 @@ PostRetrievalTargetV2 = Literal[
     "DOMAIN_VALIDATION",
     "RESPONSE_SYNTHESIS",
     "WAITING_CONFIRMATION",
+    "RECOVERY",
     "FINALIZE",
 ]
 RevisionModeV2 = Literal["ANSWER", "PLAN"]
@@ -50,15 +50,24 @@ class PostRetrievalRouteDecisionV2(TypedDict):
 
 
 def route_work_analysis_return_v2(value: object) -> PostRetrievalRouteDecisionV2:
-    envelope = validate_work_analysis_return_v2(value)
+    try:
+        envelope = validate_work_analysis_return_v2(value)
+    except ValueError:
+        return _contract_violation()
     disposition = envelope["disposition"]
     if disposition == "COMPLETE":
         return _decision("PLANNING", "WORK_ANALYSIS_COMPLETE")
     if disposition == "NEEDS_MORE_DATA":
         signal_kind = _signal_kind(envelope)
         if signal_kind == "RETRIEVAL_REQUIRED":
-            return _decision("RETRIEVAL", _first_signal_reason(envelope, "WORK_ANALYSIS_NEEDS_MORE_DATA"))
-        return _decision("TOOL_ROUTE", _first_signal_reason(envelope, "WORK_ANALYSIS_ROUTE_REQUIRED"))
+            return _decision(
+                "RETRIEVAL",
+                _first_signal_reason(envelope, "WORK_ANALYSIS_NEEDS_MORE_DATA"),
+            )
+        return _decision(
+            "TOOL_ROUTE",
+            _first_signal_reason(envelope, "WORK_ANALYSIS_ROUTE_REQUIRED"),
+        )
     if disposition == "NEEDS_CONFIRMATION":
         return _decision("WAITING_CONFIRMATION", "WORK_ANALYSIS_NEEDS_CONFIRMATION")
     if disposition == "ROUTE_RECONSIDERATION_REQUIRED":
@@ -67,7 +76,10 @@ def route_work_analysis_return_v2(value: object) -> PostRetrievalRouteDecisionV2
 
 
 def route_planning_return_v2(value: object) -> PostRetrievalRouteDecisionV2:
-    envelope = validate_planning_return_v2(value)
+    try:
+        envelope = validate_planning_return_v2(value)
+    except ValueError:
+        return _contract_violation()
     disposition = envelope["disposition"]
     if disposition == "ANSWER_ONLY":
         return _decision("RESPONSE_SYNTHESIS", "PLANNING_ANSWER_ONLY")
@@ -86,13 +98,14 @@ def route_review_return_v2(
     planning_result: PlanningResultV2,
     retry_budget: RunBudgetV1,
 ) -> PostRetrievalRouteDecisionV2:
-    envelope = validate_review_return_v2(value)
+    try:
+        envelope = validate_review_return_v2(value)
+    except ValueError:
+        return _contract_violation()
     disposition = envelope["disposition"]
     if disposition == "PASS":
-        # Canonical ANSWER_ONLY never reaches Review; only ActionPlanDraftV2 PASS
-        # is a valid production path to Domain Validation.
         if isinstance(planning_result, dict) and "answer" in planning_result:
-            return _decision("FINALIZE", "REVIEW_PASS_ON_ANSWER_CONTRACT_VIOLATION")
+            return _contract_violation()
         return _decision("DOMAIN_VALIDATION", "PLAN_REVIEW_PASS")
     if disposition == "REVISE":
         return _route_review_revise(
@@ -102,8 +115,14 @@ def route_review_return_v2(
         )
     if disposition == "RETRIEVE_MORE":
         if _signal_kind(envelope) == "RETRIEVAL_REQUIRED":
-            return _decision("RETRIEVAL", _first_signal_reason(envelope, "PLAN_REVIEW_RETRIEVE_MORE"))
-        return _decision("TOOL_ROUTE", _first_signal_reason(envelope, "PLAN_REVIEW_ROUTE_REQUIRED"))
+            return _decision(
+                "RETRIEVAL",
+                _first_signal_reason(envelope, "PLAN_REVIEW_RETRIEVE_MORE"),
+            )
+        return _decision(
+            "TOOL_ROUTE",
+            _first_signal_reason(envelope, "PLAN_REVIEW_ROUTE_REQUIRED"),
+        )
     if disposition == "ROUTE_RECONSIDERATION":
         return _decision("TOOL_ROUTE", _first_signal_reason(envelope, disposition))
     if disposition == "CONFIRM":
@@ -112,7 +131,7 @@ def route_review_return_v2(
 
 
 def _route_review_revise(
-    envelope: CanonicalSubgraphReturnV2,
+    envelope: SubgraphReturnV2[object],
     *,
     planning_result: PlanningResultV2,
     retry_budget: RunBudgetV1,
@@ -120,7 +139,7 @@ def _route_review_revise(
     revision = approve_planning_revision(retry_budget)
     if revision["decision"] == BudgetDecision.DENY.value:
         return _decision(
-            "FINALIZE",
+            "RECOVERY",
             _budget_reason(revision, "PLANNING_REVISION_DENIED"),
             retry_budget=revision["run_budget"],
             budget_decision=revision,
@@ -146,7 +165,7 @@ def _route_review_revise(
         semantic = approve_semantic_revision(revision["run_budget"], signature=signature)
         if semantic["decision"] == BudgetDecision.DENY.value:
             return _decision(
-                "FINALIZE",
+                "RECOVERY",
                 _budget_reason(semantic, "SEMANTIC_REVISION_DENIED"),
                 retry_budget=semantic["run_budget"],
                 budget_decision=semantic,
@@ -168,14 +187,14 @@ def _route_review_revise(
     )
 
 
-def _signal_kind(envelope: CanonicalSubgraphReturnV2) -> str:
+def _signal_kind(envelope: SubgraphReturnV2[object]) -> str:
     signal = envelope["workflow_signal"]
     if not isinstance(signal, dict) or not isinstance(signal.get("kind"), str):
         raise ValueError("validated envelope lost workflow_signal kind")
     return cast(str, signal["kind"])
 
 
-def _first_signal_reason(envelope: CanonicalSubgraphReturnV2, default: str) -> str:
+def _first_signal_reason(envelope: SubgraphReturnV2[object], default: str) -> str:
     signal = envelope["workflow_signal"]
     if not isinstance(signal, dict):
         return default
@@ -190,6 +209,10 @@ def _first_signal_reason(envelope: CanonicalSubgraphReturnV2, default: str) -> s
 def _budget_reason(decision: BudgetDecisionV1, default: str) -> str:
     reason = decision.get("budget_reason_code")
     return reason if isinstance(reason, str) and reason else default
+
+
+def _contract_violation() -> PostRetrievalRouteDecisionV2:
+    return _decision("RECOVERY", "CONTRACT_VIOLATION")
 
 
 def _decision(

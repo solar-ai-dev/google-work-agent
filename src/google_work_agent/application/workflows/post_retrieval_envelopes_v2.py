@@ -1,15 +1,16 @@
 """Canonical SubgraphReturnV2 validation for post-Retrieval owners.
 
 This module freezes the artifact-vs-workflow-control boundary before the Main
-State cut-over.  It does not mutate production State and it does not derive
-missing semantic payloads on behalf of an owner subgraph.
+State cut-over.  It consumes the single canonical ``SubgraphReturnV2`` type
+from ``handoff_contracts``; it does not define a competing envelope authority.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Literal, TypedDict, cast
+from typing import cast
 
+from google_work_agent.application.workflows.handoff_contracts import SubgraphReturnV2
 from google_work_agent.application.workflows.planning_plan_assembler import ActionPlanDraftV2
 from google_work_agent.application.workflows.review_v2 import validate_plan_review_candidate_v2
 from google_work_agent.application.workflows.state_artifacts_v2 import (
@@ -17,16 +18,9 @@ from google_work_agent.application.workflows.state_artifacts_v2 import (
     PlanReviewResultV2,
     WorkAnalysisResultV2,
 )
-from google_work_agent.application.workflows.handoff_contracts import WorkflowSignalV1
-
-
-class CanonicalSubgraphReturnV2(TypedDict):
-    disposition: str
-    typed_result: object | None
-    workflow_signal: WorkflowSignalV1 | None
-
 
 PlanningResultV2 = AnswerDraftV2 | ActionPlanDraftV2
+PostRetrievalSubgraphReturnV2 = SubgraphReturnV2[object]
 
 _WORK_ANALYSIS_DISPOSITIONS = {
     "COMPLETE",
@@ -56,7 +50,7 @@ class PostRetrievalEnvelopeV2Error(ValueError):
     """SubgraphReturnV2 violates canonical artifact/signal ownership rules."""
 
 
-def validate_work_analysis_return_v2(value: object) -> CanonicalSubgraphReturnV2:
+def validate_work_analysis_return_v2(value: object) -> PostRetrievalSubgraphReturnV2:
     envelope = _envelope(value, allowed=_WORK_ANALYSIS_DISPOSITIONS)
     disposition = envelope["disposition"]
     result = envelope["typed_result"]
@@ -82,7 +76,7 @@ def validate_work_analysis_return_v2(value: object) -> CanonicalSubgraphReturnV2
     return envelope
 
 
-def validate_planning_return_v2(value: object) -> CanonicalSubgraphReturnV2:
+def validate_planning_return_v2(value: object) -> PostRetrievalSubgraphReturnV2:
     envelope = _envelope(value, allowed=_PLANNING_DISPOSITIONS)
     disposition = envelope["disposition"]
     result = envelope["typed_result"]
@@ -105,7 +99,7 @@ def validate_planning_return_v2(value: object) -> CanonicalSubgraphReturnV2:
     return envelope
 
 
-def validate_review_return_v2(value: object) -> CanonicalSubgraphReturnV2:
+def validate_review_return_v2(value: object) -> PostRetrievalSubgraphReturnV2:
     envelope = _envelope(value, allowed=_REVIEW_DISPOSITIONS)
     disposition = envelope["disposition"]
     result = envelope["typed_result"]
@@ -129,7 +123,7 @@ def validate_review_return_v2(value: object) -> CanonicalSubgraphReturnV2:
     return envelope
 
 
-def _envelope(value: object, *, allowed: set[str]) -> CanonicalSubgraphReturnV2:
+def _envelope(value: object, *, allowed: set[str]) -> PostRetrievalSubgraphReturnV2:
     root = _mapping(value, "$")
     expected = {"disposition", "typed_result", "workflow_signal"}
     if set(root) != expected:
@@ -140,7 +134,7 @@ def _envelope(value: object, *, allowed: set[str]) -> CanonicalSubgraphReturnV2:
     signal = root["workflow_signal"]
     if signal is not None and not isinstance(signal, Mapping):
         raise PostRetrievalEnvelopeV2Error("workflow_signal must be an object or null")
-    return cast(CanonicalSubgraphReturnV2, dict(root))
+    return cast(PostRetrievalSubgraphReturnV2, dict(root))
 
 
 def _work_analysis_artifact(value: object) -> WorkAnalysisResultV2:
@@ -190,8 +184,7 @@ def _review_artifact(value: object, *, expected_status: str) -> PlanReviewResult
     root = _mapping(value, "typed_result")
     if root.get("schema_version") != 2 or root.get("status") != expected_status:
         raise PostRetrievalEnvelopeV2Error("Review typed_result status must match disposition")
-    meta = root.get("meta")
-    _artifact_meta(meta, "typed_result.meta")
+    _artifact_meta(root.get("meta"), "typed_result.meta")
     candidate = {key: item for key, item in root.items() if key != "meta"}
     try:
         validate_plan_review_candidate_v2(candidate)
@@ -230,7 +223,7 @@ def _require_signal_kind(value: object, kinds: set[str], disposition: str) -> No
 def _retrieval_signal(signal: Mapping[str, object]) -> None:
     if set(signal) != {"kind", "reason_codes", "needs"}:
         raise PostRetrievalEnvelopeV2Error("RetrievalRequiredV1 keys are invalid")
-    reason_codes = _non_empty_string_list(signal.get("reason_codes"), "workflow_signal.reason_codes")
+    _non_empty_string_list(signal.get("reason_codes"), "workflow_signal.reason_codes")
     needs = signal.get("needs")
     if not isinstance(needs, list) or not needs:
         raise PostRetrievalEnvelopeV2Error("RetrievalRequiredV1.needs must not be empty")
@@ -242,8 +235,6 @@ def _retrieval_signal(signal: Mapping[str, object]) -> None:
         if not isinstance(text, str) or not text:
             raise PostRetrievalEnvelopeV2Error("RetrievalNeedV1.required_information is required")
         _non_empty_string_list(item.get("reason_codes"), "RetrievalNeedV1.reason_codes")
-    if not reason_codes:
-        raise PostRetrievalEnvelopeV2Error("RetrievalRequiredV1.reason_codes must not be empty")
 
 
 def _confirmation_signal(signal: Mapping[str, object]) -> None:
@@ -251,16 +242,16 @@ def _confirmation_signal(signal: Mapping[str, object]) -> None:
     if set(signal) != expected:
         raise PostRetrievalEnvelopeV2Error("ConfirmationRequiredV1 keys are invalid")
     for field in ("interrupt_id", "owner_subgraph", "question"):
-        value = signal.get(field)
-        if not isinstance(value, str) or not value:
+        item = signal.get(field)
+        if not isinstance(item, str) or not item:
             raise PostRetrievalEnvelopeV2Error(f"ConfirmationRequiredV1.{field} is required")
     _string_list(signal.get("options"), "ConfirmationRequiredV1.options")
     resume = _mapping(signal.get("resume_target"), "ConfirmationRequiredV1.resume_target")
     if set(resume) != {"subgraph_id", "node_id", "graph_version"}:
         raise PostRetrievalEnvelopeV2Error("RegisteredResumeTargetRefV1 keys are invalid")
     for field in ("subgraph_id", "node_id", "graph_version"):
-        value = resume.get(field)
-        if not isinstance(value, str) or not value:
+        item = resume.get(field)
+        if not isinstance(item, str) or not item:
             raise PostRetrievalEnvelopeV2Error(f"RegisteredResumeTargetRefV1.{field} is required")
 
 
@@ -282,6 +273,15 @@ def _artifact_meta(value: object, path: str) -> None:
     based_on = meta.get("based_on")
     if not isinstance(based_on, list):
         raise PostRetrievalEnvelopeV2Error(f"{path}.based_on must be an array")
+    for index, raw in enumerate(based_on):
+        ref = _mapping(raw, f"{path}.based_on[{index}]")
+        if set(ref) != {"artifact_id", "revision"}:
+            raise PostRetrievalEnvelopeV2Error(f"{path}.based_on[{index}] keys are invalid")
+        if not isinstance(ref.get("artifact_id"), str) or not ref["artifact_id"]:
+            raise PostRetrievalEnvelopeV2Error(f"{path}.based_on[{index}].artifact_id is required")
+        ref_revision = ref.get("revision")
+        if not isinstance(ref_revision, int) or isinstance(ref_revision, bool) or ref_revision < 1:
+            raise PostRetrievalEnvelopeV2Error(f"{path}.based_on[{index}].revision is invalid")
 
 
 def _mapping(value: object, path: str) -> dict[str, object]:
@@ -309,9 +309,9 @@ def _non_empty_string_list(value: object, path: str) -> list[str]:
 
 
 __all__ = [
-    "CanonicalSubgraphReturnV2",
     "PlanningResultV2",
     "PostRetrievalEnvelopeV2Error",
+    "PostRetrievalSubgraphReturnV2",
     "validate_planning_return_v2",
     "validate_review_return_v2",
     "validate_work_analysis_return_v2",
