@@ -16,12 +16,12 @@ from typing import Any, cast
 from google_work_agent.adapters.langgraph.canonical_runtime import (
     LangGraphWorkflowRuntime as _ConfirmationLangGraphWorkflowRuntime,
 )
+from google_work_agent.adapters.langgraph.connector_write_result import (
+    ConnectorBoundStoreWriteActionSuccessService,
+)
 from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.adapters.persistence.connector_identity import (
     bind_action_connector_ids,
-)
-from google_work_agent.application.connector_write_result import (
-    ConnectorBoundStoreWriteActionSuccessService,
 )
 from google_work_agent.application.workflows.handoff_contracts import ActionPlanDraftV1
 from google_work_agent.application.write_verification_projection import (
@@ -124,10 +124,6 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
             *args, default_calendar_id_provider=default_calendar_id_provider, **kwargs
         )
 
-        # The base runtime constructs WriteExecutionPhaseCoordinator during
-        # super().__init__. Replace only its success-persistence delegate with
-        # a subtype that resolves connector_id from the already-persisted
-        # Action, then binds that identity while ResourceRef is written.
         connector_bound_store = ConnectorBoundStoreWriteActionSuccessService(
             delegate=self._store_write_success,
             unit_of_work_factory=self._unit_of_work_factory,
