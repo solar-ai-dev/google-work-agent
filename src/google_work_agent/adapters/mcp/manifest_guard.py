@@ -9,6 +9,7 @@ membership check immediately before every tool dispatch.
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -49,6 +50,9 @@ class ManifestEnforcedMCPTransport:
         self._delegate = delegate
         self._descriptor = descriptor
         self._expected_internal_capabilities = expected_internal_capabilities
+        self._internal_registry_version = _single_internal_registry_version(
+            expected_internal_capabilities
+        )
         self._verified_callable_names = self._load_verified_manifest_surface()
         self._verify_remote_internal_surface()
 
@@ -93,10 +97,13 @@ class ManifestEnforcedMCPTransport:
 
     def _load_verified_manifest_surface(self) -> frozenset[str]:
         manifest_path = Path(self._descriptor.artifact_config.manifest_path)
-        payload = cast(
-            dict[str, object],
-            json.loads(manifest_path.read_text(encoding="utf-8")),
-        )
+        raw = manifest_path.read_bytes()
+        if sha256(raw).hexdigest() != self._descriptor.artifact_config.expected_manifest_sha256:
+            raise MCPTransportError(
+                code=MCPTransportErrorCode.ARTIFACT_REJECTED,
+                message="manifest changed after transport verification",
+            )
+        payload = cast(dict[str, object], json.loads(raw.decode("utf-8")))
 
         raw_tools = payload.get("tools")
         if not isinstance(raw_tools, list):
@@ -122,6 +129,11 @@ class ManifestEnforcedMCPTransport:
                 message="manifest public tool surface changed after transport verification",
             )
 
+        if payload.get("internal_capability_registry_version") != self._internal_registry_version:
+            raise MCPTransportError(
+                code=MCPTransportErrorCode.TOOL_REJECTED,
+                message="manifest internal capability registry version mismatch",
+            )
         raw_internal = payload.get("internal_capabilities")
         if not isinstance(raw_internal, list):
             raise MCPTransportError(
@@ -173,6 +185,13 @@ class ManifestEnforcedMCPTransport:
             method="mcp.list_internal_capabilities",
             arguments={},
         )
+        if response.payload.get("internal_capability_registry_version") != (
+            self._internal_registry_version
+        ):
+            raise MCPTransportError(
+                code=MCPTransportErrorCode.TOOL_REJECTED,
+                message="remote internal capability registry version mismatch",
+            )
         raw_names = response.payload.get("internal_capability_names")
         if not isinstance(raw_names, list):
             raise MCPTransportError(
@@ -188,3 +207,12 @@ class ManifestEnforcedMCPTransport:
                 code=MCPTransportErrorCode.TOOL_REJECTED,
                 message="remote internal capability surface mismatch",
             )
+
+
+def _single_internal_registry_version(
+    capabilities: tuple[MCPInternalCapability, ...],
+) -> str:
+    versions = {capability.registry_version for capability in capabilities}
+    if len(versions) != 1:
+        raise ValueError("internal MCP capabilities must share exactly one registry version")
+    return next(iter(versions))
