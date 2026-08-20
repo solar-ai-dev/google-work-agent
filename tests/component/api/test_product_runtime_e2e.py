@@ -79,17 +79,22 @@ class _AllowGuard:
 
 def _gmail_draft_plan() -> ActionPlanDraftV1:
     plan = _write_plan_output()
-    payload = {
-        "resource_id": "draft-product-e2e",
+    # "resource_id" is provider-generated (assigned only after the write
+    # dispatches) and is never a business argument Planning may author --
+    # see planning_tool_schemas._GMAIL_DRAFT_PAYLOAD's additionalProperties:
+    # False allowlist. It belongs only in "expected" (the verification
+    # target), not in "arguments" (the Tool call input).
+    arguments_payload = {
         "to": ["pm@example.com"],
         "subject": "Product E2E draft",
         "body": "Deterministic product integration draft.",
     }
+    payload = {"resource_id": "draft-product-e2e", **arguments_payload}
     plan["actions"][0].update(
         {
             "effect": "CREATE",
             "tool_name": "gmail_create_draft",
-            "arguments": {"payload": payload},
+            "arguments": {"payload": arguments_payload},
             "expected": {
                 "resource_type": "gmail_draft",
                 "resource_id": "draft-product-e2e",
@@ -144,18 +149,25 @@ def _task_update_plan() -> ActionPlanDraftV1:
 
 def _calendar_create_plan() -> ActionPlanDraftV1:
     plan = _write_plan_output()
-    payload = {
-        "resource_id": "event-product-e2e",
+    # "resource_id" (provider-generated) and "status" (not in
+    # planning_tool_schemas._CALENDAR_CREATE_PAYLOAD's allowlist -- Google
+    # always creates events as "confirmed") are not business arguments
+    # Planning may author; they belong only in "expected", not "arguments".
+    arguments_payload = {
         "title": "Product E2E event",
-        "status": "confirmed",
         "start": "2026-11-02T09:00:00-08:00",
         "end": "2026-11-02T09:30:00-08:00",
+    }
+    payload = {
+        "resource_id": "event-product-e2e",
+        "status": "confirmed",
+        **arguments_payload,
     }
     plan["actions"][0].update(
         {
             "effect": "CREATE",
             "tool_name": "calendar_create_event",
-            "arguments": {"calendar_id": "calendar-primary", "payload": payload},
+            "arguments": {"calendar_id": "calendar-primary", "payload": arguments_payload},
             "expected": {
                 "resource_type": "calendar_event",
                 "resource_id": "event-product-e2e",
@@ -428,9 +440,15 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         assert gateway.count_calls(verification_operation) >= reads_before_approval + 1
         replay = client.post(f"/api/v1/actions/{action_id}/approve", json=effective_approval_body)
         assert replay.status_code == 200
+        # ttl_ms is deprecated/server-ignored and excluded from the request
+        # hash (approval lifetime is server-owned via
+        # AppSettings.approval_ttl_minutes -- see
+        # api/routes/actions.py:approve, which pops it before hashing), so
+        # varying only ttl_ms can no longer produce a hash mismatch.
+        # duplicate_acknowledged is an actual hashed request field.
         conflict = client.post(
             f"/api/v1/actions/{action_id}/approve",
-            json={**effective_approval_body, "ttl_ms": 60_000},
+            json={**effective_approval_body, "duplicate_acknowledged": True},
         )
         assert conflict.status_code == 409
         time.sleep(0.05)
