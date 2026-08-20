@@ -38,7 +38,7 @@ from google_work_agent.application.workflows.state_artifacts_v2 import (
     PlanReviewResultV2,
     WorkAnalysisResultV2,
 )
-from google_work_agent.domain import EffectType, SignedToolRegistry, build_p0_tool_registry
+from google_work_agent.domain import EffectType, SignedToolRegistry
 
 _WRITE_EFFECTS = frozenset({"CREATE", "UPDATE", "SEND", "DELETE"})
 _TARGET_BINDINGS: dict[str, tuple[str, str, str | None]] = {
@@ -58,7 +58,12 @@ class CurrentRunResourceIdentityV1(TypedDict):
 
 
 class RunScopedResourceIdentityReader(Protocol):
-    """Minimal read-only boundary needed by Domain target-evidence validation."""
+    """Agent-3 consumer protocol for current-run normalized resource identity.
+
+    This name/shape is not a provider-side Agent 4 contract. Integration may
+    adapt Agent 4's final ephemeral read-only boundary to this consumer shape.
+    Raw provider payloads must never cross this boundary.
+    """
 
     def resolve_resource_identity(
         self,
@@ -72,11 +77,15 @@ class CanonicalDomainValidationError(ValueError):
     pass
 
 
+class PolicyOverrideProvenanceDependency(RuntimeError):
+    """Override safety cannot be proven until the Policy Receipt wave lands."""
+
+
 class CanonicalDomainValidationService:
     """Validate V2 artifacts without reintroducing legacy plan authority."""
 
-    def __init__(self, *, tool_registry: SignedToolRegistry | None = None) -> None:
-        self._tool_registry = tool_registry or build_p0_tool_registry()
+    def __init__(self, *, tool_registry: SignedToolRegistry) -> None:
+        self._tool_registry = tool_registry
 
     def __call__(
         self,
@@ -110,9 +119,8 @@ def build_domain_validation_output_from_v2(
     evidence_drafts: Sequence[EvidenceDraftV1],
     policy_confirmation_receipts: Sequence[PolicyConfirmationReceiptV1],
     resource_identity_reader: RunScopedResourceIdentityReader,
-    tool_registry: SignedToolRegistry | None = None,
+    tool_registry: SignedToolRegistry,
 ) -> DomainValidationOutputV1:
-    registry = tool_registry or build_p0_tool_registry()
     try:
         if not isinstance(run_id, str) or not run_id:
             raise CanonicalDomainValidationError("run_id is required")
@@ -121,13 +129,17 @@ def build_domain_validation_output_from_v2(
             run_id=run_id,
             evidence_drafts=evidence_drafts,
             resource_identity_reader=resource_identity_reader,
-            tool_registry=registry,
+            tool_registry=tool_registry,
         )
         _validate_pass_review_for_plan(plan_review, planning_result=plan)
         if work_analysis_result is not None:
             _validate_work_analysis_receipt_references(
                 work_analysis_result,
                 policy_confirmation_receipts=policy_confirmation_receipts,
+            )
+            _fail_closed_on_unproven_policy_override(
+                work_analysis_result=work_analysis_result,
+                planning_result=plan,
             )
     except CanonicalDomainValidationError as error:
         reason_code = (
@@ -274,6 +286,30 @@ def _validate_work_analysis_receipt_references(
             raise CanonicalDomainValidationError(
                 "work analysis references a non-approved policy confirmation receipt"
             )
+
+
+def _fail_closed_on_unproven_policy_override(
+    *,
+    work_analysis_result: WorkAnalysisResultV2,
+    planning_result: ActionPlanDraftV2,
+) -> None:
+    """Do not convert a NOT_REQUIRED analysis into executable work.
+
+    Canonical override success requires more than an APPROVED receipt reference:
+    the later Policy Receipt Provenance wave must prove the exact override
+    context and Approval Snapshot binding. This boundary intentionally does not
+    invent a DomainValidationOutput reason code for that missing provenance.
+    """
+
+    if (
+        work_analysis_result["action_necessity"] == "NOT_REQUIRED"
+        and planning_result["actions"]
+    ):
+        raise PolicyOverrideProvenanceDependency(
+            "POLICY_OVERRIDE_PROVENANCE_DEPENDENCY: "
+            "NOT_REQUIRED Work Analysis cannot authorize non-empty Planning actions "
+            "until exact duplicate/conflict override provenance is available"
+        )
 
 
 def _validate_action(
@@ -523,6 +559,7 @@ __all__ = [
     "CanonicalDomainValidationError",
     "CanonicalDomainValidationService",
     "CurrentRunResourceIdentityV1",
+    "PolicyOverrideProvenanceDependency",
     "RunScopedResourceIdentityReader",
     "build_domain_validation_output_from_v2",
     "validate_action_plan_draft_v2_for_domain",
