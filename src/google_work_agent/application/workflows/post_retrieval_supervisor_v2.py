@@ -1,6 +1,6 @@
 """Pure canonical routing for Work Analysis, Planning, and Review V2 returns.
 
-The router consumes only validated ``SubgraphReturnV2`` envelopes.  Unknown
+The router consumes only validated ``SubgraphReturnV2`` envelopes. Unknown
 versions/dispositions and impossible artifact combinations fail closed to the
 RECOVERY target with ``CONTRACT_VIOLATION``; there is no ``status``/``result``
 string fallback.
@@ -19,7 +19,6 @@ from google_work_agent.application.workflows.contracts import (
     build_semantic_failure_signature_v1,
 )
 from google_work_agent.application.workflows.handoff_contracts import SubgraphReturnV2
-from google_work_agent.application.workflows.planning_plan_assembler import ActionPlanDraftV2
 from google_work_agent.application.workflows.post_retrieval_envelopes_v2 import (
     PlanningResultV2,
     validate_planning_return_v2,
@@ -139,7 +138,7 @@ def _route_review_revise(
     revision = approve_planning_revision(retry_budget)
     if revision["decision"] == BudgetDecision.DENY.value:
         return _decision(
-            "RECOVERY",
+            "FINALIZE",
             _budget_reason(revision, "PLANNING_REVISION_DENIED"),
             retry_budget=revision["run_budget"],
             budget_decision=revision,
@@ -165,7 +164,7 @@ def _route_review_revise(
         semantic = approve_semantic_revision(revision["run_budget"], signature=signature)
         if semantic["decision"] == BudgetDecision.DENY.value:
             return _decision(
-                "RECOVERY",
+                "FINALIZE",
                 _budget_reason(semantic, "SEMANTIC_REVISION_DENIED"),
                 retry_budget=semantic["run_budget"],
                 budget_decision=semantic,
