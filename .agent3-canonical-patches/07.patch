@@ -1,0 +1,55 @@
+--- a/docs/design/07-tool-mcp-internal-interface.md
++++ b/docs/design/07-tool-mcp-internal-interface.md
+@@ -1,5 +1,12 @@
+ # 07. Google Work Agent · Tool · MCP · 내부 인터페이스 명세서
+ 
++> **2026-08-21 Canonical Amendment — Planning ACTION Preparation Contract**
++>
++> - `ToolArgumentCandidateV1`은 계속 business arguments only다. status/disposition/workflow signal/confirmation/interrupt metadata를 추가하지 않는다.
++> - 그 위 invocation-local `PlanningActionPreparationResultV1 = READY | NEEDS_CONFIRMATION | ROUTE_RECONSIDERATION_REQUIRED | BLOCKED`를 둔다.
++> - `DefaultContainerResolver`가 required container를 resolve하지 못하면 `NEEDS_CONFIRMATION(route_id, question, options, reason_codes)`을 반환하고 Argument Writer를 호출하지 않는다. `READY`일 때만 Writer를 호출한다.
++> - Confirmation의 `interrupt_id + owner_subgraph + resume_target + graph_version`은 Application/compiled Graph Registry authority이며 LLM/Argument Writer가 생성하지 않는다.
++>
+ > **2026-08-19 Canonical Sync — Wire / Agent Contract**
+ >
+ > `POST /api/v1/runs`의 실제 Wire 입력은 `command_id, conversation_id, user_message_id, run_id, workflow_key, request_text, entry_mode, selected_resource_ids, requested_mode`다. Application은 Open Run Guard와 ID/Resource 검증 뒤 `request_text → RunInputV1.user_request`, `selected_resource_ids → current-run selected_resource_refs`로 materialize한다. Conversation History를 이 입력에 자동 합성하지 않는다.
+@@ -8,12 +15,12 @@
+ >
+ > Planning ACTION 경계는 `OutputToolRouteV1 + selected Tool Schema → ToolArgumentCandidateV1 → deterministic validation/assembly → ActionPlanDraftV2`다. Argument Writer의 LLM output schema에는 Tool 재선택 필드, approval/execution 필드, dependency authority를 두지 않는다.
+ 
+-> **문서 기준:** `01 PRD v2.11`, `01-A Functional v2.18`, `01-B Policy v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Domain·DB v1.20`, `05 Context·Retrieval v2.13`, `06 Agent·Workflow v7.20`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, Connector MCP Tool, Python 내부 인터페이스 계약을 정의한다.
++> **문서 기준:** `01 PRD v2.11`, `01-A Functional v2.18`, `01-B Policy v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Domain·DB v1.20`, `05 Context·Retrieval v2.13`, `06 Agent·Workflow v7.21`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, Connector MCP Tool, Python 내부 인터페이스 계약을 정의한다.
+ 
+ ## 0. 문서 정보
+ 
+-- **상태:** Draft v2.23
+-- **기준일:** 2026-08-19
++- **상태:** Draft v2.24
++- **기준일:** 2026-08-21
+ - **대상:** P0 MVP
+ - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
+ 
+@@ -1259,14 +1266,19 @@
+ + selected resource/container parent if explicitly bound
+ + AppSettings.default_tasklist_id / default_calendar_id
+ → DefaultContainerResolver          # deterministic
+-→ BoundSelectedToolSchemaV1         # container field is immutable/const
+-→ Planning Argument Writer
+-→ Deterministic Argument Assembler
++→ PlanningActionPreparationResultV1 # invocation-local orchestration result
++   ├─ READY → BoundSelectedToolSchemaV1 → Planning Argument Writer
++   ├─ NEEDS_CONFIRMATION → ConfirmationRequiredV1 → same Planning checkpoint resume
++   ├─ ROUTE_RECONSIDERATION_REQUIRED → Tool Route
++   └─ BLOCKED → Application BlockRun boundary
++→ Deterministic Argument Assembler  # READY routes only
+ ```
+ 
+ 규칙:
+ 
+ - 명시적으로 선택된 target/container가 있으면 configured default보다 우선한다.
+-- 필요한 default가 없으면 Planning LLM에 숨은 ID를 추측시키지 않고 `NEEDS_CONFIRMATION` 또는 설정/route 계약의 명시적 실패로 보낸다.
++- 필요한 default가 없으면 Planning LLM에 숨은 ID를 추측시키지 않는다. `DefaultContainerResolver` 실패는 `PlanningActionPreparationResultV1.NEEDS_CONFIRMATION`으로 materialize하며 해당 route의 Argument Writer 호출은 **0회**다.
++- `PlanningActionPreparationResultV1.NEEDS_CONFIRMATION`은 `route_id + question + options + reason_codes`만 semantic payload로 소유한다. Application은 이를 `ConfirmationRequiredV1`으로 projection하면서 Registry에서 `interrupt_id + owner_subgraph=PLANNING + resume_target + graph_version`을 발급한다.
++- 설정 자체가 유효하지 않거나 frozen route/tool 계약을 유지할 수 없는 경우에만 `ROUTE_RECONSIDERATION_REQUIRED` 또는 `BLOCKED`를 사용한다.
+ - Planning LLM은 bound Tool Schema에 이미 고정된 `tasklist_id/calendar_id`를 변경할 수 없다.
+ - 승인 Snapshot/Arguments Hash에는 deterministic binding이 완료된 최종 Business Arguments를 사용한다.
