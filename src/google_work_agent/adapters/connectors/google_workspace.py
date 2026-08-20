@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 
 from google_work_agent.adapters.connectors.runtime import (
     ConnectorMcpRuntime,
     RestartableMCPTransport,
+)
+from google_work_agent.adapters.mcp.capabilities import (
+    build_google_workspace_internal_capabilities,
 )
 from google_work_agent.adapters.mcp.gateway import (
     MCPGmailAttachmentGateway,
     MCPGmailUiReadGateway,
     MCPGoogleWorkspaceGateway,
 )
+from google_work_agent.adapters.mcp.manifest_guard import ManifestEnforcedMCPTransport
 from google_work_agent.adapters.mcp.oauth import MCPGoogleOAuthCredentialProvider
 from google_work_agent.adapters.mcp.transport import (
     MCPArtifactConfig,
@@ -26,6 +31,8 @@ from google_work_agent.domain.tool_registry import SignedToolRegistry
 from google_work_agent.ports import MCPRuntimeMetadata, MCPTransport
 
 GOOGLE_WORKSPACE_CONNECTOR_ID = "google_workspace"
+_VERIFIED_MCP_MODULE_NAME = "google_work_agent.mcp.verified_server"
+_LEGACY_MCP_MODULE_NAME = "google_work_agent.mcp.server"
 
 
 def build_google_workspace_connector_descriptor(
@@ -33,10 +40,23 @@ def build_google_workspace_connector_descriptor(
     *,
     tool_registry: SignedToolRegistry | None = None,
 ) -> MCPConnectorDescriptor:
+    if artifact_config.module_name == _LEGACY_MCP_MODULE_NAME:
+        artifact_config = replace(artifact_config, module_name=_VERIFIED_MCP_MODULE_NAME)
     return MCPConnectorDescriptor(
         connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
         artifact_config=artifact_config,
         expected_tool_registry=tool_registry or build_google_workspace_tool_registry(),
+    )
+
+
+def _build_manifest_enforced_transport(
+    descriptor: MCPConnectorDescriptor,
+) -> RestartableMCPTransport:
+    delegate = SubprocessMCPTransport(descriptor=descriptor)
+    return ManifestEnforcedMCPTransport(
+        delegate=delegate,
+        descriptor=descriptor,
+        expected_internal_capabilities=build_google_workspace_internal_capabilities(),
     )
 
 
@@ -53,8 +73,7 @@ class GoogleWorkspaceConnector:
             raise ValueError("Google Workspace connector descriptor id mismatch")
         self._runtime = ConnectorMcpRuntime(
             descriptor=descriptor,
-            transport_factory=transport_factory
-            or (lambda value: SubprocessMCPTransport(descriptor=value)),
+            transport_factory=transport_factory or _build_manifest_enforced_transport,
         )
         self._gateway: MCPGoogleWorkspaceGateway | None = None
         self._oauth_provider: MCPGoogleOAuthCredentialProvider | None = None
