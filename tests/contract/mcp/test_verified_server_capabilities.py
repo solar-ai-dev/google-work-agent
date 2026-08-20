@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -10,6 +11,7 @@ from google_work_agent.adapters.mcp.capabilities import (
     build_google_workspace_internal_capabilities,
 )
 from google_work_agent.domain import build_p0_tool_registry
+from google_work_agent.mcp import server as legacy_server
 from google_work_agent.mcp import verified_server
 
 
@@ -34,11 +36,18 @@ def test_verified_server_declared_surface_maps_to_handlers() -> None:
         assert callable(verified_server._handler_for(name))  # noqa: SLF001
 
 
-def test_verified_server_rejects_undeclared_handler_name() -> None:
-    with pytest.raises(Exception) as captured:
-        verified_server._handler_for("definitely_not_a_declared_tool")  # noqa: SLF001
+def test_callable_legacy_helper_is_not_dispatch_authority() -> None:
+    assert callable(legacy_server._gmail_thread_list_metadata)  # noqa: SLF001
+    state = cast(legacy_server._WorkspaceState, object())  # noqa: SLF001
 
-    assert str(captured.value) == "CAPABILITY_SURFACE_MISMATCH"
+    with pytest.raises(legacy_server._WorkspaceToolError) as captured:  # noqa: SLF001
+        verified_server._tool_call(  # noqa: SLF001
+            state,
+            tool_name="gmail_thread_list_metadata",
+            arguments={},
+        )
+
+    assert str(captured.value) == "TOOL_NOT_AVAILABLE"
 
 
 def test_google_connector_uses_verified_server_for_default_module() -> None:
