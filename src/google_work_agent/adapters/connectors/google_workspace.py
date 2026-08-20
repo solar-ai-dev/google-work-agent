@@ -18,6 +18,7 @@ from google_work_agent.adapters.mcp.delivery_gateway import (
 from google_work_agent.adapters.mcp.delivery_transport import (
     DeliveryAwareSubprocessMCPTransport,
 )
+from google_work_agent.adapters.mcp.dispatch_contract import DispatchContractMCPTransport
 from google_work_agent.adapters.mcp.gateway import (
     MCPGmailAttachmentGateway,
     MCPGmailUiReadGateway,
@@ -60,21 +61,25 @@ def _default_transport_factory(
     return DeliveryAwareSubprocessMCPTransport(descriptor=descriptor)
 
 
-def _manifest_guarded_factory(
+def _guarded_transport_factory(
     base_factory: Callable[[MCPConnectorDescriptor], RestartableMCPTransport],
 ) -> Callable[[MCPConnectorDescriptor], RestartableMCPTransport]:
-    """Wrap every connector transport, including DI/test transports, in the same guard."""
+    """Wrap every connector transport in immutable-manifest and schema guards."""
 
     def build(descriptor: MCPConnectorDescriptor) -> RestartableMCPTransport:
-        delegate = base_factory(descriptor)
+        raw_delegate = base_factory(descriptor)
         try:
-            return ManifestEnforcedMCPTransport(
-                delegate=delegate,
+            manifest_guard = ManifestEnforcedMCPTransport(
+                delegate=raw_delegate,
                 descriptor=descriptor,
                 expected_internal_capabilities=build_google_workspace_internal_capabilities(),
             )
+            return DispatchContractMCPTransport(
+                delegate=manifest_guard,
+                descriptor=descriptor,
+            )
         except Exception:
-            delegate.close()
+            raw_delegate.close()
             raise
 
     return build
@@ -94,7 +99,7 @@ class GoogleWorkspaceConnector:
         base_factory = transport_factory or _default_transport_factory
         self._runtime = ConnectorMcpRuntime(
             descriptor=descriptor,
-            transport_factory=_manifest_guarded_factory(base_factory),
+            transport_factory=_guarded_transport_factory(base_factory),
         )
         self._gateway: MCPGoogleWorkspaceGateway | None = None
         self._oauth_provider: MCPGoogleOAuthCredentialProvider | None = None
