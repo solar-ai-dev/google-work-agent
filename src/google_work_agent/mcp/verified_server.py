@@ -19,6 +19,7 @@ from google_work_agent.adapters.mcp.capabilities import (
 )
 from google_work_agent.adapters.mcp.transport import PROTOCOL_VERSION
 from google_work_agent.domain import build_p0_tool_registry
+from google_work_agent.domain.claim_contract import CLAIM_CONTEXT_MAX_TTL_MS
 from google_work_agent.domain.google_workspace_tool_contracts import (
     ToolContractViolation,
     google_workspace_tool_contract,
@@ -27,6 +28,11 @@ from google_work_agent.domain.google_workspace_tool_contracts import (
 )
 from google_work_agent.mcp import server as legacy_server
 from google_work_agent.ports import DeliveryCertainty
+
+# Production ClaimContext validation consumes the Domain TTL authority. The
+# legacy module keeps provider mechanics only; its historical literal is not
+# allowed to determine the active runtime boundary.
+legacy_server.CLAIM_CONTEXT_MAX_TTL_MS = CLAIM_CONTEXT_MAX_TTL_MS
 
 type ToolHandler = Callable[
     [legacy_server._WorkspaceState, dict[str, object]],

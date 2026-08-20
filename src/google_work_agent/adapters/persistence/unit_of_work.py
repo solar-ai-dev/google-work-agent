@@ -5,6 +5,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
+from google_work_agent.adapters.persistence.cancel_intent_repository import (
+    CancelIntentCommandReceiptRepository,
+)
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.confirmation_run_repository import (
     SQLiteConfirmationRunRepository,
@@ -16,7 +19,6 @@ from google_work_agent.adapters.persistence.connector_identity import (
 from google_work_agent.adapters.persistence.repositories import (
     SQLiteActionDependencyRepository,
     SQLiteApprovalRepository,
-    SQLiteCommandReceiptRepository,
     SQLiteConversationRepository,
     SQLiteEvidenceRepository,
     SQLiteExecutionAttemptRepository,
@@ -46,7 +48,7 @@ class SQLiteUnitOfWork:
         self.conversations = SQLiteConversationRepository(connection)
         self.runs = SQLiteConfirmationRunRepository(connection)
         self.messages = SQLiteMessageRepository(connection)
-        self.command_receipts = SQLiteCommandReceiptRepository(connection)
+        self.command_receipts = CancelIntentCommandReceiptRepository(connection)
         self.plans = SQLitePlanRepository(connection)
         self.actions = ConnectorAwareActionRepository(connection)
         self.resource_refs = ConnectorAwareResourceRefRepository(connection)

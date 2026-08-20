@@ -36,7 +36,6 @@ from google_work_agent.application.run_terminal import (
     BlockRunCommand,
     BlockRunService,
     CompleteWriteRunCommand,
-    CompleteWriteRunService,
     FailRunCommand,
     FailRunService,
     RequireReauthCommand,
@@ -89,6 +88,7 @@ from google_work_agent.application.write_plan_contracts import (
     WriteEvidenceDraft,
 )
 from google_work_agent.application.write_preflight import PreflightWriteActionService
+from google_work_agent.application.write_reauth import RequireWriteReauthService
 from google_work_agent.application.write_recovery import (
     MarkWriteActionUnknownResultService,
     PrepareWriteRetryService,
@@ -97,7 +97,6 @@ from google_work_agent.application.write_recovery import (
     RecoverUnknownDeleteActionService,
     RecoverUnknownSendActionService,
     RecoverUnknownUpdateActionService,
-    RequireWriteReauthService,
     ResolveMismatchRecoveryService,
     ResolveUnknownWriteAsFailedService,
 )
@@ -118,6 +117,7 @@ from google_work_agent.application.write_result_persistence import (
     MarkWriteActionFailedService,
     StoreWriteActionSuccessService,
 )
+from google_work_agent.application.write_run_completion import CompleteWriteRunService
 from google_work_agent.application.write_verification import VerifyWriteActionService
 
 __all__ = [

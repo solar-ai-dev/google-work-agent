@@ -8,6 +8,7 @@ from json import loads
 from pathlib import Path
 from sqlite3 import Row
 
+from google_work_agent.application.cancel_intent import is_applied_request_cancel_receipt
 from google_work_agent.domain import (
     ActionCommand,
     ActionStatus,
@@ -426,20 +427,30 @@ class QueryService:
         )
 
     def has_cancel_intent(self, run_id: str) -> bool:
-        """Return whether the accepted cancellation intent is durably recorded."""
+        """Return whether an APPLIED RequestCancel receipt durably records intent."""
         with self._connection_factory(self._database_path) as connection:
-            row = connection.execute(
+            rows = connection.execute(
                 """
-                SELECT 1
-                FROM audit_events
-                WHERE run_id = ?
-                  AND event_type = 'RUN_CANCELLATION_REQUESTED'
-                  AND outcome = 'TRANSITION_APPLIED'
-                LIMIT 1;
+                SELECT command_type, aggregate_type, aggregate_id, status, result_code
+                FROM command_receipts
+                WHERE command_type = 'RequestRunCancellation'
+                  AND aggregate_type = 'Run'
+                  AND aggregate_id = ?
+                  AND status = 'APPLIED';
                 """,
                 (run_id,),
-            ).fetchone()
-        return row is not None
+            ).fetchall()
+        return any(
+            is_applied_request_cancel_receipt(
+                command_type=str(row["command_type"]),
+                aggregate_type=str(row["aggregate_type"]),
+                aggregate_id=None if row["aggregate_id"] is None else str(row["aggregate_id"]),
+                status=str(row["status"]),
+                result_code=None if row["result_code"] is None else str(row["result_code"]),
+                run_id=run_id,
+            )
+            for row in rows
+        )
 
     def get_run_execution_context(self, run_id: str) -> RunExecutionContext | None:
         with self._connection_factory(self._database_path) as connection:
@@ -576,7 +587,7 @@ class QueryService:
                 WHERE disconnected_at_ms IS NULL
                 ORDER BY connected_at_ms DESC, id DESC
                 LIMIT 1;
-                """
+                """,
             ).fetchone()
         if row is None:
             return None

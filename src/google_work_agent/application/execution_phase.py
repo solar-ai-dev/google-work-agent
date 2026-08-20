@@ -1,4 +1,4 @@
-"""Application orchestration for the existing write execution phases."""
+"""Application orchestration for deterministic write execution phases."""
 
 from __future__ import annotations
 
@@ -31,7 +31,15 @@ from google_work_agent.application.write_actions import (
     VerifyWriteActionService,
     WriteActionResponse,
 )
-from google_work_agent.domain import ActionStatus, PolicyViolationError, ResultCode, RunStatus
+from google_work_agent.domain import (
+    ActionStatus,
+    CommandResult,
+    PolicyViolationError,
+    ResultCode,
+    RunCommand,
+    RunStatus,
+    transition_run,
+)
 from google_work_agent.ports import (
     DeliveryCertainty,
     GoogleWorkspaceErrorCode,
@@ -43,6 +51,7 @@ from google_work_agent.ports import (
 class WriteExecutionDisposition(StrEnum):
     PREFLIGHT_REAPPROVAL_REQUIRED = "PREFLIGHT_REAPPROVAL_REQUIRED"
     PREFLIGHT_BLOCKED = "PREFLIGHT_BLOCKED"
+    DOMAIN_RECONCILE = "DOMAIN_RECONCILE"
     CLAIM_SKIPPED = "CLAIM_SKIPPED"
     CANCEL_REQUESTED = "CANCEL_REQUESTED"
     REAUTH_REQUIRED = "REAUTH_REQUIRED"
@@ -64,6 +73,9 @@ class WriteExecutionPhaseResult:
     action_status: str | None = None
     result_code: str | None = None
     safe_error_code: str | None = None
+    current_status: str | None = None
+    current_version: int | None = None
+    next_allowed_commands: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,24 +89,47 @@ class UnknownRecoveryPhaseRequest:
 
 
 class BeginWriteVerificationService:
-    """Advance a write Run only when an EXECUTED result is ready to verify."""
+    """Apply BeginVerification and expose its CommandResult to the coordinator."""
 
     def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork]) -> None:
         self._unit_of_work_factory = unit_of_work_factory
 
-    def __call__(self, run_id: str) -> None:
+    def __call__(self, run_id: str) -> CommandResult[RunStatus, RunCommand]:
         with self._unit_of_work_factory() as unit_of_work:
             run = unit_of_work.runs.get_by_id(run_id)
             if run is None:
                 raise LookupError(f"run not found: {run_id}")
             if run.status is RunStatus.VERIFYING:
-                return
-            unit_of_work.runs.set_verifying(run_id)
+                return CommandResult(
+                    applied=True,
+                    result_code=ResultCode.TRANSITION_APPLIED,
+                    current_status=run.status,
+                    current_version=run.version,
+                    next_allowed_commands=(),
+                    conflict_detail=None,
+                )
+            preview = transition_run(
+                run.status,
+                command=RunCommand.BEGIN_VERIFICATION,
+                current_version=run.version,
+                expected_version=run.version,
+            )
+            if not preview.applied:
+                return preview
+            updated = unit_of_work.runs.set_verifying(run_id)
             unit_of_work.commit()
+            return CommandResult(
+                applied=True,
+                result_code=ResultCode.TRANSITION_APPLIED,
+                current_status=updated.status,
+                current_version=updated.version,
+                next_allowed_commands=preview.next_allowed_commands,
+                conflict_detail=None,
+            )
 
 
 class WriteExecutionPhaseCoordinator:
-    """Sequence existing safety services without owning their rules."""
+    """Sequence write safety services and consume every mutation result."""
 
     def __init__(
         self,
@@ -107,7 +142,7 @@ class WriteExecutionPhaseCoordinator:
         claim_write: ClaimWriteActionService,
         execute_write: ExecuteWriteActionService,
         store_write_success: StoreWriteActionSuccessService,
-        begin_verification: Callable[[str], None],
+        begin_verification: Callable[[str], CommandResult[RunStatus, RunCommand] | None],
         verify_write: VerifyWriteActionService,
         mark_write_failed: MarkWriteActionFailedService,
         mark_write_unknown: MarkWriteActionUnknownResultService,
@@ -139,25 +174,15 @@ class WriteExecutionPhaseCoordinator:
         try:
             self._preflight_write(action_id=request.action_id)
         except (GoogleWorkspaceGatewayError, LookupError, PolicyViolationError) as error:
-            if isinstance(error, GoogleWorkspaceGatewayError) and error.code in {
-                GoogleWorkspaceErrorCode.AUTH_EXPIRED,
-                GoogleWorkspaceErrorCode.PERMISSION_DENIED,
-            }:
-                self._require_write_reauth(
-                    RequireWriteReauthCommand(
-                        command_id=self._id_factory(),
-                        request_hash=self._request_hash(
-                            {"kind": "preflight_reauth", "action_id": request.action_id}
-                        ),
-                        run_id=request.run_id,
-                        action_id=request.action_id,
-                        safe_error_code=error.code.value,
-                        mcp_request_id=error.mcp_request_id,
-                    )
-                )
+            if isinstance(error, GoogleWorkspaceGatewayError) and self._is_auth_error(error):
+                reauth = self._require_reauth(request=request, error=error, kind="preflight_reauth")
+                if not reauth.applied:
+                    return self._reconcile_run_response(reauth)
                 return WriteExecutionPhaseResult(
                     disposition=WriteExecutionDisposition.REAUTH_REQUIRED,
                     safe_error_code=error.code.value,
+                    current_status=reauth.run_status,
+                    current_version=reauth.run_version,
                 )
             if self._action_status(request.action_id) == ActionStatus.MODIFIED.value:
                 return WriteExecutionPhaseResult(
@@ -169,9 +194,7 @@ class WriteExecutionPhaseCoordinator:
             )
 
         if self._should_stop_for_cancel(request.run_id):
-            return WriteExecutionPhaseResult(
-                disposition=WriteExecutionDisposition.CANCEL_REQUESTED,
-            )
+            return WriteExecutionPhaseResult(disposition=WriteExecutionDisposition.CANCEL_REQUESTED)
 
         claimed = self._claim_write(
             ClaimWriteActionCommand(
@@ -184,14 +207,24 @@ class WriteExecutionPhaseCoordinator:
                 nonce=self._id_factory(),
             )
         )
-        if not claimed.applied or claimed.claim_token is None or claimed.attempt_id is None:
-            return WriteExecutionPhaseResult(
-                disposition=WriteExecutionDisposition.CLAIM_SKIPPED,
+        if not claimed.applied:
+            return self._reconcile_action_response(claimed)
+        if claimed.claim_token is None or claimed.attempt_id is None:
+            return self._reconcile_action_response(
+                WriteActionResponse(
+                    applied=False,
+                    result_code=ResultCode.STATE_CONFLICT.value,
+                    action_id=claimed.action_id,
+                    action_status=claimed.action_status,
+                    action_version=claimed.action_version,
+                    next_allowed_commands=claimed.next_allowed_commands,
+                    conflict_detail="applied claim is missing execution authority",
+                )
             )
 
         attempt_id = claimed.attempt_id
         if self._should_stop_for_cancel(request.run_id):
-            self._mark_write_failed(
+            failed = self._mark_write_failed(
                 MarkWriteActionFailedCommand(
                     command_id=self._id_factory(),
                     request_hash=self._request_hash(
@@ -205,9 +238,15 @@ class WriteExecutionPhaseCoordinator:
                     error_detail="write was not sent because cancellation was requested",
                 )
             )
+            if not failed.applied:
+                return self._reconcile_action_response(failed)
             return WriteExecutionPhaseResult(
                 disposition=WriteExecutionDisposition.CANCEL_REQUESTED,
-                action_status=ActionStatus.FAILED.value,
+                action_status=failed.action_status,
+                result_code=failed.result_code,
+                current_status=failed.action_status,
+                current_version=failed.action_version,
+                next_allowed_commands=failed.next_allowed_commands,
             )
 
         try:
@@ -236,9 +275,30 @@ class WriteExecutionPhaseCoordinator:
                 snapshot=executed.snapshot,
             )
         )
+        if not stored.applied:
+            return self._reconcile_action_response(stored)
         if not isinstance(stored.attempt_id, str) or not stored.attempt_id:
-            raise ValueError("attempt_id is required")
-        self._begin_verification(request.run_id)
+            return self._reconcile_action_response(
+                WriteActionResponse(
+                    applied=False,
+                    result_code=ResultCode.STATE_CONFLICT.value,
+                    action_id=stored.action_id,
+                    action_status=stored.action_status,
+                    action_version=stored.action_version,
+                    next_allowed_commands=stored.next_allowed_commands,
+                    conflict_detail="stored success is missing attempt identity",
+                )
+            )
+
+        begin = self._begin_verification(request.run_id)
+        if begin is not None and not begin.applied:
+            return WriteExecutionPhaseResult(
+                disposition=WriteExecutionDisposition.DOMAIN_RECONCILE,
+                result_code=begin.result_code.value,
+                current_status=begin.current_status.value,
+                current_version=begin.current_version,
+                next_allowed_commands=tuple(item.value for item in begin.next_allowed_commands),
+            )
         try:
             verified = self._verify_write(
                 VerifyWriteActionCommand(
@@ -254,10 +314,15 @@ class WriteExecutionPhaseCoordinator:
             )
         except GoogleWorkspaceGatewayError as error:
             return self._handle_verification_error(request=request, error=error)
+        if not verified.applied:
+            return self._reconcile_action_response(verified)
         return WriteExecutionPhaseResult(
             disposition=WriteExecutionDisposition.VERIFIED,
             action_status=verified.action_status,
             result_code=verified.result_code,
+            current_status=verified.action_status,
+            current_version=verified.action_version,
+            next_allowed_commands=verified.next_allowed_commands,
         )
 
     def recover_unknown(self, request: UnknownRecoveryPhaseRequest) -> WriteActionResponse:
@@ -311,31 +376,20 @@ class WriteExecutionPhaseCoordinator:
                     )
                 )
         except GoogleWorkspaceGatewayError as error:
-            if error.code in {
-                GoogleWorkspaceErrorCode.AUTH_EXPIRED,
-                GoogleWorkspaceErrorCode.PERMISSION_DENIED,
-            }:
-                self._require_write_reauth(
-                    RequireWriteReauthCommand(
-                        command_id=self._id_factory(),
-                        request_hash=self._request_hash(
-                            {"kind": "recover_reauth", "action_id": request.action_id}
-                        ),
-                        run_id=request.run_id,
-                        action_id=request.action_id,
-                        safe_error_code=error.code.value,
-                        mcp_request_id=error.mcp_request_id,
-                    )
-                )
+            if self._is_auth_error(error):
+                reauth = self._require_reauth(request=request, error=error, kind="recover_reauth")
                 return WriteActionResponse(
                     applied=False,
-                    result_code=ResultCode.RECOVERY_REQUIRED.value,
+                    result_code=(
+                        ResultCode.RECOVERY_REQUIRED.value if reauth.applied else reauth.result_code
+                    ),
                     action_id=request.action_id,
                     action_status=ActionStatus.UNKNOWN_RESULT.value,
                     action_version=request.action_version,
                     next_allowed_commands=(),
                     attempt_id=request.attempt_id,
                     safe_error_code=error.code.value,
+                    conflict_detail=None if reauth.applied else reauth.conflict_detail,
                 )
             raise
         if response.applied and response.action_status == ActionStatus.EXECUTED.value:
@@ -374,32 +428,13 @@ class WriteExecutionPhaseCoordinator:
         claimed_action_version: int,
         error: GoogleWorkspaceGatewayError,
     ) -> WriteExecutionPhaseResult:
-        if error.code in {
-            GoogleWorkspaceErrorCode.AUTH_EXPIRED,
-            GoogleWorkspaceErrorCode.PERMISSION_DENIED,
-        }:
-            self._require_write_reauth(
-                RequireWriteReauthCommand(
+        is_auth_error = self._is_auth_error(error)
+        if error.delivery_certainty is DeliveryCertainty.NOT_SENT:
+            failed = self._mark_write_failed(
+                MarkWriteActionFailedCommand(
                     command_id=self._id_factory(),
                     request_hash=self._request_hash(
-                        {"kind": "reauth", "action_id": request.action_id}
-                    ),
-                    run_id=request.run_id,
-                    action_id=request.action_id,
-                    safe_error_code=error.code.value,
-                    mcp_request_id=error.mcp_request_id,
-                )
-            )
-            return WriteExecutionPhaseResult(
-                disposition=WriteExecutionDisposition.REAUTH_REQUIRED,
-                safe_error_code=error.code.value,
-            )
-        if error.delivery_certainty is not DeliveryCertainty.NOT_SENT:
-            unknown = self._mark_write_unknown(
-                MarkWriteActionUnknownResultCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash(
-                        {"kind": "unknown", "action_id": request.action_id}
+                        {"kind": "failed", "action_id": request.action_id}
                     ),
                     action_id=request.action_id,
                     attempt_id=attempt_id,
@@ -407,31 +442,71 @@ class WriteExecutionPhaseCoordinator:
                     expected_attempt_version=0,
                     error_code=error.code.value,
                     error_detail=str(error),
-                    mcp_request_id=error.mcp_request_id,
                 )
             )
+            if not failed.applied:
+                return self._reconcile_action_response(failed)
+            if is_auth_error:
+                reauth = self._require_reauth(request=request, error=error, kind="reauth_not_sent")
+                if not reauth.applied:
+                    return self._reconcile_run_response(reauth)
+                return WriteExecutionPhaseResult(
+                    disposition=WriteExecutionDisposition.REAUTH_REQUIRED,
+                    action_status=failed.action_status,
+                    result_code=failed.result_code,
+                    safe_error_code=error.code.value,
+                    current_status=failed.action_status,
+                    current_version=failed.action_version,
+                    next_allowed_commands=failed.next_allowed_commands,
+                )
             return WriteExecutionPhaseResult(
-                disposition=WriteExecutionDisposition.UNKNOWN_RESULT,
-                action_status=unknown.action_status,
-                result_code=unknown.result_code,
+                disposition=WriteExecutionDisposition.FAILED,
+                action_status=failed.action_status,
+                result_code=failed.result_code,
                 safe_error_code=error.code.value,
+                current_status=failed.action_status,
+                current_version=failed.action_version,
+                next_allowed_commands=failed.next_allowed_commands,
             )
-        self._mark_write_failed(
-            MarkWriteActionFailedCommand(
+
+        unknown = self._mark_write_unknown(
+            MarkWriteActionUnknownResultCommand(
                 command_id=self._id_factory(),
-                request_hash=self._request_hash({"kind": "failed", "action_id": request.action_id}),
+                request_hash=self._request_hash(
+                    {"kind": "unknown", "action_id": request.action_id}
+                ),
                 action_id=request.action_id,
                 attempt_id=attempt_id,
                 expected_action_version=claimed_action_version,
                 expected_attempt_version=0,
                 error_code=error.code.value,
                 error_detail=str(error),
+                mcp_request_id=error.mcp_request_id,
             )
         )
+        if not unknown.applied:
+            return self._reconcile_action_response(unknown)
+        if is_auth_error:
+            reauth = self._require_reauth(request=request, error=error, kind="reauth_unknown")
+            if not reauth.applied:
+                return self._reconcile_run_response(reauth)
+            return WriteExecutionPhaseResult(
+                disposition=WriteExecutionDisposition.REAUTH_REQUIRED,
+                action_status=unknown.action_status,
+                result_code=unknown.result_code,
+                safe_error_code=error.code.value,
+                current_status=unknown.action_status,
+                current_version=unknown.action_version,
+                next_allowed_commands=unknown.next_allowed_commands,
+            )
         return WriteExecutionPhaseResult(
-            disposition=WriteExecutionDisposition.FAILED,
-            action_status=ActionStatus.FAILED.value,
+            disposition=WriteExecutionDisposition.UNKNOWN_RESULT,
+            action_status=unknown.action_status,
+            result_code=unknown.result_code,
             safe_error_code=error.code.value,
+            current_status=unknown.action_status,
+            current_version=unknown.action_version,
+            next_allowed_commands=unknown.next_allowed_commands,
         )
 
     def _handle_verification_error(
@@ -440,27 +515,64 @@ class WriteExecutionPhaseCoordinator:
         request: WriteExecutionPhaseRequest,
         error: GoogleWorkspaceGatewayError,
     ) -> WriteExecutionPhaseResult:
-        if error.code in {
-            GoogleWorkspaceErrorCode.AUTH_EXPIRED,
-            GoogleWorkspaceErrorCode.PERMISSION_DENIED,
-        }:
-            self._require_write_reauth(
-                RequireWriteReauthCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash(
-                        {"kind": "verify_reauth", "action_id": request.action_id}
-                    ),
-                    run_id=request.run_id,
-                    action_id=request.action_id,
-                    safe_error_code=error.code.value,
-                    mcp_request_id=error.mcp_request_id,
-                )
-            )
+        if self._is_auth_error(error):
+            reauth = self._require_reauth(request=request, error=error, kind="verify_reauth")
+            if not reauth.applied:
+                return self._reconcile_run_response(reauth)
             return WriteExecutionPhaseResult(
                 disposition=WriteExecutionDisposition.REAUTH_REQUIRED,
                 safe_error_code=error.code.value,
+                current_status=reauth.run_status,
+                current_version=reauth.run_version,
             )
         raise error
+
+    def _require_reauth(
+        self,
+        *,
+        request: WriteExecutionPhaseRequest | UnknownRecoveryPhaseRequest,
+        error: GoogleWorkspaceGatewayError,
+        kind: str,
+    ):
+        return self._require_write_reauth(
+            RequireWriteReauthCommand(
+                command_id=self._id_factory(),
+                request_hash=self._request_hash({"kind": kind, "action_id": request.action_id}),
+                run_id=request.run_id,
+                action_id=request.action_id,
+                safe_error_code=error.code.value,
+                mcp_request_id=error.mcp_request_id,
+            )
+        )
+
+    @staticmethod
+    def _is_auth_error(error: GoogleWorkspaceGatewayError) -> bool:
+        return error.code in {
+            GoogleWorkspaceErrorCode.AUTH_EXPIRED,
+            GoogleWorkspaceErrorCode.PERMISSION_DENIED,
+        }
+
+    @staticmethod
+    def _reconcile_action_response(response: WriteActionResponse) -> WriteExecutionPhaseResult:
+        return WriteExecutionPhaseResult(
+            disposition=WriteExecutionDisposition.DOMAIN_RECONCILE,
+            action_status=response.action_status,
+            result_code=response.result_code,
+            current_status=response.action_status,
+            current_version=response.action_version,
+            next_allowed_commands=response.next_allowed_commands,
+            safe_error_code=response.safe_error_code,
+        )
+
+    @staticmethod
+    def _reconcile_run_response(response) -> WriteExecutionPhaseResult:
+        return WriteExecutionPhaseResult(
+            disposition=WriteExecutionDisposition.DOMAIN_RECONCILE,
+            result_code=response.result_code,
+            current_status=response.run_status,
+            current_version=response.run_version,
+            next_allowed_commands=(),
+        )
 
     def _action_status(self, action_id: str) -> str | None:
         with self._unit_of_work_factory() as unit_of_work:

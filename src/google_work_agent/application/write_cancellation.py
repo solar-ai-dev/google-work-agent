@@ -4,15 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from json import dumps
+from typing import cast
 
+from google_work_agent.application.cancel_intent import (
+    CancelIntentReceiptReader,
+    has_durable_cancel_intent as _receipt_has_durable_cancel_intent,
+)
 from google_work_agent.application.write_cancellation_contracts import (
     FinalizeRunCancellationCommand,
     RequestRunCancellationCommand,
 )
 from google_work_agent.application.write_execution_contracts import WriteRunResponse
-from google_work_agent.application.write_persistence import (
-    audit_event as _audit_event,
-)
+from google_work_agent.application.write_persistence import audit_event as _audit_event
 from google_work_agent.application.write_persistence import (
     cancel_pending_actions,
     resolve_existing_run_receipt,
@@ -23,15 +26,9 @@ from google_work_agent.application.write_persistence import (
 from google_work_agent.application.write_persistence import (
     require_latest_plan_for_run as _require_latest_plan_for_run,
 )
-from google_work_agent.application.write_persistence import (
-    require_run as _require_run,
-)
+from google_work_agent.application.write_persistence import require_run as _require_run
 from google_work_agent.domain import ActionStatus, ResultCode, RunStatus
-from google_work_agent.ports import (
-    PlanStatus,
-    TraceEventRecord,
-    UnitOfWork,
-)
+from google_work_agent.ports import PlanStatus, TraceEventRecord, UnitOfWork
 
 
 class RequestRunCancellationService:
@@ -367,19 +364,5 @@ class FinalizeRunCancellationService:
 
 
 def has_durable_cancel_intent(unit_of_work: UnitOfWork, run_id: str) -> bool:
-    cursor: int | None = None
-    while True:
-        events = unit_of_work.audits.list_by_aggregate(
-            run_id=run_id,
-            cursor_after=cursor,
-            limit=100,
-        )
-        if any(
-            event.event_type == "RUN_CANCELLATION_REQUESTED"
-            and event.outcome == ResultCode.TRANSITION_APPLIED.value
-            for event in events
-        ):
-            return True
-        if len(events) < 100:
-            return False
-        cursor = events[-1].id
+    reader = cast(CancelIntentReceiptReader, unit_of_work.command_receipts)
+    return _receipt_has_durable_cancel_intent(reader, run_id)
