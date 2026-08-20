@@ -130,6 +130,7 @@ def test_work_analysis_from_retrieval_result_builds_complete_result() -> None:
         retrieval_result=_retrieval_result(),
         evidence_drafts=_evidence_drafts(),
         request=_request(),
+        policy_confirmation_receipt_refs=[],
     )
     result = agent.build_output_from_llm_result_from_retrieval_result(
         llm_result,
@@ -141,12 +142,24 @@ def test_work_analysis_from_retrieval_result_builds_complete_result() -> None:
     assert result["evidence_refs"] == ["evidence-1"]
 
     prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
-    assert prompt_input["retrieval_coverage"] == "SUFFICIENT"
-    assert prompt_input["resource_refs"] == ["gmail_thread:thread-kim"]
-    assert prompt_input["segment_refs"] == ["seg-1"]
-    assert prompt_input["evidence_drafts"] == _evidence_drafts()
-    assert "context_status" not in prompt_input
-    assert "context_bundle" not in prompt_input
+    assert prompt_input["user_request"] == _request().request_text
+    assert prompt_input["evidence"] == [
+        {
+            "evidence_ref": "evidence-1",
+            "excerpt": "Kim is waiting for the follow-up task.",
+            "role": "CONTEXT",
+            "resource_ref": "gmail_thread:thread-kim",
+        }
+    ]
+    assert prompt_input["availability_results"] == []
+    assert prompt_input["policy_confirmation_receipt_refs"] == []
+    assert set(prompt_input) == {
+        "user_request",
+        "request_intent",
+        "evidence",
+        "availability_results",
+        "policy_confirmation_receipt_refs",
+    }
 
 
 def test_work_analysis_from_retrieval_result_rejects_reference_outside_retrieval_result() -> None:
