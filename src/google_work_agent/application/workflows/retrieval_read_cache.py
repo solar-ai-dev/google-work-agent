@@ -117,12 +117,24 @@ class RunScopedReadResultCache:
     def resolve_resource_snapshot(
         self, *, run_id: str, resource_handle: str
     ) -> ResourceSnapshot:
-        """Resolve one resource only inside the owning Run, fail closed otherwise."""
+        """Resolve exactly one distinct raw snapshot inside the owning Run."""
         with self._lock:
-            for entry in reversed(tuple(self._by_run.get(run_id, {}).values())):
+            matches: list[ResourceSnapshot] = []
+            for entry in self._by_run.get(run_id, {}).values():
                 for snapshot in entry.snapshots:
-                    if _resource_handle(snapshot) == resource_handle:
-                        return snapshot
+                    if _resource_handle(snapshot) != resource_handle:
+                        continue
+                    if any(snapshot == existing for existing in matches):
+                        continue
+                    matches.append(snapshot)
+
+            if len(matches) == 1:
+                return matches[0]
+            if len(matches) > 1:
+                raise ReadResultContinuationError(
+                    "ambiguous same-run resource snapshot handle"
+                )
+
         raise ReadResultContinuationError("unknown or cross-run resource snapshot handle")
 
     def resolve_next_page(
