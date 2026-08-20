@@ -1,13 +1,13 @@
 """Deterministic Planning argument binding for one frozen output route.
 
 Planning's LLM argument writer is not allowed to choose another Tool or to
-invent connector container identifiers.  This module owns the deterministic
+invent connector container identifiers. This module owns the deterministic
 boundary that binds configured/explicit container ids into the selected Tool
 schema before that schema is exposed to the argument writer, and validates the
 writer's thin ``ToolArgumentCandidateV1`` against the same frozen route.
 
 The module deliberately does not own Tool selection or final ActionPlan
-assembly.  Tool Route owns ``selected_tool_id``/``effect``; Planning's caller
+assembly. Tool Route owns ``selected_tool_id``/``effect``; Planning's caller
 will later assemble the validated per-route candidates deterministically.
 """
 
@@ -25,6 +25,16 @@ JsonObject = dict[str, object]
 
 class PlanningArgumentBindingError(ValueError):
     """Raised when a Planning argument candidate escapes its frozen route."""
+
+
+class RequiredContainerUnresolvedError(PlanningArgumentBindingError):
+    """The selected Tool requires a container but no deterministic binding exists."""
+
+    def __init__(self, *, route_id: str, tool_id: str, argument_name: str) -> None:
+        super().__init__(f"{argument_name} is required for selected tool: {tool_id}")
+        self.route_id = route_id
+        self.tool_id = tool_id
+        self.argument_name = argument_name
 
 
 class BoundSelectedToolSchemaV1(TypedDict):
@@ -80,10 +90,10 @@ class DefaultContainerResolver:
     ) -> BoundSelectedToolSchemaV1:
         """Return a schema whose required container field is immutable/``const``.
 
-        An explicitly selected container wins over the configured default.  If
+        An explicitly selected container wins over the configured default. If
         the selected Tool requires a container and neither source provides one,
-        the call fails closed instead of leaving a hidden identifier for the
-        Planning LLM to guess.
+        the typed unresolved-container error is raised before an Argument Writer
+        can be called.
         """
 
         tool_id = route["selected_tool_id"]
@@ -96,8 +106,10 @@ class DefaultContainerResolver:
             if container_id is None:
                 container_id = self._configured_default(container_argument)
             if container_id is None:
-                raise PlanningArgumentBindingError(
-                    f"{container_argument} is required for selected tool: {tool_id}"
+                raise RequiredContainerUnresolvedError(
+                    route_id=route["route_id"],
+                    tool_id=tool_id,
+                    argument_name=container_argument,
                 )
             schema = _bind_schema_const(
                 schema,
@@ -252,6 +264,7 @@ __all__ = [
     "BoundSelectedToolSchemaV1",
     "DefaultContainerResolver",
     "PlanningArgumentBindingError",
+    "RequiredContainerUnresolvedError",
     "ToolArgumentCandidateV1",
     "validate_tool_argument_candidate_v1",
 ]
