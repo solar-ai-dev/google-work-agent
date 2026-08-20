@@ -46,6 +46,27 @@ def main() -> None:
                 "oauth_environment": "DEVELOPMENT",
                 "last_checked_at_ms": 0,
             }
+        elif message_type == "tool_call":
+            arguments = cast(dict[str, object], request.get("arguments") or {})
+            certainty = arguments.get("__test_delivery_certainty")
+            if isinstance(certainty, str):
+                sys.stdout.write(
+                    json.dumps(
+                        {
+                            "id": request_id,
+                            "error": {
+                                "code": "TOOL_REJECTED",
+                                "message": "delivery-certainty-fixture",
+                                "delivery_certainty": certainty,
+                                "dispatch_started": certainty != "NOT_SENT",
+                            },
+                        }
+                    )
+                    + "\n"
+                )
+                sys.stdout.flush()
+                continue
+            payload = {}
         else:
             payload = {}
         sys.stdout.write(json.dumps({"id": request_id, "payload": payload}) + "\n")
