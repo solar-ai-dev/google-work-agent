@@ -11,12 +11,14 @@ from google_work_agent.adapters.langgraph.connector_execution_scope import (
     ConnectorBoundWriteExecutionPhaseCoordinator,
 )
 from google_work_agent.application.execution_phase import (
+    UnknownRecoveryPhaseRequest,
     WriteExecutionDisposition,
     WriteExecutionPhaseCoordinator,
     WriteExecutionPhaseRequest,
     WriteExecutionPhaseResult,
 )
 from google_work_agent.application.ports import ConnectorWriteRequest, PreparedConnectorWrite
+from google_work_agent.application.write_actions import WriteActionResponse
 from google_work_agent.ports import ResourceSnapshot, UnitOfWork
 
 
@@ -96,6 +98,44 @@ class _PhaseDelegate:
             action_status="VERIFIED",
         )
 
+    def recover_unknown(self, request: UnknownRecoveryPhaseRequest) -> WriteActionResponse:
+        self._router.search_recovery_candidates(
+            tool_name="github_create_issue",
+            recovery_fingerprint=request.action_id,
+        )
+        return cast(WriteActionResponse, object())
+
+    def verify_executed(
+        self,
+        *,
+        action_id: str,
+        action_version: int,
+        attempt_id: str,
+        request_kind: str,
+    ) -> WriteActionResponse:
+        del action_version, attempt_id, request_kind
+        self._router.fetch_verification_snapshot(
+            tool_name="github_create_issue",
+            arguments={"title": action_id},
+            fallback_resource_id="issue-1",
+        )
+        return cast(WriteActionResponse, object())
+
+
+def _scoped_coordinator(
+    *,
+    connector_id: str,
+    router: ConnectorExecutionRouter,
+) -> ConnectorBoundWriteExecutionPhaseCoordinator:
+    factory = cast(
+        Callable[[], UnitOfWork],
+        lambda: _ConnectorUnitOfWork(connector_id),
+    )
+    return ConnectorBoundWriteExecutionPhaseCoordinator(
+        delegate=cast(WriteExecutionPhaseCoordinator, _PhaseDelegate(router)),
+        unit_of_work_factory=factory,
+    )
+
 
 def test_router_dispatches_only_to_bound_connector() -> None:
     google = _FakeExecutionBackend("google")
@@ -144,21 +184,13 @@ def test_router_fails_closed_for_unregistered_connector() -> None:
             )
 
 
-def test_phase_scope_routes_from_persisted_action_connector() -> None:
+def test_phase_scope_routes_execute_from_persisted_action_connector() -> None:
     google = _FakeExecutionBackend("google")
     github = _FakeExecutionBackend("github")
     router = ConnectorExecutionRouter(
         {"google_workspace": google, "github": github}
     )
-    delegate = cast(WriteExecutionPhaseCoordinator, _PhaseDelegate(router))
-    factory = cast(
-        Callable[[], UnitOfWork],
-        lambda: _ConnectorUnitOfWork("github"),
-    )
-    coordinator = ConnectorBoundWriteExecutionPhaseCoordinator(
-        delegate=delegate,
-        unit_of_work_factory=factory,
-    )
+    coordinator = _scoped_coordinator(connector_id="github", router=router)
 
     result = coordinator.execute(
         WriteExecutionPhaseRequest(
@@ -171,3 +203,62 @@ def test_phase_scope_routes_from_persisted_action_connector() -> None:
     assert result.disposition is WriteExecutionDisposition.VERIFIED
     assert google.calls == []
     assert github.calls == ["prepare:github_create_issue"]
+
+
+def test_phase_scope_routes_verification_from_persisted_action_connector() -> None:
+    google = _FakeExecutionBackend("google")
+    github = _FakeExecutionBackend("github")
+    router = ConnectorExecutionRouter(
+        {"google_workspace": google, "github": github}
+    )
+    coordinator = _scoped_coordinator(connector_id="github", router=router)
+
+    coordinator.verify_executed(
+        action_id="action-1",
+        action_version=3,
+        attempt_id="attempt-1",
+        request_kind="verify_recovered",
+    )
+
+    assert google.calls == []
+    assert github.calls == ["verify:github_create_issue"]
+
+
+def test_phase_scope_routes_recovery_from_persisted_action_connector() -> None:
+    google = _FakeExecutionBackend("google")
+    github = _FakeExecutionBackend("github")
+    router = ConnectorExecutionRouter(
+        {"google_workspace": google, "github": github}
+    )
+    coordinator = _scoped_coordinator(connector_id="github", router=router)
+
+    coordinator.recover_unknown(
+        UnknownRecoveryPhaseRequest(
+            run_id="run-1",
+            action_id="action-1",
+            effect_type="CREATE",
+            action_version=3,
+            attempt_id="attempt-1",
+            attempt_version=1,
+        )
+    )
+
+    assert google.calls == []
+    assert github.calls == ["recover:github_create_issue"]
+
+
+def test_phase_scope_does_not_fallback_when_persisted_connector_is_unregistered() -> None:
+    google = _FakeExecutionBackend("google")
+    router = ConnectorExecutionRouter({"google_workspace": google})
+    coordinator = _scoped_coordinator(connector_id="github", router=router)
+
+    with pytest.raises(LookupError, match="backend not registered: github"):
+        coordinator.execute(
+            WriteExecutionPhaseRequest(
+                run_id="run-1",
+                action_id="action-1",
+                action_version=0,
+            )
+        )
+
+    assert google.calls == []
