@@ -57,6 +57,8 @@ from tests.integration.langgraph.test_runtime import (
     sqlite_unit_of_work_factory,
 )
 
+from google_work_agent.adapters.connectors.execution_router import bind_execution_connector_id
+from google_work_agent.adapters.persistence.connector_identity import bind_resource_connector_id
 from google_work_agent.ports import LLMErrorCode, LLMInvocationError, ResourceSnapshot
 
 
@@ -636,21 +638,30 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
         )
     )
     assert claim.claim_token is not None
-    executed = runtime._execute_write(  # noqa: SLF001
-        action_id=action_id,
-        claim_token=claim.claim_token,
-    )
-    runtime._store_write_success(  # noqa: SLF001
-        StoreWriteActionSuccessCommand(
-            command_id="store-before-restart",
-            request_hash="2" * 64,
+    # This test calls the write-execution primitives directly (bypassing
+    # ConnectorBoundWriteExecutionPhaseCoordinator, the phase-level wrapper
+    # that normally binds persisted connector identity around execute/
+    # verify), to simulate state as it existed right before a restart. Bind
+    # the same persisted connector identity the coordinator would have used,
+    # read the same way it reads it (actions.connector_id_for_action).
+    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+        connector_id = unit_of_work.actions.connector_id_for_action(action_id)  # type: ignore[attr-defined]
+    with bind_execution_connector_id(connector_id), bind_resource_connector_id(connector_id):
+        executed = runtime._execute_write(  # noqa: SLF001
             action_id=action_id,
-            attempt_id="attempt-before-restart",
-            expected_action_version=claim.action_version,
-            expected_attempt_version=0,
-            snapshot=executed.snapshot,
+            claim_token=claim.claim_token,
         )
-    )
+        runtime._store_write_success(  # noqa: SLF001
+            StoreWriteActionSuccessCommand(
+                command_id="store-before-restart",
+                request_hash="2" * 64,
+                action_id=action_id,
+                attempt_id="attempt-before-restart",
+                expected_action_version=claim.action_version,
+                expected_attempt_version=0,
+                snapshot=executed.snapshot,
+            )
+        )
     assert gateway.count_calls("create_task") == 1
     connection = connect_sqlite(database_path)
     try:
