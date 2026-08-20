@@ -1,6 +1,9 @@
 """MCP child-process adapters."""
 
-from google_work_agent.adapters.mcp.gateway import MCPGmailUiReadGateway, MCPGoogleWorkspaceGateway
+from google_work_agent.adapters.mcp.delivery_gateway import (
+    DeliveryAwareMCPGoogleWorkspaceGateway as MCPGoogleWorkspaceGateway,
+)
+from google_work_agent.adapters.mcp.gateway import MCPGmailUiReadGateway
 from google_work_agent.adapters.mcp.google_workspace_compat import (
     SubprocessMCPTransport,
     build_manifest_payload,

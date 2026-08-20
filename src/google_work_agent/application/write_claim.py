@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from json import dumps, loads
+from typing import cast
 
 from google_work_agent.application.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     approval_calendar_conflict_authority,
     calendar_conflict_authority,
     calendar_conflict_change_requires_reapproval,
+)
+from google_work_agent.application.cancel_intent import (
+    CancelIntentReceiptReader,
+    has_durable_cancel_intent,
 )
 from google_work_agent.application.feasibility import (
     approval_feasibility_authority,
@@ -23,7 +28,6 @@ from google_work_agent.application.task_duplicates import (
     duplicate_change_requires_reapproval,
 )
 from google_work_agent.application.write_action_arguments import dict_argument as _dict_argument
-from google_work_agent.application.write_approval_contracts import DEFAULT_APPROVAL_TTL_MS
 from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
     WriteActionResponse,
@@ -34,23 +38,11 @@ from google_work_agent.application.write_execution_integrity import (
 )
 from google_work_agent.application.write_persistence import (
     action_response_from_result as _action_response_from_result,
-)
-from google_work_agent.application.write_persistence import (
     audit_event as _audit_event,
-)
-from google_work_agent.application.write_persistence import (
     finish_json_receipt as _finish_json_receipt,
-)
-from google_work_agent.application.write_persistence import (
     require_action as _require_action,
-)
-from google_work_agent.application.write_persistence import (
     require_plan as _require_plan,
-)
-from google_work_agent.application.write_persistence import (
     require_run as _require_run,
-)
-from google_work_agent.application.write_persistence import (
     resolve_existing_action_receipt as _resolve_existing_action_receipt,
 )
 from google_work_agent.domain import (
@@ -67,6 +59,10 @@ from google_work_agent.domain import (
     transition_action,
     validate_approval_integrity,
 )
+from google_work_agent.domain.claim_contract import (
+    CLAIM_CONTEXT_DEFAULT_TTL_MS,
+    validate_claim_ttl_ms,
+)
 from google_work_agent.ports import ExecutionAttemptRecord, TraceEventRecord, UnitOfWork
 
 
@@ -78,11 +74,13 @@ class ClaimWriteActionService:
         now_ms: Callable[[], int],
         signing_secret: str,
         service_instance_id: str,
+        claim_ttl_ms: int = CLAIM_CONTEXT_DEFAULT_TTL_MS,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
         self._signing_secret = signing_secret
         self._service_instance_id = service_instance_id
+        self._claim_ttl_ms = validate_claim_ttl_ms(claim_ttl_ms)
         self._registry = build_p0_tool_registry()
 
     def __call__(self, command: ClaimWriteActionCommand) -> WriteActionResponse:
@@ -109,6 +107,22 @@ class ClaimWriteActionService:
             action = _require_action(unit_of_work, command.action_id)
             plan = _require_plan(unit_of_work, action.plan_id)
             run = _require_run(unit_of_work, plan.run_id)
+            cancel_reader = cast(CancelIntentReceiptReader, unit_of_work.command_receipts)
+            if has_durable_cancel_intent(cancel_reader, run.id):
+                response = WriteActionResponse(
+                    applied=False,
+                    result_code=ResultCode.STATE_CONFLICT.value,
+                    action_id=action.id,
+                    action_status=action.status,
+                    action_version=action.version,
+                    next_allowed_commands=(),
+                    conflict_detail="durable cancel intent forbids a new write claim",
+                )
+                _finish_json_receipt(
+                    unit_of_work, command.command_id, response, action.version, now_ms
+                )
+                unit_of_work.commit()
+                return response
             if run.status in {
                 RunStatus.CANCEL_REQUESTED,
                 RunStatus.CANCELLED,
@@ -140,11 +154,7 @@ class ClaimWriteActionService:
                     conflict_detail="write action requires an active approval",
                 )
                 _finish_json_receipt(
-                    unit_of_work,
-                    command.command_id,
-                    response,
-                    action.version,
-                    now_ms,
+                    unit_of_work, command.command_id, response, action.version, now_ms
                 )
                 unit_of_work.commit()
                 return response
@@ -167,16 +177,10 @@ class ClaimWriteActionService:
                         conflict_detail="task duplicate risk changed after approval",
                     )
                     _finish_json_receipt(
-                        unit_of_work,
-                        command.command_id,
-                        response,
-                        action.version,
-                        now_ms,
+                        unit_of_work, command.command_id, response, action.version, now_ms
                     )
                     unit_of_work.commit()
                     return response
-                # Task duplicate authority is server-owned. Claim never
-                # accepts a client projection in place of the Approval snapshot.
                 task_duplicate_snapshot = stored_approval_snapshot.get("task_duplicate")
                 current_source_snapshot = {
                     **command.source_snapshot,
@@ -216,11 +220,7 @@ class ClaimWriteActionService:
                         conflict_detail="calendar conflict risk changed after approval",
                     )
                     _finish_json_receipt(
-                        unit_of_work,
-                        command.command_id,
-                        response,
-                        action.version,
-                        now_ms,
+                        unit_of_work, command.command_id, response, action.version, now_ms
                     )
                     unit_of_work.commit()
                     return response
@@ -259,11 +259,7 @@ class ClaimWriteActionService:
                     conflict_detail=str(error),
                 )
                 _finish_json_receipt(
-                    unit_of_work,
-                    command.command_id,
-                    response,
-                    action.version,
-                    now_ms,
+                    unit_of_work, command.command_id, response, action.version, now_ms
                 )
                 unit_of_work.commit()
                 return response
@@ -278,11 +274,7 @@ class ClaimWriteActionService:
                     conflict_detail="write action already has an active execution attempt",
                 )
                 _finish_json_receipt(
-                    unit_of_work,
-                    command.command_id,
-                    response,
-                    action.version,
-                    now_ms,
+                    unit_of_work, command.command_id, response, action.version, now_ms
                 )
                 unit_of_work.commit()
                 return response
@@ -297,11 +289,7 @@ class ClaimWriteActionService:
             if not preview.applied:
                 response = _action_response_from_result(action_id=action.id, result=preview)
                 _finish_json_receipt(
-                    unit_of_work,
-                    command.command_id,
-                    response,
-                    action.version,
-                    now_ms,
+                    unit_of_work, command.command_id, response, action.version, now_ms
                 )
                 unit_of_work.commit()
                 return response
@@ -340,7 +328,7 @@ class ClaimWriteActionService:
                     "service_instance_id": self._service_instance_id,
                     "nonce": command.nonce,
                     "issued_at_ms": now_ms,
-                    "expires_at_ms": now_ms + DEFAULT_APPROVAL_TTL_MS,
+                    "expires_at_ms": now_ms + self._claim_ttl_ms,
                 },
                 signing_secret=self._signing_secret,
             )
@@ -352,8 +340,7 @@ class ClaimWriteActionService:
                     status=ActionStatus.EXECUTING.value,
                     duration_ms=None,
                     payload_json=dumps(
-                        {"approval_id": approval.id, "attempt_id": attempt.id},
-                        sort_keys=True,
+                        {"approval_id": approval.id, "attempt_id": attempt.id}, sort_keys=True
                     ),
                     created_at_ms=now_ms,
                 )
@@ -380,11 +367,7 @@ class ClaimWriteActionService:
                 claim_token=claim_token,
             )
             _finish_json_receipt(
-                unit_of_work,
-                command.command_id,
-                response,
-                result.current_version,
-                now_ms,
+                unit_of_work, command.command_id, response, result.current_version, now_ms
             )
             unit_of_work.commit()
             return response

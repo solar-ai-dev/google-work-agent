@@ -95,6 +95,16 @@ class RecoveryPolicy(StrEnum):
     MESSAGE_SEARCH = "MESSAGE_SEARCH"
 
 
+class RecoveryResolution(StrEnum):
+    """Registered Run recovery variants from the canonical transition contract."""
+
+    RECHECK = "RECHECK"
+    ACCEPT_PARTIAL = "ACCEPT_PARTIAL"
+    CREATE_CORRECTIVE_PLAN = "CREATE_CORRECTIVE_PLAN"
+    CANCEL = "CANCEL"
+    FAIL = "FAIL"
+
+
 class EffectType(StrEnum):
     """Supported P0 action effect types."""
 

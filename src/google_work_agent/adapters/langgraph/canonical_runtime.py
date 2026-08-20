@@ -29,6 +29,7 @@ from google_work_agent.adapters.langgraph.runtime import (
     LangGraphWorkflowRuntime as _LegacyLangGraphWorkflowRuntime,
 )
 from google_work_agent.application.observability import sanitize_event_attributes
+from google_work_agent.application.write_cancellation import has_durable_cancel_intent
 from google_work_agent.application.workflows import (
     GraphStateUpdateV1,
     SupervisorDecisionV1,
@@ -73,7 +74,7 @@ _OWNER_WORKFLOW_PHASE = {
 
 
 class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
-    """Legacy runtime with the canonical same-owner confirmation boundary."""
+    """Legacy runtime with canonical confirmation and durable safety authorities."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         llm_runtime = kwargs.get("llm_runtime")
@@ -83,6 +84,11 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
         kwargs["llm_runtime"] = confirmation_llm_runtime
         self._confirmation_llm_runtime = confirmation_llm_runtime
         super().__init__(*args, **kwargs)
+
+    def _has_persisted_cancel_intent(self, run_id: str) -> bool:
+        """Canonical override: Command Receipt is fact; Audit is observability only."""
+        with self._unit_of_work_factory() as unit_of_work:
+            return has_durable_cancel_intent(unit_of_work, run_id)
 
     def _merge_decision(
         self,

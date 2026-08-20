@@ -6,13 +6,13 @@ from google_work_agent.adapters.mcp.capabilities import (
     INTERNAL_CAPABILITY_REGISTRY_VERSION,
     build_google_workspace_internal_capabilities,
 )
+from google_work_agent.adapters.mcp.delivery_transport import (
+    DeliveryAwareSubprocessMCPTransport,
+)
 from google_work_agent.adapters.mcp.transport import (
     MCPArtifactConfig,
     MCPConnectorDescriptor,
     build_manifest_payload_for_registry,
-)
-from google_work_agent.adapters.mcp.transport import (
-    SubprocessMCPTransport as DescriptorSubprocessMCPTransport,
 )
 from google_work_agent.domain.google_workspace_tool_contracts import (
     google_workspace_tool_contract,
@@ -43,8 +43,8 @@ def build_manifest_payload() -> dict[str, object]:
     return payload
 
 
-class SubprocessMCPTransport(DescriptorSubprocessMCPTransport):
-    """Compatibility constructor for the original P0 Google transport surface."""
+class SubprocessMCPTransport(DeliveryAwareSubprocessMCPTransport):
+    """Compatibility constructor with canonical delivery-certainty parsing."""
 
     def __init__(
         self,

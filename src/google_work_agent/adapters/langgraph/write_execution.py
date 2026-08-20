@@ -8,6 +8,10 @@ from typing import cast
 from langgraph.types import interrupt
 
 from google_work_agent.adapters.langgraph.graph_state import GraphState
+from google_work_agent.adapters.langgraph.write_reconciliation import (
+    ReconcileAggregate,
+    reconcile_write_conflict,
+)
 from google_work_agent.application.execution_phase import (
     WriteExecutionDisposition,
     WriteExecutionPhaseCoordinator,
@@ -15,10 +19,11 @@ from google_work_agent.application.execution_phase import (
 )
 from google_work_agent.application.run_terminal import (
     CompleteWriteRunCommand,
-    CompleteWriteRunService,
+    RunTransitionResponse,
 )
+from google_work_agent.application.write_run_completion import CompleteWriteRunService
 from google_work_agent.application.workflows.contracts import WorkflowPhase
-from google_work_agent.domain import ActionStatus
+from google_work_agent.domain import ActionStatus, RunStatus, next_allowed_run_commands
 from google_work_agent.ports import ActionRecord
 
 
@@ -51,12 +56,7 @@ class WriteExecutionNode:
     def __call__(self, state: GraphState) -> GraphState:
         run_id = cast(str, state["run_id"])
         if self._should_stop_for_cancel(run_id):
-            return {
-                **state,
-                "__target__": "end",
-                "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-                "execution_summary": {"result": "CANCEL_REQUESTED"},
-            }
+            return self._cancelled_state(state=state, plan_id="", verification_statuses=[])
         plan_id = self._required_string(state.get("approved_plan_id"), "approved_plan_id")
         actions = self._list_actions(plan_id)
         if actions and all(action.effect_type == "READ" for action in actions):
@@ -73,11 +73,29 @@ class WriteExecutionNode:
             )
             if state_update is not None:
                 return state_update
-        self._complete_if_verified(
+
+        completion = self._complete_if_verified(
             run_id=run_id,
             actions=actions,
             verification_statuses=verification_statuses,
         )
+        if completion is None:
+            return self._not_completable_state(
+                state=state,
+                plan_id=plan_id,
+                actions=actions,
+                verification_statuses=verification_statuses,
+            )
+        if not completion.applied:
+            return self._reconcile_run_transition(
+                state=state,
+                plan_id=plan_id,
+                verification_statuses=verification_statuses,
+                result_code=completion.result_code,
+                current_status=completion.run_status,
+                current_version=completion.run_version,
+                next_allowed_commands=completion.next_allowed_commands,
+            )
         return {
             **state,
             "__target__": "finalize",
@@ -107,6 +125,8 @@ class WriteExecutionNode:
             ActionStatus.FAILED.value,
             ActionStatus.BLOCKED.value,
             ActionStatus.DEPENDENCY_BLOCKED.value,
+            ActionStatus.CANCELLED.value,
+            ActionStatus.REJECTED.value,
         }:
             verification_statuses.append(action.status)
             return None
@@ -146,8 +166,15 @@ class WriteExecutionNode:
                     "safe_error_code": phase_result.safe_error_code,
                 },
             }
-        if phase_result.disposition is WriteExecutionDisposition.CLAIM_SKIPPED:
-            return None
+        if phase_result.disposition in {
+            WriteExecutionDisposition.DOMAIN_RECONCILE,
+            WriteExecutionDisposition.CLAIM_SKIPPED,
+        }:
+            return self._reconcile_phase_result(
+                state=state,
+                action_id=action.id,
+                phase_result=phase_result,
+            )
         if phase_result.disposition is WriteExecutionDisposition.CANCEL_REQUESTED:
             if phase_result.action_status is not None:
                 verification_statuses.append(phase_result.action_status)
@@ -161,7 +188,12 @@ class WriteExecutionNode:
                 **state,
                 "__target__": "end",
                 "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-                "execution_summary": {"result": "REAUTH_REQUIRED", "action_id": action.id},
+                "execution_summary": {
+                    "result": "REAUTH_REQUIRED",
+                    "action_id": action.id,
+                    "action_status": phase_result.action_status,
+                    "result_code": phase_result.result_code,
+                },
             }
         if phase_result.disposition is WriteExecutionDisposition.UNKNOWN_RESULT:
             return {
@@ -176,7 +208,17 @@ class WriteExecutionNode:
             }
         if phase_result.disposition is WriteExecutionDisposition.FAILED:
             verification_statuses.append(ActionStatus.FAILED.value)
-            return None
+            return {
+                **state,
+                "__target__": "end",
+                "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
+                "execution_summary": {
+                    "result": "FAILED_RETRY_OR_CANCEL_REQUIRED",
+                    "action_id": action.id,
+                    "result_code": phase_result.result_code,
+                },
+                "verification_summary": {"action_statuses": verification_statuses},
+            }
 
         verification_statuses.append(
             self._required_string(phase_result.action_status, "action_status")
@@ -189,21 +231,133 @@ class WriteExecutionNode:
             )
         return None
 
+    def _reconcile_phase_result(
+        self,
+        *,
+        state: GraphState,
+        action_id: str,
+        phase_result: object,
+    ) -> GraphState:
+        action_status = getattr(phase_result, "action_status", None)
+        current_status = cast(str | None, getattr(phase_result, "current_status", None))
+        next_allowed = tuple(
+            str(item) for item in getattr(phase_result, "next_allowed_commands", ())
+        )
+        aggregate = ReconcileAggregate.ACTION if action_status is not None else ReconcileAggregate.RUN
+        if aggregate is ReconcileAggregate.RUN and current_status is not None and not next_allowed:
+            try:
+                next_allowed = tuple(
+                    item.value for item in next_allowed_run_commands(RunStatus(current_status))
+                )
+            except ValueError:
+                next_allowed = ()
+        decision = reconcile_write_conflict(
+            aggregate=aggregate,
+            current_status=current_status,
+            next_allowed_commands=next_allowed,
+        )
+        return {
+            **state,
+            "__target__": decision.target,
+            "workflow_phase": self._phase_for_reconcile_target(decision.target),
+            "execution_summary": {
+                "result": "DOMAIN_RECONCILE",
+                "action_id": action_id,
+                "aggregate": aggregate.value,
+                "result_code": getattr(phase_result, "result_code", None),
+                "current_status": current_status,
+                "current_version": getattr(phase_result, "current_version", None),
+                "next_allowed_commands": list(next_allowed),
+                "reconcile_outcome": decision.outcome,
+            },
+        }
+
+    def _reconcile_run_transition(
+        self,
+        *,
+        state: GraphState,
+        plan_id: str,
+        verification_statuses: list[str],
+        result_code: str,
+        current_status: str,
+        current_version: int,
+        next_allowed_commands: tuple[str, ...],
+    ) -> GraphState:
+        decision = reconcile_write_conflict(
+            aggregate=ReconcileAggregate.RUN,
+            current_status=current_status,
+            next_allowed_commands=next_allowed_commands,
+        )
+        return {
+            **state,
+            "__target__": decision.target,
+            "workflow_phase": self._phase_for_reconcile_target(decision.target),
+            "execution_summary": {
+                "result": "DOMAIN_RECONCILE",
+                "aggregate": ReconcileAggregate.RUN.value,
+                "result_code": result_code,
+                "current_status": current_status,
+                "current_version": current_version,
+                "next_allowed_commands": list(next_allowed_commands),
+                "reconcile_outcome": decision.outcome,
+                "plan_id": plan_id,
+            },
+            "verification_summary": {"action_statuses": verification_statuses},
+        }
+
+    def _not_completable_state(
+        self,
+        *,
+        state: GraphState,
+        plan_id: str,
+        actions: tuple[ActionRecord, ...],
+        verification_statuses: list[str],
+    ) -> GraphState:
+        statuses = {ActionStatus(action.status) for action in actions}
+        if statuses & {
+            ActionStatus.UNKNOWN_RESULT,
+            ActionStatus.MISMATCH,
+            ActionStatus.EXECUTED,
+        }:
+            target = "recovery"
+            outcome = "RECOVERY_REQUIRED"
+        elif statuses & {
+            ActionStatus.PROPOSED,
+            ActionStatus.MODIFIED,
+            ActionStatus.EXPIRED,
+        }:
+            target = "waiting_approval"
+            outcome = "WAITING_APPROVAL"
+        else:
+            target = "end"
+            outcome = "SUSPEND_NOT_COMPLETABLE"
+        return {
+            **state,
+            "__target__": target,
+            "workflow_phase": self._phase_for_reconcile_target(target),
+            "execution_summary": {
+                "result": "WRITE_RUN_NOT_COMPLETABLE",
+                "reconcile_outcome": outcome,
+                "plan_id": plan_id,
+            },
+            "verification_summary": {"action_statuses": verification_statuses},
+        }
+
     def _complete_if_verified(
         self,
         *,
         run_id: str,
         actions: tuple[ActionRecord, ...],
         verification_statuses: list[str],
-    ) -> None:
+    ) -> RunTransitionResponse | None:
         if (
             not actions
-            or not verification_statuses
+            or len(verification_statuses) != len(actions)
             or not all(status == ActionStatus.VERIFIED.value for status in verification_statuses)
             or self._has_persisted_cancel_intent(run_id)
         ):
-            return
-        self._complete_write_run(
+            return None
+        return self._complete_write_run(
             CompleteWriteRunCommand(
                 command_id=self._id_factory(),
                 request_hash=self._request_hash({"kind": "complete_write_run", "run_id": run_id}),
@@ -211,6 +365,14 @@ class WriteExecutionNode:
                 expected_version=self._current_run_version(run_id),
             )
         )
+
+    @staticmethod
+    def _phase_for_reconcile_target(target: str) -> str:
+        if target == "recovery":
+            return WorkflowPhase.RECOVERY.value
+        if target == "waiting_approval":
+            return WorkflowPhase.PREFLIGHT.value
+        return WorkflowPhase.ACTION_EXECUTION.value
 
     @staticmethod
     def _cancelled_state(

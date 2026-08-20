@@ -4,6 +4,7 @@ from google_work_agent.domain.commands import ActionCommand, RunCommand
 from google_work_agent.domain.enums import (
     ActionStatus,
     EffectType,
+    RecoveryResolution,
     ResultCode,
     RunStatus,
     VerificationStatus,
@@ -12,12 +13,7 @@ from google_work_agent.domain.errors import InvariantViolationError
 from google_work_agent.domain.results import CommandResult
 
 RUN_TERMINAL_STATUSES = frozenset(
-    {
-        RunStatus.COMPLETED,
-        RunStatus.CANCELLED,
-        RunStatus.FAILED,
-        RunStatus.BLOCKED,
-    }
+    {RunStatus.COMPLETED, RunStatus.CANCELLED, RunStatus.FAILED, RunStatus.BLOCKED}
 )
 
 ACTION_TERMINAL_STATUSES = frozenset(
@@ -32,29 +28,36 @@ ACTION_TERMINAL_STATUSES = frozenset(
 )
 
 WRITE_EFFECTS = frozenset(
-    {
-        EffectType.CREATE,
-        EffectType.UPDATE,
-        EffectType.SEND,
-        EffectType.DELETE,
-    }
+    {EffectType.CREATE, EffectType.UPDATE, EffectType.SEND, EffectType.DELETE}
 )
+
+RECOVERY_RESOLUTION_TARGETS: dict[RecoveryResolution, RunStatus] = {
+    RecoveryResolution.RECHECK: RunStatus.VERIFYING,
+    RecoveryResolution.ACCEPT_PARTIAL: RunStatus.COMPLETED,
+    RecoveryResolution.CREATE_CORRECTIVE_PLAN: RunStatus.PLANNING,
+    RecoveryResolution.CANCEL: RunStatus.CANCELLED,
+    RecoveryResolution.FAIL: RunStatus.FAILED,
+}
+_RECOVERY_TARGET_RESOLUTIONS = {
+    target: resolution for resolution, target in RECOVERY_RESOLUTION_TARGETS.items()
+}
 
 RUN_TRANSITIONS: dict[tuple[RunStatus, RunCommand], RunStatus] = {
     (RunStatus.CREATED, RunCommand.START_ANALYSIS): RunStatus.ANALYZING,
     (RunStatus.ANALYZING, RunCommand.BEGIN_RETRIEVAL): RunStatus.RETRIEVING,
-    (RunStatus.WAITING_CONFIRMATION, RunCommand.BEGIN_RETRIEVAL): RunStatus.RETRIEVING,
     (RunStatus.RETRIEVING, RunCommand.BEGIN_PLANNING): RunStatus.PLANNING,
     (RunStatus.ANALYZING, RunCommand.REQUEST_CONFIRMATION): RunStatus.WAITING_CONFIRMATION,
     (RunStatus.RETRIEVING, RunCommand.REQUEST_CONFIRMATION): RunStatus.WAITING_CONFIRMATION,
     (RunStatus.PLANNING, RunCommand.REQUEST_CONFIRMATION): RunStatus.WAITING_CONFIRMATION,
+    (RunStatus.CREATED, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
     (RunStatus.ANALYZING, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
     (RunStatus.RETRIEVING, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
+    (RunStatus.WAITING_CONFIRMATION, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
     (RunStatus.PLANNING, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
+    (RunStatus.WAITING_APPROVAL, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
     (RunStatus.ANALYZING, RunCommand.FAIL_RUN): RunStatus.FAILED,
     (RunStatus.RETRIEVING, RunCommand.FAIL_RUN): RunStatus.FAILED,
     (RunStatus.PLANNING, RunCommand.FAIL_RUN): RunStatus.FAILED,
-    (RunStatus.WAITING_APPROVAL, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
     (RunStatus.WAITING_APPROVAL, RunCommand.REPLAN): RunStatus.PLANNING,
     (RunStatus.ANALYZING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.RETRIEVING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
@@ -74,9 +77,6 @@ RUN_TRANSITIONS: dict[tuple[RunStatus, RunCommand], RunStatus] = {
     (RunStatus.EXECUTING, RunCommand.BEGIN_VERIFICATION): RunStatus.VERIFYING,
     (RunStatus.WAITING_APPROVAL, RunCommand.BEGIN_VERIFICATION): RunStatus.VERIFYING,
     (RunStatus.CANCEL_REQUESTED, RunCommand.BEGIN_VERIFICATION): RunStatus.VERIFYING,
-    # Resuming after ResumeAfterReauth when the write already reached
-    # EXECUTED before the credential loss -- the safe checkpoint phase to
-    # resume into is re-verification, not re-dispatch.
     (RunStatus.REAUTH_REQUIRED, RunCommand.BEGIN_VERIFICATION): RunStatus.VERIFYING,
 }
 
@@ -128,10 +128,8 @@ WRITE_ACTION_TRANSITIONS: dict[tuple[ActionStatus, ActionCommand], ActionStatus]
 
 
 def next_allowed_run_commands(current_status: RunStatus) -> tuple[RunCommand, ...]:
-    """Return the deterministic Run commands allowed from the current status."""
     if current_status in RUN_TERMINAL_STATUSES:
         return ()
-
     commands = [
         command
         for command in RUN_COMMAND_ORDER
@@ -149,22 +147,14 @@ def next_allowed_run_commands(current_status: RunStatus) -> tuple[RunCommand, ..
 
 
 def _is_confirmation_resume_candidate(current_status: RunStatus, command: RunCommand) -> bool:
-    """ResumeConfirmation has a dynamic target status owned by checkpoint metadata."""
-    return (
-        current_status is RunStatus.WAITING_CONFIRMATION
-        and command is RunCommand.RESUME_CONFIRMATION
-    )
+    return current_status is RunStatus.WAITING_CONFIRMATION and command is RunCommand.RESUME_CONFIRMATION
 
 
 def next_allowed_action_commands(
-    current_status: ActionStatus,
-    *,
-    effect_type: EffectType,
+    current_status: ActionStatus, *, effect_type: EffectType
 ) -> tuple[ActionCommand, ...]:
-    """Return deterministic Action commands allowed for the current status and effect."""
     if current_status in ACTION_TERMINAL_STATUSES:
         return ()
-
     transition_table = _action_transition_table(effect_type)
     commands = [
         command
@@ -185,9 +175,16 @@ def transition_run(
     expected_version: int,
     *,
     plan_requires_approval: bool | None = None,
+    recovery_resolution: RecoveryResolution | None = None,
     recovery_next_status: RunStatus | None = None,
 ) -> CommandResult[RunStatus, RunCommand]:
-    """Apply a pure Run status transition with optimistic version checking."""
+    """Apply a Run transition; recovery targets are canonical variants.
+
+    ``recovery_next_status`` is accepted only as a compatibility input for
+    existing repository callers and is immediately normalized into a
+    registered ``RecoveryResolution``. It is never a transition authority.
+    Unregistered target statuses fail closed.
+    """
     if not _is_non_negative_version(current_version):
         raise InvariantViolationError("current_version must be non-negative")
     if not _is_non_negative_version(expected_version):
@@ -199,25 +196,17 @@ def transition_run(
             ResultCode.VERSION_CONFLICT,
             "expected_version does not match current_version",
         )
-
-    if (
-        current_status is RunStatus.PLANNING
-        and command is RunCommand.PUBLISH_PLAN
-        and plan_requires_approval is None
-    ):
-        raise InvariantViolationError("plan_requires_approval is required")
-    if (
-        current_status is RunStatus.RECOVERY_REQUIRED
-        and command is RunCommand.RESOLVE_RECOVERY
-        and recovery_next_status is None
-    ):
-        raise InvariantViolationError("recovery_next_status is required")
+    if current_status is RunStatus.PLANNING and command is RunCommand.PUBLISH_PLAN:
+        if plan_requires_approval is None:
+            raise InvariantViolationError("plan_requires_approval is required")
+    if current_status is RunStatus.RECOVERY_REQUIRED and command is RunCommand.RESOLVE_RECOVERY:
+        recovery_resolution = _normalize_recovery_resolution(
+            recovery_resolution=recovery_resolution,
+            recovery_next_status=recovery_next_status,
+        )
 
     next_status = _resolve_run_next_status(
-        current_status,
-        command,
-        plan_requires_approval,
-        recovery_next_status,
+        current_status, command, plan_requires_approval, recovery_resolution
     )
     if next_status is None:
         return _run_failure(
@@ -226,8 +215,27 @@ def transition_run(
             ResultCode.STATE_CONFLICT,
             f"{command.value} is not allowed from {current_status.value}",
         )
-
     return _run_success(next_status, current_version + 1)
+
+
+def _normalize_recovery_resolution(
+    *,
+    recovery_resolution: RecoveryResolution | None,
+    recovery_next_status: RunStatus | None,
+) -> RecoveryResolution:
+    if recovery_resolution is not None and recovery_next_status is not None:
+        expected_target = RECOVERY_RESOLUTION_TARGETS.get(recovery_resolution)
+        if expected_target is not recovery_next_status:
+            raise InvariantViolationError("recovery resolution conflicts with compatibility target")
+        return recovery_resolution
+    if recovery_resolution is not None:
+        return recovery_resolution
+    if recovery_next_status is None:
+        raise InvariantViolationError("recovery_resolution is required")
+    normalized = _RECOVERY_TARGET_RESOLUTIONS.get(recovery_next_status)
+    if normalized is None:
+        raise InvariantViolationError("recovery target is not a registered recovery variant")
+    return normalized
 
 
 def transition_action(
@@ -240,7 +248,6 @@ def transition_action(
     verification_status: VerificationStatus | None = None,
     result_not_executed_confirmed: bool = False,
 ) -> CommandResult[ActionStatus, ActionCommand]:
-    """Apply a pure Action status transition with effect and version checks."""
     if not _is_non_negative_version(current_version):
         raise InvariantViolationError("current_version must be non-negative")
     if not _is_non_negative_version(expected_version):
@@ -253,7 +260,6 @@ def transition_action(
             ResultCode.VERSION_CONFLICT,
             "expected_version does not match current_version",
         )
-
     invariant_error = _validate_action_invariants(
         current_status,
         command,
@@ -263,12 +269,8 @@ def transition_action(
     )
     if invariant_error is not None:
         raise InvariantViolationError(invariant_error)
-
     next_status = _resolve_action_next_status(
-        current_status,
-        command,
-        effect_type,
-        verification_status,
+        current_status, command, effect_type, verification_status
     )
     if next_status is None:
         return _action_failure(
@@ -278,7 +280,6 @@ def transition_action(
             ResultCode.STATE_CONFLICT,
             f"{command.value} is not allowed from {current_status.value}",
         )
-
     return _action_success(next_status, current_version + 1)
 
 
@@ -294,7 +295,6 @@ def _resolve_action_next_status(
         if verification_status is VerificationStatus.MISMATCH:
             return ActionStatus.MISMATCH
         return None
-
     return _action_transition_table(effect_type).get((current_status, command))
 
 
@@ -302,20 +302,17 @@ def _resolve_run_next_status(
     current_status: RunStatus,
     command: RunCommand,
     plan_requires_approval: bool | None,
-    recovery_next_status: RunStatus | None,
+    recovery_resolution: RecoveryResolution | None,
 ) -> RunStatus | None:
-    if (
-        current_status is RunStatus.PLANNING
-        and command is RunCommand.PUBLISH_PLAN
-        and plan_requires_approval is not None
-    ):
-        return RunStatus.WAITING_APPROVAL if plan_requires_approval else RunStatus.EXECUTING
+    if current_status is RunStatus.PLANNING and command is RunCommand.PUBLISH_PLAN:
+        if plan_requires_approval is not None:
+            return RunStatus.WAITING_APPROVAL if plan_requires_approval else RunStatus.EXECUTING
     if _is_cancel_candidate(current_status, command):
         return RunStatus.CANCEL_REQUESTED
     if _is_require_recovery_candidate(current_status, command):
         return RunStatus.RECOVERY_REQUIRED
     if _is_resolve_recovery_candidate(current_status, command):
-        return recovery_next_status
+        return None if recovery_resolution is None else RECOVERY_RESOLUTION_TARGETS[recovery_resolution]
     return RUN_TRANSITIONS.get((current_status, command))
 
 
@@ -368,11 +365,6 @@ def _validate_action_invariants(
     verification_status: VerificationStatus | None,
     result_not_executed_confirmed: bool,
 ) -> str | None:
-    # CLAIM_EXECUTION only appears in WRITE_ACTION_TRANSITIONS and
-    # CLAIM_READ_ACTION only in READ_ACTION_TRANSITIONS (see the tables
-    # above), so a mismatched effect_type already fails closed as a normal
-    # STATE_CONFLICT via _resolve_action_next_status -- no separate
-    # invariant-violation special case is needed here.
     if command is ActionCommand.STORE_VERIFICATION:
         if effect_type is EffectType.READ:
             return "READ actions do not create write verification rows"
@@ -415,8 +407,7 @@ def _run_failure(
 
 
 def _action_success(
-    next_status: ActionStatus,
-    next_version: int,
+    next_status: ActionStatus, next_version: int
 ) -> CommandResult[ActionStatus, ActionCommand]:
     return CommandResult(
         applied=True,
