@@ -22,10 +22,10 @@ import google_work_agent.application.workflows.solution_planning as _planning
 import google_work_agent.application.workflows.work_analysis as _analysis
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.application.workflows.contracts import ConfirmationResponseV1
 from google_work_agent.application.workflows.handoff_contracts import (
     ActionPlanDraftV1,
     AnswerDraftV1,
-    ConfirmationResponseV1,
     EvidenceDraftV1,
     RequestIntentV2,
     WorkAnalysisResultV1,
