@@ -39,12 +39,13 @@ def test_trace_and_audit_never_persist_secret_or_provider_transport_canaries(
     trace_payload = {
         "safe_counter": 7,
         "access_token": "CANARY_ACCESS_TOKEN_TRACE",
-        "provider_page_token": "CANARY_PROVIDER_PAGE_TOKEN_TRACE",
+        "providerPageToken": "CANARY_PROVIDER_PAGE_TOKEN_TRACE",
         "nested": {
-            "raw_provider_response": "CANARY_RAW_PROVIDER_RESPONSE_TRACE",
+            "rawProviderResponse": "CANARY_RAW_PROVIDER_RESPONSE_TRACE",
             "attachment": {
                 "filename": "secret.txt",
-                "mime_type": "text/plain",
+                "mimeType": "text/plain",
+                "attachmentId": "att-1",
                 "data": "CANARY_ATTACHMENT_BYTES_TRACE",
             },
         },
@@ -52,11 +53,11 @@ def test_trace_and_audit_never_persist_secret_or_provider_transport_canaries(
     audit_payload = {
         "safe_outcome": "ok",
         "refresh_token": "CANARY_REFRESH_TOKEN_AUDIT",
-        "next_page_token": "CANARY_PROVIDER_PAGE_TOKEN_AUDIT",
-        "provider_payload": {
+        "nextPageToken": "CANARY_PROVIDER_PAGE_TOKEN_AUDIT",
+        "providerPayload": {
             "raw": "CANARY_PROVIDER_PAYLOAD_AUDIT",
         },
-        "attachment_bytes": "CANARY_ATTACHMENT_BYTES_AUDIT",
+        "attachmentBytes": "CANARY_ATTACHMENT_BYTES_AUDIT",
     }
 
     with SQLiteUnitOfWork(database_path) as unit_of_work:
@@ -91,12 +92,20 @@ def test_trace_and_audit_never_persist_secret_or_provider_transport_canaries(
     try:
         trace_raw = str(
             connection.execute(
-                "SELECT payload_json FROM trace_events WHERE event_type = 'SECRET_BOUNDARY_TRACE';"
+                """
+                SELECT payload_json
+                FROM trace_events
+                WHERE event_type = 'SECRET_BOUNDARY_TRACE';
+                """
             ).fetchone()[0]
         )
         audit_raw = str(
             connection.execute(
-                "SELECT metadata_json FROM audit_events WHERE event_type = 'SECRET_BOUNDARY_AUDIT';"
+                """
+                SELECT metadata_json
+                FROM audit_events
+                WHERE event_type = 'SECRET_BOUNDARY_AUDIT';
+                """
             ).fetchone()[0]
         )
         trace = loads(trace_raw)
@@ -124,9 +133,9 @@ def test_trace_and_audit_never_persist_secret_or_provider_transport_canaries(
 
     serialized_trace = dumps(trace, sort_keys=True).lower()
     serialized_audit = dumps(audit, sort_keys=True).lower()
-    assert "provider_page_token" not in serialized_trace
-    assert "next_page_token" not in serialized_audit
-    assert "raw_provider_response" not in serialized_trace
-    assert "provider_payload" not in serialized_audit
-    assert "attachment_bytes" not in serialized_audit
+    assert "providerpagetoken" not in serialized_trace
+    assert "nextpagetoken" not in serialized_audit
+    assert "rawproviderresponse" not in serialized_trace
+    assert "providerpayload" not in serialized_audit
+    assert "attachmentbytes" not in serialized_audit
     assert "canary_attachment_bytes_trace" not in serialized_trace
