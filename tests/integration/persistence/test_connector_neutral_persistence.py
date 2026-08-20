@@ -49,7 +49,8 @@ def test_connector_neutral_migration_preserves_populated_execution_history(tmp_p
             '{"status":"needsAction"}',
         )
         action = connection.execute(
-            "SELECT connector_id, tool_name, target_resource_ref_id FROM actions WHERE id = 'action-1';"
+            "SELECT connector_id, tool_name, target_resource_ref_id "
+            "FROM actions WHERE id = 'action-1';"
         ).fetchone()
         assert tuple(action) == ("google_workspace", "tasks_update_task", "resource-google")
         links = connection.execute(

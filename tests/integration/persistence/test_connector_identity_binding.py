@@ -13,8 +13,8 @@ from google_work_agent.adapters.persistence.unit_of_work import (
     sqlite_unit_of_work_factory,
 )
 from google_work_agent.application.read_contracts import (
-    CompleteReadActionCommand,
     CompletedResourceRef,
+    CompleteReadActionCommand,
 )
 from google_work_agent.application.read_lifecycle import CompleteReadActionService
 from google_work_agent.ports import (
@@ -94,23 +94,24 @@ def test_action_and_resource_ref_use_explicit_frozen_connector_binding(tmp_path:
         captured_at_ms=3,
     )
 
-    with bind_action_connector_ids({"action-1": "github"}):
-        with SQLiteUnitOfWork(database_path) as unit_of_work:
-            unit_of_work.actions.insert_write_action(action)
-            unit_of_work.commit()
+    with (
+        bind_action_connector_ids({"action-1": "github"}),
+        SQLiteUnitOfWork(database_path) as unit_of_work,
+    ):
+        unit_of_work.actions.insert_write_action(action)
+        unit_of_work.commit()
 
-    with bind_resource_connector_id("github"):
-        with SQLiteUnitOfWork(database_path) as unit_of_work:
-            unit_of_work.resource_refs.upsert(resource_ref)
-            persisted = unit_of_work.resource_refs.get_by_unique_key(
-                run_id="run-1",
-                source=ResourceSource.TASKS.value,
-                resource_type=StoredResourceType.TASK.value,
-                resource_id="issue-1",
-            )
-            assert persisted is not None
-            assert persisted.id == "resource-ref-1"
-            unit_of_work.commit()
+    with bind_resource_connector_id("github"), SQLiteUnitOfWork(database_path) as unit_of_work:
+        unit_of_work.resource_refs.upsert(resource_ref)
+        persisted = unit_of_work.resource_refs.get_by_unique_key(
+            run_id="run-1",
+            source=ResourceSource.TASKS.value,
+            resource_type=StoredResourceType.TASK.value,
+            resource_id="issue-1",
+        )
+        assert persisted is not None
+        assert persisted.id == "resource-ref-1"
+        unit_of_work.commit()
 
     connection = connect_sqlite(database_path)
     try:
@@ -148,10 +149,12 @@ def test_read_action_and_completion_resource_keep_same_connector(tmp_path: Path)
         created_at_ms=2,
         updated_at_ms=2,
     )
-    with bind_action_connector_ids({"read-action-1": "github"}):
-        with SQLiteUnitOfWork(database_path) as unit_of_work:
-            unit_of_work.actions.insert_read_action(action)
-            unit_of_work.commit()
+    with (
+        bind_action_connector_ids({"read-action-1": "github"}),
+        SQLiteUnitOfWork(database_path) as unit_of_work,
+    ):
+        unit_of_work.actions.insert_read_action(action)
+        unit_of_work.commit()
 
     factory = sqlite_unit_of_work_factory(database_path)
     delegate = CompleteReadActionService(unit_of_work_factory=factory, now_ms=lambda: 3)

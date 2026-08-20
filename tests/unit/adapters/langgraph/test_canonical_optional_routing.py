@@ -14,7 +14,9 @@ from google_work_agent.application.workflows import (
 )
 
 
-def _state(*, analysis_requirement: str, output_mode: str, input_routes: list[object]) -> GraphState:
+def _state(
+    *, analysis_requirement: str, output_mode: str, input_routes: list[object]
+) -> GraphState:
     return cast(
         GraphState,
         {

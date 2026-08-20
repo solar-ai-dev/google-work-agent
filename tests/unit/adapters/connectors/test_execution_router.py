@@ -175,13 +175,15 @@ def test_router_fails_closed_for_unregistered_connector() -> None:
         {"google_workspace": _FakeExecutionBackend("google")}
     )
 
-    with bind_execution_connector_id("github"):
-        with pytest.raises(LookupError, match="backend not registered: github"):
-            router.fetch_verification_snapshot(
-                tool_name="github_create_issue",
-                arguments={},
-                fallback_resource_id="issue-1",
-            )
+    with (
+        bind_execution_connector_id("github"),
+        pytest.raises(LookupError, match="backend not registered: github"),
+    ):
+        router.fetch_verification_snapshot(
+            tool_name="github_create_issue",
+            arguments={},
+            fallback_resource_id="issue-1",
+        )
 
 
 def test_phase_scope_routes_execute_from_persisted_action_connector() -> None:

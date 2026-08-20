@@ -10,10 +10,14 @@ from google_work_agent.adapters.persistence import (
 RUNTIME_MIGRATIONS_DIR = Path("src/google_work_agent/adapters/persistence/migrations")
 HISTORICAL_CHECKSUMS = {
     "0001_initial.sql": "77386baca1badadd6a79860823250836f7a6464e7f01bd865c3a84af094aa928",
-    "0002_action_effect_send_delete.sql": "0cbd43fbaa351b19540128f860c4e88e827b263329b102cbe9016c1190145624",
+    "0002_action_effect_send_delete.sql": (
+        "0cbd43fbaa351b19540128f860c4e88e827b263329b102cbe9016c1190145624"
+    ),
     "0003_action_cancelled.sql": "d56a55a7fd4f5cec5d34705bf1cb09c218d22b762956b38af79a983faa033403",
     "0004_plan_review_gate.sql": "d12a4fc67101c3d14ff0ec57175c9d19ba765fe0eab41e0d5b3875b48b388f95",
-    "0005_cross_aggregate_invariants.sql": "ff2508e23c238a1b7bb3ec604031f7598cceff2285378767b61651590f5b109b",
+    "0005_cross_aggregate_invariants.sql": (
+        "ff2508e23c238a1b7bb3ec604031f7598cceff2285378767b61651590f5b109b"
+    ),
 }
 
 
