@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from tests.support.fakes import FakeAPIProviderTransport
 
 from google_work_agent.adapters.llm import ApiStructuredLLMProvider
@@ -9,7 +12,32 @@ from google_work_agent.ports import (
 )
 
 
-def test_fake_api_provider_transport_obeys_structured_contract() -> None:
+def _manifest(tmp_path: Path) -> Path:
+    """Isolated Prompt Runtime Input Contract for this file's synthetic
+    PROMPT_REF ("prompt.test") -- this test exercises the fake API provider
+    transport contract generically and was never meant to be validated
+    against the real production Product Prompt contract."""
+    agent_dir = tmp_path / "prompts" / "agent"
+    contract_dir = agent_dir / "contracts"
+    contract_dir.mkdir(parents=True)
+    manifest = agent_dir / "prompt-manifest-v1.0.0.json"
+    manifest.write_text(
+        json.dumps({"runtime_input_contract": "prompts/agent/contracts/input.json"}),
+        encoding="utf-8",
+    )
+    (contract_dir / "input.json").write_text(
+        json.dumps(
+            {
+                "forbidden_runtime_fields": [],
+                "slots": {"prompt.test": {"allowed_root_fields": ["hello"]}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def test_fake_api_provider_transport_obeys_structured_contract(tmp_path: Path) -> None:
     transport = FakeAPIProviderTransport()
     transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -25,6 +53,7 @@ def test_fake_api_provider_transport_obeys_structured_contract() -> None:
         provider_name="generic-api",
         transport=transport,
         model="fake-api-model",
+        prompt_manifest_path=_manifest(tmp_path),
     )
 
     payload = provider.invoke_structured(
