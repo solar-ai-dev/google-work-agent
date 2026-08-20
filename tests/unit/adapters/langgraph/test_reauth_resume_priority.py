@@ -117,3 +117,17 @@ def test_reauth_checkpoint_does_not_resume_when_domain_status_is_not_reauth() ->
 
     assert result is None
     assert calls == []
+
+
+def test_startup_recovery_does_not_resume_preclaim_reauth_checkpoint() -> None:
+    calls: list[str] = []
+    coordinator = _coordinator(calls)
+
+    result = coordinator._continue_from_domain_facts(
+        values=_state(),
+        run_id="run-1",
+        allow_reauth_resume=False,
+    )
+
+    assert result is None
+    assert calls == []
