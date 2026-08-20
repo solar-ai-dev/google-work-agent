@@ -303,18 +303,27 @@ def test_six_role_full_path_records_five_agent_invocations_and_six_llm_calls(
     context_retriever, work_analysis, planning, review -- Tool Route is a
     deterministic node, not an agent invocation, and ``acquisition`` is not
     wired into this profile's topology (Retrieval V2's context_retriever
-    subgraph replaced it; see ``_native_subgraphs_for_profile``)."""
+    subgraph replaced it; see ``_native_subgraphs_for_profile``).
+
+    Uses an ACTION (write) plan rather than an ANSWER_ONLY one so Review is
+    actually reached: canonical_response_runtime.
+    canonicalize_answer_only_decision() deterministically routes
+    Planning-ANSWER_ONLY straight to Response Synthesis instead of Review
+    (docs/design/06-agent-workflow.md: "Planning ANSWER_ONLY -> Response
+    Synthesis"), which would make this "full 5-agent path including
+    Review" fixture silently stop covering Review.
+    """
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=[
-            _clear_intent(),
+            _action_required_intent(),
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
-            _answer_output(),
+            _write_plan_output(),
             _review_output("PASS"),
         ],
         gateway=FakeGoogleGateway(snapshot),
@@ -324,11 +333,14 @@ def test_six_role_full_path_records_five_agent_invocations_and_six_llm_calls(
     )
 
     try:
-        result = runtime.start(_start_request())
+        result = runtime.start(_start_write_request())
         snapshot_state = runtime._graph.get_state(runtime._config_for_thread("thread-1"))  # noqa: SLF001
         values = snapshot_state.values
 
-        assert result.outcome is WorkflowOutcome.COMPLETED
+        # ACTION plans stop at WAITING_APPROVAL after a PASS Review, not
+        # COMPLETED -- Review having run (and rendered a real decision) is
+        # what this test is proving, not full write execution.
+        assert result.outcome is WorkflowOutcome.ACCEPTED
         trace_context = values["trace_context"]
         assert trace_context["agent_invocation_count"] == 5
         assert trace_context["llm_call_count"] == 6
