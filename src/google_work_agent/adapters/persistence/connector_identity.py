@@ -1,6 +1,6 @@
 """Connector identity bindings for the legacy persistence compatibility boundary.
 
-Canonical Tool Route owns connector selection.  The current release still
+Canonical Tool Route owns connector selection. The current release still
 passes legacy Action DTOs that do not carry ``connector_id`` themselves, so
 this module transports the already-frozen identity across that narrow
 compatibility boundary without re-selecting or inferring a connector.
@@ -8,10 +8,10 @@ compatibility boundary without re-selecting or inferring a connector.
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-import sqlite3
 
 from google_work_agent.adapters.persistence.repositories import (
     SQLiteActionRepository,
@@ -34,8 +34,14 @@ _resource_connector: ContextVar[str | None] = ContextVar(
 def bind_action_connector_ids(connector_ids: Mapping[str, str]) -> Iterator[None]:
     """Bind code-owned action connector identities for one persistence call."""
 
-    normalized = {str(action_id): str(connector_id) for action_id, connector_id in connector_ids.items()}
-    if not normalized or any(not action_id or not connector_id for action_id, connector_id in normalized.items()):
+    normalized = {
+        str(action_id): str(connector_id)
+        for action_id, connector_id in connector_ids.items()
+    }
+    if not normalized or any(
+        not action_id or not connector_id
+        for action_id, connector_id in normalized.items()
+    ):
         raise ValueError("action connector binding requires non-empty action and connector ids")
     token = _action_connectors.set(normalized)
     try:
@@ -62,12 +68,8 @@ class ConnectorAwareActionRepository(SQLiteActionRepository):
 
     def _insert_action(self, action: ActionRecord) -> None:
         bindings = _action_connectors.get()
-        connector_id = (
-            bindings.get(action.id)
-            if bindings is not None
-            else None
-        )
-        # Compatibility-only fallback for legacy Google-only callers.  The
+        connector_id = bindings.get(action.id) if bindings is not None else None
+        # Compatibility-only fallback for legacy Google-only callers. The
         # canonical ACTION runtime always enters bind_action_connector_ids.
         connector_id = connector_id or _GOOGLE_WORKSPACE_CONNECTOR_ID
         self._connection.execute(
@@ -136,8 +138,7 @@ class ConnectorAwareResourceRefRepository(SQLiteResourceRefRepository):
             )
         row = self._connection.execute(
             """
-            SELECT id, run_id, source, resource_type, resource_id, parent_resource_id,
-                   canonical_url, title, event_time_ms, version_token, metadata_json, captured_at_ms
+            SELECT id
             FROM resource_refs
             WHERE run_id = ? AND connector_id = ? AND resource_type = ? AND resource_id = ?;
             """,
@@ -145,7 +146,6 @@ class ConnectorAwareResourceRefRepository(SQLiteResourceRefRepository):
         ).fetchone()
         if row is None:
             return None
-        # Reuse the base repository's stable row projection through the id lookup.
         return super().get_by_id(str(row["id"]))
 
     def upsert(self, record: ResourceRefRecord) -> None:
