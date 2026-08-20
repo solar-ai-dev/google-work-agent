@@ -85,9 +85,10 @@ def test_connector_binding_fails_closed_on_tool_drift() -> None:
 
 def test_connector_binding_fails_closed_when_connector_is_missing() -> None:
     state = _state()
-    output_plan = cast(dict[str, object], state["tool_route_plan"])["output_plan"]
-    route = cast(dict[str, object], cast(dict[str, object], output_plan)["output_routes"])[0]
-    cast(dict[str, object], route)["connector_id"] = ""
+    route_plan = cast(dict[str, object], state["tool_route_plan"])
+    output_plan = cast(dict[str, object], route_plan["output_plan"])
+    routes = cast(list[dict[str, object]], output_plan["output_routes"])
+    routes[0]["connector_id"] = ""
 
     with pytest.raises(ValueError, match="connector_id is required"):
         connector_ids_from_frozen_routes(state=state, plan_draft=_plan())
