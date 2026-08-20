@@ -2,18 +2,47 @@
 
 init -> plan -> result_validate -> finalize
 
-``plan`` -> ``NEEDS_CONFIRMATION`` (possible from all four modes -- see
-``ANSWER_DRAFT_OUTPUT_SCHEMA``/``ACTION_PLAN_DRAFT_OUTPUT_SCHEMA``, both of
-which allow it) resolves with a real, nested-checkpoint ``interrupt()``
-called from *inside* this compiled subgraph (in ``finalize``, via the
-injected ``confirm_inline`` callback), not from the shared Main-Graph
-``waiting_confirmation`` node. ``plan``/``result_validate`` never re-run on
-resume: they already completed and committed before the pause, so
-``finalize``'s node-replay on resume only re-derives its own (pure) decision
-from that committed output, then makes exactly one more direct Planning
-semantic call (whichever of the four ``invoke_*_llm_from_evidence`` methods
-matches the already-frozen ``mode``) carrying the validated
-``ConfirmationResponseV1`` -- not a second traversal of ``plan``.
+ANSWER (``answer_only``/``revise_answer``) still makes one whole-draft
+Planning semantic LLM call via ``SolutionPlanningAgent``, unchanged.
+
+ACTION (``draft_plan``/``revise_plan``) is the Canonical Planning Production
+Migration target: Tool Route has already frozen each output route's
+connector/resource/effect/Tool identity, so this subgraph never lets an LLM
+regenerate a whole ``ActionPlanDraft`` in one call. It instead calls the
+canonical ``PlanningArgumentOrchestrator``, which invokes the per-route
+``PlanningArgumentWriter`` once per frozen output route for thin business
+arguments only (revision calls it only for routes an actual Review issue
+affects), then deterministically assembles the final plan via
+``planning_plan_assembler.assemble_action_plan_draft_v1_compat`` -- Action
+ID, dependency, and Expected verification are code-owned, never
+LLM-authored. ``SolutionPlanningAgent.invoke_draft_plan_llm_from_evidence``/
+``invoke_revise_plan_llm_from_evidence`` are no longer called from this
+subgraph (kept for THREE_STAGE/SINGLE_BASELINE and as a contract-test
+reference -- see ``solution_planning.py``).
+
+BLOCKED_BY_CANONICAL_GAP: ``ToolArgumentCandidateV1``
+(``planning_argument_writer.py``) has no ``status``/``confirmation`` field,
+and no canonical orchestration-level wrapper for a Planning-side
+NEEDS_CONFIRMATION variant exists in the current contract (unlike
+``ReviewConfirmV2`` in ``docs/design/06-agent-workflow.md`` SS3.6). ACTION
+Planning therefore cannot produce ``NEEDS_CONFIRMATION`` after this
+migration -- this is a structural consequence of the canonical schema, not
+a new design decision made here, and no field was added to route around it.
+The legacy ACTION NEEDS_CONFIRMATION code path (below) is preserved
+unreachable rather than deleted.
+
+``plan`` -> ``NEEDS_CONFIRMATION`` (still possible from ANSWER modes; see
+``ANSWER_DRAFT_OUTPUT_SCHEMA``) resolves with a real, nested-checkpoint
+``interrupt()`` called from *inside* this compiled subgraph (in
+``finalize``, via the injected ``confirm_inline`` callback), not from the
+shared Main-Graph ``waiting_confirmation`` node. ``plan``/``result_validate``
+never re-run on resume: they already completed and committed before the
+pause, so ``finalize``'s node-replay on resume only re-derives its own
+(pure) decision from that committed output, then makes exactly one more
+direct Planning semantic call (whichever of the four
+``invoke_*_llm_from_evidence`` methods matches the already-frozen ``mode``)
+carrying the validated ``ConfirmationResponseV1`` -- not a second traversal
+of ``plan``.
 
 If that resolution is *itself* still ambiguous, ``finalize`` does NOT call
 ``interrupt()`` a second time within the same (already-resumed) task -- see
@@ -58,9 +87,11 @@ from google_work_agent.application.workflows import (
     AgentLocalStateV1,
     AnswerDraftV1,
     ConfirmationResponseV1,
+    EvidenceDraftV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
     RequestIntentV2,
+    ReviewIssueV1,
     ReviewResult,
     SolutionPlanningAgent,
     SupervisorDecisionV1,
@@ -69,6 +100,13 @@ from google_work_agent.application.workflows import (
     route_supervisor,
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
+)
+from google_work_agent.application.workflows.planning_argument_orchestrator import (
+    PlanningArgumentOrchestrator,
+    RouteArgumentResult,
+)
+from google_work_agent.application.workflows.planning_plan_assembler import (
+    assemble_action_plan_draft_v1_compat,
 )
 from google_work_agent.application.workflows.request_understanding import (
     build_user_interrupt_v1,
@@ -139,6 +177,7 @@ class PlanningSubgraph:
         merge_decision: MergeDecision,
         evidence_store: RunScopedEvidenceStore,
         confirm_inline: ConfirmInline,
+        argument_orchestrator: PlanningArgumentOrchestrator,
     ) -> None:
         self._agent = agent
         self._id_factory = id_factory
@@ -146,6 +185,7 @@ class PlanningSubgraph:
         self._merge_decision = merge_decision
         self._evidence_store = evidence_store
         self._confirm_inline = confirm_inline
+        self._argument_orchestrator = argument_orchestrator
 
     def build(self) -> Any:
         graph = StateGraph(
@@ -185,9 +225,9 @@ class PlanningSubgraph:
             mode = "revise_answer" if state.get("answer_draft") is not None else "revise_plan"
         prompt_ref = {
             "answer_only": self._agent.answer_only_prompt_ref,
-            "draft_plan": self._agent.draft_plan_prompt_ref,
+            "draft_plan": self._argument_orchestrator.prompt_ref,
             "revise_answer": self._agent.revise_answer_prompt_ref,
-            "revise_plan": self._agent.revise_plan_prompt_ref,
+            "revise_plan": self._argument_orchestrator.revise_prompt_ref,
         }[mode]
         local_state = build_agent_local_state(
             agent_role="planning",
@@ -225,14 +265,33 @@ class PlanningSubgraph:
         *,
         mode: str,
         confirmation_response: ConfirmationResponseV1 | None,
-    ) -> tuple[AnswerDraftV1 | ActionPlanDraftV1, StructuredLLMResult]:
-        """One Planning semantic LLM call for the already-frozen ``mode``.
+    ) -> tuple[AnswerDraftV1 | ActionPlanDraftV1, list[StructuredLLMResult]]:
+        """One Planning semantic step for the already-frozen ``mode``.
 
         Safe to call again for a later confirmation round -- ``mode``,
         ``retrieval_result``'s resolved evidence projection,
         ``tool_route_plan``'s frozen output routes/read tool ids, and any
         ``answer_draft``/``plan_draft``/``plan_review`` inputs are already
         frozen in state, never re-derived or re-fetched.
+
+        Returns ``(result, llm_results)``. ``answer_only``/``revise_answer``
+        make exactly one Planning semantic LLM call, so ``llm_results`` has
+        one entry. ``draft_plan``/``revise_plan`` route through the
+        canonical per-route ``PlanningArgumentOrchestrator`` instead: it
+        never re-selects Tool/effect/route (Tool Route already froze those),
+        it only invokes the Argument Writer once per frozen output route for
+        business arguments -- ``revise`` calls it zero times for a route
+        whose existing candidate has no relevant Review issue, so
+        ``llm_results`` can have anywhere from zero to ``len(output_routes)``
+        entries. Action ID, dependency, and Expected verification are
+        deterministically assembled afterward
+        (``planning_plan_assembler.assemble_action_plan_draft_v1_compat``),
+        never authored by an LLM candidate. ``confirmation_response`` never
+        reaches the canonical Argument Writer: its thin
+        ``ToolArgumentCandidateV1`` schema has no confirmation
+        representation, and this mode can no longer produce
+        ``NEEDS_CONFIRMATION`` for the same reason (BLOCKED_BY_CANONICAL_GAP
+        -- see module docstring).
         """
         request = request_from_state(state)
         review_state = state["plan_review"]
@@ -248,8 +307,8 @@ class PlanningSubgraph:
             retrieval_result=retrieval_result,
         )
         result: AnswerDraftV1 | ActionPlanDraftV1
-        ensure_llm_call_budget(state)
         if mode == "answer_only":
+            ensure_llm_call_budget(state)
             llm_result = self._agent.invoke_answer_only_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
                 evidence_drafts=evidence_drafts,
@@ -261,23 +320,28 @@ class PlanningSubgraph:
                 llm_result,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
             )
-        elif mode == "draft_plan":
-            llm_result = self._agent.invoke_draft_plan_llm_from_evidence(
+            return result, [llm_result]
+        if mode == "draft_plan":
+            frozen_routes = _require_state_value(
+                _frozen_output_routes(state), "frozen_output_routes"
+            )
+            ensure_llm_call_budget(state, provider_calls_requested=len(frozen_routes))
+            route_results = self._argument_orchestrator.compose(
+                request=request,
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
+                output_routes=frozen_routes,
                 evidence_drafts=evidence_drafts,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
-                request=request,
-                frozen_output_routes=_frozen_output_routes(state),
-                frozen_read_tool_ids=_frozen_read_tool_ids(state),
-                confirmation_response=confirmation_response,
             )
-            result = self._agent.build_plan_output_from_llm_result(
-                llm_result,
-                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
-                frozen_output_routes=_frozen_output_routes(state),
-                frozen_read_tool_ids=_frozen_read_tool_ids(state),
+            result = self._assemble_canonical_plan(
+                state,
+                route_results=route_results,
+                evidence_drafts=evidence_drafts,
+                previous_plan=None,
             )
-        elif mode == "revise_answer":
+            return result, _real_llm_results(route_results)
+        if mode == "revise_answer":
+            ensure_llm_call_budget(state)
             llm_result = self._agent.invoke_revise_answer_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
                 answer_draft=_require_state_value(state["answer_draft"], "answer_draft"),
@@ -292,41 +356,76 @@ class PlanningSubgraph:
                 llm_result,
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
             )
-        else:
-            llm_result = self._agent.invoke_revise_plan_llm_from_evidence(
-                request_intent=_require_state_value(state["request_intent"], "request_intent"),
-                plan_draft=_require_state_value(state["plan_draft"], "plan_draft"),
-                review_issues=review_issues,
-                review_summary=review_summary,
-                evidence_drafts=evidence_drafts,
-                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
-                request=request,
-                frozen_output_routes=_frozen_output_routes(state),
-                frozen_read_tool_ids=_frozen_read_tool_ids(state),
-                confirmation_response=confirmation_response,
-            )
-            result = self._agent.build_plan_output_from_llm_result(
-                llm_result,
-                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
-                frozen_output_routes=_frozen_output_routes(state),
-                frozen_read_tool_ids=_frozen_read_tool_ids(state),
-            )
-        return result, llm_result
+            return result, [llm_result]
+        frozen_routes = _require_state_value(_frozen_output_routes(state), "frozen_output_routes")
+        # Worst-case pre-check: affected-only revision may end up making
+        # fewer real calls than len(frozen_routes) (unaffected routes reuse
+        # their existing candidate with zero LLM calls), but the budget gate
+        # must hold before we know which routes are actually affected.
+        ensure_llm_call_budget(state, provider_calls_requested=len(frozen_routes))
+        route_results = self._argument_orchestrator.revise(
+            request=request,
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            output_routes=frozen_routes,
+            evidence_drafts=evidence_drafts,
+            analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+            plan_draft=_require_state_value(state["plan_draft"], "plan_draft"),
+            review_issues=cast("list[ReviewIssueV1]", review_issues),
+            review_summary=review_summary,
+        )
+        result = self._assemble_canonical_plan(
+            state,
+            route_results=route_results,
+            evidence_drafts=evidence_drafts,
+            previous_plan=_require_state_value(state["plan_draft"], "plan_draft"),
+        )
+        return result, _real_llm_results(route_results)
+
+    def _assemble_canonical_plan(
+        self,
+        state: PlanningLocalState,
+        *,
+        route_results: tuple[RouteArgumentResult, ...],
+        evidence_drafts: list[EvidenceDraftV1],
+        previous_plan: ActionPlanDraftV1 | None,
+    ) -> ActionPlanDraftV1:
+        """Deterministic assembly from validated per-route candidates.
+
+        Action ID, dependency, and Expected verification authority live
+        entirely in ``planning_plan_assembler.py`` -- an LLM candidate
+        contributes only ``arguments``/``evidence_refs`` for its own route
+        (already validated against the frozen, bound Tool schema by
+        ``PlanningArgumentOrchestrator``/``validate_tool_argument_candidate_v1``).
+        """
+        return assemble_action_plan_draft_v1_compat(
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+            evidence_drafts=evidence_drafts,
+            output_routes=tuple(route_result.route for route_result in route_results),
+            argument_candidates=tuple(route_result.candidate for route_result in route_results),
+            plan_id_factory=self._id_factory,
+            action_id_factory=self._id_factory,
+            previous_plan=previous_plan,
+        )
 
     def _plan_node(self, state: PlanningLocalState) -> PlanningLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
         mode = state[PLANNING_MODE_KEY]
-        result, llm_result = self._run_plan_attempt(state, mode=mode, confirmation_response=None)
-        updated_local = dict(record_llm_result(local_state, llm_result))
+        result, llm_results = self._run_plan_attempt(state, mode=mode, confirmation_response=None)
+        recorded_local = local_state
+        for llm_result in llm_results:
+            recorded_local = record_llm_result(recorded_local, llm_result)
+        updated_local = cast(dict[str, object], dict(recorded_local))
         updated_local["node_state"] = "PLAN_COMPLETE"
         updated_local["typed_result"] = cast(dict[str, object], result)
+        total_attempts = sum(llm_result.structured_output_attempts for llm_result in llm_results)
         next_state: PlanningLocalState = {
             **state,
             PLANNING_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             "__planning_result__": result,
             "retry_budget": consume_llm_call_budget(
-                state, provider_calls_consumed=llm_result.structured_output_attempts
+                state, provider_calls_consumed=total_attempts
             ),
             "trace_context": merge_trace_context(
                 state,
@@ -337,8 +436,8 @@ class PlanningSubgraph:
                 subgraph_namespace="planning",
                 node_name="plan",
                 llm_call_id=f"{request.run_id}:planning.{mode}",
-                llm_call_increment=llm_result.structured_output_attempts,
-                repair_increment=max(0, llm_result.structured_output_attempts - 1),
+                llm_call_increment=total_attempts,
+                repair_increment=max(0, total_attempts - len(llm_results)),
             ),
         }
         if result["status"] == "NEEDS_CONFIRMATION":
@@ -489,12 +588,16 @@ class PlanningSubgraph:
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
         request = request_from_state(state)
         mode = state[PLANNING_MODE_KEY]
-        resolved_result, llm_result = self._run_plan_attempt(
+        resolved_result, llm_results = self._run_plan_attempt(
             state, mode=mode, confirmation_response=confirmation_response
         )
-        updated_local = dict(record_llm_result(local_state, llm_result))
+        recorded_local = local_state
+        for llm_result in llm_results:
+            recorded_local = record_llm_result(recorded_local, llm_result)
+        updated_local = cast(dict[str, object], dict(recorded_local))
         updated_local["node_state"] = "PLAN_COMPLETE"
         updated_local["typed_result"] = cast(dict[str, object], resolved_result)
+        total_attempts = sum(llm_result.structured_output_attempts for llm_result in llm_results)
 
         prompt_context = dict(cast(dict[str, object], state.get("prompt_context", {})))
         prompt_context.pop("confirmation_interrupt", None)
@@ -508,7 +611,7 @@ class PlanningSubgraph:
                 "user_interrupt": None,
                 "prompt_context": prompt_context,
                 "retry_budget": consume_llm_call_budget(
-                    state, provider_calls_consumed=llm_result.structured_output_attempts
+                    state, provider_calls_consumed=total_attempts
                 ),
                 "trace_context": merge_trace_context(
                     state,
@@ -519,7 +622,7 @@ class PlanningSubgraph:
                     subgraph_namespace="planning",
                     node_name="finalize",
                     llm_call_id=f"{request.run_id}:planning.{mode}.confirm",
-                    llm_call_increment=llm_result.structured_output_attempts,
+                    llm_call_increment=total_attempts,
                 ),
             },
         )
@@ -580,6 +683,22 @@ class PlanningSubgraph:
         merged.pop(PLANNING_MODE_KEY, None)
         merged.pop("__planning_result__", None)
         return cast(PlanningLocalState, merged)
+
+
+def _real_llm_results(
+    route_results: tuple[RouteArgumentResult, ...],
+) -> list[StructuredLLMResult]:
+    """The subset of per-route Argument Writer calls that actually happened.
+
+    ``PlanningArgumentOrchestrator.revise`` sets ``llm_result=None`` for a
+    route whose existing candidate has no relevant Review issue -- that
+    route's candidate is reused unchanged, at zero LLM-call cost.
+    """
+    return [
+        route_result.llm_result
+        for route_result in route_results
+        if route_result.llm_result is not None
+    ]
 
 
 def _frozen_output_routes(

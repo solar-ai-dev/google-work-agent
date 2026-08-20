@@ -41,13 +41,12 @@ from tests.integration.langgraph.test_runtime import (
     _gmail_selection_output,
     _make_runtime,
     _QueuedLLMRuntime,
-    _read_plan_output,
     _review_output,
     _runtime_active_manifest_path,
     _seed_runtime_database,
     _selection_output,
     _send_write_plan_output,
-    _start_read_request,
+    _sole_persisted_action_id,
     _start_request,
     _start_write_request,
     _sufficiency_output,
@@ -490,6 +489,7 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(
     started = runtime.start(_start_write_request())
 
     assert started.outcome is WorkflowOutcome.ACCEPTED
+    action_id = _sole_persisted_action_id(database_path)
     approve_service = ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1000,
@@ -498,7 +498,7 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(
         ApproveWriteActionCommand(
             command_id="approve-1",
             request_hash="a" * 64,
-            action_id="action-1",
+            action_id=action_id,
             expected_version=0,
             approved_by_account_id="account-1",
             approved_by_display="User",
@@ -567,8 +567,9 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(
             """
             SELECT
                 (SELECT status FROM runs WHERE id = 'run-1') AS run_status,
-                (SELECT status FROM actions WHERE id = 'action-1') AS action_status;
-            """
+                (SELECT status FROM actions WHERE id = ?) AS action_status;
+            """,
+            (action_id,),
         ).fetchone()
         verification_count = connection.execute("SELECT COUNT(*) FROM verifications;").fetchone()[0]
         assert tuple(row) == ("COMPLETED", "VERIFIED")
@@ -603,6 +604,7 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
         prompt_manifest_path=manifest_path,
     )
     assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    action_id = _sole_persisted_action_id(database_path)
     approved = ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1000,
@@ -610,7 +612,7 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
         ApproveWriteActionCommand(
             command_id="approve-before-restart",
             request_hash="e" * 64,
-            action_id="action-1",
+            action_id=action_id,
             expected_version=0,
             approved_by_account_id="account-1",
             approved_by_display="User",
@@ -621,12 +623,12 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
     )
     assert approved.applied is True
 
-    runtime._preflight_write(action_id="action-1")  # noqa: SLF001
+    runtime._preflight_write(action_id=action_id)  # noqa: SLF001
     claim = runtime._claim_write(  # noqa: SLF001
         ClaimWriteActionCommand(
             command_id="claim-before-restart",
             request_hash="1" * 64,
-            action_id="action-1",
+            action_id=action_id,
             expected_version=approved.action_version,
             source_snapshot={},
             attempt_id="attempt-before-restart",
@@ -635,14 +637,14 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
     )
     assert claim.claim_token is not None
     executed = runtime._execute_write(  # noqa: SLF001
-        action_id="action-1",
+        action_id=action_id,
         claim_token=claim.claim_token,
     )
     runtime._store_write_success(  # noqa: SLF001
         StoreWriteActionSuccessCommand(
             command_id="store-before-restart",
             request_hash="2" * 64,
-            action_id="action-1",
+            action_id=action_id,
             attempt_id="attempt-before-restart",
             expected_action_version=claim.action_version,
             expected_attempt_version=0,
@@ -656,8 +658,9 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
             """
             SELECT
                 (SELECT status FROM runs WHERE id = 'run-1'),
-                (SELECT status FROM actions WHERE id = 'action-1');
-            """
+                (SELECT status FROM actions WHERE id = ?);
+            """,
+            (action_id,),
         ).fetchone()
         assert tuple(interrupted_state) == ("WAITING_APPROVAL", "EXECUTED")
     finally:
@@ -693,10 +696,11 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
             """
             SELECT
                 (SELECT status FROM runs WHERE id = 'run-1'),
-                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT status FROM actions WHERE id = ?),
                 (SELECT COUNT(*) FROM execution_attempts),
                 (SELECT COUNT(*) FROM verifications);
-            """
+            """,
+            (action_id,),
         ).fetchone()
         assert tuple(row) == ("COMPLETED", "VERIFIED", 1, 1)
     finally:
@@ -727,6 +731,7 @@ def test_verification_auth_expired_reauths_and_resumes_to_verified_without_repla
         prompt_manifest_path=manifest_path,
     )
     assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    action_id = _sole_persisted_action_id(database_path)
     approved = ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1000,
@@ -734,7 +739,7 @@ def test_verification_auth_expired_reauths_and_resumes_to_verified_without_repla
         ApproveWriteActionCommand(
             command_id="approve-before-verify-reauth",
             request_hash="e" * 64,
-            action_id="action-1",
+            action_id=action_id,
             expected_version=0,
             approved_by_account_id="account-1",
             approved_by_display="User",
@@ -775,9 +780,10 @@ def test_verification_auth_expired_reauths_and_resumes_to_verified_without_repla
             """
             SELECT
                 (SELECT status FROM runs WHERE id = 'run-1'),
-                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT status FROM actions WHERE id = ?),
                 (SELECT COUNT(*) FROM verifications);
-            """
+            """,
+            (action_id,),
         ).fetchone()
         assert tuple(row) == ("REAUTH_REQUIRED", "EXECUTED", 0)
     finally:
@@ -810,10 +816,11 @@ def test_verification_auth_expired_reauths_and_resumes_to_verified_without_repla
             """
             SELECT
                 (SELECT status FROM runs WHERE id = 'run-1'),
-                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT status FROM actions WHERE id = ?),
                 (SELECT COUNT(*) FROM execution_attempts),
                 (SELECT COUNT(*) FROM verifications);
-            """
+            """,
+            (action_id,),
         ).fetchone()
         assert tuple(row) == ("COMPLETED", "VERIFIED", 1, 1)
     finally:
@@ -844,6 +851,7 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
         prompt_manifest_path=manifest_path,
     )
     assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    action_id = _sole_persisted_action_id(database_path)
     approved = ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1000,
@@ -851,7 +859,7 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
         ApproveWriteActionCommand(
             command_id="approve-recovery-reauth",
             request_hash="a" * 64,
-            action_id="action-1",
+            action_id=action_id,
             expected_version=0,
             approved_by_account_id="account-1",
             approved_by_display="User",
@@ -902,8 +910,9 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
             """
             SELECT
                 (SELECT status FROM runs WHERE id = 'run-1'),
-                (SELECT status FROM actions WHERE id = 'action-1');
-            """
+                (SELECT status FROM actions WHERE id = ?);
+            """,
+            (action_id,),
         ).fetchone()
         assert tuple(row) == ("REAUTH_REQUIRED", "UNKNOWN_RESULT")
     finally:
@@ -942,10 +951,11 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
             """
             SELECT
                 (SELECT status FROM runs WHERE id = 'run-1'),
-                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT status FROM actions WHERE id = ?),
                 (SELECT COUNT(*) FROM execution_attempts),
                 (SELECT COUNT(*) FROM verifications);
-            """
+            """,
+            (action_id,),
         ).fetchone()
         assert tuple(row) == ("COMPLETED", "VERIFIED", 1, 1)
     finally:
@@ -976,6 +986,7 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
         prompt_manifest_path=manifest_path,
     )
     assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    action_id = _sole_persisted_action_id(database_path)
     approved = ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1000,
@@ -983,7 +994,7 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
         ApproveWriteActionCommand(
             command_id="approve-before-claim-stall",
             request_hash="e" * 64,
-            action_id="action-1",
+            action_id=action_id,
             expected_version=0,
             approved_by_account_id="account-1",
             approved_by_display="User",
@@ -998,12 +1009,12 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
     # process is simulated to crash before ExecuteWriteActionService (or
     # any terminal execution result) ever runs -- dispatch's delivery is
     # genuinely unknown, not "not sent".
-    runtime._preflight_write(action_id="action-1")  # noqa: SLF001
+    runtime._preflight_write(action_id=action_id)  # noqa: SLF001
     claim = runtime._claim_write(  # noqa: SLF001
         ClaimWriteActionCommand(
             command_id="claim-before-stall",
             request_hash="1" * 64,
-            action_id="action-1",
+            action_id=action_id,
             expected_version=approved.action_version,
             source_snapshot={},
             attempt_id="attempt-before-stall",
@@ -1019,9 +1030,10 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
             """
             SELECT
                 (SELECT status FROM runs WHERE id = 'run-1'),
-                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT status FROM actions WHERE id = ?),
                 (SELECT status FROM execution_attempts WHERE id = 'attempt-before-stall');
-            """
+            """,
+            (action_id,),
         ).fetchone()
         assert tuple(stalled_state) == ("WAITING_APPROVAL", "EXECUTING", "CLAIMED")
     finally:
@@ -1059,10 +1071,11 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
             """
             SELECT
                 (SELECT status FROM runs WHERE id = 'run-1'),
-                (SELECT status FROM actions WHERE id = 'action-1'),
+                (SELECT status FROM actions WHERE id = ?),
                 (SELECT status FROM execution_attempts WHERE id = 'attempt-before-stall'),
                 (SELECT COUNT(*) FROM execution_attempts);
-            """
+            """,
+            (action_id,),
         ).fetchone()
         assert tuple(row) == ("RECOVERY_REQUIRED", "UNKNOWN_RESULT", "UNKNOWN_RESULT", 1)
     finally:
@@ -1148,6 +1161,7 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
 
     started = runtime.start(_start_write_request())
     assert started.outcome is WorkflowOutcome.ACCEPTED
+    action_id = _sole_persisted_action_id(database_path)
     approved = ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1000,
@@ -1155,7 +1169,7 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
         ApproveWriteActionCommand(
             command_id=f"approve-{expected_operation}",
             request_hash="c" * 64,
-            action_id="action-1",
+            action_id=action_id,
             expected_version=0,
             approved_by_account_id="account-1",
             approved_by_display="User",
@@ -1188,7 +1202,9 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
     assert resumed.outcome is WorkflowOutcome.COMPLETED
     connection = connect_sqlite(database_path)
     try:
-        row = connection.execute("SELECT status FROM actions WHERE id = 'action-1';").fetchone()
+        row = connection.execute(
+            "SELECT status FROM actions WHERE id = ?;", (action_id,)
+        ).fetchone()
         assert row[0] == "VERIFIED"
         assert any(call.operation == expected_operation for call in gateway.call_log)
         if recovery_fault is not None:
@@ -1199,47 +1215,25 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
         runtime.close()
 
 
-def test_langgraph_runtime_executes_read_only_plan_to_terminal(
-    tmp_path: Path,
-) -> None:
-    manifest_path = _runtime_active_manifest_path(tmp_path)
-    database_path = _seed_runtime_database(tmp_path)
-    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    gateway = FakeGoogleGateway(snapshot)
-    runtime = _make_runtime(
-        database_path=database_path,
-        llm_payloads=[
-            _action_required_intent(),
-            _selection_output(),
-            _sufficiency_output("SUFFICIENT"),
-            _analysis_output(),
-            _read_plan_output(),
-            _review_output("PASS"),
-        ],
-        gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-read.db",
-        prompt_manifest_path=manifest_path,
-    )
-
-    result = runtime.start(_start_read_request())
-
-    assert result.outcome is WorkflowOutcome.COMPLETED
-    connection = connect_sqlite(database_path)
-    try:
-        counts = connection.execute(
-            """
-            SELECT
-                (SELECT status FROM runs WHERE id = 'run-1') AS run_status,
-                (SELECT status FROM actions WHERE id = 'action-read-1') AS action_status,
-                (SELECT COUNT(*) FROM approvals) AS approval_count,
-                (SELECT COUNT(*) FROM execution_attempts) AS attempt_count,
-                (SELECT COUNT(*) FROM verifications) AS verification_count;
-            """
-        ).fetchone()
-        assert tuple(counts) == ("COMPLETED", "VERIFIED", 0, 0, 0)
-        assert any(call.operation == "get_task" for call in gateway.call_log)
-    finally:
-        connection.close()
+# test_langgraph_runtime_executes_read_only_plan_to_terminal (superseded by
+# the Canonical Planning Production Migration): this scenario paired an
+# ACTION-mode intent (Tool Route always freezes a write output route for
+# ``_action_required_intent()``) with a legacy Planning LLM output that
+# unilaterally downgraded the plan to a single READ action with no writes
+# at all. Legacy ``_validate_frozen_output_routes`` allowed this (it only
+# checks non-READ actions against ``output_routes``, so an all-READ plan
+# skipped that check entirely) -- effectively letting Planning override
+# Tool Route's frozen write decision. Canonical Planning has no such
+# authority: ``PlanningArgumentOrchestrator``/``planning_plan_assembler``
+# always produce exactly one action per frozen output route
+# (``materialize_action_seeds`` requires an exact 1:1 route<->candidate
+# pairing), and ``determine_semantic_routes`` never freezes a READ output
+# route (ACTION mode is only entered when a write effect hint is present).
+# A "plan whose only action is READ reaches COMPLETED with zero
+# approvals/writes" is therefore only reachable when Tool Route itself
+# never freezes an output route in the first place -- i.e. genuinely
+# read-only requests belong to the ANSWER path, which is unaffected by
+# this migration and already covered elsewhere in this suite.
         runtime.close()
 
 

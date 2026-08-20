@@ -13,6 +13,22 @@ from google_work_agent.domain import RunStatus
 RESUME_CONTRACT_VERSION = "resume-contract-v1"
 
 
+class UnroutableSupervisorTargetError(ValueError):
+    """A Supervisor-decided target has no compiled-node mapping for this profile.
+
+    Fail-closed: the caller must route this into Recovery
+    (``CONTRACT_VIOLATION``), never silently reinterpret it as a normal
+    "end" termination.
+    """
+
+    def __init__(self, *, target: str, profile: GraphProfile) -> None:
+        self.target = target
+        self.profile = profile
+        super().__init__(
+            f"unroutable supervisor target {target!r} for graph profile {profile.value!r}"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class RouteTranslation:
     logical_target: str
@@ -228,7 +244,13 @@ class GraphRouteTranslator:
             raise ValueError(f"unsupported graph profile: {self.profile}") from error
 
     def translate(self, target: str) -> RouteTranslation:
-        return _PROFILE_ROUTES.get(self.profile, {}).get(target, RouteTranslation("end", "end"))
+        routes = _PROFILE_ROUTES.get(self.profile)
+        if routes is None:
+            raise UnroutableSupervisorTargetError(target=target, profile=self.profile)
+        translation = routes.get(target)
+        if translation is None:
+            raise UnroutableSupervisorTargetError(target=target, profile=self.profile)
+        return translation
 
     def confirmation_resume_target(self, interrupt_payload: Mapping[str, object]) -> str:
         """Resolve confirmation resume through the compiled owner registry only."""

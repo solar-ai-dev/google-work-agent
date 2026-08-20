@@ -7,11 +7,25 @@ legacy authority before the full PlanningStateV2 migration: an LLM-authored
 expected projection is rebuilt deterministically from the final business
 arguments immediately before the legacy persistence service is invoked.
 
-It also materializes the deterministic Task/Calendar container resolver that
-the canonical Planning subgraph will consume.  The Task-list provider is
-already injected by the legacy runtime; Calendar defaults are resolved from an
-explicit provider or, in the current production composition, the LLM runtime's
-shared SettingsService.
+Note: since the Canonical Planning Production Migration, the ACTION
+assembler (``planning_plan_assembler.assemble_action_plan_draft_v1_compat``)
+already builds this same deterministic projection at *assembly* time -- this
+override is a defensive, idempotent re-derivation of an already-correct
+value immediately before persistence (calling the same pure function twice
+with the same arguments), not a second, potentially-diverging authority. It
+still matters for the ANSWER-only-adjacent revision path and as a
+persistence-boundary safety net; removing it is a separate, optional
+cleanup, not required for migration CLOSED.
+
+Resolving the Task/Calendar container defaults themselves (used to bind the
+per-route selected Tool schema before the canonical Argument Writer ever
+sees it) is owned by the base runtime's own construction -- see
+``runtime.py``'s ``default_tasklist_id_provider``/
+``default_calendar_id_provider`` handling, which is where the
+``PlanningArgumentOrchestrator`` is actually built and injected into
+``PlanningSubgraph``. This subclass only resolves the Calendar default from
+the LLM runtime's shared SettingsService when the caller does not supply one
+explicitly, then forwards it down.
 """
 
 from __future__ import annotations
@@ -25,7 +39,6 @@ from google_work_agent.adapters.langgraph.canonical_runtime import (
 )
 from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.application.workflows.handoff_contracts import ActionPlanDraftV1
-from google_work_agent.application.workflows.planning_arguments import DefaultContainerResolver
 from google_work_agent.application.write_verification_projection import (
     build_expected_verification_projection,
 )
@@ -77,11 +90,8 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
                 default_calendar_id_provider = lambda: getattr(
                     settings_service(), "default_calendar_id", None
                 )
-        self._default_calendar_id_provider = default_calendar_id_provider
-        super().__init__(*args, **kwargs)
-        self._planning_default_container_resolver = DefaultContainerResolver(
-            default_tasklist_id_provider=self._default_tasklist_id_provider,
-            default_calendar_id_provider=self._default_calendar_id_provider,
+        super().__init__(
+            *args, default_calendar_id_provider=default_calendar_id_provider, **kwargs
         )
 
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
