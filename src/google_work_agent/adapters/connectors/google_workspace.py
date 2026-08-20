@@ -24,7 +24,10 @@ from google_work_agent.adapters.mcp.gateway import (
     MCPGmailUiReadGateway,
     MCPGoogleWorkspaceGateway,
 )
-from google_work_agent.adapters.mcp.manifest_guard import ManifestEnforcedMCPTransport
+from google_work_agent.adapters.mcp.manifest_guard import (
+    ManifestEnforcedMCPTransport,
+    RestartableManifestDelegate,
+)
 from google_work_agent.adapters.mcp.oauth import MCPGoogleOAuthCredentialProvider
 from google_work_agent.adapters.mcp.transport import (
     MCPArtifactConfig,
@@ -57,12 +60,12 @@ def build_google_workspace_connector_descriptor(
 
 def _default_transport_factory(
     descriptor: MCPConnectorDescriptor,
-) -> RestartableMCPTransport:
+) -> RestartableManifestDelegate:
     return DeliveryAwareSubprocessMCPTransport(descriptor=descriptor)
 
 
 def _guarded_transport_factory(
-    base_factory: Callable[[MCPConnectorDescriptor], RestartableMCPTransport],
+    base_factory: Callable[[MCPConnectorDescriptor], RestartableManifestDelegate],
 ) -> Callable[[MCPConnectorDescriptor], RestartableMCPTransport]:
     """Wrap every connector transport in immutable-manifest and schema guards."""
 
@@ -91,7 +94,7 @@ class GoogleWorkspaceConnector:
         *,
         descriptor: MCPConnectorDescriptor,
         transport_factory: (
-            Callable[[MCPConnectorDescriptor], RestartableMCPTransport] | None
+            Callable[[MCPConnectorDescriptor], RestartableManifestDelegate] | None
         ) = None,
     ) -> None:
         if descriptor.connector_id != GOOGLE_WORKSPACE_CONNECTOR_ID:

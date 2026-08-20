@@ -28,7 +28,7 @@ from google_work_agent.ports import (
 )
 
 
-class _RestartableManifestDelegate(MCPTransport, Protocol):
+class RestartableManifestDelegate(MCPTransport, Protocol):
     @property
     def service_instance_id(self) -> str: ...
 
@@ -46,7 +46,7 @@ class ManifestEnforcedMCPTransport:
     def __init__(
         self,
         *,
-        delegate: _RestartableManifestDelegate,
+        delegate: RestartableManifestDelegate,
         descriptor: MCPConnectorDescriptor,
         expected_internal_capabilities: tuple[MCPInternalCapability, ...],
     ) -> None:
