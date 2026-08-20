@@ -54,15 +54,30 @@ def build_google_workspace_connector_descriptor(
     )
 
 
-def _build_manifest_enforced_transport(
+def _default_transport_factory(
     descriptor: MCPConnectorDescriptor,
 ) -> RestartableMCPTransport:
-    delegate = DeliveryAwareSubprocessMCPTransport(descriptor=descriptor)
-    return ManifestEnforcedMCPTransport(
-        delegate=delegate,
-        descriptor=descriptor,
-        expected_internal_capabilities=build_google_workspace_internal_capabilities(),
-    )
+    return DeliveryAwareSubprocessMCPTransport(descriptor=descriptor)
+
+
+def _manifest_guarded_factory(
+    base_factory: Callable[[MCPConnectorDescriptor], RestartableMCPTransport],
+) -> Callable[[MCPConnectorDescriptor], RestartableMCPTransport]:
+    """Wrap every connector transport, including DI/test transports, in the same guard."""
+
+    def build(descriptor: MCPConnectorDescriptor) -> RestartableMCPTransport:
+        delegate = base_factory(descriptor)
+        try:
+            return ManifestEnforcedMCPTransport(
+                delegate=delegate,
+                descriptor=descriptor,
+                expected_internal_capabilities=build_google_workspace_internal_capabilities(),
+            )
+        except Exception:
+            delegate.close()
+            raise
+
+    return build
 
 
 class GoogleWorkspaceConnector:
@@ -76,9 +91,10 @@ class GoogleWorkspaceConnector:
     ) -> None:
         if descriptor.connector_id != GOOGLE_WORKSPACE_CONNECTOR_ID:
             raise ValueError("Google Workspace connector descriptor id mismatch")
+        base_factory = transport_factory or _default_transport_factory
         self._runtime = ConnectorMcpRuntime(
             descriptor=descriptor,
-            transport_factory=transport_factory or _build_manifest_enforced_transport,
+            transport_factory=_manifest_guarded_factory(base_factory),
         )
         self._gateway: MCPGoogleWorkspaceGateway | None = None
         self._oauth_provider: MCPGoogleOAuthCredentialProvider | None = None
