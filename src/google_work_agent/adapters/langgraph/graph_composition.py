@@ -8,6 +8,9 @@ from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
+from google_work_agent.adapters.langgraph.checkpoint_secret_boundary import (
+    SecretBoundaryCheckpointer,
+)
 from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 
@@ -91,7 +94,13 @@ class WorkflowGraphComposition:
         self._topology = topology
         self._bindings = bindings
         self._route_next_node = route_next_node
-        self._checkpointer = checkpointer
+        self._checkpointer = (
+            None
+            if checkpointer is None
+            else checkpointer
+            if isinstance(checkpointer, SecretBoundaryCheckpointer)
+            else SecretBoundaryCheckpointer(checkpointer)
+        )
 
     def build(self) -> Any:
         graph = StateGraph(GraphState)

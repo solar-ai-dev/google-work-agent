@@ -5,11 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Callable
-from dataclasses import asdict, dataclass
-from enum import StrEnum
+from collections.abc import Callable, Mapping
+from dataclasses import asdict, dataclass, fields, is_dataclass
+from enum import Enum, StrEnum
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from google_work_agent.ports import (
     AuditEventRecord,
@@ -33,6 +33,10 @@ MAX_PURGE_BATCH = 500
 MAX_LOG_FILE_BYTES = 10 * 1024 * 1024
 MAX_LOG_DIR_BYTES = 200 * 1024 * 1024
 
+# Secret semantics are intentionally centralized here. Persistent sinks must consume
+# these helpers rather than maintaining their own key/value canary lists.
+# Compatibility exports retained for callers/tests that inspect observability policy.
+# Matching itself uses compact semantic keys below, not substring matching.
 FORBIDDEN_KEY_FRAGMENTS = {
     "access_token",
     "refresh_token",
@@ -53,8 +57,78 @@ FORBIDDEN_KEY_FRAGMENTS = {
     "password",
     "credential",
 }
+
+_SECRET_KEY_EXACT = {
+    "accesstoken",
+    "refreshtoken",
+    "idtoken",
+    "apikey",
+    "authorization",
+    "proxyauthorization",
+    "authorizationheader",
+    "cookie",
+    "setcookie",
+    "cookieheader",
+    "bootstrapsecret",
+    "sessionid",
+    "sessionsecret",
+    "pkce",
+    "pkceverifier",
+    "codeverifier",
+    "oauthcode",
+    "clientsecret",
+    "claimtoken",
+    "servicesessionkey",
+    "privatekey",
+    "password",
+    "secret",
+    "credential",
+    "credentials",
+    "connectorcredential",
+    "connectorcredentials",
+    "rawauth",
+    "mcpauth",
+    "providerauth",
+    "connectorauth",
+    "authentication",
+    "authmaterial",
+    "pagetoken",
+    "nextpagetoken",
+    "continuationtoken",
+    "attachmentbytes",
+    "rawattachment",
+    "providerpayload",
+    "rawproviderresponse",
+    "rawproviderrequest",
+    "mcprequest",
+    "mcpresponse",
+}
+_SECRET_KEY_SUFFIXES = (
+    "accesstoken",
+    "refreshtoken",
+    "idtoken",
+    "apikey",
+    "clientsecret",
+    "sessionsecret",
+    "bootstrapsecret",
+    "codeverifier",
+    "pkceverifier",
+    "claimtoken",
+    "servicesessionkey",
+    "privatekey",
+    "credential",
+    "credentials",
+    "pagetoken",
+    "nextpagetoken",
+    "continuationtoken",
+    "attachmentbytes",
+    "rawproviderresponse",
+    "rawproviderrequest",
+    "providerpayload",
+)
 FORBIDDEN_VALUE_FRAGMENTS = {
     "bearer ",
+    # Preserve legacy defense-in-depth canaries, but correctness must not depend on them.
     "canary_refresh_token",
     "canary_api_key",
     "canary_claim_token",
@@ -84,6 +158,25 @@ FORBIDDEN_CONTENT_KEYS = {
     "mcp_response",
     "google_resource",
 }
+_FORBIDDEN_CONTENT_KEYS_COMPACT = {_compact for _compact in (
+    "gmailbody",
+    "draftbody",
+    "prompt",
+    "completion",
+    "approvalsnapshot",
+    "mcprequest",
+    "mcpresponse",
+    "googleresource",
+)}
+_SECRET_ASSIGNMENT_PATTERN = re.compile(
+    r"(?i)(?:access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|"
+    r"session[_-]?secret|bootstrap[_-]?secret|code[_-]?verifier|pkce[_-]?verifier)"
+    r"\s*[:=]\s*\S+"
+)
+_AUTH_HEADER_PATTERN = re.compile(
+    r"(?i)(?:authorization|proxy-authorization|cookie|set-cookie)\s*[:=]\s*\S+"
+)
+_AUTH_SCHEME_PATTERN = re.compile(r"(?i)\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{4,}")
 EMAIL_PATTERN = re.compile(r"([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
 WINDOWS_HOME_PATTERN = re.compile(r"[A-Za-z]:\\Users\\[^\\]+", re.IGNORECASE)
 
@@ -202,13 +295,6 @@ class EventEmissionPolicy:
     required_trace: bool = False
 
 
-@dataclass(frozen=True, slots=True)
-class PurgeResult:
-    trace_deleted: int
-    audit_deleted: int
-    audit_event_written: bool
-
-
 def sanitize_event_attributes(
     attributes: dict[str, object],
     *,
@@ -301,6 +387,36 @@ def serialize_event_envelope(envelope: EventEnvelope) -> str:
     if len(payload_bytes) > MAX_ATTRIBUTE_BYTES:
         raise PayloadTooLargeError("serialized event envelope exceeds 16 KiB limit")
     return payload
+
+
+def sanitize_persistent_event_json(raw: str) -> str:
+    """Scrub JSON immediately before a persistent event/log sink.
+
+    This is defense in depth for callers that bypass ``create_event_envelope``.
+    Invalid JSON is rejected rather than written verbatim.
+    """
+
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, TypeError) as error:
+        raise SanitizationError("persistent event payload must be valid JSON") from error
+    cleaned = _scrub_persistent_json_value(value)
+    return json.dumps(cleaned, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def is_forbidden_persistence_key(key: object) -> bool:
+    """Return whether a field name semantically carries raw secret material."""
+
+    compact = _compact_key(key)
+    if compact in _SECRET_KEY_EXACT or compact in _FORBIDDEN_CONTENT_KEYS_COMPACT:
+        return True
+    return any(compact.endswith(suffix) for suffix in _SECRET_KEY_SUFFIXES)
+
+
+def assert_persistence_value_secret_free(value: object) -> None:
+    """Fail closed before opaque persistence such as LangGraph checkpoints."""
+
+    _assert_secret_free(value, path="$", seen=set())
 
 
 def emit_trace_event(
@@ -425,7 +541,7 @@ def append_operational_log(
 
 
 class SanitizedJsonlLogSink:
-    """UTF-8 JSONL sink with rotation, retention, and directory size caps."""
+    """UTF-8 JSONL sink with secret scrubbing, rotation, retention, and size caps."""
 
     def __init__(
         self,
@@ -439,11 +555,12 @@ class SanitizedJsonlLogSink:
         self._now_ms = now_ms
 
     def append(self, record: OperationalLogRecord) -> None:
+        event_json = sanitize_persistent_event_json(record.event_json)
         self._directory.mkdir(parents=True, exist_ok=True)
         self._cleanup_expired_files()
         path = self._select_target_file()
         with path.open("a", encoding="utf-8", newline="\n") as handle:
-            handle.write(record.event_json)
+            handle.write(event_json)
             handle.write("\n")
         self._enforce_directory_cap()
 
@@ -491,6 +608,13 @@ class StaticMaintenanceGate:
 @dataclass(frozen=True, slots=True)
 class PurgeObservabilityDataCommand:
     now_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class PurgeResult:
+    trace_deleted: int
+    audit_deleted: int
+    audit_event_written: bool
 
 
 class PurgeObservabilityDataService:
@@ -568,14 +692,26 @@ def _sanitize_value(
         return cast(JsonScalar, value)
     if isinstance(value, str):
         return _sanitize_string(value, max_string_bytes=max_string_bytes)
-    if isinstance(value, dict):
+    if isinstance(value, Enum):
+        return _sanitize_value(
+            value.value,
+            path=path,
+            depth=depth,
+            removed_fields=removed_fields,
+            max_collection_items=max_collection_items,
+            max_string_bytes=max_string_bytes,
+        )
+    if isinstance(value, Mapping):
         sanitized: dict[str, JsonValue] = {}
+        attachment_projection = _looks_like_attachment_projection(value)
         for index, (key, item) in enumerate(value.items()):
             if index >= max_collection_items:
                 removed_fields.add(f"{path}[*]")
                 break
             normalized_key = str(key)
-            if _is_forbidden_key(normalized_key):
+            if is_forbidden_persistence_key(normalized_key) or (
+                attachment_projection and _compact_key(normalized_key) == "data"
+            ):
                 removed_fields.add(f"{path}.{normalized_key}")
                 continue
             sanitized[normalized_key] = _sanitize_value(
@@ -603,21 +739,21 @@ def _sanitize_value(
         if len(value) > max_collection_items:
             removed_fields.add(f"{path}[*]")
         return sanitized_items
-    return _sanitize_string(repr(value), max_string_bytes=max_string_bytes)
+    removed_fields.add(path)
+    return "<omitted-object>"
 
 
 def _sanitize_string(value: str, *, max_string_bytes: int) -> str:
     lowered = value.lower()
-    if any(fragment in lowered for fragment in FORBIDDEN_VALUE_FRAGMENTS):
+    if _contains_secret_text(value) or any(
+        fragment in lowered for fragment in FORBIDDEN_VALUE_FRAGMENTS
+    ):
         return "<redacted>"
     sanitized = EMAIL_PATTERN.sub(r"<redacted-email>@\2", value)
     sanitized = WINDOWS_HOME_PATTERN.sub(
         lambda _match: r"C:\Users\<redacted-user>",
         sanitized,
     )
-    for forbidden_key in FORBIDDEN_CONTENT_KEYS:
-        if forbidden_key in lowered:
-            return "<redacted>"
     encoded = sanitized.encode("utf-8")
     if len(encoded) <= max_string_bytes:
         return sanitized
@@ -625,6 +761,109 @@ def _sanitize_string(value: str, *, max_string_bytes: int) -> str:
     return f"{truncated}..."
 
 
+def _scrub_persistent_json_value(value: object) -> JsonValue:
+    if value is None or isinstance(value, (bool, int, float)):
+        return cast(JsonScalar, value)
+    if isinstance(value, str):
+        lowered = value.lower()
+        if _contains_secret_text(value) or any(
+            fragment in lowered for fragment in FORBIDDEN_VALUE_FRAGMENTS
+        ):
+            return "<redacted>"
+        return value
+    if isinstance(value, list):
+        return [_scrub_persistent_json_value(item) for item in value]
+    if isinstance(value, dict):
+        cleaned: dict[str, JsonValue] = {}
+        attachment_projection = _looks_like_attachment_projection(value)
+        for key, item in value.items():
+            normalized_key = str(key)
+            if is_forbidden_persistence_key(normalized_key) or (
+                attachment_projection and _compact_key(normalized_key) == "data"
+            ):
+                continue
+            cleaned[normalized_key] = _scrub_persistent_json_value(item)
+        return cleaned
+    raise SanitizationError("persistent event JSON contains an unsupported value")
+
+
+def _assert_secret_free(value: object, *, path: str, seen: set[int]) -> None:
+    if value is None or isinstance(value, (bool, int, float)):
+        return
+    if isinstance(value, str):
+        if _contains_secret_text(value):
+            raise SanitizationError(f"secret material rejected at {path}")
+        return
+    if isinstance(value, Enum):
+        _assert_secret_free(value.value, path=path, seen=seen)
+        return
+
+    identity = id(value)
+    if identity in seen:
+        return
+    seen.add(identity)
+    try:
+        if isinstance(value, Mapping):
+            attachment_projection = _looks_like_attachment_projection(value)
+            for key, item in value.items():
+                if is_forbidden_persistence_key(key) or (
+                    attachment_projection and _compact_key(key) == "data"
+                ):
+                    raise SanitizationError(f"secret field rejected at {path}.{key}")
+                _assert_secret_free(item, path=f"{path}.{key}", seen=seen)
+            return
+        if isinstance(value, (list, tuple, set, frozenset)):
+            for index, item in enumerate(value):
+                _assert_secret_free(item, path=f"{path}[{index}]", seen=seen)
+            return
+        if is_dataclass(value) and not isinstance(value, type):
+            for item_field in fields(value):
+                if is_forbidden_persistence_key(item_field.name):
+                    raise SanitizationError(
+                        f"secret field rejected at {path}.{item_field.name}"
+                    )
+                _assert_secret_free(
+                    getattr(value, item_field.name),
+                    path=f"{path}.{item_field.name}",
+                    seen=seen,
+                )
+            return
+        if hasattr(value, "model_dump") and callable(value.model_dump):
+            _assert_secret_free(value.model_dump(), path=path, seen=seen)
+            return
+        try:
+            attributes = vars(value)
+        except TypeError as error:
+            raise SanitizationError(
+                f"opaque object cannot cross persistence boundary at {path}"
+            ) from error
+        _assert_secret_free(attributes, path=path, seen=seen)
+    finally:
+        seen.discard(identity)
+
+
+def _contains_secret_text(value: str) -> bool:
+    lowered = value.lower()
+    return bool(
+        _AUTH_SCHEME_PATTERN.search(value)
+        or _AUTH_HEADER_PATTERN.search(value)
+        or _SECRET_ASSIGNMENT_PATTERN.search(value)
+        or "-----begin private key-----" in lowered
+    )
+
+
+def _looks_like_attachment_projection(value: Mapping[object, object]) -> bool:
+    compact_keys = {_compact_key(key) for key in value}
+    return "data" in compact_keys and bool(
+        {"filename", "mimetype", "attachmentid"} & compact_keys
+    )
+
+
+def _compact_key(value: object) -> str:
+    return "".join(character for character in str(value).casefold() if character.isalnum())
+
+
 def _is_forbidden_key(key: str) -> bool:
-    normalized = key.replace("-", "_").replace(" ", "_").lower()
-    return any(fragment in normalized for fragment in FORBIDDEN_KEY_FRAGMENTS)
+    """Backward-compatible alias for the centralized persistence-key classifier."""
+
+    return is_forbidden_persistence_key(key)
