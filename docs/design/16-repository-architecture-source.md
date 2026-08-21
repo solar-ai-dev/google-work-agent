@@ -1,41 +1,11 @@
 # Google Work Agent — Repository Architecture Source
 
 > **Status:** CANONICAL_FOR_REFACTOR  
-> **Version:** 1.1  
+> **Version:** 1.3  
 > **Effective:** 2026-08-22  
-> **Scope owner:** repository placement, module responsibility, naming grammar, dependency direction, semantic ownership, single production authority, refactor procedure, architecture enforcement.  
-> **Behavioral semantics remain owned by 01–15, Domain State Transition Contract, State Transition Test Matrix, and executable Domain/SQL constraints.**
+> **Scope owner:** repository placement, module responsibility, naming grammar, repository import/export dependency realization and enforcement, semantic ownership, single production authority, refactor procedure, architecture enforcement.
 
----
-
-# 0. Mandatory Agent Entry Rule
-
-Before creating, editing, moving, or deleting production code:
-
-1. Resolve the semantic capability from the specification/domain term.
-2. Resolve the canonical semantic owner.
-3. Resolve the layer.
-4. Resolve the canonical operation verb.
-5. Resolve the canonical path, filename, and symbol grammar.
-6. Resolve the mirror unit-test path.
-7. Search the repository semantically, not only by filename.
-8. Identify every existing implementation and every production caller of the same capability.
-9. If the current implementation is in the wrong place/name, move/split/merge/delete it; do not create a parallel authority.
-10. Preserve semantic behavior unless a separate concern-specific canonical contract requires a behavior change.
-
-**Current code placement is not architectural authority.**
-
-If a task would create a second live implementation, stop with:
-
-```text
-SEMANTIC_AUTHORITY_COLLISION
-```
-
-and report existing implementation(s), actual production caller, canonical target location, and the required MOVE / SPLIT / MERGE / DELETE plan.
-
----
-
-# 1. Repository Invariants
+## Mandatory invariants
 
 ```text
 DIRECTORY TELLS OWNERSHIP
@@ -44,29 +14,16 @@ IMPORT TELLS DEPENDENCY DIRECTION
 ONE CAPABILITY HAS ONE PRODUCTION AUTHORITY
 ```
 
-A production file has one semantic reason to change.
+## Frozen convention decisions
 
-A semantic capability has exactly one live production owner.
+- Domain organization follows **canonical semantic owner**, not DB aggregate-root grouping.
+- Domain lifecycle transitions and guards use **operation-per-file**; broad `commands.py` / `transitions.py` buckets are not final production structure.
+- Application command/query use cases use **`<Verb><Object>Handler` classes** with colocated Command/Query + Result in one capability file.
+- Contract types are **owner-local**; there is no global catch-all `contracts/` package.
+- `_compat` may exist only transiently on a structural-refactor integration branch and must be **zero on `main`**.
+- Workflow v7.22 / Prompt Contract v1.28의 atomic LLM responsibility는 repository에서도 operation-per-file로 표현한다. `work_analysis`, `planning`, `review`의 서로 다른 semantic LLM responsibility를 하나의 `analyze.py`, `planning.py`, `review.py` 같은 broad production module로 다시 합치지 않는다.
 
----
-
-# 2. Frozen Convention Decisions
-
-The following decisions are closed for structural refactoring:
-
-1. Domain organization follows **canonical semantic owner**, not DB aggregate-root grouping.
-2. Domain lifecycle transitions and guards use **operation-per-file**; broad final-production `commands.py` / `transitions.py` buckets are prohibited for multiple independent lifecycle capabilities.
-3. Application command/query use cases use **`<Verb><Object>Handler` classes**. Command/Query + Result + Handler for one capability are colocated in one capability file.
-4. Contract types are **owner-local**. A global catch-all `contracts/` package is prohibited.
-5. `_compat` is allowed only transiently on a structural-refactor integration branch and must be **zero on `main`**.
-
----
-
-# 3. Deterministic Spec → Code Translation
-
-Never begin with “which existing filename looks similar?”
-
-Use:
+## Deterministic spec-to-code rule
 
 ```text
 SPEC TERM
@@ -80,41 +37,11 @@ SPEC TERM
 → TEST PATH
 ```
 
-Example:
+Current code placement is never architecture authority. Before adding production code, search semantically for every existing implementation and production caller. If a second live implementation would be created, stop with `SEMANTIC_AUTHORITY_COLLISION`.
 
-```text
-BlockRun
-→ run
-→ Application Use Case
-→ block
-→ application/use_cases/run/block_run.py
-→ BlockRunCommand / BlockRunResult / BlockRunHandler
-→ tests/unit/application/use_cases/run/test_block_run.py
-```
+## Canonical semantic vocabulary
 
-Example:
-
-```text
-Work Analysis / validate relations / node
-→ work_analysis
-→ LangGraph adapter
-→ adapters/langgraph/subgraphs/work_analysis/nodes/validate_relations_node.py
-→ validate_relations_node()
-```
-
-Example:
-
-```text
-Google / Gmail / Draft / CREATE
-→ adapters/connectors/google/gmail/drafts/create_draft.py
-→ CreateDraftOperation
-```
-
----
-
-# 4. Canonical Vocabulary
-
-## 4.1 Domain / lifecycle semantic owners
+Domain/lifecycle owners:
 
 ```text
 conversation
@@ -133,11 +60,7 @@ command_receipt
 policy_confirmation_receipt
 ```
 
-Do not introduce synonyms when a canonical term exists. In particular, do not use `job` for Run, `task` for Action, or a generic `resource` when the semantic type is `ResourceRef`.
-
-Google Tasks `Task` remains the Provider resource noun and is not renamed.
-
-## 4.2 Six Agent semantic owners
+Agent owners:
 
 ```text
 request_understanding
@@ -148,45 +71,23 @@ planning
 review
 ```
 
-Canonical display role is **Tool Routing** and package owner is `tool_routing`. Existing contract artifact `ToolRoutePlanV2` remains unchanged.
+Do not replace these with synonyms such as `job`, `manager`, `processor`, or generic `runtime` terminology.
 
-## 4.3 Qualified Event names
+## Canonical operation vocabulary
 
-Bare `Event` is prohibited because several event concepts coexist. Use an explicit qualifier such as:
-
-```text
-CalendarEvent
-TraceEvent
-AuditEvent
-WorkflowEvent
-SSEEvent
-```
-
-## 4.4 Approval vs Claim authority
-
-`Approval`, `ApprovalSnapshot`, and `claim_token` are distinct. `approval_token` must not be used as execution authority. Claim authority remains the Claim contract.
-
----
-
-# 5. Operation Vocabulary
-
-## 5.1 Resource / external operations
+External/resource operations:
 
 ```text
-get       exact single lookup by identity/reference
-list      collection/container enumeration
-search    condition-based candidate retrieval
-create    new external resource
-update    mutation of an existing external resource
-delete    removal effect
-send      message send effect
+get
+list
+search
+create
+update
+delete
+send
 ```
 
-`query` is reserved for query-plan/schema concepts and is not a synonym for arbitrary external reads.
-
-## 5.2 Domain lifecycle verbs
-
-Preserve the canonical state-transition vocabulary:
+Domain lifecycle verbs preserve the state-transition contract:
 
 ```text
 start
@@ -212,185 +113,106 @@ finalize
 require
 ```
 
-Examples such as `StartRun`, `BlockRun`, `ApproveAction`, `ClaimExecution`, `MarkUnknownResult`, `PrepareWriteRetry`, `FinalizeCancel`, and `ResolveRecovery` remain canonical semantic names.
-
-## 5.3 Deterministic transform verbs
+Deterministic transform verbs:
 
 ```text
-validate   check contract/invariant validity
-resolve    deterministically determine meaning/target
-build      construct a low-level artifact from inputs
-assemble   compose prepared artifacts into a higher artifact
-map        translate one representation to another
-normalize  preserve meaning while canonicalizing representation
-project    select an allowlisted downstream view
-route      deterministically select the next target
-persist    perform persistence
-publish    make a durable lifecycle artifact active/available
+validate
+resolve
+build
+assemble
+map
+normalize
+project
+route
+persist
+publish
 ```
 
-Ambiguous semantic operation names are prohibited:
+Ambiguous semantic operation names are prohibited: `handle`, `process`, `manage`, `perform`, `do`, `run`, `helper`, `util`, `common`.
+
+## Artifact taxonomy
+
+Use the artifact name that states the actual role; generic `DTO` naming is prohibited.
 
 ```text
-handle
-process
-manage
-perform
-do
-run
-helper
-util
-common
+Command   state-changing application input
+Query     read-only application input
+Result    use-case outcome
+Request/Response external wire/API boundary only
+Candidate unvalidated local intermediate
+Draft     reviewable/proposable artifact
+Snapshot  immutable point-in-time binding
+Projection allowlisted downstream view
+Receipt   durable evidence of an applied command/user decision
+Ref       stable identity/reference
+Handle    runtime-local opaque lookup
+Policy    product allow/deny rule
+Guard     domain transition precondition
+Validator artifact/contract validity check
+Resolver  deterministic meaning/target resolution
+Builder   low-level artifact construction
+Assembler composition of prepared artifacts
+Mapper    representation translation
+Normalizer canonical representation transform
+Registry  registered-set lookup authority
+Repository persistence abstraction only
+Port      outbound/inbound boundary abstraction
+Adapter   concrete Port implementation only
 ```
 
----
+`Factory` is exceptional and allowed only for true runtime-selected implementation creation.
 
-# 6. Artifact Taxonomy
+## Placement grammar
 
-Generic `DTO` naming is prohibited. Use the actual artifact role.
-
-```text
-Command      state-changing Application input
-Query        read-only Application input
-Result       Use Case outcome
-Request      external/wire request boundary
-Response     external/wire response boundary
-Candidate    unvalidated local intermediate
-Draft        reviewable/proposable artifact
-Snapshot     immutable point-in-time binding
-Projection   allowlisted downstream view
-Receipt      durable evidence of applied command/user decision
-Ref          stable identity/reference
-Handle       runtime-local opaque lookup
-Policy       product allow/deny rule
-Guard        Domain transition precondition
-Validator    artifact/contract validity check
-Resolver     deterministic meaning/target resolution
-Builder      low-level artifact construction
-Assembler    composition of prepared artifacts
-Mapper       representation translation
-Normalizer   semantic-preserving canonicalization
-Registry     registered-set lookup authority
-Repository   persistence abstraction only
-Port         boundary abstraction
-Adapter      concrete Port implementation only
-```
-
-`Factory` is exceptional and may be used only when a true runtime-selected implementation must be created.
-
----
-
-# 7. Canonical Placement Grammar
-
-## 7.1 Domain
-
-```text
-domain/<owner>/model.py
-domain/<owner>/status.py
-domain/<owner>/transitions/<verb>_<object>.py
-domain/<owner>/guards/<verb>_<object>.py
-domain/<owner>/invariants/<semantic_rule>.py
-```
-
-`model.py` / `status.py` are architecture-role files and may collect one owner’s model/status definitions. Independent lifecycle operations do not share one final-production transition bucket.
-
-## 7.2 Application use case
+Application use case:
 
 ```text
 application/use_cases/<owner>/<verb>_<object>.py
-```
-
-Primary symbols:
-
-```text
-<Verb><Object>Command | <Verb><Object>Query
+<Verb><Object>Command | Query
 <Verb><Object>Result
 <Verb><Object>Handler
 ```
 
-One capability file may contain its Command/Query, Result, and Handler. Do not split those into three files unless a later explicit contract requires it.
-
-## 7.3 Owner-local contracts
-
-Contracts live with the semantic owner, for example:
+Domain transition:
 
 ```text
-application/agents/request_understanding/contracts/request_intent.py
-application/agents/tool_routing/contracts/tool_route_plan.py
-application/agents/retrieval/contracts/retrieval_result.py
-application/agents/work_analysis/contracts/work_analysis_result.py
-application/orchestration/contracts/workflow_signal.py
+domain/<owner>/transitions/<verb>_<object>.py
 ```
 
-Do not create a global miscellaneous `contracts/` bucket.
+Domain guard:
 
-## 7.4 Agent semantics
+```text
+domain/<owner>/guards/<verb>_<object>.py
+```
+
+Agent semantics:
 
 ```text
 application/agents/<role>/
 ```
 
-Business/semantic computation belongs here, not in LangGraph adapter nodes.
-
-## 7.5 LangGraph
-
-Main graph:
+LangGraph adapter:
 
 ```text
-adapters/langgraph/main/graph.py
-adapters/langgraph/main/state.py
-adapters/langgraph/main/routing.py
-```
-
-Role subgraph:
-
-```text
-adapters/langgraph/subgraphs/<role>/graph.py
-adapters/langgraph/subgraphs/<role>/state.py
-adapters/langgraph/subgraphs/<role>/routing.py
+adapters/langgraph/main/{graph,state,routing}.py
+adapters/langgraph/subgraphs/<role>/{graph,state,routing}.py
 adapters/langgraph/subgraphs/<role>/nodes/<verb>_<object>_node.py
 ```
 
-A LangGraph node is only:
-
-```text
-typed input projection
-→ application semantic call
-→ typed owner-field patch
-→ optional WorkflowSignal
-```
-
-## 7.6 Persistence
+Persistence:
 
 ```text
 ports/persistence/<owner>_repository.py
 adapters/persistence/sqlite/repositories/<owner>_repository.py
 ```
 
-Symbols:
-
-```text
-<Owner>Repository
-SQLite<Owner>Repository
-```
-
-Repository means persistence only; it does not own workflow/application semantics.
-
-## 7.7 Connector operation
+Connector operation:
 
 ```text
 adapters/connectors/<provider>/<product>/<resource>/<verb>_<resource>.py
 ```
 
-Primary symbol:
-
-```text
-<Verb><Resource>Operation
-```
-
-A connector operation file owns one operation. `search_messages.py` cannot also own create/update/delete.
-
-## 7.8 API
+API:
 
 ```text
 api/routes/<plural_resource>.py
@@ -398,21 +220,13 @@ api/schemas/<plural_resource>/<verb>_<object>.py
 api/dependencies/<concern>.py
 ```
 
-REST route collection files may aggregate route declarations for one transport resource. API owns transport and schema validation, not business semantics.
+## Workflow repository naming normalization
 
-## 7.9 Launcher
+Repository semantic owner/package is `Tool Routing` / `tool_routing`; existing contract artifact `ToolRoutePlanV2` remains unchanged.
 
-```text
-launcher/composition.py
-```
+Versioned runtime identifiers and PromptRef IDs remain owned by 06 Workflow / 15 Prompt·Failure and are **not silently renamed by this document**. Workflow v7.22 / Prompt Contract v1.28 now explicitly version the heavy-Agent atomic responsibility IDs; Repository Architecture v1.3 maps those same semantic capabilities to canonical repository owner/path/file/symbol names. `planning.compose_dependencies` does not exist as a Product Prompt/LLM authority; dependency construction is deterministic `planning.build_dependencies`.
 
-Launcher composes dependencies only.
-
----
-
-# 8. Workflow Naming Normalization
-
-Repository/node implementation naming uses the following canonical namespaces while preserving behavioral semantics from 06 Workflow:
+The following list defines canonical repository implementation capability labels aligned with the currently versioned 06/15 semantic IDs:
 
 ```text
 request_understanding.identify_goal
@@ -436,100 +250,39 @@ retrieval.assess_sufficiency
 retrieval.finalize_retrieval
 
 work_analysis.extract_work_facts
-work_analysis.resolve_relations
+work_analysis.resolve_entity_relations
+work_analysis.resolve_temporal_dependencies
+work_analysis.detect_duplicate_conflict_candidates
 work_analysis.validate_relations
-work_analysis.assess_analysis_gaps
-work_analysis.assemble_analysis
-work_analysis.validate_analysis
+work_analysis.assess_information_gaps
+work_analysis.assess_operational_risks
+work_analysis.assemble_work_analysis
+work_analysis.validate_work_analysis
 
 planning.choose_answer_or_action_from_route
+planning.outline_answer
 planning.compose_answer
+planning.draft_action_objective_per_output_route
 planning.compose_arguments_per_output_route
 planning.build_dependencies
 planning.assemble_plan
 planning.validate_plan
 
-review.inspect_plan
+review.inspect_goal_and_evidence
+review.inspect_action_scope_and_route
+review.inspect_constraints_and_policy_summary
+review.aggregate_review_findings
 review.validate_review
-review.recheck_plan
+review.recheck_affected_dimensions
 ```
 
-Planning dependency construction is deterministic. `planning.compose_dependencies` is not a Product Prompt/LLM authority. Repository implementation uses `planning.build_dependencies` semantics for this deterministic step.
+A LangGraph node is a thin adapter only: typed projection → application call → typed owner-field patch → optional WorkflowSignal.
 
----
+## Naming restrictions
 
-# 9. Naming Grammar
+Contract symbol versioning is allowed (`RequestIntentV2`, `WorkAnalysisResultV2`). Production implementation module generation/version naming is prohibited.
 
-## 9.1 Python
-
-```text
-package / module / function / variable → snake_case
-class / type                         → PascalCase
-constant / enum value / error code   → UPPER_SNAKE_CASE
-```
-
-Enum type names do not use an `Enum` suffix.
-
-Exceptions follow:
-
-```text
-<Subject><Condition>Error
-```
-
-Avoid broad business errors such as `ProcessingError` or `RuntimeError` as semantic catch-alls.
-
-## 9.2 Package singular/plural
-
-- Domain/Application semantic owner packages: singular.
-- REST route collections: plural.
-- Provider resource packages: Provider-natural plural nouns are allowed.
-
-## 9.3 Field suffixes
-
-```text
-<entity>_id
-*_ref / *_refs
-*_handle / *_handles
-*_hash
-*_version
-*_at_ms
-```
-
-Use predicate prefixes (`is_`, `has_`, `can_`, `should_`) for new boolean fields when applicable. Existing canonical fields such as Domain Command Result `applied` remain unchanged.
-
-## 9.4 Constants
-
-Use `UPPER_SNAKE_CASE`. Equal numeric values with different semantic purposes remain separate constants.
-
----
-
-# 10. Versioning and Forbidden Production Names
-
-Contract symbol versioning is allowed:
-
-```text
-RequestIntentV2
-ToolRoutePlanV2
-WorkAnalysisResultV2
-CommandResponseV1
-```
-
-Production implementation module generation/version naming is prohibited:
-
-```text
-canonical_*.py
-production_*.py
-legacy_*.py
-new_*.py
-old_*.py
-final_*.py
-*_v2.py
-*_v3.py
-*_r2.py
-*_r21.py
-```
-
-Generic production filenames are prohibited unless explicitly listed as architecture-role exceptions:
+Final production filenames must not use:
 
 ```text
 runtime.py
@@ -545,97 +298,32 @@ util.py
 common.py
 shared.py
 misc.py
+canonical_*.py
+production_*.py
+legacy_*.py
+new_*.py
+old_*.py
+final_*.py
+*_v2.py
+*_v3.py
+*_r2.py
+*_r21.py
 ```
 
-Explicit architecture-role filename exceptions:
+Explicit architecture-role exceptions: `state.py`, `graph.py`, `routing.py`, `model.py`, `composition.py`.
 
-```text
-state.py
-graph.py
-routing.py
-model.py
-composition.py
-```
+## Package and symbol rules
 
-An exception filename does not permit mixed semantic responsibilities.
+- Domain/Application semantic owner packages are singular.
+- REST collection routes are plural.
+- Provider resource packages may use the Provider's natural plural resource noun.
+- Cross-owner production imports use absolute package imports.
+- `__init__.py` is empty by default; only stable public contracts/Ports may be explicitly re-exported. Concrete production authority must remain directly importable from its owner module.
+- Bare `Event` is prohibited: use `CalendarEvent`, `TraceEvent`, `AuditEvent`, `WorkflowEvent`/`SSEEvent` as applicable.
+- `Approval`/`ApprovalSnapshot` and `claim_token` are distinct. `approval_token` must not be used as execution authority.
+- `Ref` means stable reference; `Handle` means runtime-local opaque lookup.
 
----
-
-# 11. Import / Export / Dependency Direction
-
-```text
-API / LangGraph
-      ↓
-Application
-   ├──→ Domain
-   └──→ Ports
-          ↑
-   Outbound Adapters
-
-Launcher → composition only
-```
-
-Allowed:
-
-```text
-Domain      → Domain
-Ports       → Domain/stable contracts
-Application → Domain + Ports
-API         → Application + stable contracts
-LangGraph   → Application + stable contracts/Ports as explicitly required
-Persistence → Ports + Domain
-Connector   → connector Ports + stable contracts
-LLM Adapter → LLM Ports
-Launcher    → all layers for composition only
-```
-
-Forbidden:
-
-```text
-Domain      → Application / Adapter / API
-Application → concrete Adapter
-Application → provider SDK
-LangGraph   → SQLite repository implementation
-LangGraph   → Google/provider SDK/API
-LangGraph   → concrete MCP transport
-LangGraph   → Domain transition implementation
-Persistence → Application use case/workflow
-Connector   → Application workflow
-Production  → Evaluation
-```
-
-Cross-owner production imports use absolute package imports.
-
-`__init__.py` is empty by default. Only stable public contracts/Ports may be deliberately re-exported. Concrete production authority remains directly importable from its owner module so caller tracing is explicit.
-
----
-
-# 12. MCP / API / DB / Migration Naming
-
-Existing MCP wire Tool IDs are external/internal interface contract identifiers and are not renamed merely for repository refactoring. Python implementation paths map those IDs to canonical connector operation modules.
-
-DB naming preserves existing schema compatibility:
-
-```text
-table          plural_snake_case
-column         snake_case
-foreign key    <entity>_id
-JSON column    <meaning>_json
-hash column    <meaning>_hash
-timestamp      <meaning>_at_ms
-```
-
-Migration filenames:
-
-```text
-NNNN_<semantic_change>.sql
-```
-
-Applied migrations are immutable. Structural refactoring never renames or rewrites applied migration history.
-
----
-
-# 13. Test / Fixture Grammar
+## Test and migration grammar
 
 Unit tests mirror production ownership:
 
@@ -644,44 +332,36 @@ src/.../<verb>_<object>.py
 → tests/unit/.../test_<verb>_<object>.py
 ```
 
-Test function grammar:
+Test functions:
 
 ```text
 test_<operation>_<object>__<condition>__<expected>
 ```
 
-Existing `TST-<AREA>-<NNN>` identifiers remain traceability IDs; they do not become production filenames.
+Existing `TST-<AREA>-<NNN>` traceability IDs remain unchanged.
 
-Code fixtures:
-
-```text
-tests/fixtures/<area>/<semantic_noun>.py
-make_<noun>()
-```
-
-Static provider fixture data:
+Migrations:
 
 ```text
-tests/fixtures/data/<provider>/<resource>/<scenario>.<ext>
+NNNN_<semantic_change>.sql
 ```
 
-Evaluation datasets remain separate from production test fixtures.
+Applied migrations are immutable and must never be renamed or rewritten for structural refactoring.
 
----
+## Repository dependency realization
 
-# 14. Single Production Authority / Compat
-
-For every semantic capability the project must be able to answer:
+System/layer dependency semantics are owned by 03 Architecture. This section defines their repository import/export realization and enforcement and may not relax 03.
 
 ```text
-What is the one production owner module?
-Who calls it?
-Which Domain owner/fact does it mutate?
-Which Port does it depend on?
-Which Adapter implements the Port?
+API / LangGraph → Application → Domain + Ports ← Outbound Adapters
+Launcher → composition only
 ```
 
-A migration is complete only when:
+Forbidden includes Domain→Application/Adapter/API, Application→concrete Adapter/provider SDK, LangGraph→SQLite implementation/provider SDK/concrete MCP transport/Domain transition implementation, Persistence→Application workflow, Connector→Application workflow, Production→Evaluation.
+
+## Single production authority
+
+A capability migration is complete only when:
 
 ```text
 new canonical owner is live
@@ -691,84 +371,27 @@ new canonical owner is live
 + tests target canonical owner
 ```
 
-“New implementation exists” is not completion.
+`_compat` is forbidden on `main`.
 
-`_compat` may exist transiently only on the structural-refactor integration branch. `_compat` on `main` is prohibited.
+## Documentation authority boundary
 
-Patch-stack inheritance and permanent compatibility wrapper chains are not accepted final architecture.
+This source owns **where/how code is named and placed, repository import/export enforcement, and production-authority uniqueness**. It does not redefine behavioral semantics owned by 01–15, Domain State Transition Contract, Test Matrix, or executable SQL constraints.
 
----
+02 continues to own UI·UX behavior. 03 continues to own system/layer dependency semantics. 06/15 continue to own versioned runtime Agent/Node/Prompt identifiers; 16 only maps those semantics to repository owner/path/file/symbol conventions unless the owning runtime contract is explicitly versioned. Workflow v7.22 / Prompt Contract v1.28 explicitly version the heavy-Agent atomic responsibility topology; therefore Repository Architecture v1.3 maps those semantic responsibilities to distinct repository operation files without creating a second production authority.
 
-# 15. Architecture Exception Registry
+Detailed subordinate pages under this Source are normative detail but are not separate Project Source entries:
 
-Architecture exceptions are closed-by-default. Any new exception must explicitly record:
-
-```text
-rule being excepted
-exact path/symbol
-semantic reason
-authority owner
-scope
-removal condition or permanent rationale
-approval date
-```
-
-Undocumented exceptions are violations.
-
----
-
-# 16. Mandatory Semantic Search Before Refactor
-
-Do not search only for similar names. To find every implementation of a capability, inspect as applicable:
-
-- writers of the same Domain fact/aggregate,
-- writers of the same Main State owner field,
-- callers of the same repository mutation,
-- implementations of the same external effect,
-- handlers of the same transition/result enum,
-- exports with equivalent semantics,
-- production caller chains,
-- tests that exercise the same semantic outcome.
-
-Only after that search may MOVE / SPLIT / MERGE / DELETE begin.
-
----
-
-# 17. Documentation Authority Boundary
-
-This Source owns **where code lives, what repository/module/symbol names mean, dependency direction, and production-authority uniqueness**.
-
-It does **not** redefine:
-
-- product scope or goals → 01,
-- user behavior → 01-A,
-- safety/approval policy → 01-B,
-- system behavioral boundary → 03,
-- persisted facts/state transition semantics → 04 + State Contract + SQL,
-- Retrieval semantics → 05,
-- Agent/Workflow behavior → 06,
-- API/MCP wire contract → 07,
-- sequence behavior → 08,
-- security → 09,
-- infrastructure → 10,
-- observability event semantics → 11,
-- behavioral regression requirements → 12,
-- evaluation → 13,
-- operations → 14,
-- Prompt/Failure semantics → 15.
-
-When an older document uses a historical implementation/module label, `16` normalizes repository naming without changing the behavioral semantic owned by that document.
-
----
-
-# 18. Full Canonical Detail
-
-Normative subordinate detail lives under:
-
-```text
-/docs/design/16-repository-architecture/
-```
-
-Subordinate detail files are not separate Project Source entries. The single Project Source entrypoint is this file.
-
-Read the detail manifest in `16-repository-architecture/00-README.md`.
+- [00. Authority · Read Order](16-repository-architecture/00-README.md)
+- [01. Spec → Code Deterministic Mapping](16-repository-architecture/01-spec-to-code-mapping.md)
+- [02. Directory Ownership](16-repository-architecture/02-directory-ownership.md)
+- [03. Naming Grammar](16-repository-architecture/03-naming-grammar.md)
+- [04. Artifact Taxonomy](16-repository-architecture/04-artifact-taxonomy.md)
+- [05. Dependency · Import · Export Rules](16-repository-architecture/05-dependency-import-export-rules.md)
+- [06. LangGraph · State Ownership](16-repository-architecture/06-langgraph-state-ownership.md)
+- [07. Connector · API · Persistence Grammar](16-repository-architecture/07-connector-api-persistence-grammar.md)
+- [08. Single Production Authority · Compat](16-repository-architecture/08-single-authority-compat.md)
+- [09. Test · Fixture · Migration Grammar](16-repository-architecture/09-test-fixture-migration-grammar.md)
+- [10. Error · Event · Configuration Naming](16-repository-architecture/10-error-event-configuration-naming.md)
+- [11. Structural Refactor Playbook](16-repository-architecture/11-refactor-playbook.md)
+- [12. Architecture Enforcement](16-repository-architecture/12-architecture-enforcement.md)
+- [13. Exception Registry](16-repository-architecture/13-exception-registry.md)
