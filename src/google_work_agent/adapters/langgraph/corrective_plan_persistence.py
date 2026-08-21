@@ -143,8 +143,8 @@ def persist_reserved_corrective_write_plan(
         plan_draft=deterministic_plan,
     )
     persisted_connector_ids = {
-        action_id_map[action_id]: connector_id
-        for action_id, connector_id in logical_connector_ids.items()
+        action_id_map[action_id]: logical_connector_ids[action_id]
+        for action_id in logical_action_ids
     }
     target_resource_connectors = target_resource_connector_ids_from_actions(
         plan_draft=deterministic_plan,
