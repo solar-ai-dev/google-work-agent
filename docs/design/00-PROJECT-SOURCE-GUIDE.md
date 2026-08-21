@@ -2,7 +2,7 @@
 
 ## 목적
 
-이 묶음은 설계 검토·구현 질의·실험/평가 검토에 사용하는 **Canonical 프로젝트 소스 25개**다.  
+이 묶음은 설계 검토·구현 질의·실험/평가 검토에 사용하는 **Canonical 프로젝트 소스 26개**다.  
 공식 원본은 **Notion Canonical**이며 이 Markdown 묶음은 **2026-08-19 Conversation · Run Context Isolation + Team UI/History + Prompt Runtime Contract Closure 정합화 이후 Export Snapshot**이다.
 
 ## 문서 권위·책임 소유 규칙
@@ -24,10 +24,15 @@ Tool·MCP·내부 Interface → 07
 후보 비교·실험          → 13
 운영                    → 14
 Prompt·Failure 정규화   → 15
+Repository 구조·코드 조직·Naming·의존 방향·Production Authority 유일성 → 16 Repository Architecture
 ```
 
 같은 Concern에서는 해당 소유 계약과 실행 가능한 Domain/SQL Constraint가 우선한다.  
 `00-A/00-B/00-C`와 변경 이력은 설명·요약·역사 자료이며 규범 권위가 아니다.
+
+Semantic behavior는 기존 concern owner와 executable Domain/SQL Constraint가 계속 소유한다.  
+**파일 위치, 모듈 책임, 네이밍 문법, import 의존 방향, 동일 capability의 production authority 유일성은 `16-repository-architecture-source.md`가 소유한다.**  
+현재 코드의 위치나 이름이 16번 규칙과 충돌하면 현재 구현 위치를 authority로 간주하지 않고 **구조 migration debt**로 판정한다.
 
 ## 현재 Canonical 기준 — 2026-08-19
 
@@ -39,6 +44,7 @@ Prompt·Failure 정규화   → 15
 - Test **v3.39** / Evaluation **v3.26** / Operations **v2.20**
 - Agent Capability·Failure·Prompt **v1.26**
 - Domain State Transition **v1.5** / State Transition Test Matrix **v1.5**
+- Repository Architecture Contract **v1.0 — CANONICAL_FOR_REFACTOR**
 - Dataset candidate: `rebuild-v1.17-r8.6-phase7.5-contract-correction`
 - Projection candidate: `projection-v1.1-r8.6-phase7.5`
 - Current Runtime-aligned Prompt candidate: `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`
@@ -88,7 +94,16 @@ Prompt·Failure 정규화   → 15
 - raw continuation은 현재 Run의 Run Retrieval Cache read-result entry만 memory-only로 소유한다.
 - Retrieval V2를 별도 재구현하지 않는다.
 
-## 프로젝트 소스 25개 구성
+## Repository Architecture Canonical 확장 — 2026-08-22
+
+- 프로젝트 소스에는 `16-repository-architecture-source.md` **한 파일만 추가**한다.
+- 세부 규범은 `/docs/design/16-repository-architecture/` 아래에 책임별 문서로 분리한다.
+- 세부 문서는 Project Source 개수에 각각 추가하지 않는다. `16-repository-architecture-source.md`가 프로젝트 소스용 단일 entrypoint이며 세부 문서를 가리킨다.
+- Agent는 구현 전 `SPEC TERM → CANONICAL DOMAIN TERM → LAYER → OWNER PACKAGE → OPERATION → FILE → SYMBOL` 순서로 위치와 이름을 결정한다.
+- 현재 파일명만 보고 기능 부재를 판정하지 않는다. 동일 aggregate mutation, state writer, repository mutation, external effect, transition/result, caller chain까지 semantic search한다.
+- 동일 capability의 기존 production authority가 발견되면 새 병렬 구현을 만들지 않고 `SEMANTIC_AUTHORITY_COLLISION`으로 중단한다.
+
+## 프로젝트 소스 26개 구성
 
 1. `00-PROJECT-SOURCE-GUIDE.md`
 2. `0001_initial.sql`
@@ -115,6 +130,22 @@ Prompt·Failure 정규화   → 15
 23. `15-agent-capability-failure-prompt-contract.md`
 24. `state-transition-contract-v1.4.md`
 25. `state-transition-test-matrix-v1.4.md`
+26. `16-repository-architecture-source.md`
 
 상태 전이 파일명은 Repository 호환성 때문에 `v1.4` 문자열을 유지하지만 본문 Canonical은 **v1.5**다.  
 적용 Migration `0001~0005`는 이력/checksum Artifact이므로 소급 수정하지 않는다.
+
+### 16번 세부 문서 위치
+
+```text
+/docs/design/16-repository-architecture/
+├── 00-README.md
+├── 01-spec-to-code-mapping.md
+├── 02-directory-ownership.md
+├── 03-naming-grammar.md
+├── 04-dependency-direction.md
+├── 05-langgraph-state-ownership.md
+├── 06-single-authority-legacy-policy.md
+├── 07-refactor-playbook.md
+└── 08-architecture-enforcement.md
+```
