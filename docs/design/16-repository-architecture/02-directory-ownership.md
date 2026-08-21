@@ -1,103 +1,101 @@
-# Directory Ownership Contract
+# 02. Directory Ownership
 
-## `domain/`
+> Parent: Repository Architecture Source v1.1
 
-Owns:
-- aggregate models,
-- deterministic commands/transitions,
-- invariants,
-- value objects,
-- domain errors.
-
-Never owns:
-- database technology,
-- LangGraph,
-- HTTP,
-- provider SDK,
-- MCP transport,
-- LLM.
-
-Target:
+## Top-level ownership
 
 ```text
-domain/
-  run/
-  plan/
-  action/
-  approval/
-  claim/
-  execution/
-  verification/
-  recovery/
-  resource/
-  policy/
+src/google_work_agent/
+├─ domain/
+├─ application/
+├─ ports/
+├─ adapters/
+├─ api/
+└─ launcher/
 ```
 
-## `application/agents/`
+## Domain
 
-Owns the six semantic Agent roles.
+Domain organization follows canonical semantic owner, not persistence-table layout or historical aggregate buckets.
 
-It owns semantic agent processing, not LangGraph mechanics.
+Examples:
 
-## `application/use_cases/`
+```text
+domain/run/
+domain/plan/
+domain/action/
+domain/approval/
+domain/claim/
+domain/execution_attempt/
+domain/verification/
+domain/recovery/
+domain/resource_ref/
+domain/conversation/
+```
 
-Owns application commands/queries coordinating Domain + Ports.
+Lifecycle operations and guards are operation-per-file:
 
-One independent lifecycle capability per file.
+```text
+domain/run/transitions/block_run.py
+domain/run/transitions/finalize_cancel.py
+domain/action/guards/claim_execution.py
+```
 
-## `application/orchestration/`
+A broad `commands.py` or `transitions.py` file is not accepted final production structure when it owns multiple independent lifecycle capabilities.
 
-Owns coordination among use cases.
+## Application
 
-Does not duplicate transition rules.
+```text
+application/agents/
+  request_understanding/
+  tool_routing/
+  retrieval/
+  work_analysis/
+  planning/
+  review/
 
-## `ports/`
+application/use_cases/<semantic_owner>/
+application/orchestration/
+```
 
-Owns interfaces required by inner layers.
+Application semantic owner packages are singular.
 
-No technology implementation.
+## Ports
 
-## `adapters/langgraph/`
+Ports represent stable boundaries, not implementation folders.
 
-Owns:
-- graph composition,
-- typed state,
-- projection,
-- node binding,
-- routing binding,
-- checkpoint/resume integration.
+```text
+ports/persistence/
+ports/connectors/
+ports/llm/
+ports/events/
+```
 
-Does not own:
-- SQL/repository mutations,
-- approval policy,
-- plan persistence semantics,
-- external write policy,
-- recovery business rules.
+## Adapters
 
-## `adapters/persistence/sqlite/`
+```text
+adapters/langgraph/
+adapters/persistence/sqlite/
+adapters/connectors/
+adapters/llm/
+```
 
-Owns SQLite mechanics and concrete repository implementations.
+Concrete adapter code may depend on stable Ports/contracts but does not become Application authority.
 
-Repository implementations split by aggregate/contract.
+## API
 
-## `adapters/connectors/`
+```text
+api/routes/
+api/schemas/
+api/dependencies/
+```
 
-Owns external provider effects, organized by provider/product/resource/operation.
+REST collection/resource names are plural where natural.
 
-## `api/`
+## Launcher
 
-Owns transport/auth/session/request-response projection.
+```text
+launcher/composition.py
+```
 
-No business transition.
-
-## `launcher/`
-
-Only composition root.
-
-May know all concrete classes, but makes no business decisions.
-
-## `evaluation/`
-
-May consume public production contracts.
-
-Production source must not import it.
+Composition only. No business semantic owner is placed in Launcher.
