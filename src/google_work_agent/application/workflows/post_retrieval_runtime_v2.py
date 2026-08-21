@@ -1,6 +1,6 @@
 """Checkpoint-B coherent post-Retrieval V2 application boundary.
 
-Main State and Main Supervisor remain unchanged until Checkpoint C.  This
+Main State and Main Supervisor remain unchanged until Checkpoint C. This
 boundary nevertheless makes the V2 producer/caller chain concrete and gives
 CanonicalDomainValidationService an actual downstream caller using only V2
 Planning/Review artifacts.
@@ -27,10 +27,10 @@ from google_work_agent.application.workflows.handoff_contracts import (
 )
 from google_work_agent.application.workflows.planning_plan_assembler import ActionPlanDraftV2
 from google_work_agent.application.workflows.planning_runtime_v2 import (
-    PlanningResultV2,
     PlanningSemanticControlV1,
     PlanningV2Producer,
 )
+from google_work_agent.application.workflows.post_retrieval_envelopes_v2 import PlanningResultV2
 from google_work_agent.application.workflows.review_runtime_v2 import ReviewV2Producer
 from google_work_agent.application.workflows.state_artifacts_v2 import (
     PlanReviewResultV2,
