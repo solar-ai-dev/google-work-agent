@@ -5,9 +5,15 @@ from collections.abc import Mapping, Sequence
 import pytest
 
 from google_work_agent.adapters.llm.prompt_input_guard import PromptInputGuardedProvider
-from google_work_agent.application.workflows.contracts import build_default_run_budget
+from google_work_agent.application.workflows.contracts import (
+    build_default_run_budget,
+    consume_llm_provider_calls,
+)
 from google_work_agent.application.workflows.provider_dispatch_budget import (
-    bind_provider_dispatch_budget,
+    current_provider_dispatch_budget,
+    legacy_post_call_projection,
+    provider_dispatch_budget_scope,
+    provider_dispatch_execution_scope,
 )
 from google_work_agent.ports import (
     ActualRuntime,
@@ -105,7 +111,9 @@ def _schema() -> OutputSchemaDefinition:
     return OutputSchemaDefinition(schema_version="1", json_schema={"type": "object"})
 
 
-def _invoke_structured(guarded: PromptInputGuardedProvider, *, prompt_input=None) -> None:
+def _invoke_structured(
+    guarded: PromptInputGuardedProvider, *, prompt_input: Mapping[str, object] | None = None
+) -> None:
     guarded.invoke_structured(
         prompt_ref=_prompt_ref(),
         prompt_input={} if prompt_input is None else prompt_input,
@@ -115,47 +123,18 @@ def _invoke_structured(guarded: PromptInputGuardedProvider, *, prompt_input=None
     )
 
 
-def test_failed_primary_dispatch_is_counted_before_timeout() -> None:
-    budget = build_default_run_budget()
-    bind_provider_dispatch_budget(budget)
-    provider = _FakeProvider(fail_structured=True)
-    guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
-
-    with pytest.raises(TimeoutError, match="provider timeout"):
-        _invoke_structured(guarded)
-
-    assert provider.structured_dispatches == 1
-    assert budget["llm_calls_used"] == 1
+def _invoke_tool(guarded: PromptInputGuardedProvider) -> None:
+    guarded.invoke_tool_call(
+        prompt_ref=_prompt_ref(),
+        prompt_input={},
+        tools=(ToolDefinition(name="fake_tool", description="fake", parameters={}),),
+        runtime_policy=RuntimePolicy(),
+        api_key=None,
+    )
 
 
-def test_failed_primary_plus_successful_fallback_counts_two_dispatches() -> None:
-    budget = build_default_run_budget()
-    bind_provider_dispatch_budget(budget)
-    primary = _FakeProvider(fail_structured=True)
-    fallback = _FakeProvider()
-    primary_guard = PromptInputGuardedProvider(primary, _RecordingValidator())
-    fallback_guard = PromptInputGuardedProvider(fallback, _RecordingValidator())
-
-    with pytest.raises(TimeoutError):
-        _invoke_structured(primary_guard)
-    _invoke_structured(fallback_guard)
-
-    assert primary.structured_dispatches == 1
-    assert fallback.structured_dispatches == 1
-    assert budget["llm_calls_used"] == 2
-
-
-def test_failed_schema_repair_dispatch_counts_and_uses_canonical_failure_record() -> None:
-    budget = build_default_run_budget()
-    bind_provider_dispatch_budget(budget)
-    initial = _FakeProvider()
-    repair = _FakeProvider(fail_structured=True)
-    initial_guard = PromptInputGuardedProvider(initial, _RecordingValidator())
-    validator = _RecordingValidator()
-    repair_guard = PromptInputGuardedProvider(repair, validator)
-
-    _invoke_structured(initial_guard)
-    legacy_repair_input = {
+def _legacy_repair_input() -> dict[str, object]:
+    return {
         "base_projection": {"request_intent": {}},
         "candidate_output": {"bad": True},
         "failure_record": {
@@ -170,8 +149,61 @@ def test_failed_schema_repair_dispatch_counts_and_uses_canonical_failure_record(
             "evidence_refs": [],
         },
     }
-    with pytest.raises(TimeoutError, match="provider timeout"):
-        _invoke_structured(repair_guard, prompt_input=legacy_repair_input)
+
+
+def test_primary_success_counts_one_dispatch() -> None:
+    budget = build_default_run_budget()
+    provider = _FakeProvider()
+    guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
+
+    with provider_dispatch_budget_scope(budget):
+        _invoke_structured(guarded)
+
+    assert provider.structured_dispatches == 1
+    assert budget["llm_calls_used"] == 1
+
+
+def test_failed_primary_dispatch_is_counted_before_timeout() -> None:
+    budget = build_default_run_budget()
+    provider = _FakeProvider(fail_structured=True)
+    guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
+
+    with provider_dispatch_budget_scope(budget):
+        with pytest.raises(TimeoutError, match="provider timeout"):
+            _invoke_structured(guarded)
+
+    assert provider.structured_dispatches == 1
+    assert budget["llm_calls_used"] == 1
+
+
+def test_failed_primary_plus_successful_fallback_counts_two_dispatches() -> None:
+    budget = build_default_run_budget()
+    primary = _FakeProvider(fail_structured=True)
+    fallback = _FakeProvider()
+    primary_guard = PromptInputGuardedProvider(primary, _RecordingValidator())
+    fallback_guard = PromptInputGuardedProvider(fallback, _RecordingValidator())
+
+    with provider_dispatch_budget_scope(budget):
+        with pytest.raises(TimeoutError):
+            _invoke_structured(primary_guard)
+        _invoke_structured(fallback_guard)
+
+    assert primary.structured_dispatches == 1
+    assert fallback.structured_dispatches == 1
+    assert budget["llm_calls_used"] == 2
+
+
+def test_schema_repair_success_counts_two_dispatches_and_canonicalizes_failure_record() -> None:
+    budget = build_default_run_budget()
+    initial = _FakeProvider()
+    repair = _FakeProvider()
+    initial_guard = PromptInputGuardedProvider(initial, _RecordingValidator())
+    validator = _RecordingValidator()
+    repair_guard = PromptInputGuardedProvider(repair, validator)
+
+    with provider_dispatch_budget_scope(budget):
+        _invoke_structured(initial_guard)
+        _invoke_structured(repair_guard, prompt_input=_legacy_repair_input())
 
     assert initial.structured_dispatches == 1
     assert repair.structured_dispatches == 1
@@ -193,20 +225,120 @@ def test_failed_schema_repair_dispatch_counts_and_uses_canonical_failure_record(
     }
 
 
-def test_failed_tool_call_dispatch_is_counted() -> None:
+def test_failed_schema_repair_dispatch_counts_two() -> None:
     budget = build_default_run_budget()
-    bind_provider_dispatch_budget(budget)
-    provider = _FakeProvider(fail_tool=True)
+    initial = _FakeProvider()
+    repair = _FakeProvider(fail_structured=True)
+    initial_guard = PromptInputGuardedProvider(initial, _RecordingValidator())
+    repair_guard = PromptInputGuardedProvider(repair, _RecordingValidator())
+
+    with provider_dispatch_budget_scope(budget):
+        _invoke_structured(initial_guard)
+        with pytest.raises(TimeoutError, match="provider timeout"):
+            _invoke_structured(repair_guard, prompt_input=_legacy_repair_input())
+
+    assert initial.structured_dispatches == 1
+    assert repair.structured_dispatches == 1
+    assert budget["llm_calls_used"] == 2
+
+
+def test_tool_call_success_counts_one_dispatch() -> None:
+    budget = build_default_run_budget()
+    provider = _FakeProvider()
     guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
 
-    with pytest.raises(TimeoutError, match="tool provider timeout"):
-        guarded.invoke_tool_call(
-            prompt_ref=_prompt_ref(),
-            prompt_input={},
-            tools=(ToolDefinition(name="fake_tool", description="fake", parameters={}),),
-            runtime_policy=RuntimePolicy(),
-            api_key=None,
-        )
+    with provider_dispatch_budget_scope(budget):
+        _invoke_tool(guarded)
 
     assert provider.tool_dispatches == 1
     assert budget["llm_calls_used"] == 1
+
+
+def test_failed_tool_call_dispatch_is_counted() -> None:
+    budget = build_default_run_budget()
+    provider = _FakeProvider(fail_tool=True)
+    guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
+
+    with provider_dispatch_budget_scope(budget):
+        with pytest.raises(TimeoutError, match="tool provider timeout"):
+            _invoke_tool(guarded)
+
+    assert provider.tool_dispatches == 1
+    assert budget["llm_calls_used"] == 1
+
+
+def test_tool_call_repair_counts_each_actual_dispatch() -> None:
+    budget = build_default_run_budget()
+    initial = _FakeProvider()
+    repair = _FakeProvider()
+    initial_guard = PromptInputGuardedProvider(initial, _RecordingValidator())
+    repair_guard = PromptInputGuardedProvider(repair, _RecordingValidator())
+
+    with provider_dispatch_budget_scope(budget):
+        _invoke_tool(initial_guard)
+        _invoke_tool(repair_guard)
+
+    assert initial.tool_dispatches + repair.tool_dispatches == 2
+    assert budget["llm_calls_used"] == 2
+
+
+def test_execution_scope_clears_budget_after_success_and_unrelated_probe_is_unaccounted() -> None:
+    budget = build_default_run_budget()
+    provider = _FakeProvider()
+    guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
+
+    with provider_dispatch_execution_scope():
+        with provider_dispatch_budget_scope(budget):
+            _invoke_structured(guarded)
+        assert current_provider_dispatch_budget() is None
+
+    assert current_provider_dispatch_budget() is None
+    _invoke_structured(guarded)
+    assert provider.structured_dispatches == 2
+    assert budget["llm_calls_used"] == 1
+
+
+def test_execution_scope_clears_budget_after_escaping_provider_error() -> None:
+    budget = build_default_run_budget()
+    provider = _FakeProvider(fail_structured=True)
+    guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
+
+    with pytest.raises(TimeoutError, match="provider timeout"):
+        with provider_dispatch_execution_scope():
+            with provider_dispatch_budget_scope(budget):
+                _invoke_structured(guarded)
+
+    assert provider.structured_dispatches == 1
+    assert budget["llm_calls_used"] == 1
+    assert current_provider_dispatch_budget() is None
+
+
+@pytest.mark.parametrize(
+    ("case_name", "dispatches"),
+    [
+        ("initial_only", 1),
+        ("initial_plus_schema_repair", 2),
+        ("initial_plus_semantic_revision", 2),
+        ("initial_plus_repair_plus_semantic_revision_and_repair", 4),
+    ],
+)
+def test_legacy_tool_route_post_call_bridge_preserves_actual_dispatch_count(
+    case_name: str,
+    dispatches: int,
+) -> None:
+    del case_name
+    budget = build_default_run_budget()
+    provider = _FakeProvider()
+    guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
+
+    with provider_dispatch_budget_scope(budget):
+        for _ in range(dispatches):
+            _invoke_structured(guarded)
+        compatibility_projection = legacy_post_call_projection(budget)
+
+    final_budget = consume_llm_provider_calls(
+        compatibility_projection,
+        provider_calls_consumed=1,
+    )
+    assert provider.structured_dispatches == dispatches
+    assert final_budget["llm_calls_used"] == dispatches
