@@ -106,7 +106,13 @@ def apply_migrations(
     migrations_dir: Path | None = None,
     now_ms: Callable[[], int] | None = None,
 ) -> tuple[MigrationResult, ...]:
-    """Apply pending SQLite migrations atomically, one migration per transaction."""
+    """Apply pending migrations, then gate readiness on whole-database integrity.
+
+    Each migration may perform its own post-migration ``foreign_key_check``.
+    That check is migration-local.  The explicit startup gate below is separate:
+    after *all* migrations are current, run ``quick_check`` and then a full
+    ``foreign_key_check`` before the caller may proceed toward READY.
+    """
     clock = now_ms or _system_now_ms
     migrations = discover_migrations(migrations_dir)
     applied = _read_applied_migrations(connection)
@@ -138,7 +144,23 @@ def apply_migrations(
         )
         applied[migration.version] = (migration.name, migration.checksum)
 
+    verify_startup_database_integrity(connection)
     return tuple(results)
+
+
+def verify_startup_database_integrity(connection: sqlite3.Connection) -> None:
+    """Fail closed unless SQLite quick/FK integrity is clean after migrations."""
+    quick_rows = connection.execute("PRAGMA quick_check;").fetchall()
+    if len(quick_rows) != 1 or str(quick_rows[0][0]).lower() != "ok":
+        detail = "; ".join(str(row[0]) for row in quick_rows[:8]) or "no result"
+        raise MigrationIntegrityError(f"startup quick_check failed: {detail}")
+
+    foreign_key_rows = connection.execute("PRAGMA foreign_key_check;").fetchall()
+    if foreign_key_rows:
+        sample = "; ".join(
+            ":".join(str(value) for value in tuple(row)) for row in foreign_key_rows[:8]
+        )
+        raise MigrationIntegrityError(f"startup foreign_key_check failed: {sample}")
 
 
 def _read_directory_migrations(migrations_dir: Path) -> tuple[tuple[Path, bytes], ...]:
