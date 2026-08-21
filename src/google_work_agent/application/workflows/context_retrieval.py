@@ -45,6 +45,7 @@ from google_work_agent.application.workflows.contracts import (
     build_semantic_failure_signature_v1,
     validate_additional_acquisition_request_v1,
 )
+from google_work_agent.application.workflows.failure_record import build_failure_record_v1
 from google_work_agent.application.workflows.handoff_contracts import (
     AcquisitionResultV1,
     ClarificationQuestionV1,
@@ -184,9 +185,6 @@ class ContextRetrievalAgent:
         *,
         request_intent: RequestIntentV2,
     ) -> list[RagCandidateV1]:
-        """retrieval.rag_retrieve (docs/05-context-retrieval.md SS5.5): rank
-        already-normalized Segments and bound them to the Context Budget.
-        Retrieval Local State only -- see rank_segments docstring."""
         return rank_segments(
             segments,
             request_intent=request_intent,
@@ -310,20 +308,6 @@ class ContextRetrievalAgent:
         failure_detail: str,
         retry_budget: RunBudgetV1,
     ) -> tuple[EvidenceSelectionResultV2, RunBudgetV1]:
-        """Bounded SEMANTIC_REVISION retry (docs/15 section 8.1: max 1 per Node per
-        Failure Signature). The initial validator already rejected the output as
-        SEMANTIC_INVALID; this never widens what counts as valid, it only gives the
-        model one chance to re-ground its selection in the actually-supplied
-        ranked_segments. If the revision also fails validation, a deterministic empty
-        selection is returned -- the LLM never gets a second judgment call.
-
-        G3: same-Run/same-node dedup via approve_semantic_revision -- once this
-        node has already spent its one revision attempt for the normalized
-        failure signature below (persisted in
-        retry_budget.semantic_revision_signatures_used, so it survives
-        resume/checkpoint restore), a second occurrence is denied before any
-        Provider call and falls back to the same deterministic empty
-        selection a failed revision would produce."""
         signature = build_semantic_failure_signature_v1(
             node_id="context.select_evidence",
             failure_reason_codes=["EVIDENCE_SELECTION_SEMANTIC_INVALID"],
@@ -348,12 +332,15 @@ class ContextRetrievalAgent:
                     "ranked_segments": ranked_segments,
                 },
                 "candidate_output": previous_output,
-                "failure_record": {
-                    "failure_reason_code": "EVIDENCE_SELECTION_SEMANTIC_INVALID",
-                    "affected_fields": affected_fields,
-                    "allowed_change_scope": affected_fields,
-                    "validation_errors": [failure_detail],
-                },
+                "failure_record": build_failure_record_v1(
+                    failure_reason_code="EVIDENCE_SELECTION_SEMANTIC_INVALID",
+                    failure_origin="RETRIEVAL_RESULT",
+                    detected_by="RUNTIME_DOMAIN_VALIDATOR",
+                    runtime_disposition="RETRYABLE",
+                    experiment_disposition="RUN_REVISION",
+                    affected_field_paths=affected_fields,
+                    failure_context_ids=[failure_detail],
+                ),
             },
             output_schema=EVIDENCE_SELECTION_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -387,14 +374,6 @@ class ContextRetrievalAgent:
         retry_budget: RunBudgetV1,
         confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> tuple[SufficiencyResultV2, dict[str, object]]:
-        """retrieval.assess_sufficiency (docs/05-context-retrieval.md SS5.7):
-        request_intent + top rag candidates' materialized evidence. Never
-        re-sends the full context_bundle/acquisition_status opaque blob --
-        only the Candidate-pinned selected_evidence/source_statuses/
-        budget_state typed projections. ``confirmation_response`` is only
-        present on a same-owner nested-checkpoint resume (C3) -- this is the
-        one Product Prompt NEEDS_CONFIRMATION actually originates from, so
-        it is the only one that needs to see the bounded answer."""
         prompt_input: dict[str, object] = {
             "request_intent": request_intent,
             "selected_evidence": selected_evidence_prompt_projection(evidence_drafts),
@@ -507,10 +486,6 @@ class ContextRetrievalAgent:
         selection_result: EvidenceSelectionResultV2,
         acquisition_result: AcquisitionResultV1,
     ) -> tuple[ContextBundleV1, list[EvidenceDraftV1]]:
-        """Pre-sufficiency draft: assess_sufficiency has not run yet at this
-        point in the pipeline, so missing_information/ambiguity are not yet
-        known -- that judgment is entirely assess_sufficiency's (docs/05
-        section 5.7), not select_evidence's."""
         segments = cast(
             list[_SourceSegment],
             self.build_segments_from_acquisition(acquisition_result),
@@ -537,15 +512,6 @@ class ContextRetrievalAgent:
 
 
 def _blocked_empty_selection() -> EvidenceSelectionResultV2:
-    """Deterministic fallback once the bounded SEMANTIC_REVISION retry is exhausted.
-
-    Trivially schema- and semantically-valid (empty lists are always a valid
-    subset of the supplied ranked_segments), so it never re-enters LLM
-    judgment -- downstream sufficiency/supervisor routing treats it as
-    insufficient context and proceeds through the normal
-    RETRIEVE_MORE/BLOCKED guard instead of the node crashing.
-    """
-
     return {
         "schema_version": 2,
         "evidence_drafts": [],
@@ -560,12 +526,6 @@ def validate_evidence_selection_result_v2(
     candidate_segment_ids: set[str],
     context_budget: ContextBudget = DEFAULT_CONTEXT_BUDGET,
 ) -> EvidenceSelectionResultV2:
-    """evidence-selection-result-v2.schema.json. ``candidate_segment_ids`` is
-    the bounded RAG top-K set actually sent as ``ranked_segments`` (docs/05
-    section 5.6/5.5) -- selected/excluded ids outside it, or evidence
-    referencing an unselected segment, are rejected rather than silently
-    accepted, so select_evidence can never introduce a Segment/Resource RAG
-    never surfaced."""
     root = _require_mapping(value, "$")
     _require_exact_keys(
         root,
@@ -718,46 +678,6 @@ def load_context_select_evidence_semantic_revision_prompt_reference(
     )
 
 
-# Common quoted-reply and signature markers across Gmail clients (English and
-# Korean). Best-effort/heuristic by nature -- docs/05 section 6 requires
-# "Gmail HTML 안전 텍스트 변환, 인용·서명 제거" as a Context Retriever
-# responsibility, but does not pin an exhaustive pattern list.
-
-
-# Retrieval Chunk Token is a Provider-independent deterministic estimated
-# token unit, not a claim of exact parity with any real Provider's
-# tokenizer/billing count (see docs/05-context-retrieval.md section 10).
-# It is measured as UTF-8 byte length: for byte-level BPE tokenizers (the
-# family essentially every current LLM provider uses, including this
-# project's active Ollama/Qwen and Gemini providers), a single token is
-# always built from one or more whole input bytes -- a tokenizer merges
-# bytes together, it never splits one byte into multiple tokens. That
-# makes "1 estimated unit per UTF-8 byte" a theoretically sound upper
-# bound on real token count for any such tokenizer, not merely a guess:
-# real_tokens <= utf8_byte_length always holds.
-#
-# This was calibrated against a locally running Ollama qwen2.5:3b
-# (/api/generate with raw=true, reading prompt_eval_count) across English,
-# Korean, Korean/English-mixed, URL/email/number, and Gmail-reply-shaped
-# samples. Natural-language text (English, Korean, mixed) measured well
-# under 1 real token per byte, but digit/punctuation-dense text (order
-# numbers, IDs, timestamps -- realistic in Gmail bodies) measured as high
-# as 1.0 real tokens per byte (pure digit sequences: qwen2.5 tokenizes
-# purely digit-by-digit). No sample exceeded 1 real token per byte, which
-# matches the byte-level-BPE argument above. Earlier chars/4 undercounted
-# Korean by up to ~2.5x and digit-heavy text by up to ~3.4x against this
-# same real measurement -- both silently violated the "no chunk exceeds
-# chunk_max_tokens" contract for an actual provider call.
-#
-# Trade-off: this is intentionally conservative, so ordinary English/Korean
-# prose chunks end up smaller in characters than the old chars/4 estimate
-# allowed (chunks are sized for the digit-dense worst case even when actual
-# content is natural language). That is the accepted cost of an honest
-# never-exceeds guarantee without adding a tokenizer dependency; it is not
-# a per-script/per-language heuristic -- the same byte-count formula runs
-# unconditionally for every Unicode input.
-
-
 def _selected_segments(
     selected_ids: list[str],
     *,
@@ -772,12 +692,6 @@ def _ranked_segments_prompt_projection(
     *,
     segments_by_id: dict[str, _SourceSegment],
 ) -> list[dict[str, object]]:
-    """retrieval-evidence-selection-input-v1.schema.json ``ranked_segments``.
-
-    Joins each RagCandidateV1 back to its normalized SourceSegment by
-    segment_id -- docs/05 section 5.6/Q2-RAG boundary: RagCandidateV1 never
-    carries body text itself, and this never re-scores or re-orders what
-    Q2-RAG already ranked."""
     projections: list[dict[str, object]] = []
     for candidate in rag_candidates:
         segment = segments_by_id.get(candidate["segment_id"])
@@ -805,11 +719,6 @@ def _materialize_evidence_drafts(
     segments: list[_SourceSegment],
     context_budget: ContextBudget,
 ) -> list[EvidenceDraftV1]:
-    """Join the LLM's thin role/segment reference back to its normalized
-    SourceSegment -- docs/05-context-retrieval.md section 5.6 forbids the
-    LLM from copying Connector body text into its own output, so
-    resource_handle/excerpt/locator always come from the Segment, never
-    from the LLM."""
     segments_by_id = {segment.segment_id: segment for segment in segments}
     drafts: list[EvidenceDraftV1] = []
     for role_draft in role_drafts:
@@ -972,7 +881,6 @@ def _segment_ref(segment: _SourceSegment) -> dict[str, object]:
     }
 
 
-# Shared with the other agent workflow modules; see _schema_support module docstring.
 _require_mapping = partial(_schema.require_mapping, error_cls=ContextRetrievalValidationError)
 _nullable_mapping = partial(_schema.nullable_mapping, error_cls=ContextRetrievalValidationError)
 _require_exact_keys = partial(_schema.require_exact_keys, error_cls=ContextRetrievalValidationError)
