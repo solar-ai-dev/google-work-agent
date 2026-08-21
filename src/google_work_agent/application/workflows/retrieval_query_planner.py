@@ -122,7 +122,18 @@ class RetrievalQueryPlannerAgent:
         failure_detail: str,
         retry_budget: RunBudgetV1,
     ) -> tuple[RetrievalQueryPlanV2, RunBudgetV1]:
-        """Bounded SEMANTIC_REVISION retry (max 1 per Node/Failure Signature)."""
+        """Bounded SEMANTIC_REVISION retry (max 1 per Node/Failure Signature):
+        a schema-shaped plan that fails RetrievalQueryPlanV2's own semantic
+        checks (frozen-route/constraint-policy/validated-ref violations) gets
+        one re-grounding attempt against the dedicated .revise prompt --
+        never the generic SCHEMA_REPAIR path. If the revision also fails,
+        the error propagates to the caller's existing fail-closed handling.
+
+        G3: dedup via approve_semantic_revision -- a second occurrence of the
+        same normalized failure signature for this node, anywhere in the Run
+        (including after resume/checkpoint restore), is denied before any
+        Provider call and raises the same RetrievalV2ValidationError a failed
+        revision attempt would."""
         failure_code = "RETRIEVAL_QUERY_PLAN_SEMANTIC_INVALID"
         signature = build_semantic_failure_signature_v1(
             node_id="retrieval.plan_query",
