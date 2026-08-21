@@ -1,15 +1,17 @@
-# Repository Architecture v1.1 — Normative Detail
+# Repository Architecture v1.4 — Normative Detail
 
-> **Parent Source:** `../16-repository-architecture-source.md` v1.1  
+> **Parent Source:** `../16-repository-architecture-source.md` v1.4  
 > **Status:** NORMATIVE_SUBORDINATE_DETAIL  
 > **Effective:** 2026-08-22  
 > **Project Source count:** this directory does **not** add separate Project Source entries.
 
 ## Authority
 
-This directory expands Repository Architecture v1.1. If a subordinate detail conflicts with the parent Source, the parent Source wins.
+This directory expands Repository Architecture v1.4. If a subordinate detail conflicts with the parent Source, the parent Source wins.
 
 Behavioral semantics remain owned by 01–15, Domain State Transition Contract, State Transition Test Matrix, and executable SQL constraints.
+
+Repository naming/placement/import-export realization/single-production-authority questions are owned only by Repository Architecture Source 16. Other Project Sources may define semantic identifiers they own, but do not create an independent repository naming authority.
 
 ## Read order
 
@@ -33,10 +35,13 @@ Behavioral semantics remain owned by 01–15, Domain State Transition Contract, 
 
 ```text
 D1 semantic-owner Domain organization
-D2 operation-per-file Domain lifecycle/guards
+D2 operation-per-file Domain lifecycle transitions and guards
 D3 <Verb><Object>Handler Application use cases
-D4 owner-local contracts
+D4 owner-local contracts; no global catch-all contracts package
 D5 _compat forbidden on main
+D6 Agent semantic responsibility operation-per-file
+D7 LangGraph routing operation-per-file under routing/route_after_<stage>.py
+D8 closed-world naming: no undocumented naming/placement discretion
 ```
 
 ## Mandatory implementation sequence
@@ -56,3 +61,5 @@ SPEC TERM
 ```
 
 A new implementation must not be created beside an existing semantic authority. Report `SEMANTIC_AUTHORITY_COLLISION` instead.
+
+If a construct cannot be mapped by the published grammar, stop and version the Exception Registry rather than inventing a local convention.
