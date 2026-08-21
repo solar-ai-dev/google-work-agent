@@ -1,6 +1,6 @@
 # 07. Connector · API · Persistence Grammar
 
-> Parent: Repository Architecture Source v1.1  
+> Parent: Repository Architecture Source v1.4  
 > Wire/tool semantics remain owned by 07 Interface and concern-specific security/policy contracts.
 
 ## Connector operation
