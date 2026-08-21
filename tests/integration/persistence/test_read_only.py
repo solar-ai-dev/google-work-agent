@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
 from google_work_agent.adapters.persistence import (
     apply_migrations,
     connect_sqlite,
@@ -121,6 +122,7 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
             actions=(
                 ReadActionDraft(
                     action_id="action-1",
+                    connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                     position=1,
                     tool_name="gmail_get_thread",
                     arguments={"thread_id": "thread-project"},
@@ -307,6 +309,7 @@ def test_read_only_failure_marks_dependency_blocked_and_keeps_independent_branch
             actions=(
                 ReadActionDraft(
                     action_id="action-root",
+                    connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                     position=1,
                     tool_name="gmail_get_thread",
                     arguments={"thread_id": "thread-project"},
@@ -315,6 +318,7 @@ def test_read_only_failure_marks_dependency_blocked_and_keeps_independent_branch
                 ),
                 ReadActionDraft(
                     action_id="action-dependent",
+                    connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                     position=2,
                     tool_name="gmail_get_message",
                     arguments={"message_id": "message-project-1"},
@@ -324,6 +328,7 @@ def test_read_only_failure_marks_dependency_blocked_and_keeps_independent_branch
                 ),
                 ReadActionDraft(
                     action_id="action-branch",
+                    connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                     position=3,
                     tool_name="calendar_query_freebusy",
                     arguments={
@@ -473,6 +478,7 @@ def test_save_read_only_plan_rejects_non_read_tool_without_persisting_partial_ro
                 actions=(
                     ReadActionDraft(
                         action_id="action-invalid",
+                        connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                         position=1,
                         tool_name="gmail_create_draft",
                         arguments={"payload": {"subject": "Nope"}},
@@ -525,6 +531,7 @@ def test_save_read_only_plan_replays_same_command_id_and_hash(
         actions=(
             ReadActionDraft(
                 action_id="action-replay",
+                connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                 position=1,
                 tool_name="tasks_get_task",
                 arguments={"task_list_id": "task-list-default", "task_id": "task-followup"},
@@ -595,6 +602,7 @@ def test_claim_read_action_rejects_stale_version_without_gateway_call(
             actions=(
                 ReadActionDraft(
                     action_id="action-stale",
+                    connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                     position=1,
                     tool_name="calendar_get_event",
                     arguments={"calendar_id": "calendar-primary", "event_id": "event-focus"},
@@ -670,6 +678,7 @@ def test_received_receipts_can_resume_and_apply_save_publish_claim_complete_and_
         actions=(
             ReadActionDraft(
                 action_id="action-received",
+                connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                 position=1,
                 tool_name="gmail_get_thread",
                 arguments={"thread_id": "thread-project"},
@@ -964,6 +973,7 @@ def test_received_receipts_recover_already_applied_save_publish_and_claim(
         actions=(
             ReadActionDraft(
                 action_id="action-applied",
+                connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                 position=1,
                 tool_name="gmail_get_thread",
                 arguments={"thread_id": "thread-project"},
@@ -1169,6 +1179,7 @@ def _prepare_received_complete_partial_state(database_path: Path) -> None:
             actions=(
                 ReadActionDraft(
                     action_id="action-partial",
+                    connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                     position=1,
                     tool_name="gmail_get_thread",
                     arguments={"thread_id": "thread-project"},
@@ -1208,16 +1219,18 @@ def _prepare_received_complete_partial_state(database_path: Path) -> None:
         connection.execute(
             """
             INSERT INTO resource_refs (
-                id, run_id, source, resource_type, resource_id, parent_resource_id,
-                canonical_url, title, event_time_ms, version_token, metadata_json, captured_at_ms
+                id, run_id, connector_id, source, resource_type, resource_id,
+                parent_resource_id, canonical_url, title, event_time_ms, version_token,
+                metadata_json, captured_at_ms
             )
             VALUES (
                 'resource-ref-run-1-gmail_thread-thread-project',
-                'run-1', 'GMAIL', 'THREAD', 'thread-project', NULL,
+                'run-1', ?, 'GMAIL', 'THREAD', 'thread-project', NULL,
                 NULL, 'Project sync follow-up', NULL, '3',
                 '{"participant_count":2,"subject":"Project sync follow-up"}', 1030
             );
-            """
+            """,
+            (GOOGLE_WORKSPACE_CONNECTOR_ID,),
         )
         connection.execute(
             """
@@ -1261,6 +1274,7 @@ def _prepare_fail_action_state(database_path: Path, *, action_id: str, plan_id: 
             actions=(
                 ReadActionDraft(
                     action_id=action_id,
+                    connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                     position=1,
                     tool_name="gmail_get_thread",
                     arguments={"thread_id": "thread-project"},
