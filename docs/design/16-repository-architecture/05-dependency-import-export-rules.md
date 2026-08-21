@@ -1,6 +1,6 @@
 # 05. Dependency · Import · Export Rules
 
-> Parent: Repository Architecture Source v1.1
+> Parent: Repository Architecture Source v1.4
 
 ## Dependency direction
 
