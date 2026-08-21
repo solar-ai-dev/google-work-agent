@@ -21,6 +21,7 @@ class WriteEvidenceDraft:
 @dataclass(frozen=True, slots=True)
 class WriteActionDraft:
     action_id: str
+    connector_id: str
     position: int
     tool_name: str
     arguments: dict[str, object]

@@ -176,10 +176,11 @@ class PlanRecord:
 
 @dataclass(frozen=True, slots=True)
 class ActionRecord:
-    """Persisted action projection."""
+    """Persisted action projection with explicit Tool Route connector identity."""
 
     id: str
     plan_id: str
+    connector_id: str
     position: int
     tool_name: str
     effect_type: str
@@ -199,10 +200,11 @@ class ActionRecord:
 
 @dataclass(frozen=True, slots=True)
 class ResourceRefRecord:
-    """Persisted resource reference projection."""
+    """Persisted minimal resource reference with connector-aware identity."""
 
     id: str
     run_id: str
+    connector_id: str
     source: ResourceSource
     resource_type: StoredResourceType
     resource_id: str

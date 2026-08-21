@@ -1,17 +1,11 @@
-"""Bind persisted Action connector identity around write execution/recovery phases."""
+"""Bind persisted Action connector identity around external execution/recovery phases."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Protocol, cast
 
-from google_work_agent.adapters.connectors.execution_router import (
-    bind_execution_connector_id,
-)
-from google_work_agent.adapters.persistence.connector_identity import (
-    bind_resource_connector_id,
-)
+from google_work_agent.adapters.connectors.execution_router import bind_execution_connector_id
 from google_work_agent.application.execution_phase import (
     UnknownRecoveryPhaseRequest,
     WriteExecutionPhaseCoordinator,
@@ -22,16 +16,13 @@ from google_work_agent.application.write_actions import WriteActionResponse
 from google_work_agent.ports import UnitOfWork
 
 
-class _ConnectorAwareActionRepository(Protocol):
-    def connector_id_for_action(self, action_id: str) -> str: ...
-
-
 class ConnectorBoundWriteExecutionPhaseCoordinator(WriteExecutionPhaseCoordinator):
-    """Compatibility facade that makes persisted connector identity authoritative.
+    """Route external execution using the connector persisted on the Action.
 
-    The delegate still owns safety sequencing. This facade owns only connector
-    selection: it loads ``actions.connector_id`` once and binds both external
-    execution routing and ResourceRef persistence for the full bounded phase.
+    The delegate still owns safety sequencing.  This facade is regression-only
+    IMP-304 plumbing: it binds the already-frozen Action connector to execution
+    routing. ResourceRef persistence receives connector_id explicitly from the
+    Action record and is intentionally not bound here.
     """
 
     def __init__(
@@ -70,7 +61,11 @@ class ConnectorBoundWriteExecutionPhaseCoordinator(WriteExecutionPhaseCoordinato
     @contextmanager
     def _connector_scope(self, action_id: str) -> Iterator[None]:
         with self._connector_uow_factory() as unit_of_work:
-            repository = cast(_ConnectorAwareActionRepository, unit_of_work.actions)
-            connector_id = repository.connector_id_for_action(action_id)
-        with bind_execution_connector_id(connector_id), bind_resource_connector_id(connector_id):
+            action = unit_of_work.actions.get_by_id(action_id)
+            if action is None:
+                raise LookupError(f"action not found: {action_id}")
+            connector_id = action.connector_id
+        if not connector_id:
+            raise ValueError("persisted action connector_id is required for execution routing")
+        with bind_execution_connector_id(connector_id):
             yield

@@ -1,13 +1,6 @@
 from pathlib import Path
 
-from google_work_agent.adapters.langgraph.connector_read_result import (
-    ConnectorBoundCompleteReadActionService,
-)
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.connector_identity import (
-    bind_action_connector_ids,
-    bind_resource_connector_id,
-)
 from google_work_agent.adapters.persistence.unit_of_work import (
     SQLiteUnitOfWork,
     sqlite_unit_of_work_factory,
@@ -56,13 +49,14 @@ def _seed_plan(database_path: Path) -> None:
         connection.close()
 
 
-def test_action_and_resource_ref_use_explicit_frozen_connector_binding(tmp_path: Path) -> None:
+def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path) -> None:
     database_path = tmp_path / "connector-binding.db"
     _seed_plan(database_path)
 
     action = ActionRecord(
         id="action-1",
         plan_id="plan-1",
+        connector_id="github",
         position=1,
         tool_name="github_create_issue",
         effect_type="CREATE",
@@ -82,6 +76,7 @@ def test_action_and_resource_ref_use_explicit_frozen_connector_binding(tmp_path:
     resource_ref = ResourceRefRecord(
         id="resource-ref-1",
         run_id="run-1",
+        connector_id="github",
         source=ResourceSource.TASKS,
         resource_type=StoredResourceType.TASK,
         resource_id="issue-1",
@@ -94,18 +89,12 @@ def test_action_and_resource_ref_use_explicit_frozen_connector_binding(tmp_path:
         captured_at_ms=3,
     )
 
-    with (
-        bind_action_connector_ids({"action-1": "github"}),
-        SQLiteUnitOfWork(database_path) as unit_of_work,
-    ):
+    with SQLiteUnitOfWork(database_path) as unit_of_work:
         unit_of_work.actions.insert_write_action(action)
-        unit_of_work.commit()
-
-    with bind_resource_connector_id("github"), SQLiteUnitOfWork(database_path) as unit_of_work:
         unit_of_work.resource_refs.upsert(resource_ref)
         persisted = unit_of_work.resource_refs.get_by_unique_key(
             run_id="run-1",
-            source=ResourceSource.TASKS.value,
+            connector_id="github",
             resource_type=StoredResourceType.TASK.value,
             resource_id="issue-1",
         )
@@ -133,6 +122,7 @@ def test_read_action_and_completion_resource_keep_same_connector(tmp_path: Path)
     action = ActionRecord(
         id="read-action-1",
         plan_id="plan-1",
+        connector_id="github",
         position=1,
         tool_name="tasks_list_tasks",
         effect_type="READ",
@@ -149,19 +139,12 @@ def test_read_action_and_completion_resource_keep_same_connector(tmp_path: Path)
         created_at_ms=2,
         updated_at_ms=2,
     )
-    with (
-        bind_action_connector_ids({"read-action-1": "github"}),
-        SQLiteUnitOfWork(database_path) as unit_of_work,
-    ):
+    with SQLiteUnitOfWork(database_path) as unit_of_work:
         unit_of_work.actions.insert_read_action(action)
         unit_of_work.commit()
 
     factory = sqlite_unit_of_work_factory(database_path)
-    delegate = CompleteReadActionService(unit_of_work_factory=factory, now_ms=lambda: 3)
-    service = ConnectorBoundCompleteReadActionService(
-        delegate=delegate,
-        unit_of_work_factory=factory,
-    )
+    service = CompleteReadActionService(unit_of_work_factory=factory, now_ms=lambda: 3)
     response = service(
         CompleteReadActionCommand(
             command_id="complete-read-1",

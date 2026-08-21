@@ -147,6 +147,7 @@ class SaveReadOnlyPlanService:
                     ActionRecord(
                         id=action.action_id,
                         plan_id=command.plan_id,
+                        connector_id=action.connector_id,
                         position=action.position,
                         tool_name=action.tool_name,
                         effect_type=registry_entry.effect_type.value,
@@ -277,9 +278,7 @@ class PublishReadOnlyPlanService:
                     plan_status=plan.status.value,
                     conflict_detail="plan must be DRAFT before publish",
                 )
-                finish_json_receipt(
-                    unit_of_work, command.command_id, response, run.version, now_ms
-                )
+                finish_json_receipt(unit_of_work, command.command_id, response, run.version, now_ms)
                 unit_of_work.commit()
                 return response
             if len(actions) == 0:
@@ -292,9 +291,7 @@ class PublishReadOnlyPlanService:
                     plan_status=plan.status.value,
                     conflict_detail="read-only plan requires at least one action",
                 )
-                finish_json_receipt(
-                    unit_of_work, command.command_id, response, run.version, now_ms
-                )
+                finish_json_receipt(unit_of_work, command.command_id, response, run.version, now_ms)
                 unit_of_work.commit()
                 return response
             _validate_published_actions_are_read(actions)
@@ -314,11 +311,7 @@ class PublishReadOnlyPlanService:
                     conflict_detail=run_result.conflict_detail,
                 )
                 finish_json_receipt(
-                    unit_of_work,
-                    command.command_id,
-                    response,
-                    run_result.current_version,
-                    now_ms,
+                    unit_of_work, command.command_id, response, run_result.current_version, now_ms
                 )
                 unit_of_work.commit()
                 return response
@@ -356,39 +349,26 @@ class PublishReadOnlyPlanService:
                 plan_status=PlanStatus.ACTIVE.value,
             )
             finish_json_receipt(
-                unit_of_work,
-                command.command_id,
-                response,
-                run_result.current_version,
-                now_ms,
+                unit_of_work, command.command_id, response, run_result.current_version, now_ms
             )
             unit_of_work.commit()
             return response
 
 
-def _validate_read_only_plan(
-    command: SaveReadOnlyPlanCommand,
-    registry: SignedToolRegistry,
-) -> None:
-    validate_plan_structure(
-        actions=command.actions,
-        evidence=command.evidence,
-        plan_label="read-only plan",
-    )
+def _validate_read_only_plan(command: SaveReadOnlyPlanCommand, registry: SignedToolRegistry) -> None:
+    validate_plan_structure(actions=command.actions, evidence=command.evidence, plan_label="read-only plan")
     for action in command.actions:
+        if not action.connector_id:
+            raise ValueError("read action connector_id is required")
         entry = registry.get(action.tool_name)
         if entry is None:
             raise LookupError(f"tool not registered: {action.tool_name}")
         if entry.effect_type is not EffectType.READ:
             raise ValueError(f"read-only plan cannot include non-read action: {action.tool_name}")
         if entry.approval_requirement.value != "NONE":
-            raise ValueError(
-                f"read-only plan requires approval_requirement=NONE: {action.tool_name}"
-            )
+            raise ValueError(f"read-only plan requires approval_requirement=NONE: {action.tool_name}")
         if entry.verification_policy.value != "NONE":
-            raise ValueError(
-                f"read-only plan requires verification_policy=NONE: {action.tool_name}"
-            )
+            raise ValueError(f"read-only plan requires verification_policy=NONE: {action.tool_name}")
         if entry.recovery_policy.value != "NONE":
             raise ValueError(f"read-only plan requires recovery_policy=NONE: {action.tool_name}")
         validate_evidence_policy(

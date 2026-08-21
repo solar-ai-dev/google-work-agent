@@ -42,6 +42,7 @@ from google_work_agent.adapters.mcp import (
     build_manifest_payload,
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.errors import MigrationError
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.runtime import (
     BuildProfile,
@@ -468,7 +469,7 @@ def build_container(
     try:
         with connect_sqlite(database_path) as connection:
             apply_migrations(connection, now_ms=clock.now_ms)
-    except sqlite3.Error as error:
+    except (sqlite3.Error, MigrationError) as error:
         raise CoreInitializationError("MIGRATION_FAILED") from error
 
     try:

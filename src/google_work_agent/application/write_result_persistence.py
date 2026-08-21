@@ -15,26 +15,12 @@ from google_work_agent.application.write_execution_contracts import (
 )
 from google_work_agent.application.write_persistence import (
     audit_event as _audit_event,
-)
-from google_work_agent.application.write_persistence import (
     finish_json_receipt as _finish_json_receipt,
-)
-from google_work_agent.application.write_persistence import (
     propagate_dependency_blocked as _propagate_dependency_blocked,
-)
-from google_work_agent.application.write_persistence import (
     require_action as _require_action,
-)
-from google_work_agent.application.write_persistence import (
     require_attempt as _require_attempt,
-)
-from google_work_agent.application.write_persistence import (
     require_plan as _require_plan,
-)
-from google_work_agent.application.write_persistence import (
     resolve_existing_action_receipt as _resolve_existing_action_receipt,
-)
-from google_work_agent.application.write_persistence import (
     upsert_resource_ref as _upsert_resource_ref,
 )
 from google_work_agent.domain import ActionStatus, ResultCode
@@ -75,6 +61,7 @@ class StoreWriteActionSuccessService:
 
             resource_ref = _resource_ref_from_snapshot(
                 run_id=plan.run_id,
+                connector_id=action.connector_id,
                 snapshot=command.snapshot,
                 captured_at_ms=now_ms,
             )

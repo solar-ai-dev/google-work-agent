@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from json import loads as _loads
 
+from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
 from tests.integration.persistence.test_write_actions import (
     EvidenceOriginType,
     FakeClock,
@@ -180,6 +181,7 @@ def test_action_risk_over_16_kib_is_rejected_before_plan_persistence(
                 actions=(
                     WriteActionDraft(
                         action_id="action-risk-large",
+                        connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                         position=1,
                         tool_name="tasks_create_task",
                         arguments={

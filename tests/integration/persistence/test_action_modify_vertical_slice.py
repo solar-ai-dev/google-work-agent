@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
 from google_work_agent.adapters.persistence import (
     apply_migrations,
     connect_sqlite,
@@ -119,6 +120,7 @@ def _save_and_publish_task_action(
             actions=(
                 WriteActionDraft(
                     action_id=action_id,
+                    connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                     position=1,
                     tool_name="tasks_create_task",
                     arguments={"task_list_id": "task-list-default", "payload": dict(_TASK_PAYLOAD)},
@@ -915,6 +917,7 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
     ) -> WriteActionDraft:
         return WriteActionDraft(
             action_id=action_id,
+            connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
             position=position,
             tool_name="tasks_create_task",
             arguments={"task_list_id": "task-list-default", "payload": dict(_TASK_PAYLOAD)},

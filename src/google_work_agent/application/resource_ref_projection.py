@@ -25,7 +25,7 @@ def minimal_resource_metadata(snapshot: ResourceSnapshot) -> dict[str, object]:
         to_value = snapshot.payload.get("to")
         attachments_value = snapshot.payload.get("attachments")
         return {
-            "from": _optional_str(snapshot.payload.get("from")),
+            "from": _optional_text(snapshot.payload.get("from")),
             "to_count": len(to_value) if isinstance(to_value, list) else 0,
             "attachment_count": (
                 len(attachments_value) if isinstance(attachments_value, list) else 0
@@ -34,19 +34,19 @@ def minimal_resource_metadata(snapshot: ResourceSnapshot) -> dict[str, object]:
     if snapshot.resource_type is ResourceType.GMAIL_THREAD:
         participants = snapshot.payload.get("participants")
         return {
-            "subject": _optional_str(snapshot.payload.get("subject")),
+            "subject": _optional_text(snapshot.payload.get("subject")),
             "participant_count": len(participants) if isinstance(participants, list) else 0,
         }
     if snapshot.resource_type is ResourceType.TASK:
         return {
-            "status": _optional_str(snapshot.payload.get("status")),
-            "due": snapshot.payload.get("due"),
+            "status": _optional_text(snapshot.payload.get("status")),
+            "due": _optional_text(snapshot.payload.get("due")),
         }
     if snapshot.resource_type is ResourceType.CALENDAR_EVENT:
         return {
-            "status": _optional_str(snapshot.payload.get("status")),
-            "event_kind": _optional_str(snapshot.payload.get("event_kind")),
-            "transparency": _optional_str(snapshot.payload.get("transparency")),
+            "status": _optional_text(snapshot.payload.get("status")),
+            "event_kind": _optional_text(snapshot.payload.get("event_kind")),
+            "transparency": _optional_text(snapshot.payload.get("transparency")),
         }
     return {"title": snapshot_title(snapshot)}
 
@@ -54,27 +54,35 @@ def minimal_resource_metadata(snapshot: ResourceSnapshot) -> dict[str, object]:
 def resource_ref_from_snapshot(
     *,
     run_id: str,
+    connector_id: str,
     snapshot: ResourceSnapshot,
     captured_at_ms: int,
 ) -> ResourceRefRecord:
-    """Build the durable Google compatibility ResourceRef without raw payload storage.
-
-    Connector-neutral identity persistence is owned by the connector-aware
-    persistence boundary. The caller supplies the already-authoritative
-    connector identity; this projection intentionally never infers a connector
-    from ``source`` or from a tool/provider name.
-    """
+    """Build one durable minimal ResourceRef using explicit connector identity."""
+    if not connector_id:
+        raise ValueError("ResourceRef projection requires connector_id")
     source_map = {
         ResourceType.GMAIL_DRAFT: (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
         ResourceType.GMAIL_MESSAGE: (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
+        ResourceType.GMAIL_THREAD: (ResourceSource.GMAIL, StoredResourceType.THREAD),
+        ResourceType.TASK_LIST: (ResourceSource.TASKS, StoredResourceType.TASK_LIST),
         ResourceType.TASK: (ResourceSource.TASKS, StoredResourceType.TASK),
+        ResourceType.CALENDAR: (ResourceSource.CALENDAR, StoredResourceType.CALENDAR),
         ResourceType.CALENDAR_EVENT: (ResourceSource.CALENDAR, StoredResourceType.EVENT),
     }
+    if snapshot.resource_type not in source_map:
+        raise ValueError(
+            f"resource type is not durable ResourceRef material: {snapshot.resource_type.value}"
+        )
     source, stored_resource_type = source_map[snapshot.resource_type]
     title = snapshot_title(snapshot) or snapshot.resource_id
     return ResourceRefRecord(
-        id=f"resource-ref-{run_id}-{snapshot.resource_type.value}-{snapshot.resource_id}",
+        id=(
+            f"resource-ref-{run_id}-{connector_id}-"
+            f"{snapshot.resource_type.value}-{snapshot.resource_id}"
+        ),
         run_id=run_id,
+        connector_id=connector_id,
         source=source,
         resource_type=stored_resource_type,
         resource_id=snapshot.resource_id,
@@ -96,7 +104,8 @@ def snapshot_title(snapshot: ResourceSnapshot) -> str | None:
     return None
 
 
-def _optional_str(value: object) -> str | None:
-    if value is None:
+def _optional_text(value: object) -> str | None:
+    """Persist only bounded provider text, never stringify containers/bytes."""
+    if not isinstance(value, str):
         return None
-    return str(value)
+    return value[:200]

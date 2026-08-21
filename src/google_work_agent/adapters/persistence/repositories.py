@@ -2488,6 +2488,7 @@ def _action_record_from_row(row: sqlite3.Row) -> ActionRecord:
     return ActionRecord(
         id=str(row["id"]),
         plan_id=str(row["plan_id"]),
+        connector_id=str(row["connector_id"]),
         position=int(row["position"]),
         tool_name=str(row["tool_name"]),
         effect_type=str(row["effect_type"]),
@@ -2512,6 +2513,7 @@ def _resource_ref_record_from_row(row: sqlite3.Row) -> ResourceRefRecord:
     return ResourceRefRecord(
         id=str(row["id"]),
         run_id=str(row["run_id"]),
+        connector_id=str(row["connector_id"]),
         source=ResourceSource(str(row["source"])),
         resource_type=StoredResourceType(str(row["resource_type"])),
         resource_id=str(row["resource_id"]),

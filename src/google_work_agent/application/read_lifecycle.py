@@ -28,20 +28,13 @@ from google_work_agent.application.read_persistence import (
     require_plan,
 )
 from google_work_agent.domain import ActionStatus, ResultCode
-from google_work_agent.ports import (
-    EvidenceRecord,
-    ResourceRefRecord,
-    TraceEventRecord,
-    UnitOfWork,
-)
+from google_work_agent.ports import EvidenceRecord, ResourceRefRecord, TraceEventRecord, UnitOfWork
 
 
 class ClaimReadActionService:
     """Claim one read action without invoking the external gateway in-transaction."""
 
-    def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
-    ) -> None:
+    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
 
@@ -81,24 +74,18 @@ class ClaimReadActionService:
                     result_code=ResultCode.STATE_CONFLICT,
                     conflict_detail="terminal action cannot be claimed again",
                 )
-                finish_json_receipt(
-                    unit_of_work, command.command_id, response, action.version, now_ms
-                )
+                finish_json_receipt(unit_of_work, command.command_id, response, action.version, now_ms)
                 unit_of_work.commit()
                 return response
             if len(unit_of_work.action_dependencies.list_dependencies(action.id)) > 0:
-                ready_ids = {
-                    item.id for item in unit_of_work.actions.list_ready_actions(action.plan_id)
-                }
+                ready_ids = {item.id for item in unit_of_work.actions.list_ready_actions(action.plan_id)}
                 if action.id not in ready_ids:
                     response = action_conflict_response(
                         action=action,
                         result_code=ResultCode.STATE_CONFLICT,
                         conflict_detail="dependencies are not yet satisfied",
                     )
-                    finish_json_receipt(
-                        unit_of_work, command.command_id, response, action.version, now_ms
-                    )
+                    finish_json_receipt(unit_of_work, command.command_id, response, action.version, now_ms)
                     unit_of_work.commit()
                     return response
 
@@ -129,9 +116,7 @@ class ClaimReadActionService:
                     created_at_ms=now_ms,
                 )
             )
-            finish_json_receipt(
-                unit_of_work, command.command_id, response, response.action_version, now_ms
-            )
+            finish_json_receipt(unit_of_work, command.command_id, response, response.action_version, now_ms)
             unit_of_work.commit()
             return response
 
@@ -139,9 +124,7 @@ class ClaimReadActionService:
 class CompleteReadActionService:
     """Persist the successful result of one read action."""
 
-    def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
-    ) -> None:
+    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
 
@@ -177,18 +160,14 @@ class CompleteReadActionService:
             action = require_action(unit_of_work, command.action_id)
             plan = require_plan(unit_of_work, action.plan_id)
             if len(command.resource_refs) == 0 and len(command.evidence) == 0:
-                raise ValueError(
-                    "read completion requires at least one projected resource or evidence"
-                )
+                raise ValueError("read completion requires at least one projected resource or evidence")
             if action.version != command.expected_version:
                 response = action_conflict_response(
                     action=action,
                     result_code=ResultCode.VERSION_CONFLICT,
                     conflict_detail="expected_version does not match current_version",
                 )
-                finish_json_receipt(
-                    unit_of_work, command.command_id, response, action.version, now_ms
-                )
+                finish_json_receipt(unit_of_work, command.command_id, response, action.version, now_ms)
                 unit_of_work.commit()
                 return response
             if ActionStatus(action.status) is not ActionStatus.EXECUTING:
@@ -197,17 +176,18 @@ class CompleteReadActionService:
                     result_code=ResultCode.STATE_CONFLICT,
                     conflict_detail="complete_read_action requires EXECUTING status",
                 )
-                finish_json_receipt(
-                    unit_of_work, command.command_id, response, action.version, now_ms
-                )
+                finish_json_receipt(unit_of_work, command.command_id, response, action.version, now_ms)
                 unit_of_work.commit()
                 return response
 
+            if not action.connector_id:
+                raise ValueError("persisted READ action connector_id is required")
             for resource_ref in command.resource_refs:
                 unit_of_work.resource_refs.upsert(
                     ResourceRefRecord(
                         id=resource_ref.id,
                         run_id=plan.run_id,
+                        connector_id=action.connector_id,
                         source=resource_ref.source,
                         resource_type=resource_ref.resource_type,
                         resource_id=resource_ref.resource_id,
@@ -235,9 +215,7 @@ class CompleteReadActionService:
                         created_at_ms=now_ms,
                     )
                 )
-                unit_of_work.evidence.link_to_action(
-                    action_id=command.action_id, evidence_id=evidence.id
-                )
+                unit_of_work.evidence.link_to_action(action_id=command.action_id, evidence_id=evidence.id)
 
             result = unit_of_work.actions.complete_read(
                 command.action_id,
@@ -277,9 +255,7 @@ class CompleteReadActionService:
                     created_at_ms=now_ms,
                 )
             )
-            finish_json_receipt(
-                unit_of_work, command.command_id, response, response.action_version, now_ms
-            )
+            finish_json_receipt(unit_of_work, command.command_id, response, response.action_version, now_ms)
             unit_of_work.commit()
             return response
 
@@ -287,9 +263,7 @@ class CompleteReadActionService:
 class FinalizeReadActionService:
     """Finalize one executed read action and reconcile parent state."""
 
-    def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
-    ) -> None:
+    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
 
@@ -347,8 +321,7 @@ class FinalizeReadActionService:
                     status=response.action_status,
                     duration_ms=None,
                     payload_json=dumps(
-                        {"command_id": command.command_id, "partial": aggregate.partial},
-                        sort_keys=True,
+                        {"command_id": command.command_id, "partial": aggregate.partial}, sort_keys=True
                     ),
                     created_at_ms=now_ms,
                 )
@@ -363,9 +336,7 @@ class FinalizeReadActionService:
                     created_at_ms=now_ms,
                 )
             )
-            finish_json_receipt(
-                unit_of_work, command.command_id, response, response.action_version, now_ms
-            )
+            finish_json_receipt(unit_of_work, command.command_id, response, response.action_version, now_ms)
             unit_of_work.commit()
             return response
 
@@ -373,9 +344,7 @@ class FinalizeReadActionService:
 class FailReadActionService:
     """Mark one executing read action as failed and reconcile dependencies."""
 
-    def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
-    ) -> None:
+    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
 
@@ -458,8 +427,6 @@ class FailReadActionService:
                     created_at_ms=now_ms,
                 )
             )
-            finish_json_receipt(
-                unit_of_work, command.command_id, response, response.action_version, now_ms
-            )
+            finish_json_receipt(unit_of_work, command.command_id, response, response.action_version, now_ms)
             unit_of_work.commit()
             return response

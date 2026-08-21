@@ -145,6 +145,7 @@ def test_write_happy_path_requires_approval_then_executes_and_verifies(
             actions=(
                 WriteActionDraft(
                     action_id="action-write-1",
+                    connector_id="google_workspace",
                     position=1,
                     tool_name="tasks_create_task",
                     arguments={"task_list_id": "task-list-default", "payload": payload},
