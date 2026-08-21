@@ -141,6 +141,10 @@ class PromptInputGuardedProvider:
         try:
             self.validator.validate(prompt_id=prompt_ref.prompt_id, prompt_input=prompt_input)
         except PromptInputContractError as error:
+            # No dedicated public LLM error code exists for input-contract
+            # violations. RUNTIME_VERSION_MISMATCH is the closest existing
+            # fail-closed runtime-contract classification and avoids falsely
+            # labelling this as a provider response failure.
             raise LLMInvocationError(
                 LLMErrorCode.RUNTIME_VERSION_MISMATCH,
                 f"prompt runtime input contract violation: {error}",
