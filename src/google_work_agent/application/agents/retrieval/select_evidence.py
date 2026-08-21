@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Literal, cast
 
+from google_work_agent.application.agents.retrieval.normalize_segments import (
+    ContextBudget,
+    DEFAULT_CONTEXT_BUDGET,
+    SourceSegment,
+)
+from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import RagCandidateV1
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.contracts import (
@@ -20,13 +26,6 @@ from google_work_agent.application.workflows.handoff_contracts import (
 )
 from google_work_agent.ports import OutputSchemaDefinition, PromptReference
 
-from google_work_agent.application.agents.retrieval.normalize_segments import (
-    ContextBudget,
-    DEFAULT_CONTEXT_BUDGET,
-    SourceSegment,
-)
-from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import RagCandidateV1
-
 
 EVIDENCE_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="evidence-selection-v2",
@@ -41,7 +40,22 @@ EVIDENCE_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
         "additionalProperties": False,
         "properties": {
             "schema_version": {"type": "integer", "enum": [2]},
-            "evidence_drafts": {"type": "array"},
+            "evidence_drafts": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["segment_id", "role", "relevance_reason"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "segment_id": {"type": "string"},
+                        "role": {
+                            "type": "string",
+                            "enum": ["SUPPORTS", "CONTRADICTS", "CONTEXT"],
+                        },
+                        "relevance_reason": {"type": "string"},
+                    },
+                },
+            },
             "selected_segment_ids": {"type": "array", "items": {"type": "string"}},
             "excluded_segment_ids": {"type": "array", "items": {"type": "string"}},
         },

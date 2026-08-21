@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
 
+from google_work_agent.application.agents.retrieval.build_query import RouteConstraintPolicy
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.contracts import (
@@ -21,8 +22,6 @@ from google_work_agent.application.workflows.retrieval_v2_contracts import (
 )
 from google_work_agent.application.workflows.tool_routing import InputToolRouteV1
 from google_work_agent.ports import OutputSchemaDefinition, PromptReference
-
-from google_work_agent.application.agents.retrieval.build_query import RouteConstraintPolicy
 
 
 def plan_query(
