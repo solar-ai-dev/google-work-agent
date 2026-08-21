@@ -1,6 +1,6 @@
 # 08. Single Production Authority · Compat
 
-> Parent: Repository Architecture Source v1.1
+> Parent: Repository Architecture Source v1.4
 
 ## Single authority
 
