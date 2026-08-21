@@ -1,9 +1,11 @@
 """SQLite command-receipt repository including durable cancel intent."""
 import sqlite3
 from json import dumps, loads
-from google_work_agent.application.cancel_intent import is_applied_request_cancel_receipt
 from google_work_agent.domain import ResultCode, RunCommand, RunStatus
 from google_work_agent.ports.models import AnswerOnlyResponse, CommandReceiptRecord, CommandReceiptStatus
+
+_REQUEST_CANCEL_COMMAND_TYPE = "RequestRunCancellation"
+_RUN_AGGREGATE_TYPE = "Run"
 
 class SQLiteCommandReceiptRepository:
     def __init__(self, connection: sqlite3.Connection) -> None: self._connection=connection
@@ -24,5 +26,5 @@ class SQLiteCommandReceiptRepository:
         c=self._connection.execute("UPDATE command_receipts SET status=?, result_code=?, result_version=?, response_json=?, completed_at_ms=? WHERE command_id=?;", (status.value, result_code.value, result_version, response_json, completed_at_ms, command_id))
         if c.rowcount != 1: raise sqlite3.IntegrityError("receipt finalize affected an unexpected row count")
     def has_applied_request_cancel(self, run_id: str) -> bool:
-        rows=self._connection.execute("SELECT command_type, aggregate_type, aggregate_id, status, result_code FROM command_receipts WHERE command_type='RequestRunCancellation' AND aggregate_type='Run' AND aggregate_id=? AND status='APPLIED';", (run_id,)).fetchall()
-        return any(is_applied_request_cancel_receipt(command_type=str(r["command_type"]), aggregate_type=str(r["aggregate_type"]), aggregate_id=None if r["aggregate_id"] is None else str(r["aggregate_id"]), status=str(r["status"]), result_code=None if r["result_code"] is None else str(r["result_code"]), run_id=run_id) for r in rows)
+        row=self._connection.execute("SELECT 1 FROM command_receipts WHERE command_type=? AND aggregate_type=? AND aggregate_id=? AND status=? AND result_code=? LIMIT 1;", (_REQUEST_CANCEL_COMMAND_TYPE,_RUN_AGGREGATE_TYPE,run_id,CommandReceiptStatus.APPLIED.value,ResultCode.TRANSITION_APPLIED.value)).fetchone()
+        return row is not None
