@@ -7,26 +7,13 @@ from json import dumps
 from typing import cast
 
 from google_work_agent.application.plan_invariants import validate_plan_structure
-from google_work_agent.application.task_duplicates import (
-    TASK_CREATE_TOOL,
-    duplicate_authority,
-)
+from google_work_agent.application.task_duplicates import TASK_CREATE_TOOL, duplicate_authority
 from google_work_agent.application.write_persistence import (
     audit_event as _audit_event,
-)
-from google_work_agent.application.write_persistence import (
     emit_command_rejected_hash_mismatch as _emit_command_rejected_hash_mismatch,
-)
-from google_work_agent.application.write_persistence import (
     finish_json_receipt as _finish_json_receipt,
-)
-from google_work_agent.application.write_persistence import (
     require_plan as _require_plan,
-)
-from google_work_agent.application.write_persistence import (
     require_run as _require_run,
-)
-from google_work_agent.application.write_persistence import (
     resolve_json_receipt as _resolve_json_receipt,
 )
 from google_work_agent.application.write_plan_contracts import (
@@ -104,11 +91,7 @@ class SaveWritePlanService:
                     conflict_detail="expected_version does not match current_version",
                 )
                 _finish_json_receipt(
-                    unit_of_work,
-                    command.command_id,
-                    response,
-                    run.version,
-                    now_ms,
+                    unit_of_work, command.command_id, response, run.version, now_ms
                 )
                 unit_of_work.commit()
                 return response
@@ -124,11 +107,7 @@ class SaveWritePlanService:
                     conflict_detail="write plan can only be saved while run is PLANNING",
                 )
                 _finish_json_receipt(
-                    unit_of_work,
-                    command.command_id,
-                    response,
-                    run.version,
-                    now_ms,
+                    unit_of_work, command.command_id, response, run.version, now_ms
                 )
                 unit_of_work.commit()
                 return response
@@ -166,6 +145,7 @@ class SaveWritePlanService:
                     ActionRecord(
                         id=action.action_id,
                         plan_id=command.plan_id,
+                        connector_id=action.connector_id,
                         position=action.position,
                         tool_name=action.tool_name,
                         effect_type=entry.effect_type.value,
@@ -212,8 +192,7 @@ class SaveWritePlanService:
                     if evidence_id not in evidence_by_id:
                         raise LookupError(f"evidence not found for action link: {evidence_id}")
                     unit_of_work.evidence.link_to_action(
-                        action_id=action.action_id,
-                        evidence_id=evidence_id,
+                        action_id=action.action_id, evidence_id=evidence_id
                     )
 
             unit_of_work.traces.add(
@@ -300,11 +279,7 @@ class PublishWritePlanService:
                     conflict_detail="plan must be DRAFT before publish",
                 )
                 _finish_json_receipt(
-                    unit_of_work,
-                    command.command_id,
-                    response,
-                    run.version,
-                    now_ms,
+                    unit_of_work, command.command_id, response, run.version, now_ms
                 )
                 unit_of_work.commit()
                 return response
@@ -319,18 +294,13 @@ class PublishWritePlanService:
                     conflict_detail="write plan requires at least one action",
                 )
                 _finish_json_receipt(
-                    unit_of_work,
-                    command.command_id,
-                    response,
-                    run.version,
-                    now_ms,
+                    unit_of_work, command.command_id, response, run.version, now_ms
                 )
                 unit_of_work.commit()
                 return response
 
             run_result = unit_of_work.runs.publish_write_plan(
-                command.run_id,
-                expected_version=command.expected_run_version,
+                command.run_id, expected_version=command.expected_run_version
             )
             if not run_result.applied:
                 response = PublishWritePlanResponse(
@@ -357,8 +327,7 @@ class PublishWritePlanService:
                     status=PlanStatus.WAITING_APPROVAL.value,
                     duration_ms=None,
                     payload_json=dumps(
-                        {"command_id": command.command_id, "plan_id": plan.id},
-                        sort_keys=True,
+                        {"command_id": command.command_id, "plan_id": plan.id}, sort_keys=True
                     ),
                     created_at_ms=now_ms,
                 )
@@ -388,16 +357,11 @@ class PublishWritePlanService:
             return response
 
 
-def validate_write_plan(
-    command: SaveWritePlanCommand,
-    registry: SignedToolRegistry,
-) -> None:
-    validate_plan_structure(
-        actions=command.actions,
-        evidence=command.evidence,
-        plan_label="write plan",
-    )
+def validate_write_plan(command: SaveWritePlanCommand, registry: SignedToolRegistry) -> None:
+    validate_plan_structure(actions=command.actions, evidence=command.evidence, plan_label="write plan")
     for action in command.actions:
+        if not action.connector_id:
+            raise ValueError("write action connector_id is required")
         canonicalize_action_risk(action.risk)
         entry = registry.require(action.tool_name)
         if entry.effect_type is EffectType.READ:
@@ -405,8 +369,7 @@ def validate_write_plan(
         validate_evidence_policy(
             policy_input=EvidencePolicyInput(
                 evidence_count=len(action.evidence_ids),
-                requires_existing_resource=entry.effect_type
-                in {EffectType.UPDATE, EffectType.DELETE},
+                requires_existing_resource=entry.effect_type in {EffectType.UPDATE, EffectType.DELETE},
                 has_user_selected_resource=action.target_resource_ref_id is not None,
                 has_explicit_resource_relation=action.target_resource_ref_id is not None,
             )
@@ -435,9 +398,7 @@ def resolve_existing_save_receipt(
     return cast(
         SaveWritePlanResponse,
         _resolve_json_receipt(
-            receipt=receipt,
-            request_hash=request_hash,
-            response_type=response_type,
+            receipt=receipt, request_hash=request_hash, response_type=response_type
         ),
     )
 
@@ -464,8 +425,6 @@ def resolve_existing_plan_receipt(
     return cast(
         PublishWritePlanResponse,
         _resolve_json_receipt(
-            receipt=receipt,
-            request_hash=request_hash,
-            response_type=response_type,
+            receipt=receipt, request_hash=request_hash, response_type=response_type
         ),
     )
