@@ -1,15 +1,15 @@
 """Checkpoint-B Planning V2 producer.
 
-The producer consumes only current official upstream artifacts.  ANSWER promotes
-an AnswerDraftCandidateV2 into AnswerDraftV2.  ACTION uses the frozen Tool Route
+The producer consumes only current official upstream artifacts. ANSWER promotes
+an AnswerDraftCandidateV2 into AnswerDraftV2. ACTION uses the frozen Tool Route
 through ``prepare_actions`` then ``compose_prepared`` and deterministic plan
-assembly.  Non-COMPLETE dispositions carry workflow control only and never
+assembly. Non-COMPLETE dispositions carry workflow control only and never
 promote a partial PlanningResultV2.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Literal, Protocol, TypedDict, cast
 
 from google_work_agent.application.workflows.handoff_contracts import (
@@ -34,7 +34,6 @@ from google_work_agent.application.workflows.planning_argument_orchestrator_v2 i
     PlanningArgumentOrchestratorV2,
 )
 from google_work_agent.application.workflows.planning_plan_assembler import (
-    ActionPlanDraftV2,
     assemble_action_plan_draft_v2,
     materialize_action_seeds,
 )
@@ -42,10 +41,7 @@ from google_work_agent.application.workflows.post_retrieval_envelopes_v2 import 
     PlanningResultV2,
     validate_planning_return_v2,
 )
-from google_work_agent.application.workflows.state_artifacts_v2 import (
-    AnswerDraftV2,
-    WorkAnalysisResultV2,
-)
+from google_work_agent.application.workflows.state_artifacts_v2 import WorkAnalysisResultV2
 from google_work_agent.application.workflows.tool_routing import (
     ToolRoutePlanV2,
     output_routes,
@@ -105,8 +101,8 @@ class PlanningV2Producer:
         *,
         answer_candidate_provider: PlanningAnswerCandidateProvider,
         argument_orchestrator: PlanningArgumentOrchestratorV2,
-        artifact_id_factory: callable,
-        action_id_factory: callable,
+        artifact_id_factory: Callable[[], str],
+        action_id_factory: Callable[[], str],
     ) -> None:
         self._answer_candidate_provider = answer_candidate_provider
         self._argument_orchestrator = argument_orchestrator
@@ -358,6 +354,9 @@ def _validate_current_upstream(
     output_meta = tool_route_plan["output_plan"]["meta"]
     if intent_ref not in output_meta["based_on"]:
         raise PlanningV2RuntimeError("stale Tool Route output artifact")
+    input_ref = _artifact_ref(tool_route_plan["input_plan"]["meta"])
+    if input_ref not in retrieval_result["meta"]["based_on"]:
+        raise PlanningV2RuntimeError("stale RetrievalResultV1 for current Tool Route input artifact")
     retrieval_ref = _artifact_ref(retrieval_result["meta"])
     if retrieval_ref not in work_analysis_result["meta"]["based_on"]:
         raise PlanningV2RuntimeError("stale WorkAnalysisResultV2 for current RetrievalResultV1")
@@ -433,10 +432,10 @@ def _strings(value: object, field: str, *, allow_empty: bool = False) -> list[st
     return cast(list[str], result)
 
 
-def _ordered_unique(values: Sequence[str] | object) -> list[str]:
+def _ordered_unique(values: Iterable[str]) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
-    for value in values:  # type: ignore[union-attr]
+    for value in values:
         if value not in seen:
             seen.add(value)
             result.append(value)
