@@ -13,6 +13,7 @@ from google_work_agent.application.workflows.contracts import (
     approve_semantic_revision,
     build_semantic_failure_signature_v1,
 )
+from google_work_agent.application.workflows.failure_record import build_failure_record_v1
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )
@@ -121,18 +122,7 @@ class RetrievalQueryPlannerAgent:
         failure_detail: str,
         retry_budget: RunBudgetV1,
     ) -> tuple[RetrievalQueryPlanV2, RunBudgetV1]:
-        """Bounded SEMANTIC_REVISION retry (max 1 per Node/Failure Signature):
-        a schema-shaped plan that fails RetrievalQueryPlanV2's own semantic
-        checks (frozen-route/constraint-policy/validated-ref violations) gets
-        one re-grounding attempt against the dedicated .revise prompt --
-        never the generic SCHEMA_REPAIR path. If the revision also fails,
-        the error propagates to the caller's existing fail-closed handling.
-
-        G3: dedup via approve_semantic_revision -- a second occurrence of the
-        same normalized failure signature for this node, anywhere in the Run
-        (including after resume/checkpoint restore), is denied before any
-        Provider call and raises the same RetrievalV2ValidationError a failed
-        revision attempt would."""
+        """Bounded SEMANTIC_REVISION retry (max 1 per Node/Failure Signature)."""
         failure_code = "RETRIEVAL_QUERY_PLAN_SEMANTIC_INVALID"
         signature = build_semantic_failure_signature_v1(
             node_id="retrieval.plan_query",
@@ -149,12 +139,15 @@ class RetrievalQueryPlannerAgent:
             prompt_input={
                 "base_projection": dict(prompt_input),
                 "candidate_output": previous_output,
-                "failure_record": {
-                    "failure_reason_code": failure_code,
-                    "affected_fields": mutable_fields,
-                    "allowed_change_scope": mutable_fields,
-                    "validation_errors": [failure_detail],
-                },
+                "failure_record": build_failure_record_v1(
+                    failure_reason_code=failure_code,
+                    failure_origin="QUERY_PLANNING",
+                    detected_by="RUNTIME_DOMAIN_VALIDATOR",
+                    runtime_disposition="RETRYABLE",
+                    experiment_disposition="RUN_REVISION",
+                    affected_field_paths=mutable_fields,
+                    failure_context_ids=[failure_detail],
+                ),
             },
             output_schema=self._output_schema,
             trace_context=trace_context,
