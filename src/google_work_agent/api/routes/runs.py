@@ -304,6 +304,29 @@ def resolve_recovery(
             ),
         )
     )
+    if (
+        result.applied
+        and result.run_status == "PLANNING"
+        and result.result_kind == "CORRECTIVE_PLAN_REQUIRED"
+        and result.plan_id is not None
+    ):
+        try:
+            dependencies.local_run_coordinator.enqueue_resume(
+                run_id=run_id,
+                request_id=request.state.request_id,
+                command_id=payload.command_id,
+                resume_kind="RECOVERY_CORRECTIVE_PLAN",
+                resume_payload={"plan_id": result.plan_id},
+            )
+        except QueueBusyError as error:
+            raise ApiError(
+                error_code="SERVICE_BUSY",
+                user_message="복구 계획을 이어서 처리할 수 없습니다.",
+                status_code=503,
+                request_id=request.state.request_id,
+                retryable=True,
+                detail_code=type(error).__name__,
+            ) from error
     response.status_code = (
         422
         if result.result_code == "STATE_CONFLICT"

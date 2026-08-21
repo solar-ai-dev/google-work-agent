@@ -60,6 +60,7 @@ class ParentGraphState(MultiAgentGraphState):
     __modify_review_version__: NotRequired[int | None]
     __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
     __replan_from_plan_id__: NotRequired[str]
+    __reserved_corrective_plan_id__: NotRequired[str | None]
     context_bundle: NotRequired[ContextBundleV1]
     evidence_drafts: NotRequired[list[EvidenceDraftV1]]
     llm_provider_result: NotRequired[dict[str, object] | None]

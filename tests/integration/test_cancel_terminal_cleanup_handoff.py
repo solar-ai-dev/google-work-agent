@@ -1,23 +1,26 @@
-"""Pending Integration-owned cancellation terminal cleanup contract."""
+"""Cancellation terminal cleanup handoff contract."""
 
 from __future__ import annotations
 
 import inspect
 
-import pytest
-
+from google_work_agent.adapters.langgraph.canonical_freshness_runtime import (
+    LangGraphWorkflowRuntime,
+)
 from google_work_agent.application.coordinator import LocalRunCoordinator
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "CROSS_AGENT_DEPENDENCY: Integration must call runtime.discard_run_transients(run_id) "
-        "after an applied CANCELLED FinalizeRunCancellation response"
-    ),
-)
 def test_cancel_terminal_caller_invokes_run_scoped_transient_cleanup() -> None:
-    """Turn green only when Integration wires the already-implemented runtime hook."""
     source = inspect.getsource(LocalRunCoordinator._continue_cancellation)
 
+    assert "response.applied" in source
+    assert "RunStatus.CANCELLED.value" in source
     assert "discard_run_transients" in source
+
+
+def test_runtime_transient_hook_cleans_exact_run_scoped_owners() -> None:
+    source = inspect.getsource(LangGraphWorkflowRuntime.discard_run_transients)
+
+    assert "_evidence_store.discard_run" in source
+    assert "_read_result_cache.discard_run" in source
+    assert "_llm_runtime.discard_run" in source
