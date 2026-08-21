@@ -3,7 +3,7 @@
 ## 목적
 
 이 묶음은 설계 검토·구현 질의·실험/평가 검토에 사용하는 **Canonical 프로젝트 소스 26개**다.  
-공식 원본은 **Notion Canonical**이며 이 Markdown 묶음은 **2026-08-19 Conversation · Run Context Isolation + Team UI/History + Prompt Runtime Contract Closure 정합화 이후 Export Snapshot**이다.
+공식 원본은 **Notion Canonical**이며 이 Markdown 묶음은 **2026-08-22 Repository Architecture Convention v1.1 정합화 이후 Export Snapshot**이다.
 
 ## 문서 권위·책임 소유 규칙
 
@@ -31,10 +31,12 @@ Repository 구조·코드 조직·Naming·의존 방향·Production Authority �
 `00-A/00-B/00-C`와 변경 이력은 설명·요약·역사 자료이며 규범 권위가 아니다.
 
 Semantic behavior는 기존 concern owner와 executable Domain/SQL Constraint가 계속 소유한다.  
-**파일 위치, 모듈 책임, 네이밍 문법, import 의존 방향, 동일 capability의 production authority 유일성은 `16-repository-architecture-source.md`가 소유한다.**  
-현재 코드의 위치나 이름이 16번 규칙과 충돌하면 현재 구현 위치를 authority로 간주하지 않고 **구조 migration debt**로 판정한다.
+**파일 위치, 모듈 책임, 네이밍 문법, import/export 의존 방향, semantic ownership, 동일 capability의 production authority 유일성, 구조 refactor 절차는 `16-repository-architecture-source.md`가 소유한다.**  
+현재 코드의 위치·이름·wrapper chain이 16번 규칙과 충돌하면 현재 구현을 architecture authority로 간주하지 않고 **structural migration debt**로 판정한다.
 
-## 현재 Canonical 기준 — 2026-08-19
+## 현재 Canonical 기준 — 2026-08-22
+
+Behavioral semantic versions는 2026-08-19 승인 기준을 그대로 유지한다. 이번 16번 추가는 Repository Architecture concern의 신규 authority이며 01~15 behavior를 재정의하지 않는다.
 
 - Project Overview **v1.16**
 - PRD **v2.11** / Functional **v2.18** / Policy **v2.12** / UI·UX **v2.14**
@@ -44,7 +46,7 @@ Semantic behavior는 기존 concern owner와 executable Domain/SQL Constraint가
 - Test **v3.39** / Evaluation **v3.26** / Operations **v2.20**
 - Agent Capability·Failure·Prompt **v1.26**
 - Domain State Transition **v1.5** / State Transition Test Matrix **v1.5**
-- Repository Architecture Contract **v1.0 — CANONICAL_FOR_REFACTOR**
+- Repository Architecture **v1.1 — CANONICAL_FOR_REFACTOR**
 - Dataset candidate: `rebuild-v1.17-r8.6-phase7.5-contract-correction`
 - Projection candidate: `projection-v1.1-r8.6-phase7.5`
 - Current Runtime-aligned Prompt candidate: `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`
@@ -52,7 +54,7 @@ Semantic behavior는 기존 concern owner와 executable Domain/SQL Constraint가
   - 상태 `DRAFT_RUNTIME_CONTRACT_ALIGNED_NOT_ACTIVE`
 - 실제 Prompt 활성화는 Node DEV → Holdout → Safety Gate 이후에만 허용한다.
 
-## 2026-08-19 핵심 정합화
+## 2026-08-19 Behavior Canonical 유지
 
 ### Conversation · Run 의미 경계
 
@@ -64,15 +66,6 @@ Semantic behavior는 기존 concern owner와 executable Domain/SQL Constraint가
 - 사용자가 과거 Resource를 이번 Run에 명시적으로 다시 선택하면 현재 Run에서 최소 자료를 다시 조회·검증한다.
 - 동일 Run의 Confirmation·재인증·Recovery만 기존 Thread/Checkpoint를 resume한다.
 - Conversation History 조회 결과를 StartRun/Prompt 입력으로 자동 주입하지 않는다.
-
-### 팀원 Conversation/UI 구현 반영
-
-- `GET /api/v1/conversations/{conversation_id}/history`를 저장된 Message/Run Timeline용 bounded read-only projection으로 사용한다.
-- 현재 구현 bound는 Message 200, Run 200이며 Message 초과는 `truncated=true`로 표시한다.
-- Conversation title은 최초 USER 요청 기반의 안정적 제목이며 이후 Run 추가로 자동 재생성하지 않는다.
-- `Conversation.updated_at_ms`는 마지막 활동 시각이며 Conversation 목록 정렬의 기준이다.
-- USER Message Bubble, 저장 시각 기반 표시, 날짜별 Separator, 최신 Timeline scroll, compact/autosize Composer를 유지한다.
-- Gmail 원본 참조는 direct Thread permalink 보장이 아니라 RFC822 Message-ID 기반 `Gmail에서 찾기`이며 없으면 All Mail fallback이다.
 
 ### Prompt Runtime Contract Closure
 
@@ -94,14 +87,37 @@ Semantic behavior는 기존 concern owner와 executable Domain/SQL Constraint가
 - raw continuation은 현재 Run의 Run Retrieval Cache read-result entry만 memory-only로 소유한다.
 - Retrieval V2를 별도 재구현하지 않는다.
 
-## Repository Architecture Canonical 확장 — 2026-08-22
+## Repository Architecture v1.1 — 2026-08-22
 
-- 프로젝트 소스에는 `16-repository-architecture-source.md` **한 파일만 추가**한다.
-- 세부 규범은 `/docs/design/16-repository-architecture/` 아래에 책임별 문서로 분리한다.
-- 세부 문서는 Project Source 개수에 각각 추가하지 않는다. `16-repository-architecture-source.md`가 프로젝트 소스용 단일 entrypoint이며 세부 문서를 가리킨다.
-- Agent는 구현 전 `SPEC TERM → CANONICAL DOMAIN TERM → LAYER → OWNER PACKAGE → OPERATION → FILE → SYMBOL` 순서로 위치와 이름을 결정한다.
-- 현재 파일명만 보고 기능 부재를 판정하지 않는다. 동일 aggregate mutation, state writer, repository mutation, external effect, transition/result, caller chain까지 semantic search한다.
+### Frozen convention decisions
+
+```text
+D1 semantic-owner Domain organization
+D2 operation-per-file Domain lifecycle/guards
+D3 <Verb><Object>Handler Application use cases
+D4 owner-local contracts; no global catch-all contracts package
+D5 _compat forbidden on main
+```
+
+### Deterministic implementation lookup
+
+```text
+SPEC TERM
+→ CANONICAL TERM
+→ SEMANTIC OWNER
+→ LAYER
+→ OPERATION
+→ PATH
+→ FILE
+→ SYMBOL
+→ TEST PATH
+```
+
+- 현재 filename만 보고 기능 부재를 판정하지 않는다.
+- 동일 Domain fact/state writer, repository mutation, external effect, transition/result, exported symbol, caller chain까지 semantic search한다.
 - 동일 capability의 기존 production authority가 발견되면 새 병렬 구현을 만들지 않고 `SEMANTIC_AUTHORITY_COLLISION`으로 중단한다.
+- Architecture v1.1의 naming normalization은 기존 behavior contract의 의미를 변경하지 않는다.
+- `_compat`은 refactor integration branch의 transient migration 도구일 뿐이며 `main`에서는 0개여야 한다.
 
 ## 프로젝트 소스 26개 구성
 
@@ -132,10 +148,12 @@ Semantic behavior는 기존 concern owner와 executable Domain/SQL Constraint가
 25. `state-transition-test-matrix-v1.4.md`
 26. `16-repository-architecture-source.md`
 
+**주의:** 16번 Source가 추가되었으므로 최종 Project Source 세트는 25가 아니라 **26개**다. `/docs/design/16-repository-architecture/` 아래 세부 문서는 16번 Source의 subordinate normative detail이며 Project Source 개수에 별도 산입하지 않는다.
+
 상태 전이 파일명은 Repository 호환성 때문에 `v1.4` 문자열을 유지하지만 본문 Canonical은 **v1.5**다.  
 적용 Migration `0001~0005`는 이력/checksum Artifact이므로 소급 수정하지 않는다.
 
-### 16번 세부 문서 위치
+## 16번 세부 문서 manifest
 
 ```text
 /docs/design/16-repository-architecture/
@@ -143,9 +161,38 @@ Semantic behavior는 기존 concern owner와 executable Domain/SQL Constraint가
 ├── 01-spec-to-code-mapping.md
 ├── 02-directory-ownership.md
 ├── 03-naming-grammar.md
-├── 04-dependency-direction.md
-├── 05-langgraph-state-ownership.md
-├── 06-single-authority-legacy-policy.md
-├── 07-refactor-playbook.md
-└── 08-architecture-enforcement.md
+├── 04-artifact-taxonomy.md
+├── 05-dependency-import-export-rules.md
+├── 06-langgraph-state-ownership.md
+├── 07-connector-api-persistence-grammar.md
+├── 08-single-authority-compat.md
+├── 09-test-fixture-migration-grammar.md
+├── 10-error-event-configuration-naming.md
+├── 11-refactor-playbook.md
+├── 12-architecture-enforcement.md
+└── 13-exception-registry.md
 ```
+
+## Structural Refactor 시작 Gate
+
+다음 문서 감사가 전부 PASS하기 전에는 structural refactor를 시작하지 않는다.
+
+```text
+DOCUMENT_AUTHORITY_PRIORITY_PASS
+DOCUMENT_PURPOSE_SCOPE_PASS
+DOCUMENT_VERSION_MANAGEMENT_PASS
+DOCUMENT_FORMAT_CONSISTENCY_PASS
+SEMANTIC_TERMINOLOGY_CONSISTENCY_PASS
+CROSS_REFERENCE_VALIDITY_PASS
+TRACEABILITY_COMPLETENESS_PASS
+NO_DUPLICATE_AUTHORITY_PASS
+```
+
+전부 통과한 뒤에만:
+
+```text
+ARCHITECTURE_RULESET_FROZEN
+READY_FOR_STRUCTURAL_REFACTOR
+```
+
+를 선언한다.
