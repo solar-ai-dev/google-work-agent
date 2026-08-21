@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Callable, Protocol, cast
 
 from google_work_agent.application.workflows.handoff_contracts import (
@@ -15,7 +15,6 @@ from google_work_agent.application.workflows.handoff_contracts import (
     StateArtifactRefV1,
     SubgraphReturnV2,
 )
-from google_work_agent.application.workflows.planning_plan_assembler import ActionPlanDraftV2
 from google_work_agent.application.workflows.post_retrieval_envelopes_v2 import (
     PlanningResultV2,
     validate_review_return_v2,
@@ -249,10 +248,10 @@ def _required_id(value: object, label: str) -> str:
     return value
 
 
-def _ordered_unique(values: Sequence[str] | object) -> list[str]:
+def _ordered_unique(values: Iterable[str]) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
-    for value in values:  # type: ignore[union-attr]
+    for value in values:
         if value not in seen:
             seen.add(value)
             result.append(value)
