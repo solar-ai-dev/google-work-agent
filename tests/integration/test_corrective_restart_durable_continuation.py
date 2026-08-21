@@ -17,6 +17,7 @@ from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
     CorrectivePlanContinuationRequired,
 )
 from google_work_agent.adapters.langgraph.graph_state import ParentGraphState
+from google_work_agent.application.workflows.handoff_contracts import EvidenceDraftV1
 from google_work_agent.application.workflows.retrieval_evidence_store import (
     RunScopedEvidenceStore,
 )
@@ -41,16 +42,22 @@ class _CountingEmptyEvidenceStore(RunScopedEvidenceStore):
         super().__init__()
         self.resolve_calls = 0
 
-    def resolve(self, *, run_id: str, evidence_refs: list[str]) -> list[Any]:
+    def resolve(
+        self,
+        *,
+        run_id: str,
+        evidence_refs: list[str],
+    ) -> list[EvidenceDraftV1]:
         self.resolve_calls += 1
-        return cast(list[Any], super().resolve(run_id=run_id, evidence_refs=evidence_refs))
+        return super().resolve(run_id=run_id, evidence_refs=evidence_refs)
 
 
 class _RestartRuntimeHarness(_CorrectivePersistenceHarness):
     def __init__(self, database_path: Path) -> None:
         super().__init__(database_path)
         self._graph: Any = None
-        self._evidence_store = _CountingEmptyEvidenceStore()
+        self.restart_evidence_store = _CountingEmptyEvidenceStore()
+        self._evidence_store = self.restart_evidence_store
 
     @staticmethod
     def _config_for_thread(workflow_key: str) -> dict[str, object]:
@@ -178,8 +185,8 @@ def test_restart_after_save_commit_uses_only_durable_materialization(
     # DB, but a brand-new empty RunScopedEvidenceStore. No evidence is
     # rehydrated from Domain rows or provider payloads.
     process_b = _RestartRuntimeHarness(domain_database_path)
-    assert process_b._evidence_store._by_run == {}
-    assert process_b._evidence_store.resolve_calls == 0
+    assert process_b.restart_evidence_store._by_run == {}
+    assert process_b.restart_evidence_store.resolve_calls == 0
 
     checkpoint_b = sqlite3.connect(
         checkpoint_database_path,
@@ -209,8 +216,8 @@ def test_restart_after_save_commit_uses_only_durable_materialization(
 
     # Restart continuation must never consult transient evidence, repeat Save,
     # duplicate children, or allocate revision N+2.
-    assert process_b._evidence_store.resolve_calls == 0
-    assert process_b._evidence_store._by_run == {}
+    assert process_b.restart_evidence_store.resolve_calls == 0
+    assert process_b.restart_evidence_store._by_run == {}
     assert process_b.save_calls == 0
     assert process_b.publish_calls == 1
 
