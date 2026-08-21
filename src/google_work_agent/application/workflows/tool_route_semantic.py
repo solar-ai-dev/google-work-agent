@@ -31,6 +31,10 @@ from google_work_agent.application.workflows.prompt_registry import (
 from google_work_agent.application.workflows.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
 )
+from google_work_agent.application.workflows.provider_dispatch_budget import (
+    bind_provider_dispatch_budget,
+    legacy_post_call_projection,
+)
 from google_work_agent.application.workflows.tool_routing import (
     SemanticRouteCandidate,
     ToolRouteValidationError,
@@ -175,6 +179,7 @@ class ToolRouteAgent:
         retry_budget: RunBudgetV1,
         confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> tuple[SemanticRouteCandidate, RunBudgetV1]:
+        bind_provider_dispatch_budget(retry_budget)
         eligible_route_capabilities = _eligible_route_capabilities(self._tool_catalog)
         base_projection: dict[str, object] = {
             "request_intent": request_intent,
@@ -211,7 +216,7 @@ class ToolRouteAgent:
             )
         return (
             _semantic_candidate_from_llm_candidate(candidate, request_intent=request_intent),
-            retry_budget,
+            legacy_post_call_projection(retry_budget),
         )
 
     def _revise_semantic_candidate_once(
@@ -281,6 +286,7 @@ class ToolRouteAgent:
         request: WorkflowStartRequest,
         retry_budget: RunBudgetV1,
     ) -> tuple[str, RunBudgetV1]:
+        bind_provider_dispatch_budget(retry_budget)
         prompt_input = {
             "route_id": route_id,
             "connector_id": connector_id,
@@ -305,7 +311,7 @@ class ToolRouteAgent:
             llm_result.structured_output, eligible_tool_ids=eligible_tool_ids
         )
         if selected_tool_id is not None:
-            return selected_tool_id, retry_budget
+            return selected_tool_id, legacy_post_call_projection(retry_budget)
         failure_code = "TOOL_SELECTION_INVALID"
         signature = build_semantic_failure_signature_v1(
             node_id="tool_route.select_tool_if_needed",
@@ -351,7 +357,7 @@ class ToolRouteAgent:
             raise ToolRouteValidationError(
                 "selected tool is not a Registry-eligible candidate after revision"
             )
-        return revised_tool_id, decision["run_budget"]
+        return revised_tool_id, legacy_post_call_projection(decision["run_budget"])
 
     def _validated_tool_selection(
         self, value: object, *, eligible_tool_ids: tuple[str, ...]
