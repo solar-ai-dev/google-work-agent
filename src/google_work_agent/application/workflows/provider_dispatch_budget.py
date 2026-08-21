@@ -65,13 +65,7 @@ def account_provider_dispatch() -> None:
 
 
 def merge_provider_dispatch_usage(run_budget: RunBudgetV1) -> RunBudgetV1:
-    """Merge actual dispatch usage into a derived RunBudget projection.
-
-    Semantic-revision guards return a copied RunBudget carrying their signature
-    update. The provider boundary may meanwhile have incremented the bound
-    authority. Preserve all fields from the derived projection, replacing only
-    ``llm_calls_used`` with the actual dispatch authority value.
-    """
+    """Merge actual dispatch usage into a derived RunBudget projection."""
 
     derived = validate_run_budget_v1(run_budget)
     authority = _CURRENT_RUN_BUDGET.get()
@@ -81,6 +75,26 @@ def merge_provider_dispatch_usage(run_budget: RunBudgetV1) -> RunBudgetV1:
     merged = dict(derived)
     merged["llm_calls_used"] = actual["llm_calls_used"]
     return cast(RunBudgetV1, validate_run_budget_v1(merged))
+
+
+def legacy_post_call_projection(run_budget: RunBudgetV1) -> RunBudgetV1:
+    """Bridge Tool Route's pre-Wave-1C post-call ``+1`` caller.
+
+    Tool Route still calls the historical deterministic consumer once after a
+    semantic-agent call. Until that caller is retired by its own runtime-cutover
+    work, return a projection whose call count is one below the already-counted
+    dispatch total, so the legacy post-call increment preserves -- rather than
+    duplicates -- the dispatch-authoritative total. No separate counter exists;
+    this projection is derived solely from RunBudgetV1.
+    """
+
+    merged = merge_provider_dispatch_usage(run_budget)
+    used = merged["llm_calls_used"]
+    if used <= 0:
+        return merged
+    projected = dict(merged)
+    projected["llm_calls_used"] = used - 1
+    return cast(RunBudgetV1, validate_run_budget_v1(projected))
 
 
 def current_provider_dispatch_budget() -> RunBudgetV1 | None:
@@ -93,5 +107,6 @@ __all__ = [
     "account_provider_dispatch",
     "bind_provider_dispatch_budget",
     "current_provider_dispatch_budget",
+    "legacy_post_call_projection",
     "merge_provider_dispatch_usage",
 ]
