@@ -1,10 +1,11 @@
 """Application boundary for Action modification authorization."""
 
 from dataclasses import dataclass
+
 from google_work_agent.domain.action.transitions.modify_action import transition_modify_action
-from google_work_agent.domain.enums import ActionStatus, EffectType
-from google_work_agent.domain.results import CommandResult
 from google_work_agent.domain.commands import ActionCommand
+from google_work_agent.domain.enums import ActionStatus, EffectType, ResultCode
+
 
 @dataclass(frozen=True, slots=True)
 class ModifyActionCommand:
@@ -13,8 +14,30 @@ class ModifyActionCommand:
     expected_version: int
     effect_type: EffectType
 
-ModifyActionResult = CommandResult[ActionStatus, ActionCommand]
+
+@dataclass(frozen=True, slots=True)
+class ModifyActionResult:
+    applied: bool
+    result_code: ResultCode
+    current_status: ActionStatus
+    current_version: int
+    next_allowed_commands: tuple[ActionCommand, ...]
+    conflict_detail: str | None = None
+
 
 class ModifyActionHandler:
     def __call__(self, command: ModifyActionCommand) -> ModifyActionResult:
-        return transition_modify_action(command.current_status, command.current_version, command.expected_version, effect_type=command.effect_type)
+        result = transition_modify_action(
+            command.current_status,
+            command.current_version,
+            command.expected_version,
+            effect_type=command.effect_type,
+        )
+        return ModifyActionResult(
+            applied=result.applied,
+            result_code=result.result_code,
+            current_status=result.current_status,
+            current_version=result.current_version,
+            next_allowed_commands=result.next_allowed_commands,
+            conflict_detail=result.conflict_detail,
+        )
