@@ -9,6 +9,9 @@ from langgraph.types import Command
 
 from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.application.workflows.provider_dispatch_budget import (
+    provider_dispatch_execution_scope,
+)
 from google_work_agent.domain import RunStatus
 from google_work_agent.ports import (
     WorkflowCancelRequest,
@@ -53,60 +56,62 @@ class WorkflowInvocationCoordinator:
         self._cancel_signals = cancel_signals
 
     def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
-        config = self.config_for_thread(request.workflow_key)
-        self._graph.invoke(self._initial_state(request), config=config)
-        return self.result_from_thread(
-            workflow_key=request.workflow_key,
-            run_id=request.run_id,
-        )
+        with provider_dispatch_execution_scope():
+            config = self.config_for_thread(request.workflow_key)
+            self._graph.invoke(self._initial_state(request), config=config)
+            return self.result_from_thread(
+                workflow_key=request.workflow_key,
+                run_id=request.run_id,
+            )
 
     def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
-        config = self.config_for_thread(request.workflow_key)
-        snapshot = self._graph.get_state(config)
-        if not snapshot.values and not snapshot.next:
-            return WorkflowInvocationResult(
+        with provider_dispatch_execution_scope():
+            config = self.config_for_thread(request.workflow_key)
+            snapshot = self._graph.get_state(config)
+            if not snapshot.values and not snapshot.next:
+                return WorkflowInvocationResult(
+                    run_id=request.run_id,
+                    workflow_key=request.workflow_key,
+                    outcome=WorkflowOutcome.CHECKPOINT_MISSING,
+                    payload={},
+                )
+            if not self.is_profile_compatible(cast(GraphState, snapshot.values)):
+                return WorkflowInvocationResult(
+                    run_id=request.run_id,
+                    workflow_key=request.workflow_key,
+                    outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
+                    payload={"graph_profile": self._graph_profile.value},
+                )
+            if snapshot.next:
+                # A real interrupt() is pending (e.g. WAITING_CONFIRMATION,
+                # PREFLIGHT_REAPPROVAL_REQUIRED) -- Command(resume=...) is the
+                # correct way to feed the user's response back into it.
+                self._graph.invoke(Command(resume=request.resume_payload), config=config)
+                return self.result_from_thread(
+                    workflow_key=request.workflow_key,
+                    run_id=request.run_id,
+                )
+            # No pending interrupt: the prior invocation already reached END via
+            # a normal conditional edge (e.g. REAUTH_REQUIRED, RECOVERY_REQUIRED
+            # ending the graph without ever calling interrupt()).
+            # Command(resume=...) is a no-op against a thread with no pending
+            # task, so this resume must instead continue from persisted Domain
+            # facts -- the same mechanism recover_open_run already uses.
+            state = self._continue_from_domain_facts(
+                values=cast(GraphState, snapshot.values),
                 run_id=request.run_id,
-                workflow_key=request.workflow_key,
-                outcome=WorkflowOutcome.CHECKPOINT_MISSING,
-                payload={},
+                allow_reauth_resume=request.resume_kind == "REAUTH_COMPLETED",
             )
-        if not self.is_profile_compatible(cast(GraphState, snapshot.values)):
-            return WorkflowInvocationResult(
-                run_id=request.run_id,
-                workflow_key=request.workflow_key,
-                outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
-                payload={"graph_profile": self._graph_profile.value},
-            )
-        if snapshot.next:
-            # A real interrupt() is pending (e.g. WAITING_CONFIRMATION,
-            # PREFLIGHT_REAPPROVAL_REQUIRED) -- Command(resume=...) is the
-            # correct way to feed the user's response back into it.
-            self._graph.invoke(Command(resume=request.resume_payload), config=config)
-            return self.result_from_thread(
+            if state is None:
+                return self.result_from_thread(
+                    workflow_key=request.workflow_key,
+                    run_id=request.run_id,
+                )
+            return self.workflow_result_from_state(
+                state=state,
                 workflow_key=request.workflow_key,
                 run_id=request.run_id,
             )
-        # No pending interrupt: the prior invocation already reached END via
-        # a normal conditional edge (e.g. REAUTH_REQUIRED, RECOVERY_REQUIRED
-        # ending the graph without ever calling interrupt()).
-        # Command(resume=...) is a no-op against a thread with no pending
-        # task, so this resume must instead continue from persisted Domain
-        # facts -- the same mechanism recover_open_run already uses.
-        state = self._continue_from_domain_facts(
-            values=cast(GraphState, snapshot.values),
-            run_id=request.run_id,
-            allow_reauth_resume=request.resume_kind == "REAUTH_COMPLETED",
-        )
-        if state is None:
-            return self.result_from_thread(
-                workflow_key=request.workflow_key,
-                run_id=request.run_id,
-            )
-        return self.workflow_result_from_state(
-            state=state,
-            workflow_key=request.workflow_key,
-            run_id=request.run_id,
-        )
 
     def request_cancel(self, request: WorkflowCancelRequest) -> WorkflowInvocationResult:
         with self._cancel_signal_lock:
@@ -119,37 +124,38 @@ class WorkflowInvocationCoordinator:
         )
 
     def recover_open_run(self, request: WorkflowRecoveryRequest) -> WorkflowInvocationResult:
-        config = self.config_for_thread(request.workflow_key)
-        snapshot = self._graph.get_state(config)
-        if not snapshot.values and not snapshot.next:
-            return WorkflowInvocationResult(
+        with provider_dispatch_execution_scope():
+            config = self.config_for_thread(request.workflow_key)
+            snapshot = self._graph.get_state(config)
+            if not snapshot.values and not snapshot.next:
+                return WorkflowInvocationResult(
+                    run_id=request.run_id,
+                    workflow_key=request.workflow_key,
+                    outcome=WorkflowOutcome.CHECKPOINT_MISSING,
+                    payload={},
+                )
+            if not self.is_profile_compatible(cast(GraphState, snapshot.values)):
+                return WorkflowInvocationResult(
+                    run_id=request.run_id,
+                    workflow_key=request.workflow_key,
+                    outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
+                    payload={"graph_profile": self._graph_profile.value},
+                )
+            state = self._continue_from_domain_facts(
+                values=cast(GraphState, snapshot.values),
                 run_id=request.run_id,
-                workflow_key=request.workflow_key,
-                outcome=WorkflowOutcome.CHECKPOINT_MISSING,
-                payload={},
+                allow_reauth_resume=False,
             )
-        if not self.is_profile_compatible(cast(GraphState, snapshot.values)):
-            return WorkflowInvocationResult(
-                run_id=request.run_id,
-                workflow_key=request.workflow_key,
-                outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
-                payload={"graph_profile": self._graph_profile.value},
-            )
-        state = self._continue_from_domain_facts(
-            values=cast(GraphState, snapshot.values),
-            run_id=request.run_id,
-            allow_reauth_resume=False,
-        )
-        if state is None:
-            return self.result_from_thread(
+            if state is None:
+                return self.result_from_thread(
+                    workflow_key=request.workflow_key,
+                    run_id=request.run_id,
+                )
+            return self.workflow_result_from_state(
+                state=state,
                 workflow_key=request.workflow_key,
                 run_id=request.run_id,
             )
-        return self.workflow_result_from_state(
-            state=state,
-            workflow_key=request.workflow_key,
-            run_id=request.run_id,
-        )
 
     def _continue_from_domain_facts(
         self,
