@@ -25,6 +25,7 @@ class ReadActionDraft:
     """Input action row for a read-only plan draft."""
 
     action_id: str
+    connector_id: str
     position: int
     tool_name: str
     arguments: dict[str, object]
@@ -137,7 +138,7 @@ class FailReadActionCommand:
 
 @dataclass(frozen=True, slots=True)
 class SaveReadOnlyPlanResponse:
-    """Result of saving a read-only plan."""
+    """Result of saving one read-only plan draft."""
 
     applied: bool
     result_code: str
@@ -151,7 +152,7 @@ class SaveReadOnlyPlanResponse:
 
 @dataclass(frozen=True, slots=True)
 class PublishReadOnlyPlanResponse:
-    """Result of publishing a read-only plan."""
+    """Result of publishing one read-only plan."""
 
     applied: bool
     result_code: str
@@ -177,17 +178,3 @@ class ReadActionCommandResponse:
     partial: bool = False
     safe_error_code: str | None = None
     conflict_detail: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ExecutedReadAction:
-    """Typed output from one dispatched read action."""
-
-    output_json: str
-    resource_refs: tuple[CompletedResourceRef, ...]
-    evidence: tuple[CompletedEvidence, ...]
-
-
-type ReadOnlyResponse = (
-    SaveReadOnlyPlanResponse | PublishReadOnlyPlanResponse | ReadActionCommandResponse
-)
