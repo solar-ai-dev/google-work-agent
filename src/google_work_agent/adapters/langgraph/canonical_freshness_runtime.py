@@ -21,8 +21,9 @@ from typing import cast
 from google_work_agent.adapters.langgraph.canonical_response_runtime import (
     LangGraphWorkflowRuntime as _CanonicalResponseRuntime,
 )
-from google_work_agent.adapters.langgraph.corrective_plan_persistence import (
-    persist_reserved_corrective_write_plan,
+from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
+    CorrectivePlanContinuationRequired,
+    persist_reachable_corrective_write_plan,
 )
 from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.application.cancel_intent import (
@@ -45,6 +46,7 @@ from google_work_agent.ports import (
     PlanStatus,
     WorkflowInvocationResult,
     WorkflowOutcome,
+    WorkflowRecoveryRequest,
     WorkflowResumeRequest,
 )
 
@@ -67,7 +69,67 @@ class LangGraphWorkflowRuntime(_CanonicalResponseRuntime):
         """Resume registered application continuations or ordinary workflow pauses."""
         if request.resume_kind != "RECOVERY_CORRECTIVE_PLAN":
             return super().resume(request)
-        return self._resume_corrective_plan(request)
+        return self._resume_corrective_plan_safely(request)
+
+    def recover_open_run(
+        self,
+        request: WorkflowRecoveryRequest,
+    ) -> WorkflowInvocationResult:
+        """Recover a checkpoint-owned corrective continuation before generic recovery.
+
+        Startup recovery already enumerates every unfinished Run. A persisted
+        corrective destination marker is sufficient to route PLANNING/DRAFT or
+        stale WAITING_APPROVAL checkpoints back through the exact same
+        registered corrective continuation. Marker-absent runs retain the
+        existing generic open-run recovery semantics.
+        """
+        config = self._config_for_thread(request.workflow_key)
+        snapshot = self._graph.get_state(config)
+        if snapshot.values:
+            state = cast(GraphState, snapshot.values)
+            plan_id = state.get("__reserved_corrective_plan_id__")
+            if (
+                isinstance(plan_id, str)
+                and plan_id
+                and request.domain_status
+                in {
+                    RunStatus.PLANNING.value,
+                    RunStatus.WAITING_APPROVAL.value,
+                }
+            ):
+                return self._resume_corrective_plan_safely(
+                    WorkflowResumeRequest(
+                        run_id=request.run_id,
+                        workflow_key=request.workflow_key,
+                        resume_kind="RECOVERY_CORRECTIVE_PLAN",
+                        resume_payload={"plan_id": plan_id},
+                        correlation=request.correlation,
+                    )
+                )
+        return super().recover_open_run(request)
+
+    def _resume_corrective_plan_safely(
+        self,
+        request: WorkflowResumeRequest,
+    ) -> WorkflowInvocationResult:
+        """Keep only a durably proven Save-only corrective boundary non-terminal."""
+        try:
+            return self._resume_corrective_plan(request)
+        except CorrectivePlanContinuationRequired as continuation:
+            plan_id = request.resume_payload.get("plan_id")
+            if (
+                continuation.run_id != request.run_id
+                or continuation.plan_id != plan_id
+            ):
+                raise
+            # No new workflow/domain status is invented. The Run remains
+            # PLANNING and the failed LangGraph task + marker remain
+            # checkpointed. Coordinator therefore receives the existing
+            # ACCEPTED projection instead of generic exception -> FAILED.
+            return self._result_from_thread(
+                workflow_key=request.workflow_key,
+                run_id=request.run_id,
+            )
 
     def _resume_corrective_plan(
         self,
@@ -213,7 +275,7 @@ class LangGraphWorkflowRuntime(_CanonicalResponseRuntime):
         if reserved_plan is None:
             raise LookupError(f"reserved corrective plan not found: {reserved_plan_id}")
 
-        persisted_plan_id = persist_reserved_corrective_write_plan(
+        persisted_plan_id = persist_reachable_corrective_write_plan(
             self,
             state=state,
             plan_draft=plan_draft,
