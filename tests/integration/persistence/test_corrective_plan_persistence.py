@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import sqlite3
 from copy import deepcopy
 from pathlib import Path
-import sqlite3
 from typing import Any, cast
 
 import pytest
