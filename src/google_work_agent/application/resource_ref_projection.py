@@ -25,7 +25,7 @@ def minimal_resource_metadata(snapshot: ResourceSnapshot) -> dict[str, object]:
         to_value = snapshot.payload.get("to")
         attachments_value = snapshot.payload.get("attachments")
         return {
-            "from": _optional_str(snapshot.payload.get("from")),
+            "from": _optional_text(snapshot.payload.get("from")),
             "to_count": len(to_value) if isinstance(to_value, list) else 0,
             "attachment_count": (
                 len(attachments_value) if isinstance(attachments_value, list) else 0
@@ -34,19 +34,19 @@ def minimal_resource_metadata(snapshot: ResourceSnapshot) -> dict[str, object]:
     if snapshot.resource_type is ResourceType.GMAIL_THREAD:
         participants = snapshot.payload.get("participants")
         return {
-            "subject": _optional_str(snapshot.payload.get("subject")),
+            "subject": _optional_text(snapshot.payload.get("subject")),
             "participant_count": len(participants) if isinstance(participants, list) else 0,
         }
     if snapshot.resource_type is ResourceType.TASK:
         return {
-            "status": _optional_str(snapshot.payload.get("status")),
-            "due": snapshot.payload.get("due"),
+            "status": _optional_text(snapshot.payload.get("status")),
+            "due": _optional_text(snapshot.payload.get("due")),
         }
     if snapshot.resource_type is ResourceType.CALENDAR_EVENT:
         return {
-            "status": _optional_str(snapshot.payload.get("status")),
-            "event_kind": _optional_str(snapshot.payload.get("event_kind")),
-            "transparency": _optional_str(snapshot.payload.get("transparency")),
+            "status": _optional_text(snapshot.payload.get("status")),
+            "event_kind": _optional_text(snapshot.payload.get("event_kind")),
+            "transparency": _optional_text(snapshot.payload.get("transparency")),
         }
     return {"title": snapshot_title(snapshot)}
 
@@ -104,7 +104,8 @@ def snapshot_title(snapshot: ResourceSnapshot) -> str | None:
     return None
 
 
-def _optional_str(value: object) -> str | None:
-    if value is None:
+def _optional_text(value: object) -> str | None:
+    """Persist only bounded provider text, never stringify containers/bytes."""
+    if not isinstance(value, str):
         return None
-    return str(value)
+    return value[:200]
