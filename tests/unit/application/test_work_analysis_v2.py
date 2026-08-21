@@ -13,6 +13,7 @@ from google_work_agent.application.workflows.work_analysis_v2 import (
     WorkAnalysisV2NodeChain,
     WorkAnalysisV2ValidationError,
     build_current_run_fact_identity_resolver,
+    build_frozen_route_connector_resolver,
     materialize_complete_work_analysis_result_v2,
     project_work_analysis_confirmation_required_v1,
     project_work_analysis_retrieval_required_v1,
@@ -65,11 +66,7 @@ def _meta():
 def _request_intent():
     return {
         "schema_version": 2,
-        "meta": {
-            "artifact_id": "intent-1",
-            "revision": 1,
-            "based_on": [],
-        },
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
         "goal": "deduplicate the report task",
         "completion_conditions": ["identify duplicate"],
         "constraints": [],
@@ -96,7 +93,7 @@ def _retrieval_result():
         "context_bundle_ref": "context-1",
         "evidence_refs": ["ev-1", "ev-2"],
         "selected_segment_ids": ["seg-1", "seg-2"],
-        "source_resource_refs": ["opaque-task-handle-1", "opaque-task-handle-2"],
+        "source_resource_refs": ["task:task-1", "task:task-2"],
         "source_statuses": [],
         "missing_information": [],
         "retrieval_rounds": 1,
@@ -108,7 +105,7 @@ def _evidence():
         {
             "schema_version": 1,
             "evidence_id": "ev-1",
-            "resource_handle": "opaque-task-handle-1",
+            "resource_handle": "task:task-1",
             "segment_id": "seg-1",
             "kind": "excerpt",
             "excerpt": "Submit report",
@@ -118,7 +115,7 @@ def _evidence():
         {
             "schema_version": 1,
             "evidence_id": "ev-2",
-            "resource_handle": "opaque-task-handle-2",
+            "resource_handle": "task:task-2",
             "segment_id": "seg-2",
             "kind": "excerpt",
             "excerpt": "Submit report",
@@ -128,11 +125,51 @@ def _evidence():
     ]
 
 
+def _tool_route_plan(*, connectors=("connector-tasks-a",)):
+    return {
+        "schema_version": 2,
+        "input_plan": {
+            "schema_version": 1,
+            "meta": {
+                "artifact_id": "input-plan-1",
+                "revision": 1,
+                "based_on": [{"artifact_id": "intent-1", "revision": 1}],
+            },
+            "input_routes": [
+                {
+                    "route_id": f"route-{index}",
+                    "resource_type": "TASK",
+                    "connector_id": connector_id,
+                    "allowed_read_tool_ids": ["tasks.read"],
+                    "required": True,
+                    "reason_codes": ["REQUESTED_INPUT"],
+                }
+                for index, connector_id in enumerate(connectors, start=1)
+            ],
+        },
+        "output_plan": {
+            "schema_version": 1,
+            "meta": {
+                "artifact_id": "output-plan-1",
+                "revision": 1,
+                "based_on": [{"artifact_id": "intent-1", "revision": 1}],
+            },
+            "output_mode": "ANSWER",
+        },
+        "tool_registry_version": "registry-1",
+    }
+
+
+def _connector_resolver():
+    return build_frozen_route_connector_resolver(_tool_route_plan())
+
+
 def _identity_resolver(fact):
     return [
-        "opaque-task-handle-1"
-        if fact["fact_id"] == "fact-1"
-        else "opaque-task-handle-2"
+        (
+            "connector-tasks-a",
+            "task:task-1" if fact["fact_id"] == "fact-1" else "task:task-2",
+        )
     ]
 
 
@@ -178,6 +215,7 @@ def test_llm_candidate_schemas_do_not_expose_deterministic_authority_fields() ->
         "validated_risks",
         "action_necessity",
         "policy_confirmation_receipt_refs",
+        "availability_results",
         "based_on",
         "interrupt_id",
         "resume_target",
@@ -239,13 +277,16 @@ def test_gap_confirmation_attaches_only_application_owned_resume_metadata() -> N
 def test_relation_operands_must_be_same_invocation_fact_ids() -> None:
     with pytest.raises(WorkAnalysisV2ValidationError, match="WorkFactV1.fact_id"):
         validate_work_analysis_local_aggregation(
-            _local(right_ref="task:t2"),
+            _local(right_ref="task:task-2"),
             allowed_evidence_refs={"ev-1", "ev-2"},
         )
 
 
-def test_current_run_fact_identity_resolver_uses_only_evidence_resource_handle() -> None:
-    resolver = build_current_run_fact_identity_resolver(_evidence())
+def test_current_run_fact_identity_is_connector_scoped() -> None:
+    resolver = build_current_run_fact_identity_resolver(
+        _evidence(),
+        connector_for_resource_handle=_connector_resolver(),
+    )
     assert list(
         resolver(
             {
@@ -255,7 +296,14 @@ def test_current_run_fact_identity_resolver_uses_only_evidence_resource_handle()
                 "evidence_refs": ["ev-1"],
             }
         )
-    ) == ["opaque-task-handle-1"]
+    ) == [("connector-tasks-a", "task:task-1")]
+
+
+def test_frozen_route_connector_resolution_fails_closed_when_connector_is_ambiguous() -> None:
+    resolver = build_frozen_route_connector_resolver(
+        _tool_route_plan(connectors=("connector-tasks-a", "connector-tasks-b"))
+    )
+    assert resolver("task:task-1") is None
 
 
 def test_guarded_relation_does_not_promote_when_operand_identity_is_not_exactly_one() -> None:
@@ -282,18 +330,17 @@ def test_guarded_relation_does_not_promote_when_operand_identity_is_not_exactly_
     assert result["ambiguities"][0]["code"] == "RELATION_OPERAND_IDENTITY_UNRESOLVED"
 
 
-def test_guarded_relation_validator_receives_opaque_current_run_resource_handles() -> None:
+def test_guarded_relation_validator_receives_connector_and_resource_handle() -> None:
     local = validate_work_analysis_local_aggregation(
         _local(relation_type="DUPLICATES"),
         allowed_evidence_refs={"ev-1", "ev-2"},
     )
 
     def validator(input_value):
-        assert input_value["relation"]["left_ref"] == "fact-1"
-        assert input_value["left_fact"]["fact_id"] == "fact-1"
-        assert input_value["right_fact"]["fact_id"] == "fact-2"
-        assert input_value["left_resource_handle"] == "opaque-task-handle-1"
-        assert input_value["right_resource_handle"] == "opaque-task-handle-2"
+        assert input_value["left_connector_id"] == "connector-tasks-a"
+        assert input_value["right_connector_id"] == "connector-tasks-a"
+        assert input_value["left_resource_handle"] == "task:task-1"
+        assert input_value["right_resource_handle"] == "task:task-2"
         assert "left_identity" not in input_value
         assert "right_identity" not in input_value
         return {
@@ -401,8 +448,10 @@ class _Provider:
 
 def _node_chain(provider, *, satisfier=None):
     def validator(input_value):
-        assert input_value["left_resource_handle"] == "opaque-task-handle-1"
-        assert input_value["right_resource_handle"] == "opaque-task-handle-2"
+        assert input_value["left_connector_id"] == "connector-tasks-a"
+        assert input_value["right_connector_id"] == "connector-tasks-a"
+        assert input_value["left_resource_handle"] == "task:task-1"
+        assert input_value["right_resource_handle"] == "task:task-2"
         return {
             "accepted": True,
             "validator_codes": ["CURRENT_RUN_IDENTITY_VALIDATED"],
@@ -410,12 +459,13 @@ def _node_chain(provider, *, satisfier=None):
 
     return WorkAnalysisV2NodeChain(
         candidate_provider=provider,
+        connector_for_resource_handle=_connector_resolver(),
         relation_validator=validator,
         retrieval_need_satisfier=satisfier,
     )
 
 
-def _run_chain(chain, *, receipts=None):
+def _run_chain(chain, *, receipts=None, interrupt_id=None, resume_target=None):
     return chain.run(
         user_request="Deduplicate my report task",
         request_intent=_request_intent(),
@@ -423,10 +473,12 @@ def _run_chain(chain, *, receipts=None):
         evidence_drafts=_evidence(),
         meta=_meta(),
         policy_confirmation_receipt_refs=receipts or [],
+        interrupt_id=interrupt_id,
+        resume_target=resume_target,
     )
 
 
-def test_node_chain_produces_v2_artifact_without_exposing_receipts_to_llm_candidates() -> None:
+def test_node_chain_produces_v2_artifact_without_exposing_receipts_to_semantic_provider() -> None:
     provider = _Provider()
     result = _run_chain(
         _node_chain(provider),
@@ -484,3 +536,50 @@ def test_node_chain_needs_more_data_uses_semantic_need_or_route_reconsideration(
         "reason_codes": ["TASK_OWNER_REQUIRED"],
     }
     assert "schema_version" not in route_signal
+
+
+def test_override_without_receipt_stays_confirmation_and_application_owns_resume_metadata() -> None:
+    provider = _Provider(
+        gap_decision={
+            "disposition": "NEEDS_CONFIRMATION",
+            "question": "Allow this duplicate override?",
+            "options": ["Allow", "Cancel"],
+            "reason_codes": ["DUPLICATE_OVERRIDE"],
+        },
+        risks=[
+            {
+                "code": "DUPLICATE_OVERRIDE",
+                "severity": "WARNING",
+                "description": "duplicate override requires confirmed authority",
+                "evidence_refs": ["ev-1"],
+            }
+        ],
+    )
+    outcome = _run_chain(
+        _node_chain(provider),
+        interrupt_id="interrupt-override-1",
+        resume_target={
+            "subgraph_id": "WORK_ANALYSIS",
+            "node_id": "assess_analysis_gaps",
+            "graph_version": "v2",
+        },
+    )
+    assert outcome["kind"] == "CONFIRMATION_REQUIRED"
+    assert outcome["owner_subgraph"] == "WORK_ANALYSIS"
+    assert outcome["question"] == "Allow this duplicate override?"
+    assert "schema_version" not in outcome
+
+
+def test_override_complete_without_receipt_fails_closed_instead_of_creating_artifact() -> None:
+    provider = _Provider(
+        risks=[
+            {
+                "code": "CONFLICT_OVERRIDE",
+                "severity": "WARNING",
+                "description": "conflict override requires confirmed authority",
+                "evidence_refs": ["ev-1"],
+            }
+        ]
+    )
+    with pytest.raises(WorkAnalysisV2ValidationError, match="must remain NEEDS_CONFIRMATION"):
+        _run_chain(_node_chain(provider))
