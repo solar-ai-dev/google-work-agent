@@ -1,22 +1,23 @@
 # 10. Error · Event · Configuration Naming
 
-> Parent: Repository Architecture Source v1.1
+> Parent: Repository Architecture Source v1.4
 
-## Exception class
+## Exception class and module
 
 ```text
+<subject>_<condition>_error.py
 <Subject><Condition>Error
 ```
 
 Examples:
 
 ```text
-ClaimExpiredError
-RouteContractError
-CheckpointConflictError
+claim_expired_error.py       ClaimExpiredError
+route_contract_error.py      RouteContractError
+checkpoint_conflict_error.py CheckpointConflictError
 ```
 
-Avoid broad semantic catch-alls such as `ProcessingError` or a project-specific generic `RuntimeError`.
+Avoid broad semantic catch-alls such as `ProcessingError`, project-specific generic `RuntimeError`, or broad multi-authority `errors.py` buckets.
 
 ## Error codes and enum values
 
@@ -54,11 +55,19 @@ Observability event names use explicit subject + event outcome, normally:
 
 Examples: `ACTION_APPROVED`, `EXECUTION_CLAIMED`, `VERIFICATION_MISMATCH`, `RECOVERY_RESOLVED`.
 
-## Configuration / constants
+## Configuration / settings / constants
 
 Constants use `UPPER_SNAKE_CASE`.
 
-Equal numeric values with different semantic purposes remain separate constants. Do not merge constants solely because their current numeric values are equal.
+Configuration modules are owner-local and semantic:
+
+```text
+<concern>_config.py
+```
+
+Use `<concern>_settings.py` only for persisted/user settings when the owning behavior contract explicitly distinguishes settings from runtime/build configuration.
+
+Generic production `config.py` is prohibited. Equal numeric values with different semantic purposes remain separate constants. Do not merge constants solely because their current numeric values are equal.
 
 ## Field suffixes
 
