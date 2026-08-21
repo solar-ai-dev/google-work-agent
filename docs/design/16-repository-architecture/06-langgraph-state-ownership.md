@@ -1,7 +1,7 @@
 # 06. LangGraph · State Ownership
 
-> Parent: Repository Architecture Source v1.1  
-> Behavioral semantics remain owned by 06 Agent · Workflow.
+> Parent: Repository Architecture Source v1.4  
+> Behavioral semantics and versioned runtime capability IDs remain owned by 06 Agent · Workflow / 15 Prompt · Failure.
 
 ## Six semantic owners
 
@@ -21,7 +21,8 @@ Canonical role display name is `Tool Routing`; package owner is `tool_routing`. 
 ```text
 adapters/langgraph/main/graph.py
 adapters/langgraph/main/state.py
-adapters/langgraph/main/routing.py
+adapters/langgraph/main/routing/route_after_<stage>.py
+adapters/langgraph/main/projections/<scope>_projection.py
 ```
 
 ## Role subgraph
@@ -29,9 +30,23 @@ adapters/langgraph/main/routing.py
 ```text
 adapters/langgraph/subgraphs/<role>/graph.py
 adapters/langgraph/subgraphs/<role>/state.py
-adapters/langgraph/subgraphs/<role>/routing.py
+adapters/langgraph/subgraphs/<role>/routing/route_after_<stage>.py
+adapters/langgraph/subgraphs/<role>/projections/<scope>_projection.py
 adapters/langgraph/subgraphs/<role>/nodes/<verb>_<object>_node.py
 ```
+
+Catch-all final-production `routing.py` is prohibited. Each router is `route_after_<stage>.py → route_after_<stage>()`.
+
+## Application semantic owner
+
+Every semantic capability invoked by a LangGraph node has one Application owner operation:
+
+```text
+application/agents/<role>/<verb>_<object>.py
+→ <verb>_<object>()
+```
+
+The LangGraph node is not a second semantic implementation.
 
 ## Thin-node rule
 
@@ -46,7 +61,9 @@ typed input projection
 
 It does not own provider access, concrete persistence, Domain transition authority, or a second implementation of the semantic capability.
 
-## Canonical node namespace
+## Canonical repository capability namespace
+
+The following repository labels mirror the currently versioned 06/15 semantic responsibilities. 16 does not independently rename those runtime IDs.
 
 ```text
 request_understanding.identify_goal
@@ -70,22 +87,30 @@ retrieval.assess_sufficiency
 retrieval.finalize_retrieval
 
 work_analysis.extract_work_facts
-work_analysis.resolve_relations
+work_analysis.resolve_entity_relations
+work_analysis.resolve_temporal_dependencies
+work_analysis.detect_duplicate_conflict_candidates
 work_analysis.validate_relations
-work_analysis.assess_analysis_gaps
-work_analysis.assemble_analysis
-work_analysis.validate_analysis
+work_analysis.assess_information_gaps
+work_analysis.assess_operational_risks
+work_analysis.assemble_work_analysis
+work_analysis.validate_work_analysis
 
 planning.choose_answer_or_action_from_route
+planning.outline_answer
 planning.compose_answer
+planning.draft_action_objective_per_output_route
 planning.compose_arguments_per_output_route
 planning.build_dependencies
 planning.assemble_plan
 planning.validate_plan
 
-review.inspect_plan
+review.inspect_goal_and_evidence
+review.inspect_action_scope_and_route
+review.inspect_constraints_and_policy_summary
+review.aggregate_review_findings
 review.validate_review
-review.recheck_plan
+review.recheck_affected_dimensions
 ```
 
 `planning.build_dependencies` is deterministic. `planning.compose_dependencies` is not a Product Prompt/LLM authority.
