@@ -1,13 +1,13 @@
-"""Bind write-result ResourceRefs to the connector persisted on their Action."""
+"""Compatibility wrapper for write-result persistence.
+
+Connector identity is now carried explicitly by the persisted Action and the
+application ResourceRef projector, so no persistence ContextVar is required.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol, cast
 
-from google_work_agent.adapters.persistence.connector_identity import (
-    bind_resource_connector_id,
-)
 from google_work_agent.application.write_actions import (
     StoreWriteActionSuccessCommand,
     StoreWriteActionSuccessService,
@@ -16,12 +16,8 @@ from google_work_agent.application.write_actions import (
 from google_work_agent.ports import UnitOfWork
 
 
-class _ConnectorAwareActionRepository(Protocol):
-    def connector_id_for_action(self, action_id: str) -> str: ...
-
-
 class ConnectorBoundStoreWriteActionSuccessService(StoreWriteActionSuccessService):
-    """Delegate write-result persistence under the Action's frozen connector identity."""
+    """Backward-compatible facade; connector persistence is explicit in delegate."""
 
     def __init__(
         self,
@@ -33,8 +29,4 @@ class ConnectorBoundStoreWriteActionSuccessService(StoreWriteActionSuccessServic
         self._connector_uow_factory = unit_of_work_factory
 
     def __call__(self, command: StoreWriteActionSuccessCommand) -> WriteActionResponse:
-        with self._connector_uow_factory() as unit_of_work:
-            repository = cast(_ConnectorAwareActionRepository, unit_of_work.actions)
-            connector_id = repository.connector_id_for_action(command.action_id)
-        with bind_resource_connector_id(connector_id):
-            return self._delegate(command)
+        return self._delegate(command)
