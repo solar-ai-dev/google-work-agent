@@ -5,9 +5,7 @@ semantic-candidate/tool-selection validation for Tool Route. Never assembles
 a final ``ToolRoutePlanV2`` and never binds a Registry tool on its own
 authority -- ``ToolRouteCoordinator`` (tool_routing.py) keeps sole ownership
 of deterministic registry binding, PolicyPreconditionResolver, validation,
-and freezing. This module supplies that coordinator with a
-``SemanticRouteCandidate`` and, only when the Registry has more than one
-eligible tool for a route, a Registry-validated tool selection.
+and freezing.
 """
 
 from __future__ import annotations
@@ -25,6 +23,7 @@ from google_work_agent.application.workflows.contracts import (
     approve_semantic_revision,
     build_semantic_failure_signature_v1,
 )
+from google_work_agent.application.workflows.failure_record import build_failure_record_v1
 from google_work_agent.application.workflows.handoff_contracts import RequestIntentV2
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
@@ -133,14 +132,7 @@ TOOL_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
 
 
 class ToolRouteAgent:
-    """Own the Tool Route semantic candidate LLM stage.
-
-    Registry authority stays with ``ToolRouteCoordinator``: this Agent only
-    produces a semantic resource/effect candidate and, when the Registry
-    has more than one eligible tool for a route, a selection among those
-    Registry-validated candidates. It never assembles a final
-    ``ToolRoutePlanV2``.
-    """
+    """Own the Tool Route semantic candidate LLM stage."""
 
     def __init__(
         self,
@@ -231,7 +223,6 @@ class ToolRouteAgent:
         failure_detail: str,
         retry_budget: RunBudgetV1,
     ) -> tuple[Mapping[str, object], RunBudgetV1]:
-        """Bounded semantic revision using the frozen runtime envelope."""
         failure_code = "SEMANTIC_CANDIDATE_INVALID"
         signature = build_semantic_failure_signature_v1(
             node_id="tool_route.determine_io_resources",
@@ -254,12 +245,15 @@ class ToolRouteAgent:
             prompt_input={
                 "base_projection": dict(base_projection),
                 "candidate_output": previous_output,
-                "failure_record": {
-                    "failure_reason_code": failure_code,
-                    "affected_fields": mutable_fields,
-                    "allowed_change_scope": mutable_fields,
-                    "validation_errors": [failure_detail],
-                },
+                "failure_record": build_failure_record_v1(
+                    failure_reason_code=failure_code,
+                    failure_origin="LLM_OUTPUT",
+                    detected_by="RUNTIME_DOMAIN_VALIDATOR",
+                    runtime_disposition="RETRYABLE",
+                    experiment_disposition="RUN_REVISION",
+                    affected_field_paths=mutable_fields,
+                    failure_context_ids=[failure_detail],
+                ),
             },
             output_schema=ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -328,14 +322,17 @@ class ToolRouteAgent:
             prompt_input={
                 "base_projection": dict(prompt_input),
                 "candidate_output": llm_result.structured_output,
-                "failure_record": {
-                    "failure_reason_code": failure_code,
-                    "affected_fields": mutable_fields,
-                    "allowed_change_scope": mutable_fields,
-                    "validation_errors": [
+                "failure_record": build_failure_record_v1(
+                    failure_reason_code=failure_code,
+                    failure_origin="LLM_OUTPUT",
+                    detected_by="RUNTIME_DOMAIN_VALIDATOR",
+                    runtime_disposition="RETRYABLE",
+                    experiment_disposition="RUN_REVISION",
+                    affected_field_paths=mutable_fields,
+                    failure_context_ids=[
                         "selected_tool_id is not a Registry-eligible candidate"
                     ],
-                },
+                ),
             },
             output_schema=TOOL_SELECTION_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -426,7 +423,6 @@ def _eligible_route_capabilities(
 
 
 def _normalize_output_resource_type(coarse_resource: str, effect: EffectType) -> str:
-    """Expand a coarse output resource type using its paired effect."""
     if coarse_resource == "EMAIL":
         if effect is EffectType.SEND:
             return "GMAIL_MESSAGE"
