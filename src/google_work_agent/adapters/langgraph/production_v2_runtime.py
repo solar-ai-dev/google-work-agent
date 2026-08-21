@@ -8,7 +8,7 @@ unchanged for Runtime R2/R3.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -29,6 +29,7 @@ from google_work_agent.application.workflows.handoff_contracts import (
     RequestIntentV2,
     RetrievalResultV1,
     StateArtifactMetaV1,
+    StateArtifactRefV1,
     SubgraphReturnV2,
     WorkflowSignalV1,
 )
@@ -150,7 +151,7 @@ class ProductionV2RuntimeHandlers:
         evidence = _evidence(state, retrieval_result)
 
         # Runtime authority: rebuilt from the current frozen ToolRoutePlanV2 on
-        # every invocation.  No resolver survives in graph/checkpoint state.
+        # every invocation. No resolver survives in graph/checkpoint state.
         connector_resolver = build_frozen_route_connector_resolver(tool_route_plan)
         chain = WorkAnalysisV2NodeChain(
             candidate_provider=self._deps.work_analysis_provider_factory(request),
@@ -176,13 +177,9 @@ class ProductionV2RuntimeHandlers:
                 ),
             ),
             policy_confirmation_receipt_refs=[
-                cast(PolicyConfirmationReceiptV1, receipt)["meta"]
+                cast(StateArtifactRefV1, _artifact_ref(receipt["meta"]))
                 for receipt in _policy_receipts(state)
             ],
-            confirmation_response=_owner_confirmation_response(
-                state,
-                owner="WORK_ANALYSIS",
-            ),
             interrupt_id=None if confirmation is None else confirmation[0],
             resume_target=None if confirmation is None else confirmation[1],
         )
@@ -443,8 +440,8 @@ def _domain_validation_patch(
         }
         envelope["workflow_signal"] = cast(Any, signal)
     elif result == "ALLOW_READ":
-        # Runtime V2 DV receives ActionPlanDraftV2 only.  Treat an ALLOW_READ
-        # result as a durable-state reconciliation case, never as success.
+        # Runtime V2 DV receives ActionPlanDraftV2 only. Treat ALLOW_READ as a
+        # durable-state reconciliation case, never as success/finalize.
         target = "domain_reconcile"
         signal = None
     else:
@@ -527,9 +524,12 @@ def _work_analysis_meta(
         "artifact_id": _required_text(artifact_id, "work analysis artifact id"),
         "revision": 1,
         "based_on": [
-            _artifact_ref(request_intent["meta"]),
-            _artifact_ref(tool_route_plan["input_plan"]["meta"]),
-            _artifact_ref(retrieval_result["meta"]),
+            cast(StateArtifactRefV1, _artifact_ref(request_intent["meta"])),
+            cast(
+                StateArtifactRefV1,
+                _artifact_ref(tool_route_plan["input_plan"]["meta"]),
+            ),
+            cast(StateArtifactRefV1, _artifact_ref(retrieval_result["meta"])),
         ],
     }
 
@@ -654,26 +654,6 @@ def _confirmation_context(
             "confirmation resume target must match the originating owner"
         )
     return interrupt_id, resume_target
-
-
-def _owner_confirmation_response(
-    state: ProductionGraphStateV2,
-    *,
-    owner: str,
-) -> Mapping[str, object] | None:
-    prompt_context = state.get("prompt_context")
-    if not isinstance(prompt_context, Mapping):
-        return None
-    if prompt_context.get("confirmation_owner_subgraph") != owner:
-        return None
-    response = prompt_context.get("confirmation_response")
-    if response is None:
-        return None
-    if not isinstance(response, Mapping):
-        raise ProductionV2RuntimeBindingError(
-            "confirmation_response must be a bounded mapping"
-        )
-    return cast(Mapping[str, object], response)
 
 
 __all__ = [
