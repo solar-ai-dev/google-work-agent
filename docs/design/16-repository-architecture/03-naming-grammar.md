@@ -1,107 +1,143 @@
-# Semantic Naming Grammar
+# 03. Naming Grammar
 
-## Principle
+> Parent: Repository Architecture Source v1.1
 
-Naming must identify semantic responsibility.
+## Python grammar
 
-Do not encode migration history in production module names.
+```text
+package/module/function/variable → snake_case
+class/type                       → PascalCase
+constant/enum value/error code   → UPPER_SNAKE_CASE
+```
 
-## Use cases
+## Application capability
 
 ```text
 <verb>_<object>.py
-<Verb><Object>Command
+<Verb><Object>Command | <Verb><Object>Query
 <Verb><Object>Result
 <Verb><Object>Handler
 ```
 
-Examples:
+Command/Query + Result + Handler for one capability are colocated in that capability file.
+
+## Domain lifecycle
 
 ```text
-block_run.py
-approve_action.py
-claim_action.py
-verify_action.py
-recover_unknown_result.py
+domain/<owner>/transitions/<verb>_<object>.py
+domain/<owner>/guards/<verb>_<object>.py
 ```
 
-## Queries
+## Connector operation
 
 ```text
-get_run.py
-list_conversations.py
-search_messages.py
+<verb>_<resource>.py
+<Verb><Resource>Operation
 ```
 
-## Connector effects
+## LangGraph node
 
 ```text
-create_message.py
-get_message.py
-search_messages.py
-update_message.py
-delete_message.py
-send_message.py
+<verb>_<object>_node.py
+<verb>_<object>_node()
 ```
 
-Each file owns exactly that operation.
-
-## LangGraph
+## Router / graph / state / projection
 
 ```text
-classify_request_node.py
-validate_relations_node.py
-route_after_review.py
-graph.py
-state.py
-routing.py
-request_projection.py
+routing.py                   route_after_<stage>() or explicit routing function
+graph.py                     build_<scope>_graph()
+state.py                     <Scope>State
+<scope>_projection.py        project_<scope>_input()
 ```
 
-## Repositories
+## Package singular/plural
+
+- Domain/Application owner package: singular.
+- REST route collection: plural.
+- Provider resource package: Provider-natural plural is allowed.
+
+## Field suffixes
 
 ```text
-run_repository.py
-plan_repository.py
-action_repository.py
-approval_repository.py
-claim_repository.py
-execution_attempt_repository.py
-verification_repository.py
-resource_ref_repository.py
+<entity>_id
+*_ref / *_refs
+*_handle / *_handles
+*_hash
+*_version
+*_at_ms
 ```
 
-## Forbidden final production names
+New booleans prefer `is_`, `has_`, `can_`, or `should_` when applicable. Existing canonical fields such as `applied` remain unchanged.
+
+## Versioning
+
+Contract type versioning is allowed:
 
 ```text
-runtime.py
-manager.py
-service.py
-helpers.py
-utils.py
-common.py
-misc.py
+RequestIntentV2
+ToolRoutePlanV2
+WorkAnalysisResultV2
+CommandResponseV1
+```
 
+Production implementation module generation/version naming is prohibited:
+
+```text
 canonical_*.py
-production_v*.py
+production_*.py
 legacy_*.py
 new_*.py
 old_*.py
 final_*.py
 *_v2.py
+*_v3.py
 *_r2.py
 *_r21.py
 ```
 
-A generic name may exist only with an explicit architectural exception and one responsibility.
-
-## Versioning
-
-Allowed in DTO/contract type names:
+Generic production filenames are prohibited unless explicitly exempted:
 
 ```text
-RequestIntentV2
-WorkAnalysisResultV2
+runtime.py
+service.py
+manager.py
+processor.py
+engine.py
+handler.py
+helpers.py
+helper.py
+utils.py
+util.py
+common.py
+shared.py
+misc.py
 ```
 
-Not allowed as parallel production implementation filenames.
+Architecture-role exceptions:
+
+```text
+state.py
+graph.py
+routing.py
+model.py
+composition.py
+```
+
+These exceptions do not permit mixed semantic responsibilities.
+
+## Ambiguous operation names
+
+Do not use the following as semantic operation verbs:
+
+```text
+handle
+process
+manage
+perform
+do
+run
+helper
+util
+common
+```
