@@ -1,6 +1,6 @@
-"""SSE schema helpers."""
+"""Get-run-events SSE envelope."""
 
-from .common import ApiModel
+from google_work_agent.api.schemas.common import ApiModel
 
 
 class EventEnvelope(ApiModel):
