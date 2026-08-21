@@ -1,6 +1,6 @@
 # 02. Directory Ownership
 
-> Parent: Repository Architecture Source v1.1
+> Parent: Repository Architecture Source v1.4
 
 ## Top-level ownership
 
@@ -33,7 +33,7 @@ domain/resource_ref/
 domain/conversation/
 ```
 
-Lifecycle operations and guards are operation-per-file:
+Lifecycle transitions and guards are operation-per-file:
 
 ```text
 domain/run/transitions/block_run.py
@@ -41,7 +41,7 @@ domain/run/transitions/finalize_cancel.py
 domain/action/guards/claim_execution.py
 ```
 
-A broad `commands.py` or `transitions.py` file is not accepted final production structure when it owns multiple independent lifecycle capabilities.
+Final production must not use broad `commands.py`, `transitions.py`, `guards.py`, or equivalent multi-capability buckets. Domain model types that share one cohesive invariant set may remain in `domain/<owner>/model.py`.
 
 ## Application
 
@@ -59,6 +59,20 @@ application/orchestration/
 ```
 
 Application semantic owner packages are singular.
+
+Agent semantic implementation is operation-per-file:
+
+```text
+application/agents/<role>/<verb>_<object>.py
+```
+
+Owner-local contract types live under:
+
+```text
+application/agents/<role>/contracts/<artifact_name>.py
+```
+
+A global catch-all production `contracts/` package is prohibited.
 
 ## Ports
 
@@ -81,6 +95,22 @@ adapters/llm/
 ```
 
 Concrete adapter code may depend on stable Ports/contracts but does not become Application authority.
+
+LangGraph routing is operation-per-file:
+
+```text
+adapters/langgraph/main/routing/route_after_<stage>.py
+adapters/langgraph/subgraphs/<role>/routing/route_after_<stage>.py
+```
+
+A catch-all `routing.py` is not final production structure.
+
+LangGraph input projections are owner-local:
+
+```text
+adapters/langgraph/main/projections/<scope>_projection.py
+adapters/langgraph/subgraphs/<role>/projections/<scope>_projection.py
+```
 
 ## API
 
