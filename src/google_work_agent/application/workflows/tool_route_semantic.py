@@ -5,7 +5,9 @@ semantic-candidate/tool-selection validation for Tool Route. Never assembles
 a final ``ToolRoutePlanV2`` and never binds a Registry tool on its own
 authority -- ``ToolRouteCoordinator`` (tool_routing.py) keeps sole ownership
 of deterministic registry binding, PolicyPreconditionResolver, validation,
-and freezing.
+and freezing. This module supplies that coordinator with a
+``SemanticRouteCandidate`` and, only when the Registry has more than one
+eligible tool for a route, a Registry-validated tool selection.
 """
 
 from __future__ import annotations
@@ -32,8 +34,8 @@ from google_work_agent.application.workflows.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.application.workflows.provider_dispatch_budget import (
-    bind_provider_dispatch_budget,
     legacy_post_call_projection,
+    provider_dispatch_budget_scope,
 )
 from google_work_agent.application.workflows.tool_routing import (
     SemanticRouteCandidate,
@@ -136,7 +138,14 @@ TOOL_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
 
 
 class ToolRouteAgent:
-    """Own the Tool Route semantic candidate LLM stage."""
+    """Own the Tool Route semantic candidate LLM stage.
+
+    Registry authority stays with ``ToolRouteCoordinator``: this Agent only
+    produces a semantic resource/effect candidate and, when the Registry
+    has more than one eligible tool for a route, a selection among those
+    Registry-validated candidates. It never assembles a final
+    ``ToolRoutePlanV2``.
+    """
 
     def __init__(
         self,
@@ -179,7 +188,22 @@ class ToolRouteAgent:
         retry_budget: RunBudgetV1,
         confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> tuple[SemanticRouteCandidate, RunBudgetV1]:
-        bind_provider_dispatch_budget(retry_budget)
+        with provider_dispatch_budget_scope(retry_budget):
+            return self._determine_semantic_candidate_scoped(
+                request_intent=request_intent,
+                request=request,
+                retry_budget=retry_budget,
+                confirmation_response=confirmation_response,
+            )
+
+    def _determine_semantic_candidate_scoped(
+        self,
+        *,
+        request_intent: RequestIntentV2,
+        request: WorkflowStartRequest,
+        retry_budget: RunBudgetV1,
+        confirmation_response: ConfirmationResponseV1 | None,
+    ) -> tuple[SemanticRouteCandidate, RunBudgetV1]:
         eligible_route_capabilities = _eligible_route_capabilities(self._tool_catalog)
         base_projection: dict[str, object] = {
             "request_intent": request_intent,
@@ -228,6 +252,7 @@ class ToolRouteAgent:
         failure_detail: str,
         retry_budget: RunBudgetV1,
     ) -> tuple[Mapping[str, object], RunBudgetV1]:
+        """Bounded semantic revision using the frozen runtime envelope."""
         failure_code = "SEMANTIC_CANDIDATE_INVALID"
         signature = build_semantic_failure_signature_v1(
             node_id="tool_route.determine_io_resources",
@@ -286,7 +311,28 @@ class ToolRouteAgent:
         request: WorkflowStartRequest,
         retry_budget: RunBudgetV1,
     ) -> tuple[str, RunBudgetV1]:
-        bind_provider_dispatch_budget(retry_budget)
+        with provider_dispatch_budget_scope(retry_budget):
+            return self._select_tool_if_needed_scoped(
+                route_id=route_id,
+                connector_id=connector_id,
+                resource_type=resource_type,
+                effect=effect,
+                eligible_tool_ids=eligible_tool_ids,
+                request=request,
+                retry_budget=retry_budget,
+            )
+
+    def _select_tool_if_needed_scoped(
+        self,
+        *,
+        route_id: str,
+        connector_id: str,
+        resource_type: str,
+        effect: str,
+        eligible_tool_ids: tuple[str, ...],
+        request: WorkflowStartRequest,
+        retry_budget: RunBudgetV1,
+    ) -> tuple[str, RunBudgetV1]:
         prompt_input = {
             "route_id": route_id,
             "connector_id": connector_id,
@@ -429,6 +475,7 @@ def _eligible_route_capabilities(
 
 
 def _normalize_output_resource_type(coarse_resource: str, effect: EffectType) -> str:
+    """Expand a coarse output resource type using its paired effect."""
     if coarse_resource == "EMAIL":
         if effect is EffectType.SEND:
             return "GMAIL_MESSAGE"
