@@ -164,22 +164,30 @@ class ProductionV2RuntimeHandlers:
             owner="WORK_ANALYSIS",
             resolver=self._deps.confirmation_context_resolver,
         )
+
+        # IMP-200~209 provenance is not yet complete on this branch. Receipt
+        # shape or APPROVED status alone is not authorization. Compute the
+        # fail-closed receipt projection once, then reuse that exact list for
+        # both official WorkAnalysisResultV2 receipt refs and meta lineage.
+        validated_receipt_refs = _validated_work_analysis_receipt_refs(
+            _policy_receipts(state)
+        )
+        work_analysis_meta = _work_analysis_meta(
+            state,
+            artifact_id=self._deps.artifact_id_factory(
+                "work_analysis",
+                request.run_id,
+            ),
+            policy_confirmation_receipt_refs=validated_receipt_refs,
+        )
+
         result = chain.run(
             user_request=request.request_text,
             request_intent=cast(RequestIntentV2, request_intent),
             retrieval_result=retrieval_result,
             evidence_drafts=evidence,
-            meta=_work_analysis_meta(
-                state,
-                artifact_id=self._deps.artifact_id_factory(
-                    "work_analysis",
-                    request.run_id,
-                ),
-            ),
-            policy_confirmation_receipt_refs=[
-                cast(StateArtifactRefV1, _artifact_ref(receipt["meta"]))
-                for receipt in _policy_receipts(state)
-            ],
+            meta=work_analysis_meta,
+            policy_confirmation_receipt_refs=validated_receipt_refs,
             interrupt_id=None if confirmation is None else confirmation[0],
             resume_target=None if confirmation is None else confirmation[1],
         )
@@ -507,6 +515,7 @@ def _work_analysis_meta(
     state: ProductionGraphStateV2,
     *,
     artifact_id: str,
+    policy_confirmation_receipt_refs: list[StateArtifactRefV1],
 ) -> StateArtifactMetaV1:
     request_intent = cast(
         RequestIntentV2,
@@ -520,18 +529,60 @@ def _work_analysis_meta(
         RetrievalResultV1,
         _required_mapping_value(state.get("retrieval_result"), "retrieval_result"),
     )
-    return {
-        "artifact_id": _required_text(artifact_id, "work analysis artifact id"),
-        "revision": 1,
-        "based_on": [
+    based_on = _ordered_unique_artifact_refs(
+        [
             cast(StateArtifactRefV1, _artifact_ref(request_intent["meta"])),
             cast(
                 StateArtifactRefV1,
-                _artifact_ref(tool_route_plan["input_plan"]["meta"]),
+                _artifact_ref(tool_route_plan["output_plan"]["meta"]),
             ),
             cast(StateArtifactRefV1, _artifact_ref(retrieval_result["meta"])),
-        ],
+            *policy_confirmation_receipt_refs,
+        ]
+    )
+    return {
+        "artifact_id": _required_text(artifact_id, "work analysis artifact id"),
+        "revision": 1,
+        "based_on": based_on,
     }
+
+
+def _validated_work_analysis_receipt_refs(
+    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1],
+) -> list[StateArtifactRefV1]:
+    """Fail closed until exact Policy Receipt provenance is production authority.
+
+    The current branch can observe receipt DTOs and downstream DV can check that
+    a referenced receipt exists and is APPROVED, but it cannot prove the exact
+    active ``decision_context_hash`` plus current target/scope binding required
+    by IMP-200~209. Therefore no receipt, including an APPROVED receipt, is
+    promoted to Work Analysis authorization in R1.1. DECLINED, malformed,
+    stale, wrong-context and wrong-scope receipts consequently also authorize
+    nothing. The input is intentionally consumed only at this deterministic
+    boundary so ``policy_confirmation_receipt_refs`` and ``meta.based_on``
+    cannot drift through independent filtering.
+    """
+
+    if not isinstance(policy_confirmation_receipts, list):
+        raise ProductionV2RuntimeBindingError(
+            "policy confirmation receipt projection requires a list"
+        )
+    return []
+
+
+def _ordered_unique_artifact_refs(
+    refs: list[StateArtifactRefV1],
+) -> list[StateArtifactRefV1]:
+    result: list[StateArtifactRefV1] = []
+    seen: set[tuple[str, int]] = set()
+    for raw in refs:
+        ref = cast(StateArtifactRefV1, _artifact_ref(raw))
+        key = (ref["artifact_id"], ref["revision"])
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(ref)
+    return result
 
 
 def _artifact_ref(meta: Mapping[str, object]) -> dict[str, object]:
