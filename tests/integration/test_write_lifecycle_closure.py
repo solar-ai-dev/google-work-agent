@@ -89,10 +89,10 @@ def test_corrective_persistence_separates_reserved_plan_from_child_remapping() -
     assert "evidence_id_map" in corrective_source
     assert "depends_on_action_ids" in corrective_source
     assert "persisted_connector_ids" in corrective_source
-    assert "_require_applied_save_receipt" in corrective_source
-    assert "_validate_persisted_materialization" in corrective_source
+    assert "_continue_durable_corrective_write_plan" in corrective_source
     assert "if existing_actions:" in corrective_source
-    assert "if not existing_actions:" in corrective_source
+    assert "if use_durable_continuation:" in corrective_source
+    assert "resolve_evidence_projection" in corrective_source
 
     # The one-shot marker is consumed only after verified Publish success or
     # verified already-published replay.
