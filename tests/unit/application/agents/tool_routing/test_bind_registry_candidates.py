@@ -1,0 +1,7 @@
+from google_work_agent.application.agents.tool_routing.bind_registry_candidates import bind_registry_candidates
+from google_work_agent.application.agents.tool_routing.contracts.semantic_route_candidate import SemanticRouteCandidate
+from google_work_agent.domain import ConnectorToolCatalog,EffectType,build_p0_tool_registry
+def _catalog()->ConnectorToolCatalog:
+    catalog=ConnectorToolCatalog();catalog.register(connector_id="google_workspace",registry=build_p0_tool_registry());return catalog
+def test_bind_registry_candidates__task_create__binds_single_registry_tool_and_read_dependency()->None:
+    ids=iter(f"route-{index}" for index in range(10));binding=bind_registry_candidates(candidate=SemanticRouteCandidate(input_resource_types=("TASK",),output_pairs=(("TASK",EffectType.CREATE),),output_mode="ACTION",analysis_requirement="REQUIRED"),tool_catalog=_catalog(),id_factory=lambda:next(ids));assert binding.output_routes[0]["selected_tool_id"]=="tasks_create_task";assert {route["resource_type"] for route in binding.input_routes}=={"TASK","TASK_LIST"}
