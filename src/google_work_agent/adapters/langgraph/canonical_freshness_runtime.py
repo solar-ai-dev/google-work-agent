@@ -21,6 +21,9 @@ from typing import cast
 from google_work_agent.adapters.langgraph.canonical_response_runtime import (
     LangGraphWorkflowRuntime as _CanonicalResponseRuntime,
 )
+from google_work_agent.adapters.langgraph.corrective_plan_persistence import (
+    persist_reserved_corrective_write_plan,
+)
 from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.application.cancel_intent import (
     CancelIntentReceiptReader,
@@ -36,6 +39,7 @@ from google_work_agent.application.workflows import (
     SupervisorTarget,
     WorkflowPhase,
 )
+from google_work_agent.application.workflows.handoff_contracts import ActionPlanDraftV1
 from google_work_agent.domain import ActionStatus, RunStatus
 from google_work_agent.ports import (
     PlanStatus,
@@ -128,7 +132,13 @@ class LangGraphWorkflowRuntime(_CanonicalResponseRuntime):
         self._graph.update_state(
             config,
             {
-                "__replan_from_plan_id__": plan.id,
+                # Corrective recovery owns a reserved *destination* Plan. Do
+                # not overload the ordinary replan source marker: its legacy
+                # meaning includes allocating a new revision and remapping
+                # children. The destination marker is consumed exactly once
+                # after successful persistence.
+                "__replan_from_plan_id__": None,
+                "__reserved_corrective_plan_id__": plan.id,
                 "__logical_target__": SupervisorTarget.PLANNING.value,
                 "__target__": translation.node,
                 "workflow_phase": WorkflowPhase.SOLUTION_PLANNING.value,
@@ -146,6 +156,29 @@ class LangGraphWorkflowRuntime(_CanonicalResponseRuntime):
             workflow_key=request.workflow_key,
             run_id=request.run_id,
         )
+
+    def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
+        """Persist ordinary replans normally, or fill one reserved corrective revision."""
+        reserved_plan_id = state.get("__reserved_corrective_plan_id__")
+        if not isinstance(reserved_plan_id, str) or not reserved_plan_id:
+            return super()._persist_write_plan(state, plan_draft)
+
+        with self._unit_of_work_factory() as unit_of_work:
+            reserved_plan = unit_of_work.plans.get_by_id(reserved_plan_id)
+        if reserved_plan is None:
+            raise LookupError(f"reserved corrective plan not found: {reserved_plan_id}")
+
+        persisted_plan_id = persist_reserved_corrective_write_plan(
+            self,
+            state=state,
+            plan_draft=plan_draft,
+            reserved_plan=reserved_plan,
+        )
+        # One-shot marker: only consume after Save + Publish both succeeded.
+        # If persistence raises, the marker remains durable for fail-closed
+        # recovery rather than silently losing the reserved destination.
+        state["__reserved_corrective_plan_id__"] = None
+        return persisted_plan_id
 
     @staticmethod
     def _corrective_resume_conflict(

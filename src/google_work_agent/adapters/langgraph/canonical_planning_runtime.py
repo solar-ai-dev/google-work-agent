@@ -41,7 +41,6 @@ from google_work_agent.application.workflows.handoff_contracts import (
 from google_work_agent.application.write_verification_projection import (
     build_expected_verification_projection,
 )
-from google_work_agent.ports import PlanStatus
 
 _active_target_resource_connector_ids: ContextVar[dict[str, str] | None] = ContextVar(
     "active_target_resource_connector_ids", default=None
@@ -285,23 +284,8 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
 
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         deterministic_plan = replace_llm_expected_with_deterministic_projection(plan_draft)
-        persistence_state = state
-        replan_from_plan_id = state.get("__replan_from_plan_id__")
-        if isinstance(replan_from_plan_id, str) and replan_from_plan_id:
-            with self._unit_of_work_factory() as unit_of_work:
-                reserved_plan = unit_of_work.plans.get_by_id(replan_from_plan_id)
-            if reserved_plan is not None and reserved_plan.status is PlanStatus.DRAFT:
-                # CREATE_CORRECTIVE_PLAN reserves the next DRAFT revision in
-                # Domain before the coordinator resumes Planning. Reuse that
-                # exact server-owned Plan id; do not create a second revision.
-                deterministic_plan = deepcopy(deterministic_plan)
-                deterministic_plan["plan_id"] = reserved_plan.id
-                persistence_state = cast(
-                    GraphState,
-                    {**state, "__replan_from_plan_id__": None},
-                )
         connector_ids = connector_ids_from_frozen_routes(
-            state=persistence_state,
+            state=state,
             plan_draft=deterministic_plan,
         )
         target_resource_connectors = target_resource_connector_ids_from_actions(
@@ -313,7 +297,7 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
         )
         try:
             with bind_action_connector_ids(connector_ids):
-                return super()._persist_write_plan(persistence_state, deterministic_plan)
+                return super()._persist_write_plan(state, deterministic_plan)
         finally:
             _active_target_resource_connector_ids.reset(target_token)
 

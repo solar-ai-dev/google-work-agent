@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import inspect
 
+from google_work_agent.adapters.langgraph import canonical_planning_runtime
 from google_work_agent.adapters.langgraph.canonical_freshness_runtime import (
     LangGraphWorkflowRuntime,
 )
-from google_work_agent.adapters.langgraph.canonical_planning_runtime import (
-    LangGraphWorkflowRuntime as CanonicalPlanningRuntime,
+from google_work_agent.adapters.langgraph.corrective_plan_persistence import (
+    persist_reserved_corrective_write_plan,
 )
+from google_work_agent.adapters.langgraph.graph_state import ParentGraphState
 from google_work_agent.adapters.persistence.corrective_plan_repository import (
     CorrectiveAwareSQLitePlanRepository,
 )
@@ -45,16 +47,39 @@ def test_corrective_runtime_uses_profile_translated_planning_target() -> None:
     assert "_route_translator.translate" in source
     assert 'as_node="recovery"' in source
     assert 'resume_payload.get("plan_id")' in source
+    assert '"__reserved_corrective_plan_id__": plan.id' in source
+    assert '"__replan_from_plan_id__": None' in source
+    assert "__reserved_corrective_plan_id__" in ParentGraphState.__annotations__
     assert 'resume_payload.get("target")' not in source
     assert "resume_target" not in source
 
 
-def test_corrective_reserved_draft_is_reused_not_revised_again() -> None:
-    planning_source = inspect.getsource(CanonicalPlanningRuntime._persist_write_plan)
+def test_corrective_persistence_separates_reserved_plan_from_child_remapping() -> None:
+    ordinary_source = inspect.getsource(canonical_planning_runtime.LangGraphWorkflowRuntime._persist_write_plan)
+    corrective_source = inspect.getsource(persist_reserved_corrective_write_plan)
+    runtime_source = inspect.getsource(LangGraphWorkflowRuntime._persist_write_plan)
     repository_source = inspect.getsource(CorrectiveAwareSQLitePlanRepository.insert_draft)
 
-    assert "reserved_plan.status is PlanStatus.DRAFT" in planning_source
-    assert 'deterministic_plan["plan_id"] = reserved_plan.id' in planning_source
-    assert '"__replan_from_plan_id__": None' in planning_source
-    assert "empty reserved corrective draft" in repository_source
-    assert "UPDATE plans SET summary_text" in repository_source
+    # Ordinary replan semantics are restored: the canonical planning wrapper
+    # delegates to legacy allocation instead of detecting a reserved DRAFT.
+    assert "reserved_plan" not in ordinary_source
+    assert "__reserved_corrective_plan_id__" not in ordinary_source
+
+    # Corrective persistence fixes Plan destination but still allocates fresh
+    # revision-local Action/Evidence ids and remaps all child edges.
+    assert "reserved_plan.id" in corrective_source
+    assert "reserved_plan.revision_no" in corrective_source
+    assert "action_id_map" in corrective_source
+    assert "evidence_id_map" in corrective_source
+    assert "depends_on_action_ids" in corrective_source
+    assert "evidence_ids" in corrective_source
+    assert "persisted_connector_ids" in corrective_source
+
+    # The corrective-only destination marker is consumed only after successful
+    # Save + Publish, so it cannot survive as stale Main State authority.
+    assert 'state["__reserved_corrective_plan_id__"] = None' in runtime_source
+    assert "after Save + Publish both succeeded" in runtime_source
+
+    # Repository reuse also binds the exact reserved revision number.
+    assert "existing.revision_no != plan.revision_no" in repository_source
+    assert "exact empty reserved corrective draft" in repository_source

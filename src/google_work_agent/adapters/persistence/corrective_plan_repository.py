@@ -14,8 +14,9 @@ class CorrectiveAwareSQLitePlanRepository(SQLitePlanRepository):
     ResolveRecovery(CREATE_CORRECTIVE_PLAN) reserves the next revision before
     workflow continuation. The legacy SaveWritePlan boundary still calls
     ``insert_draft`` when Planning materializes actions. Reusing the exact
-    server-generated DRAFT id is safe only while that row is still empty and
-    DRAFT; every other duplicate remains fail-closed.
+    server-generated DRAFT id is safe only while that row is still empty,
+    DRAFT, and has the exact reserved revision number; every other duplicate
+    remains fail-closed.
     """
 
     def insert_draft(self, plan: PlanRecord) -> None:
@@ -25,6 +26,7 @@ class CorrectiveAwareSQLitePlanRepository(SQLitePlanRepository):
             return
         if (
             existing.run_id != plan.run_id
+            or existing.revision_no != plan.revision_no
             or existing.status is not PlanStatus.DRAFT
             or self._connection.execute(
                 "SELECT 1 FROM actions WHERE plan_id = ? LIMIT 1;",
@@ -33,7 +35,7 @@ class CorrectiveAwareSQLitePlanRepository(SQLitePlanRepository):
             is not None
         ):
             raise sqlite3.IntegrityError(
-                "existing plan is not an empty reserved corrective draft"
+                "existing plan is not the exact empty reserved corrective draft"
             )
         self._connection.execute(
             "UPDATE plans SET summary_text = ? WHERE id = ? AND status = 'DRAFT';",
