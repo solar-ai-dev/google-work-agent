@@ -5,7 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.application.ports import ConnectorReadPort, ConnectorReadRequest, ConnectorReadResult
+from google_work_agent.application.ports import (
+    ConnectorReadPort,
+    ConnectorReadRequest,
+    ConnectorReadResult,
+)
 from google_work_agent.application.workflows.handoff_contracts import SourceFetchPlanV1
 from google_work_agent.application.workflows.retrieval_read_cache import (
     DetailTargetCacheEntry,
@@ -44,6 +48,7 @@ def execute_read(
     connector_reader: ConnectorReadPort,
     read_result_cache: RunScopedReadResultCache | None = None,
     run_id: str | None = None,
+    prior_query_hash: str | None = None,
     detail_target: DetailTargetCacheEntry | None = None,
 ) -> ConnectorReadResult:
     """Execute one validated read through ConnectorReadPort; never a Provider API."""
@@ -54,13 +59,20 @@ def execute_read(
 
     if operation == "NEXT_PAGE":
         handle = plan["prior_read_result_handle"]
-        if read_result_cache is None or run_id is None or handle is None:
-            raise ValueError("NEXT_PAGE requires run-scoped cache, run_id, and prior handle")
+        if (
+            read_result_cache is None
+            or run_id is None
+            or handle is None
+            or prior_query_hash is None
+        ):
+            raise ValueError(
+                "NEXT_PAGE requires run-scoped cache, run_id, prior handle, and prior query hash"
+            )
         page_token = read_result_cache.resolve_next_page(
             run_id=run_id,
             handle=handle,
             route_id=plan["route_id"],
-            query_hash=plan["query_identity_hash"],
+            query_hash=prior_query_hash,
         )
     elif operation == "DETAIL_FETCH":
         if detail_target is None:

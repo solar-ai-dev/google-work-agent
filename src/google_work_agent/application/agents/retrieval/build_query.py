@@ -145,7 +145,9 @@ def _validate_policies(
     policies: Mapping[str, RouteConstraintPolicy],
 ) -> None:
     if set(routes) != set(policies):
-        raise RetrievalV2ValidationError("each frozen route requires exactly one constraint policy")
+        raise RetrievalV2ValidationError(
+            "each frozen route requires exactly one constraint policy"
+        )
     for route_id, policy in policies.items():
         if not policy.required_kinds.issubset(policy.supported_kinds):
             raise RetrievalV2ValidationError(
@@ -154,7 +156,9 @@ def _validate_policies(
 
 
 def _canonical_resource_type(resource_type: str) -> str:
-    return resource_type if resource_type in {"EMAIL", "TASK", "CALENDAR"} else coarse_resource_category(resource_type)
+    if resource_type in {"EMAIL", "TASK", "CALENDAR"}:
+        return resource_type
+    return coarse_resource_category(resource_type)
 
 
 def _canonical_constraints(constraints: Sequence[SemanticRetrievalConstraintV1]) -> str:
@@ -164,7 +168,10 @@ def _canonical_constraints(constraints: Sequence[SemanticRetrievalConstraintV1])
 def _normalize_constraints(
     constraints: Sequence[SemanticRetrievalConstraintV1],
 ) -> list[SemanticRetrievalConstraintV1]:
-    return cast(list[SemanticRetrievalConstraintV1], json.loads(_canonical_constraints(constraints)))
+    return cast(
+        list[SemanticRetrievalConstraintV1],
+        json.loads(_canonical_constraints(constraints)),
+    )
 
 
 def _query_identity(

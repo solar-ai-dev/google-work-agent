@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from google_work_agent.application.agents.retrieval.build_query import (
@@ -15,9 +17,18 @@ from google_work_agent.application.agents.retrieval.normalize_segments import (
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import (
     rag_retrieve_rerank,
 )
+from google_work_agent.application.workflows.handoff_contracts import (
+    AcquisitionResultV1,
+    RequestIntentV2,
+)
+from google_work_agent.application.workflows.retrieval_v2_contracts import (
+    RetrievalQueryPlanV2,
+    SourceFetchPlanV1,
+)
+from google_work_agent.application.workflows.tool_routing import InputToolRouteV1
 
 
-def _route():
+def _route() -> InputToolRouteV1:
     return {
         "route_id": "route-1",
         "connector_id": "google_workspace",
@@ -28,8 +39,8 @@ def _route():
     }
 
 
-def test_build_query_preserves_frozen_connector_and_materializes_hash():
-    plan = {
+def test_build_query_preserves_frozen_connector_and_materializes_hash() -> None:
+    plan = cast(RetrievalQueryPlanV2, {
         "schema_version": 2,
         "route_queries": [{
             "route_id": "route-1",
@@ -47,7 +58,7 @@ def test_build_query_preserves_frozen_connector_and_materializes_hash():
         }],
         "required_information": ["mail"],
         "retrieval_order": ["route-1"],
-    }
+    })
     result = build_query(
         plan,
         frozen_routes=[_route()],
@@ -62,8 +73,8 @@ def test_build_query_preserves_frozen_connector_and_materializes_hash():
     assert len(result[0]["query_identity_hash"]) == 64
 
 
-def test_build_query_rejects_unchanged_changed_search():
-    prior = {
+def test_build_query_rejects_unchanged_changed_search() -> None:
+    prior = cast(SourceFetchPlanV1, {
         "schema_version": 1,
         "route_id": "route-1",
         "connector_id": "google_workspace",
@@ -77,8 +88,8 @@ def test_build_query_rejects_unchanged_changed_search():
         "query_identity_hash": "a" * 64,
         "prior_read_result_handle": None,
         "detail_candidate_ref": None,
-    }
-    changed = {
+    })
+    changed = cast(RetrievalQueryPlanV2, {
         "schema_version": 2,
         "route_queries": [{
             "route_id": "route-1",
@@ -99,7 +110,7 @@ def test_build_query_rejects_unchanged_changed_search():
         }],
         "required_information": ["mail"],
         "retrieval_order": ["route-1"],
-    }
+    })
     with pytest.raises(QueryUnchangedAfterFailureError):
         build_query(
             changed,
@@ -113,8 +124,8 @@ def test_build_query_rejects_unchanged_changed_search():
         )
 
 
-def test_normalize_segments_strips_quoted_gmail_content_and_bounds_segments():
-    acquisition = {
+def test_normalize_segments_strips_quoted_gmail_content_and_bounds_segments() -> None:
+    acquisition = cast(AcquisitionResultV1, {
         "schema_version": 1,
         "source_summaries": [{
             "source": "GMAIL",
@@ -128,7 +139,7 @@ def test_normalize_segments_strips_quoted_gmail_content_and_bounds_segments():
         }],
         "resource_handles": ["h1"],
         "availability_results": [],
-    }
+    })
     segments = normalize_segments(
         acquisition,
         context_budget=ContextBudget(max_segments=3, chunk_max_tokens=900),
@@ -137,17 +148,29 @@ def test_normalize_segments_strips_quoted_gmail_content_and_bounds_segments():
     assert segments[0].text == "current reply"
 
 
-def test_rag_retrieve_rerank_forces_explicit_selected_resource():
-    intent = {
+def test_rag_retrieve_rerank_forces_explicit_selected_resource() -> None:
+    intent = cast(RequestIntentV2, {
         "schema_version": 2,
         "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
         "goal": "alpha",
         "constraints": [{"kind": "RESOURCE", "value": ["selected"]}],
         "requested_effect_hints": ["READ"],
-    }
+    })
     segments = [
-        SourceSegment("seg-1", "h1", "GMAIL", "gmail_message", "other", None, None, {}, "alpha alpha"),
-        SourceSegment("seg-2", "h2", "GMAIL", "gmail_message", "selected", None, None, {}, "unrelated"),
+        SourceSegment(
+            "seg-1", "h1", "GMAIL", "gmail_message", "other", None, None, {}, "alpha alpha"
+        ),
+        SourceSegment(
+            "seg-2",
+            "h2",
+            "GMAIL",
+            "gmail_message",
+            "selected",
+            None,
+            None,
+            {},
+            "unrelated",
+        ),
     ]
     ranked = rag_retrieve_rerank(segments, request_intent=intent, top_k=1)
     assert {item["segment_id"] for item in ranked} == {"seg-1", "seg-2"}

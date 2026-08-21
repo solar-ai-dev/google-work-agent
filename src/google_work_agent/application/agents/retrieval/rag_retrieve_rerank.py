@@ -71,7 +71,8 @@ def rag_retrieve_rerank(
             "segment_id": segment.segment_id,
             "resource_ref": segment.resource_handle,
             "retrieval_score": score,
-            "reason_codes": reasons + (["RESOURCE_SELECTED_FORCED"] if segment.segment_id in forced else []),
+            "reason_codes": reasons
+            + (["RESOURCE_SELECTED_FORCED"] if segment.segment_id in forced else []),
         }
         for segment, score, reasons in ordered
         if segment.segment_id in top_ids or segment.segment_id in forced

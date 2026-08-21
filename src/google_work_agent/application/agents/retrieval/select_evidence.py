@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal, cast
+
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
 from google_work_agent.application.workflows.contracts import (
@@ -188,7 +190,7 @@ def _validate_selection(
         drafts.append(
             {
                 "segment_id": str(segment_id),
-                "role": role,
+                "role": cast(Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"], role),
                 "relevance_reason": reason,
             }
         )
