@@ -1,4 +1,3 @@
-import sqlite3
 from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
@@ -14,7 +13,14 @@ CANARY = "RAW_PROVIDER_SECRET_CANARY"
 
 def test_normal_write_success_persists_only_bounded_resource_ref(tmp_path: Path) -> None:
     database_path = tmp_path / "normal-minimal.db"
-    _seed_write_state(database_path, action_status="EXECUTING", action_version=2, attempt_status="CLAIMED", attempt_version=0, run_status="EXECUTING")
+    _seed_write_state(
+        database_path,
+        action_status="EXECUTING",
+        action_version=2,
+        attempt_status="CLAIMED",
+        attempt_version=0,
+        run_status="EXECUTING",
+    )
 
     response = StoreWriteActionSuccessService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
@@ -37,7 +43,14 @@ def test_normal_write_success_persists_only_bounded_resource_ref(tmp_path: Path)
 
 def test_recovery_uses_same_bounded_resource_ref_projection(tmp_path: Path) -> None:
     database_path = tmp_path / "recovery-minimal.db"
-    _seed_write_state(database_path, action_status="UNKNOWN_RESULT", action_version=3, attempt_status="UNKNOWN_RESULT", attempt_version=1, run_status="RECOVERY_REQUIRED")
+    _seed_write_state(
+        database_path,
+        action_status="UNKNOWN_RESULT",
+        action_version=3,
+        attempt_status="UNKNOWN_RESULT",
+        attempt_version=1,
+        run_status="RECOVERY_REQUIRED",
+    )
 
     response = RecoverExistingWriteResultService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
@@ -184,7 +197,7 @@ def _seed_write_state(
                 attempt_version,
                 3 if attempt_status == "UNKNOWN_RESULT" else None,
                 "TIMEOUT" if attempt_status == "UNKNOWN_RESULT" else None,
-                '{}' if attempt_status == "UNKNOWN_RESULT" else None,
+                "{}" if attempt_status == "UNKNOWN_RESULT" else None,
             ),
         )
         connection.commit()
