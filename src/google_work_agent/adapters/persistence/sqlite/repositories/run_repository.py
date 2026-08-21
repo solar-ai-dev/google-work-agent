@@ -9,6 +9,9 @@ class SQLiteRunRepository:
     def get_by_id(self, run_id: str) -> RunRecord | None:
         r=self._connection.execute("SELECT id, conversation_id, status, version, started_at_ms, finished_at_ms FROM runs WHERE id=?;", (run_id,)).fetchone()
         return None if r is None else RunRecord(id=str(r["id"]), conversation_id=str(r["conversation_id"]), status=RunStatus(str(r["status"])), version=int(r["version"]), started_at_ms=int(r["started_at_ms"]), finished_at_ms=None if r["finished_at_ms"] is None else int(r["finished_at_ms"]))
+    def get_open_by_conversation(self, conversation_id: str) -> RunRecord | None:
+        r=self._connection.execute("SELECT id, conversation_id, status, version, started_at_ms, finished_at_ms FROM runs WHERE conversation_id=? AND finished_at_ms IS NULL ORDER BY started_at_ms DESC LIMIT 1;", (conversation_id,)).fetchone()
+        return None if r is None else RunRecord(id=str(r["id"]), conversation_id=str(r["conversation_id"]), status=RunStatus(str(r["status"])), version=int(r["version"]), started_at_ms=int(r["started_at_ms"]), finished_at_ms=None)
     def add(self, run: RunCreateRecord) -> None:
         self._connection.execute("INSERT INTO runs (id, conversation_id, entry_mode, status, langgraph_thread_id, requested_mode, actual_runtime, budget_json, version, started_at_ms, finished_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", (run.id,run.conversation_id,run.entry_mode,run.status.value,run.langgraph_thread_id,run.requested_mode,run.actual_runtime,run.budget_json,run.version,run.started_at_ms,run.finished_at_ms))
     def _apply(self, *, run_id: str, previous_version: int, result: CommandResult[RunStatus, RunCommand], finished_at_ms: int | None, error_message: str) -> CommandResult[RunStatus, RunCommand]:
