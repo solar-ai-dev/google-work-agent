@@ -194,7 +194,10 @@ def _seed_0007_aggregate_graph(connection: sqlite3.Connection) -> None:
         """
     )
     connection.execute(
-        "INSERT INTO action_evidence (action_id, evidence_id) VALUES ('action-1', 'evidence-1');"
+        """
+        INSERT INTO action_evidence (action_id, evidence_id)
+        VALUES ('action-1', 'evidence-1');
+        """
     )
     connection.commit()
 
