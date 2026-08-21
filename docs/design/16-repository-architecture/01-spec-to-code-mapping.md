@@ -1,144 +1,85 @@
-# Spec → Code Mapping Rules
+# 01. Spec → Code Deterministic Mapping
 
-## 1. Purpose
+> Parent: Repository Architecture Source v1.1
 
-An Agent must be able to convert a specification term into a target code path without first browsing for similar filenames.
+## Rule
 
-Canonical algorithm:
+Implementation lookup is deterministic:
 
 ```text
 SPEC TERM
-→ CANONICAL DOMAIN TERM
+→ CANONICAL TERM
+→ SEMANTIC OWNER
 → LAYER
-→ OWNER PACKAGE
 → OPERATION
-→ FILENAME
+→ PATH
+→ FILE
 → SYMBOL
+→ TEST PATH
 ```
 
-## 2. Canonical vocabulary
+Do not begin from an existing filename or from grep results that merely look similar.
 
-| Specification term | Code token |
-|---|---|
-| Run | `run` |
-| Plan | `plan` |
-| Action | `action` |
-| Approval | `approval` |
-| Claim | `claim` |
-| ExecutionAttempt | `execution_attempt` |
-| Verification | `verification` |
-| Recovery | `recovery` |
-| ResourceRef | `resource_ref` |
-| Conversation | `conversation` |
-| Request Understanding | `request_understanding` |
-| Tool Route | `tool_routing` |
-| Retrieval | `retrieval` |
-| Work Analysis | `work_analysis` |
-| Planning | `planning` |
-| Review | `review` |
+## Examples
 
-Do not invent alternate nouns for these concepts.
-
-## 3. Deterministic path formulas
-
-### Domain semantic rule
-
-```text
-<Aggregate> invariant
-→ domain/<aggregate>/invariants.py
-
-<Aggregate> transition
-→ domain/<aggregate>/transitions.py
-
-<Aggregate> command semantics
-→ domain/<aggregate>/commands.py
-```
-
-### Application command
-
-```text
-<Verb><Object>
-→ application/use_cases/<owner>/<verb>_<object>.py
-```
-
-Examples:
+### BlockRun
 
 ```text
 BlockRun
+→ run
+→ Application Use Case
+→ block
 → application/use_cases/run/block_run.py
-
-ApproveAction
-→ application/use_cases/approval/approve_action.py
-
-RecoverUnknownResult
-→ application/use_cases/recovery/recover_unknown_result.py
+→ BlockRunCommand / BlockRunResult / BlockRunHandler
+→ tests/unit/application/use_cases/run/test_block_run.py
 ```
 
-### Agent semantic stage
+Domain transition/guard implementation, if separate from the Application handler:
 
 ```text
-Request Understanding → application/agents/request_understanding/
-Tool Route            → application/agents/tool_routing/
-Retrieval             → application/agents/retrieval/
-Work Analysis         → application/agents/work_analysis/
-Planning              → application/agents/planning/
-Review                → application/agents/review/
+domain/run/transitions/block_run.py
+domain/run/guards/block_run.py
 ```
 
-### LangGraph node
+### Work Analysis relation validation node
 
 ```text
-<role>.<operation>
-→ adapters/langgraph/subgraphs/<role>/nodes/<operation>_node.py
+Work Analysis / validate relations / LangGraph node
+→ work_analysis
+→ adapters/langgraph/subgraphs/work_analysis/nodes/validate_relations_node.py
+→ validate_relations_node()
 ```
 
-### Repository
+The node only projects typed input, calls Application semantics, and returns the typed owner-field patch/workflow signal.
+
+### Gmail draft create
 
 ```text
-<Aggregate>Repository port
-→ ports/persistence/<aggregate>_repository.py
-
-SQLite implementation
-→ adapters/persistence/sqlite/repositories/<aggregate>_repository.py
+Google / Gmail / Draft / CREATE
+→ adapters/connectors/google/gmail/drafts/create_draft.py
+→ CreateDraftOperation
 ```
 
-### Provider/connector operation
+### API approve action
 
 ```text
-<provider>/<product>/<resource>/<verb>
-→ adapters/connectors/<provider>/<product>/<resource>/<verb>_<resource>.py
+ApproveAction wire request
+→ api/routes/actions.py
+→ api/schemas/actions/approve_action.py
+→ application/use_cases/action/approve_action.py
 ```
 
-Example:
+## Semantic search before implementation
 
-```text
-Google Gmail Message CREATE
-→ adapters/connectors/google/gmail/messages/create_message.py
-```
+After calculating the target location, search the repository for every equivalent capability by inspecting:
 
-## 4. Semantic search rule
+- writers of the same Domain fact/owner,
+- writers of the same Main State owner field,
+- callers of the same repository mutation,
+- implementations of the same external effect,
+- handlers of the same transition/result,
+- equivalent exported symbols,
+- production caller chains,
+- tests asserting the same semantic outcome.
 
-Filename search is only the first hint.
-
-Before concluding a capability is absent, search by:
-
-- Domain aggregate mutation,
-- repository mutation,
-- state-field writer,
-- tool/effect enum,
-- external endpoint/effect,
-- transition/result code,
-- caller chain,
-- exports/re-exports.
-
-Different names can still mean duplicate authority.
-
-## 5. Stop condition
-
-If more than one existing implementation has equivalent semantics:
-
-```text
-SEMANTIC_AUTHORITY_COLLISION
-```
-
-Do not create a third.
+If an implementation already exists outside the canonical location, migrate it. Do not create another implementation.
