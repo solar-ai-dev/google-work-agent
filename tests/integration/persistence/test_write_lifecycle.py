@@ -1240,7 +1240,7 @@ def test_verify_write_action_get_runs_without_sqlite_write_transaction(
                     delegate=fixture_gateway,
                     database_path=write_database,
                 ),
-            ),
+            )
         ),
     )
 
