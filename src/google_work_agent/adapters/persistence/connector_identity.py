@@ -1,77 +1,34 @@
-"""Connector identity bindings for the legacy persistence compatibility boundary.
+"""Connector-aware SQLite repositories with explicit persistence identity.
 
-Canonical Tool Route owns connector selection. The current release still
-passes legacy Action DTOs that do not carry ``connector_id`` themselves, so
-this module transports the already-frozen identity across that narrow
-compatibility boundary without re-selecting or inferring a connector.
+Tool Route owns connector selection.  Persistence accepts that identity only
+through ``ActionRecord.connector_id`` and ``ResourceRefRecord.connector_id``;
+there is no ContextVar transport, source inference, or Google fallback.
 """
 
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
-from contextvars import ContextVar
+from json import loads
 
 from google_work_agent.adapters.persistence.repositories import (
     SQLiteActionRepository,
     SQLiteResourceRefRepository,
 )
 from google_work_agent.domain import canonicalize_action_risk
-from google_work_agent.ports import ActionRecord, ResourceRefRecord
-
-_GOOGLE_WORKSPACE_CONNECTOR_ID = "google_workspace"
-
-_action_connectors: ContextVar[Mapping[str, str] | None] = ContextVar(
-    "action_connectors", default=None
+from google_work_agent.ports import (
+    ActionRecord,
+    ResourceRefRecord,
+    ResourceSource,
+    StoredResourceType,
 )
-_resource_connector: ContextVar[str | None] = ContextVar(
-    "resource_connector", default=None
-)
-
-
-@contextmanager
-def bind_action_connector_ids(connector_ids: Mapping[str, str]) -> Iterator[None]:
-    """Bind code-owned action connector identities for one persistence call."""
-
-    normalized = {
-        str(action_id): str(connector_id)
-        for action_id, connector_id in connector_ids.items()
-    }
-    if not normalized or any(
-        not action_id or not connector_id
-        for action_id, connector_id in normalized.items()
-    ):
-        raise ValueError("action connector binding requires non-empty action and connector ids")
-    token = _action_connectors.set(normalized)
-    try:
-        yield
-    finally:
-        _action_connectors.reset(token)
-
-
-@contextmanager
-def bind_resource_connector_id(connector_id: str) -> Iterator[None]:
-    """Bind the persisted Action connector while its result ResourceRef is stored."""
-
-    if not connector_id:
-        raise ValueError("resource connector binding requires a non-empty connector id")
-    token = _resource_connector.set(connector_id)
-    try:
-        yield
-    finally:
-        _resource_connector.reset(token)
 
 
 class ConnectorAwareActionRepository(SQLiteActionRepository):
-    """Action repository that writes the frozen connector identity explicitly."""
+    """Persist and hydrate the connector selected by the frozen Tool Route."""
 
     def _insert_action(self, action: ActionRecord) -> None:
-        bindings = _action_connectors.get()
-        connector_id = bindings.get(action.id) if bindings is not None else None
-        # Compatibility-only fallback for legacy Google-only callers. The
-        # canonical ACTION runtime always enters bind_action_connector_ids.
-        connector_id = connector_id or _GOOGLE_WORKSPACE_CONNECTOR_ID
+        if not action.connector_id:
+            raise ValueError("action persistence requires connector_id")
         self._connection.execute(
             """
             INSERT INTO actions (
@@ -100,56 +57,129 @@ class ConnectorAwareActionRepository(SQLiteActionRepository):
                 action.version,
                 action.created_at_ms,
                 action.updated_at_ms,
-                connector_id,
+                action.connector_id,
             ),
         )
 
-    def connector_id_for_action(self, action_id: str) -> str:
+    def get_by_id(self, action_id: str) -> ActionRecord | None:
         row = self._connection.execute(
-            "SELECT connector_id FROM actions WHERE id = ?;",
+            """
+            SELECT id, plan_id, connector_id, position, tool_name, effect_type,
+                   approval_requirement, verification_policy, recovery_policy,
+                   target_resource_ref_id, status, arguments_json, arguments_hash,
+                   expected_json, risk_json, version, created_at_ms, updated_at_ms
+            FROM actions WHERE id = ?;
+            """,
             (action_id,),
         ).fetchone()
-        if row is None:
+        return None if row is None else self._record(row)
+
+    def list_by_plan(self, plan_id: str) -> tuple[ActionRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT id, plan_id, connector_id, position, tool_name, effect_type,
+                   approval_requirement, verification_policy, recovery_policy,
+                   target_resource_ref_id, status, arguments_json, arguments_hash,
+                   expected_json, risk_json, version, created_at_ms, updated_at_ms
+            FROM actions WHERE plan_id = ? ORDER BY position ASC;
+            """,
+            (plan_id,),
+        ).fetchall()
+        return tuple(self._record(row) for row in rows)
+
+    def list_ready_actions(self, plan_id: str) -> tuple[ActionRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT a.id, a.plan_id, a.connector_id, a.position, a.tool_name, a.effect_type,
+                   a.approval_requirement, a.verification_policy, a.recovery_policy,
+                   a.target_resource_ref_id, a.status, a.arguments_json, a.arguments_hash,
+                   a.expected_json, a.risk_json, a.version, a.created_at_ms, a.updated_at_ms
+            FROM actions AS a
+            WHERE a.plan_id = ?
+              AND a.status = 'PROPOSED'
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM action_dependencies AS d
+                    JOIN actions AS dep ON dep.id = d.depends_on_action_id
+                    WHERE d.action_id = a.id AND dep.status <> 'VERIFIED'
+              )
+            ORDER BY a.position ASC;
+            """,
+            (plan_id,),
+        ).fetchall()
+        return tuple(self._record(row) for row in rows)
+
+    def connector_id_for_action(self, action_id: str) -> str:
+        action = self.get_by_id(action_id)
+        if action is None:
             raise LookupError(f"action not found: {action_id}")
-        connector_id = str(row["connector_id"])
-        if not connector_id:
-            raise sqlite3.IntegrityError("persisted action connector_id is empty")
-        return connector_id
+        return action.connector_id
+
+    @staticmethod
+    def _record(row: sqlite3.Row) -> ActionRecord:
+        risk = loads(str(row["risk_json"]))
+        if not isinstance(risk, dict):
+            raise sqlite3.IntegrityError("action risk_json must decode to an object")
+        return ActionRecord(
+            id=str(row["id"]),
+            plan_id=str(row["plan_id"]),
+            connector_id=str(row["connector_id"]),
+            position=int(row["position"]),
+            tool_name=str(row["tool_name"]),
+            effect_type=str(row["effect_type"]),
+            approval_requirement=str(row["approval_requirement"]),
+            verification_policy=str(row["verification_policy"]),
+            recovery_policy=str(row["recovery_policy"]),
+            target_resource_ref_id=(
+                None if row["target_resource_ref_id"] is None else str(row["target_resource_ref_id"])
+            ),
+            status=str(row["status"]),
+            arguments_json=str(row["arguments_json"]),
+            arguments_hash=str(row["arguments_hash"]),
+            expected_json=str(row["expected_json"]),
+            risk=risk,
+            version=int(row["version"]),
+            created_at_ms=int(row["created_at_ms"]),
+            updated_at_ms=int(row["updated_at_ms"]),
+        )
 
 
 class ConnectorAwareResourceRefRepository(SQLiteResourceRefRepository):
-    """ResourceRef repository using connector-aware canonical identity when bound."""
+    """ResourceRef repository keyed only by canonical connector identity."""
+
+    _SELECT = """
+        SELECT id, run_id, connector_id, source, resource_type, resource_id,
+               parent_resource_id, canonical_url, title, event_time_ms,
+               version_token, metadata_json, captured_at_ms
+        FROM resource_refs
+    """
+
+    def get_by_id(self, resource_ref_id: str) -> ResourceRefRecord | None:
+        row = self._connection.execute(
+            self._SELECT + " WHERE id = ?;", (resource_ref_id,)
+        ).fetchone()
+        return None if row is None else self._record(row)
 
     def get_by_unique_key(
         self,
         *,
         run_id: str,
-        source: str,
+        connector_id: str,
         resource_type: str,
         resource_id: str,
     ) -> ResourceRefRecord | None:
-        connector_id = _resource_connector.get()
-        if connector_id is None:
-            return super().get_by_unique_key(
-                run_id=run_id,
-                source=source,
-                resource_type=resource_type,
-                resource_id=resource_id,
-            )
+        if not connector_id:
+            raise ValueError("resource reference lookup requires connector_id")
         row = self._connection.execute(
-            """
-            SELECT id
-            FROM resource_refs
-            WHERE run_id = ? AND connector_id = ? AND resource_type = ? AND resource_id = ?;
-            """,
+            self._SELECT
+            + " WHERE run_id = ? AND connector_id = ? AND resource_type = ? AND resource_id = ?;",
             (run_id, connector_id, resource_type, resource_id),
         ).fetchone()
-        if row is None:
-            return None
-        return super().get_by_id(str(row["id"]))
+        return None if row is None else self._record(row)
 
     def upsert(self, record: ResourceRefRecord) -> None:
-        connector_id = _resource_connector.get() or _GOOGLE_WORKSPACE_CONNECTOR_ID
+        if not record.connector_id:
+            raise ValueError("resource reference persistence requires connector_id")
         self._connection.execute(
             """
             INSERT INTO resource_refs (
@@ -172,7 +202,7 @@ class ConnectorAwareResourceRefRepository(SQLiteResourceRefRepository):
             (
                 record.id,
                 record.run_id,
-                connector_id,
+                record.connector_id,
                 record.source.value,
                 record.resource_type.value,
                 record.resource_id,
@@ -186,11 +216,36 @@ class ConnectorAwareResourceRefRepository(SQLiteResourceRefRepository):
             ),
         )
 
+    def list_by_run(self, run_id: str) -> tuple[ResourceRefRecord, ...]:
+        rows = self._connection.execute(
+            self._SELECT
+            + " WHERE run_id = ? ORDER BY connector_id, source, resource_type, resource_id;",
+            (run_id,),
+        ).fetchall()
+        return tuple(self._record(row) for row in rows)
+
     def connector_id_for_resource_ref(self, resource_ref_id: str) -> str:
-        row = self._connection.execute(
-            "SELECT connector_id FROM resource_refs WHERE id = ?;",
-            (resource_ref_id,),
-        ).fetchone()
-        if row is None:
+        record = self.get_by_id(resource_ref_id)
+        if record is None:
             raise LookupError(f"resource ref not found: {resource_ref_id}")
-        return str(row["connector_id"])
+        return record.connector_id
+
+    @staticmethod
+    def _record(row: sqlite3.Row) -> ResourceRefRecord:
+        return ResourceRefRecord(
+            id=str(row["id"]),
+            run_id=str(row["run_id"]),
+            connector_id=str(row["connector_id"]),
+            source=ResourceSource(str(row["source"])),
+            resource_type=StoredResourceType(str(row["resource_type"])),
+            resource_id=str(row["resource_id"]),
+            parent_resource_id=(
+                None if row["parent_resource_id"] is None else str(row["parent_resource_id"])
+            ),
+            canonical_url=None if row["canonical_url"] is None else str(row["canonical_url"]),
+            title=None if row["title"] is None else str(row["title"]),
+            event_time_ms=None if row["event_time_ms"] is None else int(row["event_time_ms"]),
+            version_token=None if row["version_token"] is None else str(row["version_token"]),
+            metadata_json=str(row["metadata_json"]),
+            captured_at_ms=int(row["captured_at_ms"]),
+        )
