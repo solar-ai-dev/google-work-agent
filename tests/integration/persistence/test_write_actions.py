@@ -92,6 +92,7 @@ from tests.support.fakes import (
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
+TEST_CONNECTOR_ID = "google_workspace"
 
 
 @pytest.fixture()
@@ -265,16 +266,16 @@ def _insert_action_sibling(
         connection.execute(
             """
             INSERT INTO actions (
-                id, plan_id, position, tool_name, effect_type, approval_requirement,
-                verification_policy, recovery_policy, target_resource_ref_id, status,
-                arguments_json, arguments_hash, expected_json, risk_json, version,
-                created_at_ms, updated_at_ms
+                id, plan_id, connector_id, position, tool_name, effect_type,
+                approval_requirement, verification_policy, recovery_policy,
+                target_resource_ref_id, status, arguments_json, arguments_hash,
+                expected_json, risk_json, version, created_at_ms, updated_at_ms
             )
             SELECT
-                ?, plan_id, 2, tool_name, effect_type, approval_requirement,
-                verification_policy, recovery_policy, target_resource_ref_id, ?,
-                arguments_json, arguments_hash, expected_json, risk_json, 0,
-                created_at_ms, updated_at_ms
+                ?, plan_id, connector_id, 2, tool_name, effect_type,
+                approval_requirement, verification_policy, recovery_policy,
+                target_resource_ref_id, ?, arguments_json, arguments_hash,
+                expected_json, risk_json, 0, created_at_ms, updated_at_ms
             FROM actions WHERE id = ?;
             """,
             (sibling_action_id, status, source_action_id),
@@ -526,6 +527,7 @@ def _prepare_calendar_feasibility_action(
             actions=(
                 WriteActionDraft(
                     action_id=f"action-{suffix}",
+                    connector_id=TEST_CONNECTOR_ID,
                     position=1,
                     tool_name="calendar_create_event",
                     arguments={"calendar_id": "primary", "payload": payload},
@@ -636,6 +638,7 @@ def _prepare_write_plan(
             actions=(
                 WriteActionDraft(
                     action_id=f"action-{suffix}",
+                    connector_id=TEST_CONNECTOR_ID,
                     position=1,
                     tool_name="tasks_create_task",
                     arguments={"task_list_id": "task-list-default", "payload": payload},
@@ -801,6 +804,7 @@ def _prepare_effect_write_plan(
             actions=(
                 WriteActionDraft(
                     action_id=f"action-{suffix}",
+                    connector_id=TEST_CONNECTOR_ID,
                     position=1,
                     tool_name=tool_name,
                     arguments=arguments,
@@ -909,14 +913,16 @@ def _insert_calendar_event_reference(write_database: Path, *, version: str = "7"
         connection.execute(
             """
             INSERT INTO resource_refs (
-                id, run_id, source, resource_type, resource_id, parent_resource_id,
-                canonical_url, title, event_time_ms, version_token, metadata_json, captured_at_ms
+                id, run_id, connector_id, source, resource_type, resource_id,
+                parent_resource_id, canonical_url, title, event_time_ms,
+                version_token, metadata_json, captured_at_ms
             ) VALUES (
-                'resource-event-focus', 'run-1', 'CALENDAR', 'EVENT',
+                'resource-event-focus', 'run-1', ?, 'CALENDAR', 'EVENT',
                 'event-focus', 'calendar-primary', NULL, 'Focus block', NULL, ?, ?, 1000
             );
             """,
             (
+                TEST_CONNECTOR_ID,
                 version,
                 '{"end":"2026-11-01T09:00:00-07:00","event_kind":"focusTime",'
                 '"start":"2026-11-01T08:00:00-07:00","status":"confirmed",'
@@ -933,15 +939,17 @@ def _insert_task_delete_reference(write_database: Path, *, version: str = "4") -
         connection.execute(
             """
             INSERT INTO resource_refs (
-                id, run_id, source, resource_type, resource_id, parent_resource_id,
-                canonical_url, title, event_time_ms, version_token, metadata_json, captured_at_ms
+                id, run_id, connector_id, source, resource_type, resource_id,
+                parent_resource_id, canonical_url, title, event_time_ms,
+                version_token, metadata_json, captured_at_ms
             ) VALUES (
-                'resource-task-followup', 'run-1', 'TASKS', 'TASK',
+                'resource-task-followup', 'run-1', ?, 'TASKS', 'TASK',
                 'task-followup', 'task-list-default', NULL, 'Reply to project sync',
                 NULL, ?, ?, 1000
             );
             """,
             (
+                TEST_CONNECTOR_ID,
                 version,
                 '{"due":"2026-08-07","notes":"Reference the Thursday summary.",'
                 '"status":"needsAction","title":"Reply to project sync"}',
@@ -973,16 +981,18 @@ def _prepare_update_claimed_action(
         connection.execute(
             """
             INSERT INTO resource_refs (
-                id, run_id, source, resource_type, resource_id, parent_resource_id,
-                canonical_url, title, event_time_ms, version_token, metadata_json, captured_at_ms
+                id, run_id, connector_id, source, resource_type, resource_id,
+                parent_resource_id, canonical_url, title, event_time_ms,
+                version_token, metadata_json, captured_at_ms
             )
             VALUES (
-                ?, 'run-1', 'TASKS', 'TASK', 'task-followup', 'task-list-default',
+                ?, 'run-1', ?, 'TASKS', 'TASK', 'task-followup', 'task-list-default',
                 NULL, 'Reply to project sync', NULL, '4', ?, 1000
             );
             """,
             (
                 "resource-ref-run-1-task-task-followup",
+                TEST_CONNECTOR_ID,
                 (
                     '{"due":"2026-08-07","notes":"Reference the Thursday summary.",'
                     '"status":"needsAction","title":"Reply to project sync"}'
@@ -1024,6 +1034,7 @@ def _prepare_update_claimed_action(
             actions=(
                 WriteActionDraft(
                     action_id=f"action-{suffix}",
+                    connector_id=TEST_CONNECTOR_ID,
                     position=1,
                     tool_name="tasks_update_task",
                     arguments={
