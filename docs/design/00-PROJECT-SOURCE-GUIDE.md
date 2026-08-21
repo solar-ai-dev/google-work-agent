@@ -27,7 +27,9 @@ Repository placement/naming/import-export enforcement/single production authorit
 
 03 owns system/layer dependency semantics. 16 owns how those constraints are realized and enforced in repository paths/imports/exports and may not relax 03.
 
-06/15 own versioned runtime Node/Agent/Prompt identifiers. Current heavy-Agent atomic responsibility IDs are versioned by Workflow v7.22 / Prompt Contract v1.28. Repository Architecture v1.3 maps those semantic capabilities to canonical repository owner/path/file/symbol names and does not independently rename a runtime contract ID.
+06/15 own versioned runtime Node/Agent/Prompt identifiers. Current heavy-Agent atomic responsibility IDs are versioned by Workflow v7.22 / Prompt Contract v1.28. Repository Architecture v1.4 maps those semantic capabilities to canonical repository owner/path/file/symbol names and does not independently rename a runtime contract ID.
+
+For repository naming/placement questions, **16 is the single concern authority**. Other Project Sources may define semantic identifiers they own, but they must not introduce an independent repository path/file/symbol naming rule. Such references are mappings to 16 unless the owning semantic contract itself is being versioned.
 
 ## Project Source count
 
@@ -35,7 +37,9 @@ Final Project Source count is **29**. Project Source에는 21개 non-migration c
 
 ## Version rule
 
-The 2026-08-22 Repository Architecture convention itself changed repository organization/naming authority, Local-SLLM responsibility decomposition changed owned workflow/prompt behavior, and executable migration reconciliation restored the actual startup DB truth. Therefore versions are split by concern: Repository Architecture v1.3; Domain·DB v1.21 / DB Schema v1.9; Workflow v7.22; Sequence v3.19; Test v3.41; Evaluation v3.28; Prompt·Failure v1.28; Project Overview v1.18. Unaffected behavior documents retain their previous versions. Export/sync errata that only remove stale contradictory wording are sync corrections, not hidden behavior changes.
+The 2026-08-22 Repository Architecture convention itself changed repository organization/naming authority, Local-SLLM responsibility decomposition changed owned workflow/prompt behavior, and executable migration reconciliation restored the actual startup DB truth. Therefore versions are split by concern: Repository Architecture v1.4; Domain·DB v1.21 / DB Schema v1.9; Workflow v7.22; Sequence v3.19; Test v3.41; Evaluation v3.28; Prompt·Failure v1.28; Project Overview v1.18. Unaffected behavior documents retain their previous versions. Export/sync errata that only remove stale contradictory wording are sync corrections, not hidden behavior changes.
+
+Repository Architecture version increments are required when repository naming/placement grammar, built-in exceptions, dependency realization, or production-authority rules change. Subordinate pages under 16 must identify the same parent version; stale parent-version references fail the documentation version-management gate.
 
 ## Structural refactor gate
 
