@@ -1,6 +1,18 @@
 """Canonical projection used by verification and recovery reads."""
 
+from dataclasses import dataclass
+
 from google_work_agent.ports import ResourceSnapshot
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizeSnapshotQuery:
+    snapshot: ResourceSnapshot
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizeSnapshotResult:
+    projection: dict[str, object]
 
 
 def normalize_snapshot(snapshot: ResourceSnapshot) -> dict[str, object]:
@@ -13,3 +25,8 @@ def normalize_snapshot(snapshot: ResourceSnapshot) -> dict[str, object]:
         "version": snapshot.version,
         "payload": payload,
     }
+
+
+class NormalizeSnapshotHandler:
+    def __call__(self, query: NormalizeSnapshotQuery) -> NormalizeSnapshotResult:
+        return NormalizeSnapshotResult(projection=normalize_snapshot(query.snapshot))
