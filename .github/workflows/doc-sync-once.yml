@@ -1,0 +1,60 @@
+name: Canonical docs sync once
+
+on:
+  push:
+    branches:
+      - docs/repository-architecture-contract-v1
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply exact canonical export
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload='.docsync/payload.tar.gz'
+          if [[ ! -f "$payload" ]]; then
+            echo 'No payload; nothing to sync.'
+            exit 0
+          fi
+          expected='a23932cf8fe02f96132d1b69b07f086f0b5b344212cb0b7aeb0b7e3474294224'
+          actual="$(sha256sum "$payload" | awk '{print $1}')"
+          [[ "$actual" == "$expected" ]] || { echo "payload sha mismatch: $actual"; exit 1; }
+          tar -xzf "$payload" -C .
+          rm -rf .docsync
+          rm -f .github/workflows/doc-sync-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            docs/README.md \
+            docs/design/00-PROJECT-SOURCE-GUIDE.md \
+            docs/design/04-domain-database-design.md \
+            docs/design/06-agent-workflow.md \
+            docs/design/07-tool-mcp-internal-interface.md \
+            docs/design/08-sequence-design.md \
+            docs/design/10-infrastructure-environment-v2.7.md \
+            docs/design/11-observability-logging-audit.md \
+            docs/design/12-test-design.md \
+            docs/design/13-evaluation-experiment.md \
+            docs/design/14-operations-troubleshooting.md \
+            docs/design/15-agent-capability-failure-prompt-contract.md \
+            docs/design/16-repository-architecture-source.md \
+            docs/design/16-repository-architecture/06-langgraph-state-ownership.md \
+            docs/database/migrations/0008_resource_ref_connector_identity.sql \
+            .docsync \
+            .github/workflows/doc-sync-once.yml
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'Canonical export already synchronized.'
+            exit 0
+          fi
+          git commit -m 'docs: sync canonical architecture freeze set'
+          git push origin HEAD:docs/repository-architecture-contract-v1
