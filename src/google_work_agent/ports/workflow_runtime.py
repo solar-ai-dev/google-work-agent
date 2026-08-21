@@ -111,5 +111,8 @@ class WorkflowRuntime(Protocol):
     def recover_open_run(self, request: WorkflowRecoveryRequest) -> WorkflowInvocationResult:
         """Recover an open workflow run."""
 
+    def discard_run_transients(self, run_id: str) -> None:
+        """Release memory-only transient state owned by one terminal run."""
+
     def close(self) -> None:
         """Release runtime resources if needed."""

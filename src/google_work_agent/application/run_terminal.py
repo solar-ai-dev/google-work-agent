@@ -18,6 +18,7 @@ from google_work_agent.application.workflows import (
     validate_finalize_intent_v1,
 )
 from google_work_agent.domain import (
+    ActionStatus,
     ResultCode,
     RunCommand,
     RunStatus,
@@ -29,6 +30,7 @@ from google_work_agent.ports import (
     CommandReceiptRecord,
     CommandReceiptStatus,
     ConversationRecord,
+    PlanStatus,
     RunRecord,
     TraceEventRecord,
     UnitOfWork,
@@ -333,7 +335,14 @@ def _apply_run_transition(
                 expected_version=expected_version,
             ).applied
         ):
-            _revoke_active_approvals_for_run(unit_of_work=unit_of_work, run_id=run_id)
+            if target_status is RunStatus.BLOCKED:
+                _cleanup_plans_for_block(
+                    unit_of_work=unit_of_work,
+                    run_id=run_id,
+                    updated_at_ms=completed_at_ms,
+                )
+            else:
+                _revoke_active_approvals_for_run(unit_of_work=unit_of_work, run_id=run_id)
         result = repository_method(run_id, **kwargs)
         response = RunTransitionResponse(
             applied=bool(result.applied),
@@ -509,6 +518,61 @@ def _require_conversation(unit_of_work: UnitOfWork, conversation_id: str) -> Con
     if conversation is None:
         raise LookupError(f"conversation not found: {conversation_id}")
     return conversation
+
+
+def _cleanup_plans_for_block(
+    *,
+    unit_of_work: UnitOfWork,
+    run_id: str,
+    updated_at_ms: int,
+) -> None:
+    """Close every non-superseded planning aggregate before Run BLOCKED.
+
+    NFR-019 has immediate SQLite triggers: an APPROVED Action cannot leave
+    APPROVED while an ACTIVE Approval exists, and a Plan cannot become
+    inactive while such an Approval exists. Therefore the trigger-safe SQL
+    order inside this *single* UoW is Approval revoke -> pending Action
+    terminalization -> Plan CANCELLED -> Run BLOCKED. The committed aggregate
+    snapshot is the canonical BlockRun cleanup; there is no intermediate
+    commit or externally observable partial state.
+    """
+    pending = {
+        ActionStatus.PROPOSED.value,
+        ActionStatus.MODIFIED.value,
+        ActionStatus.APPROVED.value,
+        ActionStatus.EXPIRED.value,
+    }
+    for plan in unit_of_work.plans.list_by_run(run_id):
+        if plan.status in {PlanStatus.SUPERSEDED, PlanStatus.COMPLETED, PlanStatus.CANCELLED}:
+            continue
+        actions = unit_of_work.actions.list_by_plan(plan.id)
+        for action in actions:
+            unit_of_work.approvals.revoke_active_by_action(action.id)
+        for action in actions:
+            if action.status not in pending:
+                continue
+            if action.status == ActionStatus.EXPIRED.value:
+                modified = unit_of_work.actions.modify_write(
+                    action.id,
+                    expected_version=action.version,
+                    updated_at_ms=updated_at_ms,
+                    arguments_json=action.arguments_json,
+                    arguments_hash=action.arguments_hash,
+                    risk=action.risk,
+                )
+                if not modified.applied:
+                    raise RuntimeError(
+                        f"BlockRun could not normalize expired action {action.id}: "
+                        f"{modified.result_code.value}"
+                    )
+            if not unit_of_work.actions.mark_dependency_blocked(
+                action.id,
+                updated_at_ms=updated_at_ms,
+            ):
+                raise RuntimeError(f"BlockRun could not terminalize pending action {action.id}")
+        if plan.status is PlanStatus.DRAFT:
+            unit_of_work.plans.activate(plan.id)
+        unit_of_work.plans.cancel(plan.id)
 
 
 def _revoke_active_approvals_for_run(*, unit_of_work: UnitOfWork, run_id: str) -> None:

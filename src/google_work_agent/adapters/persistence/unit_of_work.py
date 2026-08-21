@@ -16,6 +16,9 @@ from google_work_agent.adapters.persistence.connector_identity import (
     ConnectorAwareActionRepository,
     ConnectorAwareResourceRefRepository,
 )
+from google_work_agent.adapters.persistence.corrective_plan_repository import (
+    CorrectiveAwareSQLitePlanRepository,
+)
 from google_work_agent.adapters.persistence.repositories import (
     SQLiteActionDependencyRepository,
     SQLiteApprovalRepository,
@@ -23,7 +26,6 @@ from google_work_agent.adapters.persistence.repositories import (
     SQLiteEvidenceRepository,
     SQLiteExecutionAttemptRepository,
     SQLiteMessageRepository,
-    SQLitePlanRepository,
     SQLiteVerificationRepository,
 )
 from google_work_agent.adapters.persistence.secret_boundary import (
@@ -49,7 +51,7 @@ class SQLiteUnitOfWork:
         self.runs = SQLiteConfirmationRunRepository(connection)
         self.messages = SQLiteMessageRepository(connection)
         self.command_receipts = CancelIntentCommandReceiptRepository(connection)
-        self.plans = SQLitePlanRepository(connection)
+        self.plans = CorrectiveAwareSQLitePlanRepository(connection)
         self.actions = ConnectorAwareActionRepository(connection)
         self.resource_refs = ConnectorAwareResourceRefRepository(connection)
         self.evidence = SQLiteEvidenceRepository(connection)

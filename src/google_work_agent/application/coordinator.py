@@ -425,6 +425,9 @@ class LocalRunCoordinator:
             )
         )
         self._publish_cancel_response(response)
+        if response.applied and response.run_status == RunStatus.CANCELLED.value:
+            self._workflow_runtime.discard_run_transients(item.run_id)
+            return
         if response.run_status in {
             RunStatus.RECOVERY_REQUIRED.value,
             RunStatus.VERIFYING.value,
