@@ -204,6 +204,20 @@ from google_work_agent.ports.repositories import ActionRecord
 JsonObject = dict[str, object]
 
 
+def _legacy_connector_identity_unavailable() -> str:
+    """Fail closed when the legacy base lacks frozen Tool Route connector identity.
+
+    Production uses ``canonical_planning_runtime.LangGraphWorkflowRuntime``, whose
+    persistence overrides join every action/resource to an explicit frozen route.
+    The legacy base must never invent a connector or fall back to Google Workspace.
+    """
+
+    raise RuntimeError(
+        "legacy LangGraph runtime cannot persist connector-aware DTOs without "
+        "frozen Tool Route connector identity; use canonical planning runtime"
+    )
+
+
 class LangGraphWorkflowRuntime(WorkflowRuntime):
     """LangGraph runtime with selectable Stage 18 graph profiles."""
 
@@ -1246,6 +1260,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return self._invocation.is_profile_compatible(state)
 
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
+        connector_id = _legacy_connector_identity_unavailable()
         run_id = state["run_id"]
         run_version = self._current_run_version(run_id)
         replan_from_plan_id = state.get("__replan_from_plan_id__")
@@ -1293,6 +1308,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         mapped_actions = tuple(
             WriteActionDraft(
                 action_id=action_id_map[action["action_id"]],
+                connector_id=connector_id,
                 position=action["position"],
                 tool_name=action["tool_name"],
                 arguments=action["arguments"],
@@ -1395,6 +1411,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 raise LookupError(
                     f"target resource handle was not acquired for this run: {resource_handle}"
                 )
+            connector_id = _legacy_connector_identity_unavailable()
             source = ResourceSource(str(resource["source"]))
             resource_type = _stored_resource_type_for_acquired_resource(
                 source=source,
@@ -1404,6 +1421,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             resource_ref = ResourceRefRecord(
                 id=f"resource-ref-{run_id}-{resource_handle.replace(':', '-')}",
                 run_id=run_id,
+                connector_id=connector_id,
                 source=source,
                 resource_type=resource_type,
                 resource_id=str(resource["resource_id"]),
@@ -1420,7 +1438,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             unit_of_work.resource_refs.upsert(resource_ref)
             persisted = unit_of_work.resource_refs.get_by_unique_key(
                 run_id=run_id,
-                source=source.value,
+                connector_id=connector_id,
                 resource_type=resource_type.value,
                 resource_id=resource_ref.resource_id,
             )
@@ -1430,6 +1448,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             return persisted.id
 
     def _persist_read_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
+        connector_id = _legacy_connector_identity_unavailable()
         run_id = state["run_id"]
         run_version = self._current_run_version(run_id)
         retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
@@ -1458,6 +1477,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         mapped_actions = tuple(
             ReadActionDraft(
                 action_id=action["action_id"],
+                connector_id=connector_id,
                 position=action["position"],
                 tool_name=action["tool_name"],
                 arguments=action["arguments"],
