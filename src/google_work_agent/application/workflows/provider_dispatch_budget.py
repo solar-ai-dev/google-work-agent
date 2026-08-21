@@ -21,7 +21,6 @@ from google_work_agent.application.workflows.contracts import (
     BudgetDecision,
     RunBudgetV1,
     check_llm_call_budget,
-    consume_llm_provider_calls,
     validate_run_budget_v1,
 )
 from google_work_agent.ports import LLMErrorCode, LLMInvocationError
@@ -36,10 +35,6 @@ def bind_provider_dispatch_budget(run_budget: RunBudgetV1) -> RunBudgetV1:
     """Bind one mutable RunBudget authority to the current execution context."""
 
     validated = validate_run_budget_v1(run_budget)
-    # Keep the caller-owned object as the authority. Validation above is
-    # fail-closed, while mutation below preserves object identity so a failed
-    # provider dispatch is visible to the owning graph state even though no
-    # StructuredLLMResult is produced.
     run_budget.clear()
     run_budget.update(validated)
     _CURRENT_RUN_BUDGET.set(run_budget)
@@ -60,9 +55,13 @@ def account_provider_dispatch() -> None:
             f"run LLM call budget exhausted: {decision['budget_reason_code']}",
             retryable=False,
         )
-    updated = consume_llm_provider_calls(run_budget, provider_calls_consumed=1)
+    # This is the sole increment for a real provider dispatch. Do not route it
+    # through the historical post-result consumer: calls that raise must count.
+    updated = dict(validate_run_budget_v1(run_budget))
+    updated["llm_calls_used"] = int(updated["llm_calls_used"]) + 1
+    validated = validate_run_budget_v1(updated)
     run_budget.clear()
-    run_budget.update(updated)
+    run_budget.update(validated)
 
 
 def merge_provider_dispatch_usage(run_budget: RunBudgetV1) -> RunBudgetV1:
@@ -85,7 +84,7 @@ def merge_provider_dispatch_usage(run_budget: RunBudgetV1) -> RunBudgetV1:
 
 
 def current_provider_dispatch_budget() -> RunBudgetV1 | None:
-    """Test/adapter inspection helper; returns the RunBudget authority itself."""
+    """Return the bound RunBudget authority itself, never a second counter."""
 
     return _CURRENT_RUN_BUDGET.get()
 
