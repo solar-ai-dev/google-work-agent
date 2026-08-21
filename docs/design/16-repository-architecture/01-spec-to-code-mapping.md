@@ -1,6 +1,6 @@
 # 01. Spec → Code Deterministic Mapping
 
-> Parent: Repository Architecture Source v1.1
+> Parent: Repository Architecture Source v1.4
 
 ## Rule
 
@@ -20,6 +20,8 @@ SPEC TERM
 
 Do not begin from an existing filename or from grep results that merely look similar.
 
+If the calculated construct does not match an existing published grammar, do not choose an ad-hoc alternative. Stop and resolve it through the Repository Architecture Exception Registry/versioning process.
+
 ## Examples
 
 ### BlockRun
@@ -37,13 +39,18 @@ BlockRun
 Domain transition/guard implementation, if separate from the Application handler:
 
 ```text
-domain/run/transitions/block_run.py
-domain/run/guards/block_run.py
+domain/run/transitions/block_run.py → transition_block_run()
+domain/run/guards/block_run.py      → guard_block_run()
 ```
 
 ### Work Analysis relation validation node
 
 ```text
+Work Analysis / validate relations / semantic operation
+→ work_analysis
+→ application/agents/work_analysis/validate_relations.py
+→ validate_relations()
+
 Work Analysis / validate relations / LangGraph node
 → work_analysis
 → adapters/langgraph/subgraphs/work_analysis/nodes/validate_relations_node.py
@@ -51,6 +58,14 @@ Work Analysis / validate relations / LangGraph node
 ```
 
 The node only projects typed input, calls Application semantics, and returns the typed owner-field patch/workflow signal.
+
+### Route after review
+
+```text
+Review / route after review
+→ adapters/langgraph/main/routing/route_after_review.py
+→ route_after_review()
+```
 
 ### Gmail draft create
 
