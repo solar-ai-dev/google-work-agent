@@ -1,6 +1,6 @@
 # 04. Artifact Taxonomy
 
-> Parent: Repository Architecture Source v1.1
+> Parent: Repository Architecture Source v1.4
 
 Generic `DTO` naming is prohibited. The name must state the artifact’s actual role.
 
@@ -30,7 +30,7 @@ Generic `DTO` naming is prohibited. The name must state the artifact’s actual 
 | `Port` | boundary abstraction |
 | `Adapter` | concrete Port implementation only |
 
-`Factory` is exceptional and requires true runtime-selected implementation creation.
+`Factory` is exceptional and requires true runtime-selected implementation creation plus an explicit Exception Registry entry.
 
 ## Candidate / Draft / Snapshot / Projection
 
