@@ -6,9 +6,16 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
+from google_work_agent.application.workflows.failure_record import (
+    FAILURE_RECORD_FIELDS,
+    build_failure_record_v1,
+)
 from google_work_agent.application.workflows.prompt_input_contract import (
     PromptInputContractError,
     PromptRuntimeInputContractValidator,
+)
+from google_work_agent.application.workflows.provider_dispatch_budget import (
+    account_provider_dispatch,
 )
 from google_work_agent.ports import (
     ActualRuntime,
@@ -62,11 +69,13 @@ class _RuntimeToolCallingProvider(_ToolCallingProvider, Protocol):
 
 @dataclass(frozen=True, slots=True)
 class PromptInputGuardedProvider:
-    """Validate the exact projection immediately before every provider call.
+    """Validate exact Product Prompt input and account the real dispatch.
 
-    The same decorated provider instance is passed to schema-repair code, so
-    repair/revision calls are checked against their own registered PromptRef
-    as well; there is no alternate unvalidated repair dispatch path.
+    The same decorated provider instance is passed to schema/tool-call repair
+    code, so primary, fallback, repair, tool-call, and tool-call-repair all
+    cross this one boundary. ``account_provider_dispatch`` runs after local
+    validation but immediately before the delegate invocation; a provider
+    timeout/error therefore still consumes exactly one RunBudget call.
     """
 
     delegate: _StructuredProvider
@@ -89,10 +98,12 @@ class PromptInputGuardedProvider:
         runtime_policy: RuntimePolicy,
         api_key: str | None,
     ) -> ProviderResponsePayload:
-        self._validate(prompt_ref=prompt_ref, prompt_input=prompt_input)
+        normalized_input = _canonical_prompt_input(prompt_input)
+        self._validate(prompt_ref=prompt_ref, prompt_input=normalized_input)
+        account_provider_dispatch()
         return self.delegate.invoke_structured(
             prompt_ref=prompt_ref,
-            prompt_input=prompt_input,
+            prompt_input=normalized_input,
             output_schema=output_schema,
             runtime_policy=runtime_policy,
             api_key=api_key,
@@ -107,16 +118,18 @@ class PromptInputGuardedProvider:
         runtime_policy: RuntimePolicy,
         api_key: str | None,
     ) -> ToolCallProviderResponse:
-        self._validate(prompt_ref=prompt_ref, prompt_input=prompt_input)
+        normalized_input = _canonical_prompt_input(prompt_input)
+        self._validate(prompt_ref=prompt_ref, prompt_input=normalized_input)
         delegate = self.delegate
         if not isinstance(delegate, _RuntimeToolCallingProvider):
             raise LLMInvocationError(
                 LLMErrorCode.RUNTIME_MODE_BLOCKED,
                 "selected provider does not support native tool calling",
             )
+        account_provider_dispatch()
         return delegate.invoke_tool_call(
             prompt_ref=prompt_ref,
-            prompt_input=prompt_input,
+            prompt_input=normalized_input,
             tools=tools,
             runtime_policy=runtime_policy,
             api_key=api_key,
@@ -128,14 +141,53 @@ class PromptInputGuardedProvider:
         try:
             self.validator.validate(prompt_id=prompt_ref.prompt_id, prompt_input=prompt_input)
         except PromptInputContractError as error:
-            # No dedicated public LLM error code exists for input-contract
-            # violations. RUNTIME_VERSION_MISMATCH is the closest existing
-            # fail-closed runtime-contract classification and avoids falsely
-            # labelling this as a provider response failure.
             raise LLMInvocationError(
                 LLMErrorCode.RUNTIME_VERSION_MISMATCH,
                 f"prompt runtime input contract violation: {error}",
             ) from error
+
+
+def _canonical_prompt_input(prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+    """Normalize the already-3-root Generic Repair envelope to FailureRecordV1.
+
+    IMP-138's outer contract is unchanged. Historical Generic Schema Repair
+    already emitted the exact nine FailureRecord field names but used two
+    pre-v1.26 enum spellings (``RUNTIME`` and
+    ``STRUCTURED_OUTPUT_VALIDATOR``). Only that exact legacy shape is
+    normalized. Bespoke semantic-revision shapes are not accepted here and
+    are rejected by the nested Prompt Input Guard instead.
+    """
+
+    raw = prompt_input.get("failure_record")
+    if not isinstance(raw, Mapping) or set(raw) != FAILURE_RECORD_FIELDS:
+        return prompt_input
+    if raw.get("failure_origin") != "RUNTIME" or raw.get("detected_by") != (
+        "STRUCTURED_OUTPUT_VALIDATOR"
+    ):
+        return prompt_input
+    failure_id = raw.get("failure_id")
+    reason_code = raw.get("failure_reason_code")
+    runtime_disposition = raw.get("runtime_disposition")
+    experiment_disposition = raw.get("experiment_disposition")
+    affected_paths = raw.get("affected_field_paths")
+    evidence_refs = raw.get("evidence_refs")
+    if not isinstance(failure_id, str) or not isinstance(reason_code, str):
+        return prompt_input
+    if runtime_disposition != "RETRYABLE" or experiment_disposition != "RUN_REPAIR":
+        return prompt_input
+    if not isinstance(affected_paths, list) or not isinstance(evidence_refs, list):
+        return prompt_input
+    canonical = build_failure_record_v1(
+        failure_id=failure_id,
+        failure_reason_code=reason_code,
+        failure_origin="LLM_OUTPUT",
+        detected_by="RUNTIME_SCHEMA_VALIDATOR",
+        runtime_disposition="RETRYABLE",
+        experiment_disposition="RUN_REPAIR",
+        affected_field_paths=affected_paths,
+        evidence_refs=evidence_refs,
+    )
+    return {**prompt_input, "failure_record": canonical}
 
 
 __all__ = ["PromptInputGuardedProvider"]
