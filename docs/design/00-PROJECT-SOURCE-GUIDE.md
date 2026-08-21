@@ -3,7 +3,7 @@
 ## 목적
 
 이 묶음은 설계 검토·구현 질의·실험/평가 검토에 사용하는 **Canonical 프로젝트 소스 26개**다.  
-공식 원본은 **Notion Canonical**이며 이 Markdown 묶음은 **2026-08-22 Repository Architecture Convention v1.1 정합화 이후 Export Snapshot**이다.
+공식 원본은 **Notion Canonical**이며 이 Markdown 묶음은 **2026-08-22 Repository Architecture v1.2 + Local SLLM Responsibility Decomposition 정합화 이후 Export Snapshot**이다.
 
 ## 문서 권위·책임 소유 규칙
 
@@ -36,22 +36,23 @@ Semantic behavior는 기존 concern owner와 executable Domain/SQL Constraint가
 
 ## 현재 Canonical 기준 — 2026-08-22
 
-Behavioral semantic versions는 2026-08-19 승인 기준을 그대로 유지한다. 이번 16번 추가는 Repository Architecture concern의 신규 authority이며 01~15 behavior를 재정의하지 않는다.
+Behavioral semantic baseline은 2026-08-19 승인 기준을 유지하되, 2026-08-22 사용자 승인 변경으로 Workflow/Sequence/Test/Evaluation/Prompt 계약과 Repository Architecture의 소유 내용이 실제로 변경되어 해당 문서만 version-up했다. 나머지 behavior 문서는 기존 version을 유지한다.
 
-- Project Overview **v1.16**
+- Project Overview **v1.17**
 - PRD **v2.11** / Functional **v2.18** / Policy **v2.12** / UI·UX **v2.14**
 - Architecture **v3.7** / Domain·DB **v1.20** / DB Schema **v1.6**
-- Retrieval **v2.13** / Workflow **v7.20** / Interface **v2.23** / Sequence **v3.17**
+- Retrieval **v2.13** / Workflow **v7.21** / Interface **v2.23** / Sequence **v3.18**
 - Security **v2.11** / Infrastructure **v2.11** / Observability **v2.20**
-- Test **v3.39** / Evaluation **v3.26** / Operations **v2.20**
-- Agent Capability·Failure·Prompt **v1.26**
+- Test **v3.40** / Evaluation **v3.27** / Operations **v2.20**
+- Agent Capability·Failure·Prompt **v1.27**
 - Domain State Transition **v1.5** / State Transition Test Matrix **v1.5**
-- Repository Architecture **v1.1 — CANONICAL_FOR_REFACTOR**
+- Repository Architecture **v1.2 — CANONICAL_FOR_REFACTOR**
 - Dataset candidate: `rebuild-v1.17-r8.6-phase7.5-contract-correction`
 - Projection candidate: `projection-v1.1-r8.6-phase7.5`
-- Current Runtime-aligned Prompt candidate: `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`
-  - **27 Active Runtime Slot + 3 Retired Slot**
-  - 상태 `DRAFT_RUNTIME_CONTRACT_ALIGNED_NOT_ACTIVE`
+- Previous runtime-aligned Prompt candidate: `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3` — **27 Active + 3 Retired**, 재현 기준
+- New topology candidate: `0.9.2-r8.6-sllm-decomposition / semantic-r8.6-v4`
+  - 상태 `DESIGN_DEFINED_MANIFEST_NOT_BUILT`
+  - Active Slot 수는 manifest/source/caller/input-contract 생성 후 확정
 - 실제 Prompt 활성화는 Node DEV → Holdout → Safety Gate 이후에만 허용한다.
 
 ## 2026-08-19 Behavior Canonical 유지
@@ -87,7 +88,7 @@ Behavioral semantic versions는 2026-08-19 승인 기준을 그대로 유지한�
 - raw continuation은 현재 Run의 Run Retrieval Cache read-result entry만 memory-only로 소유한다.
 - Retrieval V2를 별도 재구현하지 않는다.
 
-## Repository Architecture v1.1 — 2026-08-22
+## Repository Architecture v1.2 — 2026-08-22
 
 ### Frozen convention decisions
 
@@ -116,8 +117,17 @@ SPEC TERM
 - 현재 filename만 보고 기능 부재를 판정하지 않는다.
 - 동일 Domain fact/state writer, repository mutation, external effect, transition/result, exported symbol, caller chain까지 semantic search한다.
 - 동일 capability의 기존 production authority가 발견되면 새 병렬 구현을 만들지 않고 `SEMANTIC_AUTHORITY_COLLISION`으로 중단한다.
-- Architecture v1.1의 naming normalization은 기존 behavior contract의 의미를 변경하지 않는다.
+- Architecture v1.2의 repository naming/placement는 Workflow v7.21의 새 atomic responsibility topology를 distinct operation files로 매핑하되 runtime behavior authority는 06/15에 둔다.
 - `_compat`은 refactor integration branch의 transient migration 도구일 뿐이며 `main`에서는 0개여야 한다.
+
+## 2026-08-22 Local SLLM 책임 분해
+
+- Agent 수는 6개를 유지한다.
+- Work Analysis: facts / relation candidates / information gaps / operational risks를 atomic LLM responsibility로 분리한다.
+- Planning ACTION: frozen Output Route별 action objective와 Tool Arguments serialization을 별도 LLM 호출로 분리한다.
+- Review: goal/evidence, action scope/route, user constraints/supplied policy summary를 별도 검사하고 deterministic aggregator가 disposition을 만든다.
+- 강한 Runtime의 node fusion은 atomic parity gate를 통과한 경우에만 허용한다.
+- Product LLM Call hard cap은 Run당 24다.
 
 ## 프로젝트 소스 26개 구성
 
