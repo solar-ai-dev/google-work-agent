@@ -10,7 +10,10 @@ from google_work_agent.launcher import dev
 from google_work_agent.ports import ReadinessState, RuntimeOperation
 
 
-def test_build_container_classifies_migration_integrity_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_build_container_classifies_migration_integrity_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     def fail_integrity(*args: Any, **kwargs: Any) -> None:
         raise MigrationIntegrityError("startup sqlite quick_check failed")
 
