@@ -3,8 +3,9 @@
 The router consumes only validated ``SubgraphReturnV2`` envelopes. Unknown
 versions/dispositions and impossible artifact combinations fail closed to
 RECOVERY/CONTRACT_VIOLATION. Revision-budget exhaustion is a Domain transition,
-not a contract violation: Workflow v7.21 / Failure Contract v1.27 require an
-Application BlockRun boundary and FINALIZE only when that transition applied.
+not a contract violation: the Application BlockRun boundary is invoked before
+FINALIZE and DOMAIN_RECONCILE is selected when durable state does not match the
+checkpoint projection.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ PostRetrievalTargetV2 = Literal[
     "DOMAIN_VALIDATION",
     "RESPONSE_SYNTHESIS",
     "WAITING_CONFIRMATION",
+    "BLOCK_RUN",
     "DOMAIN_RECONCILE",
     "RECOVERY",
     "FINALIZE",
@@ -67,7 +69,7 @@ BlockRunExecutor = Callable[[object], BlockRunResult]
 
 
 class RevisionBudgetBlockBoundaryRequired(RuntimeError):
-    """Raised when F routing cannot invoke the required Application BlockRun boundary."""
+    """Raised when routing cannot invoke the required Application BlockRun boundary."""
 
 
 def route_work_analysis_return_v2(value: object) -> PostRetrievalRouteDecisionV2:
@@ -93,7 +95,7 @@ def route_work_analysis_return_v2(value: object) -> PostRetrievalRouteDecisionV2
         return _decision("WAITING_CONFIRMATION", "WORK_ANALYSIS_NEEDS_CONFIRMATION")
     if disposition == "ROUTE_RECONSIDERATION_REQUIRED":
         return _decision("TOOL_ROUTE", _first_signal_reason(envelope, disposition))
-    return _decision("FINALIZE", _first_signal_reason(envelope, "WORK_ANALYSIS_BLOCKED"))
+    return _decision("BLOCK_RUN", _first_signal_reason(envelope, "WORK_ANALYSIS_BLOCKED"))
 
 
 def route_planning_return_v2(value: object) -> PostRetrievalRouteDecisionV2:
@@ -110,7 +112,7 @@ def route_planning_return_v2(value: object) -> PostRetrievalRouteDecisionV2:
         return _decision("WAITING_CONFIRMATION", "PLANNING_NEEDS_CONFIRMATION")
     if disposition == "ROUTE_RECONSIDERATION_REQUIRED":
         return _decision("TOOL_ROUTE", _first_signal_reason(envelope, disposition))
-    return _decision("FINALIZE", _first_signal_reason(envelope, "PLANNING_BLOCKED"))
+    return _decision("BLOCK_RUN", _first_signal_reason(envelope, "PLANNING_BLOCKED"))
 
 
 def route_review_return_v2(
@@ -152,7 +154,7 @@ def route_review_return_v2(
         return _decision("TOOL_ROUTE", _first_signal_reason(envelope, disposition))
     if disposition == "CONFIRM":
         return _decision("WAITING_CONFIRMATION", "PLAN_REVIEW_CONFIRM")
-    return _decision("FINALIZE", _first_signal_reason(envelope, "PLAN_REVIEW_BLOCK"))
+    return _decision("BLOCK_RUN", _first_signal_reason(envelope, "PLAN_REVIEW_BLOCK"))
 
 
 def _route_review_revise(
