@@ -1,51 +1,22 @@
 # 11. Structural Refactor Playbook
 
-> Parent: Repository Architecture Source v1.1
+> Parent: Repository Architecture Source v1.3
 
-Structural refactoring preserves behavioral semantics unless a separate concern-specific canonical contract explicitly requires a behavior change.
+Refactoring preserves behavior unless a separate concern-specific canonical contract explicitly requires a semantic change.
 
-## Per-capability workflow
+For each capability:
 
 ```text
 DISCOVER
 → CLASSIFY
 → MAP CANONICAL OWNER
 → MOVE / SPLIT / MERGE
-→ REWIRE ALL PRODUCTION CALLERS
+→ REWIRE ALL CALLERS
 → DELETE OLD AUTHORITY
-→ DELETE TRANSIENT COMPAT
-→ MOVE / REPOINT TESTS
-→ STRUCTURAL ENFORCEMENT
-→ BEHAVIOR REGRESSION
+→ MOVE TESTS
+→ RUN STRUCTURAL + BEHAVIOR REGRESSION
 ```
 
-## Discover
+Do not create a new canonical file and leave the old caller alive. A structural task is incomplete until old production authority and transient wrapper are gone.
 
-Search semantically, not just by filename. Inspect Domain writers, state writers, repository mutations, external effects, transition/result handling, exports, caller chains, and tests.
-
-## Classify
-
-Each discovered implementation is one of:
-
-```text
-CANONICAL_TO_KEEP
-MOVE
-SPLIT
-MERGE
-DELETE_DUPLICATE
-TRANSIENT_COMPAT
-TEST_ONLY
-HISTORICAL_ARTIFACT
-```
-
-## Rewire
-
-The new owner is not “live” until all production callers use it.
-
-## Delete
-
-Do not leave old implementations as undocumented fallback or safety copies.
-
-## Scope rule
-
-No feature development, new V3 behavior, Prompt activation, or behavioral redesign is performed merely to satisfy this structural refactor.
+Workflow v7.22 atomic responsibility refactor additionally requires broad heavy-Agent modules to be split without changing Agent ownership. For Work Analysis / Planning / Review, move one semantic LLM responsibility at a time, rewire its caller, preserve Typed Local Candidate boundaries, then delete the old broad responsibility. A temporary facade may exist only on the integration branch and must not survive on `main`.
