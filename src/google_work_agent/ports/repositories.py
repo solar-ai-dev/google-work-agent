@@ -515,11 +515,11 @@ class ResourceRefRepository(Protocol):
         self,
         *,
         run_id: str,
-        source: str,
+        connector_id: str,
         resource_type: str,
         resource_id: str,
     ) -> ResourceRefRecord | None:
-        """Return one resource reference by unique key."""
+        """Return one resource reference by connector-aware unique key."""
 
     def upsert(self, record: ResourceRefRecord) -> None:
         """Insert or update one resource reference."""
