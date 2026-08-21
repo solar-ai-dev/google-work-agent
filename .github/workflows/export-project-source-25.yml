@@ -1,0 +1,67 @@
+name: Export Project Source 25
+
+on:
+  push:
+    branches:
+      - docs/repository-architecture-contract-v1
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble project source bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="project-source-25"
+          mkdir -p "$root"
+          files=(
+            "docs/design/00-PROJECT-SOURCE-GUIDE.md"
+            "docs/design/01-requirements-prd.md"
+            "docs/design/01-a-functional-definition.md"
+            "docs/design/01-b-policy-definition-v2.8.md"
+            "docs/design/02-ui-ux-design.md"
+            "docs/design/03-system-architecture.md"
+            "docs/design/04-domain-database-design.md"
+            "docs/design/05-context-retrieval.md"
+            "docs/design/06-agent-workflow.md"
+            "docs/design/07-tool-mcp-internal-interface.md"
+            "docs/design/08-sequence-design.md"
+            "docs/design/09-security-auth-v2.5.md"
+            "docs/design/10-infrastructure-environment-v2.7.md"
+            "docs/design/11-observability-logging-audit.md"
+            "docs/design/12-test-design.md"
+            "docs/design/13-evaluation-experiment.md"
+            "docs/design/14-operations-troubleshooting.md"
+            "docs/design/15-agent-capability-failure-prompt-contract.md"
+            "docs/design/16-repository-architecture-source.md"
+            "docs/contracts/state-transition-contract-v1.4.md"
+            "docs/contracts/state-transition-test-matrix-v1.4.md"
+            "docs/database/migrations/0002_action_effect_send_delete.sql"
+            "docs/database/migrations/0003_action_cancelled.sql"
+            "docs/database/migrations/0004_plan_review_gate.sql"
+            "docs/database/migrations/0005_cross_aggregate_invariants.sql"
+          )
+          for f in "${files[@]}"; do
+            test -f "$f"
+            dest="$root/${f#docs/}"
+            mkdir -p "$(dirname "$dest")"
+            cp "$f" "$dest"
+          done
+          count="$(find "$root" -type f | wc -l | tr -d ' ')"
+          test "$count" = "25"
+          zip -qr google-work-agent-project-source-25.zip "$root"
+          sha256sum google-work-agent-project-source-25.zip
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: google-work-agent-project-source-25
+          path: google-work-agent-project-source-25.zip
+          if-no-files-found: error
+          retention-days: 1
