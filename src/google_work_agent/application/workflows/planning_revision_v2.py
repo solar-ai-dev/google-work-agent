@@ -1,10 +1,8 @@
 """V2-only Planning revision owner for Review REVISE.
 
-Checkpoint B's initial PlanningV2Producer is intentionally unchanged. This
-module handles the distinct corrective path without converting a legacy plan
-into V2 authority: the current ActionPlanDraftV2 is the sole revision base,
-Review V2 issues define the bounded failure record, frozen Tool Route identity
-is re-bound deterministically, and only business arguments/evidence may change.
+The current ActionPlanDraftV2 is the sole revision base.  Review V2 issues are
+projected one-by-one into Agent3's canonical FailureRecordV1; no bespoke prompt
+failure fields are serialized.
 """
 
 from __future__ import annotations
@@ -15,6 +13,11 @@ from typing import cast
 
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.application.workflows.failure_record import (
+    FailureRecordV1,
+    build_failure_record_v1,
+    validate_failure_record_v1,
+)
 from google_work_agent.application.workflows.handoff_contracts import (
     EvidenceDraftV1,
     RequestIntentV2,
@@ -46,9 +49,13 @@ from google_work_agent.application.workflows.post_retrieval_envelopes_v2 import 
 from google_work_agent.application.workflows.prompt_registry import load_prompt_reference
 from google_work_agent.application.workflows.state_artifacts_v2 import (
     PlanReviewResultV2,
+    ReviewIssueV1,
     WorkAnalysisResultV2,
 )
-from google_work_agent.application.workflows.tool_routing import ToolRoutePlanV2, output_routes
+from google_work_agent.application.workflows.tool_routing import (
+    ToolRoutePlanV2,
+    output_routes,
+)
 from google_work_agent.ports import PromptReference, WorkflowStartRequest
 
 
@@ -84,31 +91,52 @@ class PlanningV2RevisionProducer:
         evidence_drafts: Sequence[EvidenceDraftV1],
     ) -> SubgraphReturnV2[PlanningResultV2]:
         if review_result["status"] != "REVISE":
-            raise PlanningV2RevisionError("Planning revision requires Review V2 REVISE")
+            raise PlanningV2RevisionError(
+                "Planning revision requires Review V2 REVISE"
+            )
         required_review_ref = {
             "artifact_id": current_plan["meta"]["artifact_id"],
             "revision": current_plan["meta"]["revision"],
         }
         if required_review_ref not in review_result["meta"]["based_on"]:
-            raise PlanningV2RevisionError("stale Review V2 for current Planning V2 revision")
+            raise PlanningV2RevisionError(
+                "stale Review V2 for current Planning V2 revision"
+            )
 
         routes = output_routes(tool_route_plan)
         if not routes:
-            raise PlanningV2RevisionError("ACTION revision requires frozen output routes")
-        preparations = self._argument_orchestrator.prepare_actions(output_routes=routes)
+            raise PlanningV2RevisionError(
+                "ACTION revision requires frozen output routes"
+            )
+        preparations = self._argument_orchestrator.prepare_actions(
+            output_routes=routes
+        )
         ready_by_route = self._ready_preparations(preparations)
-        action_by_route = {action["route_id"]: action for action in current_plan["actions"]}
-        if set(action_by_route) != {route["route_id"] for route in routes}:
-            raise PlanningV2RevisionError("current plan no longer matches frozen output routes")
+        action_by_route = {
+            action["route_id"]: action for action in current_plan["actions"]
+        }
+        if set(action_by_route) != {
+            route["route_id"] for route in routes
+        }:
+            raise PlanningV2RevisionError(
+                "current plan no longer matches frozen output routes"
+            )
 
         evidence = list(evidence_drafts)
-        allowed_evidence_refs = {item["evidence_id"] for item in evidence}
+        allowed_evidence_refs = {
+            item["evidence_id"] for item in evidence
+        }
         revised_candidates: list[ToolArgumentCandidateV1] = []
         for route in routes:
             route_id = route["route_id"]
             action = action_by_route[route_id]
-            if action["tool_id"] != route["selected_tool_id"] or action["effect"] != route["effect"]:
-                raise PlanningV2RevisionError("current action escapes frozen Tool Route authority")
+            if (
+                action["tool_id"] != route["selected_tool_id"]
+                or action["effect"] != route["effect"]
+            ):
+                raise PlanningV2RevisionError(
+                    "current action escapes frozen Tool Route authority"
+                )
             bound = ready_by_route[route_id]["bound_tool_schema"]
             current_candidate = validate_tool_argument_candidate_v1(
                 {
@@ -123,66 +151,78 @@ class PlanningV2RevisionProducer:
             issues = [
                 issue
                 for issue in review_result["issues"]
-                if issue["action_id"] is None or issue["action_id"] == action["action_id"]
+                if issue["action_id"] is None
+                or issue["action_id"] == action["action_id"]
             ]
-            if not issues:
-                revised_candidates.append(current_candidate)
-                continue
-            llm_result = self._llm_runtime.invoke_structured(
-                prompt_ref=self._prompt_ref,
-                prompt_input={
-                    "base_projection": {
-                        "user_request": request.request_text,
-                        "request_intent": request_intent,
-                        "output_route": {
-                            "route_id": route_id,
-                            "connector_id": route["connector_id"],
-                            "resource_type": route["resource_type"],
-                            "effect": route["effect"],
-                            "selected_tool_id": route["selected_tool_id"],
+            candidate = current_candidate
+            for issue in issues:
+                failure_record = _failure_record_for_issue(
+                    issue,
+                    route_id=route_id,
+                    action_id=action["action_id"],
+                )
+                llm_result = self._llm_runtime.invoke_structured(
+                    prompt_ref=self._prompt_ref,
+                    prompt_input={
+                        "base_projection": {
+                            "user_request": request.request_text,
+                            "request_intent": request_intent,
+                            "output_route": {
+                                "route_id": route_id,
+                                "connector_id": route["connector_id"],
+                                "resource_type": route["resource_type"],
+                                "effect": route["effect"],
+                                "selected_tool_id": route[
+                                    "selected_tool_id"
+                                ],
+                            },
+                            "selected_tool_schema": bound[
+                                "argument_schema"
+                            ],
+                            "work_analysis": work_analysis_result,
+                            "evidence": _evidence_projection(evidence),
                         },
-                        "selected_tool_schema": bound["argument_schema"],
-                        "work_analysis": work_analysis_result,
-                        "evidence": _evidence_projection(evidence),
-                    },
-                    "candidate_output": current_candidate,
-                    "failure_record": {
-                        "failure_reason_codes": _ordered_unique(
-                            issue["code"] for issue in issues
+                        "candidate_output": candidate,
+                        "failure_record": validate_failure_record_v1(
+                            failure_record
                         ),
-                        "affected_fields": ["$.arguments", "$.evidence_refs"],
-                        "allowed_change_scope": ["$.arguments", "$.evidence_refs"],
-                        "summary": "; ".join(issue["description"] for issue in issues),
                     },
-                },
-                output_schema=TOOL_ARGUMENT_CANDIDATE_OUTPUT_SCHEMA,
-                trace_context=ObservabilityContext(
-                    request_id=request.correlation.request_id,
-                    command_id=request.correlation.command_id,
-                    conversation_id=request.conversation_id,
-                    run_id=request.run_id,
-                    langgraph_thread_id=request.workflow_key,
-                    llm_call_id=f"{request.run_id}:planning.compose_arguments.revise:{route_id}",
-                ),
-                semantic_validate=lambda candidate, bound=bound: validate_tool_argument_candidate_v1(
-                    candidate,
-                    bound_tool_schema=bound,
-                    allowed_evidence_refs=allowed_evidence_refs,
-                ),
-            )
-            revised_candidates.append(
-                validate_tool_argument_candidate_v1(
+                    output_schema=TOOL_ARGUMENT_CANDIDATE_OUTPUT_SCHEMA,
+                    trace_context=ObservabilityContext(
+                        request_id=request.correlation.request_id,
+                        command_id=request.correlation.command_id,
+                        conversation_id=request.conversation_id,
+                        run_id=request.run_id,
+                        langgraph_thread_id=request.workflow_key,
+                        llm_call_id=(
+                            f"{request.run_id}:"
+                            f"planning.compose_arguments.revise:"
+                            f"{route_id}:{failure_record['failure_id']}"
+                        ),
+                    ),
+                    semantic_validate=lambda output, bound=bound: (
+                        validate_tool_argument_candidate_v1(
+                            output,
+                            bound_tool_schema=bound,
+                            allowed_evidence_refs=allowed_evidence_refs,
+                        )
+                    ),
+                )
+                candidate = validate_tool_argument_candidate_v1(
                     llm_result.structured_output,
                     bound_tool_schema=bound,
                     allowed_evidence_refs=allowed_evidence_refs,
                 )
-            )
+            revised_candidates.append(candidate)
 
         seeds = materialize_action_seeds(
             output_routes=routes,
             argument_candidates=revised_candidates,
             action_id_factory=lambda: "unused-action-id",
-            action_id_by_route={route_id: action["action_id"] for route_id, action in action_by_route.items()},
+            action_id_by_route={
+                route_id: action["action_id"]
+                for route_id, action in action_by_route.items()
+            },
         )
         revised_plan = assemble_action_plan_draft_v2(
             artifact_id=current_plan["meta"]["artifact_id"],
@@ -193,11 +233,17 @@ class PlanningV2RevisionProducer:
                     "revision": current_plan["meta"]["revision"],
                 },
                 {
-                    "artifact_id": tool_route_plan["output_plan"]["meta"]["artifact_id"],
-                    "revision": tool_route_plan["output_plan"]["meta"]["revision"],
+                    "artifact_id": tool_route_plan[
+                        "output_plan"
+                    ]["meta"]["artifact_id"],
+                    "revision": tool_route_plan[
+                        "output_plan"
+                    ]["meta"]["revision"],
                 },
                 {
-                    "artifact_id": work_analysis_result["meta"]["artifact_id"],
+                    "artifact_id": work_analysis_result[
+                        "meta"
+                    ]["artifact_id"],
                     "revision": work_analysis_result["meta"]["revision"],
                 },
                 {
@@ -226,10 +272,39 @@ class PlanningV2RevisionProducer:
         for preparation in preparations:
             if preparation["disposition"] != "READY":
                 raise PlanningV2RevisionError(
-                    "corrective Planning prerequisites changed; revision must fail closed"
+                    "corrective Planning prerequisites changed; "
+                    "revision must fail closed"
                 )
-            result[preparation["route_id"]] = cast(Mapping[str, object], preparation)
+            result[preparation["route_id"]] = cast(
+                Mapping[str, object], preparation
+            )
         return result
+
+
+def _failure_record_for_issue(
+    issue: ReviewIssueV1,
+    *,
+    route_id: str,
+    action_id: str,
+) -> FailureRecordV1:
+    """Local issue binding is hashed into failure_id but never prompt-serialized."""
+    return build_failure_record_v1(
+        failure_reason_code=issue["code"],
+        failure_origin="LLM_OUTPUT",
+        detected_by="RUNTIME_REVIEW_AGENT",
+        runtime_disposition="RETRYABLE",
+        experiment_disposition="RUN_REVISION",
+        affected_field_paths=(
+            "$.arguments",
+            "$.evidence_refs",
+        ),
+        evidence_refs=(),
+        failure_context_ids=(
+            route_id,
+            action_id,
+            issue["code"],
+        ),
+    )
 
 
 def _evidence_projection(
@@ -256,14 +331,7 @@ def _evidence_projection(
     return result
 
 
-def _ordered_unique(values: Sequence[str] | object) -> list[str]:
-    result: list[str] = []
-    seen: set[str] = set()
-    for value in cast(Sequence[str], values):
-        if value and value not in seen:
-            seen.add(value)
-            result.append(value)
-    return result
-
-
-__all__ = ["PlanningV2RevisionError", "PlanningV2RevisionProducer"]
+__all__ = [
+    "PlanningV2RevisionError",
+    "PlanningV2RevisionProducer",
+]
