@@ -1,7 +1,7 @@
 # Google Work Agent — Repository Architecture Source
 
 > **Status:** CANONICAL_FOR_REFACTOR  
-> **Version:** 1.3  
+> **Version:** 1.4  
 > **Effective:** 2026-08-22  
 > **Scope owner:** repository placement, module responsibility, naming grammar, repository import/export dependency realization and enforcement, semantic ownership, single production authority, refactor procedure, architecture enforcement.
 
@@ -17,11 +17,13 @@ ONE CAPABILITY HAS ONE PRODUCTION AUTHORITY
 ## Frozen convention decisions
 
 - Domain organization follows **canonical semantic owner**, not DB aggregate-root grouping.
-- Domain lifecycle transitions and guards use **operation-per-file**; broad `commands.py` / `transitions.py` buckets are not final production structure.
+- Domain lifecycle transitions and guards use **operation-per-file**; broad `commands.py` / `transitions.py` / `guards.py` buckets are not final production structure.
 - Application command/query use cases use **`<Verb><Object>Handler` classes** with colocated Command/Query + Result in one capability file.
 - Contract types are **owner-local**; there is no global catch-all `contracts/` package.
 - `_compat` may exist only transiently on a structural-refactor integration branch and must be **zero on `main`**.
-- Workflow v7.22 / Prompt Contract v1.28의 atomic LLM responsibility는 repository에서도 operation-per-file로 표현한다. `work_analysis`, `planning`, `review`의 서로 다른 semantic LLM responsibility를 하나의 `analyze.py`, `planning.py`, `review.py` 같은 broad production module로 다시 합치지 않는다.
+- Workflow v7.22 / Prompt Contract v1.28 atomic LLM responsibilities are represented repository-side as operation-per-file. `work_analysis`, `planning`, and `review` responsibilities must not collapse back into broad production modules such as `analyze.py`, `planning.py`, or `review.py`.
+- LangGraph routing is **operation-per-file** under `routing/route_after_<stage>.py`; catch-all final-production `routing.py` is prohibited.
+- Naming and placement are **closed-world**. If a construct does not match this Source or its normative subordinate grammar, an Agent may not invent a local convention.
 
 ## Deterministic spec-to-code rule
 
@@ -160,7 +162,7 @@ Port      outbound/inbound boundary abstraction
 Adapter   concrete Port implementation only
 ```
 
-`Factory` is exceptional and allowed only for true runtime-selected implementation creation.
+`Factory` is exceptional and allowed only for true runtime-selected implementation creation recorded by the Exception Registry.
 
 ## Placement grammar
 
@@ -177,27 +179,58 @@ Domain transition:
 
 ```text
 domain/<owner>/transitions/<verb>_<object>.py
+→ transition_<verb>_<object>()
 ```
 
 Domain guard:
 
 ```text
 domain/<owner>/guards/<verb>_<object>.py
+→ guard_<verb>_<object>()
 ```
 
-Agent semantics:
+Agent semantic operation:
 
 ```text
-application/agents/<role>/
+application/agents/<role>/<verb>_<object>.py
+→ <verb>_<object>()
 ```
+
+Each versioned atomic responsibility owned by 06/15 maps to exactly one owner-local operation file unless 06/15 explicitly defines it as deterministic composition rather than an LLM responsibility.
+
+Owner-local contract type:
+
+```text
+application/agents/<role>/contracts/<artifact_name>.py
+→ <ArtifactName>[Vn]
+```
+
+There is no global production `contracts/` package. Main/subgraph state types remain in the architecture-role `state.py` files owned by LangGraph.
 
 LangGraph adapter:
 
 ```text
-adapters/langgraph/main/{graph,state,routing}.py
-adapters/langgraph/subgraphs/<role>/{graph,state,routing}.py
+adapters/langgraph/main/graph.py
+adapters/langgraph/main/state.py
+adapters/langgraph/main/routing/route_after_<stage>.py
+
+adapters/langgraph/subgraphs/<role>/graph.py
+adapters/langgraph/subgraphs/<role>/state.py
+adapters/langgraph/subgraphs/<role>/routing/route_after_<stage>.py
 adapters/langgraph/subgraphs/<role>/nodes/<verb>_<object>_node.py
 ```
+
+Router symbol grammar is `route_after_<stage>()`.
+
+LangGraph input projection:
+
+```text
+adapters/langgraph/main/projections/<scope>_projection.py
+adapters/langgraph/subgraphs/<role>/projections/<scope>_projection.py
+→ project_<scope>_input()
+```
+
+A projection file owns one allowlisted input projection.
 
 Persistence:
 
@@ -224,7 +257,7 @@ api/dependencies/<concern>.py
 
 Repository semantic owner/package is `Tool Routing` / `tool_routing`; existing contract artifact `ToolRoutePlanV2` remains unchanged.
 
-Versioned runtime identifiers and PromptRef IDs remain owned by 06 Workflow / 15 Prompt·Failure and are **not silently renamed by this document**. Workflow v7.22 / Prompt Contract v1.28 now explicitly version the heavy-Agent atomic responsibility IDs; Repository Architecture v1.3 maps those same semantic capabilities to canonical repository owner/path/file/symbol names. `planning.compose_dependencies` does not exist as a Product Prompt/LLM authority; dependency construction is deterministic `planning.build_dependencies`.
+Versioned runtime identifiers and PromptRef IDs remain owned by 06 Workflow / 15 Prompt·Failure and are **not silently renamed by this document**. Workflow v7.22 / Prompt Contract v1.28 explicitly version the heavy-Agent atomic responsibility IDs; Repository Architecture v1.4 maps those same semantic capabilities to canonical repository owner/path/file/symbol names. `planning.compose_dependencies` does not exist as a Product Prompt/LLM authority; dependency construction is deterministic `planning.build_dependencies`.
 
 The following list defines canonical repository implementation capability labels aligned with the currently versioned 06/15 semantic IDs:
 
@@ -298,6 +331,8 @@ util.py
 common.py
 shared.py
 misc.py
+config.py
+errors.py
 canonical_*.py
 production_*.py
 legacy_*.py
@@ -310,7 +345,16 @@ final_*.py
 *_r21.py
 ```
 
-Explicit architecture-role exceptions: `state.py`, `graph.py`, `routing.py`, `model.py`, `composition.py`.
+Explicit architecture-role filename exceptions are exactly:
+
+```text
+state.py
+graph.py
+model.py
+composition.py
+```
+
+`routing.py` is not an exception.
 
 ## Package and symbol rules
 
@@ -322,6 +366,11 @@ Explicit architecture-role exceptions: `state.py`, `graph.py`, `routing.py`, `mo
 - Bare `Event` is prohibited: use `CalendarEvent`, `TraceEvent`, `AuditEvent`, `WorkflowEvent`/`SSEEvent` as applicable.
 - `Approval`/`ApprovalSnapshot` and `claim_token` are distinct. `approval_token` must not be used as execution authority.
 - `Ref` means stable reference; `Handle` means runtime-local opaque lookup.
+- Deterministic semantic operation functions use `<verb>_<object>()`; Application command/query entry points use `<Verb><Object>Handler` classes.
+- Validators, resolvers, builders, assemblers, mappers, and normalizers use `validate_`, `resolve_`, `build_`, `assemble_`, `map_`, and `normalize_` filename/function prefixes.
+- Registries are owner-local noun authorities: `<subject>_registry.py → <Subject>Registry`.
+- Errors are owner-local and use `<subject>_<condition>_error.py → <Subject><Condition>Error`.
+- Configuration modules are owner-local and semantic. Generic `config.py` is not a production naming escape hatch.
 
 ## Test and migration grammar
 
@@ -377,7 +426,13 @@ new canonical owner is live
 
 This source owns **where/how code is named and placed, repository import/export enforcement, and production-authority uniqueness**. It does not redefine behavioral semantics owned by 01–15, Domain State Transition Contract, Test Matrix, or executable SQL constraints.
 
-02 continues to own UI·UX behavior. 03 continues to own system/layer dependency semantics. 06/15 continue to own versioned runtime Agent/Node/Prompt identifiers; 16 only maps those semantics to repository owner/path/file/symbol conventions unless the owning runtime contract is explicitly versioned. Workflow v7.22 / Prompt Contract v1.28 explicitly version the heavy-Agent atomic responsibility topology; therefore Repository Architecture v1.3 maps those semantic responsibilities to distinct repository operation files without creating a second production authority.
+02 continues to own UI·UX behavior. 03 continues to own system/layer dependency semantics. 06/15 continue to own versioned runtime Agent/Node/Prompt identifiers; 16 only maps those semantics to repository owner/path/file/symbol conventions unless the owning runtime contract is explicitly versioned. Workflow v7.22 / Prompt Contract v1.28 explicitly version the heavy-Agent atomic responsibility topology; therefore Repository Architecture v1.4 maps those semantic responsibilities to distinct repository operation files without creating a second production authority.
+
+For repository naming/placement questions, 16 is the single concern authority. Other Project Sources may contain semantic names they own, but they must not establish an independent repository path/file/symbol grammar.
+
+## Closed-world naming rule
+
+If a production construct does not match a grammar in this Source or its subordinate normative pages, an Agent must not invent a new naming or placement pattern. It must map the construct to an existing taxonomy/grammar or add an explicit Exception Registry entry through a Repository Architecture version change. Undocumented discretion such as “either form is acceptable” is not allowed for production placement.
 
 Detailed subordinate pages under this Source are normative detail but are not separate Project Source entries:
 
