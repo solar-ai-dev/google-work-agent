@@ -11,7 +11,10 @@ from google_work_agent.application.workflows import (
     PromptRef,
     RunBudgetV1,
     check_llm_call_budget,
-    consume_llm_provider_calls,
+)
+from google_work_agent.application.workflows.provider_dispatch_budget import (
+    bind_provider_dispatch_budget,
+    merge_provider_dispatch_usage,
 )
 from google_work_agent.ports import (
     LLMErrorCode,
@@ -124,16 +127,13 @@ def ensure_llm_call_budget(
     *,
     provider_calls_requested: int = 1,
 ) -> None:
-    """Deterministic Run-level LLM budget gate (RunBudgetV1), checked
-    immediately before every real Provider call that any native subgraph
-    node issues -- INITIAL, SCHEMA_REPAIR (bundled into one node call's
-    attempt count), SEMANTIC_REVISION, retrieval follow-up, planning
-    revision, review recheck.
+    """Preflight the RunBudget and bind it to the real dispatch boundary.
 
-    Denial raises before the node calls its Agent, so zero Provider calls
-    happen: the same terminal-failure path
-    (``application/coordinator.py``'s catch-all -> ``RunStatus.FAILED``)
-    already used for any other real ``LLMInvocationError``.
+    ``provider_calls_requested`` remains a conservative node-level precheck
+    (useful for multi-route Planning), but actual consumption is performed by
+    ``PromptInputGuardedProvider`` immediately before every real provider
+    dispatch. This binding is ContextVar-scoped, so concurrent graph tasks do
+    not share budget authorities.
     """
     retry_budget = cast(RunBudgetV1, state["retry_budget"])
     decision = check_llm_call_budget(
@@ -145,6 +145,7 @@ def ensure_llm_call_budget(
             f"run LLM call budget exhausted: {decision['budget_reason_code']}",
             retryable=False,
         )
+    bind_provider_dispatch_budget(retry_budget)
 
 
 def consume_llm_call_budget(
@@ -152,17 +153,16 @@ def consume_llm_call_budget(
     *,
     provider_calls_consumed: int = 1,
 ) -> RunBudgetV1:
-    """Authoritative post-call accounting: increments ``retry_budget``'s
-    ``llm_calls_used`` by the number of real Provider calls the just-completed
-    node invocation actually made (``StructuredLLMResult.provider_calls_consumed``
-    for that invocation -- 1 normally, 2 when a SCHEMA_REPAIR attempt fired).
-    Callers must fold the returned ``RunBudgetV1`` into their node's
-    ``retry_budget`` state update so it survives the LangGraph checkpoint.
+    """Checkpoint the usage already consumed at provider dispatch.
+
+    ``provider_calls_consumed`` is retained only for source compatibility with
+    older node callers and is intentionally *not* an accounting authority.
+    Successful ``StructuredLLMResult`` metadata can no longer increment the
+    durable budget; it merely remains available for trace/latency reporting.
     """
+    del provider_calls_consumed
     retry_budget = cast(RunBudgetV1, state["retry_budget"])
-    return consume_llm_provider_calls(
-        retry_budget, provider_calls_consumed=provider_calls_consumed
-    )
+    return merge_provider_dispatch_usage(retry_budget)
 
 
 def _counter_value(item: dict[str, object], field: str) -> int:

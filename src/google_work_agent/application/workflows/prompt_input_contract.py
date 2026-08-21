@@ -14,6 +14,11 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from google_work_agent.application.workflows.failure_record import (
+    FailureRecordValidationError,
+    validate_failure_record_v1,
+)
+
 
 class PromptInputContractError(ValueError):
     """Raised before provider dispatch when a Product Prompt input is invalid."""
@@ -38,6 +43,17 @@ class PromptRuntimeInputContractValidator:
             raise PromptInputContractError(
                 f"prompt input contains undeclared root fields for {prompt_id}: {undeclared}"
             )
+
+        # Repair/revision roots remain base_projection + candidate_output +
+        # failure_record, while the nested failure_record is itself a closed,
+        # versioned DTO.  Reject bespoke legacy fields before serialization.
+        if "failure_record" in prompt_input:
+            try:
+                validate_failure_record_v1(prompt_input["failure_record"])
+            except FailureRecordValidationError as error:
+                raise PromptInputContractError(
+                    f"prompt input failure_record is invalid for {prompt_id}: {error}"
+                ) from error
 
         forbidden = _require_string_set(
             contract.get("forbidden_runtime_fields"), "$.forbidden_runtime_fields"

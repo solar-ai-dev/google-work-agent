@@ -13,6 +13,7 @@ from google_work_agent.application.workflows.contracts import (
     approve_semantic_revision,
     build_semantic_failure_signature_v1,
 )
+from google_work_agent.application.workflows.failure_record import build_failure_record_v1
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )
@@ -149,12 +150,15 @@ class RetrievalQueryPlannerAgent:
             prompt_input={
                 "base_projection": dict(prompt_input),
                 "candidate_output": previous_output,
-                "failure_record": {
-                    "failure_reason_code": failure_code,
-                    "affected_fields": mutable_fields,
-                    "allowed_change_scope": mutable_fields,
-                    "validation_errors": [failure_detail],
-                },
+                "failure_record": build_failure_record_v1(
+                    failure_reason_code=failure_code,
+                    failure_origin="QUERY_PLANNING",
+                    detected_by="RUNTIME_DOMAIN_VALIDATOR",
+                    runtime_disposition="RETRYABLE",
+                    experiment_disposition="RUN_REVISION",
+                    affected_field_paths=mutable_fields,
+                    failure_context_ids=[failure_detail],
+                ),
             },
             output_schema=self._output_schema,
             trace_context=trace_context,

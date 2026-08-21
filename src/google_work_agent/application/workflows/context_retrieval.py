@@ -45,6 +45,7 @@ from google_work_agent.application.workflows.contracts import (
     build_semantic_failure_signature_v1,
     validate_additional_acquisition_request_v1,
 )
+from google_work_agent.application.workflows.failure_record import build_failure_record_v1
 from google_work_agent.application.workflows.handoff_contracts import (
     AcquisitionResultV1,
     ClarificationQuestionV1,
@@ -348,12 +349,15 @@ class ContextRetrievalAgent:
                     "ranked_segments": ranked_segments,
                 },
                 "candidate_output": previous_output,
-                "failure_record": {
-                    "failure_reason_code": "EVIDENCE_SELECTION_SEMANTIC_INVALID",
-                    "affected_fields": affected_fields,
-                    "allowed_change_scope": affected_fields,
-                    "validation_errors": [failure_detail],
-                },
+                "failure_record": build_failure_record_v1(
+                    failure_reason_code="EVIDENCE_SELECTION_SEMANTIC_INVALID",
+                    failure_origin="RETRIEVAL_RESULT",
+                    detected_by="RUNTIME_DOMAIN_VALIDATOR",
+                    runtime_disposition="RETRYABLE",
+                    experiment_disposition="RUN_REVISION",
+                    affected_field_paths=affected_fields,
+                    failure_context_ids=[failure_detail],
+                ),
             },
             output_schema=EVIDENCE_SELECTION_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(

@@ -25,12 +25,17 @@ from google_work_agent.application.workflows.contracts import (
     approve_semantic_revision,
     build_semantic_failure_signature_v1,
 )
+from google_work_agent.application.workflows.failure_record import build_failure_record_v1
 from google_work_agent.application.workflows.handoff_contracts import RequestIntentV2
 from google_work_agent.application.workflows.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )
 from google_work_agent.application.workflows.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
+)
+from google_work_agent.application.workflows.provider_dispatch_budget import (
+    legacy_post_call_projection,
+    provider_dispatch_budget_scope,
 )
 from google_work_agent.application.workflows.tool_routing import (
     SemanticRouteCandidate,
@@ -183,6 +188,22 @@ class ToolRouteAgent:
         retry_budget: RunBudgetV1,
         confirmation_response: ConfirmationResponseV1 | None = None,
     ) -> tuple[SemanticRouteCandidate, RunBudgetV1]:
+        with provider_dispatch_budget_scope(retry_budget):
+            return self._determine_semantic_candidate_scoped(
+                request_intent=request_intent,
+                request=request,
+                retry_budget=retry_budget,
+                confirmation_response=confirmation_response,
+            )
+
+    def _determine_semantic_candidate_scoped(
+        self,
+        *,
+        request_intent: RequestIntentV2,
+        request: WorkflowStartRequest,
+        retry_budget: RunBudgetV1,
+        confirmation_response: ConfirmationResponseV1 | None,
+    ) -> tuple[SemanticRouteCandidate, RunBudgetV1]:
         eligible_route_capabilities = _eligible_route_capabilities(self._tool_catalog)
         base_projection: dict[str, object] = {
             "request_intent": request_intent,
@@ -219,7 +240,7 @@ class ToolRouteAgent:
             )
         return (
             _semantic_candidate_from_llm_candidate(candidate, request_intent=request_intent),
-            retry_budget,
+            legacy_post_call_projection(retry_budget),
         )
 
     def _revise_semantic_candidate_once(
@@ -254,12 +275,15 @@ class ToolRouteAgent:
             prompt_input={
                 "base_projection": dict(base_projection),
                 "candidate_output": previous_output,
-                "failure_record": {
-                    "failure_reason_code": failure_code,
-                    "affected_fields": mutable_fields,
-                    "allowed_change_scope": mutable_fields,
-                    "validation_errors": [failure_detail],
-                },
+                "failure_record": build_failure_record_v1(
+                    failure_reason_code=failure_code,
+                    failure_origin="LLM_OUTPUT",
+                    detected_by="RUNTIME_DOMAIN_VALIDATOR",
+                    runtime_disposition="RETRYABLE",
+                    experiment_disposition="RUN_REVISION",
+                    affected_field_paths=mutable_fields,
+                    failure_context_ids=[failure_detail],
+                ),
             },
             output_schema=ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -277,6 +301,28 @@ class ToolRouteAgent:
         )
 
     def select_tool_if_needed(
+        self,
+        *,
+        route_id: str,
+        connector_id: str,
+        resource_type: str,
+        effect: str,
+        eligible_tool_ids: tuple[str, ...],
+        request: WorkflowStartRequest,
+        retry_budget: RunBudgetV1,
+    ) -> tuple[str, RunBudgetV1]:
+        with provider_dispatch_budget_scope(retry_budget):
+            return self._select_tool_if_needed_scoped(
+                route_id=route_id,
+                connector_id=connector_id,
+                resource_type=resource_type,
+                effect=effect,
+                eligible_tool_ids=eligible_tool_ids,
+                request=request,
+                retry_budget=retry_budget,
+            )
+
+    def _select_tool_if_needed_scoped(
         self,
         *,
         route_id: str,
@@ -311,7 +357,7 @@ class ToolRouteAgent:
             llm_result.structured_output, eligible_tool_ids=eligible_tool_ids
         )
         if selected_tool_id is not None:
-            return selected_tool_id, retry_budget
+            return selected_tool_id, legacy_post_call_projection(retry_budget)
         failure_code = "TOOL_SELECTION_INVALID"
         signature = build_semantic_failure_signature_v1(
             node_id="tool_route.select_tool_if_needed",
@@ -328,14 +374,17 @@ class ToolRouteAgent:
             prompt_input={
                 "base_projection": dict(prompt_input),
                 "candidate_output": llm_result.structured_output,
-                "failure_record": {
-                    "failure_reason_code": failure_code,
-                    "affected_fields": mutable_fields,
-                    "allowed_change_scope": mutable_fields,
-                    "validation_errors": [
+                "failure_record": build_failure_record_v1(
+                    failure_reason_code=failure_code,
+                    failure_origin="LLM_OUTPUT",
+                    detected_by="RUNTIME_DOMAIN_VALIDATOR",
+                    runtime_disposition="RETRYABLE",
+                    experiment_disposition="RUN_REVISION",
+                    affected_field_paths=mutable_fields,
+                    failure_context_ids=[
                         "selected_tool_id is not a Registry-eligible candidate"
                     ],
-                },
+                ),
             },
             output_schema=TOOL_SELECTION_OUTPUT_SCHEMA,
             trace_context=ObservabilityContext(
@@ -354,7 +403,7 @@ class ToolRouteAgent:
             raise ToolRouteValidationError(
                 "selected tool is not a Registry-eligible candidate after revision"
             )
-        return revised_tool_id, decision["run_budget"]
+        return revised_tool_id, legacy_post_call_projection(decision["run_budget"])
 
     def _validated_tool_selection(
         self, value: object, *, eligible_tool_ids: tuple[str, ...]

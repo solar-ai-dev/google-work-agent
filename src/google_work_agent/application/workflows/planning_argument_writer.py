@@ -13,6 +13,10 @@ from typing import Final
 
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.application.workflows.failure_record import (
+    FailureRecordV1,
+    build_failure_record_v1,
+)
 from google_work_agent.application.workflows.handoff_contracts import (
     EvidenceDraftV1,
     ReviewIssueV1,
@@ -214,12 +218,13 @@ def _normalized_failure_record(
     *,
     review_issues: list[ReviewIssueV1],
     review_summary: str | None,
-) -> dict[str, object]:
-    """Project Review issues into the bounded argument-writer revision envelope."""
+) -> FailureRecordV1:
+    """Project Review issues through the single Canonical FailureRecordV1 builder."""
 
     reason_codes: list[str] = []
     affected_fields: list[str] = []
     issue_ids: list[str] = []
+    evidence_refs: list[str] = []
     for issue in review_issues:
         issue_id = issue.get("issue_id")
         if isinstance(issue_id, str) and issue_id and issue_id not in issue_ids:
@@ -231,17 +236,33 @@ def _normalized_failure_record(
             normalized = _candidate_relative_field_path(field_path)
             if normalized is not None and normalized not in affected_fields:
                 affected_fields.append(normalized)
+        for evidence_ref in issue.get("evidence_refs", []):
+            if (
+                isinstance(evidence_ref, str)
+                and evidence_ref
+                and evidence_ref not in evidence_refs
+            ):
+                evidence_refs.append(evidence_ref)
 
     if not affected_fields:
         affected_fields.extend(_ALLOWED_REVISION_SCOPE)
 
-    return {
-        "failure_reason_codes": reason_codes or ["PLAN_REVIEW_REVISE"],
-        "affected_fields": affected_fields,
-        "allowed_change_scope": list(_ALLOWED_REVISION_SCOPE),
-        "review_issue_ids": issue_ids,
-        "summary": review_summary,
-    }
+    context_ids = list(issue_ids)
+    if review_summary:
+        # The summary binds deterministic failure identity only.  It is not a
+        # Product Prompt field because FailureRecordV1 has no free-text slot.
+        context_ids.append(f"summary:{review_summary}")
+
+    return build_failure_record_v1(
+        failure_reason_code=reason_codes[0] if reason_codes else "PLAN_REVIEW_REVISE",
+        failure_origin="LLM_OUTPUT",
+        detected_by="RUNTIME_REVIEW_AGENT",
+        runtime_disposition="RETRYABLE",
+        experiment_disposition="RUN_REVISION",
+        affected_field_paths=affected_fields,
+        evidence_refs=evidence_refs,
+        failure_context_ids=context_ids,
+    )
 
 
 def _candidate_relative_field_path(field_path: object) -> str | None:
