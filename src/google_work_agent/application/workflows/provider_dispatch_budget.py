@@ -10,10 +10,18 @@ immediately after prompt validation and immediately before the real provider
 method. The budget is therefore consumed even when that provider call raises a
 timeout/error, and primary/fallback/repair/tool-call dispatches are each seen
 independently.
+
+The production graph invocation boundary is wrapped in
+:func:`provider_dispatch_execution_scope`, which guarantees that a budget
+reference bound by one start/resume/recovery invocation cannot leak into a
+later unrelated invocation or diagnostic provider call. Direct callers that
+need a narrower boundary can use :func:`provider_dispatch_budget_scope`.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import cast
 
@@ -32,13 +40,56 @@ _CURRENT_RUN_BUDGET: ContextVar[RunBudgetV1 | None] = ContextVar(
 
 
 def bind_provider_dispatch_budget(run_budget: RunBudgetV1) -> RunBudgetV1:
-    """Bind one mutable RunBudget authority to the current execution context."""
+    """Bind one mutable RunBudget authority to the current execution context.
+
+    This compatibility helper deliberately does not own lifecycle. Production
+    graph execution is bounded by ``provider_dispatch_execution_scope``;
+    direct callers that bind a budget themselves should prefer
+    ``provider_dispatch_budget_scope`` so reset is guaranteed by ``finally``.
+    """
 
     validated = validate_run_budget_v1(run_budget)
     run_budget.clear()
     run_budget.update(validated)
     _CURRENT_RUN_BUDGET.set(run_budget)
     return run_budget
+
+
+@contextmanager
+def provider_dispatch_budget_scope(run_budget: RunBudgetV1) -> Iterator[RunBudgetV1]:
+    """Bind one authoritative RunBudget and always restore the prior context."""
+
+    validated = validate_run_budget_v1(run_budget)
+    run_budget.clear()
+    run_budget.update(validated)
+    token = _CURRENT_RUN_BUDGET.set(run_budget)
+    try:
+        yield run_budget
+    finally:
+        _CURRENT_RUN_BUDGET.reset(token)
+
+
+@contextmanager
+def provider_dispatch_execution_scope() -> Iterator[None]:
+    """Bound the provider-budget ContextVar to one graph invocation.
+
+    ``WorkflowInvocationCoordinator`` is the top-level start/resume/recovery
+    boundary and is not recursively entered. Start from an explicitly clean
+    ContextVar so a stale reference left by older/unscoped code can never be
+    charged by this invocation, then use the ContextVar token lifecycle to
+    guarantee cleanup on success and on any escaping exception.
+    """
+
+    if _CURRENT_RUN_BUDGET.get() is not None:
+        # Compatibility cleanup for a process that entered this code with an
+        # older unbounded binding already present. This is reference cleanup,
+        # not numeric accounting and does not create a second authority.
+        _CURRENT_RUN_BUDGET.set(None)
+    token = _CURRENT_RUN_BUDGET.set(None)
+    try:
+        yield
+    finally:
+        _CURRENT_RUN_BUDGET.reset(token)
 
 
 def account_provider_dispatch() -> None:
@@ -109,4 +160,6 @@ __all__ = [
     "current_provider_dispatch_budget",
     "legacy_post_call_projection",
     "merge_provider_dispatch_usage",
+    "provider_dispatch_budget_scope",
+    "provider_dispatch_execution_scope",
 ]
