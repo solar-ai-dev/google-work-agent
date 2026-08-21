@@ -1,6 +1,6 @@
 """Connector-aware SQLite repositories with explicit persistence identity.
 
-Tool Route owns connector selection.  Persistence accepts that identity only
+Tool Route owns connector selection. Persistence accepts that identity only
 through ``ActionRecord.connector_id`` and ``ResourceRefRecord.connector_id``;
 there is no ContextVar transport, source inference, or Google fallback.
 """
@@ -10,10 +10,7 @@ from __future__ import annotations
 import sqlite3
 from json import loads
 
-from google_work_agent.adapters.persistence.repositories import (
-    SQLiteActionRepository,
-    SQLiteResourceRefRepository,
-)
+from google_work_agent.adapters.persistence.repositories import SQLiteActionRepository
 from google_work_agent.domain import canonicalize_action_risk
 from google_work_agent.ports import (
     ActionRecord,
@@ -144,7 +141,7 @@ class ConnectorAwareActionRepository(SQLiteActionRepository):
         )
 
 
-class ConnectorAwareResourceRefRepository(SQLiteResourceRefRepository):
+class ConnectorAwareResourceRefRepository:
     """ResourceRef repository keyed only by canonical connector identity."""
 
     _SELECT = """
@@ -153,6 +150,9 @@ class ConnectorAwareResourceRefRepository(SQLiteResourceRefRepository):
                version_token, metadata_json, captured_at_ms
         FROM resource_refs
     """
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
 
     def get_by_id(self, resource_ref_id: str) -> ResourceRefRecord | None:
         row = self._connection.execute(
