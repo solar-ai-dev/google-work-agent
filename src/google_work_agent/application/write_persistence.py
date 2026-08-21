@@ -7,10 +7,7 @@ from json import dumps, loads
 from typing import cast
 
 from google_work_agent.application.observability import sanitize_event_attributes
-from google_work_agent.application.write_execution_contracts import (
-    WriteActionResponse,
-    WriteRunResponse,
-)
+from google_work_agent.application.write_execution_contracts import WriteActionResponse, WriteRunResponse
 from google_work_agent.application.write_plan_contracts import (
     PublishWritePlanResponse,
     SaveWritePlanResponse,
@@ -33,18 +30,12 @@ from google_work_agent.ports import (
     ExecutionAttemptRecord,
     PlanRecord,
     ResourceRefRecord,
-    ResourceSnapshot,
-    ResourceSource,
-    ResourceType,
     RunRecord,
-    StoredResourceType,
     TraceEventRecord,
     UnitOfWork,
 )
 
-WriteResponse = (
-    SaveWritePlanResponse | PublishWritePlanResponse | WriteActionResponse | WriteRunResponse
-)
+WriteResponse = SaveWritePlanResponse | PublishWritePlanResponse | WriteActionResponse | WriteRunResponse
 WriteResponseType = (
     type[SaveWritePlanResponse]
     | type[PublishWritePlanResponse]
@@ -54,10 +45,7 @@ WriteResponseType = (
 
 
 def resolve_json_receipt(
-    *,
-    receipt: CommandReceiptRecord,
-    request_hash: str,
-    response_type: WriteResponseType,
+    *, receipt: CommandReceiptRecord, request_hash: str, response_type: WriteResponseType
 ) -> WriteResponse:
     if receipt.request_hash != request_hash:
         if response_type is WriteActionResponse:
@@ -202,16 +190,6 @@ def emit_command_rejected_hash_mismatch(
     action_id: str | None,
     now_ms: int,
 ) -> None:
-    """Record a genuine different-hash Command Receipt conflict exactly
-    once (docs/design/11 sec 12, COMMAND_REJECTED_HASH_MISMATCH).
-
-    Must only be called when ``receipt.request_hash != request_hash`` --
-    a same-hash idempotent replay is COMMAND_REPLAYED (no event here), not
-    a rejection. Only short identifiers pass through: no raw payload,
-    arguments, tokens, or secrets. trace_events requires a run_id (FK to
-    runs), so trace is only recorded when one is available; audit always
-    fires since audit_events.run_id is nullable.
-    """
     metadata: dict[str, object] = {
         "command_id": receipt.command_id,
         "command_type": receipt.command_type,
@@ -262,9 +240,7 @@ def cancel_pending_actions(
         if action.status == ActionStatus.APPROVED.value:
             unit_of_work.approvals.revoke_active_by_action(action.id)
         result = unit_of_work.actions.cancel_pending(
-            action.id,
-            expected_version=action.version,
-            updated_at_ms=updated_at_ms,
+            action.id, expected_version=action.version, updated_at_ms=updated_at_ms
         )
         if not result.applied:
             raise RuntimeError(f"pending action cancellation failed: {action.id}")
@@ -303,9 +279,7 @@ def resolve_existing_run_receipt(
         return cast(
             WriteRunResponse,
             resolve_json_receipt(
-                receipt=receipt,
-                request_hash=request_hash,
-                response_type=WriteRunResponse,
+                receipt=receipt, request_hash=request_hash, response_type=WriteRunResponse
             ),
         )
     if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
@@ -343,9 +317,7 @@ def resolve_existing_run_receipt(
     return cast(
         WriteRunResponse,
         resolve_json_receipt(
-            receipt=receipt,
-            request_hash=request_hash,
-            response_type=WriteRunResponse,
+            receipt=receipt, request_hash=request_hash, response_type=WriteRunResponse
         ),
     )
 
@@ -358,23 +330,11 @@ def resolve_snapshot_fallback_resource_id(
 ) -> str | None:
     arguments = loads(action.arguments_json)
     if action.tool_name in {"gmail_create_draft", "gmail_update_draft"}:
-        return (
-            None
-            if arguments.get("draft_id") is not None
-            else resource_id_from_ref(unit_of_work, resource_ref_id)
-        )
+        return None if arguments.get("draft_id") is not None else resource_id_from_ref(unit_of_work, resource_ref_id)
     if action.tool_name in {"tasks_create_task", "tasks_update_task"}:
-        return (
-            None
-            if arguments.get("task_id") is not None
-            else resource_id_from_ref(unit_of_work, resource_ref_id)
-        )
+        return None if arguments.get("task_id") is not None else resource_id_from_ref(unit_of_work, resource_ref_id)
     if action.tool_name in {"calendar_create_event", "calendar_update_event"}:
-        return (
-            None
-            if arguments.get("event_id") is not None
-            else resource_id_from_ref(unit_of_work, resource_ref_id)
-        )
+        return None if arguments.get("event_id") is not None else resource_id_from_ref(unit_of_work, resource_ref_id)
     if action.tool_name == "gmail_send":
         return resource_id_from_ref(unit_of_work, resource_ref_id)
     return None
@@ -389,43 +349,16 @@ def resource_id_from_ref(unit_of_work: UnitOfWork, resource_ref_id: str | None) 
     return resource_ref.resource_id
 
 
-def resource_ref_from_snapshot(
-    *, run_id: str, snapshot: ResourceSnapshot, captured_at_ms: int
-) -> ResourceRefRecord:
-    source_map = {
-        ResourceType.GMAIL_DRAFT: (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
-        ResourceType.GMAIL_MESSAGE: (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
-        ResourceType.TASK: (ResourceSource.TASKS, StoredResourceType.TASK),
-        ResourceType.CALENDAR_EVENT: (ResourceSource.CALENDAR, StoredResourceType.EVENT),
-    }
-    source, stored_resource_type = source_map[snapshot.resource_type]
-    title = str(
-        snapshot.payload.get("subject") or snapshot.payload.get("title") or snapshot.resource_id
-    )
-    return ResourceRefRecord(
-        id=f"resource-ref-{run_id}-{snapshot.resource_type.value}-{snapshot.resource_id}",
-        run_id=run_id,
-        source=source,
-        resource_type=stored_resource_type,
-        resource_id=snapshot.resource_id,
-        parent_resource_id=snapshot.parent_id,
-        canonical_url=None,
-        title=title[:200],
-        event_time_ms=None,
-        version_token=snapshot.version,
-        metadata_json=dumps(snapshot.payload, sort_keys=True),
-        captured_at_ms=captured_at_ms,
-    )
-
-
 def upsert_resource_ref(
     *, unit_of_work: UnitOfWork, resource_ref: ResourceRefRecord
 ) -> ResourceRefRecord:
-    """Resolve the durable id because upsert may retain a pre-existing reference."""
+    """Persist by the single connector-aware ResourceRef identity."""
+    if not resource_ref.connector_id:
+        raise ValueError("resource reference connector_id is required")
     unit_of_work.resource_refs.upsert(resource_ref)
     persisted = unit_of_work.resource_refs.get_by_unique_key(
         run_id=resource_ref.run_id,
-        source=resource_ref.source.value,
+        connector_id=resource_ref.connector_id,
         resource_type=resource_ref.resource_type.value,
         resource_id=resource_ref.resource_id,
     )
@@ -435,9 +368,7 @@ def upsert_resource_ref(
 
 
 def action_response_from_result(
-    *,
-    action_id: str,
-    result: CommandResult[ActionStatus, ActionCommand],
+    *, action_id: str, result: CommandResult[ActionStatus, ActionCommand]
 ) -> WriteActionResponse:
     return WriteActionResponse(
         applied=result.applied,
@@ -451,10 +382,7 @@ def action_response_from_result(
 
 
 def write_action_version_conflict_response(
-    *,
-    action: ActionRecord,
-    attempt_id: str,
-    conflict_detail: str,
+    *, action: ActionRecord, attempt_id: str, conflict_detail: str
 ) -> WriteActionResponse:
     return WriteActionResponse(
         applied=False,
@@ -489,9 +417,7 @@ def resolve_existing_action_receipt(
         return cast(
             WriteActionResponse,
             resolve_json_receipt(
-                receipt=receipt,
-                request_hash=request_hash,
-                response_type=WriteActionResponse,
+                receipt=receipt, request_hash=request_hash, response_type=WriteActionResponse
             ),
         )
     if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
@@ -525,9 +451,7 @@ def resolve_existing_action_receipt(
     return cast(
         WriteActionResponse,
         resolve_json_receipt(
-            receipt=receipt,
-            request_hash=request_hash,
-            response_type=WriteActionResponse,
+            receipt=receipt, request_hash=request_hash, response_type=WriteActionResponse
         ),
     )
 
@@ -555,8 +479,7 @@ def propagate_dependency_blocked(
         }:
             unit_of_work.approvals.revoke_active_by_action(dependent_action_id)
             if not unit_of_work.actions.mark_dependency_blocked(
-                dependent_action_id,
-                updated_at_ms=updated_at_ms,
+                dependent_action_id, updated_at_ms=updated_at_ms
             ):
                 raise RuntimeError(f"dependency block transition failed: {dependent_action_id}")
             blocked_action_ids.append(dependent_action_id)
@@ -587,6 +510,5 @@ def propagate_dependency_blocked(
 
 def next_allowed_write_commands_for_record(action: ActionRecord) -> tuple[ActionCommand, ...]:
     return next_allowed_action_commands(
-        ActionStatus(action.status),
-        effect_type=EffectType(action.effect_type),
+        ActionStatus(action.status), effect_type=EffectType(action.effect_type)
     )
