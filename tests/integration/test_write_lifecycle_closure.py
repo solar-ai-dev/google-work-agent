@@ -54,32 +54,51 @@ def test_corrective_runtime_uses_profile_translated_planning_target() -> None:
     assert "resume_target" not in source
 
 
+def test_corrective_resume_retries_pending_non_interrupt_task_and_reconciles_publish() -> None:
+    source = inspect.getsource(LangGraphWorkflowRuntime._resume_corrective_plan)
+
+    assert "has_pending_interrupt" in source
+    assert "if snapshot.next:" in source
+    assert 'state.get("__reserved_corrective_plan_id__") != plan.id' in source
+    assert "self._graph.invoke(None, config=config)" in source
+    assert "RunStatus.WAITING_APPROVAL" in source
+    assert "PlanStatus.WAITING_APPROVAL" in source
+    assert '"__reserved_corrective_plan_id__": None' in source
+    assert "WorkflowPhase.WAITING_APPROVAL.value" in source
+
+
 def test_corrective_persistence_separates_reserved_plan_from_child_remapping() -> None:
-    ordinary_source = inspect.getsource(canonical_planning_runtime.LangGraphWorkflowRuntime._persist_write_plan)
+    ordinary_source = inspect.getsource(
+        canonical_planning_runtime.LangGraphWorkflowRuntime._persist_write_plan
+    )
     corrective_source = inspect.getsource(persist_reserved_corrective_write_plan)
     runtime_source = inspect.getsource(LangGraphWorkflowRuntime._persist_write_plan)
     repository_source = inspect.getsource(CorrectiveAwareSQLitePlanRepository.insert_draft)
 
-    # Ordinary replan semantics are restored: the canonical planning wrapper
-    # delegates to legacy allocation instead of detecting a reserved DRAFT.
+    # Ordinary replan semantics remain untouched.
     assert "reserved_plan" not in ordinary_source
     assert "__reserved_corrective_plan_id__" not in ordinary_source
 
-    # Corrective persistence fixes Plan destination but still allocates fresh
-    # revision-local Action/Evidence ids and remaps all child edges.
+    # Corrective persistence fixes the destination revision while using stable,
+    # revision-local child identities. Retry does not allocate fresh random
+    # children or blindly invoke Save again.
     assert "reserved_plan.id" in corrective_source
     assert "reserved_plan.revision_no" in corrective_source
+    assert "_corrective_child_id" in corrective_source
     assert "action_id_map" in corrective_source
     assert "evidence_id_map" in corrective_source
     assert "depends_on_action_ids" in corrective_source
-    assert "evidence_ids" in corrective_source
     assert "persisted_connector_ids" in corrective_source
+    assert "_require_applied_save_receipt" in corrective_source
+    assert "_validate_persisted_materialization" in corrective_source
+    assert "if existing_actions:" in corrective_source
+    assert "if not existing_actions:" in corrective_source
 
-    # The corrective-only destination marker is consumed only after successful
-    # Save + Publish, so it cannot survive as stale Main State authority.
+    # The one-shot marker is consumed only after verified Publish success or
+    # verified already-published replay.
     assert 'state["__reserved_corrective_plan_id__"] = None' in runtime_source
-    assert "after Save + Publish both succeeded" in runtime_source
+    assert "verified already-published replay" in runtime_source
 
-    # Repository reuse also binds the exact reserved revision number.
+    # Repository reuse remains limited to the exact empty reserved revision.
     assert "existing.revision_no != plan.revision_no" in repository_source
     assert "exact empty reserved corrective draft" in repository_source

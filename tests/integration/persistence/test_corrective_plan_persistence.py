@@ -1,14 +1,20 @@
-"""Functional SQLite regression for reserved corrective-plan persistence."""
+"""Functional SQLite regressions for reserved corrective-plan persistence."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from copy import deepcopy
 from pathlib import Path
+import sqlite3
 from typing import Any, cast
+
+import pytest
+from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.canonical_freshness_runtime import (
     LangGraphWorkflowRuntime,
 )
+from google_work_agent.adapters.langgraph.graph_state import ParentGraphState
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.connector_identity import bind_action_connector_ids
 from google_work_agent.adapters.persistence.unit_of_work import (
@@ -146,29 +152,36 @@ def _seed_recovery_aggregate(database_path: Path) -> None:
 
 
 class _CorrectivePersistenceHarness:
-    def __init__(self, database_path: Path) -> None:
+    def __init__(self, database_path: Path, *, fail_publish_once: bool = False) -> None:
         self._unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
         self._now_ms = lambda: 10
-        self._save_write_plan = SaveWritePlanService(
+        self._save_delegate = SaveWritePlanService(
             unit_of_work_factory=self._unit_of_work_factory,
             now_ms=self._now_ms,
         )
-        self._publish_write_plan = PublishWritePlanService(
+        self._publish_delegate = PublishWritePlanService(
             unit_of_work_factory=self._unit_of_work_factory,
             now_ms=self._now_ms,
         )
         self._evidence_store = RunScopedEvidenceStore()
-        identifiers: Iterator[str] = iter(
-            (
-                "new-action-1",
-                "new-action-2",
-                "new-evidence-1",
-                "new-evidence-2",
-                "save-corrective-command",
-                "publish-corrective-command",
-            )
-        )
-        self._id_factory = lambda: next(identifiers)
+        self.save_calls = 0
+        self.publish_calls = 0
+        self._fail_publish_once = fail_publish_once
+
+    def _save_write_plan(self, command: Any) -> Any:
+        self.save_calls += 1
+        return self._save_delegate(command)
+
+    def _publish_write_plan(self, command: Any) -> Any:
+        self.publish_calls += 1
+        if self._fail_publish_once:
+            self._fail_publish_once = False
+            raise RuntimeError("injected publish failure before PublishWritePlanService")
+        return self._publish_delegate(command)
+
+    @staticmethod
+    def _id_factory() -> str:
+        raise AssertionError("corrective persistence must not allocate retry-local random ids")
 
     def _current_run_version(self, run_id: str) -> int:
         with self._unit_of_work_factory() as unit_of_work:
@@ -199,15 +212,9 @@ class _CorrectivePersistenceHarness:
         return value
 
 
-def test_reserved_corrective_plan_preserves_plan_identity_and_remaps_children(
-    tmp_path: Path,
-) -> None:
-    database_path = tmp_path / "corrective-persistence.db"
-    _seed_recovery_aggregate(database_path)
-    factory = sqlite_unit_of_work_factory(database_path)
-
-    resolution = ResolveMismatchRecoveryService(
-        unit_of_work_factory=factory,
+def _resolve_corrective(database_path: Path) -> None:
+    result = ResolveMismatchRecoveryService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 6,
     )(
         ResolveMismatchRecoveryCommand(
@@ -220,12 +227,15 @@ def test_reserved_corrective_plan_preserves_plan_identity_and_remaps_children(
             corrective_plan_id="reserved-plan-2",
         )
     )
-    assert resolution.applied is True
-    assert resolution.run_status == "PLANNING"
-    assert resolution.plan_id == "reserved-plan-2"
-    assert resolution.plan_status == "DRAFT"
+    assert result.applied is True
+    assert result.run_status == "PLANNING"
+    assert result.plan_id == "reserved-plan-2"
+    assert result.plan_status == "DRAFT"
 
-    harness = _CorrectivePersistenceHarness(database_path)
+
+def _state_and_draft(
+    harness: _CorrectivePersistenceHarness,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     harness._evidence_store.put(
         run_id="run-1",
         evidence_drafts=[
@@ -280,7 +290,7 @@ def test_reserved_corrective_plan_preserves_plan_identity_and_remaps_children(
             "acquisition_result": {},
         },
     )
-    corrective_draft = cast(
+    draft = cast(
         dict[str, Any],
         {
             "schema_version": 2,
@@ -323,68 +333,317 @@ def test_reserved_corrective_plan_preserves_plan_identity_and_remaps_children(
             "confirmation": None,
         },
     )
+    return state, draft
 
-    persisted_plan_id = LangGraphWorkflowRuntime._persist_write_plan(
+
+def _prepare(
+    database_path: Path,
+    *,
+    fail_publish_once: bool = False,
+) -> tuple[_CorrectivePersistenceHarness, dict[str, Any], dict[str, Any]]:
+    _seed_recovery_aggregate(database_path)
+    _resolve_corrective(database_path)
+    harness = _CorrectivePersistenceHarness(
+        database_path,
+        fail_publish_once=fail_publish_once,
+    )
+    state, draft = _state_and_draft(harness)
+    return harness, state, draft
+
+
+def _persist(
+    harness: _CorrectivePersistenceHarness,
+    state: dict[str, Any],
+    draft: dict[str, Any],
+) -> str:
+    return LangGraphWorkflowRuntime._persist_write_plan(
         cast(Any, harness),
         cast(Any, state),
-        cast(Any, corrective_draft),
+        cast(Any, draft),
     )
-    assert persisted_plan_id == "reserved-plan-2"
-    assert state["__reserved_corrective_plan_id__"] is None
 
+
+def _aggregate_snapshot(database_path: Path) -> dict[str, Any]:
     connection = connect_sqlite(database_path)
     try:
-        plans = connection.execute(
-            "SELECT id, revision_no, status FROM plans WHERE run_id = 'run-1' ORDER BY revision_no;"
-        ).fetchall()
-        assert [tuple(row) for row in plans] == [
-            ("old-plan", 1, "SUPERSEDED"),
-            ("reserved-plan-2", 2, "WAITING_APPROVAL"),
+        plans = [
+            tuple(row)
+            for row in connection.execute(
+                "SELECT id, revision_no, status FROM plans "
+                "WHERE run_id = 'run-1' ORDER BY revision_no;"
+            ).fetchall()
         ]
-        assert connection.execute(
-            "SELECT COUNT(*) FROM plans WHERE run_id = 'run-1' AND revision_no > 2;"
-        ).fetchone()[0] == 0
-        assert connection.execute(
+        run_status = connection.execute(
             "SELECT status FROM runs WHERE id = 'run-1';"
-        ).fetchone()[0] == "WAITING_APPROVAL"
-
-        new_actions = connection.execute(
-            "SELECT id, connector_id FROM actions WHERE plan_id = 'reserved-plan-2' ORDER BY position;"
-        ).fetchall()
-        assert [tuple(row) for row in new_actions] == [
-            ("new-action-1", "google_workspace"),
-            ("new-action-2", "google_workspace"),
+        ).fetchone()[0]
+        new_actions = [
+            tuple(row)
+            for row in connection.execute(
+                "SELECT id, connector_id FROM actions "
+                "WHERE plan_id = 'reserved-plan-2' ORDER BY position;"
+            ).fetchall()
         ]
-        assert {row[0] for row in new_actions}.isdisjoint({"old-action-1", "old-action-2"})
-
-        new_links = connection.execute(
-            """
-            SELECT ae.action_id, ae.evidence_id
-            FROM action_evidence AS ae
-            JOIN actions AS a ON a.id = ae.action_id
-            WHERE a.plan_id = 'reserved-plan-2'
-            ORDER BY ae.action_id, ae.evidence_id;
-            """
-        ).fetchall()
-        assert [tuple(row) for row in new_links] == [
-            ("new-action-1", "new-evidence-1"),
-            ("new-action-2", "new-evidence-2"),
+        new_links = [
+            tuple(row)
+            for row in connection.execute(
+                """
+                SELECT ae.action_id, ae.evidence_id
+                FROM action_evidence AS ae
+                JOIN actions AS a ON a.id = ae.action_id
+                WHERE a.plan_id = 'reserved-plan-2'
+                ORDER BY ae.action_id, ae.evidence_id;
+                """
+            ).fetchall()
         ]
-        assert {row[1] for row in new_links}.isdisjoint(
-            {"old-evidence-1", "old-evidence-2"}
+        dependencies = [
+            tuple(row)
+            for row in connection.execute(
+                """
+                SELECT ad.action_id, ad.depends_on_action_id
+                FROM action_dependencies AS ad
+                JOIN actions AS a ON a.id = ad.action_id
+                WHERE a.plan_id = 'reserved-plan-2'
+                ORDER BY ad.action_id, ad.depends_on_action_id;
+                """
+            ).fetchall()
+        ]
+        new_evidence_ids = {
+            row[0]
+            for row in connection.execute(
+                """
+                SELECT DISTINCT e.id
+                FROM evidence AS e
+                JOIN action_evidence AS ae ON ae.evidence_id = e.id
+                JOIN actions AS a ON a.id = ae.action_id
+                WHERE a.plan_id = 'reserved-plan-2';
+                """
+            ).fetchall()
+        }
+        command_receipts = [
+            tuple(row)
+            for row in connection.execute(
+                """
+                SELECT command_type, status, request_hash
+                FROM command_receipts
+                WHERE command_type IN ('SaveWritePlan', 'PublishWritePlan')
+                ORDER BY command_type, command_id;
+                """
+            ).fetchall()
+        ]
+        trace_counts = dict(
+            connection.execute(
+                """
+                SELECT event_type, COUNT(*)
+                FROM trace_events
+                WHERE run_id = 'run-1'
+                  AND event_type IN ('WRITE_PLAN_SAVED', 'WRITE_PLAN_PUBLISHED')
+                GROUP BY event_type;
+                """
+            ).fetchall()
         )
+        rev3_count = connection.execute(
+            "SELECT COUNT(*) FROM plans WHERE run_id = 'run-1' AND revision_no > 2;"
+        ).fetchone()[0]
+        foreign_key_violations = connection.execute("PRAGMA foreign_key_check;").fetchall()
+        return {
+            "plans": plans,
+            "run_status": run_status,
+            "new_actions": new_actions,
+            "new_links": new_links,
+            "dependencies": dependencies,
+            "new_evidence_ids": new_evidence_ids,
+            "command_receipts": command_receipts,
+            "trace_counts": trace_counts,
+            "rev3_count": rev3_count,
+            "foreign_key_violations": foreign_key_violations,
+        }
+    finally:
+        connection.close()
 
-        dependencies = connection.execute(
-            """
-            SELECT action_id, depends_on_action_id
-            FROM action_dependencies
-            WHERE action_id IN ('new-action-1', 'new-action-2')
-            ORDER BY action_id, depends_on_action_id;
-            """
-        ).fetchall()
-        assert [tuple(row) for row in dependencies] == [
-            ("new-action-2", "new-action-1"),
-        ]
-        assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
+
+def _assert_published_snapshot(snapshot: dict[str, Any]) -> None:
+    assert snapshot["plans"] == [
+        ("old-plan", 1, "SUPERSEDED"),
+        ("reserved-plan-2", 2, "WAITING_APPROVAL"),
+    ]
+    assert snapshot["run_status"] == "WAITING_APPROVAL"
+    assert snapshot["rev3_count"] == 0
+    assert len(snapshot["new_actions"]) == 2
+    action_ids = {row[0] for row in snapshot["new_actions"]}
+    assert action_ids.isdisjoint({"old-action-1", "old-action-2"})
+    assert {row[1] for row in snapshot["new_actions"]} == {"google_workspace"}
+    assert len(snapshot["new_evidence_ids"]) == 2
+    assert snapshot["new_evidence_ids"].isdisjoint({"old-evidence-1", "old-evidence-2"})
+    assert len(snapshot["new_links"]) == 2
+    assert {row[0] for row in snapshot["new_links"]} == action_ids
+    assert {row[1] for row in snapshot["new_links"]} == snapshot["new_evidence_ids"]
+    assert len(snapshot["dependencies"]) == 1
+    child, parent = snapshot["dependencies"][0]
+    assert child in action_ids
+    assert parent in action_ids
+    assert child != parent
+    assert snapshot["trace_counts"] == {
+        "WRITE_PLAN_PUBLISHED": 1,
+        "WRITE_PLAN_SAVED": 1,
+    }
+    assert snapshot["foreign_key_violations"] == []
+
+
+def test_reserved_corrective_plan_preserves_plan_identity_and_remaps_children(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "corrective-persistence.db"
+    harness, state, draft = _prepare(database_path)
+
+    assert _persist(harness, state, draft) == "reserved-plan-2"
+    assert state["__reserved_corrective_plan_id__"] is None
+    assert harness.save_calls == 1
+    assert harness.publish_calls == 1
+
+    _assert_published_snapshot(_aggregate_snapshot(database_path))
+
+
+def test_save_success_publish_failure_retries_with_publish_only(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "corrective-publish-retry.db"
+    harness, state, draft = _prepare(database_path, fail_publish_once=True)
+
+    with pytest.raises(RuntimeError, match="injected publish failure"):
+        _persist(harness, state, draft)
+
+    after_failure = _aggregate_snapshot(database_path)
+    assert after_failure["plans"] == [
+        ("old-plan", 1, "SUPERSEDED"),
+        ("reserved-plan-2", 2, "DRAFT"),
+    ]
+    assert after_failure["run_status"] == "PLANNING"
+    assert after_failure["rev3_count"] == 0
+    assert len(after_failure["new_actions"]) == 2
+    assert len(after_failure["new_evidence_ids"]) == 2
+    assert after_failure["trace_counts"] == {"WRITE_PLAN_SAVED": 1}
+    assert [row[0:2] for row in after_failure["command_receipts"]] == [
+        ("SaveWritePlan", "APPLIED"),
+    ]
+    assert state["__reserved_corrective_plan_id__"] == "reserved-plan-2"
+    assert harness.save_calls == 1
+    assert harness.publish_calls == 1
+
+    assert _persist(harness, state, draft) == "reserved-plan-2"
+    assert harness.save_calls == 1
+    assert harness.publish_calls == 2
+    assert state["__reserved_corrective_plan_id__"] is None
+
+    _assert_published_snapshot(_aggregate_snapshot(database_path))
+
+
+@pytest.mark.parametrize("drift_kind", ["arguments", "dependency", "evidence"])
+def test_candidate_drift_after_committed_save_fails_closed(
+    tmp_path: Path,
+    drift_kind: str,
+) -> None:
+    database_path = tmp_path / f"corrective-drift-{drift_kind}.db"
+    harness, state, draft = _prepare(database_path, fail_publish_once=True)
+
+    with pytest.raises(RuntimeError, match="injected publish failure"):
+        _persist(harness, state, draft)
+
+    drifted = deepcopy(draft)
+    if drift_kind == "arguments":
+        drifted["actions"][0]["arguments"] = {"draft_id": "drifted-draft"}
+    elif drift_kind == "dependency":
+        drifted["actions"][1]["depends_on_action_ids"] = []
+    else:
+        drifted["actions"][1]["evidence_refs"] = ["old-evidence-1"]
+        drifted["evidence_refs"] = ["old-evidence-1"]
+
+    with pytest.raises(ValueError, match="Save receipt"):
+        _persist(harness, state, drifted)
+
+    after_drift = _aggregate_snapshot(database_path)
+    assert after_drift["plans"] == [
+        ("old-plan", 1, "SUPERSEDED"),
+        ("reserved-plan-2", 2, "DRAFT"),
+    ]
+    assert after_drift["run_status"] == "PLANNING"
+    assert after_drift["rev3_count"] == 0
+    assert len(after_drift["new_actions"]) == 2
+    assert len(after_drift["new_evidence_ids"]) == 2
+    assert after_drift["trace_counts"] == {"WRITE_PLAN_SAVED": 1}
+    assert harness.save_calls == 1
+    assert harness.publish_calls == 1
+    assert state["__reserved_corrective_plan_id__"] == "reserved-plan-2"
+
+
+def test_already_published_replay_has_no_second_save_or_publish_side_effect(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "corrective-published-replay.db"
+    harness, state, draft = _prepare(database_path)
+
+    assert _persist(harness, state, draft) == "reserved-plan-2"
+    first_snapshot = _aggregate_snapshot(database_path)
+    assert harness.save_calls == 1
+    assert harness.publish_calls == 1
+
+    # Simulate a stale checkpoint that survived after the durable Publish
+    # commit but before the one-shot marker update was checkpointed.
+    state["__reserved_corrective_plan_id__"] = "reserved-plan-2"
+    assert _persist(harness, state, draft) == "reserved-plan-2"
+
+    assert state["__reserved_corrective_plan_id__"] is None
+    assert harness.save_calls == 1
+    assert harness.publish_calls == 1
+    second_snapshot = _aggregate_snapshot(database_path)
+    assert second_snapshot == first_snapshot
+    _assert_published_snapshot(second_snapshot)
+
+
+def test_reserved_corrective_marker_survives_failed_compiled_checkpoint_and_is_consumed(
+    tmp_path: Path,
+) -> None:
+    """The internal marker is checkpointed across a failed node and cleared on retry."""
+
+    attempts = 0
+
+    def persist_node(state: ParentGraphState) -> dict[str, object]:
+        nonlocal attempts
+        attempts += 1
+        assert state["__reserved_corrective_plan_id__"] == "reserved-plan-2"
+        if attempts == 1:
+            raise RuntimeError("injected node failure")
+        return {"__reserved_corrective_plan_id__": None}
+
+    builder = StateGraph(ParentGraphState)
+    builder.add_node("persist", persist_node)
+    builder.add_edge(START, "persist")
+    builder.add_edge("persist", END)
+
+    connection = sqlite3.connect(
+        tmp_path / "corrective-checkpoint.db",
+        check_same_thread=False,
+    )
+    try:
+        graph = builder.compile(checkpointer=SqliteSaver(connection))
+        config = {"configurable": {"thread_id": "corrective-thread"}}
+
+        with pytest.raises(RuntimeError, match="injected node failure"):
+            graph.invoke(
+                {
+                    "run_id": "run-1",
+                    "__reserved_corrective_plan_id__": "reserved-plan-2",
+                },
+                config=config,
+            )
+
+        failed_snapshot = graph.get_state(config)
+        assert failed_snapshot.values["__reserved_corrective_plan_id__"] == "reserved-plan-2"
+        assert failed_snapshot.next == ("persist",)
+
+        graph.invoke(None, config=config)
+        completed_snapshot = graph.get_state(config)
+        assert completed_snapshot.values["__reserved_corrective_plan_id__"] is None
+        assert completed_snapshot.next == ()
+        assert attempts == 2
     finally:
         connection.close()

@@ -73,13 +73,12 @@ class LangGraphWorkflowRuntime(_CanonicalResponseRuntime):
         self,
         request: WorkflowResumeRequest,
     ) -> WorkflowInvocationResult:
-        """Continue CREATE_CORRECTIVE_PLAN through the profile's Planning node.
+        """Continue or replay CREATE_CORRECTIVE_PLAN without blind materialization.
 
-        The resume target is never supplied by the API or LLM. Domain has
-        already created the next DRAFT Plan and moved the Run to PLANNING;
-        this boundary validates those durable facts, translates the single
-        canonical PLANNING target through the compiled profile registry, then
-        advances from the graph's existing recovery node.
+        Domain owns the reserved revision. If a prior graph invocation failed
+        after Save (or even after Publish committed), a retry may have a pending
+        non-interrupt task. That task is resumed in place only when the
+        checkpoint already carries this exact reserved destination marker.
         """
         config = self._config_for_thread(request.workflow_key)
         snapshot = self._graph.get_state(config)
@@ -96,11 +95,6 @@ class LangGraphWorkflowRuntime(_CanonicalResponseRuntime):
                 request,
                 reason="graph profile does not match the persisted checkpoint",
             )
-        if snapshot.next:
-            return self._corrective_resume_conflict(
-                request,
-                reason="corrective-plan recovery cannot bypass a pending interrupt",
-            )
 
         plan_id = request.resume_payload.get("plan_id")
         if not isinstance(plan_id, str) or not plan_id:
@@ -116,27 +110,78 @@ class LangGraphWorkflowRuntime(_CanonicalResponseRuntime):
         latest_plan = max(plans, key=lambda item: item.revision_no) if plans else None
         if (
             run is None
-            or run.status is not RunStatus.PLANNING
             or plan is None
             or plan.run_id != request.run_id
-            or plan.status is not PlanStatus.DRAFT
             or latest_plan is None
             or latest_plan.id != plan.id
         ):
             return self._corrective_resume_conflict(
                 request,
-                reason="Domain does not expose the requested latest DRAFT corrective plan",
+                reason="Domain does not expose the requested latest corrective Plan",
+            )
+
+        # Idempotent replay after a prior Publish committed. The durable
+        # Run/Plan pair is authoritative; no Planning node and no persistence
+        # service is invoked again. If a stale checkpoint still carries the
+        # one-shot destination marker, reconcile it to WAITING_APPROVAL.
+        if (
+            run.status is RunStatus.WAITING_APPROVAL
+            and plan.status is PlanStatus.WAITING_APPROVAL
+        ):
+            if state.get("__reserved_corrective_plan_id__") == plan.id:
+                translation = self._route_translator.translate(
+                    SupervisorTarget.WAITING_APPROVAL.value
+                )
+                self._graph.update_state(
+                    config,
+                    {
+                        "__reserved_corrective_plan_id__": None,
+                        "approved_plan_id": plan.id,
+                        "__logical_target__": SupervisorTarget.WAITING_APPROVAL.value,
+                        "__target__": translation.node,
+                        "workflow_phase": WorkflowPhase.WAITING_APPROVAL.value,
+                    },
+                    as_node="domain_validation",
+                )
+            return self._result_from_thread(
+                workflow_key=request.workflow_key,
+                run_id=request.run_id,
+            )
+
+        if run.status is not RunStatus.PLANNING or plan.status is not PlanStatus.DRAFT:
+            return self._corrective_resume_conflict(
+                request,
+                reason="corrective continuation requires PLANNING/DRAFT durable state",
+            )
+
+        has_pending_interrupt = any(
+            bool(getattr(task, "interrupts", ())) for task in snapshot.tasks
+        )
+        if has_pending_interrupt:
+            return self._corrective_resume_conflict(
+                request,
+                reason="corrective-plan recovery cannot bypass a pending interrupt",
+            )
+
+        # Retry a failed in-flight Planning/Domain Validation task in place.
+        # This is the path that reaches materialized-DRAFT publish-only
+        # continuation; do not write a second marker or restart Planning.
+        if snapshot.next:
+            if state.get("__reserved_corrective_plan_id__") != plan.id:
+                return self._corrective_resume_conflict(
+                    request,
+                    reason="pending corrective task does not own the requested reserved Plan",
+                )
+            self._graph.invoke(None, config=config)
+            return self._result_from_thread(
+                workflow_key=request.workflow_key,
+                run_id=request.run_id,
             )
 
         translation = self._route_translator.translate(SupervisorTarget.PLANNING.value)
         self._graph.update_state(
             config,
             {
-                # Corrective recovery owns a reserved *destination* Plan. Do
-                # not overload the ordinary replan source marker: its legacy
-                # meaning includes allocating a new revision and remapping
-                # children. The destination marker is consumed exactly once
-                # after successful persistence.
                 "__replan_from_plan_id__": None,
                 "__reserved_corrective_plan_id__": plan.id,
                 "__logical_target__": SupervisorTarget.PLANNING.value,
@@ -158,7 +203,7 @@ class LangGraphWorkflowRuntime(_CanonicalResponseRuntime):
         )
 
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
-        """Persist ordinary replans normally, or fill one reserved corrective revision."""
+        """Persist ordinary replans normally, or continue one reserved corrective revision."""
         reserved_plan_id = state.get("__reserved_corrective_plan_id__")
         if not isinstance(reserved_plan_id, str) or not reserved_plan_id:
             return super()._persist_write_plan(state, plan_draft)
@@ -174,9 +219,9 @@ class LangGraphWorkflowRuntime(_CanonicalResponseRuntime):
             plan_draft=plan_draft,
             reserved_plan=reserved_plan,
         )
-        # One-shot marker: only consume after Save + Publish both succeeded.
-        # If persistence raises, the marker remains durable for fail-closed
-        # recovery rather than silently losing the reserved destination.
+        # One-shot marker is consumed only after the helper has reached either
+        # a verified Publish success or a verified already-published replay.
+        # Save-only failure and candidate drift leave it intact for retry.
         state["__reserved_corrective_plan_id__"] = None
         return persisted_plan_id
 
