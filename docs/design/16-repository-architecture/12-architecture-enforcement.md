@@ -1,43 +1,22 @@
 # 12. Architecture Enforcement
 
-> Parent: Repository Architecture Source v1.1
+> Parent: Repository Architecture Source v1.3
 
-Architecture rules should be machine-enforced where practical.
+Architecture checks must be machine-enforceable where practical.
 
-## Required enforcement families
+Required enforcement families:
 
 - forbidden production filename patterns
-- forbidden dependency/import edges
-- direct Provider SDK/API access outside Connector MCP adapters
-- multiple live semantic-authority detection
+- forbidden dependency edges/imports
+- Provider SDK access outside connector MCP adapters
+- multiple semantic-authority detection
 - `_compat` zero on `main`
-- Production → Evaluation import ban
-- thin LangGraph node boundary
-- concrete Adapter imports from Application
+- production→evaluation import ban
+- LangGraph node thin-adapter boundary
+- unit-test mirror checks for migrated capabilities
+- direct concrete-adapter imports from Application
 - barrel exports that hide concrete authority
-- migrated unit-test path mirror checks
-- mixed-responsibility connector operation files
+- Workflow v7.22 atomic responsibility ownership: heavy-Agent broad modules must not collapse distinct `facts / relations / gaps / risks`, `action objective / arguments`, or Review inspection dimensions into one production implementation file
+- Local SLLM node implementation paths must map one semantic LLM responsibility to one owner-local operation file; deterministic aggregators/builders remain separate from LLM callers
 
-## Enforcement result
-
-Architecture enforcement does not replace behavioral tests. A refactor lane must pass both:
-
-```text
-STRUCTURAL_CONTRACT_PASS
-BEHAVIOR_REGRESSION_PASS
-```
-
-## Main merge gate
-
-Before structural-refactor work can merge to `main`:
-
-```text
-NO_SEMANTIC_AUTHORITY_COLLISION
-NO_COMPAT_ON_MAIN
-NO_FORBIDDEN_IMPORT_EDGE
-NO_FORBIDDEN_PRODUCTION_FILENAME
-PRODUCTION_CALLERS_CANONICAL
-TESTS_TARGET_CANONICAL_OWNER
-```
-
-Any exception must exist in the explicit exception registry.
+Architecture enforcement complements, but does not replace, behavioral tests.
