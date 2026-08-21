@@ -117,12 +117,11 @@ def persist_reserved_corrective_write_plan(
                 use_durable_continuation = True
             else:
                 use_durable_continuation = False
-                if not existing_actions:
-                    if save_receipt is not None or publish_receipt is not None:
-                        raise ValueError(
-                            "empty reserved corrective DRAFT conflicts with "
-                            "durable command receipts"
-                        )
+                if save_receipt is not None or publish_receipt is not None:
+                    raise ValueError(
+                        "empty reserved corrective DRAFT conflicts with "
+                        "durable command receipts"
+                    )
         else:
             raise ValueError(
                 "corrective persistence requires PLANNING/DRAFT or "
@@ -331,7 +330,7 @@ def _build_durable_materialization_proof(
     (
         deterministic_plan,
         logical_action_ids,
-        logical_evidence_ids,
+        _logical_evidence_ids,
         action_id_map,
         evidence_id_map,
     ) = _candidate_identity_maps(
@@ -355,17 +354,11 @@ def _build_durable_materialization_proof(
         latest = max(plans, key=lambda item: (item.revision_no, item.created_at_ms))
         if latest.id != reserved_plan.id or latest.revision_no != reserved_plan.revision_no:
             raise ValueError("corrective destination is no longer the latest Plan revision")
-        if (
-            current_run.status is RunStatus.PLANNING
-            and current_plan.status is PlanStatus.DRAFT
-        ):
-            pass
-        elif (
-            current_run.status is RunStatus.WAITING_APPROVAL
-            and current_plan.status is PlanStatus.WAITING_APPROVAL
-        ):
-            pass
-        else:
+        valid_status_pairs = {
+            (RunStatus.PLANNING, PlanStatus.DRAFT),
+            (RunStatus.WAITING_APPROVAL, PlanStatus.WAITING_APPROVAL),
+        }
+        if (current_run.status, current_plan.status) not in valid_status_pairs:
             raise ValueError(
                 "durable corrective proof requires PLANNING/DRAFT or "
                 "WAITING_APPROVAL/WAITING_APPROVAL"
