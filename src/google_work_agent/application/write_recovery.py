@@ -7,6 +7,9 @@ from json import dumps, loads
 from typing import cast
 
 from google_work_agent.application.ports import ConnectorExecutionPort
+from google_work_agent.application.resource_ref_projection import (
+    resource_ref_from_snapshot as _resource_ref_from_snapshot,
+)
 from google_work_agent.application.write_action_arguments import (
     dict_argument as _dict_argument,
 )
@@ -61,9 +64,6 @@ from google_work_agent.application.write_persistence import (
 )
 from google_work_agent.application.write_persistence import (
     resolve_snapshot_fallback_resource_id as _resolve_snapshot_fallback_resource_id,
-)
-from google_work_agent.application.write_persistence import (
-    resource_ref_from_snapshot as _resource_ref_from_snapshot,
 )
 from google_work_agent.application.write_persistence import (
     upsert_resource_ref as _upsert_resource_ref,
@@ -280,6 +280,7 @@ class RecoverExistingWriteResultService:
                 return response
             resource_ref = _resource_ref_from_snapshot(
                 run_id=plan.run_id,
+                connector_id=action.connector_id,
                 snapshot=command.snapshot,
                 captured_at_ms=now_ms,
             )
@@ -840,10 +841,6 @@ class ResolveMismatchRecoveryService:
             run = _require_run(unit_of_work, command.run_id)
             action = _require_action(unit_of_work, command.action_id)
             plan = _require_plan(unit_of_work, action.plan_id)
-            # FAIL is a general "recovery is unresolvable" exit shared by every
-            # RECOVERY_REQUIRED reason (MISMATCH, UNKNOWN_RESULT, CONTRACT_VIOLATION,
-            # ...), unlike ACCEPT_PARTIAL/CREATE_CORRECTIVE_PLAN which only make sense
-            # against a specific MISMATCH action -- so it does not require one.
             requires_mismatch_action = command.resolution_kind is not RecoveryResolutionKind.FAIL
             if plan.run_id != run.id or (
                 requires_mismatch_action and action.status != ActionStatus.MISMATCH.value
@@ -931,9 +928,6 @@ class ResolveMismatchRecoveryService:
                 result_plan_status = PlanStatus.COMPLETED.value
                 result_kind = "PARTIAL"
             elif command.resolution_kind is RecoveryResolutionKind.FAIL:
-                # No Plan/Action mutation -- FAIL only closes the Run terminal
-                # status. Existing Action facts (including already-VERIFIED
-                # ones) and the current Plan are preserved exactly as-is.
                 result_plan = plan.id
                 result_plan_status = plan.status.value
                 result_kind = "FAILED"
