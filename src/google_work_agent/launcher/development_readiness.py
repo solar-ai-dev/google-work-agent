@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
-from google_work_agent.adapters.connectors import GOOGLE_WORKSPACE_CONNECTOR_ID
+from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
 from google_work_agent.adapters.keyring import OSKeyringSecretStore
 from google_work_agent.adapters.persistence import connect_sqlite
 from google_work_agent.api import API_CONTRACT_VERSION
