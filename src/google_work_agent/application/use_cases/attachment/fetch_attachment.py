@@ -3,7 +3,9 @@
 from dataclasses import dataclass
 from typing import Any
 
-from google_work_agent.application.ports.connector_failure import normalize_google_workspace_failure
+from google_work_agent.application.ports.connector_failure import (
+    normalize_google_workspace_failure,
+)
 from google_work_agent.ports import GoogleWorkspaceGatewayError
 
 
@@ -24,7 +26,10 @@ class FetchAttachmentHandler:
 
     def __call__(self, query: FetchAttachmentQuery) -> FetchAttachmentResult:
         try:
-            attachment = self.service(message_id=query.message_id, attachment_id=query.attachment_id)
+            attachment = self.service(
+                message_id=query.message_id,
+                attachment_id=query.attachment_id,
+            )
         except GoogleWorkspaceGatewayError as error:
             raise normalize_google_workspace_failure(error) from error
         return FetchAttachmentResult(attachment=attachment)
