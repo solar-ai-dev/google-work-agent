@@ -111,8 +111,16 @@ class LangGraphWorkflowRuntime(_CanonicalFreshnessRuntime):
             workflow_key=request.workflow_key,
             resume_kind="REAUTH_COMPLETED",
         )
+        expected_status = None if authority is None else authority.get("resume_status")
         expected_target = None if authority is None else authority.get("continuation_target")
         requested_target = request.resume_payload.get("continuation_target")
+        if not isinstance(expected_status, str) or self._current_run_status(request.run_id) != expected_status:
+            return WorkflowInvocationResult(
+                request.run_id,
+                request.workflow_key,
+                WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
+                {"reason": "persisted Run status does not match reauth checkpoint authority"},
+            )
         if (
             not isinstance(expected_target, str)
             or not expected_target
