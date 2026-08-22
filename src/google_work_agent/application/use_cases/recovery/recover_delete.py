@@ -7,10 +7,12 @@ from dataclasses import dataclass
 from json import loads
 
 from google_work_agent.application.ports import ConnectorExecutionPort
+from google_work_agent.application.use_cases.recovery.recover_existing_result import (
+    RecoverExistingResultCommand,
+    RecoverExistingResultResult,
+)
 from google_work_agent.application.write_action_arguments import dict_argument, required_argument_string
-from google_work_agent.application.write_execution_contracts import WriteActionResponse
 from google_work_agent.application.write_persistence import require_action, require_attempt
-from google_work_agent.application.write_recovery_contracts import RecoverExistingWriteResultCommand
 from google_work_agent.domain import PolicyViolationError, ResultCode
 from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
@@ -44,14 +46,12 @@ class RecoverDeleteResult:
     action_status: str
     action_version: int
     next_allowed_commands: tuple[str, ...]
-    approval_id: str | None = None
     attempt_id: str | None = None
-    claim_token: str | None = None
     safe_error_code: str | None = None
     conflict_detail: str | None = None
 
 
-def _to_result(response: WriteActionResponse) -> RecoverDeleteResult:
+def _to_result(response: RecoverExistingResultResult) -> RecoverDeleteResult:
     return RecoverDeleteResult(
         applied=response.applied,
         result_code=response.result_code,
@@ -59,9 +59,7 @@ def _to_result(response: WriteActionResponse) -> RecoverDeleteResult:
         action_status=response.action_status,
         action_version=response.action_version,
         next_allowed_commands=response.next_allowed_commands,
-        approval_id=response.approval_id,
         attempt_id=response.attempt_id,
-        claim_token=response.claim_token,
         safe_error_code=response.safe_error_code,
         conflict_detail=response.conflict_detail,
     )
@@ -73,7 +71,9 @@ class RecoverDeleteHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         connector_execution: ConnectorExecutionPort,
-        recover_existing_result: Callable[[RecoverExistingWriteResultCommand], WriteActionResponse],
+        recover_existing_result: Callable[
+            [RecoverExistingResultCommand], RecoverExistingResultResult
+        ],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._connector_execution = connector_execution
@@ -126,15 +126,16 @@ class RecoverDeleteHandler:
             recovery_fingerprint=None,
             payload={"deleted": True},
         )
-        response = self._recover_existing_result(
-            RecoverExistingWriteResultCommand(
-                command.command_id,
-                command.request_hash,
-                command.action_id,
-                command.attempt_id,
-                command.expected_action_version,
-                command.expected_attempt_version,
-                snapshot,
+        return _to_result(
+            self._recover_existing_result(
+                RecoverExistingResultCommand(
+                    command.command_id,
+                    command.request_hash,
+                    command.action_id,
+                    command.attempt_id,
+                    command.expected_action_version,
+                    command.expected_attempt_version,
+                    snapshot,
+                )
             )
         )
-        return _to_result(response)
