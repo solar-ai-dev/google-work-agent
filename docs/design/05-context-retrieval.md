@@ -1,9 +1,5 @@
 # 05. Google Work Agent · Context · Retrieval 설계서
 
-> **2026-08-19 Canonical Sync — Run 격리 확인**
->
-> Retrieval Cache, raw Provider continuation, QueryAttempt와 Evidence selection은 현재 Run 범위다. 새 USER 요청으로 생성된 다른 Run은 이전 Run의 Retrieval Cache/continuation/Evidence를 상속하지 않는다. 과거 Resource가 명시적으로 다시 선택되면 현재 Run의 frozen IN Route에서 다시 조회·검증한다.
-
 > **상태:** Draft v2.13 · **기준일:** 2026-08-15 · **대상:** P0 MVP
 >
 > Retrieval은 `ToolRoutePlanV2.input_plan.input_routes`를 입력으로 받는 하나의 LangGraph Subgraph다. Tool Route는 Main Graph에서 이미 확정되어 있으며 Retrieval은 Tool 종류를 다시 선택하지 않는다. Subgraph 내부에서 Query 계획 → 결정적 Read → Normalize/Segment → Run-scoped RAG → Evidence → Sufficiency를 수행하고 `RetrievalResultV1`과 필요한 Typed `WorkflowSignalV1`만 Parent에 반환한다.

@@ -1,20 +1,19 @@
 # 06. Google Work Agent · Agent · Workflow 설계서
 
-> **2026-08-19 Canonical Sync — Runtime Closure**
+> **2026-08-22 Canonical Sync — Local SLLM Responsibility Decomposition**
 >
-> - `conversation_id`는 Main State 상속 Key가 아니다. Terminal Run 뒤 새 USER 요청은 새 `run_id + langgraph_thread_id + RunInputV1`로 시작한다.
-> - 6개 native Agent Subgraph는 Parent/Main State 전체가 아니라 역할별 Typed Input Projection만 받으며 owner field + 허용 workflow signal만 patch merge한다.
-> - Confirmation은 `RequestConfirmation → WAITING_CONFIRMATION → interrupt → ConfirmationResponseV1 검증 → ResumeConfirmation → same owner subgraph checkpoint` 순서다. 모든 확인을 Request Understanding부터 재시작하지 않는다.
-> - Product Prompt resume 입력에는 originating owner의 bounded `confirmation_response`만 추가할 수 있다. Raw resume payload, `interrupt_id`, checkpoint metadata, `RegisteredResumeTargetRefV1`은 Prompt 입력이 아니다.
-> - Planning은 frozen `ToolRoutePlanV2.output_plan.output_routes`를 순회해 `OutputToolRouteV1` **한 개씩** Argument Writer에 전달한다.
-> - Planning LLM은 business arguments + evidence만 작성한다. Tool identity/effect, Action ID, dependency authority, approval, execution, expected verification authority는 결정적 코드가 소유한다.
-> - Dependency는 frozen route order에서 **같은 stable external resource의 downstream Action**에만 결정적으로 생성하며 CREATE 또는 다른 Resource 사이에는 추론하지 않는다.
-> - `planning.compose_dependencies` Product Prompt를 두지 않는다.
-> - Review.REVISE는 affected route/action candidate만 다시 작성하고 unaffected candidate는 보존한 뒤 deterministic Plan Assembler가 `ActionPlanDraftV2`를 다시 만든다.
-
-> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Database v1.20`, `05 Retrieval v2.13`, `07 Interface v2.23`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5를 기준으로 한다.
+> - Agent 수는 `Request Understanding / Tool Route / Retrieval / Work Analysis / Planning / Review` 6개를 유지한다. 책임 과다 해소는 Agent를 더 만드는 대신 각 Subgraph 내부 LLM semantic responsibility를 원자적으로 분해한다.
+> - `Work Analysis`는 사실 추출, entity relation, temporal/dependency relation, duplicate/conflict candidate, 정보 누락, 운영 위험·필요성 판단을 서로 다른 atomic LLM responsibility로 분리한다. 최종 relation 정규화와 중복·충돌 확정은 계속 deterministic validator가 소유한다.
+> - `Planning` ACTION 경로는 고정 OUT Route마다 `draft_action_objective_per_output_route → compose_arguments_per_output_route` 두 단계로 나눈다. 첫 단계는 업무적으로 무엇을 바꿀지, 둘째 단계는 이미 고정된 Tool Schema에 어떻게 표현할지만 담당한다. Action dependency는 LLM이 아니라 deterministic `build_dependencies`가 소유한다.
+> - `Review`는 `goal/evidence`, `action scope/route consistency`, `user constraints/supplied policy summary`를 별도 LLM 검사로 나누고 deterministic aggregator가 최종 `PlanReviewResultV2`를 만든다.
+> - ANSWER 경로는 `outline_answer → compose_answer`로 분리할 수 있다. Retrieval Evidence 선택을 다시 수행하거나 새 사실을 만들 수 없다.
+> - Local SLLM 기본은 atomic node를 합치지 않는다. 더 강한 Runtime이 인접 LLM Node를 fuse하려면 동일 Typed Candidate와 disposition을 재현하고 `12 Test / 13 Evaluation` parity gate를 통과해야 한다.
+> - 정상 Run은 필요한 conditional node만 호출한다. 전체 Product LLM 호출 hard cap은 `24`이며 기존 Repair 1 / Revision 2 / Additional Retrieval 2 상한을 별도로 완화하지 않는다.
 >
-> **상태:** Draft v7.20 · **기준일:** 2026-08-19 · **DB Schema:** v1.6 · **대상:** P0 MVP
+> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Database v1.21 / DB Schema v1.9`, `05 Retrieval v2.13`, `07 Interface v2.23`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5을 기준으로 한다.
+>
+>
+> **상태:** Draft v7.22 · **기준일:** 2026-08-22 · **DB Schema:** v1.9 · **대상:** P0 MVP
 >
 > Main LangGraph는 결정적 Supervisor와 Versioned Typed Main State를 소유한다. 전문 Agent는 LangGraph Subgraph이며 Parent State에서 자기 책임에 필요한 필드만 Projection 받아 Local State를 단계적으로 채우고, 완료 시 공식 Typed Result만 Main State에 병합한다. Schema는 출력 가능 범위를 통제하고, State는 확정 정보를 기억하며, Prompt는 각 LLM Node의 단일 작업만 지시한다. 승인·실행·검증 사실은 SQLite Domain Store가 소유한다.
 
@@ -959,13 +958,28 @@ Node 입력:
 
 ```text
 START
-→ extract_work_facts
-→ resolve_relations
-→ assess_analysis_gaps
-→ assemble_analysis
-→ validate
+→ extract_work_facts                         # LLM
+→ resolve_entity_relations                   # LLM / conditional
+→ resolve_temporal_dependencies              # LLM / conditional
+→ detect_duplicate_conflict_candidates       # LLM / conditional
+→ validate_relations                         # deterministic
+→ assess_information_gaps                    # LLM
+→ assess_operational_risks                   # LLM / conditional
+→ assemble_work_analysis                     # deterministic
+→ validate_work_analysis                     # deterministic
 → END
 ```
+
+원칙:
+
+- `extract_work_facts`는 Evidence에서 업무 사실만 구조화한다.
+- `resolve_entity_relations`는 사람·업무·Resource 사이의 의미 관계 후보만 만든다.
+- `resolve_temporal_dependencies`는 날짜·시간·선후행·업무 dependency 후보만 만든다. Calendar interval 산술이나 deterministic DAG 검증을 소유하지 않는다.
+- `detect_duplicate_conflict_candidates`는 Task 중복·Calendar 충돌 후보만 제안하며 최종 `DUPLICATES`·`CONFLICTS_WITH` authority가 아니다.
+- `validate_relations`가 정규화된 Source 데이터와 현재 상태로 relation을 확정한다. LLM relation 후보는 그대로 final authority가 될 수 없다.
+- `assess_information_gaps`는 현재 목표를 판단하는 데 아직 부족한 정보와 해결 가능한 retrieval need만 만든다.
+- `assess_operational_risks`는 실행 필요성·과잉 실행 가능성·일정/업무 위험을 분석하되 Policy allow/deny, Approval, duplicate/conflict 최종 판정을 하지 않는다.
+- 하나의 LLM 호출이 facts + entity relations + temporal dependencies + duplicate/conflict candidates + gaps + risks를 동시에 생성하지 않는다.
 
 권장 Local State:
 
@@ -979,17 +993,12 @@ class WorkAnalysisStateV2:
     validated_relations: list[WorkRelationV1]
     relation_validation_ambiguities: list[WorkAmbiguityV1]
     ambiguity_candidates: list[WorkAmbiguityV1]
+    retrieval_needs: list[RetrievalNeedV1]
     final_analysis: WorkAnalysisResultV2 | None
 ```
 
-- `extract_work_facts`: Evidence에 명시되거나 근거로 추론 가능한 업무 사실만 구조화한다.
-- `resolve_relations`: 사람·업무·날짜·의존성·중복·충돌 관계만 분석한다.
+- `validate_relations`는 `relation_candidates`의 `DUPLICATES`·`CONFLICTS_WITH` 후보를 정규화된 Source 데이터와 Calendar availability/Task 현재 상태로 검증해 `validated_relations`와 `relation_validation_ambiguities`를 기록한다. 검증 전 후보는 `WorkAnalysisResultV2.relations`에 직접 들어갈 수 없다.
 - Tool·Action Arguments는 생성하지 않는다.
-
-- `validate_relations`: 결정적 Node다. `DUPLICATES`·`CONFLICTS_WITH` 후보를 정규화된 Source 데이터와 Calendar availability/Task 현재 상태로 검증한다. LLM 후보만으로 정확 중복·충돌을 확정하지 않는다.
-- `WorkAnalysisResultV2.relations`에는 `validated_relations`만 들어갈 수 있다. 유사 후보·검증 불가 관계는 ambiguity/risk/추가 확인으로 남긴다.
-- 정확 중복은 기본 `action_necessity=NOT_REQUIRED`다. 사용자가 추가 생성을 원하면 `DUPLICATE_OVERRIDE_REQUIRED`, 검증된 일정 충돌을 Override하려면 `CONFLICT_OVERRIDE_REQUIRED` 2차 Confirmation을 요구한다. 승인 후 결과는 현재 Context에 유효한 `policy_confirmation_receipt_refs`를 포함한다.
-
 
 ### 5.6 Planning Subgraph
 
@@ -997,18 +1006,31 @@ Planning 진입 시 Tool Route는 이미 확정되어 있다.
 
 ```text
 START
-→ choose_answer_or_action_from_route (deterministic)
-→ [ANSWER] compose_answer
-→ [ACTION] compose_arguments_per_output_route
-→ [ACTION] compose_dependencies_if_needed
+→ choose_answer_or_action (deterministic)
+→ [ANSWER route] outline_answer
+→ [ANSWER route] compose_answer
+→ [ACTION route + analysis.action_necessity=NOT_REQUIRED] outline_answer → compose_answer(no-action reason)
+→ [ACTION route otherwise] draft_action_objective_per_output_route
+→ [ACTION route otherwise] compose_arguments_per_output_route
+→ [ACTION] build_dependencies
 → assemble_plan
-→ validate
+→ validate_plan
 → END
 ```
 
 권장 Local State:
 
 ```python
+class ToolArgumentCandidateV1:
+    route_id: str
+    tool_id: str
+    arguments: CanonicalArguments
+
+class ActionDependencyCandidateV1:
+    action_id: str
+    depends_on_action_id: str
+    reason: str
+
 class PlanningStateV2:
     user_request: str
     request_intent: RequestIntentV2
@@ -1022,24 +1044,39 @@ class PlanningStateV2:
 
 규칙:
 
-- `compose_arguments_per_output_route`는 현재 Route의 `selected_tool_id`와 해당 Tool Schema만 본다.
+- `OutputPlanV1`은 사용자가 요구한 출력 capability와 허용 Tool 경로를 고정하지만 실제 Action 생성이 항상 필요하다는 보장은 아니다. Retrieval/Analysis에서 현재 상태가 이미 목표를 충족함이 확인되면 Planning은 Route를 변경하지 않고 Evidence 기반 Answer로 종료할 수 있다.
+- `draft_action_objective_per_output_route`는 frozen Output Route 하나에 대해 사용자 목표·target semantics만 작성한다. Tool identity/effect/arguments를 바꾸지 않는다.
+- `compose_arguments_per_output_route`는 확정 action objective + 현재 Route의 `selected_tool_id` + 해당 Tool Schema만 보고 business arguments를 직렬화한다.
 - 19개 Tool 전체를 Planning Node에 다시 노출해 Tool을 재선택하게 하지 않는다.
 - Tool Candidate shortlisting을 Planning에서 수행하지 않는다. Tool 선택 책임은 Tool Route가 이미 소유한다.
-- Arguments 작성과 다중 Action Dependency 판단은 분리할 수 있다.
-- 최종 `ActionPlanDraftV2` 조립은 결정적 Application Node가 수행한다.
+- 다중 Action Dependency의 생성·정규화·cycle 검증은 deterministic `build_dependencies`가 소유한다. P0에서는 Business Arguments에 이미 고정된 안정적 외부 Resource identity가 같은 Action들에 한해 frozen route 순서에서 후속 Action을 직전 동일 Resource Action에 연결한다. CREATE처럼 실행 전 Provider-generated resource ID를 알 수 없는 Action에는 dependency를 추정하지 않고, 서로 다른 Resource Action은 병렬로 유지한다.
+- `planning.compose_dependencies` Product PromptRef/LLM Node는 두지 않는다.
+- 최종 `ActionPlanDraftV2` 조립과 검증은 결정적 Application Node가 수행한다.
 
 ### 5.7 Review Subgraph
 
 ```text
 START
-→ inspect
-→ validate
-→ [REVISE 이후] recheck
+→ inspect_goal_and_evidence                  # LLM
+→ [ACTION] inspect_action_scope_and_route     # LLM
+→ inspect_constraints_and_policy_summary      # LLM / conditional
+→ aggregate_review_findings                   # deterministic
+→ validate_review                              # deterministic
+→ [REVISE 이후] recheck_affected_dimensions   # LLM / affected dimensions only
+→ aggregate_review_findings
+→ validate_review
 → END
 ```
 
+검사 책임을 한 Prompt에 합치지 않는다.
+
+- `inspect_goal_and_evidence`: 목표 충족 여부와 Evidence grounding만 검사한다.
+- `inspect_action_scope_and_route`: Action 필요성, 과잉 Action, Action 간 모순, frozen OUT Route와 Action 표현 일치만 검사한다.
+- `inspect_constraints_and_policy_summary`: 사용자 제약과 **이미 공급된** Policy Summary의 위반/모순만 검사한다. 새 정책을 만들거나 Domain allow/deny를 결정하지 않는다.
+- `aggregate_review_findings`는 세 결과의 severity/disposition을 deterministic precedence로 합성한다. LLM이 최종 routing authority를 소유하지 않는다.
+- `recheck_affected_dimensions`는 REVISE가 실제로 바꾼 affected field/finding만 재검사한다. 전체 plan을 무조건 다시 심사하지 않는다.
 - Function/Tool Calling을 사용할 수 있으나 Adapter는 `name + arguments`의 일반 계약만 알고 Domain Result 매핑은 Application Layer가 수행한다.
-- `PASS`, `REVISE`, `RETRIEVE_MORE`, `ROUTE_RECONSIDERATION`, `CONFIRM`, `BLOCK`은 함수 이름 또는 닫힌 Schema로 구조적으로 제한한다.
+- `PASS`, `REVISE`, `RETRIEVE_MORE`, `ROUTE_RECONSIDERATION`, `CONFIRM`, `BLOCK`은 닫힌 Schema와 deterministic aggregation으로 제한한다.
 - Review가 Route 오류를 발견해도 `tool_route_plan`을 직접 변경하지 않는다.
 
 ## 6. Workflow Phase
@@ -1253,6 +1290,9 @@ Tool 관련 실패 Owner:
 Planning에서 발견된 Tool 불일치는 `TOOL_ROUTE_EFFECT_MISMATCH` 또는 대응 Route failure로 정규화하고 Tool Route 재검토로 redirect한다.
 
 ## 14. Node Registry
+
+> 이 절의 표는 실행 흐름 설명용 요약이다. Workflow v7.22의 closed atomic responsibility set과 repository operation naming은 `16 Repository Architecture v1.4`의 Canonical Capability Manifest가 단일 매핑 권위다. 표에 생략된 atomic row 또는 이전 alias가 16의 closed set을 override하지 않는다.
+
 
 Node Registry는 **Subgraph와 Node의 실제 책임**을 나타내며 Prompt 수와 동일하지 않다.
 

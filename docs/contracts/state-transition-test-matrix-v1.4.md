@@ -1,5 +1,7 @@
 # 상태 전이 테스트 매트릭스 v1.5
 
+> **현재 권위 정합:** `04 Domain·DB v1.21 / DB Schema v1.9`, `06 Workflow v7.22`, `07 Interface v2.23`, `12 Test v3.41`을 따른다. Startup migration discovery는 `google_work_agent.adapters.persistence.migrations` package의 executable `0001~0008`을 version-sort하여 적용한다. `docs/database/migrations/**`는 executable authority가 아니다.
+
 ## Command Receipt·API Trust Boundary
 
 - Receipt·Domain·Audit 원자 Commit.
@@ -127,4 +129,12 @@
 
 ## Claim V2 추가 Contract Test 경계
 
-기존 `ClaimExecution`의 “Claim Commit before MCP write”, “claim single-use”, “Action/Approval/Hash mismatch 차단” 의미를 유지한다. Signature·TTL·Process Instance·`execution_arguments_hash`·Nonce·MCP 실제 인자 재해시는 `12 Test v3.19`에서 추가 검증한다.
+기존 `ClaimExecution`의 “Claim Commit before MCP write”, “claim single-use”, “Action/Approval/Hash mismatch 차단” 의미를 유지한다. Signature·TTL·Process Instance·`execution_arguments_hash`·Nonce·MCP 실제 인자 재해시는 `12 Test v3.41`에서 추가 검증한다.
+
+## DB Migration·Connector Identity Regression
+
+- `0006_plan_aggregate_invariants.sql`: cross-run/conversation/plan aggregate invariant를 검증한다.
+- `0007_connector_neutral_persistence.sql`: Action/ResourceRef `connector_id` backfill·persistence identity를 검증한다.
+- `0008_resource_ref_connector_identity.sql`: `(run_id, connector_id, resource_type, resource_id)` ResourceRef uniqueness 단일 권위를 검증한다.
+- Startup discovery는 executable `0001~0008` 전체를 적용하고 checksum mismatch를 fail-close한다.
+- 적용된 executable migration `0001~0008`은 regression repair를 위해 소급 수정하지 않는다.

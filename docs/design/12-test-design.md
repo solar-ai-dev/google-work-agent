@@ -1,18 +1,8 @@
 # 12. Google Work Agent · 테스트 설계서
 
-> **2026-08-19 Canonical Sync — 필수 회귀 Gate**
+> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Database v1.21 / DB Schema v1.9`, `05 Retrieval v2.13`, `06 Workflow v7.22`, `07 Interface v2.23`, `08 Sequence v3.19`, `09 Security v2.11`, `10 Infrastructure v2.11`, `11 Observability v2.20`, `15 Agent Capability·Failure·Prompt v1.28`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5를 기준으로 한다.
 >
-> - 같은 Conversation에서 Terminal Run A 뒤 업무적으로 무관한 Run B를 시작할 수 있고 A/B의 `run_id`와 `langgraph_thread_id`가 달라야 한다.
-> - Run B가 `관련 메일 찾아줘`처럼 이전 Run 없이는 의미가 정해지지 않고 명시적 Resource가 없다면 과거 Conversation History를 암묵적으로 Prompt에 주입하지 않아야 한다.
-> - Conversation History API는 저장된 Message/Run Timeline을 반환하되 Agent StartRun 입력과 분리되어야 한다.
-> - 6개 owner 모두 `NEEDS_CONFIRMATION → same owner nested checkpoint resume`를 통합 테스트한다.
-> - Prompt Runtime은 Canonical required = runtime caller = manifest = source = assembled = input contract **27 Active Slot** exact equality를 만족하고 3 Retired Slot runtime caller는 0이어야 한다.
-> - Generic Repair는 `base_projection + candidate_output + failure_record` 이외 legacy root field를 Product Prompt에 전달하지 않는다.
-> - Planning ACTION은 OutputRoute별 Argument Writer 호출, deterministic Tool Schema binding, affected-route-only revision, DAG validation, deterministic expected verification을 검증한다.
-
-> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Database v1.20`, `05 Retrieval v2.13`, `06 Workflow v7.20`, `07 Interface v2.23`, `08 Sequence v3.17`, `09 Security v2.11`, `10 Infrastructure v2.11`, `11 Observability v2.20`, `15 Agent Capability·Failure·Prompt v1.26`, Domain 상태 전이 계약 v1.5와 테스트 매트릭스 v1.5를 기준으로 한다.
->
-> **상태:** Draft v3.39 · **기준일:** 2026-08-19 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.41 · **기준일:** 2026-08-22 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -142,7 +132,7 @@ Approval·ExecutionAttempt·Verification Row 미생성. Claim 경쟁 하나만 �
 
 ### Constraint
 
-Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Unique Position·Revision·ResourceRef.
+Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Unique Position·Revision·ResourceRef. `0004` Plan Review Gate, `0005` NFR-019 cross-aggregate Trigger, `0006` Plan Aggregate cross-run/conversation/plan guards, `0007` Action/ResourceRef `connector_id` backfill·persistence identity, `0008` connector-aware ResourceRef uniqueness 단일 권위를 각각 Migration·Contract Test로 검증한다. Startup discovery가 package의 `0001~0008`을 모두 version-sort하여 적용하고 checksum mismatch를 fail-close하는지도 검증한다.
 
 ## 7. Contract
 
@@ -160,7 +150,12 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - Agent Subgraph는 invocation 범위 Local State만 사용하고 장기 Memory를 생성하지 않음
 - Agent 간 직접 호출·Peer-to-Peer 금지
 - Agent invocation 수와 LLM Call 수를 별도 계수
-- Route별 LLM Budget Profile과 절대 상한 16 검증
+- Local SLLM atomic decomposition 검증: Work Analysis의 `extract_work_facts / resolve_entity_relations / resolve_temporal_dependencies / detect_duplicate_conflict_candidates / assess_information_gaps / assess_operational_risks`, Planning의 `draft_action_objective_per_output_route / compose_arguments_per_output_route`, Review의 `inspect_goal_and_evidence / inspect_action_scope_and_route / inspect_constraints_and_policy_summary`가 서로 다른 PromptRef와 최소 Typed Projection을 사용해야 한다. 한 Prompt가 다른 atomic responsibility의 출력까지 동시에 생성하면 실패한다. `validate_relations / assemble_work_analysis / validate_work_analysis / build_dependencies / assemble_plan / validate_plan / aggregate_review_findings / validate_review`는 deterministic이므로 Product PromptRef가 있으면 실패한다.
+- Strong-runtime fusion parity 검증: fuse된 Profile은 atomic Profile과 동일 Typed candidate semantics, final disposition, failure localization을 재현해야 하며 parity 실패 시 fusion Profile을 Release 후보로 사용할 수 없다.
+- Review aggregator는 deterministic이어야 하며 각 inspector Finding을 stable issue code로 합치되 새 semantic issue를 생성하지 않아야 한다.
+- REVISE 이후 Review는 affected dimension만 재호출하고 이미 PASS한 dimension의 LLM 호출을 반복하지 않는지 검증한다.
+- Route/Runtime별 LLM Budget Profile과 Product LLM Call hard cap 24를 검증한다. budget을 맞추기 위해 서로 다른 semantic responsibility를 임의 fuse하지 않는다.
+- Route/Runtime별 LLM Budget Profile과 Product LLM Call hard cap 24 검증
 - Revision 2, Repair 1, Additional Retrieval 2
 - Main State Owner 단일성: RequestIntent/ToolRoute/Retrieval/Analysis/Planning/Review 각각 단일 Owner
 - Tool Route 한 번 확정 후 Retrieval·Planning의 Tool 재선택 0
@@ -948,9 +943,9 @@ PHASE 7의 20 CORE × 2 문체 = 40 요청은 실제 Ollama/qwen benchmark가 �
 | RetrievalStateV1에 V2 계약 덮어쓰기 | FAIL |
 ## Prompt Runtime Contract Closure Gate (2026-08-18)
 
-PHASE 6 historical `0.9.0-r8.6-phase6`의 30 Slot 정적 검증 결과는 재현 이력으로 보존한다. 현재 Runtime-aligned candidate는 `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`다.
+PHASE 6 historical `0.9.0-r8.6-phase6`의 30 Slot 정적 검증 결과는 재현 이력으로 보존한다. `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`의 27 Active + 3 Retired set은 마지막 runtime-aligned historical candidate다. Workflow v7.22 / Prompt Contract v1.28의 새 `0.9.2-r8.6-sllm-decomposition / semantic-r8.6-v4` candidate Active Slot 수는 Manifest/Source/Caller/Input-Contract set equality를 실제 생성한 뒤 확정한다.
 
-현재 Gate:
+Historical `0.9.1` Gate:
 
 ```text
 Canonical required Active PromptRef
@@ -968,6 +963,8 @@ Retired = 3
 ```
 
 검증 규칙:
+
+Current `0.9.2` Gate는 historical 27이라는 cardinality를 선결정하지 않는다. Atomic responsibility별 Manifest/Source/Caller/Input-Contract set을 실제 생성한 뒤 exact equality와 Active Slot 수를 함께 검증한다.
 
 - Retired PromptRef는 Active set/Manifest/Runtime caller에 다시 등장하면 실패다.
 - `retrieval.select_evidence` Prompt input은 `request_intent + ranked_segments`만 허용하며 raw `user_request`를 root field로 받으면 실패다.

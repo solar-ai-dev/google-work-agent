@@ -1,18 +1,7 @@
 # Google Work Agent · Agent Capability · Failure · Prompt 공통 계약
 
-> **2026-08-19 Canonical Sync — Prompt Runtime v1.26**
->
-> - 현재 candidate는 `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`, 상태 `DRAFT_RUNTIME_CONTRACT_ALIGNED_NOT_ACTIVE`다.
-> - Runtime Active set은 **27 Slot**, Retired set은 **3 Slot**이다.
-> - Retired: `request_understanding.classify.revise`, `retrieval.assess_sufficiency.revise`, `work_analysis.analyze.reassess`.
-> - Generic Product schema repair 입력은 `base_projection`, `candidate_output`, `failure_record`만 사용한다. `original_input`, `previous_output`, `validator_errors`, `changed_fields_allowed`, `attempt_no` 같은 legacy root field를 새 authority로 사용하지 않는다.
-> - Planning Argument Writer는 `user_request + OutputToolRouteV1 한 개 + optional work_analysis + evidence_refs`만 업무 입력으로 받고 Tool identity/effect를 재선택하지 않는다.
-> - Confirmation resume에서는 bounded `ConfirmationResponseV1`을 `confirmation_response` optional root field로 **originating owner Product Prompt에만** 추가한다.
-> - Raw resume payload, `interrupt_id`, checkpoint metadata, `RegisteredResumeTargetRefV1`은 Product Prompt 입력이 아니다.
-> - 같은 Conversation의 과거 Message/Artifact를 새 Run Product Prompt에 자동 승계하지 않는다.
-
-> **상태:** Approved v1.26  
-> **기준일:** 2026-08-19  
+> **상태:** Approved v1.28  
+> **기준일:** 2026-08-22  
 > **대상:** P0 Agent 개별실험, Prompt·Repair·Revision 실험, E2E 통합실험  
 > **적용 범위:** Request Understanding, Tool Route, Retrieval, Work Analysis, Planning, Review  
 > **비적용 범위:** 승인, Claim, Connector Write, Verification, UNKNOWN_RESULT 복구, Domain 상태 전이의 최종 판정
@@ -23,7 +12,16 @@
 - `gold`, `grader`, `expected_route`, benchmark score는 Product Prompt 입력이 아니다.
 - Failure-specific Prompt는 별도 전체 Prompt가 아니라 **Base Slot + Failure Instruction Block**으로 조립한다.
 - E06-B의 모델 입력과 Gold는 파일 수준에서도 분리한다.
-- 재현용 Prompt Baseline은 `0.8.2-r8.3`이다. R8.5 Rebase Candidate는 `0.8.4-r8.5`이며 비활성이다. PHASE 6의 `0.9.0-r8.6-phase6 / semantic-r8.6-v2`는 **30 Slot 정적 Rebase 이력을 보존하는 historical candidate**이며 상태 `DRAFT_STATIC_VALIDATED_NOT_ACTIVE`다. 2026-08-18 Prompt Runtime Contract Closure 이후 현재 Canonical candidate는 `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`, 상태 `DRAFT_RUNTIME_CONTRACT_ALIGNED_NOT_ACTIVE`이며 **27 Active Runtime Slot + 3 Retired Slot**을 사용한다. DEV·Holdout·Safety Gate 전에는 Runtime 활성화하지 않는다.
+- 재현용 Prompt Baseline은 `0.8.2-r8.3`이다. R8.5 Canonical Rebase Candidate는 `0.8.4-r8.5`이며 `REBASE_CANDIDATE_NOT_ACTIVE`다. PHASE 6의 `0.9.0-r8.6-phase6 / semantic-r8.6-v2`는 **30 Slot 정적 Rebase 이력을 보존하는 historical candidate**이며 상태는 `DRAFT_STATIC_VALIDATED_NOT_ACTIVE`다. 2026-08-18 Prompt Runtime Contract Closure의 `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`는 **27 Active Runtime Slot + 3 Retired Slot**의 마지막 runtime-aligned candidate로 보존한다. 2026-08-22 Workflow v7.22의 Local-SLLM 책임 분해로 새 Prompt topology candidate `0.9.2-r8.6-sllm-decomposition / semantic-r8.6-v4`를 정의하며 상태는 `DESIGN_DEFINED_MANIFEST_NOT_BUILT`다. 새 candidate의 Active Slot 수는 Manifest/Source/Caller/Input-Contract set equality를 실제 생성한 뒤 확정하며, 27이라는 historical 숫자를 억지로 유지하기 위해 서로 다른 semantic responsibility를 한 Prompt로 합치지 않는다. DEV·Holdout·Safety Gate 전에는 Runtime 활성화하지 않는다.
+
+### Conversation · Run Prompt 입력 경계
+
+- Conversation Timeline은 사용자에게 보여 주는 저장 이력이지 Product Prompt의 자동 Memory가 아니다.
+- 새 Run의 Product Prompt는 `prompt-runtime-input-contract-v1`이 허용한 **현재 Run Typed Projection만** 직렬화한다. 같은 Conversation의 과거 USER/ASSISTANT Message 전체, 이전 Run의 RequestIntent·ToolRoute·Retrieval/Evidence·WorkAnalysis·Plan/Review·PromptContext를 숨은 입력으로 붙이지 않는다.
+- Request Understanding 최초 invocation은 현재 `RunInputV1.user_request + selected_resource_refs`만 의미 입력으로 사용한다. 사용자가 과거 Resource를 이번 Run에 명시적으로 다시 선택한 경우 그 Resource Ref는 current-run Entry Context로 허용되지만 이전 Run의 Evidence 판정이나 Approval을 함께 가져오지 않는다.
+- 새 Run에는 이전 Run의 `confirmation_response`, Policy Confirmation Receipt, interrupt/checkpoint metadata를 승계하지 않는다.
+- 같은 Run의 Confirmation resume에서만 Controller가 검증·정규화한 bounded `ConfirmationResponseV1`을 `confirmation_response` optional Root Field로 **originating owner의 해당 Product Prompt**에 전달할 수 있다. Raw resume payload, `interrupt_id`, checkpoint metadata, `RegisteredResumeTargetRefV1`은 Product Prompt 입력이 아니다.
+- 이전 Run 없이는 대상이 정해지지 않고 current-run explicit Resource가 없는 요청은 과거 Conversation History를 모델에 주입해 해결하지 않고 Request Understanding의 `NEEDS_CONFIRMATION` 경계로 보낸다.
 
 ## 0. 문서 목적
 
@@ -50,6 +48,7 @@
 - Prompt·Completion 원문은 Graph State·일반 Trace·Audit에 저장하지 않는다.
 - Product Runtime Prompt 문구는 `grader`, `gold`, `expected_route`, 평가 점수에 의존하지 않는다. 실험 Grader가 발견한 오류도 Runtime과 동일한 `failure_record` 형태로 투영한 뒤 Prompt에 전달한다.
 - Structured Output Schema Repair는 Node Call당 최대 1회다.
+- Product LLM Call hard cap은 Run당 24다. 정상 경로는 conditional node를 생략해 대체로 12~18 호출을 목표로 하며, cap을 맞추기 위해 서로 다른 semantic responsibility를 다시 거대 Prompt로 합치지 않는다.
 - 최초 Retrieval 이후 Additional Retrieval은 최대 2회다.
 - Planning Revision은 Run당 최대 2회다.
 - 실행·검증·승인·정책 최종 판정에는 LLM Prompt를 사용하지 않는다.
@@ -89,6 +88,8 @@
 
 Prompt Slot 수, PromptRef 수, LLM Call 수는 Agent 수와 독립적이다. 같은 Agent 안의 `INITIAL`, `CLARIFY`, `SCHEMA_REPAIR`, `SEMANTIC_REVISION`, `RECHECK`는 하나의 책임 계약을 보조하는 Prompt variant다.
 
+**v1.28 atomic responsibility rule:** Local SLLM 기본 Profile에서는 서로 다른 semantic 판단을 한 Product LLM 호출로 fuse하지 않는다. Work Analysis의 facts/entity-relations/temporal-dependencies/duplicate-conflict/gaps/risks, Planning의 answer outline/compose와 per-route objective/arguments, Review의 goal/evidence·action scope/route·constraints/policy summary는 서로 다른 atomic responsibility다. `validate_relations`, `assemble_work_analysis`, `validate_work_analysis`, `build_dependencies`, `assemble_plan`, `validate_plan`, `aggregate_review_findings`, `validate_review`는 deterministic authority다. 더 강한 Runtime의 fusion은 `12 Test / 13 Evaluation` parity·failure-isolation gate를 통과해야 한다.
+
 공통 Runtime Envelope는 invocation metadata와 failure/repair counter만 보존한다. 업무 데이터는 Subgraph별 Typed Local State에 둔다. Local candidate·Query candidate·RAG score·Prompt 원문은 invocation 종료 후 다른 Agent 호출로 자동 승계하지 않는다. 제품의 장기 사실과 승인·실행·검증은 Main Graph Typed State와 Domain Store 계약을 따른다.
 
 각 Node는 Parent/Main State 전체를 받지 않고 자기 작업에 필요한 Typed Projection만 받는다. 공식 Main State Artifact는 단일 Owner만 새 revision을 만들며 downstream은 upstream Artifact를 read-only로 소비한다. Subgraph 반환은 owner field와 허용된 workflow signal만 patch merge하고 다른 Main State field를 `None` 또는 누락 값으로 초기화하지 않는다. Retrieval **초기 Round** Query Planner는 `request_intent + input_routes + retrieval_budget`만 받고, follow-up Round에서는 여기에 `current_round_no + prior QueryAttempt + unresolved SufficiencyIssueV2 + bounded read-result summary`만 추가로 받을 수 있다. Retrieval Product Prompt는 raw `user_request`를 별도 권위 입력으로 재주입하지 않는다. Raw Page Token·Provider-native Query·RFC3339·MCP Arguments는 어느 Round의 Product Prompt에도 전달하지 않는다. Evidence Selector는 `request_intent + ranked_segments`, Work Analysis는 `user_request + request_intent + optional evidence`, Planning Argument Writer는 `user_request + OutputToolRouteV1 1개 + optional work_analysis + evidence_refs`만 받는다.
@@ -107,6 +108,46 @@ Graph Profile 간 semantic responsibility parity를 유지한다. 특히 `SINGLE
 - 날짜/interval 계산, Registry eligibility, Policy Precondition, Confirmation Receipt context 검증, 중복·충돌 relation 검증, state freshness, DAG cycle, Policy·Approval·Verification은 deterministic code가 소유한다.
 - Work Analysis LLM은 중복/충돌 후보만 제안하며 최종 `DUPLICATES`·`CONFLICTS_WITH`와 no-action 판단은 deterministic relation validator를 거친다.
 
+
+## 1.3 Local SLLM Responsibility·Complexity 계약
+
+P0 Local 기준 모델은 `qwen2.5:7b`다. 모델 크기를 이유로 업무 의미를 heuristic으로 삭제하거나 등록 Tool을 임의 shortlist하지 않는다. 대신 각 LLM Node가 한 번에 해결해야 하는 semantic branching과 Output Schema 복잡도를 작게 유지하고 실제 허용 한계는 Model·Runtime별 Contract Complexity Gate에서 측정한다.
+
+Canonical atomic responsibility set:
+
+```text
+Work Analysis
+  extract_work_facts
+  resolve_entity_relations
+  resolve_temporal_dependencies
+  detect_duplicate_conflict_candidates
+  validate_relations                         # deterministic
+  assess_information_gaps
+  assess_operational_risks
+  assemble_work_analysis                     # deterministic
+  validate_work_analysis                     # deterministic
+
+Planning ANSWER
+  outline_answer
+  compose_answer
+
+Planning ACTION (per frozen OutputToolRouteV1)
+  draft_action_objective_per_output_route
+  compose_arguments_per_output_route
+  build_dependencies                         # deterministic
+  assemble_plan                              # deterministic
+  validate_plan                              # deterministic
+
+Review
+  inspect_goal_and_evidence
+  inspect_action_scope_and_route
+  inspect_constraints_and_policy_summary
+  aggregate_review_findings                  # deterministic
+  validate_review                            # deterministic
+  recheck_affected_dimensions                # LLM / affected only
+```
+
+더 강한 Runtime에서 인접 LLM Node를 fuse할 수 있으나 fused call은 위 atomic candidate의 Typed Output 의미를 재현하고 `12 Test / 13 Evaluation` parity·failure-isolation gate를 통과해야 한다. Product LLM Call hard cap은 Run당 24다. `planning.compose_dependencies` PromptRef는 두지 않으며 dependency는 deterministic `build_dependencies`가 소유한다. 새 `0.9.2` candidate Active Slot 수는 실제 Manifest/Source/Caller/Input-Contract set equality가 만들어진 뒤 확정한다.
 
 ## 2. Agent Registry
 
@@ -1177,7 +1218,7 @@ Retrieval Prompt 입력 계약:
 
 Repair/Revision은 Node별 실제 Output Type에 맞는 instruction을 사용해야 하며 Query Planner 전용 `RetrievalQueryPlanV2` 수정 지시를 Evidence Selection/Sufficiency에 재사용하지 않는다.
 
-PHASE 6 historical Prompt Bundle `0.9.0-r8.6-phase6`의 30 Slot topology와 30/30 정적 검증 결과는 재현 이력으로 보존한다. 현재 Runtime-aligned Prompt Bundle은 `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`이며 **27 Active Runtime Slot + 3 Retired Slot**을 사용한다.
+PHASE 6 historical Prompt Bundle `0.9.0-r8.6-phase6`의 30 Slot topology와 30/30 정적 검증 결과는 재현 이력으로 보존한다. 마지막 runtime-aligned historical Prompt Bundle은 `0.9.1-r8.6-runtime-closure / semantic-r8.6-v3`이며 **27 Active Runtime Slot + 3 Retired Slot**을 사용했다. 새 `0.9.2` candidate의 Active Slot 수는 아직 선언하지 않는다.
 
 - Request Understanding은 사용자만 해결 가능한 ambiguity/선호만 Confirmation으로 보낸다.
 - Tool Route LLM은 semantic Resource/Effect를 판단하며 policy-precondition READ, scope-expansion receipt를 만들지 않는다.

@@ -1,18 +1,15 @@
 # 11. Google Work Agent · 관측성 · 로그 · 감사 설계서
 
-> **2026-08-19 Canonical Sync — Context Isolation 관측**
->
-> `conversation_id`, `run_id`, `langgraph_thread_id`, `agent_invocation_id`를 분리 기록한다. Conversation이 같아도 새 USER 요청의 새 Run/Thread는 별도 실행 단위다. Prompt Trace에는 allowlisted projection metadata만 남기며 과거 Conversation 본문 전체를 새 Run 입력으로 기록하지 않는다.
-
 > **상태:** Draft v2.20 · **기준일:** 2026-08-18 · **외부 Telemetry:** Production 기본 OFF
 
-## 먼저 읽기
+## 0. 사람이 먼저 볼 것
 
-- **Domain Store**는 제품 사실의 기준점이다.
-- **Trace**는 판단·호출·성능 원인을 설명한다.
-- **Audit**는 승인·정책·Write·Verification의 안전 기록이다.
-- **Evaluation Artifact**는 후보 비교 결과다.
-- 평가에서 BTS, Process, Efficiency, Reliability를 분리하며 비용이 Safety/업무 실패를 상쇄하는 단일 점수는 만들지 않는다.
+- **Domain Store:** 제품 사실
+- **Trace:** 왜 그렇게 판단·호출했는지
+- **Audit:** 승인·정책·Write·검증의 안전 기록
+- **Evaluation Artifact:** 후보 비교 결과
+
+평가에서는 `agent_invocation_count`와 `llm_call_count`를 분리하고, BTS·Process·Efficiency·Reliability를 서로 다른 축으로 기록한다. 비용이 안전 실패를 상쇄하는 단일 점수는 만들지 않는다.
 
 ## 1. 채널
 

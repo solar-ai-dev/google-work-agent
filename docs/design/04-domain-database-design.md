@@ -1,19 +1,14 @@
 # 04. Google Work Agent 도메인 · 데이터베이스 설계서
 
-> **2026-08-19 Canonical Sync — Conversation Aggregate 경계**
+> **문서 기준:** `01 PRD §1.1`의 Concern Owner 규칙을 따른다. 이 문서는 Domain 상태·영속 사실·DB 불변조건을 소유하며 현재 Canonical DB Schema v1.9과 Domain 상태 전이 계약 v1.5를 기준으로 한다.
 >
-> - Conversation은 Message와 여러 Run을 보존하는 이력 Aggregate이며 Agent Semantic Memory가 아니다.
-> - Conversation당 `finished_at_ms IS NULL` Run은 최대 1개다.
-> - 새 USER 요청의 새 Run은 독립 `langgraph_thread_id`를 사용한다. Terminal Run의 Checkpoint/Main State를 새 Run에 상속하지 않는다.
-> - 현재 DB Schema v1.6의 Conversation→Google Account 소유권은 P0 Google Workspace-first 호환 계약이다. 신규 Connector 계정 모델이 필요하면 새 Migration을 추가하며 `0001~0005`를 수정하지 않는다.
-
-> **문서 기준:** `01 PRD §1.1`의 Concern Owner 규칙을 따른다. 이 문서는 Domain 상태·영속 사실·DB 불변조건을 소유하며 현재 Canonical DB Schema v1.6과 Domain 상태 전이 계약 v1.5을 기준으로 한다.
+> **현재 DB 동기화:** Migration은 이력 Artifact로 소급 수정하지 않는다. `0001` v1.2 baseline → `0002` SEND·DELETE v1.3 → `0003` Action `CANCELLED` v1.4 → `0004` durable post-modify Plan Review Gate v1.5 → `0005` NFR-019 cross-aggregate integrity enforcement v1.6 → `0006` Plan Aggregate cross-run/conversation/plan invariant enforcement v1.7 → `0007` connector-neutral Action/ResourceRef persistence identity v1.8 → `0008` connector-aware ResourceRef identity authority v1.9 순서로 적용한다. Startup migration discovery는 `google_work_agent.adapters.persistence.migrations` package의 모든 `NNNN_*.sql`을 version-sort하여 적용하므로 현재 Canonical Domain DB Schema는 v1.9이다. Canonical executable migration path는 `src/google_work_agent/adapters/persistence/migrations/**`이며 `docs/database/migrations/**`는 documentation/reference mirror일 뿐 startup executable authority가 아니다.
 
 ## 0. 문서 정보
 
 | 항목 | 내용 |
 |---|---|
-| 상태 | Draft v1.20 |
+| 상태 | Draft v1.21 |
 | 기준일 | 2026-08-19 |
 | 대상 | P0 MVP |
 | Database | SQLite |
@@ -97,7 +92,7 @@ Backup Manifest는 DB가 열리지 않을 때도 복구 후보를 확인할 수 
 
 불변 조건:
 
-- 현재 DB Schema v1.6에서 Conversation은 하나의 Google Account에 속한다. 이는 P0 Google Workspace-first 영속 계약이며 Connector-neutral Core의 장기 의미로 승격하지 않는다.
+- 현재 DB Schema v1.9에서도 Conversation은 하나의 Google Account에 속한다. 이는 P0 Google Workspace-first 영속 계약이며 Connector-neutral Core의 장기 의미로 승격하지 않는다.
 - 두 번째 Connector를 제품에 추가하기 전에는 Conversation 소유권과 Connector Credential/Account 연결을 분리하는 새 Migration이 필요하다. 정확한 Table/Column 형태는 해당 Connector 요구사항 확정 시 설계하며 현재 Migration을 소급 수정하지 않는다.
 - Conversation당 종료되지 않은 Run은 최대 하나다.
 - Message는 Conversation에 속하며 선택적으로 관련 Run을 참조한다.
@@ -141,7 +136,7 @@ Backup Manifest는 DB가 열리지 않을 때도 복구 후보를 확인할 수 
 
 `ResourceRef`는 Google 원본 복제본이 아니라 Run에서 실제로 사용한 최소 참조다. `Evidence`는 Action 판단과 승인 설명에 필요한 최소 excerpt만 저장한다.
 
-**Connector 일반화 경계:** Core 의미는 `connector_id + resource_type + external_resource_id` 조합이다. 다만 현재 DB Schema v1.6의 `resource_refs.source`와 `resource_type` CHECK는 Google Workspace P0 값에 닫혀 있으므로, 실제 신규 Connector 지원 시에는 소급 Migration 수정이 아니라 새 Schema Migration으로 확장한다. 이번 문서 일반화만으로 DB Schema v1.6을 변경하지 않는다.
+**Connector 일반화 경계:** Core 의미는 `connector_id + resource_type + external_resource_id` 조합이다. 다만 현재 DB Schema v1.9의 `resource_refs.source`와 `resource_type` CHECK는 Google Workspace P0 값에 닫혀 있으므로, 실제 신규 Connector 지원 시에는 소급 Migration 수정이 아니라 새 Schema Migration으로 확장한다. 이번 문서 동기화는 기존 executable migration을 변경하지 않는다.
 
 ### 4.5 Observability
 
@@ -154,7 +149,7 @@ Audit는 더 긴 보존을 위해 Domain Foreign Key를 사용하지 않고 최�
 
 | 분류 | 구성 |
 |---|---|
-| Entity | Conversation, Message, Run, Plan, Action, ResourceRef, Evidence, Approval, ExecutionAttempt, Verification. `GoogleAccount`는 현재 DB Schema v1.6의 P0 Connector-specific 계정 Entity이며 Connector-neutral account model은 후속 Migration 설계 대상이다. |
+| Entity | Conversation, Message, Run, Plan, Action, ResourceRef, Evidence, Approval, ExecutionAttempt, Verification. `GoogleAccount`는 현재 DB Schema v1.9의 P0 Connector-specific 계정 Entity이며 Connector-neutral account model은 후속 Migration 설계 대상이다. |
 | Join Entity | ActionDependency, ActionEvidence |
 | Append Event | TraceEvent, AuditEvent |
 | Value Object | CanonicalArguments, ArgumentsHash, SourceSnapshot, PolicyConfirmationReceiptV1, IdempotencyKey, RecoveryFingerprint, Cursor, RunBudget, VerificationDiff |
@@ -325,7 +320,7 @@ RECOVERY_REQUIRED → VERIFYING | PLANNING | COMPLETED | FAILED | CANCELLED
 Claim 전 pre-execution 단계의 Policy 위반 → BLOCKED
 ```
 
-`Run.EXECUTING`은 DB Schema v1.6 호환을 위해 유지하는 Legacy READ-only Plan 상태다. **현재 승인형 Write Release 경로는 Action `EXECUTING`을 이유로 Run을 `EXECUTING`으로 바꾸지 않는다.**
+`Run.EXECUTING`은 DB Schema v1.9 호환을 위해 유지하는 Legacy READ-only Plan 상태다. **현재 승인형 Write Release 경로는 Action `EXECUTING`을 이유로 Run을 `EXECUTING`으로 바꾸지 않는다.**
 
 Claim 이후 `EXECUTING | UNKNOWN_RESULT | EXECUTED` Write 사실이 있으면 새 정책/취소 요청이 생겨도 Run을 임의 `BLOCKED`로 덮지 않고 기존 결과 확정·Verification·Recovery를 먼저 수행한다.
 
@@ -348,7 +343,7 @@ EXECUTED → VERIFIED | MISMATCH
 
 ### 9.3 취소 상태 계약
 
-이 절은 Domain 상태 전이 계약 v1.5의 취소 규칙을 소유한다. Action `CANCELLED`는 DB Schema v1.4부터 지원되며 현재 Canonical Schema v1.6에서 유지한다.
+이 절은 Domain 상태 전이 계약 v1.5의 취소 규칙을 소유한다. Action `CANCELLED`는 DB Schema v1.4부터 지원되며 현재 Canonical Schema v1.9에서 유지한다.
 
 - `RequestCancel`은 모든 비Terminal Run에 대해 요청할 수 있으나, Receipt/Version/현재 in-flight 사실을 먼저 판정한다.
 - 성공한 `RequestCancel`의 **APPLIED Command Receipt가 durable cancel intent의 기준점**이다. Run.status가 결과 확정 중 `VERIFYING | RECOVERY_REQUIRED | REAUTH_REQUIRED`로 바뀌어도 Receipt에서 `cancel_intent_active=true`를 재구성한다.
@@ -382,7 +377,7 @@ EXECUTED → VERIFIED | MISMATCH
 - React의 `command_id`는 네트워크 중복 제출을 식별하지만 Google Write 멱등성의 최종 Key는 Approval의 `idempotency_key`다.
 - SSE Event Cursor와 UI Projection Version은 Domain Table 상태를 대체하지 않는다.
 - REST Timeout, Browser Refresh, Event 누락 후에는 Run·Action Snapshot을 Domain Store에서 다시 조회한다.
-- Canonical Schema v1.6은 상태 변경 Command의 영속 멱등성을 위해 `command_receipts` Table을 두며 Action `CANCELLED`를 허용한다. Request ID와 UI Event 정보는 Trace Metadata이며 `command_id`만 Receipt의 영속 Key로 사용한다.
+- Canonical Schema v1.9은 상태 변경 Command의 영속 멱등성을 위해 `command_receipts` Table을 두며 Action `CANCELLED`를 허용한다. Request ID와 UI Event 정보는 Trace Metadata이며 `command_id`만 Receipt의 영속 Key로 사용한다.
 
 ## 10. Transaction 경계
 
@@ -786,7 +781,7 @@ SQLAlchemy·Alembic은 P0 고정 기술로 강제하지 않는다. 명시적 SQL
 
 - `0001_initial.sql`: Schema v1.2 baseline
 - `0002_action_effect_send_delete.sql`: SEND·DELETE Effect를 추가해 Schema v1.3으로 승격
-- Action `CANCELLED`는 `0003`에서 Schema v1.4로 반영되었다. 이후 `0004`는 durable post-modify Plan Review Gate를 추가해 v1.5로, `0005`는 NFR-019 cross-aggregate invariant를 Trigger로 강제해 현재 Schema v1.6으로 승격한다.
+- Action `CANCELLED`는 `0003`에서 Schema v1.4로 반영되었다. 이후 `0004`는 durable post-modify Plan Review Gate를 추가해 v1.5로, `0005`는 NFR-019 cross-aggregate invariant를 Trigger로 강제해 v1.6으로, `0006`은 Plan Aggregate cross-run/conversation/plan invariant enforcement로 v1.7로, `0007`은 connector-neutral Action/ResourceRef persistence identity로 v1.8로, `0008`은 connector-aware ResourceRef identity 단일 권위로 현재 Schema v1.9까지 승격한다.
 - Connection 초기화는 `foreign_keys=ON`, WAL, `synchronous=FULL`, `busy_timeout=5000`을 모든 Domain/Checkpointer Connection에 적용
 
 ## 24. DB 구현 필수 계약
@@ -1257,7 +1252,7 @@ WHERE id = :action_id
 
 ## 26. 상태 전이 계약 확장
 
-이 절은 25장의 상태 전이 규칙을 구체화한다. 이 절의 기존 READ 보완은 Schema v1.3에서 추가 Column을 요구하지 않았으며, Runtime E2E의 Action `CANCELLED` 계약은 `0003`에서 v1.4로 반영되었고, `0004`·`0005` 적용 후 현재 Canonical Schema는 v1.6이다.
+이 절은 25장의 상태 전이 규칙을 구체화한다. 이 절의 기존 READ 보완은 Schema v1.3에서 추가 Column을 요구하지 않았으며, Runtime E2E의 Action `CANCELLED` 계약은 `0003`에서 v1.4로 반영되었고, `0004`~`0008` 적용 후 현재 Canonical Schema는 v1.9이다.
 
 ## 26.1 만료된 Action 재승인
 
@@ -1367,7 +1362,7 @@ Open Write, 실행 중 READ, UNKNOWN_RESULT, REAUTH_REQUIRED, RECOVERY_REQUIRED�
 - `fail_read_action`
 - `prepare_write_retry`
 
-이 실행 계약 자체는 추가 Column을 요구하지 않는다. 현재 Canonical Schema v1.6의 Migration chain과 Action `CANCELLED` CHECK를 따른다.
+이 실행 계약 자체는 추가 Column을 요구하지 않는다. 현재 Canonical Schema v1.9의 Migration chain과 Action `CANCELLED` CHECK를 따른다.
 
 # 29. Command Receipt Aggregate
 
@@ -1410,7 +1405,7 @@ completed_at_ms          INTEGER?
 - 부분 결과는 API·SSE Projection의 `result_kind=PARTIAL`로 표현하며 새로운 Run Status를 만들지 않는다.
 - 새 Approval의 첫 ExecutionAttempt `attempt_no`는 1이다.
 - 실패 재시도 전역 순서는 `approval_no`, `execution_attempt_id`, 시각으로 추적한다.
-- Migration 이력은 `0001` v1.2 → `0002` v1.3 → `0003` v1.4 → `0004` v1.5 → `0005` v1.6이며, 현재 Runtime E2E Canonical DB Schema는 v1.6이다.
+- Migration 이력은 `0001` v1.2 → `0002` v1.3 → `0003` v1.4 → `0004` v1.5 → `0005` v1.6 → `0006` v1.7 → `0007` v1.8 → `0008` v1.9이며, 현재 Runtime E2E Canonical DB Schema는 v1.9이다.
 
 # 31. 승인형 Effect · Transaction · Recovery 계약
 
@@ -1438,9 +1433,9 @@ Application은 Repository setter로 Run 상태를 직접 변경하지 않는다.
 - 실제 MCP Dispatch Payload의 `execution_arguments_hash`는 Claim 발급 시점의 짧은 수명 실행 무결성 값이다. 별도 Domain DB Column을 추가하지 않는다.
 - 첨부파일 bytes·Staging 파일 원문·Local Path는 SQLite Domain Store에 저장하지 않는다.
 - Action/Approval에는 필요할 때 Attachment Descriptor(`staged_attachment_id`, filename, MIME Type, size, SHA-256)만 포함한다.
-- 현재 Schema v1.6은 `0001 v1.2 + 0002 SEND/DELETE v1.3 + 0003 Action CANCELLED v1.4 + 0004 Plan Review Gate v1.5 + 0005 NFR-019 cross-aggregate invariant v1.6`을 적용한 상태다. Claim V2/Attachment 자체는 별도 DB Column을 요구하지 않는다.
+- 현재 Schema v1.9은 `0001 v1.2 + 0002 SEND/DELETE v1.3 + 0003 Action CANCELLED v1.4 + 0004 Plan Review Gate v1.5 + 0005 NFR-019 cross-aggregate invariant v1.6 + 0006 Plan Aggregate invariant v1.7 + 0007 connector-neutral persistence identity v1.8 + 0008 connector-aware ResourceRef identity v1.9`을 적용한 상태다. Claim V2/Attachment 자체는 별도 DB Column을 요구하지 않는다.
 
 
-## Canonical Migration Chain v1.6
+## Canonical Migration Chain v1.9
 
-`0001_initial.sql` → `0002_action_effect_send_delete.sql` → `0003_action_cancelled.sql` → `0004_plan_review_gate.sql` → `0005_cross_aggregate_invariants.sql` 순서로 적용한다. `0004`는 Plan의 durable review gate를, `0005`는 NFR-019 cross-aggregate invariant를 SQLite Trigger와 preflight로 강제한다. 적용된 Migration SQL은 checksum 이력 Artifact이므로 소급 수정하지 않는다.
+`0001_initial.sql` → `0002_action_effect_send_delete.sql` → `0003_action_cancelled.sql` → `0004_plan_review_gate.sql` → `0005_cross_aggregate_invariants.sql` → `0006_plan_aggregate_invariants.sql` → `0007_connector_neutral_persistence.sql` → `0008_resource_ref_connector_identity.sql` 순서로 적용한다. `0004`는 Plan의 durable review gate를, `0005`는 NFR-019 cross-aggregate invariant를, `0006`은 Plan Aggregate의 cross-run/conversation/plan invariant를, `0007`은 Action/ResourceRef connector identity persistence를, `0008`은 connector-aware ResourceRef uniqueness 단일 권위를 강제한다. 적용된 Migration SQL은 checksum 이력 Artifact이므로 소급 수정하지 않는다.

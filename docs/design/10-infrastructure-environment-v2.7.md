@@ -1,10 +1,6 @@
 # 10. Google Work Agent · 인프라 · 환경 설정 설계서
 
-> **2026-08-19 Canonical Sync — Runtime Identity**
->
-> Conversation은 저장·탐색 단위이고 새 USER 요청의 Runtime identity는 새 Run/Thread다. Launcher/Service 재시작 후에도 Domain Run snapshot과 해당 Run checkpoint를 결합해 Open Run만 복원하며 Terminal Run checkpoint를 새 요청에 재사용하지 않는다.
-
-> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B Policy v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Domain·DB v1.20`, `05 Retrieval v2.13`, `06 Workflow v7.20`, `07 Interface v2.23`, `08 Sequence v3.17`, `09 Security v2.11`의 제품·보안·실행 계약을 기준으로 한다. `11 Observability`, `12 Test`, `14 Operations`는 본 인프라 계약을 관측·검증·운영 절차로 소비하는 downstream 문서이며 본 문서의 기준 계약이 아니다.
+> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B Policy v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Domain·DB v1.21 / DB Schema v1.9`, `05 Retrieval v2.13`, `06 Workflow v7.22`, `07 Interface v2.23`, `08 Sequence v3.19`, `09 Security v2.11`의 제품·보안·실행 계약을 기준으로 한다. `11 Observability`, `12 Test`, `14 Operations`는 본 인프라 계약을 관측·검증·운영 절차로 소비하는 downstream 문서이며 본 문서의 기준 계약이 아니다.
 
 > **상태:** Draft v2.11 · **기준일:** 2026-08-19 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
@@ -266,7 +262,7 @@ STOPPED
 Service는 MCP Child 시작 시 Tool Manifest Version과 함께 Process Memory용 256-bit Session Key를 제한된 stdin Handshake로 전달한다. 재시작마다 새 Key를 생성하며 환경 변수·파일·CLI에 저장하지 않는다.
 
 ## 17. Schema·Tool Startup 계약
-- Domain DB Schema 목표는 v1.6이며 `0001` v1.2 baseline → `0002_action_effect_send_delete.sql` v1.3 → `0003_action_cancelled.sql` v1.4 → `0004_plan_review_gate.sql` v1.5 → `0005_cross_aggregate_invariants.sql` v1.6 순서로 적용한다.
+- Domain DB Schema 기준은 v1.9이며 canonical executable path `src/google_work_agent/adapters/persistence/migrations/**`에서 `0001` v1.2 baseline → `0002_action_effect_send_delete.sql` v1.3 → `0003_action_cancelled.sql` v1.4 → `0004_plan_review_gate.sql` v1.5 → `0005_cross_aggregate_invariants.sql` v1.6 → `0006_plan_aggregate_invariants.sql` v1.7 → `0007_connector_neutral_persistence.sql` v1.8 → `0008_resource_ref_connector_identity.sql` v1.9 순서로 적용한다. `docs/database/migrations/**`는 executable startup authority가 아니다.
 - Startup Tool Registry 검증은 승인형 `gmail_send`, Task 완료 UPDATE, `tasks_delete_task`, `calendar_delete_event`, 참석자 UPDATE를 허용하고 Gmail 원문 삭제·반복 Event 전체 일괄 수정은 차단한다.
 - Migration 후 `PRAGMA foreign_key_check`와 Tool Schema Version 검증을 통과해야 Write를 허용한다.
 

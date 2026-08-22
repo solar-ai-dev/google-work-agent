@@ -1,14 +1,6 @@
 # 07. Google Work Agent · Tool · MCP · 내부 인터페이스 명세서
 
-> **2026-08-19 Canonical Sync — Wire / Agent Contract**
->
-> `POST /api/v1/runs`의 실제 Wire 입력은 `command_id, conversation_id, user_message_id, run_id, workflow_key, request_text, entry_mode, selected_resource_ids, requested_mode`다. Application은 Open Run Guard와 ID/Resource 검증 뒤 `request_text → RunInputV1.user_request`, `selected_resource_ids → current-run selected_resource_refs`로 materialize한다. Conversation History를 이 입력에 자동 합성하지 않는다.
->
-> `GET /api/v1/conversations/{conversation_id}/history`는 Message/Run Timeline 전용 bounded read model이다. 현재 구현 bound는 Message 200, Run 200이며 Message 초과는 `truncated=true`다.
->
-> Planning ACTION 경계는 `OutputToolRouteV1 + selected Tool Schema → ToolArgumentCandidateV1 → deterministic validation/assembly → ActionPlanDraftV2`다. Argument Writer의 LLM output schema에는 Tool 재선택 필드, approval/execution 필드, dependency authority를 두지 않는다.
-
-> **문서 기준:** `01 PRD v2.11`, `01-A Functional v2.18`, `01-B Policy v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Domain·DB v1.20`, `05 Context·Retrieval v2.13`, `06 Agent·Workflow v7.20`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, Connector MCP Tool, Python 내부 인터페이스 계약을 정의한다.
+> **문서 기준:** `01 PRD v2.11`, `01-A Functional v2.18`, `01-B Policy v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Domain·DB v1.21 / DB Schema v1.9`, `05 Context·Retrieval v2.13`, `06 Agent·Workflow v7.22`을 기준으로 한다. 외부 공개 API가 아니라 설치된 앱 내부의 Local API, Connector MCP Tool, Python 내부 인터페이스 계약을 정의한다.
 
 ## 0. 문서 정보
 

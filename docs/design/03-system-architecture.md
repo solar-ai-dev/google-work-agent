@@ -1,11 +1,5 @@
 # 03. Google Work Agent 시스템 아키텍처 설계서
 
-> **2026-08-19 Canonical Sync — 실행 Context 경계**
->
-> `conversation_id`는 UI·영속 Timeline 식별자이고 Main State 상속 Key가 아니다. 새 USER 요청은 새 Run/Thread/RunInput으로 격리한다. Conversation History Query는 Read Model이며 LangGraph 입력 경계와 분리한다. 동일 Run의 Confirmation·재인증·Recovery만 기존 Checkpoint를 resume한다.
->
-> Connector-neutral Core는 `connector_id + resource_type + tool/effect + evidence` 계약에 의존한다. 현재 DB Schema v1.6의 Google-specific 값은 P0 호환 경계이며 두 번째 Connector를 실제 제품에 추가할 때는 새 Migration으로 확장하고 기존 Migration을 소급 수정하지 않는다.
-
 > **문서 기준:** `01 PRD §1.1`의 Concern Owner 규칙을 따른다. 이 문서는 시스템 경계와 의존성 방향을 소유하며 Policy·Domain·Tool의 전문 계약을 완화하지 않는다.
 
 ## 0. 문서 정보
@@ -52,16 +46,17 @@ React UI → FastAPI Local Service → Deterministic Supervisor → Agent Subgra
                                             ↓
                                    Domain / Policy / Approval
                                             ↓
-                           Connector Registry / MCP Runtime
-                              ├─ Google Workspace MCP (P0)
-                              └─ additional registered connectors
+                           Connector Runtime / MCP Client
+                              ├─ Google Workspace MCP
+                              └─ future Connector MCP
                                             ↓
                                 Provider-specific Adapter
                                             ↓
                                       Verification
 ```
 
-- **판단은 Agent**, **허용·실행 사실은 Domain**, **외부 효과는 Connector MCP 경계**, **재개 위치는 Checkpoint**가 소유한다. Google Workspace는 P0 첫 Connector다.
+- **판단은 Agent**, **허용·실행 사실은 Domain**, **외부 효과는 Connector MCP 경계**, **재개 위치는 Checkpoint**가 소유한다.
+- Google Workspace는 P0의 첫 번째 Connector이며 Core의 유일한 개념 경계가 아니다.
 - 원격 제품 Backend 없이 사용자 PC에서 동작한다.
 
 

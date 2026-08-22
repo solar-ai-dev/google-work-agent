@@ -1,15 +1,8 @@
 # 08. Google Work Agent · 시퀀스 설계서
 
-> **2026-08-19 Canonical Sync — 새 요청 vs 동일 Run Resume**
->
-> - 새 USER 요청: 같은 `conversation_id`를 유지할 수 있지만 StartRun이 새 `run_id + langgraph_thread_id + RunInputV1`을 만든다. 과거 Run Main State/Checkpoint를 복사하지 않는다.
-> - Conversation 선택: Open Run이 있으면 해당 Run의 snapshot/checkpoint를 복원할 수 있다.
-> - Confirmation/재인증/Recovery: 새 Run을 만들지 않고 동일 Run·동일 Thread의 안전 checkpoint에서 resume한다.
-> - History Query 결과는 Frontend Timeline Projection이며 Supervisor/Prompt 입력으로 자동 전달하지 않는다.
+> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Domain·DB v1.21 / DB Schema v1.9`, `05 Retrieval v2.13`, `06 Workflow v7.22`, `07 Interface v2.23`, Domain 상태 전이 계약 v1.5를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
 
-> **문서 기준:** `01 PRD v2.11`, `01-A v2.18`, `01-B v2.12`, `02 UI·UX v2.14`, `03 Architecture v3.7`, `04 Domain·DB v1.20`, `05 Retrieval v2.13`, `06 Workflow v7.20`, `07 Interface v2.23`, Domain 상태 전이 계약 v1.5를 기준으로 한다. `09~14`는 본 문서의 시퀀스를 보안·인프라·관측·테스트·평가·운영 절차로 구체화한다.
-
-> **상태:** Draft v3.17 · **기준일:** 2026-08-19
+> **상태:** Draft v3.19 · **기준일:** 2026-08-22
 > **대상:** P0 MVP  
 > **구조:** 결정적 Supervisor + 1/3/6 Agent Subgraph Profile + 결정적 실행·검증 Engine  
 > **상태 기준:** SQLite Domain Store가 승인·실행·검증 사실의 기준점이며 LangGraph Checkpoint는 재개 위치, SSE는 UI Projection이다.
@@ -92,8 +85,8 @@
 	</tr>
 	<tr>
 		<td>G</td>
-		<td>Provider APIs</td>
-		<td>Connector별 원본 시스템. 해당 Connector MCP Server 내부 Adapter만 직접 접근한다. P0는 Gmail·Tasks·Calendar다.</td>
+		<td>Google Provider APIs</td>
+		<td>Gmail·Tasks·Calendar 원본 시스템. 시퀀스에서 G에 직접 연결할 수 있는 참여자는 Google Work MCP Server 내부 Adapter뿐이다.</td>
 	</tr>
 </table>
 
@@ -119,6 +112,13 @@
 18. `REAUTH_REQUIRED`와 durable cancel intent는 업무 Agent Edge와 별개의 전역 suspend/resume 상태다. 이미 dispatch된 Write를 재전송하지 않는다.
 19. 승인형 Write는 Action 실행 동안 Run을 기본 `WAITING_APPROVAL`에 유지하고 첫 검증에서 `BeginVerification → VERIFYING`한다. 다중 Action DAG는 predecessor `VERIFIED` 이후 다음 Action을 실행한다.
 
+### 3.0-A Conversation · Run 시작/재개 구분
+
+- **Terminal Run 뒤 새 USER 요청:** 같은 `conversation_id`를 유지할 수 있지만 `StartRun`이 새 `run_id + langgraph_thread_id + RunInputV1`을 생성한다. 과거 Thread/Checkpoint/Main State를 이어받지 않는다.
+- **비Terminal 동일 Run 재개:** confirmation·reauth·recovery·명시적 `/resume`만 기존 `run_id + thread_id + checkpoint`를 사용한다.
+- Conversation Timeline 복원은 UI Query이며 Graph resume 자체가 아니다. 과거 Message가 화면에 표시돼도 새 Run Request Understanding/Prompt 입력으로 자동 전달하지 않는다.
+- 같은 Conversation에 Open Run이 있으면 새 `StartRun`을 병렬 생성하지 않는다.
+
 ### 3.1 공통 Confirmation Interrupt·Resume
 
 ```text
@@ -136,6 +136,41 @@ Subgraph NEEDS_CONFIRMATION
 - `RequestConfirmation.applied=false`이면 interrupt를 새로 만들지 않고 현재 Domain 상태를 재조정한다.
 - `ResumeConfirmation.applied=false`이면 Agent를 재호출하지 않고 Conflict/Recovery를 처리한다.
 - Policy Confirmation Receipt는 실제 사용자 응답을 검증한 Controller만 만든다.
+
+### 3.2 Local SLLM atomic Subgraph 호출 순서
+
+Agent 간 순서는 바꾸지 않지만, Local SLLM Profile에서는 책임이 큰 Subgraph 내부 LLM 호출을 다음처럼 세분화한다.
+
+```text
+Work Analysis
+  extract_work_facts LLM
+  → resolve_entity_relations LLM (필요 시)
+  → resolve_temporal_dependencies LLM (필요 시)
+  → detect_duplicate_conflict_candidates LLM (필요 시)
+  → deterministic validate_relations
+  → assess_information_gaps LLM
+  → assess_operational_risks LLM (필요 시)
+  → deterministic assemble_work_analysis
+  → deterministic validate_work_analysis
+
+Planning ACTION
+  frozen Output Route 1개
+  → draft_action_objective_per_output_route LLM
+  → compose_arguments_per_output_route LLM/tool-schema
+  → 다음 Output Route
+  → deterministic build_dependencies
+  → deterministic assemble_plan
+  → deterministic validate_plan
+
+Review ACTION
+  inspect_goal_and_evidence LLM
+  → inspect_action_scope_and_route LLM
+  → inspect_constraints_and_policy_summary LLM (필요 시)
+  → deterministic aggregate_review_findings
+  → deterministic validate_review
+```
+
+이 호출들은 같은 owner Subgraph 안에서 Local State를 통해 이어지며 Agent→Agent handoff가 아니다. 중간 Candidate는 Main State의 새 authority가 아니고 invocation 종료 시 공식 Result로만 병합한다. 강한 Runtime의 node fusion은 06/15가 요구하는 parity gate를 통과한 Profile에서만 허용한다. Product LLM 호출은 Run당 hard cap 24를 넘지 않는다.
 
 ## 4. 앱 시작·Local Session·상태 복원
 

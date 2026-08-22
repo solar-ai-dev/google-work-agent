@@ -1,5 +1,7 @@
 # Domain 상태 전이 계약 v1.5
 
+> **현재 권위 정합:** `04 Domain·DB v1.21 / DB Schema v1.9`, `06 Workflow v7.22`, `07 Interface v2.23`, `09 Security v2.11`, `12 Test v3.41`을 따른다. Executable migration authority는 `src/google_work_agent/adapters/persistence/migrations/**`의 `0001~0008`이며 적용 Migration을 소급 수정하지 않는다.
+
 ## 책임
 
 - LangGraph Supervisor: Node·Edge·Interrupt·bounded loop 선택
@@ -150,4 +152,4 @@
 
 ## ClaimContextV2 실행권 검증 경계
 
-`ClaimExecution`의 Domain 상태 전이 의미와 v1.5 Command 결과는 유지한다. `ClaimContextV2`는 Claim Commit **이후 외부 MCP Write 직전**의 실행권 전달·인자 무결성 계약이며 새로운 Action/Run 상태를 추가하지 않는다. 상세 필드와 서명 규칙은 `07 Interface v2.18`, 보안 규칙은 `09 Security v2.10`가 소유한다.
+`ClaimExecution`의 Domain 상태 전이 의미와 v1.5 Command 결과는 유지한다. `ClaimContextV2`는 Claim Commit **이후 외부 MCP Write 직전**의 실행권 전달·인자 무결성 계약이며 새로운 Action/Run 상태를 추가하지 않는다. 상세 필드와 서명 규칙은 `07 Interface v2.23`, 보안 규칙은 `09 Security v2.11`가 소유한다.

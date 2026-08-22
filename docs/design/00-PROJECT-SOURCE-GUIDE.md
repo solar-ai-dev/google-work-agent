@@ -33,7 +33,7 @@ For repository naming/placement questions, **16 is the single concern authority*
 
 ## Project Source count
 
-Final Project Source count is **29**. Project Source에는 21개 non-migration canonical source와 startup이 실제 자동 discovery·적용하는 executable Migration `0001~0008` 8개를 포함한다. `0006_plan_aggregate_invariants.sql`, `0007_connector_neutral_persistence.sql`, `0008_resource_ref_connector_identity.sql`도 현재 executable authority이므로 inventory에서 제외할 수 없다. The subordinate pages under 16 are normative detail but are not separate Project Source entries.
+Final Project Source count is **29**. Project Source에는 21개 non-migration canonical source와 startup이 실제 자동 discovery·적용하는 executable Migration `0001~0008` 8개를 포함한다. `0006_plan_aggregate_invariants.sql`, `0007_connector_neutral_persistence.sql`, `0008_resource_ref_connector_identity.sql`도 현재 executable authority이므로 inventory에서 제외할 수 없다. Canonical executable migration path는 `src/google_work_agent/adapters/persistence/migrations/**`이며 startup discovery package는 `google_work_agent.adapters.persistence.migrations`다. `docs/database/migrations/**`는 documentation/reference mirror 역할일 뿐 executable migration inventory 또는 startup authority가 아니다. The subordinate pages under 16 are normative detail but are not separate Project Source entries.
 
 ## Version rule
 

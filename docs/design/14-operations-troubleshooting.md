@@ -1,10 +1,6 @@
 # 14. Google Work Agent · 예외 처리 · 운영 · 트러블슈팅 가이드
 
-> **2026-08-19 Canonical Sync — 복원/재개 판별**
->
-> Conversation을 다시 여는 것과 Graph를 resume하는 것을 구분한다. Open Run이 있으면 해당 Run의 snapshot/checkpoint를 복원한다. Terminal Run만 있는 Conversation에서 새 USER 요청이 들어오면 새 Run/Thread를 만든다. 과거 Terminal checkpoint를 새 요청에 재사용하거나 History Message를 자동 Prompt Context로 합성하는 방식으로 복구하지 않는다.
-
-> **문서 기준:** `03 Architecture v3.7`, `04 Domain·DB v1.20`, `05 Retrieval v2.13`, `06 Workflow v7.20`, `07 Interface v2.23`, `08 Sequence v3.17`, `09 Security v2.11`, `10 Infrastructure v2.11`, `11 Observability v2.20`, `12 Test v3.39`, `13 Evaluation v3.26`, `15 Agent Capability v1.26`를 따른다. 이 문서는 새 상태 전이·보안·Prompt 정책을 만들지 않는다.
+> **문서 기준:** `03 Architecture v3.7`, `04 Domain·DB v1.21 / DB Schema v1.9`, `05 Retrieval v2.13`, `06 Workflow v7.22`, `07 Interface v2.23`, `08 Sequence v3.19`, `09 Security v2.11`, `10 Infrastructure v2.11`, `11 Observability v2.20`, `12 Test v3.41`, `13 Evaluation v3.28`, `15 Agent Capability·Failure·Prompt v1.28`를 따른다. 이 문서는 새 상태 전이·보안·Prompt 정책을 만들지 않는다.
 
 > **상태:** Draft v2.20 · **기준일:** 2026-08-19 · **원격 운영 서버:** 없음
 
