@@ -4,8 +4,8 @@ The application ``ConnectorExecutionPort`` intentionally contains only provider
 mechanics and therefore has no connector-selection argument. Until the legacy
 write services are migrated to a connector-aware command contract, the
 LangGraph adapter binds the already-persisted Action connector identity around
-one execution/recovery phase and this router dispatches every port call to that
-exact backend.
+one execution/recovery phase and this router dispatches every port call through
+the connector registry to that exact backend.
 
 There is deliberately no tool-name inference and no default-provider fallback.
 """
@@ -16,6 +16,7 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 
+from google_work_agent.adapters.connectors.connector_registry import ConnectorRegistry
 from google_work_agent.application.ports import (
     ConnectorExecutionPort,
     ConnectorWriteRequest,
@@ -42,18 +43,14 @@ def bind_execution_connector_id(connector_id: str) -> Iterator[None]:
 
 
 class ConnectorExecutionRouter(ConnectorExecutionPort):
-    """Route execution mechanics to the backend selected by the bound connector id."""
+    """Adapt the current execution Port onto explicit connector-registry lookup."""
 
     def __init__(self, backends: Mapping[str, ConnectorExecutionPort]) -> None:
-        self._backends = dict(backends)
-        if not self._backends:
-            raise ValueError("connector execution router requires at least one backend")
-        if any(not connector_id for connector_id in self._backends):
-            raise ValueError("connector execution backend ids must be non-empty")
+        self._registry = ConnectorRegistry(backends)
 
     @property
     def registered_connector_ids(self) -> tuple[str, ...]:
-        return tuple(sorted(self._backends))
+        return self._registry.registered_connector_ids
 
     @property
     def last_request_id(self) -> str | None:
@@ -107,9 +104,4 @@ class ConnectorExecutionRouter(ConnectorExecutionPort):
         connector_id = _execution_connector_id.get()
         if connector_id is None:
             raise RuntimeError("connector execution attempted without a bound connector id")
-        try:
-            return self._backends[connector_id]
-        except KeyError as error:
-            raise LookupError(
-                f"connector execution backend not registered: {connector_id}"
-            ) from error
+        return self._registry.resolve(connector_id)
