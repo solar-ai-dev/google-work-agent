@@ -4,16 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
 
 from google_work_agent.application.coordinator import LocalRunCoordinator, QueueBusyError
-from google_work_agent.application.write_actions import ApproveWriteActionCommand
+from google_work_agent.application.use_cases.approval.approve_action import (
+    ApproveActionCommand as _DurableApproveActionCommand,
+    ApproveActionHandler as _DurableApproveActionHandler,
+)
 from google_work_agent.domain import calculate_canonical_json_hash
 from google_work_agent.ports import IdGenerator, UnitOfWork
-
-
-class _ApproveService(Protocol):
-    def __call__(self, command: ApproveWriteActionCommand) -> object: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,24 +43,29 @@ class ApproveActionFollowupQueueBusyError(RuntimeError):
 
 
 class ApproveActionHandler:
-    """Bind the Local API approval intent to durable Action approval authority.
+    """Bind Local API approval intent to server-owned durable source authority.
 
     Browser/route inputs stop at command/version/acknowledgement data. Account,
     run, approval id, idempotency key and approval TTL are derived server-side.
+    The durable approval implementation resolves ``Action.target_resource_ref_id``
+    to the persisted ``ResourceRef`` and constructs the source snapshot itself.
     """
 
     def __init__(
         self,
         *,
-        approve_service: _ApproveService,
         get_approval_ttl_minutes: Callable[[], int],
         unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
         local_run_coordinator: LocalRunCoordinator,
         id_generator: IdGenerator,
     ) -> None:
-        self._approve_service = approve_service
         self._get_approval_ttl_minutes = get_approval_ttl_minutes
         self._unit_of_work_factory = unit_of_work_factory
+        self._durable_handler = _DurableApproveActionHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
         self._local_run_coordinator = local_run_coordinator
         self._id_generator = id_generator
 
@@ -72,15 +75,14 @@ class ApproveActionHandler:
         if ttl_ms <= 0:
             raise RuntimeError("approval_ttl_minutes must be positive")
 
-        legacy_result = self._approve_service(
-            ApproveWriteActionCommand(
+        durable_result = self._durable_handler(
+            _DurableApproveActionCommand(
                 command_id=command.command_id,
                 request_hash=command.request_hash,
                 action_id=command.action_id,
                 expected_version=command.expected_version,
                 approved_by_account_id=approved_by_account_id,
                 approved_by_display=None,
-                source_snapshot={},
                 approval_id=self._id_generator.next_id(),
                 idempotency_key=calculate_canonical_json_hash(
                     {
@@ -97,13 +99,13 @@ class ApproveActionHandler:
             )
         )
         result = ApproveActionResult(
-            applied=bool(getattr(legacy_result, "applied")),
-            result_code=str(getattr(legacy_result, "result_code")),
-            action_id=str(getattr(legacy_result, "action_id")),
-            action_status=str(getattr(legacy_result, "action_status")),
-            action_version=int(getattr(legacy_result, "action_version")),
-            next_allowed_commands=tuple(getattr(legacy_result, "next_allowed_commands")),
-            conflict_detail=getattr(legacy_result, "conflict_detail"),
+            applied=durable_result.applied,
+            result_code=durable_result.result_code,
+            action_id=durable_result.action_id,
+            action_status=durable_result.action_status,
+            action_version=durable_result.action_version,
+            next_allowed_commands=tuple(durable_result.next_allowed_commands),
+            conflict_detail=durable_result.conflict_detail,
         )
         if result.applied:
             try:
