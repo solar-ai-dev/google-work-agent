@@ -23,6 +23,10 @@ from google_work_agent.application.write_persistence import (
     require_attempt,
     resolve_snapshot_fallback_resource_id,
 )
+from google_work_agent.application.write_verification_projection import (
+    calculate_verification_subset_diff,
+    normalize_actual_verification_projection,
+)
 from google_work_agent.domain import ResultCode
 from google_work_agent.ports import UnitOfWork
 
@@ -96,10 +100,13 @@ class RecoverUpdateHandler:
             arguments=loads(action.arguments_json),
             fallback_resource_id=fallback_resource_id,
         )
-        actual = normalize_snapshot(snapshot)
+        actual_projection = normalize_actual_verification_projection(
+            tool_name=action.tool_name,
+            actual=normalize_snapshot(snapshot),
+        )
         expected = cast(dict[str, object], loads(action.expected_json))
 
-        if actual == expected:
+        if not calculate_verification_subset_diff(expected, actual_projection):
             return _to_result(
                 self._recover_existing_result(
                     RecoverExistingResultCommand(
@@ -115,7 +122,11 @@ class RecoverUpdateHandler:
             )
 
         source = cast(dict[str, object], loads(approval.source_snapshot_json))
-        if actual == source:
+        source_projection = normalize_actual_verification_projection(
+            tool_name=action.tool_name,
+            actual=source,
+        )
+        if not calculate_verification_subset_diff(source_projection, actual_projection):
             return _to_result(
                 self._resolve_as_failed(
                     ResolveAsFailedCommand(
