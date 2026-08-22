@@ -1,43 +1,55 @@
-"""Application boundary for FAILED write retry preparation."""
+"""Canonical Application owner for FAILED write retry preparation."""
+
+from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
-from google_work_agent.domain.action.transitions.prepare_write_retry import transition_prepare_write_retry
-from google_work_agent.domain.commands import ActionCommand
-from google_work_agent.domain.enums import ActionStatus, EffectType, ResultCode
+from google_work_agent.application.write_actions import PrepareWriteRetryCommand as _LegacyPrepareWriteRetryCommand
+
+
+class _PrepareRetryService(Protocol):
+    def __call__(self, command: _LegacyPrepareWriteRetryCommand) -> object: ...
 
 
 @dataclass(frozen=True, slots=True)
 class PrepareWriteRetryCommand:
-    current_status: ActionStatus
-    current_version: int
+    command_id: str
+    request_hash: str
+    action_id: str
     expected_version: int
-    effect_type: EffectType
 
 
 @dataclass(frozen=True, slots=True)
 class PrepareWriteRetryResult:
     applied: bool
-    result_code: ResultCode
-    current_status: ActionStatus
-    current_version: int
-    next_allowed_commands: tuple[ActionCommand, ...]
+    result_code: str
+    action_id: str
+    action_status: str
+    action_version: int
+    next_allowed_commands: tuple[str, ...]
     conflict_detail: str | None = None
 
 
 class PrepareWriteRetryHandler:
+    def __init__(self, *, prepare_retry_service: _PrepareRetryService) -> None:
+        self._prepare_retry_service = prepare_retry_service
+
     def __call__(self, command: PrepareWriteRetryCommand) -> PrepareWriteRetryResult:
-        result = transition_prepare_write_retry(
-            command.current_status,
-            command.current_version,
-            command.expected_version,
-            effect_type=command.effect_type,
+        raw = self._prepare_retry_service(
+            _LegacyPrepareWriteRetryCommand(
+                command_id=command.command_id,
+                request_hash=command.request_hash,
+                action_id=command.action_id,
+                expected_action_version=command.expected_version,
+            )
         )
         return PrepareWriteRetryResult(
-            applied=result.applied,
-            result_code=result.result_code,
-            current_status=result.current_status,
-            current_version=result.current_version,
-            next_allowed_commands=result.next_allowed_commands,
-            conflict_detail=result.conflict_detail,
+            applied=bool(getattr(raw, "applied")),
+            result_code=str(getattr(raw, "result_code")),
+            action_id=str(getattr(raw, "action_id")),
+            action_status=str(getattr(raw, "action_status")),
+            action_version=int(getattr(raw, "action_version")),
+            next_allowed_commands=tuple(getattr(raw, "next_allowed_commands")),
+            conflict_detail=getattr(raw, "conflict_detail"),
         )
