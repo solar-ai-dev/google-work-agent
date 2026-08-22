@@ -62,6 +62,16 @@ def _response(result: object) -> ActionCommandResponse:
     )
 
 
+def _modify_gateway(dependencies: ActionRouteDependency) -> object:
+    """Temporary wiring bridge until shared API composition exposes the gateway directly."""
+    legacy_surface = dependencies.modify_action_service()
+    validator = getattr(legacy_surface, "_task_duplicates", None)
+    gateway = getattr(validator, "_gateway", None)
+    if gateway is None:
+        raise RuntimeError("modify action gateway is not configured")
+    return gateway
+
+
 @router.post("/{action_id}/approve", response_model=ActionCommandResponse)
 def approve(
     action_id: str,
@@ -77,9 +87,9 @@ def approve(
     if settings_service is None:
         raise RuntimeError("get_settings_service is not configured")
     handler = ApproveActionHandler(
-        approve_service=dependencies.approve_action_service(),
         get_approval_ttl_minutes=lambda: settings_service().approval_ttl_minutes,
         unit_of_work_factory=dependencies.unit_of_work_factory,
+        now_ms=dependencies.clock.now_ms,
         local_run_coordinator=dependencies.local_run_coordinator,
         id_generator=dependencies.id_generator,
     )
@@ -122,8 +132,9 @@ def modify(
 ) -> ActionCommandResponse:
     _prepare(request, payload=payload, dependencies=dependencies)
     handler = ModifyActionHandler(
-        modify_service=dependencies.modify_action_service(),
         unit_of_work_factory=dependencies.unit_of_work_factory,
+        now_ms=dependencies.clock.now_ms,
+        gateway=_modify_gateway(dependencies),
         local_run_coordinator=dependencies.local_run_coordinator,
     )
     try:
@@ -164,10 +175,8 @@ def reject(
 ) -> ActionCommandResponse:
     _prepare(request, payload=payload, dependencies=dependencies)
     result = RejectActionHandler(
-        reject_service=dependencies.reject_action_service(),
         unit_of_work_factory=dependencies.unit_of_work_factory,
-        event_publisher=dependencies.event_publisher(),
-        clock=dependencies.clock,
+        now_ms=dependencies.clock.now_ms,
     )(
         RejectActionCommand(
             command_id=payload.command_id,
@@ -194,7 +203,8 @@ def prepare_retry(
 ) -> ActionCommandResponse:
     _prepare(request, payload=payload, dependencies=dependencies)
     result = PrepareWriteRetryHandler(
-        prepare_retry_service=dependencies.prepare_retry_service()
+        unit_of_work_factory=dependencies.unit_of_work_factory,
+        now_ms=dependencies.clock.now_ms,
     )(
         PrepareWriteRetryCommand(
             command_id=payload.command_id,
@@ -203,7 +213,7 @@ def prepare_retry(
                 payload={"action_id": action_id, **payload.model_dump()},
             ),
             action_id=action_id,
-            expected_version=payload.expected_action_version,
+            expected_action_version=payload.expected_action_version,
         )
     )
     response.status_code = http_status_for_result_code(result.result_code)
