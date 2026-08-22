@@ -55,16 +55,16 @@ class ToolRoutingSubgraph:
     def build(self) -> Any:
         graph = StateGraph(ToolRoutingState, input_schema=ToolRoutingInputState, output_schema=ParentGraphState)
         graph.add_node("determine_io_resources", self._determine_io_resources_node)
-        graph.add_node("select_tool_if_needed", self._select_tool_if_needed_node)
         graph.add_node("bind_registry_candidates", self._bind_registry_candidates_node)
+        graph.add_node("select_tool_if_needed", self._select_tool_if_needed_node)
         graph.add_node("finalize_route", self._finalize_route_node)
         graph.add_node("prepare_confirmation", self._prepare_confirmation_node)
         graph.add_node("confirm", self._confirm_node)
         graph.add_node("validate_route", self._validate_route_node)
         graph.add_edge(START, "determine_io_resources")
-        graph.add_conditional_edges("determine_io_resources", route_after_determine_io_resources, {"confirm": "prepare_confirmation", "select_tool_if_needed": "select_tool_if_needed"})
-        graph.add_edge("select_tool_if_needed", "bind_registry_candidates")
-        graph.add_edge("bind_registry_candidates", "finalize_route")
+        graph.add_conditional_edges("determine_io_resources", route_after_determine_io_resources, {"confirm": "prepare_confirmation", "bind_registry_candidates": "bind_registry_candidates"})
+        graph.add_edge("bind_registry_candidates", "select_tool_if_needed")
+        graph.add_edge("select_tool_if_needed", "finalize_route")
         graph.add_conditional_edges("finalize_route", route_after_finalize_route, {"confirm": "prepare_confirmation", "validate_route": "validate_route"})
         graph.add_edge("prepare_confirmation", "confirm")
         graph.add_conditional_edges("confirm", route_after_confirmation, {"determine_io_resources": "determine_io_resources", "finalize_route": "finalize_route", "validate_route": "validate_route"})
@@ -74,11 +74,11 @@ class ToolRoutingSubgraph:
     def _determine_io_resources_node(self, state: ToolRoutingState) -> ToolRoutingState:
         return determine_io_resources_node(state, llm_runtime=self._semantic_agent._llm_runtime, tool_catalog=self._tool_catalog, prompt_ref=self._semantic_agent._prompt_ref, revision_prompt_ref=self._semantic_agent._determine_io_resources_revision_prompt_ref)
 
-    def _select_tool_if_needed_node(self, state: ToolRoutingState) -> ToolRoutingState:
-        return select_tool_if_needed_node(state, llm_runtime=self._semantic_agent._llm_runtime, tool_catalog=self._tool_catalog, prompt_ref=self._semantic_agent._select_tool_prompt_ref, revision_prompt_ref=self._semantic_agent._select_tool_revision_prompt_ref)
-
     def _bind_registry_candidates_node(self, state: ToolRoutingState) -> ToolRoutingState:
         return bind_registry_candidates_node(state, tool_catalog=self._tool_catalog, id_factory=self._id_factory)
+
+    def _select_tool_if_needed_node(self, state: ToolRoutingState) -> ToolRoutingState:
+        return select_tool_if_needed_node(state, llm_runtime=self._semantic_agent._llm_runtime, prompt_ref=self._semantic_agent._select_tool_prompt_ref, revision_prompt_ref=self._semantic_agent._select_tool_revision_prompt_ref)
 
     def _finalize_route_node(self, state: ToolRoutingState) -> ToolRoutingState:
         return finalize_route_node(state, tool_catalog=self._tool_catalog, id_factory=self._id_factory, scope_expansion=self._coordinator._scope_expansion)
