@@ -332,6 +332,9 @@ class StartRunHandler:
         if message is not None:
             raise RuntimeError("StartRun receipt recovery found USER Message without Run")
 
+        if receipt.status is not CommandReceiptStatus.RECEIVED:
+            raise RuntimeError("completed StartRun receipt is missing replay response")
+
         if self._reserve_queue_slot is not None and not self._reserve_queue_slot(command.run_id):
             raise QueueBusyError()
 
