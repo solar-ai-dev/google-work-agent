@@ -1,39 +1,64 @@
-"""Structural closure tests for the canonical LLM Port owner package."""
+"""Static structural closure tests for the canonical LLM Port owner package."""
 
 from __future__ import annotations
 
 import ast
 from pathlib import Path
 
-import google_work_agent.ports.llm as llm_ports
+
+REPO_ROOT = Path(__file__).parents[3]
+ROOT_PORTS_INIT = REPO_ROOT / "src" / "google_work_agent" / "ports" / "__init__.py"
+OWNER_INIT = REPO_ROOT / "src" / "google_work_agent" / "ports" / "llm" / "__init__.py"
+OWNER_CONTRACTS = REPO_ROOT / "src" / "google_work_agent" / "ports" / "llm" / "contracts.py"
+LEGACY_LLM_MODULE = REPO_ROOT / "src" / "google_work_agent" / "ports" / "llm.py"
 
 
-ROOT_PORTS_INIT = Path(__file__).parents[3] / "src" / "google_work_agent" / "ports" / "__init__.py"
-LEGACY_LLM_MODULE = Path(__file__).parents[3] / "src" / "google_work_agent" / "ports" / "llm.py"
+def _parse(path: Path) -> ast.Module:
+    return ast.parse(path.read_text(encoding="utf-8"))
 
 
-def _root_llm_requested_symbols() -> set[str]:
-    tree = ast.parse(ROOT_PORTS_INIT.read_text(encoding="utf-8"))
-    for node in tree.body:
-        if isinstance(node, ast.ImportFrom) and node.module == "google_work_agent.ports.llm":
+def _imported_symbols(path: Path, module: str) -> set[str]:
+    for node in _parse(path).body:
+        if isinstance(node, ast.ImportFrom) and node.module == module:
             return {alias.name for alias in node.names}
-    raise AssertionError("root ports barrel does not import the LLM owner package")
+    raise AssertionError(f"{path} does not import {module}")
 
 
-def test_llm_port_exports__root_requested_symbols__all_resolve_from_owner_package() -> None:
-    requested = _root_llm_requested_symbols()
+def _exported_symbols(path: Path) -> set[str]:
+    for node in _parse(path).body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets):
+            continue
+        if not isinstance(node.value, (ast.List, ast.Tuple)):
+            raise AssertionError("__all__ must be a literal list or tuple")
+        values = set()
+        for item in node.value.elts:
+            if not isinstance(item, ast.Constant) or not isinstance(item.value, str):
+                raise AssertionError("__all__ entries must be literal strings")
+            values.add(item.value)
+        return values
+    raise AssertionError(f"{path} does not define __all__")
 
-    assert requested == set(llm_ports.__all__)
-    assert all(hasattr(llm_ports, symbol) for symbol in requested)
+
+def _defined_contract_symbols(path: Path) -> set[str]:
+    return {node.name for node in _parse(path).body if isinstance(node, ast.ClassDef)}
 
 
-def test_llm_port_exports__canonical_definitions__owned_by_llm_package() -> None:
-    requested = _root_llm_requested_symbols()
+def test_llm_port_exports__root_requested_symbols__match_owner_exports() -> None:
+    requested = _imported_symbols(ROOT_PORTS_INIT, "google_work_agent.ports.llm")
+    owner_imports = _imported_symbols(OWNER_INIT, "google_work_agent.ports.llm.contracts")
 
-    assert all(
-        getattr(llm_ports, symbol).__module__ == "google_work_agent.ports.llm.contracts"
-        for symbol in requested
-    )
+    assert "ActualRuntime" in requested
+    assert requested == owner_imports
+    assert requested == _exported_symbols(OWNER_INIT)
+    assert requested <= _exported_symbols(ROOT_PORTS_INIT)
+
+
+def test_llm_port_exports__owner_exports__have_canonical_definitions() -> None:
+    requested = _imported_symbols(ROOT_PORTS_INIT, "google_work_agent.ports.llm")
+
+    assert requested <= _defined_contract_symbols(OWNER_CONTRACTS)
 
 
 def test_llm_port_exports__legacy_shadow_module__removed() -> None:
