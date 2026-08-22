@@ -42,17 +42,34 @@ class ConnectorOperationFailure(RuntimeError):
         return self.detail_code
 
 
-def normalize_google_workspace_failure(error: GoogleWorkspaceGatewayError) -> ConnectorOperationFailure:
+def normalize_google_workspace_failure(
+    error: GoogleWorkspaceGatewayError,
+) -> ConnectorOperationFailure:
     mapping = {
-        GoogleWorkspaceErrorCode.INVALID_ARGUMENT: (ConnectorFailureCode.INVALID_ARGUMENT, False),
+        GoogleWorkspaceErrorCode.INVALID_ARGUMENT: (
+            ConnectorFailureCode.INVALID_ARGUMENT,
+            False,
+        ),
         GoogleWorkspaceErrorCode.AUTH_EXPIRED: (ConnectorFailureCode.AUTH_REQUIRED, False),
-        GoogleWorkspaceErrorCode.PERMISSION_DENIED: (ConnectorFailureCode.PERMISSION_DENIED, False),
+        GoogleWorkspaceErrorCode.PERMISSION_DENIED: (
+            ConnectorFailureCode.PERMISSION_DENIED,
+            False,
+        ),
         GoogleWorkspaceErrorCode.NOT_FOUND: (ConnectorFailureCode.NOT_FOUND, False),
         GoogleWorkspaceErrorCode.RATE_LIMITED: (ConnectorFailureCode.RATE_LIMITED, True),
-        GoogleWorkspaceErrorCode.UPSTREAM_5XX: (ConnectorFailureCode.UPSTREAM_UNAVAILABLE, True),
+        GoogleWorkspaceErrorCode.UPSTREAM_5XX: (
+            ConnectorFailureCode.UPSTREAM_UNAVAILABLE,
+            True,
+        ),
         GoogleWorkspaceErrorCode.TIMEOUT: (ConnectorFailureCode.TIMEOUT, True),
-        GoogleWorkspaceErrorCode.CONNECTION_CLOSED: (ConnectorFailureCode.CONNECTION_UNAVAILABLE, True),
-        GoogleWorkspaceErrorCode.RESPONSE_MALFORMED: (ConnectorFailureCode.MALFORMED_RESPONSE, False),
+        GoogleWorkspaceErrorCode.CONNECTION_CLOSED: (
+            ConnectorFailureCode.CONNECTION_UNAVAILABLE,
+            True,
+        ),
+        GoogleWorkspaceErrorCode.RESPONSE_MALFORMED: (
+            ConnectorFailureCode.MALFORMED_RESPONSE,
+            False,
+        ),
     }
     code, retryable = mapping.get(
         error.code,
@@ -65,7 +82,9 @@ def normalize_google_workspace_failure(error: GoogleWorkspaceGatewayError) -> Co
     )
 
 
-def normalize_attachment_staging_failure(error: AttachmentStagingError) -> ConnectorOperationFailure:
+def normalize_attachment_staging_failure(
+    error: AttachmentStagingError,
+) -> ConnectorOperationFailure:
     return ConnectorOperationFailure(
         code=ConnectorFailureCode.ATTACHMENT_INVALID,
         detail_code=error.safe_code,
