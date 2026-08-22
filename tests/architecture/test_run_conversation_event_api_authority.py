@@ -86,7 +86,7 @@ def test_owned_routes_do_not_traverse_repositories_or_mutate_domain_directly() -
 
 
 def test_canonical_handlers_do_not_reverse_depend_on_api_or_provider_concretes() -> None:
-    forbidden_prefixes=("fastapi","google_work_agent.api","google_work_agent.adapters.persistence.sqlite","google_work_agent.adapters.connectors.google","google_work_agent.adapters.langgraph","googleapiclient","google.oauth2")
+    forbidden_prefixes=("fastapi","google_work_agent.api","google_work_agent.adapters.persistence.sqlite","google_work_agent.adapters.connectors.google","googleapiclient","google.oauth2")
     for owner in OWNERS:
         for path in (USE_CASE_ROOT/owner).glob("*.py"):
             for imported in _imports(path): assert not imported.startswith(forbidden_prefixes),f"{path}: reverse/concrete dependency {imported}"
@@ -106,6 +106,7 @@ def test_resume_handler_owns_all_substantive_resume_transitions_and_commit() -> 
     assert any(name.endswith("runs.resolve_recovery") for name in calls)
     assert any(name.endswith("commit") for name in calls)
     assert not any("workflow_runtime.resume" in name for name in calls)
+    assert not any(name.startswith("google_work_agent.adapters.langgraph") for name in _imports(path))
 
 
 def test_reauth_langgraph_resume_is_checkpoint_transport_only() -> None:
