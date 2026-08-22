@@ -111,7 +111,7 @@ class PreflightWriteActionService:
             or (lambda: CalendarWorkHours(timezone="Asia/Seoul")),
         )
 
-    def __call__(self, *, action_id: str) -> None:
+    def __call__(self, *, action_id: str) -> dict[str, object]:
         with self._unit_of_work_factory() as unit_of_work:
             action = _require_action(unit_of_work, action_id)
             if action.status != ActionStatus.APPROVED.value:
@@ -143,7 +143,7 @@ class PreflightWriteActionService:
                 require_target_ref=True,
                 require_version_token=True,
             )
-            return
+            return _update_source_snapshot(draft)
 
         if action.tool_name == "tasks_update_task":
             task_list_id = _required_argument_string(arguments, "task_list_id")
@@ -157,8 +157,9 @@ class PreflightWriteActionService:
                 require_target_ref=True,
                 require_version_token=True,
             )
-            return
+            return _update_source_snapshot(task)
 
+        update_source_snapshot: dict[str, object] = {}
         if action.tool_name == "calendar_update_event":
             calendar_id = _required_argument_string(arguments, "calendar_id")
             event_id = _required_argument_string(arguments, "event_id")
@@ -171,6 +172,7 @@ class PreflightWriteActionService:
                 require_target_ref=True,
                 require_version_token=True,
             )
+            update_source_snapshot = _update_source_snapshot(event)
 
         if action.tool_name == TASK_CREATE_TOOL:
             try:
@@ -276,7 +278,7 @@ class PreflightWriteActionService:
                 raise PolicyViolationError(
                     "task duplicate result changed; acknowledgement and reapproval are required"
                 )
-            return
+            return {}
 
         if action.tool_name in CALENDAR_CONFLICT_TOOLS:
             try:
@@ -382,7 +384,7 @@ class PreflightWriteActionService:
                 raise PolicyViolationError(
                     "calendar conflict result changed; acknowledgement and reapproval are required"
                 )
-            return
+            return update_source_snapshot
 
         if action.tool_name == "gmail_send":
             draft_id = _required_argument_string(arguments, "draft_id")
@@ -393,7 +395,7 @@ class PreflightWriteActionService:
                 expected_resource_type=ResourceType.GMAIL_DRAFT,
                 expected_parent_id=None,
             )
-            return
+            return {}
         if action.tool_name == "calendar_delete_event":
             calendar_id = _required_argument_string(arguments, "calendar_id")
             event_id = _required_argument_string(arguments, "event_id")
@@ -421,6 +423,20 @@ class PreflightWriteActionService:
                 expected_resource_type=ResourceType.TASK,
                 expected_parent_id=task_list_id,
             )
+        return {}
+
+
+def _update_source_snapshot(snapshot: ResourceSnapshot) -> dict[str, object]:
+    """Project a fresh provider read onto the Approval integrity surface."""
+
+    result: dict[str, object] = {
+        "resource_type": snapshot.resource_type.value,
+        "resource_id": snapshot.resource_id,
+        "version": snapshot.version,
+    }
+    if snapshot.parent_id is not None:
+        result["parent_id"] = snapshot.parent_id
+    return result
 
 
 def validate_preflight_target(

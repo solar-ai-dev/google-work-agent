@@ -156,6 +156,18 @@ class QueryService:
         self._connection_factory = connection_factory
         self._runtime_status_provider = runtime_status_provider
 
+    @property
+    def database_path(self) -> Path:
+        """Database location exposed for canonical read-use-case composition."""
+
+        return self._database_path
+
+    @property
+    def connection_factory(self) -> QueryConnectionFactory:
+        """Read connection factory exposed without private-field traversal."""
+
+        return self._connection_factory
+
     def list_conversations(
         self,
         *,

@@ -66,6 +66,15 @@ def test_gmail_send_expected_matches_fresh_sent_message_lookup_surface() -> None
     ) == {"resource_type": "gmail_message"}
 
 
+def test_gmail_draft_actual_normalizes_recipient_list_to_metadata_header() -> None:
+    actual = normalize_actual_verification_projection(
+        tool_name="gmail_create_draft",
+        actual={"payload": {"to": ["a@example.com", "b@example.com"]}},
+    )
+
+    assert actual == {"payload": {"to": "a@example.com, b@example.com"}}
+
+
 def test_calendar_expected_omits_fields_current_verification_snapshot_cannot_observe() -> None:
     expected = build_expected_verification_projection(
         tool_name="calendar_create_event",

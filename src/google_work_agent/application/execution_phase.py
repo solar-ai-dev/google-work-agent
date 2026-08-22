@@ -172,7 +172,7 @@ class WriteExecutionPhaseCoordinator:
 
     def execute(self, request: WriteExecutionPhaseRequest) -> WriteExecutionPhaseResult:
         try:
-            self._preflight_write(action_id=request.action_id)
+            source_snapshot = self._preflight_write(action_id=request.action_id) or {}
         except (GoogleWorkspaceGatewayError, LookupError, PolicyViolationError) as error:
             if isinstance(error, GoogleWorkspaceGatewayError) and self._is_auth_error(error):
                 reauth = self._require_reauth(request=request, error=error, kind="preflight_reauth")
@@ -202,7 +202,7 @@ class WriteExecutionPhaseCoordinator:
                 request_hash=self._request_hash({"kind": "claim", "action_id": request.action_id}),
                 action_id=request.action_id,
                 expected_version=request.action_version,
-                source_snapshot={},
+                source_snapshot=source_snapshot,
                 attempt_id=self._id_factory(),
                 nonce=self._id_factory(),
             )

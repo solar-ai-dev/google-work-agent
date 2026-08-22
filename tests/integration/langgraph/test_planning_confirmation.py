@@ -23,6 +23,7 @@ removed as no-longer-reachable production scenarios; see
 
 from __future__ import annotations
 
+from hashlib import sha256
 from typing import Any
 
 from tests.integration.langgraph.test_runtime import (
@@ -56,6 +57,12 @@ from tests.integration.langgraph.test_runtime import (
 )
 
 from google_work_agent.ports import LLMErrorCode, LLMInvocationError
+from google_work_agent.application.use_cases.run.resume_run import (
+    ResumeRunCommand,
+    ResumeRunHandler,
+    ResumeRunResult,
+)
+from google_work_agent.domain import ResultCode
 
 
 def _answer_output(
@@ -135,6 +142,64 @@ def _queue_more(llm_runtime: _QueuedLLMRuntime, payloads: list[object]) -> None:
     ``RunScopedEvidenceStore`` (D1, out of C5's scope), same constraint
     already documented for Work Analysis in C4."""
     llm_runtime._queued.extend(_llm_result(item) for item in payloads)  # noqa: SLF001
+
+
+def _resume_confirmation(
+    *,
+    runtime: LangGraphWorkflowRuntime,
+    database_path: Path,
+    resume_payload: dict[str, object],
+    command_id: str,
+) -> tuple[ResumeRunResult, object | None]:
+    """Exercise the canonical Application-owned Domain transition before runtime resume."""
+    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+        run = unit_of_work.runs.get_by_id("run-1")
+        assert run is not None
+        expected_version = run.version
+
+    runtime_results: list[object] = []
+
+    def enqueue_resume(**queued: object) -> None:
+        runtime_results.append(
+            runtime.resume(
+                WorkflowResumeRequest(
+                    run_id=str(queued["run_id"]),
+                    workflow_key="thread-1",
+                    resume_kind=str(queued["resume_kind"]),
+                    resume_payload=dict(queued["resume_payload"]),  # type: ignore[arg-type]
+                    correlation=WorkflowCorrelationContext(
+                        request_id=str(queued["request_id"]),
+                        command_id=str(queued["command_id"]),
+                        api_contract_version="1",
+                    ),
+                )
+            )
+        )
+
+    handler = ResumeRunHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=FakeClock(2000).now_ms,
+        enqueue_resume=enqueue_resume,
+        resolve_resume_authority=lambda **kwargs: runtime.resolve_resume_authority(
+            run_id=str(kwargs["run_id"]),
+            workflow_key="thread-1",
+            resume_kind=str(kwargs["resume_kind"]),
+        ),
+    )
+    application_result = handler(
+        ResumeRunCommand(
+            command_id=command_id,
+            request_hash=sha256(command_id.encode("utf-8")).hexdigest(),
+            run_id="run-1",
+            expected_run_version=expected_version,
+            resume_kind="CONFIRMATION",
+            api_contract_version="1",
+        ),
+        request_id=f"request-{command_id}",
+        resume_payload=resume_payload,
+    )
+    runtime_result = runtime_results[0] if runtime_results else None
+    return application_result, runtime_result
 
 
 def _nested_planning_task(runtime: LangGraphWorkflowRuntime) -> Any:
@@ -303,23 +368,20 @@ def test_planning_answer_resume_does_not_re_execute_upstream(tmp_path: Path) -> 
         # dispatched, so the run completes exactly at the 8-call cap rather
         # than a 9th (review) call being denied.
         _queue_more(llm_runtime, [_answer_output("ANSWER_ONLY")])
-        result = runtime.resume(
-            WorkflowResumeRequest(
-                run_id="run-1",
-                workflow_key="thread-1",
-                resume_kind="CONFIRMATION",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option_ids": [],
-                    "free_text": "Use tomorrow as the due date.",
-                },
-                correlation=WorkflowCorrelationContext(
-                    request_id="request-2", command_id="command-2", api_contract_version="1"
-                ),
-            )
+        application_result, result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "Use tomorrow as the due date.",
+            },
         )
+        assert application_result.applied
+        assert result is not None
         assert result.outcome is WorkflowOutcome.COMPLETED
 
         # T4: zero provider reads happened on resume.
@@ -408,23 +470,20 @@ def test_planning_resume_applies_confirmation_response_within_prompt_boundary(
         # the full accounting) -- the run completes rather than hitting the
         # budget cap.
         _queue_more(llm_runtime, [_answer_output("ANSWER_ONLY")])
-        result = runtime.resume(
-            WorkflowResumeRequest(
-                run_id="run-1",
-                workflow_key="thread-1",
-                resume_kind="CONFIRMATION",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option_ids": [],
-                    "free_text": "Use tomorrow as the due date.",
-                },
-                correlation=WorkflowCorrelationContext(
-                    request_id="request-2", command_id="command-2", api_contract_version="1"
-                ),
-            )
+        application_result, result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "Use tomorrow as the due date.",
+            },
         )
+        assert application_result.applied
+        assert result is not None
         assert result.outcome is WorkflowOutcome.COMPLETED
 
         calls_during_resume = llm_runtime.calls[calls_before_resume:]
@@ -487,27 +546,25 @@ def test_planning_resumes_second_consecutive_confirmation_round_via_same_nested_
         _queue_more(
             llm_runtime, [_answer_output("NEEDS_CONFIRMATION", confirmation=_confirmation())]
         )
-        second = runtime.resume(
-            WorkflowResumeRequest(
-                run_id="run-1",
-                workflow_key="thread-1",
-                resume_kind="CONFIRMATION",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": round1_interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option_ids": [],
-                    "free_text": "round-1 answer, still ambiguous apparently.",
-                },
-                correlation=WorkflowCorrelationContext(
-                    request_id="request-2", command_id="command-2", api_contract_version="1"
-                ),
-            )
+        application_result, second = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": round1_interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "round-1 answer, still ambiguous apparently.",
+            },
         )
+        assert application_result.applied
+        assert second is not None
         assert second.outcome is WorkflowOutcome.ACCEPTED
 
         round2_task = _nested_planning_task(runtime)
         assert round2_task.state.next == ("finalize",)
+        assert round2_task.state.values["retry_budget"]["llm_calls_used"] == 8
         round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
         assert second.payload["user_interrupt"]["origin_target"] == "planning.answer_only"
         assert round2_interrupt_id != round1_interrupt_id
@@ -519,22 +576,17 @@ def test_planning_resumes_second_consecutive_confirmation_round_via_same_nested_
         calls_before_round3 = len(llm_runtime.calls)
         _queue_more(llm_runtime, [_answer_output("ANSWER_ONLY")])
         with pytest.raises(LLMInvocationError) as excinfo:
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": round2_interrupt_id,
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "round-2 answer, resolves it.",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-3", command_id="command-3", api_contract_version="1"
-                    ),
-                )
+            _resume_confirmation(
+                runtime=runtime,
+                database_path=database_path,
+                command_id="command-3",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": round2_interrupt_id,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option_ids": [],
+                    "free_text": "round-2 answer, resolves it.",
+                },
             )
         assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
         assert llm_runtime.calls[calls_before_round3:] == []
@@ -570,24 +622,21 @@ def test_planning_resume_rejects_wrong_interrupt_id(tmp_path: Path) -> None:
     )
     calls_before_resume = len(llm_runtime.calls)
     try:
-        with pytest.raises(ValueError, match="interrupt_id"):
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": "definitely-the-wrong-interrupt-id",
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "irrelevant",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
-            )
+        application_result, runtime_result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": "definitely-the-wrong-interrupt-id",
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "irrelevant",
+            },
+        )
+        assert not application_result.applied
+        assert application_result.result_code == ResultCode.STATE_CONFLICT.value
+        assert runtime_result is None
         assert len(llm_runtime.calls) == calls_before_resume
     finally:
         runtime.close()
@@ -618,22 +667,17 @@ def test_planning_resume_rejects_option_id_outside_allowed_scope(tmp_path: Path)
 
     try:
         with pytest.raises(ValueError, match="option"):
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "OPTION_SELECTION",
-                        "selected_option_ids": ["option-not-offered"],
-                        "free_text": None,
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
+            _resume_confirmation(
+                runtime=runtime,
+                database_path=database_path,
+                command_id="command-2",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": interrupt_id,
+                    "response_kind": "OPTION_SELECTION",
+                    "selected_option_ids": ["option-not-offered"],
+                    "free_text": None,
+                },
             )
     finally:
         runtime.close()

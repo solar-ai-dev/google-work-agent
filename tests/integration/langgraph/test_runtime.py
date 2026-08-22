@@ -72,6 +72,9 @@ from google_work_agent.application.orchestration.work_analysis import (
     validate_work_analysis_result_v1,
 )
 from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
+from google_work_agent.application.orchestration.provider_dispatch_budget import (
+    account_provider_dispatch,
+)
 from google_work_agent.application.orchestration.tool_routing import coarse_resource_category
 from google_work_agent.domain import ConnectorToolCatalog, build_p0_tool_registry
 from google_work_agent.ports import (
@@ -212,6 +215,7 @@ class _QueuedLLMRuntime:
     def _invoke(self, **kwargs: object) -> StructuredLLMResult:
         if self._before_invoke is not None:
             self._before_invoke()
+        account_provider_dispatch()
         self.calls.append(dict(kwargs))
         prompt_ref = kwargs.get("prompt_ref")
         if getattr(prompt_ref, "prompt_id", None) == "tool_route.determine_io_resources":

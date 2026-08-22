@@ -197,8 +197,18 @@ def test_argument_revision_uses_only_revision_envelope() -> None:
     assert set(prompt_input) == {"base_projection", "candidate_output", "failure_record"}
     failure_record = prompt_input["failure_record"]
     assert isinstance(failure_record, dict)
-    assert failure_record["affected_fields"] == ["$.arguments.payload.title"]
-    assert failure_record["allowed_change_scope"] == ["$.arguments", "$.evidence_refs"]
+    assert failure_record["affected_field_paths"] == ["$.arguments.payload.title"]
+    assert set(failure_record) == {
+        "schema_version",
+        "failure_id",
+        "failure_reason_code",
+        "failure_origin",
+        "detected_by",
+        "runtime_disposition",
+        "experiment_disposition",
+        "affected_field_paths",
+        "evidence_refs",
+    }
 
 
 def test_compat_plan_copies_route_authority_and_builds_expected_deterministically() -> None:

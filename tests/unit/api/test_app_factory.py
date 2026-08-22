@@ -1,4 +1,6 @@
 from dataclasses import dataclass, replace
+from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClock
@@ -12,6 +14,10 @@ from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.queries import ActionSnapshot, RunSnapshot
 from google_work_agent.application.start_run import ResumeRunResponse
+from google_work_agent.application.use_cases.recovery.resolve_mismatch_recovery import (
+    ResolveMismatchRecoveryResult,
+)
+from google_work_agent.application.use_cases.run.request_cancel import RequestCancelResult
 from google_work_agent.application.write_actions import WriteRunResponse
 from google_work_agent.ports import (
     AccessDecision,
@@ -39,6 +45,9 @@ class _CoordinatorStub:
 
     def enqueue_resume(self, **kwargs: object) -> None:
         self.resume_calls.append(dict(kwargs))
+
+    def request_cancel(self, **kwargs: object) -> None:
+        del kwargs
 
 
 class _AllowGuard:
@@ -70,6 +79,9 @@ class _DenyGuard:
 
 @dataclass
 class _QueryStub:
+    database_path = Path("unused-test-query.db")
+    connection_factory = staticmethod(lambda _path: None)
+
     def get_runtime_summary(self) -> RuntimeSummary:
         return RuntimeSummary(
             google="NOT_CONFIGURED",
@@ -216,7 +228,50 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
         resume_run_service=resume_service,
         resolve_recovery_service=recovery_service,
     )
-    with TestClient(create_app(container)) as client:
+
+    def resume_handler(
+        command: object,
+        *,
+        request_id: str,
+        resume_payload: dict[str, object] | None = None,
+    ) -> ResumeRunResponse:
+        result = resume_service(command)
+        coordinator.enqueue_resume(
+            run_id="run-1",
+            request_id=request_id,
+            command_id="confirm-1",
+            resume_kind="CONFIRMATION",
+            resume_payload=resume_payload or {},
+        )
+        return result
+
+    def recovery_handler(
+        command: object, *, request_id: str
+    ) -> ResolveMismatchRecoveryResult:
+        del request_id
+        legacy = recovery_service(command)
+        return ResolveMismatchRecoveryResult(
+            applied=legacy.applied,
+            result_code=legacy.result_code,
+            run_id=legacy.run_id,
+            current_status=legacy.run_status,
+            current_version=legacy.run_version,
+            conflict_detail=legacy.conflict_detail,
+            result_kind=legacy.result_kind,
+            plan_id=legacy.plan_id,
+        )
+
+    with (
+        patch(
+            "google_work_agent.api.routes.runs.ResumeRunHandler",
+            return_value=resume_handler,
+        ),
+        patch(
+            "google_work_agent.api.routes.runs.ResolveMismatchRecoveryHandler",
+            return_value=recovery_handler,
+        ),
+        TestClient(create_app(container)) as client,
+    ):
         confirmed = client.post(
             "/api/v1/runs/run-1/confirm",
             json={
@@ -269,7 +324,27 @@ def test_cancel_route_returns_partial_result_projection() -> None:
         )
 
     container = replace(container, cancel_run_service=cancel_service)
-    with TestClient(create_app(container)) as client:
+
+    def cancel_handler(command: object, request_id: str) -> RequestCancelResult:
+        del request_id
+        legacy = cancel_service(command)
+        return RequestCancelResult(
+            applied=legacy.applied,
+            result_code=legacy.result_code,
+            current_status=legacy.run_status,
+            current_version=legacy.run_version,
+            next_allowed_commands=(),
+            conflict_detail=legacy.conflict_detail,
+            result_kind=legacy.result_kind,
+        )
+
+    with (
+        patch(
+            "google_work_agent.api.routes.runs.RequestCancelHandler",
+            return_value=cancel_handler,
+        ),
+        TestClient(create_app(container)) as client,
+    ):
         response = client.post(
             "/api/v1/runs/run-1/cancel",
             json={
@@ -324,7 +399,13 @@ def test_run_snapshot_rest_projection_includes_structured_action_risk() -> None:
             return snapshot if run_id == "run-1" else None
 
     container = replace(container, query_service=_RunQueryStub())
-    with TestClient(create_app(container)) as client:
+    with (
+        patch(
+            "google_work_agent.api.routes.runs.GetRunSnapshotHandler",
+            return_value=lambda query: snapshot if query.run_id == "run-1" else None,
+        ),
+        TestClient(create_app(container)) as client,
+    ):
         response = client.get("/api/v1/runs/run-1")
 
     assert response.status_code == 200

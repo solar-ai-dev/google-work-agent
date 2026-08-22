@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 from re import fullmatch
 
+from google_work_agent.application.projections import build_snapshot_required_event
 from google_work_agent.application.write_persistence import emit_command_rejected_hash_mismatch
 from google_work_agent.domain import ActionStatus, EffectType, ResultCode, next_allowed_action_commands
 from google_work_agent.domain.action.transitions.reject_action import transition_reject_action
@@ -16,6 +17,7 @@ from google_work_agent.ports import (
     CommandReceiptRecord,
     CommandReceiptStatus,
     PlanStatus,
+    RunEventPublisher,
     TraceEventRecord,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -45,9 +47,16 @@ class RejectActionResult:
 class RejectActionHandler:
     """Persist rejection, revoke approval authority, block dependents, and terminalize parents."""
 
-    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]) -> None:
+    def __init__(
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        event_publisher: RunEventPublisher | None = None,
+    ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._event_publisher = event_publisher
 
     def __call__(self, command: RejectActionCommand) -> RejectActionResult:
         if command.reason_code is not None and fullmatch(r"[A-Z][A-Z0-9_]{0,127}", command.reason_code) is None:
@@ -146,7 +155,16 @@ class RejectActionHandler:
                     )
                     if not completed.applied:
                         raise RuntimeError(f"reject terminal finalization failed: {completed.result_code.value}")
-            return self._finish(unit_of_work, command, response, now_ms)
+            response = self._finish(unit_of_work, command, response, now_ms)
+            if response.applied and self._event_publisher is not None:
+                self._event_publisher.publish(
+                    build_snapshot_required_event(
+                        run_id=run.id,
+                        occurred_at_ms=now_ms,
+                        reason="ACTION_REJECTED",
+                    )
+                )
+            return response
 
     def _resolve_existing_receipt(self, unit_of_work: UnitOfWork, receipt: CommandReceiptRecord, command: RejectActionCommand) -> RejectActionResult:
         if receipt.request_hash != command.request_hash:

@@ -5,6 +5,7 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.sel
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
 from google_work_agent.application.agents.tool_routing.select_tool_if_needed import select_tool_if_needed
 from google_work_agent.application.llm import StructuredLLMRuntime
+from google_work_agent.application.orchestration.contracts import consume_llm_provider_calls
 from google_work_agent.ports import PromptReference
 
 
@@ -29,5 +30,6 @@ def select_tool_if_needed_node(state: ToolRoutingState, *, llm_runtime: Structur
             prompt_ref=prompt_ref,
             revision_prompt_ref=revision_prompt_ref,
         )
+        retry_budget = consume_llm_provider_calls(retry_budget)
         selected[(bound.resource_type, bound.effect)] = tool_id
     return {"tr_selected_tools": selected, "tr_retry_budget": retry_budget}

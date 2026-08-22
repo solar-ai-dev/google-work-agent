@@ -136,6 +136,12 @@ def normalize_actual_verification_projection(
     if not isinstance(payload_value, dict):
         return normalized
     payload = cast(dict[str, object], payload_value)
+    if tool_name in {"gmail_create_draft", "gmail_update_draft"}:
+        recipients = payload.get("to")
+        if isinstance(recipients, list) and all(
+            isinstance(item, str) for item in recipients
+        ):
+            payload["to"] = ", ".join(cast(list[str], recipients))
     if tool_name in {"tasks_create_task", "tasks_update_task"}:
         due = payload.get("due")
         if isinstance(due, str) and len(due) >= 10:

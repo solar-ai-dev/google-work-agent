@@ -34,11 +34,13 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
     WorkAnalysisLocalState,
 )
 from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
-    PlanningSubgraph,
     _frozen_output_routes,
     _frozen_read_tool_ids,
     _real_llm_results,
     planning_mode_from_request_intent,
+)
+from google_work_agent.adapters.langgraph.subgraphs.planning.runtime_active_graph import (
+    RuntimeActivePlanningSubgraph,
 )
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis_workflow import WorkAnalysisSubgraph
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -137,7 +139,7 @@ class CanonicalOptionalWorkAnalysisSubgraph(WorkAnalysisSubgraph):
         return self._agent.build_without_retrieval(llm_result), llm_result
 
 
-class CanonicalOptionalPlanningSubgraph(PlanningSubgraph):
+class CanonicalOptionalPlanningSubgraph(RuntimeActivePlanningSubgraph):
     """Planning that accepts Canonical optional Retrieval/Work Analysis inputs."""
 
     def _init_node(self, state: PlanningLocalState) -> PlanningLocalState:
@@ -203,13 +205,6 @@ class CanonicalOptionalPlanningSubgraph(PlanningSubgraph):
         confirmation_response: ConfirmationResponseV1 | None,
     ) -> tuple[AnswerDraftV1 | ActionPlanDraftV1, list[StructuredLLMResult]]:
         analysis_result = state.get("analysis_result")
-        retrieval_result = state.get("retrieval_result")
-        if analysis_result is not None and retrieval_result is not None:
-            return super()._run_plan_attempt(
-                state,
-                mode=mode,
-                confirmation_response=confirmation_response,
-            )
         if not isinstance(self._agent, CanonicalOptionalInputPlanningAgent):
             raise TypeError("optional Planning requires canonical optional-input agent")
 
@@ -291,10 +286,6 @@ class CanonicalOptionalPlanningSubgraph(PlanningSubgraph):
         result: AnswerDraftV1 | ActionPlanDraftV1,
     ) -> PlanningLocalState:
         analysis_result = state.get("analysis_result")
-        retrieval_result = state.get("retrieval_result")
-        if analysis_result is not None and retrieval_result is not None:
-            return super()._finalize_resolved(state, result=result)
-
         evidence_drafts = self._evidence_drafts(state)
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
         mode = state[PLANNING_MODE_KEY]

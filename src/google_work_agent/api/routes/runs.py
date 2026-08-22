@@ -70,12 +70,11 @@ def start_run(
         SelectedResourceRef(**item) for item in command_payload.pop("selected_resources")
     )
     command_payload["selected_resource_ids"] = tuple(command_payload["selected_resource_ids"])
-    legacy_start = dependencies.start_run_service()
     handler = StartRunHandler(
-        unit_of_work_factory=legacy_start._unit_of_work_factory,
-        now_ms=legacy_start._now_ms,
-        reserve_queue_slot=legacy_start._reserve_queue_slot,
-        release_queue_slot=legacy_start._release_queue_slot,
+        unit_of_work_factory=dependencies.unit_of_work_factory,
+        now_ms=dependencies.clock.now_ms,
+        reserve_queue_slot=dependencies.reserve_queue_slot,
+        release_queue_slot=dependencies.release_queue_slot,
     )
     try:
         result = handler(StartRunCommand(**command_payload, selected_resources=selected_resources))
@@ -111,9 +110,11 @@ def get_run_snapshot(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    snapshot = GetRunSnapshotHandler.from_legacy_query_supplier(dependencies.query_service)(
-        GetRunSnapshotQuery(run_id=run_id)
-    )
+    query_service = dependencies.query_service()
+    snapshot = GetRunSnapshotHandler(
+        database_path=query_service.database_path,
+        connection_factory=query_service.connection_factory,
+    )(GetRunSnapshotQuery(run_id=run_id))
     if snapshot is None:
         raise ApiRequestError(
             error_code="NOT_FOUND",
@@ -139,9 +140,11 @@ def get_run_context(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    context = GetExecutionContextHandler.from_legacy_query_supplier(dependencies.query_service)(
-        GetExecutionContextQuery(run_id=run_id)
-    )
+    query_service = dependencies.query_service()
+    context = GetExecutionContextHandler(
+        database_path=query_service.database_path,
+        connection_factory=query_service.connection_factory,
+    )(GetExecutionContextQuery(run_id=run_id))
     return RunContextResponse(
         context=None if context is None else asdict(context),
         api_contract_version=dependencies.api_contract_version,
@@ -163,8 +166,10 @@ def cancel_run(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
-    result = RequestCancelHandler.from_legacy_service_supplier(
-        dependencies.cancel_run_service, dependencies.local_run_coordinator
+    result = RequestCancelHandler(
+        unit_of_work_factory=dependencies.unit_of_work_factory,
+        now_ms=dependencies.clock.now_ms,
+        request_cancel_workflow=dependencies.local_run_coordinator.request_cancel,
     )(
         RequestCancelCommand(
             run_id=run_id,
@@ -203,9 +208,13 @@ def resume_run(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
-    result = ResumeRunHandler.from_legacy_service_supplier(
-        dependencies.resume_run_service, dependencies.local_run_coordinator
-    )(
+    handler = ResumeRunHandler(
+        unit_of_work_factory=dependencies.unit_of_work_factory,
+        now_ms=dependencies.clock.now_ms,
+        enqueue_resume=dependencies.local_run_coordinator.enqueue_resume,
+        resolve_resume_authority=dependencies.resolve_resume_authority,
+    )
+    result = handler(
         ResumeRunCommand(
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
@@ -237,9 +246,13 @@ def confirm_run(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
-    result = ResumeRunHandler.from_legacy_service_supplier(
-        dependencies.resume_run_service, dependencies.local_run_coordinator
-    )(
+    handler = ResumeRunHandler(
+        unit_of_work_factory=dependencies.unit_of_work_factory,
+        now_ms=dependencies.clock.now_ms,
+        enqueue_resume=dependencies.local_run_coordinator.enqueue_resume,
+        resolve_resume_authority=dependencies.resolve_resume_authority,
+    )
+    result = handler(
         ResumeRunCommand(
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
@@ -279,10 +292,11 @@ def resolve_recovery(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
-    handler = ResolveMismatchRecoveryHandler.from_legacy_service_supplier(
-        dependencies.resolve_recovery_service,
-        id_generator=dependencies.id_generator,
-        coordinator=dependencies.local_run_coordinator,
+    handler = ResolveMismatchRecoveryHandler(
+        unit_of_work_factory=dependencies.unit_of_work_factory,
+        now_ms=dependencies.clock.now_ms,
+        next_id=dependencies.id_generator.next_id,
+        enqueue_resume=dependencies.local_run_coordinator.enqueue_resume,
     )
     try:
         result = handler(

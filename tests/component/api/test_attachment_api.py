@@ -268,6 +268,6 @@ def test_download_attachment_reaches_real_google_dispatch_gate(tmp_path: Path) -
             )
 
             assert response.status_code == 401
-            assert response.json()["detail_code"] == "GOOGLE_AUTH_EXPIRED"
+            assert response.json()["detail_code"] == "CONNECTOR_AUTH_EXPIRED"
     finally:
         transport.close()

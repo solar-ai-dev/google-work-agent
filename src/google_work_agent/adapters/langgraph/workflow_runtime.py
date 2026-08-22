@@ -44,7 +44,9 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
     PlanningSubgraph,
     planning_mode_from_request_intent,
 )
-from google_work_agent.adapters.langgraph.subgraphs.review.graph import ReviewSubgraph
+from google_work_agent.adapters.langgraph.subgraphs.review.runtime_active_graph import (
+    RuntimeActiveReviewSubgraph,
+)
 from google_work_agent.adapters.langgraph.subgraphs.single_workflow import (
     SingleWorkflowSubgraph,
 )
@@ -597,7 +599,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             confirm_inline=self._confirm_planning_inline,
             argument_orchestrator=self._planning_argument_orchestrator,
         ).build()
-        self._review_subgraph = ReviewSubgraph(
+        self._review_subgraph = RuntimeActiveReviewSubgraph(
             agent=self._review,
             id_factory=id_factory,
             graph_profile=self._graph_profile,

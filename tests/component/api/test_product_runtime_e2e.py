@@ -25,8 +25,6 @@ from tests.integration.langgraph.test_runtime import (
 )
 from tests.support.fakes import DeterministicUUID, FakeClock, FakeGoogleGateway
 from tests.support.fixtures import ProductFixtureSnapshotLoader
-from tests.unit.application.workflows.test_api_acquisition import _plan
-
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
@@ -292,21 +290,18 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
     )
     if context_family == "CALENDAR":
         context_payloads = [
-            [_plan("CALENDAR", {"calendar_id": "calendar-primary"})],
             _calendar_selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _calendar_analysis_output(),
         ]
     elif context_family == "GMAIL":
         context_payloads = [
-            [_plan("GMAIL", {})],
             _gmail_selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _gmail_analysis_output(),
         ]
     else:
         context_payloads = [
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),

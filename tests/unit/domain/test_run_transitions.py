@@ -15,11 +15,6 @@ from google_work_agent.domain import (
     (
         (RunStatus.CREATED, RunCommand.START_ANALYSIS, RunStatus.ANALYZING),
         (RunStatus.ANALYZING, RunCommand.BEGIN_RETRIEVAL, RunStatus.RETRIEVING),
-        (
-            RunStatus.WAITING_CONFIRMATION,
-            RunCommand.BEGIN_RETRIEVAL,
-            RunStatus.RETRIEVING,
-        ),
         (RunStatus.RETRIEVING, RunCommand.BEGIN_PLANNING, RunStatus.PLANNING),
         (
             RunStatus.ANALYZING,
@@ -38,6 +33,7 @@ from google_work_agent.domain import (
         ),
         (RunStatus.ANALYZING, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
         (RunStatus.RETRIEVING, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
+        (RunStatus.WAITING_CONFIRMATION, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
         (RunStatus.PLANNING, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
         (RunStatus.WAITING_APPROVAL, RunCommand.BLOCK_RUN, RunStatus.BLOCKED),
         (RunStatus.WAITING_APPROVAL, RunCommand.REPLAN, RunStatus.PLANNING),
@@ -157,6 +153,7 @@ def test_run_version_conflict_is_checked_before_transition() -> None:
     assert result.current_version == 3
     assert result.next_allowed_commands == (
         RunCommand.START_ANALYSIS,
+        RunCommand.BLOCK_RUN,
         RunCommand.REQUEST_CANCEL,
         RunCommand.REQUIRE_RECOVERY,
     )
@@ -196,7 +193,6 @@ def test_terminal_run_status_blocks_commands(terminal_status: RunStatus) -> None
 @pytest.mark.parametrize(
     ("status", "command"),
     (
-        (RunStatus.WAITING_CONFIRMATION, RunCommand.BLOCK_RUN),
         (RunStatus.EXECUTING, RunCommand.BLOCK_RUN),
         (RunStatus.VERIFYING, RunCommand.BLOCK_RUN),
         (RunStatus.EXECUTING, RunCommand.FAIL_RUN),
@@ -229,6 +225,7 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
             RunStatus.CREATED,
             (
                 RunCommand.START_ANALYSIS,
+                RunCommand.BLOCK_RUN,
                 RunCommand.REQUEST_CANCEL,
                 RunCommand.REQUIRE_RECOVERY,
             ),
@@ -262,8 +259,8 @@ def test_cancel_requested_self_transition_is_blocked() -> None:
         (
             RunStatus.WAITING_CONFIRMATION,
             (
-                RunCommand.BEGIN_RETRIEVAL,
                 RunCommand.RESUME_CONFIRMATION,
+                RunCommand.BLOCK_RUN,
                 RunCommand.REQUEST_CANCEL,
                 RunCommand.REQUIRE_RECOVERY,
             ),

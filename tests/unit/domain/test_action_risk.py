@@ -8,6 +8,7 @@ def _draft(action_id: str) -> WriteActionDraft:
     return WriteActionDraft(
         action_id=action_id,
         position=1,
+        connector_id="google_workspace",
         tool_name="tasks_create_task",
         arguments={},
         expected={},

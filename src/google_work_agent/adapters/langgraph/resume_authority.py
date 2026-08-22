@@ -33,22 +33,17 @@ class LangGraphWorkflowRuntime(_CanonicalFreshnessRuntime):
 
     def resolve_resume_authority(self, *, run_id: str, workflow_key: str, resume_kind: str) -> dict[str, object] | None:
         """Read checkpoint authority without mutating Domain or workflow state."""
-        snapshot = self._graph.get_state(self._config_for_thread(workflow_key))
+        snapshot = self._graph.get_state(
+            self._config_for_thread(workflow_key),
+            subgraphs=True,
+        )
         if not snapshot.values and not snapshot.next:
             return None
         state = cast(GraphState, snapshot.values)
         if resume_kind == "CONFIRMATION":
-            prompt_context = state.get("prompt_context")
-            if isinstance(prompt_context, Mapping):
-                meta = prompt_context.get("confirmation_interrupt")
-                if isinstance(meta, Mapping):
-                    stored = meta.get("resume_status")
-                    interrupt_id = meta.get("interrupt_id")
-                    if isinstance(stored, str) and isinstance(interrupt_id, str):
-                        try:
-                            return {"resume_status": RunStatus(stored).value, "interrupt_id": interrupt_id}
-                        except ValueError:
-                            return None
+            # A nested owner can publish a later confirmation round while the
+            # outer state still carries the prior round's metadata. The live
+            # pending interrupt is therefore the canonical resume authority.
             for task in snapshot.tasks:
                 for pending in getattr(task, "interrupts", ()):
                     value = getattr(pending, "value", None)
@@ -61,6 +56,17 @@ class LangGraphWorkflowRuntime(_CanonicalFreshnessRuntime):
                             "resume_status": confirmation_resume_status(confirmation_owner(origin_target)).value,
                             "interrupt_id": interrupt_id,
                         }
+            prompt_context = state.get("prompt_context")
+            if isinstance(prompt_context, Mapping):
+                meta = prompt_context.get("confirmation_interrupt")
+                if isinstance(meta, Mapping):
+                    stored = meta.get("resume_status")
+                    interrupt_id = meta.get("interrupt_id")
+                    if isinstance(stored, str) and isinstance(interrupt_id, str):
+                        try:
+                            return {"resume_status": RunStatus(stored).value, "interrupt_id": interrupt_id}
+                        except ValueError:
+                            return None
             return None
         if resume_kind == "REAUTH_COMPLETED":
             status = _reauth_resume_status(state)
@@ -214,6 +220,11 @@ class LangGraphWorkflowRuntime(_CanonicalFreshnessRuntime):
             "run_id": request.run_id,
             **dict(raw_interrupt),
         })
+        if pretransitioned:
+            # The Application transition authorizes exactly the pending
+            # interrupt being resumed. A later confirmation round created in
+            # this same graph invocation must request its own Domain pause.
+            self._handler_confirmation_resumes.discard(request.run_id)
         if not isinstance(raw_resume, Mapping):
             raise ValueError("confirmation resume payload must be an object")
         if raw_resume.get("interrupt_id") != interrupt_id:

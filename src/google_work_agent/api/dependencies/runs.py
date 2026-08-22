@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Annotated, cast
 
@@ -11,43 +11,55 @@ from fastapi import Depends, Request
 from google_work_agent.api.dependencies.request_context import get_api_container
 from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.queries import QueryService
-from google_work_agent.application.start_run import ResumeRunService, StartRunService
-from google_work_agent.application.write_actions import (
-    RequestRunCancellationService,
-    ResolveMismatchRecoveryService,
-)
-from google_work_agent.ports import IdGenerator
+from google_work_agent.ports import Clock, IdGenerator, UnitOfWork, WorkflowRuntime
 
 
 @dataclass(frozen=True, slots=True)
 class RunRouteDependencies:
     api_contract_version: str
     query_service: Callable[[], QueryService]
-    start_run_service: Callable[[], StartRunService]
-    cancel_run_service: Callable[[], RequestRunCancellationService]
-    resume_run_service: Callable[[], ResumeRunService]
-    resolve_recovery_service: Callable[[], ResolveMismatchRecoveryService]
+    unit_of_work_factory: Callable[[], UnitOfWork]
+    reserve_queue_slot: Callable[[str], bool] | None
+    release_queue_slot: Callable[[str], None] | None
     local_run_coordinator: LocalRunCoordinator
+    workflow_runtime: WorkflowRuntime
+    resolve_resume_authority: Callable[..., Mapping[str, object] | None]
+    clock: Clock
     id_generator: IdGenerator
 
 
 def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
     container = get_api_container(request)
+    start_run_service = container.start_run_service
 
-    def resolve_recovery_service() -> ResolveMismatchRecoveryService:
-        service = container.resolve_recovery_service
-        if service is None:
-            raise RuntimeError("resolve_recovery_service is not configured")
-        return cast(ResolveMismatchRecoveryService, service)
+    def resolve_resume_authority(
+        *, run_id: str, resume_kind: str
+    ) -> Mapping[str, object] | None:
+        context = container.query_service.get_run_execution_context(run_id)
+        if context is None:
+            return None
+        resolver = getattr(container.workflow_runtime, "resolve_resume_authority", None)
+        if not callable(resolver):
+            return None
+        return cast(
+            Mapping[str, object] | None,
+            resolver(
+                run_id=run_id,
+                workflow_key=context.workflow_key,
+                resume_kind=resume_kind,
+            ),
+        )
 
     return RunRouteDependencies(
         api_contract_version=container.api_contract_version,
         query_service=lambda: container.query_service,
-        start_run_service=lambda: container.start_run_service,
-        cancel_run_service=lambda: container.cancel_run_service,
-        resume_run_service=lambda: container.resume_run_service,
-        resolve_recovery_service=resolve_recovery_service,
-        local_run_coordinator=container.local_run_coordinator,
+        unit_of_work_factory=cast(Callable[[], UnitOfWork], container.unit_of_work_factory),
+        reserve_queue_slot=getattr(start_run_service, "reserve_queue_slot", None),
+        release_queue_slot=getattr(start_run_service, "release_queue_slot", None),
+        local_run_coordinator=cast(LocalRunCoordinator, container.local_run_coordinator),
+        workflow_runtime=container.workflow_runtime,
+        resolve_resume_authority=resolve_resume_authority,
+        clock=container.clock,
         id_generator=container.id_generator,
     )
 

@@ -178,6 +178,7 @@ def reject(
     result = RejectActionHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
+        event_publisher=dependencies.event_publisher(),
     )(
         RejectActionCommand(
             command_id=payload.command_id,

@@ -817,7 +817,9 @@ def test_provider_failure_is_not_mapped_to_blocked() -> None:
 
 
 def test_answer_only_and_plan_source_have_no_google_mcp_or_completion_call() -> None:
-    source = Path("src/google_work_agent/application/workflows/solution_planning.py").read_text(
+    source = Path(
+        "src/google_work_agent/application/orchestration/solution_planning.py"
+    ).read_text(
         encoding="utf-8"
     )
 
@@ -874,9 +876,11 @@ def test_default_product_loader_rejects_draft_planning_prompts(tmp_path: Path) -
 
 
 def test_solution_planning_symbols_have_explicit_owners() -> None:
-    assert SolutionPlanningAgent.__module__.endswith(".workflows.solution_planning")
-    assert validate_answer_draft_v1.__module__.endswith(".workflows.solution_planning")
-    assert validate_action_plan_draft_v1.__module__.endswith(".workflows.solution_planning")
+    assert SolutionPlanningAgent.__module__.endswith(".orchestration.solution_planning")
+    assert validate_answer_draft_v1.__module__.endswith(".orchestration.solution_planning")
+    assert validate_action_plan_draft_v1.__module__.endswith(
+        ".orchestration.solution_planning"
+    )
 
 
 def _agent(runtime: FakeLLMRuntime) -> SolutionPlanningAgent:

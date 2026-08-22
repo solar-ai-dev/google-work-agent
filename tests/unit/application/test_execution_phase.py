@@ -49,9 +49,10 @@ class _RecordedCall:
         self._calls = calls
         self._result = result
         self._error = error
+        self.invocations: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
     def __call__(self, *args: object, **kwargs: object) -> object:
-        del args, kwargs
+        self.invocations.append((args, kwargs))
         self._calls.append(self._name)
         if self._error is not None:
             raise self._error
@@ -67,6 +68,38 @@ def test_successful_write_phase_preserves_call_trajectory() -> None:
     assert result.disposition is WriteExecutionDisposition.VERIFIED
     assert result.action_status == ActionStatus.VERIFIED.value
     assert calls == ["preflight", "claim", "execute", "store", "begin_verification", "verify"]
+
+
+def test_fresh_preflight_source_snapshot_is_forwarded_to_claim() -> None:
+    calls: list[str] = []
+    source_snapshot = {
+        "resource_type": "task",
+        "resource_id": "task-1",
+        "parent_id": "list-1",
+        "version": "4",
+    }
+    claim = _RecordedCall(
+        name="claim",
+        calls=calls,
+        result=_response(
+            status=ActionStatus.EXECUTING.value,
+            version=2,
+            attempt_id="attempt-1",
+            claim_token="claim-token",
+        ),
+    )
+    coordinator = _coordinator(
+        calls=calls,
+        preflight_result=source_snapshot,
+        claim_call=claim,
+    )
+
+    result = coordinator.execute(
+        WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
+    )
+
+    assert result.disposition is WriteExecutionDisposition.VERIFIED
+    assert claim.invocations[0][0][0].source_snapshot == source_snapshot
 
 
 def test_uncertain_delivery_marks_unknown_without_blind_resend() -> None:
@@ -291,6 +324,8 @@ def _coordinator(
     claim_response: WriteActionResponse | None = None,
     store_response: WriteActionResponse | None = None,
     begin_verification_result: object | None = None,
+    preflight_result: object | None = None,
+    claim_call: _RecordedCall | None = None,
 ) -> WriteExecutionPhaseCoordinator:
     claim = claim_response or _response(
         status=ActionStatus.EXECUTING.value,
@@ -344,9 +379,13 @@ def _coordinator(
         id_factory=lambda: "generated-id",
         request_hash=lambda _payload: "request-hash",
         should_stop_for_cancel=lambda _run_id: False,
-        preflight_write=cast(PreflightWriteActionService, _RecordedCall(name="preflight", calls=calls)),
+        preflight_write=cast(
+            PreflightWriteActionService,
+            _RecordedCall(name="preflight", calls=calls, result=preflight_result),
+        ),
         claim_write=cast(
-            ClaimWriteActionService, _RecordedCall(name="claim", calls=calls, result=claim)
+            ClaimWriteActionService,
+            claim_call or _RecordedCall(name="claim", calls=calls, result=claim),
         ),
         execute_write=cast(
             ExecuteWriteActionService,

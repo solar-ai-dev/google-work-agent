@@ -50,6 +50,14 @@ class StartRunService:
         self._reserve_queue_slot = reserve_queue_slot
         self._release_queue_slot = release_queue_slot
 
+    @property
+    def reserve_queue_slot(self) -> Callable[[str], bool] | None:
+        return self._reserve_queue_slot
+
+    @property
+    def release_queue_slot(self) -> Callable[[str], None] | None:
+        return self._release_queue_slot
+
     def _release(self, run_id: str) -> None:
         if self._release_queue_slot is not None:
             self._release_queue_slot(run_id)
