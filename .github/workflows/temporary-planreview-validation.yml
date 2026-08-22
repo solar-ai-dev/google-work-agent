@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - wb-planreview-revise-boundary-final
+  pull_request:
+    branches:
+      - main
 
 jobs:
   targeted-tests:
