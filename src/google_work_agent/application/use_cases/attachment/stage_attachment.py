@@ -3,7 +3,9 @@
 from dataclasses import dataclass
 from typing import Any
 
-from google_work_agent.application.ports.connector_failure import normalize_attachment_staging_failure
+from google_work_agent.application.ports.connector_failure import (
+    normalize_attachment_staging_failure,
+)
 from google_work_agent.ports import AttachmentStagingError
 
 
@@ -25,7 +27,11 @@ class StageAttachmentHandler:
 
     def __call__(self, command: StageAttachmentCommand) -> StageAttachmentResult:
         try:
-            descriptor = self.service(data=command.data, filename=command.filename, mime_type=command.mime_type)
+            descriptor = self.service(
+                data=command.data,
+                filename=command.filename,
+                mime_type=command.mime_type,
+            )
         except AttachmentStagingError as error:
             raise normalize_attachment_staging_failure(error) from error
         return StageAttachmentResult(descriptor=descriptor)
