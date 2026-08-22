@@ -164,6 +164,7 @@ def _assert_terminal_modify_regression(
         risk=action.risk,
     )
     unit_of_work.approvals.revoke_active_by_action.assert_called_once_with(action.id)
+    unit_of_work.approvals.insert.assert_not_called()
     unit_of_work.plans.require_review.assert_called_once_with(action.plan_id)
     unit_of_work.command_receipts.finish_json.assert_called_once()
     unit_of_work.traces.add.assert_called()
