@@ -5,13 +5,12 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 ROUTES = ROOT / "src" / "google_work_agent" / "api" / "routes"
 USE_CASES = ROOT / "src" / "google_work_agent" / "application" / "use_cases"
 
 RUNTIME_CONTROL_BINDINGS = (
-    ("runtime.py", "get_runtime", "GetRuntimeSummaryHandler"),
+    ("runtime_summaries.py", "get_runtime", "GetRuntimeSummaryHandler"),
     ("identity.py", "get_current_google_account", "GetGoogleAccountHandler"),
     ("llm.py", "get_llm_connection", "GetLLMConnectionHandler"),
     ("llm.py", "store_llm_api_key", "StoreLLMApiKeyHandler"),
@@ -26,7 +25,13 @@ RUNTIME_CONTROL_BINDINGS = (
     ("health.py", "ready", "GetReadinessHandler"),
 )
 APPLICATION_RUNTIME_CONTROL_OWNERS = ("runtime", "identity", "llm", "settings", "backup", "health")
-PROVIDER_BOUNDARY_ROUTES = ("runtime.py", "identity.py", "llm.py", "settings.py", "health.py")
+PROVIDER_BOUNDARY_ROUTES = (
+    "runtime_summaries.py",
+    "identity.py",
+    "llm.py",
+    "settings.py",
+    "health.py",
+)
 
 
 def _parse(path: Path) -> ast.Module:
@@ -114,7 +119,7 @@ def test_all_runtime_control_routes_bind_expected_application_handlers() -> None
 
 
 def test_runtime_and_identity_routes_do_not_call_broad_query_service_semantics() -> None:
-    runtime = (ROUTES / "runtime.py").read_text(encoding="utf-8")
+    runtime = (ROUTES / "runtime_summaries.py").read_text(encoding="utf-8")
     identity = (ROUTES / "identity.py").read_text(encoding="utf-8")
     assert ".query_service().get_runtime_summary()" not in runtime
     assert ".query_service().get_current_google_account()" not in identity
@@ -164,7 +169,14 @@ def test_application_use_cases_do_not_depend_on_api_schemas() -> None:
 
 def test_target_routes_do_not_bypass_locked_dependency_boundary() -> None:
     prohibited = ("google_work_agent.api.container", "google_work_agent.api.route_dependencies")
-    for route_name in ("runtime.py", "identity.py", "llm.py", "settings.py", "session.py", "health.py"):
+    for route_name in (
+        "runtime_summaries.py",
+        "identity.py",
+        "llm.py",
+        "settings.py",
+        "session.py",
+        "health.py",
+    ):
         source = (ROUTES / route_name).read_text(encoding="utf-8")
         for dependency in prohibited:
             assert dependency not in source

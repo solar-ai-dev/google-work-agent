@@ -3,8 +3,12 @@
 from fastapi import APIRouter, Request
 
 from google_work_agent.api.dependencies import HealthRouteDependency, enforce_access
-from google_work_agent.api.schemas.runtime import LiveResponse, ReadyResponse
-from google_work_agent.application.use_cases.health.get_readiness import GetReadinessHandler, GetReadinessQuery
+from google_work_agent.api.schemas.health_checks.get_liveness import LiveResponse
+from google_work_agent.api.schemas.health_checks.get_readiness import ReadyResponse
+from google_work_agent.application.use_cases.health.get_readiness import (
+    GetReadinessHandler,
+    GetReadinessQuery,
+)
 from google_work_agent.ports import EndpointPolicy
 
 router = APIRouter()

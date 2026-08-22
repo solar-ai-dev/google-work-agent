@@ -11,6 +11,8 @@ from google_work_agent.api.schemas.actions import (
 from google_work_agent.api.schemas.attachments import StageAttachmentRequest
 from google_work_agent.api.schemas.conversations import CreateConversationRequest
 from google_work_agent.api.schemas.events import EventEnvelope
+from google_work_agent.api.schemas.health_checks.get_liveness import LiveResponse
+from google_work_agent.api.schemas.health_checks.get_readiness import ReadyResponse
 from google_work_agent.api.schemas.resources import ResourceListResponse
 from google_work_agent.api.schemas.runs import (
     CancelRunRequestV2,
@@ -18,6 +20,9 @@ from google_work_agent.api.schemas.runs import (
     ResolveRecoveryRequestV1,
     ResumeRunRequestV2,
     StartRunRequest,
+)
+from google_work_agent.api.schemas.runtime_summaries.get_runtime_summary import (
+    RuntimeSummaryResponse,
 )
 from google_work_agent.api.schemas.settings import PatchSettingsRequest
 
@@ -43,6 +48,11 @@ def test_other_plural_resource_contracts_live_in_operation_modules() -> None:
     assert EventEnvelope.__module__.endswith(".events.get_events")
     assert ResourceListResponse.__module__.endswith(".resources.list_resources")
     assert PatchSettingsRequest.__module__.endswith(".settings.update_settings")
+    assert RuntimeSummaryResponse.__module__.endswith(
+        ".runtime_summaries.get_runtime_summary"
+    )
+    assert LiveResponse.__module__.endswith(".health_checks.get_liveness")
+    assert ReadyResponse.__module__.endswith(".health_checks.get_readiness")
 
 
 def test_retired_broad_plural_resource_schema_modules_are_absent() -> None:
@@ -55,5 +65,6 @@ def test_retired_broad_plural_resource_schema_modules_are_absent() -> None:
         "resources.py",
         "runs.py",
         "settings.py",
+        "runtime.py",
     ):
         assert not (api_root / filename).exists()

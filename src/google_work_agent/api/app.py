@@ -24,7 +24,7 @@ from google_work_agent.api.routes import (
     llm,
     resources,
     runs,
-    runtime,
+    runtime_summaries,
     session,
     settings,
 )
@@ -153,7 +153,7 @@ def create_app(container: ApiContainer) -> FastAPI:
     app.include_router(health.router)
     app.include_router(session.router)
     app.include_router(google.router)
-    app.include_router(runtime.router)
+    app.include_router(runtime_summaries.router)
     app.include_router(identity.router)
     app.include_router(conversations.router)
     app.include_router(runs.router)
