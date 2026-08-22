@@ -1,4 +1,4 @@
-"""Application services for Google connection lifecycle."""
+"""Legacy-compatible Google connection lifecycle collaborators."""
 
 from __future__ import annotations
 
@@ -6,6 +6,10 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Protocol
 
+from google_work_agent.application.use_cases.connector_connection.get_connection import (
+    GetConnectionHandler,
+    GetConnectionQuery,
+)
 from google_work_agent.ports import (
     DisconnectResult,
     GoogleConnectionStatus,
@@ -15,14 +19,12 @@ from google_work_agent.ports import (
 
 
 class GoogleAccountProvisioner(Protocol):
-    """Identity-record side of an observed Google connection.
-
-    Kept as a narrow Protocol so GetGoogleConnectionService does not need to
-    know about SQLite or the `google_accounts` table directly.
-    """
-
     def ensure_google_account_connected(
-        self, *, email: str, display_name: str | None, now_ms: int
+        self,
+        *,
+        email: str,
+        display_name: str | None,
+        now_ms: int,
     ) -> None: ...
 
 
@@ -36,24 +38,40 @@ class StartGoogleOAuthService:
 
 @dataclass(frozen=True, slots=True)
 class GetGoogleConnectionService:
+    """Compatibility façade over narrow access used by GetConnectionHandler."""
+
     provider: GoogleOAuthCredentialProvider
     account_provisioner: GoogleAccountProvisioner | None = None
     now_ms: Callable[[], int] | None = None
 
+    def read_connection_status(self) -> GoogleConnectionStatus:
+        return self.provider.get_connection_status()
+
+    def can_provision_connected_account(self) -> bool:
+        return self.account_provisioner is not None and self.now_ms is not None
+
+    def current_time_ms(self) -> int:
+        if self.now_ms is None:
+            raise RuntimeError("connection provisioning clock is not configured")
+        return self.now_ms()
+
+    def ensure_connected_account(
+        self,
+        *,
+        email: str,
+        display_name: str | None,
+        now_ms: int,
+    ) -> None:
+        if self.account_provisioner is None:
+            raise RuntimeError("connection account provisioner is not configured")
+        self.account_provisioner.ensure_google_account_connected(
+            email=email,
+            display_name=display_name,
+            now_ms=now_ms,
+        )
+
     def __call__(self) -> GoogleConnectionStatus:
-        status = self.provider.get_connection_status()
-        if (
-            self.account_provisioner is not None
-            and self.now_ms is not None
-            and status.connected
-            and status.account_email is not None
-        ):
-            self.account_provisioner.ensure_google_account_connected(
-                email=status.account_email,
-                display_name=status.display_name,
-                now_ms=self.now_ms(),
-            )
-        return status
+        return GetConnectionHandler(self)(GetConnectionQuery()).connection
 
 
 @dataclass(frozen=True, slots=True)
