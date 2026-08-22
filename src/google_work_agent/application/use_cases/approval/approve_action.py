@@ -406,8 +406,17 @@ class ApproveActionHandler:
         if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
             raise RuntimeError("RECEIVED receipt recovery requires aggregate-specific handling")
 
+        payload = loads(receipt.response_json)
+        if not isinstance(payload, dict):
+            raise RuntimeError("approval receipt response must be an object")
+        next_allowed_commands = payload.get("next_allowed_commands")
+        if not isinstance(next_allowed_commands, list) or not all(
+            isinstance(item, str) for item in next_allowed_commands
+        ):
+            raise RuntimeError("approval receipt next_allowed_commands is invalid")
+        payload["next_allowed_commands"] = tuple(next_allowed_commands)
         return replace(
-            ApproveActionResult(**loads(receipt.response_json)),
+            ApproveActionResult(**payload),
             request_replayed=True,
         )
 
