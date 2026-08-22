@@ -1,12 +1,9 @@
 """Thin LangGraph adapter for review.inspect_action_scope_and_route."""
 
 from __future__ import annotations
-
 from collections.abc import Callable, Mapping
-
+from google_work_agent.adapters.langgraph.subgraphs.review.projections.review_projection import project_review_input
 
 def inspect_action_scope_and_route_node(state: Mapping[str, object], *, operation: Callable[[object], object]) -> dict[str, object]:
-    projection_key = "inspect_action_scope_and_route_input"
-    if projection_key not in state:
-        raise ValueError(f"{projection_key} projection is required")
-    return {"inspect_action_scope_and_route_result": operation(state[projection_key])}
+    projected = project_review_input(state)
+    return {"action_scope_route_findings": operation(projected)}

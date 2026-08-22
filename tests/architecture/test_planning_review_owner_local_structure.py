@@ -36,6 +36,35 @@ def test_review_graph_registers_canonical_thin_nodes_and_router() -> None:
     assert "graph.add_node(\"inspect_goal_and_evidence\", bindings." not in source
 
 
+def test_planning_review_nodes_use_bounded_owner_projections_and_owner_only_patches() -> None:
+    planning_patches = {
+        "choose_answer_or_action_from_route_node.py": "planning_disposition",
+        "outline_answer_node.py": "answer_outline",
+        "compose_answer_node.py": "answer_draft",
+        "draft_action_objective_per_output_route_node.py": "action_objectives",
+        "compose_arguments_per_output_route_node.py": "argument_candidates",
+        "build_dependencies_node.py": "dependencies",
+        "assemble_plan_node.py": "plan_draft",
+        "validate_plan_node.py": "validated_plan",
+    }
+    review_patches = {
+        "inspect_goal_and_evidence_node.py": "goal_evidence_findings",
+        "inspect_action_scope_and_route_node.py": "action_scope_route_findings",
+        "inspect_constraints_and_policy_summary_node.py": "constraints_policy_findings",
+        "aggregate_review_findings_node.py": "aggregated_findings",
+        "validate_review_node.py": "review_result",
+        "recheck_affected_dimensions_node.py": "affected_dimension_recheck",
+    }
+    for filename, patch in planning_patches.items():
+        source = _source(f"src/google_work_agent/adapters/langgraph/subgraphs/planning/nodes/{filename}")
+        assert "project_planning_input(state)" in source
+        assert f'return {{"{patch}": operation(projected)}}' in source
+    for filename, patch in review_patches.items():
+        source = _source(f"src/google_work_agent/adapters/langgraph/subgraphs/review/nodes/{filename}")
+        assert "project_review_input(state)" in source
+        assert f'return {{"{patch}": operation(projected)}}' in source
+
+
 def test_planning_review_nodes_do_not_execute_forbidden_boundaries() -> None:
     for owner in ("planning", "review"):
         node_dir = ROOT / f"src/google_work_agent/adapters/langgraph/subgraphs/{owner}/nodes"
