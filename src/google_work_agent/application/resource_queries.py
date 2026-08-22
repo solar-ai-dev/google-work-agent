@@ -31,6 +31,17 @@ from google_work_agent.ports import (
     ResourcePage,
 )
 
+__all__ = (
+    "GMAIL_PRIMARY_QUERY",
+    "MAX_RESOURCE_PAGE_SIZE",
+    "GmailResourceDetail",
+    "ResourceCount",
+    "ResourceListItem",
+    "ResourceListPage",
+    "ResourceQueryService",
+    "_gmail_search_permalink",
+)
+
 
 class ResourceQueryService:
     """Legacy-compatible façade over narrow connector/config/time access.
@@ -57,8 +68,6 @@ class ResourceQueryService:
         self._default_tasklist_id_provider = default_tasklist_id_provider
         self._now = now or (lambda: datetime.now(UTC))
         self._timezone_provider = timezone_provider or (lambda: "UTC")
-
-    # Narrow canonical collaborators.
 
     def get_gmail_thread_detail_raw(self, *, resource_id: str) -> GmailThreadDetail:
         if self._gmail_detail_gateway is None:
@@ -208,8 +217,6 @@ class ResourceQueryService:
 
     def current_time(self) -> datetime:
         return self._now()
-
-    # Legacy compatibility surface. Direction is legacy -> canonical.
 
     def get_gmail_thread_detail(self, *, resource_id: str) -> GmailResourceDetail:
         return GetResourceHandler(self)(
