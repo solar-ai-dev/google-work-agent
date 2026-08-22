@@ -6,7 +6,8 @@
     "Only declared root fields may enter Product Prompts.",
     "Frozen Tool Route identity/effect cannot be reselected by Planning.",
     "Dependency construction is deterministic planning.build_dependencies and has no Product Prompt slot.",
-    "Review inspection is three independent responsibilities; fused review.inspect is retired for this candidate.",
+    "Review inspection is three independent responsibilities.",
+    "Review bounded recheck identity is review.recheck_affected_dimensions.",
     "Repair/revision uses base_projection + candidate_output + failure_record."
   ],
   "slots": {
@@ -16,6 +17,6 @@
     "review.inspect_goal_and_evidence": {"allowed_root_fields": ["request_intent", "tool_route_plan", "planning_result", "work_analysis", "evidence", "policy_summary"]},
     "review.inspect_action_scope_and_route": {"allowed_root_fields": ["request_intent", "tool_route_plan", "planning_result", "work_analysis", "evidence", "policy_summary"]},
     "review.inspect_constraints_and_policy_summary": {"allowed_root_fields": ["request_intent", "tool_route_plan", "planning_result", "work_analysis", "evidence", "policy_summary"]},
-    "review.recheck_affected_findings": {"allowed_root_fields": ["base_projection", "candidate_output", "failure_record"]}
+    "review.recheck_affected_dimensions": {"allowed_root_fields": ["base_projection", "candidate_output", "failure_record"]}
   }
 }

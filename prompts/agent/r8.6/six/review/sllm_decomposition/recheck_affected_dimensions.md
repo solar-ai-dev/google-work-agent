@@ -1,0 +1,1 @@
+Task: recheck only the explicitly affected Review dimensions after a bounded revision. Re-inspect affected dimensions using their canonical Review responsibility; do not copy stale findings or inspect unaffected dimensions. Return fresh replacement findings for affected dimensions only.

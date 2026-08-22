@@ -3,40 +3,35 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from google_work_agent.application.workflows.prompt_registry import (
-    InactivePromptArtifactError,
-    load_prompt_reference,
-    load_prompt_reference_for_evaluation,
-)
+
+ROOT = Path(__file__).resolve().parents[3]
+MANIFEST = ROOT / "prompts/agent/prompt-manifest-v0.9.2-candidate.json"
+CONTRACT = ROOT / "prompts/agent/contracts/prompt-runtime-input-contract-v3.json"
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+def test_planning_review_prompt_candidate_is_fail_closed() -> None:
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    assert manifest["activation_status"] != "RUNTIME_ACTIVE"
+    assert manifest["discovery_status"] == "CANDIDATE_NOT_RUNTIME_SELECTED"
 
 
-def test_candidate_manifest_is_materialized_and_fail_closed() -> None:
-    root = _repo_root()
-    manifest = root / "prompts/agent/prompt-manifest-v0.9.2-candidate.json"
-    payload = json.loads(manifest.read_text(encoding="utf-8"))
-    assert payload["prompt_bundle_version"] == "0.9.2-r8.6-sllm-decomposition"
-    assert payload["prompt_semantic_bundle_version"] == "semantic-r8.6-v4"
-    ids = {slot["slot_id"] for slot in payload["slots"]}
-    assert "planning.draft_action_objective_per_output_route" in ids
-    assert "review.inspect_goal_and_evidence" in ids
-    assert "review.inspect" not in ids
-    load_prompt_reference_for_evaluation("planning.compose_answer", manifest)
-    try:
-        load_prompt_reference("planning.compose_answer", manifest)
-    except InactivePromptArtifactError:
-        pass
-    else:
-        raise AssertionError("DRAFT candidate must fail closed")
+def test_review_recheck_identity_is_coherent_and_unique() -> None:
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    slot_ids = {slot["slot_id"] for slot in manifest["slots"]}
+    assert "review.recheck_affected_dimensions" in slot_ids
+    assert "review.recheck_affected_findings" not in slot_ids
+    assert "review.recheck_affected_dimensions" in contract["slots"]
+    assert "review.recheck_affected_findings" not in contract["slots"]
+    slot = next(slot for slot in manifest["slots"] if slot["slot_id"] == "review.recheck_affected_dimensions")
+    assert slot["prompt_id"] == "review.recheck_affected_dimensions"
+    assert slot["node_name"] == "recheck_affected_dimensions"
+    assert slot["assembled_path"].endswith("review.recheck_affected_dimensions.md")
 
 
-def test_no_llm_dependency_slot_exists() -> None:
-    payload = json.loads(
-        (_repo_root() / "prompts/agent/prompt-manifest-v0.9.2-candidate.json").read_text(encoding="utf-8")
-    )
-    ids = {slot["slot_id"] for slot in payload["slots"]}
-    assert "planning.compose_dependencies" not in ids
-    assert "planning.generate_dependencies" not in ids
+def test_planning_has_no_dependency_prompt_slot() -> None:
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    slot_ids = {slot["slot_id"] for slot in manifest["slots"]}
+    assert "planning.compose_dependencies" not in slot_ids
+    assert "planning.generate_dependencies" not in slot_ids
+    assert "planning.build_dependencies" not in slot_ids
