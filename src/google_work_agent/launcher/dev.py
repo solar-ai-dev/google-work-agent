@@ -695,8 +695,7 @@ def main() -> NoReturn:
         bootstrap_secret=bootstrap_secret,
     )
     print(
-        "Open the Vite development UI with this one-time bootstrap fragment:\
-"
+        "Open the Vite development UI with this one-time bootstrap fragment:\n"
         f"http://127.0.0.1:5173/#bootstrap_secret={bootstrap_secret}"
         f"&service_instance_id={container.service_instance_id}",
         flush=True,
