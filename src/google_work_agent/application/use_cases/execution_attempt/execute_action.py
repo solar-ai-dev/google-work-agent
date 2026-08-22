@@ -36,6 +36,7 @@ from google_work_agent.ports import (
 class ExecuteActionCommand:
     action_id: str
     claim_token: str
+    attempt_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +73,9 @@ class ExecuteActionHandler:
             raise PermissionError("claim token service binding mismatch")
         if self._now_ms() >= coerce_int(payload["expires_at_ms"]):
             raise PermissionError("claim token has expired")
+        payload_attempt_id = str(payload["attempt_id"])
+        if command.attempt_id is not None and command.attempt_id != payload_attempt_id:
+            raise PermissionError("claim token attempt binding mismatch")
 
         nonce = str(payload["nonce"])
         with self._nonce_lock:
@@ -85,7 +89,7 @@ class ExecuteActionHandler:
                 plan = require_plan(unit_of_work, action.plan_id)
                 run = require_run(unit_of_work, plan.run_id)
                 approval = require_approval(unit_of_work, str(payload["approval_id"]))
-                attempt = require_attempt(unit_of_work, str(payload["attempt_id"]))
+                attempt = require_attempt(unit_of_work, payload_attempt_id)
                 if run.status in {RunStatus.CANCEL_REQUESTED, RunStatus.CANCELLED}:
                     raise PermissionError("run cancellation forbids write dispatch")
                 if action.id != str(payload["action_id"]) or action.tool_name != str(payload["tool_name"]):
