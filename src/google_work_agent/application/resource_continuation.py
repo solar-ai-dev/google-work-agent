@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from secrets import token_urlsafe
 from threading import RLock
 from typing import Protocol
@@ -18,13 +19,107 @@ from google_work_agent.application.resource_queries import (
     ResourceCount,
     ResourceListPage,
 )
-from google_work_agent.ports import GoogleWorkspaceErrorCode, GoogleWorkspaceGatewayError
+from google_work_agent.ports import (
+    GmailThreadDetail,
+    GoogleWorkspaceErrorCode,
+    GoogleWorkspaceGatewayError,
+    ResourcePage,
+)
 
 ContinuationScope = tuple[str, ...]
 
 
 class ResourceQueryServiceLike(Protocol):
-    """Narrow UI query surface required by the local continuation facade."""
+    """Narrow connector access plus legacy compatibility surface."""
+
+    def get_gmail_thread_detail_raw(self, *, resource_id: str) -> GmailThreadDetail: ...
+
+    def list_gmail_page(
+        self,
+        *,
+        query: str,
+        page_token: str | None,
+        page_size: int,
+        include_thread_metadata: bool,
+        continuation_scope: tuple[str, ...],
+    ) -> ResourcePage: ...
+
+    def list_task_lists_page(
+        self,
+        *,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourcePage: ...
+
+    def list_tasks_page(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+        show_completed: bool,
+        show_hidden: bool,
+        show_deleted: bool,
+        continuation_scope: tuple[str, ...],
+    ) -> ResourcePage: ...
+
+    def list_calendar_events_page(
+        self,
+        *,
+        calendar_id: str,
+        page_token: str | None,
+        page_size: int,
+        time_min: str,
+        time_max: str,
+        single_events: bool,
+        order_by: str,
+        continuation_scope: tuple[str, ...],
+    ) -> ResourcePage: ...
+
+    def count_gmail_page(
+        self,
+        *,
+        query: str,
+        page_token: str | None,
+        page_size: int,
+        include_thread_metadata: bool,
+    ) -> ResourcePage: ...
+
+    def count_task_lists_page(
+        self,
+        *,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourcePage: ...
+
+    def count_tasks_page(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+        show_completed: bool,
+    ) -> ResourcePage: ...
+
+    def count_calendar_events_page(
+        self,
+        *,
+        calendar_id: str,
+        page_token: str | None,
+        page_size: int,
+        time_min: str,
+        time_max: str,
+        single_events: bool,
+        order_by: str,
+    ) -> ResourcePage: ...
+
+    def default_task_list_id(self) -> str | None: ...
+
+    def default_calendar_id(self) -> str | None: ...
+
+    def timezone_name(self) -> str: ...
+
+    def current_time(self) -> datetime: ...
 
     def get_gmail_thread_detail(self, *, resource_id: str) -> GmailResourceDetail: ...
 
@@ -76,12 +171,7 @@ class _StoredContinuation:
 
 
 class LocalResourceContinuationStore:
-    """In-memory map from local opaque handles to provider page tokens.
-
-    The store is intentionally process-local and non-persistent. Handles are
-    bound to the exact local query scope so one source/query cannot replay a
-    continuation issued for another source/query.
-    """
+    """In-memory map from local opaque handles to provider page tokens."""
 
     def __init__(self, *, token_factory: Callable[[], str] | None = None) -> None:
         self._token_factory = token_factory or (lambda: token_urlsafe(24))
@@ -112,7 +202,7 @@ class LocalResourceContinuationStore:
 
 
 class OpaqueResourceQueryService:
-    """UI resource-query facade that hides provider pagination tokens."""
+    """Continuation wrapper over narrow canonical resource collaborators."""
 
     def __init__(
         self,
@@ -122,6 +212,164 @@ class OpaqueResourceQueryService:
     ) -> None:
         self._service = service
         self._continuations = continuation_store or LocalResourceContinuationStore()
+
+    def get_gmail_thread_detail_raw(self, *, resource_id: str) -> GmailThreadDetail:
+        return self._service.get_gmail_thread_detail_raw(resource_id=resource_id)
+
+    def list_gmail_page(
+        self,
+        *,
+        query: str,
+        page_token: str | None,
+        page_size: int,
+        include_thread_metadata: bool,
+        continuation_scope: tuple[str, ...],
+    ) -> ResourcePage:
+        provider_token = self._resolve(
+            scope=continuation_scope,
+            local_handle=page_token,
+        )
+        page = self._service.list_gmail_page(
+            query=query,
+            page_token=provider_token,
+            page_size=page_size,
+            include_thread_metadata=include_thread_metadata,
+            continuation_scope=continuation_scope,
+        )
+        return self._localize_resource_page(page=page, scope=continuation_scope)
+
+    def list_task_lists_page(
+        self,
+        *,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourcePage:
+        return self._service.list_task_lists_page(page_token=page_token, page_size=page_size)
+
+    def list_tasks_page(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+        show_completed: bool,
+        show_hidden: bool,
+        show_deleted: bool,
+        continuation_scope: tuple[str, ...],
+    ) -> ResourcePage:
+        provider_token = self._resolve(
+            scope=continuation_scope,
+            local_handle=page_token,
+        )
+        page = self._service.list_tasks_page(
+            task_list_id=task_list_id,
+            page_token=provider_token,
+            page_size=page_size,
+            show_completed=show_completed,
+            show_hidden=show_hidden,
+            show_deleted=show_deleted,
+            continuation_scope=continuation_scope,
+        )
+        return self._localize_resource_page(page=page, scope=continuation_scope)
+
+    def list_calendar_events_page(
+        self,
+        *,
+        calendar_id: str,
+        page_token: str | None,
+        page_size: int,
+        time_min: str,
+        time_max: str,
+        single_events: bool,
+        order_by: str,
+        continuation_scope: tuple[str, ...],
+    ) -> ResourcePage:
+        provider_token = self._resolve(
+            scope=continuation_scope,
+            local_handle=page_token,
+        )
+        page = self._service.list_calendar_events_page(
+            calendar_id=calendar_id,
+            page_token=provider_token,
+            page_size=page_size,
+            time_min=time_min,
+            time_max=time_max,
+            single_events=single_events,
+            order_by=order_by,
+            continuation_scope=continuation_scope,
+        )
+        return self._localize_resource_page(page=page, scope=continuation_scope)
+
+    def count_gmail_page(
+        self,
+        *,
+        query: str,
+        page_token: str | None,
+        page_size: int,
+        include_thread_metadata: bool,
+    ) -> ResourcePage:
+        return self._service.count_gmail_page(
+            query=query,
+            page_token=page_token,
+            page_size=page_size,
+            include_thread_metadata=include_thread_metadata,
+        )
+
+    def count_task_lists_page(
+        self,
+        *,
+        page_token: str | None,
+        page_size: int,
+    ) -> ResourcePage:
+        return self._service.count_task_lists_page(page_token=page_token, page_size=page_size)
+
+    def count_tasks_page(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+        show_completed: bool,
+    ) -> ResourcePage:
+        return self._service.count_tasks_page(
+            task_list_id=task_list_id,
+            page_token=page_token,
+            page_size=page_size,
+            show_completed=show_completed,
+        )
+
+    def count_calendar_events_page(
+        self,
+        *,
+        calendar_id: str,
+        page_token: str | None,
+        page_size: int,
+        time_min: str,
+        time_max: str,
+        single_events: bool,
+        order_by: str,
+    ) -> ResourcePage:
+        return self._service.count_calendar_events_page(
+            calendar_id=calendar_id,
+            page_token=page_token,
+            page_size=page_size,
+            time_min=time_min,
+            time_max=time_max,
+            single_events=single_events,
+            order_by=order_by,
+        )
+
+    def default_task_list_id(self) -> str | None:
+        return self._service.default_task_list_id()
+
+    def default_calendar_id(self) -> str | None:
+        return self._service.default_calendar_id()
+
+    def timezone_name(self) -> str:
+        return self._service.timezone_name()
+
+    def current_time(self) -> datetime:
+        return self._service.current_time()
 
     def get_gmail_thread_detail(self, *, resource_id: str) -> GmailResourceDetail:
         return self._service.get_gmail_thread_detail(resource_id=resource_id)
@@ -157,12 +405,7 @@ class OpaqueResourceQueryService:
         page_size: int,
         status_scope: str = "incomplete",
     ) -> ResourceListPage:
-        scope = (
-            "tasks",
-            task_list_id or "",
-            str(page_size),
-            status_scope,
-        )
+        scope = ("tasks", task_list_id or "", str(page_size), status_scope)
         provider_token = self._resolve(scope=scope, local_handle=page_token)
         page = self._service.list_tasks(
             task_list_id=task_list_id,
@@ -245,6 +488,21 @@ class OpaqueResourceQueryService:
             items=page.items,
             next_page_token=local_next,
         )
+
+    def _localize_resource_page(
+        self,
+        *,
+        page: ResourcePage,
+        scope: ContinuationScope,
+    ) -> ResourcePage:
+        provider_next = page.next_page_token
+        if provider_next is None:
+            return ResourcePage(items=page.items, next_page_token=None)
+        local_next = self._continuations.issue(
+            scope=scope,
+            provider_page_token=provider_next,
+        )
+        return ResourcePage(items=page.items, next_page_token=local_next)
 
 
 def _invalid_continuation() -> GoogleWorkspaceGatewayError:
