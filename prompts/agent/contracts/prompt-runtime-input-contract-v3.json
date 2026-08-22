@@ -1,0 +1,22 @@
+{
+  "schema_version": 3,
+  "contract_id": "prompt-runtime-input-contract-v3-planning-review-split",
+  "source_of_truth": "06 Workflow v7.22 / 15 Prompt contract v1.28 / Repository Architecture v1.4",
+  "rules": [
+    "Only declared root fields may enter Product Prompts.",
+    "Frozen Tool Route identity/effect cannot be reselected by Planning.",
+    "Dependency construction is deterministic planning.build_dependencies and has no Product Prompt slot.",
+    "Review inspection is three independent responsibilities.",
+    "Review bounded recheck identity is review.recheck_affected_dimensions.",
+    "Repair/revision uses base_projection + candidate_output + failure_record."
+  ],
+  "slots": {
+    "planning.compose_answer": {"allowed_root_fields": ["user_request", "request_intent", "answer_outline", "work_analysis", "evidence", "confirmation_response"]},
+    "planning.draft_action_objective_per_output_route": {"allowed_root_fields": ["user_request", "request_intent", "output_route", "work_analysis", "evidence"]},
+    "planning.compose_arguments_per_output_route": {"allowed_root_fields": ["user_request", "output_route", "action_objective", "work_analysis", "evidence"]},
+    "review.inspect_goal_and_evidence": {"allowed_root_fields": ["request_intent", "tool_route_plan", "planning_result", "work_analysis", "evidence", "policy_summary"]},
+    "review.inspect_action_scope_and_route": {"allowed_root_fields": ["request_intent", "tool_route_plan", "planning_result", "work_analysis", "evidence", "policy_summary"]},
+    "review.inspect_constraints_and_policy_summary": {"allowed_root_fields": ["request_intent", "tool_route_plan", "planning_result", "work_analysis", "evidence", "policy_summary"]},
+    "review.recheck_affected_dimensions": {"allowed_root_fields": ["base_projection", "candidate_output", "failure_record"]}
+  }
+}

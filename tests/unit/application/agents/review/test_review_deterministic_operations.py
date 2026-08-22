@@ -2,26 +2,51 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.agents.review.recheck_affected_dimensions import recheck_affected_dimensions
+from google_work_agent.application.agents.review.aggregate_review_findings import (
+    aggregate_review_findings,
+)
 from google_work_agent.application.agents.review.validate_review import validate_review
 
 
-def test_recheck_keeps_only_affected_action_findings_and_global_findings() -> None:
-    findings = [
-        {"code": "GLOBAL", "description": "global"},
-        {"code": "A1", "description": "first", "action_id": "a1"},
-        {"code": "A2", "description": "second", "action_id": "a2"},
+def test_review_aggregation_materializes_pass_and_revise_contracts() -> None:
+    passed = aggregate_review_findings([], artifact_id="r1", revision=1)
+    assert validate_review(passed)["status"] == "PASS"
+
+    revised = aggregate_review_findings(
+        [
+            {
+                "dimension": "ACTION_SCOPE_ROUTE",
+                "code": "REVISION_REQUIRED",
+                "description": "revise action",
+                "action_id": "a1",
+                "route_id": "r1",
+                "required_information": [],
+            }
+        ],
+        artifact_id="r2",
+        revision=2,
+    )
+    validated = validate_review(revised)
+    assert validated["status"] == "REVISE"
+    assert validated["issues"] == [
+        {
+            "dimension": "ACTION_SCOPE_ROUTE",
+            "code": "REVISION_REQUIRED",
+            "description": "revise action",
+            "action_id": "a1",
+            "route_id": "r1",
+        }
     ]
-    result = recheck_affected_dimensions(findings, affected_action_ids=["a2"])
-    assert [item["code"] for item in result] == ["GLOBAL", "A2"]
 
 
 def test_review_pass_cannot_carry_issues() -> None:
     with pytest.raises(ValueError, match="keys"):
-        validate_review({
-            "schema_version": 2,
-            "meta": {"artifact_id": "r1", "revision": 1, "based_on": []},
-            "status": "PASS",
-            "summary": "ok",
-            "issues": [],
-        })
+        validate_review(
+            {
+                "schema_version": 2,
+                "meta": {"artifact_id": "r1", "revision": 1, "based_on": []},
+                "status": "PASS",
+                "summary": "ok",
+                "issues": [],
+            }
+        )

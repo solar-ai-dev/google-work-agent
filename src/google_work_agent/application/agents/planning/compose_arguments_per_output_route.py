@@ -1,47 +1,70 @@
-"""Per-output-route Planning argument composition boundary.
-
-This operation preserves the existing PromptRef topology: the supplied writer is
-invoked once per frozen output route. Tool identity/effect are never authored by
-this operation or by the semantic writer result.
-"""
+"""Compose business arguments per frozen output route without route reselection."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from typing import TypedDict
+from collections.abc import Mapping, Sequence
 
+from google_work_agent.application.agents.planning.contracts.planning_semantics import (
+    ActionObjectiveCandidateV1,
+    PlanningSemanticInvoker,
+    ToolArgumentCandidateV1,
+)
 
-class ToolArgumentCandidateV1(TypedDict):
-    schema_version: int
-    route_id: str
-    arguments: dict[str, object]
-    evidence_refs: list[str]
-
-
-ArgumentWriter = Callable[[Mapping[str, object]], ToolArgumentCandidateV1]
+PROMPT_ID = "planning.compose_arguments_per_output_route"
 
 
 def compose_arguments_per_output_route(
     output_routes: Sequence[Mapping[str, object]],
     *,
-    writer: ArgumentWriter,
+    objectives: Sequence[ActionObjectiveCandidateV1],
+    user_request: str = "",
+    work_analysis: Mapping[str, object] | None = None,
+    evidence: Sequence[Mapping[str, object]] = (),
+    invoke: PlanningSemanticInvoker,
 ) -> tuple[ToolArgumentCandidateV1, ...]:
-    """Invoke the existing semantic writer independently for every frozen route."""
+    """Execute exactly one canonical semantic path for every frozen output route."""
     if not output_routes:
         raise ValueError("ACTION planning requires at least one output route")
-    route_ids: set[str] = set()
+    objective_by_route = {item["route_id"]: item for item in objectives}
+    if len(objective_by_route) != len(objectives):
+        raise ValueError("duplicate objective route")
     candidates: list[ToolArgumentCandidateV1] = []
-    for raw_route in output_routes:
-        route_id = raw_route.get("route_id")
-        if not isinstance(route_id, str) or not route_id:
-            raise ValueError("route_id is required")
-        if route_id in route_ids:
-            raise ValueError("duplicate output route id")
-        route_ids.add(route_id)
-        candidate = writer(raw_route)
+    seen: set[str] = set()
+    for route in output_routes:
+        route_id = route.get("route_id")
+        if not isinstance(route_id, str) or not route_id or route_id in seen:
+            raise ValueError("output route_id must be unique and non-empty")
+        seen.add(route_id)
+        objective = objective_by_route.get(route_id)
+        if objective is None:
+            raise ValueError("every canonical output route requires an objective")
+        candidate = invoke(
+            PROMPT_ID,
+            {
+                "user_request": user_request,
+                "output_route": dict(route),
+                "action_objective": dict(objective),
+                "work_analysis": dict(work_analysis) if work_analysis is not None else None,
+                "evidence": [dict(item) for item in evidence],
+            },
+        )
         if candidate.get("route_id") != route_id:
             raise ValueError("argument candidate escaped its frozen output route")
-        if "arguments" not in candidate or not isinstance(candidate["arguments"], dict):
+        arguments = candidate.get("arguments")
+        refs = candidate.get("evidence_refs", [])
+        if not isinstance(arguments, dict):
             raise ValueError("argument candidate requires business arguments")
-        candidates.append(candidate)
+        forbidden = {"tool_id", "tool_name", "effect", "approval", "dependencies", "execution", "verification"}
+        if forbidden.intersection(arguments):
+            raise ValueError("argument candidate attempted to author deterministic authority")
+        if not isinstance(refs, list) or not all(isinstance(item, str) for item in refs):
+            raise ValueError("argument candidate evidence_refs must be strings")
+        candidates.append(
+            {
+                "schema_version": int(candidate.get("schema_version", 1)),
+                "route_id": route_id,
+                "arguments": dict(arguments),
+                "evidence_refs": list(refs),
+            }
+        )
     return tuple(candidates)

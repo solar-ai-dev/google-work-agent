@@ -6,7 +6,6 @@ from collections.abc import Iterable
 
 from google_work_agent.application.agents.planning.build_dependencies import build_dependencies
 from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
-    ActionDependencyCandidateV1,
     ActionPlanDraftV2,
     PlanningActionSeedV1,
     StateArtifactRefV1,
@@ -19,8 +18,8 @@ def assemble_plan(
     revision: int,
     based_on: Iterable[StateArtifactRefV1],
     action_seeds: Iterable[PlanningActionSeedV1],
-    dependencies: Iterable[ActionDependencyCandidateV1] | None = None,
 ) -> ActionPlanDraftV2:
+    """Assemble a plan using planning.build_dependencies as the sole dependency authority."""
     if not artifact_id:
         raise ValueError("artifact_id must not be empty")
     if revision < 1:
@@ -34,7 +33,8 @@ def assemble_plan(
     route_ids = [item["route_id"] for item in seeds]
     if len(route_ids) != len(set(route_ids)):
         raise ValueError("duplicate route_id")
-    dependency_items = tuple(build_dependencies(seeds) if dependencies is None else dependencies)
+
+    dependency_items = build_dependencies(seeds)
     by_action: dict[str, list[str]] = {action_id: [] for action_id in action_ids}
     for item in dependency_items:
         action_id = item["action_id"]
@@ -67,6 +67,7 @@ def assemble_plan(
 def _validate_acyclic(edges: dict[str, list[str]]) -> None:
     visiting: set[str] = set()
     visited: set[str] = set()
+
     def visit(action_id: str) -> None:
         if action_id in visiting:
             raise ValueError("action dependency cycle")
@@ -77,5 +78,6 @@ def _validate_acyclic(edges: dict[str, list[str]]) -> None:
             visit(predecessor)
         visiting.remove(action_id)
         visited.add(action_id)
+
     for action_id in edges:
         visit(action_id)

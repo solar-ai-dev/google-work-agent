@@ -1,0 +1,1 @@
+Task: inspect only whether the Planning result satisfies the request goal and is grounded by supplied evidence. Return findings only; do not inspect route/policy dimensions except when needed to state an evidence gap.
