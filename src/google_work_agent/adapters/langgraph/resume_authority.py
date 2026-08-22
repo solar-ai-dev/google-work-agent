@@ -16,14 +16,16 @@ from google_work_agent.adapters.langgraph.route_translation import (
 )
 from google_work_agent.application.workflows.contracts import (
     ConfirmationResponseV1,
+    WorkflowPhase,
     validate_confirmation_response_v1,
 )
+from google_work_agent.application.workflows.supervisor import SupervisorTarget
 from google_work_agent.domain import RunStatus
 from google_work_agent.ports import WorkflowInvocationResult, WorkflowOutcome, WorkflowResumeRequest
 
 
 class LangGraphWorkflowRuntime(_CanonicalFreshnessRuntime):
-    """Expose persisted resume targets and verify Handler-applied transitions."""
+    """Expose persisted resume targets and continue only Handler-decided resumes."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -62,11 +64,15 @@ class LangGraphWorkflowRuntime(_CanonicalFreshnessRuntime):
             return None
         if resume_kind == "REAUTH_COMPLETED":
             status = _reauth_resume_status(state)
-            return None if status is None else {"resume_status": status}
+            if status is None:
+                return None
+            authority: dict[str, object] = {"resume_status": status}
+            continuation_target = self._reauth_continuation_target(state)
+            if continuation_target is not None:
+                authority["continuation_target"] = continuation_target
+            return authority
         if resume_kind == "RECOVERY_RECHECK":
             return {"resume_status": RunStatus.VERIFYING.value}
-        if resume_kind == "SAFE_CHECKPOINT_RESUME":
-            return {"resume_status": state.get("workflow_phase")}
         return None
 
     def resolve_resume_domain_status(self, *, run_id: str, workflow_key: str, resume_kind: str) -> str | None:
@@ -86,7 +92,7 @@ class LangGraphWorkflowRuntime(_CanonicalFreshnessRuntime):
         return super().resume(request)
 
     def _resume_after_reauth_transition(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
-        """Continue the same checkpoint after the Handler restored Domain state."""
+        """Validate the persisted target and continue it without recovery semantics."""
         config = self._config_for_thread(request.workflow_key)
         snapshot = self._graph.get_state(config)
         if not snapshot.values and not snapshot.next:
@@ -99,29 +105,65 @@ class LangGraphWorkflowRuntime(_CanonicalFreshnessRuntime):
                 WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
                 {"reason": "graph profile does not match persisted checkpoint"},
             )
+
+        authority = self.resolve_resume_authority(
+            run_id=request.run_id,
+            workflow_key=request.workflow_key,
+            resume_kind="REAUTH_COMPLETED",
+        )
+        expected_target = None if authority is None else authority.get("continuation_target")
+        requested_target = request.resume_payload.get("continuation_target")
+        if (
+            not isinstance(expected_target, str)
+            or not expected_target
+            or requested_target != expected_target
+        ):
+            return WorkflowInvocationResult(
+                request.run_id,
+                request.workflow_key,
+                WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
+                {"reason": "reauth continuation target does not match persisted checkpoint"},
+            )
+
         if snapshot.next:
-            return super().resume(request)
-        if self._latest_unknown_action(request.run_id) is not None:
-            resumed = self._write_recovery.recover_unknown(state)
-        elif self._has_executed_action(request.run_id):
-            resumed = self._write_recovery.recover_executed(state, request.run_id)
-        elif self._mark_stalled_claims_as_unknown(request.run_id):
-            resumed = self._write_recovery.recover_unknown(state)
+            self._graph.invoke(None, config=config)
         else:
-            callback = self._invocation._resume_reauth_execution
-            if callback is None:
-                return WorkflowInvocationResult(
-                    request.run_id,
-                    request.workflow_key,
-                    WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
-                    {"reason": "reauth checkpoint has no registered continuation"},
-                )
-            resumed = callback(state)
-        return self._invocation.workflow_result_from_state(
-            state=resumed,
+            self._graph.update_state(
+                config,
+                {"__target__": expected_target},
+                as_node=expected_target,
+            )
+            self._graph.invoke(None, config=config)
+        return self._result_from_thread(
             workflow_key=request.workflow_key,
             run_id=request.run_id,
         )
+
+    def _reauth_continuation_target(self, state: GraphState) -> str | None:
+        phase = state.get("workflow_phase")
+        if not isinstance(phase, str):
+            return None
+        if phase == WorkflowPhase.REQUEST_ANALYSIS.value:
+            return self._topology[0]
+        target_by_phase = {
+            WorkflowPhase.TOOL_ROUTING.value: SupervisorTarget.TOOL_ROUTE,
+            WorkflowPhase.SOURCE_PLANNING.value: SupervisorTarget.SOURCE_PLANNING,
+            WorkflowPhase.API_ACQUISITION.value: SupervisorTarget.API_ACQUISITION,
+            WorkflowPhase.CONTEXT_RETRIEVAL.value: SupervisorTarget.CONTEXT_RETRIEVAL,
+            WorkflowPhase.CONTEXT_EVALUATION.value: SupervisorTarget.CONTEXT_RETRIEVAL,
+            WorkflowPhase.WORK_ANALYSIS.value: SupervisorTarget.WORK_ANALYSIS,
+            WorkflowPhase.SOLUTION_PLANNING.value: SupervisorTarget.SOLUTION_PLANNING,
+            WorkflowPhase.PLAN_REVIEW.value: SupervisorTarget.PLAN_REVIEW_INSPECT,
+            WorkflowPhase.DOMAIN_VALIDATION.value: SupervisorTarget.DOMAIN_VALIDATION,
+            WorkflowPhase.WAITING_APPROVAL.value: SupervisorTarget.WAITING_APPROVAL,
+            WorkflowPhase.PREFLIGHT.value: SupervisorTarget.ACTION_EXECUTION,
+            WorkflowPhase.ACTION_EXECUTION.value: SupervisorTarget.ACTION_EXECUTION,
+            WorkflowPhase.VERIFICATION.value: SupervisorTarget.ACTION_EXECUTION,
+        }
+        target = target_by_phase.get(phase)
+        if target is None:
+            return None
+        return self._route_translator.translate(target.value).node
 
     def _run_confirmation_interrupt_cycle(
         self,
@@ -183,31 +225,27 @@ class LangGraphWorkflowRuntime(_CanonicalFreshnessRuntime):
 
 def _reauth_resume_status(state: GraphState) -> str | None:
     phase = state.get("workflow_phase")
-    if isinstance(phase, str):
-        mapping = {
-            "REQUEST_ANALYSIS": RunStatus.ANALYZING,
-            "TOOL_ROUTING": RunStatus.ANALYZING,
-            "WORK_ANALYSIS": RunStatus.ANALYZING,
-            "SOURCE_PLANNING": RunStatus.RETRIEVING,
-            "API_ACQUISITION": RunStatus.RETRIEVING,
-            "CONTEXT_RETRIEVAL": RunStatus.RETRIEVING,
-            "CONTEXT_EVALUATION": RunStatus.RETRIEVING,
-            "SOLUTION_PLANNING": RunStatus.PLANNING,
-            "PLAN_REVIEW": RunStatus.PLANNING,
-            "DOMAIN_VALIDATION": RunStatus.PLANNING,
-            "WAITING_APPROVAL": RunStatus.WAITING_APPROVAL,
-            "PREFLIGHT": RunStatus.WAITING_APPROVAL,
-            "ACTION_EXECUTION": RunStatus.WAITING_APPROVAL,
-            "VERIFICATION": RunStatus.VERIFYING,
-            "RECOVERY": RunStatus.RECOVERY_REQUIRED,
-        }
-        target = mapping.get(phase)
-        if target is not None:
-            return target.value
-    summary = state.get("execution_summary")
-    if isinstance(summary, Mapping) and summary.get("result") == "REAUTH_REQUIRED":
-        return RunStatus.WAITING_APPROVAL.value
-    return None
+    if not isinstance(phase, str):
+        return None
+    mapping = {
+        WorkflowPhase.REQUEST_ANALYSIS.value: RunStatus.ANALYZING,
+        WorkflowPhase.TOOL_ROUTING.value: RunStatus.ANALYZING,
+        WorkflowPhase.WORK_ANALYSIS.value: RunStatus.ANALYZING,
+        WorkflowPhase.SOURCE_PLANNING.value: RunStatus.RETRIEVING,
+        WorkflowPhase.API_ACQUISITION.value: RunStatus.RETRIEVING,
+        WorkflowPhase.CONTEXT_RETRIEVAL.value: RunStatus.RETRIEVING,
+        WorkflowPhase.CONTEXT_EVALUATION.value: RunStatus.RETRIEVING,
+        WorkflowPhase.SOLUTION_PLANNING.value: RunStatus.PLANNING,
+        WorkflowPhase.PLAN_REVIEW.value: RunStatus.PLANNING,
+        WorkflowPhase.DOMAIN_VALIDATION.value: RunStatus.PLANNING,
+        WorkflowPhase.WAITING_APPROVAL.value: RunStatus.WAITING_APPROVAL,
+        WorkflowPhase.PREFLIGHT.value: RunStatus.WAITING_APPROVAL,
+        WorkflowPhase.ACTION_EXECUTION.value: RunStatus.WAITING_APPROVAL,
+        WorkflowPhase.VERIFICATION.value: RunStatus.VERIFYING,
+        WorkflowPhase.RECOVERY.value: RunStatus.RECOVERY_REQUIRED,
+    }
+    target = mapping.get(phase)
+    return None if target is None else target.value
 
 
 __all__ = ["LangGraphWorkflowRuntime"]
