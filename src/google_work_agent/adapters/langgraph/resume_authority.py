@@ -182,28 +182,32 @@ class LangGraphWorkflowRuntime(_CanonicalFreshnessRuntime):
 
 
 def _reauth_resume_status(state: GraphState) -> str | None:
+    phase = state.get("workflow_phase")
+    if isinstance(phase, str):
+        mapping = {
+            "REQUEST_ANALYSIS": RunStatus.ANALYZING,
+            "TOOL_ROUTING": RunStatus.ANALYZING,
+            "WORK_ANALYSIS": RunStatus.ANALYZING,
+            "SOURCE_PLANNING": RunStatus.RETRIEVING,
+            "API_ACQUISITION": RunStatus.RETRIEVING,
+            "CONTEXT_RETRIEVAL": RunStatus.RETRIEVING,
+            "CONTEXT_EVALUATION": RunStatus.RETRIEVING,
+            "SOLUTION_PLANNING": RunStatus.PLANNING,
+            "PLAN_REVIEW": RunStatus.PLANNING,
+            "DOMAIN_VALIDATION": RunStatus.PLANNING,
+            "WAITING_APPROVAL": RunStatus.WAITING_APPROVAL,
+            "PREFLIGHT": RunStatus.WAITING_APPROVAL,
+            "ACTION_EXECUTION": RunStatus.WAITING_APPROVAL,
+            "VERIFICATION": RunStatus.VERIFYING,
+            "RECOVERY": RunStatus.RECOVERY_REQUIRED,
+        }
+        target = mapping.get(phase)
+        if target is not None:
+            return target.value
     summary = state.get("execution_summary")
     if isinstance(summary, Mapping) and summary.get("result") == "REAUTH_REQUIRED":
         return RunStatus.WAITING_APPROVAL.value
-    phase = state.get("workflow_phase")
-    if not isinstance(phase, str):
-        return None
-    mapping = {
-        "REQUEST_ANALYSIS": RunStatus.ANALYZING,
-        "TOOL_ROUTING": RunStatus.ANALYZING,
-        "WORK_ANALYSIS": RunStatus.ANALYZING,
-        "CONTEXT_RETRIEVAL": RunStatus.RETRIEVING,
-        "SOLUTION_PLANNING": RunStatus.PLANNING,
-        "PLAN_REVIEW": RunStatus.PLANNING,
-        "DOMAIN_VALIDATION": RunStatus.PLANNING,
-        "WAITING_APPROVAL": RunStatus.WAITING_APPROVAL,
-        "PREFLIGHT": RunStatus.WAITING_APPROVAL,
-        "ACTION_EXECUTION": RunStatus.WAITING_APPROVAL,
-        "VERIFICATION": RunStatus.VERIFYING,
-        "RECOVERY": RunStatus.RECOVERY_REQUIRED,
-    }
-    target = mapping.get(phase)
-    return None if target is None else target.value
+    return None
 
 
 __all__ = ["LangGraphWorkflowRuntime"]
