@@ -8,17 +8,20 @@ from json import loads
 from typing import cast
 
 from google_work_agent.application.ports import ConnectorExecutionPort
+from google_work_agent.application.use_cases.recovery.recover_existing_result import (
+    RecoverExistingResultCommand,
+    RecoverExistingResultResult,
+)
+from google_work_agent.application.use_cases.recovery.resolve_as_failed import (
+    ResolveAsFailedCommand,
+    ResolveAsFailedResult,
+)
 from google_work_agent.application.use_cases.verification.normalize_snapshot import normalize_snapshot
-from google_work_agent.application.write_execution_contracts import WriteActionResponse
 from google_work_agent.application.write_persistence import (
     require_action,
     require_approval,
     require_attempt,
     resolve_snapshot_fallback_resource_id,
-)
-from google_work_agent.application.write_recovery_contracts import (
-    RecoverExistingWriteResultCommand,
-    ResolveUnknownWriteAsFailedCommand,
 )
 from google_work_agent.domain import ResultCode
 from google_work_agent.ports import UnitOfWork
@@ -42,14 +45,12 @@ class RecoverUpdateResult:
     action_status: str
     action_version: int
     next_allowed_commands: tuple[str, ...]
-    approval_id: str | None = None
     attempt_id: str | None = None
-    claim_token: str | None = None
     safe_error_code: str | None = None
     conflict_detail: str | None = None
 
 
-def _to_result(response: WriteActionResponse) -> RecoverUpdateResult:
+def _to_result(response: RecoverExistingResultResult | ResolveAsFailedResult) -> RecoverUpdateResult:
     return RecoverUpdateResult(
         applied=response.applied,
         result_code=response.result_code,
@@ -57,9 +58,7 @@ def _to_result(response: WriteActionResponse) -> RecoverUpdateResult:
         action_status=response.action_status,
         action_version=response.action_version,
         next_allowed_commands=response.next_allowed_commands,
-        approval_id=response.approval_id,
         attempt_id=response.attempt_id,
-        claim_token=response.claim_token,
         safe_error_code=response.safe_error_code,
         conflict_detail=response.conflict_detail,
     )
@@ -71,8 +70,10 @@ class RecoverUpdateHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         connector_execution: ConnectorExecutionPort,
-        recover_existing_result: Callable[[RecoverExistingWriteResultCommand], WriteActionResponse],
-        resolve_as_failed: Callable[[ResolveUnknownWriteAsFailedCommand], WriteActionResponse],
+        recover_existing_result: Callable[
+            [RecoverExistingResultCommand], RecoverExistingResultResult
+        ],
+        resolve_as_failed: Callable[[ResolveAsFailedCommand], ResolveAsFailedResult],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._connector_execution = connector_execution
@@ -99,34 +100,36 @@ class RecoverUpdateHandler:
         expected = cast(dict[str, object], loads(action.expected_json))
 
         if actual == expected:
-            response = self._recover_existing_result(
-                RecoverExistingWriteResultCommand(
-                    command.command_id,
-                    command.request_hash,
-                    command.action_id,
-                    command.attempt_id,
-                    command.expected_action_version,
-                    command.expected_attempt_version,
-                    snapshot,
+            return _to_result(
+                self._recover_existing_result(
+                    RecoverExistingResultCommand(
+                        command.command_id,
+                        command.request_hash,
+                        command.action_id,
+                        command.attempt_id,
+                        command.expected_action_version,
+                        command.expected_attempt_version,
+                        snapshot,
+                    )
                 )
             )
-            return _to_result(response)
 
         source = cast(dict[str, object], loads(approval.source_snapshot_json))
         if actual == source:
-            response = self._resolve_as_failed(
-                ResolveUnknownWriteAsFailedCommand(
-                    command.command_id,
-                    command.request_hash,
-                    command.action_id,
-                    command.attempt_id,
-                    command.expected_action_version,
-                    command.expected_attempt_version,
-                    "NO_RECOVERY_CANDIDATE",
-                    "target still matches the approved source snapshot",
+            return _to_result(
+                self._resolve_as_failed(
+                    ResolveAsFailedCommand(
+                        command.command_id,
+                        command.request_hash,
+                        command.action_id,
+                        command.attempt_id,
+                        command.expected_action_version,
+                        command.expected_attempt_version,
+                        "NO_RECOVERY_CANDIDATE",
+                        "target still matches the approved source snapshot",
+                    )
                 )
             )
-            return _to_result(response)
 
         return RecoverUpdateResult(
             False,
@@ -136,5 +139,8 @@ class RecoverUpdateHandler:
             action.version,
             (),
             attempt_id=attempt.id,
-            conflict_detail="UPDATE recovery observed neither expected nor source state; manual resolution required",
+            conflict_detail=(
+                "UPDATE recovery observed neither expected nor source state; "
+                "manual resolution required"
+            ),
         )
