@@ -222,29 +222,58 @@ def _execute_handler(uow: _Uow, connector: _ExecutionConnector, now_ms: int = 2_
     )
 
 
-def test_execute_action_preserves_token_cancel_claim_and_nonce_safety() -> None:
+def test_execute_action_rejects_invalid_and_expired_tokens_before_connector() -> None:
     uow, token, connector = _execution_fixture()
+    handler = _execute_handler(uow, connector)
+    bad_token = issue_claim_token(
+        {
+            "version": CLAIM_TOKEN_VERSION,
+            "action_id": "action-1",
+            "approval_id": "approval-1",
+            "attempt_id": "attempt-1",
+            "tool_name": "tasks_create_task",
+            "arguments_hash": "0" * 64,
+            "service_instance_id": _SERVICE_INSTANCE_ID,
+            "nonce": "bad",
+            "issued_at_ms": 1_000,
+            "expires_at_ms": 31_000,
+        },
+        signing_secret="wrong-secret",
+    )
+    with pytest.raises(Exception):
+        handler(ExecuteActionCommand("action-1", bad_token))
     expired = _execute_handler(uow, connector, 31_000)
     with pytest.raises(PermissionError, match="expired"):
         expired(ExecuteActionCommand("action-1", token))
     assert connector.execute_calls == 0
 
-    cancelled, cancel_token, cancel_connector = _execution_fixture(run_status=RunStatus.CANCEL_REQUESTED)
+
+def test_execute_action_rejects_cancel_binding_nonclaimed_and_used_nonce() -> None:
+    cancelled_uow, token, connector = _execution_fixture(run_status=RunStatus.CANCEL_REQUESTED)
     with pytest.raises(PermissionError, match="cancellation"):
-        _execute_handler(cancelled, cancel_connector)(ExecuteActionCommand("action-1", cancel_token))
-    assert cancel_connector.execute_calls == 0
+        _execute_handler(cancelled_uow, connector)(ExecuteActionCommand("action-1", token))
+    assert connector.execute_calls == 0
 
-    nonclaimed, nonclaimed_token, nonclaimed_connector = _execution_fixture(attempt_status=ExecutionAttemptStatus.SUCCEEDED)
+    nonclaimed_uow, token2, connector2 = _execution_fixture(attempt_status=ExecutionAttemptStatus.SUCCEEDED)
     with pytest.raises(PermissionError, match="CLAIMED"):
-        _execute_handler(nonclaimed, nonclaimed_connector)(ExecuteActionCommand("action-1", nonclaimed_token))
-    assert nonclaimed_connector.execute_calls == 0
+        _execute_handler(nonclaimed_uow, connector2)(ExecuteActionCommand("action-1", token2))
+    assert connector2.execute_calls == 0
 
-    fresh, fresh_token, fresh_connector = _execution_fixture()
-    handler = _execute_handler(fresh, fresh_connector)
-    assert handler(ExecuteActionCommand("action-1", fresh_token)).snapshot.resource_id == "task-1"
+    uow, token3, connector3 = _execution_fixture()
+    handler = _execute_handler(uow, connector3)
+    result = handler(ExecuteActionCommand("action-1", token3))
+    assert result.snapshot.resource_id == "task-1"
+    assert connector3.prepare_calls == connector3.execute_calls == 1
     with pytest.raises(PermissionError, match="already been used"):
-        handler(ExecuteActionCommand("action-1", fresh_token))
-    assert fresh_connector.execute_calls == 1
+        handler(ExecuteActionCommand("action-1", token3))
+    assert connector3.execute_calls == 1
+
+    bound_uow, bound_token, connector4 = _execution_fixture()
+    action = bound_uow.actions.get_by_id("action-1")
+    action.tool_name = "tasks_update_task"
+    with pytest.raises(PermissionError, match="binding mismatch"):
+        _execute_handler(bound_uow, connector4)(ExecuteActionCommand("action-1", bound_token))
+    assert connector4.execute_calls == 0
 
 
 def _recovery_uow(*, tool_name: str, expected: dict[str, object] | None = None, source: dict[str, object] | None = None, arguments: dict[str, object] | None = None) -> _Uow:
