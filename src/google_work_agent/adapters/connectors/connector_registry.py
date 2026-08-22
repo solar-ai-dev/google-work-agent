@@ -1,6 +1,6 @@
 """Fail-closed connector backend registry.
 
-The registry owns connector-id to backend selection.  It deliberately has no
+The registry owns connector-id to backend selection. It deliberately has no
 default connector and performs no tool-name/provider inference: callers must
 supply the persisted/bound connector identity explicitly.
 """
@@ -8,16 +8,13 @@ supply the persisted/bound connector identity explicitly.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Generic, TypeVar
 
-BackendT = TypeVar("BackendT")
-
-
-class ConnectorNotRegisteredError(LookupError):
-    """Raised when no backend is registered for an explicit connector id."""
+from google_work_agent.adapters.connectors.connector_not_registered_error import (
+    ConnectorNotRegisteredError,
+)
 
 
-class ConnectorRegistry(Generic[BackendT]):
+class ConnectorRegistry[BackendT]:
     """Immutable connector-id keyed backend authority."""
 
     def __init__(self, backends: Mapping[str, BackendT]) -> None:
