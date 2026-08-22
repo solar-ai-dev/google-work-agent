@@ -1,7 +1,7 @@
 """SQLite Run repository extension for canonical confirmation resume."""
 
 from google_work_agent.adapters.persistence.repositories import SQLiteRunRepository
-from google_work_agent.domain.commands import RunCommand
+from google_work_agent.domain.run.model import RunCommand
 from google_work_agent.domain.confirmation import resume_confirmation as transition_resume_confirmation
 from google_work_agent.domain.enums import RunStatus
 from google_work_agent.domain.results import CommandResult

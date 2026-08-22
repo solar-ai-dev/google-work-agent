@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.workflows.review_v2_tools import (
+from google_work_agent.application.orchestration.inspect_plan_output_tools import (
     REVIEW_V2_INSPECT_TOOLS,
     ReviewV2ToolCallError,
     review_tool_call_to_candidate_v2,

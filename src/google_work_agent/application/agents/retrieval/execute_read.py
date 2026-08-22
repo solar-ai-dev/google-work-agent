@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.application.ports import (
+from google_work_agent.ports.connectors.read import (
     ConnectorReadPort,
     ConnectorReadRequest,
     ConnectorReadResult,
 )
-from google_work_agent.application.workflows.handoff_contracts import SourceFetchPlanV1
-from google_work_agent.application.workflows.retrieval_read_cache import (
+from google_work_agent.application.orchestration.handoff_contracts import SourceFetchPlanV1
+from google_work_agent.application.orchestration.retrieval_read_cache import (
     DetailTargetCacheEntry,
     RunScopedReadResultCache,
 )

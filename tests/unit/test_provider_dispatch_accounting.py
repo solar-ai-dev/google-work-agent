@@ -5,11 +5,11 @@ from collections.abc import Mapping, Sequence
 import pytest
 
 from google_work_agent.adapters.llm.prompt_input_guard import PromptInputGuardedProvider
-from google_work_agent.application.workflows.contracts import (
+from google_work_agent.application.orchestration.contracts import (
     build_default_run_budget,
     consume_llm_provider_calls,
 )
-from google_work_agent.application.workflows.provider_dispatch_budget import (
+from google_work_agent.application.orchestration.provider_dispatch_budget import (
     current_provider_dispatch_budget,
     legacy_post_call_projection,
     provider_dispatch_budget_scope,

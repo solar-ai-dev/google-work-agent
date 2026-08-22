@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from google_work_agent.domain.enums import ActionStatus, ApprovalStatus, EffectType, RunStatus
-from google_work_agent.domain.errors import PolicyViolationError
+from google_work_agent.domain.exceptions import PolicyViolationError
 
 
 @dataclass(frozen=True, slots=True)

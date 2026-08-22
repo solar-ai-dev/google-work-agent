@@ -13,7 +13,7 @@ from langgraph.graph import END, START, StateGraph
 from google_work_agent.adapters.langgraph.checkpoint_secret_boundary import (
     SecretBoundaryCheckpointer,
 )
-from google_work_agent.application.observability import SanitizationError
+from google_work_agent.ports.observability_events import SanitizationError
 
 
 def _secret(prefix: str) -> str:

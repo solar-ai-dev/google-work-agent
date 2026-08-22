@@ -26,28 +26,36 @@ from tests.unit.application.workflows.test_api_acquisition import _plan
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 from tests.unit.application.workflows.test_plan_review import _review_output
 
-from google_work_agent.adapters.connectors import GoogleWorkspaceExecutionBackend
-from google_work_agent.adapters.langgraph import (
+from google_work_agent.adapters.connectors.google_workspace_execution import (
+    GoogleWorkspaceExecutionBackend,
+)
+from google_work_agent.adapters.langgraph.profiles import (
     GraphProfile,
-    LangGraphWorkflowRuntime,
     supported_graph_profiles,
 )
+from google_work_agent.adapters.langgraph.resume_authority import LangGraphWorkflowRuntime
 from google_work_agent.adapters.persistence import (
     apply_migrations,
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application import (
+from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
-    ApproveWriteActionService,
+)
+from google_work_agent.application.write_approval import ApproveWriteActionService
+from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
-    ModifyWriteActionCommand,
-    ModifyWriteActionService,
-    RejectWriteActionCommand,
-    RejectWriteActionService,
     StoreWriteActionSuccessCommand,
 )
-from google_work_agent.application.workflows import (
+from google_work_agent.application.write_action_mutation_contracts import (
+    ModifyWriteActionCommand,
+    RejectWriteActionCommand,
+)
+from google_work_agent.application.write_action_mutation import (
+    ModifyWriteActionService,
+    RejectWriteActionService,
+)
+from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     AnswerDraftV1,
     ContextRetrievalResultV1,
@@ -56,11 +64,15 @@ from google_work_agent.application.workflows import (
     RequestIntentV2,
     RetrievalResultV1,
     WorkAnalysisResultV1,
+)
+from google_work_agent.application.orchestration.tool_routing import (
     determine_semantic_routes,
+)
+from google_work_agent.application.orchestration.work_analysis import (
     validate_work_analysis_result_v1,
 )
-from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
-from google_work_agent.application.workflows.tool_routing import coarse_resource_category
+from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
+from google_work_agent.application.orchestration.tool_routing import coarse_resource_category
 from google_work_agent.domain import ConnectorToolCatalog, build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,

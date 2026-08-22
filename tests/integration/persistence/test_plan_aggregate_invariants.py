@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.errors import MigrationApplyError
+from google_work_agent.adapters.persistence.persistence_exceptions import MigrationApplyError
 
 
 @pytest.fixture()

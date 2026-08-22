@@ -4,8 +4,8 @@ from inspect import signature
 
 import pytest
 
-import google_work_agent.application.workflows.work_analysis_v2 as work_analysis_v2
-from google_work_agent.application.workflows.work_analysis_v2 import (
+import google_work_agent.application.orchestration.assemble_work_analysis_output as work_analysis_v2
+from google_work_agent.application.orchestration.assemble_work_analysis_output import (
     WORK_ANALYSIS_FACTS_OUTPUT_SCHEMA,
     WORK_ANALYSIS_GAPS_OUTPUT_SCHEMA,
     WORK_ANALYSIS_RELATIONS_OUTPUT_SCHEMA,

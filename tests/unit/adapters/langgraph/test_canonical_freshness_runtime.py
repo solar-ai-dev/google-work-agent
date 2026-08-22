@@ -1,10 +1,10 @@
 from typing import cast
 
-from google_work_agent.adapters.langgraph.canonical_freshness_runtime import (
+from google_work_agent.adapters.langgraph.freshness_workflow import (
     _is_route_reconsideration_to_tool_route,
 )
 from google_work_agent.adapters.langgraph.graph_state import GraphState
-from google_work_agent.application.workflows import SupervisorTarget
+from google_work_agent.application.orchestration.supervisor import SupervisorTarget
 
 
 def test_route_reconsideration_to_tool_route_is_detected() -> None:

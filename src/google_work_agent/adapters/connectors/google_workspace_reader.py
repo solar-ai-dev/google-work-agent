@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from google_work_agent.application.ports import (
+from google_work_agent.ports.connectors.read import (
     ConnectorReadPort,
     ConnectorReadRequest,
     ConnectorReadResult,
 )
-from google_work_agent.application.workflows.handoff_contracts import (
+from google_work_agent.application.orchestration.handoff_contracts import (
     SourceFetchPlanV1,
 )
-from google_work_agent.application.workflows.temporal_query import resolve_temporal_query
+from google_work_agent.application.orchestration.temporal_query import resolve_temporal_query
 from google_work_agent.ports import (
     FreeBusyCalendar,
     GoogleWorkspaceGateway,

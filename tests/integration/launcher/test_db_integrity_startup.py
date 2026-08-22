@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.errors import MigrationIntegrityError
+from google_work_agent.adapters.persistence.persistence_exceptions import MigrationIntegrityError
 from google_work_agent.launcher import dev
 from google_work_agent.ports import ReadinessState, RuntimeOperation
 

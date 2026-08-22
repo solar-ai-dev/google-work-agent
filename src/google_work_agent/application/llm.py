@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from google_work_agent.application.observability import (
+from google_work_agent.ports.observability_events import (
     ObservabilityContext,
     Severity,
 )
@@ -937,7 +937,7 @@ class PromptRepairSchemaRepairer:
         failure_reason_code: str,
         validator_errors: tuple[str, ...],
     ) -> object:
-        from google_work_agent.application.workflows.prompt_registry import (
+        from google_work_agent.application.orchestration.prompt_registry import (
             InactivePromptArtifactError,
             default_prompt_manifest_path,
             load_prompt_reference,
@@ -1049,7 +1049,7 @@ class PromptRepairToolCallRepairer:
         validator_errors: tuple[str, ...],
     ) -> object:
         del output_schema  # shape re-check happens in _validate_or_repair_tool_call after mapping
-        from google_work_agent.application.workflows.prompt_registry import (
+        from google_work_agent.application.orchestration.prompt_registry import (
             InactivePromptArtifactError,
             default_prompt_manifest_path,
             load_prompt_reference,

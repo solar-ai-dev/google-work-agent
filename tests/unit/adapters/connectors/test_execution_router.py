@@ -17,7 +17,10 @@ from google_work_agent.application.execution_phase import (
     WriteExecutionPhaseRequest,
     WriteExecutionPhaseResult,
 )
-from google_work_agent.application.ports import ConnectorWriteRequest, PreparedConnectorWrite
+from google_work_agent.ports.connectors.execution import (
+    ConnectorWriteRequest,
+    PreparedConnectorWrite,
+)
 from google_work_agent.application.write_actions import WriteActionResponse
 from google_work_agent.ports import ResourceSnapshot, UnitOfWork
 

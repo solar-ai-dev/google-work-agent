@@ -1,6 +1,6 @@
 """Verification outcome transition authority."""
 
-from google_work_agent.domain.commands import ActionCommand
+from google_work_agent.domain.action.model import ActionCommand
 from google_work_agent.domain.enums import ActionStatus, ResultCode, VerificationStatus
 from google_work_agent.domain.results import CommandResult
 

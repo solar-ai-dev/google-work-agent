@@ -8,7 +8,7 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application import (
+from google_work_agent.application.answer_only import (
     CompleteAnswerOnlyRunCommand,
     CompleteAnswerOnlyRunService,
 )

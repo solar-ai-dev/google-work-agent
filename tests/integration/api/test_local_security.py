@@ -6,12 +6,11 @@ from google_work_agent.adapters.readiness.composite import (
     StaticReadinessAggregator,
     StaticRuntimeStatusProvider,
 )
-from google_work_agent.api import ApiContainer, create_app
-from google_work_agent.api.security import (
-    InMemoryBootstrapGrantStore,
-    InMemoryLocalSessionManager,
-    LocalApiAccessGuard,
-)
+from google_work_agent.api.app import create_app
+from google_work_agent.api.container import ApiContainer
+from google_work_agent.api.security.access_guard import LocalApiAccessGuard
+from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
+from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
 from google_work_agent.ports import (
     LauncherProbeDecision,
     ReadinessCheckResult,

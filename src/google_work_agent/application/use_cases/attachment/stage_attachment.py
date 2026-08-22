@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from google_work_agent.application.ports.connector_failure import (
+from google_work_agent.ports.connectors.failure import (
     normalize_attachment_staging_failure,
 )
 from google_work_agent.ports import AttachmentStagingError

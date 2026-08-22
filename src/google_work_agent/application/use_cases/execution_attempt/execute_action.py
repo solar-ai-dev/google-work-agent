@@ -7,7 +7,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps, loads
 
-from google_work_agent.application.ports import ConnectorExecutionPort, ConnectorWriteRequest
+from google_work_agent.ports.connectors.execution import (
+    ConnectorExecutionPort,
+    ConnectorWriteRequest,
+)
 from google_work_agent.application.write_action_arguments import coerce_int
 from google_work_agent.application.write_execution_integrity import read_claim_token
 from google_work_agent.application.write_persistence import (

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from google_work_agent.adapters.llm.prompt_input_guard import PromptInputGuardedProvider
-from google_work_agent.application.workflows.prompt_input_contract import (
+from google_work_agent.application.orchestration.prompt_input_contract import (
     PromptRuntimeInputContractValidator,
 )
 from google_work_agent.ports import (

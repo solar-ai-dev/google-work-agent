@@ -17,15 +17,15 @@ from google_work_agent.application.agents.retrieval.normalize_segments import (
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import (
     rag_retrieve_rerank,
 )
-from google_work_agent.application.workflows.handoff_contracts import (
+from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     RequestIntentV2,
 )
-from google_work_agent.application.workflows.retrieval_v2_contracts import (
+from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalQueryPlanV2,
     SourceFetchPlanV1,
 )
-from google_work_agent.application.workflows.tool_routing import InputToolRouteV1
+from google_work_agent.application.orchestration.tool_routing import InputToolRouteV1
 
 
 def _route() -> InputToolRouteV1:

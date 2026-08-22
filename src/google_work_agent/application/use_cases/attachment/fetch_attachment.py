@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from google_work_agent.application.ports.connector_failure import (
+from google_work_agent.ports.connectors.failure import (
     normalize_google_workspace_failure,
 )
 from google_work_agent.ports import GoogleWorkspaceGatewayError

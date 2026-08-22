@@ -2,7 +2,7 @@
 
 from pydantic import Field
 
-from google_work_agent.api.schemas.common import ContractVersionedRequest
+from google_work_agent.api.schemas.model import ContractVersionedRequest
 
 
 class RejectActionRequestV2(ContractVersionedRequest):

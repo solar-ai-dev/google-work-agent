@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
 
-from google_work_agent.api.security import DEFAULT_ENDPOINT_POLICY_REGISTRY
+from google_work_agent.api.security.policies import DEFAULT_ENDPOINT_POLICY_REGISTRY
 from google_work_agent.application.resource_continuation import OpaqueResourceQueryService
 from google_work_agent.ports import (
     ApiAccessGuard,

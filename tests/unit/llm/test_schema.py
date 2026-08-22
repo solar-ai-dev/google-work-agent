@@ -9,7 +9,7 @@ Audit) -- these tests lock in the corrected behavior.
 from __future__ import annotations
 
 from google_work_agent.adapters.llm.schema import validate_output_schema
-from google_work_agent.application.workflows.api_acquisition import (
+from google_work_agent.application.orchestration.api_acquisition import (
     SOURCE_FETCH_PLAN_OUTPUT_SCHEMA,
 )
 

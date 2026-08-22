@@ -17,10 +17,10 @@ from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_
 from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (
     SQLiteExecutionAttemptRepository,
 )
-from google_work_agent.application import (
+from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
-    ApproveWriteActionService,
 )
+from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.use_cases.claim.claim_execution import (
     ClaimExecutionCommand,
     ClaimExecutionHandler,

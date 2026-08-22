@@ -9,23 +9,27 @@ from typing import Literal, cast
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.work_analysis import (
     WORK_ANALYSIS_OUTPUT_SCHEMA,
-    AnalysisResult,
-    ContextRetrievalResultV1,
-    EvidenceDraftV1,
-    RequestIntentV2,
-    RetrievalResultV1,
     WorkAnalysisAgent,
     WorkAnalysisValidationError,
-    WorkflowPhase,
     build_work_analysis_clarification_question,
     load_work_analysis_analyze_prompt_reference,
     validate_work_analysis_result_v1,
     validate_work_analysis_result_v1_from_retrieval_result,
 )
-from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
+from google_work_agent.application.orchestration.contracts import (
+    AnalysisResult,
+    WorkflowPhase,
+)
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ContextRetrievalResultV1,
+    EvidenceDraftV1,
+    RequestIntentV2,
+    RetrievalResultV1,
+)
+from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -491,14 +495,9 @@ def test_default_product_loader_rejects_draft_analysis_prompt(tmp_path: Path) ->
         load_work_analysis_analyze_prompt_reference(manifest_path)
 
 
-def test_work_analysis_exports_do_not_change_existing_workflow_contracts() -> None:
-    import google_work_agent.application.workflows as workflows
-
-    assert hasattr(workflows, "WorkAnalysisAgent")
-    assert hasattr(workflows, "WorkAnalysisResultV1")
-    assert hasattr(workflows, "AnalysisFindingV1")
-    assert hasattr(workflows, "validate_work_analysis_result_v1")
-    assert hasattr(workflows, "AdditionalAcquisitionRequestV1")
+def test_work_analysis_symbols_have_explicit_owners() -> None:
+    assert WorkAnalysisAgent.__module__.endswith(".workflows.work_analysis")
+    assert validate_work_analysis_result_v1.__module__.endswith(".workflows.work_analysis")
 
 
 def _agent(runtime: FakeLLMRuntime) -> WorkAnalysisAgent:

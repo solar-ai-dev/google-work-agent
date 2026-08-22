@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 from starlette.requests import Request
 
-from google_work_agent.api.dependencies import get_run_route_dependencies
+from google_work_agent.api.dependencies.runs import get_run_route_dependencies
 from google_work_agent.application.write_actions import ResolveMismatchRecoveryService
 
 

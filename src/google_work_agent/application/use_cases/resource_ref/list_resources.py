@@ -8,7 +8,7 @@ from typing import Protocol
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from google_work_agent.application.ports.connector_failure import (
+from google_work_agent.ports.connectors.failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
     normalize_google_workspace_failure,

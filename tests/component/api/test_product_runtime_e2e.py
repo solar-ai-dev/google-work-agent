@@ -36,7 +36,8 @@ from google_work_agent.adapters.readiness.composite import (
 )
 from google_work_agent.adapters.runtime import BuildProfile
 from google_work_agent.adapters.runtime.settings import FileSettingsStore, SettingsService
-from google_work_agent.api import ApiContainer, create_app
+from google_work_agent.api.app import create_app
+from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.settings import GetSettingsService, PatchSettingsService
@@ -47,7 +48,10 @@ from google_work_agent.application.start_run import (
     ResumeRunService,
     StartRunService,
 )
-from google_work_agent.application.workflows import ActionPlanDraftV1, RequestIntentV2
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ActionPlanDraftV1,
+    RequestIntentV2,
+)
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
     PrepareWriteRetryService,
@@ -254,13 +258,9 @@ def _intent_for_write_operation(write_operation: str) -> RequestIntentV2:
     if write_operation == "create_calendar_event":
         return _action_intent(resource="CALENDAR_EVENT", effect="CREATE")
     if write_operation == "update_calendar_event":
-        return _action_intent(
-            resource="CALENDAR_EVENT", effect="UPDATE", source="CALENDAR"
-        )
+        return _action_intent(resource="CALENDAR_EVENT", effect="UPDATE", source="CALENDAR")
     if write_operation == "delete_calendar_event":
-        return _action_intent(
-            resource="CALENDAR_EVENT", effect="DELETE", source="CALENDAR"
-        )
+        return _action_intent(resource="CALENDAR_EVENT", effect="DELETE", source="CALENDAR")
     raise AssertionError(f"unsupported write operation fixture: {write_operation}")
 
 

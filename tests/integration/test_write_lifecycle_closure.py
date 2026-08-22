@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import inspect
 
-from google_work_agent.adapters.langgraph import canonical_planning_runtime
-from google_work_agent.adapters.langgraph.canonical_freshness_runtime import (
+import google_work_agent.adapters.langgraph.plan_persistence as canonical_planning_runtime
+from google_work_agent.adapters.langgraph.freshness_workflow import (
     LangGraphWorkflowRuntime,
 )
 from google_work_agent.adapters.langgraph.corrective_plan_persistence import (
@@ -16,7 +16,7 @@ from google_work_agent.adapters.persistence.corrective_plan_repository import (
     CorrectiveAwareSQLitePlanRepository,
 )
 from google_work_agent.api.routes.runs import resolve_recovery
-from google_work_agent.application import run_terminal
+import google_work_agent.application.run_terminal as run_terminal
 
 
 def test_block_run_cleanup_is_single_uow_and_trigger_safe() -> None:

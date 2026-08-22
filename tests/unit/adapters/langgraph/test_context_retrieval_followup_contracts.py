@@ -17,19 +17,19 @@ from google_work_agent.adapters.langgraph.graph_state import (
 from google_work_agent.adapters.langgraph.subgraphs.context_retrieval import (
     ContextRetrieverSubgraph,
 )
-from google_work_agent.application.ports import ConnectorReadResult
-from google_work_agent.application.workflows import build_default_run_budget
-from google_work_agent.application.workflows.api_acquisition import (
+from google_work_agent.ports.connectors.read import ConnectorReadResult
+from google_work_agent.application.orchestration.contracts import build_default_run_budget
+from google_work_agent.application.orchestration.api_acquisition import (
     RetrievalBudget,
     retrieval_query_hash,
 )
-from google_work_agent.application.workflows.retrieval_read_cache import (
+from google_work_agent.application.orchestration.retrieval_read_cache import (
     DetailTargetCacheEntry,
     ReadResultCacheEntry,
     RunScopedReadResultCache,
 )
-from google_work_agent.application.workflows.retrieval_read_executor import RetrievalReadExecutor
-from google_work_agent.application.workflows.source_fetch_plan_builder import SourceFetchPlanBuilder
+from google_work_agent.application.orchestration.retrieval_read_executor import RetrievalReadExecutor
+from google_work_agent.application.orchestration.source_fetch_plan_builder import SourceFetchPlanBuilder
 from google_work_agent.ports import WorkflowCorrelationContext, WorkflowStartRequest
 
 

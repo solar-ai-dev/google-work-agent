@@ -5,7 +5,7 @@ from collections.abc import Callable
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.binding_projection import project_binding_input
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
 from google_work_agent.application.agents.tool_routing.finalize_route import finalize_route
-from google_work_agent.application.workflows.scope_expansion import ScopeExpansionResolver
+from google_work_agent.application.orchestration.scope_expansion import ScopeExpansionResolver
 from google_work_agent.domain import ConnectorToolCatalog
 
 

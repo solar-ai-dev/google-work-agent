@@ -1,6 +1,6 @@
 """Get-conversation-history wire response."""
 
-from google_work_agent.api.schemas.common import ApiModel
+from google_work_agent.api.schemas.model import ApiModel
 
 
 class ConversationHistoryResponse(ApiModel):

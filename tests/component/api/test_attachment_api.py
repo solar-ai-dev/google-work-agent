@@ -10,7 +10,9 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClock
 
-from google_work_agent.adapters.connectors import build_google_workspace_connector_descriptor
+from google_work_agent.adapters.connectors.google_workspace import (
+    build_google_workspace_connector_descriptor,
+)
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
     SubprocessMCPTransport,
@@ -23,12 +25,11 @@ from google_work_agent.adapters.readiness.composite import (
     StaticReadinessAggregator,
 )
 from google_work_agent.adapters.runtime.attachment_staging import LocalAttachmentStaging
-from google_work_agent.api import ApiContainer, create_app
-from google_work_agent.api.security import (
-    InMemoryBootstrapGrantStore,
-    InMemoryLocalSessionManager,
-    LocalApiAccessGuard,
-)
+from google_work_agent.api.app import create_app
+from google_work_agent.api.container import ApiContainer
+from google_work_agent.api.security.access_guard import LocalApiAccessGuard
+from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
+from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
 from google_work_agent.application.attachments import (
     GetGmailAttachmentService,
     StageAttachmentService,

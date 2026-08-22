@@ -2,29 +2,27 @@
 
 from pathlib import Path
 
-from google_work_agent.api.schemas.actions import (
-    ApproveActionRequestV2,
-    ModifyActionRequestV2,
-    PrepareRetryRequestV2,
-    RejectActionRequestV2,
+from google_work_agent.api.schemas.actions.approve_action import ApproveActionRequestV2
+from google_work_agent.api.schemas.actions.modify_action import ModifyActionRequestV2
+from google_work_agent.api.schemas.actions.prepare_retry_action import PrepareRetryRequestV2
+from google_work_agent.api.schemas.actions.reject_action import RejectActionRequestV2
+from google_work_agent.api.schemas.attachments.stage_attachment import StageAttachmentRequest
+from google_work_agent.api.schemas.conversations.create_conversation import (
+    CreateConversationRequest,
 )
-from google_work_agent.api.schemas.attachments import StageAttachmentRequest
-from google_work_agent.api.schemas.conversations import CreateConversationRequest
-from google_work_agent.api.schemas.events import EventEnvelope
+from google_work_agent.api.schemas.events.get_events import EventEnvelope
 from google_work_agent.api.schemas.health_checks.get_liveness import LiveResponse
 from google_work_agent.api.schemas.health_checks.get_readiness import ReadyResponse
-from google_work_agent.api.schemas.resources import ResourceListResponse
-from google_work_agent.api.schemas.runs import (
-    CancelRunRequestV2,
-    ConfirmationResponseV1,
-    ResolveRecoveryRequestV1,
-    ResumeRunRequestV2,
-    StartRunRequest,
-)
+from google_work_agent.api.schemas.resources.list_resources import ResourceListResponse
+from google_work_agent.api.schemas.runs.cancel_run import CancelRunRequestV2
+from google_work_agent.api.schemas.runs.confirm_run import ConfirmationResponseV1
+from google_work_agent.api.schemas.runs.resolve_recovery import ResolveRecoveryRequestV1
+from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
+from google_work_agent.api.schemas.runs.start_run import StartRunRequest
 from google_work_agent.api.schemas.runtime_summaries.get_runtime_summary import (
     RuntimeSummaryResponse,
 )
-from google_work_agent.api.schemas.settings import PatchSettingsRequest
+from google_work_agent.api.schemas.settings.update_settings import PatchSettingsRequest
 
 
 def test_action_transport_contracts_live_in_operation_modules() -> None:
@@ -48,9 +46,7 @@ def test_other_plural_resource_contracts_live_in_operation_modules() -> None:
     assert EventEnvelope.__module__.endswith(".events.get_events")
     assert ResourceListResponse.__module__.endswith(".resources.list_resources")
     assert PatchSettingsRequest.__module__.endswith(".settings.update_settings")
-    assert RuntimeSummaryResponse.__module__.endswith(
-        ".runtime_summaries.get_runtime_summary"
-    )
+    assert RuntimeSummaryResponse.__module__.endswith(".runtime_summaries.get_runtime_summary")
     assert LiveResponse.__module__.endswith(".health_checks.get_liveness")
     assert ReadyResponse.__module__.endswith(".health_checks.get_readiness")
 

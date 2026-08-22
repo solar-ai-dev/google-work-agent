@@ -14,29 +14,31 @@ from json import dumps
 from typing import Final, NotRequired, cast
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.application.workflows import (
+from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
-    AgentLocalStateV1,
     AnswerDraftV1,
     ContextBundleV1,
     ContextRetrievalResultV1,
     EvidenceDraftV1,
     EvidenceSelectionResultV2,
-    MultiAgentGraphState,
     PlanReviewResultV1,
     RequestIntentV2,
     RequestUnderstandingOutputV1,
     RetrievalRequiredV1,
     RetrievalResultV1,
-    RunBudgetV1,
     SourceFetchPlanV1,
     SourcePlanningOutputV1,
     SufficiencyResultV2,
     WorkAnalysisResultV1,
+)
+from google_work_agent.application.orchestration.contracts import (
+    AgentLocalStateV1,
+    MultiAgentGraphState,
+    RunBudgetV1,
     WorkflowPhase,
 )
-from google_work_agent.application.workflows.tool_routing import (
+from google_work_agent.application.orchestration.tool_routing import (
     RouteReconsiderationRequiredV1,
     ScopeExpansionRequiredV1,
     ToolRoutePlanV2,

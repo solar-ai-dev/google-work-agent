@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
-from google_work_agent.application.workflows.context_segmentation import _SourceSegment
-from google_work_agent.application.workflows.handoff_contracts import ConstraintV1, RequestIntentV2
-from google_work_agent.application.workflows.retrieval_ranking import (
+from google_work_agent.application.orchestration.context_segmentation import _SourceSegment
+from google_work_agent.application.orchestration.handoff_contracts import ConstraintV1, RequestIntentV2
+from google_work_agent.application.orchestration.retrieval_ranking import (
     EXACT_RESOURCE_REASON,
     KEYWORD_MATCH_REASON,
     RELATED_RESOURCE_REASON,

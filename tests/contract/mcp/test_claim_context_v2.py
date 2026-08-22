@@ -1,7 +1,7 @@
 """End-to-end R8.4 ClaimContextV2 contract test against the real MCP server.
 
 Unlike test_subprocess_transport.py (which drives the read-only fake server),
-this spins up the actual google_work_agent.mcp.server module as a child
+this spins up the actual google_work_agent.adapters.connectors.google.mcp.verified_server module as a child
 process and drives it through the real SubprocessMCPTransport / gateway
 signing path. No live Google credentials are configured, which lets each
 test distinguish two outcomes by error code alone:
@@ -23,7 +23,9 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.adapters.connectors import build_google_workspace_connector_descriptor
+from google_work_agent.adapters.connectors.google_workspace import (
+    build_google_workspace_connector_descriptor,
+)
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
     MCPGoogleWorkspaceGateway,
@@ -65,7 +67,7 @@ def _start_transport(tmp_path: Path, *, service_instance_id: str) -> SubprocessM
                 environment="DEVELOPMENT",
                 service_instance_id=service_instance_id,
                 working_directory=str(Path(__file__).resolve().parents[3]),
-                module_name="google_work_agent.mcp.server",
+                module_name="google_work_agent.adapters.connectors.google.mcp.verified_server",
                 extra_environment={
                     "GOOGLE_OAUTH_CLIENT_ID": "test-desktop-client-id",
                     "GWA_TEST_KEYRING_PATH": str(keyring_path),

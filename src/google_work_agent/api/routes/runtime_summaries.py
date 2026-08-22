@@ -2,11 +2,11 @@
 
 from fastapi import APIRouter, Header, Request
 
-from google_work_agent.api.dependencies import (
-    RuntimeRouteDependency,
-    enforce_access,
+from google_work_agent.api.dependencies.access_control import enforce_access
+from google_work_agent.api.dependencies.contract_version import (
     enforce_supported_api_contract_version,
 )
+from google_work_agent.api.dependencies.runtime_summaries import RuntimeRouteDependency
 from google_work_agent.api.schemas.runtime_summaries.get_runtime_summary import (
     RuntimeSummaryResponse,
 )

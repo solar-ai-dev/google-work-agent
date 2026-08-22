@@ -6,7 +6,10 @@ import threading
 from collections.abc import Callable
 from json import dumps, loads
 
-from google_work_agent.application.ports import ConnectorExecutionPort, ConnectorWriteRequest
+from google_work_agent.ports.connectors.execution import (
+    ConnectorExecutionPort,
+    ConnectorWriteRequest,
+)
 from google_work_agent.application.write_action_arguments import coerce_int as _coerce_int
 from google_work_agent.application.write_execution_contracts import ExecutedWriteActionResult
 from google_work_agent.application.write_execution_integrity import read_claim_token

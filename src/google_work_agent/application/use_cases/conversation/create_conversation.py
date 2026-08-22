@@ -3,18 +3,36 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import cast
 
 from google_work_agent.application.run_command_receipts import (
     finish_json_receipt as _finish_json_receipt,
     resolve_existing_receipt as _resolve_existing_receipt,
 )
-from google_work_agent.application.run_contracts import (
-    CreateConversationCommand,
-    CreateConversationResponse as CreateConversationResult,
-)
 from google_work_agent.domain import ResultCode
 from google_work_agent.ports import ConversationRecord, UnitOfWork
+
+
+@dataclass(frozen=True, slots=True)
+class CreateConversationCommand:
+    command_id: str
+    request_hash: str
+    conversation_id: str
+    account_id: str
+    title: str
+    api_contract_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class CreateConversationResult:
+    applied: bool
+    result_code: str
+    conversation_id: str
+    account_id: str
+    title: str
+    updated_at_ms: int
+    conflict_detail: str | None = None
 
 
 class CreateConversationHandler:

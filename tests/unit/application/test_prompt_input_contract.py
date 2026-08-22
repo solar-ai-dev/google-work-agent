@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.application.workflows.prompt_input_contract import (
+from google_work_agent.application.orchestration.prompt_input_contract import (
     PromptInputContractError,
     PromptRuntimeInputContractValidator,
 )

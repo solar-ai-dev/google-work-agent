@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from google_work_agent.application.workflows.handoff_contracts import WorkflowSignalV1
+from google_work_agent.application.orchestration.handoff_contracts import WorkflowSignalV1
 
 
 class ReviewState(TypedDict, total=False):

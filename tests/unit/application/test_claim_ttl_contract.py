@@ -17,7 +17,7 @@ from google_work_agent.domain.claim_contract import (
     CLAIM_CONTEXT_DEFAULT_TTL_MS,
     CLAIM_CONTEXT_MAX_TTL_MS,
 )
-from google_work_agent.mcp import server
+from google_work_agent.adapters.connectors.google.mcp import workspace_tools as server
 from google_work_agent.ports import MCPTransport
 
 _SESSION_KEY = "11" * 32

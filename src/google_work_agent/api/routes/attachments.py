@@ -8,21 +8,19 @@ import binascii
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import StreamingResponse
 
-from google_work_agent.api.dependencies import (
+from google_work_agent.api.dependencies.access_control import enforce_access
+from google_work_agent.api.dependencies.attachments import (
+    AttachmentRouteDependencies,
     AttachmentRouteDependency,
-    enforce_access,
+)
+from google_work_agent.api.dependencies.contract_version import (
     enforce_supported_api_contract_version,
 )
-from google_work_agent.api.errors import ApiError
-from google_work_agent.api.route_dependencies import AttachmentRouteDependencies
-from google_work_agent.api.schemas.attachments import (
+from google_work_agent.api.errors.api_request_error import ApiRequestError
+from google_work_agent.api.schemas.attachments.get_attachment import (
     AttachmentDescriptorResponse,
-    StageAttachmentRequest,
 )
-from google_work_agent.application.ports.connector_failure import (
-    ConnectorFailureCode,
-    ConnectorOperationFailure,
-)
+from google_work_agent.api.schemas.attachments.stage_attachment import StageAttachmentRequest
 from google_work_agent.application.use_cases.attachment.fetch_attachment import (
     FetchAttachmentHandler,
     FetchAttachmentQuery,
@@ -32,6 +30,10 @@ from google_work_agent.application.use_cases.attachment.stage_attachment import 
     StageAttachmentHandler,
 )
 from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.connectors.failure import (
+    ConnectorFailureCode,
+    ConnectorOperationFailure,
+)
 
 _STAGING_ERROR_STATUS = {
     "ATTACHMENT_EMPTY": 422,
@@ -60,7 +62,7 @@ def create_router(dependencies: AttachmentRouteDependencies | None = None) -> AP
         )
         service = route_dependencies.get_gmail_attachment_service()
         if service is None:
-            raise ApiError(
+            raise ApiRequestError(
                 error_code="SERVICE_BUSY",
                 user_message="Attachment provider is not configured.",
                 status_code=503,
@@ -101,7 +103,7 @@ def create_router(dependencies: AttachmentRouteDependencies | None = None) -> AP
         )
         service = route_dependencies.stage_attachment_service()
         if service is None:
-            raise ApiError(
+            raise ApiRequestError(
                 error_code="SERVICE_BUSY",
                 user_message="Attachment staging is not configured.",
                 status_code=503,
@@ -111,7 +113,7 @@ def create_router(dependencies: AttachmentRouteDependencies | None = None) -> AP
         try:
             data = base64.b64decode(body.data_base64, validate=True)
         except binascii.Error as error:
-            raise ApiError(
+            raise ApiRequestError(
                 error_code="INVALID_ATTACHMENT",
                 user_message="The attachment could not be staged.",
                 status_code=422,
@@ -164,7 +166,7 @@ def _raise_attachment_failure(error: ConnectorOperationFailure, *, request_id: s
             error.code,
             ("UPSTREAM_UNAVAILABLE", 502),
         )
-    raise ApiError(
+    raise ApiRequestError(
         error_code=error_code,
         user_message="Attachment request could not be completed.",
         status_code=status_code,

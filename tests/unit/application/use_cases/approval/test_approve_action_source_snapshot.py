@@ -9,7 +9,7 @@ from google_work_agent.application.use_cases.approval.approve_action import (
     ApproveActionCommand,
     ApproveActionHandler,
 )
-from google_work_agent.application.use_cases.approval.build_source_snapshot import (
+from google_work_agent.application.approval_source_snapshot import (
     merge_approval_snapshot_metadata,
 )
 from google_work_agent.domain import (

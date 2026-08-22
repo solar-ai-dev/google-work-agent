@@ -11,26 +11,26 @@ USE_CASES = ROOT / "src" / "google_work_agent" / "application" / "use_cases"
 
 RUNTIME_CONTROL_BINDINGS = (
     ("runtime_summaries.py", "get_runtime", "GetRuntimeSummaryHandler"),
-    ("identity.py", "get_current_google_account", "GetGoogleAccountHandler"),
-    ("llm.py", "get_llm_connection", "GetLLMConnectionHandler"),
-    ("llm.py", "store_llm_api_key", "StoreLLMApiKeyHandler"),
-    ("llm.py", "delete_llm_api_key", "DeleteLLMApiKeyHandler"),
-    ("llm.py", "test_llm_connection", "TestLLMConnectionHandler"),
+    ("identities.py", "get_current_google_account", "GetGoogleAccountHandler"),
+    ("llm_connections.py", "get_llm_connection", "GetLLMConnectionHandler"),
+    ("llm_connections.py", "store_llm_api_key", "StoreLLMApiKeyHandler"),
+    ("llm_connections.py", "delete_llm_api_key", "DeleteLLMApiKeyHandler"),
+    ("llm_connections.py", "test_llm_connection", "TestLLMConnectionHandler"),
     ("settings.py", "get_settings", "GetSettingsHandler"),
     ("settings.py", "patch_settings", "UpdateSettingsHandler"),
     ("settings.py", "list_backups", "ListBackupsHandler"),
     ("settings.py", "create_backup", "CreateBackupHandler"),
     ("settings.py", "create_restore_plan", "CreateRestorePlanHandler"),
     ("settings.py", "shutdown", "RequestShutdownHandler"),
-    ("health.py", "ready", "GetReadinessHandler"),
+    ("health_checks.py", "ready", "GetReadinessHandler"),
 )
 APPLICATION_RUNTIME_CONTROL_OWNERS = ("runtime", "identity", "llm", "settings", "backup", "health")
 PROVIDER_BOUNDARY_ROUTES = (
     "runtime_summaries.py",
-    "identity.py",
-    "llm.py",
+    "identities.py",
+    "llm_connections.py",
     "settings.py",
-    "health.py",
+    "health_checks.py",
 )
 
 
@@ -109,18 +109,20 @@ def test_all_runtime_control_routes_bind_expected_application_handlers() -> None
     for route_name, endpoint_name, handler_name in RUNTIME_CONTROL_BINDINGS:
         tree = _parse(ROUTES / route_name)
         endpoint = _route_function(tree, endpoint_name)
-        assert _is_route_endpoint(endpoint), f"{route_name}:{endpoint_name} is no longer a route endpoint"
-        assert _imports_symbol_from_application_use_cases(tree, handler_name), (
-            f"{route_name}:{endpoint_name} no longer imports canonical {handler_name}"
-        )
-        assert _calls_handler_handle(endpoint, handler_name), (
-            f"{route_name}:{endpoint_name} must call {handler_name}(...).handle(...)"
-        )
+        assert _is_route_endpoint(
+            endpoint
+        ), f"{route_name}:{endpoint_name} is no longer a route endpoint"
+        assert _imports_symbol_from_application_use_cases(
+            tree, handler_name
+        ), f"{route_name}:{endpoint_name} no longer imports canonical {handler_name}"
+        assert _calls_handler_handle(
+            endpoint, handler_name
+        ), f"{route_name}:{endpoint_name} must call {handler_name}(...).handle(...)"
 
 
 def test_runtime_and_identity_routes_do_not_call_broad_query_service_semantics() -> None:
     runtime = (ROUTES / "runtime_summaries.py").read_text(encoding="utf-8")
-    identity = (ROUTES / "identity.py").read_text(encoding="utf-8")
+    identity = (ROUTES / "identities.py").read_text(encoding="utf-8")
     assert ".query_service().get_runtime_summary()" not in runtime
     assert ".query_service().get_current_google_account()" not in identity
 
@@ -133,11 +135,15 @@ def test_runtime_control_application_has_no_api_or_http_reverse_dependency() -> 
         for module in sorted(_imported_modules(_parse(path))):
             if any(_matches_module(module, prefix) for prefix in prohibited_prefixes):
                 violations.append(f"{path.relative_to(ROOT)} -> {module}")
-    assert not violations, "Application -> API/HTTP reverse dependencies found:\n" + "\n".join(violations)
+    assert not violations, "Application -> API/HTTP reverse dependencies found:\n" + "\n".join(
+        violations
+    )
 
 
-def test_runtime_control_routes_and_application_do_not_import_provider_or_concrete_adapters() -> None:
-    """VAPI4-003: Core runtime-control paths may depend on Ports, never provider clients/adapters."""
+def test_runtime_control_routes_and_application_do_not_import_provider_or_concrete_adapters() -> (
+    None
+):
+    """Keep runtime-control paths on Ports and away from concrete providers."""
     prohibited_prefixes = (
         "google",
         "googleapiclient",
@@ -157,7 +163,9 @@ def test_runtime_control_routes_and_application_do_not_import_provider_or_concre
         for module in sorted(_imported_modules(_parse(path))):
             if any(_matches_module(module, prefix) for prefix in prohibited_prefixes):
                 violations.append(f"{path.relative_to(ROOT)} -> {module}")
-    assert not violations, "direct Provider SDK/client/concrete adapter imports found:\n" + "\n".join(violations)
+    assert not violations, (
+        "direct Provider SDK/client/concrete adapter imports found:\n" + "\n".join(violations)
+    )
 
 
 def test_application_use_cases_do_not_depend_on_api_schemas() -> None:
@@ -171,11 +179,11 @@ def test_target_routes_do_not_bypass_locked_dependency_boundary() -> None:
     prohibited = ("google_work_agent.api.container", "google_work_agent.api.route_dependencies")
     for route_name in (
         "runtime_summaries.py",
-        "identity.py",
-        "llm.py",
+        "identities.py",
+        "llm_connections.py",
         "settings.py",
-        "session.py",
-        "health.py",
+        "sessions.py",
+        "health_checks.py",
     ):
         source = (ROUTES / route_name).read_text(encoding="utf-8")
         for dependency in prohibited:
@@ -183,7 +191,7 @@ def test_target_routes_do_not_bypass_locked_dependency_boundary() -> None:
 
 
 def test_session_bootstrap_stays_transport_security_owned() -> None:
-    source = (ROUTES / "session.py").read_text(encoding="utf-8")
+    source = (ROUTES / "sessions.py").read_text(encoding="utf-8")
     assert "bootstrap_grant_store" in source
     assert "local_session_manager" in source
     assert "httponly=True" in source

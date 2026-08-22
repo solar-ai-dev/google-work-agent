@@ -41,61 +41,71 @@ from google_work_agent.adapters.langgraph.route_translation import (
     confirmation_resume_status,
 )
 from google_work_agent.adapters.langgraph.subgraph_state import ContextRetrievalLocalState
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     ConfirmationResponseV1,
-    ContextRetrievalAgent,
     GraphStateUpdateV1,
     MultiAgentGraphState,
-    RetrievalRouteResultV1,
     RunBudgetV1,
-    SufficiencyResultV2,
-    SupervisorDecisionV1,
     WorkflowPhase,
+)
+from google_work_agent.application.orchestration.context_retrieval import (
+    ContextRetrievalAgent,
     build_context_clarification_question,
-    finalize_retrieval_result,
-    initialize_current_round_no,
-    retrieval_query_hash,
-    route_supervisor,
     validate_context_retrieval_result_v1,
 )
-from google_work_agent.application.workflows.handoff_contracts import (
+from google_work_agent.application.orchestration.supervisor import (
+    RetrievalRouteResultV1,
+    SupervisorDecisionV1,
+    route_supervisor,
+)
+from google_work_agent.application.orchestration.handoff_contracts import (
+    SufficiencyResultV2,
+)
+from google_work_agent.application.orchestration.retrieval_finalize import (
+    finalize_retrieval_result,
+)
+from google_work_agent.application.orchestration.retrieval_rounds import (
+    initialize_current_round_no,
+)
+from google_work_agent.application.orchestration.api_acquisition import retrieval_query_hash
+from google_work_agent.application.orchestration.handoff_contracts import (
     ContextRetrievalResultV1,
     RequestIntentV2,
     RetrievalNeedV1,
     RetrievalRequiredV1,
 )
-from google_work_agent.application.workflows.request_understanding import (
+from google_work_agent.application.orchestration.request_understanding import (
     build_user_interrupt_v1,
 )
-from google_work_agent.application.workflows.retrieval_attempts import (
+from google_work_agent.application.orchestration.retrieval_attempts import (
     QueryAttempt,
     build_query_attempt,
     followup_planner_projection,
 )
-from google_work_agent.application.workflows.retrieval_evidence_store import RunScopedEvidenceStore
-from google_work_agent.application.workflows.retrieval_planner_input import (
+from google_work_agent.application.orchestration.retrieval_evidence_store import RunScopedEvidenceStore
+from google_work_agent.application.orchestration.retrieval_planner_input import (
     followup_retrieval_planner_input,
     initial_retrieval_planner_input,
 )
-from google_work_agent.application.workflows.retrieval_query_planner import (
+from google_work_agent.application.orchestration.retrieval_query_planner import (
     RetrievalQueryPlannerAgent,
 )
-from google_work_agent.application.workflows.retrieval_read_cache import (
+from google_work_agent.application.orchestration.retrieval_read_cache import (
     ReadResultContinuationError,
     RunScopedReadResultCache,
 )
-from google_work_agent.application.workflows.retrieval_read_executor import RetrievalReadExecutor
-from google_work_agent.application.workflows.retrieval_v2_contracts import RetrievalConstraintKindV1
-from google_work_agent.application.workflows.source_fetch_plan_builder import (
+from google_work_agent.application.orchestration.retrieval_read_executor import RetrievalReadExecutor
+from google_work_agent.application.orchestration.retrieval_v2_contracts import RetrievalConstraintKindV1
+from google_work_agent.application.orchestration.source_fetch_plan_builder import (
     RouteConstraintPolicy,
     SourceFetchPlanBuilder,
 )
-from google_work_agent.application.workflows.source_fetch_plan_execution_projection import (
+from google_work_agent.application.orchestration.source_fetch_plan_execution_projection import (
     project_for_legacy_read_executor,
 )
-from google_work_agent.application.workflows.tool_routing import (
+from google_work_agent.application.orchestration.tool_routing import (
     InputToolRouteV1,
     allowed_read_tool_ids,
     coarse_resource_category,

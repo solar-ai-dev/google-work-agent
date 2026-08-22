@@ -1,10 +1,10 @@
 """Pure Domain transition for resuming a confirmed LangGraph interrupt."""
 
-from google_work_agent.domain.commands import RunCommand
+from google_work_agent.domain.run.model import RunCommand
 from google_work_agent.domain.enums import ResultCode, RunStatus
-from google_work_agent.domain.errors import InvariantViolationError
+from google_work_agent.domain.exceptions import InvariantViolationError
 from google_work_agent.domain.results import CommandResult
-from google_work_agent.domain.transitions import next_allowed_run_commands
+from google_work_agent.domain.run.transitions.run import next_allowed_run_commands
 
 _CONFIRMATION_RESUME_STATUSES = frozenset(
     {

@@ -6,7 +6,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps, loads
 
-from google_work_agent.application.ports import ConnectorExecutionPort
+from google_work_agent.ports.connectors.execution import (
+    ConnectorExecutionPort,
+)
 from google_work_agent.application.use_cases.verification.normalize_snapshot import normalize_snapshot
 from google_work_agent.application.write_action_arguments import dict_argument, required_argument_string
 from google_work_agent.application.write_execution_contracts import WriteActionResponse

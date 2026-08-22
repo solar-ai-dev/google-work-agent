@@ -42,7 +42,7 @@ from tests.integration.langgraph.test_runtime import (
     sqlite_unit_of_work_factory,
 )
 
-from google_work_agent.application.workflows.handoff_contracts import (
+from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     EvidenceDraftV1,
     PlanReviewResultV1,
@@ -50,10 +50,10 @@ from google_work_agent.application.workflows.handoff_contracts import (
     RetrievalResultV1,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.workflows.planning_arguments import (
+from google_work_agent.application.orchestration.planning_arguments import (
     PlanningArgumentBindingError,
 )
-from google_work_agent.application.workflows.tool_routing import (
+from google_work_agent.application.orchestration.tool_routing import (
     InputRoutePlanV1,
     OutputToolRouteV1,
     ToolRoutePlanV2,

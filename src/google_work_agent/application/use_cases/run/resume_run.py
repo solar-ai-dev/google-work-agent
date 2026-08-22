@@ -2,16 +2,37 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from json import dumps
 from typing import cast
 
 from google_work_agent.application.run_command_receipts import finish_json_receipt, resolve_existing_receipt
-from google_work_agent.application.run_contracts import ResumeRunCommand, ResumeRunResponse as ResumeRunResult
 from google_work_agent.domain import ActionStatus, ResultCode, RunStatus
 from google_work_agent.ports import AuditEventRecord, TraceEventRecord, UnitOfWork
 
 ResumeAuthority = Mapping[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class ResumeRunCommand:
+    command_id: str
+    request_hash: str
+    run_id: str
+    expected_run_version: int
+    resume_kind: str
+    api_contract_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResumeRunResult:
+    applied: bool
+    result_code: str
+    run_id: str
+    run_status: str
+    run_version: int
+    should_enqueue: bool
+    request_replayed: bool
+    conflict_detail: str | None = None
 
 _REAUTH_DISPATCH_UNCERTAIN_ACTION_STATUSES = frozenset(
     {

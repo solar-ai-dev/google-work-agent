@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 from google_work_agent.adapters.connectors.connector_registry import ConnectorRegistry
-from google_work_agent.application.ports import (
+from google_work_agent.ports.connectors.execution import (
     ConnectorExecutionPort,
     ConnectorWriteRequest,
     PreparedConnectorWrite,

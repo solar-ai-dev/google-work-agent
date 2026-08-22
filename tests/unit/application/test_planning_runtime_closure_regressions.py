@@ -1,13 +1,13 @@
 import pytest
 
-from google_work_agent.application.workflows.planning_arguments import (
+from google_work_agent.application.orchestration.planning_arguments import (
     DefaultContainerResolver,
     PlanningArgumentBindingError,
     validate_tool_argument_candidate_v1,
 )
-from google_work_agent.application.workflows.planning_plan_assembler import materialize_action_seeds
-from google_work_agent.application.workflows.planning_tool_schemas import planning_tool_argument_schema
-from google_work_agent.application.workflows.tool_routing import OutputToolRouteV1
+from google_work_agent.application.orchestration.planning_plan_assembler import materialize_action_seeds
+from google_work_agent.application.orchestration.planning_tool_schemas import planning_tool_argument_schema
+from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 
 
 def _task_create_route() -> OutputToolRouteV1:

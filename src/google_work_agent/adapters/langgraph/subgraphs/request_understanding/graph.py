@@ -16,8 +16,23 @@ from google_work_agent.adapters.langgraph.subgraphs.request_understanding.nodes.
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.nodes.validate_intent_node import validate_intent_node
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.routing.route_after_detect_ambiguity import route_after_detect_ambiguity
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state import RequestUnderstandingInputState, RequestUnderstandingState
-from google_work_agent.application.workflows import ClarificationQuestionV1, ConfirmationResponseV1, GraphStateUpdateV1, MultiAgentGraphState, RequestUnderstandingAgent, SupervisorDecisionV1, WorkflowPhase, route_supervisor
-from google_work_agent.application.workflows.request_understanding import build_user_interrupt_v1
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ClarificationQuestionV1,
+)
+from google_work_agent.application.orchestration.contracts import (
+    ConfirmationResponseV1,
+    GraphStateUpdateV1,
+    MultiAgentGraphState,
+    WorkflowPhase,
+)
+from google_work_agent.application.orchestration.request_understanding import (
+    RequestUnderstandingAgent,
+)
+from google_work_agent.application.orchestration.supervisor import (
+    SupervisorDecisionV1,
+    route_supervisor,
+)
+from google_work_agent.application.orchestration.request_understanding import build_user_interrupt_v1
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]

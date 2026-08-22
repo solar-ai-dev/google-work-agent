@@ -8,7 +8,7 @@ from google_work_agent.adapters.langgraph.route_translation import (
     confirmation_owner,
     confirmation_resume_status,
 )
-from google_work_agent.application.workflows import SupervisorTarget
+from google_work_agent.application.orchestration.supervisor import SupervisorTarget
 from google_work_agent.domain import RunStatus
 
 

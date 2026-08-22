@@ -5,9 +5,9 @@ from pathlib import Path
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import RequestIntentCandidateV1
 from google_work_agent.application.agents.request_understanding.validate_intent import validate_intent
 from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.contracts import ConfirmationResponseV1
-from google_work_agent.application.workflows.prompt_registry import default_prompt_manifest_path, load_prompt_reference
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.contracts import ConfirmationResponseV1
+from google_work_agent.application.orchestration.prompt_registry import default_prompt_manifest_path, load_prompt_reference
 from google_work_agent.ports import OutputSchemaDefinition, PromptReference, WorkflowStartRequest
 
 REQUEST_INTENT_OUTPUT_SCHEMA = OutputSchemaDefinition(schema_version="request-intent-v2", json_schema={"type":"object","required":["schema_version","goal","completion_conditions","constraints","requested_effect_hints","requested_resource_hints","analysis_requirement","ambiguity"],"additionalProperties":False,"properties":{"schema_version":{"type":"integer","enum":[2]},"goal":{"type":"string"},"completion_conditions":{"type":"array","items":{"type":"string"}},"constraints":{"type":"array","items":{"type":"object","required":["kind","field","value"],"additionalProperties":False,"properties":{"kind":{"enum":["PERSON","EMAIL","DATE","TIME","RESOURCE","SCOPE","USER_REQUIREMENT"]},"field":{"type":"string"},"value":{"oneOf":[{"type":"string"},{"type":"array","items":{"type":"string"}}]}}}},"requested_effect_hints":{"type":"array","items":{"enum":["READ","CREATE","UPDATE","SEND","DELETE"]}},"requested_resource_hints":{"type":"array","items":{"type":"string","minLength":1}},"analysis_requirement":{"enum":["NONE","REQUIRED"]},"ambiguity":{"type":"object","required":["requires_confirmation","reason_codes","missing_fields"],"additionalProperties":False,"properties":{"requires_confirmation":{"type":"boolean"},"reason_codes":{"type":"array","items":{"type":"string"}},"missing_fields":{"type":"array","items":{"type":"string"}}}}}})

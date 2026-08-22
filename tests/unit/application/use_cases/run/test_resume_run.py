@@ -4,8 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from types import SimpleNamespace
 
-from google_work_agent.application.run_contracts import ResumeRunCommand
-from google_work_agent.application.use_cases.run.resume_run import ResumeRunHandler
+from google_work_agent.application.use_cases.run.resume_run import (
+    ResumeRunCommand,
+    ResumeRunHandler,
+)
 from google_work_agent.domain import CommandResult, ResultCode, RunStatus
 from google_work_agent.ports import CommandReceiptRecord, CommandReceiptStatus, RunRecord
 

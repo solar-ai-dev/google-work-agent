@@ -10,13 +10,13 @@ from __future__ import annotations
 
 from typing import Literal, cast
 
-from google_work_agent.application.workflows.contracts import PolicyConfirmationReceiptV1
-from google_work_agent.application.workflows.handoff_contracts import RequestIntentV2
-from google_work_agent.application.workflows.scope_expansion import (
+from google_work_agent.application.orchestration.contracts import PolicyConfirmationReceiptV1
+from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
+from google_work_agent.application.orchestration.scope_expansion import (
     ScopeExpansionResolver,
     build_policy_confirmation_receipt,
 )
-from google_work_agent.application.workflows.tool_routing import coarse_resource_category
+from google_work_agent.application.orchestration.tool_routing import coarse_resource_category
 
 _TASK_READS = (
     ("google_workspace", "TASK", "POLICY_TASK_DUPLICATE_CHECK"),

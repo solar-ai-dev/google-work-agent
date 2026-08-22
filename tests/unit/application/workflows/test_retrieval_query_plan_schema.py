@@ -1,5 +1,5 @@
 from google_work_agent.application.schema_validation import validate_output_schema
-from google_work_agent.application.workflows.retrieval_query_plan_schema import (
+from google_work_agent.application.orchestration.retrieval_query_plan_schema import (
     RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
 )
 

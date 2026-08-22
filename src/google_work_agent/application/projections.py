@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from json import dumps
 from typing import Any, cast
 
-from google_work_agent.application.observability import sanitize_event_attributes
+from google_work_agent.ports.observability_events import sanitize_event_attributes
 from google_work_agent.ports import PendingProjectionEvent
 
 PROJECTION_SCHEMA_VERSION = 1

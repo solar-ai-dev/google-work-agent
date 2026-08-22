@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
-from google_work_agent.application.workflows.contracts import (
+from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseV1,
     validate_confirmation_response_v1,
 )

@@ -11,7 +11,7 @@ from typing import Any, cast
 from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
 from google_work_agent.adapters.keyring import OSKeyringSecretStore
 from google_work_agent.adapters.persistence import connect_sqlite
-from google_work_agent.api import API_CONTRACT_VERSION
+from google_work_agent.api.container import API_CONTRACT_VERSION
 from google_work_agent.application.connector_registry import ConnectorRegistry
 from google_work_agent.launcher.development_constants import (
     MCP_MANIFEST_VERSION,

@@ -139,7 +139,7 @@ class MCPArtifactConfig:
     max_restart_count: int
     environment: str
     service_instance_id: str
-    module_name: str = "google_work_agent.mcp.server"
+    module_name: str = "google_work_agent.adapters.connectors.google.mcp.verified_server"
     working_directory: str | None = None
     environment_allowlist: tuple[str, ...] = ("SYSTEMROOT", "WINDIR", "PATH", "TMP", "TEMP")
     extra_environment: dict[str, str] | None = None

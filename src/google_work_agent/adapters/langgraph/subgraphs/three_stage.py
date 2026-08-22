@@ -50,21 +50,29 @@ from google_work_agent.adapters.langgraph.subgraphs.profile_shared import (
     profile_request_source_prompt_input,
     profile_trace_context,
 )
-from google_work_agent.application.workflows import (
+from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
-    ApiDiscoveryAcquisitionAgent,
     GraphStateUpdateV1,
     MultiAgentGraphState,
-    PlanReviewAgent,
-    RequestUnderstandingAgent,
     ReviewResult,
-    SolutionPlanningAgent,
-    SupervisorDecisionV1,
     WorkflowPhase,
-    route_supervisor,
+)
+from google_work_agent.application.orchestration.api_acquisition import (
+    ApiDiscoveryAcquisitionAgent,
     validate_acquisition_result_v1,
 )
-from google_work_agent.application.workflows.profile_fused import (
+from google_work_agent.application.orchestration.plan_review import PlanReviewAgent
+from google_work_agent.application.orchestration.request_understanding import (
+    RequestUnderstandingAgent,
+)
+from google_work_agent.application.orchestration.solution_planning import (
+    SolutionPlanningAgent,
+)
+from google_work_agent.application.orchestration.supervisor import (
+    SupervisorDecisionV1,
+    route_supervisor,
+)
+from google_work_agent.application.orchestration.profile_fused import (
     PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA,
     PROFILE_REQUEST_SOURCE_OUTPUT_SCHEMA,
     validate_profile_reason_plan_output_v1,

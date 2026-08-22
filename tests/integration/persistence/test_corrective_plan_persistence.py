@@ -11,7 +11,7 @@ import pytest
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
-from google_work_agent.adapters.langgraph.canonical_freshness_runtime import (
+from google_work_agent.adapters.langgraph.freshness_workflow import (
     LangGraphWorkflowRuntime,
 )
 from google_work_agent.adapters.langgraph.graph_state import ParentGraphState
@@ -28,7 +28,7 @@ from google_work_agent.application.write_actions import (
     ResolveMismatchRecoveryService,
     SaveWritePlanService,
 )
-from google_work_agent.application.workflows.retrieval_evidence_store import RunScopedEvidenceStore
+from google_work_agent.application.orchestration.retrieval_evidence_store import RunScopedEvidenceStore
 from google_work_agent.domain import calculate_canonical_json_hash
 from google_work_agent.ports import ActionRecord, EvidenceOriginType, EvidenceRecord, PlanRecord
 

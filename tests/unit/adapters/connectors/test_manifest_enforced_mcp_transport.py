@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.adapters.connectors import build_google_workspace_connector_descriptor
+from google_work_agent.adapters.connectors.google_workspace import (
+    build_google_workspace_connector_descriptor,
+)
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
     build_manifest_payload,
@@ -131,7 +133,6 @@ def test_declared_internal_capability_is_dispatchable(tmp_path: Path) -> None:
         tool_name="gmail_get_attachment",
         arguments={"message_id": "m1", "attachment_id": "a1"},
     )
-
     assert delegate.tool_calls == ["gmail_get_attachment"]
 
 
@@ -278,8 +279,7 @@ def _build_guard(
 def _expected_internal_names() -> tuple[str, ...]:
     return tuple(
         sorted(
-            capability.tool_name
-            for capability in build_google_workspace_internal_capabilities()
+            capability.tool_name for capability in build_google_workspace_internal_capabilities()
         )
     )
 

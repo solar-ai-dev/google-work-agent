@@ -1,6 +1,6 @@
 """Known existing-result recovery transition authority."""
 
-from google_work_agent.domain.commands import ActionCommand
+from google_work_agent.domain.action.model import ActionCommand
 from google_work_agent.domain.enums import ActionStatus, ResultCode
 from google_work_agent.domain.results import CommandResult
 

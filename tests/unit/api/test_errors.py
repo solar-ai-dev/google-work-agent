@@ -1,4 +1,4 @@
-from google_work_agent.api.errors import (
+from google_work_agent.api.errors.result_code_http_mapping import (
     error_code_for_result_code,
     http_status_for_result_code,
 )

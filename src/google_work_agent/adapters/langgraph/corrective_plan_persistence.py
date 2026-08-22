@@ -6,24 +6,22 @@ from hashlib import sha256
 from json import dumps, loads
 from typing import Any, cast
 
-from google_work_agent.adapters.langgraph.canonical_planning_runtime import (
-    _active_target_resource_connector_ids,
-    connector_ids_from_frozen_routes,
-    replace_llm_expected_with_deterministic_projection,
-    target_resource_connector_ids_from_actions,
-)
 from google_work_agent.adapters.langgraph.graph_state import (
     GraphState,
     _require_state_value,
     _resource_handle_for_ref,
 )
-from google_work_agent.adapters.persistence.connector_identity import bind_action_connector_ids
+from google_work_agent.adapters.langgraph.plan_persistence import (
+    connector_ids_from_frozen_routes,
+    replace_llm_expected_with_deterministic_projection,
+    target_resource_connector_ids_from_actions,
+)
 from google_work_agent.application.calendar_conflicts import CALENDAR_CONFLICT_TOOLS
-from google_work_agent.application.task_duplicates import TASK_CREATE_TOOL, evidence_duplicate_risk
-from google_work_agent.application.workflows.handoff_contracts import ActionPlanDraftV1
-from google_work_agent.application.workflows.retrieval_evidence_store import (
+from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
+from google_work_agent.application.orchestration.retrieval_evidence_store import (
     resolve_evidence_projection,
 )
+from google_work_agent.application.task_duplicates import TASK_CREATE_TOOL, evidence_duplicate_risk
 from google_work_agent.application.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
@@ -32,6 +30,7 @@ from google_work_agent.application.write_plan_contracts import (
 )
 from google_work_agent.domain import (
     ActionStatus,
+    RunStatus,
     build_p0_tool_registry,
     calculate_canonical_json_hash,
     canonicalize_json_value,
@@ -41,7 +40,6 @@ from google_work_agent.ports import (
     EvidenceOriginType,
     PlanRecord,
     PlanStatus,
-    RunStatus,
 )
 
 
@@ -167,20 +165,17 @@ def persist_reserved_corrective_write_plan(
             + ",".join(sorted(missing_evidence))
         )
 
-    target_token = _active_target_resource_connector_ids.set(dict(target_resource_connectors))
-    try:
-        target_resource_ids = {
-            action["action_id"]: runtime._resolve_target_resource_ref_id(
+    target_resource_ids = {
+        action["action_id"]: runtime._resolve_target_resource_ref_for_connector(
                 run_id=run_id,
+                connector_id=target_resource_connectors[action["action_id"]],
                 resource_handle=action.get("target_resource_ref_id"),
                 acquisition_result=_require_state_value(
                     state["acquisition_result"], "acquisition_result"
                 ),
             )
-            for action in deterministic_plan["actions"]
-        }
-    finally:
-        _active_target_resource_connector_ids.reset(target_token)
+        for action in deterministic_plan["actions"]
+    }
 
     summary_text = runtime._required_string(deterministic_plan.get("summary"), "summary")
     materialization_projection = _candidate_materialization_projection(
@@ -210,58 +205,52 @@ def persist_reserved_corrective_write_plan(
         )
         for evidence_id in logical_evidence_ids
     )
-    target_token = _active_target_resource_connector_ids.set(
-        dict(target_resource_connectors)
+    mapped_actions = tuple(
+        WriteActionDraft(
+            action_id=action_id_map[action["action_id"]],
+            connector_id=logical_connector_ids[action["action_id"]],
+            position=action["position"],
+            tool_name=action["tool_name"],
+            arguments=action["arguments"],
+            expected=action["expected"],
+            evidence_ids=tuple(
+                evidence_id_map[item] for item in action["evidence_refs"]
+            ),
+            depends_on_action_ids=tuple(
+                action_id_map[item]
+                for item in action.get("depends_on_action_ids", [])
+            ),
+            target_resource_ref_id=target_resource_ids[action["action_id"]],
+            risk=(
+                evidence_duplicate_risk(
+                    arguments=action["arguments"],
+                    acquisition_result=_require_state_value(
+                        state["acquisition_result"], "acquisition_result"
+                    ),
+                    checked_at_ms=runtime._now_ms(),
+                )
+                if action["tool_name"] == TASK_CREATE_TOOL
+                else runtime._calendar_plan_risk(state=state, action=action)
+                if action["tool_name"] in CALENDAR_CONFLICT_TOOLS
+                else {}
+            ),
+        )
+        for action in deterministic_plan["actions"]
     )
-    try:
-        mapped_actions = tuple(
-            WriteActionDraft(
-                action_id=action_id_map[action["action_id"]],
-                position=action["position"],
-                tool_name=action["tool_name"],
-                arguments=action["arguments"],
-                expected=action["expected"],
-                evidence_ids=tuple(
-                    evidence_id_map[item] for item in action["evidence_refs"]
-                ),
-                depends_on_action_ids=tuple(
-                    action_id_map[item]
-                    for item in action.get("depends_on_action_ids", [])
-                ),
-                target_resource_ref_id=target_resource_ids[action["action_id"]],
-                risk=(
-                    evidence_duplicate_risk(
-                        arguments=action["arguments"],
-                        acquisition_result=_require_state_value(
-                            state["acquisition_result"], "acquisition_result"
-                        ),
-                        checked_at_ms=runtime._now_ms(),
-                    )
-                    if action["tool_name"] == TASK_CREATE_TOOL
-                    else runtime._calendar_plan_risk(state=state, action=action)
-                    if action["tool_name"] in CALENDAR_CONFLICT_TOOLS
-                    else {}
-                ),
-            )
-            for action in deterministic_plan["actions"]
-        )
-    finally:
-        _active_target_resource_connector_ids.reset(target_token)
 
-    with bind_action_connector_ids(persisted_connector_ids):
-        save_response = runtime._save_write_plan(
-            SaveWritePlanCommand(
-                command_id=save_command_id,
-                request_hash=save_request_hash,
-                plan_id=reserved_plan.id,
-                run_id=run_id,
-                revision_no=reserved_plan.revision_no,
-                summary_text=summary_text,
-                expected_run_version=runtime._current_run_version(run_id),
-                actions=mapped_actions,
-                evidence=mapped_evidence,
-            )
+    save_response = runtime._save_write_plan(
+        SaveWritePlanCommand(
+            command_id=save_command_id,
+            request_hash=save_request_hash,
+            plan_id=reserved_plan.id,
+            run_id=run_id,
+            revision_no=reserved_plan.revision_no,
+            summary_text=summary_text,
+            expected_run_version=runtime._current_run_version(run_id),
+            actions=mapped_actions,
+            evidence=mapped_evidence,
         )
+    )
     if not save_response.applied:
         raise RuntimeError(
             f"save corrective write plan failed: {save_response.result_code}"

@@ -16,19 +16,27 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application import (
+from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
-    ApproveWriteActionService,
+)
+from google_work_agent.application.write_approval import ApproveWriteActionService
+from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
-    ClaimWriteActionService,
+)
+from google_work_agent.application.write_claim import ClaimWriteActionService
+from google_work_agent.application.write_action_mutation_contracts import (
     ModifyWriteActionCommand,
-    ModifyWriteActionService,
+)
+from google_work_agent.application.write_action_mutation import ModifyWriteActionService
+from google_work_agent.application.write_plan_contracts import (
     PublishWritePlanCommand,
-    PublishWritePlanService,
     SaveWritePlanCommand,
-    SaveWritePlanService,
     WriteActionDraft,
     WriteEvidenceDraft,
+)
+from google_work_agent.application.write_plan import (
+    PublishWritePlanService,
+    SaveWritePlanService,
 )
 from google_work_agent.domain import (
     ApprovalStatus,

@@ -12,12 +12,11 @@ from google_work_agent.adapters.readiness.composite import (
     StaticReadinessAggregator,
     StaticRuntimeStatusProvider,
 )
-from google_work_agent.api import ApiContainer, create_app
-from google_work_agent.api.security import (
-    InMemoryBootstrapGrantStore,
-    InMemoryLocalSessionManager,
-    LocalApiAccessGuard,
-)
+from google_work_agent.api.app import create_app
+from google_work_agent.api.container import ApiContainer
+from google_work_agent.api.security.access_guard import LocalApiAccessGuard
+from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
+from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.resource_queries import ResourceQueryService
 from google_work_agent.application.start_run import (

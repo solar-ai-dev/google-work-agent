@@ -7,13 +7,15 @@ from typing import cast
 import pytest
 
 from google_work_agent.application.observability import (
+    SanitizedJsonlLogSink,
+    StaticMaintenanceGate,
+)
+from google_work_agent.ports.observability_events import (
     EventCategory,
     EventValidationError,
     ObservabilityContext,
     SanitizationError,
-    SanitizedJsonlLogSink,
     Severity,
-    StaticMaintenanceGate,
     create_event_envelope,
     sanitize_event_attributes,
 )

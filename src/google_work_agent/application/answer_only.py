@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from json import dumps
 
 from google_work_agent.domain import DuplicateCommandError, ResultCode, RunStatus
-from google_work_agent.domain.transitions import next_allowed_run_commands
+from google_work_agent.domain.run.transitions.run import next_allowed_run_commands
 from google_work_agent.ports import (
     AnswerOnlyResponse,
     AuditEventRecord,

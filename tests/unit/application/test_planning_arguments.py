@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.workflows.planning_arguments import (
+from google_work_agent.application.orchestration.planning_arguments import (
     DefaultContainerResolver,
     PlanningArgumentBindingError,
     validate_tool_argument_candidate_v1,
 )
-from google_work_agent.application.workflows.tool_routing import OutputToolRouteV1
+from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 
 
 def _route(*, tool_id: str, resource_type: str, effect: str = "CREATE") -> OutputToolRouteV1:

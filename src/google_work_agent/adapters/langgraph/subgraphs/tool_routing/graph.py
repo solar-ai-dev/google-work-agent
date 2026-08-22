@@ -18,9 +18,28 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_a
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_determine_io_resources import route_after_determine_io_resources
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_finalize_route import route_after_finalize_route
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingInputState, ToolRoutingState
-from google_work_agent.application.workflows import ClarificationQuestionV1, ConfirmationResponseV1, GraphStateUpdateV1, MultiAgentGraphState, PolicyConfirmationReceiptV1, ScopeExpansionRequiredV1, SupervisorDecisionV1, ToolRouteAgent, ToolRouteCoordinator, WorkflowPhase, route_supervisor
-from google_work_agent.application.workflows.request_understanding import build_user_interrupt_v1
-from google_work_agent.application.workflows.scope_expansion import build_policy_confirmation_receipt
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ClarificationQuestionV1,
+)
+from google_work_agent.application.orchestration.contracts import (
+    ConfirmationResponseV1,
+    GraphStateUpdateV1,
+    MultiAgentGraphState,
+    PolicyConfirmationReceiptV1,
+    WorkflowPhase,
+)
+from google_work_agent.application.orchestration.tool_routing import (
+    ScopeExpansionRequiredV1,
+    ToolRouteCoordinator,
+)
+from google_work_agent.application.orchestration.supervisor import (
+    SupervisorDecisionV1,
+    route_supervisor,
+)
+from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
+from google_work_agent.application.orchestration.request_understanding import build_user_interrupt_v1
+from google_work_agent.application.orchestration.scope_expansion import build_policy_confirmation_receipt
+from google_work_agent.domain import ConnectorToolCatalog
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[[ToolRoutingState], tuple[ConfirmationResponseV1 | None, dict[str, object] | None]]
@@ -132,3 +151,22 @@ class ToolRoutingSubgraph:
         for key in ("tr_semantic_candidate", "tr_selected_tools", "tr_binding", "tr_result", "tr_confirmation_response", "tr_retry_budget", "tr_confirmation_origin", "tr_current_interrupt_id"):
             merged.pop(key, None)
         return cast(ToolRoutingState, merged)
+
+
+def build_tool_routing_subgraph(
+    *,
+    tool_catalog: ConnectorToolCatalog,
+    id_factory: Callable[[], str],
+    merge_decision: MergeDecision,
+    semantic_agent: ToolRouteAgent,
+    confirm_inline: ConfirmInline,
+    record_policy_confirmation_receipt: RecordPolicyConfirmationReceipt,
+) -> Any:
+    return ToolRoutingSubgraph(
+        coordinator=ToolRouteCoordinator(tool_catalog=tool_catalog, id_factory=id_factory),
+        semantic_agent=semantic_agent,
+        merge_decision=merge_decision,
+        confirm_inline=confirm_inline,
+        record_policy_confirmation_receipt=record_policy_confirmation_receipt,
+        id_factory=id_factory,
+    ).build()

@@ -1,6 +1,6 @@
 """Compatibility checks for the legacy READ application facade."""
 
-from google_work_agent.application import read_only
+import google_work_agent.application.read_only as read_only
 from google_work_agent.application.read_execution import ExecuteReadActionService
 from google_work_agent.application.read_lifecycle import (
     ClaimReadActionService,

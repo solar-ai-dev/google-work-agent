@@ -11,15 +11,15 @@ from google_work_agent.application.agents.retrieval.normalize_segments import (
 )
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import RagCandidateV1
 from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.contracts import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
     RunBudgetV1,
     approve_semantic_revision,
     build_semantic_failure_signature_v1,
 )
-from google_work_agent.application.workflows.failure_record import build_failure_record_v1
-from google_work_agent.application.workflows.handoff_contracts import (
+from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
+from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceRoleDraftV2,
     EvidenceSelectionResultV2,
     RequestIntentV2,

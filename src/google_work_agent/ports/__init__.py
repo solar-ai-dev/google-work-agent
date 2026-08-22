@@ -18,7 +18,7 @@ from google_work_agent.ports.attachments import (
     GmailAttachmentGateway,
 )
 from google_work_agent.ports.clock import Clock
-from google_work_agent.ports.connectors import ConnectorRuntimeHandle
+from google_work_agent.ports.connectors.connector_runtime import ConnectorRuntimeHandle
 from google_work_agent.ports.event_publisher import (
     BufferStatus,
     InvalidReplayCursorError,

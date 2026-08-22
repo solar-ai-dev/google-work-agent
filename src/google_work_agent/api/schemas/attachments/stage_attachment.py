@@ -1,6 +1,6 @@
 """Stage-attachment wire request."""
 
-from google_work_agent.api.schemas.common import ApiModel
+from google_work_agent.api.schemas.model import ApiModel
 
 
 class StageAttachmentRequest(ApiModel):

@@ -1,6 +1,6 @@
 """Canonical FAILED write Action retry preparation transition."""
 
-from google_work_agent.domain.commands import ActionCommand
+from google_work_agent.domain.action.model import ActionCommand
 from google_work_agent.domain.enums import ActionStatus, EffectType, ResultCode
 from google_work_agent.domain.results import CommandResult
 

@@ -108,7 +108,17 @@ def internal(module: str) -> tuple[str, ...]:
 
 
 def pascal(stem: str) -> str:
-    return "".join(x.capitalize() for x in stem.split("_"))
+    acronyms = {"llm": "LLM", "oauth": "OAuth"}
+    return "".join(acronyms.get(part, part.capitalize()) for part in stem.split("_"))
+
+
+def owned_symbols(path: Path) -> set[str]:
+    result = classes(path)
+    for node in tree(path).body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.TypeAlias)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            result.update(target.id for target in targets if isinstance(target, ast.Name))
+    return result
 
 
 def clean(errors: list[str]) -> None:
@@ -117,6 +127,16 @@ def clean(errors: list[str]) -> None:
 
 def test_immediate_canonical_filename_grammar() -> None:
     clean([f"forbidden canonical filename: {rel(p)}" for p in pyfiles() if canonical(p) and bad_name(p)])
+
+
+def test_immediate_module_package_authority_is_unique() -> None:
+    clean(
+        [
+            f"module/package authority collision: {rel(path)}"
+            for path in pyfiles()
+            if path.name != "__init__.py" and path.with_suffix("").is_dir()
+        ]
+    )
 
 
 def test_immediate_domain_operation_per_file() -> None:
@@ -150,10 +170,11 @@ def test_immediate_application_use_case_grammar() -> None:
             if path.name == "__init__.py":
                 continue
             name = pascal(path.stem)
-            found = classes(path)
-            if f"{name}Handler" not in found or f"{name}Result" not in found:
+            found_classes = classes(path)
+            found_symbols = owned_symbols(path)
+            if f"{name}Handler" not in found_classes or f"{name}Result" not in found_symbols:
                 errors.append(f"{rel(path)} missing {name}Handler/{name}Result")
-            if len({f"{name}Command", f"{name}Query"} & found) != 1:
+            if len({f"{name}Command", f"{name}Query"} & found_classes) != 1:
                 errors.append(f"{rel(path)} must own exactly one Command or Query")
     clean(errors)
 
@@ -163,7 +184,11 @@ def test_immediate_agent_atomic_grammar() -> None:
     base = SRC / "application" / "agents"
     if not base.exists():
         return
-    errors.extend(f"unknown agent owner: {p.name}" for p in base.iterdir() if p.is_dir() and p.name not in ROLES)
+    errors.extend(
+        f"unknown agent owner: {p.name}"
+        for p in base.iterdir()
+        if p.is_dir() and p.name not in ROLES and p.name != "__pycache__"
+    )
     for role, allowed in ROLES.items():
         owner = base / role
         if not owner.exists():

@@ -4,11 +4,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from google_work_agent.application.agents.tool_routing.validate_route import ToolRouteValidationError
 from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.contracts import BudgetDecision, RunBudgetV1, approve_semantic_revision, build_semantic_failure_signature_v1
-from google_work_agent.application.workflows.failure_record import build_failure_record_v1
-from google_work_agent.application.workflows.prompt_registry import default_prompt_manifest_path, load_prompt_reference
-from google_work_agent.application.workflows.provider_dispatch_budget import legacy_post_call_projection, provider_dispatch_budget_scope
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.contracts import BudgetDecision, RunBudgetV1, approve_semantic_revision, build_semantic_failure_signature_v1
+from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
+from google_work_agent.application.orchestration.prompt_registry import default_prompt_manifest_path, load_prompt_reference
+from google_work_agent.application.orchestration.provider_dispatch_budget import legacy_post_call_projection, provider_dispatch_budget_scope
 from google_work_agent.ports import OutputSchemaDefinition, PromptReference, WorkflowStartRequest
 TOOL_SELECTION_OUTPUT_SCHEMA=OutputSchemaDefinition(schema_version="tool-selection-v1",json_schema={"type":"object","additionalProperties":False,"required":["schema_version","route_id","selected_tool_id"],"properties":{"schema_version":{"const":1},"route_id":{"type":"string"},"selected_tool_id":{"type":"string"}}})
 def select_tool_if_needed(*,llm_runtime:StructuredLLMRuntime,route_id:str,connector_id:str,resource_type:str,effect:str,eligible_tool_ids:tuple[str,...],request:WorkflowStartRequest,retry_budget:RunBudgetV1,prompt_ref:PromptReference|None=None,revision_prompt_ref:PromptReference|None=None,manifest_path:Path|None=None)->tuple[str,RunBudgetV1]:

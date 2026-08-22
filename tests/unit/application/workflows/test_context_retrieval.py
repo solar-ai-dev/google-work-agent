@@ -9,33 +9,37 @@ from typing import Any, Literal, TypedDict, cast
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.contracts import (
     MAX_ADDITIONAL_ACQUISITIONS,
-    AcquisitionResultV1,
-    ContextBudget,
     ContextResult,
-    ContextRetrievalAgent,
-    ContextRetrievalValidationError,
+    RunBudgetV1,
+    WorkflowPhase,
+    build_default_run_budget,
+)
+from google_work_agent.application.orchestration.handoff_contracts import (
+    AcquisitionResultV1,
     EvidenceDraftV1,
     EvidenceRoleDraftV2,
     EvidenceSelectionResultV2,
     RequestIntentV2,
-    RunBudgetV1,
     SufficiencyIssueV2,
     SufficiencyResultV2,
-    WorkflowPhase,
+)
+from google_work_agent.application.orchestration.context_retrieval import (
+    ContextBudget,
+    ContextRetrievalAgent,
+    ContextRetrievalValidationError,
     build_context_clarification_question,
-    build_default_run_budget,
     load_context_assess_sufficiency_prompt_reference,
     load_context_select_evidence_prompt_reference,
 )
-from google_work_agent.application.workflows.context_retrieval import ContextStatusValue
-from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
-from google_work_agent.application.workflows.retrieval_sufficiency import (
+from google_work_agent.application.orchestration.context_retrieval import ContextStatusValue
+from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
+from google_work_agent.application.orchestration.retrieval_sufficiency import (
     validate_sufficiency_result_v2,
 )
-from google_work_agent.application.workflows.tool_routing import ToolRoutePlanV2
+from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -541,15 +545,10 @@ def test_default_product_loader_rejects_draft_context_prompt(tmp_path: Path) -> 
         load_context_select_evidence_prompt_reference(manifest_path)
 
 
-def test_context_retrieval_exports_do_not_change_existing_workflow_contracts() -> None:
-    from google_work_agent.application import workflows
-
-    assert workflows.ContextResult is ContextResult
-    assert hasattr(workflows, "ContextRetrievalAgent")
-    assert hasattr(workflows, "ContextRetrievalResultV1")
-    assert hasattr(workflows, "ContextBundleV1")
-    assert hasattr(workflows, "EvidenceDraftV1")
-    assert hasattr(workflows, "AdditionalAcquisitionRequestV1")
+def test_context_retrieval_symbols_have_explicit_owners() -> None:
+    assert ContextResult.__module__.endswith(".workflows.contracts")
+    assert ContextRetrievalAgent.__module__.endswith(".workflows.context_retrieval")
+    assert EvidenceDraftV1.__module__.endswith(".workflows.handoff_contracts")
 
 
 def test_assess_sufficiency_prompt_input_matches_candidate_root_fields() -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from google_work_agent.ports import ConnectorRuntimeHandle
+from google_work_agent.ports.connectors.connector_runtime import ConnectorRuntimeHandle
 
 
 class ConnectorRegistry:

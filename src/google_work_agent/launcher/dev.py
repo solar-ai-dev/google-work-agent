@@ -23,7 +23,7 @@ from google_work_agent.adapters.connectors.google_workspace_execution import (
 )
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
 from google_work_agent.adapters.keyring import OSKeyringSecretStore
-from google_work_agent.adapters.langgraph import LangGraphWorkflowRuntime
+from google_work_agent.adapters.langgraph.resume_authority import LangGraphWorkflowRuntime
 from google_work_agent.adapters.llm import (
     DEFAULT_GEMINI_MODEL_ID,
     APIProviderConnectionService,
@@ -42,7 +42,7 @@ from google_work_agent.adapters.mcp import (
     build_manifest_payload,
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.errors import MigrationError
+from google_work_agent.adapters.persistence.persistence_exceptions import MigrationError
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.runtime import (
     BuildProfile,
@@ -53,14 +53,13 @@ from google_work_agent.adapters.runtime import (
 from google_work_agent.adapters.runtime.attachment_staging import (
     LocalAttachmentStaging,
 )
-from google_work_agent.api import API_CONTRACT_VERSION, ApiContainer, create_app
-from google_work_agent.api.security import (
-    InMemoryBootstrapGrantStore,
-    InMemoryLocalSessionManager,
-    LocalApiAccessGuard,
-    LocalBindPolicy,
-)
-from google_work_agent.application import (
+from google_work_agent.api.app import create_app
+from google_work_agent.api.container import API_CONTRACT_VERSION, ApiContainer
+from google_work_agent.api.security.access_guard import LocalApiAccessGuard
+from google_work_agent.api.security.bind import LocalBindPolicy
+from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
+from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
+from google_work_agent.application.google_connection import (
     DisconnectGoogleService,
     GetGoogleConnectionService,
     StartGoogleOAuthService,
@@ -88,7 +87,7 @@ from google_work_agent.application.start_run import (
     ResumeRunService,
     StartRunService,
 )
-from google_work_agent.application.workflows.prompt_registry import (
+from google_work_agent.application.orchestration.prompt_registry import (
     InactivePromptArtifactError,
     default_prompt_manifest_path,
     resolve_instruction_text,

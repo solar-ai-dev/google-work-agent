@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from uvicorn import Config, Server
 
 from google_work_agent.adapters.runtime.attachment_staging import ATTACHMENT_STAGING_DIR_ENV
-from google_work_agent.api import create_app
+from google_work_agent.api.app import create_app
 from google_work_agent.launcher.dev import DevelopmentReadinessAggregator, build_container
 
 

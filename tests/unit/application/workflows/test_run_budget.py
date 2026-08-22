@@ -1,6 +1,6 @@
 import pytest
 
-from google_work_agent.application.workflows import (
+from google_work_agent.application.orchestration.contracts import (
     ABSOLUTE_MAX_LLM_CALLS,
     MAX_ADDITIONAL_ACQUISITIONS,
     NORMAL_MAX_LLM_CALLS,

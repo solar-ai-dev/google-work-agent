@@ -4,7 +4,10 @@ from pathlib import Path
 import pytest
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.application import CompleteAnswerOnlyRunCommand, CompleteAnswerOnlyRunService
+from google_work_agent.application.answer_only import (
+    CompleteAnswerOnlyRunCommand,
+    CompleteAnswerOnlyRunService,
+)
 from tests.support.fakes import (
     SQLiteFaultPlan,
     SQLiteFaultStage,

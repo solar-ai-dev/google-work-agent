@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from google_work_agent.domain.action.transitions.cancel_pending_action import transition_cancel_pending_action
-from google_work_agent.domain.commands import ActionCommand
+from google_work_agent.domain.action.model import ActionCommand
 from google_work_agent.domain.enums import ActionStatus, EffectType, ResultCode
 
 

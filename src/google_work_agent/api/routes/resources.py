@@ -4,21 +4,15 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Header, Path, Query, Request
 
-from google_work_agent.api.dependencies import (
-    ResourceRouteDependency,
-    enforce_access,
+from google_work_agent.api.dependencies.access_control import enforce_access
+from google_work_agent.api.dependencies.contract_version import (
     enforce_supported_api_contract_version,
 )
-from google_work_agent.api.errors import ApiError
-from google_work_agent.api.schemas.resources import (
-    GmailResourceDetailResponse,
-    ResourceCountResponse,
-    ResourceListResponse,
-)
-from google_work_agent.application.ports.connector_failure import (
-    ConnectorFailureCode,
-    ConnectorOperationFailure,
-)
+from google_work_agent.api.dependencies.resources import ResourceRouteDependency
+from google_work_agent.api.errors.api_request_error import ApiRequestError
+from google_work_agent.api.schemas.resources.count_resources import ResourceCountResponse
+from google_work_agent.api.schemas.resources.get_gmail_resource import GmailResourceDetailResponse
+from google_work_agent.api.schemas.resources.list_resources import ResourceListResponse
 from google_work_agent.application.use_cases.resource_ref.count_resources import (
     CountResourcesHandler,
     CountResourcesQuery,
@@ -32,6 +26,10 @@ from google_work_agent.application.use_cases.resource_ref.list_resources import 
     ListResourcesQuery,
 )
 from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.connectors.failure import (
+    ConnectorFailureCode,
+    ConnectorOperationFailure,
+)
 
 router = APIRouter(prefix="/api/v1/resources")
 
@@ -39,7 +37,7 @@ router = APIRouter(prefix="/api/v1/resources")
 def _resource_service(dependencies: ResourceRouteDependency, *, request_id: str):
     service = dependencies.resource_query_service()
     if service is None:
-        raise ApiError(
+        raise ApiRequestError(
             error_code="SERVICE_BUSY",
             user_message="Resource provider is not configured.",
             status_code=503,
@@ -253,7 +251,7 @@ def _raise_connector_failure(error: ConnectorOperationFailure, *, request_id: st
         ConnectorFailureCode.ATTACHMENT_INVALID: ("INVALID_ATTACHMENT", 422),
     }
     error_code, status_code = mapping[error.code]
-    raise ApiError(
+    raise ApiRequestError(
         error_code=error_code,
         user_message="Resource request could not be completed.",
         status_code=status_code,

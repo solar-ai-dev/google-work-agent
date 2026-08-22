@@ -5,14 +5,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
-from google_work_agent.application.workflows import (
+from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     BudgetDecision,
     PromptRef,
     RunBudgetV1,
     check_llm_call_budget,
 )
-from google_work_agent.application.workflows.provider_dispatch_budget import (
+from google_work_agent.application.orchestration.provider_dispatch_budget import (
     bind_provider_dispatch_budget,
     merge_provider_dispatch_usage,
 )

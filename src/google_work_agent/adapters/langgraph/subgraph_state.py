@@ -9,37 +9,39 @@ from __future__ import annotations
 from typing import NotRequired, TypedDict
 
 from google_work_agent.adapters.langgraph.graph_state import GraphState
-from google_work_agent.application.workflows import (
+from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
-    AgentLocalStateV1,
     AnswerDraftV1,
     ContextBundleV1,
     ContextRetrievalResultV1,
     EvidenceDraftV1,
     EvidenceSelectionResultV2,
-    MultiAgentGraphState,
     PlanReviewResultV1,
     RequestIntentV2,
     RequestUnderstandingOutputV1,
     RetrievalRequiredV1,
     RetrievalResultV1,
-    RunBudgetV1,
     SourceFetchPlanV1,
     SourcePlanningOutputV1,
     SufficiencyResultV2,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.workflows.profile_fused import (
+from google_work_agent.application.orchestration.contracts import (
+    AgentLocalStateV1,
+    MultiAgentGraphState,
+    RunBudgetV1,
+)
+from google_work_agent.application.orchestration.profile_fused import (
     ProfileReasonPlanOutputV1,
     ProfileRequestSourceOutputV1,
 )
-from google_work_agent.application.workflows.retrieval_attempts import QueryAttempt
-from google_work_agent.application.workflows.retrieval_ranking import RagCandidateV1
-from google_work_agent.application.workflows.retrieval_v2_contracts import (
+from google_work_agent.application.orchestration.retrieval_attempts import QueryAttempt
+from google_work_agent.application.orchestration.retrieval_ranking import RagCandidateV1
+from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     SourceFetchPlanV1 as V2SourceFetchPlanV1,
 )
-from google_work_agent.application.workflows.tool_routing import (
+from google_work_agent.application.orchestration.tool_routing import (
     RouteReconsiderationRequiredV1,
     ScopeExpansionRequiredV1,
     ToolRoutePlanV2,

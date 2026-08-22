@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from math import ceil
 
-from google_work_agent.application.workflows.handoff_contracts import AcquisitionResultV1
+from google_work_agent.application.orchestration.handoff_contracts import AcquisitionResultV1
 
 
 @dataclass(frozen=True, slots=True)

@@ -6,18 +6,20 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.workflows import MAX_ADDITIONAL_ACQUISITIONS
-from google_work_agent.application.workflows.context_segmentation import (
+from google_work_agent.application.orchestration.contracts import (
+    MAX_ADDITIONAL_ACQUISITIONS,
+)
+from google_work_agent.application.orchestration.context_segmentation import (
     ContextRetrievalValidationError,
 )
-from google_work_agent.application.workflows.contracts import RunBudgetV1
-from google_work_agent.application.workflows.handoff_contracts import (
+from google_work_agent.application.orchestration.contracts import RunBudgetV1
+from google_work_agent.application.orchestration.handoff_contracts import (
     ActionEffectValue,
     RequestIntentV2,
     SufficiencyIssueV2,
     SufficiencyResultV2,
 )
-from google_work_agent.application.workflows.retrieval_sufficiency import (
+from google_work_agent.application.orchestration.retrieval_sufficiency import (
     enforce_sufficiency_guard,
     missing_information_projection,
     validate_sufficiency_result_v2,

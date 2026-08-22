@@ -11,30 +11,36 @@ from google_work_agent.adapters.langgraph.subgraphs.acquisition import Acquisiti
 from google_work_agent.adapters.langgraph.subgraphs.projected_context_retrieval import (
     ProjectedContextRetrieverSubgraph,
 )
-from google_work_agent.adapters.langgraph.subgraphs.request_understanding import (
+from google_work_agent.adapters.langgraph.subgraphs.request_understanding.graph import (
     RequestUnderstandingSubgraph,
 )
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing import (
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.graph import (
     build_tool_routing_subgraph,
 )
-from google_work_agent.application.workflows import (
+from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
-    ConfirmationResponseV1,
-    ContextRetrievalAgent,
-    PolicyConfirmationReceiptV1,
-    RequestUnderstandingAgent,
-    ToolRouteAgent,
 )
-from google_work_agent.application.workflows.retrieval_data_boundary import (
+from google_work_agent.application.orchestration.contracts import (
+    ConfirmationResponseV1,
+    PolicyConfirmationReceiptV1,
+)
+from google_work_agent.application.orchestration.context_retrieval import (
+    ContextRetrievalAgent,
+)
+from google_work_agent.application.orchestration.request_understanding import (
+    RequestUnderstandingAgent,
+)
+from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
+from google_work_agent.application.orchestration.retrieval_data_boundary import (
     CheckpointSafeAcquisitionFacade,
 )
-from google_work_agent.application.workflows.retrieval_evidence_store import RunScopedEvidenceStore
-from google_work_agent.application.workflows.retrieval_query_planner import (
+from google_work_agent.application.orchestration.retrieval_evidence_store import RunScopedEvidenceStore
+from google_work_agent.application.orchestration.retrieval_query_planner import (
     RetrievalQueryPlannerAgent,
 )
-from google_work_agent.application.workflows.retrieval_read_cache import RunScopedReadResultCache
-from google_work_agent.application.workflows.retrieval_read_executor import RetrievalReadExecutor
-from google_work_agent.application.workflows.source_fetch_plan_builder import SourceFetchPlanBuilder
+from google_work_agent.application.orchestration.retrieval_read_cache import RunScopedReadResultCache
+from google_work_agent.application.orchestration.retrieval_read_executor import RetrievalReadExecutor
+from google_work_agent.application.orchestration.source_fetch_plan_builder import SourceFetchPlanBuilder
 from google_work_agent.domain import ConnectorToolCatalog
 
 

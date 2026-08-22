@@ -4,7 +4,7 @@ from json import loads
 import pytest
 
 from google_work_agent.adapters.mcp import MCPGoogleWorkspaceGateway, SubprocessMCPTransport
-from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.ports import (
     DeliveryCertainty,
     GoogleWorkspaceGatewayError,

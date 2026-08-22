@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from google_work_agent.application.ports.connector_failure import (
+from google_work_agent.ports.connectors.failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
     normalize_mcp_transport_failure,

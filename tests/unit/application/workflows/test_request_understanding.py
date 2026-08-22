@@ -9,21 +9,25 @@ from typing import cast
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.handoff_contracts import (
     ClarificationQuestionV1,
+)
+from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseKind,
-    RequestUnderstandingAgent,
     RequestUnderstandingResult,
-    RequestUnderstandingValidationError,
     WorkflowPhase,
+    validate_confirmation_response_v1,
+)
+from google_work_agent.application.orchestration.request_understanding import (
+    RequestUnderstandingAgent,
+    RequestUnderstandingValidationError,
     build_user_interrupt_v1,
     load_request_understanding_classify_prompt_reference,
     resolve_confirmation_origin_target,
-    validate_confirmation_response_v1,
     validate_request_intent_v2,
 )
-from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
+from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports import (
     ActualRuntime,
     LLMErrorCode,
@@ -448,15 +452,11 @@ def test_confirmation_response_contract_and_origin_resolution_are_deterministic(
         )
 
 
-def test_request_understanding_exports_do_not_change_existing_workflow_contracts() -> None:
-    from google_work_agent.application import workflows
-
-    assert workflows.RequestUnderstandingResult is RequestUnderstandingResult
-    assert workflows.WorkflowPhase is WorkflowPhase
-    assert hasattr(workflows, "RequestUnderstandingAgent")
-    assert hasattr(workflows, "RequestIntentV2")
-    assert hasattr(workflows, "load_request_understanding_clarify_prompt_reference")
-    assert hasattr(workflows, "resolve_confirmation_origin_target")
+def test_request_understanding_symbols_have_explicit_owners() -> None:
+    assert RequestUnderstandingResult.__module__.endswith(".workflows.contracts")
+    assert WorkflowPhase.__module__.endswith(".workflows.contracts")
+    assert RequestUnderstandingAgent.__module__.endswith(".workflows.request_understanding")
+    assert ClarificationQuestionV1.__module__.endswith(".workflows.handoff_contracts")
 
 
 def _request(

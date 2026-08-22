@@ -8,7 +8,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, cast
 
-from google_work_agent.application.workflows.retrieval_v2_contracts import (
+from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalConstraintKindV1,
     RetrievalV2ValidationError,
     RouteQueryIntentV2,
@@ -16,7 +16,7 @@ from google_work_agent.application.workflows.retrieval_v2_contracts import (
     SourceFetchPlanV1,
     validate_retrieval_query_plan_v2,
 )
-from google_work_agent.application.workflows.tool_routing import (
+from google_work_agent.application.orchestration.tool_routing import (
     InputToolRouteV1,
     coarse_resource_category,
 )

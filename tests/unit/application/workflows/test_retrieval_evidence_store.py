@@ -1,6 +1,6 @@
 import pytest
 
-from google_work_agent.application.workflows.retrieval_evidence_store import (
+from google_work_agent.application.orchestration.retrieval_evidence_store import (
     EvidenceResolutionError,
     RunScopedEvidenceStore,
     resolve_evidence_projection,

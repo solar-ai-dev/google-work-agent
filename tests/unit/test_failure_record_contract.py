@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.application.workflows.failure_record import (
+from google_work_agent.application.orchestration.failure_record import (
     FAILURE_RECORD_FIELDS,
     FailureRecordValidationError,
     build_failure_record_v1,
     validate_failure_record_v1,
 )
-from google_work_agent.application.workflows.prompt_input_contract import (
+from google_work_agent.application.orchestration.prompt_input_contract import (
     PromptInputContractError,
     PromptRuntimeInputContractValidator,
 )

@@ -34,10 +34,10 @@ from tests.integration.langgraph.test_runtime import (
 
 from tests.support.fixtures import ProductFixtureSnapshot
 
-from google_work_agent.application.workflows.retrieval_evidence_store import (
+from google_work_agent.application.orchestration.retrieval_evidence_store import (
     EvidenceResolutionError,
 )
-from google_work_agent.application.workflows.retrieval_read_cache import (
+from google_work_agent.application.orchestration.retrieval_read_cache import (
     ReadResultContinuationError,
 )
 from google_work_agent.ports import ResourcePage, ResourceType

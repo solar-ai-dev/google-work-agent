@@ -58,7 +58,7 @@ from google_work_agent.adapters.connectors.google.tasks.tasks.search_tasks impor
 from google_work_agent.adapters.connectors.google.tasks.tasks.update_task import (
     UpdateTaskOperation,
 )
-from google_work_agent.application.ports import (
+from google_work_agent.ports.connectors.execution import (
     ConnectorExecutionPort,
     ConnectorWriteRequest,
     PreparedConnectorWrite,

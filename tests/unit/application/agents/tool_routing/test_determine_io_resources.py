@@ -2,8 +2,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from google_work_agent.application.agents.tool_routing.determine_io_resources import determine_io_resources
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.contracts import build_default_run_budget
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.contracts import build_default_run_budget
 from google_work_agent.domain import ConnectorToolCatalog,build_p0_tool_registry
 from google_work_agent.ports import ActualRuntime,OutputSchemaDefinition,PromptReference,RequestedRuntimeMode,StructuredLLMResult,WorkflowCorrelationContext,WorkflowStartRequest
 @dataclass

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from google_work_agent.application.google_connection import GetGoogleConnectionService
-from google_work_agent.application.ports.connector_failure import (
+from google_work_agent.ports.connectors.failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
 )

@@ -202,21 +202,26 @@ def test_owned_routes_do_not_call_broad_legacy_semantic_services() -> None:
 
 
 def test_owned_routes_do_not_traverse_repositories_or_mutate_domain_directly() -> None:
-    forbidden = (
-        "with dependencies.",
-        ".runs.",
-        ".plans.",
-        ".actions.",
-        ".approvals.",
-        ".command_receipts.",
-        ".commit(",
-        "sqlite3",
-        "adapters.persistence",
-    )
+    forbidden_owners = {"runs", "plans", "actions", "approvals", "command_receipts"}
     for path in ROUTES:
         source = path.read_text(encoding="utf-8")
-        for token in forbidden:
-            assert token not in source, f"{path}: route owns persistence/domain {token}"
+        tree = ast.parse(source)
+        assert "sqlite3" not in _imports(path)
+        assert not any(
+            imported.startswith("google_work_agent.adapters.persistence")
+            for imported in _imports(path)
+        )
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                assert node.func.attr != "commit", f"{path}: route commits persistence directly"
+            if not isinstance(node, ast.Attribute):
+                continue
+            segments = ast.unparse(node).split(".")
+            assert not (
+                len(segments) >= 3
+                and segments[0] == "dependencies"
+                and segments[1] in forbidden_owners
+            ), f"{path}: route traverses repository owner {segments[1]}"
 
 
 def test_canonical_handlers_do_not_reverse_depend_on_api_or_provider_concretes() -> None:

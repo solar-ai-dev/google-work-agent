@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -6,7 +6,9 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.adapters.connectors import build_google_workspace_connector_descriptor
+from google_work_agent.adapters.connectors.google_workspace import (
+    build_google_workspace_connector_descriptor,
+)
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
     build_manifest_payload,

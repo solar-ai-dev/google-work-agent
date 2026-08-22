@@ -8,30 +8,36 @@ from typing import TypedDict, cast
 
 import pytest
 
-from google_work_agent.adapters.connectors import GoogleWorkspaceConnectorReader
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.ports import ConnectorReadRequest
-from google_work_agent.application.workflows import (
+from google_work_agent.adapters.connectors.google_workspace_reader import (
+    GoogleWorkspaceConnectorReader,
+)
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.ports.connectors.read import ConnectorReadRequest
+from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionRequestV1,
     ApiAcquisitionResult,
-    ApiDiscoveryAcquisitionAgent,
     ApiPlanningResult,
+    WorkflowPhase,
+)
+from google_work_agent.application.orchestration.api_acquisition import (
+    ApiDiscoveryAcquisitionAgent,
+    RetrievalBudget,
+    SourcePlanningValidationError,
+    build_source_planning_clarification_question,
+    validate_acquisition_result_v1,
+)
+from google_work_agent.application.orchestration.handoff_contracts import (
     CalendarReadMode,
     Daypart,
     RelativeUnit,
     RequestIntentV2,
-    RetrievalBudget,
     SourceFetchPlanV1,
-    SourcePlanningValidationError,
     TemporalQueryV1,
     TemporalRelation,
-    ToolRoutePlanV2,
     Weekday,
-    WorkflowPhase,
-    build_source_planning_clarification_question,
-    validate_acquisition_result_v1,
 )
-from google_work_agent.application.workflows.api_acquisition import SourceName
+from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
+from google_work_agent.application.orchestration.api_acquisition import SourceName
 from google_work_agent.ports import (
     ActualRuntime,
     FreeBusyCalendar,
@@ -1568,7 +1574,7 @@ def test_temporal_query_resolution_handles_dst_timezone_without_error() -> None:
     (America/New_York) must still resolve to a valid, well-formed TimeRange
     -- ZoneInfo arithmetic itself must not error or silently misalign
     across a DST transition."""
-    from google_work_agent.application.workflows.api_acquisition import _resolve_temporal_query
+    from google_work_agent.application.orchestration.api_acquisition import _resolve_temporal_query
 
     # 2026-03-08 is the US DST spring-forward date; a WEEK query anchored a
     # few days before it exercises ZoneInfo across the transition.

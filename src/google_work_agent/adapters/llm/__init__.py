@@ -37,10 +37,10 @@ from google_work_agent.adapters.llm.prompt_input_guard import PromptInputGuarded
 from google_work_agent.adapters.llm.router import DeterministicLLMRuntimeRouter
 from google_work_agent.adapters.llm.schema import validate_output_schema
 from google_work_agent.adapters.llm.status import LLMRuntimeStatusService
-from google_work_agent.application.workflows.prompt_input_contract import (
+from google_work_agent.application.orchestration.prompt_input_contract import (
     PromptRuntimeInputContractValidator,
 )
-from google_work_agent.application.workflows.prompt_registry import default_prompt_manifest_path
+from google_work_agent.application.orchestration.prompt_registry import default_prompt_manifest_path
 from google_work_agent.ports import ActualRuntime, PromptReference
 
 

@@ -1,6 +1,6 @@
 import pytest
 
-from google_work_agent.application.workflows.retrieval_read_cache import (
+from google_work_agent.application.orchestration.retrieval_read_cache import (
     DetailTargetCacheEntry,
     ReadResultCacheEntry,
     ReadResultContinuationError,

@@ -22,7 +22,8 @@ from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
 )
-from google_work_agent.domain.commands import ActionCommand, RunCommand
+from google_work_agent.domain.action.model import ActionCommand
+from google_work_agent.domain.run.model import RunCommand
 from google_work_agent.domain.enums import (
     ActionStatus,
     ApprovalRequirement,
@@ -36,7 +37,7 @@ from google_work_agent.domain.enums import (
     VerificationPolicy,
     VerificationStatus,
 )
-from google_work_agent.domain.errors import (
+from google_work_agent.domain.exceptions import (
     CommandHashMismatchError,
     DomainError,
     DuplicateCommandError,
@@ -79,10 +80,12 @@ from google_work_agent.domain.tool_registry import (
     ToolRegistryEntry,
     build_p0_tool_registry,
 )
-from google_work_agent.domain.transitions import (
+from google_work_agent.domain.action.transitions.action import (
     next_allowed_action_commands,
-    next_allowed_run_commands,
     transition_action,
+)
+from google_work_agent.domain.run.transitions.run import (
+    next_allowed_run_commands,
     transition_run,
 )
 

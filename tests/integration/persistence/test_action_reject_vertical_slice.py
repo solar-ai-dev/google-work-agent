@@ -10,18 +10,26 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application import (
+from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
-    ApproveWriteActionService,
+)
+from google_work_agent.application.write_approval import ApproveWriteActionService
+from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
-    ClaimWriteActionService,
+)
+from google_work_agent.application.write_claim import ClaimWriteActionService
+from google_work_agent.application.write_plan_contracts import (
     PublishWritePlanCommand,
-    PublishWritePlanService,
-    RejectWriteActionCommand,
-    RejectWriteActionService,
     SaveWritePlanCommand,
+)
+from google_work_agent.application.write_plan import (
+    PublishWritePlanService,
     SaveWritePlanService,
 )
+from google_work_agent.application.write_action_mutation_contracts import (
+    RejectWriteActionCommand,
+)
+from google_work_agent.application.write_action_mutation import RejectWriteActionService
 from google_work_agent.domain import ApprovalStatus, ResultCode
 from tests.integration.persistence.test_action_modify_vertical_slice import (
     _save_and_publish_task_action,

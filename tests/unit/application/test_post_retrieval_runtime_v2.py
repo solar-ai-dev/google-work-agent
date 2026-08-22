@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import cast
 
-from google_work_agent.application.workflows.post_retrieval_runtime_v2 import (
+from google_work_agent.application.orchestration.post_retrieval_invocation import (
     PostRetrievalRuntimeV2Boundary,
 )
-from google_work_agent.application.workflows.domain_validation_v2 import (
+from google_work_agent.application.orchestration.domain_output_validation import (
     RunScopedResourceIdentityReader,
 )
 

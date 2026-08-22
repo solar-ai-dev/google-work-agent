@@ -26,7 +26,7 @@ from google_work_agent.adapters.llm import (
 )
 from google_work_agent.adapters.runtime import AppSettings
 from google_work_agent.application.llm import LLMRuntimeService
-from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.ports import (
     ActualRuntime,
     HardwareCapabilityStatus,

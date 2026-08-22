@@ -4,11 +4,11 @@ from dataclasses import dataclass
 
 import pytest
 
-from google_work_agent.application.workflows.contracts import (
+from google_work_agent.application.orchestration.contracts import (
     build_default_run_budget,
     build_semantic_failure_signature_v1,
 )
-from google_work_agent.application.workflows.post_retrieval_supervisor_v2 import (
+from google_work_agent.application.orchestration.supervise_post_retrieval import (
     RevisionBudgetBlockBoundaryRequired,
     route_planning_return_v2,
     route_review_return_v2,

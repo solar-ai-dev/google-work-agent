@@ -8,21 +8,47 @@ from json import dumps
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import StreamingResponse
 
-from google_work_agent.api.dependencies import EventRouteDependency, enforce_access, enforce_supported_api_contract_version
-from google_work_agent.api.errors import ApiError
-from google_work_agent.application.use_cases.run.get_event_replay import GetEventReplayHandler, GetEventReplayQuery
+from google_work_agent.api.dependencies.access_control import enforce_access
+from google_work_agent.api.dependencies.contract_version import (
+    enforce_supported_api_contract_version,
+)
+from google_work_agent.api.dependencies.events import EventRouteDependency
+from google_work_agent.api.errors.api_request_error import ApiRequestError
+from google_work_agent.application.use_cases.run.get_event_replay import (
+    GetEventReplayHandler,
+    GetEventReplayQuery,
+)
 from google_work_agent.ports import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1")
 
 
 @router.get("/runs/{run_id}/events")
-def stream_events(run_id: str, request: Request, dependencies: EventRouteDependency, last_event_id: str | None = Header(default=None, alias="Last-Event-ID"), x_api_contract_version: str | None = Header(default=None)) -> StreamingResponse:
+def stream_events(
+    run_id: str,
+    request: Request,
+    dependencies: EventRouteDependency,
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    x_api_contract_version: str | None = Header(default=None),
+) -> StreamingResponse:
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
-    enforce_supported_api_contract_version(supported_version=dependencies.api_contract_version, request_id=request.state.request_id, request_version=x_api_contract_version)
-    replay = GetEventReplayHandler.from_legacy_suppliers(query_supplier=dependencies.query_service, event_publisher_supplier=dependencies.event_publisher, now_ms=dependencies.clock.now_ms)(GetEventReplayQuery(run_id=run_id, after_event_id=last_event_id))
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
+        request_id=request.state.request_id,
+        request_version=x_api_contract_version,
+    )
+    replay = GetEventReplayHandler.from_legacy_suppliers(
+        query_supplier=dependencies.query_service,
+        event_publisher_supplier=dependencies.event_publisher,
+        now_ms=dependencies.clock.now_ms,
+    )(GetEventReplayQuery(run_id=run_id, after_event_id=last_event_id))
     if not replay.run_exists:
-        raise ApiError(error_code="NOT_FOUND", user_message="실행을 찾을 수 없습니다.", status_code=404, request_id=request.state.request_id)
+        raise ApiRequestError(
+            error_code="NOT_FOUND",
+            user_message="실행을 찾을 수 없습니다.",
+            status_code=404,
+            request_id=request.state.request_id,
+        )
     publisher = dependencies.event_publisher()
 
     def _stream() -> Iterator[str]:
@@ -41,7 +67,9 @@ def stream_events(run_id: str, request: Request, dependencies: EventRouteDepende
         finally:
             publisher.close_subscription(subscription)
 
-    return StreamingResponse(_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+    return StreamingResponse(
+        _stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"}
+    )
 
 
 def _format_sse(event_id: str, event_type: str, payload: dict[str, object]) -> str:

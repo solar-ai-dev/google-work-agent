@@ -3,7 +3,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "google_work_agent"
 ROUTE_DIR = SRC / "api" / "routes"
@@ -56,7 +55,7 @@ def test_resource_attachment_google_routes_hide_concrete_connector_exceptions() 
         "MCPTransportErrorCode",
         "AttachmentStagingError",
     )
-    for route_name in ("resources.py", "attachments.py", "google.py"):
+    for route_name in ("resources.py", "attachments.py", "google_connections.py"):
         source = _source(ROUTE_DIR / route_name)
         for symbol in forbidden:
             assert symbol not in source, (route_name, symbol)
@@ -73,7 +72,7 @@ def test_routes_actually_invoke_canonical_application_handlers() -> None:
             "FetchAttachmentHandler",
             "StageAttachmentHandler",
         },
-        "google.py": {
+        "google_connections.py": {
             "StartOAuthHandler",
             "GetConnectionHandler",
             "DisconnectConnectorHandler",
@@ -93,7 +92,7 @@ def test_owned_routes_and_use_cases_have_zero_provider_sdk_dependencies() -> Non
     paths = [
         ROUTE_DIR / "resources.py",
         ROUTE_DIR / "attachments.py",
-        ROUTE_DIR / "google.py",
+        ROUTE_DIR / "google_connections.py",
         *(USE_CASE_DIR / "resource_ref").glob("*.py"),
         *(USE_CASE_DIR / "attachment").glob("*.py"),
         *(USE_CASE_DIR / "connector_connection").glob("*.py"),

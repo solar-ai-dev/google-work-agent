@@ -2,15 +2,17 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.adapters.langgraph.canonical_response_runtime import (
+from google_work_agent.adapters.langgraph.response_workflow import (
     canonicalize_optional_stage_decision,
 )
 from google_work_agent.adapters.langgraph.graph_state import GraphState
-from google_work_agent.application.workflows import (
+from google_work_agent.application.orchestration.contracts import (
     GraphStateUpdateV1,
+    WorkflowPhase,
+)
+from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,
-    WorkflowPhase,
 )
 
 

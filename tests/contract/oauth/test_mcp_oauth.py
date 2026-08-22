@@ -3,8 +3,8 @@ from __future__ import annotations
 from urllib.parse import parse_qs, urlparse
 from urllib.request import HTTPRedirectHandler, build_opener
 
-from google_work_agent.mcp.server import _control_call, _WorkspaceState
-from google_work_agent.mcp.settings import GoogleOAuthSettings
+from google_work_agent.adapters.connectors.google.mcp.workspace_tools import _control_call, _WorkspaceState
+from google_work_agent.adapters.connectors.google.mcp.oauth_settings import GoogleOAuthSettings
 
 
 def test_mcp_oauth_flow_uses_google_loopback_authorization_and_no_token_leakage() -> None:

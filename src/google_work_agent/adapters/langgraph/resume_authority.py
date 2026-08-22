@@ -6,7 +6,7 @@ from typing import Any, cast
 
 from langgraph.types import interrupt
 
-from google_work_agent.adapters.langgraph.canonical_freshness_runtime import (
+from google_work_agent.adapters.langgraph.freshness_workflow import (
     LangGraphWorkflowRuntime as _CanonicalFreshnessRuntime,
 )
 from google_work_agent.adapters.langgraph.graph_state import GraphState
@@ -14,12 +14,12 @@ from google_work_agent.adapters.langgraph.route_translation import (
     confirmation_owner,
     confirmation_resume_status,
 )
-from google_work_agent.application.workflows.contracts import (
+from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseV1,
     WorkflowPhase,
     validate_confirmation_response_v1,
 )
-from google_work_agent.application.workflows.supervisor import SupervisorTarget
+from google_work_agent.application.orchestration.supervisor import SupervisorTarget
 from google_work_agent.domain import RunStatus
 from google_work_agent.ports import WorkflowInvocationResult, WorkflowOutcome, WorkflowResumeRequest
 

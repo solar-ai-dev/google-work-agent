@@ -10,8 +10,9 @@ from google_work_agent.adapters.langgraph.corrective_plan_persistence import (
     persist_reserved_corrective_write_plan,
 )
 from google_work_agent.adapters.langgraph.graph_state import GraphState
-from google_work_agent.application.workflows.handoff_contracts import ActionPlanDraftV1
-from google_work_agent.ports import PlanRecord, PlanStatus, RunStatus
+from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
+from google_work_agent.domain import RunStatus
+from google_work_agent.ports import PlanRecord, PlanStatus
 
 
 class CorrectivePlanContinuationRequired(RuntimeError):

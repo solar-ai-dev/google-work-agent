@@ -1,19 +1,15 @@
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from google_work_agent.api.dependencies import calculate_server_request_hash
-from google_work_agent.api.schemas.actions import (
-    ApproveActionRequestV2,
-    ModifyActionRequestV2,
-    PrepareRetryRequestV2,
-    RejectActionRequestV2,
-)
-from google_work_agent.api.schemas.runs import (
-    CancelRunRequestV2,
-    ConfirmationResponseV1,
-    ResolveRecoveryRequestV1,
-    ResumeRunRequestV2,
-)
+from google_work_agent.api.dependencies.request_hash import calculate_server_request_hash
+from google_work_agent.api.schemas.actions.approve_action import ApproveActionRequestV2
+from google_work_agent.api.schemas.actions.modify_action import ModifyActionRequestV2
+from google_work_agent.api.schemas.actions.prepare_retry_action import PrepareRetryRequestV2
+from google_work_agent.api.schemas.actions.reject_action import RejectActionRequestV2
+from google_work_agent.api.schemas.runs.cancel_run import CancelRunRequestV2
+from google_work_agent.api.schemas.runs.confirm_run import ConfirmationResponseV1
+from google_work_agent.api.schemas.runs.resolve_recovery import ResolveRecoveryRequestV1
+from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
 
 VERSION = "1"
 

@@ -2,21 +2,22 @@
 
 from fastapi import APIRouter, Request, Response
 
-from google_work_agent.api.dependencies import (
-    ActionRouteDependency,
-    calculate_server_request_hash,
-    enforce_access,
-    enforce_runtime_operation,
+from google_work_agent.api.dependencies.access_control import enforce_access
+from google_work_agent.api.dependencies.actions import ActionRouteDependency
+from google_work_agent.api.dependencies.contract_version import (
     enforce_supported_api_contract_version,
 )
-from google_work_agent.api.errors import ApiError, http_status_for_result_code
-from google_work_agent.api.schemas.actions import (
+from google_work_agent.api.dependencies.request_hash import calculate_server_request_hash
+from google_work_agent.api.dependencies.runtime_operation import enforce_runtime_operation
+from google_work_agent.api.errors.api_request_error import ApiRequestError
+from google_work_agent.api.errors.result_code_http_mapping import http_status_for_result_code
+from google_work_agent.api.schemas.actions.approve_action import (
     ActionCommandResponse,
     ApproveActionRequestV2,
-    ModifyActionRequestV2,
-    PrepareRetryRequestV2,
-    RejectActionRequestV2,
 )
+from google_work_agent.api.schemas.actions.modify_action import ModifyActionRequestV2
+from google_work_agent.api.schemas.actions.prepare_retry_action import PrepareRetryRequestV2
+from google_work_agent.api.schemas.actions.reject_action import RejectActionRequestV2
 from google_work_agent.application.use_cases.action.approve_action import (
     ApproveActionCommand,
     ApproveActionFollowupQueueBusyError,
@@ -45,20 +46,20 @@ def _prepare(request: Request, *, payload: object, dependencies: ActionRouteDepe
     enforce_supported_api_contract_version(
         supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
-        request_version=getattr(payload, "api_contract_version"),
+        request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation="APPROVALS")
 
 
 def _response(result: object) -> ActionCommandResponse:
     return ActionCommandResponse(
-        applied=bool(getattr(result, "applied")),
-        result_code=str(getattr(result, "result_code")),
-        action_id=str(getattr(result, "action_id")),
-        action_status=str(getattr(result, "action_status")),
-        action_version=int(getattr(result, "action_version")),
-        next_allowed_commands=list(getattr(result, "next_allowed_commands")),
-        conflict_detail=getattr(result, "conflict_detail"),
+        applied=bool(result.applied),
+        result_code=str(result.result_code),
+        action_id=str(result.action_id),
+        action_status=str(result.action_status),
+        action_version=int(result.action_version),
+        next_allowed_commands=list(result.next_allowed_commands),
+        conflict_detail=result.conflict_detail,
     )
 
 
@@ -109,7 +110,7 @@ def approve(
             )
         )
     except ApproveActionFollowupQueueBusyError as error:
-        raise ApiError(
+        raise ApiRequestError(
             error_code="SERVICE_BUSY",
             user_message="The approval was saved, but runtime execution is still queued.",
             status_code=503,
@@ -152,7 +153,7 @@ def modify(
             )
         )
     except ModifyActionFollowupQueueBusyError as error:
-        raise ApiError(
+        raise ApiRequestError(
             error_code="SERVICE_BUSY",
             user_message="The action was modified, but plan review is still queued.",
             status_code=503,

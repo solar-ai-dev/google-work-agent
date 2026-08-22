@@ -18,7 +18,7 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     consume_llm_call_budget,
     ensure_llm_call_budget,
 )
-from google_work_agent.application.workflows import (
+from google_work_agent.application.orchestration.contracts import (
     ABSOLUTE_MAX_LLM_CALLS,
     NORMAL_MAX_LLM_CALLS,
     RETRIEVAL_HEAVY_MAX_LLM_CALLS,

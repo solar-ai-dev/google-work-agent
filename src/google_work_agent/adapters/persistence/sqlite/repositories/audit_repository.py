@@ -3,7 +3,7 @@ import sqlite3
 from dataclasses import replace
 from json import loads
 from typing import cast
-from google_work_agent.application.observability import EventCategory, ObservabilityContext, Severity, create_event_envelope, sanitize_persistent_event_json, serialize_event_envelope
+from google_work_agent.ports.observability_events import EventCategory, ObservabilityContext, Severity, create_event_envelope, sanitize_persistent_event_json, serialize_event_envelope
 from google_work_agent.ports.models import AuditEventRecord, PersistedAuditEventRecord
 
 class SQLiteAuditRepository:

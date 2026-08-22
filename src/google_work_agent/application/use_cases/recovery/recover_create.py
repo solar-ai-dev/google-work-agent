@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.application.ports import ConnectorExecutionPort
+from google_work_agent.ports.connectors.execution import (
+    ConnectorExecutionPort,
+)
 from google_work_agent.application.use_cases.recovery.recover_existing_result import (
     RecoverExistingResultCommand,
     RecoverExistingResultResult,

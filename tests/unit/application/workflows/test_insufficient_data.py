@@ -1,7 +1,7 @@
 import pytest
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.application.workflows import (
+from google_work_agent.application.orchestration.insufficient_data import (
     InsufficientDataContext,
     InsufficientDataDisposition,
     InsufficientDataIssue,

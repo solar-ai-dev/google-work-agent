@@ -2,7 +2,7 @@ import pytest
 
 from google_work_agent.domain import ResultCode, RunStatus
 from google_work_agent.domain.confirmation import resume_confirmation
-from google_work_agent.domain.errors import InvariantViolationError
+from google_work_agent.domain.exceptions import InvariantViolationError
 
 
 def test_resume_confirmation_restores_requested_safe_status() -> None:

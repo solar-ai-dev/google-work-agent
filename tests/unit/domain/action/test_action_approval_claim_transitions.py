@@ -8,7 +8,7 @@ from google_work_agent.domain.approval.transitions.approve_action import transit
 from google_work_agent.domain.claim.guards.claim_execution import ClaimExecutionGuardInput, guard_claim_execution
 from google_work_agent.domain.claim.transitions.claim_execution import transition_claim_execution
 from google_work_agent.domain.enums import ActionStatus, ApprovalStatus, EffectType, RunStatus
-from google_work_agent.domain.errors import PolicyViolationError
+from google_work_agent.domain.exceptions import PolicyViolationError
 
 
 def test_action_lifecycle_canonical_transitions():

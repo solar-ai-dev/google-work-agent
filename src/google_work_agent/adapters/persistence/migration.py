@@ -9,7 +9,7 @@ from hashlib import sha256
 from importlib import resources
 from pathlib import Path
 
-from google_work_agent.adapters.persistence.errors import (
+from google_work_agent.adapters.persistence.persistence_exceptions import (
     MigrationApplyError,
     MigrationChecksumMismatchError,
     MigrationDiscoveryError,

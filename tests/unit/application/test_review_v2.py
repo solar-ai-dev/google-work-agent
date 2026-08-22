@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.workflows.review_v2 import (
+from google_work_agent.application.orchestration.inspect_plan_output import (
     ReviewV2ValidationError,
     materialize_plan_review_result_v2,
     validate_plan_review_candidate_v2,

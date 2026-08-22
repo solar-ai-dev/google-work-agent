@@ -6,7 +6,7 @@ from dataclasses import asdict
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.application.observability import sanitize_event_attributes
+from google_work_agent.ports.observability_events import sanitize_event_attributes
 from google_work_agent.application.write_execution_contracts import WriteActionResponse, WriteRunResponse
 from google_work_agent.application.write_plan_contracts import (
     PublishWritePlanResponse,

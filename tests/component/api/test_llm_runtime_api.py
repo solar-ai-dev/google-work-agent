@@ -35,7 +35,8 @@ from google_work_agent.adapters.runtime import (
     SettingsPatch,
     SettingsService,
 )
-from google_work_agent.api import ApiContainer, create_app
+from google_work_agent.api.app import create_app
+from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.llm import (
     DeleteLLMApiKeyService,
     GetLLMConnectionService,

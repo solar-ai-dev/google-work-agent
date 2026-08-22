@@ -2,7 +2,7 @@
 
 from pydantic import Field
 
-from google_work_agent.api.schemas.common import ApiModel, ContractVersionedRequest
+from google_work_agent.api.schemas.model import ApiModel, ContractVersionedRequest
 
 
 class SelectedResourceRefModel(ApiModel):

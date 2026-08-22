@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.contracts import ConfirmationResponseV1, RunBudgetV1
-from google_work_agent.application.workflows.handoff_contracts import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.contracts import ConfirmationResponseV1, RunBudgetV1
+from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     EvidenceDraftV1,
     RequestIntentV2,
     SufficiencyResultV2,
 )
-from google_work_agent.application.workflows.retrieval_sufficiency import (
+from google_work_agent.application.orchestration.retrieval_sufficiency import (
     SUFFICIENCY_OUTPUT_SCHEMA,
     budget_state_prompt_projection,
     enforce_sufficiency_guard,
@@ -19,7 +19,7 @@ from google_work_agent.application.workflows.retrieval_sufficiency import (
     source_statuses_prompt_projection,
     validate_sufficiency_result_v2,
 )
-from google_work_agent.application.workflows.tool_routing import ToolRoutePlanV2
+from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 from google_work_agent.ports import PromptReference
 
 

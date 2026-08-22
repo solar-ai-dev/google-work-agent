@@ -6,8 +6,8 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.mcp import server
-from google_work_agent.mcp.settings import GoogleOAuthSettings
+from google_work_agent.adapters.connectors.google.mcp import workspace_tools as server
+from google_work_agent.adapters.connectors.google.mcp.oauth_settings import GoogleOAuthSettings
 
 SESSION_KEY = "22" * 32
 SERVICE_INSTANCE_ID = "svc-recovery-1"

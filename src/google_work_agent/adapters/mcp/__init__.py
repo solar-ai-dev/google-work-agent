@@ -9,7 +9,7 @@ from google_work_agent.adapters.mcp.google_workspace_compat import (
     build_manifest_payload,
 )
 from google_work_agent.adapters.mcp.oauth import MCPGoogleOAuthCredentialProvider
-from google_work_agent.adapters.mcp.runtime import MCPRuntimeStatusProvider
+from google_work_agent.adapters.mcp.stdio_transport import MCPRuntimeStatusProvider
 from google_work_agent.adapters.mcp.transport import (
     MCPArtifactConfig,
     MCPConnectorDescriptor,

@@ -223,7 +223,7 @@ def _service_entrypoint() -> str:
 
 
 def _mcp_entrypoint() -> str:
-    return "from google_work_agent.mcp.server import main\nraise SystemExit('mcp packaging stub')\n"
+    return "from google_work_agent.adapters.connectors.google.mcp.verified_server import main\nraise SystemExit('mcp packaging stub')\n"
 
 
 def _launcher_entrypoint() -> str:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from google_work_agent.adapters.langgraph.canonical_planning_runtime import (
+from google_work_agent.adapters.langgraph.plan_persistence import (
     replace_llm_expected_with_deterministic_projection,
 )
 

@@ -8,8 +8,8 @@ from google_work_agent.application.agents.tool_routing.bind_registry_candidates 
 from google_work_agent.application.agents.tool_routing.contracts.route_binding_candidate import RouteBindingCandidateV1
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import InputRoutePlanV1, InputToolRouteV1, OutputPlanV1, OutputToolRouteV1, ScopeExpansionRequiredV1, ToolRoutePlanV2, ToolRouteResultV1
 from google_work_agent.application.agents.tool_routing.validate_route import ToolRouteValidationError, validate_route
-from google_work_agent.application.workflows.contracts import PolicyConfirmationReceiptV1
-from google_work_agent.application.workflows.scope_expansion import ScopeExpansionResolver
+from google_work_agent.application.orchestration.contracts import PolicyConfirmationReceiptV1
+from google_work_agent.application.orchestration.scope_expansion import ScopeExpansionResolver
 from google_work_agent.domain import ConnectorToolCatalog, EffectType
 
 SelectedToolMap = Mapping[tuple[str, str], str]

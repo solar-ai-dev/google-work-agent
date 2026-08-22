@@ -6,11 +6,7 @@ from dataclasses import asdict, dataclass
 from json import dumps
 from typing import cast
 
-from google_work_agent.application.run_contracts import (
-    CreateConversationResponse,
-    ResumeRunResponse,
-    StartRunResponse,
-)
+from google_work_agent.application.run_contracts import StartRunResponse
 from google_work_agent.application.write_persistence import (
     emit_command_rejected_hash_mismatch,
 )
@@ -33,12 +29,7 @@ class ActionMutationReceiptResponse:
     conflict_detail: str | None = None
 
 
-type ReceiptResponse = (
-    CreateConversationResponse
-    | StartRunResponse
-    | ResumeRunResponse
-    | ActionMutationReceiptResponse
-)
+type ReceiptResponse = object
 
 
 def resolve_json_receipt(
@@ -49,12 +40,17 @@ def resolve_json_receipt(
 ) -> ReceiptResponse:
     from json import loads
 
+    from google_work_agent.application.use_cases.conversation.create_conversation import (
+        CreateConversationResult,
+    )
+    from google_work_agent.application.use_cases.run.resume_run import ResumeRunResult
+
     request_hash_value = receipt.request_hash
     if request_hash_value != request_hash:
         aggregate_id = receipt.aggregate_id or ""
         result_version = receipt.result_version or 0
-        if response_type is CreateConversationResponse:
-            return CreateConversationResponse(
+        if response_type is CreateConversationResult:
+            return CreateConversationResult(
                 applied=False,
                 result_code=ResultCode.DUPLICATE_COMMAND.value,
                 conversation_id=aggregate_id,
@@ -77,8 +73,8 @@ def resolve_json_receipt(
                 request_replayed=True,
                 conflict_detail="command_id already exists with a different request_hash",
             )
-        if response_type is ResumeRunResponse:
-            return ResumeRunResponse(
+        if response_type is ResumeRunResult:
+            return ResumeRunResult(
                 applied=False,
                 result_code=ResultCode.DUPLICATE_COMMAND.value,
                 run_id=aggregate_id,

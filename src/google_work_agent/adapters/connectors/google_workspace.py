@@ -1,9 +1,8 @@
-"""Google Workspace connector composition and compatibility surfaces."""
+"""Google Workspace connector composition."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
 
 from google_work_agent.adapters.connectors.connector_mcp_runtime import (
     ConnectorMcpRuntime,
@@ -40,8 +39,7 @@ from google_work_agent.domain.tool_registry import SignedToolRegistry
 from google_work_agent.ports import MCPRuntimeMetadata, MCPTransport
 
 GOOGLE_WORKSPACE_CONNECTOR_ID = "google_workspace"
-_VERIFIED_MCP_MODULE_NAME = "google_work_agent.mcp.verified_server"
-_LEGACY_MCP_MODULE_NAME = "google_work_agent.mcp.server"
+_VERIFIED_MCP_MODULE_NAME = "google_work_agent.adapters.connectors.google.mcp.verified_server"
 
 
 def build_google_workspace_connector_descriptor(
@@ -49,8 +47,6 @@ def build_google_workspace_connector_descriptor(
     *,
     tool_registry: SignedToolRegistry | None = None,
 ) -> MCPConnectorDescriptor:
-    if artifact_config.module_name == _LEGACY_MCP_MODULE_NAME:
-        artifact_config = replace(artifact_config, module_name=_VERIFIED_MCP_MODULE_NAME)
     return MCPConnectorDescriptor(
         connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
         artifact_config=artifact_config,

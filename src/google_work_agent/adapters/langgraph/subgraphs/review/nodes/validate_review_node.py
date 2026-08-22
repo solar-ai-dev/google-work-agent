@@ -8,7 +8,7 @@ from google_work_agent.adapters.langgraph.subgraphs.review.projections.review_pr
     project_review_input,
 )
 from google_work_agent.application.agents.review.validate_review import validate_review
-from google_work_agent.application.workflows.handoff_contracts import (
+from google_work_agent.application.orchestration.handoff_contracts import (
     PlanningRevisionIssueV1,
     PlanningRevisionRequiredV1,
 )

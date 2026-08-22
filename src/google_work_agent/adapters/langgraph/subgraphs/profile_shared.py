@@ -14,18 +14,20 @@ from google_work_agent.adapters.langgraph.graph_state import (
     _require_state_value,
     request_from_state,
 )
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
     AnswerDraftV1,
-    GraphStateUpdateV1,
-    SolutionPlanningAgent,
     WorkAnalysisResultV1,
+)
+from google_work_agent.application.orchestration.contracts import GraphStateUpdateV1
+from google_work_agent.application.orchestration.solution_planning import (
+    SolutionPlanningAgent,
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
-from google_work_agent.application.workflows.profile_fused import (
+from google_work_agent.application.orchestration.profile_fused import (
     ProfilePlanningProjectionV1,
     ProfileReasonPlanOutputV1,
 )

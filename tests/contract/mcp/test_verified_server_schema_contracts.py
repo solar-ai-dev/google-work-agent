@@ -4,8 +4,8 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.mcp import server as legacy_server
-from google_work_agent.mcp import verified_server
+from google_work_agent.adapters.connectors.google.mcp import workspace_tools
+from google_work_agent.adapters.connectors.google.mcp import verified_server
 from google_work_agent.ports import DeliveryCertainty
 
 
@@ -13,15 +13,15 @@ def test_invalid_input_is_rejected_before_handler_dispatch(monkeypatch: pytest.M
     calls: list[str] = []
 
     def forbidden_handler(
-        state: legacy_server._WorkspaceState,
+        state: workspace_tools._WorkspaceState,
         arguments: dict[str, object],
     ) -> dict[str, object]:
         del state, arguments
         calls.append("handler")
         return {}
 
-    monkeypatch.setattr(legacy_server, "_gmail_get_thread", forbidden_handler)
-    state = cast(legacy_server._WorkspaceState, object())
+    monkeypatch.setattr(workspace_tools, "_gmail_get_thread", forbidden_handler)
+    state = cast(workspace_tools._WorkspaceState, object())
 
     with pytest.raises(verified_server._VerifiedToolContractError) as captured:  # noqa: SLF001
         verified_server._tool_call(  # noqa: SLF001
@@ -39,14 +39,14 @@ def test_read_output_contract_failure_is_uncertain_read_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def malformed_read(
-        state: legacy_server._WorkspaceState,
+        state: workspace_tools._WorkspaceState,
         arguments: dict[str, object],
     ) -> dict[str, object]:
         del state, arguments
         return {"item": {"resource_id": "thread-1"}}
 
-    monkeypatch.setattr(legacy_server, "_gmail_get_thread", malformed_read)
-    state = cast(legacy_server._WorkspaceState, object())
+    monkeypatch.setattr(workspace_tools, "_gmail_get_thread", malformed_read)
+    state = cast(workspace_tools._WorkspaceState, object())
 
     with pytest.raises(verified_server._VerifiedToolContractError) as captured:  # noqa: SLF001
         verified_server._tool_call(  # noqa: SLF001
@@ -65,15 +65,15 @@ def test_write_output_contract_failure_is_sent_response_lost(
     calls: list[str] = []
 
     def malformed_write(
-        state: legacy_server._WorkspaceState,
+        state: workspace_tools._WorkspaceState,
         arguments: dict[str, object],
     ) -> dict[str, object]:
         del state, arguments
         calls.append("provider_write_returned")
         return {"item": {"resource_id": "task-1"}}
 
-    monkeypatch.setattr(legacy_server, "_tasks_create_task", malformed_write)
-    state = cast(legacy_server._WorkspaceState, object())
+    monkeypatch.setattr(workspace_tools, "_tasks_create_task", malformed_write)
+    state = cast(workspace_tools._WorkspaceState, object())
 
     with pytest.raises(verified_server._VerifiedToolContractError) as captured:  # noqa: SLF001
         verified_server._tool_call(  # noqa: SLF001

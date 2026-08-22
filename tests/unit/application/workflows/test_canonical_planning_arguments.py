@@ -6,30 +6,30 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.handoff_contracts import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
     RequestIntentV2,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.workflows.planning_argument_orchestrator import (
+from google_work_agent.application.orchestration.planning_argument_orchestrator import (
     PlanningArgumentOrchestrator,
 )
-from google_work_agent.application.workflows.planning_argument_writer import PlanningArgumentWriter
-from google_work_agent.application.workflows.planning_arguments import (
+from google_work_agent.application.orchestration.planning_argument_writer import PlanningArgumentWriter
+from google_work_agent.application.orchestration.planning_arguments import (
     DefaultContainerResolver,
     PlanningArgumentBindingError,
     validate_tool_argument_candidate_v1,
 )
-from google_work_agent.application.workflows.planning_plan_assembler import (
+from google_work_agent.application.orchestration.planning_plan_assembler import (
     assemble_action_plan_draft_v1_compat,
     derive_action_dependencies_deterministically,
     materialize_action_seeds,
 )
-from google_work_agent.application.workflows.planning_tool_schemas import (
+from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,
 )
-from google_work_agent.application.workflows.tool_routing import OutputToolRouteV1
+from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,

@@ -2,16 +2,16 @@ from copy import deepcopy
 
 import pytest
 
-from google_work_agent.application.workflows.api_acquisition import (
+from google_work_agent.application.orchestration.api_acquisition import (
     SourcePlanningValidationError,
     validate_source_fetch_plans_for_route,
 )
-from google_work_agent.application.workflows.contracts import PolicyConfirmationReceiptV1
-from google_work_agent.application.workflows.handoff_contracts import ConstraintV1, RequestIntentV2
-from google_work_agent.application.workflows.scope_expansion import (
+from google_work_agent.application.orchestration.contracts import PolicyConfirmationReceiptV1
+from google_work_agent.application.orchestration.handoff_contracts import ConstraintV1, RequestIntentV2
+from google_work_agent.application.orchestration.scope_expansion import (
     build_policy_confirmation_receipt,
 )
-from google_work_agent.application.workflows.tool_routing import (
+from google_work_agent.application.orchestration.tool_routing import (
     ToolRouteCoordinator,
     ToolRouteValidationError,
     allowed_input_sources,

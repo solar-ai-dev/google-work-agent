@@ -6,8 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.application.workflows.handoff_contracts import RegisteredResumeTargetRefV1
-from google_work_agent.application.workflows.supervisor import SupervisorTarget
+from google_work_agent.application.orchestration.handoff_contracts import RegisteredResumeTargetRefV1
+from google_work_agent.application.orchestration.supervisor import SupervisorTarget
 from google_work_agent.domain import RunStatus
 
 RESUME_CONTRACT_VERSION = "resume-contract-v1"

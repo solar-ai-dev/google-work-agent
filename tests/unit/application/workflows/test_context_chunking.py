@@ -7,8 +7,8 @@ pipeline in context_retrieval.py that wires them into SourceSegment output.
 
 from __future__ import annotations
 
-from google_work_agent.application.workflows.api_acquisition import AcquisitionResultV1
-from google_work_agent.application.workflows.context_retrieval import (
+from google_work_agent.application.orchestration.api_acquisition import AcquisitionResultV1
+from google_work_agent.application.orchestration.context_retrieval import (
     ContextBudget,
     _chunk_text,
     _estimate_tokens,

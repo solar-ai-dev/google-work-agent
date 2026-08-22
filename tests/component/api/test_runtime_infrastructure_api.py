@@ -24,7 +24,8 @@ from google_work_agent.adapters.runtime import (
     SettingsService,
 )
 from google_work_agent.adapters.runtime.build_manifest import hash_file
-from google_work_agent.api import ApiContainer, create_app
+from google_work_agent.api.app import create_app
+from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.settings import (
     CreateBackupService,
     CreateRestorePlanService,

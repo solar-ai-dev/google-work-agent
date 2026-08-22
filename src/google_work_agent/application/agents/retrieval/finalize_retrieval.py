@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Literal, cast
 
-from google_work_agent.application.workflows.handoff_contracts import (
+from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     EvidenceDraftV1,
     EvidenceSelectionResultV2,
@@ -14,12 +14,12 @@ from google_work_agent.application.workflows.handoff_contracts import (
     RetrievalSourceStatusV1,
     SufficiencyResultV2,
 )
-from google_work_agent.application.workflows.retrieval_rounds import retrieval_round_count
-from google_work_agent.application.workflows.retrieval_sufficiency import (
+from google_work_agent.application.orchestration.retrieval_rounds import retrieval_round_count
+from google_work_agent.application.orchestration.retrieval_sufficiency import (
     missing_information_projection,
     source_statuses_prompt_projection,
 )
-from google_work_agent.application.workflows.tool_routing import ToolRoutePlanV2
+from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 
 
 def finalize_retrieval(

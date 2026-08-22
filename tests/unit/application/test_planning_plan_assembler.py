@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.workflows.planning_plan_assembler import (
+from google_work_agent.application.orchestration.planning_plan_assembler import (
     PlanningAssemblyError,
     assemble_action_plan_draft_v2,
     derive_action_dependencies_deterministically,

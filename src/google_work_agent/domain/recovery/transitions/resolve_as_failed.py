@@ -1,8 +1,8 @@
 """Resolve an uncertain result as definitively not executed."""
 
-from google_work_agent.domain.commands import ActionCommand
+from google_work_agent.domain.action.model import ActionCommand
 from google_work_agent.domain.enums import ActionStatus, ResultCode
-from google_work_agent.domain.errors import InvariantViolationError
+from google_work_agent.domain.exceptions import InvariantViolationError
 from google_work_agent.domain.results import CommandResult
 
 

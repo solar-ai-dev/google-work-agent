@@ -8,7 +8,7 @@ from typing import Any, cast
 
 import pytest
 
-from google_work_agent.adapters.langgraph.canonical_freshness_runtime import (
+from google_work_agent.adapters.langgraph.freshness_workflow import (
     LangGraphWorkflowRuntime,
 )
 from google_work_agent.adapters.langgraph.corrective_plan_reachability import (

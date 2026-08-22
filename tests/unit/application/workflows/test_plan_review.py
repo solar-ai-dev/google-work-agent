@@ -9,35 +9,41 @@ from typing import cast
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.plan_review import (
     PLAN_REVIEW_OUTPUT_SCHEMA,
-    ActionPlanDraftV1,
-    AnswerDraftV1,
-    ContextRetrievalResultV1,
-    PlanningResult,
     PlanReviewAgent,
-    PlanReviewResultV1,
     PlanReviewValidationError,
-    RequestIntentV2,
-    ReviewIssueV1,
-    ReviewResult,
-    WorkAnalysisResultV1,
-    WorkflowPhase,
     build_plan_review_clarification_question,
     build_policy_review_context_v1,
     load_plan_review_inspect_prompt_reference,
     load_plan_review_recheck_prompt_reference,
     resolve_review_target,
-    validate_action_plan_draft_v1,
-    validate_answer_draft_v1,
     validate_plan_review_result_v1,
 )
-from google_work_agent.application.workflows.plan_review import (
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ActionPlanDraftV1,
+    AnswerDraftV1,
+    ContextRetrievalResultV1,
+    PlanReviewResultV1,
+    RequestIntentV2,
+    ReviewIssueV1,
+    WorkAnalysisResultV1,
+)
+from google_work_agent.application.orchestration.contracts import (
+    PlanningResult,
+    ReviewResult,
+    WorkflowPhase,
+)
+from google_work_agent.application.orchestration.solution_planning import (
+    validate_action_plan_draft_v1,
+    validate_answer_draft_v1,
+)
+from google_work_agent.application.orchestration.plan_review import (
     _review_tool_call_to_result_v1,
     _shortlisted_policy_review_context_v1,
 )
-from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
+from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
 from google_work_agent.domain import build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
@@ -871,17 +877,10 @@ def test_plan_review_source_has_no_google_mcp_or_completion_calls() -> None:
     assert "publish_read_only_plan" not in source
 
 
-def test_plan_review_exports_are_available() -> None:
-    import google_work_agent.application.workflows as workflows
-
-    assert hasattr(workflows, "PlanReviewAgent")
-    assert hasattr(workflows, "PlanReviewResultV1")
-    assert hasattr(workflows, "ReviewIssueV1")
-    assert hasattr(workflows, "PolicyReviewContextV1")
-    assert hasattr(workflows, "AdditionalAcquisitionRequestV1")
-    assert hasattr(workflows, "build_policy_review_context_v1")
-    assert hasattr(workflows, "resolve_review_target")
-    assert hasattr(workflows, "validate_plan_review_result_v1")
+def test_plan_review_symbols_have_explicit_owners() -> None:
+    assert PlanReviewAgent.__module__.endswith(".workflows.plan_review")
+    assert PlanReviewResultV1.__module__.endswith(".workflows.handoff_contracts")
+    assert ReviewIssueV1.__module__.endswith(".workflows.handoff_contracts")
 
 
 def _agent(runtime: FakeLLMRuntime) -> PlanReviewAgent:
@@ -1195,14 +1194,12 @@ def _validate_review_result(
     plan_draft: ActionPlanDraftV1 | None,
     recheck: bool = False,
 ) -> PlanReviewResultV1:
-    import google_work_agent.application.workflows as workflows
-
     target_kind, _ = resolve_review_target(
         answer_draft=answer_draft,
         plan_draft=plan_draft,
     )
     if recheck:
-        return workflows.validate_plan_review_result_v1(
+        return validate_plan_review_result_v1(
             payload,
             target_kind=target_kind,
             analysis_result=_analysis_result(),
@@ -1210,7 +1207,7 @@ def _validate_review_result(
             plan_draft=plan_draft,
             allowed_statuses=frozenset({ReviewResult.PASS.value, ReviewResult.BLOCK.value}),
         )
-    return workflows.validate_plan_review_result_v1(
+    return validate_plan_review_result_v1(
         payload,
         target_kind=target_kind,
         analysis_result=_analysis_result(),

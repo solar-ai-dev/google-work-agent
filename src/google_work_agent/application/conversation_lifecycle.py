@@ -11,9 +11,9 @@ from google_work_agent.application.run_command_receipts import (
 from google_work_agent.application.run_command_receipts import (
     resolve_existing_receipt as _resolve_existing_receipt,
 )
-from google_work_agent.application.run_contracts import (
+from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationCommand,
-    CreateConversationResponse,
+    CreateConversationResult as CreateConversationResponse,
 )
 from google_work_agent.domain import ResultCode
 from google_work_agent.ports import ConversationRecord, UnitOfWork

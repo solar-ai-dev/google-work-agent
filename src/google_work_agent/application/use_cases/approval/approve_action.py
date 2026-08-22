@@ -20,7 +20,7 @@ from google_work_agent.application.task_duplicates import (
     approval_source_snapshot_for_task_duplicate,
     require_duplicate_acknowledgement,
 )
-from google_work_agent.application.use_cases.approval.build_source_snapshot import (
+from google_work_agent.application.approval_source_snapshot import (
     build_approval_source_snapshot,
     merge_approval_snapshot_metadata,
 )

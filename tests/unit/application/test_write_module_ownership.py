@@ -1,16 +1,14 @@
-from google_work_agent.application import (
-    write_actions,
-    write_approval,
-    write_cancellation,
-    write_claim,
-    write_execution,
-    write_execution_contracts,
-    write_plan,
-    write_plan_contracts,
-    write_recovery,
-    write_recovery_contracts,
-    write_verification,
-)
+import google_work_agent.application.write_actions as write_actions
+import google_work_agent.application.write_approval as write_approval
+import google_work_agent.application.write_cancellation as write_cancellation
+import google_work_agent.application.write_claim as write_claim
+import google_work_agent.application.write_execution as write_execution
+import google_work_agent.application.write_execution_contracts as write_execution_contracts
+import google_work_agent.application.write_plan as write_plan
+import google_work_agent.application.write_plan_contracts as write_plan_contracts
+import google_work_agent.application.write_recovery as write_recovery
+import google_work_agent.application.write_recovery_contracts as write_recovery_contracts
+import google_work_agent.application.write_verification as write_verification
 
 
 def test_write_actions_remains_a_compatibility_facade() -> None:

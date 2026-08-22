@@ -13,14 +13,18 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from google_work_agent.adapters.connectors import GoogleWorkspaceConnectorReader
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows import (
-    ApiAcquisitionResult,
-    ApiDiscoveryAcquisitionAgent,
-    ContextRetrievalAgent,
-    RequestIntentV2,
+from google_work_agent.adapters.connectors.google_workspace_reader import (
+    GoogleWorkspaceConnectorReader,
 )
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.contracts import ApiAcquisitionResult
+from google_work_agent.application.orchestration.api_acquisition import (
+    ApiDiscoveryAcquisitionAgent,
+)
+from google_work_agent.application.orchestration.context_retrieval import (
+    ContextRetrievalAgent,
+)
+from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,

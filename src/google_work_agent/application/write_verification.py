@@ -6,7 +6,9 @@ from collections.abc import Callable
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.application.ports import ConnectorExecutionPort
+from google_work_agent.ports.connectors.execution import (
+    ConnectorExecutionPort,
+)
 from google_work_agent.application.write_action_arguments import (
     dict_argument as _dict_argument,
 )

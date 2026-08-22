@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.workflows.post_retrieval_envelopes_v2 import (
+from google_work_agent.application.orchestration.post_retrieval_envelopes import (
     PostRetrievalEnvelopeV2Error,
     validate_planning_return_v2,
     validate_review_return_v2,

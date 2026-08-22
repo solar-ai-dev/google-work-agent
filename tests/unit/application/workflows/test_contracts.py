@@ -2,7 +2,7 @@ from enum import StrEnum
 
 import pytest
 
-from google_work_agent.application.workflows import (
+from google_work_agent.application.orchestration.contracts import (
     ADDITIONAL_ACQUISITION_ALLOWED_PHASES,
     ADDITIONAL_ACQUISITION_ALLOWED_RESULTS,
     AGENT_LOCAL_STATE_FIELDS,

@@ -4,7 +4,7 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
-from google_work_agent.application.workflows.prompt_registry import (
+from google_work_agent.application.orchestration.prompt_registry import (
     discover_canonical_prompt_manifest_path,
 )
 

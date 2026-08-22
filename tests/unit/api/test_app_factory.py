@@ -8,7 +8,8 @@ from google_work_agent.adapters.readiness.composite import (
     StaticReadinessAggregator,
     StaticRuntimeStatusProvider,
 )
-from google_work_agent.api import ApiContainer, create_app
+from google_work_agent.api.app import create_app
+from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.queries import ActionSnapshot, RunSnapshot
 from google_work_agent.application.start_run import ResumeRunResponse
 from google_work_agent.application.write_actions import WriteRunResponse

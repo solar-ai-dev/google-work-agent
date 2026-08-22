@@ -6,7 +6,7 @@ import pytest
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import SQLiteUnitOfWork
-from google_work_agent.application.observability import SanitizationError
+from google_work_agent.ports.observability_events import SanitizationError
 from google_work_agent.ports import AuditEventRecord, TraceEventRecord
 
 
@@ -152,6 +152,7 @@ def test_production_trace_and_audit_boundary_blocks_random_nested_secrets(
     trace = loads(trace_raw)
     audit = loads(audit_raw)
     for persisted in (trace, audit):
+        persisted = persisted.get("attributes", persisted)
         assert persisted["credential_state"] == "READY"
         assert persisted["token_expired"] is True
         assert persisted["page_token_present"] is True

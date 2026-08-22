@@ -9,17 +9,12 @@ from typing import cast
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.solution_planning import (
     ACTION_PLAN_DRAFT_OUTPUT_SCHEMA,
     ANSWER_DRAFT_OUTPUT_SCHEMA,
-    ContextRetrievalResultV1,
-    PlanningResult,
-    RequestIntentV2,
     SolutionPlanningAgent,
     SolutionPlanningValidationError,
-    WorkAnalysisResultV1,
-    WorkflowPhase,
     build_solution_planning_clarification_question,
     load_solution_planning_answer_only_prompt_reference,
     load_solution_planning_draft_plan_prompt_reference,
@@ -28,11 +23,20 @@ from google_work_agent.application.workflows import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
-from google_work_agent.application.workflows.prompt_registry import InactivePromptArtifactError
-from google_work_agent.application.workflows.solution_planning import (
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ContextRetrievalResultV1,
+    RequestIntentV2,
+    WorkAnalysisResultV1,
+)
+from google_work_agent.application.orchestration.contracts import (
+    PlanningResult,
+    WorkflowPhase,
+)
+from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
+from google_work_agent.application.orchestration.solution_planning import (
     _action_plan_draft_output_schema_for_registry,
 )
-from google_work_agent.application.workflows.tool_routing import OutputToolRouteV1
+from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 from google_work_agent.domain import SignedToolRegistry, build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
@@ -869,17 +873,10 @@ def test_default_product_loader_rejects_draft_planning_prompts(tmp_path: Path) -
         load_solution_planning_answer_only_prompt_reference(manifest_path)
 
 
-def test_solution_planning_exports_are_available() -> None:
-    import google_work_agent.application.workflows as workflows
-
-    assert hasattr(workflows, "SolutionPlanningAgent")
-    assert hasattr(workflows, "AnswerDraftV1")
-    assert hasattr(workflows, "ActionPlanDraftV1")
-    assert hasattr(workflows, "ActionDraftV1")
-    assert hasattr(workflows, "validate_answer_draft_v1")
-    assert hasattr(workflows, "validate_action_plan_draft_v1")
-    assert hasattr(workflows, "load_solution_planning_revise_answer_prompt_reference")
-    assert hasattr(workflows, "load_solution_planning_revise_plan_prompt_reference")
+def test_solution_planning_symbols_have_explicit_owners() -> None:
+    assert SolutionPlanningAgent.__module__.endswith(".workflows.solution_planning")
+    assert validate_answer_draft_v1.__module__.endswith(".workflows.solution_planning")
+    assert validate_action_plan_draft_v1.__module__.endswith(".workflows.solution_planning")
 
 
 def _agent(runtime: FakeLLMRuntime) -> SolutionPlanningAgent:

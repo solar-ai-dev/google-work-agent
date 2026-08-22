@@ -4,12 +4,12 @@ from json import dumps
 
 import pytest
 
-from google_work_agent.application.workflows.handoff_contracts import AcquisitionResultV1
-from google_work_agent.application.workflows.retrieval_data_boundary import (
+from google_work_agent.application.orchestration.handoff_contracts import AcquisitionResultV1
+from google_work_agent.application.orchestration.retrieval_data_boundary import (
     hydrate_acquisition_for_segmentation,
     sanitize_acquisition_result,
 )
-from google_work_agent.application.workflows.retrieval_read_cache import (
+from google_work_agent.application.orchestration.retrieval_read_cache import (
     ReadResultCacheEntry,
     ReadResultContinuationError,
     RunScopedReadResultCache,

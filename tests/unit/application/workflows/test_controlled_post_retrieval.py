@@ -10,14 +10,16 @@ from typing import cast
 import pytest
 from tests.support.prompt_manifests import write_runtime_active_manifest
 
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.controlled_post_retrieval import (
     E06B_ANALYSIS_PLANNING_OUTPUT_SCHEMA,
-    PLAN_REVIEW_OUTPUT_SCHEMA,
     ControlledPostRetrievalReplayError,
     ControlledPostRetrievalReplayRunner,
 )
-from google_work_agent.application.workflows.controlled_post_retrieval import (
+from google_work_agent.application.orchestration.plan_review import (
+    PLAN_REVIEW_OUTPUT_SCHEMA,
+)
+from google_work_agent.application.orchestration.controlled_post_retrieval import (
     _build_evaluation_environment_hash_payload,
     _build_fixed_environment_payload,
     _calculate_evaluation_environment_hash,

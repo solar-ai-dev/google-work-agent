@@ -2,16 +2,16 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.application.workflows.retrieval_v2_contracts import (
+from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalConstraintKindV1,
     RetrievalV2ValidationError,
 )
-from google_work_agent.application.workflows.source_fetch_plan_builder import (
+from google_work_agent.application.orchestration.source_fetch_plan_builder import (
     QueryUnchangedAfterFailureError,
     RouteConstraintPolicy,
     SourceFetchPlanBuilder,
 )
-from google_work_agent.application.workflows.tool_routing import InputToolRouteV1
+from google_work_agent.application.orchestration.tool_routing import InputToolRouteV1
 
 
 def test_builder_materializes_deterministic_initial_search() -> None:

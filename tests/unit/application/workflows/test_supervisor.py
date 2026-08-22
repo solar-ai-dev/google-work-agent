@@ -1,32 +1,36 @@
 import json
 from typing import Literal, cast
 
-from google_work_agent.application import derive_finalize_intent
+from google_work_agent.application.run_terminal import derive_finalize_intent
 from google_work_agent.application.read_only import ReadActionCommandResponse
-from google_work_agent.application.workflows import (
+from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionDraftV1,
     ActionPlanDraftV1,
-    AdditionalAcquisitionRequestV1,
     AnswerDraftV1,
+    ContextRetrievalResultV1,
+    PlanReviewResultV1,
+    RequestIntentV2,
+    ReviewIssueV1,
+    WorkAnalysisResultV1,
+)
+from google_work_agent.application.orchestration.contracts import (
+    AdditionalAcquisitionRequestV1,
     BudgetProfile,
     BudgetReasonCode,
-    ContextRetrievalResultV1,
     DomainValidationResult,
     FinalizeIntent,
     GraphStateUpdateV1,
     MultiAgentGraphState,
-    PlanReviewResultV1,
-    RequestIntentV2,
-    ReviewIssueV1,
     RunBudgetV1,
-    SupervisorTarget,
-    WorkAnalysisResultV1,
     WorkflowPhase,
     build_default_run_budget,
     build_semantic_failure_signature_v1,
-    route_supervisor,
     validate_user_interrupt_v1,
+)
+from google_work_agent.application.orchestration.supervisor import (
+    SupervisorTarget,
+    route_supervisor,
 )
 from google_work_agent.application.write_actions import WriteActionResponse
 

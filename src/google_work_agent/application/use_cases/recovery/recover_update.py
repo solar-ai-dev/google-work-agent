@@ -7,8 +7,10 @@ from dataclasses import dataclass
 from json import loads
 from typing import cast
 
-from google_work_agent.application.ports import ConnectorExecutionPort
-from google_work_agent.application.use_cases.recovery.project_source_resource import (
+from google_work_agent.ports.connectors.execution import (
+    ConnectorExecutionPort,
+)
+from google_work_agent.application.recovery_source_projection import (
     project_source_resource,
 )
 from google_work_agent.application.use_cases.recovery.recover_existing_result import (

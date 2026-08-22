@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.adapters.connectors import build_google_workspace_connector_descriptor
+from google_work_agent.adapters.connectors.google_workspace import (
+    build_google_workspace_connector_descriptor,
+)
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
     MCPGoogleOAuthCredentialProvider,
@@ -57,7 +59,6 @@ def test_subprocess_transport_rejects_manifest_version_mismatch(tmp_path: Path) 
     descriptor = build_google_workspace_connector_descriptor(
         _artifact_config(manifest_path, expected_manifest_version="unexpected")
     )
-
     with pytest.raises(MCPTransportError) as captured:
         SubprocessMCPTransport(descriptor=descriptor)
 

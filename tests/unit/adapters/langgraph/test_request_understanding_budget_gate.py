@@ -14,10 +14,13 @@ import pytest
 
 from google_work_agent.adapters.langgraph.graph_state import REQUEST_AGENT_LOCAL_KEY
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.subgraphs.request_understanding import (
+from google_work_agent.adapters.langgraph.subgraphs.request_understanding.graph import (
     RequestUnderstandingSubgraph,
 )
-from google_work_agent.application.workflows import NORMAL_MAX_LLM_CALLS, build_default_run_budget
+from google_work_agent.application.orchestration.contracts import (
+    NORMAL_MAX_LLM_CALLS,
+    build_default_run_budget,
+)
 from google_work_agent.ports import (
     LLMErrorCode,
     LLMInvocationError,

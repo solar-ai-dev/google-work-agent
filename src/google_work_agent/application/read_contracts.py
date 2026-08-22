@@ -101,6 +101,15 @@ class CompletedEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class ExecutedReadAction:
+    """Provider-neutral read output before durable completion."""
+
+    output_json: str
+    resource_refs: tuple[CompletedResourceRef, ...]
+    evidence: tuple[CompletedEvidence, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CompleteReadActionCommand:
     """Persist a successful read action result."""
 
@@ -178,3 +187,8 @@ class ReadActionCommandResponse:
     partial: bool = False
     safe_error_code: str | None = None
     conflict_detail: str | None = None
+
+
+type ReadOnlyResponse = (
+    SaveReadOnlyPlanResponse | PublishReadOnlyPlanResponse | ReadActionCommandResponse
+)

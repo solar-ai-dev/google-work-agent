@@ -21,11 +21,11 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
     ContextRetrievalInputState,
     ContextRetrievalLocalState,
 )
-from google_work_agent.application.workflows.handoff_contracts import (
+from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ContextRetrievalResultV1,
 )
-from google_work_agent.application.workflows.retrieval_data_boundary import (
+from google_work_agent.application.orchestration.retrieval_data_boundary import (
     hydrate_acquisition_for_segmentation,
     sanitize_acquisition_result,
 )

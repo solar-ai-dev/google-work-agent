@@ -2,7 +2,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass,field
 from google_work_agent.application.agents.request_understanding.identify_goal import identify_goal
-from google_work_agent.application.observability import ObservabilityContext
+from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.ports import ActualRuntime,OutputSchemaDefinition,PromptReference,RequestedRuntimeMode,StructuredLLMResult,WorkflowCorrelationContext,WorkflowStartRequest
 @dataclass
 class FakeLLMRuntime:

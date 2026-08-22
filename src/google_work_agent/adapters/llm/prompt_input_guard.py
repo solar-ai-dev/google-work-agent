@@ -6,15 +6,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from google_work_agent.application.workflows.failure_record import (
+from google_work_agent.application.orchestration.failure_record import (
     FAILURE_RECORD_FIELDS,
     build_failure_record_v1,
 )
-from google_work_agent.application.workflows.prompt_input_contract import (
+from google_work_agent.application.orchestration.prompt_input_contract import (
     PromptInputContractError,
     PromptRuntimeInputContractValidator,
 )
-from google_work_agent.application.workflows.provider_dispatch_budget import (
+from google_work_agent.application.orchestration.provider_dispatch_budget import (
     account_provider_dispatch,
 )
 from google_work_agent.ports import (

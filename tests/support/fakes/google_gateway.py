@@ -11,7 +11,10 @@ from typing import cast
 from google_work_agent.adapters.connectors.google_workspace_execution import (
     GoogleWorkspaceExecutionBackend,
 )
-from google_work_agent.application.ports import ConnectorWriteRequest, PreparedConnectorWrite
+from google_work_agent.ports.connectors.execution import (
+    ConnectorWriteRequest,
+    PreparedConnectorWrite,
+)
 from google_work_agent.ports import (
     FreeBusyCalendar,
     FreeBusyInterval,

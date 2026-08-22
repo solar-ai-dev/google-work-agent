@@ -36,7 +36,7 @@ class ExecuteClaimedActionCommand:
     claim_token: str
 
 
-ExecutionFinalizationResult = StoreSuccessResult | MarkFailedResult | MarkUnknownResultResult
+ExecuteClaimedActionResult = StoreSuccessResult | MarkFailedResult | MarkUnknownResultResult
 
 
 class ExecuteClaimedActionHandler:
@@ -62,7 +62,7 @@ class ExecuteClaimedActionHandler:
         self._mark_failed = mark_failed
         self._mark_unknown_result = mark_unknown_result
 
-    def __call__(self, command: ExecuteClaimedActionCommand) -> ExecutionFinalizationResult:
+    def __call__(self, command: ExecuteClaimedActionCommand) -> ExecuteClaimedActionResult:
         try:
             execution = self._execute_action(
                 ExecuteActionCommand(
@@ -118,5 +118,5 @@ class ExecuteClaimedActionHandler:
 __all__ = [
     "ExecuteClaimedActionCommand",
     "ExecuteClaimedActionHandler",
-    "ExecutionFinalizationResult",
+    "ExecuteClaimedActionResult",
 ]

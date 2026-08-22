@@ -36,14 +36,16 @@ from google_work_agent.adapters.llm import (
 )
 from google_work_agent.adapters.runtime import AppSettings
 from google_work_agent.application.llm import LLMRuntimeService, PromptRepairSchemaRepairer
-from google_work_agent.application.workflows import (
-    AnalysisResult,
+from google_work_agent.application.orchestration.contracts import AnalysisResult
+from google_work_agent.application.orchestration.handoff_contracts import (
     ContextRetrievalResultV1,
     RequestIntentV2,
+)
+from google_work_agent.application.orchestration.work_analysis import (
     WorkAnalysisAgent,
     validate_work_analysis_result_v1,
 )
-from google_work_agent.application.workflows.work_analysis import WorkAnalysisValidationError
+from google_work_agent.application.orchestration.work_analysis import WorkAnalysisValidationError
 from google_work_agent.ports import (
     LLMErrorCode,
     LLMInvocationError,

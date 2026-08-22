@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from threading import Lock
 from typing import Any
 
-from google_work_agent.application.workflows.contracts import ConfirmationResponseV1
+from google_work_agent.application.orchestration.contracts import ConfirmationResponseV1
 
 
 _ORIGIN_PROMPT_IDS: dict[str, frozenset[str]] = {

@@ -8,7 +8,7 @@ from queue import Empty, Queue
 from threading import Lock
 from typing import cast
 
-from google_work_agent.application.observability import sanitize_event_attributes
+from google_work_agent.ports.observability_events import sanitize_event_attributes
 from google_work_agent.ports import (
     BufferStatus,
     InvalidReplayCursorError,

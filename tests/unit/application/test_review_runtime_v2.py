@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.workflows.review_runtime_v2 import (
+from google_work_agent.application.orchestration.review_invocation import (
     ReviewV2Producer,
     ReviewV2RuntimeError,
 )

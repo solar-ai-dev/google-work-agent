@@ -8,8 +8,8 @@ from google_work_agent.adapters.persistence.repositories import (
     SQLiteAuditRepository,
     SQLiteTraceRepository,
 )
-from google_work_agent.application.observability import sanitize_persistent_event_json
 from google_work_agent.ports import AuditEventRecord, TraceEventRecord
+from google_work_agent.ports.observability_events import sanitize_persistent_event_json
 
 
 class SecretBoundaryAuditRepository(SQLiteAuditRepository):

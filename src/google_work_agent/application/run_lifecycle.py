@@ -16,10 +16,12 @@ from google_work_agent.application.run_command_receipts import (
     resolve_existing_receipt as _resolve_existing_receipt,
 )
 from google_work_agent.application.run_contracts import (
-    ResumeRunCommand,
-    ResumeRunResponse,
     StartRunCommand,
     StartRunResponse,
+)
+from google_work_agent.application.use_cases.run.resume_run import (
+    ResumeRunCommand,
+    ResumeRunResult as ResumeRunResponse,
 )
 from google_work_agent.domain import ActionStatus, ResultCode, RunStatus
 from google_work_agent.ports import (

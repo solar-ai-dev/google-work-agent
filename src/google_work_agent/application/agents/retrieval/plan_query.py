@@ -6,21 +6,21 @@ from collections.abc import Collection, Mapping, Sequence
 
 from google_work_agent.application.agents.retrieval.build_query import RouteConstraintPolicy
 from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.contracts import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
     RunBudgetV1,
     approve_semantic_revision,
     build_semantic_failure_signature_v1,
 )
-from google_work_agent.application.workflows.failure_record import build_failure_record_v1
-from google_work_agent.application.workflows.retrieval_v2_contracts import (
+from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
+from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalConstraintKindV1,
     RetrievalQueryPlanV2,
     RetrievalV2ValidationError,
     validate_retrieval_query_plan_v2,
 )
-from google_work_agent.application.workflows.tool_routing import InputToolRouteV1
+from google_work_agent.application.orchestration.tool_routing import InputToolRouteV1
 from google_work_agent.ports import OutputSchemaDefinition, PromptReference
 
 

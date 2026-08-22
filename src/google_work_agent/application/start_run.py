@@ -5,17 +5,17 @@ from __future__ import annotations
 from google_work_agent.application.conversation_lifecycle import (
     CreateConversationService as CreateConversationService,
 )
-from google_work_agent.application.run_contracts import (
+from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationCommand as CreateConversationCommand,
 )
-from google_work_agent.application.run_contracts import (
-    CreateConversationResponse as CreateConversationResponse,
+from google_work_agent.application.use_cases.conversation.create_conversation import (
+    CreateConversationResult as CreateConversationResponse,
 )
-from google_work_agent.application.run_contracts import (
+from google_work_agent.application.use_cases.run.resume_run import (
     ResumeRunCommand as ResumeRunCommand,
 )
-from google_work_agent.application.run_contracts import (
-    ResumeRunResponse as ResumeRunResponse,
+from google_work_agent.application.use_cases.run.resume_run import (
+    ResumeRunResult as ResumeRunResponse,
 )
 from google_work_agent.application.run_contracts import (
     StartRunCommand as StartRunCommand,

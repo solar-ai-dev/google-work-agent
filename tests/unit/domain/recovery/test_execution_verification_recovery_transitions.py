@@ -1,8 +1,8 @@
 import pytest
 
-from google_work_agent.domain.commands import ActionCommand
+from google_work_agent.domain.action.model import ActionCommand
 from google_work_agent.domain.enums import ActionStatus, VerificationStatus
-from google_work_agent.domain.errors import InvariantViolationError
+from google_work_agent.domain.exceptions import InvariantViolationError
 from google_work_agent.domain.execution_attempt.transitions.mark_failed import transition_mark_failed
 from google_work_agent.domain.execution_attempt.transitions.mark_unknown_result import transition_mark_unknown_result
 from google_work_agent.domain.execution_attempt.transitions.store_success import transition_store_success

@@ -2,13 +2,13 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.adapters.langgraph.canonical_planning_runtime import (
+from google_work_agent.adapters.langgraph.plan_persistence import (
     connector_ids_for_read_actions_from_frozen_routes,
     connector_ids_from_frozen_routes,
     target_resource_connector_ids_from_actions,
 )
 from google_work_agent.adapters.langgraph.graph_state import GraphState
-from google_work_agent.application.workflows.handoff_contracts import ActionPlanDraftV1
+from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
 
 
 def _plan() -> ActionPlanDraftV1:

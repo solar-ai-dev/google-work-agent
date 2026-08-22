@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.workflows.task_write_semantics import (
+from google_work_agent.application.orchestration.task_write_semantics import (
     normalize_task_write_arguments,
 )
-from google_work_agent.mcp import server
+from google_work_agent.adapters.connectors.google.mcp import workspace_tools as server
 
 
 def _arguments(payload: dict[str, object]) -> dict[str, object]:

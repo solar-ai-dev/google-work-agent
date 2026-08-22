@@ -39,6 +39,14 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.state import Planni
 from google_work_agent.application.agents.planning.contracts.planning_semantics import (
     PlanningSemanticInvoker,
 )
+from google_work_agent.application.orchestration.planning_argument_orchestrator import (
+    RouteArgumentResult,
+)
+from google_work_agent.application.orchestration.tool_routing import (
+    OutputToolRouteV1,
+    output_routes,
+)
+from google_work_agent.ports import StructuredLLMResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,3 +123,31 @@ def planning_mode_from_request_intent(
         if isinstance(output_plan, dict) and output_plan.get("output_mode") == "ACTION":
             return "draft_plan"
     return "answer_only"
+
+
+def _real_llm_results(
+    route_results: tuple[RouteArgumentResult, ...],
+) -> list[StructuredLLMResult]:
+    return [
+        route_result.llm_result
+        for route_result in route_results
+        if route_result.llm_result is not None
+    ]
+
+
+def _frozen_output_routes(
+    state: dict[str, Any],
+) -> tuple[OutputToolRouteV1, ...] | None:
+    plan = state.get("tool_route_plan")
+    return None if plan is None else output_routes(plan)
+
+
+def _frozen_read_tool_ids(state: dict[str, Any]) -> frozenset[str]:
+    plan = state.get("tool_route_plan")
+    if plan is None:
+        return frozenset()
+    return frozenset(
+        tool_id
+        for route in plan["input_plan"]["input_routes"]
+        for tool_id in route["allowed_read_tool_ids"]
+    )

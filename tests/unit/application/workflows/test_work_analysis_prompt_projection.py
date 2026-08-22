@@ -16,17 +16,17 @@ from typing import Literal, cast
 import pytest
 
 from google_work_agent.adapters.llm.prompt_input_guard import PromptInputGuardedProvider
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
     RequestIntentV2,
     RetrievalResultV1,
-    WorkAnalysisAgent,
 )
-from google_work_agent.application.workflows.prompt_input_contract import (
+from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
+from google_work_agent.application.orchestration.prompt_input_contract import (
     PromptRuntimeInputContractValidator,
 )
-from google_work_agent.application.workflows.prompt_registry import (
+from google_work_agent.application.orchestration.prompt_registry import (
     default_prompt_manifest_path,
 )
 from google_work_agent.ports import (

@@ -6,7 +6,9 @@ from collections.abc import Callable
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.application.ports import ConnectorExecutionPort
+from google_work_agent.ports.connectors.execution import (
+    ConnectorExecutionPort,
+)
 from google_work_agent.application.resource_ref_projection import (
     resource_ref_from_snapshot as _resource_ref_from_snapshot,
 )

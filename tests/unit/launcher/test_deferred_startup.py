@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.runtime import SafeModeController
-from google_work_agent.api import ApiContainer, create_app
+from google_work_agent.api.app import create_app
+from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.write_actions import ResolveMismatchRecoveryService
 from google_work_agent.launcher.dev import (
     CoreInitializationError,

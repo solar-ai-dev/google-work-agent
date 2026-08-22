@@ -14,15 +14,15 @@ from typing import cast
 import pytest
 from tests.support.prompt_manifests import write_runtime_active_manifest
 
-from google_work_agent.application.observability import ObservabilityContext
-from google_work_agent.application.workflows.contracts import build_default_run_budget
-from google_work_agent.application.workflows.handoff_contracts import RequestIntentV2
-from google_work_agent.application.workflows.tool_route_semantic import (
+from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.contracts import build_default_run_budget
+from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
+from google_work_agent.application.orchestration.tool_route_semantic import (
     ToolRouteAgent,
     load_tool_route_determine_io_resources_prompt_reference,
     load_tool_route_select_tool_if_needed_prompt_reference,
 )
-from google_work_agent.application.workflows.tool_routing import (
+from google_work_agent.application.orchestration.tool_routing import (
     ToolRouteCoordinator,
     ToolRouteValidationError,
     output_routes,
@@ -305,7 +305,7 @@ def test_semantic_candidate_is_used_instead_of_deterministic_fallback() -> None:
 
     sequence = iter(f"route-{index}" for index in range(30))
     coordinator = ToolRouteCoordinator(tool_catalog=_catalog(), id_factory=lambda: next(sequence))
-    from google_work_agent.application.workflows.tool_routing import SemanticRouteCandidate
+    from google_work_agent.application.orchestration.tool_routing import SemanticRouteCandidate
     from google_work_agent.domain import EffectType
 
     candidate = SemanticRouteCandidate(

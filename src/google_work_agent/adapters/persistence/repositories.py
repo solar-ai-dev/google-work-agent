@@ -4,7 +4,7 @@ import sqlite3
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.application.observability import (
+from google_work_agent.ports.observability_events import (
     EventCategory,
     ObservabilityContext,
     Severity,

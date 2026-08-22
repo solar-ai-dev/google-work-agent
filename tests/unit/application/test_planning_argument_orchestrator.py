@@ -5,12 +5,12 @@ from typing import Any
 
 import pytest
 
-from google_work_agent.application.workflows.planning_argument_orchestrator import (
+from google_work_agent.application.orchestration.planning_argument_orchestrator import (
     PlanningArgumentOrchestrator,
     project_planning_action_confirmation_required_v1,
 )
-from google_work_agent.application.workflows.planning_argument_writer import PlanningArgumentWriter
-from google_work_agent.application.workflows.planning_arguments import DefaultContainerResolver
+from google_work_agent.application.orchestration.planning_argument_writer import PlanningArgumentWriter
+from google_work_agent.application.orchestration.planning_arguments import DefaultContainerResolver
 from google_work_agent.ports import (
     ActualRuntime,
     PromptReference,

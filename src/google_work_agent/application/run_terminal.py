@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.application.workflows import (
+from google_work_agent.application.orchestration.contracts import (
     AnalysisResult,
     ApiAcquisitionResult,
     FinalizeIntent,

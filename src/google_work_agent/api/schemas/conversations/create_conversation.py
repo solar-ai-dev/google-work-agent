@@ -1,6 +1,6 @@
 """Create-conversation wire contracts."""
 
-from google_work_agent.api.schemas.common import ApiModel, ContractVersionedRequest
+from google_work_agent.api.schemas.model import ApiModel, ContractVersionedRequest
 
 
 class CreateConversationRequest(ContractVersionedRequest):

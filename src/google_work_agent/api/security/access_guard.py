@@ -11,18 +11,18 @@ from google_work_agent.api.security.fetch_metadata import (
     validate_mutation_fetch_metadata,
 )
 from google_work_agent.api.security.origin import is_exact_origin_match
-from google_work_agent.application.observability import (
-    EventCategory,
-    ObservabilityContext,
-    Severity,
-    append_operational_log,
-    create_event_envelope,
-)
+from google_work_agent.application.observability import append_operational_log
 from google_work_agent.ports import (
     AccessDecision,
     ApiRequestContext,
     EndpointPolicy,
     OperationalLogSink,
+)
+from google_work_agent.ports.observability_events import (
+    EventCategory,
+    ObservabilityContext,
+    Severity,
+    create_event_envelope,
 )
 
 from .sessions import LocalSessionManager

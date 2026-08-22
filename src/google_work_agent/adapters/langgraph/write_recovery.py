@@ -15,7 +15,7 @@ from google_work_agent.application.execution_phase import (
     WriteExecutionPhaseCoordinator,
 )
 from google_work_agent.application.run_terminal import RunTransitionResponse
-from google_work_agent.application.workflows.contracts import WorkflowPhase
+from google_work_agent.application.orchestration.contracts import WorkflowPhase
 from google_work_agent.domain import (
     ActionStatus,
     CommandResult,

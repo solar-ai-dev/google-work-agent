@@ -5,24 +5,21 @@ import pkgutil
 from types import ModuleType
 from typing import Any, get_args, get_type_hints
 
-from google_work_agent.api import route_dependencies
-from google_work_agent.api import routes as route_package
+import google_work_agent.api.routes as route_package
 from google_work_agent.api.container import ApiContainer
-from google_work_agent.api.route_dependencies import (
-    ActionRouteDependencies,
-    AttachmentRouteDependencies,
-    ConversationRouteDependencies,
-    EventRouteDependencies,
-    GoogleRouteDependencies,
-    HealthRouteDependencies,
-    IdentityRouteDependencies,
-    LLMRouteDependencies,
-    ResourceRouteDependencies,
-    RunRouteDependencies,
-    RuntimeRouteDependencies,
-    SessionRouteDependencies,
-    SettingsRouteDependencies,
-)
+from google_work_agent.api.dependencies.actions import ActionRouteDependencies
+from google_work_agent.api.dependencies.attachments import AttachmentRouteDependencies
+from google_work_agent.api.dependencies.conversations import ConversationRouteDependencies
+from google_work_agent.api.dependencies.events import EventRouteDependencies
+from google_work_agent.api.dependencies.google_connections import GoogleRouteDependencies
+from google_work_agent.api.dependencies.health_checks import HealthRouteDependencies
+from google_work_agent.api.dependencies.identities import IdentityRouteDependencies
+from google_work_agent.api.dependencies.llm_connections import LLMRouteDependencies
+from google_work_agent.api.dependencies.resources import ResourceRouteDependencies
+from google_work_agent.api.dependencies.runs import RunRouteDependencies
+from google_work_agent.api.dependencies.runtime_summaries import RuntimeRouteDependencies
+from google_work_agent.api.dependencies.sessions import SessionRouteDependencies
+from google_work_agent.api.dependencies.settings import SettingsRouteDependencies
 
 ROUTE_DEPENDENCY_TYPES = (
     ActionRouteDependencies,
@@ -65,9 +62,8 @@ def _contains_any(annotation: object) -> bool:
 def test_route_modules_do_not_import_container_or_concrete_infrastructure() -> None:
     for module in _route_modules():
         imported_values = tuple(vars(module).values())
-
         assert ApiContainer not in imported_values, module.__name__
-        assert "get_container" not in vars(module), module.__name__
+        assert "get_api_container" not in vars(module), module.__name__
         assert not any(
             _origin_module_name(value).startswith(
                 ("google_work_agent.adapters.", "google_work_agent.persistence.")
@@ -76,15 +72,10 @@ def test_route_modules_do_not_import_container_or_concrete_infrastructure() -> N
         ), module.__name__
 
 
-def test_route_dependency_contracts_do_not_expose_any() -> None:
-    declared_dependency_types = {
-        value
-        for value in vars(route_dependencies).values()
-        if isinstance(value, type) and value.__module__ == route_dependencies.__name__
-    }
-
-    assert set(ROUTE_DEPENDENCY_TYPES).issubset(declared_dependency_types)
+def test_route_dependency_contracts_are_owner_local_and_do_not_expose_any() -> None:
     for dependency_type in ROUTE_DEPENDENCY_TYPES:
+        assert dependency_type.__module__.startswith("google_work_agent.api.dependencies.")
+        assert dependency_type.__module__ != "google_work_agent.api.dependencies"
         assert not any(
             _contains_any(annotation) for annotation in get_type_hints(dependency_type).values()
         ), dependency_type.__name__
