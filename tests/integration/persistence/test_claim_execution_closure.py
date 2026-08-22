@@ -1,0 +1,348 @@
+"""Durable safety closure tests for canonical ClaimExecution."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from google_work_agent.adapters.persistence import connect_sqlite, sqlite_unit_of_work_factory
+from google_work_agent.adapters.persistence.sqlite.repositories.audit_repository import (
+    SQLiteAuditRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_repository import (
+    SQLiteCommandReceiptRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (
+    SQLiteExecutionAttemptRepository,
+)
+from google_work_agent.application import (
+    ApproveWriteActionCommand,
+    ApproveWriteActionService,
+)
+from google_work_agent.application.use_cases.claim.claim_execution import (
+    ClaimExecutionCommand,
+    ClaimExecutionHandler,
+)
+from google_work_agent.application.write_execution_integrity import read_claim_token
+from google_work_agent.domain import ActionStatus, ResultCode
+from tests.integration.persistence.test_write_actions import (
+    FakeClock,
+    FakeGoogleGateway,
+    _prepare_write_plan,
+)
+
+pytest_plugins = ("tests.integration.persistence.test_write_actions",)
+
+SIGNING_SECRET = "c2-claim-secret"
+SERVICE_INSTANCE_ID = "c2-write-svc-1"
+
+
+def _approve(*, write_database: Path, clock: FakeClock, suffix: str) -> None:
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix=suffix)
+    approved = ApproveWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        ApproveWriteActionCommand(
+            command_id=f"approve-{suffix}",
+            request_hash="a1" * 32,
+            action_id=f"action-{suffix}",
+            expected_version=0,
+            approved_by_account_id="account-1",
+            approved_by_display="User",
+            source_snapshot={},
+            approval_id=f"approval-{suffix}",
+            idempotency_key=(f"approval-{suffix}".encode().hex())[:64].ljust(64, "0"),
+        )
+    )
+    assert approved.applied is True
+    assert approved.action_status == ActionStatus.APPROVED.value
+
+
+def _handler(write_database: Path, clock: FakeClock) -> ClaimExecutionHandler:
+    return ClaimExecutionHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        signing_secret=SIGNING_SECRET,
+        service_instance_id=SERVICE_INSTANCE_ID,
+    )
+
+
+def _command(
+    suffix: str,
+    *,
+    request_hash: str = "b1" * 32,
+    expected_version: int = 1,
+) -> ClaimExecutionCommand:
+    return ClaimExecutionCommand(
+        command_id=f"claim-{suffix}",
+        request_hash=request_hash,
+        action_id=f"action-{suffix}",
+        expected_version=expected_version,
+        source_snapshot={},
+        attempt_id=f"attempt-{suffix}",
+        nonce=f"nonce-{suffix}",
+    )
+
+
+def _claim_snapshot(write_database: Path, suffix: str) -> tuple[object, ...]:
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM actions WHERE id = ?),
+                (SELECT version FROM actions WHERE id = ?),
+                (SELECT status FROM approvals WHERE id = ?),
+                (SELECT consumed_at_ms FROM approvals WHERE id = ?),
+                (SELECT status FROM execution_attempts WHERE id = ?),
+                (SELECT COUNT(*) FROM execution_attempts WHERE approval_id = ?),
+                (SELECT status FROM command_receipts WHERE command_id = ?),
+                (SELECT COUNT(*) FROM trace_events
+                    WHERE action_id = ? AND event_type = 'EXECUTION_CLAIMED'),
+                (SELECT COUNT(*) FROM audit_events
+                    WHERE action_id = ? AND event_type = 'APPROVAL_CONSUMED'),
+                (SELECT COUNT(*) FROM audit_events
+                    WHERE action_id = ? AND event_type = 'EXECUTION_CLAIMED');
+            """,
+            (
+                f"action-{suffix}",
+                f"action-{suffix}",
+                f"approval-{suffix}",
+                f"approval-{suffix}",
+                f"attempt-{suffix}",
+                f"approval-{suffix}",
+                f"claim-{suffix}",
+                f"action-{suffix}",
+                f"action-{suffix}",
+                f"action-{suffix}",
+            ),
+        ).fetchone()
+        return tuple(row)
+    finally:
+        connection.close()
+
+
+def test_valid_claim_is_one_atomic_commit_and_replay_is_single_use(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = "c2-happy"
+    _approve(write_database=write_database, clock=clock, suffix=suffix)
+    handler = _handler(write_database, clock)
+    command = _command(suffix)
+
+    first = handler(command)
+    second = handler(command)
+
+    assert first.applied is True
+    assert first.result_code is ResultCode.TRANSITION_APPLIED
+    assert first.current_status is ActionStatus.EXECUTING
+    assert first.current_version == 2
+    assert first.approval_id == f"approval-{suffix}"
+    assert first.attempt_id == f"attempt-{suffix}"
+    assert first.claim_token is not None
+    assert second == first
+    assert fixture_gateway.call_log == []
+
+    payload = read_claim_token(first.claim_token, signing_secret=SIGNING_SECRET)
+    assert payload["action_id"] == f"action-{suffix}"
+    assert payload["approval_id"] == f"approval-{suffix}"
+    assert payload["attempt_id"] == f"attempt-{suffix}"
+    assert payload["tool_name"] == "tasks_create_task"
+    assert payload["service_instance_id"] == SERVICE_INSTANCE_ID
+    assert payload["nonce"] == f"nonce-{suffix}"
+    assert payload["expires_at_ms"] > payload["issued_at_ms"]
+
+    assert _claim_snapshot(write_database, suffix) == (
+        "EXECUTING",
+        2,
+        "CONSUMED",
+        1000,
+        "CLAIMED",
+        1,
+        "APPLIED",
+        1,
+        1,
+        1,
+    )
+
+
+def test_receipt_hash_mismatch_does_not_create_second_attempt(write_database: Path) -> None:
+    clock = FakeClock(1000)
+    suffix = "c2-replay"
+    _approve(write_database=write_database, clock=clock, suffix=suffix)
+    handler = _handler(write_database, clock)
+    original = _command(suffix)
+    assert handler(original).applied is True
+
+    conflict = handler(replace(original, request_hash="ff" * 32))
+
+    assert conflict.applied is False
+    assert conflict.result_code is ResultCode.DUPLICATE_COMMAND
+    connection = connect_sqlite(write_database)
+    try:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM execution_attempts WHERE approval_id = ?;",
+            (f"approval-{suffix}",),
+        ).fetchone()[0] == 1
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected_code", "detail"),
+    (
+        ("hash", ResultCode.STATE_CONFLICT, "source snapshot"),
+        ("version", ResultCode.VERSION_CONFLICT, "expected_version"),
+    ),
+)
+def test_hash_mismatch_and_stale_action_version_fail_closed(
+    write_database: Path,
+    kind: str,
+    expected_code: ResultCode,
+    detail: str,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = f"c2-{kind}"
+    _approve(write_database=write_database, clock=clock, suffix=suffix)
+    handler = _handler(write_database, clock)
+    command = _command(suffix)
+    if kind == "hash":
+        command = replace(command, source_snapshot={"changed": True})
+    else:
+        command = replace(command, expected_version=0)
+
+    result = handler(command)
+
+    assert result.applied is False
+    assert result.result_code is expected_code
+    assert detail in (result.conflict_detail or "")
+    connection = connect_sqlite(write_database)
+    try:
+        assert tuple(
+            connection.execute(
+                "SELECT status, version FROM actions WHERE id = ?;",
+                (f"action-{suffix}",),
+            ).fetchone()
+        ) == ("APPROVED", 1)
+        assert connection.execute(
+            "SELECT status FROM approvals WHERE id = ?;",
+            (f"approval-{suffix}",),
+        ).fetchone()[0] == "ACTIVE"
+        assert connection.execute(
+            "SELECT COUNT(*) FROM execution_attempts WHERE approval_id = ?;",
+            (f"approval-{suffix}",),
+        ).fetchone()[0] == 0
+    finally:
+        connection.close()
+
+
+def test_invalid_approval_is_rejected_without_attempt(write_database: Path) -> None:
+    clock = FakeClock(1000)
+    suffix = "c2-no-approval"
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix=suffix)
+
+    result = _handler(write_database, clock)(_command(suffix, expected_version=0))
+
+    assert result.applied is False
+    assert result.result_code is ResultCode.STATE_CONFLICT
+    assert "ACTIVE approval" in (result.conflict_detail or "")
+    connection = connect_sqlite(write_database)
+    try:
+        assert connection.execute("SELECT COUNT(*) FROM execution_attempts;").fetchone()[0] == 0
+    finally:
+        connection.close()
+
+
+def test_active_attempt_guard_fails_before_mutation(
+    write_database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = "c2-active-attempt"
+    _approve(write_database=write_database, clock=clock, suffix=suffix)
+    monkeypatch.setattr(
+        SQLiteExecutionAttemptRepository,
+        "get_active_by_approval",
+        lambda self, approval_id: object(),
+    )
+
+    result = _handler(write_database, clock)(_command(suffix))
+
+    assert result.applied is False
+    assert result.result_code is ResultCode.STATE_CONFLICT
+    assert "active execution attempt" in (result.conflict_detail or "")
+    connection = connect_sqlite(write_database)
+    try:
+        assert tuple(
+            connection.execute(
+                "SELECT status, version FROM actions WHERE id = ?;",
+                (f"action-{suffix}",),
+            ).fetchone()
+        ) == ("APPROVED", 1)
+        assert connection.execute(
+            "SELECT status FROM approvals WHERE id = ?;",
+            (f"approval-{suffix}",),
+        ).fetchone()[0] == "ACTIVE"
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("failure_point", ("audit", "receipt"))
+def test_transaction_failure_rolls_back_claim_children_and_observability(
+    write_database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
+) -> None:
+    clock = FakeClock(1000)
+    suffix = f"c2-rollback-{failure_point}"
+    _approve(write_database=write_database, clock=clock, suffix=suffix)
+
+    def fail(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise RuntimeError(f"injected {failure_point} failure")
+
+    if failure_point == "audit":
+        monkeypatch.setattr(SQLiteAuditRepository, "add", fail)
+    else:
+        monkeypatch.setattr(SQLiteCommandReceiptRepository, "finish_json", fail)
+
+    with pytest.raises(RuntimeError, match=f"injected {failure_point} failure"):
+        _handler(write_database, clock)(_command(suffix))
+
+    connection = connect_sqlite(write_database)
+    try:
+        assert tuple(
+            connection.execute(
+                "SELECT status, version FROM actions WHERE id = ?;",
+                (f"action-{suffix}",),
+            ).fetchone()
+        ) == ("APPROVED", 1)
+        assert tuple(
+            connection.execute(
+                "SELECT status, consumed_at_ms FROM approvals WHERE id = ?;",
+                (f"approval-{suffix}",),
+            ).fetchone()
+        ) == ("ACTIVE", None)
+        assert connection.execute(
+            "SELECT COUNT(*) FROM execution_attempts WHERE approval_id = ?;",
+            (f"approval-{suffix}",),
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM command_receipts WHERE command_id = ?;",
+            (f"claim-{suffix}",),
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM trace_events WHERE action_id = ? AND event_type = 'EXECUTION_CLAIMED';",
+            (f"action-{suffix}",),
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM audit_events WHERE action_id = ? AND event_type IN ('APPROVAL_CONSUMED', 'EXECUTION_CLAIMED');",
+            (f"action-{suffix}",),
+        ).fetchone()[0] == 0
+    finally:
+        connection.close()
