@@ -3,7 +3,11 @@
 from dataclasses import dataclass
 from typing import Any
 
-from google_work_agent.application.ports.connector_failure import normalize_mcp_transport_failure
+from google_work_agent.application.ports.connector_failure import (
+    ConnectorFailureCode,
+    ConnectorOperationFailure,
+    normalize_mcp_transport_failure,
+)
 from google_work_agent.ports.mcp_transport import MCPTransportError
 
 
@@ -23,7 +27,10 @@ class StartOAuthHandler:
 
     def __call__(self, command: StartOAuthCommand) -> StartOAuthResult:
         if command.connector_id != "google_workspace":
-            raise ValueError("unsupported connector")
+            raise ConnectorOperationFailure(
+                code=ConnectorFailureCode.INVALID_ARGUMENT,
+                detail_code="CONNECTOR_NOT_SUPPORTED",
+            )
         try:
             oauth = self.service()
         except MCPTransportError as error:
