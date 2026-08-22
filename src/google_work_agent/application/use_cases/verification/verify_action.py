@@ -16,6 +16,7 @@ from google_work_agent.application.write_persistence import (
     finish_json_receipt,
     propagate_dependency_blocked,
     require_action,
+    require_approval,
     require_attempt,
     require_plan,
     resolve_existing_action_receipt,
@@ -123,6 +124,15 @@ class VerifyActionHandler:
 
             action = require_action(unit_of_work, command.action_id)
             attempt = require_attempt(unit_of_work, command.attempt_id)
+            approval = require_approval(unit_of_work, attempt.approval_id)
+            if approval.action_id != action.id:
+                return self._store_state_conflict(
+                    unit_of_work=unit_of_work,
+                    command=command,
+                    action=action,
+                    attempt=attempt,
+                    detail="verification attempt does not belong to the requested action",
+                )
             if attempt.status is not ExecutionAttemptStatus.SUCCEEDED:
                 return self._store_state_conflict(
                     unit_of_work=unit_of_work,
@@ -179,6 +189,15 @@ class VerifyActionHandler:
 
             action = require_action(unit_of_work, command.action_id)
             attempt = require_attempt(unit_of_work, command.attempt_id)
+            approval = require_approval(unit_of_work, attempt.approval_id)
+            if approval.action_id != action.id:
+                return self._store_state_conflict(
+                    unit_of_work=unit_of_work,
+                    command=command,
+                    action=action,
+                    attempt=attempt,
+                    detail="verification attempt does not belong to the requested action",
+                )
             if attempt.status is not ExecutionAttemptStatus.SUCCEEDED:
                 return self._store_state_conflict(
                     unit_of_work=unit_of_work,
