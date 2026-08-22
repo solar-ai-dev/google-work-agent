@@ -18,7 +18,7 @@ from typing import Any, NoReturn, cast
 
 from fastapi import FastAPI
 
-from google_work_agent.adapters.connectors import (
+from google_work_agent.adapters.connectors.google_workspace_execution import (
     GoogleWorkspaceExecutionBackend,
 )
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from google_work_agent.adapters.connectors import (
+from google_work_agent.adapters.connectors.google_workspace import (
     GOOGLE_WORKSPACE_CONNECTOR_ID,
     GoogleWorkspaceConnector,
     build_google_workspace_connector_descriptor,

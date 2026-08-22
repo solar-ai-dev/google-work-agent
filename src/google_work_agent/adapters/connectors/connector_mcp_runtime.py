@@ -14,6 +14,8 @@ class RestartableMCPTransport(MCPTransport, Protocol):
 
 
 class ConnectorMcpRuntime:
+    """Own one connector's MCP transport lifecycle without provider fallback."""
+
     def __init__(
         self,
         *,

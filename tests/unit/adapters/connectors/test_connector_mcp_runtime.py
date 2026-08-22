@@ -1,6 +1,6 @@
 from typing import Any
 
-from google_work_agent.adapters.connectors.runtime import ConnectorMcpRuntime
+from google_work_agent.adapters.connectors.connector_mcp_runtime import ConnectorMcpRuntime
 from google_work_agent.adapters.mcp import MCPArtifactConfig, MCPConnectorDescriptor
 from google_work_agent.domain.google_workspace_tool_registry import (
     build_google_workspace_tool_registry,
