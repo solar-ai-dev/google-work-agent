@@ -8,7 +8,6 @@ from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 
 from google_work_agent.application.coordinator import QueueBusyError
-from google_work_agent.application.observability import AUDIT_RETENTION_MS
 from google_work_agent.application.write_persistence import emit_command_rejected_hash_mismatch
 from google_work_agent.domain import ResultCode, RunStatus
 from google_work_agent.domain.run.model import RunTransitionRejected
@@ -343,24 +342,11 @@ class StartRunHandler:
         if message is not None:
             raise RuntimeError("StartRun receipt recovery found USER Message without Run")
 
-        self._validate_unapplied_recovery_evidence(
+        self._fail_closed_no_aggregate_recovery(
             unit_of_work=unit_of_work,
-            receipt=receipt,
             command=command,
         )
-
-        if self._reserve_queue_slot is not None and not self._reserve_queue_slot(command.run_id):
-            raise QueueBusyError()
-
-        try:
-            return self._start_new_run(
-                unit_of_work=unit_of_work,
-                command=command,
-                receipt_already_received=True,
-            )
-        except Exception:
-            self._release(command.run_id)
-            raise
+        raise AssertionError("unreachable")
 
     @staticmethod
     def _validate_receipt_identity(
@@ -420,26 +406,20 @@ class StartRunHandler:
         if trace_created > 1:
             raise RuntimeError("StartRun receipt recovery found duplicate RUN_CREATED Trace evidence")
 
-    def _validate_unapplied_recovery_evidence(
+    def _fail_closed_no_aggregate_recovery(
         self,
         *,
         unit_of_work: UnitOfWork,
-        receipt: CommandReceiptRecord,
         command: StartRunCommand,
     ) -> None:
-        now_ms = self._now_ms()
-        if now_ms < receipt.created_at_ms:
-            raise RuntimeError(
-                "StartRun receipt recovery cannot prove unapplied state with invalid receipt time"
-            )
-        if now_ms - receipt.created_at_ms > AUDIT_RETENTION_MS:
-            raise RuntimeError(
-                "StartRun receipt recovery cannot prove unapplied state after Audit retention window"
-            )
         for event in self._list_all_audits(unit_of_work=unit_of_work, run_id=command.run_id):
             payload = self._event_payload(event.metadata_json, evidence_kind="Audit")
             if event.event_type == "COMMAND_RECEIVED":
-                self._validate_command_received_event(payload=payload, command=command, evidence_kind="Audit")
+                self._validate_command_received_event(
+                    payload=payload,
+                    command=command,
+                    evidence_kind="Audit",
+                )
                 continue
             if event.event_type == "RUN_CREATED":
                 self._validate_run_created_audit(event=event, command=command)
@@ -461,7 +441,11 @@ class StartRunHandler:
         for event in self._list_all_traces(unit_of_work=unit_of_work, run_id=command.run_id):
             payload = self._event_payload(event.payload_json, evidence_kind="Trace")
             if event.event_type == "COMMAND_RECEIVED":
-                self._validate_command_received_event(payload=payload, command=command, evidence_kind="Trace")
+                self._validate_command_received_event(
+                    payload=payload,
+                    command=command,
+                    evidence_kind="Trace",
+                )
                 continue
             if event.event_type == "RUN_CREATED":
                 self._validate_run_created_trace(event=event, command=command)
@@ -479,6 +463,10 @@ class StartRunHandler:
                     "StartRun receipt recovery found prior COMMAND_APPLIED Trace evidence without aggregate"
                 )
             raise RuntimeError("StartRun receipt recovery found contradictory durable Trace evidence")
+
+        raise RuntimeError(
+            "StartRun RECEIVED receipt has no canonical proof of non-application"
+        )
 
     def _list_all_audits(
         self,
