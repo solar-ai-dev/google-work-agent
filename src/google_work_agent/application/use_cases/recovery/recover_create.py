@@ -6,9 +6,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from google_work_agent.application.ports import ConnectorExecutionPort
-from google_work_agent.application.write_execution_contracts import WriteActionResponse
+from google_work_agent.application.use_cases.recovery.recover_existing_result import (
+    RecoverExistingResultCommand,
+    RecoverExistingResultResult,
+)
 from google_work_agent.application.write_persistence import require_action, require_approval, require_attempt
-from google_work_agent.application.write_recovery_contracts import RecoverExistingWriteResultCommand
 from google_work_agent.domain import ResultCode
 from google_work_agent.ports import UnitOfWork
 
@@ -31,14 +33,12 @@ class RecoverCreateResult:
     action_status: str
     action_version: int
     next_allowed_commands: tuple[str, ...]
-    approval_id: str | None = None
     attempt_id: str | None = None
-    claim_token: str | None = None
     safe_error_code: str | None = None
     conflict_detail: str | None = None
 
 
-def _to_result(response: WriteActionResponse) -> RecoverCreateResult:
+def _to_result(response: RecoverExistingResultResult) -> RecoverCreateResult:
     return RecoverCreateResult(
         applied=response.applied,
         result_code=response.result_code,
@@ -46,9 +46,7 @@ def _to_result(response: WriteActionResponse) -> RecoverCreateResult:
         action_status=response.action_status,
         action_version=response.action_version,
         next_allowed_commands=response.next_allowed_commands,
-        approval_id=response.approval_id,
         attempt_id=response.attempt_id,
-        claim_token=response.claim_token,
         safe_error_code=response.safe_error_code,
         conflict_detail=response.conflict_detail,
     )
@@ -60,7 +58,9 @@ class RecoverCreateHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         connector_execution: ConnectorExecutionPort,
-        recover_existing_result: Callable[[RecoverExistingWriteResultCommand], WriteActionResponse],
+        recover_existing_result: Callable[
+            [RecoverExistingResultCommand], RecoverExistingResultResult
+        ],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._connector_execution = connector_execution
@@ -85,18 +85,22 @@ class RecoverCreateHandler:
                 action.version,
                 (),
                 attempt_id=attempt.id,
-                conflict_detail="CREATE recovery requires exactly one existing candidate; blind recreate is forbidden",
+                conflict_detail=(
+                    "CREATE recovery requires exactly one existing candidate; "
+                    "blind recreate is forbidden"
+                ),
             )
 
-        response = self._recover_existing_result(
-            RecoverExistingWriteResultCommand(
-                command.command_id,
-                command.request_hash,
-                command.action_id,
-                command.attempt_id,
-                command.expected_action_version,
-                command.expected_attempt_version,
-                candidates[0],
+        return _to_result(
+            self._recover_existing_result(
+                RecoverExistingResultCommand(
+                    command.command_id,
+                    command.request_hash,
+                    command.action_id,
+                    command.attempt_id,
+                    command.expected_action_version,
+                    command.expected_attempt_version,
+                    candidates[0],
+                )
             )
         )
-        return _to_result(response)
