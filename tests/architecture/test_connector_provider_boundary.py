@@ -23,7 +23,7 @@ _CORE_ROOTS = (
 )
 
 
-def _python_files(root: Path):
+def _python_files(root: Path) -> list[Path]:
     return sorted(path for path in root.rglob("*.py") if "__pycache__" not in path.parts)
 
 
