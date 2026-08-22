@@ -18,7 +18,7 @@ from typing import Any, NoReturn, cast
 
 from fastapi import FastAPI
 
-from google_work_agent.adapters.connectors import (
+from google_work_agent.adapters.connectors.google_workspace_execution import (
     GoogleWorkspaceExecutionBackend,
 )
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
@@ -695,7 +695,8 @@ def main() -> NoReturn:
         bootstrap_secret=bootstrap_secret,
     )
     print(
-        "Open the Vite development UI with this one-time bootstrap fragment:\n"
+        "Open the Vite development UI with this one-time bootstrap fragment:\
+"
         f"http://127.0.0.1:5173/#bootstrap_secret={bootstrap_secret}"
         f"&service_instance_id={container.service_instance_id}",
         flush=True,
