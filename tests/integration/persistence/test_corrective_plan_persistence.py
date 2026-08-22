@@ -16,7 +16,6 @@ from google_work_agent.adapters.langgraph.canonical_freshness_runtime import (
 )
 from google_work_agent.adapters.langgraph.graph_state import ParentGraphState
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.connector_identity import bind_action_connector_ids
 from google_work_agent.adapters.persistence.unit_of_work import (
     SQLiteUnitOfWork,
     sqlite_unit_of_work_factory,
@@ -68,6 +67,7 @@ def _seed_recovery_aggregate(database_path: Path) -> None:
         ActionRecord(
             id="old-action-1",
             plan_id="old-plan",
+            connector_id="google_workspace",
             position=1,
             tool_name="gmail_send",
             effect_type="SEND",
@@ -87,6 +87,7 @@ def _seed_recovery_aggregate(database_path: Path) -> None:
         ActionRecord(
             id="old-action-2",
             plan_id="old-plan",
+            connector_id="google_workspace",
             position=2,
             tool_name="gmail_send",
             effect_type="SEND",
@@ -128,12 +129,7 @@ def _seed_recovery_aggregate(database_path: Path) -> None:
             created_at_ms=3,
         ),
     )
-    with (
-        bind_action_connector_ids(
-            {"old-action-1": "google_workspace", "old-action-2": "google_workspace"}
-        ),
-        SQLiteUnitOfWork(database_path) as unit_of_work,
-    ):
+    with SQLiteUnitOfWork(database_path) as unit_of_work:
         for evidence in old_evidence:
             unit_of_work.evidence.insert(evidence)
         for action in old_actions:
@@ -319,7 +315,7 @@ def _state_and_draft(
                     "position": 2,
                     "effect": "SEND",
                     "tool_name": "gmail_send",
-                    "arguments": {"draft_id": "draft-new-2"},
+                    "arguments": {"draft_id":"draft-new-2"},
                     "expected": {"llm_owned": "must be replaced"},
                     "evidence_refs": ["old-evidence-2"],
                     "resource_refs": [],

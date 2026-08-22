@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.connector_identity import (
-    ConnectorAwareResourceRefRepository,
+from google_work_agent.adapters.persistence.sqlite.repositories.resource_ref_repository import (
+    SQLiteResourceRefRepository,
 )
 from google_work_agent.ports import ResourceRefRecord, ResourceSource, StoredResourceType
 
@@ -66,7 +66,7 @@ def test_same_source_and_external_id_coexist_across_connectors(tmp_path: Path) -
     try:
         apply_migrations(connection, now_ms=lambda: 1)
         _seed_run(connection)
-        repository = ConnectorAwareResourceRefRepository(connection)
+        repository = SQLiteResourceRefRepository(connection)
 
         repository.upsert(_event_ref("resource-a", "connector-a", title="A"))
         repository.upsert(_event_ref("resource-b", "connector-b", title="B"))
