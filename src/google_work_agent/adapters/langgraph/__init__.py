@@ -1,6 +1,6 @@
 """LangGraph-backed workflow runtime adapters."""
 
-from google_work_agent.adapters.langgraph.canonical_freshness_runtime import (
+from google_work_agent.adapters.langgraph.resume_authority import (
     LangGraphWorkflowRuntime,
 )
 from google_work_agent.adapters.langgraph.profiles import (
