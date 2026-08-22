@@ -10,6 +10,7 @@ ROUTES = (
     ROOT / "src/google_work_agent/api/routes/events.py",
 )
 USE_CASE_ROOT = ROOT / "src/google_work_agent/application/use_cases"
+LANGGRAPH_RESUME = ROOT / "src/google_work_agent/adapters/langgraph/resume_authority.py"
 OWNERS = ("run", "conversation", "message", "recovery")
 
 
@@ -26,6 +27,15 @@ def _function(path: Path, name: str) -> ast.FunctionDef:
     for node in tree.body:
         if isinstance(node,ast.FunctionDef) and node.name==name: return node
     raise AssertionError(f"{path}: endpoint {name} missing")
+
+
+def _method(path: Path, class_name: str, method_name: str) -> ast.FunctionDef:
+    tree=ast.parse(path.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if not isinstance(node,ast.ClassDef) or node.name!=class_name: continue
+        for item in node.body:
+            if isinstance(item,ast.FunctionDef) and item.name==method_name: return item
+    raise AssertionError(f"{path}: {class_name}.{method_name} missing")
 
 
 def _constructs_handler(call: ast.Call, handler: str) -> bool:
@@ -76,7 +86,7 @@ def test_owned_routes_do_not_traverse_repositories_or_mutate_domain_directly() -
 
 
 def test_canonical_handlers_do_not_reverse_depend_on_api_or_provider_concretes() -> None:
-    forbidden_prefixes=("fastapi","google_work_agent.api","google_work_agent.adapters.persistence.sqlite","google_work_agent.adapters.connectors.google","googleapiclient","google.oauth2")
+    forbidden_prefixes=("fastapi","google_work_agent.api","google_work_agent.adapters.persistence.sqlite","google_work_agent.adapters.connectors.google","google_work_agent.adapters.langgraph","googleapiclient","google.oauth2")
     for owner in OWNERS:
         for path in (USE_CASE_ROOT/owner).glob("*.py"):
             for imported in _imports(path): assert not imported.startswith(forbidden_prefixes),f"{path}: reverse/concrete dependency {imported}"
@@ -92,9 +102,26 @@ def test_resume_handler_owns_all_substantive_resume_transitions_and_commit() -> 
     path=USE_CASE_ROOT/"run/resume_run.py";tree=ast.parse(path.read_text(encoding="utf-8"));calls={ast.unparse(node.func) for node in ast.walk(tree) if isinstance(node,ast.Call)}
     assert any(name.endswith("runs.resume_confirmation") for name in calls)
     assert any(name.endswith("runs.resume_after_reauth") for name in calls)
+    assert any(name.endswith("runs.require_recovery") for name in calls)
     assert any(name.endswith("runs.resolve_recovery") for name in calls)
     assert any(name.endswith("commit") for name in calls)
     assert not any("workflow_runtime.resume" in name for name in calls)
+
+
+def test_reauth_langgraph_resume_is_checkpoint_transport_only() -> None:
+    method=_method(LANGGRAPH_RESUME,"LangGraphWorkflowRuntime","_resume_after_reauth_transition")
+    calls={ast.unparse(node.func) for node in ast.walk(method) if isinstance(node,ast.Call)}
+    forbidden=("_latest_unknown_action","_has_executed_action","_mark_stalled_claims_as_unknown","recover_unknown","recover_executed","_write_recovery","runs.","actions.","approvals.")
+    for call in calls:
+        assert not any(token in call for token in forbidden),f"reauth adapter owns semantic decision: {call}"
+    assert any(name.endswith("resolve_resume_authority") for name in calls)
+    assert any(name.endswith("_graph.update_state") for name in calls)
+    assert any(name.endswith("_graph.invoke") for name in calls)
+
+
+def test_safe_checkpoint_resume_has_no_terminal_blocked_registration() -> None:
+    source=(USE_CASE_ROOT/"run/resume_run.py").read_text(encoding="utf-8")
+    assert '"SAFE_CHECKPOINT_RESUME": RunStatus.BLOCKED' not in source
 
 
 def test_event_route_keeps_transport_but_not_replay_fallback_semantics() -> None:
