@@ -11,7 +11,7 @@ from google_work_agent.adapters.connectors.google_workspace_execution import (
 from google_work_agent.adapters.connectors.google_workspace_reader import (
     GoogleWorkspaceConnectorReader,
 )
-from google_work_agent.adapters.connectors.runtime import ConnectorMcpRuntime
+from google_work_agent.adapters.connectors.connector_mcp_runtime import ConnectorMcpRuntime
 
 __all__ = [
     "GOOGLE_WORKSPACE_CONNECTOR_ID",
