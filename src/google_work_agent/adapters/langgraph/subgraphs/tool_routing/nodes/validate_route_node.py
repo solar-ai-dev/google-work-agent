@@ -10,5 +10,5 @@ def validate_route_node(state: ToolRoutingState, *, tool_catalog: ConnectorToolC
     result = project_result_input(state)["result"]
     plan = result.get("tool_route_plan")
     if plan is not None:
-        validate_route(plan, tool_catalog)
+        validate_route(plan, tool_catalog=tool_catalog)
     return {"tool_route_plan": plan, "workflow_signal": result.get("workflow_signal")}
