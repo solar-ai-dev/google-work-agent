@@ -20,8 +20,34 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e . pytest
-      - name: Run Planning Review targeted tests
-        run: >-
-          python -m pytest
-          tests/unit/application/agents/review/test_review_deterministic_operations.py
-          tests/unit/adapters/langgraph/test_planning_review_execution.py
+      - name: Run isolated Planning Review targeted tests
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import sys
+          import types
+          import pytest
+
+          package_root = Path.cwd() / "src" / "google_work_agent"
+          namespaces = {
+              "google_work_agent": package_root,
+              "google_work_agent.application": package_root / "application",
+              "google_work_agent.application.workflows": package_root / "application" / "workflows",
+              "google_work_agent.adapters": package_root / "adapters",
+              "google_work_agent.adapters.langgraph": package_root / "adapters" / "langgraph",
+          }
+          for name, path in namespaces.items():
+              module = types.ModuleType(name)
+              module.__path__ = [str(path)]
+              module.__package__ = name
+              sys.modules[name] = module
+
+          raise SystemExit(
+              pytest.main(
+                  [
+                      "tests/unit/application/agents/review/test_review_deterministic_operations.py",
+                      "tests/unit/adapters/langgraph/test_planning_review_execution.py",
+                  ]
+              )
+          )
+          PY
