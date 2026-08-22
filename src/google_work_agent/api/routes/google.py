@@ -1,4 +1,4 @@
-"""Google connection routes."""
+"""Google connector connection routes over canonical Application use cases."""
 
 from fastapi import APIRouter, Header, Request
 
@@ -13,8 +13,23 @@ from google_work_agent.api.schemas.google import (
     GoogleDisconnectResponse,
     GoogleOAuthStartResponse,
 )
+from google_work_agent.application.ports.connector_failure import (
+    ConnectorFailureCode,
+    ConnectorOperationFailure,
+)
+from google_work_agent.application.use_cases.connector_connection.disconnect_connector import (
+    DisconnectConnectorCommand,
+    DisconnectConnectorHandler,
+)
+from google_work_agent.application.use_cases.connector_connection.get_connection import (
+    GetConnectionHandler,
+    GetConnectionQuery,
+)
+from google_work_agent.application.use_cases.connector_connection.start_oauth import (
+    StartOAuthCommand,
+    StartOAuthHandler,
+)
 from google_work_agent.ports import EndpointPolicy
-from google_work_agent.ports.mcp_transport import MCPTransportError, MCPTransportErrorCode
 
 router = APIRouter(prefix="/api/v1/google")
 
@@ -41,25 +56,9 @@ def start_google_oauth(
             detail_code="GOOGLE_OAUTH_UNAVAILABLE",
         )
     try:
-        result = service()
-    except MCPTransportError as error:
-        if error.code is not MCPTransportErrorCode.CONFIGURATION_ERROR:
-            raise
-        if str(error) == "GOOGLE_OAUTH_CLIENT_SECRET_MISSING":
-            raise ApiError(
-                error_code="CONFIGURATION_ERROR",
-                user_message="Set GOOGLE_OAUTH_CLIENT_SECRET in .env.local.",
-                status_code=503,
-                request_id=request.state.request_id,
-                detail_code="GOOGLE_OAUTH_CLIENT_SECRET_MISSING",
-            ) from error
-        raise ApiError(
-            error_code="CONFIGURATION_ERROR",
-            user_message="Set GOOGLE_OAUTH_CLIENT_ID in .env.local.",
-            status_code=503,
-            request_id=request.state.request_id,
-            detail_code="GOOGLE_OAUTH_CLIENT_ID_MISSING",
-        ) from error
+        result = StartOAuthHandler(service)(StartOAuthCommand()).oauth
+    except ConnectorOperationFailure as error:
+        _raise_google_failure(error, request_id=request.state.request_id)
     return GoogleOAuthStartResponse(
         flow_id=result.flow_id,
         authorization_url=result.authorization_url,
@@ -92,7 +91,10 @@ def get_google_connection(
             request_id=request.state.request_id,
             detail_code="GOOGLE_CONNECTION_UNAVAILABLE",
         )
-    result = service()
+    try:
+        result = GetConnectionHandler(service)(GetConnectionQuery()).connection
+    except ConnectorOperationFailure as error:
+        _raise_google_failure(error, request_id=request.state.request_id)
     return GoogleConnectionResponse(
         connected=result.connected,
         credential_state=result.credential_state.value,
@@ -130,7 +132,10 @@ def disconnect_google(
             request_id=request.state.request_id,
             detail_code="GOOGLE_DISCONNECT_UNAVAILABLE",
         )
-    result = service()
+    try:
+        result = DisconnectConnectorHandler(service)(DisconnectConnectorCommand()).disconnect
+    except ConnectorOperationFailure as error:
+        _raise_google_failure(error, request_id=request.state.request_id)
     return GoogleDisconnectResponse(
         disconnected=result.disconnected,
         credential_deleted=result.credential_deleted,
@@ -139,3 +144,42 @@ def disconnect_google(
         credential_state=result.credential_state.value,
         api_contract_version=dependencies.api_contract_version,
     )
+
+
+def _raise_google_failure(error: ConnectorOperationFailure, *, request_id: str) -> None:
+    if error.code is ConnectorFailureCode.CONFIGURATION_ERROR:
+        if error.detail_code == "GOOGLE_OAUTH_CLIENT_SECRET_MISSING":
+            user_message = "Google OAuth client secret is not configured."
+        elif error.detail_code == "GOOGLE_OAUTH_CLIENT_ID_MISSING":
+            user_message = "Google OAuth client ID is not configured."
+        else:
+            user_message = "Google connector configuration is invalid."
+        raise ApiError(
+            error_code="CONFIGURATION_ERROR",
+            user_message=user_message,
+            status_code=503,
+            request_id=request_id,
+            retryable=False,
+            detail_code=error.detail_code,
+        ) from error
+
+    mapping = {
+        ConnectorFailureCode.INVALID_ARGUMENT: ("INVALID_ARGUMENT", 422),
+        ConnectorFailureCode.AUTH_REQUIRED: ("AUTH_REQUIRED", 401),
+        ConnectorFailureCode.PERMISSION_DENIED: ("PERMISSION_DENIED", 403),
+        ConnectorFailureCode.NOT_FOUND: ("NOT_FOUND", 404),
+        ConnectorFailureCode.RATE_LIMITED: ("UPSTREAM_UNAVAILABLE", 429),
+        ConnectorFailureCode.UPSTREAM_UNAVAILABLE: ("UPSTREAM_UNAVAILABLE", 502),
+        ConnectorFailureCode.TIMEOUT: ("UPSTREAM_UNAVAILABLE", 504),
+        ConnectorFailureCode.CONNECTION_UNAVAILABLE: ("SERVICE_BUSY", 503),
+        ConnectorFailureCode.MALFORMED_RESPONSE: ("UPSTREAM_UNAVAILABLE", 502),
+    }
+    error_code, status_code = mapping.get(error.code, ("UPSTREAM_UNAVAILABLE", 502))
+    raise ApiError(
+        error_code=error_code,
+        user_message="Google connector request could not be completed.",
+        status_code=status_code,
+        request_id=request_id,
+        retryable=error.retryable,
+        detail_code=error.detail_code,
+    ) from error
