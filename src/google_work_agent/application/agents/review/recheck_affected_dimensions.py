@@ -20,11 +20,18 @@ from google_work_agent.application.agents.review.inspect_goal_and_evidence impor
 )
 
 PROMPT_ID = "review.recheck_affected_dimensions"
+_REVIEW_DIMENSIONS: tuple[ReviewDimension, ...] = (
+    "GOAL_EVIDENCE",
+    "ACTION_SCOPE_ROUTE",
+    "CONSTRAINTS_POLICY",
+)
+_REVIEW_DIMENSION_SET = set(_REVIEW_DIMENSIONS)
 
 
 def recheck_affected_dimensions(
     findings: Iterable[Mapping[str, object]],
     *,
+    affected_dimensions: Iterable[ReviewDimension] = (),
     affected_action_ids: Iterable[str] = (),
     affected_route_ids: Iterable[str] = (),
     request_intent: Mapping[str, object],
@@ -35,15 +42,16 @@ def recheck_affected_dimensions(
     work_analysis: Mapping[str, object] | None = None,
     policy_summary: Mapping[str, object] | None = None,
 ) -> tuple[AtomicReviewFindingV1, ...]:
-    """Re-run only inspection authorities whose dimensions are affected."""
+    """Re-run exactly the canonical union of explicitly and identity-affected dimensions."""
     prior_findings = tuple(dict(item) for item in findings)
     action_ids = set(affected_action_ids)
     route_ids = set(affected_route_ids)
-    affected_dimensions: set[ReviewDimension] = set()
+    explicit_dimensions = _normalize_dimensions(affected_dimensions)
+    canonical_dimensions: set[ReviewDimension] = set(explicit_dimensions)
 
     for finding in prior_findings:
         dimension = finding.get("dimension")
-        if dimension not in {"GOAL_EVIDENCE", "ACTION_SCOPE_ROUTE", "CONSTRAINTS_POLICY"}:
+        if dimension not in _REVIEW_DIMENSION_SET:
             continue
         action_id = finding.get("action_id")
         route_id = finding.get("route_id")
@@ -51,29 +59,33 @@ def recheck_affected_dimensions(
             (isinstance(action_id, str) and action_id in action_ids)
             or (isinstance(route_id, str) and route_id in route_ids)
         ):
-            affected_dimensions.add(dimension)  # type: ignore[arg-type]
+            canonical_dimensions.add(dimension)  # type: ignore[arg-type]
 
-    if not affected_dimensions:
+    if not canonical_dimensions:
         return ()
 
+    ordered_dimensions = tuple(
+        dimension for dimension in _REVIEW_DIMENSIONS if dimension in canonical_dimensions
+    )
     recheck_decision = invoke(
         PROMPT_ID,
         {
             "base_projection": {"findings": prior_findings},
             "candidate_output": {"planning_result": dict(planning_result)},
             "failure_record": {
+                "affected_dimensions": list(explicit_dimensions),
                 "affected_action_ids": sorted(action_ids),
                 "affected_route_ids": sorted(route_ids),
-                "candidate_dimensions": sorted(affected_dimensions),
+                "candidate_dimensions": list(ordered_dimensions),
             },
         },
     )
     selected = recheck_decision.get("affected_dimensions")
     if not isinstance(selected, list) or not all(isinstance(item, str) for item in selected):
         raise ValueError("recheck_affected_dimensions requires affected_dimensions")
-    selected_dimensions = set(selected)
-    if not selected_dimensions.issubset(affected_dimensions):
-        raise ValueError("recheck attempted to inspect an unaffected dimension")
+    selected_dimensions = _normalize_dimensions(selected)
+    if set(selected_dimensions) != canonical_dimensions:
+        raise ValueError("recheck affected_dimensions must match the canonical affected set")
 
     common = {
         "request_intent": request_intent,
@@ -85,10 +97,18 @@ def recheck_affected_dimensions(
         "invoke": invoke,
     }
     fresh: list[AtomicReviewFindingV1] = []
-    if "GOAL_EVIDENCE" in selected_dimensions:
+    if "GOAL_EVIDENCE" in canonical_dimensions:
         fresh.extend(inspect_goal_and_evidence(**common))
-    if "ACTION_SCOPE_ROUTE" in selected_dimensions:
+    if "ACTION_SCOPE_ROUTE" in canonical_dimensions:
         fresh.extend(inspect_action_scope_and_route(**common))
-    if "CONSTRAINTS_POLICY" in selected_dimensions:
+    if "CONSTRAINTS_POLICY" in canonical_dimensions:
         fresh.extend(inspect_constraints_and_policy_summary(**common))
     return tuple(fresh)
+
+
+def _normalize_dimensions(dimensions: Iterable[object]) -> tuple[ReviewDimension, ...]:
+    requested = set(dimensions)
+    invalid = requested - _REVIEW_DIMENSION_SET
+    if invalid:
+        raise ValueError("invalid Review affected dimension")
+    return tuple(dimension for dimension in _REVIEW_DIMENSIONS if dimension in requested)

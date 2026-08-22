@@ -20,6 +20,7 @@ class ReviewState(TypedDict, total=False):
     review_revision: int
     review_based_on: object
     prior_review_findings: object
+    affected_dimensions: object
     affected_action_ids: object
     affected_route_ids: object
     goal_evidence_findings: object

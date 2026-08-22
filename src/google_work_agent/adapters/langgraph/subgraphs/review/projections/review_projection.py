@@ -17,6 +17,7 @@ _REVIEW_FIELDS = (
     "review_revision",
     "review_based_on",
     "prior_review_findings",
+    "affected_dimensions",
     "affected_action_ids",
     "affected_route_ids",
     "goal_evidence_findings",
