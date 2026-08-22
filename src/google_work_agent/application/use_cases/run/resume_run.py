@@ -13,6 +13,14 @@ from google_work_agent.ports import AuditEventRecord, TraceEventRecord, UnitOfWo
 
 ResumeAuthority = Mapping[str, object]
 
+_REAUTH_DISPATCH_UNCERTAIN_ACTION_STATUSES = frozenset(
+    {
+        ActionStatus.EXECUTING.value,
+        ActionStatus.UNKNOWN_RESULT.value,
+        ActionStatus.EXECUTED.value,
+    }
+)
+
 
 class ResumeRunHandler:
     """Own receipt, persisted resume transition, observability, commit, and handoff."""
@@ -59,12 +67,17 @@ class ResumeRunHandler:
             authority = self._resolve_resume_authority(run_id=command.run_id, resume_kind=command.resume_kind)
         result = self._persist(command, authority=authority, resume_payload=payload)
         if result.applied and result.should_enqueue:
+            handoff_payload = dict(payload)
+            if command.resume_kind == "REAUTH_COMPLETED" and authority is not None:
+                continuation_target = authority.get("continuation_target")
+                if isinstance(continuation_target, str):
+                    handoff_payload["continuation_target"] = continuation_target
             self._enqueue_resume(
                 run_id=command.run_id,
                 request_id=request_id,
                 command_id=command.command_id,
                 resume_kind=command.resume_kind,
-                resume_payload=payload,
+                resume_payload=handoff_payload,
             )
         return result
 
@@ -98,17 +111,26 @@ class ResumeRunHandler:
             latest_plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
             actions = () if latest_plan is None else unit_of_work.actions.list_by_plan(latest_plan.id)
             unknown_result_exists = any(action.status == ActionStatus.UNKNOWN_RESULT.value for action in actions)
+            reauth_dispatch_uncertain = any(
+                action.status in _REAUTH_DISPATCH_UNCERTAIN_ACTION_STATUSES for action in actions
+            )
 
             response = self._validate(command, run, unknown_result_exists, authority, resume_payload)
             if response is None:
-                decision = self._apply_canonical_transition(unit_of_work, command, run.version, authority)
+                decision, should_enqueue = self._apply_canonical_transition(
+                    unit_of_work,
+                    command,
+                    run.version,
+                    authority,
+                    reauth_dispatch_uncertain=reauth_dispatch_uncertain,
+                )
                 response = ResumeRunResult(
                     applied=decision.applied,
                     result_code=decision.result_code.value,
                     run_id=run.id,
                     run_status=decision.current_status.value,
                     run_version=decision.current_version,
-                    should_enqueue=decision.applied,
+                    should_enqueue=should_enqueue,
                     request_replayed=False,
                     conflict_detail=decision.conflict_detail,
                 )
@@ -145,16 +167,15 @@ class ResumeRunHandler:
         version = run.version  # type: ignore[attr-defined]
         if command.expected_run_version != version:
             return ResumeRunResult(False, ResultCode.VERSION_CONFLICT.value, command.run_id, status.value, version, False, False, "expected_run_version does not match current version")
-        if unknown_result_exists and command.resume_kind != "RECOVERY_RECHECK":
-            return ResumeRunResult(False, ResultCode.RECOVERY_REQUIRED.value, command.run_id, status.value, version, False, False, "unknown write results must be resolved before resume")
         allowed = {
             "CONFIRMATION": RunStatus.WAITING_CONFIRMATION,
             "REAUTH_COMPLETED": RunStatus.REAUTH_REQUIRED,
-            "SAFE_CHECKPOINT_RESUME": RunStatus.BLOCKED,
             "RECOVERY_RECHECK": RunStatus.RECOVERY_REQUIRED,
         }
         if allowed.get(command.resume_kind) is not status:
             return ResumeRunResult(False, ResultCode.STATE_CONFLICT.value, command.run_id, status.value, version, False, False, "run status does not allow manual resume")
+        if unknown_result_exists and command.resume_kind not in {"RECOVERY_RECHECK", "REAUTH_COMPLETED"}:
+            return ResumeRunResult(False, ResultCode.RECOVERY_REQUIRED.value, command.run_id, status.value, version, False, False, "unknown write results must be resolved before resume")
         if command.resume_kind in {"CONFIRMATION", "REAUTH_COMPLETED"}:
             if authority is None or not isinstance(authority.get("resume_status"), str):
                 return ResumeRunResult(False, ResultCode.STATE_CONFLICT.value, command.run_id, status.value, version, False, False, "persisted resume authority is unavailable")
@@ -162,31 +183,59 @@ class ResumeRunHandler:
             expected_interrupt = authority.get("interrupt_id") if authority is not None else None
             if not isinstance(expected_interrupt, str) or resume_payload.get("interrupt_id") != expected_interrupt:
                 return ResumeRunResult(False, ResultCode.STATE_CONFLICT.value, command.run_id, status.value, version, False, False, "confirmation interrupt does not match persisted checkpoint authority")
+        if command.resume_kind == "REAUTH_COMPLETED":
+            assert authority is not None
+            try:
+                resume_status = RunStatus(cast(str, authority["resume_status"]))
+            except ValueError:
+                return ResumeRunResult(False, ResultCode.STATE_CONFLICT.value, command.run_id, status.value, version, False, False, "persisted reauth resume status is invalid")
+            if resume_status is not RunStatus.RECOVERY_REQUIRED and not isinstance(authority.get("continuation_target"), str):
+                return ResumeRunResult(False, ResultCode.STATE_CONFLICT.value, command.run_id, status.value, version, False, False, "persisted reauth continuation target is unavailable")
         return None
 
     @staticmethod
-    def _apply_canonical_transition(unit_of_work: UnitOfWork, command: ResumeRunCommand, current_version: int, authority: ResumeAuthority | None):
+    def _apply_canonical_transition(
+        unit_of_work: UnitOfWork,
+        command: ResumeRunCommand,
+        current_version: int,
+        authority: ResumeAuthority | None,
+        *,
+        reauth_dispatch_uncertain: bool,
+    ):
         if command.resume_kind == "CONFIRMATION":
-            return unit_of_work.runs.resume_confirmation(command.run_id, expected_version=current_version, resume_status=RunStatus(cast(str, authority["resume_status"])))
+            decision = unit_of_work.runs.resume_confirmation(
+                command.run_id,
+                expected_version=current_version,
+                resume_status=RunStatus(cast(str, authority["resume_status"])),
+            )
+            return decision, decision.applied
         if command.resume_kind == "REAUTH_COMPLETED":
-            return unit_of_work.runs.resume_after_reauth(command.run_id, expected_version=current_version, resume_status=RunStatus(cast(str, authority["resume_status"])))
+            restored = unit_of_work.runs.resume_after_reauth(
+                command.run_id,
+                expected_version=current_version,
+                resume_status=RunStatus(cast(str, authority["resume_status"])),
+            )
+            if not restored.applied:
+                return restored, False
+            if restored.current_status is RunStatus.RECOVERY_REQUIRED:
+                return restored, False
+            if reauth_dispatch_uncertain:
+                recovery = unit_of_work.runs.require_recovery(
+                    command.run_id,
+                    expected_version=restored.current_version,
+                )
+                if not recovery.applied:
+                    raise RuntimeError("reauth recovery fail-safe transition was not applied")
+                return recovery, False
+            return restored, True
         if command.resume_kind == "RECOVERY_RECHECK":
-            return unit_of_work.runs.resolve_recovery(command.run_id, expected_version=current_version, recovery_next_status=RunStatus.VERIFYING)
-        run = unit_of_work.runs.get_by_id(command.run_id)
-        assert run is not None
-        return _ordinary_resume_result(run)
-
-
-def _ordinary_resume_result(run: object):
-    from google_work_agent.domain import CommandResult
-    return CommandResult(
-        applied=True,
-        result_code=ResultCode.TRANSITION_APPLIED,
-        current_status=run.status,  # type: ignore[attr-defined]
-        current_version=run.version,  # type: ignore[attr-defined]
-        next_allowed_commands=(),
-        conflict_detail=None,
-    )
+            decision = unit_of_work.runs.resolve_recovery(
+                command.run_id,
+                expected_version=current_version,
+                recovery_next_status=RunStatus.VERIFYING,
+            )
+            return decision, decision.applied
+        raise AssertionError(f"unvalidated resume kind reached transition authority: {command.resume_kind}")
 
 
 __all__ = ["ResumeRunCommand", "ResumeRunHandler", "ResumeRunResult"]
