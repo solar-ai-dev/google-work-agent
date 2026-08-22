@@ -102,6 +102,25 @@ def test_connector_adapter_package_does_not_reexport_owner_implementations() -> 
     assert violations == []
 
 
+def test_production_callers_do_not_import_connector_adapter_barrel() -> None:
+    package_name = "google_work_agent.adapters.connectors"
+    package_init = SRC / "adapters" / "connectors" / "__init__.py"
+    violations: list[str] = []
+    for path in _python_files(SRC):
+        if path == package_init:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == package_name:
+                violations.append(str(path.relative_to(ROOT)))
+            elif isinstance(node, ast.Import) and any(
+                alias.name == package_name for alias in node.names
+            ):
+                violations.append(str(path.relative_to(ROOT)))
+
+    assert violations == []
+
+
 def test_connector_port_boundary_does_not_depend_on_adapters() -> None:
     port_root = SRC / "ports" / "connectors"
     violations: list[str] = []
