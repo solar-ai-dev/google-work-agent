@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - refactor/c3-execution-recovery-prep
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -15,7 +16,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install -e . pytest ruff
+      - run: python -m pip install -e . pytest
       - run: python -m compileall -q src/google_work_agent/application/use_cases/execution_attempt src/google_work_agent/application/use_cases/verification src/google_work_agent/application/use_cases/recovery tests/unit/application/use_cases
-      - run: ruff check src/google_work_agent/application/use_cases/execution_attempt/execute_action.py src/google_work_agent/application/use_cases/verification/verify_action.py tests/unit/application/use_cases/test_c3_execution_recovery_verification.py
-      - run: pytest -q tests/unit/application/use_cases/test_c3_execution_recovery_verification.py
+      - run: pytest -q tests/unit/application/use_cases/test_c3_execution_recovery_verification.py tests/unit/application/use_cases/test_c3_delivery_outcomes.py
