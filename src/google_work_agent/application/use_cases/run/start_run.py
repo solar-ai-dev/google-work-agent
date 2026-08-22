@@ -94,16 +94,23 @@ class StartRunHandler:
                 self._release(command.run_id)
                 raise
 
-    def _start_new_run(self, *, unit_of_work: UnitOfWork, command: StartRunCommand) -> StartRunResult:
+    def _start_new_run(
+        self,
+        *,
+        unit_of_work: UnitOfWork,
+        command: StartRunCommand,
+        receipt_already_received: bool = False,
+    ) -> StartRunResult:
         now_ms = self._now_ms()
-        unit_of_work.command_receipts.add_received(
-            command_id=command.command_id,
-            command_type="StartRun",
-            request_hash=command.request_hash,
-            aggregate_type="Run",
-            aggregate_id=command.run_id,
-            created_at_ms=now_ms,
-        )
+        if not receipt_already_received:
+            unit_of_work.command_receipts.add_received(
+                command_id=command.command_id,
+                command_type="StartRun",
+                request_hash=command.request_hash,
+                aggregate_type="Run",
+                aggregate_id=command.run_id,
+                created_at_ms=now_ms,
+            )
 
         conversation = unit_of_work.conversations.get_by_id(command.conversation_id)
         if conversation is None:
@@ -120,7 +127,7 @@ class StartRunHandler:
                 user_message_id=command.user_message_id,
                 workflow_key=command.workflow_key,
                 enqueued=False,
-                request_replayed=False,
+                request_replayed=receipt_already_received,
                 conflict_detail="request text exceeds message limit",
             )
             self._finish_receipt(unit_of_work, command.command_id, response, 0, now_ms)
@@ -133,6 +140,8 @@ class StartRunHandler:
             initial_status = transition_start_run(has_open_run=current_open is not None)
         except RunTransitionRejected:
             response = self._open_run_conflict(command=command, current_open=current_open)
+            if receipt_already_received:
+                response = replace(response, request_replayed=True)
             self._finish_receipt(
                 unit_of_work,
                 command.command_id,
@@ -165,6 +174,8 @@ class StartRunHandler:
             if current_open is None:
                 raise
             response = self._open_run_conflict(command=command, current_open=current_open)
+            if receipt_already_received:
+                response = replace(response, request_replayed=True)
             self._finish_receipt(
                 unit_of_work,
                 command.command_id,
@@ -239,7 +250,7 @@ class StartRunHandler:
             user_message_id=command.user_message_id,
             workflow_key=command.workflow_key,
             enqueued=True,
-            request_replayed=False,
+            request_replayed=receipt_already_received,
         )
         self._finish_receipt(unit_of_work, command.command_id, response, 0, now_ms)
         unit_of_work.commit()
@@ -274,11 +285,65 @@ class StartRunHandler:
                 conflict_detail="command_id already exists with a different request_hash",
             )
 
-        if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
-            raise RuntimeError("RECEIVED receipt recovery requires aggregate-specific handling")
+        if receipt.status is not CommandReceiptStatus.RECEIVED and receipt.response_json is not None:
+            response = StartRunResult(**loads(receipt.response_json))
+            return replace(response, enqueued=False, request_replayed=True)
 
-        response = StartRunResult(**loads(receipt.response_json))
-        return replace(response, enqueued=False, request_replayed=True)
+        if receipt.command_type != "StartRun" or receipt.aggregate_type != "Run" or receipt.aggregate_id != command.run_id:
+            raise RuntimeError("StartRun receipt identity does not match command")
+
+        run = unit_of_work.runs.get_by_id(command.run_id)
+        message = unit_of_work.messages.get_by_id(command.user_message_id)
+
+        if run is not None:
+            if run.conversation_id != command.conversation_id:
+                raise RuntimeError("StartRun receipt aggregate belongs to a different conversation")
+            if (
+                message is None
+                or message.conversation_id != command.conversation_id
+                or message.run_id != command.run_id
+                or message.role != "USER"
+                or message.content != command.request_text
+            ):
+                raise RuntimeError("StartRun receipt recovery found an incomplete aggregate mutation")
+
+            stored_response = StartRunResult(
+                applied=True,
+                result_code=ResultCode.TRANSITION_APPLIED.value,
+                run_id=command.run_id,
+                conversation_id=command.conversation_id,
+                run_status=RunStatus.CREATED.value,
+                run_version=0,
+                user_message_id=command.user_message_id,
+                workflow_key=command.workflow_key,
+                enqueued=True,
+                request_replayed=False,
+            )
+            self._finish_receipt(
+                unit_of_work,
+                command.command_id,
+                stored_response,
+                0,
+                self._now_ms(),
+            )
+            unit_of_work.commit()
+            return replace(stored_response, enqueued=False, request_replayed=True)
+
+        if message is not None:
+            raise RuntimeError("StartRun receipt recovery found USER Message without Run")
+
+        if self._reserve_queue_slot is not None and not self._reserve_queue_slot(command.run_id):
+            raise QueueBusyError()
+
+        try:
+            return self._start_new_run(
+                unit_of_work=unit_of_work,
+                command=command,
+                receipt_already_received=True,
+            )
+        except Exception:
+            self._release(command.run_id)
+            raise
 
     @staticmethod
     def _open_run_conflict(*, command: StartRunCommand, current_open: object) -> StartRunResult:
