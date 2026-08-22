@@ -13,10 +13,17 @@ class ReviewState(TypedDict, total=False):
     planning_result: object
     evidence: object
     policy_summary: object
+    review_phase: str
+    review_artifact_id: str
+    review_revision: int
+    review_based_on: object
+    prior_review_findings: object
+    affected_action_ids: object
+    affected_route_ids: object
     goal_evidence_findings: object
     action_scope_route_findings: object
     constraints_policy_findings: object
+    affected_dimension_recheck: object
     aggregated_findings: object
     review_result: object
-    affected_dimension_recheck: object
     workflow_signal: object

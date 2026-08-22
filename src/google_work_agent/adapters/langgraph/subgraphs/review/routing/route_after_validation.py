@@ -1,4 +1,4 @@
-"""Route from validated Review disposition."""
+"""Route from validated Review disposition without performing cross-owner work."""
 
 from __future__ import annotations
 
@@ -10,14 +10,13 @@ def route_after_validation(state: Mapping[str, object]) -> str:
     if not isinstance(result, Mapping):
         raise ValueError("review_result is required")
     status = result.get("status")
-    routes = {
-        "PASS": "end",
-        "REVISE": "recheck_affected_dimensions",
-        "RETRIEVE_MORE": "end",
-        "ROUTE_RECONSIDERATION": "end",
-        "CONFIRM": "end",
-        "BLOCK": "end",
-    }
-    if status not in routes:
+    if status not in {
+        "PASS",
+        "REVISE",
+        "RETRIEVE_MORE",
+        "ROUTE_RECONSIDERATION",
+        "CONFIRM",
+        "BLOCK",
+    }:
         raise ValueError("unknown Review disposition")
-    return routes[status]
+    return "end"

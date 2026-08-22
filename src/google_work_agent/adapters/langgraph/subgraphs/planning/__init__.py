@@ -1,9 +1,13 @@
-"""Planning LangGraph public compatibility surface."""
+"""Planning LangGraph public surface."""
 
 from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
-    PlanningNodeBindings,
+    PlanningRuntimeDependencies,
     PlanningSubgraph,
     planning_mode_from_request_intent,
 )
 
-__all__ = ["PlanningNodeBindings", "PlanningSubgraph", "planning_mode_from_request_intent"]
+__all__ = [
+    "PlanningRuntimeDependencies",
+    "PlanningSubgraph",
+    "planning_mode_from_request_intent",
+]

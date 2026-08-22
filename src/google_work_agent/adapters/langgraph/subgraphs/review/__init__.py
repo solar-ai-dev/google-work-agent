@@ -1,8 +1,8 @@
-"""Review LangGraph public compatibility surface."""
+"""Review LangGraph public surface."""
 
 from google_work_agent.adapters.langgraph.subgraphs.review.graph import (
-    ReviewNodeBindings,
+    ReviewRuntimeDependencies,
     ReviewSubgraph,
 )
 
-__all__ = ["ReviewNodeBindings", "ReviewSubgraph"]
+__all__ = ["ReviewRuntimeDependencies", "ReviewSubgraph"]
