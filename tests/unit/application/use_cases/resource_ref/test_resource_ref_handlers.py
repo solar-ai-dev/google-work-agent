@@ -124,6 +124,32 @@ class _ResourceAccess:
                 "continuation_scope": continuation_scope,
             }
         )
+        return self._single_completed_task_page(task_list_id=task_list_id)
+
+    def list_tasks_materialization_page(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+        show_completed: bool,
+        show_hidden: bool,
+        show_deleted: bool,
+    ) -> ResourcePage:
+        self.task_calls.append(
+            {
+                "task_list_id": task_list_id,
+                "page_token": page_token,
+                "page_size": page_size,
+                "show_completed": show_completed,
+                "show_hidden": show_hidden,
+                "show_deleted": show_deleted,
+                "continuation_scope": None,
+            }
+        )
+        return self._single_completed_task_page(task_list_id=task_list_id)
+
+    def _single_completed_task_page(self, *, task_list_id: str) -> ResourcePage:
         return ResourcePage(
             items=(
                 _snapshot(
@@ -298,8 +324,9 @@ def test_list_resources_handler_owns_task_resolution_status_and_projection() -> 
         "show_completed": True,
         "show_hidden": True,
         "show_deleted": False,
-        "continuation_scope": ("tasks", "", "25", "completed"),
+        "continuation_scope": None,
     }
+    assert result.page.next_page_token is None
     item = result.page.items[0]
     assert item.metadata == {
         "task_status": "completed",
@@ -364,6 +391,104 @@ class _PagingGateway:
         )
 
 
+class _PagingTasksGateway:
+    def __init__(self) -> None:
+        self.tokens: list[str | None] = []
+        self.calls: list[dict[str, object]] = []
+
+    def list_tasks(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+        show_completed: bool = False,
+        show_hidden: bool = False,
+        show_deleted: bool = False,
+    ) -> ResourcePage:
+        self.tokens.append(page_token)
+        self.calls.append(
+            {
+                "task_list_id": task_list_id,
+                "page_token": page_token,
+                "page_size": page_size,
+                "show_completed": show_completed,
+                "show_hidden": show_hidden,
+                "show_deleted": show_deleted,
+            }
+        )
+        if show_completed:
+            if page_token is None:
+                return ResourcePage(
+                    items=(
+                        _snapshot(
+                            ResourceType.TASK,
+                            "task-a",
+                            parent_id=task_list_id,
+                            payload={
+                                "title": "Completed A",
+                                "status": "completed",
+                                "completed": "2026-08-20T10:00:00+09:00",
+                            },
+                        ),
+                        _snapshot(
+                            ResourceType.TASK,
+                            "task-b",
+                            parent_id=task_list_id,
+                            payload={"title": "Incomplete B", "status": "needsAction"},
+                        ),
+                    ),
+                    next_page_token="provider-next",
+                )
+            assert page_token == "provider-next"
+            return ResourcePage(
+                items=(
+                    _snapshot(
+                        ResourceType.TASK,
+                        "task-c",
+                        parent_id=task_list_id,
+                        payload={
+                            "title": "Completed C",
+                            "status": "completed",
+                            "completed": "2026-08-21T10:00:00+09:00",
+                        },
+                    ),
+                    _snapshot(
+                        ResourceType.TASK,
+                        "task-a",
+                        parent_id=task_list_id,
+                        payload={"title": "Duplicate A", "status": "completed"},
+                    ),
+                ),
+                next_page_token=None,
+            )
+
+        if page_token is None:
+            return ResourcePage(
+                items=(
+                    _snapshot(
+                        ResourceType.TASK,
+                        "task-open-a",
+                        parent_id=task_list_id,
+                        payload={"title": "Open A", "status": "needsAction"},
+                    ),
+                ),
+                next_page_token="provider-next",
+            )
+        assert page_token == "provider-next"
+        return ResourcePage(
+            items=(
+                _snapshot(
+                    ResourceType.TASK,
+                    "task-open-b",
+                    parent_id=task_list_id,
+                    payload={"title": "Open B", "status": "needsAction"},
+                ),
+            ),
+            next_page_token=None,
+        )
+
+
 def _token_factory(values: Iterator[str]) -> Callable[[], str]:
     return lambda: next(values)
 
@@ -393,6 +518,78 @@ def test_canonical_list_handler_preserves_opaque_provider_token_boundary() -> No
     ).page
     assert second.next_page_token is None
     assert gateway.tokens == [None, "provider-next"]
+
+
+def test_completed_tasks_materialize_terminal_pages_filter_dedupe_without_api_handle() -> None:
+    gateway = _PagingTasksGateway()
+    raw = ResourceQueryService(
+        gateway=gateway,
+        default_tasklist_id_provider=lambda: "task-list-1",
+    )
+    opaque = OpaqueResourceQueryService(
+        raw,
+        continuation_store=LocalResourceContinuationStore(
+            token_factory=lambda: (_ for _ in ()).throw(
+                AssertionError("completed browse allocated an API continuation")
+            )
+        ),
+    )
+
+    page = ListResourcesHandler(opaque)(
+        ListResourcesQuery(source="tasks", status_scope="completed", page_size=25)
+    ).page
+
+    assert [item.resource_id for item in page.items] == ["task-a", "task-c"]
+    assert [item.title for item in page.items] == ["Completed A", "Completed C"]
+    assert page.next_page_token is None
+    assert gateway.tokens == [None, "provider-next"]
+    assert all(
+        call["show_completed"] is True
+        and call["show_hidden"] is True
+        and call["show_deleted"] is False
+        for call in gateway.calls
+    )
+    assert page.items[0].metadata["task_status"] == "completed"
+    assert page.items[0].link_url == "https://tasks.google.com/embed/"
+
+
+def test_non_completed_tasks_preserve_opaque_continuation_behavior() -> None:
+    gateway = _PagingTasksGateway()
+    raw = ResourceQueryService(
+        gateway=gateway,
+        default_tasklist_id_provider=lambda: "task-list-1",
+    )
+    opaque = OpaqueResourceQueryService(
+        raw,
+        continuation_store=LocalResourceContinuationStore(
+            token_factory=_token_factory(iter(("local-task-next",)))
+        ),
+    )
+    handler = ListResourcesHandler(opaque)
+
+    first = handler(
+        ListResourcesQuery(source="tasks", status_scope="incomplete", page_size=20)
+    ).page
+    assert first.next_page_token == "local-task-next"
+    assert first.next_page_token != "provider-next"
+
+    second = handler(
+        ListResourcesQuery(
+            source="tasks",
+            status_scope="incomplete",
+            page_token=first.next_page_token,
+            page_size=20,
+        )
+    ).page
+
+    assert second.next_page_token is None
+    assert gateway.tokens == [None, "provider-next"]
+    assert all(
+        call["show_completed"] is False
+        and call["show_hidden"] is False
+        and call["show_deleted"] is False
+        for call in gateway.calls
+    )
 
 
 def test_canonical_count_handler_never_allocates_api_continuation_handles() -> None:

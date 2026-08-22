@@ -63,6 +63,17 @@ class ResourceQueryServiceLike(Protocol):
         continuation_scope: tuple[str, ...],
     ) -> ResourcePage: ...
 
+    def list_tasks_materialization_page(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+        show_completed: bool,
+        show_hidden: bool,
+        show_deleted: bool,
+    ) -> ResourcePage: ...
+
     def list_calendar_events_page(
         self,
         *,
@@ -271,6 +282,25 @@ class OpaqueResourceQueryService:
             continuation_scope=continuation_scope,
         )
         return self._localize_resource_page(page=page, scope=continuation_scope)
+
+    def list_tasks_materialization_page(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+        show_completed: bool,
+        show_hidden: bool,
+        show_deleted: bool,
+    ) -> ResourcePage:
+        return self._service.list_tasks_materialization_page(
+            task_list_id=task_list_id,
+            page_token=page_token,
+            page_size=page_size,
+            show_completed=show_completed,
+            show_hidden=show_hidden,
+            show_deleted=show_deleted,
+        )
 
     def list_calendar_events_page(
         self,

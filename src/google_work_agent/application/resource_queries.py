@@ -120,6 +120,25 @@ class ResourceQueryService:
             show_deleted=show_deleted,
         )
 
+    def list_tasks_materialization_page(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+        show_completed: bool,
+        show_hidden: bool,
+        show_deleted: bool,
+    ) -> ResourcePage:
+        return self._gateway.list_tasks(
+            task_list_id=task_list_id,
+            page_token=page_token,
+            page_size=page_size,
+            show_completed=show_completed,
+            show_hidden=show_hidden,
+            show_deleted=show_deleted,
+        )
+
     def list_calendar_events_page(
         self,
         *,

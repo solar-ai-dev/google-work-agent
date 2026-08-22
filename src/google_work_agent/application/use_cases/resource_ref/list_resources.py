@@ -80,6 +80,17 @@ class ListResourceAccess(Protocol):
         continuation_scope: tuple[str, ...],
     ) -> ResourcePage: ...
 
+    def list_tasks_materialization_page(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+        show_completed: bool,
+        show_hidden: bool,
+        show_deleted: bool,
+    ) -> ResourcePage: ...
+
     def list_calendar_events_page(
         self,
         *,
@@ -172,13 +183,18 @@ class ListResourcesHandler:
             if not task_lists.items:
                 return ResourceListPage(source="tasks", items=(), next_page_token=None)
             task_list_id = task_lists.items[0].resource_id
-        completed = query.status_scope == "completed"
+
+        if query.status_scope == "completed":
+            if query.page_token is not None:
+                raise ValueError("completed task browse is fully materialized")
+            return self._materialize_completed_tasks(task_list_id=task_list_id)
+
         page = self.access.list_tasks_page(
             task_list_id=task_list_id,
             page_token=query.page_token,
             page_size=MAX_RESOURCE_PAGE_SIZE,
-            show_completed=completed,
-            show_hidden=completed,
+            show_completed=False,
+            show_hidden=False,
             show_deleted=False,
             continuation_scope=(
                 "tasks",
@@ -188,6 +204,40 @@ class ListResourcesHandler:
             ),
         )
         return _project_page("tasks", page)
+
+    def _materialize_completed_tasks(self, *, task_list_id: str) -> ResourceListPage:
+        items: list[ResourceListItem] = []
+        seen_resource_ids: set[str] = set()
+        provider_page_token: str | None = None
+
+        while True:
+            page = self.access.list_tasks_materialization_page(
+                task_list_id=task_list_id,
+                page_token=provider_page_token,
+                page_size=MAX_RESOURCE_PAGE_SIZE,
+                show_completed=True,
+                show_hidden=True,
+                show_deleted=False,
+            )
+            for snapshot in page.items:
+                if snapshot.resource_type is not ResourceType.TASK:
+                    continue
+                if _task_status_projection(snapshot.payload.get("status")) != "completed":
+                    continue
+                if snapshot.resource_id in seen_resource_ids:
+                    continue
+                seen_resource_ids.add(snapshot.resource_id)
+                items.append(_resource_item_from_snapshot(snapshot))
+
+            provider_page_token = page.next_page_token
+            if provider_page_token is None:
+                break
+
+        return ResourceListPage(
+            source="tasks",
+            items=tuple(items),
+            next_page_token=None,
+        )
 
     def _list_calendar(self, query: ListResourcesQuery) -> ResourceListPage:
         calendar_id = query.calendar_id or self.access.default_calendar_id() or "primary"
