@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TypedDict
 
+from google_work_agent.application.workflows.handoff_contracts import WorkflowSignalV1
+
 
 class ReviewState(TypedDict, total=False):
     request_intent: object
@@ -26,4 +28,4 @@ class ReviewState(TypedDict, total=False):
     affected_dimension_recheck: object
     aggregated_findings: object
     review_result: object
-    workflow_signal: object
+    workflow_signal: WorkflowSignalV1 | None

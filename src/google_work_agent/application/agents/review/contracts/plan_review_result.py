@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Literal, Required, TypedDict
 
+from google_work_agent.application.agents.review.contracts.review_findings import ReviewDimension
+
 
 class StateArtifactRefV1(TypedDict):
     artifact_id: str
@@ -17,9 +19,11 @@ class StateArtifactMetaV1(TypedDict):
 
 
 class ReviewIssueV1(TypedDict):
+    dimension: ReviewDimension
     code: str
     description: str
     action_id: str | None
+    route_id: str | None
 
 
 class ReviewEvidenceGapV1(TypedDict):

@@ -100,7 +100,7 @@ def test_compiled_planning_action_executes_all_canonical_action_stages() -> None
     ]
 
 
-def test_compiled_review_revise_stops_before_recheck_and_returns_revision_issues() -> None:
+def test_compiled_review_revise_emits_bounded_planning_revision_signal_without_recheck() -> None:
     calls: list[str] = []
 
     def invoke(prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:
@@ -112,6 +112,7 @@ def test_compiled_review_revise_stops_before_recheck_and_returns_revision_issues
                         "code": "ACTION_NEEDS_REVISION",
                         "description": "revise action",
                         "action_id": "a1",
+                        "route_id": "r1",
                     }
                 ]
             }
@@ -133,7 +134,29 @@ def test_compiled_review_revise_stops_before_recheck_and_returns_revision_issues
         }
     )
     assert result["review_result"]["status"] == "REVISE"
-    assert result["review_result"]["issues"][0]["action_id"] == "a1"
+    assert result["review_result"]["issues"] == [
+        {
+            "dimension": "ACTION_SCOPE_ROUTE",
+            "code": "ACTION_NEEDS_REVISION",
+            "description": "revise action",
+            "action_id": "a1",
+            "route_id": "r1",
+        }
+    ]
+    assert result["workflow_signal"] == {
+        "kind": "PLANNING_REVISION_REQUIRED",
+        "destination": "PLANNING",
+        "disposition": "REVISE",
+        "issues": [
+            {
+                "dimension": "ACTION_SCOPE_ROUTE",
+                "code": "ACTION_NEEDS_REVISION",
+                "description": "revise action",
+                "action_id": "a1",
+                "route_id": "r1",
+            }
+        ],
+    }
     assert "affected_dimension_recheck" not in result
     assert calls == [
         "review.inspect_goal_and_evidence",
@@ -143,7 +166,44 @@ def test_compiled_review_revise_stops_before_recheck_and_returns_revision_issues
     assert "review.recheck_affected_dimensions" not in calls
 
 
-def test_compiled_review_recheck_freshly_rechecks_only_affected_dimensions() -> None:
+def test_compiled_review_pass_does_not_emit_planning_revision_signal() -> None:
+    calls: list[str] = []
+
+    def invoke(prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        calls.append(prompt_id)
+        return {"findings": []}
+
+    graph = ReviewSubgraph(dependencies=ReviewRuntimeDependencies(invoke=invoke)).build()
+    result = graph.invoke(
+        {
+            "review_phase": "INITIAL",
+            "request_intent": {"goal": "summarize"},
+            "tool_route_plan": {},
+            "planning_result": {"answer": "done"},
+            "work_analysis": {},
+            "evidence": [],
+            "policy_summary": {},
+            "review_artifact_id": "rv-pass",
+            "review_revision": 1,
+            "review_based_on": [],
+            "workflow_signal": {
+                "kind": "PLANNING_REVISION_REQUIRED",
+                "destination": "PLANNING",
+                "disposition": "REVISE",
+                "issues": [],
+            },
+        }
+    )
+    assert result["review_result"]["status"] == "PASS"
+    assert result["workflow_signal"] is None
+    assert calls == [
+        "review.inspect_goal_and_evidence",
+        "review.inspect_action_scope_and_route",
+        "review.inspect_constraints_and_policy_summary",
+    ]
+
+
+def test_compiled_review_recheck_uses_public_revision_context_and_refreshes_only_affected_dimensions() -> None:
     calls: list[str] = []
 
     def invoke(prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:
@@ -157,29 +217,41 @@ def test_compiled_review_recheck_freshly_rechecks_only_affected_dimensions() -> 
                         "code": "FRESH_ACTION_REVIEW",
                         "description": "fresh revised result",
                         "action_id": "a1",
+                        "route_id": "r1",
                     }
                 ]
             }
         raise AssertionError(f"unaffected dimension was rechecked: {prompt_id}")
 
-    prior = [
+    # This is exactly the bounded public issue shape carried by the REVISE signal;
+    # RECHECK does not require private Review findings or required_information state.
+    public_revision_issues = [
         {
             "dimension": "ACTION_SCOPE_ROUTE",
             "code": "STALE_ACTION_REVIEW",
             "description": "stale",
             "action_id": "a1",
             "route_id": "r1",
-            "required_information": [],
         },
         {
             "dimension": "CONSTRAINTS_POLICY",
             "code": "UNCHANGED_POLICY_REVIEW",
             "description": "unchanged",
-            "action_id": "a2",
-            "route_id": "r2",
-            "required_information": [],
+            "action_id": None,
+            "route_id": None,
         },
     ]
+    affected_action_ids = [
+        issue["action_id"]
+        for issue in public_revision_issues
+        if isinstance(issue["action_id"], str)
+    ]
+    affected_route_ids = [
+        issue["route_id"]
+        for issue in public_revision_issues
+        if isinstance(issue["route_id"], str)
+    ]
+
     graph = ReviewSubgraph(dependencies=ReviewRuntimeDependencies(invoke=invoke)).build()
     result = graph.invoke(
         {
@@ -190,9 +262,9 @@ def test_compiled_review_recheck_freshly_rechecks_only_affected_dimensions() -> 
             "work_analysis": {},
             "evidence": [],
             "policy_summary": {},
-            "prior_review_findings": prior,
-            "affected_action_ids": ["a1"],
-            "affected_route_ids": ["r1"],
+            "prior_review_findings": public_revision_issues,
+            "affected_action_ids": affected_action_ids,
+            "affected_route_ids": affected_route_ids,
             "review_artifact_id": "rv2",
             "review_revision": 2,
             "review_based_on": [],
@@ -203,7 +275,22 @@ def test_compiled_review_recheck_freshly_rechecks_only_affected_dimensions() -> 
         "review.inspect_action_scope_and_route",
     ]
     assert result["review_result"]["status"] == "REVISE"
-    codes = {issue["code"] for issue in result["review_result"]["issues"]}
+    issues = result["review_result"]["issues"]
+    codes = {issue["code"] for issue in issues}
     assert "FRESH_ACTION_REVIEW" in codes
     assert "UNCHANGED_POLICY_REVIEW" in codes
     assert "STALE_ACTION_REVIEW" not in codes
+    assert next(issue for issue in issues if issue["code"] == "FRESH_ACTION_REVIEW") == {
+        "dimension": "ACTION_SCOPE_ROUTE",
+        "code": "FRESH_ACTION_REVIEW",
+        "description": "fresh revised result",
+        "action_id": "a1",
+        "route_id": "r1",
+    }
+    assert next(issue for issue in issues if issue["code"] == "UNCHANGED_POLICY_REVIEW") == {
+        "dimension": "CONSTRAINTS_POLICY",
+        "code": "UNCHANGED_POLICY_REVIEW",
+        "description": "unchanged",
+        "action_id": None,
+        "route_id": None,
+    }

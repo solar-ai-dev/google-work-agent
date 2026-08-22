@@ -28,7 +28,15 @@ def test_review_aggregation_materializes_pass_and_revise_contracts() -> None:
     )
     validated = validate_review(revised)
     assert validated["status"] == "REVISE"
-    assert validated["issues"][0]["action_id"] == "a1"
+    assert validated["issues"] == [
+        {
+            "dimension": "ACTION_SCOPE_ROUTE",
+            "code": "REVISION_REQUIRED",
+            "description": "revise action",
+            "action_id": "a1",
+            "route_id": "r1",
+        }
+    ]
 
 
 def test_review_pass_cannot_carry_issues() -> None:

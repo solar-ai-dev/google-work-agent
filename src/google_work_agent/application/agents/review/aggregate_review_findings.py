@@ -11,6 +11,8 @@ from google_work_agent.application.agents.review.contracts.plan_review_result im
     StateArtifactRefV1,
 )
 
+_REVIEW_DIMENSIONS = {"GOAL_EVIDENCE", "ACTION_SCOPE_ROUTE", "CONSTRAINTS_POLICY"}
+
 
 def aggregate_review_findings(
     findings: Iterable[Mapping[str, object]],
@@ -39,8 +41,11 @@ def aggregate_review_findings(
     seen: set[tuple[object, ...]] = set()
     for finding in findings:
         item = dict(finding)
+        dimension = item.get("dimension")
         code = item.get("code")
         description = item.get("description")
+        if dimension not in _REVIEW_DIMENSIONS:
+            raise ValueError("review finding dimension is required")
         if not isinstance(code, str) or not code:
             raise ValueError("review finding code is required")
         if not isinstance(description, str):
@@ -49,6 +54,7 @@ def aggregate_review_findings(
         if not isinstance(required, list) or not all(isinstance(value, str) for value in required):
             raise ValueError("review finding required_information must be strings")
         identity = (
+            dimension,
             code,
             description,
             item.get("action_id"),
@@ -116,10 +122,14 @@ def aggregate_review_findings(
             "status": "REVISE",
             "issues": [
                 {
+                    "dimension": item["dimension"],
                     "code": item["code"],
                     "description": item["description"],
                     "action_id": item.get("action_id")
                     if isinstance(item.get("action_id"), str)
+                    else None,
+                    "route_id": item.get("route_id")
+                    if isinstance(item.get("route_id"), str)
                     else None,
                 }
                 for item in deduped
