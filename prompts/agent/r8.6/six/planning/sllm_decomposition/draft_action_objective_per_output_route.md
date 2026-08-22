@@ -1,0 +1,1 @@
+Task: for exactly one frozen output_route, draft only the business objective. Do not change route/tool/effect or author arguments/dependencies/approval/execution/verification. Return route_id, objective, evidence_refs.
