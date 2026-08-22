@@ -94,6 +94,10 @@ REQUIRED_INFRA_EXPORTS = {
     "sqlite_unit_of_work_factory",
 }
 
+CANONICAL_SQLITE_REPOSITORIES = {
+    f"SQLite{symbol}" for symbol in SYMBOLS.values()
+}
+
 
 def _tree(path: Path) -> ast.Module:
     return ast.parse(path.read_text(encoding="utf-8"))
@@ -157,6 +161,132 @@ def _retired_import_offenders(root: Path) -> list[str]:
     return sorted(offenders)
 
 
+def _expression_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def _import_aliases(tree: ast.Module) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                aliases[alias.asname or alias.name] = alias.name
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname:
+                    aliases[alias.asname] = alias.name.rsplit(".", 1)[-1]
+    return aliases
+
+
+def _resolved_name(node: ast.AST, aliases: dict[str, str]) -> str | None:
+    name = _expression_name(node)
+    if name is None:
+        return None
+    return aliases.get(name, name)
+
+
+def _duplicate_repository_authorities_from_sources(
+    sources: dict[str, str],
+) -> list[str]:
+    """Return statically detectable duplicate concrete repository authorities.
+
+    The canonical concrete itself is allowed. Any differently named direct or
+    transitive subclass is not. Repository-named aliases and composition
+    wrappers that instantiate a canonical concrete (or one of its subclasses)
+    are also rejected.
+    """
+
+    class_bases: dict[str, set[str]] = {}
+    class_nodes: list[tuple[str, ast.ClassDef, dict[str, str]]] = []
+    module_trees: list[tuple[str, ast.Module, dict[str, str]]] = []
+
+    for path, source in sources.items():
+        tree = ast.parse(source, filename=path)
+        aliases = _import_aliases(tree)
+        module_trees.append((path, tree, aliases))
+        for node in tree.body:
+            if not isinstance(node, ast.ClassDef):
+                continue
+            bases = {
+                resolved
+                for base in node.bases
+                if (resolved := _resolved_name(base, aliases)) is not None
+            }
+            class_bases.setdefault(node.name, set()).update(bases)
+            class_nodes.append((path, node, aliases))
+
+    def descends_from_canonical(class_name: str) -> bool:
+        pending = list(class_bases.get(class_name, ()))
+        seen: set[str] = set()
+        while pending:
+            base = pending.pop()
+            if base in seen:
+                continue
+            seen.add(base)
+            if base in CANONICAL_SQLITE_REPOSITORIES:
+                return True
+            pending.extend(class_bases.get(base, ()))
+        return False
+
+    authority_names = set(CANONICAL_SQLITE_REPOSITORIES)
+    authority_names.update(
+        name for name in class_bases if descends_from_canonical(name)
+    )
+
+    offenders: set[str] = set()
+
+    for path, node, aliases in class_nodes:
+        if node.name not in CANONICAL_SQLITE_REPOSITORIES and descends_from_canonical(node.name):
+            offenders.add(f"{path}:{node.name}:subclass")
+            continue
+
+        if node.name in CANONICAL_SQLITE_REPOSITORIES or not node.name.endswith("Repository"):
+            continue
+
+        for child in ast.walk(node):
+            if not isinstance(child, ast.Call):
+                continue
+            called = _resolved_name(child.func, aliases)
+            if called in authority_names:
+                offenders.add(f"{path}:{node.name}:wrapper")
+                break
+
+    for path, tree, aliases in module_trees:
+        for node in tree.body:
+            target_name: str | None = None
+            value: ast.AST | None = None
+            if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                target_name = _expression_name(node.targets[0])
+                value = node.value
+            elif isinstance(node, ast.AnnAssign):
+                target_name = _expression_name(node.target)
+                value = node.value
+
+            if (
+                target_name is None
+                or value is None
+                or target_name in CANONICAL_SQLITE_REPOSITORIES
+                or not target_name.endswith("Repository")
+            ):
+                continue
+            referenced = _resolved_name(value, aliases)
+            if referenced in authority_names:
+                offenders.add(f"{path}:{target_name}:alias")
+
+    return sorted(offenders)
+
+
+def _production_persistence_sources() -> dict[str, str]:
+    return {
+        path.relative_to(ROOT).as_posix(): path.read_text(encoding="utf-8")
+        for path in PERSISTENCE.rglob("*.py")
+    }
+
+
 def test_assigned_persistence_owners_have_canonical_port_and_sqlite_authority() -> None:
     for owner in OWNERS:
         port_path = PORTS / f"{owner}_repository.py"
@@ -193,6 +323,47 @@ def test_assigned_sqlite_repository_classes_are_declared_once_in_production() ->
     for owner, symbol in SYMBOLS.items():
         expected = SQLITE_REPOSITORIES / f"{owner}_repository.py"
         assert class_locations[f"SQLite{symbol}"] == [expected]
+
+
+def test_no_renamed_or_wrapped_duplicate_sqlite_repository_authority() -> None:
+    assert _duplicate_repository_authorities_from_sources(_production_persistence_sources()) == []
+
+
+def test_duplicate_authority_detector_rejects_direct_and_transitive_subclasses() -> None:
+    sources = {
+        "direct.py": """
+from google_work_agent.adapters.persistence.sqlite.repositories.run_repository import SQLiteRunRepository
+class AlternateRunRepository(SQLiteRunRepository):
+    pass
+""",
+        "transitive.py": """
+class WrappedRunRepository(AlternateRunRepository):
+    pass
+""",
+    }
+
+    assert _duplicate_repository_authorities_from_sources(sources) == [
+        "direct.py:AlternateRunRepository:subclass",
+        "transitive.py:WrappedRunRepository:subclass",
+    ]
+
+
+def test_duplicate_authority_detector_rejects_alias_and_composition_wrapper() -> None:
+    sources = {
+        "aliases.py": """
+from google_work_agent.adapters.persistence.sqlite.repositories.run_repository import SQLiteRunRepository
+RunRepositoryAliasRepository = SQLiteRunRepository
+
+class DelegatingRunRepository:
+    def __init__(self, connection):
+        self._delegate = SQLiteRunRepository(connection)
+""",
+    }
+
+    assert _duplicate_repository_authorities_from_sources(sources) == [
+        "aliases.py:DelegatingRunRepository:wrapper",
+        "aliases.py:RunRepositoryAliasRepository:alias",
+    ]
 
 
 def test_production_does_not_import_retired_repository_modules() -> None:
