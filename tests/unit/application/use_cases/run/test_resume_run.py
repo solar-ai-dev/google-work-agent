@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from json import dumps
 from types import SimpleNamespace
 
 from google_work_agent.application.run_contracts import ResumeRunCommand
@@ -91,9 +90,23 @@ def test_ordinary_safe_resume_does_not_invent_domain_transition() -> None:
     assert h.uow.runs.calls==[] and len(h.enqueues)==1
 
 
-def test_invalid_status_or_confirmation_authority_does_not_transition_or_enqueue() -> None:
+def test_invalid_status_does_not_transition_or_enqueue() -> None:
     h=_Harness(_Uow(RunStatus.ANALYZING),{"resume_status":"PLANNING","interrupt_id":"int-1"},[])
     result=h.handler()(_command("CONFIRMATION"),request_id="req",resume_payload={"interrupt_id":"int-1"})
+    assert not result.applied and result.result_code==ResultCode.STATE_CONFLICT.value
+    assert h.uow.runs.calls==[] and h.enqueues==[]
+
+
+def test_invalid_resume_kind_does_not_transition_or_enqueue() -> None:
+    h=_Harness(_Uow(RunStatus.BLOCKED),None,[])
+    result=h.handler()(_command("NOT_REGISTERED"),request_id="req")
+    assert not result.applied and result.result_code==ResultCode.STATE_CONFLICT.value
+    assert h.uow.runs.calls==[] and h.enqueues==[]
+
+
+def test_confirmation_interrupt_must_match_persisted_checkpoint_authority() -> None:
+    h=_Harness(_Uow(RunStatus.WAITING_CONFIRMATION),{"resume_status":"PLANNING","interrupt_id":"int-1"},[])
+    result=h.handler()(_command("CONFIRMATION"),request_id="req",resume_payload={"interrupt_id":"wrong"})
     assert not result.applied and result.result_code==ResultCode.STATE_CONFLICT.value
     assert h.uow.runs.calls==[] and h.enqueues==[]
 
