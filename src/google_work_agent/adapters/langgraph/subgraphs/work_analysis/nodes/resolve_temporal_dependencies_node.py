@@ -1,0 +1,6 @@
+from google_work_agent.application.agents.work_analysis.resolve_temporal_dependencies import resolve_temporal_dependencies
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.projections.work_analysis_operation_projection import project_work_analysis_operation_input
+
+
+def resolve_temporal_dependencies_node(state: dict[str, object]) -> dict[str, object]:
+    return {"temporal_relations": resolve_temporal_dependencies(**project_work_analysis_operation_input(state, "resolve_temporal_dependencies"))}
