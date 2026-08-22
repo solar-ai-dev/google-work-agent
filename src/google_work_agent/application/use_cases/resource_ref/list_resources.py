@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from google_work_agent.application.ports.connector_failure import (
+    ConnectorFailureCode,
     ConnectorOperationFailure,
     normalize_google_workspace_failure,
 )
@@ -61,14 +62,14 @@ class ListResourcesHandler:
                 )
             else:
                 raise ConnectorOperationFailure(
-                    code="NOT_FOUND",  # type: ignore[arg-type]
+                    code=ConnectorFailureCode.NOT_FOUND,
                     detail_code="RESOURCE_SOURCE_NOT_FOUND",
                 )
         except GoogleWorkspaceGatewayError as error:
             raise normalize_google_workspace_failure(error) from error
         except ValueError as error:
             raise ConnectorOperationFailure(
-                code="INVALID_ARGUMENT",  # type: ignore[arg-type]
+                code=ConnectorFailureCode.INVALID_ARGUMENT,
                 detail_code="RESOURCE_QUERY_INVALID",
             ) from error
         return ListResourcesResult(page=page)
