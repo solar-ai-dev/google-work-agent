@@ -87,6 +87,21 @@ def test_connector_runtime_uses_canonical_subject_specific_module() -> None:
     assert (connector_root / "connector_mcp_runtime.py").is_file()
 
 
+def test_connector_adapter_package_does_not_reexport_owner_implementations() -> None:
+    package_init = SRC / "adapters" / "connectors" / "__init__.py"
+    tree = ast.parse(package_init.read_text(encoding="utf-8"), filename=str(package_init))
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.module.startswith("google_work_agent.adapters.connectors.")
+        ):
+            violations.append(node.module)
+
+    assert violations == []
+
+
 def test_connector_port_boundary_does_not_depend_on_adapters() -> None:
     port_root = SRC / "ports" / "connectors"
     violations: list[str] = []
