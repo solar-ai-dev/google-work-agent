@@ -68,6 +68,7 @@ class ExecuteClaimedActionHandler:
                 ExecuteActionCommand(
                     action_id=command.action_id,
                     claim_token=command.claim_token,
+                    attempt_id=command.attempt_id,
                 )
             )
         except GoogleWorkspaceGatewayError as error:
