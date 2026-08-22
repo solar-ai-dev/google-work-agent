@@ -287,7 +287,9 @@ def _display_text(snapshot: ResourceSnapshot) -> tuple[str, str | None]:
     if snapshot.resource_type is ResourceType.GMAIL_THREAD:
         return _optional_text(payload.get("subject")) or "", _optional_text(payload.get("snippet"))
     if snapshot.resource_type is ResourceType.GMAIL_DRAFT:
-        return str(payload.get("subject", snapshot.resource_id)), _optional_text(payload.get("body"))
+        return str(payload.get("subject", snapshot.resource_id)), _optional_text(
+            payload.get("body")
+        )
     if snapshot.resource_type is ResourceType.GMAIL_MESSAGE:
         return str(payload.get("subject", snapshot.resource_id)), _optional_text(
             payload.get("snippet")
