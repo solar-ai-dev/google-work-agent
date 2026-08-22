@@ -130,6 +130,9 @@ from google_work_agent.ports.observability import (
     OperationalLogRecord,
     OperationalLogSink,
 )
+from google_work_agent.ports.persistence.audit_repository import AuditRepository
+from google_work_agent.ports.persistence.command_receipt_repository import CommandReceiptRepository
+from google_work_agent.ports.persistence.trace_repository import TraceRepository
 from google_work_agent.ports.query import QueryConnectionFactory
 from google_work_agent.ports.readiness import (
     ReadinessAggregator,
@@ -143,8 +146,6 @@ from google_work_agent.ports.repositories import (
     ActionDependencyRepository,
     ActionRepository,
     ApprovalRepository,
-    AuditRepository,
-    CommandReceiptRepository,
     ConversationRepository,
     EvidenceRepository,
     ExecutionAttemptRepository,
@@ -152,7 +153,6 @@ from google_work_agent.ports.repositories import (
     PlanRepository,
     ResourceRefRepository,
     RunRepository,
-    TraceRepository,
     UnitOfWork,
     VerificationRepository,
 )

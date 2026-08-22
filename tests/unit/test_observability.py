@@ -7,17 +7,19 @@ from typing import cast
 import pytest
 
 from google_work_agent.application.observability import (
+    SanitizedJsonlLogSink,
+    StaticMaintenanceGate,
+)
+from google_work_agent.ports import OperationalLogRecord
+from google_work_agent.ports.observability import (
     EventCategory,
     EventValidationError,
     ObservabilityContext,
     SanitizationError,
-    SanitizedJsonlLogSink,
     Severity,
-    StaticMaintenanceGate,
     create_event_envelope,
     sanitize_event_attributes,
 )
-from google_work_agent.ports import OperationalLogRecord
 
 
 def _secret(prefix: str) -> str:
