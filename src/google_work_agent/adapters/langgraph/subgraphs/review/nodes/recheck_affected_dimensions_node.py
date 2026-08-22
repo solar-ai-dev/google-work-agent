@@ -21,7 +21,10 @@ def recheck_affected_dimensions_node(
 ) -> dict[str, object]:
     projected = project_review_input(state)
     prior = _sequence(projected.get("prior_review_findings", ()), "prior_review_findings")
-    dimensions = _dimension_sequence(projected.get("affected_dimensions", ()))
+    dimensions = _merge_dimensions(
+        _dimension_sequence(projected.get("affected_dimensions", ())),
+        _dimensions_from_workflow_signal(projected.get("workflow_signal")),
+    )
     action_ids = _string_sequence(projected.get("affected_action_ids", ()), "affected_action_ids")
     route_ids = _string_sequence(projected.get("affected_route_ids", ()), "affected_route_ids")
     fresh = recheck_affected_dimensions(
@@ -76,3 +79,33 @@ def _dimension_sequence(value: object) -> Sequence[ReviewDimension]:
     if not all(isinstance(item, str) and item in allowed for item in value):
         raise ValueError("affected_dimensions contains an invalid Review dimension")
     return value  # type: ignore[return-value]
+
+
+def _dimensions_from_workflow_signal(value: object) -> tuple[ReviewDimension, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, Mapping):
+        raise ValueError("workflow_signal must be an object")
+    if value.get("kind") != "PLANNING_REVISION_REQUIRED":
+        return ()
+    issues = value.get("issues")
+    if not isinstance(issues, Sequence) or isinstance(issues, (str, bytes)):
+        raise ValueError("Planning revision signal issues must be a sequence")
+    dimensions: list[ReviewDimension] = []
+    for issue in issues:
+        if not isinstance(issue, Mapping):
+            raise ValueError("Planning revision signal issue must be an object")
+        dimensions.extend(_dimension_sequence([issue.get("dimension")]))
+    return tuple(dimensions)
+
+
+def _merge_dimensions(
+    explicit: Sequence[ReviewDimension], signal: Sequence[ReviewDimension]
+) -> tuple[ReviewDimension, ...]:
+    requested = set(explicit) | set(signal)
+    order: tuple[ReviewDimension, ...] = (
+        "GOAL_EVIDENCE",
+        "ACTION_SCOPE_ROUTE",
+        "CONSTRAINTS_POLICY",
+    )
+    return tuple(dimension for dimension in order if dimension in requested)

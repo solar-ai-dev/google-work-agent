@@ -20,6 +20,7 @@ _REVIEW_FIELDS = (
     "affected_dimensions",
     "affected_action_ids",
     "affected_route_ids",
+    "workflow_signal",
     "goal_evidence_findings",
     "action_scope_route_findings",
     "constraints_policy_findings",
