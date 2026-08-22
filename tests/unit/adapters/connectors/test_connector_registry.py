@@ -2,18 +2,16 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.adapters.connectors.connector_registry import (
+from google_work_agent.adapters.connectors.connector_not_registered_error import (
     ConnectorNotRegisteredError,
-    ConnectorRegistry,
 )
+from google_work_agent.adapters.connectors.connector_registry import ConnectorRegistry
 
 
 def test_registry_resolves_only_explicit_connector_id() -> None:
     google = object()
     github = object()
-    registry = ConnectorRegistry(
-        {"google_workspace": google, "github": github}
-    )
+    registry = ConnectorRegistry({"google_workspace": google, "github": github})
 
     assert registry.registered_connector_ids == ("github", "google_workspace")
     assert registry.resolve("github") is github
