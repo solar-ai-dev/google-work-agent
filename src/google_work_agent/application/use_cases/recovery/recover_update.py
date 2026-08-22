@@ -8,6 +8,9 @@ from json import loads
 from typing import cast
 
 from google_work_agent.application.ports import ConnectorExecutionPort
+from google_work_agent.application.use_cases.recovery.project_source_resource import (
+    project_source_resource,
+)
 from google_work_agent.application.use_cases.recovery.recover_existing_result import (
     RecoverExistingResultCommand,
     RecoverExistingResultResult,
@@ -122,25 +125,27 @@ class RecoverUpdateHandler:
             )
 
         source = cast(dict[str, object], loads(approval.source_snapshot_json))
-        source_projection = normalize_actual_verification_projection(
-            tool_name=action.tool_name,
-            actual=source,
-        )
-        if not calculate_verification_subset_diff(source_projection, actual_projection):
-            return _to_result(
-                self._resolve_as_failed(
-                    ResolveAsFailedCommand(
-                        command.command_id,
-                        command.request_hash,
-                        command.action_id,
-                        command.attempt_id,
-                        command.expected_action_version,
-                        command.expected_attempt_version,
-                        "NO_RECOVERY_CANDIDATE",
-                        "target still matches the approved source snapshot",
+        source_resource = project_source_resource(source)
+        if source_resource is not None:
+            source_projection = normalize_actual_verification_projection(
+                tool_name=action.tool_name,
+                actual=source_resource,
+            )
+            if not calculate_verification_subset_diff(source_projection, actual_projection):
+                return _to_result(
+                    self._resolve_as_failed(
+                        ResolveAsFailedCommand(
+                            command.command_id,
+                            command.request_hash,
+                            command.action_id,
+                            command.attempt_id,
+                            command.expected_action_version,
+                            command.expected_attempt_version,
+                            "NO_RECOVERY_CANDIDATE",
+                            "target still matches the approved source snapshot",
+                        )
                     )
                 )
-            )
 
         return RecoverUpdateResult(
             False,
@@ -151,7 +156,7 @@ class RecoverUpdateHandler:
             (),
             attempt_id=attempt.id,
             conflict_detail=(
-                "UPDATE recovery observed neither expected nor source state; "
+                "UPDATE recovery observed neither expected nor authoritative source state; "
                 "manual resolution required"
             ),
         )
