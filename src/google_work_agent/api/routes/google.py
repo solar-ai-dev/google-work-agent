@@ -17,7 +17,7 @@ from google_work_agent.application.ports.connector_failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
 )
-from google_work_agent.application.use_cases.connector_connection.disconnect import (
+from google_work_agent.application.use_cases.connector_connection.disconnect_connector import (
     DisconnectConnectorCommand,
     DisconnectConnectorHandler,
 )
