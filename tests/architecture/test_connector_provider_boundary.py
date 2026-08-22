@@ -17,8 +17,11 @@ _PROVIDER_MODULE_PREFIXES = (
     "google.cloud",
 )
 _CORE_ROOTS = (
+    SRC / "api",
     SRC / "application",
     SRC / "domain",
+    SRC / "ports",
+    SRC / "launcher",
     SRC / "adapters" / "langgraph",
 )
 
