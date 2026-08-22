@@ -126,6 +126,13 @@ class LangGraphWorkflowRuntime(_CanonicalFreshnessRuntime):
             )
 
         if snapshot.next:
+            if expected_target not in snapshot.next:
+                return WorkflowInvocationResult(
+                    request.run_id,
+                    request.workflow_key,
+                    WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
+                    {"reason": "pending checkpoint task does not match reauth continuation target"},
+                )
             self._graph.invoke(None, config=config)
         else:
             self._graph.update_state(
