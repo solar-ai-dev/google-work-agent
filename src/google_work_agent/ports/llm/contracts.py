@@ -1,4 +1,4 @@
-"""Stable LLM Port contracts shared across API and local adapters."""
+"""LLM runtime contracts shared across API and local adapters."""
 
 from __future__ import annotations
 
@@ -105,6 +105,13 @@ class RuntimePolicy:
     local_timeout_seconds: int = 180
     structured_output_repair_budget: int = 1
     max_fallback_count: int = 1
+    # docs/15 section 9.5 (Runtime Prompt Activation Gate): fixed sampling
+    # conditions for the Node Prompt Gate only -- never set by production
+    # callers (see launcher/dev.py, which always constructs RuntimePolicy()
+    # with no args). None means "use the provider's own default", which is
+    # what every production dispatch path does today. Fixing these values
+    # narrows sampling variance on a best-effort basis; it does not
+    # guarantee bit-identical, fully deterministic output.
     sampling_temperature: float | None = None
     sampling_seed: int | None = None
 
@@ -141,7 +148,11 @@ class ProviderResponsePayload:
 
 @dataclass(frozen=True, slots=True)
 class ToolDefinition:
-    """One callable's name, description, and JSON-schema-shaped parameters."""
+    """One callable's name/description/JSON-schema-shaped parameters.
+
+    Domain-agnostic: a provider only ever sees this shape, never what the
+    tool name means to the calling Agent/Node.
+    """
 
     name: str
     description: str
@@ -150,7 +161,7 @@ class ToolDefinition:
 
 @dataclass(frozen=True, slots=True)
 class LLMToolCall:
-    """One provider-reported tool invocation."""
+    """One provider-reported tool invocation: which function, which arguments."""
 
     name: str
     arguments: Mapping[str, object]
@@ -159,7 +170,9 @@ class LLMToolCall:
 
 @dataclass(frozen=True, slots=True)
 class ToolCallProviderResponse:
-    """Provider payload for a native tool-calling turn."""
+    """Provider payload for a tool-calling turn -- the ``ProviderResponsePayload``
+    analogue when the call used ``invoke_tool_call`` instead of ``invoke_structured``.
+    """
 
     calls: tuple[LLMToolCall, ...]
     model: str
@@ -246,7 +259,6 @@ class StructuredLLMProvider(Protocol):
 
     @property
     def provider_name(self) -> str: ...
-
     @property
     def runtime(self) -> ActualRuntime: ...
 
@@ -258,11 +270,19 @@ class StructuredLLMProvider(Protocol):
         output_schema: OutputSchemaDefinition,
         runtime_policy: RuntimePolicy,
         api_key: str | None,
-    ) -> ProviderResponsePayload: ...
+    ) -> ProviderResponsePayload:
+        """Return one provider payload for structured parsing."""
 
 
 class ToolCallingLLMProvider(Protocol):
-    """Provider that can dispatch a native tool/function-calling turn."""
+    """Provider that can dispatch a native tool/function-calling turn.
+
+    Separate from ``StructuredLLMProvider``: a tool-calling turn returns
+    which function(s) the model chose and their raw arguments, not a JSON
+    document to validate against ``OutputSchemaDefinition``. The provider
+    knows nothing about what a ``tools`` entry's name means -- only the
+    calling Agent's deterministic mapper does.
+    """
 
     provider_name: str
     runtime: ActualRuntime
@@ -275,11 +295,19 @@ class ToolCallingLLMProvider(Protocol):
         tools: Sequence[ToolDefinition],
         runtime_policy: RuntimePolicy,
         api_key: str | None,
-    ) -> ToolCallProviderResponse: ...
+    ) -> ToolCallProviderResponse:
+        """Return one provider payload naming the tool call(s) chosen."""
 
 
 class SchemaRepairer(Protocol):
-    """Repair boundary for one invalid structured payload."""
+    """Optional repair boundary for one invalid structured payload.
+
+    Covers both JSON-schema-shape failures and semantic/contract-validator
+    failures -- both are routed through the same one-attempt-per-node-call
+    budget (``RuntimePolicy.structured_output_repair_budget``). A real
+    implementation must re-invoke the same routed ``provider`` so the
+    repair call uses the same runtime/model that produced ``failed_output``.
+    """
 
     def repair(
         self,
@@ -295,11 +323,19 @@ class SchemaRepairer(Protocol):
         max_attempts: int,
         failure_reason_code: str,
         validator_errors: tuple[str, ...],
-    ) -> object: ...
+    ) -> object:
+        """Return one repaired candidate output."""
 
 
 class ToolCallSchemaRepairer(Protocol):
-    """Repair boundary for one invalid tool-calling turn."""
+    """Repair boundary for one invalid tool-calling turn.
+
+    Structurally parallel to ``SchemaRepairer``, but the repair call must
+    stay in tool-calling mode (re-invoke ``provider.invoke_tool_call``, not
+    a free-JSON ``invoke_structured``) and the caller's ``mapper`` is applied
+    to the repaired tool call before returning, so the result is already the
+    Node's Typed-Result-shaped candidate -- same as ``SchemaRepairer.repair``.
+    """
 
     def repair(
         self,
@@ -317,7 +353,8 @@ class ToolCallSchemaRepairer(Protocol):
         max_attempts: int,
         failure_reason_code: str,
         validator_errors: tuple[str, ...],
-    ) -> object: ...
+    ) -> object:
+        """Return one repaired, already-mapped candidate output."""
 
 
 class HardwareProbe(Protocol):
