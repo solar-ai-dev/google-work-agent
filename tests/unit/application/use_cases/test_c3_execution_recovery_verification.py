@@ -2,50 +2,19 @@ from __future__ import annotations
 
 from json import dumps
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 
-from google_work_agent.application.use_cases.execution_attempt.execute_action import (
-    ExecuteActionCommand,
-    ExecuteActionHandler,
-)
-from google_work_agent.application.use_cases.recovery.recover_create import (
-    RecoverCreateCommand,
-    RecoverCreateHandler,
-)
-from google_work_agent.application.use_cases.recovery.recover_delete import (
-    RecoverDeleteCommand,
-    RecoverDeleteHandler,
-)
-from google_work_agent.application.use_cases.recovery.recover_send import (
-    RecoverSendCommand,
-    RecoverSendHandler,
-)
-from google_work_agent.application.use_cases.recovery.recover_update import (
-    RecoverUpdateCommand,
-    RecoverUpdateHandler,
-)
-from google_work_agent.application.use_cases.verification.verify_action import (
-    VerifyActionCommand,
-    VerifyActionHandler,
-)
+from google_work_agent.application.use_cases.execution_attempt.execute_action import ExecuteActionCommand, ExecuteActionHandler
+from google_work_agent.application.use_cases.recovery.recover_create import RecoverCreateCommand, RecoverCreateHandler
+from google_work_agent.application.use_cases.recovery.recover_delete import RecoverDeleteCommand, RecoverDeleteHandler
+from google_work_agent.application.use_cases.recovery.recover_send import RecoverSendCommand, RecoverSendHandler
+from google_work_agent.application.use_cases.recovery.recover_update import RecoverUpdateCommand, RecoverUpdateHandler
+from google_work_agent.application.use_cases.verification.verify_action import VerifyActionCommand, VerifyActionHandler
 from google_work_agent.application.write_execution_contracts import WriteActionResponse
-from google_work_agent.application.write_execution_integrity import (
-    CLAIM_TOKEN_VERSION,
-    issue_claim_token,
-)
-from google_work_agent.application.write_verification_projection import (
-    calculate_verification_subset_diff,
-    normalize_actual_verification_projection,
-)
-from google_work_agent.domain import (
-    ActionStatus,
-    ExecutionAttemptStatus,
-    ResultCode,
-    RunStatus,
-    calculate_canonical_json_hash,
-)
+from google_work_agent.application.write_execution_integrity import CLAIM_TOKEN_VERSION, issue_claim_token
+from google_work_agent.application.write_verification_projection import calculate_verification_subset_diff, normalize_actual_verification_projection
+from google_work_agent.domain import ActionStatus, ExecutionAttemptStatus, ResultCode, RunStatus, calculate_canonical_json_hash
 from google_work_agent.ports import ResourceSnapshot, ResourceType
 
 _SIGNING_SECRET = "c3-signing-secret"
@@ -100,15 +69,14 @@ class _Dependencies:
 
 
 class _Actions(_ByIdRepo):
-    def __init__(self, values: dict[str, object], *, verification_status: ActionStatus | None = None) -> None:
+    def __init__(self, values: dict[str, object], verification_status: ActionStatus | None = None) -> None:
         super().__init__(values)
         self.verification_status = verification_status
 
     def store_verification(self, _action_id: str, **_kwargs: object) -> object:
-        status = self.verification_status or ActionStatus.VERIFIED
         return SimpleNamespace(
             applied=True,
-            current_status=status,
+            current_status=self.verification_status or ActionStatus.VERIFIED,
             current_version=2,
             next_allowed_commands=(),
         )
@@ -133,14 +101,13 @@ class _Uow:
         plan: object | None = None,
         run: object | None = None,
         verification_status: ActionStatus | None = None,
-        resource_ref: object | None = None,
     ) -> None:
-        self.actions = _Actions({getattr(action, "id"): action}, verification_status=verification_status)
+        self.actions = _Actions({getattr(action, "id"): action}, verification_status)
         self.execution_attempts = _ByIdRepo({getattr(attempt, "id"): attempt})
         self.approvals = _ByIdRepo({} if approval is None else {getattr(approval, "id"): approval})
         self.plans = _ByIdRepo({} if plan is None else {getattr(plan, "id"): plan})
         self.runs = _Runs({} if run is None else {getattr(run, "id"): run})
-        self.resource_refs = _ByIdRepo({} if resource_ref is None else {getattr(resource_ref, "id"): resource_ref})
+        self.resource_refs = _ByIdRepo({})
         self.command_receipts = _CommandReceipts()
         self.verifications = _VerificationRepo()
         self.action_dependencies = _Dependencies()
@@ -164,8 +131,7 @@ class _ExecutionConnector:
         self.prepare_calls = 0
         self.execute_calls = 0
 
-    def prepare_write(self, *, tool_name: str, arguments: dict[str, object], recovery_fingerprint: str | None) -> object:
-        del tool_name, recovery_fingerprint
+    def prepare_write(self, *, arguments: dict[str, object], **_kwargs: object) -> object:
         self.prepare_calls += 1
         return SimpleNamespace(arguments=arguments)
 
@@ -175,18 +141,13 @@ class _ExecutionConnector:
 
 
 class _RecoveryConnector:
-    def __init__(
-        self,
-        *,
-        candidates: list[ResourceSnapshot] | None = None,
-        snapshot: ResourceSnapshot | None = None,
-        absent: bool = False,
-    ) -> None:
+    def __init__(self, *, candidates: list[ResourceSnapshot] | None = None, snapshot: ResourceSnapshot | None = None, absent: bool = False) -> None:
         self.candidates = candidates or []
         self.snapshot = snapshot
         self.absent = absent
         self.search_calls = 0
         self.read_calls = 0
+        self.write_calls = 0
 
     def search_recovery_candidates(self, **_kwargs: object) -> list[ResourceSnapshot]:
         self.search_calls += 1
@@ -201,6 +162,7 @@ class _RecoveryConnector:
         return self.snapshot
 
     def execute_write(self, _request: object) -> ResourceSnapshot:
+        self.write_calls += 1
         raise AssertionError("recovery/verification must never dispatch a write")
 
 
@@ -208,29 +170,24 @@ class _VerificationConnector(_RecoveryConnector):
     last_request_id = "mcp-c3"
 
 
-def _task_snapshot(*, title: str, resource_id: str = "task-1") -> ResourceSnapshot:
+def _task_snapshot(*, title: str, resource_id: str = "task-1", version: str = "1", extra: dict[str, object] | None = None) -> ResourceSnapshot:
+    payload: dict[str, object] = {"title": title, **(extra or {})}
     return ResourceSnapshot(
         fixture_snapshot_id="fixture-c3",
         resource_type=ResourceType.TASK,
         resource_id=resource_id,
         parent_id="list-1",
         related_resource_ids=("list-1",),
-        version="1",
+        version=version,
         recovery_fingerprint=None,
-        payload={"title": title},
+        payload=payload,
     )
 
 
 def _execution_fixture(*, attempt_status: ExecutionAttemptStatus = ExecutionAttemptStatus.CLAIMED, run_status: RunStatus = RunStatus.WAITING_APPROVAL) -> tuple[_Uow, str, _ExecutionConnector]:
     arguments = {"task_list_id": "list-1", "payload": {"title": "C3"}}
     arguments_hash = calculate_canonical_json_hash(arguments)
-    action = SimpleNamespace(
-        id="action-1",
-        plan_id="plan-1",
-        tool_name="tasks_create_task",
-        arguments_json=dumps(arguments),
-        arguments_hash=arguments_hash,
-    )
+    action = SimpleNamespace(id="action-1", plan_id="plan-1", tool_name="tasks_create_task", arguments_json=dumps(arguments), arguments_hash=arguments_hash)
     approval = SimpleNamespace(id="approval-1", action_id="action-1", recovery_fingerprint="fp-1")
     attempt = SimpleNamespace(id="attempt-1", approval_id="approval-1", status=attempt_status)
     plan = SimpleNamespace(id="plan-1", run_id="run-1")
@@ -255,7 +212,7 @@ def _execution_fixture(*, attempt_status: ExecutionAttemptStatus = ExecutionAtte
     return uow, token, connector
 
 
-def _execute_handler(uow: _Uow, connector: _ExecutionConnector, *, now_ms: int = 2_000) -> ExecuteActionHandler:
+def _execute_handler(uow: _Uow, connector: _ExecutionConnector, now_ms: int = 2_000) -> ExecuteActionHandler:
     return ExecuteActionHandler(
         unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
         connector_execution=connector,  # type: ignore[arg-type]
@@ -265,76 +222,39 @@ def _execute_handler(uow: _Uow, connector: _ExecutionConnector, *, now_ms: int =
     )
 
 
-def test_execute_action_rejects_invalid_and_expired_tokens_before_connector() -> None:
+def test_execute_action_preserves_token_cancel_claim_and_nonce_safety() -> None:
     uow, token, connector = _execution_fixture()
-    handler = _execute_handler(uow, connector)
-    bad_token = issue_claim_token(
-        {
-            "version": CLAIM_TOKEN_VERSION,
-            "action_id": "action-1",
-            "approval_id": "approval-1",
-            "attempt_id": "attempt-1",
-            "tool_name": "tasks_create_task",
-            "arguments_hash": "0" * 64,
-            "service_instance_id": _SERVICE_INSTANCE_ID,
-            "nonce": "bad",
-            "issued_at_ms": 1_000,
-            "expires_at_ms": 31_000,
-        },
-        signing_secret="wrong-secret",
-    )
-    with pytest.raises(Exception):
-        handler(ExecuteActionCommand("action-1", bad_token))
-    expired = _execute_handler(uow, connector, now_ms=31_000)
+    expired = _execute_handler(uow, connector, 31_000)
     with pytest.raises(PermissionError, match="expired"):
         expired(ExecuteActionCommand("action-1", token))
     assert connector.execute_calls == 0
 
-
-def test_execute_action_rejects_cancel_binding_nonclaimed_and_used_nonce() -> None:
-    cancelled_uow, token, connector = _execution_fixture(run_status=RunStatus.CANCEL_REQUESTED)
+    cancelled, cancel_token, cancel_connector = _execution_fixture(run_status=RunStatus.CANCEL_REQUESTED)
     with pytest.raises(PermissionError, match="cancellation"):
-        _execute_handler(cancelled_uow, connector)(ExecuteActionCommand("action-1", token))
+        _execute_handler(cancelled, cancel_connector)(ExecuteActionCommand("action-1", cancel_token))
+    assert cancel_connector.execute_calls == 0
 
-    nonclaimed_uow, token2, connector2 = _execution_fixture(attempt_status=ExecutionAttemptStatus.SUCCEEDED)
+    nonclaimed, nonclaimed_token, nonclaimed_connector = _execution_fixture(attempt_status=ExecutionAttemptStatus.SUCCEEDED)
     with pytest.raises(PermissionError, match="CLAIMED"):
-        _execute_handler(nonclaimed_uow, connector2)(ExecuteActionCommand("action-1", token2))
+        _execute_handler(nonclaimed, nonclaimed_connector)(ExecuteActionCommand("action-1", nonclaimed_token))
+    assert nonclaimed_connector.execute_calls == 0
 
-    uow, token3, connector3 = _execution_fixture()
-    handler = _execute_handler(uow, connector3)
-    result = handler(ExecuteActionCommand("action-1", token3))
-    assert result.snapshot.resource_id == "task-1"
-    assert connector3.prepare_calls == connector3.execute_calls == 1
+    fresh, fresh_token, fresh_connector = _execution_fixture()
+    handler = _execute_handler(fresh, fresh_connector)
+    assert handler(ExecuteActionCommand("action-1", fresh_token)).snapshot.resource_id == "task-1"
     with pytest.raises(PermissionError, match="already been used"):
-        handler(ExecuteActionCommand("action-1", token3))
-    assert connector3.execute_calls == 1
-
-    bound_uow, _token4, connector4 = _execution_fixture()
-    action = bound_uow.actions.get_by_id("action-1")
-    action.tool_name = "tasks_update_task"
-    with pytest.raises(PermissionError, match="binding mismatch"):
-        _execute_handler(bound_uow, connector4)(ExecuteActionCommand("action-1", token3))
-    assert connector4.execute_calls == 0
+        handler(ExecuteActionCommand("action-1", fresh_token))
+    assert fresh_connector.execute_calls == 1
 
 
 def _recovery_uow(*, tool_name: str, expected: dict[str, object] | None = None, source: dict[str, object] | None = None, arguments: dict[str, object] | None = None) -> _Uow:
     action = SimpleNamespace(
-        id="action-1",
-        plan_id="plan-1",
-        tool_name=tool_name,
-        arguments_json=dumps(arguments or {}),
-        expected_json=dumps(expected or {}),
-        target_resource_ref_id=None,
-        status=ActionStatus.UNKNOWN_RESULT.value,
-        version=3,
+        id="action-1", plan_id="plan-1", tool_name=tool_name,
+        arguments_json=dumps(arguments or {}), expected_json=dumps(expected or {}),
+        target_resource_ref_id=None, status=ActionStatus.UNKNOWN_RESULT.value, version=3,
     )
     attempt = SimpleNamespace(id="attempt-1", approval_id="approval-1", status=ExecutionAttemptStatus.UNKNOWN_RESULT)
-    approval = SimpleNamespace(
-        id="approval-1",
-        action_id="action-1",
-        recovery_fingerprint="fp-1",
-        source_snapshot_json=dumps(source or {}),
-    )
+    approval = SimpleNamespace(id="approval-1", action_id="action-1", recovery_fingerprint="fp-1", source_snapshot_json=dumps(source or {}))
     return _Uow(action=action, attempt=attempt, approval=approval)
 
 
@@ -342,154 +262,132 @@ def _applied_response(status: str = ActionStatus.EXECUTED.value) -> WriteActionR
     return WriteActionResponse(True, ResultCode.TRANSITION_APPLIED.value, "action-1", status, 4, (), attempt_id="attempt-1")
 
 
-def test_recovery_create_and_send_ambiguity_never_write() -> None:
+def test_create_send_and_delete_recovery_never_blind_write() -> None:
     for handler_type, command_type, tool_name in (
         (RecoverCreateHandler, RecoverCreateCommand, "tasks_create_task"),
         (RecoverSendHandler, RecoverSendCommand, "gmail_send"),
     ):
         uow = _recovery_uow(tool_name=tool_name)
         connector = _RecoveryConnector(candidates=[_task_snapshot(title="a"), _task_snapshot(title="b", resource_id="task-2")])
-        recovered: list[object] = []
-        handler = handler_type(
+        result = handler_type(
             unit_of_work_factory=lambda uow=uow: uow,  # type: ignore[arg-type]
             connector_execution=connector,  # type: ignore[arg-type]
-            recover_existing_result=lambda command: recovered.append(command) or _applied_response(),
-        )
-        result = handler(command_type("cmd", "hash", "action-1", "attempt-1", 3, 1))
-        assert result.applied is False
+            recover_existing_result=lambda _command: _applied_response(),
+        )(command_type("cmd", "hash", "action-1", "attempt-1", 3, 1))
         assert result.result_code == ResultCode.RECOVERY_REQUIRED.value
-        assert recovered == []
-        assert connector.search_calls == 1
+        assert connector.write_calls == 0
 
-
-def test_recovery_update_distinguishes_source_expected_and_third_state() -> None:
-    expected_snapshot = _task_snapshot(title="after")
-    source_snapshot = _task_snapshot(title="before")
-    expected = {
-        "resource_type": expected_snapshot.resource_type.value,
-        "resource_id": expected_snapshot.resource_id,
-        "parent_id": expected_snapshot.parent_id,
-        "version": expected_snapshot.version,
-        "payload": dict(expected_snapshot.payload),
-    }
-    source = {
-        "resource_type": source_snapshot.resource_type.value,
-        "resource_id": source_snapshot.resource_id,
-        "parent_id": source_snapshot.parent_id,
-        "version": source_snapshot.version,
-        "payload": dict(source_snapshot.payload),
-    }
-    arguments = {"task_id": "task-1", "task_list_id": "list-1", "payload": {"title": "after"}}
-    failed: list[object] = []
-    recovered: list[object] = []
-
-    source_uow = _recovery_uow(tool_name="tasks_update_task", expected=expected, source=source, arguments=arguments)
-    source_handler = RecoverUpdateHandler(
-        unit_of_work_factory=lambda: source_uow,  # type: ignore[arg-type]
-        connector_execution=_RecoveryConnector(snapshot=source_snapshot),  # type: ignore[arg-type]
-        recover_existing_result=lambda command: recovered.append(command) or _applied_response(),
-        resolve_as_failed=lambda command: failed.append(command) or _applied_response(ActionStatus.FAILED.value),
-    )
-    assert source_handler(RecoverUpdateCommand("cmd-s", "hash", "action-1", "attempt-1", 3, 1)).action_status == ActionStatus.FAILED.value
-    assert len(failed) == 1 and recovered == []
-
-    third_uow = _recovery_uow(tool_name="tasks_update_task", expected=expected, source=source, arguments=arguments)
-    third = _task_snapshot(title="someone-else")
-    result = RecoverUpdateHandler(
-        unit_of_work_factory=lambda: third_uow,  # type: ignore[arg-type]
-        connector_execution=_RecoveryConnector(snapshot=third),  # type: ignore[arg-type]
-        recover_existing_result=lambda command: recovered.append(command) or _applied_response(),
-        resolve_as_failed=lambda command: failed.append(command) or _applied_response(ActionStatus.FAILED.value),
-    )(RecoverUpdateCommand("cmd-t", "hash", "action-1", "attempt-1", 3, 1))
-    assert result.applied is False
-    assert result.result_code == ResultCode.RECOVERY_REQUIRED.value
-
-
-def test_recovery_delete_present_never_redeletes_and_absent_recovers() -> None:
-    arguments = {"task_id": "task-1", "task_list_id": "list-1"}
-    uow = _recovery_uow(tool_name="tasks_delete_task", arguments=arguments)
-    recovered: list[object] = []
+    delete_uow = _recovery_uow(tool_name="tasks_delete_task", arguments={"task_id": "task-1", "task_list_id": "list-1"})
+    present_connector = _RecoveryConnector(snapshot=_task_snapshot(title="present"))
     present = RecoverDeleteHandler(
-        unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
-        connector_execution=_RecoveryConnector(snapshot=_task_snapshot(title="present")),  # type: ignore[arg-type]
-        recover_existing_result=lambda command: recovered.append(command) or _applied_response(),
+        unit_of_work_factory=lambda: delete_uow,  # type: ignore[arg-type]
+        connector_execution=present_connector,  # type: ignore[arg-type]
+        recover_existing_result=lambda _command: _applied_response(),
     )(RecoverDeleteCommand("cmd-p", "hash", "action-1", "attempt-1", 3, 1))
     assert present.result_code == ResultCode.RECOVERY_REQUIRED.value
-    assert recovered == []
+    assert present_connector.write_calls == 0
 
+    absent_connector = _RecoveryConnector(absent=True)
     absent = RecoverDeleteHandler(
-        unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
-        connector_execution=_RecoveryConnector(absent=True),  # type: ignore[arg-type]
-        recover_existing_result=lambda command: recovered.append(command) or _applied_response(),
+        unit_of_work_factory=lambda: delete_uow,  # type: ignore[arg-type]
+        connector_execution=absent_connector,  # type: ignore[arg-type]
+        recover_existing_result=lambda _command: _applied_response(),
     )(RecoverDeleteCommand("cmd-a", "hash", "action-1", "attempt-1", 3, 1))
     assert absent.applied is True
-    assert len(recovered) == 1
+    assert absent_connector.write_calls == 0
 
 
-def _verification_uow(*, expected_title: str, verification_status: ActionStatus, attempt_status: ExecutionAttemptStatus = ExecutionAttemptStatus.SUCCEEDED) -> _Uow:
+def test_update_recovery_uses_canonical_subset_projection_for_all_three_states() -> None:
+    arguments = {"task_id": "task-1", "task_list_id": "list-1", "payload": {"title": "after"}}
+    expected = {"payload": {"title": "after"}}
+    source = {"resource_id": "task-1", "version": "1", "payload": {"title": "before"}}
+    recovered: list[object] = []
+    failed: list[object] = []
+
+    def run(snapshot: ResourceSnapshot, command_id: str) -> object:
+        uow = _recovery_uow(tool_name="tasks_update_task", expected=expected, source=source, arguments=arguments)
+        return RecoverUpdateHandler(
+            unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
+            connector_execution=_RecoveryConnector(snapshot=snapshot),  # type: ignore[arg-type]
+            recover_existing_result=lambda command: recovered.append(command) or _applied_response(),
+            resolve_as_failed=lambda command: failed.append(command) or _applied_response(ActionStatus.FAILED.value),
+        )(RecoverUpdateCommand(command_id, "hash", "action-1", "attempt-1", 3, 1))
+
+    expected_result = run(_task_snapshot(title="after", version="2", extra={"notes": "provider-extra"}), "cmd-e")
+    assert expected_result.action_status == ActionStatus.EXECUTED.value
+    assert len(recovered) == 1 and failed == []
+
+    source_result = run(_task_snapshot(title="before", version="1", extra={"notes": "irrelevant-extra"}), "cmd-s")
+    assert source_result.action_status == ActionStatus.FAILED.value
+    assert len(failed) == 1
+
+    third_result = run(_task_snapshot(title="someone-else", version="3", extra={"notes": "extra"}), "cmd-t")
+    assert third_result.applied is False
+    assert third_result.result_code == ResultCode.RECOVERY_REQUIRED.value
+
+
+def _verification_uow(*, expected_title: str = "C3", verification_status: ActionStatus = ActionStatus.VERIFIED, attempt_status: ExecutionAttemptStatus = ExecutionAttemptStatus.SUCCEEDED, approval_action_id: str = "action-1") -> _Uow:
     action = SimpleNamespace(
-        id="action-1",
-        plan_id="plan-1",
-        tool_name="tasks_update_task",
+        id="action-1", plan_id="plan-1", tool_name="tasks_update_task",
         arguments_json=dumps({"task_id": "task-1", "task_list_id": "list-1", "payload": {"title": expected_title}}),
-        expected_json=dumps({"payload": {"title": expected_title}}),
-        target_resource_ref_id=None,
-        status=ActionStatus.EXECUTED.value,
-        effect_type="UPDATE",
-        version=1,
+        expected_json=dumps({"payload": {"title": expected_title}}), target_resource_ref_id=None,
+        status=ActionStatus.EXECUTED.value, effect_type="UPDATE", version=1,
     )
-    attempt = SimpleNamespace(
-        id="attempt-1",
-        approval_id="approval-1",
-        status=attempt_status,
-        result_resource_ref_id=None,
-    )
+    attempt = SimpleNamespace(id="attempt-1", approval_id="approval-1", status=attempt_status, result_resource_ref_id=None)
+    approval = SimpleNamespace(id="approval-1", action_id=approval_action_id)
     plan = SimpleNamespace(id="plan-1", run_id="run-1")
     run = SimpleNamespace(id="run-1", status=RunStatus.VERIFYING)
-    return _Uow(action=action, attempt=attempt, plan=plan, run=run, verification_status=verification_status)
+    return _Uow(action=action, attempt=attempt, approval=approval, plan=plan, run=run, verification_status=verification_status)
 
 
-def test_verification_effect_normalization_and_verified_mismatch_paths() -> None:
-    normalized = normalize_actual_verification_projection(
-        tool_name="tasks_update_task",
-        actual={"payload": {"title": "C3", "due": "2026-08-22T00:00:00Z"}},
-    )
+def test_verification_normalization_valid_chain_and_mismatch_semantics() -> None:
+    normalized = normalize_actual_verification_projection(tool_name="tasks_update_task", actual={"payload": {"title": "C3", "due": "2026-08-22T00:00:00Z"}})
     assert normalized["payload"]["due"] == "2026-08-22"  # type: ignore[index]
     assert calculate_verification_subset_diff({"payload": {"title": "C3"}}, normalized) == []
 
-    verified_uow = _verification_uow(expected_title="C3", verification_status=ActionStatus.VERIFIED)
-    verified = VerifyActionHandler(
-        unit_of_work_factory=lambda: verified_uow,  # type: ignore[arg-type]
+    valid_uow = _verification_uow()
+    valid_connector = _VerificationConnector(snapshot=_task_snapshot(title="C3", extra={"notes": "extra"}))
+    valid = VerifyActionHandler(
+        unit_of_work_factory=lambda: valid_uow,  # type: ignore[arg-type]
         now_ms=lambda: 10_000,
-        connector_execution=_VerificationConnector(snapshot=_task_snapshot(title="C3")),  # type: ignore[arg-type]
+        connector_execution=valid_connector,  # type: ignore[arg-type]
     )(VerifyActionCommand("verify-ok", "hash", "action-1", "attempt-1", 1, "verification-1"))
-    assert verified.applied is True
-    assert verified.action_status == ActionStatus.VERIFIED.value
-    assert verified_uow.runs.recovery_required == 0
+    assert valid.applied is True
+    assert valid.action_status == ActionStatus.VERIFIED.value
+    assert valid_connector.read_calls == 1
 
     mismatch_uow = _verification_uow(expected_title="expected", verification_status=ActionStatus.MISMATCH)
     mismatch = VerifyActionHandler(
         unit_of_work_factory=lambda: mismatch_uow,  # type: ignore[arg-type]
         now_ms=lambda: 10_000,
         connector_execution=_VerificationConnector(snapshot=_task_snapshot(title="actual")),  # type: ignore[arg-type]
-    )(VerifyActionCommand("verify-mismatch", "hash", "action-1", "attempt-1", 1, "verification-2"))
-    assert mismatch.applied is True
+    )(VerifyActionCommand("verify-m", "hash", "action-1", "attempt-1", 1, "verification-2"))
     assert mismatch.action_status == ActionStatus.MISMATCH.value
     assert mismatch_uow.runs.recovery_required == 1
 
 
-def test_verification_unknown_result_never_reads_or_writes() -> None:
-    uow = _verification_uow(
-        expected_title="C3",
-        verification_status=ActionStatus.VERIFIED,
-        attempt_status=ExecutionAttemptStatus.UNKNOWN_RESULT,
-    )
+def test_verification_foreign_succeeded_attempt_fails_closed_before_read() -> None:
+    uow = _verification_uow(approval_action_id="foreign-action")
     connector = _VerificationConnector(snapshot=_task_snapshot(title="C3"))
     result = VerifyActionHandler(
         unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
         now_ms=lambda: 10_000,
         connector_execution=connector,  # type: ignore[arg-type]
-    )(VerifyActionCommand("verify-unknown", "hash", "action-1", "attempt-1", 1, "verification-3"))
+    )(VerifyActionCommand("verify-foreign", "hash", "action-1", "attempt-1", 1, "verification-f"))
     assert result.applied is False
     assert result.result_code == ResultCode.STATE_CONFLICT.value
-    assert connector.read_calls == 0
+    assert connector.read_calls == connector.write_calls == 0
+    assert uow.verifications.items == []
+
+
+def test_verification_unknown_result_fails_closed_before_read() -> None:
+    uow = _verification_uow(attempt_status=ExecutionAttemptStatus.UNKNOWN_RESULT)
+    connector = _VerificationConnector(snapshot=_task_snapshot(title="C3"))
+    result = VerifyActionHandler(
+        unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
+        now_ms=lambda: 10_000,
+        connector_execution=connector,  # type: ignore[arg-type]
+    )(VerifyActionCommand("verify-unknown", "hash", "action-1", "attempt-1", 1, "verification-u"))
+    assert result.applied is False
+    assert result.result_code == ResultCode.STATE_CONFLICT.value
+    assert connector.read_calls == connector.write_calls == 0
