@@ -77,9 +77,9 @@ def approve(
     if settings_service is None:
         raise RuntimeError("get_settings_service is not configured")
     handler = ApproveActionHandler(
-        approve_service=dependencies.approve_action_service(),
         get_approval_ttl_minutes=lambda: settings_service().approval_ttl_minutes,
         unit_of_work_factory=dependencies.unit_of_work_factory,
+        now_ms=dependencies.clock.now_ms,
         local_run_coordinator=dependencies.local_run_coordinator,
         id_generator=dependencies.id_generator,
     )
