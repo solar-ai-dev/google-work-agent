@@ -11,7 +11,8 @@ def _source(name: str) -> str:
     return (ROUTE_DIR / name).read_text(encoding="utf-8")
 
 
-def test_resource_attachment_google_routes_hide_concrete_connector_exceptions() -> None:
+def test_resource_attachment_google_routes_hide_concrete_connector_exceptions(
+) -> None:
     forbidden = (
         "GoogleWorkspaceGatewayError",
         "GoogleWorkspaceErrorCode",
