@@ -27,6 +27,26 @@ def test_action_route_binds_only_canonical_action_use_cases() -> None:
     assert "application.projections import" not in source
 
 
+def test_action_route_does_not_invoke_legacy_semantics_for_approve_reject_retry() -> None:
+    source = inspect.getsource(actions)
+
+    assert "approve_action_service()" not in source
+    assert "reject_action_service()" not in source
+    assert "prepare_retry_service()" not in source
+    assert "ApproveWriteAction" not in source
+    assert "RejectWriteAction" not in source
+    assert "PrepareWriteRetryService" not in source
+
+
+def test_modify_legacy_surface_is_wiring_only_gateway_bridge() -> None:
+    source = inspect.getsource(actions)
+
+    assert "legacy_surface = dependencies.modify_action_service()" in source
+    assert "legacy_surface(" not in source
+    assert "gateway=_modify_gateway(dependencies)" in source
+    assert "ModifyActionHandler(" in source
+
+
 def test_action_route_has_no_provider_or_persistence_import() -> None:
     source = inspect.getsource(actions)
 
