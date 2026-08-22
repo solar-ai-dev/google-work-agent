@@ -1,7 +1,9 @@
 """SQLite run repository with canonical lifecycle persistence."""
 import sqlite3
-from google_work_agent.domain import CommandResult, ResultCode, RunCommand, RunStatus, transition_run
+from google_work_agent.domain import CommandResult, ResultCode, RunCommand, RunStatus, next_allowed_run_commands, transition_run
 from google_work_agent.domain.confirmation import resume_confirmation as transition_resume_confirmation
+from google_work_agent.domain.run.model import RunTransitionRejected
+from google_work_agent.domain.run.transitions.resume_after_reauth import transition_resume_after_reauth
 from google_work_agent.ports.models import RunCreateRecord, RunRecord
 
 class SQLiteRunRepository:
@@ -37,6 +39,18 @@ class SQLiteRunRepository:
         if cur is None: raise LookupError(f"run not found: {run_id}")
         result=transition_resume_confirmation(cur.status, current_version=cur.version, expected_version=expected_version, resume_status=resume_status)
         return self._apply(run_id=run_id, previous_version=cur.version, result=result, finished_at_ms=finished_at_ms, error_message="run resume-confirmation affected an unexpected row count")
+    def resume_after_reauth(self, run_id: str, *, expected_version: int, resume_status: RunStatus, finished_at_ms: int | None=None) -> CommandResult[RunStatus, RunCommand]:
+        cur=self.get_by_id(run_id)
+        if cur is None: raise LookupError(f"run not found: {run_id}")
+        if cur.version != expected_version:
+            result=CommandResult(False,ResultCode.VERSION_CONFLICT,cur.status,cur.version,next_allowed_run_commands(cur.status),"expected_version does not match current_version")
+        else:
+            try: next_status=transition_resume_after_reauth(cur.status,resume_status=resume_status)
+            except RunTransitionRejected as error:
+                result=CommandResult(False,ResultCode.STATE_CONFLICT,cur.status,cur.version,next_allowed_run_commands(cur.status),str(error))
+            else:
+                result=CommandResult(True,ResultCode.TRANSITION_APPLIED,next_status,cur.version+1,next_allowed_run_commands(next_status),None)
+        return self._apply(run_id=run_id,previous_version=cur.version,result=result,finished_at_ms=finished_at_ms,error_message="run resume-after-reauth affected an unexpected row count")
     def complete_answer_only_run(self, run_id: str, *, expected_version: int, finished_at_ms: int): return self._transition(run_id, expected_version=expected_version, command=RunCommand.COMPLETE_ANSWER_ONLY_RUN, finished_at_ms=finished_at_ms)
     def complete_write_run(self, run_id: str, *, expected_version: int, finished_at_ms: int): return self._transition(run_id, expected_version=expected_version, command=RunCommand.COMPLETE_WRITE_RUN, finished_at_ms=finished_at_ms)
     def finalize_action_outcomes(self, run_id: str, *, expected_version: int, finished_at_ms: int): return self._transition(run_id, expected_version=expected_version, command=RunCommand.FINALIZE_ACTION_OUTCOMES, finished_at_ms=finished_at_ms)
