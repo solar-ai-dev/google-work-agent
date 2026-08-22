@@ -18,6 +18,11 @@ class AtomicReviewFindingV1(TypedDict):
     required_information: list[str]
 
 
+class RecheckAffectedDimensionsResultV1(TypedDict):
+    affected_dimensions: tuple[ReviewDimension, ...]
+    findings: tuple[AtomicReviewFindingV1, ...]
+
+
 class ReviewSemanticInvoker(Protocol):
     def __call__(
         self,

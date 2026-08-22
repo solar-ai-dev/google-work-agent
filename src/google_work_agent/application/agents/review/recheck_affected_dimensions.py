@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping, Sequence
 
 from google_work_agent.application.agents.review.contracts.review_findings import (
     AtomicReviewFindingV1,
+    RecheckAffectedDimensionsResultV1,
     ReviewDimension,
     ReviewSemanticInvoker,
 )
@@ -41,7 +42,7 @@ def recheck_affected_dimensions(
     invoke: ReviewSemanticInvoker,
     work_analysis: Mapping[str, object] | None = None,
     policy_summary: Mapping[str, object] | None = None,
-) -> tuple[AtomicReviewFindingV1, ...]:
+) -> RecheckAffectedDimensionsResultV1:
     """Re-run exactly the canonical union of explicitly and identity-affected dimensions."""
     prior_findings = tuple(dict(item) for item in findings)
     action_ids = set(affected_action_ids)
@@ -62,7 +63,7 @@ def recheck_affected_dimensions(
             canonical_dimensions.add(dimension)  # type: ignore[arg-type]
 
     if not canonical_dimensions:
-        return ()
+        return {"affected_dimensions": (), "findings": ()}
 
     ordered_dimensions = tuple(
         dimension for dimension in _REVIEW_DIMENSIONS if dimension in canonical_dimensions
@@ -103,7 +104,7 @@ def recheck_affected_dimensions(
         fresh.extend(inspect_action_scope_and_route(**common))
     if "CONSTRAINTS_POLICY" in canonical_dimensions:
         fresh.extend(inspect_constraints_and_policy_summary(**common))
-    return tuple(fresh)
+    return {"affected_dimensions": ordered_dimensions, "findings": tuple(fresh)}
 
 
 def _normalize_dimensions(dimensions: Iterable[object]) -> tuple[ReviewDimension, ...]:

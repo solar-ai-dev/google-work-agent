@@ -28,8 +28,9 @@ def test_recheck_genuinely_reinspects_only_affected_dimensions() -> None:
     result = recheck_affected_dimensions(prior, affected_route_ids=["r1"], request_intent={}, tool_route_plan={}, planning_result={}, evidence=[], invoke=invoke)
 
     assert prompt_calls == ["review.recheck_affected_dimensions", "review.inspect_action_scope_and_route"]
-    assert result and result[0]["code"] == "fresh"
-    assert all(item["code"] != "stale" for item in result)
+    assert result["affected_dimensions"] == ("ACTION_SCOPE_ROUTE",)
+    assert result["findings"] and result["findings"][0]["code"] == "fresh"
+    assert all(item["code"] != "stale" for item in result["findings"])
     assert "review.inspect_constraints_and_policy_summary" not in prompt_calls
     assert "review.inspect_goal_and_evidence" not in prompt_calls
 

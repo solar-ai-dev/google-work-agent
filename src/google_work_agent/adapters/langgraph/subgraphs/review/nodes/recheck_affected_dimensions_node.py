@@ -27,7 +27,7 @@ def recheck_affected_dimensions_node(
     )
     action_ids = _string_sequence(projected.get("affected_action_ids", ()), "affected_action_ids")
     route_ids = _string_sequence(projected.get("affected_route_ids", ()), "affected_route_ids")
-    fresh = recheck_affected_dimensions(
+    recheck_result = recheck_affected_dimensions(
         prior,
         affected_dimensions=dimensions,
         affected_action_ids=action_ids,
@@ -40,7 +40,10 @@ def recheck_affected_dimensions_node(
         policy_summary=_optional_mapping(projected.get("policy_summary")),
         invoke=invoke,
     )
-    return {"affected_dimension_recheck": fresh}
+    return {
+        "affected_dimensions": recheck_result["affected_dimensions"],
+        "affected_dimension_recheck": recheck_result["findings"],
+    }
 
 
 def _mapping(projected: Mapping[str, object], key: str) -> Mapping[str, object]:

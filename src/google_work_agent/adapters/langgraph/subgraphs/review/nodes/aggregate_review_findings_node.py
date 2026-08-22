@@ -10,6 +10,13 @@ from google_work_agent.adapters.langgraph.subgraphs.review.projections.review_pr
 from google_work_agent.application.agents.review.aggregate_review_findings import (
     aggregate_review_findings,
 )
+from google_work_agent.application.agents.review.contracts.review_findings import ReviewDimension
+
+_REVIEW_DIMENSIONS: set[ReviewDimension] = {
+    "GOAL_EVIDENCE",
+    "ACTION_SCOPE_ROUTE",
+    "CONSTRAINTS_POLICY",
+}
 
 
 def aggregate_review_findings_node(state: Mapping[str, object]) -> dict[str, object]:
@@ -20,10 +27,8 @@ def aggregate_review_findings_node(state: Mapping[str, object]) -> dict[str, obj
         fresh = list(
             _sequence(projected.get("affected_dimension_recheck", ()), "affected_dimension_recheck")
         )
-        fresh_dimensions = {
-            item.get("dimension") for item in fresh if isinstance(item.get("dimension"), str)
-        }
-        findings = [item for item in prior if item.get("dimension") not in fresh_dimensions] + fresh
+        affected_dimensions = set(_affected_dimensions(projected.get("affected_dimensions", ())))
+        findings = [item for item in prior if item.get("dimension") not in affected_dimensions] + fresh
     elif phase == "INITIAL":
         findings = []
         for key in (
@@ -55,3 +60,11 @@ def _sequence(value: object, label: str) -> Sequence[Mapping[str, object]]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
         raise ValueError(f"{label} must be a sequence")
     return value  # type: ignore[return-value]
+
+
+def _affected_dimensions(value: object) -> tuple[ReviewDimension, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise ValueError("affected_dimensions must be a sequence")
+    if not all(isinstance(item, str) and item in _REVIEW_DIMENSIONS for item in value):
+        raise ValueError("affected_dimensions contains an invalid Review dimension")
+    return tuple(value)  # type: ignore[return-value]
