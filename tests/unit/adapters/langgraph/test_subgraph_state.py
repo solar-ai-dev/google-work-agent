@@ -1,6 +1,6 @@
 from typing import get_type_hints
 
-from google_work_agent.adapters.langgraph.graph_state import GraphState
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.subgraph_state import (
     AcquisitionLocalState,
     ContextRetrievalInputState,

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from google_work_agent.adapters.langgraph.graph_state import request_from_state
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.selection_projection import project_selection_input
+from google_work_agent.adapters.langgraph.main.state import request_from_state
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.selection_projection import (
+    project_selection_input,
+)
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
-from google_work_agent.application.agents.tool_routing.select_tool_if_needed import select_tool_if_needed
+from google_work_agent.application.agents.tool_routing.select_tool_if_needed import (
+    select_tool_if_needed,
+)
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.orchestration.contracts import consume_llm_provider_calls
 from google_work_agent.ports import PromptReference

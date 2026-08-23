@@ -43,7 +43,7 @@ from tests.integration.langgraph.test_runtime import (
 )
 from tests.support.prompt_manifests import write_manifest_with_legacy_profile_slots
 
-from google_work_agent.adapters.langgraph.graph_state import CONTEXT_RAG_CANDIDATES_KEY
+from google_work_agent.adapters.langgraph.main.state import CONTEXT_RAG_CANDIDATES_KEY
 
 
 def test_single_and_three_stage_runtimes_still_reject_own_draft_prompts(

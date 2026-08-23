@@ -13,7 +13,7 @@ from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
 
-from google_work_agent.adapters.langgraph.graph_state import (
+from google_work_agent.adapters.langgraph.main.state import (
     CONTEXT_READ_RESULT_HANDLES_KEY,
     ParentGraphState,
 )

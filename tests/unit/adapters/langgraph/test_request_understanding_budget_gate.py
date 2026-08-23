@@ -13,7 +13,7 @@ from typing import Any, cast
 
 import pytest
 
-from google_work_agent.adapters.langgraph.graph_state import REQUEST_AGENT_LOCAL_KEY
+from google_work_agent.adapters.langgraph.main.state import REQUEST_AGENT_LOCAL_KEY
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.graph import (
     RequestUnderstandingSubgraph,

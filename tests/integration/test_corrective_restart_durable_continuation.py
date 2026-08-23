@@ -10,13 +10,13 @@ import pytest
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
-from google_work_agent.adapters.langgraph.freshness_workflow import (
-    LangGraphWorkflowRuntime,
-)
 from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
     CorrectivePlanContinuationRequired,
 )
-from google_work_agent.adapters.langgraph.graph_state import ParentGraphState
+from google_work_agent.adapters.langgraph.main.state import ParentGraphState
+from google_work_agent.adapters.langgraph.main.workflow import (
+    LangGraphWorkflowRuntime,
+)
 from google_work_agent.application.orchestration.handoff_contracts import EvidenceDraftV1
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,
@@ -29,9 +29,9 @@ from google_work_agent.ports import (
     WorkflowResumeRequest,
 )
 from tests.integration.persistence.test_corrective_plan_persistence import (
-    _CorrectivePersistenceHarness,
     _aggregate_snapshot,
     _assert_published_snapshot,
+    _CorrectivePersistenceHarness,
     _persist,
     _prepare,
 )

@@ -11,7 +11,9 @@ ROUTES = (
     ROOT / "src/google_work_agent/api/routes/events.py",
 )
 USE_CASE_ROOT = ROOT / "src/google_work_agent/application/use_cases"
-LANGGRAPH_RESUME = ROOT / "src/google_work_agent/adapters/langgraph/resume_authority.py"
+LANGGRAPH_RESUME = (
+    ROOT / "src/google_work_agent/adapters/langgraph/main/resume_checkpoint.py"
+)
 OWNERS = ("run", "conversation", "message", "recovery")
 
 _REAUTH_FORBIDDEN_MEMBERS = {
@@ -271,12 +273,16 @@ def test_reauth_langgraph_resume_is_checkpoint_transport_only() -> None:
     source = LANGGRAPH_RESUME.read_text(encoding="utf-8")
     violations = _reauth_semantic_authority_violations(
         source,
-        "LangGraphWorkflowRuntime",
+        "ResumeCheckpointMixin",
         "_resume_after_reauth_transition",
     )
     assert not violations, "reauth adapter owns transitive semantic authority: " + "; ".join(sorted(violations))
 
-    reachable = _reachable_class_methods(source, "LangGraphWorkflowRuntime", "_resume_after_reauth_transition")
+    reachable = _reachable_class_methods(
+        source,
+        "ResumeCheckpointMixin",
+        "_resume_after_reauth_transition",
+    )
     calls = {
         ast.unparse(node.func)
         for method in reachable.values()

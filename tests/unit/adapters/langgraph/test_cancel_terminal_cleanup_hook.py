@@ -1,4 +1,4 @@
-from google_work_agent.adapters.langgraph.freshness_workflow import (
+from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
 

@@ -17,7 +17,7 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     merge_trace_context,
     record_llm_result,
 )
-from google_work_agent.adapters.langgraph.graph_state import (
+from google_work_agent.adapters.langgraph.main.state import (
     ACQUISITION_AGENT_LOCAL_KEY,
     ACQUISITION_PLANNING_OUTPUT_KEY,
     GraphState,
@@ -27,6 +27,10 @@ from google_work_agent.adapters.langgraph.graph_state import (
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import AcquisitionLocalState
+from google_work_agent.application.orchestration.api_acquisition import (
+    ApiDiscoveryAcquisitionAgent,
+    validate_acquisition_result_v1,
+)
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionRequestV1,
     AgentLocalStateV1,
@@ -34,15 +38,13 @@ from google_work_agent.application.orchestration.contracts import (
     MultiAgentGraphState,
     WorkflowPhase,
 )
-from google_work_agent.application.orchestration.api_acquisition import (
-    ApiDiscoveryAcquisitionAgent,
-    validate_acquisition_result_v1,
+from google_work_agent.application.orchestration.retrieval_read_cache import (
+    RunScopedReadResultCache,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
 )
-from google_work_agent.application.orchestration.retrieval_read_cache import RunScopedReadResultCache
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]

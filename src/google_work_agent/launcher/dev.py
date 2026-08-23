@@ -23,7 +23,7 @@ from google_work_agent.adapters.connectors.google_workspace_execution import (
 )
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
 from google_work_agent.adapters.keyring import OSKeyringSecretStore
-from google_work_agent.adapters.langgraph.resume_authority import LangGraphWorkflowRuntime
+from google_work_agent.adapters.langgraph.main.workflow import LangGraphWorkflowRuntime
 from google_work_agent.adapters.llm import (
     DEFAULT_GEMINI_MODEL_ID,
     APIProviderConnectionService,
@@ -59,16 +59,16 @@ from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bind import LocalBindPolicy
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
-from google_work_agent.application.google_connection import (
-    DisconnectGoogleService,
-    GetGoogleConnectionService,
-    StartGoogleOAuthService,
-)
 from google_work_agent.application.attachments import (
     GetGmailAttachmentService,
     StageAttachmentService,
 )
 from google_work_agent.application.coordinator import LocalRunCoordinator
+from google_work_agent.application.google_connection import (
+    DisconnectGoogleService,
+    GetGoogleConnectionService,
+    StartGoogleOAuthService,
+)
 from google_work_agent.application.llm import (
     DeleteLLMApiKeyService,
     GetLLMConnectionService,
@@ -76,6 +76,11 @@ from google_work_agent.application.llm import (
     PromptRepairSchemaRepairer,
     StoreLLMApiKeyService,
     TestLLMConnectionService,
+)
+from google_work_agent.application.orchestration.prompt_registry import (
+    InactivePromptArtifactError,
+    default_prompt_manifest_path,
+    resolve_instruction_text,
 )
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.resource_queries import ResourceQueryService
@@ -86,11 +91,6 @@ from google_work_agent.application.start_run import (
     RejectWriteActionService,
     ResumeRunService,
     StartRunService,
-)
-from google_work_agent.application.orchestration.prompt_registry import (
-    InactivePromptArtifactError,
-    default_prompt_manifest_path,
-    resolve_instruction_text,
 )
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,

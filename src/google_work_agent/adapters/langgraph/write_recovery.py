@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-from google_work_agent.adapters.langgraph.graph_state import GraphState
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.write_reconciliation import (
     ReconcileAggregate,
     reconcile_write_conflict,
@@ -14,8 +14,8 @@ from google_work_agent.application.execution_phase import (
     UnknownRecoveryPhaseRequest,
     WriteExecutionPhaseCoordinator,
 )
-from google_work_agent.application.run_terminal import RunTransitionResponse
 from google_work_agent.application.orchestration.contracts import WorkflowPhase
+from google_work_agent.application.run_terminal import RunTransitionResponse
 from google_work_agent.domain import (
     ActionStatus,
     CommandResult,

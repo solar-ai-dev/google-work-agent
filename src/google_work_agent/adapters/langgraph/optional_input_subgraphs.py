@@ -22,7 +22,7 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     ensure_llm_call_budget,
     merge_trace_context,
 )
-from google_work_agent.adapters.langgraph.graph_state import (
+from google_work_agent.adapters.langgraph.main.state import (
     ANALYSIS_AGENT_LOCAL_KEY,
     PLANNING_AGENT_LOCAL_KEY,
     PLANNING_MODE_KEY,
@@ -42,13 +42,8 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
 from google_work_agent.adapters.langgraph.subgraphs.planning.runtime_active_graph import (
     RuntimeActivePlanningSubgraph,
 )
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis_workflow import WorkAnalysisSubgraph
-from google_work_agent.application.orchestration.handoff_contracts import (
-    ActionPlanDraftV1,
-    AnswerDraftV1,
-    EvidenceDraftV1,
-    ReviewIssueV1,
-    WorkAnalysisResultV1,
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis_workflow import (
+    WorkAnalysisSubgraph,
 )
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
@@ -56,9 +51,12 @@ from google_work_agent.application.orchestration.contracts import (
     GraphStateUpdateV1,
     WorkflowPhase,
 )
-from google_work_agent.application.orchestration.supervisor import (
-    SupervisorDecisionV1,
-    route_supervisor,
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ActionPlanDraftV1,
+    AnswerDraftV1,
+    EvidenceDraftV1,
+    ReviewIssueV1,
+    WorkAnalysisResultV1,
 )
 from google_work_agent.application.orchestration.optional_agent_inputs import (
     CanonicalOptionalInputPlanningAgent,
@@ -69,6 +67,10 @@ from google_work_agent.application.orchestration.optional_agent_inputs import (
 )
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     resolve_evidence_projection,
+)
+from google_work_agent.application.orchestration.supervisor import (
+    SupervisorDecisionV1,
+    route_supervisor,
 )
 from google_work_agent.ports import StructuredLLMResult
 

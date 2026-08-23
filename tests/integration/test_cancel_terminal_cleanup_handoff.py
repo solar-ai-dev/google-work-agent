@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 
-from google_work_agent.adapters.langgraph.freshness_workflow import (
+from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
 from google_work_agent.application.coordinator import LocalRunCoordinator

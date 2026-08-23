@@ -21,7 +21,7 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     merge_trace_context,
     record_llm_result,
 )
-from google_work_agent.adapters.langgraph.graph_state import (
+from google_work_agent.adapters.langgraph.main.state import (
     PROFILE_AGENT_LOCAL_KEY,
     PROFILE_REASON_PLAN_OUTPUT_KEY,
     PROFILE_REQUEST_SOURCE_OUTPUT_KEY,
@@ -42,16 +42,22 @@ from google_work_agent.adapters.langgraph.subgraphs.profile_shared import (
     profile_request_source_prompt_input,
     profile_trace_context,
 )
+from google_work_agent.application.orchestration.api_acquisition import (
+    ApiDiscoveryAcquisitionAgent,
+)
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
     WorkflowPhase,
 )
-from google_work_agent.application.orchestration.api_acquisition import (
-    ApiDiscoveryAcquisitionAgent,
-)
 from google_work_agent.application.orchestration.plan_review import PlanReviewAgent
+from google_work_agent.application.orchestration.profile_fused import (
+    PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA,
+    PROFILE_REQUEST_SOURCE_OUTPUT_SCHEMA,
+    validate_profile_reason_plan_output_v1,
+    validate_profile_request_source_output_v1,
+)
 from google_work_agent.application.orchestration.request_understanding import (
     RequestUnderstandingAgent,
 )
@@ -68,12 +74,6 @@ from google_work_agent.application.orchestration.supervisor import (
     route_supervisor,
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
-from google_work_agent.application.orchestration.profile_fused import (
-    PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA,
-    PROFILE_REQUEST_SOURCE_OUTPUT_SCHEMA,
-    validate_profile_reason_plan_output_v1,
-    validate_profile_request_source_output_v1,
-)
 from google_work_agent.ports import PromptReference
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]

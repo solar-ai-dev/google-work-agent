@@ -18,22 +18,19 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
+from google_work_agent.adapters.langgraph.main.graph import (
+    GraphNodeBindings,
+    WorkflowGraphComposition,
+)
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    RESPONSE_SYNTHESIS_TARGET,
+)
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.optional_input_subgraphs import (
     CanonicalOptionalPlanningSubgraph,
     CanonicalOptionalWorkAnalysisSubgraph,
 )
-from google_work_agent.adapters.langgraph.plan_persistence import (
-    LangGraphWorkflowRuntime as _CanonicalPlanningRuntime,
-)
-from google_work_agent.adapters.langgraph.graph_composition import (
-    GraphNodeBindings,
-    WorkflowGraphComposition,
-)
-from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.route_translation import (
-    RESPONSE_SYNTHESIS_TARGET,
-)
 from google_work_agent.application.orchestration.contracts import (
     FinalizeIntent,
     GraphStateUpdateV1,
@@ -41,13 +38,13 @@ from google_work_agent.application.orchestration.contracts import (
     WorkflowPhase,
     validate_finalize_intent_v1,
 )
-from google_work_agent.application.orchestration.supervisor import (
-    SupervisorDecisionV1,
-    SupervisorTarget,
-)
 from google_work_agent.application.orchestration.optional_agent_inputs import (
     CanonicalOptionalInputPlanningAgent,
     CanonicalOptionalInputWorkAnalysisAgent,
+)
+from google_work_agent.application.orchestration.supervisor import (
+    SupervisorDecisionV1,
+    SupervisorTarget,
 )
 
 _REVIEW_TARGETS = frozenset(
@@ -239,7 +236,7 @@ def _response_contract_violation(state: GraphState, reason_code: str) -> GraphSt
     }
 
 
-class LangGraphWorkflowRuntime(_CanonicalPlanningRuntime):
+class ResponseSynthesisMixin:
     """Canonical runtime with response synthesis and optional-stage routing."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -326,7 +323,7 @@ class LangGraphWorkflowRuntime(_CanonicalPlanningRuntime):
 
 
 __all__ = [
-    "LangGraphWorkflowRuntime",
+    "ResponseSynthesisMixin",
     "canonicalize_answer_only_decision",
     "canonicalize_optional_stage_decision",
     "response_synthesis_state",

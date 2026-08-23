@@ -1,4 +1,4 @@
-"""LangGraph node binding and graph composition for workflow profiles."""
+"""Canonical Main LangGraph node binding and graph composition."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from langgraph.graph import END, START, StateGraph
 from google_work_agent.adapters.langgraph.checkpoint_secret_boundary import (
     SecretBoundaryCheckpointer,
 )
-from google_work_agent.adapters.langgraph.graph_state import GraphState
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 
 

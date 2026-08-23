@@ -37,17 +37,17 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     merge_trace_context,
     record_llm_result,
 )
-from google_work_agent.adapters.langgraph.graph_state import (
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    RESUME_CONTRACT_VERSION,
+    confirmation_resume_status,
+)
+from google_work_agent.adapters.langgraph.main.state import (
     ANALYSIS_AGENT_LOCAL_KEY,
     ParentGraphState,
     _require_state_value,
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.route_translation import (
-    RESUME_CONTRACT_VERSION,
-    confirmation_resume_status,
-)
 from google_work_agent.adapters.langgraph.subgraph_state import (
     WorkAnalysisInputState,
     WorkAnalysisLocalState,
@@ -59,6 +59,17 @@ from google_work_agent.application.orchestration.contracts import (
     MultiAgentGraphState,
     WorkflowPhase,
 )
+from google_work_agent.application.orchestration.handoff_contracts import (
+    RequestIntentV2,
+    WorkAnalysisResultV1,
+)
+from google_work_agent.application.orchestration.request_understanding import (
+    build_user_interrupt_v1,
+)
+from google_work_agent.application.orchestration.retrieval_evidence_store import (
+    RunScopedEvidenceStore,
+    resolve_evidence_projection,
+)
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
@@ -66,17 +77,6 @@ from google_work_agent.application.orchestration.supervisor import (
 from google_work_agent.application.orchestration.work_analysis import (
     WorkAnalysisAgent,
     build_work_analysis_clarification_question,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    WorkAnalysisResultV1,
-)
-from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
-from google_work_agent.application.orchestration.request_understanding import (
-    build_user_interrupt_v1,
-)
-from google_work_agent.application.orchestration.retrieval_evidence_store import (
-    RunScopedEvidenceStore,
-    resolve_evidence_projection,
 )
 from google_work_agent.ports import StructuredLLMResult
 

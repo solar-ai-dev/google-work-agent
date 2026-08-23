@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from google_work_agent.adapters.langgraph.graph_state import request_from_state
+from google_work_agent.adapters.langgraph.main.state import request_from_state
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state import (
     RequestUnderstandingState,
 )

@@ -12,12 +12,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-from google_work_agent.adapters.langgraph.graph_state import (
+from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
     _require_state_value,
     request_from_state,
 )
-from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.contracts import GraphStateUpdateV1
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
@@ -28,27 +28,27 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RetrievalResultV1,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.orchestration.retrieval_finalize import (
-    finalize_retrieval_result,
+from google_work_agent.application.orchestration.profile_fused import (
+    ProfilePlanningProjectionV1,
+    ProfileReasonPlanOutputV1,
 )
 from google_work_agent.application.orchestration.request_understanding import (
     materialize_request_intent_artifact,
 )
-from google_work_agent.application.orchestration.tool_routing import (
-    ToolRouteCoordinator,
-    ToolRoutePlanV2,
+from google_work_agent.application.orchestration.retrieval_finalize import (
+    finalize_retrieval_result,
 )
-from google_work_agent.application.orchestration.contracts import GraphStateUpdateV1
 from google_work_agent.application.orchestration.solution_planning import (
     SolutionPlanningAgent,
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
-from google_work_agent.application.orchestration.profile_fused import (
-    ProfilePlanningProjectionV1,
-    ProfileReasonPlanOutputV1,
+from google_work_agent.application.orchestration.tool_routing import (
+    ToolRouteCoordinator,
+    ToolRoutePlanV2,
 )
 from google_work_agent.ports import WorkflowStartRequest
+from google_work_agent.ports.observability_events import ObservabilityContext
 
 
 class ProfileToolRouteError(ValueError):

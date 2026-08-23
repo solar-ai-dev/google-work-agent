@@ -1,8 +1,8 @@
 from threading import Lock
 from typing import cast
 
-from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCoordinator
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.domain import RunStatus
 

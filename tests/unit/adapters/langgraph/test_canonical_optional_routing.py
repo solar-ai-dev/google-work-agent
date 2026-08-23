@@ -2,10 +2,10 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.adapters.langgraph.response_workflow import (
+from google_work_agent.adapters.langgraph.main.response_synthesis import (
     canonicalize_optional_stage_decision,
 )
-from google_work_agent.adapters.langgraph.graph_state import GraphState
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.application.orchestration.contracts import (
     GraphStateUpdateV1,
     WorkflowPhase,

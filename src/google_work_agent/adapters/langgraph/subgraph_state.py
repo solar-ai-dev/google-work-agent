@@ -8,7 +8,12 @@ from __future__ import annotations
 
 from typing import NotRequired, TypedDict
 
-from google_work_agent.adapters.langgraph.graph_state import GraphState
+from google_work_agent.adapters.langgraph.main.state import GraphState
+from google_work_agent.application.orchestration.contracts import (
+    AgentLocalStateV1,
+    MultiAgentGraphState,
+    RunBudgetV1,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
@@ -26,11 +31,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     SourcePlanningOutputV1,
     SufficiencyResultV2,
     WorkAnalysisResultV1,
-)
-from google_work_agent.application.orchestration.contracts import (
-    AgentLocalStateV1,
-    MultiAgentGraphState,
-    RunBudgetV1,
 )
 from google_work_agent.application.orchestration.profile_fused import (
     ProfileReasonPlanOutputV1,

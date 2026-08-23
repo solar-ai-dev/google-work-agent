@@ -8,12 +8,12 @@ from typing import Any, cast
 from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import merge_trace_context
-from google_work_agent.adapters.langgraph.graph_state import ParentGraphState, request_from_state
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.route_translation import (
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
     confirmation_resume_status,
 )
+from google_work_agent.adapters.langgraph.main.state import ParentGraphState, request_from_state
+from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.nodes.detect_ambiguity_node import (
     detect_ambiguity_node,
 )
@@ -33,24 +33,22 @@ from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state 
     RequestUnderstandingInputState,
     RequestUnderstandingState,
 )
-from google_work_agent.application.orchestration.handoff_contracts import (
-    ClarificationQuestionV1,
-)
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
     WorkflowPhase,
 )
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ClarificationQuestionV1,
+)
 from google_work_agent.application.orchestration.request_understanding import (
     RequestUnderstandingAgent,
+    build_user_interrupt_v1,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
-)
-from google_work_agent.application.orchestration.request_understanding import (
-    build_user_interrupt_v1,
 )
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]

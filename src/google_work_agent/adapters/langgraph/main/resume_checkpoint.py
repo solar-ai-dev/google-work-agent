@@ -6,14 +6,11 @@ from typing import Any, cast
 
 from langgraph.types import interrupt
 
-from google_work_agent.adapters.langgraph.freshness_workflow import (
-    LangGraphWorkflowRuntime as _CanonicalFreshnessRuntime,
-)
-from google_work_agent.adapters.langgraph.graph_state import GraphState
-from google_work_agent.adapters.langgraph.route_translation import (
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     confirmation_owner,
     confirmation_resume_status,
 )
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseV1,
     WorkflowPhase,
@@ -24,7 +21,7 @@ from google_work_agent.domain import RunStatus
 from google_work_agent.ports import WorkflowInvocationResult, WorkflowOutcome, WorkflowResumeRequest
 
 
-class LangGraphWorkflowRuntime(_CanonicalFreshnessRuntime):
+class ResumeCheckpointMixin:
     """Expose persisted resume targets and continue only Handler-decided resumes."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -283,4 +280,4 @@ def _reauth_resume_status(state: GraphState) -> str | None:
     return None if target is None else target.value
 
 
-__all__ = ["LangGraphWorkflowRuntime"]
+__all__ = ["ResumeCheckpointMixin"]

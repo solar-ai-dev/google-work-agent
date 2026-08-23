@@ -1,7 +1,7 @@
 from threading import Lock
 from typing import cast
 
-from google_work_agent.adapters.langgraph.workflow_runtime import GraphState, LangGraphWorkflowRuntime
+from google_work_agent.adapters.langgraph.main.workflow import GraphState, LangGraphWorkflowRuntime
 from google_work_agent.ports import WorkflowCancelRequest, WorkflowOutcome
 
 

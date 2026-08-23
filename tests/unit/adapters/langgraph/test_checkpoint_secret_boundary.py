@@ -346,7 +346,7 @@ def test_sync_sqlite_capabilities_are_not_expanded_to_async() -> None:
 
 
 def test_workflow_graph_composition_wraps_product_checkpointer() -> None:
-    from google_work_agent.adapters.langgraph.graph_composition import (
+    from google_work_agent.adapters.langgraph.main.graph import (
         GraphNodeBindings,
         WorkflowGraphComposition,
     )

@@ -1,7 +1,6 @@
-"""Canonical confirmation interrupt/resume behavior for the LangGraph runtime.
+"""Confirmation interrupt/resume component for the canonical Main workflow.
 
-This module deliberately subclasses the large legacy runtime instead of
-rewriting it. It replaces only the confirmation boundary that owns:
+This component owns only the confirmation boundary:
 
 * durable interrupt metadata projection,
 * interrupt-id/owner/resume-target validation,
@@ -20,35 +19,30 @@ from langgraph.types import interrupt
 from google_work_agent.adapters.langgraph.confirmation_llm_runtime import (
     ConfirmationAwareLLMRuntime,
 )
-from google_work_agent.adapters.langgraph.graph_state import GraphState
-from google_work_agent.adapters.langgraph.route_translation import (
-    confirmation_resume_node_id,
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     confirmation_owner,
+    confirmation_resume_node_id,
     confirmation_resume_status,
 )
-from google_work_agent.adapters.langgraph.workflow_runtime import (
-    LangGraphWorkflowRuntime as _LegacyLangGraphWorkflowRuntime,
-)
-from google_work_agent.ports.observability_events import sanitize_event_attributes
-from google_work_agent.application.write_cancellation import has_durable_cancel_intent
-from google_work_agent.application.orchestration.contracts import (
-    GraphStateUpdateV1,
-    WorkflowPhase,
-)
-from google_work_agent.application.orchestration.supervisor import (
-    SupervisorDecisionV1,
-    SupervisorTarget,
-)
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseV1,
+    GraphStateUpdateV1,
     PolicyConfirmationReceiptV1,
+    WorkflowPhase,
     validate_confirmation_response_v1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     RegisteredResumeTargetRefV1,
 )
+from google_work_agent.application.orchestration.supervisor import (
+    SupervisorDecisionV1,
+    SupervisorTarget,
+)
+from google_work_agent.application.write_cancellation import has_durable_cancel_intent
 from google_work_agent.domain import RunStatus
 from google_work_agent.ports import AuditEventRecord
+from google_work_agent.ports.observability_events import sanitize_event_attributes
 
 
 class _ConfirmationRunRepository(Protocol):
@@ -76,8 +70,8 @@ _OWNER_WORKFLOW_PHASE = {
 }
 
 
-class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
-    """Legacy runtime with canonical confirmation and durable safety authorities."""
+class ConfirmationControllerMixin:
+    """Canonical confirmation and durable safety behavior."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         llm_runtime = kwargs.get("llm_runtime")
@@ -441,4 +435,4 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
             raise ValueError("closed-choice confirmation requires OPTION_SELECTION")
 
 
-__all__ = ["LangGraphWorkflowRuntime"]
+__all__ = ["ConfirmationControllerMixin"]

@@ -18,31 +18,28 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
-from google_work_agent.adapters.langgraph.response_workflow import (
-    LangGraphWorkflowRuntime as _CanonicalResponseRuntime,
-)
 from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
     CorrectivePlanContinuationRequired,
     persist_reachable_corrective_write_plan,
 )
-from google_work_agent.adapters.langgraph.graph_state import GraphState
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.application.cancel_intent import (
     CancelIntentReceiptReader,
     has_durable_cancel_intent,
-)
-from google_work_agent.application.run_terminal import (
-    CompleteWriteRunCommand,
-    RunTransitionResponse,
 )
 from google_work_agent.application.orchestration.contracts import (
     GraphStateUpdateV1,
     WorkflowPhase,
 )
+from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,
 )
-from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
+from google_work_agent.application.run_terminal import (
+    CompleteWriteRunCommand,
+    RunTransitionResponse,
+)
 from google_work_agent.domain import ActionStatus, RunStatus
 from google_work_agent.ports import (
     PlanStatus,
@@ -53,7 +50,7 @@ from google_work_agent.ports import (
 )
 
 
-class LangGraphWorkflowRuntime(_CanonicalResponseRuntime):
+class ArtifactFreshnessMixin:
     """Release runtime with canonical freshness and write safety seams."""
 
     def _merge_decision(
@@ -346,4 +343,4 @@ def _is_route_reconsideration_to_tool_route(state: GraphState) -> bool:
     return isinstance(signal, Mapping) and signal.get("kind") == "ROUTE_RECONSIDERATION_REQUIRED"
 
 
-__all__ = ["LangGraphWorkflowRuntime"]
+__all__ = ["ArtifactFreshnessMixin"]

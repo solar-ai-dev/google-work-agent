@@ -17,11 +17,17 @@ from langgraph.types import interrupt
 from google_work_agent.adapters.connectors.google_workspace_reader import (
     GoogleWorkspaceConnectorReader,
 )
-from google_work_agent.adapters.langgraph.graph_composition import (
+from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCoordinator
+from google_work_agent.adapters.langgraph.main.graph import (
     GraphNodeBindings,
     WorkflowGraphComposition,
 )
-from google_work_agent.adapters.langgraph.graph_state import (
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    GraphRouteTranslator,
+    UnroutableSupervisorTargetError,
+    build_resume_target_registry,
+)
+from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
     _acquired_resource_by_handle,
     _require_state_value,
@@ -30,16 +36,10 @@ from google_work_agent.adapters.langgraph.graph_state import (
     initial_graph_state,
     request_from_state,
 )
-from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCoordinator
 from google_work_agent.adapters.langgraph.pre_analysis_composition import (
     build_pre_analysis_subgraphs,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.route_translation import (
-    GraphRouteTranslator,
-    UnroutableSupervisorTargetError,
-    build_resume_target_registry,
-)
 from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
     PlanningSubgraph,
     planning_mode_from_request_intent,
@@ -55,70 +55,15 @@ from google_work_agent.adapters.langgraph.subgraphs.three_stage import (
     ThreeStageReviewSubgraph,
     ThreeStageTwoSubgraph,
 )
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis_workflow import WorkAnalysisSubgraph
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis_workflow import (
+    WorkAnalysisSubgraph,
+)
 from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
 from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoordinator
-from google_work_agent.application.run_terminal import (
-    BlockRunCommand,
-    BlockRunService,
-    CompleteWriteRunCommand,
-    FailRunCommand,
-    FailRunService,
-    derive_finalize_intent,
-)
-from google_work_agent.application.read_contracts import (
-    ClaimReadActionCommand,
-    CompleteReadActionCommand,
-    FailReadActionCommand,
-    FinalizeReadActionCommand,
-    PublishReadOnlyPlanCommand,
-    ReadActionDraft,
-    ReadEvidenceDraft,
-    SaveReadOnlyPlanCommand,
-)
-from google_work_agent.application.read_lifecycle import (
-    ClaimReadActionService,
-    CompleteReadActionService,
-    FailReadActionService,
-    FinalizeReadActionService,
-)
 from google_work_agent.application.answer_only import (
     CompleteAnswerOnlyRunCommand,
     CompleteAnswerOnlyRunService,
 )
-from google_work_agent.application.write_run_completion import CompleteWriteRunService
-from google_work_agent.application.read_execution import ExecuteReadActionService
-from google_work_agent.application.write_result_persistence import (
-    MarkWriteActionFailedService,
-    StoreWriteActionSuccessService,
-)
-from google_work_agent.application.write_recovery_contracts import (
-    MarkWriteActionUnknownResultCommand,
-)
-from google_work_agent.application.write_recovery import (
-    MarkWriteActionUnknownResultService,
-    RecoverUnknownCreateActionService,
-    RecoverUnknownDeleteActionService,
-    RecoverUnknownSendActionService,
-    RecoverUnknownUpdateActionService,
-)
-from google_work_agent.application.write_preflight import PreflightWriteActionService
-from google_work_agent.application.read_plan import (
-    PublishReadOnlyPlanService,
-    SaveReadOnlyPlanService,
-)
-from google_work_agent.application.write_plan_contracts import (
-    PublishWritePlanCommand,
-    SaveWritePlanCommand,
-    WriteActionDraft,
-    WriteEvidenceDraft,
-)
-from google_work_agent.application.write_plan import (
-    PublishWritePlanService,
-    SaveWritePlanService,
-)
-from google_work_agent.application.write_reauth import RequireWriteReauthService
-from google_work_agent.application.write_verification import VerifyWriteActionService
 from google_work_agent.application.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     evidence_calendar_conflict_risk,
@@ -128,20 +73,12 @@ from google_work_agent.application.execution_phase import (
     WriteExecutionPhaseCoordinator,
 )
 from google_work_agent.application.feasibility import evidence_feasibility_risk
-from google_work_agent.ports.connectors.execution import (
-    ConnectorExecutionPort,
-)
-from google_work_agent.application.task_duplicates import (
-    TASK_CREATE_TOOL,
-    evidence_duplicate_risk,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    AcquisitionResultV1,
-    ActionPlanDraftV1,
-    PlanReviewResultV1,
-)
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
+    load_acquisition_plan_sources_prompt_reference,
+)
+from google_work_agent.application.orchestration.context_retrieval import (
+    ContextRetrievalAgent,
 )
 from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
@@ -154,30 +91,15 @@ from google_work_agent.application.orchestration.contracts import (
     WorkflowPhase,
     approve_planning_revision,
 )
-from google_work_agent.application.orchestration.context_retrieval import (
-    ContextRetrievalAgent,
-)
 from google_work_agent.application.orchestration.domain_validation import (
     DomainValidationService,
 )
+from google_work_agent.application.orchestration.handoff_contracts import (
+    AcquisitionResultV1,
+    ActionPlanDraftV1,
+    PlanReviewResultV1,
+)
 from google_work_agent.application.orchestration.plan_review import PlanReviewAgent
-from google_work_agent.application.orchestration.request_understanding import (
-    RequestUnderstandingAgent,
-)
-from google_work_agent.application.orchestration.solution_planning import (
-    SolutionPlanningAgent,
-)
-from google_work_agent.application.orchestration.supervisor import (
-    SupervisorDecisionV1,
-    SupervisorTarget,
-    route_supervisor,
-)
-from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
-from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
-from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
-from google_work_agent.application.orchestration.api_acquisition import (
-    load_acquisition_plan_sources_prompt_reference,
-)
 from google_work_agent.application.orchestration.planning_argument_orchestrator import (
     PlanningArgumentOrchestrator,
 )
@@ -195,6 +117,9 @@ from google_work_agent.application.orchestration.profile_fused import (
     load_profile_three_stage1_prompt_reference,
     load_profile_three_stage2_prompt_reference,
 )
+from google_work_agent.application.orchestration.request_understanding import (
+    RequestUnderstandingAgent,
+)
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,
     resolve_evidence_projection,
@@ -205,12 +130,88 @@ from google_work_agent.application.orchestration.retrieval_query_plan_schema imp
 from google_work_agent.application.orchestration.retrieval_query_planner import (
     RetrievalQueryPlannerAgent,
 )
-from google_work_agent.application.orchestration.retrieval_read_cache import RunScopedReadResultCache
-from google_work_agent.application.orchestration.retrieval_read_executor import RetrievalReadExecutor
+from google_work_agent.application.orchestration.retrieval_read_cache import (
+    RunScopedReadResultCache,
+)
+from google_work_agent.application.orchestration.retrieval_read_executor import (
+    RetrievalReadExecutor,
+)
+from google_work_agent.application.orchestration.solution_planning import (
+    SolutionPlanningAgent,
+)
+from google_work_agent.application.orchestration.supervisor import (
+    SupervisorDecisionV1,
+    SupervisorTarget,
+    route_supervisor,
+)
+from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
+from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
+from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
+from google_work_agent.application.read_contracts import (
+    ClaimReadActionCommand,
+    CompleteReadActionCommand,
+    FailReadActionCommand,
+    FinalizeReadActionCommand,
+    PublishReadOnlyPlanCommand,
+    ReadActionDraft,
+    ReadEvidenceDraft,
+    SaveReadOnlyPlanCommand,
+)
+from google_work_agent.application.read_execution import ExecuteReadActionService
+from google_work_agent.application.read_lifecycle import (
+    ClaimReadActionService,
+    CompleteReadActionService,
+    FailReadActionService,
+    FinalizeReadActionService,
+)
+from google_work_agent.application.read_plan import (
+    PublishReadOnlyPlanService,
+    SaveReadOnlyPlanService,
+)
+from google_work_agent.application.run_terminal import (
+    BlockRunCommand,
+    BlockRunService,
+    CompleteWriteRunCommand,
+    FailRunCommand,
+    FailRunService,
+    derive_finalize_intent,
+)
+from google_work_agent.application.task_duplicates import (
+    TASK_CREATE_TOOL,
+    evidence_duplicate_risk,
+)
 from google_work_agent.application.write_actions import (
     ClaimWriteActionService,
     ExecuteWriteActionService,
 )
+from google_work_agent.application.write_plan import (
+    PublishWritePlanService,
+    SaveWritePlanService,
+)
+from google_work_agent.application.write_plan_contracts import (
+    PublishWritePlanCommand,
+    SaveWritePlanCommand,
+    WriteActionDraft,
+    WriteEvidenceDraft,
+)
+from google_work_agent.application.write_preflight import PreflightWriteActionService
+from google_work_agent.application.write_reauth import RequireWriteReauthService
+from google_work_agent.application.write_recovery import (
+    MarkWriteActionUnknownResultService,
+    RecoverUnknownCreateActionService,
+    RecoverUnknownDeleteActionService,
+    RecoverUnknownSendActionService,
+    RecoverUnknownUpdateActionService,
+)
+from google_work_agent.application.write_recovery_contracts import (
+    MarkWriteActionUnknownResultCommand,
+)
+from google_work_agent.application.write_result_persistence import (
+    MarkWriteActionFailedService,
+    StoreWriteActionSuccessService,
+)
+from google_work_agent.application.write_run_completion import CompleteWriteRunService
+from google_work_agent.application.write_verification import VerifyWriteActionService
 from google_work_agent.domain import (
     ActionStatus,
     CalendarWorkHours,
@@ -239,6 +240,9 @@ from google_work_agent.ports import (
     WorkflowRuntime,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.connectors.execution import (
+    ConnectorExecutionPort,
+)
 from google_work_agent.ports.repositories import ActionRecord
 
 JsonObject = dict[str, object]
@@ -258,7 +262,7 @@ def _legacy_connector_identity_unavailable() -> str:
     )
 
 
-class LangGraphWorkflowRuntime(WorkflowRuntime):
+class WorkflowRuntimeCore(WorkflowRuntime):
     """LangGraph runtime with selectable Stage 18 graph profiles."""
 
     def __init__(
@@ -1858,3 +1862,34 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         return sha256(dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
     _planning_mode_from_request_intent = staticmethod(planning_mode_from_request_intent)
+
+
+from google_work_agent.adapters.langgraph.main.artifact_freshness import (  # noqa: E402
+    ArtifactFreshnessMixin,
+)
+from google_work_agent.adapters.langgraph.main.confirmation_controller import (  # noqa: E402
+    ConfirmationControllerMixin,
+)
+from google_work_agent.adapters.langgraph.main.plan_persistence import (  # noqa: E402
+    PlanPersistenceMixin,
+)
+from google_work_agent.adapters.langgraph.main.response_synthesis import (  # noqa: E402
+    ResponseSynthesisMixin,
+)
+from google_work_agent.adapters.langgraph.main.resume_checkpoint import (  # noqa: E402
+    ResumeCheckpointMixin,
+)
+
+
+class LangGraphWorkflowRuntime(
+    ResumeCheckpointMixin,
+    ArtifactFreshnessMixin,
+    ResponseSynthesisMixin,
+    PlanPersistenceMixin,
+    ConfirmationControllerMixin,
+    WorkflowRuntimeCore,
+):
+    """Single concrete production authority for the LangGraph workflow."""
+
+
+__all__ = ["LangGraphWorkflowRuntime"]

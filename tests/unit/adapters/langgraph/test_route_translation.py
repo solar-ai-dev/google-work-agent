@@ -1,13 +1,13 @@
 import pytest
 
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.route_translation import (
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     GraphRouteTranslator,
     UnroutableSupervisorTargetError,
     build_resume_target_registry,
     confirmation_owner,
     confirmation_resume_status,
 )
+from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.application.orchestration.supervisor import SupervisorTarget
 from google_work_agent.domain import RunStatus
 

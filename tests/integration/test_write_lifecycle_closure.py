@@ -5,12 +5,12 @@ from __future__ import annotations
 import inspect
 
 import google_work_agent.adapters.langgraph.corrective_plan_persistence as corrective_persistence
-import google_work_agent.adapters.langgraph.plan_persistence as canonical_planning_runtime
+import google_work_agent.adapters.langgraph.main.plan_persistence as plan_persistence
 import google_work_agent.application.run_terminal as run_terminal
-from google_work_agent.adapters.langgraph.freshness_workflow import (
+from google_work_agent.adapters.langgraph.main.state import ParentGraphState
+from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
-from google_work_agent.adapters.langgraph.graph_state import ParentGraphState
 from google_work_agent.adapters.persistence.corrective_plan_repository import (
     CorrectiveAwareSQLitePlanRepository,
 )
@@ -69,7 +69,7 @@ def test_corrective_resume_retries_pending_non_interrupt_task_and_reconciles_pub
 
 def test_corrective_persistence_separates_reserved_plan_from_child_remapping() -> None:
     ordinary_source = inspect.getsource(
-        canonical_planning_runtime.LangGraphWorkflowRuntime._persist_write_plan
+        plan_persistence.PlanPersistenceMixin._persist_write_plan
     )
     corrective_source = inspect.getsource(corrective_persistence)
     runtime_source = inspect.getsource(LangGraphWorkflowRuntime._persist_write_plan)

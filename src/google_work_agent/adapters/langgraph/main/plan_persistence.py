@@ -15,17 +15,23 @@ from typing import Any, cast
 
 from google_work_agent.adapters.connectors.execution_router import ConnectorExecutionRouter
 from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
-from google_work_agent.adapters.langgraph.workflow_adapter import (
-    LangGraphWorkflowRuntime as _ConfirmationLangGraphWorkflowRuntime,
-)
 from google_work_agent.adapters.langgraph.connector_execution_scope import (
     ConnectorBoundWriteExecutionPhaseCoordinator,
 )
-from google_work_agent.adapters.langgraph.graph_state import (
+from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
     _acquired_resource_by_handle,
     _require_state_value,
     _resource_handle_for_ref,
+)
+from google_work_agent.application.calendar_conflicts import CALENDAR_CONFLICT_TOOLS
+from google_work_agent.application.feasibility import evidence_feasibility_risk
+from google_work_agent.application.orchestration.handoff_contracts import (
+    AcquisitionResultV1,
+    ActionPlanDraftV1,
+)
+from google_work_agent.application.orchestration.retrieval_evidence_store import (
+    resolve_evidence_projection,
 )
 from google_work_agent.application.read_contracts import (
     PublishReadOnlyPlanCommand,
@@ -33,29 +39,22 @@ from google_work_agent.application.read_contracts import (
     ReadEvidenceDraft,
     SaveReadOnlyPlanCommand,
 )
+from google_work_agent.application.resource_ref_projection import resource_ref_from_snapshot
+from google_work_agent.application.task_duplicates import TASK_CREATE_TOOL, evidence_duplicate_risk
 from google_work_agent.application.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
     WriteActionDraft,
     WriteEvidenceDraft,
 )
-from google_work_agent.application.calendar_conflicts import CALENDAR_CONFLICT_TOOLS
-from google_work_agent.application.feasibility import evidence_feasibility_risk
-from google_work_agent.ports.connectors.execution import (
-    ConnectorExecutionPort,
-)
-from google_work_agent.application.resource_ref_projection import resource_ref_from_snapshot
-from google_work_agent.application.task_duplicates import TASK_CREATE_TOOL, evidence_duplicate_risk
-from google_work_agent.application.orchestration.handoff_contracts import (
-    AcquisitionResultV1,
-    ActionPlanDraftV1,
-)
-from google_work_agent.application.orchestration.retrieval_evidence_store import resolve_evidence_projection
 from google_work_agent.application.write_verification_projection import (
     build_expected_verification_projection,
 )
 from google_work_agent.domain import CalendarWorkHours
 from google_work_agent.ports import EvidenceOriginType, ResourceSnapshot, ResourceType
+from google_work_agent.ports.connectors.execution import (
+    ConnectorExecutionPort,
+)
 
 
 def replace_llm_expected_with_deterministic_projection(
@@ -209,7 +208,7 @@ def connector_ids_for_read_actions_from_frozen_routes(
     return connector_ids
 
 
-class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
+class PlanPersistenceMixin:
     """Canonical runtime with deterministic Expected and explicit connector persistence."""
 
     def __init__(
@@ -485,7 +484,7 @@ class LangGraphWorkflowRuntime(_ConfirmationLangGraphWorkflowRuntime):
 
 
 __all__ = [
-    "LangGraphWorkflowRuntime",
+    "PlanPersistenceMixin",
     "connector_ids_for_read_actions_from_frozen_routes",
     "connector_ids_from_frozen_routes",
     "replace_llm_expected_with_deterministic_projection",

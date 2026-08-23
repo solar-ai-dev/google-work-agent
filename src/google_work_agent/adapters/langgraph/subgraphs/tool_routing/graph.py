@@ -8,16 +8,16 @@ from typing import Any, Literal, cast
 from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import merge_trace_context
-from google_work_agent.adapters.langgraph.graph_state import (
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    RESUME_CONTRACT_VERSION,
+    confirmation_resume_status,
+)
+from google_work_agent.adapters.langgraph.main.state import (
     ParentGraphState,
     _require_state_value,
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.route_translation import (
-    RESUME_CONTRACT_VERSION,
-    confirmation_resume_status,
-)
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.bind_registry_candidates_node import (
     bind_registry_candidates_node,
 )
@@ -46,9 +46,6 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import (
     ToolRoutingInputState,
     ToolRoutingState,
 )
-from google_work_agent.application.orchestration.handoff_contracts import (
-    ClarificationQuestionV1,
-)
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseV1,
     GraphStateUpdateV1,
@@ -56,20 +53,23 @@ from google_work_agent.application.orchestration.contracts import (
     PolicyConfirmationReceiptV1,
     WorkflowPhase,
 )
-from google_work_agent.application.orchestration.tool_routing import (
-    ScopeExpansionRequiredV1,
-    ToolRouteCoordinator,
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ClarificationQuestionV1,
+)
+from google_work_agent.application.orchestration.request_understanding import (
+    build_user_interrupt_v1,
+)
+from google_work_agent.application.orchestration.scope_expansion import (
+    build_policy_confirmation_receipt,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
 )
 from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
-from google_work_agent.application.orchestration.request_understanding import (
-    build_user_interrupt_v1,
-)
-from google_work_agent.application.orchestration.scope_expansion import (
-    build_policy_confirmation_receipt,
+from google_work_agent.application.orchestration.tool_routing import (
+    ScopeExpansionRequiredV1,
+    ToolRouteCoordinator,
 )
 from google_work_agent.domain import ConnectorToolCatalog
 

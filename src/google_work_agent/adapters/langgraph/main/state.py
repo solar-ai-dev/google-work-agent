@@ -1,8 +1,8 @@
-"""Executable LangGraph state shape for the Stage 17/18 workflow runtime.
+"""Canonical Main LangGraph state and checkpoint projection helpers.
 
-Moved out of ``runtime.py`` (Stage 3 of the LangGraph module cleanup) as a
-pure type/constant/helper module with no behavior change: every definition
-here is unchanged from its previous location, only its module changed.
+This module is the single repository owner for Main graph state. Subgraph-local
+working state remains in each role's ``state.py`` and is projected through the
+typed parent boundary.
 """
 # Runtime type names below are retained for LangGraph's inherited TypedDict
 # get_type_hints resolution, even when they are not referenced textually here.
@@ -14,6 +14,12 @@ from json import dumps
 from typing import Final, NotRequired, cast
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.application.orchestration.contracts import (
+    AgentLocalStateV1,
+    MultiAgentGraphState,
+    RunBudgetV1,
+    WorkflowPhase,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
@@ -29,14 +35,16 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RetrievalResultV1,
     SourceFetchPlanV1,
     SourcePlanningOutputV1,
+    SubgraphReturnV2,
     SufficiencyResultV2,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.orchestration.contracts import (
-    AgentLocalStateV1,
-    MultiAgentGraphState,
-    RunBudgetV1,
-    WorkflowPhase,
+from google_work_agent.application.orchestration.post_retrieval_envelopes import (
+    PlanningResultV2,
+)
+from google_work_agent.application.orchestration.state_artifacts import (
+    PlanReviewResultV2,
+    WorkAnalysisResultV2,
 )
 from google_work_agent.application.orchestration.tool_routing import (
     RouteReconsiderationRequiredV1,
@@ -67,8 +75,18 @@ class ParentGraphState(MultiAgentGraphState):
     evidence_drafts: NotRequired[list[EvidenceDraftV1]]
     llm_provider_result: NotRequired[dict[str, object] | None]
 
+class ProductionGraphStateV2(ParentGraphState, total=False):
+    """Production state extension for canonical post-Retrieval V2 artifacts."""
 
-GraphState = ParentGraphState
+    work_analysis_result: NotRequired[WorkAnalysisResultV2 | None]
+    planning_result: NotRequired[PlanningResultV2 | None]
+    plan_review_result: NotRequired[PlanReviewResultV2 | None]
+    post_retrieval_return: NotRequired[SubgraphReturnV2[object] | None]
+    __v2_revision_mode__: NotRequired[str | None]
+    __v2_block_reason__: NotRequired[str | None]
+
+
+GraphState = ProductionGraphStateV2
 
 
 REQUEST_AGENT_LOCAL_KEY: Final = "__request_agent_local__"

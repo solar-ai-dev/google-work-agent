@@ -14,7 +14,11 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     merge_trace_context,
     record_llm_result,
 )
-from google_work_agent.adapters.langgraph.graph_state import (
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    RESUME_CONTRACT_VERSION,
+    confirmation_resume_status,
+)
+from google_work_agent.adapters.langgraph.main.state import (
     REVIEW_AGENT_LOCAL_KEY,
     REVIEW_MODE_KEY,
     ParentGraphState,
@@ -22,10 +26,6 @@ from google_work_agent.adapters.langgraph.graph_state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.route_translation import (
-    RESUME_CONTRACT_VERSION,
-    confirmation_resume_status,
-)
 from google_work_agent.adapters.langgraph.subgraph_state import (
     ReviewInputState,
     ReviewLocalState,

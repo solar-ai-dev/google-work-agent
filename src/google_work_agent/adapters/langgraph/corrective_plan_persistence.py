@@ -6,15 +6,15 @@ from hashlib import sha256
 from json import dumps, loads
 from typing import Any, cast
 
-from google_work_agent.adapters.langgraph.graph_state import (
-    GraphState,
-    _require_state_value,
-    _resource_handle_for_ref,
-)
-from google_work_agent.adapters.langgraph.plan_persistence import (
+from google_work_agent.adapters.langgraph.main.plan_persistence import (
     connector_ids_from_frozen_routes,
     replace_llm_expected_with_deterministic_projection,
     target_resource_connector_ids_from_actions,
+)
+from google_work_agent.adapters.langgraph.main.state import (
+    GraphState,
+    _require_state_value,
+    _resource_handle_for_ref,
 )
 from google_work_agent.application.calendar_conflicts import CALENDAR_CONFLICT_TOOLS
 from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1

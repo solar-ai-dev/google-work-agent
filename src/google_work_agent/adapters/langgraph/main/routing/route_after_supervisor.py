@@ -1,4 +1,4 @@
-"""Profile-specific translation from supervisor targets to graph nodes."""
+"""Deterministic Supervisor-target routing for the canonical Main graph."""
 
 from __future__ import annotations
 
@@ -6,7 +6,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.application.orchestration.handoff_contracts import RegisteredResumeTargetRefV1
+from google_work_agent.application.orchestration.handoff_contracts import (
+    RegisteredResumeTargetRefV1,
+)
 from google_work_agent.application.orchestration.supervisor import SupervisorTarget
 from google_work_agent.domain import RunStatus
 

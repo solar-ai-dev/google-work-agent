@@ -1,9 +1,9 @@
 from typing import cast
 
-from google_work_agent.adapters.langgraph.freshness_workflow import (
+from google_work_agent.adapters.langgraph.main.artifact_freshness import (
     _is_route_reconsideration_to_tool_route,
 )
-from google_work_agent.adapters.langgraph.graph_state import GraphState
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.application.orchestration.supervisor import SupervisorTarget
 
 

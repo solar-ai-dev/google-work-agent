@@ -2,25 +2,25 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.adapters.langgraph.response_workflow import (
-    canonicalize_answer_only_decision,
-    response_synthesis_state,
-)
-from google_work_agent.adapters.langgraph.graph_composition import (
+from google_work_agent.adapters.langgraph.main.graph import (
     GraphNodeBindings,
     WorkflowGraphComposition,
 )
-from google_work_agent.adapters.langgraph.graph_state import GraphState
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.route_translation import (
+from google_work_agent.adapters.langgraph.main.response_synthesis import (
+    canonicalize_answer_only_decision,
+    response_synthesis_state,
+)
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESPONSE_SYNTHESIS_TARGET,
     GraphRouteTranslator,
 )
-from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
+from google_work_agent.adapters.langgraph.main.state import GraphState
+from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.application.orchestration.contracts import (
     GraphStateUpdateV1,
     WorkflowPhase,
 )
+from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,

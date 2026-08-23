@@ -11,14 +11,17 @@ import pytest
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
-from google_work_agent.adapters.langgraph.freshness_workflow import (
+from google_work_agent.adapters.langgraph.main.state import ParentGraphState
+from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
-from google_work_agent.adapters.langgraph.graph_state import ParentGraphState
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import (
     SQLiteUnitOfWork,
     sqlite_unit_of_work_factory,
+)
+from google_work_agent.application.orchestration.retrieval_evidence_store import (
+    RunScopedEvidenceStore,
 )
 from google_work_agent.application.write_actions import (
     PublishWritePlanService,
@@ -27,7 +30,6 @@ from google_work_agent.application.write_actions import (
     ResolveMismatchRecoveryService,
     SaveWritePlanService,
 )
-from google_work_agent.application.orchestration.retrieval_evidence_store import RunScopedEvidenceStore
 from google_work_agent.domain import calculate_canonical_json_hash
 from google_work_agent.ports import ActionRecord, EvidenceOriginType, EvidenceRecord, PlanRecord
 
