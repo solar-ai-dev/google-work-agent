@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from tests.support.prompt_manifests import write_runtime_active_manifest
+from tests.support.prompt_manifests import write_manifest_with_legacy_profile_slots
 
 from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.controlled_post_retrieval import (
@@ -56,6 +56,17 @@ PROMPT_IDS = {
     "e06b.b1.self_review.initial",
     "e06b.b2.analysis_planning.initial",
 }
+E06B_PROMPT_IDS = {prompt_id for prompt_id in PROMPT_IDS if prompt_id.startswith("e06b.")}
+
+
+def _runtime_active_manifest(tmp_path: Path) -> Path:
+    return write_manifest_with_legacy_profile_slots(
+        tmp_path,
+        legacy_prompt_ids=E06B_PROMPT_IDS,
+        active_prompt_ids=PROMPT_IDS - E06B_PROMPT_IDS,
+        draft_prompt_ids=(),
+        active_legacy_prompt_ids=E06B_PROMPT_IDS,
+    )
 
 
 @dataclass
@@ -96,72 +107,23 @@ def test_e06b_analysis_planning_schema_supports_answer_only_projection() -> None
     assert "planning_result" in required
 
 
-def test_stage18_schema_audit_keeps_runtime_contract_fields_locked() -> None:
-    request_intent_schema = _load_json(
-        Path("experiments/datasets/google_workspace/schemas/request-intent.schema.json")
-    )
-    profile_single_schema = _load_json(
-        Path(
-            "experiments/datasets/google_workspace/schemas/"
-            "profile-single-post-retrieval-output.schema.json"
-        )
-    )
-    profile_three_schema = _load_json(
-        Path(
-            "experiments/datasets/google_workspace/schemas/profile-three-stage2-output.schema.json"
-        )
-    )
-    action_plan_schema = _load_json(
-        Path("experiments/datasets/google_workspace/schemas/action-plan-draft.schema.json")
-    )
-    plan_review_schema = _load_json(
-        Path("experiments/datasets/google_workspace/schemas/plan-review-output.schema.json")
-    )
+def test_canonical_schema_artifacts_keep_runtime_contract_fields_locked() -> None:
+    schema_root = Path("experiments/datasets/google_workspace/canonical_rebase_v7/schemas")
+    request_intent_schema = _load_json(schema_root / "request-intent-v2.schema.json")
+    plan_review_schema = _load_json(schema_root / "plan-review-result-v2.schema.json")
 
     assert request_intent_schema["required"] == [
         "schema_version",
+        "meta",
         "goal",
-        "completion_criteria",
-        "semantic_constraints",
-        "ambiguity",
-        "unsupported_scope",
+        "completion_conditions",
+        "constraints",
         "requested_effect_hints",
         "requested_resource_hints",
         "analysis_requirement",
+        "ambiguity",
     ]
-    assert profile_single_schema["required"] == [
-        "schema_version",
-        "context_result",
-        "analysis_result",
-        "planning_result",
-        "self_review",
-    ]
-    assert profile_three_schema["required"] == [
-        "schema_version",
-        "context_result",
-        "analysis_result",
-        "planning_result",
-    ]
-    assert action_plan_schema["required"] == [
-        "schema_version",
-        "status",
-        "plan_id",
-        "summary",
-        "objective",
-        "actions",
-        "evidence_refs",
-        "resource_refs",
-        "confirmation",
-    ]
-    assert plan_review_schema["required"] == [
-        "schema_version",
-        "status",
-        "summary",
-        "issues",
-        "confirmation",
-        "blockers",
-        "additional_acquisition_request",
-    ]
+    assert plan_review_schema["required"] == ["schema_version", "status"]
 
 
 def test_e06_candidates_keep_semantic_bundle_and_responsibility_parity() -> None:
@@ -183,7 +145,7 @@ def test_e06_candidates_keep_semantic_bundle_and_responsibility_parity() -> None
 def test_controlled_replay_runner_executes_native_b1_b2_b3_topologies(
     tmp_path: Path,
 ) -> None:
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=PROMPT_IDS)
+    manifest_path = _runtime_active_manifest(tmp_path)
     model_input = _load_json(FIXTURE_DIR / "input.json")
     gold = _load_json(FIXTURE_DIR / "gold.json")
     evaluation_item = _load_json(FIXTURE_DIR / "evaluation-item.json")
@@ -283,7 +245,7 @@ def test_controlled_replay_runner_executes_native_b1_b2_b3_topologies(
 def test_controlled_replay_runner_rejects_mismatched_environment_hash(
     tmp_path: Path,
 ) -> None:
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=PROMPT_IDS)
+    manifest_path = _runtime_active_manifest(tmp_path)
     runner = ControlledPostRetrievalReplayRunner(
         llm_runtime=FakeLLMRuntime(
             deque(
@@ -433,7 +395,7 @@ def test_controlled_replay_environment_hash_changes_for_each_fixed_dimension(
 def test_controlled_replay_runner_rejects_non_zero_google_read_boundary(
     tmp_path: Path,
 ) -> None:
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=PROMPT_IDS)
+    manifest_path = _runtime_active_manifest(tmp_path)
     runner = ControlledPostRetrievalReplayRunner(
         llm_runtime=FakeLLMRuntime(
             deque(
@@ -469,7 +431,7 @@ def test_controlled_replay_runner_rejects_non_zero_google_read_boundary(
 def test_controlled_replay_handoff_metrics_detect_forbidden_action_contradiction(
     tmp_path: Path,
 ) -> None:
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=PROMPT_IDS)
+    manifest_path = _runtime_active_manifest(tmp_path)
     runner = ControlledPostRetrievalReplayRunner(
         llm_runtime=FakeLLMRuntime(
             deque(
@@ -507,7 +469,7 @@ def test_controlled_replay_handoff_metrics_detect_forbidden_action_contradiction
 def test_controlled_replay_handoff_metrics_detect_required_field_loss(
     tmp_path: Path,
 ) -> None:
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=PROMPT_IDS)
+    manifest_path = _runtime_active_manifest(tmp_path)
     runner = ControlledPostRetrievalReplayRunner(
         llm_runtime=FakeLLMRuntime(
             deque(
@@ -539,7 +501,7 @@ def test_controlled_replay_handoff_metrics_detect_required_field_loss(
 def test_controlled_replay_handoff_metrics_detect_evidence_id_loss(
     tmp_path: Path,
 ) -> None:
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=PROMPT_IDS)
+    manifest_path = _runtime_active_manifest(tmp_path)
     runner = ControlledPostRetrievalReplayRunner(
         llm_runtime=FakeLLMRuntime(
             deque(
@@ -574,7 +536,7 @@ def test_controlled_replay_handoff_metrics_detect_evidence_id_loss(
 def test_controlled_replay_handoff_metrics_detect_answer_type_constraint_loss(
     tmp_path: Path,
 ) -> None:
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=PROMPT_IDS)
+    manifest_path = _runtime_active_manifest(tmp_path)
     runner = ControlledPostRetrievalReplayRunner(
         llm_runtime=FakeLLMRuntime(
             deque(

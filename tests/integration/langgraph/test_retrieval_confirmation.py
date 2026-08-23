@@ -16,6 +16,7 @@ invalid resume.
 
 from __future__ import annotations
 
+from hashlib import sha256
 from typing import Any
 
 from tests.integration.langgraph.test_runtime import (
@@ -36,6 +37,7 @@ from tests.integration.langgraph.test_runtime import (
     _clear_intent,
     _make_runtime,
     _QueuedLLMRuntime,
+    _llm_result,
     _review_output,
     _runtime_active_manifest_path,
     _seed_runtime_database,
@@ -49,6 +51,10 @@ from tests.integration.langgraph.test_runtime import (
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 
 from google_work_agent.ports import LLMErrorCode, LLMInvocationError
+from google_work_agent.application.use_cases.run.resume_run import (
+    ResumeRunCommand,
+    ResumeRunHandler,
+)
 
 
 def _build_runtime(
@@ -112,6 +118,77 @@ def _select_evidence_calls(llm_runtime: _QueuedLLMRuntime) -> list[dict[str, obj
         for call in llm_runtime.calls
         if getattr(call["prompt_ref"], "prompt_id", None) == "retrieval.select_evidence"
     ]
+
+
+def _attempt_confirmation(
+    *,
+    runtime: LangGraphWorkflowRuntime,
+    database_path: Path,
+    resume_payload: dict[str, object],
+    command_id: str,
+) -> tuple[object, object | None]:
+    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+        run = unit_of_work.runs.get_by_id("run-1")
+        assert run is not None
+        expected_run_version = run.version
+    runtime_results: list[object] = []
+
+    def enqueue_resume(**queued: object) -> None:
+        runtime_results.append(
+            runtime.resume(
+                WorkflowResumeRequest(
+                    run_id=str(queued["run_id"]),
+                    workflow_key="thread-1",
+                    resume_kind=str(queued["resume_kind"]),
+                    resume_payload=dict(queued["resume_payload"]),  # type: ignore[arg-type]
+                    correlation=WorkflowCorrelationContext(
+                        request_id=str(queued["request_id"]),
+                        command_id=str(queued["command_id"]),
+                        api_contract_version="1",
+                    ),
+                )
+            )
+        )
+
+    result = ResumeRunHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=FakeClock(2000).now_ms,
+        enqueue_resume=enqueue_resume,
+        resolve_resume_authority=lambda **kwargs: runtime.resolve_resume_authority(
+            run_id=str(kwargs["run_id"]),
+            workflow_key="thread-1",
+            resume_kind=str(kwargs["resume_kind"]),
+        ),
+    )(
+        ResumeRunCommand(
+            command_id=command_id,
+            request_hash=sha256(command_id.encode("utf-8")).hexdigest(),
+            run_id="run-1",
+            expected_run_version=expected_run_version,
+            resume_kind="CONFIRMATION",
+            api_contract_version="1",
+        ),
+        request_id=f"request-{command_id}",
+        resume_payload=resume_payload,
+    )
+    return result, runtime_results[0] if runtime_results else None
+
+
+def _resume_confirmation(
+    *,
+    runtime: LangGraphWorkflowRuntime,
+    database_path: Path,
+    resume_payload: dict[str, object],
+    command_id: str,
+) -> object | None:
+    application_result, runtime_result = _attempt_confirmation(
+        runtime=runtime,
+        database_path=database_path,
+        resume_payload=resume_payload,
+        command_id=command_id,
+    )
+    assert application_result.applied is True  # type: ignore[attr-defined]
+    return runtime_result
 
 
 # --- T1 + T2: NEEDS_CONFIRMATION pauses inside Retrieval's own nested task,
@@ -194,7 +271,7 @@ def test_retrieval_resume_reuses_completed_read_and_query_plan(tmp_path: Path) -
     interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
     reads_before_pause = list(gateway.call_log)
     assert len(reads_before_pause) >= 1
-    runtime.close()
+    calls_before_resume = len(llm_runtime.calls)
 
     # 1 (classify) + 1 (tool_route auto-synth) + 1 (retrieval.plan_query
     # auto-synth) + 1 (select_evidence) + 1 (assess_sufficiency round1) + 1
@@ -207,55 +284,44 @@ def test_retrieval_resume_reuses_completed_read_and_query_plan(tmp_path: Path) -
     # exactly at the 8-call cap rather than a 9th (review) call being
     # denied. Asserting COMPLETED proves the same ordinary, unchanged
     # RunBudgetV1 accounting the old exhaustion assertion proved.
-    resumed_gateway = FakeGoogleGateway(snapshot)
-    resumed_llm_runtime = _QueuedLLMRuntime(
-        [
+    llm_runtime._queued.extend(  # noqa: SLF001
+        _llm_result(payload)
+        for payload in [
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
             _answer_output(),
         ]
     )
-    resumed_runtime = _build_runtime(
-        database_path=database_path,
-        llm_runtime=resumed_llm_runtime,
-        gateway=resumed_gateway,
-        checkpoint_path=checkpoint_path,
-        manifest_path=manifest_path,
-        id_prefix="round2",
-    )
     try:
-        result = resumed_runtime.resume(
-            WorkflowResumeRequest(
-                run_id="run-1",
-                workflow_key="thread-1",
-                resume_kind="CONFIRMATION",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option_ids": [],
-                    "free_text": "Use the task list I mentioned.",
-                },
-                correlation=WorkflowCorrelationContext(
-                    request_id="request-2", command_id="command-2", api_contract_version="1"
-                ),
-            )
+        result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "Use the task list I mentioned.",
+            },
+            command_id="command-2",
         )
+        assert result is not None
         assert result.outcome is WorkflowOutcome.COMPLETED
 
         # T3: zero provider reads happened on resume -- the resumed run's
         # OWN gateway saw no calls at all (the already-completed read from
         # round 1 lives only in round 1's gateway/cache, never re-issued).
-        assert resumed_gateway.call_log == []
+        assert gateway.call_log == reads_before_pause
 
         # T4: retrieval.plan_query (INITIAL query planning) never re-ran.
-        assert _plan_query_calls(resumed_llm_runtime) == []
+        assert len(_plan_query_calls(llm_runtime)) == 1
         # select_evidence never re-ran either.
-        assert _select_evidence_calls(resumed_llm_runtime) == []
+        assert len(_select_evidence_calls(llm_runtime)) == 1
         # Exactly one more assess_sufficiency call resolved the confirmation.
-        assert len(_assess_sufficiency_calls(resumed_llm_runtime)) == 1
+        assert len(llm_runtime.calls) > calls_before_resume
+        assert len(_assess_sufficiency_calls(llm_runtime)) == 2
     finally:
-        resumed_runtime.close()
+        runtime.close()
 
 
 # --- T5: evidence/cache identity preserved across the pause. ---
@@ -288,49 +354,35 @@ def test_retrieval_resume_preserves_evidence_identity(tmp_path: Path) -> None:
     nested_before = state_before.tasks[0].state.values
     evidence_drafts_before = nested_before["evidence_drafts"]
     round_no_before = nested_before["__context_current_round_no__"]
-    runtime.close()
-
-    resumed_gateway = FakeGoogleGateway(snapshot)
-    resumed_llm_runtime = _QueuedLLMRuntime(
-        [
+    llm_runtime._queued.extend(  # noqa: SLF001
+        _llm_result(payload)
+        for payload in [
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
             _answer_output(),
         ]
-    )
-    resumed_runtime = _build_runtime(
-        database_path=database_path,
-        llm_runtime=resumed_llm_runtime,
-        gateway=resumed_gateway,
-        checkpoint_path=checkpoint_path,
-        manifest_path=manifest_path,
-        id_prefix="round2",
     )
     try:
         # Same budget arithmetic as the read/query-plan-reuse test above --
         # answer_draft is ANSWER_ONLY, so Review is never dispatched
         # (Canonical ANSWER_ONLY->Response Synthesis edge) and the run
         # completes rather than hitting the cap.
-        result = resumed_runtime.resume(
-            WorkflowResumeRequest(
-                run_id="run-1",
-                workflow_key="thread-1",
-                resume_kind="CONFIRMATION",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option_ids": [],
-                    "free_text": "Use the task list I mentioned.",
-                },
-                correlation=WorkflowCorrelationContext(
-                    request_id="request-2", command_id="command-2", api_contract_version="1"
-                ),
-            )
+        result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "Use the task list I mentioned.",
+            },
+            command_id="command-2",
         )
+        assert result is not None
         assert result.outcome is WorkflowOutcome.COMPLETED
-        state = resumed_runtime._graph.get_state(  # noqa: SLF001
-            resumed_runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
+        state = runtime._graph.get_state(  # noqa: SLF001
+            runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
         ).values
         retrieval_result = state["retrieval_result"]
         assert retrieval_result is not None
@@ -346,7 +398,7 @@ def test_retrieval_resume_preserves_evidence_identity(tmp_path: Path) -> None:
         # from -- proving _init_node never re-ran and reset it.
         assert retrieval_result["retrieval_rounds"] == round_no_before + 1
     finally:
-        resumed_runtime.close()
+        runtime.close()
 
 
 # --- T6: confirmation_response reaches retrieval.assess_sufficiency's
@@ -375,50 +427,36 @@ def test_retrieval_resume_applies_confirmation_response_within_prompt_boundary(
     )
     first = runtime.start(_start_request())
     interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
-    runtime.close()
-
-    resumed_gateway = FakeGoogleGateway(snapshot)
-    resumed_llm_runtime = _QueuedLLMRuntime(
-        [
+    llm_runtime._queued.extend(  # noqa: SLF001
+        _llm_result(payload)
+        for payload in [
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
             _answer_output(),
         ]
     )
-    resumed_runtime = _build_runtime(
-        database_path=database_path,
-        llm_runtime=resumed_llm_runtime,
-        gateway=resumed_gateway,
-        checkpoint_path=checkpoint_path,
-        manifest_path=manifest_path,
-        id_prefix="round2",
-    )
     try:
         # answer_draft is ANSWER_ONLY, so Review is never dispatched
         # (Canonical ANSWER_ONLY->Response Synthesis edge) and the run
         # completes rather than hitting the budget cap.
-        result = resumed_runtime.resume(
-            WorkflowResumeRequest(
-                run_id="run-1",
-                workflow_key="thread-1",
-                resume_kind="CONFIRMATION",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option_ids": [],
-                    "free_text": "It is in my Work task list.",
-                },
-                correlation=WorkflowCorrelationContext(
-                    request_id="request-2", command_id="command-2", api_contract_version="1"
-                ),
-            )
+        result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "It is in my Work task list.",
+            },
+            command_id="command-2",
         )
+        assert result is not None
         assert result.outcome is WorkflowOutcome.COMPLETED
 
-        sufficiency_calls = _assess_sufficiency_calls(resumed_llm_runtime)
-        assert len(sufficiency_calls) == 1
-        prompt_input = sufficiency_calls[0]["prompt_input"]
+        sufficiency_calls = _assess_sufficiency_calls(llm_runtime)
+        assert len(sufficiency_calls) == 2
+        prompt_input = sufficiency_calls[-1]["prompt_input"]
         assert isinstance(prompt_input, dict)
         confirmation_response = prompt_input["confirmation_response"]
         assert isinstance(confirmation_response, dict)
@@ -433,7 +471,7 @@ def test_retrieval_resume_applies_confirmation_response_within_prompt_boundary(
         ):
             assert forbidden_key not in prompt_input
     finally:
-        resumed_runtime.close()
+        runtime.close()
 
 
 # --- T7: repeated confirmation resolves inline, same nested checkpoint each
@@ -463,45 +501,31 @@ def test_retrieval_resumes_second_consecutive_confirmation_round_via_same_nested
     first = runtime.start(_start_request())
     assert first.outcome is WorkflowOutcome.ACCEPTED
     round1_interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
-    runtime.close()
 
     # --- Round 2: still ambiguous -- must pause again, still inside the
     # same nested subgraph. ---
-    round2_llm_runtime = _QueuedLLMRuntime([_sufficiency_output("NEEDS_CONFIRMATION")])
-    round2_runtime = _build_runtime(
+    llm_runtime._queued.append(_llm_result(_sufficiency_output("NEEDS_CONFIRMATION")))  # noqa: SLF001
+    second = _resume_confirmation(
+        runtime=runtime,
         database_path=database_path,
-        llm_runtime=round2_llm_runtime,
-        gateway=FakeGoogleGateway(snapshot),
-        checkpoint_path=checkpoint_path,
-        manifest_path=manifest_path,
-        id_prefix="round2",
+        resume_payload={
+            "schema_version": 1,
+            "interrupt_id": round1_interrupt_id,
+            "response_kind": "FREE_TEXT",
+            "selected_option_ids": [],
+            "free_text": "round-1 answer, still ambiguous apparently.",
+        },
+        command_id="command-2",
     )
-    second = round2_runtime.resume(
-        WorkflowResumeRequest(
-            run_id="run-1",
-            workflow_key="thread-1",
-            resume_kind="CONFIRMATION",
-            resume_payload={
-                "schema_version": 1,
-                "interrupt_id": round1_interrupt_id,
-                "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
-                "free_text": "round-1 answer, still ambiguous apparently.",
-            },
-            correlation=WorkflowCorrelationContext(
-                request_id="request-2", command_id="command-2", api_contract_version="1"
-            ),
-        )
-    )
+    assert second is not None
     assert second.outcome is WorkflowOutcome.ACCEPTED
-    assert len(_assess_sufficiency_calls(round2_llm_runtime)) == 1
+    assert len(_assess_sufficiency_calls(llm_runtime)) == 2
 
-    round2_task = _nested_context_retriever_task(round2_runtime)
+    round2_task = _nested_context_retriever_task(runtime)
     assert round2_task.state.next == ("finalize",)
     round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
     assert second.payload["user_interrupt"]["origin_target"] == "context.assess_sufficiency"
     assert round2_interrupt_id != round1_interrupt_id
-    round2_runtime.close()
 
     # --- Round 3: resolved -- Retrieval completes, run proceeds downstream.
     # 6 real calls already spent (classify + tool_route + plan_query +
@@ -511,51 +535,38 @@ def test_retrieval_resumes_second_consecutive_confirmation_round_via_same_nested
     # asserting budget-exhausted here (rather than COMPLETED) is the same
     # established arithmetic as the earlier tests, just with one extra round
     # of pre-pause cost. ---
-    round3_llm_runtime = _QueuedLLMRuntime(
-        [
+    llm_runtime._queued.extend(  # noqa: SLF001
+        _llm_result(payload)
+        for payload in [
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
         ]
     )
-    round3_runtime = _build_runtime(
-        database_path=database_path,
-        llm_runtime=round3_llm_runtime,
-        gateway=FakeGoogleGateway(snapshot),
-        checkpoint_path=checkpoint_path,
-        manifest_path=manifest_path,
-        id_prefix="round3",
-    )
     try:
         with pytest.raises(LLMInvocationError) as excinfo:
-            round3_runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": round2_interrupt_id,
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "round-2 answer, resolves it.",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-3", command_id="command-3", api_contract_version="1"
-                    ),
-                )
+            _resume_confirmation(
+                runtime=runtime,
+                database_path=database_path,
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": round2_interrupt_id,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option_ids": [],
+                    "free_text": "round-2 answer, resolves it.",
+                },
+                command_id="command-3",
             )
         assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
-        assert len(_assess_sufficiency_calls(round3_llm_runtime)) == 1
+        assert len(_assess_sufficiency_calls(llm_runtime)) == 3
         # No provider read and no query planning at any point in rounds 2-3.
-        assert _plan_query_calls(round2_llm_runtime) == []
-        assert _plan_query_calls(round3_llm_runtime) == []
+        assert len(_plan_query_calls(llm_runtime)) == 1
 
-        state = round3_runtime._graph.get_state(  # noqa: SLF001
-            round3_runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
+        state = runtime._graph.get_state(  # noqa: SLF001
+            runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
         ).values
         assert state["retrieval_result"] is not None
     finally:
-        round3_runtime.close()
+        runtime.close()
 
 
 # --- T10: invalid resume fails closed. ---
@@ -579,41 +590,28 @@ def test_retrieval_resume_rejects_wrong_interrupt_id(tmp_path: Path) -> None:
         id_prefix="round1",
     )
     runtime.start(_start_request())
-    runtime.close()
-
-    resumed_llm_runtime = _QueuedLLMRuntime([])
-    resumed_runtime = _build_runtime(
-        database_path=database_path,
-        llm_runtime=resumed_llm_runtime,
-        gateway=FakeGoogleGateway(snapshot),
-        checkpoint_path=checkpoint_path,
-        manifest_path=manifest_path,
-        id_prefix="round2",
-    )
     try:
-        with pytest.raises(ValueError, match="interrupt_id"):
-            resumed_runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": "definitely-the-wrong-interrupt-id",
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "irrelevant",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
-            )
+        calls_before = len(llm_runtime.calls)
+        application_result, runtime_result = _attempt_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": "definitely-the-wrong-interrupt-id",
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "irrelevant",
+            },
+            command_id="command-2",
+        )
+        assert application_result.applied is False  # type: ignore[attr-defined]
+        assert "interrupt" in application_result.conflict_detail  # type: ignore[attr-defined]
+        assert runtime_result is None
         # Fails closed: no Provider call happened while validating the
         # resume payload.
-        assert resumed_llm_runtime.calls == []
+        assert len(llm_runtime.calls) == calls_before
     finally:
-        resumed_runtime.close()
+        runtime.close()
 
 
 def test_retrieval_resume_rejects_option_id_outside_allowed_scope(tmp_path: Path) -> None:
@@ -639,38 +637,24 @@ def test_retrieval_resume_rejects_option_id_outside_allowed_scope(tmp_path: Path
     # a closed-choice OPTION_SELECTION response must be rejected as outside
     # scope.
     assert first.payload["user_interrupt"]["options"] == []
-    runtime.close()
-
-    resumed_llm_runtime = _QueuedLLMRuntime([])
-    resumed_runtime = _build_runtime(
-        database_path=database_path,
-        llm_runtime=resumed_llm_runtime,
-        gateway=FakeGoogleGateway(snapshot),
-        checkpoint_path=checkpoint_path,
-        manifest_path=manifest_path,
-        id_prefix="round2",
-    )
     try:
-        with pytest.raises(ValueError, match="option"):
-            resumed_runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "OPTION_SELECTION",
-                        "selected_option_ids": ["option-not-offered"],
-                        "free_text": None,
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
-            )
+        application_result, runtime_result = _attempt_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "OPTION_SELECTION",
+                "selected_option_ids": ["option-not-offered"],
+                "free_text": None,
+            },
+            command_id="command-2",
+        )
+        assert application_result.applied is False  # type: ignore[attr-defined]
+        assert "option" in application_result.conflict_detail  # type: ignore[attr-defined]
+        assert runtime_result is None
     finally:
-        resumed_runtime.close()
+        runtime.close()
 
 
 # --- T9-adjacent: existing Retrieval happy path (no confirmation) unaffected. ---

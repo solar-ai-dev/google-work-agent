@@ -5,6 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from google_work_agent.application.orchestration.failure_record import (
+    build_failure_record_v1,
+)
 from google_work_agent.application.orchestration.prompt_input_contract import (
     PromptInputContractError,
     PromptRuntimeInputContractValidator,
@@ -109,7 +112,13 @@ def test_repair_slot_accepts_only_bounded_envelope(tmp_path: Path) -> None:
         prompt_input={
             "base_projection": {"user_request": "summarize"},
             "candidate_output": {"answer": "draft"},
-            "failure_record": {"failure_reason_code": "OUTPUT_SCHEMA_INVALID"},
+            "failure_record": build_failure_record_v1(
+                failure_reason_code="OUTPUT_SCHEMA_INVALID",
+                failure_origin="LLM_OUTPUT",
+                detected_by="RUNTIME_SCHEMA_VALIDATOR",
+                runtime_disposition="RETRYABLE",
+                experiment_disposition="RUN_REPAIR",
+            ),
         },
     )
 

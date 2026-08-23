@@ -241,8 +241,12 @@ def test_selection_falls_back_deterministically_when_revision_also_invalid() -> 
     assert "user_request" not in base_projection
     failure_record = cast(dict[str, object], revision_input["failure_record"])
     assert failure_record["failure_reason_code"] == "EVIDENCE_SELECTION_SEMANTIC_INVALID"
-    validation_errors = cast(list[str], failure_record["validation_errors"])
-    assert "segment is outside ranked candidates" in validation_errors[0]
+    assert failure_record["affected_field_paths"] == [
+        "$.selected_segment_ids",
+        "$.evidence_drafts",
+        "$.excluded_segment_ids",
+    ]
+    assert "validation_errors" not in failure_record
 
 
 def test_selection_rejects_evidence_for_unselected_segment_after_failed_revision() -> None:
@@ -546,9 +550,9 @@ def test_default_product_loader_rejects_draft_context_prompt(tmp_path: Path) -> 
 
 
 def test_context_retrieval_symbols_have_explicit_owners() -> None:
-    assert ContextResult.__module__.endswith(".workflows.contracts")
-    assert ContextRetrievalAgent.__module__.endswith(".workflows.context_retrieval")
-    assert EvidenceDraftV1.__module__.endswith(".workflows.handoff_contracts")
+    assert ContextResult.__module__.endswith(".orchestration.contracts")
+    assert ContextRetrievalAgent.__module__.endswith(".orchestration.context_retrieval")
+    assert EvidenceDraftV1.__module__.endswith(".orchestration.handoff_contracts")
 
 
 def test_assess_sufficiency_prompt_input_matches_candidate_root_fields() -> None:

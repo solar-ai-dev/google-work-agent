@@ -15,6 +15,7 @@ from google_work_agent.application.agents.retrieval.normalize_segments import (
     normalize_segments,
 )
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import (
+    RagScoringConfig,
     rag_retrieve_rerank,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -172,6 +173,11 @@ def test_rag_retrieve_rerank_forces_explicit_selected_resource() -> None:
             "unrelated",
         ),
     ]
-    ranked = rag_retrieve_rerank(segments, request_intent=intent, top_k=1)
+    ranked = rag_retrieve_rerank(
+        segments,
+        request_intent=intent,
+        top_k=1,
+        config=RagScoringConfig(exact_resource_score=0.0),
+    )
     assert {item["segment_id"] for item in ranked} == {"seg-1", "seg-2"}
     assert "RESOURCE_SELECTED_FORCED" in ranked[1]["reason_codes"]

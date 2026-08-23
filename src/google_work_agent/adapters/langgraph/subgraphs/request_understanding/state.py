@@ -48,3 +48,4 @@ class RequestUnderstandingState(RequestUnderstandingLocalState, total=False):
     ru_ambiguity: NotRequired[AmbiguityV1]
     ru_intent: NotRequired[RequestIntentV2]
     ru_confirmation_response: NotRequired[ConfirmationResponseV1 | None]
+    ru_invocation_id: NotRequired[str]

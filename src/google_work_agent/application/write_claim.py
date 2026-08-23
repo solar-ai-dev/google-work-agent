@@ -38,11 +38,23 @@ from google_work_agent.application.write_execution_integrity import (
 )
 from google_work_agent.application.write_persistence import (
     action_response_from_result as _action_response_from_result,
+)
+from google_work_agent.application.write_persistence import (
     audit_event as _audit_event,
+)
+from google_work_agent.application.write_persistence import (
     finish_json_receipt as _finish_json_receipt,
+)
+from google_work_agent.application.write_persistence import (
     require_action as _require_action,
+)
+from google_work_agent.application.write_persistence import (
     require_plan as _require_plan,
+)
+from google_work_agent.application.write_persistence import (
     require_run as _require_run,
+)
+from google_work_agent.application.write_persistence import (
     resolve_existing_action_receipt as _resolve_existing_action_receipt,
 )
 from google_work_agent.domain import (
@@ -63,7 +75,14 @@ from google_work_agent.domain.claim_contract import (
     CLAIM_CONTEXT_DEFAULT_TTL_MS,
     validate_claim_ttl_ms,
 )
-from google_work_agent.ports import ExecutionAttemptRecord, TraceEventRecord, UnitOfWork
+from google_work_agent.ports import (
+    AttachmentDescriptor,
+    AttachmentDescriptorVerifier,
+    AttachmentStagingError,
+    ExecutionAttemptRecord,
+    TraceEventRecord,
+    UnitOfWork,
+)
 
 
 class ClaimWriteActionService:
@@ -75,15 +94,18 @@ class ClaimWriteActionService:
         signing_secret: str,
         service_instance_id: str,
         claim_ttl_ms: int = CLAIM_CONTEXT_DEFAULT_TTL_MS,
+        attachment_verifier: AttachmentDescriptorVerifier | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
         self._signing_secret = signing_secret
         self._service_instance_id = service_instance_id
         self._claim_ttl_ms = validate_claim_ttl_ms(claim_ttl_ms)
+        self._attachment_verifier = attachment_verifier
         self._registry = build_p0_tool_registry()
 
     def __call__(self, command: ClaimWriteActionCommand) -> WriteActionResponse:
+        attachment_error = self._verify_attachments_before_transaction(command.action_id)
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
@@ -105,6 +127,21 @@ class ClaimWriteActionService:
                 created_at_ms=now_ms,
             )
             action = _require_action(unit_of_work, command.action_id)
+            if attachment_error is not None:
+                response = WriteActionResponse(
+                    applied=False,
+                    result_code=ResultCode.STATE_CONFLICT.value,
+                    action_id=action.id,
+                    action_status=action.status,
+                    action_version=action.version,
+                    next_allowed_commands=(),
+                    conflict_detail=attachment_error,
+                )
+                _finish_json_receipt(
+                    unit_of_work, command.command_id, response, action.version, now_ms
+                )
+                unit_of_work.commit()
+                return response
             plan = _require_plan(unit_of_work, action.plan_id)
             run = _require_run(unit_of_work, plan.run_id)
             cancel_reader = cast(CancelIntentReceiptReader, unit_of_work.command_receipts)
@@ -123,6 +160,7 @@ class ClaimWriteActionService:
                 )
                 unit_of_work.commit()
                 return response
+
             if run.status in {
                 RunStatus.CANCEL_REQUESTED,
                 RunStatus.CANCELLED,
@@ -371,3 +409,29 @@ class ClaimWriteActionService:
             )
             unit_of_work.commit()
             return response
+
+    def _verify_attachments_before_transaction(self, action_id: str) -> str | None:
+        with self._unit_of_work_factory() as unit_of_work:
+            action = _require_action(unit_of_work, action_id)
+            arguments = loads(action.arguments_json)
+        if not isinstance(arguments, dict):
+            return "ATTACHMENT_DESCRIPTOR_MALFORMED"
+        payload = arguments.get("payload")
+        if not isinstance(payload, dict) or "attachments" not in payload:
+            return None
+        values = payload.get("attachments")
+        if not isinstance(values, list) or len(values) > 10:
+            return "ATTACHMENT_DESCRIPTOR_MALFORMED"
+        if not values:
+            return None
+        if self._attachment_verifier is None:
+            return "ATTACHMENT_VERIFIER_UNAVAILABLE"
+        try:
+            for value in values:
+                if not isinstance(value, dict):
+                    raise AttachmentStagingError("ATTACHMENT_DESCRIPTOR_MALFORMED")
+                descriptor = AttachmentDescriptor.from_json(cast(dict[str, object], value))
+                self._attachment_verifier.verify_descriptor(descriptor)
+        except AttachmentStagingError as error:
+            return error.safe_code
+        return None

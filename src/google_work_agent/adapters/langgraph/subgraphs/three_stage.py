@@ -44,6 +44,8 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
 )
 from google_work_agent.adapters.langgraph.subgraphs.profile_shared import (
     build_no_fetch_acquisition_result,
+    build_profile_retrieval_result,
+    build_profile_tool_route_plan,
     planning_result_from_projection,
     profile_post_read_prompt_input,
     profile_reason_plan_state_update,
@@ -65,6 +67,9 @@ from google_work_agent.application.orchestration.plan_review import PlanReviewAg
 from google_work_agent.application.orchestration.request_understanding import (
     RequestUnderstandingAgent,
 )
+from google_work_agent.application.orchestration.retrieval_evidence_store import (
+    RunScopedEvidenceStore,
+)
 from google_work_agent.application.orchestration.solution_planning import (
     SolutionPlanningAgent,
 )
@@ -72,6 +77,7 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
 )
+from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
 from google_work_agent.application.orchestration.profile_fused import (
     PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA,
     PROFILE_REQUEST_SOURCE_OUTPUT_SCHEMA,
@@ -92,6 +98,7 @@ class ThreeStageOneSubgraph:
         *,
         request_understanding_agent: RequestUnderstandingAgent,
         acquisition_agent: ApiDiscoveryAcquisitionAgent,
+        tool_route_coordinator: ToolRouteCoordinator,
         prompt_ref: PromptReference,
         id_factory: Callable[[], str],
         graph_profile: GraphProfile,
@@ -100,6 +107,7 @@ class ThreeStageOneSubgraph:
     ) -> None:
         self._request_understanding_agent = request_understanding_agent
         self._acquisition_agent = acquisition_agent
+        self._tool_route_coordinator = tool_route_coordinator
         self._prompt_ref = prompt_ref
         self._id_factory = id_factory
         self._graph_profile = graph_profile
@@ -204,12 +212,18 @@ class ThreeStageOneSubgraph:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
         source_plan = prompt_output["source_plan"]
+        request_intent, tool_route_plan = build_profile_tool_route_plan(
+            prompt_output["request_intent"],
+            id_factory=self._id_factory,
+            coordinator=self._tool_route_coordinator,
+        )
         updated_local = dict(local_state)
         updated_local["node_state"] = "PLAN_VALIDATED"
         updated_local["typed_result"] = prompt_output
         next_state: ProfileRequestSourceLocalState = {
             **state,
-            "request_intent": prompt_output["request_intent"],
+            "request_intent": request_intent,
+            "tool_route_plan": tool_route_plan,
             "source_fetch_plans": source_plan["source_fetch_plans"],
             PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             "trace_context": merge_trace_context(
@@ -287,7 +301,7 @@ class ThreeStageOneSubgraph:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
         source_plan = prompt_output["source_plan"]
-        request_intent = prompt_output["request_intent"]
+        request_intent = _require_state_value(state["request_intent"], "request_intent")
         current: ProfileRequestSourceLocalState = {
             **state,
             "request_intent": request_intent,
@@ -362,6 +376,7 @@ class ThreeStageTwoSubgraph:
         *,
         request_understanding_agent: RequestUnderstandingAgent,
         planning_agent: SolutionPlanningAgent,
+        evidence_store: RunScopedEvidenceStore,
         prompt_ref: PromptReference,
         id_factory: Callable[[], str],
         graph_profile: GraphProfile,
@@ -370,6 +385,7 @@ class ThreeStageTwoSubgraph:
     ) -> None:
         self._request_understanding_agent = request_understanding_agent
         self._planning_agent = planning_agent
+        self._evidence_store = evidence_store
         self._prompt_ref = prompt_ref
         self._id_factory = id_factory
         self._graph_profile = graph_profile
@@ -478,13 +494,27 @@ class ThreeStageTwoSubgraph:
         }
 
     def _finalize_node(self, state: ProfileReasonPlanLocalState) -> ProfileReasonPlanLocalState:
+        request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         output = state[PROFILE_REASON_PLAN_OUTPUT_KEY]
         context_result = output["context_result"]
         analysis_result = output["analysis_result"]
         planning_result = output["planning_result"]
+        retrieval_result, evidence_drafts = build_profile_retrieval_result(
+            context_result,
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            tool_route_plan=_require_state_value(state["tool_route_plan"], "tool_route_plan"),
+            acquisition_result=_require_state_value(
+                state["acquisition_result"], "acquisition_result"
+            ),
+            artifact_id=self._id_factory(),
+        )
+        self._evidence_store.put(run_id=request.run_id, evidence_drafts=evidence_drafts)
         result = planning_result_from_projection(planning_result)
-        state_update = profile_reason_plan_state_update(output, planning_agent=self._planning_agent)
+        state_update = {
+            **profile_reason_plan_state_update(output, planning_agent=self._planning_agent),
+            "retrieval_result": retrieval_result,
+        }
         decision = route_supervisor(
             phase=WorkflowPhase.SOLUTION_PLANNING,
             state=cast(

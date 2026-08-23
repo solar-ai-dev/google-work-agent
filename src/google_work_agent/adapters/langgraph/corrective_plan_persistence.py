@@ -144,7 +144,7 @@ def persist_reserved_corrective_write_plan(
         action_id_map[action_id]: logical_connector_ids[action_id]
         for action_id in logical_action_ids
     }
-    target_resource_connectors = target_resource_connector_ids_from_actions(
+    target_resource_connector_ids_from_actions(
         plan_draft=deterministic_plan,
         action_connector_ids=logical_connector_ids,
     )
@@ -168,7 +168,7 @@ def persist_reserved_corrective_write_plan(
     target_resource_ids = {
         action["action_id"]: runtime._resolve_target_resource_ref_for_connector(
                 run_id=run_id,
-                connector_id=target_resource_connectors[action["action_id"]],
+                connector_id=logical_connector_ids[action["action_id"]],
                 resource_handle=action.get("target_resource_ref_id"),
                 acquisition_result=_require_state_value(
                     state["acquisition_result"], "acquisition_result"

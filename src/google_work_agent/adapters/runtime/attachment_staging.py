@@ -138,6 +138,9 @@ class LocalAttachmentStaging:
             raise AttachmentStagingError("ATTACHMENT_HASH_MISMATCH")
         return data
 
+    def verify_descriptor(self, descriptor: AttachmentDescriptor) -> None:
+        self.read_verified(descriptor)
+
     def _remove(self, staged_attachment_id: str) -> None:
         for path in (self._data_path(staged_attachment_id), self._meta_path(staged_attachment_id)):
             path.unlink(missing_ok=True)

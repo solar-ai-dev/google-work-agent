@@ -1,0 +1,71 @@
+{
+  "schema_version": 2,
+  "candidate_id": "CAND-E06-SINGLE",
+  "candidate_kind": "BASELINE_TEMPLATE",
+  "runnable": false,
+  "dataset_version": "rebuild-v1.14-r8.4",
+  "graph_version": "SINGLE_BASELINE",
+  "prompt_bundle_version": "0.8.3-r8.4",
+  "agent_schema_version": "v1",
+  "tool_schema_version": "v2.8",
+  "policy_version": "01-B-v2.7",
+  "retrieval_config_version": "baseline-r6",
+  "runtime": {
+    "runtime_mode": "API_LLM",
+    "provider": "OPENAI",
+    "model": "RESOLVE_E01_FINALIST",
+    "model_version": "RESOLVE_E01_FINALIST_VERSION",
+    "parameters": {
+      "api_endpoint": "responses",
+      "processing_mode": "standard",
+      "temperature": null,
+      "reasoning_budget": "medium",
+      "reasoning_context": "current_turn",
+      "pro_mode": false,
+      "structured_output_mode": "json_schema"
+    },
+    "hardware_profile": null
+  },
+  "prompt_overrides": {},
+  "budgets": {
+    "normal_max_llm_calls": 8,
+    "retrieval_heavy_max_llm_calls": 14,
+    "revision_heavy_max_llm_calls": 12,
+    "absolute_max_llm_calls": 16,
+    "schema_repair_per_call": 1,
+    "semantic_revision_same_failure": 1,
+    "planning_revision_per_run": 2,
+    "additional_acquisition": 2
+  },
+  "unresolved_bindings": [
+    "runtime.model",
+    "runtime.model_version"
+  ],
+  "candidate_config_hash": "48a3c82f0e98a4c2bf8846e4c2c264dbc82e618c3b3fea87c7e79852e7e12ba0",
+  "prompt_semantic_bundle_version": "semantic-r8.4-v1",
+  "graph_profile_spec": {
+    "profile_id": "SINGLE_BASELINE",
+    "nominal_agent_subgraph_count": 1,
+    "dynamic_agent_skip": false,
+    "semantic_responsibility_map_version": "semantic-responsibility-r8.2-v1",
+    "semantic_responsibility_exception": null,
+    "required_prompt_slots": [
+      "profile.single.request_source.initial",
+      "profile.single.reason_plan.initial",
+      "profile.single.self_review.initial"
+    ],
+    "normal_path_llm_call_plan": 3
+  },
+  "evaluation_environment": {
+    "environment_lock_version": "env-r8.2-v1",
+    "client_os": "Windows-11-x64",
+    "llm_concurrency": 1,
+    "google_read_concurrency": 3,
+    "write_concurrency": 1,
+    "api_llm_timeout_seconds": 120,
+    "google_timeout_seconds": 30,
+    "runner_version": "1.11.0-r8.2",
+    "hardware_profile_id": "API_HOSTED_OR_UNRESOLVED",
+    "evaluation_environment_hash": "ea1391e0f280cf60138c89fd838c46f51ff2e1c8a0bbe4401e74c544e83b3102"
+  }
+}

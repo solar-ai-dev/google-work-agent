@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from typing import Any, Callable
+from typing import Any
 
 from google_work_agent.ports import SettingsPatch, WorkHours
 
@@ -18,6 +19,7 @@ class UpdateWorkHours:
 @dataclass(frozen=True, slots=True)
 class UpdateSettingsCommand:
     command_id: str
+    setup_completed: bool | None
     requested_runtime_mode: str | None
     default_calendar_id: str | None
     default_tasklist_id: str | None
@@ -49,6 +51,7 @@ class UpdateSettingsHandler:
         result = service(
             SettingsPatch(
                 command_id=command.command_id,
+                setup_completed=command.setup_completed,
                 requested_runtime_mode=command.requested_runtime_mode,
                 default_calendar_id=command.default_calendar_id,
                 default_tasklist_id=command.default_tasklist_id,

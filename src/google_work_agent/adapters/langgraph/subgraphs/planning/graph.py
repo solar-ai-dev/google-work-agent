@@ -122,6 +122,12 @@ def planning_mode_from_request_intent(
         output_plan = tool_route_plan.get("output_plan")
         if isinstance(output_plan, dict) and output_plan.get("output_mode") == "ACTION":
             return "draft_plan"
+    if isinstance(request_intent, dict):
+        effects = request_intent.get("requested_effect_hints")
+        if isinstance(effects, list) and any(
+            effect in {"CREATE", "UPDATE", "SEND", "DELETE"} for effect in effects
+        ):
+            return "draft_plan"
     return "answer_only"
 
 

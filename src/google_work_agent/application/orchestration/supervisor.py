@@ -1102,7 +1102,7 @@ def _review_target_from_state(
 
 
 def _is_revision_follow_up(state: MultiAgentGraphState) -> bool:
-    review = state["plan_review"]
+    review = state.get("plan_review")
     return review is not None and review.get("status") == ReviewResult.REVISE.value
 
 

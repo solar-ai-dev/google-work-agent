@@ -288,7 +288,7 @@ def test_write_happy_path_requires_approval_then_executes_and_verifies(
             """
             SELECT resource_id, version_token
             FROM resource_refs
-            WHERE id = 'resource-ref-run-1-task-task-created-1';
+            WHERE id = 'resource-ref-run-1-google_workspace-task-task-created-1';
             """
         ).fetchone()
         attempt_count = connection.execute(
@@ -302,7 +302,9 @@ def test_write_happy_path_requires_approval_then_executes_and_verifies(
         assert approval_row["consumed_at_ms"] is not None
         assert attempt_row["status"] == "SUCCEEDED"
         assert attempt_row["version"] == 1
-        assert attempt_row["result_resource_ref_id"] == "resource-ref-run-1-task-task-created-1"
+        assert attempt_row["result_resource_ref_id"] == (
+            "resource-ref-run-1-google_workspace-task-task-created-1"
+        )
         assert verification_row["status"] == "VERIFIED"
         assert '"resource_id":"task-created-1"' in verification_row["expected_json"]
         assert '"resource_id":"task-created-1"' in verification_row["actual_json"]

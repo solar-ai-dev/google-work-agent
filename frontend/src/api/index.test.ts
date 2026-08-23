@@ -185,10 +185,11 @@ describe("api index wrappers", () => {
             action_id: "action-1",
             command_id: "command-7",
             expected_version: 2,
+            arguments_patch: { subject: "Updated" },
           }),
         path: "/api/v1/actions/action-1/modify",
         method: "POST",
-        bodyIncludes: { expected_version: 2 },
+        bodyIncludes: { expected_version: 2, arguments_patch: { subject: "Updated" } },
       },
       {
         call: () =>
@@ -215,6 +216,17 @@ describe("api index wrappers", () => {
         call: () => api.getGmailResourceDetail("thread/1"),
         path: "/api/v1/resources/gmail/thread%2F1",
         method: "GET",
+      },
+      {
+        call: () => api.downloadGmailAttachment("message/1", "attachment/1"),
+        path: "/api/v1/gmail/messages/message%2F1/attachments/attachment%2F1",
+        method: "GET",
+      },
+      {
+        call: () => api.stageAttachment(new File(["abc"], "a.txt", { type: "text/plain" })),
+        path: "/api/v1/attachments/stage",
+        method: "POST",
+        bodyIncludes: { filename: "a.txt", mime_type: "text/plain", data_base64: "YWJj" },
       },
       {
         call: () => api.listTaskResources("list-1", "page-2"),

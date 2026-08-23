@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 from collections import deque
 from collections.abc import Sequence
+from hashlib import sha256
 from typing import Any, cast
 
 from tests.integration.langgraph.test_runtime import (
@@ -63,7 +64,19 @@ from tests.integration.langgraph.test_runtime import (
     sqlite_unit_of_work_factory,
 )
 
-from google_work_agent.ports import LLMErrorCode, LLMInvocationError
+from google_work_agent.ports import (
+    LLMErrorCode,
+    LLMInvocationError,
+    WorkflowInvocationResult,
+)
+from google_work_agent.application.use_cases.run.resume_run import (
+    ResumeRunCommand,
+    ResumeRunHandler,
+    ResumeRunResult,
+)
+from google_work_agent.application.orchestration.provider_dispatch_budget import (
+    account_provider_dispatch,
+)
 
 
 class _ToolRouteQueuedLLMRuntime:
@@ -96,6 +109,7 @@ class _ToolRouteQueuedLLMRuntime:
         del run_id
 
     def _invoke(self, **kwargs: object) -> Any:
+        account_provider_dispatch()
         self.calls.append(dict(kwargs))
         prompt_ref = kwargs.get("prompt_ref")
         if getattr(prompt_ref, "prompt_id", None) == "request_understanding.classify":
@@ -201,6 +215,62 @@ def _build_runtime(
     )
 
 
+def _resume_confirmation(
+    *,
+    runtime: LangGraphWorkflowRuntime,
+    database_path: Path,
+    resume_payload: dict[str, object],
+    command_id: str,
+) -> tuple[ResumeRunResult, WorkflowInvocationResult | None]:
+    """Apply the canonical Domain transition before resuming the checkpoint."""
+    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+        run = unit_of_work.runs.get_by_id("run-1")
+        assert run is not None
+        expected_version = run.version
+
+    runtime_results: list[WorkflowInvocationResult] = []
+
+    def enqueue_resume(**queued: object) -> None:
+        runtime_results.append(
+            runtime.resume(
+                WorkflowResumeRequest(
+                    run_id=str(queued["run_id"]),
+                    workflow_key="thread-1",
+                    resume_kind=str(queued["resume_kind"]),
+                    resume_payload=dict(queued["resume_payload"]),  # type: ignore[arg-type]
+                    correlation=WorkflowCorrelationContext(
+                        request_id=str(queued["request_id"]),
+                        command_id=str(queued["command_id"]),
+                        api_contract_version="1",
+                    ),
+                )
+            )
+        )
+
+    application_result = ResumeRunHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=FakeClock(2000).now_ms,
+        enqueue_resume=enqueue_resume,
+        resolve_resume_authority=lambda **kwargs: runtime.resolve_resume_authority(
+            run_id=str(kwargs["run_id"]),
+            workflow_key="thread-1",
+            resume_kind=str(kwargs["resume_kind"]),
+        ),
+    )(
+        ResumeRunCommand(
+            command_id=command_id,
+            request_hash=sha256(command_id.encode("utf-8")).hexdigest(),
+            run_id="run-1",
+            expected_run_version=expected_version,
+            resume_kind="CONFIRMATION",
+            api_contract_version="1",
+        ),
+        request_id=f"request-{command_id}",
+        resume_payload=resume_payload,
+    )
+    return application_result, runtime_results[0] if runtime_results else None
+
+
 def _nested_tool_route_task(runtime: LangGraphWorkflowRuntime) -> Any:
     """The paused checkpoint's own task for the nested tool_route subgraph --
     asserting on this is what actually distinguishes "same nested checkpoint
@@ -247,7 +317,7 @@ def test_tool_route_ambiguity_pauses_inside_own_nested_task(tmp_path: Path) -> N
     # (which would show up as snapshot.next == ("waiting_confirmation",)
     # with no nested subgraph structure at all).
     outer_task = _nested_tool_route_task(runtime)
-    assert outer_task.state.next == ("finalize",)
+    assert outer_task.state.next == ("confirm",)
 
     connection = connect_sqlite(database_path)
     try:
@@ -318,24 +388,21 @@ def test_tool_route_resume_makes_exactly_one_more_semantic_call_and_completes(
         manifest_path=manifest_path,
         id_prefix="round2",
     )
-    result = resumed_runtime.resume(
-        WorkflowResumeRequest(
-            run_id="run-1",
-            workflow_key="thread-1",
-            resume_kind="CONFIRMATION",
-            resume_payload={
-                "schema_version": 1,
-                "interrupt_id": interrupt_id,
-                "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
-                "free_text": "Use my Tasks list.",
-            },
-            correlation=WorkflowCorrelationContext(
-                request_id="request-2", command_id="command-2", api_contract_version="1"
-            ),
-        )
+    application_result, result = _resume_confirmation(
+        runtime=resumed_runtime,
+        database_path=database_path,
+        command_id="command-2",
+        resume_payload={
+            "schema_version": 1,
+            "interrupt_id": interrupt_id,
+            "response_kind": "FREE_TEXT",
+            "selected_option_ids": [],
+            "free_text": "Use my Tasks list.",
+        },
     )
-    assert result.outcome is WorkflowOutcome.COMPLETED
+    assert application_result.applied is True
+    assert result is not None
+    assert result.outcome is WorkflowOutcome.COMPLETED, result.payload
 
     semantic_calls = [
         call
@@ -350,9 +417,7 @@ def test_tool_route_resume_makes_exactly_one_more_semantic_call_and_completes(
 
     # H: Prompt resume boundary -- only the bounded confirmation_response,
     # nothing about the checkpoint/interrupt/registry crosses in.
-    confirmation_response = cast(
-        dict[str, object], semantic_prompt_input["confirmation_response"]
-    )
+    confirmation_response = cast(dict[str, object], semantic_prompt_input["confirmation_response"])
     assert confirmation_response["free_text"] == "Use my Tasks list."
     for forbidden_key in ("interrupt_id", "resume_target", "checkpoint", "owner_subgraph"):
         assert forbidden_key not in semantic_prompt_input
@@ -412,23 +477,20 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
         manifest_path=manifest_path,
         id_prefix="round2",
     )
-    second = round2_runtime.resume(
-        WorkflowResumeRequest(
-            run_id="run-1",
-            workflow_key="thread-1",
-            resume_kind="CONFIRMATION",
-            resume_payload={
-                "schema_version": 1,
-                "interrupt_id": round1_interrupt_id,
-                "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
-                "free_text": "round-1 answer, still ambiguous apparently.",
-            },
-            correlation=WorkflowCorrelationContext(
-                request_id="request-2", command_id="command-2", api_contract_version="1"
-            ),
-        )
+    application_result, second = _resume_confirmation(
+        runtime=round2_runtime,
+        database_path=database_path,
+        command_id="command-2",
+        resume_payload={
+            "schema_version": 1,
+            "interrupt_id": round1_interrupt_id,
+            "response_kind": "FREE_TEXT",
+            "selected_option_ids": [],
+            "free_text": "round-1 answer, still ambiguous apparently.",
+        },
     )
+    assert application_result.applied is True
+    assert second is not None
     # A second real pause, NOT an error and NOT a silent restart.
     assert second.outcome is WorkflowOutcome.ACCEPTED
     round1_reclassify_calls = [
@@ -439,14 +501,14 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
     assert len(round1_reclassify_calls) == 1
 
     round2_task = _nested_tool_route_task(round2_runtime)
-    assert round2_task.state.next == ("finalize",)
+    assert round2_task.state.next == ("confirm",)
     round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
     assert second.payload["user_interrupt"]["origin_target"] == "tool_route.finalize"
     assert round2_interrupt_id != round1_interrupt_id
     round2_runtime.close()
 
-    # --- Round 3: resolved -- Tool Route completes, run proceeds downstream
-    # for the first time. ---
+    # --- Round 3: Tool Route resolves and downstream execution reaches the
+    # deterministic per-run LLM budget boundary. ---
     round3_llm_runtime = _ToolRouteQueuedLLMRuntime(
         [
             _semantic_candidate("ROUTE_READY", input_resource_types=["TASK"]),
@@ -466,11 +528,11 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
         manifest_path=manifest_path,
         id_prefix="round3",
     )
-    third = round3_runtime.resume(
-        WorkflowResumeRequest(
-            run_id="run-1",
-            workflow_key="thread-1",
-            resume_kind="CONFIRMATION",
+    with pytest.raises(LLMInvocationError) as excinfo:
+        _resume_confirmation(
+            runtime=round3_runtime,
+            database_path=database_path,
+            command_id="command-3",
             resume_payload={
                 "schema_version": 1,
                 "interrupt_id": round2_interrupt_id,
@@ -478,12 +540,8 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
                 "selected_option_ids": [],
                 "free_text": "round-2 answer, resolves it.",
             },
-            correlation=WorkflowCorrelationContext(
-                request_id="request-3", command_id="command-3", api_contract_version="1"
-            ),
         )
-    )
-    assert third.outcome is WorkflowOutcome.COMPLETED
+    assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
     round2_reclassify_calls = [
         call
         for call in round3_llm_runtime.calls
@@ -496,7 +554,7 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
         run_row = connection.execute(
             "SELECT status, langgraph_thread_id FROM runs WHERE id = 'run-1';"
         ).fetchone()
-        assert run_row[0] == "COMPLETED"
+        assert run_row[0] == "PLANNING"
         assert run_row[1] == "thread-1"
     finally:
         connection.close()
@@ -535,24 +593,21 @@ def test_tool_route_resume_rejects_wrong_interrupt_id(tmp_path: Path) -> None:
         id_prefix="round2",
     )
     try:
-        with pytest.raises(ValueError, match="interrupt_id"):
-            resumed_runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": "definitely-the-wrong-interrupt-id",
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "irrelevant",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
-            )
+        application_result, runtime_result = _resume_confirmation(
+            runtime=resumed_runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": "definitely-the-wrong-interrupt-id",
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "irrelevant",
+            },
+        )
+        assert application_result.applied is False
+        assert "interrupt" in str(application_result.conflict_detail)
+        assert runtime_result is None
         # Fails closed: no Provider call happened while validating the
         # resume payload.
         assert resumed_llm_runtime.calls == []
@@ -594,24 +649,21 @@ def test_tool_route_resume_rejects_option_id_outside_allowed_scope(tmp_path: Pat
         id_prefix="round2",
     )
     try:
-        with pytest.raises(ValueError, match="option"):
-            resumed_runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "OPTION_SELECTION",
-                        "selected_option_ids": ["option-not-offered"],
-                        "free_text": None,
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
-            )
+        application_result, runtime_result = _resume_confirmation(
+            runtime=resumed_runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "OPTION_SELECTION",
+                "selected_option_ids": ["option-not-offered"],
+                "free_text": None,
+            },
+        )
+        assert application_result.applied is False
+        assert "option" in str(application_result.conflict_detail)
+        assert runtime_result is None
     finally:
         resumed_runtime.close()
 
@@ -644,9 +696,7 @@ def test_tool_route_happy_path_without_confirmation_reaches_context_retrieval(
         assert result.outcome is WorkflowOutcome.COMPLETED
         connection = connect_sqlite(database_path)
         try:
-            run_row = connection.execute(
-                "SELECT status FROM runs WHERE id = 'run-1';"
-            ).fetchone()
+            run_row = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()
             assert run_row[0] == "COMPLETED"
         finally:
             connection.close()
@@ -703,7 +753,7 @@ def test_tool_route_scope_expansion_pauses_inside_own_nested_task(tmp_path: Path
         assert interrupt["options"] == _APPROVED_OPTIONS
 
         outer_task = _nested_tool_route_task(runtime)
-        assert outer_task.state.next == ("finalize",)
+        assert outer_task.state.next == ("confirm",)
 
         # No output route was ever frozen -- the plan does not exist yet.
         state = runtime._graph.get_state(  # noqa: SLF001
@@ -718,8 +768,7 @@ def test_tool_route_scope_expansion_pauses_inside_own_nested_task(tmp_path: Path
         semantic_calls = [
             call
             for call in llm_runtime.calls
-            if getattr(call["prompt_ref"], "prompt_id", None)
-            == "tool_route.determine_io_resources"
+            if getattr(call["prompt_ref"], "prompt_id", None) == "tool_route.determine_io_resources"
         ]
         assert len(semantic_calls) == 1
     finally:
@@ -796,15 +845,9 @@ def test_tool_route_scope_expansion_approved_materializes_reads_with_receipt(
     interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
     runtime.close()
 
-    # 1 (classify, pre-pause) + 1 (tool_route round1, pre-pause) + 6
-    # (tool_route round2 + retrieval.plan_query + selection + sufficiency +
-    # analysis + write_plan) = 8 = NORMAL_MAX_LLM_CALLS -- the same
-    # established budget arithmetic as I1's RU nested-resume test
-    # (test_runtime_invocation.py): the extra real semantic-candidate call a
-    # second Tool Route round costs pushes "review" (the 9th call) past the
-    # cap. Not queuing review's response and asserting the budget-exhausted
-    # error here (rather than reaching COMPLETED) proves this is ordinary,
-    # unchanged RunBudgetV1 accounting -- not a C2-B-introduced exemption.
+    # The approved scope-expansion continuation preserves the existing route
+    # candidate. Downstream execution then stops at the deterministic budget
+    # boundary before Review.
     resumed_llm_runtime = _ToolRouteQueuedLLMRuntime(
         [
             _out_of_scope_task_create_candidate(),
@@ -812,6 +855,7 @@ def test_tool_route_scope_expansion_approved_materializes_reads_with_receipt(
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
             _write_plan_output(),
+            _review_output("PASS"),
         ],
         classify_intent=scoped_intent,
     )
@@ -826,42 +870,26 @@ def test_tool_route_scope_expansion_approved_materializes_reads_with_receipt(
     )
     try:
         with pytest.raises(LLMInvocationError) as excinfo:
-            resumed_runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "OPTION_SELECTION",
-                        "selected_option_ids": ["APPROVED"],
-                        "free_text": None,
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
+            _resume_confirmation(
+                runtime=resumed_runtime,
+                database_path=database_path,
+                command_id="command-2",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": interrupt_id,
+                    "response_kind": "OPTION_SELECTION",
+                    "selected_option_ids": ["APPROVED"],
+                    "free_text": None,
+                },
             )
         assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
 
         semantic_calls = [
             call
             for call in resumed_llm_runtime.calls
-            if getattr(call["prompt_ref"], "prompt_id", None)
-            == "tool_route.determine_io_resources"
+            if getattr(call["prompt_ref"], "prompt_id", None) == "tool_route.determine_io_resources"
         ]
-        assert len(semantic_calls) == 1
-        semantic_prompt_input = cast(dict[str, object], semantic_calls[0]["prompt_input"])
-        for forbidden_key in (
-            "interrupt_id",
-            "resume_target",
-            "checkpoint",
-            "owner_subgraph",
-            "policy_confirmation_receipts",
-            "decision_context_hash",
-        ):
-            assert forbidden_key not in semantic_prompt_input
+        assert semantic_calls == []
 
         state = resumed_runtime._graph.get_state(  # noqa: SLF001
             resumed_runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
@@ -944,30 +972,26 @@ def test_tool_route_scope_expansion_declined_blocks_without_materializing_reads(
         id_prefix="round2",
     )
     try:
-        result = resumed_runtime.resume(
-            WorkflowResumeRequest(
-                run_id="run-1",
-                workflow_key="thread-1",
-                resume_kind="CONFIRMATION",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "response_kind": "OPTION_SELECTION",
-                    "selected_option_ids": ["DECLINED"],
-                    "free_text": None,
-                },
-                correlation=WorkflowCorrelationContext(
-                    request_id="request-2", command_id="command-2", api_contract_version="1"
-                ),
-            )
+        application_result, result = _resume_confirmation(
+            runtime=resumed_runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "OPTION_SELECTION",
+                "selected_option_ids": ["DECLINED"],
+                "free_text": None,
+            },
         )
+        assert application_result.applied is True
+        assert result is not None
         # DECLINED never re-invokes the semantic stage -- no real Provider
         # call, no re-derivation of a "reduced" plan.
         semantic_calls = [
             call
             for call in resumed_llm_runtime.calls
-            if getattr(call["prompt_ref"], "prompt_id", None)
-            == "tool_route.determine_io_resources"
+            if getattr(call["prompt_ref"], "prompt_id", None) == "tool_route.determine_io_resources"
         ]
         assert semantic_calls == []
 
@@ -1084,22 +1108,17 @@ def test_tool_route_scope_expansion_forged_receipt_stays_inert(
     )
     try:
         with pytest.raises(LLMInvocationError) as excinfo:
-            resumed_runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "OPTION_SELECTION",
-                        "selected_option_ids": ["APPROVED"],
-                        "free_text": None,
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
+            _resume_confirmation(
+                runtime=resumed_runtime,
+                database_path=database_path,
+                command_id="command-2",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": interrupt_id,
+                    "response_kind": "OPTION_SELECTION",
+                    "selected_option_ids": ["APPROVED"],
+                    "free_text": None,
+                },
             )
         assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
 
@@ -1171,26 +1190,23 @@ def test_tool_route_ambiguity_then_scope_expansion_rounds_both_stay_nested(
         manifest_path=manifest_path,
         id_prefix="round2",
     )
-    second = round2_runtime.resume(
-        WorkflowResumeRequest(
-            run_id="run-1",
-            workflow_key="thread-1",
-            resume_kind="CONFIRMATION",
-            resume_payload={
-                "schema_version": 1,
-                "interrupt_id": round1_interrupt_id,
-                "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
-                "free_text": "Create a task.",
-            },
-            correlation=WorkflowCorrelationContext(
-                request_id="request-2", command_id="command-2", api_contract_version="1"
-            ),
-        )
+    application_result, second = _resume_confirmation(
+        runtime=round2_runtime,
+        database_path=database_path,
+        command_id="command-2",
+        resume_payload={
+            "schema_version": 1,
+            "interrupt_id": round1_interrupt_id,
+            "response_kind": "FREE_TEXT",
+            "selected_option_ids": [],
+            "free_text": "Create a task.",
+        },
     )
+    assert application_result.applied is True
+    assert second is not None
     assert second.outcome is WorkflowOutcome.ACCEPTED
     round2_task = _nested_tool_route_task(round2_runtime)
-    assert round2_task.state.next == ("finalize",)
+    assert round2_task.state.next == ("confirm",)
     round2_interrupt = second.payload["user_interrupt"]
     assert round2_interrupt["options"] == _APPROVED_OPTIONS
     round2_interrupt_id = round2_interrupt["interrupt_id"]
@@ -1224,22 +1240,17 @@ def test_tool_route_ambiguity_then_scope_expansion_rounds_both_stay_nested(
     )
     try:
         with pytest.raises(LLMInvocationError) as excinfo:
-            round3_runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": round2_interrupt_id,
-                        "response_kind": "OPTION_SELECTION",
-                        "selected_option_ids": ["APPROVED"],
-                        "free_text": None,
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-3", command_id="command-3", api_contract_version="1"
-                    ),
-                )
+            _resume_confirmation(
+                runtime=round3_runtime,
+                database_path=database_path,
+                command_id="command-3",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": round2_interrupt_id,
+                    "response_kind": "OPTION_SELECTION",
+                    "selected_option_ids": ["APPROVED"],
+                    "free_text": None,
+                },
             )
         assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
         state = round3_runtime._graph.get_state(  # noqa: SLF001

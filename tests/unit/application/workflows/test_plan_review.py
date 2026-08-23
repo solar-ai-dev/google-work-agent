@@ -866,7 +866,7 @@ def test_default_product_loader_rejects_draft_review_prompt(tmp_path: Path) -> N
 
 
 def test_plan_review_source_has_no_google_mcp_or_completion_calls() -> None:
-    source = Path("src/google_work_agent/application/workflows/plan_review.py").read_text(
+    source = Path("src/google_work_agent/application/orchestration/plan_review.py").read_text(
         encoding="utf-8"
     )
 
@@ -878,9 +878,9 @@ def test_plan_review_source_has_no_google_mcp_or_completion_calls() -> None:
 
 
 def test_plan_review_symbols_have_explicit_owners() -> None:
-    assert PlanReviewAgent.__module__.endswith(".workflows.plan_review")
-    assert PlanReviewResultV1.__module__.endswith(".workflows.handoff_contracts")
-    assert ReviewIssueV1.__module__.endswith(".workflows.handoff_contracts")
+    assert PlanReviewAgent.__module__.endswith(".orchestration.plan_review")
+    assert PlanReviewResultV1.__module__.endswith(".orchestration.handoff_contracts")
+    assert ReviewIssueV1.__module__.endswith(".orchestration.handoff_contracts")
 
 
 def _agent(runtime: FakeLLMRuntime) -> PlanReviewAgent:

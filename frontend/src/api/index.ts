@@ -1,6 +1,7 @@
 import {
   API_CONTRACT_VERSION,
   type ActionCommandResponse,
+  type AttachmentDescriptorResponse,
   type BootstrapResponse,
   type ConversationHistoryResponse,
   type ConversationListResponse,
@@ -22,7 +23,7 @@ import {
   type SettingsResponse,
   type StartRunResponse,
 } from "./contract";
-import { requestJson } from "./client";
+import { requestBlob, requestJson } from "./client";
 
 export function getLive(): Promise<LiveResponse> {
   return requestJson("/health/live");
@@ -52,10 +53,14 @@ export function getSettings(): Promise<SettingsResponse> {
 
 export function patchSettings(payload: {
   command_id: string;
+  setup_completed?: boolean;
   requested_runtime_mode?: string;
   external_llm_consent?: boolean;
   ollama_endpoint?: string | null;
   approved_model_id?: string | null;
+  default_calendar_id?: string | null;
+  default_tasklist_id?: string | null;
+  timezone?: string;
 }): Promise<SettingsResponse> {
   return requestJson("/api/v1/settings", {
     method: "PATCH",
@@ -271,12 +276,14 @@ export function modifyAction(payload: {
   action_id: string;
   command_id: string;
   expected_version: number;
+  arguments_patch?: Record<string, unknown>;
 }): Promise<ActionCommandResponse> {
   return requestJson(`/api/v1/actions/${encodeURIComponent(payload.action_id)}/modify`, {
     method: "POST",
     body: {
       command_id: payload.command_id,
       expected_version: payload.expected_version,
+      arguments_patch: payload.arguments_patch ?? {},
       api_contract_version: API_CONTRACT_VERSION,
     },
   });
@@ -315,6 +322,43 @@ export function listGmailResources(
 
 export function getGmailResourceDetail(resourceId: string): Promise<GmailResourceDetailResponse> {
   return requestJson(`/api/v1/resources/gmail/${encodeURIComponent(resourceId)}`);
+}
+
+export async function stageAttachment(file: File): Promise<AttachmentDescriptorResponse> {
+  const bytes = new Uint8Array(await readFileBuffer(file));
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return requestJson("/api/v1/attachments/stage", {
+    method: "POST",
+    body: {
+      filename: file.name,
+      mime_type: file.type || "application/octet-stream",
+      data_base64: btoa(binary),
+    },
+  });
+}
+
+function readFileBuffer(file: File): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      if (reader.result instanceof ArrayBuffer) resolve(reader.result);
+      else reject(new Error("Attachment file could not be read."));
+    });
+    reader.addEventListener("error", () => reject(reader.error ?? new Error("Attachment file could not be read.")));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+export function downloadGmailAttachment(
+  messageId: string,
+  attachmentId: string,
+): Promise<Blob> {
+  return requestBlob(
+    `/api/v1/gmail/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
+  );
 }
 
 export function listTaskResources(

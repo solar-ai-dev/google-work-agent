@@ -41,6 +41,7 @@ def _ref(
     return ResourceRefRecord(
         id="ref-1",
         run_id="run-1",
+        connector_id="google_workspace",
         source=ResourceSource.TASKS,
         resource_type=StoredResourceType.TASK,
         resource_id=resource_id,

@@ -1,7 +1,7 @@
 """Regression coverage for canonical_optional_inputs import wiring.
 
-``ConfirmationResponseV1`` is defined in ``application.workflows.contracts``,
-not ``application.workflows.handoff_contracts``. Importing it from the wrong
+``ConfirmationResponseV1`` is defined in ``application.orchestration.contracts``,
+not ``application.orchestration.handoff_contracts``. Importing it from the wrong
 module breaks ``adapters.langgraph`` package import entirely (this module is
 pulled in transitively by ``canonical_optional_subgraphs`` /
 ``canonical_response_runtime``).

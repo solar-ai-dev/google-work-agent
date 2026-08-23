@@ -34,6 +34,8 @@ from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import SingleWorkflowLocalState
 from google_work_agent.adapters.langgraph.subgraphs.profile_shared import (
     build_no_fetch_acquisition_result,
+    build_profile_retrieval_result,
+    build_profile_tool_route_plan,
     planning_result_from_projection,
     profile_planning_state_update,
     profile_post_read_prompt_input,
@@ -53,6 +55,9 @@ from google_work_agent.application.orchestration.plan_review import PlanReviewAg
 from google_work_agent.application.orchestration.request_understanding import (
     RequestUnderstandingAgent,
 )
+from google_work_agent.application.orchestration.retrieval_evidence_store import (
+    RunScopedEvidenceStore,
+)
 from google_work_agent.application.orchestration.solution_planning import (
     SolutionPlanningAgent,
     validate_action_plan_draft_v1,
@@ -62,6 +67,7 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
 )
+from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
 from google_work_agent.application.orchestration.profile_fused import (
     PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA,
     PROFILE_REQUEST_SOURCE_OUTPUT_SCHEMA,
@@ -84,6 +90,8 @@ class SingleWorkflowSubgraph:
         acquisition_agent: ApiDiscoveryAcquisitionAgent,
         planning_agent: SolutionPlanningAgent,
         review_agent: PlanReviewAgent,
+        tool_route_coordinator: ToolRouteCoordinator,
+        evidence_store: RunScopedEvidenceStore,
         request_source_prompt_ref: PromptReference,
         reason_plan_prompt_ref: PromptReference,
         id_factory: Callable[[], str],
@@ -95,6 +103,8 @@ class SingleWorkflowSubgraph:
         self._acquisition_agent = acquisition_agent
         self._planning_agent = planning_agent
         self._review_agent = review_agent
+        self._tool_route_coordinator = tool_route_coordinator
+        self._evidence_store = evidence_store
         self._request_source_prompt_ref = request_source_prompt_ref
         self._reason_plan_prompt_ref = reason_plan_prompt_ref
         self._id_factory = id_factory
@@ -201,12 +211,18 @@ class SingleWorkflowSubgraph:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
         source_plan = prompt_output["source_plan"]
+        request_intent, tool_route_plan = build_profile_tool_route_plan(
+            prompt_output["request_intent"],
+            id_factory=self._id_factory,
+            coordinator=self._tool_route_coordinator,
+        )
         updated_local = dict(local_state)
         updated_local["node_state"] = "PLAN_VALIDATED"
         updated_local["typed_result"] = prompt_output
         next_state: SingleWorkflowLocalState = {
             **state,
-            "request_intent": prompt_output["request_intent"],
+            "request_intent": request_intent,
+            "tool_route_plan": tool_route_plan,
             "source_fetch_plans": source_plan["source_fetch_plans"],
             PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             "trace_context": merge_trace_context(
@@ -299,6 +315,16 @@ class SingleWorkflowSubgraph:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         output = state[PROFILE_REASON_PLAN_OUTPUT_KEY]
+        retrieval_result, evidence_drafts = build_profile_retrieval_result(
+            output["context_result"],
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            tool_route_plan=_require_state_value(state["tool_route_plan"], "tool_route_plan"),
+            acquisition_result=_require_state_value(
+                state["acquisition_result"], "acquisition_result"
+            ),
+            artifact_id=self._id_factory(),
+        )
+        self._evidence_store.put(run_id=request.run_id, evidence_drafts=evidence_drafts)
         planning_result = output["planning_result"]
         result = planning_result_from_projection(planning_result)
         answer_draft = (
@@ -333,6 +359,7 @@ class SingleWorkflowSubgraph:
             **state,
             PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             "context_result": output["context_result"],
+            "retrieval_result": retrieval_result,
             "analysis_result": output["analysis_result"],
             **profile_planning_state_update(
                 planning_result,
@@ -380,7 +407,7 @@ class SingleWorkflowSubgraph:
         if state.get("plan_review") is None:
             prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
             source_plan = prompt_output["source_plan"]
-            request_intent = prompt_output["request_intent"]
+            request_intent = _require_state_value(state["request_intent"], "request_intent")
             current: SingleWorkflowLocalState = {
                 **state,
                 "request_intent": request_intent,

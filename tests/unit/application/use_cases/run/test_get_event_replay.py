@@ -70,8 +70,8 @@ def _connect(path: Path):
 def _handler(tmp_path: Path, publisher: FakePublisher) -> GetEventReplayHandler:
     database_path = tmp_path / "events.db"
     with _connect(database_path) as connection:
-        connection.execute("CREATE TABLE runs (id TEXT PRIMARY KEY)")
-        connection.execute("INSERT INTO runs(id) VALUES ('run-1')")
+        connection.execute("CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY)")
+        connection.execute("INSERT OR IGNORE INTO runs(id) VALUES ('run-1')")
     return GetEventReplayHandler(
         database_path=database_path,
         connection_factory=_connect,

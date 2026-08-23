@@ -8,6 +8,7 @@ ensure_llm_call_budget-before / consume_llm_call_budget-after pattern).
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any, cast
 
 import pytest
@@ -21,18 +22,38 @@ from google_work_agent.application.orchestration.contracts import (
     NORMAL_MAX_LLM_CALLS,
     build_default_run_budget,
 )
+from google_work_agent.application.orchestration.provider_dispatch_budget import (
+    account_provider_dispatch,
+    provider_dispatch_execution_scope,
+)
 from google_work_agent.ports import (
     LLMErrorCode,
     LLMInvocationError,
+    PromptReference,
     WorkflowCorrelationContext,
     WorkflowStartRequest,
+)
+
+PROMPT_REF = PromptReference(
+    prompt_bundle_version="test",
+    prompt_id="request_understanding.classify",
+    prompt_version="v1",
+    content_hash="hash",
+    agent_role="request_understanding",
+    subgraph_name="request_understanding",
+    node_name="identify_goal",
+    node_state="INITIAL",
+    purpose="test",
+    input_schema_version="v1",
+    output_schema_version="v1",
 )
 
 
 class _NeverCalledAgent:
     """Fails the test if the Provider boundary is ever reached."""
 
-    prompt_ref = None
+    prompt_ref = PROMPT_REF
+    _llm_runtime = None
 
     def invoke_classify_llm(self, *args: object, **kwargs: object) -> Any:
         raise AssertionError(
@@ -51,27 +72,39 @@ class _RepairingAgent:
     LLMRuntimeService already folds that into structured_output_attempts=2
     (see application/llm.py's provider_calls_consumed fix)."""
 
-    prompt_ref = None
+    prompt_ref = PROMPT_REF
 
     def __init__(self, *, structured_output_attempts: int) -> None:
         self._structured_output_attempts = structured_output_attempts
+        self._llm_runtime = self
         self.calls = 0
 
-    def invoke_classify_llm(self, *args: object, **kwargs: object) -> _FakeLlmResult:
+    def invoke_structured(self, *args: object, **kwargs: object) -> _FakeLlmResult:
         self.calls += 1
-        return _FakeLlmResult(structured_output_attempts=self._structured_output_attempts)
-
-    def build_output_from_llm_result(self, llm_result: _FakeLlmResult) -> dict[str, object]:
-        del llm_result
-        return {
-            "schema_version": 1,
-            "result": "COMPLETE",
-            "request_intent": None,
-            "clarification": None,
-            "failure": None,
-            "validator_codes": [],
-            "llm_provider_result": {},
+        for _ in range(self._structured_output_attempts):
+            account_provider_dispatch()
+        result = _FakeLlmResult(structured_output_attempts=self._structured_output_attempts)
+        result.structured_output = {
+            "schema_version": 2,
+            "goal": "test goal",
+            "completion_conditions": ["done"],
+            "constraints": [],
+            "requested_effect_hints": ["READ"],
+            "requested_resource_hints": ["TASK"],
+            "analysis_requirement": "REQUIRED",
+            "ambiguity": {
+                "requires_confirmation": False,
+                "reason_codes": [],
+                "missing_fields": [],
+            },
         }
+        return result
+
+
+@pytest.fixture(autouse=True)
+def _isolate_provider_dispatch_budget() -> Iterator[None]:
+    with provider_dispatch_execution_scope():
+        yield
 
 
 def _subgraph(agent: Any = None) -> RequestUnderstandingSubgraph:
@@ -95,6 +128,7 @@ def _state(*, llm_calls_used: int) -> dict[str, object]:
             correlation=WorkflowCorrelationContext("request-1", "command-1", "v1"),
         ),
         "prompt_context": {},
+        "ru_invocation_id": "ru-invocation-test",
         REQUEST_AGENT_LOCAL_KEY: {
             "schema_version": 1,
             "agent_role": "request_understanding",
@@ -122,7 +156,7 @@ def test_exhausted_budget_blocks_the_call_before_the_agent_is_ever_invoked() -> 
     state = _state(llm_calls_used=NORMAL_MAX_LLM_CALLS)
 
     with pytest.raises(LLMInvocationError) as excinfo:
-        subgraph._classify_node(cast(Any, state))  # noqa: SLF001
+        subgraph._identify_goal_node(cast(Any, state))  # noqa: SLF001
 
     assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
 
@@ -135,7 +169,7 @@ def test_a_schema_repair_attempt_consumes_two_llm_calls_not_one() -> None:
     subgraph = _subgraph(agent)
     state = _state(llm_calls_used=3)
 
-    result = subgraph._classify_node(cast(Any, state))  # noqa: SLF001
+    result = subgraph._identify_goal_node(cast(Any, state))  # noqa: SLF001
 
     assert agent.calls == 1
     assert cast(dict[str, Any], result["retry_budget"])["llm_calls_used"] == 5

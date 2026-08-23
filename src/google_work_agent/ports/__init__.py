@@ -12,6 +12,7 @@ from google_work_agent.ports.artifact_verifier import (
 )
 from google_work_agent.ports.attachments import (
     AttachmentDescriptor,
+    AttachmentDescriptorVerifier,
     AttachmentStaging,
     AttachmentStagingError,
     GmailAttachmentBytes,
@@ -192,6 +193,7 @@ __all__ = [
     "ArtifactSignatureDecision",
     "ArtifactSignatureVerifier",
     "AttachmentDescriptor",
+    "AttachmentDescriptorVerifier",
     "AttachmentStaging",
     "AttachmentStagingError",
     "AttemptOutcome",

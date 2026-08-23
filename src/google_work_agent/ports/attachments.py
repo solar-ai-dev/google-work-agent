@@ -54,6 +54,13 @@ class AttachmentStaging(Protocol):
         """Persist bytes temporarily and return their integrity descriptor."""
 
 
+class AttachmentDescriptorVerifier(Protocol):
+    """Verify staged bytes without exposing them outside the staging adapter."""
+
+    def verify_descriptor(self, descriptor: AttachmentDescriptor) -> None:
+        """Fail when the descriptor no longer identifies the staged bytes."""
+
+
 @dataclass(frozen=True, slots=True)
 class GmailAttachmentBytes:
     """One Gmail attachment's bytes plus the metadata needed to stream it.

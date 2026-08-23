@@ -13,7 +13,9 @@ from google_work_agent.domain.google_workspace_tool_contracts import (
 )
 from google_work_agent.domain.tool_registry import SignedToolRegistry, ToolRegistryEntry
 
-_GMAIL_DRAFT_MODIFY_FIELDS: frozenset[str] = frozenset({"to", "cc", "subject", "body"})
+_GMAIL_DRAFT_MODIFY_FIELDS: frozenset[str] = frozenset(
+    {"to", "cc", "subject", "body", "attachments"}
+)
 _TASK_MODIFY_FIELDS: frozenset[str] = frozenset({"title", "notes", "due"})
 _CALENDAR_EVENT_MODIFY_FIELDS: frozenset[str] = frozenset({"title", "start", "end", "description"})
 

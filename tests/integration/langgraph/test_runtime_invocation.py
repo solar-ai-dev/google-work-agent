@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
 from typing import Any, Literal, cast
 
 from tests.integration.langgraph.test_runtime import (
@@ -58,7 +59,10 @@ from tests.integration.langgraph.test_runtime import (
 )
 
 from google_work_agent.adapters.connectors.execution_router import bind_execution_connector_id
-from google_work_agent.adapters.persistence.connector_identity import bind_resource_connector_id
+from google_work_agent.application.use_cases.run.resume_run import (
+    ResumeRunCommand,
+    ResumeRunHandler,
+)
 from google_work_agent.ports import LLMErrorCode, LLMInvocationError, ResourceSnapshot
 
 
@@ -152,12 +156,10 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     outer_task = paused_snapshot.tasks[0]
     assert outer_task.name == "request_understanding"
     nested_snapshot = outer_task.state
-    # The nested subgraph's OWN pending task is "finalize" -- proof that
-    # "init" and "classify" (which run before finalize) already completed
-    # and committed, and are not what is paused.
-    assert nested_snapshot.next == ("finalize",)
-    local_state_before = nested_snapshot.values["__request_agent_local__"]
-    invocation_id_before = local_state_before["invocation_id"]
+    # The canonical owner-local graph pauses at its explicit confirmation
+    # node after goal identification and ambiguity detection have committed.
+    assert nested_snapshot.next == ("confirm",)
+    assert nested_snapshot.values["ru_candidate"]["goal"]
 
     # The API-facing paused-run projection (WorkflowInvocationResult.payload)
     # must still surface the confirmation question even though it never got
@@ -213,25 +215,61 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     # exactly the 8-call cap instead of a 9th (review) call being denied.
     # The unchanged 7-call count below proves I1 did not silently change
     # RunBudgetV1 behavior while replacing the resume mechanism.
-    result = resumed_runtime.resume(
-        WorkflowResumeRequest(
-            run_id="run-1",
-            workflow_key="thread-1",
-            resume_kind="CONFIRMATION",
-            resume_payload={
-                "schema_version": 1,
-                "interrupt_id": interrupt_id,
-                "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
-                "free_text": "I mean Kim from project alpha.",
-            },
-            correlation=WorkflowCorrelationContext(
-                request_id="request-2",
-                command_id="command-2",
-                api_contract_version="1",
-            ),
+    resume_payload = {
+        "schema_version": 1,
+        "interrupt_id": interrupt_id,
+        "response_kind": "FREE_TEXT",
+        "selected_option_ids": [],
+        "free_text": "I mean Kim from project alpha.",
+    }
+    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+        run = unit_of_work.runs.get_by_id("run-1")
+        assert run is not None
+        expected_run_version = run.version
+    runtime_results: list[object] = []
+
+    def enqueue_resume(**queued: object) -> None:
+        runtime_results.append(
+            resumed_runtime.resume(
+                WorkflowResumeRequest(
+                    run_id=str(queued["run_id"]),
+                    workflow_key="thread-1",
+                    resume_kind=str(queued["resume_kind"]),
+                    resume_payload=dict(queued["resume_payload"]),  # type: ignore[arg-type]
+                    correlation=WorkflowCorrelationContext(
+                        request_id=str(queued["request_id"]),
+                        command_id=str(queued["command_id"]),
+                        api_contract_version="1",
+                    ),
+                )
+            )
         )
+
+    resume_handler = ResumeRunHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=FakeClock(2000).now_ms,
+        enqueue_resume=enqueue_resume,
+        resolve_resume_authority=lambda **kwargs: resumed_runtime.resolve_resume_authority(
+            run_id=str(kwargs["run_id"]),
+            workflow_key="thread-1",
+            resume_kind=str(kwargs["resume_kind"]),
+        ),
     )
+    application_result = resume_handler(
+        ResumeRunCommand(
+            command_id="command-2",
+            request_hash=sha256(b"command-2").hexdigest(),
+            run_id="run-1",
+            expected_run_version=expected_run_version,
+            resume_kind="CONFIRMATION",
+            api_contract_version="1",
+        ),
+        request_id="request-2",
+        resume_payload=resume_payload,
+    )
+    assert application_result.applied is True
+    assert len(runtime_results) == 1
+    result = cast(Any, runtime_results[0])
     assert result.outcome is WorkflowOutcome.COMPLETED
     assert len(resumed_llm_runtime.calls) == 7
 
@@ -274,9 +312,6 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         connection.close()
         resumed_runtime.close()
 
-    assert invocation_id_before is not None
-
-
 def _nested_request_understanding_task(runtime: LangGraphWorkflowRuntime) -> Any:
     """The paused checkpoint's own task for the nested request_understanding
     subgraph -- asserting on this (rather than only on the final result) is
@@ -289,6 +324,62 @@ def _nested_request_understanding_task(runtime: LangGraphWorkflowRuntime) -> Any
     outer_task = snapshot.tasks[0]
     assert outer_task.name == "request_understanding"
     return outer_task
+
+
+def _resume_through_application(
+    *,
+    runtime: LangGraphWorkflowRuntime,
+    database_path: Path,
+    resume_payload: dict[str, object],
+    resume_kind: str,
+    command_id: str,
+) -> tuple[object, object | None]:
+    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+        run = unit_of_work.runs.get_by_id("run-1")
+        assert run is not None
+        expected_run_version = run.version
+    runtime_results: list[object] = []
+
+    def enqueue_resume(**queued: object) -> None:
+        runtime_results.append(
+            runtime.resume(
+                WorkflowResumeRequest(
+                    run_id=str(queued["run_id"]),
+                    workflow_key="thread-1",
+                    resume_kind=str(queued["resume_kind"]),
+                    resume_payload=dict(queued["resume_payload"]),  # type: ignore[arg-type]
+                    correlation=WorkflowCorrelationContext(
+                        request_id=str(queued["request_id"]),
+                        command_id=str(queued["command_id"]),
+                        api_contract_version="1",
+                    ),
+                )
+            )
+        )
+
+    handler = ResumeRunHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=FakeClock(2000).now_ms,
+        enqueue_resume=enqueue_resume,
+        resolve_resume_authority=lambda **kwargs: runtime.resolve_resume_authority(
+            run_id=str(kwargs["run_id"]),
+            workflow_key="thread-1",
+            resume_kind=str(kwargs["resume_kind"]),
+        ),
+    )
+    application_result = handler(
+        ResumeRunCommand(
+            command_id=command_id,
+            request_hash=sha256(command_id.encode("utf-8")).hexdigest(),
+            run_id="run-1",
+            expected_run_version=expected_run_version,
+            resume_kind=resume_kind,
+            api_contract_version="1",
+        ),
+        request_id=f"request-{command_id}",
+        resume_payload=resume_payload,
+    )
+    return application_result, runtime_results[0] if runtime_results else None
 
 
 def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_same_nested_checkpoint(
@@ -321,8 +412,8 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
     first = runtime.start(_start_request())
     assert first.outcome is WorkflowOutcome.ACCEPTED
     round1_task = _nested_request_understanding_task(runtime)
-    assert round1_task.state.next == ("finalize",)
-    round1_invocation_id = round1_task.state.values["__request_agent_local__"]["invocation_id"]
+    assert round1_task.state.next == ("confirm",)
+    assert round1_task.state.values["ru_candidate"]["goal"]
     round1_interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
     assert first.payload["user_interrupt"]["origin_target"] == "request_understanding.classify"
     runtime.close()
@@ -347,23 +438,21 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
         prompt_manifest_path=manifest_path,
         default_tasklist_id_provider=lambda: "task-list-default",
     )
-    second = round2_runtime.resume(
-        WorkflowResumeRequest(
-            run_id="run-1",
-            workflow_key="thread-1",
-            resume_kind="CONFIRMATION",
-            resume_payload={
-                "schema_version": 1,
-                "interrupt_id": round1_interrupt_id,
-                "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
-                "free_text": "round-1 answer, still ambiguous apparently.",
-            },
-            correlation=WorkflowCorrelationContext(
-                request_id="request-2", command_id="command-2", api_contract_version="1"
-            ),
-        )
+    application_result, second = _resume_through_application(
+        runtime=round2_runtime,
+        database_path=database_path,
+        resume_payload={
+            "schema_version": 1,
+            "interrupt_id": round1_interrupt_id,
+            "response_kind": "FREE_TEXT",
+            "selected_option_ids": [],
+            "free_text": "round-1 answer, still ambiguous apparently.",
+        },
+        resume_kind="CONFIRMATION",
+        command_id="command-2",
     )
+    assert application_result.applied is True  # type: ignore[attr-defined]
+    assert second is not None
     # A second real pause, NOT an error and NOT the run silently completing.
     assert second.outcome is WorkflowOutcome.ACCEPTED
     # Exactly the one round-1 reclassify call happened in this instance --
@@ -380,10 +469,8 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
     # fresh task for round 2, it did not fall back through
     # init -> classify -> finalize (which "next" would show as ("init",) or
     # ("classify",) immediately after a resume, not "finalize").
-    assert round2_task.state.next == ("finalize",)
-    round2_invocation_id = round2_task.state.values["__request_agent_local__"]["invocation_id"]
-    # Same Local State identity across both rounds -- "init" never re-ran.
-    assert round2_invocation_id == round1_invocation_id
+    assert round2_task.state.next == ("confirm",)
+    assert round2_task.state.values["ru_candidate"]["goal"]
     round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
     assert second.payload["user_interrupt"]["origin_target"] == "request_understanding.classify"
     # A genuinely new interrupt instance for round 2, not a stale replay of
@@ -428,22 +515,18 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
     # two confirmation rounds cost real budget like any other real call,
     # with no special exemption.
     with pytest.raises(LLMInvocationError) as excinfo:
-        round3_runtime.resume(
-            WorkflowResumeRequest(
-                run_id="run-1",
-                workflow_key="thread-1",
-                resume_kind="CONFIRMATION",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": round2_interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option_ids": [],
-                    "free_text": "round-2 answer, resolves it.",
-                },
-                correlation=WorkflowCorrelationContext(
-                    request_id="request-3", command_id="command-3", api_contract_version="1"
-                ),
-            )
+        _resume_through_application(
+            runtime=round3_runtime,
+            database_path=database_path,
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": round2_interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "round-2 answer, resolves it.",
+            },
+            resume_kind="CONFIRMATION",
+            command_id="command-3",
         )
     assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
     assert len(round3_llm_runtime.calls) == 6
@@ -649,7 +732,7 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
     # read the same way it reads it (actions.connector_id_for_action).
     with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
         connector_id = unit_of_work.actions.connector_id_for_action(action_id)  # type: ignore[attr-defined]
-    with bind_execution_connector_id(connector_id), bind_resource_connector_id(connector_id):
+    with bind_execution_connector_id(connector_id):
         executed = runtime._execute_write(  # noqa: SLF001
             action_id=action_id,
             claim_token=claim.claim_token,
@@ -806,19 +889,24 @@ def test_verification_auth_expired_reauths_and_resumes_to_verified_without_repla
     # B. Reauth completes; resume re-attempts Verification only (the fault
     # queue is one-shot, so the retried GET now succeeds) and reaches
     # VERIFIED / COMPLETED.
-    resumed = runtime.resume(
-        WorkflowResumeRequest(
-            run_id="run-1",
-            workflow_key="thread-1",
-            resume_kind="REAUTH_COMPLETED",
-            resume_payload={},
-            correlation=WorkflowCorrelationContext(
-                request_id="reauth-resume-request",
-                command_id="reauth-resume-command",
-                api_contract_version="1",
-            ),
-        )
+    application_result, resumed = _resume_through_application(
+        runtime=runtime,
+        database_path=database_path,
+        resume_payload={},
+        resume_kind="REAUTH_COMPLETED",
+        command_id="reauth-resume-command",
     )
+    assert application_result.applied is True  # type: ignore[attr-defined]
+    assert resumed is None
+    recovery_result, resumed = _resume_through_application(
+        runtime=runtime,
+        database_path=database_path,
+        resume_payload={},
+        resume_kind="RECOVERY_RECHECK",
+        command_id="verification-recovery-recheck-command",
+    )
+    assert recovery_result.applied is True  # type: ignore[attr-defined]
+    assert resumed is not None
     assert resumed.outcome is WorkflowOutcome.COMPLETED
 
     # C. The write was never replayed -- exactly one create_task call total,
@@ -938,19 +1026,24 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
     # The fault queue is one-shot, so the retried search now succeeds,
     # finds the already-created task, and reaches VERIFIED/COMPLETED
     # without ever calling create_task again.
-    resumed = runtime.resume(
-        WorkflowResumeRequest(
-            run_id="run-1",
-            workflow_key="thread-1",
-            resume_kind="REAUTH_COMPLETED",
-            resume_payload={},
-            correlation=WorkflowCorrelationContext(
-                request_id="reauth-resume-recovery-reauth",
-                command_id="reauth-resume-recovery-reauth-command",
-                api_contract_version="1",
-            ),
-        )
+    application_result, resumed = _resume_through_application(
+        runtime=runtime,
+        database_path=database_path,
+        resume_payload={},
+        resume_kind="REAUTH_COMPLETED",
+        command_id="reauth-resume-recovery-reauth-command",
     )
+    assert application_result.applied is True  # type: ignore[attr-defined]
+    assert resumed is None
+    recovery_result, resumed = _resume_through_application(
+        runtime=runtime,
+        database_path=database_path,
+        resume_payload={},
+        resume_kind="RECOVERY_RECHECK",
+        command_id="unknown-recovery-recheck-command",
+    )
+    assert recovery_result.applied is True  # type: ignore[attr-defined]
+    assert resumed is not None
     assert resumed.outcome is WorkflowOutcome.COMPLETED
 
     # C. The write was never replayed -- exactly one create_task call total,

@@ -200,6 +200,12 @@ def confirmation_resume_status(owner_subgraph: str) -> RunStatus:
         raise ValueError(f"unknown confirmation owner: {owner_subgraph}") from error
 
 
+def confirmation_resume_node_id(origin_target: str) -> str:
+    """Select the registered owner-local continuation for a confirmation origin."""
+
+    return "plan_sources" if origin_target == "acquisition.plan_sources" else "finalize"
+
+
 def build_resume_target_registry(profile: GraphProfile) -> ResumeTargetRegistry:
     """Build the fixed owner-to-compiled-node registry with the graph profile."""
     if profile is GraphProfile.SINGLE_BASELINE:
@@ -207,6 +213,7 @@ def build_resume_target_registry(profile: GraphProfile) -> ResumeTargetRegistry:
             ("REQUEST_UNDERSTANDING", "finalize"): "single_workflow",
             ("TOOL_ROUTE", "finalize"): "tool_route",
             ("RETRIEVAL", "finalize"): "single_workflow",
+            ("RETRIEVAL", "plan_sources"): "single_workflow",
             ("WORK_ANALYSIS", "finalize"): "single_workflow",
             ("PLANNING", "finalize"): "single_workflow",
             ("REVIEW", "finalize"): "single_workflow",
@@ -216,6 +223,7 @@ def build_resume_target_registry(profile: GraphProfile) -> ResumeTargetRegistry:
             ("REQUEST_UNDERSTANDING", "finalize"): "stage_one",
             ("TOOL_ROUTE", "finalize"): "tool_route",
             ("RETRIEVAL", "finalize"): "stage_two",
+            ("RETRIEVAL", "plan_sources"): "stage_one",
             ("WORK_ANALYSIS", "finalize"): "stage_two",
             ("PLANNING", "finalize"): "stage_two",
             ("REVIEW", "finalize"): "stage_three",
@@ -225,6 +233,7 @@ def build_resume_target_registry(profile: GraphProfile) -> ResumeTargetRegistry:
             ("REQUEST_UNDERSTANDING", "finalize"): "request_understanding",
             ("TOOL_ROUTE", "finalize"): "tool_route",
             ("RETRIEVAL", "finalize"): "context_retriever",
+            ("RETRIEVAL", "plan_sources"): "context_retriever",
             ("WORK_ANALYSIS", "finalize"): "work_analysis",
             ("PLANNING", "finalize"): "planning",
             ("REVIEW", "finalize"): "review",
@@ -261,5 +270,8 @@ class GraphRouteTranslator:
             raise ValueError("confirmation interrupt is missing origin_target")
         owner_subgraph = confirmation_owner(origin_target)
         registry = build_resume_target_registry(self.profile)
-        resume_ref = registry.issue(subgraph_id=owner_subgraph, node_id="finalize")
+        resume_ref = registry.issue(
+            subgraph_id=owner_subgraph,
+            node_id=confirmation_resume_node_id(origin_target),
+        )
         return registry.resolve(resume_ref)

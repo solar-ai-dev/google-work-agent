@@ -18,25 +18,53 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
+from google_work_agent.adapters.runtime.attachment_staging import LocalAttachmentStaging
+from google_work_agent.application.queries import QueryService
+from google_work_agent.application.write_actions import (
+    DeliveryCertainty,
+    classify_write_delivery,
+    is_reauth_required_error,
+)
+from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from google_work_agent.application.write_approval import ApproveWriteActionService
+from google_work_agent.application.write_cancellation import (
+    FinalizeRunCancellationService,
+    RequestRunCancellationService,
+)
+from google_work_agent.application.write_cancellation_contracts import (
+    FinalizeRunCancellationCommand,
+    RequestRunCancellationCommand,
+)
+from google_work_agent.application.write_claim import ClaimWriteActionService
+from google_work_agent.application.write_execution import ExecuteWriteActionService
 from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
     VerifyWriteActionCommand,
     WriteActionResponse,
 )
-from google_work_agent.application.write_claim import ClaimWriteActionService
-from google_work_agent.application.write_execution import ExecuteWriteActionService
-from google_work_agent.application.write_cancellation_contracts import (
-    FinalizeRunCancellationCommand,
-    RequestRunCancellationCommand,
+from google_work_agent.application.write_plan import (
+    PublishWritePlanService,
+    SaveWritePlanService,
 )
-from google_work_agent.application.write_cancellation import (
-    FinalizeRunCancellationService,
-    RequestRunCancellationService,
+from google_work_agent.application.write_plan_contracts import (
+    PublishWritePlanCommand,
+    SaveWritePlanCommand,
+    WriteActionDraft,
+    WriteEvidenceDraft,
+)
+from google_work_agent.application.write_preflight import PreflightWriteActionService
+from google_work_agent.application.write_reauth import RequireWriteReauthService
+from google_work_agent.application.write_recovery import (
+    MarkWriteActionUnknownResultService,
+    PrepareWriteRetryService,
+    RecoverUnknownCreateActionService,
+    RecoverUnknownDeleteActionService,
+    RecoverUnknownSendActionService,
+    RecoverUnknownUpdateActionService,
+    ResolveMismatchRecoveryService,
 )
 from google_work_agent.application.write_recovery_contracts import (
     MarkWriteActionUnknownResultCommand,
@@ -49,37 +77,10 @@ from google_work_agent.application.write_recovery_contracts import (
     RequireWriteReauthCommand,
     ResolveMismatchRecoveryCommand,
 )
-from google_work_agent.application.write_recovery import (
-    MarkWriteActionUnknownResultService,
-    PrepareWriteRetryService,
-    RecoverUnknownCreateActionService,
-    RecoverUnknownDeleteActionService,
-    RecoverUnknownSendActionService,
-    RecoverUnknownUpdateActionService,
-    ResolveMismatchRecoveryService,
-)
-from google_work_agent.application.write_preflight import PreflightWriteActionService
-from google_work_agent.application.write_plan_contracts import (
-    PublishWritePlanCommand,
-    SaveWritePlanCommand,
-    WriteActionDraft,
-    WriteEvidenceDraft,
-)
-from google_work_agent.application.write_plan import (
-    PublishWritePlanService,
-    SaveWritePlanService,
-)
-from google_work_agent.application.write_reauth import RequireWriteReauthService
 from google_work_agent.application.write_result_persistence import (
     StoreWriteActionSuccessService,
 )
 from google_work_agent.application.write_verification import VerifyWriteActionService
-from google_work_agent.application.queries import QueryService
-from google_work_agent.application.write_actions import (
-    DeliveryCertainty,
-    classify_write_delivery,
-    is_reauth_required_error,
-)
 from google_work_agent.domain import (
     CalendarWorkHours,
     InvariantViolationError,
@@ -786,6 +787,94 @@ def _prepare_mismatch(*, write_database: Path, gateway: FakeGoogleGateway, suffi
         return int(row[0])
     finally:
         connection.close()
+
+
+def test_attachment_descriptor_is_reverified_before_write_claim(
+    write_database: Path,
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1000)
+    staging = LocalAttachmentStaging(staging_dir=tmp_path / "staging", now_ms=clock.now_ms)
+    descriptor = staging.stage(data=b"report", filename="report.txt", mime_type="text/plain")
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="attachment-claim",
+        tool_name="gmail_create_draft",
+        arguments={
+            "payload": {
+                "to": ["user@example.com"],
+                "subject": "Report",
+                "body": "Attached",
+                "attachments": [descriptor.to_json()],
+            }
+        },
+        expected={"resource_type": "gmail_draft"},
+    )
+    _approve_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="attachment-claim",
+    )
+
+    claimed = ClaimWriteActionService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        signing_secret="phase-e-secret",
+        service_instance_id="write-svc-1",
+        attachment_verifier=staging,
+    )(
+        ClaimWriteActionCommand(
+            command_id="claim-attachment-claim",
+            request_hash="d0" * 32,
+            action_id="action-attachment-claim",
+            expected_version=1,
+            source_snapshot={},
+            attempt_id="attempt-attachment-claim",
+            nonce="nonce-attachment-claim",
+        )
+    )
+
+    assert claimed.applied is True
+
+
+def test_attachment_claim_fails_closed_without_staging_verifier(
+    write_database: Path,
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1000)
+    staging = LocalAttachmentStaging(staging_dir=tmp_path / "staging", now_ms=clock.now_ms)
+    descriptor = staging.stage(data=b"report", filename="report.txt", mime_type="text/plain")
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="attachment-no-verifier",
+        tool_name="gmail_create_draft",
+        arguments={
+            "payload": {
+                "to": ["user@example.com"],
+                "subject": "Report",
+                "body": "Attached",
+                "attachments": [descriptor.to_json()],
+            }
+        },
+        expected={"resource_type": "gmail_draft"},
+    )
+    _approve_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="attachment-no-verifier",
+    )
+
+    blocked = _claim_effect_action(
+        write_database=write_database,
+        clock=clock,
+        suffix="attachment-no-verifier",
+        expected_version=1,
+    )
+
+    assert blocked.applied is False
+    assert blocked.conflict_detail == "ATTACHMENT_VERIFIER_UNAVAILABLE"
 
 
 def _prepare_effect_write_plan(

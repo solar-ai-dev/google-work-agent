@@ -92,6 +92,7 @@ def patch_settings(
         result = UpdateSettingsHandler(service_factory=dependencies.patch_settings_service).handle(
             UpdateSettingsCommand(
                 command_id=payload.command_id,
+                setup_completed=payload.setup_completed,
                 requested_runtime_mode=payload.requested_runtime_mode,
                 default_calendar_id=payload.default_calendar_id,
                 default_tasklist_id=payload.default_tasklist_id,

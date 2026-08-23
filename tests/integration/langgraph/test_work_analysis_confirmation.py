@@ -29,6 +29,7 @@ fail-closed invalid resume.
 
 from __future__ import annotations
 
+from hashlib import sha256
 from typing import Any
 
 from tests.integration.langgraph.test_runtime import (
@@ -61,7 +62,16 @@ from tests.integration.langgraph.test_runtime import (
 )
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 
-from google_work_agent.ports import LLMErrorCode, LLMInvocationError
+from google_work_agent.application.use_cases.run.resume_run import (
+    ResumeRunCommand,
+    ResumeRunHandler,
+    ResumeRunResult,
+)
+from google_work_agent.ports import (
+    LLMErrorCode,
+    LLMInvocationError,
+    WorkflowInvocationResult,
+)
 
 
 def _analysis_output(
@@ -161,6 +171,61 @@ def _queue_more(llm_runtime: _QueuedLLMRuntime, payloads: list[object]) -> None:
     in-process/run-memory-only, unrelated to the nested-checkpoint mechanism
     under test here."""
     llm_runtime._queued.extend(_llm_result(item) for item in payloads)  # noqa: SLF001
+
+
+def _resume_confirmation(
+    *,
+    runtime: LangGraphWorkflowRuntime,
+    database_path: Path,
+    resume_payload: dict[str, object],
+    command_id: str,
+) -> tuple[ResumeRunResult, WorkflowInvocationResult | None]:
+    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+        run = unit_of_work.runs.get_by_id("run-1")
+        assert run is not None
+        expected_version = run.version
+
+    runtime_results: list[WorkflowInvocationResult] = []
+
+    def enqueue_resume(**queued: object) -> None:
+        runtime_results.append(
+            runtime.resume(
+                WorkflowResumeRequest(
+                    run_id=str(queued["run_id"]),
+                    workflow_key="thread-1",
+                    resume_kind=str(queued["resume_kind"]),
+                    resume_payload=dict(queued["resume_payload"]),  # type: ignore[arg-type]
+                    correlation=WorkflowCorrelationContext(
+                        request_id=str(queued["request_id"]),
+                        command_id=str(queued["command_id"]),
+                        api_contract_version="1",
+                    ),
+                )
+            )
+        )
+
+    application_result = ResumeRunHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=FakeClock(2000).now_ms,
+        enqueue_resume=enqueue_resume,
+        resolve_resume_authority=lambda **kwargs: runtime.resolve_resume_authority(
+            run_id=str(kwargs["run_id"]),
+            workflow_key="thread-1",
+            resume_kind=str(kwargs["resume_kind"]),
+        ),
+    )(
+        ResumeRunCommand(
+            command_id=command_id,
+            request_hash=sha256(command_id.encode("utf-8")).hexdigest(),
+            run_id="run-1",
+            expected_run_version=expected_version,
+            resume_kind="CONFIRMATION",
+            api_contract_version="1",
+        ),
+        request_id=f"request-{command_id}",
+        resume_payload=resume_payload,
+    )
+    return application_result, runtime_results[0] if runtime_results else None
 
 
 def _nested_work_analysis_task(runtime: LangGraphWorkflowRuntime) -> Any:
@@ -302,23 +367,20 @@ def test_work_analysis_resume_does_not_re_execute_retrieval(tmp_path: Path) -> N
         # accounting across the confirmation boundary -- no call is lost,
         # duplicated, or invented.
         _queue_more(llm_runtime, [_analysis_output("COMPLETE"), _answer_output()])
-        result = runtime.resume(
-            WorkflowResumeRequest(
-                run_id="run-1",
-                workflow_key="thread-1",
-                resume_kind="CONFIRMATION",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option_ids": [],
-                    "free_text": "The follow-up task is the primary one.",
-                },
-                correlation=WorkflowCorrelationContext(
-                    request_id="request-2", command_id="command-2", api_contract_version="1"
-                ),
-            )
+        application_result, result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "The follow-up task is the primary one.",
+            },
         )
+        assert application_result.applied is True
+        assert result is not None
         assert result.outcome is WorkflowOutcome.COMPLETED
 
         # T3: zero provider reads happened on resume -- Retrieval's
@@ -371,7 +433,8 @@ def test_work_analysis_resume_preserves_retrieval_result_and_invocation_id(
     interrupt_id = payload["user_interrupt"]["interrupt_id"]
 
     state_before = runtime._graph.get_state(  # noqa: SLF001
-        runtime._invocation.config_for_thread("thread-1"), subgraphs=True  # noqa: SLF001
+        runtime._invocation.config_for_thread("thread-1"),
+        subgraphs=True,  # noqa: SLF001
     )
     nested_before = state_before.tasks[0].state.values
     invocation_id_before = nested_before["__analysis_agent_local__"]["invocation_id"]
@@ -383,23 +446,20 @@ def test_work_analysis_resume_preserves_retrieval_result_and_invocation_id(
         # see the sibling T3+T4 test above for the full accounting), so the
         # run completes rather than hitting the 8-call budget cap.
         _queue_more(llm_runtime, [_analysis_output("COMPLETE"), _answer_output()])
-        result = runtime.resume(
-            WorkflowResumeRequest(
-                run_id="run-1",
-                workflow_key="thread-1",
-                resume_kind="CONFIRMATION",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option_ids": [],
-                    "free_text": "The follow-up task is the primary one.",
-                },
-                correlation=WorkflowCorrelationContext(
-                    request_id="request-2", command_id="command-2", api_contract_version="1"
-                ),
-            )
+        application_result, result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "The follow-up task is the primary one.",
+            },
         )
+        assert application_result.applied is True
+        assert result is not None
         assert result.outcome is WorkflowOutcome.COMPLETED
 
         state = runtime._graph.get_state(  # noqa: SLF001
@@ -421,8 +481,7 @@ def test_work_analysis_resume_preserves_retrieval_result_and_invocation_id(
         assert len(init_entries) == 1
         assert init_entries[0]["agent_invocation_id"] == invocation_id_before
         assert all(
-            entry["agent_invocation_id"] == invocation_id_before
-            for entry in work_analysis_entries
+            entry["agent_invocation_id"] == invocation_id_before for entry in work_analysis_entries
         )
     finally:
         runtime.close()
@@ -456,23 +515,20 @@ def test_work_analysis_resume_applies_confirmation_response_within_prompt_bounda
         # see the T3+T4 test above for the full accounting), so the run
         # completes rather than hitting the 8-call budget cap.
         _queue_more(llm_runtime, [_analysis_output("COMPLETE"), _answer_output()])
-        result = runtime.resume(
-            WorkflowResumeRequest(
-                run_id="run-1",
-                workflow_key="thread-1",
-                resume_kind="CONFIRMATION",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option_ids": [],
-                    "free_text": "The follow-up task is the primary one.",
-                },
-                correlation=WorkflowCorrelationContext(
-                    request_id="request-2", command_id="command-2", api_contract_version="1"
-                ),
-            )
+        application_result, result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "The follow-up task is the primary one.",
+            },
         )
+        assert application_result.applied is True
+        assert result is not None
         assert result.outcome is WorkflowOutcome.COMPLETED
 
         calls_during_resume = llm_runtime.calls[calls_before_resume:]
@@ -527,23 +583,20 @@ def test_work_analysis_resumes_second_consecutive_confirmation_round_via_same_ne
         _queue_more(
             llm_runtime, [_analysis_output("NEEDS_CONFIRMATION", confirmation=_confirmation())]
         )
-        second = runtime.resume(
-            WorkflowResumeRequest(
-                run_id="run-1",
-                workflow_key="thread-1",
-                resume_kind="CONFIRMATION",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": round1_interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option_ids": [],
-                    "free_text": "round-1 answer, still ambiguous apparently.",
-                },
-                correlation=WorkflowCorrelationContext(
-                    request_id="request-2", command_id="command-2", api_contract_version="1"
-                ),
-            )
+        application_result, second = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": round1_interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "round-1 answer, still ambiguous apparently.",
+            },
         )
+        assert application_result.applied is True
+        assert second is not None
         assert second.outcome is WorkflowOutcome.ACCEPTED
 
         round2_task = _nested_work_analysis_task(runtime)
@@ -561,22 +614,17 @@ def test_work_analysis_resumes_second_consecutive_confirmation_round_via_same_ne
         calls_before_round3 = len(llm_runtime.calls)
         _queue_more(llm_runtime, [_analysis_output("COMPLETE")])
         with pytest.raises(LLMInvocationError) as excinfo:
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": round2_interrupt_id,
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "round-2 answer, resolves it.",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-3", command_id="command-3", api_contract_version="1"
-                    ),
-                )
+            _resume_confirmation(
+                runtime=runtime,
+                database_path=database_path,
+                command_id="command-3",
+                resume_payload={
+                    "schema_version": 1,
+                    "interrupt_id": round2_interrupt_id,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option_ids": [],
+                    "free_text": "round-2 answer, resolves it.",
+                },
             )
         assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
         calls_during_round3 = llm_runtime.calls[calls_before_round3:]
@@ -641,24 +689,21 @@ def test_work_analysis_resume_rejects_wrong_interrupt_id(tmp_path: Path) -> None
     )
     calls_before_resume = len(llm_runtime.calls)
     try:
-        with pytest.raises(ValueError, match="interrupt_id"):
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": "definitely-the-wrong-interrupt-id",
-                        "response_kind": "FREE_TEXT",
-                        "selected_option_ids": [],
-                        "free_text": "irrelevant",
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
-            )
+        application_result, runtime_result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": "definitely-the-wrong-interrupt-id",
+                "response_kind": "FREE_TEXT",
+                "selected_option_ids": [],
+                "free_text": "irrelevant",
+            },
+        )
+        assert application_result.applied is False
+        assert "interrupt" in str(application_result.conflict_detail)
+        assert runtime_result is None
         # Fails closed: no further Provider/LLM call happened while
         # validating the resume payload.
         assert len(llm_runtime.calls) == calls_before_resume
@@ -686,24 +731,21 @@ def test_work_analysis_resume_rejects_option_id_outside_allowed_scope(tmp_path: 
     assert payload["user_interrupt"]["options"] == []
 
     try:
-        with pytest.raises(ValueError, match="option"):
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id="run-1",
-                    workflow_key="thread-1",
-                    resume_kind="CONFIRMATION",
-                    resume_payload={
-                        "schema_version": 1,
-                        "interrupt_id": interrupt_id,
-                        "response_kind": "OPTION_SELECTION",
-                        "selected_option_ids": ["option-not-offered"],
-                        "free_text": None,
-                    },
-                    correlation=WorkflowCorrelationContext(
-                        request_id="request-2", command_id="command-2", api_contract_version="1"
-                    ),
-                )
-            )
+        application_result, runtime_result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "OPTION_SELECTION",
+                "selected_option_ids": ["option-not-offered"],
+                "free_text": None,
+            },
+        )
+        assert application_result.applied is False
+        assert "option" in str(application_result.conflict_detail)
+        assert runtime_result is None
     finally:
         runtime.close()
 
@@ -747,9 +789,7 @@ def test_work_analysis_happy_path_without_confirmation_completes(tmp_path: Path)
         assert result.outcome is WorkflowOutcome.COMPLETED
         connection = connect_sqlite(database_path)
         try:
-            run_row = connection.execute(
-                "SELECT status FROM runs WHERE id = 'run-1';"
-            ).fetchone()
+            run_row = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()
             assert run_row[0] == "COMPLETED"
         finally:
             connection.close()

@@ -34,13 +34,21 @@ from google_work_agent.application.orchestration.tool_route_semantic import Tool
 from google_work_agent.application.orchestration.retrieval_data_boundary import (
     CheckpointSafeAcquisitionFacade,
 )
-from google_work_agent.application.orchestration.retrieval_evidence_store import RunScopedEvidenceStore
+from google_work_agent.application.orchestration.retrieval_evidence_store import (
+    RunScopedEvidenceStore,
+)
 from google_work_agent.application.orchestration.retrieval_query_planner import (
     RetrievalQueryPlannerAgent,
 )
-from google_work_agent.application.orchestration.retrieval_read_cache import RunScopedReadResultCache
-from google_work_agent.application.orchestration.retrieval_read_executor import RetrievalReadExecutor
-from google_work_agent.application.orchestration.source_fetch_plan_builder import SourceFetchPlanBuilder
+from google_work_agent.application.orchestration.retrieval_read_cache import (
+    RunScopedReadResultCache,
+)
+from google_work_agent.application.orchestration.retrieval_read_executor import (
+    RetrievalReadExecutor,
+)
+from google_work_agent.application.orchestration.source_fetch_plan_builder import (
+    SourceFetchPlanBuilder,
+)
 from google_work_agent.domain import ConnectorToolCatalog
 
 
@@ -102,6 +110,7 @@ def build_pre_analysis_subgraphs(
             id_factory=id_factory,
             merge_decision=merge_decision,
             semantic_agent=tool_route_agent,
+            graph_profile=graph_profile,
             confirm_inline=confirm_tool_route_inline,
             record_policy_confirmation_receipt=record_policy_confirmation_receipt,
         ),

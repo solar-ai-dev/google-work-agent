@@ -22,6 +22,7 @@ from google_work_agent.adapters.langgraph.confirmation_llm_runtime import (
 )
 from google_work_agent.adapters.langgraph.graph_state import GraphState
 from google_work_agent.adapters.langgraph.route_translation import (
+    confirmation_resume_node_id,
     confirmation_owner,
     confirmation_resume_status,
 )
@@ -114,7 +115,7 @@ class LangGraphWorkflowRuntime(_LegacyLangGraphWorkflowRuntime):
         owner_subgraph = confirmation_owner(origin_target)
         resume_target = self._resume_target_registry.issue(
             subgraph_id=owner_subgraph,
-            node_id="finalize",
+            node_id=confirmation_resume_node_id(origin_target),
         )
         interrupt_id = self._id_factory()
 

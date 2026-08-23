@@ -99,6 +99,7 @@ def write_manifest_with_legacy_profile_slots(
     legacy_prompt_ids: Iterable[str],
     active_prompt_ids: Iterable[str],
     draft_prompt_ids: Iterable[str],
+    active_legacy_prompt_ids: Iterable[str] = (),
 ) -> Path:
     """Create a current-bundle fixture with explicit legacy profile slots.
 
@@ -119,8 +120,13 @@ def write_manifest_with_legacy_profile_slots(
     requested = set(legacy_prompt_ids)
     active = set(active_prompt_ids)
     drafted = set(draft_prompt_ids)
+    active_legacy = set(active_legacy_prompt_ids)
     if not drafted <= requested:
         raise ValueError("draft prompt slots must be included in legacy prompt slots")
+    if not active_legacy <= requested:
+        raise ValueError("active legacy prompt slots must be included in legacy prompt slots")
+    if drafted & active_legacy:
+        raise ValueError("legacy prompt slots cannot be both active and draft")
     slots = manifest.get("slots")
     legacy_entries = legacy_manifest.get("slots")
     if not isinstance(slots, list) or not isinstance(legacy_entries, list):
@@ -146,6 +152,8 @@ def write_manifest_with_legacy_profile_slots(
         slot = {**entry, "slot_id": prompt_id}
         if prompt_id in drafted:
             slot["activation_status"] = "DRAFT"
+        elif prompt_id in active_legacy:
+            slot["activation_status"] = "RUNTIME_ACTIVE"
         slots.append(slot)
         added.add(str(prompt_id))
     missing = sorted(requested - added)

@@ -1,7 +1,16 @@
 """SQLite action repository with connector-aware identity."""
 import sqlite3
-from json import loads
-from google_work_agent.domain import ActionCommand, ActionStatus, CommandResult, EffectType, VerificationStatus, canonicalize_action_risk, transition_action
+
+from google_work_agent.domain import (
+    ActionCommand,
+    ActionStatus,
+    CommandResult,
+    EffectType,
+    VerificationStatus,
+    canonicalize_action_risk,
+    parse_action_risk_json,
+    transition_action,
+)
 from google_work_agent.ports.models import ActionRecord
 
 class SQLiteActionRepository:
@@ -9,8 +18,7 @@ class SQLiteActionRepository:
     def __init__(self, connection: sqlite3.Connection) -> None: self._connection=connection
     @staticmethod
     def _record(r: sqlite3.Row) -> ActionRecord:
-        risk=loads(str(r["risk_json"]))
-        if not isinstance(risk, dict): raise sqlite3.IntegrityError("action risk_json must decode to an object")
+        risk=parse_action_risk_json(str(r["risk_json"]))
         return ActionRecord(id=str(r["id"]), plan_id=str(r["plan_id"]), connector_id=str(r["connector_id"]), position=int(r["position"]), tool_name=str(r["tool_name"]), effect_type=str(r["effect_type"]), approval_requirement=str(r["approval_requirement"]), verification_policy=str(r["verification_policy"]), recovery_policy=str(r["recovery_policy"]), target_resource_ref_id=None if r["target_resource_ref_id"] is None else str(r["target_resource_ref_id"]), status=str(r["status"]), arguments_json=str(r["arguments_json"]), arguments_hash=str(r["arguments_hash"]), expected_json=str(r["expected_json"]), risk=risk, version=int(r["version"]), created_at_ms=int(r["created_at_ms"]), updated_at_ms=int(r["updated_at_ms"]))
     def get_by_id(self, action_id: str) -> ActionRecord | None:
         r=self._connection.execute(self._SELECT+" WHERE id=?;", (action_id,)).fetchone(); return None if r is None else self._record(r)

@@ -9,6 +9,9 @@ LangGraph module cleanup) with no behavior change.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import cast
+
 from google_work_agent.adapters.langgraph.graph_state import (
     GraphState,
     _require_state_value,
@@ -19,7 +22,21 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
     AnswerDraftV1,
+    ContextRetrievalResultV1,
+    EvidenceDraftV1,
+    RequestIntentV2,
+    RetrievalResultV1,
     WorkAnalysisResultV1,
+)
+from google_work_agent.application.orchestration.retrieval_finalize import (
+    finalize_retrieval_result,
+)
+from google_work_agent.application.orchestration.request_understanding import (
+    materialize_request_intent_artifact,
+)
+from google_work_agent.application.orchestration.tool_routing import (
+    ToolRouteCoordinator,
+    ToolRoutePlanV2,
 )
 from google_work_agent.application.orchestration.contracts import GraphStateUpdateV1
 from google_work_agent.application.orchestration.solution_planning import (
@@ -32,6 +49,76 @@ from google_work_agent.application.orchestration.profile_fused import (
     ProfileReasonPlanOutputV1,
 )
 from google_work_agent.ports import WorkflowStartRequest
+
+
+class ProfileToolRouteError(ValueError):
+    """Raised when a comparison profile cannot freeze its canonical route."""
+
+
+def build_profile_tool_route_plan(
+    request_intent: object,
+    *,
+    id_factory: Callable[[], str],
+    coordinator: ToolRouteCoordinator,
+) -> tuple[RequestIntentV2, ToolRoutePlanV2]:
+    """Materialize profile intent identity and freeze the shared Tool Route contract."""
+
+    if not isinstance(request_intent, dict):
+        raise ProfileToolRouteError("profile request intent must be an object")
+    materialized = materialize_request_intent_artifact(
+        cast(RequestIntentV2, request_intent),
+        artifact_id=id_factory(),
+    )
+    result = coordinator.route(request_intent=materialized)
+    plan = result["tool_route_plan"]
+    if plan is None:
+        reasons = ", ".join(result["reason_codes"]) or result["disposition"]
+        raise ProfileToolRouteError(f"profile tool route is not ready: {reasons}")
+    return materialized, plan
+
+
+def build_profile_retrieval_result(
+    context_result: ContextRetrievalResultV1,
+    *,
+    request_intent: RequestIntentV2,
+    tool_route_plan: ToolRoutePlanV2,
+    acquisition_result: AcquisitionResultV1,
+    artifact_id: str,
+) -> tuple[RetrievalResultV1, list[EvidenceDraftV1]]:
+    """Project fused-profile context onto the canonical Retrieval handoff."""
+
+    selected_segment_ids = list(context_result["selected_segment_ids"])
+    selected = set(selected_segment_ids)
+    evidence_drafts = [
+        item for item in context_result["evidence_drafts"] if item["segment_id"] in selected
+    ]
+    result = finalize_retrieval_result(
+        artifact_id=artifact_id,
+        request_intent=request_intent,
+        tool_route_plan=tool_route_plan,
+        acquisition_result=acquisition_result,
+        selection_result={
+            "schema_version": 2,
+            "selected_segment_ids": selected_segment_ids,
+            "evidence_drafts": [
+                {
+                    "segment_id": item["segment_id"],
+                    "role": "SUPPORTS",
+                    "relevance_reason": "selected by fused profile retrieval",
+                }
+                for item in evidence_drafts
+            ],
+            "excluded_segment_ids": [],
+        },
+        evidence_drafts=evidence_drafts,
+        sufficiency_result={
+            "schema_version": 2,
+            "status": context_result["status"],
+            "issues": [],
+        },
+        current_round_no=1,
+    )
+    return result, evidence_drafts
 
 
 def profile_request_source_prompt_input(request: WorkflowStartRequest) -> dict[str, object]:

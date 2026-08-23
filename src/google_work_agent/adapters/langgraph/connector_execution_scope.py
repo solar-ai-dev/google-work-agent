@@ -61,10 +61,7 @@ class ConnectorBoundWriteExecutionPhaseCoordinator(WriteExecutionPhaseCoordinato
     @contextmanager
     def _connector_scope(self, action_id: str) -> Iterator[None]:
         with self._connector_uow_factory() as unit_of_work:
-            action = unit_of_work.actions.get_by_id(action_id)
-            if action is None:
-                raise LookupError(f"action not found: {action_id}")
-            connector_id = action.connector_id
+            connector_id = unit_of_work.actions.connector_id_for_action(action_id)
         if not connector_id:
             raise ValueError("persisted action connector_id is required for execution routing")
         with bind_execution_connector_id(connector_id):

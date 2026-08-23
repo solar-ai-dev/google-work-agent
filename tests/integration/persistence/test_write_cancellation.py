@@ -298,7 +298,7 @@ def test_executing_cancel_waits_for_external_result_without_new_attempt(
         )
     )
     assert blocked_claim.applied is False
-    assert blocked_claim.conflict_detail == "run status forbids a new write claim"
+    assert blocked_claim.conflict_detail == "durable cancel intent forbids a new write claim"
     with pytest.raises(PermissionError, match="cancellation forbids"):
         ExecuteWriteActionService(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),

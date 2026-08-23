@@ -28,6 +28,7 @@ from tests.integration.langgraph.test_runtime import (
     _runtime_active_manifest_path,
     _seed_runtime_database,
     _selection_output,
+    _SYNTHESIZE_RETRIEVAL_QUERY_PLAN,
     _sole_persisted_action_id,
     _sole_persisted_plan_id,
     _start_write_request,
@@ -155,7 +156,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
         ]
         if profile is GraphProfile.SIX_ROLE_BASELINE
         else [
-            _profile_request_source_output(),
+            _profile_request_source_output(request_intent=_action_required_intent()),
             _profile_reason_plan_output("PLAN_READY"),
             _review_output("PASS"),
         ]
@@ -539,48 +540,9 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
             # Re-entry carries a RetrievalRequiredV1 signal, so
             # context_retriever's init node treats this as a FOLLOWUP round
             # (not a synthesizable INITIAL one) and calls retrieval.plan_query
-            # for real -- this queued response must be a valid FOLLOWUP
-            # RetrievalQueryPlanV2 covering both routes the first run froze.
-            # The route_ids are deterministic for this exact llm_payloads/
-            # call sequence (DeterministicUUID(prefix="runtime"), confirmed
-            # by inspecting the checkpointed tool_route_plan before resume).
-            {
-                "schema_version": 2,
-                "route_queries": [
-                    {
-                        "route_id": "runtime-0004",
-                        "operation": "SEARCH",
-                        "reason_codes": ["REQUIRED"],
-                        "search_spec": {
-                            "mode": "INITIAL",
-                            "constraints": [
-                                {
-                                    "kind": "CONTAINER_REF",
-                                    "container_refs": ["task-list-default"],
-                                }
-                            ],
-                        },
-                        "detail_candidate_ref": None,
-                    },
-                    {
-                        "route_id": "runtime-0005",
-                        "operation": "SEARCH",
-                        "reason_codes": ["REQUIRED"],
-                        "search_spec": {
-                            "mode": "INITIAL",
-                            "constraints": [
-                                {
-                                    "kind": "CONTAINER_REF",
-                                    "container_refs": ["task-list-default"],
-                                }
-                            ],
-                        },
-                        "detail_candidate_ref": None,
-                    },
-                ],
-                "required_information": ["current task evidence"],
-                "retrieval_order": ["runtime-0004", "runtime-0005"],
-            },
+            # for real. The fake derives a valid plan from the currently
+            # frozen routes instead of coupling the fixture to generated ids.
+            _SYNTHESIZE_RETRIEVAL_QUERY_PLAN,
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),

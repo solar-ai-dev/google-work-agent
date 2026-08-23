@@ -666,19 +666,21 @@ def test_planning_resume_rejects_option_id_outside_allowed_scope(tmp_path: Path)
     assert payload["user_interrupt"]["options"] == []
 
     try:
-        with pytest.raises(ValueError, match="option"):
-            _resume_confirmation(
-                runtime=runtime,
-                database_path=database_path,
-                command_id="command-2",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "response_kind": "OPTION_SELECTION",
-                    "selected_option_ids": ["option-not-offered"],
-                    "free_text": None,
-                },
-            )
+        application_result, runtime_result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "OPTION_SELECTION",
+                "selected_option_ids": ["option-not-offered"],
+                "free_text": None,
+            },
+        )
+        assert application_result.applied is False
+        assert "option" in (application_result.conflict_detail or "")
+        assert runtime_result is None
     finally:
         runtime.close()
 

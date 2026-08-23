@@ -2878,6 +2878,71 @@ test("Gmail detail keeps an empty body honest and never exposes IDs or raw dates
   expect(document.body.textContent).not.toContain("Mon, 10 Aug 2026 09:15:00 +0900");
 });
 
+test("downloads an incoming Gmail attachment through the authenticated API", async () => {
+  const requests = installUiContractFetch({
+    detail: {
+      attachments: [{
+        message_id: "message/1",
+        attachment_id: "attachment/1",
+        filename: "report.txt",
+        mime_type: "text/plain",
+        size_bytes: 6,
+      }],
+    },
+  });
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  Object.defineProperty(URL, "createObjectURL", {
+    value: vi.fn(() => "blob:attachment-1"),
+    configurable: true,
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    value: vi.fn(),
+    configurable: true,
+  });
+  const user = userEvent.setup();
+  render(<App />);
+
+  await user.click(await screen.findByRole("button", { name: /첫 번째 자료/ }));
+  await user.click(await screen.findByRole("button", { name: "report.txt" }));
+
+  await waitFor(() => expect(requests).toContainEqual(expect.objectContaining({
+    path: "/api/v1/gmail/messages/message%2F1/attachments/attachment%2F1",
+  })));
+  expect(click).toHaveBeenCalledOnce();
+});
+
+test("routes an incomplete first-run configuration to the onboarding checklist", async () => {
+  installUiContractFetch({ setupCompleted: false, run: false });
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: "Google Work Agent 시작하기" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "동의 저장" })).toBeInTheDocument();
+  expect(document.querySelector("textarea.composer")).not.toBeInTheDocument();
+});
+
+test("stages an outbound file and modifies the Gmail draft with descriptors only", async () => {
+  const requests = installUiContractFetch({ action: true, actionToolName: "gmail_create_draft" });
+  render(<App />);
+
+  const input = await screen.findByLabelText("첨부파일 선택");
+  await userEvent.setup().upload(input, new File(["report"], "report.txt", { type: "text/plain" }));
+
+  await waitFor(() => expect(requests.some((request) => request.path === "/api/v1/attachments/stage")).toBe(true));
+  const modify = requests.find((request) => request.path.endsWith("/actions/action-1/modify"));
+  expect(JSON.parse(String(modify?.init?.body))).toMatchObject({
+    arguments_patch: {
+      attachments: [{
+        staged_attachment_id: "staged-1",
+        filename: "report.txt",
+        mime_type: "text/plain",
+        size_bytes: 6,
+        sha256: "a".repeat(64),
+      }],
+    },
+  });
+  expect(String(modify?.init?.body)).not.toContain("cmVwb3J0");
+});
+
 test("TST-UI-209 renders independent approval commands with versions and disables duplicate submission", async () => {
   const user = userEvent.setup();
   const requests = installUiContractFetch({ action: true });
@@ -3036,6 +3101,7 @@ test("shows a visible error and releases the composer when run creation fails", 
 
 function installUiContractFetch(options: {
   action?: boolean;
+  actionToolName?: string;
   actionStatus?: string;
   actionRisk?: Record<string, unknown>;
   accountAbsent?: boolean;
@@ -3062,6 +3128,7 @@ function installUiContractFetch(options: {
   resource?: Partial<ReturnType<typeof gmailThread>>;
   resultKind?: string;
   status?: string;
+  setupCompleted?: boolean;
   taskBatchSizes?: number[];
   taskTitles?: Array<string | null>;
   taskRefreshBatchSize?: number;
@@ -3099,7 +3166,34 @@ function installUiContractFetch(options: {
         : (options.accountAbsent ? null : currentAccount());
       return jsonFetchResponse({ account, api_contract_version: "1" });
     }
-    if (path === "/api/v1/settings") return jsonFetchResponse({ settings: settingsPayload(), api_contract_version: "1" });
+    if (path === "/api/v1/settings") return jsonFetchResponse({ settings: settingsPayload({ setup_completed: options.setupCompleted ?? true }), api_contract_version: "1" });
+    if (path === "/api/v1/llm/connection") return jsonFetchResponse({
+      llm: llmConnectionPayload({
+        api_provider: {
+          credential_state: "CONFIGURED",
+          availability: "AVAILABLE",
+          last_probe: 1,
+          safe_error_code: null,
+        },
+      }),
+      api_contract_version: "1",
+    });
+    if (path.startsWith("/api/v1/gmail/messages/") && path.includes("/attachments/")) {
+      return new Response("report", {
+        status: 200,
+        headers: { "Content-Type": "application/octet-stream" },
+      });
+    }
+    if (path === "/api/v1/attachments/stage" && init?.method === "POST") {
+      return jsonFetchResponse({
+        staged_attachment_id: "staged-1",
+        filename: "report.txt",
+        mime_type: "text/plain",
+        size_bytes: 6,
+        sha256: "a".repeat(64),
+        api_contract_version: "1",
+      });
+    }
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonFetchResponse({ items: options.conversations ? [{ id: "conversation-1", account_id: "account-1", title: "업무 대화", updated_at_ms: 1, created_at_ms: 1 }] : [], next_cursor: null, api_contract_version: "1" });
     }
@@ -3277,7 +3371,7 @@ function installUiContractFetch(options: {
       }
       return jsonFetchResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-1", conversation_id: "conversation-1", run_status: "WAITING_APPROVAL", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-1", enqueued: true, request_replayed: false });
     }
-    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: "gmail_draft", status: actionStatus, version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", risk: options.actionRisk ?? {}, next_allowed_commands: [] }] : [] }));
+    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: options.actionToolName ?? "gmail_draft", status: actionStatus, version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", risk: options.actionRisk ?? {}, next_allowed_commands: [] }] : [] }));
     if (path === "/api/v1/runs/run-1/context") return jsonFetchResponse({ context: null, api_contract_version: "1" });
     if (path.includes("/api/v1/actions/") && init?.method === "POST") {
       actionStatus = path.endsWith("/reject") ? "REJECTED" : "APPROVED";
@@ -3507,6 +3601,7 @@ function runtimeSummary(openRunIds: string[], overrides: Record<string, unknown>
 function settingsPayload(overrides: Record<string, unknown> = {}) {
   return {
     config_schema_version: 1,
+    setup_completed: true,
     deployment_profile: "LOCAL_CAPABLE",
     requested_runtime_mode: "API_LLM",
     default_calendar_id: null,

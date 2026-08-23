@@ -18,6 +18,10 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     consume_llm_call_budget,
     ensure_llm_call_budget,
 )
+from google_work_agent.application.orchestration.provider_dispatch_budget import (
+    account_provider_dispatch,
+    provider_dispatch_execution_scope,
+)
 from google_work_agent.application.orchestration.contracts import (
     ABSOLUTE_MAX_LLM_CALLS,
     NORMAL_MAX_LLM_CALLS,
@@ -37,6 +41,12 @@ def _state(*, llm_calls_used: int, profile: str = BudgetProfile.NORMAL.value) ->
             "llm_calls_used": llm_calls_used,
         }
     }
+
+
+@pytest.fixture(autouse=True)
+def _isolate_provider_dispatch_budget():
+    with provider_dispatch_execution_scope():
+        yield
 
 
 def test_ensure_allows_calls_under_the_normal_cap() -> None:
@@ -90,15 +100,17 @@ def test_ensure_blocks_at_the_absolute_cap_regardless_of_profile() -> None:
     assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
 
 
-def test_consume_increments_llm_calls_used_by_the_real_attempt_count() -> None:
+def test_consume_merges_usage_counted_at_real_dispatches() -> None:
     state = _state(llm_calls_used=3)
 
+    ensure_llm_call_budget(state, provider_calls_requested=2)
+    account_provider_dispatch()
+    account_provider_dispatch()
     updated = consume_llm_call_budget(state, provider_calls_consumed=2)
 
     assert updated["llm_calls_used"] == 5
-    # Consuming must not mutate the caller's original state in place --
-    # nodes fold the return value into their own GraphStateUpdateV1.
-    assert state["retry_budget"]["llm_calls_used"] == 3  # type: ignore[index]
+    # RunBudgetV1 itself is the single mutable dispatch authority.
+    assert state["retry_budget"]["llm_calls_used"] == 5  # type: ignore[index]
 
 
 def test_budget_state_is_carried_entirely_by_the_caller_not_by_any_runtime_instance() -> None:
@@ -109,6 +121,8 @@ def test_budget_state_is_carried_entirely_by_the_caller_not_by_any_runtime_insta
     anywhere else that could reset on process/runtime recreation."""
     state = _state(llm_calls_used=7)
 
+    ensure_llm_call_budget(state)
+    account_provider_dispatch()
     consumed = consume_llm_call_budget(state, provider_calls_consumed=1)
     assert consumed["llm_calls_used"] == 8
 

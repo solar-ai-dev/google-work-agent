@@ -85,7 +85,6 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
     try:
         assert six.describe_topology() == (
             "request_understanding",
-            "acquisition",
             "context_retriever",
             "work_analysis",
             "planning",
@@ -101,7 +100,7 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
         single.close()
 
 
-def test_six_role_runtime_exposes_five_native_agent_subgraphs(
+def test_six_role_runtime_exposes_six_native_agent_subgraphs(
     tmp_path: Path,
 ) -> None:
     """SIX_ROLE_BASELINE's active agent set is request_understanding,
@@ -125,13 +124,15 @@ def test_six_role_runtime_exposes_five_native_agent_subgraphs(
     try:
         assert tuple(runtime._native_agent_subgraphs) == (  # noqa: SLF001
             "request_understanding",
+            "tool_route",
             "context_retriever",
             "work_analysis",
             "planning",
             "review",
         )
-        assert len(runtime._native_agent_subgraphs) == 5  # noqa: SLF001
+        assert len(runtime._native_agent_subgraphs) == 6  # noqa: SLF001
         assert runtime._node_handler("request_understanding") is runtime._request_subgraph  # noqa: SLF001
+        assert runtime._node_handler("tool_route") is runtime._tool_route_subgraph  # noqa: SLF001
         assert runtime._node_handler("acquisition") is runtime._acquisition_subgraph  # noqa: SLF001
         assert runtime._node_handler("context_retriever") is runtime._context_subgraph  # noqa: SLF001
         assert runtime._node_handler("work_analysis") is runtime._analysis_subgraph  # noqa: SLF001
@@ -205,8 +206,10 @@ def test_request_subgraph_clears_local_state_and_records_trace_counts(
         assert trace_context["llm_call_count"] == 1
         assert [item["node_name"] for item in trace_context["agent_node_log"]] == [
             "init",
-            "classify",
-            "finalize",
+            "identify_goal",
+            "detect_ambiguity",
+            "finalize_intent",
+            "validate_intent",
         ]
     finally:
         runtime.close()
@@ -296,12 +299,12 @@ def test_acquisition_subgraph_keeps_single_invocation_id_and_parent_isolation(
         runtime.close()
 
 
-def test_six_role_full_path_records_five_agent_invocations_and_six_llm_calls(
+def test_six_role_full_path_records_six_agent_invocations_and_seven_llm_calls(
     tmp_path: Path,
 ) -> None:
     """SIX_ROLE_BASELINE's active agent set is request_understanding,
-    context_retriever, work_analysis, planning, review -- Tool Route is a
-    deterministic node, not an agent invocation, and ``acquisition`` is not
+    tool_route, context_retriever, work_analysis, planning, review.
+    ``acquisition`` is not
     wired into this profile's topology (Retrieval V2's context_retriever
     subgraph replaced it; see ``_native_subgraphs_for_profile``).
 
@@ -342,8 +345,8 @@ def test_six_role_full_path_records_five_agent_invocations_and_six_llm_calls(
         # what this test is proving, not full write execution.
         assert result.outcome is WorkflowOutcome.ACCEPTED
         trace_context = values["trace_context"]
-        assert trace_context["agent_invocation_count"] == 5
-        assert trace_context["llm_call_count"] == 6
+        assert trace_context["agent_invocation_count"] == 6
+        assert trace_context["llm_call_count"] == 7
         init_log = [
             item["agent_subgraph_id"]
             for item in trace_context["agent_node_log"]
@@ -351,13 +354,14 @@ def test_six_role_full_path_records_five_agent_invocations_and_six_llm_calls(
         ]
         assert init_log == [
             "request_understanding",
+            "tool_route",
             "context_retriever",
             "work_analysis",
             "planning",
             "review",
         ]
         invocation_ids = {item["agent_invocation_id"] for item in trace_context["agent_node_log"]}
-        assert len(invocation_ids) == 5
+        assert len(invocation_ids) == 6
     finally:
         runtime.close()
 
@@ -447,7 +451,7 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
     tool_route -> context_retriever -> work_analysis -> planning -> review
     (``acquisition`` is a registered node but not part of this profile's own
     edges -- see test_tool_route_subgraph_freezes_plan_before_context_retriever
-    and test_six_role_runtime_exposes_five_native_agent_subgraphs). Each
+    and test_six_role_runtime_exposes_six_native_agent_subgraphs). Each
     stage below calls exactly one subgraph directly and asserts it only ever
     hands off via ``__target__`` -- never by invoking the next subgraph's
     ``.invoke`` itself."""
@@ -628,7 +632,7 @@ def test_agent_subgraphs_do_not_issue_google_writes_before_approval(
         ]
         if graph_profile is GraphProfile.SIX_ROLE_BASELINE
         else [
-            _profile_request_source_output(),
+            _profile_request_source_output(request_intent=_action_required_intent()),
             _profile_reason_plan_output("PLAN_READY"),
             _review_output("PASS"),
         ]

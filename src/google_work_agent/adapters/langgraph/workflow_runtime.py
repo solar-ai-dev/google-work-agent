@@ -173,6 +173,7 @@ from google_work_agent.application.orchestration.supervisor import (
     route_supervisor,
 )
 from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
+from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
 from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
 from google_work_agent.application.orchestration.api_acquisition import (
     load_acquisition_plan_sources_prompt_reference,
@@ -219,6 +220,7 @@ from google_work_agent.domain import (
     RunStatus,
 )
 from google_work_agent.ports import (
+    AttachmentDescriptorVerifier,
     EvidenceOriginType,
     ExecutionAttemptRecord,
     GoogleWorkspaceGateway,
@@ -278,6 +280,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
         work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
         default_tasklist_id_provider: Callable[[], str | None] | None = None,
         default_calendar_id_provider: Callable[[], str | None] | None = None,
+        attachment_verifier: AttachmentDescriptorVerifier | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._llm_runtime = llm_runtime
@@ -460,6 +463,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             now_ms=now_ms,
             signing_secret=signing_secret,
             service_instance_id=service_instance_id,
+            attachment_verifier=attachment_verifier,
         )
         self._preflight_write = PreflightWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
@@ -616,6 +620,10 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             self._three_stage_one_subgraph = ThreeStageOneSubgraph(
                 request_understanding_agent=self._request_understanding,
                 acquisition_agent=self._acquisition,
+                tool_route_coordinator=ToolRouteCoordinator(
+                    tool_catalog=tool_catalog,
+                    id_factory=id_factory,
+                ),
                 prompt_ref=self._three_stage1_prompt_ref,
                 id_factory=id_factory,
                 graph_profile=self._graph_profile,
@@ -625,6 +633,7 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
             self._three_stage_two_subgraph = ThreeStageTwoSubgraph(
                 request_understanding_agent=self._request_understanding,
                 planning_agent=self._planning,
+                evidence_store=self._evidence_store,
                 prompt_ref=self._three_stage2_prompt_ref,
                 id_factory=id_factory,
                 graph_profile=self._graph_profile,
@@ -647,6 +656,11 @@ class LangGraphWorkflowRuntime(WorkflowRuntime):
                 acquisition_agent=self._acquisition,
                 planning_agent=self._planning,
                 review_agent=self._single_review,
+                tool_route_coordinator=ToolRouteCoordinator(
+                    tool_catalog=tool_catalog,
+                    id_factory=id_factory,
+                ),
+                evidence_store=self._evidence_store,
                 request_source_prompt_ref=self._single_request_source_prompt_ref,
                 reason_plan_prompt_ref=self._single_reason_plan_prompt_ref,
                 id_factory=id_factory,

@@ -7,6 +7,8 @@ from dataclasses import asdict, dataclass
 from google_work_agent.ports import (
     GoogleOAuthCredentialProvider,
     MCPTransport,
+    MCPTransportError,
+    MCPTransportErrorCode,
     RuntimeStatusProvider,
     RuntimeSummary,
 )
@@ -24,16 +26,31 @@ class MCPRuntimeStatusProvider(RuntimeStatusProvider):
     llm: dict[str, object] | None = None
 
     def get_summary(self) -> RuntimeSummary:
-        connection = self.google_provider.get_connection_status()
+        try:
+            connection = self.google_provider.get_connection_status()
+        except MCPTransportError as error:
+            connection = None
+            google_status = (
+                "NOT_CONFIGURED"
+                if error.code is MCPTransportErrorCode.CONFIGURATION_ERROR
+                else "ERROR"
+            )
+            google_connection: dict[str, object] = {
+                "connected": False,
+                "credential_state": google_status,
+                "safe_error_code": str(error),
+            }
+        else:
+            google_status = connection.credential_state.value
+            if connection.connected:
+                google_status = "CONNECTED"
+            google_connection = asdict(connection)
         if self.runtime is not None:
             runtime = self.runtime.health()
         elif self.transport is not None:
             runtime = self.transport.runtime_metadata()
         else:
             raise RuntimeError("MCP runtime status source is not configured")
-        google_status = connection.credential_state.value
-        if connection.connected:
-            google_status = "CONNECTED"
         return RuntimeSummary(
             google=google_status,
             mcp=runtime.process_status,
@@ -42,7 +59,7 @@ class MCPRuntimeStatusProvider(RuntimeStatusProvider):
             deployment_profile=self.deployment_profile,
             recovery_required_run_ids=(),
             open_run_ids=(),
-            google_connection=asdict(connection),
+            google_connection=google_connection,
             mcp_runtime=asdict(runtime),
             llm=self.llm,
         )

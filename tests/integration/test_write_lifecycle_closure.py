@@ -4,19 +4,19 @@ from __future__ import annotations
 
 import inspect
 
+import google_work_agent.adapters.langgraph.corrective_plan_persistence as corrective_persistence
 import google_work_agent.adapters.langgraph.plan_persistence as canonical_planning_runtime
+import google_work_agent.application.run_terminal as run_terminal
 from google_work_agent.adapters.langgraph.freshness_workflow import (
     LangGraphWorkflowRuntime,
-)
-from google_work_agent.adapters.langgraph.corrective_plan_persistence import (
-    persist_reserved_corrective_write_plan,
 )
 from google_work_agent.adapters.langgraph.graph_state import ParentGraphState
 from google_work_agent.adapters.persistence.corrective_plan_repository import (
     CorrectiveAwareSQLitePlanRepository,
 )
-from google_work_agent.api.routes.runs import resolve_recovery
-import google_work_agent.application.run_terminal as run_terminal
+from google_work_agent.application.use_cases.recovery.resolve_mismatch_recovery import (
+    ResolveMismatchRecoveryHandler,
+)
 
 
 def test_block_run_cleanup_is_single_uow_and_trigger_safe() -> None:
@@ -32,7 +32,7 @@ def test_block_run_cleanup_is_single_uow_and_trigger_safe() -> None:
 
 
 def test_corrective_recovery_api_enqueues_only_registered_internal_resume_kind() -> None:
-    source = inspect.getsource(resolve_recovery)
+    source = inspect.getsource(ResolveMismatchRecoveryHandler.__call__)
 
     assert 'result.result_kind == "CORRECTIVE_PLAN_REQUIRED"' in source
     assert 'resume_kind="RECOVERY_CORRECTIVE_PLAN"' in source
@@ -71,7 +71,7 @@ def test_corrective_persistence_separates_reserved_plan_from_child_remapping() -
     ordinary_source = inspect.getsource(
         canonical_planning_runtime.LangGraphWorkflowRuntime._persist_write_plan
     )
-    corrective_source = inspect.getsource(persist_reserved_corrective_write_plan)
+    corrective_source = inspect.getsource(corrective_persistence)
     runtime_source = inspect.getsource(LangGraphWorkflowRuntime._persist_write_plan)
     repository_source = inspect.getsource(CorrectiveAwareSQLitePlanRepository.insert_draft)
 

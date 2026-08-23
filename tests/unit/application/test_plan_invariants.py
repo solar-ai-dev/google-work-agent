@@ -81,6 +81,7 @@ def test_write_plan_evidence_policy_counts_each_actions_links_not_plan_total() -
             WriteActionDraft(
                 action_id="action-1",
                 position=1,
+                connector_id="google_workspace",
                 tool_name="tasks_update_task",
                 arguments={"task_id": "task-1", "title": "Updated"},
                 expected={"resource_type": "TASK"},
@@ -124,6 +125,7 @@ def test_write_plan_accepts_two_action_linked_evidences_for_unselected_update() 
             WriteActionDraft(
                 action_id="action-2",
                 position=1,
+                connector_id="google_workspace",
                 tool_name="tasks_update_task",
                 arguments={"task_id": "task-1", "title": "Updated"},
                 expected={"resource_type": "TASK"},

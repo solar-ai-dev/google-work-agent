@@ -33,6 +33,7 @@ def test_write_resource_ref_does_not_persist_raw_provider_payload() -> None:
 
     resource_ref = resource_ref_from_snapshot(
         run_id="run-1",
+        connector_id="google_workspace",
         snapshot=snapshot,
         captured_at_ms=10,
     )
@@ -63,6 +64,7 @@ def test_message_metadata_is_bounded_to_existing_read_projection_fields() -> Non
 
     resource_ref = resource_ref_from_snapshot(
         run_id="run-1",
+        connector_id="google_workspace",
         snapshot=snapshot,
         captured_at_ms=10,
     )

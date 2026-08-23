@@ -57,3 +57,4 @@ class ToolRoutingState(ToolRoutingLocalState, total=False):
     tr_retry_budget: NotRequired[RunBudgetV1]
     tr_confirmation_origin: NotRequired[str]
     tr_current_interrupt_id: NotRequired[str | None]
+    tr_invocation_id: NotRequired[str]

@@ -8,14 +8,16 @@ from typing import Any, cast
 
 import pytest
 
-from google_work_agent.adapters.langgraph.freshness_workflow import (
-    LangGraphWorkflowRuntime,
-)
 from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
     CorrectivePlanContinuationRequired,
 )
-from google_work_agent.api.routes.runs import resolve_recovery
+from google_work_agent.adapters.langgraph.freshness_workflow import (
+    LangGraphWorkflowRuntime,
+)
 from google_work_agent.application.coordinator import LocalRunCoordinator
+from google_work_agent.application.use_cases.recovery.resolve_mismatch_recovery import (
+    ResolveMismatchRecoveryHandler,
+)
 from google_work_agent.application.write_actions import (
     RecoveryResolutionKind,
     ResolveMismatchRecoveryCommand,
@@ -216,7 +218,7 @@ def test_resolve_recovery_command_replay_returns_original_reserved_plan(
 def test_production_callers_preserve_generic_failure_and_expose_real_retry_triggers() -> None:
     process_source = inspect.getsource(LocalRunCoordinator._process_item)
     startup_source = inspect.getsource(LocalRunCoordinator.start)
-    api_source = inspect.getsource(resolve_recovery)
+    recovery_handler_source = inspect.getsource(ResolveMismatchRecoveryHandler.__call__)
     recovery_source = inspect.getsource(LangGraphWorkflowRuntime.recover_open_run)
 
     # Generic runtime/programming failures remain terminalized exactly as before.
@@ -230,8 +232,8 @@ def test_production_callers_preserve_generic_failure_and_expose_real_retry_trigg
 
     # Same-process command replay has a concrete producer for the same
     # registered corrective continuation.
-    assert 'resume_kind="RECOVERY_CORRECTIVE_PLAN"' in api_source
-    assert 'resume_payload={"plan_id": result.plan_id}' in api_source
+    assert 'resume_kind="RECOVERY_CORRECTIVE_PLAN"' in recovery_handler_source
+    assert 'resume_payload={"plan_id": result.plan_id}' in recovery_handler_source
 
     # Restart recovery consumes the durable checkpoint marker instead of
     # falling through to generic open-run recovery.

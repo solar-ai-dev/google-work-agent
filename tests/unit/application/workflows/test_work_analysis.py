@@ -465,7 +465,7 @@ def test_prompt_injection_source_text_is_data_not_instruction() -> None:
 
 
 def test_work_analysis_agent_has_no_google_mcp_domain_or_repository_dependency() -> None:
-    source = Path("src/google_work_agent/application/workflows/work_analysis.py").read_text(
+    source = Path("src/google_work_agent/application/orchestration/work_analysis.py").read_text(
         encoding="utf-8"
     )
 
@@ -496,8 +496,8 @@ def test_default_product_loader_rejects_draft_analysis_prompt(tmp_path: Path) ->
 
 
 def test_work_analysis_symbols_have_explicit_owners() -> None:
-    assert WorkAnalysisAgent.__module__.endswith(".workflows.work_analysis")
-    assert validate_work_analysis_result_v1.__module__.endswith(".workflows.work_analysis")
+    assert WorkAnalysisAgent.__module__.endswith(".orchestration.work_analysis")
+    assert validate_work_analysis_result_v1.__module__.endswith(".orchestration.work_analysis")
 
 
 def _agent(runtime: FakeLLMRuntime) -> WorkAnalysisAgent:

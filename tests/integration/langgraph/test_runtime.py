@@ -19,6 +19,7 @@ from tests.support.fakes import (
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 from tests.support.prompt_manifests import (
     write_draft_manifest,
+    write_manifest_with_legacy_profile_slots,
     write_manifest_with_overrides,
     write_runtime_active_manifest,
 )
@@ -89,6 +90,7 @@ from google_work_agent.ports import (
 )
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
+_SYNTHESIZE_RETRIEVAL_QUERY_PLAN = object()
 _RUNTIME_ACTIVE_PROMPT_IDS = {
     "request_understanding.classify",
     "tool_route.determine_io_resources",
@@ -107,6 +109,14 @@ _RUNTIME_ACTIVE_PROMPT_IDS = {
     "planning.compose_answer.revise",
     "review.inspect",
     "review.inspect.recheck",
+}
+_PROFILE_CANDIDATE_PROMPT_IDS = {
+    "profile.single.request_source.initial",
+    "profile.single.reason_plan.initial",
+    "profile.single.self_review.initial",
+    "profile.single.self_review.recheck",
+    "profile.three.stage1.initial",
+    "profile.three.stage2.initial",
 }
 # SINGLE_BASELINE/THREE_STAGE profile prompts ("profile.single.*",
 # "profile.three.*") and "request_understanding.clarify" have no
@@ -261,6 +271,13 @@ class _QueuedLLMRuntime:
             schema_version = getattr(output_schema, "schema_version", None)
             is_v2_plan_call = schema_version == "retrieval-query-plan-v2"
             if is_v2_plan_call and "current_round_no" not in prompt_input:
+                return _llm_result(_synthesize_retrieval_query_plan(prompt_input))
+            if (
+                is_v2_plan_call
+                and self._queued
+                and self._queued[0].structured_output is _SYNTHESIZE_RETRIEVAL_QUERY_PLAN
+            ):
+                self._queued.popleft()
                 return _llm_result(_synthesize_retrieval_query_plan(prompt_input))
         if getattr(prompt_ref, "prompt_id", None) == "planning.compose_arguments":
             prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
@@ -908,10 +925,14 @@ def _gmail_analysis_output() -> dict[str, object]:
     return payload
 
 
-def _profile_request_source_output(result: str = "PLAN_READY") -> dict[str, object]:
+def _profile_request_source_output(
+    result: str = "PLAN_READY",
+    *,
+    request_intent: RequestIntentV2 | None = None,
+) -> dict[str, object]:
     return {
         "schema_version": 2,
-        "request_intent": _clear_intent(),
+        "request_intent": request_intent or _clear_intent(),
         "source_plan": _source_plan_output(result),
     }
 
@@ -1032,9 +1053,11 @@ def _sole_persisted_plan_id(database_path: Path, *, run_id: str = "run-1") -> st
 
 
 def _runtime_active_manifest_path(tmp_path: Path) -> Path:
-    return write_runtime_active_manifest(
+    return write_manifest_with_legacy_profile_slots(
         tmp_path,
-        prompt_ids=_RUNTIME_ACTIVE_PROMPT_IDS,
+        legacy_prompt_ids=_PROFILE_CANDIDATE_PROMPT_IDS,
+        active_prompt_ids=_RUNTIME_ACTIVE_PROMPT_IDS,
+        draft_prompt_ids=(),
     )
 
 
@@ -1130,16 +1153,6 @@ _SIX_ROLE_BASELINE_PROMPT_IDS = {
     "review.inspect",
     "review.inspect.recheck",
 }
-_PROFILE_CANDIDATE_PROMPT_IDS = {
-    "profile.single.request_source.initial",
-    "profile.single.reason_plan.initial",
-    "profile.single.self_review.initial",
-    "profile.single.self_review.recheck",
-    "profile.three.stage1.initial",
-    "profile.three.stage2.initial",
-}
-
-
 # GAP-F1 (Q2-X update): requested_effect_hints (RequestIntentV2), not a
 # keyword scan over request_text, decides the SIX_ROLE_BASELINE Planning
 # subgraph's mode -- a write effect (CREATE/UPDATE/SEND/DELETE) means

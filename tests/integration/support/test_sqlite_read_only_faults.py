@@ -3,6 +3,9 @@ from pathlib import Path
 
 import pytest
 
+from google_work_agent.adapters.connectors.google_workspace import (
+    GOOGLE_WORKSPACE_CONNECTOR_ID,
+)
 from google_work_agent.adapters.persistence import (
     apply_migrations,
     connect_sqlite,
@@ -17,12 +20,12 @@ from google_work_agent.application.read_contracts import (
     ReadEvidenceDraft,
     SaveReadOnlyPlanCommand,
 )
+from google_work_agent.application.read_execution import ExecuteReadActionService
 from google_work_agent.application.read_lifecycle import (
     ClaimReadActionService,
     CompleteReadActionService,
     FinalizeReadActionService,
 )
-from google_work_agent.application.read_execution import ExecuteReadActionService
 from google_work_agent.application.read_plan import (
     PublishReadOnlyPlanService,
     SaveReadOnlyPlanService,
@@ -255,6 +258,7 @@ def _prepare_single_action_plan(database_path: Path, *, plan_id: str, action_id:
             actions=(
                 ReadActionDraft(
                     action_id=action_id,
+                    connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                     position=1,
                     tool_name="gmail_get_thread",
                     arguments={"thread_id": "thread-project"},

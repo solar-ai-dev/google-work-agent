@@ -144,7 +144,7 @@ class CanonicalOptionalPlanningSubgraph(RuntimeActivePlanningSubgraph):
 
     def _init_node(self, state: PlanningLocalState) -> PlanningLocalState:
         invocation_id = self._id_factory()
-        review = state["plan_review"]
+        review = state.get("plan_review")
         request_intent = _require_state_value(state["request_intent"], "request_intent")
         tool_route_plan = state.get("tool_route_plan")
         mode = planning_mode_from_request_intent(request_intent, tool_route_plan)
@@ -211,7 +211,7 @@ class CanonicalOptionalPlanningSubgraph(RuntimeActivePlanningSubgraph):
         request = request_from_state(state)
         request_intent = _require_state_value(state["request_intent"], "request_intent")
         evidence_drafts = self._evidence_drafts(state)
-        review_state = state["plan_review"]
+        review_state = state.get("plan_review")
         review_issues: list[ReviewIssueV1] = []
         review_summary: str | None = None
         if review_state is not None:

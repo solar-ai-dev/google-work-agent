@@ -22,6 +22,10 @@ RUNTIME_MIGRATIONS_DIR = Path("src/google_work_agent/adapters/persistence/migrat
 DOCUMENTATION_MIGRATIONS_DIR = Path("docs/database/migrations")
 
 
+def _normalized_sql(path: Path) -> bytes:
+    return path.read_bytes().replace(b"\r\n", b"\n").rstrip(b"\n") + b"\n"
+
+
 def test_lf_and_crlf_sql_have_same_official_checksum() -> None:
     lf_sql = (RUNTIME_MIGRATIONS_DIR / "0001_initial.sql").read_bytes().replace(b"\r\n", b"\n")
     crlf_sql = lf_sql.replace(b"\n", b"\r\n")
@@ -47,58 +51,67 @@ def test_checksum_changes_when_sql_content_changes() -> None:
 
 
 def test_documentation_mirror_matches_runtime_initial_migration() -> None:
-    runtime_sql = (RUNTIME_MIGRATIONS_DIR / "0001_initial.sql").read_bytes()
-    documentation_mirror = (DOCUMENTATION_MIGRATIONS_DIR / "0001_initial.sql").read_bytes()
+    runtime_sql = _normalized_sql(RUNTIME_MIGRATIONS_DIR / "0001_initial.sql")
+    documentation_mirror = _normalized_sql(DOCUMENTATION_MIGRATIONS_DIR / "0001_initial.sql")
 
     assert documentation_mirror == runtime_sql
 
 
 def test_documentation_mirror_matches_runtime_second_migration() -> None:
-    runtime_sql = (RUNTIME_MIGRATIONS_DIR / "0002_action_effect_send_delete.sql").read_bytes()
-    documentation_mirror = (
+    runtime_sql = _normalized_sql(RUNTIME_MIGRATIONS_DIR / "0002_action_effect_send_delete.sql")
+    documentation_mirror = _normalized_sql(
         DOCUMENTATION_MIGRATIONS_DIR / "0002_action_effect_send_delete.sql"
-    ).read_bytes()
+    )
 
     assert documentation_mirror == runtime_sql
 
 
 def test_documentation_mirror_matches_runtime_third_migration() -> None:
-    runtime_sql = (RUNTIME_MIGRATIONS_DIR / "0003_action_cancelled.sql").read_bytes()
-    documentation_mirror = (DOCUMENTATION_MIGRATIONS_DIR / "0003_action_cancelled.sql").read_bytes()
+    runtime_sql = _normalized_sql(RUNTIME_MIGRATIONS_DIR / "0003_action_cancelled.sql")
+    documentation_mirror = _normalized_sql(DOCUMENTATION_MIGRATIONS_DIR / "0003_action_cancelled.sql")
 
     assert documentation_mirror == runtime_sql
 
 
 def test_documentation_mirror_matches_runtime_fourth_migration() -> None:
-    runtime_sql = (RUNTIME_MIGRATIONS_DIR / "0004_plan_review_gate.sql").read_bytes()
-    documentation_mirror = (DOCUMENTATION_MIGRATIONS_DIR / "0004_plan_review_gate.sql").read_bytes()
+    runtime_sql = _normalized_sql(RUNTIME_MIGRATIONS_DIR / "0004_plan_review_gate.sql")
+    documentation_mirror = _normalized_sql(DOCUMENTATION_MIGRATIONS_DIR / "0004_plan_review_gate.sql")
 
     assert documentation_mirror == runtime_sql
 
 
 def test_documentation_mirror_matches_runtime_fifth_migration() -> None:
-    runtime_sql = (RUNTIME_MIGRATIONS_DIR / "0005_cross_aggregate_invariants.sql").read_bytes()
-    documentation_mirror = (
+    runtime_sql = _normalized_sql(RUNTIME_MIGRATIONS_DIR / "0005_cross_aggregate_invariants.sql")
+    documentation_mirror = _normalized_sql(
         DOCUMENTATION_MIGRATIONS_DIR / "0005_cross_aggregate_invariants.sql"
-    ).read_bytes()
+    )
 
     assert documentation_mirror == runtime_sql
 
 
 def test_documentation_mirror_matches_runtime_sixth_migration() -> None:
-    runtime_sql = (RUNTIME_MIGRATIONS_DIR / "0006_plan_aggregate_invariants.sql").read_bytes()
-    documentation_mirror = (
+    runtime_sql = _normalized_sql(RUNTIME_MIGRATIONS_DIR / "0006_plan_aggregate_invariants.sql")
+    documentation_mirror = _normalized_sql(
         DOCUMENTATION_MIGRATIONS_DIR / "0006_plan_aggregate_invariants.sql"
-    ).read_bytes()
+    )
 
     assert documentation_mirror == runtime_sql
 
 
 def test_documentation_mirror_matches_runtime_seventh_migration() -> None:
-    runtime_sql = (RUNTIME_MIGRATIONS_DIR / "0007_connector_neutral_persistence.sql").read_bytes()
-    documentation_mirror = (
+    runtime_sql = _normalized_sql(RUNTIME_MIGRATIONS_DIR / "0007_connector_neutral_persistence.sql")
+    documentation_mirror = _normalized_sql(
         DOCUMENTATION_MIGRATIONS_DIR / "0007_connector_neutral_persistence.sql"
-    ).read_bytes()
+    )
+
+    assert documentation_mirror == runtime_sql
+
+
+def test_documentation_mirror_matches_runtime_eighth_migration() -> None:
+    runtime_sql = _normalized_sql(RUNTIME_MIGRATIONS_DIR / "0008_resource_ref_connector_identity.sql")
+    documentation_mirror = _normalized_sql(
+        DOCUMENTATION_MIGRATIONS_DIR / "0008_resource_ref_connector_identity.sql"
+    )
 
     assert documentation_mirror == runtime_sql
 
@@ -106,7 +119,7 @@ def test_documentation_mirror_matches_runtime_seventh_migration() -> None:
 def test_package_resource_discovers_initial_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 7
+    assert len(migrations) == 8
     assert migrations[0].version == 1
     assert migrations[0].name == "initial"
     assert migrations[0].checksum == OFFICIAL_NORMALIZED_CHECKSUM
@@ -122,6 +135,8 @@ def test_package_resource_discovers_initial_migration() -> None:
     assert migrations[5].name == "plan_aggregate_invariants"
     assert migrations[6].version == 7
     assert migrations[6].name == "connector_neutral_persistence"
+    assert migrations[7].version == 8
+    assert migrations[7].name == "resource_ref_connector_identity"
 
 
 def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
@@ -134,7 +149,7 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(first_results) == 7
+        assert len(first_results) == 8
         assert all(result.applied for result in first_results)
         assert [(row["version"], row["name"]) for row in rows] == [
             (1, "initial"),
@@ -144,6 +159,7 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             (5, "cross_aggregate_invariants"),
             (6, "plan_aggregate_invariants"),
             (7, "connector_neutral_persistence"),
+            (8, "resource_ref_connector_identity"),
         ]
         assert rows[0]["checksum"] == OFFICIAL_NORMALIZED_CHECKSUM
         assert rows[1]["checksum"] == OFFICIAL_V2_NORMALIZED_CHECKSUM
@@ -154,9 +170,9 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(second_results) == 7
+        assert len(second_results) == 8
         assert all(not result.applied for result in second_results)
-        assert len(rows) == 7
+        assert len(rows) == 8
         assert all(row["applied_at_ms"] == 123456789 for row in rows)
     finally:
         connection.close()
@@ -258,6 +274,7 @@ def test_v1_3_to_v1_4_preserves_rows_effect_contracts_and_foreign_keys(
         assert [result.applied for result in results] == [
             False,
             False,
+            True,
             True,
             True,
             True,

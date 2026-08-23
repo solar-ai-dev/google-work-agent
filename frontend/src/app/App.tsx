@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  approveAction,
   bootstrapSession,
-  cancelRun,
-  confirmRun,
   disconnectGoogle,
+  downloadGmailAttachment,
   getCurrentAccount,
   getGoogleConnection,
   getGmailResourceDetail,
@@ -12,8 +10,6 @@ import {
   getReady,
   getRuntime,
   getSettings,
-  listConversations,
-  modifyAction,
   startGoogleOAuth,
 } from "../api";
 import type {
@@ -27,6 +23,7 @@ import { ApiClientError } from "../api/client";
 import { CalendarPanel, useCalendar } from "../features/calendar";
 import { ConversationSidebar, useConversation } from "../features/conversation";
 import { GmailPanel, useGmail } from "../features/gmail";
+import { OnboardingChecklist } from "../features/onboarding";
 import { SettingsDrawer } from "../features/settings";
 import { TasksPanel, useTasks } from "../features/tasks";
 import { CenterWorkspace, type GmailDetailState } from "../features/workspace";
@@ -65,6 +62,7 @@ export function App(): JSX.Element {
   const [google, setGoogle] = useState<GoogleConnectionResponse | null>(null);
   const [currentAccount, setCurrentAccount] = useState<CurrentGoogleAccountResponse["account"]>(null);
   const [calendarTimezone, setCalendarTimezone] = useState("Asia/Seoul");
+  const [setupCompleted, setSetupCompleted] = useState(true);
   const [sidebarFilter, setSidebarFilter] = useState("");
   const [googleConnectPending, setGoogleConnectPending] = useState(false);
   const [statusLine, setStatusLine] = useState("로컬 API에 연결되어 있습니다.");
@@ -139,10 +137,10 @@ export function App(): JSX.Element {
     beginConversationProjection,
     selectConversation,
     selectRun,
-    refreshRun,
     handleStartRun,
     handleApprove,
     handleSimpleAction,
+    handleAttachFiles,
     handleCancelRun,
     handleResumeRun,
     handleConfirmation,
@@ -165,6 +163,7 @@ export function App(): JSX.Element {
       handleStartRun,
       handleApprove,
       handleSimpleAction,
+      handleAttachFiles,
       handleCancelRun,
       handleResumeRun,
       handleConfirmation,
@@ -202,6 +201,24 @@ export function App(): JSX.Element {
               : "메일 내용을 불러오지 못했습니다.",
           }
         : current);
+    }
+  }, []);
+
+  const handleDownloadGmailAttachment = useCallback(async (
+    messageId: string,
+    attachmentId: string,
+    filename: string,
+  ): Promise<void> => {
+    try {
+      const blob = await downloadGmailAttachment(messageId, attachmentId);
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      anchor.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      setStatusLine(error instanceof ApiClientError ? error.message : "Attachment download failed.");
     }
   }, []);
 
@@ -253,6 +270,7 @@ export function App(): JSX.Element {
       setGoogle(googleResponse);
       setCurrentAccount(accountResponse.account);
       const configuredTimezone = settingsResponse === null ? null : asRecord(settingsResponse.settings).timezone;
+      setSetupCompleted(settingsResponse === null || asRecord(settingsResponse.settings).setup_completed === true);
       if (typeof configuredTimezone === "string" && configuredTimezone) {
         setCalendarTimezone(configuredTimezone);
       }
@@ -383,6 +401,21 @@ export function App(): JSX.Element {
         />
         ) : null}
       </main>
+    );
+  }
+
+  if (!setupCompleted && runtime && google) {
+    return (
+      <OnboardingChecklist
+        runtime={runtime}
+        google={google}
+        onConnectGoogle={() => void handleGoogleConnect()}
+        onRefreshConnections={refreshRuntimeSummary}
+        onComplete={(timezone) => {
+          setCalendarTimezone(timezone);
+          setSetupCompleted(true);
+        }}
+      />
     );
   }
 
@@ -554,6 +587,9 @@ export function App(): JSX.Element {
             focusItem: resourceState.focusItem,
             gmailDetail,
             onRetryGmailDetail: () => void loadGmailDetail(resourceState.focusItem!.resource_id),
+            onDownloadGmailAttachment: (messageId, attachmentId, filename) => {
+              void handleDownloadGmailAttachment(messageId, attachmentId, filename);
+            },
             onDrillInto: () => setResourceState((current) => ({
               ...current,
               parentId: resourceState.focusItem!.resource_id,

@@ -56,7 +56,8 @@ def test_tool_routing_has_five_operation_nodes_in_canonical_order() -> None:
 
     graph_source = _source(TR / "graph.py")
     canonical_topology = (
-        'graph.add_edge(START, "determine_io_resources")',
+        'graph.add_edge(START, "initialize")',
+        'graph.add_edge("initialize", "determine_io_resources")',
         '"bind_registry_candidates": "bind_registry_candidates"',
         'graph.add_edge("bind_registry_candidates", "select_tool_if_needed")',
         'graph.add_edge("select_tool_if_needed", "finalize_route")',
@@ -121,9 +122,9 @@ def test_downstream_tool_reselection_authority_is_absent_in_tool_routing() -> No
         assert "registry_candidates_for_route(" not in _source(path)
 
 
-def test_broad_modules_are_compatibility_only() -> None:
+def test_obsolete_broad_module_authorities_are_absent() -> None:
     for path in (SRC / "adapters/langgraph/subgraphs/request_understanding.py", SRC / "adapters/langgraph/subgraphs/tool_routing.py"):
-        assert not any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) for node in _tree(path).body)
+        assert not path.exists()
 
 
 def test_nodes_have_no_forbidden_execution_dependencies() -> None:

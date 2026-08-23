@@ -19,6 +19,7 @@ from google_work_agent.application.orchestration.contracts import ConfirmationRe
 _ORIGIN_PROMPT_IDS: dict[str, frozenset[str]] = {
     "request_understanding.classify": frozenset({"request_understanding.classify"}),
     "tool_route.finalize": frozenset({"tool_route.determine_io_resources"}),
+    "acquisition.plan_sources": frozenset({"retrieval.plan_query"}),
     "context.assess_sufficiency": frozenset({"retrieval.assess_sufficiency"}),
     "analysis.analyze": frozenset({"work_analysis.analyze"}),
     "planning.answer_only": frozenset({"planning.compose_answer"}),

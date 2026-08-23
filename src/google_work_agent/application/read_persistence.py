@@ -423,7 +423,10 @@ def handle_existing_complete_receipt(
     plan = require_plan(unit_of_work, action.plan_id)
     if action.status in {ActionStatus.EXECUTED.value, ActionStatus.VERIFIED.value}:
         if _complete_projection_matches(
-            unit_of_work=unit_of_work, run_id=plan.run_id, command=command
+            unit_of_work=unit_of_work,
+            run_id=plan.run_id,
+            connector_id=action.connector_id,
+            command=command,
         ):
             response = ReadActionCommandResponse(
                 applied=True,
@@ -447,7 +450,10 @@ def handle_existing_complete_receipt(
         )
     if action.status == ActionStatus.EXECUTING.value and action.version == command.expected_version:
         if _complete_projection_matches(
-            unit_of_work=unit_of_work, run_id=plan.run_id, command=command
+            unit_of_work=unit_of_work,
+            run_id=plan.run_id,
+            connector_id=action.connector_id,
+            command=command,
         ):
             return _return_recovery_required_action(
                 unit_of_work=unit_of_work,
@@ -737,12 +743,13 @@ def _complete_projection_matches(
     *,
     unit_of_work: UnitOfWork,
     run_id: str,
+    connector_id: str,
     command: CompleteReadActionCommand,
 ) -> bool:
     for resource_ref in command.resource_refs:
         persisted_ref = unit_of_work.resource_refs.get_by_unique_key(
             run_id=run_id,
-            source=resource_ref.source.value,
+            connector_id=connector_id,
             resource_type=resource_ref.resource_type.value,
             resource_id=resource_ref.resource_id,
         )

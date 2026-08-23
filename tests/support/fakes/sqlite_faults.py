@@ -10,20 +10,46 @@ from pathlib import Path
 from typing import Any, cast
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
-from google_work_agent.adapters.persistence.repositories import (
+from google_work_agent.adapters.persistence.sqlite.repositories.action_dependency_repository import (  # noqa: E501
     SQLiteActionDependencyRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.action_repository import (
     SQLiteActionRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.approval_repository import (
     SQLiteApprovalRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.audit_repository import (
     SQLiteAuditRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_repository import (
     SQLiteCommandReceiptRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.conversation_repository import (
     SQLiteConversationRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.evidence_repository import (
     SQLiteEvidenceRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (  # noqa: E501
     SQLiteExecutionAttemptRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.message_repository import (
     SQLiteMessageRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.plan_repository import (
     SQLitePlanRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.resource_ref_repository import (
     SQLiteResourceRefRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.run_repository import (
     SQLiteRunRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.trace_repository import (
     SQLiteTraceRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.verification_repository import (
     SQLiteVerificationRepository,
 )
 from google_work_agent.ports import UnitOfWork

@@ -3,30 +3,33 @@ from pathlib import Path
 
 import pytest
 
+from google_work_agent.adapters.connectors.google_workspace import (
+    GOOGLE_WORKSPACE_CONNECTOR_ID,
+)
 from google_work_agent.adapters.persistence import (
     apply_migrations,
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
+from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from google_work_agent.application.write_approval import ApproveWriteActionService
+from google_work_agent.application.write_claim import ClaimWriteActionService
+from google_work_agent.application.write_execution import ExecuteWriteActionService
 from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
 )
-from google_work_agent.application.write_claim import ClaimWriteActionService
-from google_work_agent.application.write_execution import ExecuteWriteActionService
+from google_work_agent.application.write_plan import (
+    PublishWritePlanService,
+    SaveWritePlanService,
+)
 from google_work_agent.application.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
     WriteActionDraft,
     WriteEvidenceDraft,
-)
-from google_work_agent.application.write_plan import (
-    PublishWritePlanService,
-    SaveWritePlanService,
 )
 from google_work_agent.application.write_result_persistence import (
     StoreWriteActionSuccessService,
@@ -200,6 +203,7 @@ def _prepare_claimed_write_action(database_path: Path, clock: FakeClock) -> str:
             actions=(
                 WriteActionDraft(
                     action_id="action-fault",
+                    connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
                     position=1,
                     tool_name="tasks_create_task",
                     arguments={"task_list_id": "task-list-default", "payload": payload},

@@ -54,3 +54,12 @@ def test_file_settings_store_load_defaults_to_no_allowlist(tmp_path: Path) -> No
     store = FileSettingsStore(tmp_path / "app-settings.json")
     settings = store.load(deployment_profile=BuildProfile.LOCAL_CAPABLE)
     assert settings.approved_model_id is None
+    assert settings.setup_completed is False
+
+
+def test_setup_completion_round_trips_through_settings_store(tmp_path: Path) -> None:
+    service = _service(tmp_path, approved_model_ids=frozenset())
+
+    service.patch(SettingsPatch(command_id="cmd-setup", setup_completed=True))
+
+    assert service.get().setup_completed is True

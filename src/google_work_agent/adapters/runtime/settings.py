@@ -96,6 +96,9 @@ class SettingsService:
             raise ValueError("requested_runtime_mode cannot change while a run is active")
         updated = replace(
             current,
+            setup_completed=patch.setup_completed
+            if patch.setup_completed is not None
+            else current.setup_completed,
             requested_runtime_mode=patch.requested_runtime_mode
             if patch.requested_runtime_mode is not None
             else current.requested_runtime_mode,
@@ -222,6 +225,7 @@ def _settings_from_dict(payload: dict[str, object]) -> AppSettings:
     )
     return AppSettings(
         config_schema_version=_as_int(payload.get("config_schema_version", 1)),
+        setup_completed=bool(payload.get("setup_completed", False)),
         deployment_profile=str(payload.get("deployment_profile", BuildProfile.API_ONLY.value)),
         requested_runtime_mode=str(payload.get("requested_runtime_mode", "API_LLM")),
         default_calendar_id=_optional_text(payload.get("default_calendar_id")),

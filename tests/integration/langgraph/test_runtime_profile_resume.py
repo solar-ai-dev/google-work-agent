@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
+
 from tests.integration.langgraph.test_runtime import (
     _PROFILE_CANDIDATE_PROMPT_IDS,
     _SIX_ROLE_BASELINE_PROMPT_IDS,
@@ -15,6 +17,7 @@ from tests.integration.langgraph.test_runtime import (
     WorkflowOutcome,
     WorkflowResumeRequest,
     _ambiguous_intent,
+    _action_required_intent,
     _make_runtime,
     _profile_reason_plan_output,
     _profile_request_source_output,
@@ -25,8 +28,13 @@ from tests.integration.langgraph.test_runtime import (
     _start_write_request,
     connect_sqlite,
     pytest,
+    sqlite_unit_of_work_factory,
     write_draft_manifest,
-    write_manifest_with_overrides,
+    write_manifest_with_legacy_profile_slots,
+)
+from google_work_agent.application.use_cases.run.resume_run import (
+    ResumeRunCommand,
+    ResumeRunHandler,
 )
 
 
@@ -50,7 +58,7 @@ def test_agent_local_checkpoint_is_not_authority_for_approval_or_execution_facts
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=[
-            _profile_request_source_output(),
+            _profile_request_source_output(request_intent=_action_required_intent()),
             _profile_reason_plan_output("PLAN_READY"),
             _review_output("PASS"),
         ],
@@ -179,7 +187,7 @@ def test_three_stage_runtime_completes_answer_only_run(
         runtime.close()
 
 
-def test_native_three_and_single_profiles_record_expected_invocation_counts(
+def test_native_profiles_record_answer_path_invocation_counts(
     tmp_path: Path,
 ) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
@@ -201,13 +209,13 @@ def test_native_three_and_single_profiles_record_expected_invocation_counts(
         three_result = three.start(_start_request())
         three_state = three._graph.get_state(three._config_for_thread("thread-1"))  # noqa: SLF001
         assert three_result.outcome is WorkflowOutcome.COMPLETED
-        assert three_state.values["trace_context"]["agent_invocation_count"] == 3
-        assert three_state.values["trace_context"]["llm_call_count"] == 3
+        assert three_state.values["trace_context"]["agent_invocation_count"] == 2
+        assert three_state.values["trace_context"]["llm_call_count"] == 2
         assert [
             item["agent_subgraph_id"]
             for item in three_state.values["trace_context"]["agent_node_log"]
             if item["node_name"] == "init"
-        ] == ["stage_one", "stage_two", "stage_three"]
+        ] == ["stage_one", "stage_two"]
     finally:
         three.close()
 
@@ -313,7 +321,7 @@ def test_native_profiles_generate_plan_and_share_domain_approval_boundary(
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=[
-            _profile_request_source_output(),
+            _profile_request_source_output(request_intent=_action_required_intent()),
             _profile_reason_plan_output("PLAN_READY"),
             _review_output("PASS"),
         ],
@@ -371,6 +379,7 @@ def test_native_profiles_resume_with_same_profile_after_confirmation(
     first = first_runtime.start(_start_request())
 
     assert first.outcome is WorkflowOutcome.ACCEPTED
+    interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
     first_runtime.close()
 
     resumed_runtime = _make_runtime(
@@ -386,24 +395,58 @@ def test_native_profiles_resume_with_same_profile_after_confirmation(
         prompt_manifest_path=manifest_path,
     )
 
-    resumed = resumed_runtime.resume(
-        WorkflowResumeRequest(
-            run_id="run-1",
-            workflow_key="thread-1",
-            resume_kind="CONFIRMATION",
-            resume_payload={
-                "schema_version": 1,
-                "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
-                "free_text": "Use the default task list.",
-            },
-            correlation=WorkflowCorrelationContext(
-                request_id="request-2",
-                command_id="command-2",
-                api_contract_version="1",
-            ),
+    runtime_results = []
+
+    def enqueue_resume(**queued: object) -> None:
+        runtime_results.append(
+            resumed_runtime.resume(
+                WorkflowResumeRequest(
+                    run_id=str(queued["run_id"]),
+                    workflow_key="thread-1",
+                    resume_kind=str(queued["resume_kind"]),
+                    resume_payload=dict(queued["resume_payload"]),  # type: ignore[arg-type]
+                    correlation=WorkflowCorrelationContext(
+                        request_id=str(queued["request_id"]),
+                        command_id=str(queued["command_id"]),
+                        api_contract_version="1",
+                    ),
+                )
+            )
         )
+
+    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+        run = unit_of_work.runs.get_by_id("run-1")
+        assert run is not None
+        expected_run_version = run.version
+    application_result = ResumeRunHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=lambda: 2000,
+        enqueue_resume=enqueue_resume,
+        resolve_resume_authority=lambda **kwargs: resumed_runtime.resolve_resume_authority(
+            run_id=str(kwargs["run_id"]),
+            workflow_key="thread-1",
+            resume_kind=str(kwargs["resume_kind"]),
+        ),
+    )(
+        ResumeRunCommand(
+            command_id="command-2",
+            request_hash=sha256(b"command-2").hexdigest(),
+            run_id="run-1",
+            expected_run_version=expected_run_version,
+            resume_kind="CONFIRMATION",
+            api_contract_version="1",
+        ),
+        request_id="request-2",
+        resume_payload={
+            "schema_version": 1,
+            "interrupt_id": interrupt_id,
+            "response_kind": "FREE_TEXT",
+            "selected_option_ids": [],
+            "free_text": "Use the default task list.",
+        },
     )
+    assert application_result.applied is True
+    resumed = runtime_results[0]
 
     try:
         assert resumed.outcome is WorkflowOutcome.COMPLETED
@@ -511,8 +554,9 @@ def test_six_role_baseline_runtime_ignores_inactive_profile_candidate_prompts(
     """
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    manifest_path = write_manifest_with_overrides(
+    manifest_path = write_manifest_with_legacy_profile_slots(
         tmp_path,
+        legacy_prompt_ids=_PROFILE_CANDIDATE_PROMPT_IDS,
         active_prompt_ids=_SIX_ROLE_BASELINE_PROMPT_IDS,
         draft_prompt_ids=_PROFILE_CANDIDATE_PROMPT_IDS,
     )

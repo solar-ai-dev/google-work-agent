@@ -25,7 +25,8 @@ export type ConversationViewModel = {
     busyCommand: string | null;
     handleStartRun: (quickPrompt?: string) => Promise<void>;
     handleApprove: (action: RunAction, duplicateAcknowledged?: boolean, calendarConflictAcknowledged?: boolean) => Promise<void>;
-    handleSimpleAction: (kind: "modify" | "reject" | "retry", action: RunAction) => Promise<void>;
+    handleSimpleAction: (kind: "modify" | "reject" | "retry", action: RunAction, argumentsPatch?: Record<string, unknown>) => Promise<void>;
+    handleAttachFiles: (action: RunAction, files: FileList) => Promise<void>;
     handleCancelRun: () => Promise<void>;
     handleResumeRun: () => Promise<void>;
     handleConfirmation: () => Promise<void>;
@@ -38,7 +39,7 @@ export type ConversationViewModel = {
 export type ConversationViewProps = { children: ReactNode; viewModel: ConversationViewModel };
 
 export function ConversationView({ children, viewModel }: ConversationViewProps): JSX.Element {
-  const { controller: { selectedConversationId, historyMessages, runSnapshot, runContext, pendingConfirmation, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery }, resourceContext: { selectedResourceIds, selectedResourceLabels, composerPrompt }, formatTime } = viewModel;
+  const { controller: { selectedConversationId, historyMessages, runSnapshot, runContext, pendingConfirmation, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleAttachFiles, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery }, resourceContext: { selectedResourceIds, selectedResourceLabels, composerPrompt }, formatTime } = viewModel;
   const showRunHeader = runSnapshot !== null;
   const isFailedRun = runSnapshot?.status === "FAILED";
   // The stored history already owns every persisted turn. The current run only
@@ -216,6 +217,21 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
                         승인 상태 {approval.status} / 만료 {formatTime(approval.expires_at_ms)}
                       </div>
                     ) : null}
+                    {action.tool_name === "gmail_create_draft" || action.tool_name === "gmail_update_draft" ? (
+                      <label className="button-secondary">
+                        첨부파일 선택
+                        <input
+                          type="file"
+                          multiple
+                          hidden
+                          disabled={busyCommand === `modify-${action.action_id}`}
+                          onChange={(event) => {
+                            if (event.currentTarget.files) void handleAttachFiles(action, event.currentTarget.files);
+                            event.currentTarget.value = "";
+                          }}
+                        />
+                      </label>
+                    ) : null}
                     {waitingApproval ? (
                       <div className="button-row">
                         <button
@@ -244,7 +260,11 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
                           className="button-secondary"
                           type="button"
                           disabled={busyCommand === `modify-${action.action_id}`}
-                          onClick={() => void handleSimpleAction("modify", action)}
+                          onClick={() => {
+                            const field = action.tool_name.startsWith("gmail_") ? "subject" : "title";
+                            const value = window.prompt(field === "subject" ? "새 메일 제목" : "새 제목");
+                            if (value?.trim()) void handleSimpleAction("modify", action, { [field]: value.trim() });
+                          }}
                         >
                           수정
                         </button>
@@ -264,7 +284,11 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
                           className="button-secondary"
                           type="button"
                           disabled={busyCommand === `modify-${action.action_id}`}
-                          onClick={() => void handleSimpleAction("modify", action)}
+                          onClick={() => {
+                            const field = action.tool_name.startsWith("gmail_") ? "subject" : "title";
+                            const value = window.prompt(field === "subject" ? "새 메일 제목" : "새 제목");
+                            if (value?.trim()) void handleSimpleAction("modify", action, { [field]: value.trim() });
+                          }}
                         >
                           수정
                         </button>

@@ -27,9 +27,10 @@ google_work_agent = ["adapters/persistence/migrations/*.sql"]
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 addopts = [
     "--tb=short",
+    "--import-mode=importlib",
     "--strict-config",
     "--strict-markers",
 ]

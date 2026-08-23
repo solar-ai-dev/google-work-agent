@@ -52,9 +52,18 @@ class LangGraphWorkflowRuntime(_CanonicalFreshnessRuntime):
                     origin_target = value.get("origin_target")
                     interrupt_id = value.get("interrupt_id")
                     if isinstance(origin_target, str) and origin_target and isinstance(interrupt_id, str):
+                        options = value.get("options", [])
+                        allowed_option_ids = [
+                            str(option["option_id"])
+                            for option in options
+                            if isinstance(option, Mapping)
+                            and isinstance(option.get("option_id"), str)
+                            and option["option_id"]
+                        ] if isinstance(options, list) else []
                         return {
                             "resume_status": confirmation_resume_status(confirmation_owner(origin_target)).value,
                             "interrupt_id": interrupt_id,
+                            "allowed_option_ids": allowed_option_ids,
                         }
             prompt_context = state.get("prompt_context")
             if isinstance(prompt_context, Mapping):

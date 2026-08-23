@@ -307,6 +307,15 @@ export type GmailAttachmentMetadata = {
   size_bytes: number | null;
 };
 
+export type AttachmentDescriptorResponse = {
+  staged_attachment_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  sha256: string;
+  api_contract_version: string;
+};
+
 export type GmailResourceDetailResponse = {
   resource_id: string;
   message_id: string;

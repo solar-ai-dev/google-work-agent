@@ -100,6 +100,7 @@ class _Uow:
             ActionRecord(
                 id="action-1",
                 plan_id="plan-1",
+                connector_id="google_workspace",
                 position=0,
                 tool_name="tasks_create_task",
                 effect_type="CREATE",

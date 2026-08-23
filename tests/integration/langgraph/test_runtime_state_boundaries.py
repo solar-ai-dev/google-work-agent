@@ -290,7 +290,7 @@ def test_edge_required_confirmation_stops_before_acquisition(tmp_path: Path) -> 
         runtime.close()
 
 
-def test_chain_context_analysis_planning_review_preserves_typed_outputs(
+def test_chain_context_analysis_planning_answer_preserves_typed_outputs(
     tmp_path: Path,
 ) -> None:
     llm_runtime = _QueuedLLMRuntime(
@@ -300,7 +300,6 @@ def test_chain_context_analysis_planning_review_preserves_typed_outputs(
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
             _answer_output(),
-            _review_output("PASS"),
         ]
     )
     gateway = FakeGoogleGateway(
@@ -336,15 +335,15 @@ def test_chain_context_analysis_planning_review_preserves_typed_outputs(
         assert analysis["analysis_result"]["findings"][0]["finding_id"] == "finding-1"
 
         planned = runtime._planning_subgraph.invoke(analysis)  # noqa: SLF001
-        assert planned["__target__"] == "review"
+        assert planned["__target__"] == "response_synthesis"
         assert planned["answer_draft"]["evidence_refs"] == ["evidence-seg-2"]
-
-        reviewed = runtime._review_subgraph.invoke(planned)  # noqa: SLF001
-        assert reviewed["__target__"] == "finalize"
-        assert reviewed["plan_review"]["status"] == "PASS"
-        planning_input = llm_runtime.calls[5]["prompt_input"]
+        planning_input = next(
+            call["prompt_input"]
+            for call in llm_runtime.calls
+            if getattr(call["prompt_ref"], "prompt_id", None) == "planning.compose_answer"
+        )
         assert isinstance(planning_input, dict)
-        assert planning_input["analysis_result"]["findings"][0]["finding_id"] == "finding-1"
+        assert planning_input["work_analysis"]["findings"][0]["finding_id"] == "finding-1"
     finally:
         runtime.close()
 

@@ -453,10 +453,10 @@ def test_confirmation_response_contract_and_origin_resolution_are_deterministic(
 
 
 def test_request_understanding_symbols_have_explicit_owners() -> None:
-    assert RequestUnderstandingResult.__module__.endswith(".workflows.contracts")
-    assert WorkflowPhase.__module__.endswith(".workflows.contracts")
-    assert RequestUnderstandingAgent.__module__.endswith(".workflows.request_understanding")
-    assert ClarificationQuestionV1.__module__.endswith(".workflows.handoff_contracts")
+    assert RequestUnderstandingResult.__module__.endswith(".orchestration.contracts")
+    assert WorkflowPhase.__module__.endswith(".orchestration.contracts")
+    assert RequestUnderstandingAgent.__module__.endswith(".orchestration.request_understanding")
+    assert ClarificationQuestionV1.__module__.endswith(".orchestration.handoff_contracts")
 
 
 def _request(

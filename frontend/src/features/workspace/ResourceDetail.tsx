@@ -123,6 +123,11 @@ export type ResourceDetailProps = {
   focusItem: ResourceItem | null;
   gmailDetail: GmailDetailState;
   onRetryGmailDetail: () => void;
+  onDownloadGmailAttachment: (
+    messageId: string,
+    attachmentId: string,
+    filename: string,
+  ) => void;
   onDrillInto: () => void;
   presentResource: (item: ResourceItem) => {
     title: string | null;
@@ -139,6 +144,7 @@ export function ResourceDetail({
   focusItem,
   gmailDetail,
   onRetryGmailDetail,
+  onDownloadGmailAttachment,
   onDrillInto,
   presentResource,
   metadataEntriesFor,
@@ -198,6 +204,7 @@ export function ResourceDetail({
           <GmailDetailViewer
             state={gmailDetail}
             onRetry={onRetryGmailDetail}
+            onDownloadAttachment={onDownloadGmailAttachment}
             formatMailboxIdentity={formatMailboxIdentity}
             isExpanded={isExpanded}
             onToggleExpanded={() => setIsExpanded((current) => !current)}
@@ -236,12 +243,14 @@ export function ResourceDetail({
 function GmailDetailViewer({
   state,
   onRetry,
+  onDownloadAttachment,
   formatMailboxIdentity,
   isExpanded,
   onToggleExpanded,
 }: {
   state: GmailDetailState;
   onRetry: () => void;
+  onDownloadAttachment: (messageId: string, attachmentId: string, filename: string) => void;
   formatMailboxIdentity: (name: string | null, email: string | null) => string | null;
   isExpanded: boolean;
   onToggleExpanded: () => void;
@@ -299,7 +308,17 @@ function GmailDetailViewer({
           <ul>
             {detail.attachments.map((attachment) => (
               <li key={`${attachment.message_id}:${attachment.attachment_id}`}>
-                <span>{attachment.filename}</span>
+                <button
+                  className="button-secondary"
+                  type="button"
+                  onClick={() => onDownloadAttachment(
+                    attachment.message_id,
+                    attachment.attachment_id,
+                    attachment.filename,
+                  )}
+                >
+                  {attachment.filename}
+                </button>
                 <small>
                   {attachment.mime_type}
                   {attachment.size_bytes !== null ? ` · ${formatFileSize(attachment.size_bytes)}` : ""}

@@ -310,7 +310,9 @@ class RecoverExistingWriteResultService:
             )
             if not result.applied:
                 raise RuntimeError("recover_existing_result action transition failed")
-            unit_of_work.runs.set_verifying(plan.run_id)
+            run = _require_run(unit_of_work, plan.run_id)
+            if run.status is not RunStatus.VERIFYING:
+                unit_of_work.runs.set_verifying(plan.run_id)
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=plan.run_id,

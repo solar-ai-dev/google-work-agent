@@ -18,7 +18,7 @@ from google_work_agent.application.write_persistence import (
     upsert_resource_ref,
     write_action_version_conflict_response,
 )
-from google_work_agent.domain import ActionStatus, ExecutionAttemptStatus, ResultCode
+from google_work_agent.domain import ActionStatus, ExecutionAttemptStatus, ResultCode, RunStatus
 from google_work_agent.ports import ResourceSnapshot, TraceEventRecord, UnitOfWork
 
 
@@ -136,7 +136,11 @@ class RecoverExistingResultHandler:
             )
             if not transition.applied:
                 raise RuntimeError("recover_existing_result action transition failed")
-            unit_of_work.runs.set_verifying(plan.run_id)
+            run = unit_of_work.runs.get_by_id(plan.run_id)
+            if run is None:
+                raise LookupError(f"run not found: {plan.run_id}")
+            if run.status is not RunStatus.VERIFYING:
+                unit_of_work.runs.set_verifying(plan.run_id)
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=plan.run_id,

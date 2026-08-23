@@ -167,11 +167,11 @@ def test_plan_query_semantic_revision_allowed_on_first_occurrence() -> None:
     assert revision_input["candidate_output"] == _INVALID_PLAN
     failure_record = cast(dict[str, object], revision_input["failure_record"])
     assert failure_record["failure_reason_code"] == "RETRIEVAL_QUERY_PLAN_SEMANTIC_INVALID"
-    assert failure_record["affected_fields"] == [
+    assert failure_record["affected_field_paths"] == [
         "$.route_queries",
         "$.required_information",
         "$.retrieval_order",
     ]
-    assert failure_record["allowed_change_scope"] == failure_record["affected_fields"]
+    assert "allowed_change_scope" not in failure_record
     assert "previous_output" not in revision_input
     assert "failure_reason" not in revision_input

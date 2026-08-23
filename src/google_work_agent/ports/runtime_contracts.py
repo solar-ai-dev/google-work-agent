@@ -30,6 +30,7 @@ class WorkHours:
 @dataclass(frozen=True, slots=True)
 class AppSettings:
     config_schema_version: int = 1
+    setup_completed: bool = False
     deployment_profile: str = "API_ONLY"
     requested_runtime_mode: str = "API_LLM"
     default_calendar_id: str | None = None
@@ -47,6 +48,7 @@ class AppSettings:
 @dataclass(frozen=True, slots=True)
 class SettingsPatch:
     command_id: str
+    setup_completed: bool | None = None
     requested_runtime_mode: str | None = None
     default_calendar_id: str | None = None
     default_tasklist_id: str | None = None

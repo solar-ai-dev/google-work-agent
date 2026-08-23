@@ -47,6 +47,30 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
   return json as T;
 }
 
+export async function requestBlob(path: string): Promise<Blob> {
+  if (!path.startsWith("/")) {
+    throw new Error("same-origin relative path is required");
+  }
+  const response = await fetch(path, {
+    method: "GET",
+    credentials: "same-origin",
+    headers: { "X-Api-Contract-Version": API_CONTRACT_VERSION },
+  });
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") ?? "";
+    const json = contentType.includes("application/json")
+      ? tryParseJson(await response.text())
+      : null;
+    const envelope = isErrorEnvelope(json) ? json : null;
+    throw new ApiClientError(
+      response.status,
+      envelope?.user_message ?? "Attachment download failed.",
+      envelope,
+    );
+  }
+  return response.blob();
+}
+
 function tryParseJson(text: string): unknown {
   try {
     return JSON.parse(text) as unknown;

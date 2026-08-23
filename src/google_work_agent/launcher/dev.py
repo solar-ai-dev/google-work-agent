@@ -524,6 +524,7 @@ def build_container(
                 end=settings_service.get().work_hours.end,
             ),
             default_tasklist_id_provider=lambda: settings_service.get().default_tasklist_id,
+            attachment_verifier=attachment_staging,
         )
     except InactivePromptArtifactError:
         prompt_active = False

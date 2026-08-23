@@ -21,7 +21,9 @@ from google_work_agent.application.write_actions import (
     RequireWriteReauthService,
     StoreWriteActionSuccessService,
     VerifyWriteActionService,
+    WriteRunResponse,
 )
+from google_work_agent.domain import ResultCode, RunStatus
 from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
@@ -30,9 +32,17 @@ from google_work_agent.ports import (
 
 
 class _Call:
-    def __init__(self, name: str, calls: list[str], *, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        calls: list[str],
+        *,
+        result: object | None = None,
+        error: Exception | None = None,
+    ) -> None:
         self._name = name
         self._calls = calls
+        self._result = result
         self._error = error
 
     def __call__(self, *args: object, **kwargs: object) -> object:
@@ -40,7 +50,7 @@ class _Call:
         self._calls.append(self._name)
         if self._error is not None:
             raise self._error
-        return object()
+        return self._result if self._result is not None else object()
 
 
 def _unexpected_uow() -> UnitOfWork:
@@ -69,7 +79,20 @@ def test_preflight_credential_loss_requires_reauth_before_claim(
         ),
     )
     claim = _Call("claim", calls)
-    reauth = _Call("require_reauth", calls)
+    reauth = _Call(
+        "require_reauth",
+        calls,
+        result=WriteRunResponse(
+            applied=True,
+            result_code=ResultCode.TRANSITION_APPLIED.value,
+            run_id="run-1",
+            run_status=RunStatus.REAUTH_REQUIRED.value,
+            run_version=8,
+            plan_id="plan-1",
+            plan_status="ACTIVE",
+            result_kind="REAUTH_REQUIRED",
+        ),
+    )
     unused = _Call("unexpected", calls)
 
     coordinator = WriteExecutionPhaseCoordinator(

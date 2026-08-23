@@ -105,15 +105,10 @@ def test_populated_v1_2_upgrade_preserves_action_children_and_approval(tmp_path:
 
         results = apply_migrations(connection, now_ms=lambda: 2)
 
-        # 0001 is already applied (False); 0002-0007 apply in order (True
-        # x6). This test was added alongside 0006 (b8ea2f5c, before 0007
-        # -- connector-neutral persistence, adapters/persistence/migrations/
-        # 0007_connector_neutral_persistence.sql -- existed), so its
-        # expected length predates 0007; origin/main only has 0001-0005 and
-        # doesn't carry this test file at all (Task 1 only), so there is no
-        # baseline expectation to match here.
+        # 0001 is already applied (False); 0002-0008 apply in order.
         assert [result.applied for result in results] == [
             False,
+            True,
             True,
             True,
             True,
