@@ -1,7 +1,7 @@
 # 15. Agent Capability · Failure · Prompt 공통 계약
 
 > **Authority:** Agent capability·normalized failure·Prompt runtime contract. 승인/Claim/Write/Verification/Domain lifecycle의 최종 판정은 해당 owner를 따른다.  
-> **상태:** Approved v1.30 · **기준일:** 2026-08-23 · **대상:** P0 Product Agent/Prompt Runtime
+> **상태:** Approved v1.31 · **기준일:** 2026-08-25 · **대상:** P0 Product Agent/Prompt Runtime
 
 ## 0. 문서 목적
 
@@ -760,7 +760,7 @@ review.inspect_constraints_policy               → review.inspect_constraints_a
 review.recheck                                  → review.recheck_affected_dimensions
 ```
 
-`prompt_version`은 current manifest가 slot별로 선택하는 version identity이고, `content_hash`는 9.4 조립 규칙으로 materialize된 immutable prompt artifact의 SHA-256이다. `activation_status`는 9.5/13 Evaluation Gate가 승격한다. 이 세 값의 **구체 Release 값은 Phase 1 architecture identifier가 아니며** repository/source filename set을 늘리지 않는다. Current manifest는 각 required slot에 정확히 하나의 selected current version row를 가져야 한다.
+`prompt_version`은 current manifest가 slot별로 선택하는 version identity이고, `content_hash`는 9.4 조립 규칙으로 materialize된 immutable prompt artifact의 SHA-256이다. `activation_status`는 9.5/13 Evaluation Gate가 승격한다. 이 세 값의 **구체 Release 값은 canonical prompt source identity가 아니며** repository/source filename set을 늘리지 않는다. Current manifest는 각 required slot에 정확히 하나의 selected current version row를 가져야 한다.
 
 `prompt-runtime-input-contract-v1`은 위 21개 `prompt_slot_id`와 exact-set equality를 이루며, 각 row가 06/15가 허용한 current Typed Projection의 `input_schema_version`, allowlisted root fields, output schema version을 참조한다. Conversation history, previous-run artifact, raw Provider/MCP continuation, Gold/Grader metadata를 새 field로 추가할 수 없다. Repository path/loader/test realization은 16 Repository Architecture가 소유한다.
 

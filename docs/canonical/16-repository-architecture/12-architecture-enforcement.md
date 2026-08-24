@@ -13,7 +13,7 @@ Required enforcement families:
 - `_compat` zero on `main`
 - production→evaluation import ban
 - Evaluation repository root exact: current code/data/result/scoring artifacts live under top-level `evaluation/`; current top-level `experiments/` tree zero, with historical/imported artifacts isolated under `evaluation/compat/`
-- Evaluation non-Python artifact closure: `canonical_cases_v7.jsonl`, current projection filenames, six Micro Dataset JSONL files, scoring contract, and 13 §18 result filenames match the 13/16 exact manifest
+- Evaluation non-Python artifact closure: `canonical_cases_v7.jsonl`, current projection filenames, six Micro Dataset JSONL files, scoring contract, and the 16 exact filename mapping for the 13 §18 twelve logical result artifacts match the current 13/16 manifest
 - static fixture grammar closure: checked-in provider/resource fixtures use `tests/fixtures/data/<provider>/<resource>/<scenario>.json` UTF-8 JSON; architecture validators do not require an enumerated concrete `<scenario>` closed set unless an owner source explicitly names one
 - LangGraph node thin-adapter boundary
 - routing operation-per-file: final production `routing/route_after_<stage>.py`, no catch-all `routing.py`

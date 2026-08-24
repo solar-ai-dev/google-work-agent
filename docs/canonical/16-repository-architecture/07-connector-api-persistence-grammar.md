@@ -177,7 +177,7 @@ Router만 03/10의 requested mode·availability·fallback 규칙으로 inference
 
 같은 closed binding rule을 provider-parameterized LLM support Ports에도 적용한다. `LlmCredentialPort`의 유일한 production binding은 `LlmCredentialRouter`, `LlmRuntimeStatusPort`의 유일한 production binding은 `LlmRuntimeStatusRouter`다. External API-provider credential/status leaves는 위 exact symbols를 사용하며 Router 내부 dependency다. Ollama는 `OllamaLlmRuntimeStatusAdapter`만 support-status leaf로 가지며 API credential이 없으므로 `adapters/llm/ollama/credential.py` production artifact는 금지한다. Application/API가 어떤 leaf도 직접 선택하지 않는다.
 
-`<provider>`는 current Release authority가 승인/등록한 external API LLM provider의 repository package parameter다. **Repository Architecture는 concrete P0 API provider/model name을 closed identifier로 정하지 않는다.** 10/13의 current Release/configuration selection이 concrete provider/model을 정하기 전에는 구현 Agent/Phase 1 worker가 Gemini/OpenAI/기타 이름을 추측하거나 default로 고정하면 안 된다. 신규 API LLM Provider 추가는 release-approved provider registration + 위 leaf family + Router registration만 추가하며 Application owner/Port를 만들지 않는다.
+`<provider>`는 current Release authority가 승인/등록한 external API LLM provider의 repository package parameter다. **Repository Architecture는 concrete P0 API provider/model name을 closed identifier로 정하지 않는다.** 10/13의 current Release/configuration selection이 concrete provider/model을 정하기 전에는 구현자가 Gemini/OpenAI/기타 이름을 추측하거나 default로 고정하면 안 된다. 신규 API LLM Provider 추가는 release-approved provider registration + 위 leaf family + Router registration만 추가하며 Application owner/Port를 만들지 않는다.
 
 Concrete adapter tests are exact mirrors:
 

@@ -1,7 +1,7 @@
 # 11. 관측성 · 로그 · 감사 설계서
 
 > **Authority:** observability/log/trace/audit projection, sanitization과 retention. Domain/Workflow lifecycle 의미는 관측 event로 재정의하지 않는다.  
-> **상태:** Draft v2.22 · **기준일:** 2026-08-23 · **외부 Telemetry:** Production 기본 OFF
+> **상태:** Draft v2.23 · **기준일:** 2026-08-25 · **외부 Telemetry:** Production 기본 OFF
 
 ## 0. 사람이 먼저 볼 것
 
@@ -21,9 +21,9 @@
 | Audit | 승인·정책·실행·검증·복구 | SQLite `audit_events` |
 | SSE | React 진행 Projection | 제한 Buffer·재생성 |
 | Metric | Local 집계 | Trace·Audit 계산 |
-| Evaluation Artifact | Candidate·Case·Trial·Grader 결과 | `evaluation/results/` |
+| Evaluation Artifact | Candidate·Case·Trial·Grader 결과 | 13 Evaluation artifact store; exact repository placement는 16이 소유 |
 
-Domain Store가 사실 기준점이며 Trace·SSE·Evaluation Report는 제품 상태를 대체하지 않는다. Current Evaluation artifact의 repository root는 13/16이 정한 `evaluation/` 하나이며 `experiments/` top-level root를 만들지 않는다. 이 문서는 **Observability concern**의 Event/Log/Trace/Audit schema·retention·sanitization을 소유하지만 Domain lifecycle command·state·guard·transition semantics를 정의하지 않는다. Audit/Trace Event 이름은 concern-owning Domain/Workflow/Policy 계약에서 발생한 사실의 관측 projection이며, 관측 taxonomy만으로 새 제품 상태나 허용 전이를 만들 수 없다.
+Domain Store가 사실 기준점이며 Trace·SSE·Evaluation Report는 제품 상태를 대체하지 않는다. Evaluation artifact의 semantic set은 13이, exact repository placement/naming은 16이 소유한다. 이 문서는 **Observability concern**의 Event/Log/Trace/Audit schema·retention·sanitization을 소유하지만 Domain lifecycle command·state·guard·transition semantics를 정의하지 않는다. Audit/Trace Event 이름은 concern-owning Domain/Workflow/Policy 계약에서 발생한 사실의 관측 projection이며, 관측 taxonomy만으로 새 제품 상태나 허용 전이를 만들 수 없다.
 
 ### 1.1 SSE Projection ownership
 

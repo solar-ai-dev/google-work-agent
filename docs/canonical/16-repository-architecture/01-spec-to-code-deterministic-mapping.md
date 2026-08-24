@@ -640,7 +640,7 @@ application/prompt_runtime/sources/<prompt_id>.md
 | `review.inspect_constraints_policy` | `review.inspect_constraints_and_policy_summary` | `application/prompt_runtime/sources/review.inspect_constraints_and_policy_summary.md` |
 | `review.recheck` | `review.recheck_affected_dimensions` | `application/prompt_runtime/sources/review.recheck_affected_dimensions.md` |
 
-The same 21 keys must appear exactly once in `prompt_manifest.json` and exactly once in `prompt_runtime_input_contract_v1.json`. `load_prompt_input_contract()` validates schema version 1, duplicate keys, unknown keys, and equality with the 15-owned Prompt Slot set before `PromptRegistry` becomes ready. Concrete `prompt_version`, SHA-256 `content_hash`, and `activation_status` are current manifest/release metadata; they do not create additional source filenames or new Phase 1 semantic identities.
+The same 21 keys must appear exactly once in `prompt_manifest.json` and exactly once in `prompt_runtime_input_contract_v1.json`. `load_prompt_input_contract()` validates schema version 1, duplicate keys, unknown keys, and equality with the 15-owned Prompt Slot set before `PromptRegistry` becomes ready. Concrete `prompt_version`, SHA-256 `content_hash`, and `activation_status` are current manifest/release metadata; they do not create additional source filenames or new canonical prompt identities.
 
 `PromptRegistry.lookup(slot_key) -> PromptRef` uses the 15-owned key `(agent_role, subgraph_name, node_name, node_state, purpose, input_schema_version, output_schema_version)` and validates manifest/source/content_hash/activation status. `assemble_prompt(prompt_ref, input_projection, failure_record?)` may combine only the 15-owned Base Role/Node Purpose/Failure Block/Allowed Change Scope/Output Schema contract. Agent semantic operation chooses the PromptRef key; LLM provider adapters never select or synthesize PromptRef strings.
 
@@ -889,7 +889,24 @@ Current non-Python evaluation artifact mapping is exact:
 | Micro dataset | `evaluation/datasets/micro/<dataset_id>.jsonl` where current IDs are the six 13-owned IDs | current evaluation loader/runner | `tests/evaluation/datasets/test_micro_datasets.py` |
 | Result directory | `evaluation/results/<experiment_id>/` | `write_results()` | `tests/evaluation/reporting/test_write_results.py` |
 
-The current six `<dataset_id>` values are exactly `resource_selected_variants | review_challenges | structured_output_repair | fault_profiles | injection_variants | paraphrase_robustness`. All checked-in dataset/projection files use UTF-8 JSON Lines except the scoring contract, which is strict JSON. `evaluation/results/<experiment_id>/` contains exactly the 12 filenames in 13 §18. Top-level `experiments/` is not a current canonical path.
+The current six `<dataset_id>` values are exactly `resource_selected_variants | review_challenges | structured_output_repair | fault_profiles | injection_variants | paraphrase_robustness`. All checked-in dataset/projection files use UTF-8 JSON Lines except the scoring contract, which is strict JSON. `evaluation/results/<experiment_id>/` contains exactly these repository-mapped files for the 13-owned twelve logical result artifacts:
+
+```text
+experiment_manifest.json
+candidate_config.json
+config_diff.json
+evaluation_items.jsonl
+node_results.jsonl
+trajectory_results.jsonl
+grader_results.jsonl
+case_failures.jsonl
+summary_metrics.json
+budget_report.json
+human_review.md
+product_decision_record.md
+```
+
+Top-level `experiments/` is not a current canonical path.
 
 ### Repository callable closure rule
 

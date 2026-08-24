@@ -1,7 +1,7 @@
 # 12. 테스트 설계서
 
 > **Authority:** current owner contract와 State Transition Test Matrix의 product regression verification. Expected assertion은 검증 oracle이며 새 behavioral authority가 아니다.  
-> **상태:** Draft v3.49 · **기준일:** 2026-08-24 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.50 · **기준일:** 2026-08-25 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -434,7 +434,7 @@ Crash at page1→page2, detail fetch, normalize, evidence selection, sufficiency
 
 ### Dataset·Projection
 
-- Current Evaluation non-Python placement closure: checked-in Canonical Case는 `evaluation/datasets/canonical_cases_v7.jsonl`; current E2E/Product Episode source projection은 `evaluation/projections/data/`의 13/16 exact JSONL filenames이고 Routing trajectory materialization은 `evaluation/results/<experiment_id>/trajectory_results.jsonl`; scoring contract는 `evaluation/graders/scoring-contract-v1.1.json`; result writer는 `evaluation/results/<experiment_id>/` 아래 13 §18 exact 12 files만 생성한다. Top-level `experiments/` current artifact 생성/소비는 실패다.
+- Current Evaluation non-Python placement closure: checked-in Canonical Case는 `evaluation/datasets/canonical_cases_v7.jsonl`; current E2E/Product Episode source projection은 `evaluation/projections/data/`의 16 exact JSONL mapping이고 Routing trajectory materialization은 `evaluation/results/<experiment_id>/trajectory_results.jsonl`; scoring contract는 `evaluation/graders/scoring-contract-v1.1.json`; result writer는 13 §18의 12 logical result artifacts를 `evaluation/results/<experiment_id>/` 아래 16 exact filename mapping으로만 생성한다. Top-level `experiments/` current artifact 생성/소비는 실패다.
 - Current Micro Dataset path set은 `evaluation/datasets/micro/` 아래 13의 six dataset IDs와 exact equality다. Unknown extra dataset ID를 current release-evaluation input으로 자동 승격하면 실패다.
 - Canonical Case → Node·Trajectory·E2E Projection 참조 무결성
 - Required·Forbidden·Hard Negative 중복 0

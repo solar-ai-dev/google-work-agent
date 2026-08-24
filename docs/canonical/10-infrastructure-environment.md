@@ -5,8 +5,8 @@
 ## 0. 문서 정보
 
 - **문서명:** 10. Google Work Agent · 인프라 · 환경 설정 설계서
-- **상태:** Draft v2.18
-- **기준일:** 2026-08-24
+- **상태:** Draft v2.19
+- **기준일:** 2026-08-25
 - **대상:** P0 MVP
 - **공식 운영체제:** Windows 11 x64
 - **공식 브라우저:** 최신 Chrome·Microsoft Edge
@@ -859,7 +859,7 @@ circuit_open_duration_ms
 
 P0 Repository Architecture는 concrete external API LLM Provider 이름이나 Model ID를 제품 semantic identifier로 고정하지 않는다. Canonical code requirement는 `StructuredInferenceRuntimeRouter`와 `adapters/llm/<provider>/...` provider-family leaf grammar까지다. `<provider>`의 실제 package instance와 그 provider가 사용할 model은 **13 Evaluation의 current Product Decision Record를 거친 Release/configuration selection**이 승인한 값만 production composition에 등록할 수 있다.
 
-따라서 current Release source가 concrete provider/model을 명시하지 않은 snapshot에서 구현 Agent, Phase 1 extraction, Application/Agent code가 Gemini/OpenAI/기타 Provider 또는 Model을 임의 default로 선택하면 안 된다. Provider/model selection 변경은 Release/configuration change이며 Domain/Application owner, Port, Agent operation, LangGraph Node를 새로 만들지 않는다. `API_ONLY`/`LOCAL_CAPABLE` profile 구현 의무와 이 selection은 분리한다.
+따라서 current Release source가 concrete provider/model을 명시하지 않은 snapshot에서 구현자나 Application/Agent code가 Gemini/OpenAI/기타 Provider 또는 Model을 임의 default로 선택하면 안 된다. Provider/model selection 변경은 Release/configuration change이며 Domain/Application owner, Port, Agent operation, LangGraph Node를 새로 만들지 않는다. `API_ONLY`/`LOCAL_CAPABLE` profile 구현 의무와 이 selection은 분리한다.
 
 Ollama는 예외적으로 01-B/03에서 P0 Local Runtime identity가 이미 고정되어 있으므로 Repository Architecture가 `adapters/llm/ollama/...` exact local leaf를 소유한다. Local Model ID/Hash는 아래 §12의 verified Model Manifest와 13 Release-selected decision이 소유한다.
 

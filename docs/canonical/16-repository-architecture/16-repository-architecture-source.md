@@ -6,9 +6,9 @@
 
 **Status:** CANONICAL_FOR_REFACTOR
 
-**Version:** 1.13
+**Version:** 1.14
 
-**Effective:** 2026-08-24
+**Effective:** 2026-08-25
 
 **Scope owner:** repository placement, module responsibility, naming grammar, repository import/export dependency realization and enforcement, repository semantic-owner/package mapping, single production authority, refactor procedure, architecture enforcement. Behavioral semantic authority itself remains with the applicable concern-owning sources in 01–15, the Domain State Transition Contract, and 04 Domain·DB required DB invariant contract. The State Transition Test Matrix is normative verification authority for those lifecycle contracts and does not independently define behavior.
 
@@ -693,7 +693,7 @@ Main Graph control stages are deterministic LangGraph adapters, not a seventh se
 | projection builder | `evaluation/projections/build_current_projections.py` | validated CanonicalCaseV7에서 current projections를 deterministic 생성만 |
 | experiment runner | `evaluation/runner/run_experiment.py` | candidate config + evaluation item 실행 orchestration만; Product Policy/Domain rule 정의 0 |
 | grader dispatch | `evaluation/graders/grade_item.py` | 13의 registered grader를 선택·호출하고 result를 normalize만 |
-| result writer | `evaluation/reporting/write_results.py` | 13 §18 result artifact 파일 기록만 |
+| result writer | `evaluation/reporting/write_results.py` | 13 §18 logical result artifact set을 16의 exact filename mapping으로 기록만 |
 
 Current non-Python Evaluation artifact placement is also closed under the same single `evaluation/` root:
 
@@ -712,7 +712,24 @@ evaluation/graders/scoring-contract-v1.1.json
 evaluation/results/<experiment_id>/
 ```
 
-`RoutingTrajectoryProjectionV2` materialization belongs inside `evaluation/results/<experiment_id>/trajectory_results.jsonl`; it has no second checked-in projection-source file. `evaluation/results/<experiment_id>/` contains exactly the 13 §18 twelve result files. A top-level `experiments/` directory is not current Repository authority. Historical artifact readers and imported non-current data are isolated under `evaluation/compat/`; current generator/runner may not create or consume a parallel `experiments/` tree.
+`RoutingTrajectoryProjectionV2` materialization belongs inside `evaluation/results/<experiment_id>/trajectory_results.jsonl`; it has no second checked-in projection-source file. The 13-owned twelve logical result artifacts map exactly to:
+
+```text
+evaluation/results/<experiment_id>/experiment_manifest.json
+evaluation/results/<experiment_id>/candidate_config.json
+evaluation/results/<experiment_id>/config_diff.json
+evaluation/results/<experiment_id>/evaluation_items.jsonl
+evaluation/results/<experiment_id>/node_results.jsonl
+evaluation/results/<experiment_id>/trajectory_results.jsonl
+evaluation/results/<experiment_id>/grader_results.jsonl
+evaluation/results/<experiment_id>/case_failures.jsonl
+evaluation/results/<experiment_id>/summary_metrics.json
+evaluation/results/<experiment_id>/budget_report.json
+evaluation/results/<experiment_id>/human_review.md
+evaluation/results/<experiment_id>/product_decision_record.md
+```
+
+A top-level `experiments/` directory is not current Repository authority. Historical artifact readers and imported non-current data are isolated under `evaluation/compat/`; current generator/runner may not create or consume a parallel `experiments/` tree.
 
 Historical artifact readers는 `evaluation/compat/`에 격리하며 current generator/runner가 V3~V6 artifact를 새로 생성하는 것은 금지한다.
 
