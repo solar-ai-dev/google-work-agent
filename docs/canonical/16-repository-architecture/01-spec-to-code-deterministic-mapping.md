@@ -630,11 +630,25 @@ adapters/llm/runtime/structured_inference_router.py
 
 adapters/llm/<provider>/structured_inference.py
 → <Provider>StructuredInferenceAdapter
+
+adapters/llm/<provider>/credential.py
+→ <Provider>LlmCredentialAdapter
+
+adapters/llm/<provider>/runtime_status.py
+→ <Provider>LlmRuntimeStatusAdapter
+
+adapters/llm/ollama/structured_inference.py
+→ OllamaStructuredInferenceAdapter
+
+adapters/llm/ollama/runtime_status.py
+→ OllamaLlmRuntimeStatusAdapter
 ```
 
 Only `StructuredInferenceRuntimeRouter` is bound to `StructuredInferencePort` in production. It receives immutable per-Run `requested_mode`, checks 03/09/10 eligibility/status **and current Settings `external_llm_consent` before every API provider call**, applies the allowed AUTO fallback rule, invokes exactly one leaf adapter at a time, and returns `StructuredInferenceResultV1(actual_runtime, provider, model, fallback_reason, ...)`.
 
-`LlmCredentialPort` and `LlmRuntimeStatusPort` follow the same single-binding rule: `adapters/llm/runtime/llm_credential_router.py → LlmCredentialRouter`, `adapters/llm/runtime/llm_runtime_status_router.py → LlmRuntimeStatusRouter`. Their provider-specific leaf adapters remain Router-private.
+`LlmCredentialPort` and `LlmRuntimeStatusPort` follow the same single-binding rule: `adapters/llm/runtime/llm_credential_router.py → LlmCredentialRouter`, `adapters/llm/runtime/llm_runtime_status_router.py → LlmRuntimeStatusRouter`. External API-provider leaves use the exact symbols `<Provider>LlmCredentialAdapter` and `<Provider>LlmRuntimeStatusAdapter`. Ollama has the exact local leaves `OllamaStructuredInferenceAdapter` and `OllamaLlmRuntimeStatusAdapter`; it has no `LlmCredentialPort` leaf. All leaves remain Router-private.
+
+`<provider>` is a repository package parameter for a **release-approved external API LLM provider family**, not a closed P0 provider name. The Canonical implementation universe requires this family grammar and the exact Ollama local leaf above; it MUST NOT invent Gemini/OpenAI/other concrete provider or model identity when the current Release authority has not selected one. Concrete API provider/model selection is a Release/configuration decision owned by 10/13 and does not create a new Application semantic owner, Port, or repository grammar.
 
 Leaf provider/Ollama adapters are Router-private concrete dependencies. Application/Agent/LangGraph/API must not import/select them directly. PromptRef selection remains PromptRegistry responsibility; Router receives an already selected `prompt_ref`.
 
@@ -644,6 +658,11 @@ Tests:
 tests/unit/adapters/llm/runtime/test_structured_inference_router.py
 tests/unit/adapters/llm/runtime/test_llm_credential_router.py
 tests/unit/adapters/llm/runtime/test_llm_runtime_status_router.py
+tests/unit/adapters/llm/<provider>/test_structured_inference.py
+tests/unit/adapters/llm/<provider>/test_credential.py
+tests/unit/adapters/llm/<provider>/test_runtime_status.py
+tests/unit/adapters/llm/ollama/test_structured_inference.py
+tests/unit/adapters/llm/ollama/test_runtime_status.py
 tests/architecture/llm/test_structured_inference_single_binding.py
 tests/architecture/llm/test_llm_support_port_single_binding.py
 ```

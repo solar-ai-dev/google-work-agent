@@ -162,11 +162,34 @@ Operational replay callables are closed by 07: `FilesystemOperationalCommandRepl
 
 `McpConnectorReadAdapter`, `McpConnectorWriteAdapter`는 Application이 생성한 `ValidatedConnectorToolBindingV1`을 받아 `ConnectorRuntimeRegistry` + injected descriptor expectations로 transport binding을 검증한 뒤 `MCPClientPort`를 호출하는 Core-side boundary adapter다. `McpOAuthCredentialAdapter`는 `connector_id`로 `ConnectorRuntimeRegistry + MCPClientPort`만 사용한다. 이 Adapter들은 `application/tool_registry/**`를 import/call하지 않는다. Provider-native API/SDK와 raw credential을 소유하지 않는다. `StdioMCPClientAdapter`는 `ConnectorRuntimeRegistry`로 connector_id를 정확히 하나의 active process handle에 resolve한다. Provider-specific operation/credential 구현은 해당 Connector MCP Server 내부 grammar를 따른다.
 
-`StructuredInferenceRuntimeRouter`가 `StructuredInferencePort`의 **유일한 production binding**이다. leaf inference adapters는 `adapters/llm/<provider>/structured_inference.py → <Provider>StructuredInferenceAdapter` 및 local Ollama equivalent로 존재하지만 Application/Agent/Route에 직접 bind되지 않는다. Router만 03/10의 requested mode·availability·fallback 규칙으로 leaf를 선택하고 `StructuredInferenceResultV1(actual_runtime, provider, model, fallback_reason, ...)`를 반환한다. leaf adapter는 Prompt 선택이나 fallback policy를 소유하지 않는다.
+`StructuredInferenceRuntimeRouter`가 `StructuredInferencePort`의 **유일한 production binding**이다. LLM leaf placement/symbol은 다음 exact grammar로 닫는다.
 
-같은 closed binding rule을 provider-parameterized LLM support Ports에도 적용한다. `LlmCredentialPort`의 유일한 production binding은 `LlmCredentialRouter`, `LlmRuntimeStatusPort`의 유일한 production binding은 `LlmRuntimeStatusRouter`다. provider-specific `adapters/llm/<provider>/credential.py` 및 `runtime_status.py` leaf는 Router 내부 dependency이고 Application/API가 직접 선택하지 않는다. 신규 API LLM Provider 추가는 Router registration과 leaf adapter를 추가할 뿐 Application owner/Port를 만들지 않는다.
+```text
+adapters/llm/<provider>/structured_inference.py → <Provider>StructuredInferenceAdapter
+adapters/llm/<provider>/credential.py → <Provider>LlmCredentialAdapter
+adapters/llm/<provider>/runtime_status.py → <Provider>LlmRuntimeStatusAdapter
 
-Concrete adapter tests mirror `tests/unit/adapters/...`. Composition wiring만 concrete implementation을 선택할 수 있다.
+adapters/llm/ollama/structured_inference.py → OllamaStructuredInferenceAdapter
+adapters/llm/ollama/runtime_status.py → OllamaLlmRuntimeStatusAdapter
+```
+
+Router만 03/10의 requested mode·availability·fallback 규칙으로 inference leaf를 선택하고 `StructuredInferenceResultV1(actual_runtime, provider, model, fallback_reason, ...)`를 반환한다. leaf adapter는 Prompt 선택이나 fallback policy를 소유하지 않는다.
+
+같은 closed binding rule을 provider-parameterized LLM support Ports에도 적용한다. `LlmCredentialPort`의 유일한 production binding은 `LlmCredentialRouter`, `LlmRuntimeStatusPort`의 유일한 production binding은 `LlmRuntimeStatusRouter`다. External API-provider credential/status leaves는 위 exact symbols를 사용하며 Router 내부 dependency다. Ollama는 `OllamaLlmRuntimeStatusAdapter`만 support-status leaf로 가지며 API credential이 없으므로 `adapters/llm/ollama/credential.py` production artifact는 금지한다. Application/API가 어떤 leaf도 직접 선택하지 않는다.
+
+`<provider>`는 current Release authority가 승인/등록한 external API LLM provider의 repository package parameter다. **Repository Architecture는 concrete P0 API provider/model name을 closed identifier로 정하지 않는다.** 10/13의 current Release/configuration selection이 concrete provider/model을 정하기 전에는 구현 Agent/Phase 1 worker가 Gemini/OpenAI/기타 이름을 추측하거나 default로 고정하면 안 된다. 신규 API LLM Provider 추가는 release-approved provider registration + 위 leaf family + Router registration만 추가하며 Application owner/Port를 만들지 않는다.
+
+Concrete adapter tests are exact mirrors:
+
+```text
+tests/unit/adapters/llm/<provider>/test_structured_inference.py
+tests/unit/adapters/llm/<provider>/test_credential.py
+tests/unit/adapters/llm/<provider>/test_runtime_status.py
+tests/unit/adapters/llm/ollama/test_structured_inference.py
+tests/unit/adapters/llm/ollama/test_runtime_status.py
+```
+
+Composition wiring만 concrete implementation을 선택할 수 있다.
 
 ## Connector Runtime Registry exact authority
 

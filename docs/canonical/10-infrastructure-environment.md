@@ -855,6 +855,14 @@ circuit_open_duration_ms
 
 사용자 설정은 Versioned JSON Schema로 검증한다. 알 수 없는 Key는 무시하지 않고 Migration 또는 오류로 처리한다.
 
+### 10.3-1 API LLM Provider / Model selection authority
+
+P0 Repository Architecture는 concrete external API LLM Provider 이름이나 Model ID를 제품 semantic identifier로 고정하지 않는다. Canonical code requirement는 `StructuredInferenceRuntimeRouter`와 `adapters/llm/<provider>/...` provider-family leaf grammar까지다. `<provider>`의 실제 package instance와 그 provider가 사용할 model은 **13 Evaluation의 current Product Decision Record를 거친 Release/configuration selection**이 승인한 값만 production composition에 등록할 수 있다.
+
+따라서 current Release source가 concrete provider/model을 명시하지 않은 snapshot에서 구현 Agent, Phase 1 extraction, Application/Agent code가 Gemini/OpenAI/기타 Provider 또는 Model을 임의 default로 선택하면 안 된다. Provider/model selection 변경은 Release/configuration change이며 Domain/Application owner, Port, Agent operation, LangGraph Node를 새로 만들지 않는다. `API_ONLY`/`LOCAL_CAPABLE` profile 구현 의무와 이 selection은 분리한다.
+
+Ollama는 예외적으로 01-B/03에서 P0 Local Runtime identity가 이미 고정되어 있으므로 Repository Architecture가 `adapters/llm/ollama/...` exact local leaf를 소유한다. Local Model ID/Hash는 아래 §12의 verified Model Manifest와 13 Release-selected decision이 소유한다.
+
 ### 10.4 Secret
 
 다음 값은 Config File에 존재하지 않는다.

@@ -732,6 +732,24 @@ adapters/llm/runtime/llm_credential_router.py
 adapters/llm/runtime/llm_runtime_status_router.py
 → LlmRuntimeStatusRouter                      # only LlmRuntimeStatusPort production binding
 
+adapters/llm/<provider>/structured_inference.py
+→ <Provider>StructuredInferenceAdapter        # Router-private external API inference leaf
+
+adapters/llm/<provider>/credential.py
+→ <Provider>LlmCredentialAdapter              # Router-private external API credential leaf
+
+adapters/llm/<provider>/runtime_status.py
+→ <Provider>LlmRuntimeStatusAdapter           # Router-private external API status leaf
+
+adapters/llm/ollama/structured_inference.py
+→ OllamaStructuredInferenceAdapter            # exact P0 local inference leaf
+
+adapters/llm/ollama/runtime_status.py
+→ OllamaLlmRuntimeStatusAdapter               # exact P0 local status leaf; no Ollama credential leaf
+
+# <provider> is a release-approved external API provider package parameter.
+# Concrete API provider/model identity is release/configuration-owned by 10/13, not a closed Repository Architecture identifier.
+
 adapters/langgraph/runtime/background_run_executor.py
 → BackgroundRunExecutorAdapter                # WorkflowExecutionPort concrete adapter
 

@@ -45,6 +45,27 @@ Connector operation:
 <Verb><Resource>Operation
 ```
 
+LLM leaf adapter naming is closed by boundary role. `<provider>` is the lowercase repository package token for one release-approved external API LLM provider; `<Provider>` is the corresponding PascalCase token. Provider/model identity is not inferred from this grammar.
+
+```text
+adapters/llm/<provider>/structured_inference.py
+→ <Provider>StructuredInferenceAdapter
+
+adapters/llm/<provider>/credential.py
+→ <Provider>LlmCredentialAdapter
+
+adapters/llm/<provider>/runtime_status.py
+→ <Provider>LlmRuntimeStatusAdapter
+
+adapters/llm/ollama/structured_inference.py
+→ OllamaStructuredInferenceAdapter
+
+adapters/llm/ollama/runtime_status.py
+→ OllamaLlmRuntimeStatusAdapter
+```
+
+Ollama has no `credential.py` leaf because the P0 local runtime does not use `LlmCredentialPort`. A concrete API provider package may exist only when the current release configuration approves/registers that provider; adding one does not create a new Application owner or Port.
+
 LangGraph node:
 
 ```

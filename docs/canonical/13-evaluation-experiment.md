@@ -953,7 +953,9 @@ REJECTED
 DEFERRED
 ```
 
-Decision Record에는 Candidate Config Hash, Dataset·Projection·Grader Version, 반복 수, 품질·안전·비용·Latency, 주요 실패 Case, Node·Handoff 원인, 채택·탈락 근거를 포함한다.
+Decision Record에는 Candidate Config Hash, Dataset·Projection·Grader Version, 반복 수, 품질·안전·비용·Latency, 주요 실패 Case, Node·Handoff 원인, 채택·탈락 근거를 포함한다. API candidate를 `APPROVED_FOR_API` 또는 `APPROVED_FOR_AUTO_FALLBACK`로 채택할 때는 해당 Candidate Config가 사용한 concrete external `provider`와 `model` identity를 release-selection evidence로 함께 고정한다. Local profile 채택은 §10 Infrastructure의 verified Model Manifest materialization으로 이어진다.
+
+이 `provider/model` 값은 **Release selection artifact**이지 Repository Architecture의 closed semantic owner/Port/operation identifier가 아니다. 따라서 16의 `<provider>` leaf grammar를 concrete Provider 하나로 영구 고정하지 않으며, current Product Decision Record/Release configuration에 값이 없으면 구현 또는 Phase 1 extraction이 Provider/Model을 추측하지 않는다.
 
 ## 21. Node Capability·Prompt 실험
 

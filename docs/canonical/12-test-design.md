@@ -1003,7 +1003,11 @@ A canonical directory that is empty, scaffold-only, or not yet wired is an imple
 - Application/Agent가 import하는 inference boundary는 `StructuredInferencePort` 하나.
 - production concrete binding = `StructuredInferenceRuntimeRouter` exactly one.
 - leaf API/Ollama inference adapter를 Application/Agent/FastAPI가 직접 import/select하는 경로 0.
+- external API provider leaf file/symbol mirror exact: `<provider>/structured_inference.py → <Provider>StructuredInferenceAdapter`, `<provider>/credential.py → <Provider>LlmCredentialAdapter`, `<provider>/runtime_status.py → <Provider>LlmRuntimeStatusAdapter`.
+- Ollama leaf exact: `ollama/structured_inference.py → OllamaStructuredInferenceAdapter`, `ollama/runtime_status.py → OllamaLlmRuntimeStatusAdapter`; `ollama/credential.py` production artifact 0.
+- concrete leaf tests mirror `tests/unit/adapters/llm/<provider>/test_{structured_inference,credential,runtime_status}.py` and `tests/unit/adapters/llm/ollama/test_{structured_inference,runtime_status}.py`.
 - `LlmCredentialPort`/`LlmRuntimeStatusPort`도 production Router binding exactly one; provider-specific credential/status leaf를 Application/API가 직접 선택하는 경로 0.
+- concrete external API provider/model name은 10/13의 current Release selection 없이 Repository/Core default로 발명·고정되지 않는다.
 - AUTO fallback/actual_runtime/provider/model/fallback_reason은 Router contract로만 기록.
 
 ### 28.6 Background Run execution
