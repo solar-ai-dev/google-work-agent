@@ -1,62 +1,46 @@
-# Google Work Agent Documentation Router
+# Google Work Agent Documentation
 
-> **Navigation only — not a normative authority.**
->
-> Every implementation, refactor, audit, or design task MUST begin with [`design/00-PROJECT-SOURCE-GUIDE.md`](design/00-PROJECT-SOURCE-GUIDE.md). The Source Guide resolves current canonical authority, versions, and Project Source inventory. If this router conflicts with the Source Guide, the Source Guide wins.
+This `/docs` tree is optimized for coding and review agents.
 
-## Agent entry rule
+## Start here
 
-1. Read `design/00-PROJECT-SOURCE-GUIDE.md` first.
-2. Identify the concern you are changing or auditing.
-3. Read the canonical owner document for that concern.
-4. Read any executable/supporting contract named below before changing behavior.
-5. For repository placement, filenames, symbols, imports/exports, or structural refactoring, additionally read `design/16-repository-architecture-source.md` and only the relevant subordinate detail under `design/16-repository-architecture/`.
-6. Never treat `export/` artifacts, change history, current code placement, or an older filename version as higher authority than the Source Guide and concern owner.
+1. Read [`canonical/00-project-source-guide.md`](canonical/00-project-source-guide.md).
+2. Follow the concern authority and dependency-safe read order declared there.
+3. For exact production path/file/symbol ownership, read [`canonical/16-repository-architecture/16-repository-architecture-source.md`](canonical/16-repository-architecture/16-repository-architecture-source.md) and the relevant subordinate page.
+4. Treat [`database/migrations/`](database/migrations/) as executable implementation artifacts, not independent behavioral authority.
 
-## Concern → canonical owner
+## Directory roles
 
-| Concern | Read first | Also read when relevant |
-|---|---|---|
-| Product goals / scope | `design/01-requirements-prd.md` | Functional, Policy |
-| User-visible functional behavior | `design/01-a-functional-definition.md` | PRD, Policy, UI/UX |
-| Safety / approval / prohibition | `design/01-b-policy-definition-v2.8.md` | Domain state contract, Interface, Security |
-| UI / interaction | `design/02-ui-ux-design.md` | Functional, Sequence |
-| System / layer boundaries | `design/03-system-architecture.md` | Repository Architecture for repository enforcement |
-| Domain facts / state transitions / DB invariants | `design/04-domain-database-design.md` | `contracts/state-transition-contract-v1.4.md`, `database/migrations/` |
-| Retrieval / evidence | `design/05-context-retrieval.md` | Workflow, Interface, Test |
-| Agents / Main Graph / Subgraphs / State / Node / Edge | `design/06-agent-workflow.md` | Prompt Contract, Sequence, Test, Repository Architecture |
-| Tool / MCP / internal interfaces | `design/07-tool-mcp-internal-interface.md` | Architecture, Policy, Security |
-| End-to-end interaction order | `design/08-sequence-design.md` | Workflow, Domain, Interface |
-| Security / Auth | `design/09-security-auth-v2.5.md` | Policy, Interface, Infrastructure |
-| Infrastructure / environment | `design/10-infrastructure-environment-v2.7.md` | Architecture, Security |
-| Observability / trace / audit | `design/11-observability-logging-audit.md` | Workflow, Interface, Prompt Contract |
-| Product regression verification | `design/12-test-design.md` | All product contracts being tested |
-| Candidate comparison / experiments | `design/13-evaluation-experiment.md` | Workflow, Prompt Contract, Retrieval |
-| Operations / troubleshooting | `design/14-operations-troubleshooting.md` | Domain, Interface, Security |
-| Prompt / failure / evaluation-normalized Agent contract | `design/15-agent-capability-failure-prompt-contract.md` | Workflow, Retrieval, Test, Evaluation |
-| Repository placement / naming / imports / single production authority | `design/16-repository-architecture-source.md` | Relevant `design/16-repository-architecture/*` detail |
+- `canonical/` — current Architecture-27 design authority used for implementation decisions.
+- `canonical/16-repository-architecture/` — exact repository placement, naming, import/export, single-authority, and enforcement mapping.
+- `database/migrations/` — byte-level mirror of executable production migrations present in the supplied repository baseline.
 
-## Directory meaning
+Historical `design/`, `contracts/`, `export/`, and the old functional coverage mapping are intentionally absent. Do not recover authority from those old paths or from git history when current canonical documents answer the question.
 
-```text
-docs/
-├── README.md                    # this non-normative navigation router
-├── design/                      # canonical design/source documents
-│   ├── 00-PROJECT-SOURCE-GUIDE.md  # mandatory authority resolver
-│   └── 16-repository-architecture/  # subordinate normative repository detail
-├── contracts/                   # explicit domain/state contracts; filename may preserve historical compatibility
-├── database/migrations/         # immutable executable DB history/constraints
-└── export/                      # snapshots, manifests, changelogs, history; never authority by itself
-```
+Architecture-27 also contains non-canonical rationale/archive material in its publication snapshot. Those pages are intentionally omitted from this GitHub coding-agent surface; they must not override `canonical/`.
 
-## Fast routes for implementation agents
+## Fast routing by question
 
-**Changing behavior:** Source Guide → semantic concern owner → dependent Domain/Policy/Interface contract → Test.
+| Question | Read first |
+| --- | --- |
+| Product scope / feature behavior | `01`, `01-A`, `01-B` |
+| UI behavior | `02` |
+| Layer/system boundary | `03` |
+| Domain facts / persistence invariant | `04` |
+| Lifecycle command / transition | `04-A` |
+| Retrieval | `05` |
+| Agent / Workflow | `06` |
+| API / Port / MCP | `07` |
+| End-to-end sequence | `08` |
+| Security / Auth | `09` |
+| Runtime / deployment | `10` |
+| Logging / audit | `11` |
+| Test / state-transition oracle | `12`, `12-A` |
+| Evaluation | `13` |
+| Operations | `14` |
+| Prompt / failure | `15` |
+| Production path / file / symbol | `16 Repository Architecture` |
 
-**Changing Agent workflow:** Source Guide → `06` → `15` → `08` → `12`/`13`; add `16` when files/modules/ownership change.
+## Migration mirror rule
 
-**Changing persistence or state transitions:** Source Guide → `04` → state transition contract → every applied migration affecting the invariant → `12`.
-
-**Structural refactor / naming only:** Source Guide → `16` → relevant subordinate `16/*` document → semantic owner document; behavior must remain unchanged unless that owner explicitly versions a behavior change.
-
-**Auditing current authority:** Source Guide first. `export/` is evidence/history only and must not be used to override current canonical sources.
+The supplied repository baseline currently contains executable migrations `0001` through `0008`. Architecture-27 additionally specifies `0009_workflow_handoff_outbox.sql` as a required repository implementation target. No executable `0009` artifact exists in the supplied original `/docs` or the inspected production migration directory, so this documentation tree does **not** fabricate one. See [`database/README.md`](database/README.md).
