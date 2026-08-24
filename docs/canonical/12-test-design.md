@@ -86,6 +86,8 @@ DeterministicGrader
 
 P0 일반 Fixture는 합성 Gmail·Tasks·Calendar만 사용한다. Snapshot은 `fixture_snapshot_id`와 Relation Manifest를 가진다. 13의 synthetic multi-connector harness는 제품 지원 범위를 바꾸지 않는 별도 Fixture를 사용한다.
 
+Checked-in provider/resource static fixture는 16/09의 exact grammar `tests/fixtures/data/<provider>/<resource>/<scenario>.json`과 UTF-8 strict JSON serialization을 사용한다. 12가 소유하는 것은 required fixture **semantic family/boundary**이며 concrete `<scenario>` filename의 closed set은 architecture authority가 아니다. 따라서 새 verification case가 같은 grammar 아래 scenario data file을 추가하는 것은 Canonical owner/path를 늘리는 일이 아니다. Evaluation dataset은 `tests/fixtures/data/**`에 두지 않는다.
+
 필수 경계:
 
 - Gmail 긴 Thread·외부 주소·Prompt Injection
@@ -178,6 +180,8 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - Agent 간 직접 호출·Peer-to-Peer 금지
 - Agent invocation 수와 LLM Call 수를 별도 계수
 - Local SLLM atomic decomposition 검증: Work Analysis의 `extract_work_facts / resolve_entity_relations / resolve_temporal_dependencies / detect_duplicate_conflict_candidates / assess_information_gaps / assess_operational_risks`, Planning의 `draft_action_objective_per_output_route / compose_arguments_per_output_route`, Review의 `inspect_goal_and_evidence / inspect_action_scope_and_route / inspect_constraints_and_policy_summary`가 서로 다른 PromptRef와 최소 Typed Projection을 사용해야 한다. 한 Prompt가 다른 atomic responsibility의 출력까지 동시에 생성하면 실패. `validate_relations / assemble_work_analysis / validate_work_analysis / build_dependencies / assemble_plan / validate_plan / aggregate_review_findings / validate_review`는 deterministic이므로 Product PromptRef가 있으면 실패
+- Prompt Runtime exact-set closure: 15의 current 21 `prompt_slot_id` set = runtime Product-LLM caller set = `application/prompt_runtime/prompt_manifest.json` key set = concrete `sources/<prompt_id>.md` filename set = `prompt_runtime_input_contract_v1.json` key set이어야 한다. `prompt_id == prompt_slot_id`; broad predecessor `work_analysis.resolve_relations`, `review.inspect`, `review.recheck` source/manifest row는 0이어야 한다. `prompt_version/content_hash/activation_status`는 same-slot current manifest/release metadata이며 source set cardinality를 늘리지 않는다.
+- Prompt input-contract realization: `load_prompt_input_contract()`가 schema version 1, duplicate/unknown slot, manifest/source/caller equality를 fail-closed하고, 06/15 allowlist 밖 Conversation history·previous-run artifact·raw Provider continuation·Gold/Grader field가 있으면 실패한다.
 - Strong-runtime fusion parity 검증: fuse된 Profile은 atomic Profile과 동일 Typed candidate semantics, final disposition, failure localization을 재현해야 하며 parity 실패 시 fusion Profile을 Release 후보로 사용할 수 없음
 - Review aggregator는 deterministic이어야 하며 각 inspector Finding을 stable issue code로 합치되 새 semantic issue를 생성하지 않아야 함
 - REVISE 이후 Review는 `ReviewIssueV1.affected_dimensions`만 재호출하고 이미 PASS한 dimension의 LLM 호출을 반복하지 않는지 검증. 특히 `affected_dimensions`가 비어 있지 않고 `affected_action_ids=[]`, `affected_route_ids=[]`인 dimension-only issue도 Planning revision → Review RECHECK로 정상 전달되어야 한다. Finding text나 전체 Plan을 selector로 사용하거나 action/route ID를 임의 생성하면 실패다.
@@ -430,6 +434,8 @@ Crash at page1→page2, detail fetch, normalize, evidence selection, sufficiency
 
 ### Dataset·Projection
 
+- Current Evaluation non-Python placement closure: checked-in Canonical Case는 `evaluation/datasets/canonical_cases_v7.jsonl`; current E2E/Product Episode source projection은 `evaluation/projections/data/`의 13/16 exact JSONL filenames이고 Routing trajectory materialization은 `evaluation/results/<experiment_id>/trajectory_results.jsonl`; scoring contract는 `evaluation/graders/scoring-contract-v1.1.json`; result writer는 `evaluation/results/<experiment_id>/` 아래 13 §18 exact 12 files만 생성한다. Top-level `experiments/` current artifact 생성/소비는 실패다.
+- Current Micro Dataset path set은 `evaluation/datasets/micro/` 아래 13의 six dataset IDs와 exact equality다. Unknown extra dataset ID를 current release-evaluation input으로 자동 승격하면 실패다.
 - Canonical Case → Node·Trajectory·E2E Projection 참조 무결성
 - Required·Forbidden·Hard Negative 중복 0
 - `scenario_family_id`·`fixture_relation_family` Split 누수 0

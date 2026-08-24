@@ -19,7 +19,7 @@ release/
 evaluation/
 ```
 
-`evaluation/` is the 13-owned experiment/evaluation implementation root already closed by the evaluation mapping; it is not product runtime authority and may not be imported as a production execution dependency. React/TypeScript Frontend production root is `frontend/` and follows the same closed-world ownership rule. `installer/` and `release/` are release-source/tooling roots and are never imported by product runtime modules. UI behavior remains owned by 02 and installer/runtime semantics by 10; this page only owns deterministic placement/naming.
+`evaluation/` is the **single current top-level root** for all 13-owned experiment/evaluation implementation code and non-Python evaluation artifacts. A top-level `experiments/` root is not current repository authority; stale/imported artifacts are isolated under `evaluation/compat/`. `evaluation/` is not product runtime authority and may not be imported as a production execution dependency. React/TypeScript Frontend production root is `frontend/` and follows the same closed-world ownership rule. `installer/` and `release/` are release-source/tooling roots and are never imported by product runtime modules. UI behavior remains owned by 02 and installer/runtime semantics by 10; this page only owns deterministic placement/naming.
 
 Domain/Application semantic owner packages are singular. Agent semantic owners are exactly `request_understanding`, `tool_routing`, `retrieval`, `work_analysis`, `planning`, `review`.
 
@@ -71,7 +71,10 @@ Cross-Agent Prompt runtime infrastructure is a structural package, not a seventh
 ```text
 application/prompt_runtime/prompt_registry.py
 application/prompt_runtime/assemble_prompt.py
+application/prompt_runtime/contracts/prompt_runtime_input_contract.py
+application/prompt_runtime/load_prompt_input_contract.py
 application/prompt_runtime/prompt_manifest.json
+application/prompt_runtime/prompt_runtime_input_contract_v1.json
 application/prompt_runtime/sources/<prompt_id>.md
 ```
 

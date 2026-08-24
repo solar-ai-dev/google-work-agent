@@ -12,6 +12,9 @@ Required enforcement families:
 - multiple semantic-authority detection
 - `_compat` zero on `main`
 - production→evaluation import ban
+- Evaluation repository root exact: current code/data/result/scoring artifacts live under top-level `evaluation/`; current top-level `experiments/` tree zero, with historical/imported artifacts isolated under `evaluation/compat/`
+- Evaluation non-Python artifact closure: `canonical_cases_v7.jsonl`, current projection filenames, six Micro Dataset JSONL files, scoring contract, and 13 §18 result filenames match the 13/16 exact manifest
+- static fixture grammar closure: checked-in provider/resource fixtures use `tests/fixtures/data/<provider>/<resource>/<scenario>.json` UTF-8 JSON; architecture validators do not require an enumerated concrete `<scenario>` closed set unless an owner source explicitly names one
 - LangGraph node thin-adapter boundary
 - routing operation-per-file: final production `routing/route_after_<stage>.py`, no catch-all `routing.py`
 - Domain transition/guard operation-per-file; no broad multi-capability `commands.py`, `transitions.py`, or `guards.py`
@@ -24,6 +27,8 @@ Required enforcement families:
 - Local SLLM node implementation paths must map one semantic LLM responsibility to one owner-local operation file; deterministic aggregators/builders remain separate from LLM callers
 - Domain Repository manifest exact coverage: every 04 persistence capability maps to one owner-specific Repository + SQLite adapter + test; generic Repository authority zero
 - registry separation/uniqueness: exactly one `ConnectorRuntimeRegistry`, `SignedToolRegistry`, `NodeRegistry`, `ResumeTargetRegistry`, `PromptRegistry`, and Graph Profile Registry; no catch-all registry/service locator
+- Prompt runtime exact-set closure: 15 current 21 `prompt_slot_id` set = runtime Product-LLM caller set = `prompt_manifest.json` = concrete `sources/<prompt_id>.md` = `prompt_runtime_input_contract_v1.json`; `prompt_id == prompt_slot_id`, duplicate/missing/extra/broad-predecessor Prompt source zero
+- Prompt input-contract loader exact: `application/prompt_runtime/load_prompt_input_contract.py → load_prompt_input_contract()` is the only repository loader/validator for `PromptRuntimeInputContractV1`; alternate generic config loader authority zero
 - exact 35 Agent Runtime Node adapter/projection/router manifest coverage; supporting deterministic operations must not create extra runtime nodes
 - one production composition root: `api/composition.py → build_production_runtime()`; concrete binding outside it zero
 - handoff reconciliation owner exact: `application/use_cases/run/redrive_workflow_handoffs.py → RedriveWorkflowHandoffsHandler`; same handler owns startup + live semantics with precedence CONSUMED active-continuation/domain fence → BLOCKED_BINDING Recovery → PENDING/DISPATCHED dispatch head → generic SAFE. `adapters/system/workflow_handoff_reconciliation_loop.py → WorkflowHandoffReconciliationLoop` may only drive that handler; direct loop/startup WEP/LangGraph orchestration zero

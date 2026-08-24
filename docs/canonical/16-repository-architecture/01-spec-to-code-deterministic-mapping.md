@@ -601,9 +601,46 @@ application/prompt_runtime/assemble_prompt.py
 application/prompt_runtime/prompt_manifest.json
 → current runtime-selectable Prompt manifest
 
+application/prompt_runtime/contracts/prompt_runtime_input_contract.py
+→ PromptRuntimeInputContractV1 / PromptRuntimeInputContractEntryV1
+
+application/prompt_runtime/prompt_runtime_input_contract_v1.json
+→ PromptRuntimeInputContractV1 data artifact
+
+application/prompt_runtime/load_prompt_input_contract.py
+→ load_prompt_input_contract()
+
 application/prompt_runtime/sources/<prompt_id>.md
 → immutable prompt source artifact selected by manifest
 ```
+
+15 owns the current exact 21 `prompt_slot_id` set. Repository realization uses `prompt_id == prompt_slot_id`; therefore the current concrete source file set is exactly:
+
+| Runtime caller | prompt_slot_id / prompt_id | Exact source file |
+| --- | --- | --- |
+| `request.identify_goal` | `request_understanding.identify_goal` | `application/prompt_runtime/sources/request_understanding.identify_goal.md` |
+| `request.detect_ambiguity` | `request_understanding.detect_ambiguity` | `application/prompt_runtime/sources/request_understanding.detect_ambiguity.md` |
+| `route.determine_resources` | `tool_routing.determine_io_resources` | `application/prompt_runtime/sources/tool_routing.determine_io_resources.md` |
+| `route.select_tool` | `tool_routing.select_tool_if_needed` | `application/prompt_runtime/sources/tool_routing.select_tool_if_needed.md` |
+| `retrieval.plan_query` | `retrieval.plan_query` | `application/prompt_runtime/sources/retrieval.plan_query.md` |
+| `retrieval.select_evidence` | `retrieval.select_evidence` | `application/prompt_runtime/sources/retrieval.select_evidence.md` |
+| `retrieval.assess_sufficiency` | `retrieval.assess_sufficiency` | `application/prompt_runtime/sources/retrieval.assess_sufficiency.md` |
+| `analysis.extract_facts` | `work_analysis.extract_work_facts` | `application/prompt_runtime/sources/work_analysis.extract_work_facts.md` |
+| `analysis.resolve_entity_relations` | `work_analysis.resolve_entity_relations` | `application/prompt_runtime/sources/work_analysis.resolve_entity_relations.md` |
+| `analysis.resolve_temporal_dependencies` | `work_analysis.resolve_temporal_dependencies` | `application/prompt_runtime/sources/work_analysis.resolve_temporal_dependencies.md` |
+| `analysis.detect_duplicate_conflict_candidates` | `work_analysis.detect_duplicate_conflict_candidates` | `application/prompt_runtime/sources/work_analysis.detect_duplicate_conflict_candidates.md` |
+| `analysis.assess_information_gaps` | `work_analysis.assess_information_gaps` | `application/prompt_runtime/sources/work_analysis.assess_information_gaps.md` |
+| `analysis.assess_operational_risks` | `work_analysis.assess_operational_risks` | `application/prompt_runtime/sources/work_analysis.assess_operational_risks.md` |
+| `planning.outline_answer` | `planning.outline_answer` | `application/prompt_runtime/sources/planning.outline_answer.md` |
+| `planning.compose_answer` | `planning.compose_answer` | `application/prompt_runtime/sources/planning.compose_answer.md` |
+| `planning.draft_action_objective_per_output_route` | `planning.draft_action_objective_per_output_route` | `application/prompt_runtime/sources/planning.draft_action_objective_per_output_route.md` |
+| `planning.compose_arguments_per_output_route` | `planning.compose_arguments_per_output_route` | `application/prompt_runtime/sources/planning.compose_arguments_per_output_route.md` |
+| `review.inspect_goal_and_evidence` | `review.inspect_goal_and_evidence` | `application/prompt_runtime/sources/review.inspect_goal_and_evidence.md` |
+| `review.inspect_action_scope_route` | `review.inspect_action_scope_and_route` | `application/prompt_runtime/sources/review.inspect_action_scope_and_route.md` |
+| `review.inspect_constraints_policy` | `review.inspect_constraints_and_policy_summary` | `application/prompt_runtime/sources/review.inspect_constraints_and_policy_summary.md` |
+| `review.recheck` | `review.recheck_affected_dimensions` | `application/prompt_runtime/sources/review.recheck_affected_dimensions.md` |
+
+The same 21 keys must appear exactly once in `prompt_manifest.json` and exactly once in `prompt_runtime_input_contract_v1.json`. `load_prompt_input_contract()` validates schema version 1, duplicate keys, unknown keys, and equality with the 15-owned Prompt Slot set before `PromptRegistry` becomes ready. Concrete `prompt_version`, SHA-256 `content_hash`, and `activation_status` are current manifest/release metadata; they do not create additional source filenames or new Phase 1 semantic identities.
 
 `PromptRegistry.lookup(slot_key) -> PromptRef` uses the 15-owned key `(agent_role, subgraph_name, node_name, node_state, purpose, input_schema_version, output_schema_version)` and validates manifest/source/content_hash/activation status. `assemble_prompt(prompt_ref, input_projection, failure_record?)` may combine only the 15-owned Base Role/Node Purpose/Failure Block/Allowed Change Scope/Output Schema contract. Agent semantic operation chooses the PromptRef key; LLM provider adapters never select or synthesize PromptRef strings.
 
@@ -612,7 +649,10 @@ Tests:
 ```text
 tests/unit/application/prompt_runtime/test_prompt_registry.py
 tests/unit/application/prompt_runtime/test_assemble_prompt.py
+tests/unit/application/prompt_runtime/contracts/test_prompt_runtime_input_contract.py
+tests/unit/application/prompt_runtime/test_load_prompt_input_contract.py
 tests/architecture/prompt/test_prompt_manifest_source_caller_equality.py
+tests/architecture/prompt/test_prompt_input_contract_equality.py
 ```
 
 `application/prompt_runtime` is a structural package, not a seventh Agent/Application semantic owner.
@@ -837,6 +877,19 @@ Test: `tests/architecture/test_production_composition_root.py`.
 | grader dispatch | `evaluation/graders/grade_item.py` | `grade_item` | `tests/evaluation/graders/test_grade_item.py` |
 | result artifacts | `evaluation/reporting/write_results.py` | `write_results` | `tests/evaluation/reporting/test_write_results.py` |
 
+Current non-Python evaluation artifact mapping is exact:
+
+| Artifact | Canonical path | Producer/consumer | Test owner |
+| --- | --- | --- | --- |
+| Canonical Case dataset | `evaluation/datasets/canonical_cases_v7.jsonl` | `load_canonical_cases()` | `tests/evaluation/datasets/test_load_canonical_cases.py` |
+| E2E Projection dataset | `evaluation/projections/data/e2e_projection_v5.jsonl` | `build_current_projections()` | `tests/evaluation/projections/test_build_current_projections.py` |
+| Product Episode Projection dataset | `evaluation/projections/data/product_episode_e2e_projection_v1.jsonl` | `build_current_projections()` | `tests/evaluation/projections/test_build_current_projections.py` |
+| Routing Trajectory Projection materialization | `evaluation/results/<experiment_id>/trajectory_results.jsonl` | runner diagnostics / `write_results()` | `tests/evaluation/reporting/test_write_results.py` |
+| Scoring contract | `evaluation/graders/scoring-contract-v1.1.json` | `grade_item()` | `tests/evaluation/graders/test_scoring_contract.py` |
+| Micro dataset | `evaluation/datasets/micro/<dataset_id>.jsonl` where current IDs are the six 13-owned IDs | current evaluation loader/runner | `tests/evaluation/datasets/test_micro_datasets.py` |
+| Result directory | `evaluation/results/<experiment_id>/` | `write_results()` | `tests/evaluation/reporting/test_write_results.py` |
+
+The current six `<dataset_id>` values are exactly `resource_selected_variants | review_challenges | structured_output_repair | fault_profiles | injection_variants | paraphrase_robustness`. All checked-in dataset/projection files use UTF-8 JSON Lines except the scoring contract, which is strict JSON. `evaluation/results/<experiment_id>/` contains exactly the 12 filenames in 13 §18. Top-level `experiments/` is not a current canonical path.
 
 ### Repository callable closure rule
 

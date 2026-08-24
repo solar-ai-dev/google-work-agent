@@ -36,7 +36,17 @@ test_<operation>_<object>__<condition>__<expected>
 
 Existing `TST-<AREA>-<NNN>` IDs remain traceability identifiers and must not become production filenames.
 
-Code fixtures live under semantic `tests/fixtures/<area>/`; static data fixtures under `tests/fixtures/data/<provider>/<resource>/<scenario>.*`. Evaluation datasets remain separate.
+Code fixtures live under semantic `tests/fixtures/<area>/`. Current checked-in provider/resource static fixtures use exactly:
+
+```text
+tests/fixtures/data/<provider>/<resource>/<scenario>.json
+```
+
+The serialization is UTF-8 strict JSON; `.yaml`, `.toml`, `.pickle`, ad-hoc extensionless blobs, and a second generic fixture root are not current static-fixture authorities. `provider`, `resource`, and the semantic fixture family/required boundary are derived from 12 Test; `<scenario>` is a stable lower-snake-case test-data instance identifier.
+
+**Concrete `<scenario>` filenames are not a closed Architecture/Phase-1 implementation universe.** They are verification-data instances that may grow when 12 adds a new case while preserving the same ownership/serialization grammar. Phase 1 must record the static-fixture grammar and the 12-owned required fixture families, but MUST NOT emit `SOURCE_REQUIRED` merely because every individual scenario filename is not enumerated in Canonical design docs. A concrete filename becomes normative only when a current owner document explicitly names that file.
+
+Evaluation datasets are not test fixtures and live only under the `evaluation/` root defined by 13/16.
 
 Migration filename grammar is `NNNN_<semantic_change>.sql`. Applied migrations are immutable; structural refactoring never renames or rewrites them.
 

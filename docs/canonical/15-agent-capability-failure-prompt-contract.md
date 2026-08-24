@@ -704,6 +704,82 @@ RECHECK
 
 `WORKFLOW_REDIRECTION`, `DETERMINISTIC_RETRY`, `DETERMINISTIC_RECOVERY`에는 PromptRef가 없어야 한다.
 
+### 9.3-A Current PromptRef exact-set identity
+
+Current Prompt Runtime의 exact-set equality는 **`prompt_slot_id`를 set identity key로 사용**한다. `prompt_version`, `content_hash`, `activation_status`, per-invocation `failure_reason_code`는 같은 slot의 release/runtime metadata이며 별도 PromptRef set cardinality를 만들지 않는다. `SCHEMA_REPAIR`·`SEMANTIC_REVISION`은 별도 전체 Prompt source를 복제하지 않고 같은 Base Slot에 Failure/Allowed-Change block을 조립한다.
+
+Current required Product-LLM Prompt Slot set은 정확히 아래 21개다. 각 current slot에서 `prompt_id == prompt_slot_id`이며 broad predecessor ID를 alias로 유지하지 않는다.
+
+```text
+request_understanding.identify_goal
+request_understanding.detect_ambiguity
+tool_routing.determine_io_resources
+tool_routing.select_tool_if_needed
+retrieval.plan_query
+retrieval.select_evidence
+retrieval.assess_sufficiency
+work_analysis.extract_work_facts
+work_analysis.resolve_entity_relations
+work_analysis.resolve_temporal_dependencies
+work_analysis.detect_duplicate_conflict_candidates
+work_analysis.assess_information_gaps
+work_analysis.assess_operational_risks
+planning.outline_answer
+planning.compose_answer
+planning.draft_action_objective_per_output_route
+planning.compose_arguments_per_output_route
+review.inspect_goal_and_evidence
+review.inspect_action_scope_and_route
+review.inspect_constraints_and_policy_summary
+review.recheck_affected_dimensions
+```
+
+Current runtime caller mapping은 06의 Node Registry를 그대로 소비한다.
+
+```text
+request.identify_goal                           → request_understanding.identify_goal
+request.detect_ambiguity                        → request_understanding.detect_ambiguity
+route.determine_resources                       → tool_routing.determine_io_resources
+route.select_tool                               → tool_routing.select_tool_if_needed
+retrieval.plan_query                            → retrieval.plan_query
+retrieval.select_evidence                       → retrieval.select_evidence
+retrieval.assess_sufficiency                    → retrieval.assess_sufficiency
+analysis.extract_facts                          → work_analysis.extract_work_facts
+analysis.resolve_entity_relations               → work_analysis.resolve_entity_relations
+analysis.resolve_temporal_dependencies          → work_analysis.resolve_temporal_dependencies
+analysis.detect_duplicate_conflict_candidates   → work_analysis.detect_duplicate_conflict_candidates
+analysis.assess_information_gaps                → work_analysis.assess_information_gaps
+analysis.assess_operational_risks               → work_analysis.assess_operational_risks
+planning.outline_answer                         → planning.outline_answer
+planning.compose_answer                         → planning.compose_answer
+planning.draft_action_objective_per_output_route→ planning.draft_action_objective_per_output_route
+planning.compose_arguments_per_output_route     → planning.compose_arguments_per_output_route
+review.inspect_goal_and_evidence                → review.inspect_goal_and_evidence
+review.inspect_action_scope_route               → review.inspect_action_scope_and_route
+review.inspect_constraints_policy               → review.inspect_constraints_and_policy_summary
+review.recheck                                  → review.recheck_affected_dimensions
+```
+
+`prompt_version`은 current manifest가 slot별로 선택하는 version identity이고, `content_hash`는 9.4 조립 규칙으로 materialize된 immutable prompt artifact의 SHA-256이다. `activation_status`는 9.5/13 Evaluation Gate가 승격한다. 이 세 값의 **구체 Release 값은 Phase 1 architecture identifier가 아니며** repository/source filename set을 늘리지 않는다. Current manifest는 각 required slot에 정확히 하나의 selected current version row를 가져야 한다.
+
+`prompt-runtime-input-contract-v1`은 위 21개 `prompt_slot_id`와 exact-set equality를 이루며, 각 row가 06/15가 허용한 current Typed Projection의 `input_schema_version`, allowlisted root fields, output schema version을 참조한다. Conversation history, previous-run artifact, raw Provider/MCP continuation, Gold/Grader metadata를 새 field로 추가할 수 없다. Repository path/loader/test realization은 16 Repository Architecture가 소유한다.
+
+Current input-contract artifact의 logical schema는 다음으로 닫는다.
+
+```yaml
+prompt_runtime_input_contract:
+  schema_version: 1
+  entries:
+    - prompt_slot_id: string
+      runtime_node_id: string
+      input_schema_version: integer
+      required_root_fields: [string]
+      optional_root_fields: [string]
+      output_schema_version: integer
+```
+
+`entries[].prompt_slot_id`는 위 21개 exact set과 같고 `runtime_node_id`는 위 caller mapping과 exact match한다. Field allowlist의 semantic 내용은 06/15 current projection contract를 소비하며, 이 JSON artifact가 새로운 Product Prompt 입력 field를 발명할 수 없다.
+
 ### 9.4 조립 규칙
 
 ```

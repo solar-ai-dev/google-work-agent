@@ -695,6 +695,25 @@ Main Graph control stages are deterministic LangGraph adapters, not a seventh se
 | grader dispatch | `evaluation/graders/grade_item.py` | 13의 registered grader를 선택·호출하고 result를 normalize만 |
 | result writer | `evaluation/reporting/write_results.py` | 13 §18 result artifact 파일 기록만 |
 
+Current non-Python Evaluation artifact placement is also closed under the same single `evaluation/` root:
+
+```text
+evaluation/datasets/canonical_cases_v7.jsonl
+evaluation/datasets/micro/resource_selected_variants.jsonl
+evaluation/datasets/micro/review_challenges.jsonl
+evaluation/datasets/micro/structured_output_repair.jsonl
+evaluation/datasets/micro/fault_profiles.jsonl
+evaluation/datasets/micro/injection_variants.jsonl
+evaluation/datasets/micro/paraphrase_robustness.jsonl
+
+evaluation/projections/data/e2e_projection_v5.jsonl
+evaluation/projections/data/product_episode_e2e_projection_v1.jsonl
+evaluation/graders/scoring-contract-v1.1.json
+evaluation/results/<experiment_id>/
+```
+
+`RoutingTrajectoryProjectionV2` materialization belongs inside `evaluation/results/<experiment_id>/trajectory_results.jsonl`; it has no second checked-in projection-source file. `evaluation/results/<experiment_id>/` contains exactly the 13 §18 twelve result files. A top-level `experiments/` directory is not current Repository authority. Historical artifact readers and imported non-current data are isolated under `evaluation/compat/`; current generator/runner may not create or consume a parallel `experiments/` tree.
+
 Historical artifact readers는 `evaluation/compat/`에 격리하며 current generator/runner가 V3~V6 artifact를 새로 생성하는 것은 금지한다.
 
 ### Production composition / registry / execution structural authorities
@@ -712,7 +731,13 @@ application/tool_registry/signed_tool_registry.py
 → SignedToolRegistry                          # Tool semantic metadata
 
 application/prompt_runtime/prompt_registry.py
-→ PromptRegistry                              # PromptRef/manifest/source lookup
+→ PromptRegistry                              # PromptRef/manifest/source/input-contract lookup
+
+application/prompt_runtime/contracts/prompt_runtime_input_contract.py
+→ PromptRuntimeInputContractV1 / PromptRuntimeInputContractEntryV1
+
+application/prompt_runtime/load_prompt_input_contract.py
+→ load_prompt_input_contract()                # exact PromptRuntimeInputContractV1 loader/validator
 
 adapters/langgraph/registry/node_registry.py
 → NodeRegistry                                # graph_version + profile + semantic owner + node → compiled subgraph lookup

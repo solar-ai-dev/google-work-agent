@@ -111,6 +111,7 @@ Implementation choice:
 - adapter-local serialization detail
 - presentation-only wording/formatting
 - environment-specific configurable limit
+- 12/16이 canonical fixture owner/path/serialization grammar를 이미 닫은 뒤의 개별 static test fixture `<scenario>` instance filename. 단 current owner가 concrete filename 자체를 명시한 artifact는 예외이며 그대로 canonical mapping 대상이다.
 
 Implementation choice는 합리적인 default로 구현해도 되며 design freeze blocker가 아니다. 여러 문서가 이런 값을 중복 소유해 불일치를 만들면 duplicate authority를 제거하고 concern owner에는 필요한 bounded/fail-closed 의미만 남긴다. 단 implementation choice를 이유로 새 semantic owner/package/Port/type을 발명해서는 안 된다.
 

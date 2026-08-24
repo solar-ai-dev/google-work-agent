@@ -431,6 +431,35 @@ class RoutingTrajectoryProjectionV2:
 
 `EvaluationJSONValueV1`은 **evaluation-data container**일 뿐 제품 Runtime schema를 대체하지 않는다. Product Runtime artifact를 채점할 때는 해당 owner의 current serializer/schema validator를 먼저 적용한 뒤 evaluation projection으로 복사한다. 따라서 evaluation code가 Runtime contract의 새 field나 enum을 발명하지 않는다.
 
+### 7.2-B Current non-Python evaluation artifact placement
+
+Current Evaluation의 repository root는 **`evaluation/` 하나뿐**이다. Top-level `experiments/`는 current authority가 아니며 current runner/result writer/scoring contract가 그 경로를 생성하거나 읽지 않는다. Historical/imported reproduction data는 `evaluation/compat/`에서만 다룬다.
+
+Checked-in current dataset/projection artifacts는 다음 exact path와 serialization을 사용한다.
+
+| Artifact | Exact path | Serialization |
+| --- | --- | --- |
+| Canonical Case source | `evaluation/datasets/canonical_cases_v7.jsonl` | UTF-8 JSON Lines; line마다 `CanonicalCaseV7` 1개 |
+| E2E Projection | `evaluation/projections/data/e2e_projection_v5.jsonl` | UTF-8 JSON Lines; line마다 `E2EProjectionV5` 1개 |
+| Product Episode Projection | `evaluation/projections/data/product_episode_e2e_projection_v1.jsonl` | UTF-8 JSON Lines; line마다 `ProductEpisodeE2EProjectionV1` 1개 |
+| Routing Trajectory Projection | `evaluation/results/<experiment_id>/trajectory_results.jsonl` | UTF-8 JSON Lines; observed trajectory row의 typed projection은 `RoutingTrajectoryProjectionV2` |
+| Scoring contract | `evaluation/graders/scoring-contract-v1.1.json` | UTF-8 strict JSON |
+
+`evaluation/projections/build_current_projections.py`가 Canonical Case를 검증한 뒤 `E2EProjectionV5`와 applicable `ProductEpisodeE2EProjectionV1` source projection file을 deterministic하게 materialize한다. `RoutingTrajectoryProjectionV2`는 candidate execution의 observed trajectory이므로 별도 checked-in projection source를 만들지 않고 §18 `trajectory_results.jsonl` 안에서 materialize한다. `ContextReadySnapshotV1`/`EvaluationPolicyProjectionV1`도 evaluation runner의 controlled runtime snapshot contract이며, current Canonical Source가 별도 checked-in dataset filename을 요구하지 않는다.
+
+Current Micro Dataset file set은 §7.4의 current dataset IDs와 1:1이며 exact path는 다음과 같다.
+
+```text
+evaluation/datasets/micro/resource_selected_variants.jsonl
+evaluation/datasets/micro/review_challenges.jsonl
+evaluation/datasets/micro/structured_output_repair.jsonl
+evaluation/datasets/micro/fault_profiles.jsonl
+evaluation/datasets/micro/injection_variants.jsonl
+evaluation/datasets/micro/paraphrase_robustness.jsonl
+```
+
+각 파일은 UTF-8 JSON Lines를 사용하고 각 row는 `micro_case_id`와 원본 `case_id`를 반드시 포함한다. 이 six-file set을 확장하려면 13의 Micro Dataset current ID set과 Repository mapping을 함께 갱신한다.
+
 ### 7.3 실험 Projection
 
 | Projection | 주요 입력 | 주요 Gold |
@@ -773,7 +802,7 @@ Cost·Token·Agent Invocation·LLM Call·Google API Call·p95 Latency는 **정�
 - compatibility-only grader는 current scoring 집계에 포함하지 않는다. 재현이 필요할 때만 Audit tooling에서 별도로 사용한다.
 1. Holdout·Stress·반복성·Human Review 후 Product Decision Record 작성.
 
-세부 기계 계약은 `experiments/graders/scoring-contract-v1.1.json`과 Grader Registry v0.4을 기준으로 한다.
+세부 기계 계약은 `evaluation/graders/scoring-contract-v1.1.json`과 Grader Registry v0.4을 기준으로 한다.
 
 ## 14. G01 Safety·Prompt Injection
 
@@ -891,6 +920,14 @@ GPU_24GB_PLUS
 API 수직 흐름과 Runner가 안정화된 후 수행한다. 지원 Profile은 Safety·Quality·OOM·Latency Gate를 통과한 모델만 Signed Manifest에 등록한다.
 
 ## 18. Result Artifact
+
+Current result writer는 각 experiment마다 exactly one directory를 생성한다.
+
+```text
+evaluation/results/<experiment_id>/
+```
+
+그 directory 안의 current result artifact set은 정확히 다음 12개다.
 
 ```
 experiment_manifest.json
