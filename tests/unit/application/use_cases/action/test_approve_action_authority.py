@@ -50,8 +50,8 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
     unit_of_work.runs.get_by_id.return_value = SimpleNamespace(
         id="run-1", conversation_id="conversation-1"
     )
-    unit_of_work.conversations.get_by_id.return_value = SimpleNamespace(account_id="acct-1")
-    unit_of_work.resource_refs.get_by_id.return_value = resource_ref
+    unit_of_work.conversations.get.return_value = SimpleNamespace(account_id="acct-1")
+    unit_of_work.resource_refs.get.return_value = resource_ref
     unit_of_work.actions.approve_write.return_value = SimpleNamespace(
         applied=True,
         result_code=ResultCode.TRANSITION_APPLIED,

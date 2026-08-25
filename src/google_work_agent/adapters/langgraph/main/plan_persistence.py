@@ -25,7 +25,6 @@ from google_work_agent.adapters.langgraph.main.state import (
     _resource_handle_for_ref,
 )
 from google_work_agent.application.calendar_conflicts import CALENDAR_CONFLICT_TOOLS
-from google_work_agent.application.feasibility import evidence_feasibility_risk
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
@@ -50,7 +49,6 @@ from google_work_agent.application.write_plan_contracts import (
 from google_work_agent.application.write_verification_projection import (
     build_expected_verification_projection,
 )
-from google_work_agent.domain import CalendarWorkHours
 from google_work_agent.ports import EvidenceOriginType, ResourceSnapshot, ResourceType
 from google_work_agent.ports.connectors.execution import (
     ConnectorExecutionPort,
@@ -240,9 +238,7 @@ class PlanPersistenceMixin:
             execution_router = ConnectorExecutionRouter(connector_execution_backends)
         kwargs["connector_execution"] = execution_router
 
-        super().__init__(
-            *args, default_calendar_id_provider=default_calendar_id_provider, **kwargs
-        )
+        super().__init__(*args, default_calendar_id_provider=default_calendar_id_provider, **kwargs)
         self._connector_execution_router = execution_router
 
         raw_execution_phase = self._write_execution_phase
@@ -436,13 +432,16 @@ class PlanPersistenceMixin:
         if resource_handle is None:
             return None
         with self._unit_of_work_factory() as unit_of_work:
-            existing = unit_of_work.resource_refs.get_by_id(resource_handle)
+            existing = unit_of_work.resource_refs.get(resource_handle)
             if existing is not None:
                 if existing.connector_id != connector_id:
                     raise ValueError("target ResourceRef connector does not match frozen route")
                 return existing.id
-            for resource_ref in unit_of_work.resource_refs.list_by_run(run_id):
-                if resource_ref.connector_id == connector_id and resource_handle == _resource_handle_for_ref(resource_ref):
+            for resource_ref in unit_of_work.resource_refs.list_for_run_bounded(run_id, limit=1000):
+                if (
+                    resource_ref.connector_id == connector_id
+                    and resource_handle == _resource_handle_for_ref(resource_ref)
+                ):
                     return resource_ref.id
             resource = _acquired_resource_by_handle(
                 acquisition_result=acquisition_result, resource_handle=resource_handle
@@ -458,7 +457,8 @@ class PlanPersistenceMixin:
                 resource_id=str(resource["resource_id"]),
                 parent_id=cast(str | None, resource.get("parent_id")),
                 related_resource_ids=tuple(
-                    str(item) for item in cast(list[object], resource.get("related_resource_ids") or [])
+                    str(item)
+                    for item in cast(list[object], resource.get("related_resource_ids") or [])
                 ),
                 version=str(resource.get("version") or ""),
                 recovery_fingerprint=cast(str | None, resource.get("recovery_fingerprint")),
@@ -470,15 +470,7 @@ class PlanPersistenceMixin:
                 snapshot=snapshot,
                 captured_at_ms=self._now_ms(),
             )
-            unit_of_work.resource_refs.upsert(resource_ref)
-            persisted = unit_of_work.resource_refs.get_by_unique_key(
-                run_id=run_id,
-                connector_id=connector_id,
-                resource_type=resource_ref.resource_type.value,
-                resource_id=resource_ref.resource_id,
-            )
-            if persisted is None:
-                raise RuntimeError("target resource reference was not persisted")
+            persisted = unit_of_work.resource_refs.upsert_bound_ref(resource_ref)
             unit_of_work.commit()
             return persisted.id
 

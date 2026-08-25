@@ -25,11 +25,6 @@ from google_work_agent.ports import (
     SelectedResourceRef,
 )
 
-MAX_PAGE_SIZE = 100
-MAX_HISTORY_MESSAGES = 200
-MAX_HISTORY_RUNS = 200
-
-
 @dataclass(frozen=True, slots=True)
 class ConversationListItem:
     id: str
@@ -37,12 +32,6 @@ class ConversationListItem:
     title: str
     updated_at_ms: int
     created_at_ms: int
-
-
-@dataclass(frozen=True, slots=True)
-class ConversationPage:
-    items: tuple[ConversationListItem, ...]
-    next_cursor: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,31 +100,6 @@ class ConversationRunRecord:
 
 
 @dataclass(frozen=True, slots=True)
-class ConversationMessageItem:
-    id: str
-    run_id: str | None
-    role: str
-    content: str
-    created_at_ms: int
-
-
-@dataclass(frozen=True, slots=True)
-class ConversationHistoryRunItem:
-    run_id: str
-    status: str
-    started_at_ms: int
-    finished_at_ms: int | None
-
-
-@dataclass(frozen=True, slots=True)
-class ConversationHistory:
-    conversation: ConversationListItem
-    messages: tuple[ConversationMessageItem, ...]
-    runs: tuple[ConversationHistoryRunItem, ...]
-    truncated: bool
-
-
-@dataclass(frozen=True, slots=True)
 class GoogleAccountRecord:
     account_id: str
     email: str
@@ -168,39 +132,6 @@ class QueryService:
 
         return self._connection_factory
 
-    def list_conversations(
-        self,
-        *,
-        account_id: str,
-        cursor: str | None,
-        page_size: int,
-    ) -> ConversationPage:
-        limit = _validated_page_size(page_size)
-        predicate = "WHERE account_id = ?"
-        params: list[object] = [account_id]
-        if cursor is not None:
-            updated_at_ms, conversation_id = _parse_keyset_cursor(cursor)
-            predicate += " AND (updated_at_ms < ? OR (updated_at_ms = ? AND id < ?))"
-            params.extend([updated_at_ms, updated_at_ms, conversation_id])
-        params.append(limit + 1)
-        with self._connection_factory(self._database_path) as connection:
-            rows = connection.execute(
-                f"""
-                SELECT id, account_id, title, created_at_ms, updated_at_ms
-                FROM conversations
-                {predicate}
-                ORDER BY updated_at_ms DESC, id DESC
-                LIMIT ?;
-                """,
-                tuple(params),
-            ).fetchall()
-        items = tuple(_conversation_item_from_row(row) for row in rows[:limit])
-        next_cursor = None
-        if len(rows) > limit and items:
-            last = items[-1]
-            next_cursor = f"{last.updated_at_ms}:{last.id}"
-        return ConversationPage(items=items, next_cursor=next_cursor)
-
     def get_conversation(self, conversation_id: str) -> ConversationListItem | None:
         with self._connection_factory(self._database_path) as connection:
             row = connection.execute(
@@ -214,73 +145,6 @@ class QueryService:
         if row is None:
             return None
         return _conversation_item_from_row(row)
-
-    def get_conversation_history(self, conversation_id: str) -> ConversationHistory | None:
-        """Return the stored message/run history projection for one conversation.
-
-        Uses three bounded queries on a single connection so that opening a
-        conversation never scales its query count with message or run count.
-        """
-        with self._connection_factory(self._database_path) as connection:
-            conversation_row = connection.execute(
-                """
-                SELECT id, account_id, title, created_at_ms, updated_at_ms
-                FROM conversations
-                WHERE id = ?;
-                """,
-                (conversation_id,),
-            ).fetchone()
-            if conversation_row is None:
-                return None
-            message_rows = connection.execute(
-                """
-                SELECT id, run_id, role, content, created_at_ms
-                FROM messages
-                WHERE conversation_id = ?
-                ORDER BY created_at_ms DESC, id DESC
-                LIMIT ?;
-                """,
-                (conversation_id, MAX_HISTORY_MESSAGES + 1),
-            ).fetchall()
-            run_rows = connection.execute(
-                """
-                SELECT id, status, started_at_ms, finished_at_ms
-                FROM runs
-                WHERE conversation_id = ?
-                ORDER BY started_at_ms DESC, id DESC
-                LIMIT ?;
-                """,
-                (conversation_id, MAX_HISTORY_RUNS),
-            ).fetchall()
-        truncated = len(message_rows) > MAX_HISTORY_MESSAGES
-        retained = message_rows[:MAX_HISTORY_MESSAGES]
-        messages = tuple(
-            ConversationMessageItem(
-                id=str(row["id"]),
-                run_id=None if row["run_id"] is None else str(row["run_id"]),
-                role=str(row["role"]),
-                content=str(row["content"]),
-                created_at_ms=int(row["created_at_ms"]),
-            )
-            for row in reversed(retained)
-        )
-        runs = tuple(
-            ConversationHistoryRunItem(
-                run_id=str(row["id"]),
-                status=str(row["status"]),
-                started_at_ms=int(row["started_at_ms"]),
-                finished_at_ms=(
-                    None if row["finished_at_ms"] is None else int(row["finished_at_ms"])
-                ),
-            )
-            for row in reversed(run_rows)
-        )
-        return ConversationHistory(
-            conversation=_conversation_item_from_row(conversation_row),
-            messages=messages,
-            runs=runs,
-            truncated=truncated,
-        )
 
     def get_run_snapshot(self, run_id: str) -> RunSnapshot | None:
         with self._connection_factory(self._database_path) as connection:
@@ -641,14 +505,6 @@ class QueryService:
             )
 
 
-def _validated_page_size(page_size: int) -> int:
-    if page_size < 1:
-        raise ValueError("page_size must be at least 1")
-    if page_size > MAX_PAGE_SIZE:
-        raise ValueError(f"page_size must be <= {MAX_PAGE_SIZE}")
-    return page_size
-
-
 def _cancel_result_kind(
     *, run_status: RunStatus, actions: tuple[ActionSnapshot, ...]
 ) -> str | None:
@@ -664,11 +520,6 @@ def _google_account_id_for_email(email: str) -> str:
 
     digest = sha256(email.strip().lower().encode("utf-8")).hexdigest()
     return f"acct-{digest[:24]}"
-
-
-def _parse_keyset_cursor(cursor: str) -> tuple[int, str]:
-    raw_time, conversation_id = cursor.split(":", 1)
-    return int(raw_time), conversation_id
 
 
 def _selected_resource_ref_from_mapping(value: dict[object, object]) -> SelectedResourceRef:

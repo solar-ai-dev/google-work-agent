@@ -26,7 +26,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_
     SQLiteCommandReceiptRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.conversation_repository import (
-    SQLiteConversationRepository,
+    SqliteConversationRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.evidence_repository import (
     SQLiteEvidenceRepository,
@@ -35,13 +35,13 @@ from google_work_agent.adapters.persistence.sqlite.repositories.execution_attemp
     SQLiteExecutionAttemptRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.message_repository import (
-    SQLiteMessageRepository,
+    SqliteMessageRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.plan_repository import (
     SQLitePlanRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.resource_ref_repository import (
-    SQLiteResourceRefRepository,
+    SqliteResourceRefRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.run_repository import (
     SQLiteRunRepository,
@@ -157,13 +157,13 @@ class FaultInjectingSQLiteUnitOfWork:
         connection.execute("BEGIN IMMEDIATE;")
         self._connection = connection
         sqlite_connection = cast(sqlite3.Connection, connection)
-        self.conversations = SQLiteConversationRepository(sqlite_connection)
+        self.conversations = SqliteConversationRepository(sqlite_connection)
         self.runs = SQLiteRunRepository(sqlite_connection)
-        self.messages = SQLiteMessageRepository(sqlite_connection)
+        self.messages = SqliteMessageRepository(sqlite_connection)
         self.command_receipts = SQLiteCommandReceiptRepository(sqlite_connection)
         self.plans = SQLitePlanRepository(sqlite_connection)
         self.actions = SQLiteActionRepository(sqlite_connection)
-        self.resource_refs = SQLiteResourceRefRepository(sqlite_connection)
+        self.resource_refs = SqliteResourceRefRepository(sqlite_connection)
         self.evidence = SQLiteEvidenceRepository(sqlite_connection)
         self.action_dependencies = SQLiteActionDependencyRepository(sqlite_connection)
         self.approvals = SQLiteApprovalRepository(sqlite_connection)

@@ -203,7 +203,7 @@ def test_reject_persists_revocation_and_dependency_consequence() -> None:
     unit_of_work.runs.get_by_id.return_value = SimpleNamespace(
         id="run-1", version=9, conversation_id="conversation-1"
     )
-    unit_of_work.conversations.get_by_id.return_value = SimpleNamespace(account_id="acct-1")
+    unit_of_work.conversations.get.return_value = SimpleNamespace(account_id="acct-1")
     unit_of_work.approvals.revoke_active_by_action.return_value = ("approval-1",)
     unit_of_work.actions.reject_write.return_value = SimpleNamespace(
         applied=True,

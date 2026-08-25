@@ -6,7 +6,6 @@ from dataclasses import asdict, dataclass
 from json import dumps
 from typing import cast
 
-from google_work_agent.application.run_contracts import StartRunResponse
 from google_work_agent.application.write_persistence import (
     emit_command_rejected_hash_mismatch,
 )
@@ -59,20 +58,6 @@ def resolve_json_receipt(
                 updated_at_ms=0,
                 conflict_detail="command_id already exists with a different request_hash",
             )
-        if response_type is StartRunResponse:
-            return StartRunResponse(
-                applied=False,
-                result_code=ResultCode.DUPLICATE_COMMAND.value,
-                run_id=aggregate_id,
-                conversation_id="",
-                run_status="UNKNOWN",
-                run_version=result_version,
-                user_message_id="",
-                workflow_key="",
-                enqueued=False,
-                request_replayed=True,
-                conflict_detail="command_id already exists with a different request_hash",
-            )
         if response_type is ResumeRunResult:
             return ResumeRunResult(
                 applied=False,
@@ -114,7 +99,7 @@ def resolve_existing_receipt(
     action_id: str | None = None,
     now_ms: int,
 ) -> ReceiptResponse:
-    """Thin wrapper shared by every CreateConversation/StartRun/ResumeRun/
+    """Thin wrapper shared by every CreateConversation/ResumeRun/
     ActionMutation caller of the pure resolve_json_receipt above.
 
     Keeps resolve_json_receipt itself free of side effects; records

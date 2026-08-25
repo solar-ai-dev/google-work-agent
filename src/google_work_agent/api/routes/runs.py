@@ -20,6 +20,7 @@ from google_work_agent.api.schemas.runs.get_run_context import RunContextRespons
 from google_work_agent.api.schemas.runs.resolve_recovery import ResolveRecoveryRequestV1
 from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
 from google_work_agent.api.schemas.runs.start_run import StartRunRequest, StartRunResponseModel
+from google_work_agent.application.coordinator import QueueBusyError
 from google_work_agent.application.use_cases.recovery.resolve_mismatch_recovery import (
     MismatchRecoveryResolution,
     ResolveMismatchRecoveryCommand,
@@ -41,8 +42,10 @@ from google_work_agent.application.use_cases.run.resume_run import (
     ResumeRunCommand,
     ResumeRunHandler,
 )
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
+)
 from google_work_agent.application.use_cases.run.start_run import (
-    QueueBusyError,
     StartRunCommand,
     StartRunHandler,
 )
@@ -73,26 +76,15 @@ def start_run(
     handler = StartRunHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
-        reserve_queue_slot=dependencies.reserve_queue_slot,
-        release_queue_slot=dependencies.release_queue_slot,
+        id_factory=dependencies.id_generator.next_id,
+        graph_profile=dependencies.graph_profile,
+        graph_version=dependencies.graph_version,
     )
-    try:
-        result = handler(StartRunCommand(**command_payload, selected_resources=selected_resources))
-        if result.applied and result.enqueued:
-            dependencies.local_run_coordinator.confirm_start(
-                run_id=result.run_id,
-                request_id=request.state.request_id,
-                command_id=payload.command_id,
-            )
-    except QueueBusyError as error:
-        raise ApiRequestError(
-            error_code="SERVICE_BUSY",
-            user_message="로컬 실행 대기열이 가득 찼습니다.",
-            status_code=503,
-            request_id=request.state.request_id,
-            retryable=True,
-            detail_code=type(error).__name__,
-        ) from error
+    result = handler(StartRunCommand(**command_payload, selected_resources=selected_resources))
+    if result.applied and result.enqueued:
+        dependencies.schedule_run_execution(
+            ScheduleRunExecutionCommand(handoff_id=result.handoff_id)
+        )
     response.status_code = http_status_for_result_code(result.result_code, default_success=202)
     return StartRunResponseModel(**asdict(result))
 

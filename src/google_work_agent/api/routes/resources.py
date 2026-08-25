@@ -13,6 +13,12 @@ from google_work_agent.api.errors.api_request_error import ApiRequestError
 from google_work_agent.api.schemas.resources.count_resources import ResourceCountResponse
 from google_work_agent.api.schemas.resources.get_gmail_resource import GmailResourceDetailResponse
 from google_work_agent.api.schemas.resources.list_resources import ResourceListResponse
+from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
+from google_work_agent.api.security.sessions import calculate_session_digest
+from google_work_agent.application.resource_continuation import ResourceQueryServiceLike
+from google_work_agent.application.use_cases.resource.issue_selection_handle import (
+    IssueSelectionHandleCommand,
+)
 from google_work_agent.application.use_cases.resource_ref.count_resources import (
     CountResourcesHandler,
     CountResourcesQuery,
@@ -24,6 +30,7 @@ from google_work_agent.application.use_cases.resource_ref.get_resource import (
 from google_work_agent.application.use_cases.resource_ref.list_resources import (
     ListResourcesHandler,
     ListResourcesQuery,
+    ResourceListItem,
 )
 from google_work_agent.ports import EndpointPolicy
 from google_work_agent.ports.connectors.failure import (
@@ -34,7 +41,9 @@ from google_work_agent.ports.connectors.failure import (
 router = APIRouter(prefix="/api/v1/resources")
 
 
-def _resource_service(dependencies: ResourceRouteDependency, *, request_id: str):
+def _resource_service(
+    dependencies: ResourceRouteDependency, *, request_id: str
+) -> ResourceQueryServiceLike:
     service = dependencies.resource_query_service()
     if service is None:
         raise ApiRequestError(
@@ -80,7 +89,7 @@ def list_gmail_resources(
     page = result.page
     return ResourceListResponse(
         source=page.source,
-        items=[asdict(item) for item in page.items],
+        items=_items_with_selection_handles(request, dependencies, page.items),
         next_page_token=page.next_page_token,
         api_contract_version=dependencies.api_contract_version,
     )
@@ -189,7 +198,7 @@ def list_task_resources(
     page = result.page
     return ResourceListResponse(
         source=page.source,
-        items=[asdict(item) for item in page.items],
+        items=_items_with_selection_handles(request, dependencies, page.items),
         next_page_token=page.next_page_token,
         api_contract_version=dependencies.api_contract_version,
     )
@@ -230,7 +239,7 @@ def list_calendar_resources(
     page = result.page
     return ResourceListResponse(
         source=page.source,
-        items=[asdict(item) for item in page.items],
+        items=_items_with_selection_handles(request, dependencies, page.items),
         next_page_token=page.next_page_token,
         api_contract_version=dependencies.api_contract_version,
     )
@@ -259,3 +268,39 @@ def _raise_connector_failure(error: ConnectorOperationFailure, *, request_id: st
         retryable=error.retryable,
         detail_code=error.detail_code,
     ) from error
+
+
+def _items_with_selection_handles(
+    request: Request,
+    dependencies: ResourceRouteDependency,
+    items: tuple[ResourceListItem, ...],
+) -> list[dict[str, object]]:
+    session_token = request.cookies.get(LOCAL_SESSION_COOKIE_NAME)
+    account_id = dependencies.current_account_id()
+    if session_token is None or account_id is None:
+        raise ApiRequestError(
+            error_code="LOCAL_SESSION_INVALID",
+            user_message="Resource selection requires an active account and local session.",
+            status_code=401,
+            request_id=request.state.request_id,
+            detail_code="RESOURCE_SELECTION_BINDING_UNAVAILABLE",
+        )
+    session_digest = calculate_session_digest(session_token)
+    projected: list[dict[str, object]] = []
+    for item in items:
+        values = asdict(item)
+        values["selection_handle"] = dependencies.issue_selection_handle(
+            IssueSelectionHandleCommand(
+                session_digest=session_digest,
+                account_id=account_id,
+                connector_id=dependencies.resource_connector_id,
+                resource_type=str(values["resource_type"]),
+                resource_id=str(values["resource_id"]),
+                parent_resource_id=(
+                    None if values.get("parent_id") is None else str(values["parent_id"])
+                ),
+                version_token=None if values.get("version") is None else str(values["version"]),
+            )
+        )
+        projected.append(values)
+    return projected

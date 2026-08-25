@@ -6,8 +6,10 @@ from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
-from google_work_agent.application.run_contracts import StartRunCommand
-from google_work_agent.application.run_lifecycle import StartRunService
+from google_work_agent.application.use_cases.run.start_run import (
+    StartRunCommand,
+    StartRunHandler,
+)
 
 
 def _seeded_database(tmp_path: Path, *, conversation_updated_at_ms: int) -> Path:
@@ -36,18 +38,19 @@ def test_start_run_advances_the_conversations_last_activity_timestamp(tmp_path: 
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
     new_now_ms = old_updated_at_ms + 500_000
 
-    service = StartRunService(
+    id_counter = iter(range(1, 100))
+    handler = StartRunHandler(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=lambda: new_now_ms,
+        id_factory=lambda: f"id-{next(id_counter)}",
+        graph_profile="SIX_ROLE_BASELINE",
+        graph_version="resume-contract-v1",
     )
-    response = service(
+    response = handler(
         StartRunCommand(
             command_id="command-1",
             request_hash="a" * 64,
             conversation_id="conversation-1",
-            user_message_id="message-1",
-            run_id="run-1",
-            workflow_key="workflow-1",
             request_text="새 메시지",
             entry_mode="AGENT_SEARCH",
             selected_resource_ids=(),
@@ -58,7 +61,7 @@ def test_start_run_advances_the_conversations_last_activity_timestamp(tmp_path: 
 
     assert response.applied is True
     with unit_of_work_factory() as unit_of_work:
-        conversation = unit_of_work.conversations.get_by_id("conversation-1")
+        conversation = unit_of_work.conversations.get("conversation-1")
     assert conversation is not None
     assert conversation.updated_at_ms == new_now_ms
 
@@ -68,10 +71,10 @@ def test_conversation_touch_never_moves_the_timestamp_backward(tmp_path: Path) -
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
 
     with unit_of_work_factory() as unit_of_work:
-        unit_of_work.conversations.touch("conversation-1", updated_at_ms=1_000)
+        unit_of_work.conversations.touch_updated_at("conversation-1", updated_at_ms=1_000)
         unit_of_work.commit()
 
     with unit_of_work_factory() as unit_of_work:
-        conversation = unit_of_work.conversations.get_by_id("conversation-1")
+        conversation = unit_of_work.conversations.get("conversation-1")
     assert conversation is not None
     assert conversation.updated_at_ms == 5_000

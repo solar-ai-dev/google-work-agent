@@ -13,13 +13,22 @@ from google_work_agent.adapters.readiness.composite import (
     StaticRuntimeStatusProvider,
 )
 from google_work_agent.api.app import create_app
+from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
-from google_work_agent.application.coordinator import LocalRunCoordinator
+from google_work_agent.application.coordinator import LocalRunCoordinator, QueueBusyError
 from google_work_agent.application.queries import QueryService
-from google_work_agent.application.start_run import CreateConversationService, StartRunService
+from google_work_agent.application.use_cases.conversation.create_conversation import (
+    CreateConversationHandler,
+)
+from google_work_agent.application.use_cases.conversation.get_conversation_history import (
+    GetConversationHistoryHandler,
+)
+from google_work_agent.application.use_cases.conversation.list_conversations import (
+    ListConversationsHandler,
+)
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
     PrepareWriteRetryService,
@@ -66,14 +75,6 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
 
     clock = FakeClock(1000)
     runtime = FakeWorkflowRuntime()
-    runtime.queue_result(
-        WorkflowInvocationResult(
-            run_id="run-1",
-            workflow_key="workflow-1",
-            outcome=WorkflowOutcome.ACCEPTED,
-            payload={"phase": "started"},
-        )
-    )
     publisher = InMemoryRunEventPublisher(service_instance_id="svc-test", capacity_per_run=8)
     query_service = QueryService(
         database_path=database_path,
@@ -100,6 +101,23 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         api_contract_version="1",
         capacity=4,
     )
+    id_generator = DeterministicUUID(prefix="req")
+
+    def _execute_admission(admission: object) -> None:
+        try:
+            coordinator.enqueue_start(
+                run_id=admission.effective_binding.run_id,  # type: ignore[attr-defined]
+                request_id=admission.admission_id,  # type: ignore[attr-defined]
+                command_id=admission.handoff_id,  # type: ignore[attr-defined]
+            )
+        except QueueBusyError:
+            pass
+
+    production_runtime = build_production_runtime(
+        unit_of_work_factory=unit_of_work_factory,
+        id_factory=id_generator.next_id,
+        execute_admission=_execute_admission,
+    )
     bind_host = "127.0.0.1"
     bind_port = 8765
     bootstrap_store = InMemoryBootstrapGrantStore()
@@ -112,14 +130,21 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
     container = ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
         query_service=query_service,
-        create_conversation_service=CreateConversationService(
+        create_conversation_handler=CreateConversationHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
-        start_run_service=StartRunService(
+        list_conversations_handler=ListConversationsHandler(
             unit_of_work_factory=unit_of_work_factory,
-            now_ms=clock.now_ms,
         ),
+        get_conversation_history_handler=GetConversationHistoryHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            database_path=database_path,
+            connection_factory=connect_sqlite,
+        ),
+        graph_profile="SIX_ROLE_BASELINE",
+        graph_version="resume-contract-v1",
+        schedule_run_execution=production_runtime.schedule_run_execution,
         approve_action_service=ApproveWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -173,7 +198,7 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
             now_ms=clock.now_ms,
         ),
         clock=clock,
-        id_generator=DeterministicUUID(prefix="req"),
+        id_generator=id_generator,
         release_version="test",
         environment="test",
         service_instance_id="svc-test",
@@ -222,9 +247,6 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
             json={
                 "command_id": "run-cmd-1",
                 "conversation_id": "conversation-1",
-                "user_message_id": "message-1",
-                "run_id": "run-1",
-                "workflow_key": "workflow-1",
                 "request_text": "hello",
                 "entry_mode": "AGENT_SEARCH",
                 "selected_resource_ids": [],
@@ -234,6 +256,16 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
             headers=headers,
         )
         assert start_response.status_code == 202
+        run_id = start_response.json()["run_id"]
+        workflow_key = start_response.json()["workflow_key"]
+        runtime.queue_result(
+            WorkflowInvocationResult(
+                run_id=run_id,
+                workflow_key=workflow_key,
+                outcome=WorkflowOutcome.ACCEPTED,
+                payload={"phase": "started"},
+            )
+        )
 
         deadline = time.time() + 2
         while time.time() < deadline and not runtime.call_log:
@@ -241,17 +273,17 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
 
         assert runtime.call_log
         assert runtime.call_log[0].operation == "start"
-        replayed = publisher.replay(run_id="run-1", after_event_id=None)
+        replayed = publisher.replay(run_id=run_id, after_event_id=None)
         assert replayed
         assert replayed[0].event_type == "run_status"
 
-        snapshot = client.get("/api/v1/runs/run-1", headers=headers)
+        snapshot = client.get(f"/api/v1/runs/{run_id}", headers=headers)
         assert snapshot.status_code == 200
-        assert snapshot.json()["snapshot"]["run_id"] == "run-1"
+        assert snapshot.json()["snapshot"]["run_id"] == run_id
 
         with client.stream(
             "GET",
-            "/api/v1/runs/run-1/events",
+            f"/api/v1/runs/{run_id}/events",
             headers={**headers, "Last-Event-ID": "other-service:1"},
         ) as stream:
             lines = [line for line in stream.iter_lines() if line]

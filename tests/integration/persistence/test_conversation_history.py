@@ -6,7 +6,14 @@ import sqlite3
 from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.application.queries import MAX_HISTORY_MESSAGES, QueryService
+from google_work_agent.application.use_cases.conversation.get_conversation_history import (
+    GetConversationHistoryHandler,
+    GetConversationHistoryQuery,
+)
+from google_work_agent.application.use_cases.message.list_conversation_messages import (
+    MAX_HISTORY_MESSAGES,
+)
+from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
 
 
 class _UnusedRuntimeStatusProvider:
@@ -14,11 +21,11 @@ class _UnusedRuntimeStatusProvider:
         raise NotImplementedError
 
 
-def _query_service(database_path: Path) -> QueryService:
-    return QueryService(
+def _history_handler(database_path: Path) -> GetConversationHistoryHandler:
+    return GetConversationHistoryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         database_path=database_path,
         connection_factory=connect_sqlite,
-        runtime_status_provider=_UnusedRuntimeStatusProvider(),
     )
 
 
@@ -150,7 +157,9 @@ def test_history_returns_every_turn_of_one_conversation_in_time_order(tmp_path: 
     finally:
         connection.close()
 
-    history = _query_service(database_path).get_conversation_history("conversation-1")
+    history = _history_handler(database_path)(
+        GetConversationHistoryQuery(conversation_id="conversation-1")
+    )
 
     assert history is not None
     assert history.conversation.id == "conversation-1"
@@ -208,7 +217,9 @@ def test_history_keeps_a_failed_run_and_an_open_run_in_the_projection(tmp_path: 
     finally:
         connection.close()
 
-    history = _query_service(database_path).get_conversation_history("conversation-1")
+    history = _history_handler(database_path)(
+        GetConversationHistoryQuery(conversation_id="conversation-1")
+    )
 
     assert history is not None
     assert [(item.run_id, item.status, item.finished_at_ms) for item in history.runs] == [
@@ -221,7 +232,9 @@ def test_history_keeps_a_failed_run_and_an_open_run_in_the_projection(tmp_path: 
 def test_history_is_empty_for_a_conversation_without_messages(tmp_path: Path) -> None:
     database_path = _seeded_database(tmp_path)
 
-    history = _query_service(database_path).get_conversation_history("conversation-1")
+    history = _history_handler(database_path)(
+        GetConversationHistoryQuery(conversation_id="conversation-1")
+    )
 
     assert history is not None
     assert history.messages == ()
@@ -232,7 +245,9 @@ def test_history_is_empty_for_a_conversation_without_messages(tmp_path: Path) ->
 def test_history_is_none_for_an_unknown_conversation(tmp_path: Path) -> None:
     database_path = _seeded_database(tmp_path)
 
-    assert _query_service(database_path).get_conversation_history("missing") is None
+    assert _history_handler(database_path)(
+        GetConversationHistoryQuery(conversation_id="missing")
+    ) is None
 
 
 def test_history_keeps_the_newest_messages_and_reports_truncation(tmp_path: Path) -> None:
@@ -254,7 +269,9 @@ def test_history_keeps_the_newest_messages_and_reports_truncation(tmp_path: Path
     finally:
         connection.close()
 
-    history = _query_service(database_path).get_conversation_history("conversation-1")
+    history = _history_handler(database_path)(
+        GetConversationHistoryQuery(conversation_id="conversation-1")
+    )
 
     assert history is not None
     assert history.truncated is True

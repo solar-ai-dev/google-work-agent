@@ -1,6 +1,8 @@
 from dataclasses import replace
 from typing import Any, cast
 
+from tests.support.fakes import FakeClock
+
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.resource_continuation import OpaqueResourceQueryService
 
@@ -10,7 +12,7 @@ def _container_with_resource_service(resource_query_service: object) -> ApiConta
     return ApiContainer(
         unit_of_work_factory=lambda: dynamic,
         query_service=dynamic,
-        create_conversation_service=dynamic,
+        create_conversation_handler=dynamic,
         start_run_service=dynamic,
         approve_action_service=dynamic,
         modify_action_service=dynamic,
@@ -24,7 +26,7 @@ def _container_with_resource_service(resource_query_service: object) -> ApiConta
         readiness_aggregator=dynamic,
         runtime_status_provider=dynamic,
         api_access_guard=dynamic,
-        clock=dynamic,
+        clock=FakeClock(1),
         id_generator=dynamic,
         release_version="test",
         environment="test",

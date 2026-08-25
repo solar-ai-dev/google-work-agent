@@ -115,7 +115,11 @@ def pascal(stem: str) -> str:
 def owned_symbols(path: Path) -> set[str]:
     result = classes(path)
     for node in tree(path).body:
-        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.TypeAlias)):
+        if isinstance(node, ast.TypeAlias):
+            if isinstance(node.name, ast.Name):
+                result.add(node.name.id)
+            continue
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             result.update(target.id for target in targets if isinstance(target, ast.Name))
     return result
@@ -160,6 +164,15 @@ def test_immediate_domain_operation_per_file() -> None:
     clean(errors)
 
 
+EXACT_SYMBOL_PER_SPEC_MAPPING = {
+    # docs/canonical/16-repository-architecture/01-spec-to-code-deterministic-mapping.md:508
+    # mandates these exact symbols (no Handler/Result suffix) for the
+    # "Deterministic Application operation" ledger rows CAP-APP-095/096.
+    "resource/issue_selection_handle.py",
+    "resource/resolve_selection_handle.py",
+}
+
+
 def test_immediate_application_use_case_grammar() -> None:
     errors: list[str] = []
     base = SRC / "application" / "use_cases"
@@ -168,6 +181,8 @@ def test_immediate_application_use_case_grammar() -> None:
     for owner in (p for p in base.iterdir() if p.is_dir()):
         for path in owner.glob("*.py"):
             if path.name == "__init__.py":
+                continue
+            if f"{owner.name}/{path.name}" in EXACT_SYMBOL_PER_SPEC_MAPPING:
                 continue
             name = pascal(path.stem)
             found_classes = classes(path)

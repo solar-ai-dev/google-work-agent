@@ -4,13 +4,6 @@ import sqlite3
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.ports.observability_events import (
-    EventCategory,
-    ObservabilityContext,
-    Severity,
-    create_event_envelope,
-    serialize_event_envelope,
-)
 from google_work_agent.domain import (
     ActionCommand,
     ActionStatus,
@@ -34,75 +27,26 @@ from google_work_agent.ports import (
     AuditEventRecord,
     CommandReceiptRecord,
     CommandReceiptStatus,
-    ConversationRecord,
     EvidenceOriginType,
     EvidenceRecord,
     ExecutionAttemptRecord,
-    MessageRecord,
     PersistedAuditEventRecord,
     PersistedTraceEventRecord,
     PlanRecord,
     PlanReviewStatus,
     PlanStatus,
-    ResourceRefRecord,
-    ResourceSource,
     RunCreateRecord,
     RunRecord,
-    StoredResourceType,
     TraceEventRecord,
     VerificationRecord,
 )
-
-
-class SQLiteConversationRepository:
-    """SQLite conversation repository."""
-
-    def __init__(self, connection: sqlite3.Connection) -> None:
-        self._connection = connection
-
-    def get_by_id(self, conversation_id: str) -> ConversationRecord | None:
-        row = self._connection.execute(
-            """
-            SELECT id, account_id, title, created_at_ms, updated_at_ms
-            FROM conversations
-            WHERE id = ?;
-            """,
-            (conversation_id,),
-        ).fetchone()
-        if row is None:
-            return None
-        return ConversationRecord(
-            id=str(row["id"]),
-            account_id=str(row["account_id"]),
-            title=str(row["title"]),
-            created_at_ms=int(row["created_at_ms"]),
-            updated_at_ms=int(row["updated_at_ms"]),
-        )
-
-    def add(self, conversation: ConversationRecord) -> None:
-        self._connection.execute(
-            """
-            INSERT INTO conversations (id, account_id, title, created_at_ms, updated_at_ms)
-            VALUES (?, ?, ?, ?, ?);
-            """,
-            (
-                conversation.id,
-                conversation.account_id,
-                conversation.title,
-                conversation.created_at_ms,
-                conversation.updated_at_ms,
-            ),
-        )
-
-    def touch(self, conversation_id: str, *, updated_at_ms: int) -> None:
-        self._connection.execute(
-            """
-            UPDATE conversations
-            SET updated_at_ms = ?
-            WHERE id = ? AND updated_at_ms < ?;
-            """,
-            (updated_at_ms, conversation_id, updated_at_ms),
-        )
+from google_work_agent.ports.observability_events import (
+    EventCategory,
+    ObservabilityContext,
+    Severity,
+    create_event_envelope,
+    serialize_event_envelope,
+)
 
 
 class SQLiteRunRepository:
@@ -804,56 +748,6 @@ class SQLiteRunRepository:
             error_message=error_message,
         )
         return result
-
-
-class SQLiteMessageRepository:
-    """SQLite message repository."""
-
-    def __init__(self, connection: sqlite3.Connection) -> None:
-        self._connection = connection
-
-    def add(self, message: MessageRecord) -> None:
-        self._connection.execute(
-            """
-            INSERT INTO messages (id, conversation_id, run_id, role, content, created_at_ms)
-            VALUES (?, ?, ?, ?, ?, ?);
-            """,
-            (
-                message.id,
-                message.conversation_id,
-                message.run_id,
-                message.role,
-                message.content,
-                message.created_at_ms,
-            ),
-        )
-
-    def find_assistant_message(
-        self,
-        *,
-        run_id: str,
-        content: str,
-    ) -> MessageRecord | None:
-        row = self._connection.execute(
-            """
-            SELECT id, conversation_id, run_id, role, content, created_at_ms
-            FROM messages
-            WHERE run_id = ? AND role = 'ASSISTANT' AND content = ?
-            ORDER BY created_at_ms DESC, id DESC
-            LIMIT 1;
-            """,
-            (run_id, content),
-        ).fetchone()
-        if row is None:
-            return None
-        return MessageRecord(
-            id=str(row["id"]),
-            conversation_id=str(row["conversation_id"]),
-            run_id=None if row["run_id"] is None else str(row["run_id"]),
-            role=str(row["role"]),
-            content=str(row["content"]),
-            created_at_ms=int(row["created_at_ms"]),
-        )
 
 
 class SQLiteCommandReceiptRepository:
@@ -1678,91 +1572,6 @@ class SQLiteActionRepository:
         return result
 
 
-class SQLiteResourceRefRepository:
-    """SQLite resource reference repository."""
-
-    def __init__(self, connection: sqlite3.Connection) -> None:
-        self._connection = connection
-
-    def get_by_id(self, resource_ref_id: str) -> ResourceRefRecord | None:
-        row = self._connection.execute(
-            """
-            SELECT id, run_id, source, resource_type, resource_id, parent_resource_id,
-                   canonical_url, title, event_time_ms, version_token, metadata_json, captured_at_ms
-            FROM resource_refs
-            WHERE id = ?;
-            """,
-            (resource_ref_id,),
-        ).fetchone()
-        return None if row is None else _resource_ref_record_from_row(row)
-
-    def get_by_unique_key(
-        self,
-        *,
-        run_id: str,
-        source: str,
-        resource_type: str,
-        resource_id: str,
-    ) -> ResourceRefRecord | None:
-        row = self._connection.execute(
-            """
-            SELECT id, run_id, source, resource_type, resource_id, parent_resource_id,
-                   canonical_url, title, event_time_ms, version_token, metadata_json, captured_at_ms
-            FROM resource_refs
-            WHERE run_id = ? AND source = ? AND resource_type = ? AND resource_id = ?;
-            """,
-            (run_id, source, resource_type, resource_id),
-        ).fetchone()
-        return None if row is None else _resource_ref_record_from_row(row)
-
-    def upsert(self, record: ResourceRefRecord) -> None:
-        self._connection.execute(
-            """
-            INSERT INTO resource_refs (
-                id, run_id, source, resource_type, resource_id, parent_resource_id,
-                canonical_url, title, event_time_ms, version_token, metadata_json, captured_at_ms
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(run_id, source, resource_type, resource_id)
-            DO UPDATE SET
-                parent_resource_id = excluded.parent_resource_id,
-                canonical_url = excluded.canonical_url,
-                title = excluded.title,
-                event_time_ms = excluded.event_time_ms,
-                version_token = excluded.version_token,
-                metadata_json = excluded.metadata_json,
-                captured_at_ms = excluded.captured_at_ms;
-            """,
-            (
-                record.id,
-                record.run_id,
-                record.source.value,
-                record.resource_type.value,
-                record.resource_id,
-                record.parent_resource_id,
-                record.canonical_url,
-                record.title,
-                record.event_time_ms,
-                record.version_token,
-                record.metadata_json,
-                record.captured_at_ms,
-            ),
-        )
-
-    def list_by_run(self, run_id: str) -> tuple[ResourceRefRecord, ...]:
-        rows = self._connection.execute(
-            """
-            SELECT id, run_id, source, resource_type, resource_id, parent_resource_id,
-                   canonical_url, title, event_time_ms, version_token, metadata_json, captured_at_ms
-            FROM resource_refs
-            WHERE run_id = ?
-            ORDER BY source, resource_type, resource_id;
-            """,
-            (run_id,),
-        ).fetchall()
-        return tuple(_resource_ref_record_from_row(row) for row in rows)
-
-
 class SQLiteEvidenceRepository:
     """SQLite evidence repository."""
 
@@ -2506,26 +2315,6 @@ def _action_record_from_row(row: sqlite3.Row) -> ActionRecord:
         version=int(row["version"]),
         created_at_ms=int(row["created_at_ms"]),
         updated_at_ms=int(row["updated_at_ms"]),
-    )
-
-
-def _resource_ref_record_from_row(row: sqlite3.Row) -> ResourceRefRecord:
-    return ResourceRefRecord(
-        id=str(row["id"]),
-        run_id=str(row["run_id"]),
-        connector_id=str(row["connector_id"]),
-        source=ResourceSource(str(row["source"])),
-        resource_type=StoredResourceType(str(row["resource_type"])),
-        resource_id=str(row["resource_id"]),
-        parent_resource_id=(
-            None if row["parent_resource_id"] is None else str(row["parent_resource_id"])
-        ),
-        canonical_url=None if row["canonical_url"] is None else str(row["canonical_url"]),
-        title=None if row["title"] is None else str(row["title"]),
-        event_time_ms=_int_or_none(row["event_time_ms"]),
-        version_token=None if row["version_token"] is None else str(row["version_token"]),
-        metadata_json=str(row["metadata_json"]),
-        captured_at_ms=int(row["captured_at_ms"]),
     )
 
 

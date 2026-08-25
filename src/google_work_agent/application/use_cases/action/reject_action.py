@@ -81,7 +81,7 @@ class RejectActionHandler:
             run = unit_of_work.runs.get_by_id(plan.run_id)
             if run is None:
                 raise LookupError(f"run not found: {plan.run_id}")
-            conversation = unit_of_work.conversations.get_by_id(run.conversation_id)
+            conversation = unit_of_work.conversations.get(run.conversation_id)
             if conversation is None:
                 raise LookupError(f"conversation not found: {run.conversation_id}")
             actor_account_id = conversation.account_id

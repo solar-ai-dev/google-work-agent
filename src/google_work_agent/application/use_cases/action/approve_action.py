@@ -6,6 +6,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
 
+from google_work_agent.application.approval_source_snapshot import (
+    build_approval_source_snapshot,
+)
 from google_work_agent.application.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     approval_source_snapshot_for_calendar_conflict,
@@ -23,9 +26,6 @@ from google_work_agent.application.task_duplicates import (
     approval_source_snapshot_for_task_duplicate,
     duplicate_authority,
     require_duplicate_acknowledgement,
-)
-from google_work_agent.application.approval_source_snapshot import (
-    build_approval_source_snapshot,
 )
 from google_work_agent.application.write_execution_integrity import calculate_recovery_fingerprint
 from google_work_agent.application.write_persistence import (
@@ -143,7 +143,7 @@ class ApproveActionHandler:
                 run = unit_of_work.runs.get_by_id(plan.run_id)
                 if run is None:
                     raise LookupError(f"run not found: {plan.run_id}")
-                conversation = unit_of_work.conversations.get_by_id(run.conversation_id)
+                conversation = unit_of_work.conversations.get(run.conversation_id)
                 if conversation is None:
                     raise LookupError(f"conversation not found: {run.conversation_id}")
                 entry = self._registry.require(action.tool_name)
@@ -191,7 +191,7 @@ class ApproveActionHandler:
                 resource_ref = (
                     None
                     if action.target_resource_ref_id is None
-                    else unit_of_work.resource_refs.get_by_id(action.target_resource_ref_id)
+                    else unit_of_work.resource_refs.get(action.target_resource_ref_id)
                 )
                 source_snapshot = build_approval_source_snapshot(
                     action=action,
@@ -454,25 +454,25 @@ class ApproveActionHandler:
     @staticmethod
     def _result_from_response(response: object) -> ApproveActionResult:
         return ApproveActionResult(
-            applied=bool(getattr(response, "applied")),
-            result_code=str(getattr(response, "result_code")),
-            action_id=str(getattr(response, "action_id")),
-            action_status=str(getattr(response, "action_status")),
-            action_version=int(getattr(response, "action_version")),
-            next_allowed_commands=tuple(getattr(response, "next_allowed_commands")),
+            applied=bool(response.applied),
+            result_code=str(response.result_code),
+            action_id=str(response.action_id),
+            action_status=str(response.action_status),
+            action_version=int(response.action_version),
+            next_allowed_commands=tuple(response.next_allowed_commands),
             conflict_detail=getattr(response, "conflict_detail", None),
         )
 
     @staticmethod
     def _blocked_result(action: object, detail: str) -> ApproveActionResult:
-        effect_type = EffectType(getattr(action, "effect_type"))
-        status = ActionStatus(getattr(action, "status"))
+        effect_type = EffectType(action.effect_type)
+        status = ActionStatus(action.status)
         return ApproveActionResult(
             applied=False,
             result_code=ResultCode.STATE_CONFLICT.value,
-            action_id=str(getattr(action, "id")),
+            action_id=str(action.id),
             action_status=status.value,
-            action_version=int(getattr(action, "version")),
+            action_version=int(action.version),
             next_allowed_commands=tuple(
                 item.value for item in next_allowed_action_commands(status, effect_type=effect_type)
             ),

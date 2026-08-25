@@ -1,8 +1,19 @@
 """Message persistence port."""
+
 from typing import Protocol
+
 from google_work_agent.ports.models import MessageRecord
 
+
 class MessageRepository(Protocol):
-    def get_by_id(self, message_id: str) -> MessageRecord | None: ...
-    def add(self, message: MessageRecord) -> None: ...
-    def find_assistant_message(self, *, run_id: str, content: str) -> MessageRecord | None: ...
+    def append_user_message(self, message: MessageRecord) -> None: ...
+
+    def append_terminal_assistant_message(self, message: MessageRecord) -> None: ...
+
+    def list_by_conversation_keyset(
+        self,
+        *,
+        conversation_id: str,
+        cursor: str | None,
+        page_size: int,
+    ) -> tuple[tuple[MessageRecord, ...], str | None]: ...

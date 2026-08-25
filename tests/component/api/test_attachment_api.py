@@ -93,7 +93,7 @@ def _container(
     return ApiContainer(
         unit_of_work_factory=lambda: None,
         query_service=None,
-        create_conversation_service=lambda command: command,
+        create_conversation_handler=lambda command: command,
         start_run_service=lambda command: command,
         approve_action_service=lambda command: command,
         modify_action_service=lambda command: command,

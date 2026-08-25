@@ -24,14 +24,12 @@ from google_work_agent.api.schemas.conversations.get_latest_run import LatestCon
 from google_work_agent.api.schemas.conversations.list_conversations import ConversationListResponse
 from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationCommand,
-    CreateConversationHandler,
 )
 from google_work_agent.application.use_cases.conversation.get_conversation import (
     GetConversationHandler,
     GetConversationQuery,
 )
 from google_work_agent.application.use_cases.conversation.get_conversation_history import (
-    GetConversationHistoryHandler,
     GetConversationHistoryQuery,
 )
 from google_work_agent.application.use_cases.conversation.get_latest_run import (
@@ -39,7 +37,6 @@ from google_work_agent.application.use_cases.conversation.get_latest_run import 
     GetLatestRunQuery,
 )
 from google_work_agent.application.use_cases.conversation.list_conversations import (
-    ListConversationsHandler,
     ListConversationsQuery,
 )
 from google_work_agent.ports import EndpointPolicy
@@ -65,9 +62,7 @@ def create_conversation(
     command_payload["request_hash"] = calculate_server_request_hash(
         operation="CreateConversationRequestV1", payload=command_payload
     )
-    result = CreateConversationHandler.from_legacy_service_supplier(
-        dependencies.create_conversation_service
-    )(CreateConversationCommand(**command_payload))
+    result = dependencies.create_conversation_handler(CreateConversationCommand(**command_payload))
     response.status_code = http_status_for_result_code(result.result_code, default_success=201)
     return ConversationResponse(**asdict(result))
 
@@ -87,7 +82,7 @@ def list_conversations(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    result = ListConversationsHandler.from_legacy_query_supplier(dependencies.query_service)(
+    result = dependencies.list_conversations_handler(
         ListConversationsQuery(account_id=account_id, cursor=cursor, page_size=page_size)
     )
     return ConversationListResponse(
@@ -140,7 +135,7 @@ def get_conversation_history(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    history = GetConversationHistoryHandler.from_legacy_query_supplier(dependencies.query_service)(
+    history = dependencies.get_conversation_history_handler(
         GetConversationHistoryQuery(conversation_id=conversation_id)
     )
     if history is None:

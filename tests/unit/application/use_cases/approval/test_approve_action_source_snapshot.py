@@ -92,7 +92,7 @@ class _ResourceRefRepository:
     def __init__(self, resource_ref: ResourceRefRecord | None) -> None:
         self.resource_ref = resource_ref
 
-    def get_by_id(self, resource_ref_id: str) -> ResourceRefRecord | None:
+    def get(self, resource_ref_id: str) -> ResourceRefRecord | None:
         if self.resource_ref is None:
             return None
         return self.resource_ref if self.resource_ref.id == resource_ref_id else None

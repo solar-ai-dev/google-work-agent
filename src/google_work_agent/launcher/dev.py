@@ -23,7 +23,11 @@ from google_work_agent.adapters.connectors.google_workspace_execution import (
 )
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
 from google_work_agent.adapters.keyring import OSKeyringSecretStore
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    RESUME_CONTRACT_VERSION,
+)
 from google_work_agent.adapters.langgraph.main.workflow import LangGraphWorkflowRuntime
+from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.llm import (
     DEFAULT_GEMINI_MODEL_ID,
     APIProviderConnectionService,
@@ -54,6 +58,7 @@ from google_work_agent.adapters.runtime.attachment_staging import (
     LocalAttachmentStaging,
 )
 from google_work_agent.api.app import create_app
+from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import API_CONTRACT_VERSION, ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bind import LocalBindPolicy
@@ -63,7 +68,7 @@ from google_work_agent.application.attachments import (
     GetGmailAttachmentService,
     StageAttachmentService,
 )
-from google_work_agent.application.coordinator import LocalRunCoordinator
+from google_work_agent.application.coordinator import LocalRunCoordinator, QueueBusyError
 from google_work_agent.application.google_connection import (
     DisconnectGoogleService,
     GetGoogleConnectionService,
@@ -86,11 +91,18 @@ from google_work_agent.application.queries import QueryService
 from google_work_agent.application.resource_queries import ResourceQueryService
 from google_work_agent.application.settings import GetSettingsService, PatchSettingsService
 from google_work_agent.application.start_run import (
-    CreateConversationService,
     ModifyWriteActionService,
     RejectWriteActionService,
     ResumeRunService,
-    StartRunService,
+)
+from google_work_agent.application.use_cases.conversation.create_conversation import (
+    CreateConversationHandler,
+)
+from google_work_agent.application.use_cases.conversation.get_conversation_history import (
+    GetConversationHistoryHandler,
+)
+from google_work_agent.application.use_cases.conversation.list_conversations import (
+    ListConversationsHandler,
 )
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
@@ -125,6 +137,9 @@ from google_work_agent.ports import (
     WorkflowStartRequest,
 )
 from google_work_agent.ports.mcp_transport import MCPTransportError
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    WorkflowExecutionAdmissionV1,
+)
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
@@ -321,6 +336,9 @@ class _DeferredApiContainer:
         self.readiness_aggregator = _BootReadinessAggregator(self.safe_mode_controller)
         self.runtime_status_provider: RuntimeStatusProvider = _BootRuntimeStatusProvider()
         self.query_service: Any = _BootQueryService()
+        self.create_conversation_handler: Any = None
+        self.list_conversations_handler: Any = None
+        self.get_conversation_history_handler: Any = None
         self.clock = SystemClock()
         self.id_generator = UUIDIdGenerator()
         self.release_version = RELEASE_VERSION
@@ -548,6 +566,30 @@ def build_container(
         finalize_cancel_service=finalize_cancel_service,
         id_factory=id_generator.next_id,
     )
+
+    def _execute_admission(admission: WorkflowExecutionAdmissionV1) -> None:
+        # BackgroundRunExecutorAdapter's worker thread has no exception
+        # handling around this call; a busy LocalRunCoordinator queue must
+        # not kill that thread. A dropped admission stays PENDING and the
+        # reconciliation loop redrives it.
+        try:
+            coordinator.enqueue_start(
+                run_id=admission.effective_binding.run_id,
+                request_id=admission.admission_id,
+                command_id=admission.handoff_id,
+            )
+        except QueueBusyError:
+            pass
+
+    production_runtime = build_production_runtime(
+        unit_of_work_factory=unit_of_work_factory,
+        id_factory=id_generator.next_id,
+        execute_admission=_execute_admission,
+    )
+
+    async def _start_workflow_handoff_reconciliation() -> None:
+        production_runtime.workflow_handoff_reconciliation_loop.start()
+
     session_manager = InMemoryLocalSessionManager()
     grant_store = InMemoryBootstrapGrantStore()
     secret = bootstrap_secret or secrets.token_urlsafe(32)
@@ -560,16 +602,13 @@ def build_container(
     return ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
         query_service=query_service,
-        create_conversation_service=CreateConversationService(
+        create_conversation_handler=CreateConversationHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
-        start_run_service=StartRunService(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=clock.now_ms,
-            reserve_queue_slot=lambda run_id: coordinator.reserve_start(run_id=run_id),
-            release_queue_slot=lambda run_id: coordinator.release_reservation(run_id=run_id),
-        ),
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE.value,
+        graph_version=RESUME_CONTRACT_VERSION,
+        schedule_run_execution=production_runtime.schedule_run_execution,
         approve_action_service=ApproveWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -649,6 +688,14 @@ def build_container(
             gateway=google_connector.gmail_attachment_gateway,
         ),
         stage_attachment_service=StageAttachmentService(staging=attachment_staging),
+        list_conversations_handler=ListConversationsHandler(
+            unit_of_work_factory=unit_of_work_factory,
+        ),
+        get_conversation_history_handler=GetConversationHistoryHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            database_path=database_path,
+            connection_factory=connect_sqlite,
+        ),
         get_llm_connection_service=GetLLMConnectionService(
             runtime_status_service=llm_runtime.status_service,
             settings_service=llm_runtime.settings_service,
@@ -663,7 +710,12 @@ def build_container(
         ),
         test_llm_connection_service=TestLLMConnectionService(runtime_service=llm_runtime),
         safe_mode_controller=safe_mode_controller,
-        shutdown_callbacks=(workflow_runtime.close, connector_registry.close_all),
+        startup_callbacks=(_start_workflow_handoff_reconciliation,),
+        shutdown_callbacks=(
+            workflow_runtime.close,
+            connector_registry.close_all,
+            production_runtime.workflow_handoff_reconciliation_loop.stop,
+        ),
     )
 
 

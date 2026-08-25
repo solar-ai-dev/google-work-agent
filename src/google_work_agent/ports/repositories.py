@@ -18,32 +18,19 @@ from google_work_agent.ports.models import (
     ApprovalRecord,
     AuditEventRecord,
     CommandReceiptRecord,
-    ConversationRecord,
     EvidenceRecord,
     ExecutionAttemptRecord,
-    MessageRecord,
     PersistedAuditEventRecord,
     PersistedTraceEventRecord,
     PlanRecord,
-    ResourceRefRecord,
     RunCreateRecord,
     RunRecord,
     TraceEventRecord,
     VerificationRecord,
 )
-
-
-class ConversationRepository(Protocol):
-    """Conversation access required by product-core application services."""
-
-    def get_by_id(self, conversation_id: str) -> ConversationRecord | None:
-        """Return a conversation by identifier."""
-
-    def add(self, conversation: ConversationRecord) -> None:
-        """Persist a new conversation row."""
-
-    def touch(self, conversation_id: str, *, updated_at_ms: int) -> None:
-        """Advance the conversation's last-activity timestamp, never backward."""
+from google_work_agent.ports.persistence.conversation_repository import ConversationRepository
+from google_work_agent.ports.persistence.message_repository import MessageRepository
+from google_work_agent.ports.persistence.resource_ref_repository import ResourceRefRepository
 
 
 class RunRepository(Protocol):
@@ -225,21 +212,6 @@ class RunRepository(Protocol):
 
     def set_verifying(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
         """Move one run into VERIFYING via the guarded BEGIN_VERIFICATION/recovery transition."""
-
-
-class MessageRepository(Protocol):
-    """Message persistence required by the answer-only flow."""
-
-    def add(self, message: MessageRecord) -> None:
-        """Persist a new message row."""
-
-    def find_assistant_message(
-        self,
-        *,
-        run_id: str,
-        content: str,
-    ) -> MessageRecord | None:
-        """Return a matching assistant message if one already exists."""
 
 
 class CommandReceiptRepository(Protocol):
@@ -503,29 +475,6 @@ class ActionRepository(Protocol):
 
     def list_ready_actions(self, plan_id: str) -> tuple[ActionRecord, ...]:
         """Return claimable read actions whose dependencies are satisfied."""
-
-
-class ResourceRefRepository(Protocol):
-    """Resource reference persistence."""
-
-    def get_by_id(self, resource_ref_id: str) -> ResourceRefRecord | None:
-        """Return one resource reference by identifier."""
-
-    def get_by_unique_key(
-        self,
-        *,
-        run_id: str,
-        connector_id: str,
-        resource_type: str,
-        resource_id: str,
-    ) -> ResourceRefRecord | None:
-        """Return one resource reference by connector-aware unique key."""
-
-    def upsert(self, record: ResourceRefRecord) -> None:
-        """Insert or update one resource reference."""
-
-    def list_by_run(self, run_id: str) -> tuple[ResourceRefRecord, ...]:
-        """Return resource references for one run."""
 
 
 class EvidenceRepository(Protocol):

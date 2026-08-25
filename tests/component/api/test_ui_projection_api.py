@@ -13,6 +13,7 @@ from google_work_agent.adapters.readiness.composite import (
     StaticRuntimeStatusProvider,
 )
 from google_work_agent.api.app import create_app
+from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
@@ -20,9 +21,16 @@ from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.resource_queries import ResourceQueryService
 from google_work_agent.application.start_run import (
-    CreateConversationService,
     RejectWriteActionService,
-    StartRunService,
+)
+from google_work_agent.application.use_cases.conversation.create_conversation import (
+    CreateConversationHandler,
+)
+from google_work_agent.application.use_cases.conversation.get_conversation_history import (
+    GetConversationHistoryHandler,
+)
+from google_work_agent.application.use_cases.conversation.list_conversations import (
+    ListConversationsHandler,
 )
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
@@ -94,17 +102,50 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         now_ms=clock.now_ms(),
     )
     session_manager = InMemoryLocalSessionManager()
+    coordinator_stub = type(
+        "CoordinatorStub",
+        (),
+        {
+            "start": lambda self: None,
+            "stop": lambda self: None,
+            "enqueue_start": lambda self, **kwargs: None,
+            "confirm_start": lambda self, **kwargs: None,
+            "enqueue_resume": lambda self, **kwargs: None,
+            "request_cancel": lambda self, **kwargs: None,
+        },
+    )()
+    id_generator = DeterministicUUID(prefix="req")
+
+    def _execute_admission(admission: object) -> None:
+        coordinator_stub.enqueue_start(
+            run_id=admission.effective_binding.run_id,  # type: ignore[attr-defined]
+            request_id=admission.admission_id,  # type: ignore[attr-defined]
+            command_id=admission.handoff_id,  # type: ignore[attr-defined]
+        )
+
+    production_runtime = build_production_runtime(
+        unit_of_work_factory=unit_of_work_factory,
+        id_factory=id_generator.next_id,
+        execute_admission=_execute_admission,
+    )
     container = ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
         query_service=query_service,
-        create_conversation_service=CreateConversationService(
+        create_conversation_handler=CreateConversationHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
-        start_run_service=StartRunService(
+        list_conversations_handler=ListConversationsHandler(
             unit_of_work_factory=unit_of_work_factory,
-            now_ms=clock.now_ms,
         ),
+        get_conversation_history_handler=GetConversationHistoryHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            database_path=database_path,
+            connection_factory=connect_sqlite,
+        ),
+        graph_profile="SIX_ROLE_BASELINE",
+        graph_version="resume-contract-v1",
+        schedule_run_execution=production_runtime.schedule_run_execution,
         approve_action_service=ApproveWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -131,18 +172,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             now_ms=clock.now_ms,
         ),
         resume_run_service=lambda command: command,
-        local_run_coordinator=type(
-            "CoordinatorStub",
-            (),
-            {
-                "start": lambda self: None,
-                "stop": lambda self: None,
-                "enqueue_start": lambda self, **kwargs: None,
-                "confirm_start": lambda self, **kwargs: None,
-                "enqueue_resume": lambda self, **kwargs: None,
-                "request_cancel": lambda self, **kwargs: None,
-            },
-        )(),
+        local_run_coordinator=coordinator_stub,
         workflow_runtime=runtime,
         event_publisher=publisher,
         readiness_aggregator=StaticReadinessAggregator(
@@ -164,7 +194,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             now_ms=clock.now_ms,
         ),
         clock=clock,
-        id_generator=DeterministicUUID(prefix="req"),
+        id_generator=id_generator,
         release_version="test",
         environment="test",
         service_instance_id="svc-ui",
@@ -209,6 +239,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         gmail = client.get("/api/v1/resources/gmail?query=project&page_size=20", headers=headers)
         assert gmail.status_code == 200
         assert gmail.json()["items"][0]["resource_id"] == "thread-project"
+        assert gmail.json()["items"][0]["selection_handle"].startswith("v1.")
 
         gmail_count = client.get("/api/v1/resources/gmail/count", headers=headers)
         assert gmail_count.status_code == 200
@@ -242,6 +273,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         assert tasks.status_code == 200
         assert tasks.json()["items"][0]["resource_type"] == "task"
         assert tasks.json()["items"][0]["title"] == "Pay contractor invoice"
+        assert tasks.json()["items"][0]["selection_handle"].startswith("v1.")
 
         completed_tasks = client.get(
             "/api/v1/resources/tasks?page_size=20&status_scope=completed",
@@ -268,6 +300,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         assert all(item["resource_type"] == "calendar_event" for item in calendar.json()["items"])
         calendar_item = calendar.json()["items"][0]
         assert calendar_item["title"]
+        assert calendar_item["selection_handle"].startswith("v1.")
         assert {"start", "end"}.issubset(calendar_item["metadata"])
 
         calendar_count = client.get(
@@ -298,9 +331,6 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             json={
                 "command_id": "run-cmd-1",
                 "conversation_id": "conversation-1",
-                "user_message_id": "message-1",
-                "run_id": "run-1",
-                "workflow_key": "workflow-1",
                 "request_text": "hello",
                 "entry_mode": "AGENT_SEARCH",
                 "selected_resource_ids": [],
@@ -310,10 +340,11 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             headers=headers,
         )
         assert started.status_code == 202
+        run_id = started.json()["run_id"]
 
         latest_run = client.get("/api/v1/conversations/conversation-1/latest-run", headers=headers)
         assert latest_run.status_code == 200
-        assert latest_run.json()["run"]["run_id"] == "run-1"
+        assert latest_run.json()["run"]["run_id"] == run_id
 
         history = client.get("/api/v1/conversations/conversation-1/history", headers=headers)
         assert history.status_code == 200
@@ -322,27 +353,30 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         assert [(item["role"], item["content"]) for item in history_body["messages"]] == [
             ("USER", "hello")
         ]
-        assert history_body["messages"][0]["run_id"] == "run-1"
-        assert [item["run_id"] for item in history_body["runs"]] == ["run-1"]
+        assert history_body["messages"][0]["run_id"] == run_id
+        assert [item["run_id"] for item in history_body["runs"]] == [run_id]
         assert history_body["truncated"] is False
 
         missing_history = client.get("/api/v1/conversations/missing/history", headers=headers)
         assert missing_history.status_code == 404
 
-        context = client.get("/api/v1/runs/run-1/context", headers=headers)
+        context = client.get(f"/api/v1/runs/{run_id}/context", headers=headers)
         assert context.status_code == 200
         assert context.json()["context"]["request_text"] == "hello"
 
         with connect_sqlite(database_path) as connection:
-            connection.execute("UPDATE runs SET status = 'WAITING_APPROVAL' WHERE id = 'run-1';")
+            connection.execute(
+                "UPDATE runs SET status = 'WAITING_APPROVAL' WHERE id = ?;", (run_id,)
+            )
             connection.execute(
                 """
                 INSERT INTO plans (
                     id, run_id, revision_no, status, summary_text, created_at_ms,
                     review_status, review_version
-                ) VALUES ('plan-1', 'run-1', 1, 'WAITING_APPROVAL', 'Reject plan', 1000,
+                ) VALUES ('plan-1', ?, 1, 'WAITING_APPROVAL', 'Reject plan', 1000,
                           'PASSED', 0);
-                """
+                """,
+                (run_id,),
             )
             connection.execute(
                 """
@@ -406,7 +440,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         assert rejected.status_code == 200
         assert rejected.json()["action_status"] == "REJECTED"
 
-        snapshot_response = client.get("/api/v1/runs/run-1", headers=headers)
+        snapshot_response = client.get(f"/api/v1/runs/{run_id}", headers=headers)
         assert snapshot_response.status_code == 200
         action_statuses = {
             action["action_id"]: action["status"]
@@ -417,6 +451,6 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             "action-2": "DEPENDENCY_BLOCKED",
         }
         assert snapshot_response.json()["snapshot"]["status"] == "COMPLETED"
-        projection_events = publisher.replay(run_id="run-1", after_event_id=None)
+        projection_events = publisher.replay(run_id=run_id, after_event_id=None)
         assert projection_events[-1].event_type == "snapshot_required"
         assert projection_events[-1].payload == {"reason": "ACTION_REJECTED"}

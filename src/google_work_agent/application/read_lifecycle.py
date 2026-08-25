@@ -183,7 +183,7 @@ class CompleteReadActionService:
             if not action.connector_id:
                 raise ValueError("persisted READ action connector_id is required")
             for resource_ref in command.resource_refs:
-                unit_of_work.resource_refs.upsert(
+                unit_of_work.resource_refs.upsert_bound_ref(
                     ResourceRefRecord(
                         id=resource_ref.id,
                         run_id=plan.run_id,

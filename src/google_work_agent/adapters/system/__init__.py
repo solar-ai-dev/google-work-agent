@@ -1,0 +1,1 @@
+"""Concrete system adapters."""

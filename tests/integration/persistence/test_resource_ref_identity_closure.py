@@ -5,20 +5,20 @@ from pathlib import Path
 import pytest
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.connector_identity import (
-    ConnectorAwareResourceRefRepository,
+from google_work_agent.adapters.persistence.sqlite.repositories.resource_ref_repository import (
+    SqliteResourceRefRepository,
 )
 from google_work_agent.ports import ResourceRefRecord, ResourceSource, StoredResourceType
 
 RUNTIME_MIGRATIONS_DIR = Path("src/google_work_agent/adapters/persistence/migrations")
 
 
-def test_clean_database_migrates_through_0008_with_full_integrity(tmp_path: Path) -> None:
+def test_clean_database_migrates_through_latest_with_full_integrity(tmp_path: Path) -> None:
     connection = connect_sqlite(tmp_path / "clean-latest.db")
     try:
         results = apply_migrations(connection, now_ms=lambda: 1)
 
-        assert results[-1].version == 8
+        assert results[-1].version == 9
         assert all(result.applied for result in results)
         assert [str(row[0]) for row in connection.execute("PRAGMA quick_check;")] == ["ok"]
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
@@ -46,15 +46,24 @@ def test_0008_upgrade_preserves_plan_action_evidence_graph(tmp_path: Path) -> No
         assert results[-1].version == 8
         assert results[-1].applied is True
         assert _aggregate_counts(connection) == before
-        assert connection.execute(
-            "SELECT connector_id FROM resource_refs WHERE id = 'resource-1';"
-        ).fetchone()[0] == "connector-a"
-        assert connection.execute(
-            "SELECT connector_id FROM actions WHERE id = 'action-1';"
-        ).fetchone()[0] == "connector-a"
-        assert connection.execute(
-            "SELECT evidence_id FROM action_evidence WHERE action_id = 'action-1';"
-        ).fetchone()[0] == "evidence-1"
+        assert (
+            connection.execute(
+                "SELECT connector_id FROM resource_refs WHERE id = 'resource-1';"
+            ).fetchone()[0]
+            == "connector-a"
+        )
+        assert (
+            connection.execute(
+                "SELECT connector_id FROM actions WHERE id = 'action-1';"
+            ).fetchone()[0]
+            == "connector-a"
+        )
+        assert (
+            connection.execute(
+                "SELECT evidence_id FROM action_evidence WHERE action_id = 'action-1';"
+            ).fetchone()[0]
+            == "evidence-1"
+        )
         assert [str(row[0]) for row in connection.execute("PRAGMA quick_check;")] == ["ok"]
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
     finally:
@@ -66,10 +75,10 @@ def test_same_source_and_external_id_coexist_across_connectors(tmp_path: Path) -
     try:
         apply_migrations(connection, now_ms=lambda: 1)
         _seed_run(connection)
-        repository = ConnectorAwareResourceRefRepository(connection)
+        repository = SqliteResourceRefRepository(connection)
 
-        repository.upsert(_event_ref("resource-a", "connector-a", title="A"))
-        repository.upsert(_event_ref("resource-b", "connector-b", title="B"))
+        repository.upsert_bound_ref(_event_ref("resource-a", "connector-a", title="A"))
+        repository.upsert_bound_ref(_event_ref("resource-b", "connector-b", title="B"))
 
         rows = connection.execute(
             """
@@ -84,7 +93,7 @@ def test_same_source_and_external_id_coexist_across_connectors(tmp_path: Path) -
             ("connector-b", "CALENDAR", "EVENT", "external-X", "B"),
         ]
 
-        repository.upsert(_event_ref("replacement-id", "connector-a", title="A2"))
+        repository.upsert_bound_ref(_event_ref("replacement-id", "connector-a", title="A2"))
         rows_after_upsert = connection.execute(
             """
             SELECT id, connector_id, title FROM resource_refs

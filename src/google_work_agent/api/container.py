@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -10,6 +11,12 @@ from fastapi import Request
 
 from google_work_agent.api.security.policies import DEFAULT_ENDPOINT_POLICY_REGISTRY
 from google_work_agent.application.resource_continuation import OpaqueResourceQueryService
+from google_work_agent.application.use_cases.resource.issue_selection_handle import (
+    IssueSelectionHandle,
+)
+from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
+    ResolveSelectionHandle,
+)
 from google_work_agent.ports import (
     ApiAccessGuard,
     Clock,
@@ -37,8 +44,7 @@ class ApiContainer:
 
     unit_of_work_factory: Callable[[], Any]
     query_service: Any
-    create_conversation_service: Any
-    start_run_service: Any
+    create_conversation_handler: Any
     approve_action_service: Any
     modify_action_service: Any
     reject_action_service: Any
@@ -65,6 +71,10 @@ class ApiContainer:
     bootstrap_grant_store: Any | None = None
     local_session_manager: Any | None = None
     endpoint_policy_registry: Any = DEFAULT_ENDPOINT_POLICY_REGISTRY
+    start_run_service: Any | None = None
+    graph_profile: Any = "SIX_ROLE_BASELINE"
+    graph_version: str = "resume-contract-v1"
+    schedule_run_execution: Any | None = None
     client_address_resolver: Callable[[Request], str | None] | None = None
     operational_log_sink: OperationalLogSink | None = None
     start_google_oauth_service: Any | None = None
@@ -88,10 +98,36 @@ class ApiContainer:
     resolve_recovery_service: Any | None = None
     get_gmail_attachment_service: GetGmailAttachmentService | None = None
     stage_attachment_service: StageAttachmentService | None = None
+    list_conversations_handler: Any | None = None
+    get_conversation_history_handler: Any | None = None
+    issue_selection_handle: IssueSelectionHandle | None = None
+    resolve_selection_handle: ResolveSelectionHandle | None = None
+    resource_connector_id: str = "google_workspace"
     startup_callbacks: tuple[Callable[[], Awaitable[None]], ...] = ()
     shutdown_callbacks: tuple[Callable[[], None], ...] = ()
 
     def __post_init__(self) -> None:
+        if self.issue_selection_handle is None or self.resolve_selection_handle is None:
+            signing_secret = secrets.token_bytes(32)
+            object.__setattr__(
+                self,
+                "issue_selection_handle",
+                IssueSelectionHandle(
+                    signing_secret=signing_secret,
+                    service_instance_id=self.service_instance_id,
+                    now_ms=self.clock.now_ms,
+                    ttl_ms=5 * 60 * 1000,
+                ),
+            )
+            object.__setattr__(
+                self,
+                "resolve_selection_handle",
+                ResolveSelectionHandle(
+                    signing_secret=signing_secret,
+                    service_instance_id=self.service_instance_id,
+                    now_ms=self.clock.now_ms,
+                ),
+            )
         service = self.resource_query_service
         if service is not None and not isinstance(service, OpaqueResourceQueryService):
             object.__setattr__(

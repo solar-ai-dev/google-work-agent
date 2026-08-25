@@ -1,4 +1,26 @@
-"""Run persistence port."""
+"""Run persistence port.
+
+STR-149's canonical required callable surface is `create`, `get`,
+`get_snapshot`, `find_open_by_conversation`, and
+`update_if_version_and_status`. `run.start_run` (CAP-APP-005) uses only
+that surface.
+
+Every other method below is a pre-existing, still-actively-called
+domain-transition shim (`start_analysis`, `begin_retrieval`, ... `resume_after_reauth`,
+`set_recovery_required`, `set_reauth_required`, `set_verifying`) owned by Run
+lifecycle capabilities outside #72's bounded scope (CAP-APP-016..022 and
+related). Renaming/collapsing them onto the generic canonical surface is a
+repository-wide capability cut-over of its own and is intentionally deferred;
+see the SQLite adapter for exact remaining callers per method. Per migration
+policy they are kept as thin shims whose actual row write now delegates to
+`update_if_version_and_status` rather than owning independent SQL.
+
+`get_by_id` still has real callers across the codebase and is kept for the
+same reason. `add`/`get_open_by_conversation` had zero remaining callers
+(repository-wide search, #72 final cleanup) and were removed outright rather
+than kept as dead shims; `create`/`find_open_by_conversation` are the sole
+authority for that surface now.
+"""
 
 from typing import Protocol
 
@@ -7,9 +29,21 @@ from google_work_agent.ports.models import RunCreateRecord, RunRecord
 
 
 class RunRepository(Protocol):
+    # --- STR-149 canonical surface (run.start_run / CAP-APP-005) ---
+    def create(self, run: RunCreateRecord) -> None: ...
+    def get(self, run_id: str) -> RunRecord | None: ...
+    def get_snapshot(self, run_id: str) -> RunRecord | None: ...
+    def find_open_by_conversation(self, conversation_id: str) -> RunRecord | None: ...
+    def update_if_version_and_status(
+        self,
+        run_id: str,
+        expected_version: int,
+        expected_statuses: frozenset[RunStatus],
+        values: dict[str, object],
+    ) -> bool: ...
+
+    # --- pre-existing shims kept for non-StartRun Run lifecycle capabilities ---
     def get_by_id(self, run_id: str) -> RunRecord | None: ...
-    def get_open_by_conversation(self, conversation_id: str) -> RunRecord | None: ...
-    def add(self, run: RunCreateRecord) -> None: ...
     def start_analysis(self, run_id: str, *, expected_version: int, finished_at_ms: int | None = None) -> CommandResult[RunStatus, RunCommand]: ...
     def begin_retrieval(self, run_id: str, *, expected_version: int, finished_at_ms: int | None = None) -> CommandResult[RunStatus, RunCommand]: ...
     def begin_planning(self, run_id: str, *, expected_version: int, finished_at_ms: int | None = None) -> CommandResult[RunStatus, RunCommand]: ...

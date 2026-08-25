@@ -371,13 +371,6 @@ def _build_durable_materialization_proof(
             raise RuntimeError(
                 "corrective durable proof requires persisted Action connector identity"
             )
-        resource_connector_reader = getattr(
-            unit_of_work.resource_refs, "connector_id_for_resource_ref", None
-        )
-        if not callable(resource_connector_reader):
-            raise RuntimeError(
-                "corrective durable proof requires persisted ResourceRef connector identity"
-            )
 
         persisted_connector_ids: dict[str, str] = {}
         target_resource_ids: dict[str, str | None] = {}
@@ -403,12 +396,12 @@ def _build_durable_materialization_proof(
                 if candidate_target is not None:
                     raise ValueError("persisted corrective target ResourceRef drifted")
             else:
-                resource_ref = unit_of_work.resource_refs.get_by_id(target_id)
+                resource_ref = unit_of_work.resource_refs.get(target_id)
                 if resource_ref is None or resource_ref.run_id != run_id:
                     raise ValueError(
                         "persisted corrective target ResourceRef is missing or cross-Run"
                     )
-                if resource_connector_reader(target_id) != actual_connector_id:
+                if resource_ref.connector_id != actual_connector_id:
                     raise ValueError(
                         "persisted corrective target ResourceRef connector drifted"
                     )
@@ -611,13 +604,13 @@ def _candidate_identity_maps(
 
 def _corrective_child_id(*, kind: str, plan_id: str, logical_id: str) -> str:
     return sha256(
-        f"google-work-agent:corrective:{kind}:{plan_id}:{logical_id}".encode("utf-8")
+        f"google-work-agent:corrective:{kind}:{plan_id}:{logical_id}".encode()
     ).hexdigest()
 
 
 def _corrective_command_id(*, kind: str, plan_id: str) -> str:
     return sha256(
-        f"google-work-agent:corrective-command:{kind}:{plan_id}".encode("utf-8")
+        f"google-work-agent:corrective-command:{kind}:{plan_id}".encode()
     ).hexdigest()
 
 

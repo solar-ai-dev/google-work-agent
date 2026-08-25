@@ -69,7 +69,7 @@ class _Conversations:
     def __init__(self, conversation: ConversationRecord) -> None:
         self.conversation = conversation
 
-    def get_by_id(self, _conversation_id: str) -> ConversationRecord:
+    def get(self, _conversation_id: str) -> ConversationRecord:
         return self.conversation
 
 

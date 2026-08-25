@@ -436,9 +436,7 @@ def handle_existing_complete_receipt(
                 action_version=action.version,
                 next_allowed_commands=(),
             )
-            finish_json_receipt(
-                unit_of_work, command_id, response, action.version, completed_at_ms
-            )
+            finish_json_receipt(unit_of_work, command_id, response, action.version, completed_at_ms)
             unit_of_work.commit()
             return _PendingReceiptResolution(should_return=True, response=response)
         return _return_recovery_required_action(
@@ -512,9 +510,7 @@ def handle_existing_finalize_receipt(
                 run_completed=aggregate.run_completed,
                 partial=aggregate.partial,
             )
-            finish_json_receipt(
-                unit_of_work, command_id, response, action.version, completed_at_ms
-            )
+            finish_json_receipt(unit_of_work, command_id, response, action.version, completed_at_ms)
             unit_of_work.commit()
             return _PendingReceiptResolution(should_return=True, response=response)
         return _return_recovery_required_action(
@@ -576,9 +572,7 @@ def handle_existing_fail_receipt(
                 partial=aggregate.partial,
                 safe_error_code=command.safe_error_code,
             )
-            finish_json_receipt(
-                unit_of_work, command_id, response, action.version, completed_at_ms
-            )
+            finish_json_receipt(unit_of_work, command_id, response, action.version, completed_at_ms)
             unit_of_work.commit()
             return _PendingReceiptResolution(should_return=True, response=response)
         return _return_recovery_required_action(
@@ -746,12 +740,17 @@ def _complete_projection_matches(
     connector_id: str,
     command: CompleteReadActionCommand,
 ) -> bool:
+    persisted_refs = unit_of_work.resource_refs.list_for_run_bounded(run_id, limit=1000)
     for resource_ref in command.resource_refs:
-        persisted_ref = unit_of_work.resource_refs.get_by_unique_key(
-            run_id=run_id,
-            connector_id=connector_id,
-            resource_type=resource_ref.resource_type.value,
-            resource_id=resource_ref.resource_id,
+        persisted_ref = next(
+            (
+                item
+                for item in persisted_refs
+                if item.connector_id == connector_id
+                and item.resource_type == resource_ref.resource_type
+                and item.resource_id == resource_ref.resource_id
+            ),
+            None,
         )
         if persisted_ref is None:
             return False

@@ -361,9 +361,7 @@ def test_count_resources_handler_owns_multi_page_count_without_api_continuations
 def test_get_resource_handler_owns_detail_projection_and_canonical_link() -> None:
     access = _ResourceAccess()
 
-    result = GetResourceHandler(access)(
-        GetResourceQuery(source="gmail", resource_id="thread-1")
-    )
+    result = GetResourceHandler(access)(GetResourceQuery(source="gmail", resource_id="thread-1"))
 
     assert result.resource.resource_id == "thread-1"
     assert result.resource.message_id == "message-1"

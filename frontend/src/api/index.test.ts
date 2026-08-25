@@ -95,9 +95,6 @@ describe("api index wrappers", () => {
           api.startRun({
             command_id: "command-2",
             conversation_id: "conversation-1",
-            user_message_id: "message-1",
-            run_id: "run-1",
-            workflow_key: "workflow-1",
             request_text: "Summarize",
             entry_mode: "AGENT_SEARCH",
             selected_resource_ids: [],
@@ -105,7 +102,7 @@ describe("api index wrappers", () => {
           }),
         path: "/api/v1/runs",
         method: "POST",
-        bodyIncludes: { run_id: "run-1", request_text: "Summarize" },
+        bodyIncludes: { conversation_id: "conversation-1", request_text: "Summarize" },
       },
       {
         call: () =>

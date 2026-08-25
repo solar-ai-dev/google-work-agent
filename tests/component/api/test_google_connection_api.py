@@ -105,7 +105,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
     container = ApiContainer(
         unit_of_work_factory=lambda: None,
         query_service=_QueryStub(runtime_provider),
-        create_conversation_service=lambda command: command,
+        create_conversation_handler=lambda command: command,
         start_run_service=lambda command: command,
         approve_action_service=lambda command: command,
         modify_action_service=lambda command: command,

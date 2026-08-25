@@ -299,7 +299,7 @@ def test_static_settings_backup_and_safe_mode_flow(tmp_path: Path) -> None:
     container = ApiContainer(
         unit_of_work_factory=lambda: None,
         query_service=_QueryStub(),
-        create_conversation_service=lambda command: command,
+        create_conversation_handler=lambda command: command,
         start_run_service=start_run_stub,
         approve_action_service=lambda command: command,
         modify_action_service=lambda command: command,
@@ -381,9 +381,6 @@ def test_static_settings_backup_and_safe_mode_flow(tmp_path: Path) -> None:
             json={
                 "command_id": "cmd-2",
                 "conversation_id": "conversation-1",
-                "user_message_id": "message-1",
-                "run_id": "run-1",
-                "workflow_key": "workflow-1",
                 "request_text": "hello",
                 "entry_mode": "AGENT_SEARCH",
                 "selected_resource_ids": [],

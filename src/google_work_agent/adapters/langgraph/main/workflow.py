@@ -1453,10 +1453,10 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         if resource_handle is None:
             return None
         with self._unit_of_work_factory() as unit_of_work:
-            existing = unit_of_work.resource_refs.get_by_id(resource_handle)
+            existing = unit_of_work.resource_refs.get(resource_handle)
             if existing is not None:
                 return existing.id
-            for resource_ref in unit_of_work.resource_refs.list_by_run(run_id):
+            for resource_ref in unit_of_work.resource_refs.list_for_run_bounded(run_id, limit=1000):
                 if resource_handle == _resource_handle_for_ref(resource_ref):
                     return resource_ref.id
             resource = _acquired_resource_by_handle(
@@ -1491,15 +1491,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 metadata_json=dumps(payload, sort_keys=True),
                 captured_at_ms=self._now_ms(),
             )
-            unit_of_work.resource_refs.upsert(resource_ref)
-            persisted = unit_of_work.resource_refs.get_by_unique_key(
-                run_id=run_id,
-                connector_id=connector_id,
-                resource_type=resource_type.value,
-                resource_id=resource_ref.resource_id,
-            )
-            if persisted is None:
-                raise RuntimeError("target resource reference was not persisted")
+            persisted = unit_of_work.resource_refs.upsert_bound_ref(resource_ref)
             unit_of_work.commit()
             return persisted.id
 

@@ -241,6 +241,7 @@ export type StartRunResponse = {
   run_version: number;
   user_message_id: string;
   workflow_key: string;
+  handoff_id: string;
   enqueued: boolean;
   request_replayed: boolean;
   conflict_detail?: string | null;

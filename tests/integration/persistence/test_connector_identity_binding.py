@@ -91,13 +91,7 @@ def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path)
 
     with SQLiteUnitOfWork(database_path) as unit_of_work:
         unit_of_work.actions.insert_write_action(action)
-        unit_of_work.resource_refs.upsert(resource_ref)
-        persisted = unit_of_work.resource_refs.get_by_unique_key(
-            run_id="run-1",
-            connector_id="github",
-            resource_type=StoredResourceType.TASK.value,
-            resource_id="issue-1",
-        )
+        persisted = unit_of_work.resource_refs.upsert_bound_ref(resource_ref)
         assert persisted is not None
         assert persisted.id == "resource-ref-1"
         unit_of_work.commit()

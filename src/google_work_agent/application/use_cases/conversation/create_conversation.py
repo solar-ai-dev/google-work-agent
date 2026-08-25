@@ -8,6 +8,8 @@ from typing import cast
 
 from google_work_agent.application.run_command_receipts import (
     finish_json_receipt as _finish_json_receipt,
+)
+from google_work_agent.application.run_command_receipts import (
     resolve_existing_receipt as _resolve_existing_receipt,
 )
 from google_work_agent.domain import ResultCode
@@ -47,16 +49,6 @@ class CreateConversationHandler:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
 
-    @classmethod
-    def from_legacy_service_supplier(
-        cls, supplier: Callable[[], object]
-    ) -> "CreateConversationHandler":
-        service = supplier()
-        return cls(
-            unit_of_work_factory=getattr(service, "_unit_of_work_factory"),
-            now_ms=getattr(service, "_now_ms"),
-        )
-
     def __call__(self, command: CreateConversationCommand) -> CreateConversationResult:
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -80,7 +72,7 @@ class CreateConversationHandler:
                 aggregate_id=command.conversation_id,
                 created_at_ms=now_ms,
             )
-            unit_of_work.conversations.add(
+            unit_of_work.conversations.create(
                 ConversationRecord(
                     id=command.conversation_id,
                     account_id=command.account_id,

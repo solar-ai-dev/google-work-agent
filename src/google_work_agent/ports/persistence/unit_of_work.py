@@ -15,6 +15,7 @@ from google_work_agent.ports.persistence.resource_ref_repository import Resource
 from google_work_agent.ports.persistence.run_repository import RunRepository
 from google_work_agent.ports.persistence.trace_repository import TraceRepository
 from google_work_agent.ports.persistence.verification_repository import VerificationRepository
+from google_work_agent.ports.persistence.workflow_handoff_repository import WorkflowHandoffRepository
 
 class UnitOfWork(AbstractContextManager["UnitOfWork"], Protocol):
     conversations: ConversationRepository
@@ -31,5 +32,6 @@ class UnitOfWork(AbstractContextManager["UnitOfWork"], Protocol):
     verifications: VerificationRepository
     audits: AuditRepository
     traces: TraceRepository
+    workflow_handoffs: WorkflowHandoffRepository
     def commit(self) -> None: ...
     def rollback(self) -> None: ...

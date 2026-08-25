@@ -129,7 +129,7 @@ class PreflightWriteActionService:
             target_ref = (
                 None
                 if action.target_resource_ref_id is None
-                else unit_of_work.resource_refs.get_by_id(action.target_resource_ref_id)
+                else unit_of_work.resource_refs.get(action.target_resource_ref_id)
             )
 
         if action.tool_name == "gmail_update_draft":

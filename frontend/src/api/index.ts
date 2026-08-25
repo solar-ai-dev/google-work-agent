@@ -145,9 +145,6 @@ export function getRunContext(runId: string): Promise<RunContextResponse> {
 export function startRun(payload: {
   command_id: string;
   conversation_id: string;
-  user_message_id: string;
-  run_id: string;
-  workflow_key: string;
   request_text: string;
   entry_mode: string;
   selected_resource_ids: string[];

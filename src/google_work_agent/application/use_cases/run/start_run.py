@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from json import dumps, loads
 
-from google_work_agent.application.coordinator import QueueBusyError
 from google_work_agent.application.write_persistence import emit_command_rejected_hash_mismatch
 from google_work_agent.domain import ResultCode, RunStatus
 from google_work_agent.domain.run.model import RunTransitionRejected
@@ -24,6 +23,11 @@ from google_work_agent.ports.models import (
     TraceEventRecord,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    GraphProfileIdV1,
+    RunExecutionRefV1,
+    WorkflowHandoffStageV1,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,9 +35,6 @@ class StartRunCommand:
     command_id: str
     request_hash: str
     conversation_id: str
-    user_message_id: str
-    run_id: str
-    workflow_key: str
     request_text: str
     entry_mode: str
     selected_resource_ids: tuple[str, ...]
@@ -52,13 +53,20 @@ class StartRunResult:
     run_version: int
     user_message_id: str
     workflow_key: str
+    handoff_id: str
     enqueued: bool
     request_replayed: bool
     conflict_detail: str | None = None
 
 
 class StartRunHandler:
-    """Persist Run creation, initial USER Message, activity and receipt atomically."""
+    """Atomically create one Run + USER Message + WorkflowBinding + START WorkflowHandoff(PENDING).
+
+    Browser never chooses run_id/user_message_id/workflow_key/handoff_id; this
+    handler preallocates them only on the fresh (no existing receipt) path so
+    idempotent retries always resolve through the durable CommandReceipt
+    instead of minting a second aggregate identity.
+    """
 
     _EVIDENCE_PAGE_SIZE = 100
 
@@ -67,17 +75,15 @@ class StartRunHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        reserve_queue_slot: Callable[[str], bool] | None = None,
-        release_queue_slot: Callable[[str], None] | None = None,
+        id_factory: Callable[[], str],
+        graph_profile: GraphProfileIdV1,
+        graph_version: str,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._reserve_queue_slot = reserve_queue_slot
-        self._release_queue_slot = release_queue_slot
-
-    def _release(self, run_id: str) -> None:
-        if self._release_queue_slot is not None:
-            self._release_queue_slot(run_id)
+        self._id_factory = id_factory
+        self._graph_profile = graph_profile
+        self._graph_version = graph_version
 
     def __call__(self, command: StartRunCommand) -> StartRunResult:
         with self._unit_of_work_factory() as unit_of_work:
@@ -88,35 +94,30 @@ class StartRunHandler:
                     receipt=existing,
                     command=command,
                 )
-
-            if self._reserve_queue_slot is not None and not self._reserve_queue_slot(command.run_id):
-                raise QueueBusyError()
-
-            try:
-                return self._start_new_run(unit_of_work=unit_of_work, command=command)
-            except Exception:
-                self._release(command.run_id)
-                raise
+            return self._start_new_run(unit_of_work=unit_of_work, command=command)
 
     def _start_new_run(
         self,
         *,
         unit_of_work: UnitOfWork,
         command: StartRunCommand,
-        receipt_already_received: bool = False,
     ) -> StartRunResult:
         now_ms = self._now_ms()
-        if not receipt_already_received:
-            unit_of_work.command_receipts.add_received(
-                command_id=command.command_id,
-                command_type="StartRun",
-                request_hash=command.request_hash,
-                aggregate_type="Run",
-                aggregate_id=command.run_id,
-                created_at_ms=now_ms,
-            )
+        run_id = self._id_factory()
+        user_message_id = self._id_factory()
+        workflow_key = self._id_factory()
+        handoff_id = self._id_factory()
 
-        conversation = unit_of_work.conversations.get_by_id(command.conversation_id)
+        unit_of_work.command_receipts.add_received(
+            command_id=command.command_id,
+            command_type="StartRun",
+            request_hash=command.request_hash,
+            aggregate_type="Run",
+            aggregate_id=run_id,
+            created_at_ms=now_ms,
+        )
+
+        conversation = unit_of_work.conversations.get(command.conversation_id)
         if conversation is None:
             raise LookupError(f"conversation not found: {command.conversation_id}")
 
@@ -124,45 +125,44 @@ class StartRunHandler:
             response = StartRunResult(
                 applied=False,
                 result_code=ResultCode.STATE_CONFLICT.value,
-                run_id=command.run_id,
+                run_id=run_id,
                 conversation_id=command.conversation_id,
                 run_status=RunStatus.CREATED.value,
                 run_version=0,
-                user_message_id=command.user_message_id,
-                workflow_key=command.workflow_key,
+                user_message_id=user_message_id,
+                workflow_key=workflow_key,
+                handoff_id="",
                 enqueued=False,
-                request_replayed=receipt_already_received,
+                request_replayed=False,
                 conflict_detail="request text exceeds message limit",
             )
             self._finish_receipt(unit_of_work, command.command_id, response, 0, now_ms)
             unit_of_work.commit()
-            self._release(command.run_id)
             return response
 
-        current_open = unit_of_work.runs.get_open_by_conversation(command.conversation_id)
+        current_open = unit_of_work.runs.find_open_by_conversation(command.conversation_id)
         try:
             initial_status = transition_start_run(has_open_run=current_open is not None)
         except RunTransitionRejected:
-            response = self._open_run_conflict(command=command, current_open=current_open)
-            if receipt_already_received:
-                response = replace(response, request_replayed=True)
+            response = self._open_run_conflict(
+                run_id=run_id,
+                conversation_id=command.conversation_id,
+                user_message_id=user_message_id,
+                workflow_key=workflow_key,
+                current_open=current_open,
+            )
             self._finish_receipt(
-                unit_of_work,
-                command.command_id,
-                response,
-                response.run_version,
-                now_ms,
+                unit_of_work, command.command_id, response, response.run_version, now_ms
             )
             unit_of_work.commit()
-            self._release(command.run_id)
             return response
 
         run = RunCreateRecord(
-            id=command.run_id,
+            id=run_id,
             conversation_id=command.conversation_id,
             entry_mode=command.entry_mode,
             status=initial_status,
-            langgraph_thread_id=command.workflow_key,
+            langgraph_thread_id=workflow_key,
             requested_mode=command.requested_mode,
             actual_runtime=None,
             budget_json="{}",
@@ -172,39 +172,62 @@ class StartRunHandler:
         )
 
         try:
-            unit_of_work.runs.add(run)
+            unit_of_work.runs.create(run)
         except sqlite3.IntegrityError:
-            current_open = unit_of_work.runs.get_open_by_conversation(command.conversation_id)
+            current_open = unit_of_work.runs.find_open_by_conversation(command.conversation_id)
             if current_open is None:
                 raise
-            response = self._open_run_conflict(command=command, current_open=current_open)
-            if receipt_already_received:
-                response = replace(response, request_replayed=True)
+            response = self._open_run_conflict(
+                run_id=run_id,
+                conversation_id=command.conversation_id,
+                user_message_id=user_message_id,
+                workflow_key=workflow_key,
+                current_open=current_open,
+            )
             self._finish_receipt(
-                unit_of_work,
-                command.command_id,
-                response,
-                response.run_version,
-                now_ms,
+                unit_of_work, command.command_id, response, response.run_version, now_ms
             )
             unit_of_work.commit()
-            self._release(command.run_id)
             return response
 
-        unit_of_work.messages.add(
+        unit_of_work.messages.append_user_message(
             MessageRecord(
-                id=command.user_message_id,
+                id=user_message_id,
                 conversation_id=command.conversation_id,
-                run_id=command.run_id,
+                run_id=run_id,
                 role="USER",
                 content=command.request_text,
                 created_at_ms=now_ms,
             )
         )
-        unit_of_work.conversations.touch(command.conversation_id, updated_at_ms=now_ms)
+        unit_of_work.conversations.touch_updated_at(command.conversation_id, updated_at_ms=now_ms)
+
+        unit_of_work.workflow_handoffs.stage_pending(
+            WorkflowHandoffStageV1(
+                schema_version=1,
+                handoff_id=handoff_id,
+                trigger_command_id=command.command_id,
+                execution=RunExecutionRefV1(
+                    schema_version=1,
+                    execution_kind="START",
+                    run_id=run_id,
+                    langgraph_thread_id=workflow_key,
+                    graph_profile=self._graph_profile,
+                    graph_version=self._graph_version,
+                    requested_mode=command.requested_mode,  # type: ignore[arg-type]
+                    resume_target=None,
+                ),
+                checkpoint_id=None,
+                checkpoint_generation=0,
+                control_kind="NONE",
+                control=None,
+                control_payload_hash=None,
+            )
+        )
+
         unit_of_work.traces.add(
             TraceEventRecord(
-                run_id=command.run_id,
+                run_id=run_id,
                 action_id=None,
                 event_type="RUN_CREATED",
                 status=initial_status.value,
@@ -214,7 +237,7 @@ class StartRunHandler:
                         "command_id": command.command_id,
                         "selected_resource_ids": list(command.selected_resource_ids),
                         "selected_resources": [asdict(resource) for resource in command.selected_resources],
-                        "workflow_key": command.workflow_key,
+                        "workflow_key": workflow_key,
                         "requested_mode": command.requested_mode,
                     },
                     sort_keys=True,
@@ -225,7 +248,7 @@ class StartRunHandler:
         unit_of_work.audits.add(
             AuditEventRecord(
                 account_id=conversation.account_id,
-                run_id=command.run_id,
+                run_id=run_id,
                 action_id=None,
                 actor_type="USER",
                 actor_id=conversation.account_id,
@@ -247,14 +270,15 @@ class StartRunHandler:
         response = StartRunResult(
             applied=True,
             result_code=ResultCode.TRANSITION_APPLIED.value,
-            run_id=command.run_id,
+            run_id=run_id,
             conversation_id=command.conversation_id,
             run_status=initial_status.value,
             run_version=0,
-            user_message_id=command.user_message_id,
-            workflow_key=command.workflow_key,
+            user_message_id=user_message_id,
+            workflow_key=workflow_key,
+            handoff_id=handoff_id,
             enqueued=True,
-            request_replayed=receipt_already_received,
+            request_replayed=False,
         )
         self._finish_receipt(unit_of_work, command.command_id, response, 0, now_ms)
         unit_of_work.commit()
@@ -271,44 +295,66 @@ class StartRunHandler:
             emit_command_rejected_hash_mismatch(
                 unit_of_work=unit_of_work,
                 receipt=receipt,
-                run_id=command.run_id,
+                run_id=receipt.aggregate_id or "",
                 action_id=None,
                 now_ms=self._now_ms(),
             )
             return StartRunResult(
                 applied=False,
                 result_code=ResultCode.DUPLICATE_COMMAND.value,
-                run_id=receipt.aggregate_id or command.run_id,
+                run_id=receipt.aggregate_id or "",
                 conversation_id="",
                 run_status="UNKNOWN",
                 run_version=receipt.result_version or 0,
                 user_message_id="",
                 workflow_key="",
+                handoff_id="",
                 enqueued=False,
                 request_replayed=True,
                 conflict_detail="command_id already exists with a different request_hash",
             )
 
-        self._validate_receipt_identity(receipt=receipt, command=command)
+        self._validate_receipt_identity(receipt=receipt)
 
         if receipt.status is not CommandReceiptStatus.RECEIVED:
             if receipt.response_json is None:
                 raise RuntimeError("completed StartRun receipt is missing replay response")
             response = StartRunResult(**loads(receipt.response_json))
             self._validate_replay_response(receipt=receipt, command=command, response=response)
-            return replace(response, enqueued=False, request_replayed=True)
+            return StartRunResult(**{**asdict(response), "enqueued": False, "request_replayed": True})
 
-        run = unit_of_work.runs.get_by_id(command.run_id)
-        message = unit_of_work.messages.get_by_id(command.user_message_id)
+        run_id = receipt.aggregate_id
+        run = None if run_id is None else unit_of_work.runs.get(run_id)
+
+        if run is None and run_id is not None:
+            messages, _ = unit_of_work.messages.list_by_conversation_keyset(
+                conversation_id=command.conversation_id,
+                cursor=None,
+                page_size=200,
+            )
+            if any(item.run_id == run_id for item in messages):
+                raise RuntimeError("StartRun receipt recovery found USER Message without Run")
 
         if run is not None:
             if run.conversation_id != command.conversation_id:
                 raise RuntimeError("StartRun receipt aggregate belongs to a different conversation")
+            handoff = unit_of_work.workflow_handoffs.get_by_trigger_command_id(command.command_id)
+            if handoff is None or handoff.execution.run_id != run.id:
+                raise RuntimeError(
+                    "StartRun receipt recovery found a Run without a matching WorkflowHandoff"
+                )
+            messages, _ = unit_of_work.messages.list_by_conversation_keyset(
+                conversation_id=command.conversation_id,
+                cursor=None,
+                page_size=200,
+            )
+            message = next(
+                (item for item in messages if item.run_id == run.id and item.role == "USER"),
+                None,
+            )
             if (
                 message is None
                 or message.conversation_id != command.conversation_id
-                or message.run_id != command.run_id
-                or message.role != "USER"
                 or message.content != command.request_text
             ):
                 raise RuntimeError("StartRun receipt recovery found an incomplete aggregate mutation")
@@ -316,16 +362,19 @@ class StartRunHandler:
             self._validate_complete_aggregate_evidence(
                 unit_of_work=unit_of_work,
                 command=command,
+                run_id=run.id,
+                workflow_key=handoff.execution.langgraph_thread_id,
             )
             stored_response = StartRunResult(
                 applied=True,
                 result_code=ResultCode.TRANSITION_APPLIED.value,
-                run_id=command.run_id,
+                run_id=run.id,
                 conversation_id=command.conversation_id,
                 run_status=RunStatus.CREATED.value,
                 run_version=0,
-                user_message_id=command.user_message_id,
-                workflow_key=command.workflow_key,
+                user_message_id=message.id,
+                workflow_key=handoff.execution.langgraph_thread_id,
+                handoff_id=handoff.handoff_id,
                 enqueued=True,
                 request_replayed=False,
             )
@@ -337,26 +386,20 @@ class StartRunHandler:
                 self._now_ms(),
             )
             unit_of_work.commit()
-            return replace(stored_response, enqueued=False, request_replayed=True)
-
-        if message is not None:
-            raise RuntimeError("StartRun receipt recovery found USER Message without Run")
+            return StartRunResult(
+                **{**asdict(stored_response), "enqueued": False, "request_replayed": True}
+            )
 
         self._fail_closed_no_aggregate_recovery(
             unit_of_work=unit_of_work,
             command=command,
+            run_id=run_id,
         )
         raise AssertionError("unreachable")
 
     @staticmethod
-    def _validate_receipt_identity(
-        *, receipt: CommandReceiptRecord, command: StartRunCommand
-    ) -> None:
-        if (
-            receipt.command_type != "StartRun"
-            or receipt.aggregate_type != "Run"
-            or receipt.aggregate_id != command.run_id
-        ):
+    def _validate_receipt_identity(*, receipt: CommandReceiptRecord) -> None:
+        if receipt.command_type != "StartRun" or receipt.aggregate_type != "Run":
             raise RuntimeError("StartRun receipt identity does not match command")
 
     @staticmethod
@@ -366,12 +409,7 @@ class StartRunHandler:
         command: StartRunCommand,
         response: StartRunResult,
     ) -> None:
-        if (
-            response.run_id != command.run_id
-            or response.conversation_id != command.conversation_id
-            or response.user_message_id != command.user_message_id
-            or response.workflow_key != command.workflow_key
-        ):
+        if response.conversation_id != command.conversation_id:
             raise RuntimeError("StartRun replay response identity does not match command")
         if receipt.result_code is not None and response.result_code != receipt.result_code.value:
             raise RuntimeError("StartRun replay response result does not match receipt")
@@ -387,9 +425,11 @@ class StartRunHandler:
         *,
         unit_of_work: UnitOfWork,
         command: StartRunCommand,
+        run_id: str,
+        workflow_key: str,
     ) -> None:
         audit_created = 0
-        for event in self._list_all_audits(unit_of_work=unit_of_work, run_id=command.run_id):
+        for event in self._list_all_audits(unit_of_work=unit_of_work, run_id=run_id):
             if event.event_type != "RUN_CREATED":
                 continue
             audit_created += 1
@@ -398,11 +438,11 @@ class StartRunHandler:
             raise RuntimeError("StartRun receipt recovery found duplicate RUN_CREATED Audit evidence")
 
         trace_created = 0
-        for event in self._list_all_traces(unit_of_work=unit_of_work, run_id=command.run_id):
+        for event in self._list_all_traces(unit_of_work=unit_of_work, run_id=run_id):
             if event.event_type != "RUN_CREATED":
                 continue
             trace_created += 1
-            self._validate_run_created_trace(event=event, command=command)
+            self._validate_run_created_trace(event=event, command=command, workflow_key=workflow_key)
         if trace_created > 1:
             raise RuntimeError("StartRun receipt recovery found duplicate RUN_CREATED Trace evidence")
 
@@ -411,58 +451,62 @@ class StartRunHandler:
         *,
         unit_of_work: UnitOfWork,
         command: StartRunCommand,
+        run_id: str | None,
     ) -> None:
-        for event in self._list_all_audits(unit_of_work=unit_of_work, run_id=command.run_id):
-            payload = self._event_payload(event.metadata_json, evidence_kind="Audit")
-            if event.event_type == "COMMAND_RECEIVED":
-                self._validate_command_received_event(
-                    payload=payload,
-                    command=command,
-                    evidence_kind="Audit",
-                )
-                continue
-            if event.event_type == "RUN_CREATED":
-                self._validate_run_created_audit(event=event, command=command)
-                raise RuntimeError(
-                    "StartRun receipt recovery found prior RUN_CREATED Audit evidence without aggregate"
-                )
-            if event.event_type == "COMMAND_APPLIED":
-                self._validate_command_event(
-                    payload=payload,
-                    command=command,
-                    evidence_kind="Audit",
-                    event_type="COMMAND_APPLIED",
-                )
-                raise RuntimeError(
-                    "StartRun receipt recovery found prior COMMAND_APPLIED Audit evidence without aggregate"
-                )
-            raise RuntimeError("StartRun receipt recovery found contradictory durable Audit evidence")
+        if run_id is not None:
+            for event in self._list_all_audits(unit_of_work=unit_of_work, run_id=run_id):
+                payload = self._event_payload(event.metadata_json, evidence_kind="Audit")
+                if event.event_type == "COMMAND_RECEIVED":
+                    self._validate_command_received_event(
+                        payload=payload,
+                        command=command,
+                        evidence_kind="Audit",
+                    )
+                    continue
+                if event.event_type == "RUN_CREATED":
+                    self._validate_run_created_audit(event=event, command=command)
+                    raise RuntimeError(
+                        "StartRun receipt recovery found prior RUN_CREATED Audit evidence without aggregate"
+                    )
+                if event.event_type == "COMMAND_APPLIED":
+                    self._validate_command_event(
+                        payload=payload,
+                        command=command,
+                        evidence_kind="Audit",
+                        event_type="COMMAND_APPLIED",
+                    )
+                    raise RuntimeError(
+                        "StartRun receipt recovery found prior COMMAND_APPLIED Audit evidence without aggregate"
+                    )
+                raise RuntimeError("StartRun receipt recovery found contradictory durable Audit evidence")
 
-        for event in self._list_all_traces(unit_of_work=unit_of_work, run_id=command.run_id):
-            payload = self._event_payload(event.payload_json, evidence_kind="Trace")
-            if event.event_type == "COMMAND_RECEIVED":
-                self._validate_command_received_event(
-                    payload=payload,
-                    command=command,
-                    evidence_kind="Trace",
-                )
-                continue
-            if event.event_type == "RUN_CREATED":
-                self._validate_run_created_trace(event=event, command=command)
-                raise RuntimeError(
-                    "StartRun receipt recovery found prior RUN_CREATED Trace evidence without aggregate"
-                )
-            if event.event_type == "COMMAND_APPLIED":
-                self._validate_command_event(
-                    payload=payload,
-                    command=command,
-                    evidence_kind="Trace",
-                    event_type="COMMAND_APPLIED",
-                )
-                raise RuntimeError(
-                    "StartRun receipt recovery found prior COMMAND_APPLIED Trace evidence without aggregate"
-                )
-            raise RuntimeError("StartRun receipt recovery found contradictory durable Trace evidence")
+            for event in self._list_all_traces(unit_of_work=unit_of_work, run_id=run_id):
+                payload = self._event_payload(event.payload_json, evidence_kind="Trace")
+                if event.event_type == "COMMAND_RECEIVED":
+                    self._validate_command_received_event(
+                        payload=payload,
+                        command=command,
+                        evidence_kind="Trace",
+                    )
+                    continue
+                if event.event_type == "RUN_CREATED":
+                    self._validate_run_created_trace(
+                        event=event, command=command, workflow_key=None
+                    )
+                    raise RuntimeError(
+                        "StartRun receipt recovery found prior RUN_CREATED Trace evidence without aggregate"
+                    )
+                if event.event_type == "COMMAND_APPLIED":
+                    self._validate_command_event(
+                        payload=payload,
+                        command=command,
+                        evidence_kind="Trace",
+                        event_type="COMMAND_APPLIED",
+                    )
+                    raise RuntimeError(
+                        "StartRun receipt recovery found prior COMMAND_APPLIED Trace evidence without aggregate"
+                    )
+                raise RuntimeError("StartRun receipt recovery found contradictory durable Trace evidence")
 
         raise RuntimeError(
             "StartRun RECEIVED receipt has no canonical proof of non-application"
@@ -542,13 +586,14 @@ class StartRunHandler:
         *,
         event: PersistedTraceEventRecord,
         command: StartRunCommand,
+        workflow_key: str | None,
     ) -> None:
         payload = cls._event_payload(event.payload_json, evidence_kind="Trace")
         if (
             event.action_id is not None
             or event.status != RunStatus.CREATED.value
             or cls._event_field(payload, "command_id") != command.command_id
-            or cls._event_field(payload, "workflow_key") != command.workflow_key
+            or (workflow_key is not None and cls._event_field(payload, "workflow_key") != workflow_key)
             or cls._event_field(payload, "requested_mode") != command.requested_mode
             or cls._event_field(payload, "selected_resource_ids")
             != list(command.selected_resource_ids)
@@ -582,11 +627,9 @@ class StartRunHandler:
         event_type: str,
     ) -> None:
         command_type = cls._event_field(payload, "command_type")
-        aggregate_id = cls._event_field(payload, "aggregate_id")
         if (
             cls._event_field(payload, "command_id") != command.command_id
             or (command_type is not None and command_type != "StartRun")
-            or (aggregate_id is not None and aggregate_id != command.run_id)
         ):
             raise RuntimeError(
                 f"StartRun receipt recovery found conflicting {event_type} {evidence_kind} evidence"
@@ -615,7 +658,14 @@ class StartRunHandler:
         return payload.get(field_name)
 
     @staticmethod
-    def _open_run_conflict(*, command: StartRunCommand, current_open: object) -> StartRunResult:
+    def _open_run_conflict(
+        *,
+        run_id: str,
+        conversation_id: str,
+        user_message_id: str,
+        workflow_key: str,
+        current_open: object,
+    ) -> StartRunResult:
         if current_open is None:
             run_status = RunStatus.CREATED.value
             run_version = 0
@@ -625,12 +675,13 @@ class StartRunHandler:
         return StartRunResult(
             applied=False,
             result_code=ResultCode.STATE_CONFLICT.value,
-            run_id=command.run_id,
-            conversation_id=command.conversation_id,
+            run_id=run_id,
+            conversation_id=conversation_id,
             run_status=run_status,
             run_version=run_version,
-            user_message_id=command.user_message_id,
-            workflow_key=command.workflow_key,
+            user_message_id=user_message_id,
+            workflow_key=workflow_key,
+            handoff_id="",
             enqueued=False,
             request_replayed=False,
             conflict_detail="conversation already has an open run",

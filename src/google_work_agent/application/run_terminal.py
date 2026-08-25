@@ -514,7 +514,7 @@ def _require_run(unit_of_work: UnitOfWork, run_id: str) -> RunRecord:
 
 
 def _require_conversation(unit_of_work: UnitOfWork, conversation_id: str) -> ConversationRecord:
-    conversation = unit_of_work.conversations.get_by_id(conversation_id)
+    conversation = unit_of_work.conversations.get(conversation_id)
     if conversation is None:
         raise LookupError(f"conversation not found: {conversation_id}")
     return conversation

@@ -35,16 +35,24 @@ from google_work_agent.adapters.readiness.composite import (
 from google_work_agent.adapters.runtime import BuildProfile
 from google_work_agent.adapters.runtime.settings import FileSettingsStore, SettingsService
 from google_work_agent.api.app import create_app
+from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
-from google_work_agent.application.coordinator import LocalRunCoordinator
+from google_work_agent.application.coordinator import LocalRunCoordinator, QueueBusyError
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.settings import GetSettingsService, PatchSettingsService
 from google_work_agent.application.start_run import (
-    CreateConversationService,
     ModifyWriteActionService,
     RejectWriteActionService,
     ResumeRunService,
-    StartRunService,
+)
+from google_work_agent.application.use_cases.conversation.create_conversation import (
+    CreateConversationHandler,
+)
+from google_work_agent.application.use_cases.conversation.get_conversation_history import (
+    GetConversationHistoryHandler,
+)
+from google_work_agent.application.use_cases.conversation.list_conversations import (
+    ListConversationsHandler,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
@@ -345,6 +353,23 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         api_contract_version="1",
         capacity=8,
     )
+    id_generator = DeterministicUUID(prefix="api")
+
+    def _execute_admission(admission: object) -> None:
+        try:
+            coordinator.enqueue_start(
+                run_id=admission.effective_binding.run_id,  # type: ignore[attr-defined]
+                request_id=admission.admission_id,  # type: ignore[attr-defined]
+                command_id=admission.handoff_id,  # type: ignore[attr-defined]
+            )
+        except QueueBusyError:
+            pass
+
+    production_runtime = build_production_runtime(
+        unit_of_work_factory=unit_of_work_factory,
+        id_factory=id_generator.next_id,
+        execute_admission=_execute_admission,
+    )
     settings_service = SettingsService(
         store=FileSettingsStore(tmp_path / "settings" / "app-settings.json"),
         deployment_profile=BuildProfile.LOCAL_CAPABLE,
@@ -356,14 +381,21 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         query_service=query_service,
         get_settings_service=GetSettingsService(service=settings_service),
         patch_settings_service=PatchSettingsService(service=settings_service),
-        create_conversation_service=CreateConversationService(
+        create_conversation_handler=CreateConversationHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
-        start_run_service=StartRunService(
+        list_conversations_handler=ListConversationsHandler(
             unit_of_work_factory=unit_of_work_factory,
-            now_ms=clock.now_ms,
         ),
+        get_conversation_history_handler=GetConversationHistoryHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            database_path=database_path,
+            connection_factory=connect_sqlite,
+        ),
+        graph_profile="SIX_ROLE_BASELINE",
+        graph_version="resume-contract-v1",
+        schedule_run_execution=production_runtime.schedule_run_execution,
         approve_action_service=ApproveWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -401,7 +433,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         runtime_status_provider=status_provider,
         api_access_guard=_AllowGuard(),
         clock=clock,
-        id_generator=DeterministicUUID(prefix="api"),
+        id_generator=id_generator,
         release_version="test",
         environment="test",
         service_instance_id="svc-product",
@@ -411,8 +443,8 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
     )
 
     with TestClient(create_app(container), base_url="http://127.0.0.1:8780") as client:
-        _create_conversation_and_run(client)
-        waiting = _wait_for_snapshot(client, "WAITING_APPROVAL")
+        run_id = _create_conversation_and_run(client)
+        waiting = _wait_for_snapshot(client, run_id, "WAITING_APPROVAL")
         action = _first_action(waiting)
         action_id = cast(str, action["action_id"])
         reads_before_approval = gateway.count_calls(verification_operation)
@@ -428,7 +460,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         approved = client.post(f"/api/v1/actions/{action_id}/approve", json=approval_body)
         assert approved.status_code == 200
         effective_approval_body = approval_body
-        completed = _wait_for_snapshot(client, "COMPLETED")
+        completed = _wait_for_snapshot(client, run_id, "COMPLETED")
 
         assert _first_action(completed)["status"] == "VERIFIED"
         assert gateway.count_calls(write_operation) == 1
@@ -480,7 +512,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         connection.close()
 
     event_types = [
-        event.event_type for event in publisher.replay(run_id="run-1", after_event_id=None)
+        event.event_type for event in publisher.replay(run_id=run_id, after_event_id=None)
     ]
     assert "approval_required" in event_types
     assert "completed" in event_types
@@ -502,7 +534,7 @@ def _seed_product_database(tmp_path: Path) -> Path:
     return database_path
 
 
-def _create_conversation_and_run(client: TestClient) -> None:
+def _create_conversation_and_run(client: TestClient) -> str:
     conversation = client.post(
         "/api/v1/conversations",
         json={
@@ -519,9 +551,6 @@ def _create_conversation_and_run(client: TestClient) -> None:
         json={
             "command_id": "run-command-1",
             "conversation_id": "conversation-1",
-            "user_message_id": "message-1",
-            "run_id": "run-1",
-            "workflow_key": "workflow-1",
             "request_text": "Create the requested follow-up task.",
             "entry_mode": "AGENT_SEARCH",
             "selected_resource_ids": [],
@@ -531,13 +560,14 @@ def _create_conversation_and_run(client: TestClient) -> None:
         },
     )
     assert started.status_code == 202
+    return cast(str, started.json()["run_id"])
 
 
-def _wait_for_snapshot(client: TestClient, expected_status: str) -> dict[str, object]:
+def _wait_for_snapshot(client: TestClient, run_id: str, expected_status: str) -> dict[str, object]:
     deadline = time.monotonic() + 10
     latest: dict[str, object] = {}
     while time.monotonic() < deadline:
-        response = client.get("/api/v1/runs/run-1")
+        response = client.get(f"/api/v1/runs/{run_id}")
         assert response.status_code == 200
         latest = response.json()["snapshot"]
         if latest["status"] == expected_status:

@@ -15,7 +15,9 @@ def _request_with_run_composition() -> tuple[Request, object]:
         api_contract_version="1",
         query_service=SimpleNamespace(get_run_execution_context=lambda _run_id: None),
         unit_of_work_factory=unit_of_work_factory,
-        start_run_service=object(),
+        graph_profile="SIX_ROLE_BASELINE",
+        graph_version="resume-contract-v1",
+        schedule_run_execution=object(),
         local_run_coordinator=object(),
         workflow_runtime=object(),
         clock=FakeClock(1),
@@ -40,8 +42,8 @@ def test_run_dependency_exposes_explicit_canonical_composition_inputs() -> None:
     dependencies = get_run_route_dependencies(request)
 
     assert dependencies.unit_of_work_factory is unit_of_work_factory
-    assert dependencies.reserve_queue_slot is None
-    assert dependencies.release_queue_slot is None
+    assert dependencies.graph_profile == "SIX_ROLE_BASELINE"
+    assert dependencies.graph_version == "resume-contract-v1"
 
 
 def test_run_dependency_resolver_fails_closed_without_checkpoint_authority() -> None:

@@ -15,9 +15,6 @@ class SelectedResourceRefModel(ApiModel):
 class StartRunRequest(ContractVersionedRequest):
     command_id: str
     conversation_id: str
-    user_message_id: str
-    run_id: str
-    workflow_key: str
     request_text: str
     entry_mode: str
     selected_resource_ids: list[str]
@@ -34,6 +31,7 @@ class StartRunResponseModel(ApiModel):
     run_version: int
     user_message_id: str
     workflow_key: str
+    handoff_id: str
     enqueued: bool
     request_replayed: bool
     conflict_detail: str | None = None

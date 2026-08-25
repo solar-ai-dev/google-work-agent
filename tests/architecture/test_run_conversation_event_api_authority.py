@@ -91,6 +91,8 @@ def _invokes_handler(path: Path, endpoint: str, handler: str) -> bool:
     for node in ast.walk(function):
         if not isinstance(node, ast.Call):
             continue
+        if _constructs_handler(node, handler):
+            return True
         if isinstance(node.func, ast.Name) and node.func.id in bound:
             return True
         if isinstance(node.func, ast.Call) and _constructs_handler(node.func, handler):
@@ -172,10 +174,10 @@ def test_route_endpoints_invoke_their_exact_canonical_handlers() -> None:
             "resolve_recovery": "ResolveMismatchRecoveryHandler",
         },
         ROOT / "src/google_work_agent/api/routes/conversations.py": {
-            "create_conversation": "CreateConversationHandler",
-            "list_conversations": "ListConversationsHandler",
+            "create_conversation": "dependencies.create_conversation_handler",
+            "list_conversations": "dependencies.list_conversations_handler",
             "get_conversation": "GetConversationHandler",
-            "get_conversation_history": "GetConversationHistoryHandler",
+            "get_conversation_history": "dependencies.get_conversation_history_handler",
             "get_latest_conversation_run": "GetLatestRunHandler",
         },
         ROOT / "src/google_work_agent/api/routes/events.py": {"stream_events": "GetEventReplayHandler"},
@@ -245,7 +247,6 @@ def test_canonical_handlers_do_not_delegate_to_broad_legacy_authorities() -> Non
     forbidden = {
         "google_work_agent.application.queries",
         "google_work_agent.application.start_run",
-        "google_work_agent.application.conversation_lifecycle",
         "google_work_agent.application.run_lifecycle",
         "google_work_agent.application.write_actions",
         "google_work_agent.application.write_cancellation",
@@ -254,6 +255,20 @@ def test_canonical_handlers_do_not_delegate_to_broad_legacy_authorities() -> Non
     for owner in OWNERS:
         for path in (USE_CASE_ROOT / owner).glob("*.py"):
             assert not (_imports(path) & forbidden), f"{path}: canonical handler delegates to legacy authority"
+
+
+def test_conversation_message_slice_has_one_production_authority() -> None:
+    assert not (ROOT / "src/google_work_agent/application/conversation_lifecycle.py").exists()
+    assert not (USE_CASE_ROOT / "message/list_messages.py").exists()
+    assert (USE_CASE_ROOT / "message/list_conversation_messages.py").exists()
+    broad_ports = (ROOT / "src/google_work_agent/ports/repositories.py").read_text(encoding="utf-8")
+    broad_adapters = (
+        ROOT / "src/google_work_agent/adapters/persistence/repositories.py"
+    ).read_text(encoding="utf-8")
+    assert "class ConversationRepository" not in broad_ports
+    assert "class MessageRepository" not in broad_ports
+    assert "class SQLiteConversationRepository" not in broad_adapters
+    assert "class SQLiteMessageRepository" not in broad_adapters
 
 
 def test_resume_handler_owns_all_substantive_resume_transitions_and_commit() -> None:

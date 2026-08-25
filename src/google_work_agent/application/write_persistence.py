@@ -6,8 +6,10 @@ from dataclasses import asdict
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.ports.observability_events import sanitize_event_attributes
-from google_work_agent.application.write_execution_contracts import WriteActionResponse, WriteRunResponse
+from google_work_agent.application.write_execution_contracts import (
+    WriteActionResponse,
+    WriteRunResponse,
+)
 from google_work_agent.application.write_plan_contracts import (
     PublishWritePlanResponse,
     SaveWritePlanResponse,
@@ -34,8 +36,11 @@ from google_work_agent.ports import (
     TraceEventRecord,
     UnitOfWork,
 )
+from google_work_agent.ports.observability_events import sanitize_event_attributes
 
-WriteResponse = SaveWritePlanResponse | PublishWritePlanResponse | WriteActionResponse | WriteRunResponse
+WriteResponse = (
+    SaveWritePlanResponse | PublishWritePlanResponse | WriteActionResponse | WriteRunResponse
+)
 WriteResponseType = (
     type[SaveWritePlanResponse]
     | type[PublishWritePlanResponse]
@@ -330,11 +335,23 @@ def resolve_snapshot_fallback_resource_id(
 ) -> str | None:
     arguments = loads(action.arguments_json)
     if action.tool_name in {"gmail_create_draft", "gmail_update_draft"}:
-        return None if arguments.get("draft_id") is not None else resource_id_from_ref(unit_of_work, resource_ref_id)
+        return (
+            None
+            if arguments.get("draft_id") is not None
+            else resource_id_from_ref(unit_of_work, resource_ref_id)
+        )
     if action.tool_name in {"tasks_create_task", "tasks_update_task"}:
-        return None if arguments.get("task_id") is not None else resource_id_from_ref(unit_of_work, resource_ref_id)
+        return (
+            None
+            if arguments.get("task_id") is not None
+            else resource_id_from_ref(unit_of_work, resource_ref_id)
+        )
     if action.tool_name in {"calendar_create_event", "calendar_update_event"}:
-        return None if arguments.get("event_id") is not None else resource_id_from_ref(unit_of_work, resource_ref_id)
+        return (
+            None
+            if arguments.get("event_id") is not None
+            else resource_id_from_ref(unit_of_work, resource_ref_id)
+        )
     if action.tool_name == "gmail_send":
         return resource_id_from_ref(unit_of_work, resource_ref_id)
     return None
@@ -343,7 +360,7 @@ def resolve_snapshot_fallback_resource_id(
 def resource_id_from_ref(unit_of_work: UnitOfWork, resource_ref_id: str | None) -> str:
     if resource_ref_id is None:
         raise LookupError("result_resource_ref_id is required for verification")
-    resource_ref = unit_of_work.resource_refs.get_by_id(resource_ref_id)
+    resource_ref = unit_of_work.resource_refs.get(resource_ref_id)
     if resource_ref is None:
         raise LookupError(f"resource ref not found: {resource_ref_id}")
     return resource_ref.resource_id
@@ -355,16 +372,7 @@ def upsert_resource_ref(
     """Persist by the single connector-aware ResourceRef identity."""
     if not resource_ref.connector_id:
         raise ValueError("resource reference connector_id is required")
-    unit_of_work.resource_refs.upsert(resource_ref)
-    persisted = unit_of_work.resource_refs.get_by_unique_key(
-        run_id=resource_ref.run_id,
-        connector_id=resource_ref.connector_id,
-        resource_type=resource_ref.resource_type.value,
-        resource_id=resource_ref.resource_id,
-    )
-    if persisted is None:
-        raise RuntimeError("resource reference upsert did not persist")
-    return persisted
+    return unit_of_work.resource_refs.upsert_bound_ref(resource_ref)
 
 
 def action_response_from_result(

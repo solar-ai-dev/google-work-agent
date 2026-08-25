@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import itertools
+from collections.abc import Callable
 from dataclasses import asdict, replace
 from json import dumps
 
@@ -21,6 +23,11 @@ from google_work_agent.ports.models import (
     PersistedTraceEventRecord,
     RunRecord,
     TraceEventRecord,
+)
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    RunExecutionRefV1,
+    WorkflowHandoffStageV1,
+    WorkflowHandoffV1,
 )
 
 
@@ -103,10 +110,10 @@ class _ConversationRepo:
         )
         self.touch_count = 0
 
-    def get_by_id(self, conversation_id: str) -> ConversationRecord | None:
+    def get(self, conversation_id: str) -> ConversationRecord | None:
         return self.record if conversation_id == self.record.id else None
 
-    def touch(self, conversation_id: str, *, updated_at_ms: int) -> None:
+    def touch_updated_at(self, conversation_id: str, *, updated_at_ms: int) -> None:
         assert conversation_id == self.record.id
         self.touch_count += 1
 
@@ -116,10 +123,10 @@ class _RunRepo:
         self.records: dict[str, RunRecord] = {}
         self.add_count = 0
 
-    def get_by_id(self, run_id: str) -> RunRecord | None:
+    def get(self, run_id: str) -> RunRecord | None:
         return self.records.get(run_id)
 
-    def get_open_by_conversation(self, conversation_id: str) -> RunRecord | None:
+    def find_open_by_conversation(self, conversation_id: str) -> RunRecord | None:
         return next(
             (
                 record
@@ -129,7 +136,7 @@ class _RunRepo:
             None,
         )
 
-    def add(self, run: object) -> None:
+    def create(self, run: object) -> None:
         self.add_count += 1
         self.records[run.id] = RunRecord(
             id=run.id,
@@ -146,12 +153,20 @@ class _MessageRepo:
         self.records: dict[str, MessageRecord] = {}
         self.add_count = 0
 
-    def get_by_id(self, message_id: str) -> MessageRecord | None:
-        return self.records.get(message_id)
-
-    def add(self, message: MessageRecord) -> None:
+    def append_user_message(self, message: MessageRecord) -> None:
         self.add_count += 1
         self.records[message.id] = message
+
+    def list_by_conversation_keyset(
+        self, *, conversation_id: str, cursor: str | None, page_size: int
+    ) -> tuple[tuple[MessageRecord, ...], str | None]:
+        del cursor
+        records = tuple(
+            record
+            for record in reversed(tuple(self.records.values()))
+            if record.conversation_id == conversation_id
+        )
+        return records[:page_size], None
 
 
 class _ReceiptRepo:
@@ -193,6 +208,44 @@ class _ReceiptRepo:
         )
 
 
+class _WorkflowHandoffRepo:
+    def __init__(self) -> None:
+        self.records: dict[str, WorkflowHandoffV1] = {}
+        self.stage_count = 0
+
+    def stage_pending(self, stage: WorkflowHandoffStageV1) -> WorkflowHandoffV1:
+        self.stage_count += 1
+        handoff = WorkflowHandoffV1(
+            schema_version=1,
+            handoff_id=stage.handoff_id,
+            trigger_command_id=stage.trigger_command_id,
+            execution=stage.execution,
+            checkpoint_id=stage.checkpoint_id,
+            checkpoint_generation=stage.checkpoint_generation,
+            run_sequence=1,
+            control_kind=stage.control_kind,
+            control=stage.control,
+            control_payload_hash=stage.control_payload_hash,
+            status="PENDING",
+            last_submit_reason=None,
+            execution_admission=None,
+            applied_checkpoint_id=None,
+            applied_checkpoint_generation=None,
+            version=0,
+        )
+        self.records[stage.handoff_id] = handoff
+        return handoff
+
+    def get(self, handoff_id: str) -> WorkflowHandoffV1 | None:
+        return self.records.get(handoff_id)
+
+    def get_by_trigger_command_id(self, trigger_command_id: str) -> WorkflowHandoffV1 | None:
+        return next(
+            (item for item in self.records.values() if item.trigger_command_id == trigger_command_id),
+            None,
+        )
+
+
 class _UnitOfWork:
     def __init__(self) -> None:
         self.conversations = _ConversationRepo()
@@ -201,6 +254,7 @@ class _UnitOfWork:
         self.command_receipts = _ReceiptRepo()
         self.traces = _TraceCollector()
         self.audits = _AuditCollector()
+        self.workflow_handoffs = _WorkflowHandoffRepo()
         self.commit_count = 0
 
     def __enter__(self) -> "_UnitOfWork":
@@ -216,14 +270,16 @@ class _UnitOfWork:
         return None
 
 
+def _id_factory(*, start: int = 1) -> Callable[[], str]:
+    counter = itertools.count(start)
+    return lambda: f"id-{next(counter)}"
+
+
 def _command(*, request_hash: str = "hash-1") -> StartRunCommand:
     return StartRunCommand(
         command_id="command-1",
         request_hash=request_hash,
         conversation_id="conversation-1",
-        user_message_id="message-1",
-        run_id="run-1",
-        workflow_key="thread-1",
         request_text="hello",
         entry_mode="CHAT",
         selected_resource_ids=(),
@@ -232,13 +288,13 @@ def _command(*, request_hash: str = "hash-1") -> StartRunCommand:
     )
 
 
-def _received(command: StartRunCommand) -> CommandReceiptRecord:
+def _received(command: StartRunCommand, *, run_id: str = "run-1") -> CommandReceiptRecord:
     return CommandReceiptRecord(
         command_id=command.command_id,
         command_type="StartRun",
         request_hash=command.request_hash,
         aggregate_type="Run",
-        aggregate_id=command.run_id,
+        aggregate_id=run_id,
         status=CommandReceiptStatus.RECEIVED,
         result_code=None,
         result_version=None,
@@ -249,16 +305,24 @@ def _received(command: StartRunCommand) -> CommandReceiptRecord:
     )
 
 
-def _stored_success(command: StartRunCommand) -> StartRunResult:
+def _stored_success(
+    command: StartRunCommand,
+    *,
+    run_id: str = "run-1",
+    user_message_id: str = "message-1",
+    workflow_key: str = "thread-1",
+    handoff_id: str = "handoff-1",
+) -> StartRunResult:
     return StartRunResult(
         applied=True,
         result_code=ResultCode.TRANSITION_APPLIED.value,
-        run_id=command.run_id,
+        run_id=run_id,
         conversation_id=command.conversation_id,
         run_status=RunStatus.CREATED.value,
         run_version=0,
-        user_message_id=command.user_message_id,
-        workflow_key=command.workflow_key,
+        user_message_id=user_message_id,
+        workflow_key=workflow_key,
+        handoff_id=handoff_id,
         enqueued=True,
         request_replayed=False,
     )
@@ -267,11 +331,12 @@ def _stored_success(command: StartRunCommand) -> StartRunResult:
 def _run_created_audit(
     command: StartRunCommand,
     *,
+    run_id: str = "run-1",
     command_id: str | None = None,
 ) -> AuditEventRecord:
     return AuditEventRecord(
         account_id="account-1",
-        run_id=command.run_id,
+        run_id=run_id,
         action_id=None,
         actor_type="USER",
         actor_id="account-1",
@@ -293,10 +358,12 @@ def _run_created_audit(
 def _run_created_trace(
     command: StartRunCommand,
     *,
+    run_id: str = "run-1",
+    workflow_key: str = "thread-1",
     command_id: str | None = None,
 ) -> TraceEventRecord:
     return TraceEventRecord(
-        run_id=command.run_id,
+        run_id=run_id,
         action_id=None,
         event_type="RUN_CREATED",
         status=RunStatus.CREATED.value,
@@ -306,7 +373,7 @@ def _run_created_trace(
                 "command_id": command.command_id if command_id is None else command_id,
                 "selected_resource_ids": list(command.selected_resource_ids),
                 "selected_resources": [asdict(resource) for resource in command.selected_resources],
-                "workflow_key": command.workflow_key,
+                "workflow_key": workflow_key,
                 "requested_mode": command.requested_mode,
             },
             sort_keys=True,
@@ -315,10 +382,10 @@ def _run_created_trace(
     )
 
 
-def _command_received_audit(command: StartRunCommand) -> AuditEventRecord:
+def _command_received_audit(command: StartRunCommand, *, run_id: str = "run-1") -> AuditEventRecord:
     return AuditEventRecord(
         account_id="account-1",
-        run_id=command.run_id,
+        run_id=run_id,
         action_id=None,
         actor_type="SYSTEM",
         actor_id="command_receipt",
@@ -329,7 +396,7 @@ def _command_received_audit(command: StartRunCommand) -> AuditEventRecord:
             {
                 "command_id": command.command_id,
                 "command_type": "StartRun",
-                "aggregate_id": command.run_id,
+                "aggregate_id": run_id,
             },
             sort_keys=True,
         ),
@@ -337,10 +404,10 @@ def _command_received_audit(command: StartRunCommand) -> AuditEventRecord:
     )
 
 
-def _command_applied_audit(command: StartRunCommand) -> AuditEventRecord:
+def _command_applied_audit(command: StartRunCommand, *, run_id: str = "run-1") -> AuditEventRecord:
     return AuditEventRecord(
         account_id="account-1",
-        run_id=command.run_id,
+        run_id=run_id,
         action_id=None,
         actor_type="SYSTEM",
         actor_id="command_receipt",
@@ -351,7 +418,7 @@ def _command_applied_audit(command: StartRunCommand) -> AuditEventRecord:
             {
                 "command_id": command.command_id,
                 "command_type": "StartRun",
-                "aggregate_id": command.run_id,
+                "aggregate_id": run_id,
             },
             sort_keys=True,
         ),
@@ -359,27 +426,68 @@ def _command_applied_audit(command: StartRunCommand) -> AuditEventRecord:
     )
 
 
-def _seed_complete_aggregate(uow: _UnitOfWork, command: StartRunCommand) -> None:
-    uow.runs.records[command.run_id] = RunRecord(
-        id=command.run_id,
+def _seed_complete_aggregate(
+    uow: _UnitOfWork,
+    command: StartRunCommand,
+    *,
+    run_id: str = "run-1",
+    user_message_id: str = "message-1",
+    workflow_key: str = "thread-1",
+    handoff_id: str = "handoff-1",
+) -> None:
+    uow.runs.records[run_id] = RunRecord(
+        id=run_id,
         conversation_id=command.conversation_id,
         status=RunStatus.ANALYZING,
         version=1,
         started_at_ms=10,
         finished_at_ms=None,
     )
-    uow.messages.records[command.user_message_id] = MessageRecord(
-        id=command.user_message_id,
+    uow.messages.records[user_message_id] = MessageRecord(
+        id=user_message_id,
         conversation_id=command.conversation_id,
-        run_id=command.run_id,
+        run_id=run_id,
         role="USER",
         content=command.request_text,
         created_at_ms=10,
     )
+    uow.workflow_handoffs.records[handoff_id] = WorkflowHandoffV1(
+        schema_version=1,
+        handoff_id=handoff_id,
+        trigger_command_id=command.command_id,
+        execution=RunExecutionRefV1(
+            schema_version=1,
+            execution_kind="START",
+            run_id=run_id,
+            langgraph_thread_id=workflow_key,
+            graph_profile="SIX_ROLE_BASELINE",
+            graph_version="resume-contract-v1",
+            requested_mode="AUTO",
+            resume_target=None,
+        ),
+        checkpoint_id=None,
+        checkpoint_generation=0,
+        run_sequence=1,
+        control_kind="NONE",
+        control=None,
+        control_payload_hash=None,
+        status="PENDING",
+        last_submit_reason=None,
+        execution_admission=None,
+        applied_checkpoint_id=None,
+        applied_checkpoint_generation=None,
+        version=0,
+    )
 
 
 def _handler(uow: _UnitOfWork) -> StartRunHandler:
-    return StartRunHandler(unit_of_work_factory=lambda: uow, now_ms=lambda: 20)
+    return StartRunHandler(
+        unit_of_work_factory=lambda: uow,
+        now_ms=lambda: 20,
+        id_factory=_id_factory(),
+        graph_profile="SIX_ROLE_BASELINE",
+        graph_version="resume-contract-v1",
+    )
 
 
 def test_fresh_start_run_persists_one_run_one_user_message_and_receipt() -> None:
@@ -388,8 +496,10 @@ def test_fresh_start_run_persists_one_run_one_user_message_and_receipt() -> None
 
     assert result.applied is True
     assert result.request_replayed is False
+    assert result.handoff_id != ""
     assert uow.runs.add_count == 1
     assert uow.messages.add_count == 1
+    assert uow.workflow_handoffs.stage_count == 1
     assert len(uow.traces.items) == 1
     assert len(uow.audits.items) == 1
     assert uow.command_receipts.add_received_count == 1
@@ -415,8 +525,10 @@ def test_completed_receipt_replays_without_duplicate_side_effects() -> None:
     assert result.applied is True
     assert result.enqueued is False
     assert result.request_replayed is True
+    assert result.handoff_id == stored.handoff_id
     assert uow.runs.add_count == 0
     assert uow.messages.add_count == 0
+    assert uow.workflow_handoffs.stage_count == 0
     assert uow.command_receipts.finish_count == 0
     assert len(uow.traces.items) == 0
     assert len(uow.audits.items) == 0
@@ -427,7 +539,6 @@ def test_completed_receipt_replays_without_duplicate_side_effects() -> None:
     (
         ("command_type", "ApproveAction"),
         ("aggregate_type", "Action"),
-        ("aggregate_id", "other-run"),
     ),
 )
 def test_completed_receipt_with_wrong_identity_fails_closed_before_replay(
@@ -472,8 +583,10 @@ def test_received_receipt_with_applied_aggregate_finishes_receipt_without_duplic
     assert result.run_version == 0
     assert result.enqueued is False
     assert result.request_replayed is True
+    assert result.handoff_id == "handoff-1"
     assert uow.runs.add_count == 0
     assert uow.messages.add_count == 0
+    assert uow.workflow_handoffs.stage_count == 0
     assert uow.command_receipts.finish_count == 1
     assert uow.commit_count == 1
     assert len(uow.traces.items) == 1
@@ -589,6 +702,9 @@ def test_received_receipt_age_never_turns_absence_into_unapplied_proof() -> None
     handler = StartRunHandler(
         unit_of_work_factory=lambda: uow,
         now_ms=lambda: 10**15,
+        id_factory=_id_factory(),
+        graph_profile="SIX_ROLE_BASELINE",
+        graph_version="resume-contract-v1",
     )
 
     with pytest.raises(RuntimeError, match="no canonical proof of non-application"):
@@ -626,8 +742,8 @@ def test_received_receipt_with_partial_aggregate_fails_closed() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
-    uow.runs.records[command.run_id] = RunRecord(
-        id=command.run_id,
+    uow.runs.records["run-1"] = RunRecord(
+        id="run-1",
         conversation_id=command.conversation_id,
         status=RunStatus.CREATED,
         version=0,
@@ -635,7 +751,7 @@ def test_received_receipt_with_partial_aggregate_fails_closed() -> None:
         finished_at_ms=None,
     )
 
-    with pytest.raises(RuntimeError, match="incomplete aggregate mutation"):
+    with pytest.raises(RuntimeError, match="matching WorkflowHandoff"):
         _handler(uow)(command)
 
     assert uow.runs.add_count == 0
@@ -643,14 +759,61 @@ def test_received_receipt_with_partial_aggregate_fails_closed() -> None:
     assert uow.command_receipts.finish_count == 0
 
 
+def test_received_receipt_with_run_and_handoff_but_no_message_fails_closed() -> None:
+    uow = _UnitOfWork()
+    command = _command()
+    uow.command_receipts.record = _received(command)
+    uow.runs.records["run-1"] = RunRecord(
+        id="run-1",
+        conversation_id=command.conversation_id,
+        status=RunStatus.CREATED,
+        version=0,
+        started_at_ms=10,
+        finished_at_ms=None,
+    )
+    uow.workflow_handoffs.records["handoff-1"] = WorkflowHandoffV1(
+        schema_version=1,
+        handoff_id="handoff-1",
+        trigger_command_id=command.command_id,
+        execution=RunExecutionRefV1(
+            schema_version=1,
+            execution_kind="START",
+            run_id="run-1",
+            langgraph_thread_id="thread-1",
+            graph_profile="SIX_ROLE_BASELINE",
+            graph_version="resume-contract-v1",
+            requested_mode="AUTO",
+            resume_target=None,
+        ),
+        checkpoint_id=None,
+        checkpoint_generation=0,
+        run_sequence=1,
+        control_kind="NONE",
+        control=None,
+        control_payload_hash=None,
+        status="PENDING",
+        last_submit_reason=None,
+        execution_admission=None,
+        applied_checkpoint_id=None,
+        applied_checkpoint_generation=None,
+        version=0,
+    )
+
+    with pytest.raises(RuntimeError, match="incomplete aggregate mutation"):
+        _handler(uow)(command)
+
+    assert uow.runs.add_count == 0
+    assert uow.messages.add_count == 0
+
+
 def test_received_receipt_with_message_only_partial_aggregate_fails_closed() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
-    uow.messages.records[command.user_message_id] = MessageRecord(
-        id=command.user_message_id,
+    uow.messages.records["message-1"] = MessageRecord(
+        id="message-1",
         conversation_id=command.conversation_id,
-        run_id=command.run_id,
+        run_id="run-1",
         role="USER",
         content=command.request_text,
         created_at_ms=10,
@@ -661,4 +824,5 @@ def test_received_receipt_with_message_only_partial_aggregate_fails_closed() -> 
 
     assert uow.runs.add_count == 0
     assert uow.messages.add_count == 0
+    assert uow.command_receipts.finish_count == 0
     assert uow.command_receipts.finish_count == 0

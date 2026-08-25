@@ -60,7 +60,7 @@ class CompleteAnswerOnlyRunService:
                 created_at_ms=now_ms,
             )
 
-            conversation = unit_of_work.conversations.get_by_id(command.conversation_id)
+            conversation = unit_of_work.conversations.get(command.conversation_id)
             if conversation is None:
                 raise LookupError(f"conversation not found: {command.conversation_id}")
 
@@ -91,7 +91,7 @@ class CompleteAnswerOnlyRunService:
 
             if result.applied:
                 assistant_message_id = self._message_id_factory()
-                unit_of_work.messages.add(
+                unit_of_work.messages.append_terminal_assistant_message(
                     MessageRecord(
                         id=assistant_message_id,
                         conversation_id=command.conversation_id,
@@ -197,9 +197,20 @@ class CompleteAnswerOnlyRunService:
             raise LookupError(f"run not found during receipt recovery: {command.run_id}")
 
         if run.status is RunStatus.COMPLETED:
-            message = unit_of_work.messages.find_assistant_message(
-                run_id=command.run_id,
-                content=command.assistant_message,
+            messages, _ = unit_of_work.messages.list_by_conversation_keyset(
+                conversation_id=command.conversation_id,
+                cursor=None,
+                page_size=200,
+            )
+            message = next(
+                (
+                    item
+                    for item in messages
+                    if item.run_id == command.run_id
+                    and item.role == "ASSISTANT"
+                    and item.content == command.assistant_message
+                ),
+                None,
             )
             if message is not None:
                 response = AnswerOnlyResponse(

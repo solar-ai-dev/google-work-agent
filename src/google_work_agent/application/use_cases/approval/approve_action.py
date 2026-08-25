@@ -6,6 +6,10 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 
+from google_work_agent.application.approval_source_snapshot import (
+    build_approval_source_snapshot,
+    merge_approval_snapshot_metadata,
+)
 from google_work_agent.application.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     approval_source_snapshot_for_calendar_conflict,
@@ -19,10 +23,6 @@ from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     approval_source_snapshot_for_task_duplicate,
     require_duplicate_acknowledgement,
-)
-from google_work_agent.application.approval_source_snapshot import (
-    build_approval_source_snapshot,
-    merge_approval_snapshot_metadata,
 )
 from google_work_agent.application.write_execution_integrity import calculate_recovery_fingerprint
 from google_work_agent.application.write_persistence import (
@@ -160,7 +160,7 @@ class ApproveActionHandler:
                 resource_ref = (
                     None
                     if action.target_resource_ref_id is None
-                    else unit_of_work.resource_refs.get_by_id(action.target_resource_ref_id)
+                    else unit_of_work.resource_refs.get(action.target_resource_ref_id)
                 )
                 approval_source_snapshot = build_approval_source_snapshot(
                     action=action,
