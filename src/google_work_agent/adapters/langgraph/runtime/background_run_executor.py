@@ -21,6 +21,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
 
 LOGGER = logging.getLogger(__name__)
 
+
 class BackgroundRunExecutorAdapter:
     """Consume and settle persisted admissions before semantic owner invocation."""
 
@@ -30,11 +31,9 @@ class BackgroundRunExecutorAdapter:
         unit_of_work_factory: Callable[[], UnitOfWork],
         checkpoint_port: CheckpointPort,
         materialize_admission_checkpoint: Callable[
-            [WorkflowExecutionAdmissionV1], GraphCheckpointEnvelopeV1
+            [WorkflowExecutionAdmissionV1, WorkflowHandoffV1], GraphCheckpointEnvelopeV1
         ],
-        invoke_semantic_owner: Callable[
-            [WorkflowExecutionAdmissionV1, WorkflowHandoffV1], None
-        ],
+        invoke_semantic_owner: Callable[[WorkflowExecutionAdmissionV1, WorkflowHandoffV1], None],
         release_active_lineage: Callable[[str, str, str, int], None],
         capacity: int = 32,
     ) -> None:
@@ -165,9 +164,10 @@ class BackgroundRunExecutorAdapter:
             binding.run_id, binding.langgraph_thread_id
         )
         if latest is not None and latest.execution_admission_id == admission.admission_id:
+            self._prove_control_materialized(latest, admission, handoff)
             return latest
         if binding.execution_kind == "START":
-            checkpoint = self._materialize_admission_checkpoint(admission)
+            checkpoint = self._materialize_admission_checkpoint(admission, handoff)
             if (
                 checkpoint.execution_admission_id != admission.admission_id
                 or checkpoint.active_handoff_id != handoff.handoff_id
@@ -193,7 +193,29 @@ class BackgroundRunExecutorAdapter:
         )
         self._checkpoint_port.store_same_run_checkpoint(checkpoint)
         self._checkpoint_port.flush()
+        if admission.submission_kind == "NORMAL_HANDOFF":
+            checkpoint = self._materialize_admission_checkpoint(admission, handoff)
+        if admission.submission_kind == "NORMAL_HANDOFF":
+            checkpoint = replace(checkpoint, applied_handoff_id=handoff.handoff_id)
+            self._checkpoint_port.store_same_run_checkpoint(checkpoint)
+            self._checkpoint_port.flush()
+        self._prove_control_materialized(checkpoint, admission, handoff)
         return checkpoint
+
+    def _prove_control_materialized(
+        self,
+        checkpoint: GraphCheckpointEnvelopeV1,
+        admission: WorkflowExecutionAdmissionV1,
+        handoff: WorkflowHandoffV1,
+    ) -> None:
+        if admission.submission_kind != "NORMAL_HANDOFF":
+            return
+        if checkpoint.applied_handoff_id != handoff.handoff_id:
+            raise ValueError("checkpoint does not contain applied handoff evidence")
+        if handoff.control is None:
+            return
+        if not self._checkpoint_port.contains_workflow_control(checkpoint, handoff.control):
+            raise ValueError("checkpoint does not contain durable one-shot control")
 
 
 def _result(accepted: bool, reason_code: str) -> RunExecutionAcceptedV1:

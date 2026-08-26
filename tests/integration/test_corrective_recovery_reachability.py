@@ -14,7 +14,6 @@ from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
 from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
-from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.use_cases.recovery.resolve_mismatch_recovery import (
     ResolveMismatchRecoveryHandler,
 )
@@ -215,19 +214,9 @@ def test_resolve_recovery_command_replay_returns_original_reserved_plan(
     assert replay.plan_id == "reserved-plan-2"
 
 
-def test_production_callers_preserve_generic_failure_and_expose_real_retry_triggers() -> None:
-    process_source = inspect.getsource(LocalRunCoordinator._process_item)
-    startup_source = inspect.getsource(LocalRunCoordinator.start)
+def test_production_recovery_exposes_real_retry_triggers() -> None:
     recovery_handler_source = inspect.getsource(ResolveMismatchRecoveryHandler.__call__)
     recovery_source = inspect.getsource(LangGraphWorkflowRuntime.recover_open_run)
-
-    # Generic runtime/programming failures remain terminalized exactly as before.
-    assert "except Exception as error:" in process_source
-    assert "WorkflowOutcome.FAILED" in process_source
-
-    # Durable WorkflowHandoff reconciliation is the only startup recovery owner.
-    assert "list_open_runs()" not in startup_source
-    assert 'kind="recover"' not in startup_source
 
     # Same-process command replay has a concrete producer for the same
     # registered corrective continuation.

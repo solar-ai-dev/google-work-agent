@@ -176,7 +176,7 @@ def _adapter(
         "v1",
     )
 
-    def materialize(value: WorkflowExecutionAdmissionV1):
+    def materialize(value: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1):
         with checkpoint.execution_scope(
             value,
             applied_handoff_id=value.handoff_id,

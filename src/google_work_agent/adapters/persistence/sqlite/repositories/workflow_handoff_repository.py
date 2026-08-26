@@ -164,11 +164,26 @@ class SqliteWorkflowHandoffRepository:
     def count_redriveable(self) -> int:
         row = self._connection.execute(
             """
-            SELECT COUNT(*) AS count
-            FROM workflow_handoffs
-            WHERE
-                (status = 'CONSUMED' AND applied_checkpoint_id IS NOT NULL)
-                OR status IN ('BLOCKED_BINDING', 'PENDING', 'DISPATCHED');
+            WITH ranked AS (
+                SELECT ROW_NUMBER() OVER (
+                    PARTITION BY run_id
+                    ORDER BY
+                        CASE
+                            WHEN status='CONSUMED' AND applied_checkpoint_id IS NOT NULL THEN 0
+                            WHEN status='BLOCKED_BINDING' THEN 1
+                            ELSE 2
+                        END,
+                        CASE
+                            WHEN status='CONSUMED' AND applied_checkpoint_id IS NOT NULL
+                                THEN -run_sequence
+                            ELSE run_sequence
+                        END
+                ) AS run_rank
+                FROM workflow_handoffs
+                WHERE (status='CONSUMED' AND applied_checkpoint_id IS NOT NULL)
+                   OR status IN ('BLOCKED_BINDING','PENDING','DISPATCHED')
+            )
+            SELECT COUNT(*) AS count FROM ranked WHERE run_rank=1;
             """
         ).fetchone()
         assert row is not None

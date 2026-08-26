@@ -26,6 +26,10 @@ from google_work_agent.domain import (
     calculate_canonical_json_hash,
 )
 from google_work_agent.ports import PlanReviewStatus, PlanStatus
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    MainControlResumeTargetV2,
+    RunExecutionAcceptedV1,
+)
 
 
 def _uow() -> MagicMock:
@@ -33,6 +37,32 @@ def _uow() -> MagicMock:
     unit_of_work.__enter__.return_value = unit_of_work
     unit_of_work.__exit__.return_value = None
     return unit_of_work
+
+
+def _handoff_dependencies(unit_of_work: MagicMock):
+    binding = SimpleNamespace(
+        langgraph_thread_id="thread-1",
+        graph_profile="SIX_ROLE_BASELINE",
+        graph_version="v1",
+        requested_mode="AUTO",
+    )
+    checkpoint = SimpleNamespace(checkpoint_id="checkpoint-1", checkpoint_generation=1)
+    unit_of_work.checkpoints.load_workflow_binding.return_value = binding
+    unit_of_work.checkpoints.load_same_run_checkpoint.return_value = checkpoint
+    unit_of_work.workflow_handoffs.stage_pending.side_effect = lambda stage: SimpleNamespace(
+        handoff_id=stage.handoff_id
+    )
+    return {
+        "id_generator": SimpleNamespace(next_id=lambda: "handoff-1"),
+        "resume_target_registry": SimpleNamespace(
+            issue_main_stage=lambda profile, stage, version: MainControlResumeTargetV2(
+                "MAIN_CONTROL", stage, profile, version
+            )
+        ),
+        "schedule_run_execution": lambda command: RunExecutionAcceptedV1(
+            1, True, "ACCEPTED"
+        ),
+    }
 
 
 def _action(*, status: ActionStatus, version: int = 1) -> SimpleNamespace:
@@ -74,12 +104,11 @@ def test_modify_persists_revocation_review_receipt_and_audit() -> None:
     )
     unit_of_work.plans.require_review.return_value = 7
     unit_of_work.action_dependencies.list_dependents.return_value = ()
-    coordinator = MagicMock()
     handler = ModifyActionHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 1000,
         gateway=MagicMock(),
-        local_run_coordinator=coordinator,
+        **_handoff_dependencies(unit_of_work),
     )
     handler._registry = SimpleNamespace(
         require=lambda _tool_name: SimpleNamespace(modify_patchable_fields={"subject"})
@@ -105,7 +134,7 @@ def test_modify_persists_revocation_review_receipt_and_audit() -> None:
     unit_of_work.traces.add.assert_called()
     unit_of_work.audits.add.assert_called()
     unit_of_work.commit.assert_called_once()
-    coordinator.enqueue_resume.assert_called_once()
+    unit_of_work.workflow_handoffs.stage_pending.assert_called_once()
 
 
 def _assert_terminal_modify_regression(
@@ -136,12 +165,11 @@ def _assert_terminal_modify_regression(
     )
     unit_of_work.plans.require_review.return_value = 12
     unit_of_work.action_dependencies.list_dependents.return_value = ()
-    coordinator = MagicMock()
     handler = ModifyActionHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 1500,
         gateway=MagicMock(),
-        local_run_coordinator=coordinator,
+        **_handoff_dependencies(unit_of_work),
     )
     handler._registry = SimpleNamespace(
         require=lambda _tool_name: SimpleNamespace(modify_patchable_fields={"subject"})
@@ -178,7 +206,7 @@ def _assert_terminal_modify_regression(
     unit_of_work.traces.add.assert_called()
     unit_of_work.audits.add.assert_called()
     unit_of_work.commit.assert_called_once()
-    coordinator.enqueue_resume.assert_called_once()
+    unit_of_work.workflow_handoffs.stage_pending.assert_called_once()
     assert unit_of_work.execution_attempts.method_calls == []
     assert unit_of_work.verifications.method_calls == []
 
@@ -215,7 +243,7 @@ def test_modify_superseded_plan_child_has_zero_effect_and_zero_owner_io() -> Non
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 1750,
         gateway=gateway,
-        local_run_coordinator=MagicMock(),
+        **_handoff_dependencies(unit_of_work),
     )(
         ModifyActionCommand(
             command_id="cmd-modify-superseded",

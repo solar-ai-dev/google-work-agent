@@ -11,8 +11,11 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
+from langgraph._internal._constants import NULL_TASK_ID
 from langgraph.checkpoint.base import BaseCheckpointSaver, get_checkpoint_metadata
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.pregel._io import map_command
+from langgraph.types import Command
 
 from google_work_agent.ports.system.contracts.checkpoint import (
     GraphCheckpointEnvelopeV1,
@@ -27,6 +30,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     MainControlResumeTargetV2,
     RegisteredResumeTargetRefV2,
+    WorkflowControlEnvelopeV1,
     WorkflowExecutionAdmissionV1,
 )
 
@@ -47,6 +51,7 @@ class _WriteContext:
 _WRITE_CONTEXT: ContextVar[_WriteContext | None] = ContextVar(
     "workflow_checkpoint_write_context", default=None
 )
+_NULL_TASK_ID = NULL_TASK_ID
 
 
 class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
@@ -57,11 +62,26 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
         database_path: Path,
         *,
         now_ms: Callable[[], int],
+        target_resolver: Callable[
+            [
+                Mapping[str, object],
+                GraphProfileIdV1,
+                str,
+                RegisteredResumeTargetRefV2,
+            ],
+            RegisteredResumeTargetRefV2,
+        ]
+        | None = None,
     ) -> None:
         database_path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(database_path, check_same_thread=False)
         connection.row_factory = sqlite3.Row
-        self._initialize(connection=connection, now_ms=now_ms, owns_connection=True)
+        self._initialize(
+            connection=connection,
+            now_ms=now_ms,
+            owns_connection=True,
+            target_resolver=target_resolver,
+        )
         self._delegate.setup()
         self._setup_checkpoint_storage(commit=True)
 
@@ -74,7 +94,12 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
     ) -> SqliteCheckpointAdapter:
         """Bind checkpoint-owned initial binding writes to an existing SQLite UoW."""
         adapter = cls.__new__(cls)
-        adapter._initialize(connection=connection, now_ms=now_ms, owns_connection=False)
+        adapter._initialize(
+            connection=connection,
+            now_ms=now_ms,
+            owns_connection=False,
+            target_resolver=None,
+        )
         adapter._setup_workflow_binding_storage()
         adapter._setup_retrieval_head_storage()
         return adapter
@@ -85,6 +110,16 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
         connection: sqlite3.Connection,
         now_ms: Callable[[], int],
         owns_connection: bool,
+        target_resolver: Callable[
+            [
+                Mapping[str, object],
+                GraphProfileIdV1,
+                str,
+                RegisteredResumeTargetRefV2,
+            ],
+            RegisteredResumeTargetRefV2,
+        ]
+        | None,
     ) -> None:
         self._connection = connection
         self._connection.row_factory = sqlite3.Row
@@ -92,6 +127,7 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
         super().__init__(serde=self._delegate.serde)
         self._now_ms = now_ms
         self._owns_connection = owns_connection
+        self._target_resolver = target_resolver
         self._is_closed = False
 
     def _setup_checkpoint_storage(self, *, commit: bool) -> None:
@@ -406,6 +442,107 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
             ).fetchone()
         return None if row is None else _to_checkpoint(row)
 
+    def materialize_workflow_control(
+        self,
+        checkpoint: GraphCheckpointEnvelopeV1,
+        control: WorkflowControlEnvelopeV1,
+        *,
+        goto_node: str | None = None,
+    ) -> None:
+        """Persist one-shot control as native pending writes on the exact checkpoint."""
+        if control.kind != "CONFIRMATION_RESPONSE" and not goto_node:
+            raise ValueError(f"{control.kind} requires a concrete runnable node")
+        self._assert_exact_native_checkpoint(checkpoint)
+        writes = _control_writes(control, goto_node=goto_node)
+        existing = self._pending_null_writes(checkpoint)
+        for channel, value in writes:
+            previous = existing.get(channel)
+            if previous is not None and previous != value:
+                raise CheckpointConflictError(
+                    f"checkpoint already contains a different pending control write: {channel}"
+                )
+        config = {
+            "configurable": {
+                "thread_id": checkpoint.langgraph_thread_id,
+                "checkpoint_ns": "",
+                "checkpoint_id": checkpoint.checkpoint_id,
+            }
+        }
+        self._delegate.put_writes(config, writes, _NULL_TASK_ID)
+        self.flush()
+        if not self.contains_workflow_control(checkpoint, control, goto_node=goto_node):
+            raise CheckpointConflictError("workflow control was not durably materialized")
+
+    def contains_workflow_control(
+        self,
+        checkpoint: GraphCheckpointEnvelopeV1,
+        control: WorkflowControlEnvelopeV1,
+        *,
+        goto_node: str | None = None,
+    ) -> bool:
+        self._assert_exact_native_checkpoint(checkpoint)
+        pending = self._pending_null_writes(checkpoint)
+        return all(
+            pending.get(channel) == value
+            for channel, value in _control_writes(control, goto_node=goto_node)
+        )
+
+    def materialize_resume_target(
+        self, checkpoint: GraphCheckpointEnvelopeV1, *, goto_node: str
+    ) -> None:
+        if not goto_node:
+            raise ValueError("resume target node is required")
+        self._assert_exact_native_checkpoint(checkpoint)
+        writes = [(channel, value) for _, channel, value in map_command(Command(goto=goto_node))]
+        existing = self._pending_null_writes(checkpoint)
+        for channel, value in writes:
+            previous = existing.get(str(channel))
+            if previous is not None and previous != value:
+                raise CheckpointConflictError(
+                    f"checkpoint already contains a different resume target: {channel}"
+                )
+        config = {
+            "configurable": {
+                "thread_id": checkpoint.langgraph_thread_id,
+                "checkpoint_ns": "",
+                "checkpoint_id": checkpoint.checkpoint_id,
+            }
+        }
+        self._delegate.put_writes(
+            config,
+            [(str(channel), value) for channel, value in writes],
+            _NULL_TASK_ID,
+        )
+        self.flush()
+
+    def _assert_exact_native_checkpoint(self, checkpoint: GraphCheckpointEnvelopeV1) -> None:
+        current = self.load_same_run_checkpoint(checkpoint.run_id, checkpoint.langgraph_thread_id)
+        if (
+            current is None
+            or current.checkpoint_id != checkpoint.checkpoint_id
+            or current.checkpoint_generation != checkpoint.checkpoint_generation
+            or current.checkpoint_blob != checkpoint.checkpoint_blob
+        ):
+            raise CheckpointConflictError("workflow control requires the exact latest checkpoint")
+
+    def _pending_null_writes(self, checkpoint: GraphCheckpointEnvelopeV1) -> dict[str, object]:
+        item = self._delegate.get_tuple(
+            {
+                "configurable": {
+                    "thread_id": checkpoint.langgraph_thread_id,
+                    "checkpoint_ns": "",
+                    "checkpoint_id": checkpoint.checkpoint_id,
+                }
+            }
+        )
+        if item is None:
+            raise CheckpointConflictError("native checkpoint is missing")
+        return {
+            str(channel): value
+            for task_id, channel, value in item.pending_writes
+            if task_id == _NULL_TASK_ID
+        }
+
     def store_retrieval_head(self, head: RetrievalHeadV1) -> None:
         """Store metadata only when it names an existing native checkpoint."""
         with self._delegate.lock:
@@ -525,11 +662,15 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
             and inherited_target is not None
         )
         fallback = inherited_target if inherits_active_lineage else context.resume_target
-        target = _target_for_checkpoint(
-            checkpoint,
-            profile=binding.graph_profile,
-            graph_version=binding.graph_version,
-            fallback=fallback,
+        target = (
+            fallback
+            if self._target_resolver is None
+            else self._target_resolver(
+                checkpoint,
+                binding.graph_profile,
+                binding.graph_version,
+                fallback,
+            )
         )
         owner_scope = (
             str(prior["owner_scope"])
@@ -644,17 +785,6 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
         )
 
 
-def _target_for_checkpoint(
-    checkpoint: Mapping[str, Any],
-    *,
-    profile: GraphProfileIdV1,
-    graph_version: str,
-    fallback: RegisteredResumeTargetRefV2,
-) -> RegisteredResumeTargetRefV2:
-    del checkpoint, profile, graph_version
-    return fallback
-
-
 def _retrieval_head_from_checkpoint(
     checkpoint: Mapping[str, Any],
     *,
@@ -693,6 +823,60 @@ def _requirements_json(requirements: tuple[RetrievalCacheRequirementV1, ...]) ->
     return json.dumps(
         [asdict(item) for item in requirements], sort_keys=True, separators=(",", ":")
     )
+
+
+def _control_writes(
+    control: WorkflowControlEnvelopeV1,
+    *,
+    goto_node: str | None,
+) -> list[tuple[str, object]]:
+    if control.kind == "CONFIRMATION_RESPONSE":
+        command = Command(
+            resume={
+                "confirmation_response": dict(control.confirmation_response),
+                "policy_confirmation_receipt": (
+                    None
+                    if control.policy_confirmation_receipt is None
+                    else dict(control.policy_confirmation_receipt)
+                ),
+            }
+        )
+    else:
+        raw_control = cast(dict[str, object], asdict(control))
+        update: dict[str, object] = {"__workflow_control__": raw_control}
+        if control.kind == "CONTEXT_ADJUSTMENT":
+            adjustment = dict(control.adjustment)
+            adjustment_kind = adjustment.get("kind")
+            if adjustment_kind == "EXCLUDE_EVIDENCE":
+                segment_ids = adjustment.get(
+                    "excluded_segment_ids", adjustment.get("segment_ids", [])
+                )
+                if not isinstance(segment_ids, list) or not all(
+                    isinstance(item, str) and item for item in segment_ids
+                ):
+                    raise ValueError("EXCLUDE_EVIDENCE requires stable segment ids")
+                update["exclusion_obligation_segment_ids"] = list(segment_ids)
+            elif adjustment_kind == "RETRIEVE_MORE":
+                retrieval_need = adjustment.get("retrieval_need")
+                if retrieval_need is None:
+                    requested_information = adjustment.get("requested_information")
+                    if not isinstance(requested_information, str) or not requested_information:
+                        raise ValueError("RETRIEVE_MORE requires a bounded retrieval need")
+                    retrieval_need = {
+                        "schema_version": 1,
+                        "required_information": requested_information,
+                        "reason_codes": ["USER_CONTEXT_ADJUSTMENT"],
+                    }
+                if not isinstance(retrieval_need, dict):
+                    raise ValueError("RETRIEVE_MORE retrieval_need must be an object")
+                update["pending_user_retrieval_need"] = dict(retrieval_need)
+            else:
+                raise ValueError("unknown context adjustment kind")
+        command = Command(goto=goto_node, update=update) if goto_node else Command(update=update)
+    writes = list(map_command(command))
+    if any(task_id != _NULL_TASK_ID for task_id, _, _ in writes):
+        raise AssertionError("workflow control writes must be checkpoint-level writes")
+    return [(str(channel), value) for _, channel, value in writes]
 
 
 def _to_checkpoint(row: sqlite3.Row) -> GraphCheckpointEnvelopeV1:

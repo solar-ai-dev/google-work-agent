@@ -26,6 +26,9 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
 )
 from google_work_agent.adapters.langgraph.main.workflow import LangGraphWorkflowRuntime
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.registry.checkpoint_target_resolver import (
+    NativeCheckpointTargetResolver,
+)
 from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
@@ -79,7 +82,6 @@ from google_work_agent.application.attachments import (
     GetGmailAttachmentService,
     StageAttachmentService,
 )
-from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.coordinator_outcomes import RunOutcomeHandler
 from google_work_agent.application.google_connection import (
     DisconnectGoogleService,
@@ -100,6 +102,7 @@ from google_work_agent.application.orchestration.prompt_registry import (
     resolve_instruction_text,
 )
 from google_work_agent.application.queries import QueryService
+from google_work_agent.application.resource_continuation import OpaqueResourceQueryService
 from google_work_agent.application.resource_queries import ResourceQueryService
 from google_work_agent.application.settings import GetSettingsService, PatchSettingsService
 from google_work_agent.application.start_run import (
@@ -116,9 +119,17 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
 )
+from google_work_agent.application.use_cases.execution_attempt.reconcile_inflight_executions import (  # noqa: E501
+    drain_inflight_executions_to_quiescence,
+)
+from google_work_agent.application.use_cases.resource.issue_selection_handle import (
+    IssueSelectionHandle,
+)
+from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
+    ResolveSelectionHandle,
+)
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
-    FinalizeRunCancellationService,
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
@@ -151,7 +162,6 @@ from google_work_agent.ports import (
 from google_work_agent.ports.connector.mcp_client_port import MCPClientPortError
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
-    ConfirmationResumeControlV1,
     WorkflowExecutionAdmissionV1,
     WorkflowHandoffV1,
 )
@@ -183,63 +193,6 @@ class CoreInitializationError(RuntimeError):
     def __init__(self, safe_code: str) -> None:
         super().__init__(safe_code)
         self.safe_code = safe_code
-
-
-class _DeferredCoordinator:
-    """Keeps the HTTP process live until the core coordinator is available.
-
-    ``local_run_coordinator`` is set once as a real instance attribute on
-    ``_DeferredApiContainer`` (see below), so Python attribute lookup never
-    falls through to ``__getattr__``'s post-init delegation for it -- this
-    wrapper must itself forward every method the routes call, not just
-    start/stop, or a call made after core initialization completes still
-    hits this placeholder instead of the real coordinator.
-    """
-
-    def __init__(self) -> None:
-        self._delegate: LocalRunCoordinator | None = None
-        self._started = False
-
-    def start(self) -> None:
-        self._started = True
-        if self._delegate is not None:
-            self._delegate.start()
-
-    def bind(self, delegate: LocalRunCoordinator) -> None:
-        self._delegate = delegate
-        if self._started:
-            delegate.start()
-
-    def stop(self) -> None:
-        if self._delegate is not None:
-            self._delegate.stop()
-
-    def enqueue_resume(
-        self,
-        *,
-        run_id: str,
-        request_id: str,
-        command_id: str | None,
-        resume_kind: str,
-        resume_payload: dict[str, object],
-    ) -> None:
-        self._require_delegate().enqueue_resume(
-            run_id=run_id,
-            request_id=request_id,
-            command_id=command_id,
-            resume_kind=resume_kind,
-            resume_payload=resume_payload,
-        )
-
-    def request_cancel(self, *, run_id: str, request_id: str, reason_code: str) -> None:
-        self._require_delegate().request_cancel(
-            run_id=run_id, request_id=request_id, reason_code=reason_code
-        )
-
-    def _require_delegate(self) -> LocalRunCoordinator:
-        if self._delegate is None:
-            raise RuntimeError("core initialization is incomplete")
-        return self._delegate
 
 
 class _BootReadinessAggregator(ReadinessAggregator):
@@ -317,7 +270,6 @@ class _DeferredApiContainer:
         self._core: ApiContainer | None = None
         self._core_builder = core_builder
         self._closed = False
-        self.local_run_coordinator = _DeferredCoordinator()
         self.safe_mode_controller = SafeModeController()
         self.core_initialization_in_progress = True
         self.readiness_aggregator = _BootReadinessAggregator(self.safe_mode_controller)
@@ -405,7 +357,6 @@ class _DeferredApiContainer:
             self.readiness_aggregator.fail("CORE_STARTUP_RECONCILIATION_FAILED")
             return
         self._core = core
-        self.local_run_coordinator.bind(core.local_run_coordinator)
         self.readiness_aggregator.bind(core.readiness_aggregator)
         self.runtime_status_provider = core.runtime_status_provider
         self.query_service = core.query_service
@@ -518,10 +469,14 @@ def build_container(
     prompt_active = True
     workflow_runtime: LangGraphWorkflowRuntime | _PromptInactiveWorkflowRuntime
     gateway = google_connector.workspace_gateway
-    checkpoint = SqliteCheckpointAdapter(database_path, now_ms=clock.now_ms)
     resume_target_registry = ResumeTargetRegistry(
         node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
         graph_version=RESUME_CONTRACT_VERSION,
+    )
+    checkpoint = SqliteCheckpointAdapter(
+        database_path,
+        now_ms=clock.now_ms,
+        target_resolver=NativeCheckpointTargetResolver(resume_target_registry),
     )
     try:
         workflow_runtime = LangGraphWorkflowRuntime(
@@ -555,21 +510,6 @@ def build_container(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=clock.now_ms,
     )
-    finalize_cancel_service = FinalizeRunCancellationService(
-        unit_of_work_factory=unit_of_work_factory,
-        now_ms=clock.now_ms,
-    )
-    coordinator = LocalRunCoordinator(
-        query_service=query_service,
-        unit_of_work_factory=unit_of_work_factory,
-        workflow_runtime=workflow_runtime,
-        event_publisher=event_publisher,
-        now_ms=clock.now_ms,
-        api_contract_version=API_CONTRACT_VERSION,
-        finalize_cancel_service=finalize_cancel_service,
-        id_factory=id_generator.next_id,
-    )
-
     outcome_handler = RunOutcomeHandler(
         unit_of_work_factory=unit_of_work_factory,
         event_publisher=event_publisher,
@@ -610,23 +550,49 @@ def build_container(
             admission.effective_binding.graph_version,
         )
 
-    def _materialize_admission_checkpoint(admission: WorkflowExecutionAdmissionV1):
-        if admission.effective_binding.execution_kind != "START":
-            raise ValueError("only START requires native checkpoint materialization")
-        target = _initial_target(admission)
-        with checkpoint.execution_scope(
-            admission,
-            applied_handoff_id=admission.handoff_id,
-            owner_scope="REQUEST_UNDERSTANDING",
-            resume_target=target,
-        ):
-            workflow_runtime.prepare_start(_start_request(admission))
+    def _materialize_admission_checkpoint(
+        admission: WorkflowExecutionAdmissionV1,
+        handoff: WorkflowHandoffV1,
+    ):
+        binding = admission.effective_binding
+        if binding.execution_kind == "START":
+            target = _initial_target(admission)
+            with checkpoint.execution_scope(
+                admission,
+                applied_handoff_id=admission.handoff_id,
+                owner_scope="REQUEST_UNDERSTANDING",
+                resume_target=target,
+            ):
+                workflow_runtime.prepare_start(_start_request(admission))
+        elif admission.submission_kind == "NORMAL_HANDOFF":
+            materialized = checkpoint.load_same_run_checkpoint(
+                binding.run_id, binding.langgraph_thread_id
+            )
+            if materialized is None:
+                raise RuntimeError("RESUME requires a native checkpoint")
+            target = binding.resume_target
+            if target is None:
+                raise ValueError("RESUME admission requires a registered target")
+            goto_node = (
+                workflow_runtime.control_resume_node(target.stage_id)
+                if target.kind == "MAIN_CONTROL"
+                else workflow_runtime.agent_resume_node(target.semantic_owner_id)
+            )
+            if handoff.control is None:
+                checkpoint.materialize_resume_target(materialized, goto_node=goto_node)
+            else:
+                checkpoint.materialize_workflow_control(
+                    materialized,
+                    handoff.control,
+                    goto_node=None
+                    if handoff.control.kind == "CONFIRMATION_RESPONSE"
+                    else goto_node,
+                )
         materialized = checkpoint.load_same_run_checkpoint(
-            admission.effective_binding.run_id,
-            admission.effective_binding.langgraph_thread_id,
+            binding.run_id, binding.langgraph_thread_id
         )
         if materialized is None:
-            raise RuntimeError("START did not materialize a native checkpoint")
+            raise RuntimeError("admission did not materialize a native checkpoint")
         return materialized
 
     def _invoke_semantic_owner(
@@ -678,25 +644,8 @@ def build_container(
                     # replayed. Recovery resumes solely from the checkpoint-
                     # derived binding.resume_target (CheckpointEffectiveBindingResolver),
                     # never by re-reading the handoff's original control.
-                    if (
-                        admission.submission_kind == "NORMAL_HANDOFF"
-                        and handoff.control_kind == "CONFIRMATION_RESPONSE"
-                    ):
-                        control = handoff.control
-                        if not isinstance(control, ConfirmationResumeControlV1):
-                            raise ValueError("confirmation handoff control is invalid")
-                        resume_kind = "CONFIRMATION"
-                        resume_payload = {
-                            "confirmation_response": dict(control.confirmation_response),
-                            "policy_confirmation_receipt": (
-                                None
-                                if control.policy_confirmation_receipt is None
-                                else dict(control.policy_confirmation_receipt)
-                            ),
-                        }
-                    else:
-                        resume_kind = "CONSUMED_CONTINUATION_RECOVERY"
-                        resume_payload = {}
+                    resume_kind = "CONSUMED_CONTINUATION_RECOVERY"
+                    resume_payload = {}
                     result = workflow_runtime.resume(
                         WorkflowResumeRequest(
                             run_id=context.run_id,
@@ -733,11 +682,19 @@ def build_container(
         now_ms=clock.now_ms,
     )
 
-    async def _start_workflow_handoff_reconciliation() -> None:
+    async def _reconcile_inflight_executions() -> None:
+        await asyncio.to_thread(
+            drain_inflight_executions_to_quiescence,
+            production_runtime.reconcile_inflight_executions,
+        )
+
+    async def _drain_workflow_handoffs() -> None:
         await asyncio.to_thread(
             drain_workflow_handoffs_to_quiescence,
             production_runtime.redrive_workflow_handoffs,
         )
+
+    async def _start_workflow_handoff_reconciliation_loop() -> None:
         production_runtime.workflow_handoff_reconciliation_loop.start()
 
     def _stop_workflow_handoff_runtime() -> None:
@@ -755,6 +712,7 @@ def build_container(
         service_instance_id=service_instance_id,
         now_ms=clock.now_ms(),
     )
+    selection_handle_secret = secrets.token_bytes(32)
 
     return ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
@@ -795,7 +753,6 @@ def build_container(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
-        local_run_coordinator=coordinator,
         workflow_runtime=workflow_runtime,
         event_publisher=event_publisher,
         readiness_aggregator=DevelopmentReadinessAggregator(
@@ -831,12 +788,29 @@ def build_container(
             now_ms=clock.now_ms,
         ),
         disconnect_google_service=DisconnectGoogleService(provider=google_provider),
-        resource_query_service=ResourceQueryService(
-            gateway=gateway,
-            gmail_detail_gateway=google_connector.gmail_ui_gateway,
-            default_calendar_id_provider=lambda: llm_runtime.settings_service().default_calendar_id,
-            default_tasklist_id_provider=lambda: llm_runtime.settings_service().default_tasklist_id,
-            timezone_provider=lambda: llm_runtime.settings_service().timezone,
+        resource_query_service=OpaqueResourceQueryService(
+            ResourceQueryService(
+                gateway=gateway,
+                gmail_detail_gateway=google_connector.gmail_ui_gateway,
+                default_calendar_id_provider=(
+                    lambda: llm_runtime.settings_service().default_calendar_id
+                ),
+                default_tasklist_id_provider=(
+                    lambda: llm_runtime.settings_service().default_tasklist_id
+                ),
+                timezone_provider=lambda: llm_runtime.settings_service().timezone,
+            )
+        ),
+        issue_selection_handle=IssueSelectionHandle(
+            signing_secret=selection_handle_secret,
+            service_instance_id=service_instance_id,
+            now_ms=clock.now_ms,
+            ttl_ms=5 * 60 * 1000,
+        ),
+        resolve_selection_handle=ResolveSelectionHandle(
+            signing_secret=selection_handle_secret,
+            service_instance_id=service_instance_id,
+            now_ms=clock.now_ms,
         ),
         get_gmail_attachment_service=GetGmailAttachmentService(
             gateway=google_connector.gmail_attachment_gateway,
@@ -862,7 +836,11 @@ def build_container(
         ),
         test_llm_connection_service=TestLLMConnectionService(runtime_service=llm_runtime),
         safe_mode_controller=safe_mode_controller,
-        startup_callbacks=(_start_workflow_handoff_reconciliation,),
+        startup_callbacks=(
+            _reconcile_inflight_executions,
+            _drain_workflow_handoffs,
+            _start_workflow_handoff_reconciliation_loop,
+        ),
         shutdown_callbacks=(
             _stop_workflow_handoff_runtime,
             workflow_runtime.close,
@@ -913,11 +891,8 @@ def main() -> NoReturn:
 def _close_container(container: ApiContainer) -> None:
     """Close core-owned resources exactly once when deferred startup loses a race."""
 
-    try:
-        container.local_run_coordinator.stop()
-    finally:
-        for callback in container.shutdown_callbacks:
-            callback()
+    for callback in container.shutdown_callbacks:
+        callback()
 
 
 def _build_llm_runtime(

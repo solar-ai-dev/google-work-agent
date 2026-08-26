@@ -46,6 +46,12 @@ from google_work_agent.adapters.system.windows_hardware_probe import WindowsHard
 from google_work_agent.adapters.system.workflow_handoff_reconciliation_loop import (
     WorkflowHandoffReconciliationLoop,
 )
+from google_work_agent.application.use_cases.execution_attempt.mark_unknown_result import (
+    MarkUnknownResultHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.reconcile_inflight_executions import (  # noqa: E501
+    ReconcileInflightExecutionsHandler,
+)
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryHandler,
 )
@@ -128,6 +134,7 @@ NON_PERSISTENCE_P0_BINDINGS: tuple[tuple[type[object], type[object]], ...] = (
 @dataclass(frozen=True, slots=True)
 class ProductionRuntime:
     checkpoint: SqliteCheckpointAdapter
+    reconcile_inflight_executions: ReconcileInflightExecutionsHandler
     workflow_execution: BackgroundRunExecutorAdapter
     schedule_run_execution: ScheduleRunExecutionHandler
     redrive_workflow_handoffs: RedriveWorkflowHandoffsHandler
@@ -140,7 +147,7 @@ def build_production_runtime(
     id_factory: Callable[[], str],
     checkpoint: SqliteCheckpointAdapter,
     materialize_admission_checkpoint: Callable[
-        [WorkflowExecutionAdmissionV1], GraphCheckpointEnvelopeV1
+        [WorkflowExecutionAdmissionV1, WorkflowHandoffV1], GraphCheckpointEnvelopeV1
     ],
     invoke_semantic_owner: Callable[[WorkflowExecutionAdmissionV1, WorkflowHandoffV1], None],
     resume_target_registry: ResumeTargetValidator,
@@ -175,6 +182,16 @@ def build_production_runtime(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
     )
+    reconcile_inflight = ReconcileInflightExecutionsHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        mark_unknown_result=MarkUnknownResultHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        ),
+        require_recovery=require_recovery,
+        resume_target_registry=resume_target_registry,
+        id_generator=_CallableUuidPort(id_factory),
+    )
     redrive = RedriveWorkflowHandoffsHandler(
         unit_of_work_factory=unit_of_work_factory,
         schedule_run_execution=schedule,
@@ -187,11 +204,20 @@ def build_production_runtime(
     )
     return ProductionRuntime(
         checkpoint=checkpoint,
+        reconcile_inflight_executions=reconcile_inflight,
         workflow_execution=workflow_execution,
         schedule_run_execution=schedule,
         redrive_workflow_handoffs=redrive,
         workflow_handoff_reconciliation_loop=loop,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _CallableUuidPort:
+    factory: Callable[[], str]
+
+    def next_id(self) -> str:
+        return self.factory()
 
 
 def drain_workflow_handoffs_to_quiescence(
@@ -215,7 +241,7 @@ def drain_workflow_handoffs_to_quiescence(
         raise ValueError("batch_limit must be positive")
     for pass_index in range(1, max_passes + 1):
         result = redrive(RedriveWorkflowHandoffsCommand(limit=batch_limit))
-        if not result.has_more:
+        if not result.has_more or result.progressed_count == 0:
             return pass_index
     raise RuntimeError(
         f"workflow handoff startup drain did not reach quiescence within {max_passes} passes"

@@ -75,6 +75,7 @@ class ParentGraphState(MultiAgentGraphState):
     evidence_drafts: NotRequired[list[EvidenceDraftV1]]
     llm_provider_result: NotRequired[dict[str, object] | None]
 
+
 class ProductionGraphStateV2(ParentGraphState, total=False):
     """Production state extension for canonical post-Retrieval V2 artifacts."""
 
@@ -84,6 +85,9 @@ class ProductionGraphStateV2(ParentGraphState, total=False):
     post_retrieval_return: NotRequired[SubgraphReturnV2[object] | None]
     __v2_revision_mode__: NotRequired[str | None]
     __v2_block_reason__: NotRequired[str | None]
+    __workflow_control__: NotRequired[dict[str, object] | None]
+    exclusion_obligation_segment_ids: NotRequired[list[str]]
+    pending_user_retrieval_need: NotRequired[dict[str, object] | None]
 
 
 GraphState = ProductionGraphStateV2
@@ -237,9 +241,7 @@ def request_from_state(state: GraphState) -> WorkflowStartRequest:
         + dumps(
             {
                 "response_kind": cast(str, confirmation_response.get("response_kind")),
-                "selected_option": cast(
-                    str | None, confirmation_response.get("selected_option")
-                ),
+                "selected_option": cast(str | None, confirmation_response.get("selected_option")),
                 "free_text": cast(str | None, confirmation_response.get("free_text")),
             },
             ensure_ascii=True,

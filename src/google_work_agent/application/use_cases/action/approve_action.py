@@ -15,7 +15,6 @@ from google_work_agent.application.calendar_conflicts import (
     calendar_conflict_authority,
     require_calendar_conflict_acknowledgement,
 )
-from google_work_agent.application.coordinator import LocalRunCoordinator, QueueBusyError
 from google_work_agent.application.feasibility import (
     approval_source_snapshot_for_feasibility,
     feasibility_authority,
@@ -26,6 +25,10 @@ from google_work_agent.application.task_duplicates import (
     approval_source_snapshot_for_task_duplicate,
     duplicate_authority,
     require_duplicate_acknowledgement,
+)
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
 )
 from google_work_agent.application.write_execution_integrity import calculate_recovery_fingerprint
 from google_work_agent.application.write_persistence import (
@@ -50,11 +53,16 @@ from google_work_agent.domain import (
 )
 from google_work_agent.ports import (
     ApprovalRecord,
-    UUIDPort,
     PlanReviewStatus,
     PlanStatus,
     TraceEventRecord,
     UnitOfWork,
+    UUIDPort,
+)
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    RunExecutionAcceptedV1,
+    RunExecutionRefV1,
+    WorkflowHandoffStageV1,
 )
 
 
@@ -80,12 +88,6 @@ class ApproveActionResult:
     conflict_detail: str | None = None
 
 
-class ApproveActionFollowupQueueBusyError(RuntimeError):
-    def __init__(self, *, current_state: str) -> None:
-        super().__init__("approval runtime resume is queued")
-        self.current_state = current_state
-
-
 class ApproveActionHandler:
     """Own durable approval semantics and server-side approval source authority."""
 
@@ -95,14 +97,16 @@ class ApproveActionHandler:
         get_approval_ttl_minutes: Callable[[], int],
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        local_run_coordinator: LocalRunCoordinator,
         id_generator: UUIDPort,
+        resume_target_registry: ResumeTargetValidator,
+        schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
     ) -> None:
         self._get_approval_ttl_minutes = get_approval_ttl_minutes
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._local_run_coordinator = local_run_coordinator
         self._id_generator = id_generator
+        self._resume_target_registry = resume_target_registry
+        self._schedule_run_execution = schedule_run_execution
         self._registry = build_p0_tool_registry()
 
     def __call__(self, command: ApproveActionCommand) -> ApproveActionResult:
@@ -111,6 +115,7 @@ class ApproveActionHandler:
             raise RuntimeError("approval_ttl_minutes must be positive")
 
         run_id: str | None = None
+        handoff_id: str | None = None
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
@@ -126,6 +131,10 @@ class ApproveActionHandler:
                     action = require_action(unit_of_work, command.action_id)
                     plan = require_plan(unit_of_work, action.plan_id)
                     run_id = plan.run_id
+                    replay_handoff = unit_of_work.workflow_handoffs.get_by_trigger_command_id(
+                        command.command_id
+                    )
+                    handoff_id = None if replay_handoff is None else replay_handoff.handoff_id
                 else:
                     return result
             else:
@@ -456,6 +465,11 @@ class ApproveActionHandler:
                         item.value for item in approval_result.next_allowed_commands
                     ),
                 )
+                handoff_id = self._stage_preflight_handoff(
+                    unit_of_work=unit_of_work,
+                    run_id=plan.run_id,
+                    trigger_command_id=command.command_id,
+                )
                 finish_json_receipt(
                     unit_of_work,
                     command.command_id,
@@ -466,20 +480,52 @@ class ApproveActionHandler:
                 unit_of_work.commit()
                 run_id = plan.run_id
 
-        if run_id is not None:
-            try:
-                self._local_run_coordinator.enqueue_resume(
-                    run_id=run_id,
-                    request_id=command.request_id,
-                    command_id=command.command_id,
-                    resume_kind="APPROVAL",
-                    resume_payload={"approved": True},
-                )
-            except QueueBusyError as error:
-                raise ApproveActionFollowupQueueBusyError(
-                    current_state=result.action_status
-                ) from error
+        if run_id is not None and handoff_id is not None:
+            self._schedule_run_execution(ScheduleRunExecutionCommand(handoff_id=handoff_id))
         return result
+
+    def _stage_preflight_handoff(
+        self,
+        *,
+        unit_of_work: UnitOfWork,
+        run_id: str,
+        trigger_command_id: str,
+    ) -> str:
+        binding = unit_of_work.checkpoints.load_workflow_binding(run_id)
+        if binding is None:
+            raise RuntimeError("approval requires a durable workflow binding")
+        checkpoint = unit_of_work.checkpoints.load_same_run_checkpoint(
+            run_id, binding.langgraph_thread_id
+        )
+        if checkpoint is None:
+            raise RuntimeError("approval requires a durable workflow checkpoint")
+        target = self._resume_target_registry.issue_main_stage(
+            binding.graph_profile, "PREFLIGHT", binding.graph_version
+        )
+        handoff_id = self._id_generator.next_id()
+        handoff = unit_of_work.workflow_handoffs.stage_pending(
+            WorkflowHandoffStageV1(
+                schema_version=1,
+                handoff_id=handoff_id,
+                trigger_command_id=trigger_command_id,
+                execution=RunExecutionRefV1(
+                    schema_version=1,
+                    execution_kind="RESUME",
+                    run_id=run_id,
+                    langgraph_thread_id=binding.langgraph_thread_id,
+                    graph_profile=binding.graph_profile,
+                    graph_version=binding.graph_version,
+                    requested_mode=binding.requested_mode,
+                    resume_target=target,
+                ),
+                checkpoint_id=checkpoint.checkpoint_id,
+                checkpoint_generation=checkpoint.checkpoint_generation,
+                control_kind="NONE",
+                control=None,
+                control_payload_hash=None,
+            )
+        )
+        return handoff.handoff_id
 
     @staticmethod
     def _result_from_response(response: object) -> ApproveActionResult:

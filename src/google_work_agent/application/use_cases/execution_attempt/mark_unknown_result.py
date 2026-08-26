@@ -6,6 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
 
+from google_work_agent.application.use_cases.recovery.require_recovery import (
+    RequireRecoveryCommand,
+    RequireRecoveryHandler,
+)
 from google_work_agent.application.write_execution_contracts import WriteActionResponse
 from google_work_agent.application.write_persistence import (
     audit_event,
@@ -15,7 +19,7 @@ from google_work_agent.application.write_persistence import (
     require_plan,
     resolve_existing_action_receipt,
 )
-from google_work_agent.domain import ActionStatus, ResultCode
+from google_work_agent.domain import ActionStatus, ResultCode, calculate_canonical_json_hash
 from google_work_agent.ports import DeliveryCertainty, TraceEventRecord, UnitOfWork
 
 
@@ -110,12 +114,45 @@ class MarkUnknownResultHandler:
                 updated_at_ms=now_ms,
             )
             if not transition.applied:
-                raise RuntimeError("mark_unknown_result action transition failed after attempt update")
-            run = unit_of_work.runs.set_recovery_required(plan.run_id)
+                raise RuntimeError(
+                    "mark_unknown_result action transition failed after attempt update"
+                )
+            run_before_recovery = unit_of_work.runs.get_by_id(plan.run_id)
+            if run_before_recovery is None:
+                raise LookupError(f"run not found: {plan.run_id}")
+            fingerprint = calculate_canonical_json_hash(
+                {
+                    "action_id": action.id,
+                    "execution_attempt_id": attempt.id,
+                    "delivery_certainty": command.delivery_certainty.value,
+                }
+            )
+            recovery = RequireRecoveryHandler.apply_in_unit_of_work(
+                unit_of_work,
+                RequireRecoveryCommand(
+                    run_id=plan.run_id,
+                    expected_version=run_before_recovery.version,
+                    command_id=f"{command.command_id}:require-recovery",
+                    request_hash=calculate_canonical_json_hash(
+                        {
+                            "command_id": f"{command.command_id}:require-recovery",
+                            "fingerprint": fingerprint,
+                        }
+                    ),
+                    reason="UNKNOWN_RESULT",
+                    scope="ACTION",
+                    recovery_fingerprint=fingerprint,
+                    action_id=action.id,
+                    execution_attempt_id=attempt.id,
+                ),
+                now_ms=now_ms,
+            )
+            if not recovery.applied:
+                raise RuntimeError("unknown-result recovery transition was not applied")
             trace_payload: dict[str, object] = {
                 "attempt_id": attempt.id,
                 "error_code": command.error_code,
-                "run_status": run.status.value,
+                "run_status": recovery.current_status,
                 "delivery_certainty": command.delivery_certainty.value,
             }
             audit_metadata: dict[str, object] = {
@@ -153,7 +190,9 @@ class MarkUnknownResultHandler:
                 action_id=action.id,
                 action_status=transition.current_status.value,
                 action_version=transition.current_version,
-                next_allowed_commands=tuple(item.value for item in transition.next_allowed_commands),
+                next_allowed_commands=tuple(
+                    item.value for item in transition.next_allowed_commands
+                ),
                 attempt_id=attempt.id,
                 safe_error_code=command.error_code,
             )

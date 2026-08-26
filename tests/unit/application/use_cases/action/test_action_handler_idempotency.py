@@ -56,7 +56,9 @@ def test_modify_same_hash_receipt_replays_without_second_mutation() -> None:
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 10,
         gateway=MagicMock(),
-        local_run_coordinator=MagicMock(),
+        id_generator=MagicMock(),
+        resume_target_registry=MagicMock(),
+        schedule_run_execution=MagicMock(),
     )(ModifyActionCommand(
         command_id="cmd-1",
         request_hash="same-hash",

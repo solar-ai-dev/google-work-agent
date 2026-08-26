@@ -9,17 +9,20 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
-from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.settings import GetSettingsService
 from google_work_agent.application.start_run import (
     ModifyWriteActionService,
     RejectWriteActionService,
 )
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
+)
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
     PrepareWriteRetryService,
 )
-from google_work_agent.ports import ClockPort, UUIDPort, SseEventBufferPort, UnitOfWork
+from google_work_agent.ports import ClockPort, SseEventBufferPort, UnitOfWork, UUIDPort
+from google_work_agent.ports.system.contracts.workflow_handoff import RunExecutionAcceptedV1
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +34,8 @@ class ActionRouteDependencies:
     prepare_retry_service: Callable[[], PrepareWriteRetryService]
     get_settings_service: Callable[[], GetSettingsService | None]
     unit_of_work_factory: Callable[[], UnitOfWork]
-    local_run_coordinator: LocalRunCoordinator
+    schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1]
+    resume_target_registry: object
     event_publisher: Callable[[], SseEventBufferPort]
     clock: ClockPort
     id_generator: UUIDPort
@@ -47,7 +51,8 @@ def get_action_route_dependencies(request: Request) -> ActionRouteDependencies:
         prepare_retry_service=lambda: container.prepare_retry_service,
         get_settings_service=lambda: container.get_settings_service,
         unit_of_work_factory=lambda: container.unit_of_work_factory(),
-        local_run_coordinator=container.local_run_coordinator,
+        schedule_run_execution=container.schedule_run_execution,
+        resume_target_registry=container.resume_target_registry,
         event_publisher=lambda: container.event_publisher,
         clock=container.clock,
         id_generator=container.id_generator,

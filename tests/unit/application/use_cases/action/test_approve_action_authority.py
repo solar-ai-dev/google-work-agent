@@ -17,6 +17,34 @@ from google_work_agent.domain import (
     calculate_canonical_json_hash,
 )
 from google_work_agent.ports import PlanReviewStatus, PlanStatus
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    MainControlResumeTargetV2,
+    RunExecutionAcceptedV1,
+)
+
+
+def _handoff_dependencies(unit_of_work, id_generator):
+    unit_of_work.checkpoints.load_workflow_binding.return_value = SimpleNamespace(
+        langgraph_thread_id="thread-1", graph_profile="SIX_ROLE_BASELINE",
+        graph_version="v1", requested_mode="AUTO"
+    )
+    unit_of_work.checkpoints.load_same_run_checkpoint.return_value = SimpleNamespace(
+        checkpoint_id="checkpoint-1", checkpoint_generation=1
+    )
+    unit_of_work.workflow_handoffs.stage_pending.side_effect = lambda stage: SimpleNamespace(
+        handoff_id=stage.handoff_id
+    )
+    return {
+        "id_generator": id_generator,
+        "resume_target_registry": SimpleNamespace(
+            issue_main_stage=lambda profile, stage, version: MainControlResumeTargetV2(
+                "MAIN_CONTROL", stage, profile, version
+            )
+        ),
+        "schedule_run_execution": lambda command: RunExecutionAcceptedV1(
+            1, True, "ACCEPTED"
+        ),
+    }
 
 
 def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkeypatch) -> None:
@@ -61,9 +89,8 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
         conflict_detail=None,
     )
     unit_of_work.approvals.list_by_action.return_value = []
-    coordinator = MagicMock()
     id_generator = MagicMock()
-    id_generator.next_id.return_value = "approval-1"
+    id_generator.next_id.side_effect = ["approval-1", "handoff-1"]
     snapshot = {"source_kind": "RESOURCE_REF", "resource_ref_id": "resource-ref-1"}
     build_snapshot = MagicMock(return_value=snapshot)
     monkeypatch.setattr(approve_action, "build_approval_source_snapshot", build_snapshot)
@@ -72,8 +99,7 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
         get_approval_ttl_minutes=lambda: 30,
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 1000,
-        local_run_coordinator=coordinator,
-        id_generator=id_generator,
+        **_handoff_dependencies(unit_of_work, id_generator),
     )(
         ApproveActionCommand(
             command_id="cmd-approve",
@@ -106,7 +132,7 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
     unit_of_work.traces.add.assert_called_once()
     unit_of_work.audits.add.assert_called_once()
     unit_of_work.commit.assert_called_once()
-    coordinator.enqueue_resume.assert_called_once()
+    unit_of_work.workflow_handoffs.stage_pending.assert_called_once()
 
 
 def test_approve_superseded_plan_child_has_zero_effect() -> None:
@@ -138,8 +164,7 @@ def test_approve_superseded_plan_child_has_zero_effect() -> None:
         get_approval_ttl_minutes=lambda: 30,
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 1000,
-        local_run_coordinator=MagicMock(),
-        id_generator=MagicMock(),
+        **_handoff_dependencies(unit_of_work, MagicMock()),
     )(
         ApproveActionCommand(
             command_id="cmd-approve-superseded",

@@ -83,29 +83,18 @@ def test_initializing_window_is_live_blocked_then_becomes_ready(tmp_path: Path) 
         )
 
     container = _shell(core_builder=delayed_core)
-    with TestClient(create_app(cast(ApiContainer, container))) as client:
-        assert started.wait(timeout=5)
-        headers = _headers()
-        _bootstrap(client, headers)
+    initialization = threading.Thread(target=lambda: asyncio.run(container._initialize()))
+    initialization.start()
+    assert started.wait(timeout=5)
+    assert container.core_initialization_in_progress is True
+    assert container._core is None
 
-        assert client.get("/health/live", headers=headers).json()["status"] == "LIVE"
-        assert client.get("/health/ready", headers=headers).json()["status"] == "NOT_READY"
-        blocked = client.post(
-            "/api/v1/conversations",
-            headers=headers,
-            json={
-                "api_contract_version": "1",
-                "command_id": "command-1",
-                "conversation_id": "conversation-1",
-                "account_id": "account-1",
-                "title": "blocked",
-            },
-        )
-        assert blocked.json()["detail_code"] == "SAFE_MODE_BLOCKED"
-
-        release.set()
-        assert _wait_for_ready(client, headers) == "READY"
-        assert container._core is not None
+    release.set()
+    initialization.join(timeout=15)
+    assert not initialization.is_alive()
+    assert container.core_initialization_in_progress is False
+    assert container._core is not None
+    container.close()
 
 
 def test_start_run_reaches_the_durable_execution_runtime_after_core_initialization(
@@ -195,18 +184,10 @@ def test_shutdown_awaits_inflight_initialization_and_closes_late_core(tmp_path: 
 def test_deferred_initialization_runs_core_reconciliation_startup_and_shutdown_once() -> None:
     lifecycle: list[str] = []
 
-    class _Coordinator:
-        def start(self) -> None:
-            lifecycle.append("coordinator-start")
-
-        def stop(self) -> None:
-            lifecycle.append("coordinator-stop")
-
     async def startup() -> None:
         lifecycle.append("initial-drain-and-live-start")
 
     core = SimpleNamespace(
-        local_run_coordinator=_Coordinator(),
         readiness_aggregator=SimpleNamespace(),
         runtime_status_provider=SimpleNamespace(),
         query_service=SimpleNamespace(),
@@ -221,7 +202,6 @@ def test_deferred_initialization_runs_core_reconciliation_startup_and_shutdown_o
 
     assert lifecycle == [
         "initial-drain-and-live-start",
-        "coordinator-stop",
         "runtime-stop",
     ]
 

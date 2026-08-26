@@ -9,7 +9,6 @@ from typing import Annotated, cast
 from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
-from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
@@ -36,7 +35,6 @@ class RunRouteDependencies:
     graph_profile: GraphProfileIdV1
     graph_version: str
     schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1]
-    local_run_coordinator: LocalRunCoordinator
     workflow_runtime: WorkflowRuntime
     resolve_resume_authority: Callable[..., Mapping[str, object] | None]
     resolve_pending_confirmation: Callable[[str], Mapping[str, object] | None]
@@ -57,6 +55,7 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
     try:
         unit_of_work_factory = cast(Callable[[], UnitOfWork], container.unit_of_work_factory)
     except RuntimeError:
+
         def unit_of_work_factory() -> UnitOfWork:
             return cast(Callable[[], UnitOfWork], container.unit_of_work_factory)()
 
@@ -96,7 +95,6 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
         graph_profile=container.graph_profile,
         graph_version=container.graph_version,
         schedule_run_execution=container.schedule_run_execution,
-        local_run_coordinator=cast(LocalRunCoordinator, container.local_run_coordinator),
         workflow_runtime=container.workflow_runtime,
         resolve_resume_authority=resolve_resume_authority,
         resolve_pending_confirmation=resolve_pending_confirmation,

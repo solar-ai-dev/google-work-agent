@@ -5,6 +5,10 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort
 
+from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
+)
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
@@ -14,10 +18,16 @@ from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.queries import ActionSnapshot, RunSnapshot
 from google_work_agent.application.start_run import ResumeRunResponse
-from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunResult
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryResult,
 )
+from google_work_agent.application.use_cases.resource.issue_selection_handle import (
+    IssueSelectionHandle,
+)
+from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
+    ResolveSelectionHandle,
+)
+from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunResult
 from google_work_agent.application.use_cases.run.request_cancel import RequestCancelResult
 from google_work_agent.application.write_actions import WriteRunResponse
 from google_work_agent.ports import (
@@ -97,6 +107,10 @@ class _QueryStub:
 
 def _build_container(guard: _AllowGuard | _DenyGuard) -> tuple[ApiContainer, _CoordinatorStub]:
     coordinator = _CoordinatorStub()
+    clock = FakeClockPort(100)
+    graph_version = "resume-contract-v1"
+    resume_target_registry = ResumeTargetRegistry(NodeRegistry(graph_version), graph_version)
+    signing_secret = b"test-selection-handle-secret-32b"
     container = ApiContainer(
         unit_of_work_factory=lambda: None,
         query_service=_QueryStub(),
@@ -108,7 +122,6 @@ def _build_container(guard: _AllowGuard | _DenyGuard) -> tuple[ApiContainer, _Co
         prepare_retry_service=lambda command: command,
         cancel_run_service=lambda command: command,
         resume_run_service=lambda command: command,
-        local_run_coordinator=coordinator,
         workflow_runtime=type("Runtime", (), {"close": lambda self: None})(),
         event_publisher=type(
             "Publisher",
@@ -144,25 +157,51 @@ def _build_container(guard: _AllowGuard | _DenyGuard) -> tuple[ApiContainer, _Co
             )
         ),
         api_access_guard=guard,
-        clock=FakeClockPort(100),
+        clock=clock,
         id_generator=DeterministicUUID(prefix="req"),
         release_version="test",
         environment="test",
         service_instance_id="svc-test",
         launcher_probe_verifier=StaticLauncherProbeVerifier(LauncherProbeDecision(allowed=True)),
+        schedule_run_execution=lambda command: command,
+        resume_target_registry=resume_target_registry,
+        issue_selection_handle=IssueSelectionHandle(
+            signing_secret=signing_secret,
+            service_instance_id="svc-test",
+            now_ms=clock.now_ms,
+            ttl_ms=60_000,
+        ),
+        resolve_selection_handle=ResolveSelectionHandle(
+            signing_secret=signing_secret,
+            service_instance_id="svc-test",
+            now_ms=clock.now_ms,
+        ),
     )
     return container, coordinator
 
 
-def test_app_lifespan_starts_and_stops_coordinator() -> None:
-    container, coordinator = _build_container(_AllowGuard())
+def test_app_lifespan_runs_startup_then_shutdown_callbacks() -> None:
+    container, _ = _build_container(_AllowGuard())
+    lifecycle: list[str] = []
+
+    async def startup() -> None:
+        lifecycle.append("startup")
+
+    def shutdown() -> None:
+        lifecycle.append("shutdown")
+
+    container = replace(
+        container,
+        startup_callbacks=(startup,),
+        shutdown_callbacks=(shutdown,),
+    )
 
     with TestClient(create_app(container)) as client:
+        assert lifecycle == ["startup"]
         response = client.get("/health/live")
         assert response.status_code == 200
 
-    assert coordinator.started == 1
-    assert coordinator.stopped == 1
+    assert lifecycle == ["startup", "shutdown"]
 
 
 def test_app_lifespan_runs_all_resource_cleanup_callbacks() -> None:

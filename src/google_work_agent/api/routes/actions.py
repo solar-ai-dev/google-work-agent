@@ -9,7 +9,6 @@ from google_work_agent.api.dependencies.contract_version import (
 )
 from google_work_agent.api.dependencies.request_hash import calculate_server_request_hash
 from google_work_agent.api.dependencies.runtime_operation import enforce_runtime_operation
-from google_work_agent.api.errors.api_request_error import ApiRequestError
 from google_work_agent.api.errors.result_code_http_mapping import http_status_for_result_code
 from google_work_agent.api.schemas.actions.approve_action import (
     ActionCommandResponse,
@@ -20,12 +19,10 @@ from google_work_agent.api.schemas.actions.prepare_retry_action import PrepareRe
 from google_work_agent.api.schemas.actions.reject_action import RejectActionRequestV2
 from google_work_agent.application.use_cases.action.approve_action import (
     ApproveActionCommand,
-    ApproveActionFollowupQueueBusyError,
     ApproveActionHandler,
 )
 from google_work_agent.application.use_cases.action.modify_action import (
     ModifyActionCommand,
-    ModifyActionFollowupQueueBusyError,
     ModifyActionHandler,
 )
 from google_work_agent.application.use_cases.action.prepare_write_retry import (
@@ -91,34 +88,24 @@ def approve(
         get_approval_ttl_minutes=lambda: settings_service().approval_ttl_minutes,
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
-        local_run_coordinator=dependencies.local_run_coordinator,
         id_generator=dependencies.id_generator,
+        resume_target_registry=dependencies.resume_target_registry,
+        schedule_run_execution=dependencies.schedule_run_execution,
     )
-    try:
-        result = handler(
-            ApproveActionCommand(
-                command_id=payload.command_id,
-                request_hash=calculate_server_request_hash(
-                    operation="ApproveActionRequestV2",
-                    payload={"action_id": action_id, **request_payload},
-                ),
-                request_id=request.state.request_id,
-                action_id=action_id,
-                expected_version=payload.expected_version,
-                duplicate_acknowledged=payload.duplicate_acknowledged,
-                calendar_conflict_acknowledged=payload.calendar_conflict_acknowledged,
-            )
-        )
-    except ApproveActionFollowupQueueBusyError as error:
-        raise ApiRequestError(
-            error_code="SERVICE_BUSY",
-            user_message="The approval was saved, but runtime execution is still queued.",
-            status_code=503,
+    result = handler(
+        ApproveActionCommand(
+            command_id=payload.command_id,
+            request_hash=calculate_server_request_hash(
+                operation="ApproveActionRequestV2",
+                payload={"action_id": action_id, **request_payload},
+            ),
             request_id=request.state.request_id,
-            retryable=True,
-            detail_code=type(error).__name__,
-            current_state=error.current_state,
-        ) from error
+            action_id=action_id,
+            expected_version=payload.expected_version,
+            duplicate_acknowledged=payload.duplicate_acknowledged,
+            calendar_conflict_acknowledged=payload.calendar_conflict_acknowledged,
+        )
+    )
     response.status_code = http_status_for_result_code(result.result_code)
     return _response(result)
 
@@ -136,32 +123,23 @@ def modify(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
         gateway=_modify_gateway(dependencies),
-        local_run_coordinator=dependencies.local_run_coordinator,
+        id_generator=dependencies.id_generator,
+        resume_target_registry=dependencies.resume_target_registry,
+        schedule_run_execution=dependencies.schedule_run_execution,
     )
-    try:
-        result = handler(
-            ModifyActionCommand(
-                command_id=payload.command_id,
-                request_hash=calculate_server_request_hash(
-                    operation="ModifyActionRequestV2",
-                    payload={"action_id": action_id, **payload.model_dump()},
-                ),
-                request_id=request.state.request_id,
-                action_id=action_id,
-                expected_version=payload.expected_version,
-                arguments_patch=dict(payload.arguments_patch),
-            )
-        )
-    except ModifyActionFollowupQueueBusyError as error:
-        raise ApiRequestError(
-            error_code="SERVICE_BUSY",
-            user_message="The action was modified, but plan review is still queued.",
-            status_code=503,
+    result = handler(
+        ModifyActionCommand(
+            command_id=payload.command_id,
+            request_hash=calculate_server_request_hash(
+                operation="ModifyActionRequestV2",
+                payload={"action_id": action_id, **payload.model_dump()},
+            ),
             request_id=request.state.request_id,
-            retryable=True,
-            detail_code=type(error).__name__,
-            current_state=error.current_state,
-        ) from error
+            action_id=action_id,
+            expected_version=payload.expected_version,
+            arguments_patch=dict(payload.arguments_patch),
+        )
+    )
     response.status_code = http_status_for_result_code(result.result_code)
     return _response(result)
 

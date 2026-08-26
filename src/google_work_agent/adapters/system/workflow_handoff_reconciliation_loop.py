@@ -50,6 +50,9 @@ class WorkflowHandoffReconciliationLoop:
 
     def _run(self) -> None:
         while not self._stop.is_set():
-            self._redrive(RedriveWorkflowHandoffsCommand(limit=self._batch_limit))
+            while not self._stop.is_set():
+                result = self._redrive(RedriveWorkflowHandoffsCommand(limit=self._batch_limit))
+                if not result.has_more or result.progressed_count == 0:
+                    break
             self._wake.wait(self._interval_seconds)
             self._wake.clear()

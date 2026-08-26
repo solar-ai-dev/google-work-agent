@@ -25,7 +25,6 @@ from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
 from google_work_agent.api.schemas.runs.start_run import StartRunRequest, StartRunResponseModel
 from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
 from google_work_agent.api.security.sessions import calculate_session_digest
-from google_work_agent.application.coordinator import QueueBusyError
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryCommand,
     ResolveRecoveryHandler,
@@ -237,7 +236,9 @@ def cancel_run(
     result = RequestCancelHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
-        request_cancel_workflow=dependencies.local_run_coordinator.request_cancel,
+        id_generator=dependencies.id_generator,
+        resume_target_registry=dependencies.resume_target_registry,
+        schedule_run_execution=dependencies.schedule_run_execution,
     )(
         RequestCancelCommand(
             run_id=run_id,
@@ -279,8 +280,10 @@ def resume_run(
     handler = ResumeRunHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
-        enqueue_resume=dependencies.local_run_coordinator.enqueue_resume,
         resolve_resume_authority=dependencies.resolve_resume_authority,
+        id_generator=dependencies.id_generator,
+        resume_target_registry=dependencies.resume_target_registry,
+        schedule_run_execution=dependencies.schedule_run_execution,
     )
     result = handler(
         ResumeRunCommand(
@@ -366,29 +369,19 @@ def resolve_recovery(
         now_ms=dependencies.clock.now_ms,
         next_id=dependencies.id_generator.next_id,
     )
-    try:
-        result = handler(
-            ResolveRecoveryCommand(
-                command_id=payload.command_id,
-                request_hash=calculate_server_request_hash(
-                    operation="ResolveRecoveryRequestV1",
-                    payload={"run_id": run_id, **payload.model_dump()},
-                ),
-                run_id=run_id,
-                expected_version=payload.expected_version,
-                resolution=RecoveryResolution(payload.resolution_kind),
-                irrecoverable_confirmed=payload.resolution_kind == "FAIL",
+    result = handler(
+        ResolveRecoveryCommand(
+            command_id=payload.command_id,
+            request_hash=calculate_server_request_hash(
+                operation="ResolveRecoveryRequestV1",
+                payload={"run_id": run_id, **payload.model_dump()},
             ),
-        )
-    except QueueBusyError as error:
-        raise ApiRequestError(
-            error_code="SERVICE_BUSY",
-            user_message="복구 계획을 이어서 처리할 수 없습니다.",
-            status_code=503,
-            request_id=request.state.request_id,
-            retryable=True,
-            detail_code=type(error).__name__,
-        ) from error
+            run_id=run_id,
+            expected_version=payload.expected_version,
+            resolution=RecoveryResolution(payload.resolution_kind),
+            irrecoverable_confirmed=payload.resolution_kind == "FAIL",
+        ),
+    )
     response.status_code = (
         422
         if result.result_code == "STATE_CONFLICT"

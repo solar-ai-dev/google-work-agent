@@ -9,6 +9,13 @@ from langgraph.graph import END, START, StateGraph
 from google_work_agent.adapters.langgraph.runtime.background_run_executor import (
     BackgroundRunExecutorAdapter,
 )
+from google_work_agent.adapters.langgraph.registry.checkpoint_target_resolver import (
+    NativeCheckpointTargetResolver,
+)
+from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
+)
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
@@ -71,11 +78,16 @@ def test_persisted_admission_survives_acceptance_crash_and_settles_before_owner_
     assert schedule(ScheduleRunExecutionCommand("h-1")).accepted
     assert crashed.submission is not None
 
-    checkpoint = SqliteCheckpointAdapter(tmp_path / "checkpoint.db", now_ms=lambda: 10)
+    registry = ResumeTargetRegistry(NodeRegistry("v1"), "v1")
+    checkpoint = SqliteCheckpointAdapter(
+        tmp_path / "checkpoint.db",
+        now_ms=lambda: 10,
+        target_resolver=NativeCheckpointTargetResolver(registry),
+    )
     graph = _graph(checkpoint)
     target = _target()
 
-    def materialize(admission):
+    def materialize(admission, _handoff):
         with checkpoint.execution_scope(
             admission,
             applied_handoff_id=admission.handoff_id,
@@ -145,7 +157,11 @@ def test_persisted_admission_survives_acceptance_crash_and_settles_before_owner_
     assert persisted is not None
     assert persisted.status == "CONSUMED"
 
-    reopened = SqliteCheckpointAdapter(tmp_path / "checkpoint.db", now_ms=lambda: 20)
+    reopened = SqliteCheckpointAdapter(
+        tmp_path / "checkpoint.db",
+        now_ms=lambda: 20,
+        target_resolver=NativeCheckpointTargetResolver(registry),
+    )
     latest = reopened.load_same_run_checkpoint("r-1", "t-1")
     assert latest is not None
     assert latest.active_handoff_id == "h-1"
@@ -159,7 +175,7 @@ def test_persisted_admission_survives_acceptance_crash_and_settles_before_owner_
     recovery_worker = BackgroundRunExecutorAdapter(
         unit_of_work_factory=factory,
         checkpoint_port=reopened,
-        materialize_admission_checkpoint=lambda _admission: (_ for _ in ()).throw(
+        materialize_admission_checkpoint=lambda _admission, _handoff: (_ for _ in ()).throw(
             AssertionError("RESUME must reuse the native descendant checkpoint")
         ),
         invoke_semantic_owner=recover,
@@ -176,7 +192,7 @@ def test_persisted_admission_survives_acceptance_crash_and_settles_before_owner_
         unit_of_work_factory=factory,
         workflow_execution=recovery_worker,
         id_factory=lambda: "admission-2",
-        effective_binding_resolver=CheckpointEffectiveBindingResolver(reopened),
+        effective_binding_resolver=CheckpointEffectiveBindingResolver(reopened, registry),
     )
     try:
         accepted = recovery_schedule(

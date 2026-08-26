@@ -101,7 +101,6 @@ def _container(
         prepare_retry_service=lambda command: command,
         cancel_run_service=lambda command: command,
         resume_run_service=lambda command: command,
-        local_run_coordinator=_CoordinatorStub(),
         workflow_runtime=type("Runtime", (), {"close": lambda self: None})(),
         event_publisher=type(
             "Publisher",

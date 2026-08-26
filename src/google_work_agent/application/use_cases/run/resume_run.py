@@ -18,10 +18,20 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryHandler,
 )
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
+)
 from google_work_agent.domain import ActionStatus, ResultCode, RunStatus
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.ports import UUIDPort
 from google_work_agent.ports.models import AuditEventRecord, TraceEventRecord
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    RunExecutionAcceptedV1,
+    RunExecutionRefV1,
+    WorkflowHandoffStageV1,
+)
 
 ResumeAuthority = Mapping[str, object]
 
@@ -74,13 +84,17 @@ class ResumeRunHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        enqueue_resume: Callable[..., None],
         resolve_resume_authority: Callable[..., ResumeAuthority | None],
+        id_generator: UUIDPort,
+        resume_target_registry: ResumeTargetValidator,
+        schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._enqueue_resume = enqueue_resume
         self._resolve_resume_authority = resolve_resume_authority
+        self._id_generator = id_generator
+        self._resume_target_registry = resume_target_registry
+        self._schedule_run_execution = schedule_run_execution
 
     def __call__(
         self,
@@ -96,19 +110,16 @@ class ResumeRunHandler:
                 run_id=command.run_id, resume_kind=command.resume_kind
             )
         result = self._persist(command, authority=authority, resume_payload=payload)
+        del request_id
         if result.applied and result.should_enqueue:
-            handoff_payload = dict(payload)
-            if command.resume_kind == "REAUTH_COMPLETED" and authority is not None:
-                continuation_target = authority.get("continuation_target")
-                if isinstance(continuation_target, str):
-                    handoff_payload["continuation_target"] = continuation_target
-            self._enqueue_resume(
-                run_id=command.run_id,
-                request_id=request_id,
-                command_id=command.command_id,
-                resume_kind=command.resume_kind,
-                resume_payload=handoff_payload,
-            )
+            with self._unit_of_work_factory() as unit_of_work:
+                handoff = unit_of_work.workflow_handoffs.get_by_trigger_command_id(
+                    command.command_id
+                )
+            if handoff is not None:
+                self._schedule_run_execution(
+                    ScheduleRunExecutionCommand(handoff_id=handoff.handoff_id)
+                )
         return result
 
     def _persist(
@@ -211,11 +222,46 @@ class ResumeRunHandler:
                         created_at_ms=now_ms,
                     )
                 )
+                if response.should_enqueue:
+                    self._stage_resume_handoff(unit_of_work, command)
             finish_json_receipt(
                 unit_of_work, command.command_id, response, response.run_version, now_ms
             )
             unit_of_work.commit()
             return response
+
+    def _stage_resume_handoff(self, unit_of_work: UnitOfWork, command: ResumeRunCommand) -> None:
+        binding = unit_of_work.checkpoints.load_workflow_binding(command.run_id)
+        if binding is None:
+            raise RuntimeError("resume requires a durable workflow binding")
+        checkpoint = unit_of_work.checkpoints.load_same_run_checkpoint(
+            command.run_id, binding.langgraph_thread_id
+        )
+        if checkpoint is None or checkpoint.registered_resume_target is None:
+            raise RuntimeError("resume requires a registered durable checkpoint target")
+        self._resume_target_registry.validate(checkpoint.registered_resume_target)
+        unit_of_work.workflow_handoffs.stage_pending(
+            WorkflowHandoffStageV1(
+                schema_version=1,
+                handoff_id=self._id_generator.next_id(),
+                trigger_command_id=command.command_id,
+                execution=RunExecutionRefV1(
+                    schema_version=1,
+                    execution_kind="RESUME",
+                    run_id=command.run_id,
+                    langgraph_thread_id=binding.langgraph_thread_id,
+                    graph_profile=binding.graph_profile,
+                    graph_version=binding.graph_version,
+                    requested_mode=binding.requested_mode,
+                    resume_target=checkpoint.registered_resume_target,
+                ),
+                checkpoint_id=checkpoint.checkpoint_id,
+                checkpoint_generation=checkpoint.checkpoint_generation,
+                control_kind="NONE",
+                control=None,
+                control_payload_hash=None,
+            )
+        )
 
     @staticmethod
     def _validate(
@@ -267,8 +313,9 @@ class ResumeRunHandler:
                 False,
                 "unknown write results must be resolved before resume",
             )
-        if command.resume_kind == "REAUTH_COMPLETED":
-            if authority is None or not isinstance(authority.get("resume_status"), str):
+        if command.resume_kind == "REAUTH_COMPLETED" and (
+            authority is None or not isinstance(authority.get("resume_status"), str)
+        ):
                 return ResumeRunResult(
                     False,
                     ResultCode.STATE_CONFLICT.value,

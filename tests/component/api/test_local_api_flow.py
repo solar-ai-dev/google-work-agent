@@ -26,7 +26,6 @@ from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
-from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationHandler,
@@ -100,15 +99,6 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         ),
     )
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    coordinator = LocalRunCoordinator(
-        query_service=query_service,
-        unit_of_work_factory=unit_of_work_factory,
-        workflow_runtime=runtime,
-        event_publisher=publisher,
-        now_ms=clock.now_ms,
-        api_contract_version="1",
-        capacity=4,
-    )
     id_generator = DeterministicUUID(prefix="req")
 
     checkpoint, materialize, invoke = build_test_admission_callbacks(
@@ -188,7 +178,6 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
             now_ms=clock.now_ms,
         ),
         resume_run_service=lambda command: command,
-        local_run_coordinator=coordinator,
         workflow_runtime=runtime,
         event_publisher=publisher,
         readiness_aggregator=StaticReadinessAggregator(

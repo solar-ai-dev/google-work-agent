@@ -20,7 +20,6 @@ def _container_with_resource_service(resource_query_service: object) -> ApiConta
         prepare_retry_service=dynamic,
         cancel_run_service=dynamic,
         resume_run_service=dynamic,
-        local_run_coordinator=dynamic,
         workflow_runtime=dynamic,
         event_publisher=dynamic,
         readiness_aggregator=dynamic,

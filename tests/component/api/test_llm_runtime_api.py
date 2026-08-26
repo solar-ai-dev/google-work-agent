@@ -259,7 +259,6 @@ def test_llm_runtime_routes_mask_secrets_and_project_runtime_state(tmp_path: Pat
         prepare_retry_service=lambda command: command,
         cancel_run_service=lambda command: command,
         resume_run_service=lambda command: command,
-        local_run_coordinator=_CoordinatorStub(),
         workflow_runtime=cast(WorkflowRuntime, _WorkflowRuntimeStub()),
         event_publisher=cast(SseEventBufferPort, _PublisherStub()),
         readiness_aggregator=StaticReadinessAggregator(

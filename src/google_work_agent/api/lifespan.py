@@ -1,6 +1,5 @@
 """Own FastAPI startup and shutdown lifecycle orchestration."""
 
-import asyncio
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
@@ -13,25 +12,12 @@ def build_lifespan(container: ApiContainer) -> Callable[[FastAPI], AsyncIterator
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.container = container
-        startup_tasks: list[asyncio.Future[None]] = [
-            asyncio.ensure_future(callback()) for callback in container.startup_callbacks
-        ]
-        container.local_run_coordinator.start()
+        for callback in container.startup_callbacks:
+            await callback()
         try:
             yield
         finally:
-            try:
-                for task in startup_tasks:
-                    if not task.done():
-                        task.cancel()
-                if startup_tasks:
-                    await asyncio.wait_for(
-                        asyncio.gather(*startup_tasks, return_exceptions=True),
-                        timeout=30,
-                    )
-                container.local_run_coordinator.stop()
-            finally:
-                _run_shutdown_callbacks(container.shutdown_callbacks)
+            _run_shutdown_callbacks(container.shutdown_callbacks)
 
     return lifespan
 

@@ -228,7 +228,6 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             now_ms=clock.now_ms,
         ),
         resume_run_service=lambda command: command,
-        local_run_coordinator=coordinator_stub,
         workflow_runtime=runtime,
         event_publisher=publisher,
         readiness_aggregator=StaticReadinessAggregator(

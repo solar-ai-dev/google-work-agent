@@ -2,19 +2,13 @@
 
 from __future__ import annotations
 
-import secrets
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
 
-from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
-from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
-    ResumeTargetRegistry,
-)
 from google_work_agent.api.security.policies import DEFAULT_ENDPOINT_POLICY_REGISTRY
-from google_work_agent.application.resource_continuation import OpaqueResourceQueryService
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
     IssueSelectionHandle,
 )
@@ -24,12 +18,12 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
 from google_work_agent.ports import (
     ApiAccessGuard,
     ClockPort,
-    UUIDPort,
     LauncherProbeVerifier,
     OperationalLogSink,
     ReadinessAggregator,
-    SseEventBufferPort,
     RuntimeStatusProvider,
+    SseEventBufferPort,
+    UUIDPort,
     WorkflowRuntime,
 )
 
@@ -55,7 +49,6 @@ class ApiContainer:
     prepare_retry_service: Any
     cancel_run_service: Any
     resume_run_service: Any
-    local_run_coordinator: Any
     workflow_runtime: WorkflowRuntime
     event_publisher: SseEventBufferPort
     readiness_aggregator: ReadinessAggregator
@@ -109,42 +102,3 @@ class ApiContainer:
     resource_connector_id: str = "google_workspace"
     startup_callbacks: tuple[Callable[[], Awaitable[None]], ...] = ()
     shutdown_callbacks: tuple[Callable[[], None], ...] = ()
-
-    def __post_init__(self) -> None:
-        if self.resume_target_registry is None:
-            object.__setattr__(
-                self,
-                "resume_target_registry",
-                ResumeTargetRegistry(
-                    node_registry=NodeRegistry(graph_version=self.graph_version),
-                    graph_version=self.graph_version,
-                ),
-            )
-        if self.issue_selection_handle is None or self.resolve_selection_handle is None:
-            signing_secret = secrets.token_bytes(32)
-            object.__setattr__(
-                self,
-                "issue_selection_handle",
-                IssueSelectionHandle(
-                    signing_secret=signing_secret,
-                    service_instance_id=self.service_instance_id,
-                    now_ms=self.clock.now_ms,
-                    ttl_ms=5 * 60 * 1000,
-                ),
-            )
-            object.__setattr__(
-                self,
-                "resolve_selection_handle",
-                ResolveSelectionHandle(
-                    signing_secret=signing_secret,
-                    service_instance_id=self.service_instance_id,
-                    now_ms=self.clock.now_ms,
-                ),
-            )
-        service = self.resource_query_service
-        if service is not None and not isinstance(service, OpaqueResourceQueryService):
-            object.__setattr__(
-                self,
-                "resource_query_service",
-                OpaqueResourceQueryService(service),
-            )

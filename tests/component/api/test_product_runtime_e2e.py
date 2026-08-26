@@ -50,7 +50,6 @@ from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpoint
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
-from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     RequestIntentV2,
@@ -358,15 +357,6 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         runtime_status_provider=status_provider,
     )
     publisher = InMemorySseEventBuffer(service_instance_id="svc-product", capacity_per_run=32)
-    coordinator = LocalRunCoordinator(
-        query_service=query_service,
-        unit_of_work_factory=unit_of_work_factory,
-        workflow_runtime=runtime,
-        event_publisher=publisher,
-        now_ms=clock.now_ms,
-        api_contract_version="1",
-        capacity=8,
-    )
     id_generator = DeterministicUUID(prefix="api")
 
     checkpoint, materialize, invoke = build_test_admission_callbacks(
@@ -440,7 +430,6 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
-        local_run_coordinator=coordinator,
         workflow_runtime=runtime,
         event_publisher=publisher,
         readiness_aggregator=StaticReadinessAggregator(

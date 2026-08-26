@@ -770,6 +770,39 @@ class WorkflowRuntimeCore(WorkflowRuntime):
     def prepare_start(self, request: WorkflowStartRequest) -> None:
         self._invocation.prepare_start(request)
 
+    def control_resume_node(self, stage_id: str) -> str:
+        """Resolve a registered external-control stage to this profile's native node."""
+        target_by_stage = {
+            "RETRIEVAL_ENTRY": SupervisorTarget.CONTEXT_RETRIEVAL.value,
+            "PLANNING_ENTRY": SupervisorTarget.SOLUTION_PLANNING.value,
+            "REVIEW_ENTRY": SupervisorTarget.PLAN_REVIEW_INSPECT.value,
+            "PREFLIGHT": SupervisorTarget.ACTION_EXECUTION.value,
+            "READ_EXECUTION": SupervisorTarget.ACTION_EXECUTION.value,
+            "VERIFICATION": SupervisorTarget.ACTION_EXECUTION.value,
+            "RECOVERY": SupervisorTarget.RECOVERY.value,
+            "CANCEL_RESOLUTION": SupervisorTarget.ACTION_EXECUTION.value,
+        }
+        target = target_by_stage.get(stage_id)
+        if target is None:
+            raise ValueError(f"main resume stage is not realized by this runtime: {stage_id}")
+        return self._route_translator.translate(target).node
+
+    def agent_resume_node(self, semantic_owner_id: str) -> str:
+        target_by_owner = {
+            "REQUEST_UNDERSTANDING": self._topology[0],
+            "TOOL_ROUTE": SupervisorTarget.TOOL_ROUTE.value,
+            "RETRIEVAL": SupervisorTarget.CONTEXT_RETRIEVAL.value,
+            "WORK_ANALYSIS": SupervisorTarget.WORK_ANALYSIS.value,
+            "PLANNING": SupervisorTarget.SOLUTION_PLANNING.value,
+            "REVIEW": SupervisorTarget.PLAN_REVIEW_INSPECT.value,
+        }
+        target = target_by_owner.get(semantic_owner_id)
+        if target is None:
+            raise ValueError(f"unknown semantic resume owner: {semantic_owner_id}")
+        if target == self._topology[0]:
+            return self._topology[0]
+        return self._route_translator.translate(target).node
+
     def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
         return self._invocation.resume(request)
 

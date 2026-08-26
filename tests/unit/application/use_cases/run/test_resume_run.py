@@ -11,6 +11,12 @@ from google_work_agent.application.use_cases.run.resume_run import (
 )
 from google_work_agent.domain import CommandResult, ResultCode, RunStatus
 from google_work_agent.ports import CommandReceiptRecord, CommandReceiptStatus, RunRecord
+from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
+from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    MainControlResumeTargetV2,
+    RunExecutionAcceptedV1,
+)
 
 
 class _Sink:
@@ -143,6 +149,31 @@ class _Uow:
         self.actions = SimpleNamespace(
             list_by_plan=lambda plan_id: [SimpleNamespace(status=item) for item in action_statuses]
         )
+        target = MainControlResumeTargetV2("MAIN_CONTROL", "PREFLIGHT", "SIX_ROLE_BASELINE", "v1")
+        self.checkpoints = SimpleNamespace(
+            load_workflow_binding=lambda run_id: WorkflowBindingV1(
+                1, "thread-1", run_id, "thread-1", "SIX_ROLE_BASELINE", "v1", "AUTO", 1
+            ),
+            load_same_run_checkpoint=lambda run_id, thread_id: GraphCheckpointEnvelopeV1(
+                1,
+                "checkpoint-1",
+                1,
+                run_id,
+                thread_id,
+                "SIX_ROLE_BASELINE",
+                "v1",
+                "RUN",
+                target,
+                None,
+                None,
+                None,
+                None,
+                (),
+                1,
+                b"checkpoint",
+            ),
+        )
+        self.workflow_handoffs = _Handoffs()
 
     def __enter__(self):
         return self
@@ -167,9 +198,29 @@ class _Harness:
         return ResumeRunHandler(
             unit_of_work_factory=lambda: self.uow,
             now_ms=lambda: 100,
-            enqueue_resume=lambda **kwargs: self.enqueues.append(kwargs),
             resolve_resume_authority=lambda **kwargs: self.authority,
+            id_generator=SimpleNamespace(next_id=lambda: "handoff-1"),
+            resume_target_registry=SimpleNamespace(validate=lambda target: None),
+            schedule_run_execution=lambda command: (
+                self.enqueues.append({"handoff_id": command.handoff_id})
+                or RunExecutionAcceptedV1(1, True, "ACCEPTED")
+            ),
         )
+
+
+class _Handoffs:
+    def __init__(self) -> None:
+        self.items = {}
+        self.stages = []
+
+    def stage_pending(self, stage):
+        self.stages.append(stage)
+        handoff = SimpleNamespace(handoff_id=stage.handoff_id)
+        self.items[stage.trigger_command_id] = handoff
+        return handoff
+
+    def get_by_trigger_command_id(self, trigger_command_id):
+        return self.items.get(trigger_command_id)
 
 
 def _command(
@@ -203,7 +254,8 @@ def test_reauth_resume_applies_safe_checkpoint_transition_and_server_target() ->
     result = h.handler()(_command("REAUTH_COMPLETED"), request_id="req")
     assert result.applied and result.run_status == "WAITING_APPROVAL" and result.run_version == 5
     assert h.uow.runs.calls == ["resume_after_reauth"] and len(h.enqueues) == 1
-    assert h.enqueues[0]["resume_payload"] == {"continuation_target": "action_execution"}
+    assert h.uow.workflow_handoffs.stages[0].execution.resume_target.stage_id == "PREFLIGHT"
+    assert h.uow.workflow_handoffs.stages[0].control_kind == "NONE"
 
 
 def test_reauth_dispatched_write_facts_fail_safe_to_recovery_without_runtime_resume() -> None:

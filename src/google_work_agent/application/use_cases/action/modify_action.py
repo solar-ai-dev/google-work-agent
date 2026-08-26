@@ -14,7 +14,6 @@ from google_work_agent.application.calendar_conflicts import (
     calendar_conflict_authority,
     merge_calendar_conflict_risk,
 )
-from google_work_agent.application.coordinator import LocalRunCoordinator, QueueBusyError
 from google_work_agent.application.feasibility import (
     FeasibilityGateway,
     FeasibilityValidator,
@@ -28,6 +27,10 @@ from google_work_agent.application.task_duplicates import (
     TaskListGateway,
     duplicate_authority,
     merge_duplicate_risk,
+)
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
 )
 from google_work_agent.application.write_persistence import (
     audit_event,
@@ -51,11 +54,16 @@ from google_work_agent.ports import (
     ActionRecord,
     CommandReceiptRecord,
     CommandReceiptStatus,
-    PlanReviewStatus,
     PlanStatus,
     TraceEventRecord,
+    UUIDPort,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    RunExecutionAcceptedV1,
+    RunExecutionRefV1,
+    WorkflowHandoffStageV1,
+)
 
 _MODIFIABLE_ACTION_STATUSES = frozenset(
     {
@@ -90,12 +98,6 @@ class ModifyActionResult:
     conflict_detail: str | None = None
 
 
-class ModifyActionFollowupQueueBusyError(RuntimeError):
-    def __init__(self, *, current_state: str) -> None:
-        super().__init__("modified action review is queued")
-        self.current_state = current_state
-
-
 class ModifyActionHandler:
     """Persist a user modification and invalidate all stale write authority."""
 
@@ -105,12 +107,16 @@ class ModifyActionHandler:
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
         gateway: TaskListGateway | CalendarConflictGateway,
-        local_run_coordinator: LocalRunCoordinator,
+        id_generator: UUIDPort,
+        resume_target_registry: ResumeTargetValidator,
+        schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
         work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._local_run_coordinator = local_run_coordinator
+        self._id_generator = id_generator
+        self._resume_target_registry = resume_target_registry
+        self._schedule_run_execution = schedule_run_execution
         self._registry = build_p0_tool_registry()
         self._task_duplicates = TaskDuplicateValidator(
             gateway=cast(TaskListGateway, gateway), now_ms=now_ms
@@ -135,6 +141,7 @@ class ModifyActionHandler:
         calendar_arguments: dict[str, object] | None = None
         feasibility_seed_risk: dict[str, object] | None = None
         fresh_feasibility_risk: dict[str, object] | None = None
+        handoff_id: str | None = None
 
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -185,8 +192,6 @@ class ModifyActionHandler:
                 )
 
         run_id: str | None = None
-        plan_id: str | None = None
-        review_version: int | None = None
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
@@ -332,7 +337,6 @@ class ModifyActionHandler:
                 )
 
             run_id = self._run_id_for_action(unit_of_work, action.id)
-            plan_id = action.plan_id
             review_version = unit_of_work.plans.require_review(action.plan_id)
             self._revoke_stale_dependent_approvals(
                 unit_of_work=unit_of_work,
@@ -390,32 +394,58 @@ class ModifyActionHandler:
                 fresh_feasibility_risk=fresh_feasibility_risk,
                 now_ms=now_ms,
             )
+            handoff_id = self._stage_review_handoff(
+                unit_of_work=unit_of_work,
+                run_id=run_id,
+                trigger_command_id=command.command_id,
+            )
             result = self._finish(unit_of_work, command, response, now_ms)
 
-        if run_id is not None and plan_id is not None and review_version is not None:
-            with self._unit_of_work_factory() as unit_of_work:
-                plan = unit_of_work.plans.get_by_id(plan_id)
-                if plan is None:
-                    raise LookupError(f"plan not found: {plan_id}")
-                review_required = plan.review_status is PlanReviewStatus.REQUIRED
-            if review_required:
-                try:
-                    self._local_run_coordinator.enqueue_resume(
-                        run_id=run_id,
-                        request_id=command.request_id,
-                        command_id=command.command_id,
-                        resume_kind="MODIFY_REVIEW",
-                        resume_payload={
-                            "resume_kind": "MODIFY_REVIEW",
-                            "plan_id": plan_id,
-                            "review_version": review_version,
-                        },
-                    )
-                except QueueBusyError as error:
-                    raise ModifyActionFollowupQueueBusyError(
-                        current_state=result.action_status
-                    ) from error
+        if handoff_id is not None:
+            self._schedule_run_execution(ScheduleRunExecutionCommand(handoff_id=handoff_id))
         return result
+
+    def _stage_review_handoff(
+        self,
+        *,
+        unit_of_work: UnitOfWork,
+        run_id: str,
+        trigger_command_id: str,
+    ) -> str:
+        binding = unit_of_work.checkpoints.load_workflow_binding(run_id)
+        if binding is None:
+            raise RuntimeError("action modification requires a durable workflow binding")
+        checkpoint = unit_of_work.checkpoints.load_same_run_checkpoint(
+            run_id, binding.langgraph_thread_id
+        )
+        if checkpoint is None:
+            raise RuntimeError("action modification requires a durable workflow checkpoint")
+        target = self._resume_target_registry.issue_main_stage(
+            binding.graph_profile, "REVIEW_ENTRY", binding.graph_version
+        )
+        handoff = unit_of_work.workflow_handoffs.stage_pending(
+            WorkflowHandoffStageV1(
+                schema_version=1,
+                handoff_id=self._id_generator.next_id(),
+                trigger_command_id=trigger_command_id,
+                execution=RunExecutionRefV1(
+                    schema_version=1,
+                    execution_kind="RESUME",
+                    run_id=run_id,
+                    langgraph_thread_id=binding.langgraph_thread_id,
+                    graph_profile=binding.graph_profile,
+                    graph_version=binding.graph_version,
+                    requested_mode=binding.requested_mode,
+                    resume_target=target,
+                ),
+                checkpoint_id=checkpoint.checkpoint_id,
+                checkpoint_generation=checkpoint.checkpoint_generation,
+                control_kind="NONE",
+                control=None,
+                control_payload_hash=None,
+            )
+        )
+        return handoff.handoff_id
 
     def _resolve_existing_receipt(
         self,
