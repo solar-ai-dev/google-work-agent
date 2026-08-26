@@ -5,10 +5,44 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from google_work_agent.adapters.connectors.runtime.mcp_connector_read import McpConnectorReadAdapter
+from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
+    McpConnectorWriteAdapter,
+)
+from google_work_agent.adapters.connectors.runtime.mcp_oauth_credential import (
+    McpOAuthCredentialAdapter,
+)
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import StdioMCPClientAdapter
+from google_work_agent.adapters.keyring.os_keyring_secret_store import OsKeyringSecretStoreAdapter
 from google_work_agent.adapters.langgraph.runtime.background_run_executor import (
     BackgroundRunExecutorAdapter,
 )
+from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
+from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
+from google_work_agent.adapters.llm.runtime.structured_inference_router import (
+    StructuredInferenceRuntimeRouter,
+)
+from google_work_agent.adapters.system.default_browser_launcher import DefaultBrowserLauncherAdapter
+from google_work_agent.adapters.system.filesystem_attachment_staging import (
+    FilesystemAttachmentStagingAdapter,
+)
+from google_work_agent.adapters.system.filesystem_backup import FilesystemBackupAdapter
+from google_work_agent.adapters.system.filesystem_diagnostics import FilesystemDiagnosticsAdapter
+from google_work_agent.adapters.system.filesystem_operational_command_replay import (
+    FilesystemOperationalCommandReplayAdapter,
+)
+from google_work_agent.adapters.system.json_settings import JsonSettingsAdapter
+from google_work_agent.adapters.system.memory.run_retrieval_cache import InMemoryRunRetrievalCache
+from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
+from google_work_agent.adapters.system.process_component_circuit_state import (
+    ProcessComponentCircuitStateAdapter,
+)
+from google_work_agent.adapters.system.process_runtime_mode import ProcessRuntimeModeAdapter
+from google_work_agent.adapters.system.process_shutdown import ProcessShutdownAdapter
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
+from google_work_agent.adapters.system.system_clock import SystemClockAdapter
+from google_work_agent.adapters.system.uuid4 import Uuid4Adapter
+from google_work_agent.adapters.system.windows_hardware_probe import WindowsHardwareProbeAdapter
 from google_work_agent.adapters.system.workflow_handoff_reconciliation_loop import (
     WorkflowHandoffReconciliationLoop,
 )
@@ -26,11 +60,68 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     CheckpointEffectiveBindingResolver,
     ScheduleRunExecutionHandler,
 )
+from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort
+from google_work_agent.ports.connector.connector_write_port import ConnectorWritePort
+from google_work_agent.ports.connector.mcp_client_port import MCPClientPort
+from google_work_agent.ports.connector.oauth_credential_port import OAuthCredentialPort
+from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
+from google_work_agent.ports.llm.llm_credential_port import LlmCredentialPort
+from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusPort
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.attachment_staging_port import AttachmentStagingPort
+from google_work_agent.ports.system.backup_port import BackupPort
+from google_work_agent.ports.system.browser_launcher_port import BrowserLauncherPort
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
+from google_work_agent.ports.system.clock_port import ClockPort
+from google_work_agent.ports.system.component_circuit_state_port import ComponentCircuitStatePort
 from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     WorkflowExecutionAdmissionV1,
     WorkflowHandoffV1,
+)
+from google_work_agent.ports.system.diagnostics_port import DiagnosticsPort
+from google_work_agent.ports.system.hardware_probe_port import HardwareProbePort
+from google_work_agent.ports.system.operational_command_replay_port import (
+    OperationalCommandReplayPort,
+)
+from google_work_agent.ports.system.run_retrieval_cache_port import RunRetrievalCachePort
+from google_work_agent.ports.system.runtime_mode_port import RuntimeModePort
+from google_work_agent.ports.system.settings_port import SettingsPort
+from google_work_agent.ports.system.shutdown_port import ShutdownPort
+from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferPort
+from google_work_agent.ports.system.uuid_port import UUIDPort
+from google_work_agent.ports.system.workflow_execution_port import WorkflowExecutionPort
+
+# 16/07's closed table has exactly one P0 concrete binding per outbound Port.
+# Constructors stay at the outer launcher because their environment-specific
+# arguments (paths, process handles, provider configuration) are not Core
+# concerns; this composition root is the single selection authority.
+NON_PERSISTENCE_P0_BINDINGS: tuple[tuple[type[object], type[object]], ...] = (
+    (ConnectorReadPort, McpConnectorReadAdapter),
+    (ConnectorWritePort, McpConnectorWriteAdapter),
+    (OAuthCredentialPort, McpOAuthCredentialAdapter),
+    (MCPClientPort, StdioMCPClientAdapter),
+    (StructuredInferencePort, StructuredInferenceRuntimeRouter),
+    (LlmCredentialPort, LlmCredentialRouter),
+    (LlmRuntimeStatusPort, LlmRuntimeStatusRouter),
+    (SecretStorePort, OsKeyringSecretStoreAdapter),
+    (CheckpointPort, SqliteCheckpointAdapter),
+    (RunRetrievalCachePort, InMemoryRunRetrievalCache),
+    (WorkflowExecutionPort, BackgroundRunExecutorAdapter),
+    (SettingsPort, JsonSettingsAdapter),
+    (RuntimeModePort, ProcessRuntimeModeAdapter),
+    (BackupPort, FilesystemBackupAdapter),
+    (DiagnosticsPort, FilesystemDiagnosticsAdapter),
+    (ShutdownPort, ProcessShutdownAdapter),
+    (OperationalCommandReplayPort, FilesystemOperationalCommandReplayAdapter),
+    (AttachmentStagingPort, FilesystemAttachmentStagingAdapter),
+    (ClockPort, SystemClockAdapter),
+    (UUIDPort, Uuid4Adapter),
+    (HardwareProbePort, WindowsHardwareProbeAdapter),
+    (BrowserLauncherPort, DefaultBrowserLauncherAdapter),
+    (ComponentCircuitStatePort, ProcessComponentCircuitStateAdapter),
+    (SseEventBufferPort, InMemorySseEventBuffer),
 )
 
 
@@ -51,9 +142,7 @@ def build_production_runtime(
     materialize_admission_checkpoint: Callable[
         [WorkflowExecutionAdmissionV1], GraphCheckpointEnvelopeV1
     ],
-    invoke_semantic_owner: Callable[
-        [WorkflowExecutionAdmissionV1, WorkflowHandoffV1], None
-    ],
+    invoke_semantic_owner: Callable[[WorkflowExecutionAdmissionV1, WorkflowHandoffV1], None],
     resume_target_registry: ResumeTargetValidator,
     now_ms: Callable[[], int],
     reconciliation_interval_seconds: float = 1.0,

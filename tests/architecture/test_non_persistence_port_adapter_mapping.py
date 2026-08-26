@@ -6,6 +6,8 @@ from importlib import import_module
 
 import pytest
 
+from google_work_agent.api.composition import NON_PERSISTENCE_P0_BINDINGS
+
 
 @pytest.mark.parametrize(
     ("port_module", "port_symbol", "adapter_module", "adapter_symbol"),
@@ -159,3 +161,9 @@ def test_canonical_non_persistence_port_adapter_pair_is_importable(
 ) -> None:
     assert getattr(import_module(f"google_work_agent.{port_module}"), port_symbol)
     assert getattr(import_module(f"google_work_agent.{adapter_module}"), adapter_symbol)
+
+
+def test_non_persistence_p0_bindings_are_closed_and_unique() -> None:
+    assert len(NON_PERSISTENCE_P0_BINDINGS) == 24
+    assert len({port for port, _adapter in NON_PERSISTENCE_P0_BINDINGS}) == 24
+    assert len({adapter for _port, adapter in NON_PERSISTENCE_P0_BINDINGS}) == 24
