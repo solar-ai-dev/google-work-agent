@@ -13,19 +13,19 @@ from google_work_agent.adapters.connectors.google_workspace import (
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
     MCPGoogleOAuthCredentialProvider,
-    SubprocessMCPTransport,
+    StdioMCPClientAdapter,
     build_manifest_payload,
     calculate_file_sha256,
 )
 from google_work_agent.domain import SignedToolRegistry
-from google_work_agent.ports import MCPTransportError, MCPTransportErrorCode
+from google_work_agent.ports import MCPClientPortError, MCPClientPortErrorCode
 
 
 def test_subprocess_transport_handshakes_without_fixture_google_tools(tmp_path: Path) -> None:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(json.dumps(build_manifest_payload(), sort_keys=True), encoding="utf-8")
     executable = Path(sys.executable).resolve()
-    transport = SubprocessMCPTransport(
+    transport = StdioMCPClientAdapter(
         config=MCPArtifactConfig(
             executable_path=str(executable),
             manifest_path=str(manifest_path.resolve()),
@@ -59,10 +59,10 @@ def test_subprocess_transport_rejects_manifest_version_mismatch(tmp_path: Path) 
     descriptor = build_google_workspace_connector_descriptor(
         _artifact_config(manifest_path, expected_manifest_version="unexpected")
     )
-    with pytest.raises(MCPTransportError) as captured:
-        SubprocessMCPTransport(descriptor=descriptor)
+    with pytest.raises(MCPClientPortError) as captured:
+        StdioMCPClientAdapter(descriptor=descriptor)
 
-    assert captured.value.code is MCPTransportErrorCode.SCHEMA_MISMATCH
+    assert captured.value.code is MCPClientPortErrorCode.SCHEMA_MISMATCH
 
 
 def test_subprocess_transport_rejects_manifest_registry_mismatch(tmp_path: Path) -> None:
@@ -70,10 +70,10 @@ def test_subprocess_transport_rejects_manifest_registry_mismatch(tmp_path: Path)
     descriptor = build_google_workspace_connector_descriptor(_artifact_config(manifest_path))
     descriptor = replace(descriptor, expected_tool_registry=SignedToolRegistry(()))
 
-    with pytest.raises(MCPTransportError) as captured:
-        SubprocessMCPTransport(descriptor=descriptor)
+    with pytest.raises(MCPClientPortError) as captured:
+        StdioMCPClientAdapter(descriptor=descriptor)
 
-    assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
+    assert captured.value.code is MCPClientPortErrorCode.TOOL_REJECTED
 
 
 def test_subprocess_transport_rejects_tool_schema_mismatch(tmp_path: Path) -> None:
@@ -87,15 +87,15 @@ def test_subprocess_transport_rejects_tool_schema_mismatch(tmp_path: Path) -> No
     manifest_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     descriptor = build_google_workspace_connector_descriptor(_artifact_config(manifest_path))
 
-    with pytest.raises(MCPTransportError) as captured:
-        SubprocessMCPTransport(descriptor=descriptor)
+    with pytest.raises(MCPClientPortError) as captured:
+        StdioMCPClientAdapter(descriptor=descriptor)
 
-    assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
+    assert captured.value.code is MCPClientPortErrorCode.TOOL_REJECTED
 
 
 def test_subprocess_transport_restarts_once_after_child_process_exit(tmp_path: Path) -> None:
     manifest_path = _write_manifest(tmp_path)
-    transport = SubprocessMCPTransport(config=_artifact_config(manifest_path))
+    transport = StdioMCPClientAdapter(config=_artifact_config(manifest_path))
     process = transport._process  # noqa: SLF001 - contract test forces the child-exit boundary
     assert process is not None
     process.kill()

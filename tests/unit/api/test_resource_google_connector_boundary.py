@@ -51,8 +51,8 @@ def test_resource_attachment_google_routes_hide_concrete_connector_exceptions() 
     forbidden = (
         "GoogleWorkspaceGatewayError",
         "GoogleWorkspaceErrorCode",
-        "MCPTransportError",
-        "MCPTransportErrorCode",
+        "MCPClientPortError",
+        "MCPClientPortErrorCode",
         "AttachmentStagingError",
     )
     for route_name in ("resources.py", "attachments.py", "google_connections.py"):

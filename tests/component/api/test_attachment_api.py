@@ -8,14 +8,14 @@ import sys
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from tests.support.fakes import DeterministicUUID, FakeClock
+from tests.support.fakes import DeterministicUUID, FakeClockPort
 
 from google_work_agent.adapters.connectors.google_workspace import (
     build_google_workspace_connector_descriptor,
 )
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
-    SubprocessMCPTransport,
+    StdioMCPClientAdapter,
     build_manifest_payload,
     calculate_file_sha256,
 )
@@ -24,7 +24,7 @@ from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
 )
-from google_work_agent.adapters.runtime.attachment_staging import LocalAttachmentStaging
+from google_work_agent.adapters.system.filesystem_attachment_staging import FilesystemAttachmentStagingAdapter
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
@@ -45,11 +45,11 @@ class _CoordinatorStub:
         return None
 
 
-def _start_transport(tmp_path: Path, *, service_instance_id: str) -> SubprocessMCPTransport:
+def _start_transport(tmp_path: Path, *, service_instance_id: str) -> StdioMCPClientAdapter:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(json.dumps(build_manifest_payload(), sort_keys=True), encoding="utf-8")
     executable = Path(sys.executable).resolve()
-    return SubprocessMCPTransport(
+    return StdioMCPClientAdapter(
         descriptor=build_google_workspace_connector_descriptor(
             MCPArtifactConfig(
                 executable_path=str(executable),
@@ -79,17 +79,17 @@ def _container(
     tmp_path: Path,
     *,
     service_instance_id: str,
-    transport: SubprocessMCPTransport,
+    transport: StdioMCPClientAdapter,
     staging_dir: Path,
 ) -> ApiContainer:
-    clock = FakeClock(100)
+    clock = FakeClockPort(100)
     bootstrap_store = InMemoryBootstrapGrantStore()
     bootstrap_store.provision(
         secret="bootstrap-secret", service_instance_id=service_instance_id, now_ms=clock.now_ms()
     )
     session_manager = InMemoryLocalSessionManager()
     attachment_gateway = MCPGmailAttachmentGateway(transport=transport)
-    staging = LocalAttachmentStaging(staging_dir=staging_dir)
+    staging = FilesystemAttachmentStagingAdapter(staging_dir=staging_dir)
     return ApiContainer(
         unit_of_work_factory=lambda: None,
         query_service=None,

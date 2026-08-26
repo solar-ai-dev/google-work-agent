@@ -9,7 +9,7 @@ from json import loads as _loads
 from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
 from tests.integration.persistence.test_write_actions import (
     EvidenceOriginType,
-    FakeClock,
+    FakeClockPort,
     FakeGoogleGateway,
     GoogleWorkspaceErrorCode,
     InvariantViolationError,
@@ -35,7 +35,7 @@ def test_reauth_core_command_marks_run_without_langgraph_dependency(
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
     del fixture_gateway
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_write_plan(write_database=write_database, clock=clock, suffix="reauth")
     request_service = RequireWriteReauthService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
@@ -64,7 +64,7 @@ def test_reauth_command_mcp_request_id_persists_on_trace_and_audit(
     trace/audit rows.
     """
     del fixture_gateway
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_write_plan(write_database=write_database, clock=clock, suffix="reauth-mcp")
     request_service = RequireWriteReauthService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
@@ -102,7 +102,7 @@ def test_reauth_command_mcp_request_id_persists_on_trace_and_audit(
 def test_action_risk_defaults_to_empty_object_on_insert(write_database: Path) -> None:
     _prepare_write_plan(
         write_database=write_database,
-        clock=FakeClock(1000),
+        clock=FakeClockPort(1000),
         suffix="risk-default",
     )
 
@@ -129,7 +129,7 @@ def test_action_risk_round_trips_through_repository_and_run_snapshot(
     risk = {"z": ["경고", {"matched": True}], "a": 1}
     _prepare_write_plan(
         write_database=write_database,
-        clock=FakeClock(1000),
+        clock=FakeClockPort(1000),
         suffix="risk-roundtrip",
         risk=risk,
     )
@@ -166,7 +166,7 @@ def test_action_risk_over_16_kib_is_rejected_before_plan_persistence(
 ) -> None:
     service = SaveWritePlanService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
-        now_ms=FakeClock(1000).now_ms,
+        now_ms=FakeClockPort(1000).now_ms,
     )
     with pytest.raises(InvariantViolationError, match="16 KiB"):
         service(
@@ -215,7 +215,7 @@ def test_action_risk_over_16_kib_is_rejected_before_plan_persistence(
 def test_repository_rejects_corrupt_persisted_action_risk(write_database: Path) -> None:
     _prepare_write_plan(
         write_database=write_database,
-        clock=FakeClock(1000),
+        clock=FakeClockPort(1000),
         suffix="risk-corrupt",
     )
     connection = connect_sqlite(write_database)

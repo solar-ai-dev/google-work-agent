@@ -11,8 +11,8 @@ from google_work_agent.ports import (
     MCPControlResponse,
     MCPRuntimeMetadata,
     MCPToolResponse,
-    MCPTransportError,
-    MCPTransportErrorCode,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
     ResourceType,
 )
 
@@ -65,8 +65,8 @@ class _RecordingTransport:
 class _UnavailableTransport(_RecordingTransport):
     def call_tool(self, *, tool_name: str, arguments: dict[str, Any]) -> MCPToolResponse:
         self.calls.append((tool_name, dict(arguments)))
-        raise MCPTransportError(
-            code=MCPTransportErrorCode.PROCESS_UNAVAILABLE,
+        raise MCPClientPortError(
+            code=MCPClientPortErrorCode.PROCESS_UNAVAILABLE,
             message="mcp unavailable",
         )
 

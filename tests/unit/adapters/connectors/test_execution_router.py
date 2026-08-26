@@ -17,7 +17,7 @@ from google_work_agent.application.execution_phase import (
     WriteExecutionPhaseRequest,
     WriteExecutionPhaseResult,
 )
-from google_work_agent.ports.connectors.execution import (
+from google_work_agent.ports.connector.connector_write_port import (
     ConnectorWriteRequest,
     PreparedConnectorWrite,
 )

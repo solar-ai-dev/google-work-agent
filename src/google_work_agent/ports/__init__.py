@@ -10,22 +10,22 @@ from google_work_agent.ports.artifact_verifier import (
     ArtifactSignatureDecision,
     ArtifactSignatureVerifier,
 )
-from google_work_agent.ports.attachments import (
+from google_work_agent.ports.system.attachment_staging_port import (
     AttachmentDescriptor,
     AttachmentDescriptorVerifier,
-    AttachmentStaging,
+    AttachmentStagingPort,
     AttachmentStagingError,
     GmailAttachmentBytes,
     GmailAttachmentGateway,
 )
-from google_work_agent.ports.clock import Clock
+from google_work_agent.ports.system.clock_port import ClockPort
 from google_work_agent.ports.connectors.connector_runtime import ConnectorRuntimeHandle
-from google_work_agent.ports.event_publisher import (
+from google_work_agent.ports.system.sse_event_buffer_port import (
     BufferStatus,
     InvalidReplayCursorError,
     PendingProjectionEvent,
     ProjectionEvent,
-    RunEventPublisher,
+    SseEventBufferPort,
     RunEventSubscription,
     SnapshotRequiredReplayError,
 )
@@ -52,7 +52,7 @@ from google_work_agent.ports.google_workspace import (
     ResourceType,
     TimeRange,
 )
-from google_work_agent.ports.identity import IdGenerator
+from google_work_agent.ports.system.uuid_port import UUIDPort
 from google_work_agent.ports.launcher_probe import (
     LauncherProbeCheckFactory,
     LauncherProbeDecision,
@@ -91,13 +91,13 @@ from google_work_agent.ports.llm import (
     ToolCallSchemaRepairer,
     ToolDefinition,
 )
-from google_work_agent.ports.mcp_transport import (
+from google_work_agent.ports.connector.mcp_client_port import (
     MCPControlResponse,
     MCPRuntimeMetadata,
     MCPToolResponse,
-    MCPTransport,
-    MCPTransportError,
-    MCPTransportErrorCode,
+    MCPClientPort,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
 )
 from google_work_agent.ports.models import (
     ActionRecord,
@@ -167,7 +167,7 @@ from google_work_agent.ports.runtime_contracts import (
     ShutdownReport,
     WorkHours,
 )
-from google_work_agent.ports.secret_store import SecretStore
+from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
 from google_work_agent.ports.workflow_runtime import (
     SelectedResourceRef,
     WorkflowCancelRequest,
@@ -194,13 +194,13 @@ __all__ = [
     "ArtifactSignatureVerifier",
     "AttachmentDescriptor",
     "AttachmentDescriptorVerifier",
-    "AttachmentStaging",
+    "AttachmentStagingPort",
     "AttachmentStagingError",
     "AttemptOutcome",
     "AuditEventRecord",
     "AuditRepository",
     "BufferStatus",
-    "Clock",
+    "ClockPort",
     "CommandReceiptRecord",
     "CommandReceiptRepository",
     "CommandReceiptStatus",
@@ -231,7 +231,7 @@ __all__ = [
     "HardwareCapability",
     "HardwareCapabilityStatus",
     "HardwareProbe",
-    "IdGenerator",
+    "UUIDPort",
     "InvalidReplayCursorError",
     "LLMCredentialState",
     "LLMErrorCode",
@@ -244,9 +244,9 @@ __all__ = [
     "MCPControlResponse",
     "MCPRuntimeMetadata",
     "MCPToolResponse",
-    "MCPTransport",
-    "MCPTransportError",
-    "MCPTransportErrorCode",
+    "MCPClientPort",
+    "MCPClientPortError",
+    "MCPClientPortErrorCode",
     "MaintenanceGate",
     "MaintenanceWindow",
     "MessageRecord",
@@ -280,13 +280,13 @@ __all__ = [
     "RouteDecision",
     "RouteDecisionInput",
     "RunCreateRecord",
-    "RunEventPublisher",
+    "SseEventBufferPort",
     "RunEventSubscription",
     "RunRecord",
     "RunRepository",
     "RuntimeStatusProvider",
     "RuntimeSummary",
-    "SecretStore",
+    "SecretStorePort",
     "SelectedResourceRef",
     "ProbeResult",
     "PromptReference",

@@ -10,15 +10,15 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.adapters.connectors.google_workspace_execution import (
-    GoogleWorkspaceExecutionBackend,
+from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
+    McpConnectorWriteAdapter,
 )
 from google_work_agent.adapters.persistence import (
     apply_migrations,
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.adapters.runtime.attachment_staging import LocalAttachmentStaging
+from google_work_agent.adapters.system.filesystem_attachment_staging import FilesystemAttachmentStagingAdapter
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.write_actions import (
     DeliveryCertainty,
@@ -101,7 +101,7 @@ from google_work_agent.ports import (
     TimeRange,
 )
 from tests.support.fakes import (
-    FakeClock,
+    FakeClockPort,
     FakeGoogleGateway,
     GoogleGatewayFault,
     GoogleGatewayFaultKind,
@@ -438,7 +438,7 @@ def _duplicate_task(resource_id: str, *, title: str) -> ResourceSnapshot:
 
 
 def _approve_preflight_action(
-    *, write_database: Path, clock: FakeClock, suffix: str, risk: dict[str, object]
+    *, write_database: Path, clock: FakeClockPort, suffix: str, risk: dict[str, object]
 ) -> None:
     _prepare_write_plan(
         write_database=write_database,
@@ -519,7 +519,7 @@ def _feasibility_risk(decision: str, *, best_minutes: int) -> dict[str, object]:
 
 
 def _prepare_calendar_feasibility_action(
-    *, write_database: Path, clock: FakeClock, suffix: str, risk: dict[str, object]
+    *, write_database: Path, clock: FakeClockPort, suffix: str, risk: dict[str, object]
 ) -> WriteActionResponse:
     payload = {
         "summary": "work block",
@@ -597,7 +597,7 @@ def _prepare_calendar_feasibility_action(
 def _prepare_write_plan(
     *,
     write_database: Path,
-    clock: FakeClock,
+    clock: FakeClockPort,
     suffix: str,
     run_id: str = "run-1",
     risk: dict[str, object] | None = None,
@@ -688,7 +688,7 @@ def _prepare_write_plan(
 def _prepare_claimed_action(
     *,
     write_database: Path,
-    clock: FakeClock,
+    clock: FakeClockPort,
     suffix: str,
     run_id: str = "run-1",
 ) -> WriteActionResponse:
@@ -730,7 +730,7 @@ def _prepare_claimed_action(
 
 
 def _prepare_mismatch(*, write_database: Path, gateway: FakeGoogleGateway, suffix: str) -> int:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     claimed = _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -793,8 +793,8 @@ def test_attachment_descriptor_is_reverified_before_write_claim(
     write_database: Path,
     tmp_path: Path,
 ) -> None:
-    clock = FakeClock(1000)
-    staging = LocalAttachmentStaging(staging_dir=tmp_path / "staging", now_ms=clock.now_ms)
+    clock = FakeClockPort(1000)
+    staging = FilesystemAttachmentStagingAdapter(staging_dir=tmp_path / "staging", now_ms=clock.now_ms)
     descriptor = staging.stage(data=b"report", filename="report.txt", mime_type="text/plain")
     _prepare_effect_write_plan(
         write_database=write_database,
@@ -842,8 +842,8 @@ def test_attachment_claim_fails_closed_without_staging_verifier(
     write_database: Path,
     tmp_path: Path,
 ) -> None:
-    clock = FakeClock(1000)
-    staging = LocalAttachmentStaging(staging_dir=tmp_path / "staging", now_ms=clock.now_ms)
+    clock = FakeClockPort(1000)
+    staging = FilesystemAttachmentStagingAdapter(staging_dir=tmp_path / "staging", now_ms=clock.now_ms)
     descriptor = staging.stage(data=b"report", filename="report.txt", mime_type="text/plain")
     _prepare_effect_write_plan(
         write_database=write_database,
@@ -880,7 +880,7 @@ def test_attachment_claim_fails_closed_without_staging_verifier(
 def _prepare_effect_write_plan(
     *,
     write_database: Path,
-    clock: FakeClock,
+    clock: FakeClockPort,
     suffix: str,
     tool_name: str,
     arguments: dict[str, object],
@@ -943,7 +943,7 @@ def _prepare_effect_write_plan(
 
 
 def _approve_effect_action(
-    *, write_database: Path, clock: FakeClock, suffix: str
+    *, write_database: Path, clock: FakeClockPort, suffix: str
 ) -> WriteActionResponse:
     return ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
@@ -966,7 +966,7 @@ def _approve_effect_action(
 def _claim_effect_action(
     *,
     write_database: Path,
-    clock: FakeClock,
+    clock: FakeClockPort,
     suffix: str,
     expected_version: int,
 ) -> WriteActionResponse:
@@ -991,7 +991,7 @@ def _claim_effect_action(
 def _mark_effect_unknown(
     *,
     write_database: Path,
-    clock: FakeClock,
+    clock: FakeClockPort,
     suffix: str,
     error: GoogleWorkspaceGatewayError,
 ) -> WriteActionResponse:
@@ -1067,7 +1067,7 @@ def _insert_task_delete_reference(write_database: Path, *, version: str = "4") -
 def _prepare_update_claimed_action(
     *,
     write_database: Path,
-    clock: FakeClock,
+    clock: FakeClockPort,
     suffix: str,
 ) -> WriteActionResponse:
     source_payload = {

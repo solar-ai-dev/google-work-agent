@@ -6,8 +6,8 @@ from collections.abc import Callable
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.ports.connectors.execution import (
-    ConnectorExecutionPort,
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
 )
 from google_work_agent.application.resource_ref_projection import (
     resource_ref_from_snapshot as _resource_ref_from_snapshot,
@@ -491,7 +491,7 @@ class RecoverUnknownCreateActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: ConnectorExecutionPort,
+        gateway: ConnectorWritePort,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
@@ -541,7 +541,7 @@ class RecoverUnknownSendActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: ConnectorExecutionPort,
+        gateway: ConnectorWritePort,
     ) -> None:
         self._delegate = RecoverUnknownCreateActionService(
             unit_of_work_factory=unit_of_work_factory,
@@ -570,7 +570,7 @@ class RecoverUnknownDeleteActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: ConnectorExecutionPort,
+        gateway: ConnectorWritePort,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
@@ -651,7 +651,7 @@ class RecoverUnknownUpdateActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: ConnectorExecutionPort,
+        gateway: ConnectorWritePort,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms

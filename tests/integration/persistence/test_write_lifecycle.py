@@ -15,11 +15,11 @@ from tests.integration.persistence.test_write_actions import (
     ClaimWriteActionService,
     EvidenceOriginType,
     ExecuteWriteActionService,
-    FakeClock,
+    FakeClockPort,
     FakeGoogleGateway,
     GoogleGatewayFault,
     GoogleGatewayFaultKind,
-    GoogleWorkspaceExecutionBackend,
+    McpConnectorWriteAdapter,
     GoogleWorkspaceGateway,
     Path,
     PublishWritePlanCommand,
@@ -52,7 +52,7 @@ from tests.integration.persistence.test_write_actions import (
     pytest,
     sqlite_unit_of_work_factory,
 )
-from tests.support.fakes import FakeMCPTransport
+from tests.support.fakes import FakeMCPClientPort
 
 pytest_plugins = ("tests.integration.persistence.test_write_actions",)
 
@@ -91,7 +91,7 @@ def test_write_happy_path_requires_approval_then_executes_and_verifies(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     save_service = SaveWritePlanService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
@@ -320,7 +320,7 @@ def test_claim_is_blocked_by_missing_approval_and_source_hash_mismatch(
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
     del fixture_gateway
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_write_plan(
         write_database=write_database,
         clock=clock,
@@ -397,7 +397,7 @@ def test_claim_token_binding_expiry_and_replay_are_blocked(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     claimed = _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -458,7 +458,7 @@ def test_verification_mismatch_is_persisted_without_auto_verifying_tool_response
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     claimed = _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -1200,7 +1200,7 @@ def test_verify_write_action_get_runs_without_sqlite_write_transaction(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     claimed = _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -1235,7 +1235,7 @@ def test_verify_write_action_get_runs_without_sqlite_write_transaction(
     verify_service = VerifyWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
-        gateway=GoogleWorkspaceExecutionBackend(
+        gateway=McpConnectorWriteAdapter(
             gateway=cast(
                 GoogleWorkspaceGateway,
                 _TransactionCheckingGateway(
@@ -1270,7 +1270,7 @@ def test_verify_write_action_success_persists_mcp_request_id_correlation(
     WRITE_ACTION_VERIFIED trace and the WRITE_VERIFIED audit event -- not
     just an ObservabilityContext built in isolation.
     """
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     claimed = _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -1303,7 +1303,7 @@ def test_verify_write_action_success_persists_mcp_request_id_correlation(
         )
     )
 
-    transport = FakeMCPTransport()
+    transport = FakeMCPClientPort()
     transport.queue_response(
         {
             "item": {
@@ -1326,7 +1326,7 @@ def test_verify_write_action_success_persists_mcp_request_id_correlation(
     verify_service = VerifyWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
-        gateway=GoogleWorkspaceExecutionBackend(gateway=mcp_gateway),
+        gateway=McpConnectorWriteAdapter(gateway=mcp_gateway),
     )
 
     verified = verify_service(
@@ -1368,7 +1368,7 @@ def test_verify_write_action_rechecks_version_after_external_get(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     claimed = _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -1403,7 +1403,7 @@ def test_verify_write_action_rechecks_version_after_external_get(
     verify_service = VerifyWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
-        gateway=GoogleWorkspaceExecutionBackend(
+        gateway=McpConnectorWriteAdapter(
             gateway=cast(
                 GoogleWorkspaceGateway,
                 _TransactionCheckingGateway(
@@ -1452,7 +1452,7 @@ def test_claim_hash_mismatch_emits_exactly_one_rejection_audit_event(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_write_plan(write_database=write_database, clock=clock, suffix="claim-reject")
     ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),

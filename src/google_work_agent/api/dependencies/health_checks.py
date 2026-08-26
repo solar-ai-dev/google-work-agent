@@ -10,7 +10,7 @@ from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
 from google_work_agent.ports import (
-    Clock,
+    ClockPort,
     LauncherProbeVerifier,
     ReadinessAggregator,
     ReadinessCheckResult,
@@ -22,7 +22,7 @@ class HealthRouteDependencies:
     service_instance_id: str
     release_version: str
     api_contract_version: str
-    clock: Clock
+    clock: ClockPort
     readiness_aggregator: Callable[[], ReadinessAggregator]
     launcher_probe_verifier: LauncherProbeVerifier | None
     frontend_readiness_check: Callable[[], ReadinessCheckResult] | None

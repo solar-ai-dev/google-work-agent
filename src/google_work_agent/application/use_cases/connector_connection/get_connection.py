@@ -11,7 +11,7 @@ from google_work_agent.ports.connectors.failure import (
     normalize_mcp_transport_failure,
 )
 from google_work_agent.ports import GoogleConnectionStatus
-from google_work_agent.ports.mcp_transport import MCPTransportError
+from google_work_agent.ports.connector.mcp_client_port import MCPClientPortError
 
 
 class GetConnectionAccess(Protocol):
@@ -52,7 +52,7 @@ class GetConnectionHandler:
             )
         try:
             connection = self.access.read_connection_status()
-        except MCPTransportError as error:
+        except MCPClientPortError as error:
             raise normalize_mcp_transport_failure(error) from error
 
         if (

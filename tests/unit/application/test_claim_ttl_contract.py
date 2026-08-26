@@ -18,7 +18,7 @@ from google_work_agent.domain.claim_contract import (
     CLAIM_CONTEXT_MAX_TTL_MS,
 )
 from google_work_agent.adapters.connectors.google.mcp import workspace_tools as server
-from google_work_agent.ports import MCPTransport
+from google_work_agent.ports import MCPClientPort
 
 _SESSION_KEY = "11" * 32
 _SIGNING_SECRET = "application-signing-secret"
@@ -64,7 +64,7 @@ def test_approval_ttl_is_separate_and_does_not_expand_claim_ttl() -> None:
 
 
 def test_application_issued_claim_converts_to_mcp_claim_and_dispatches(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    state = server._WorkspaceState(keyring=_MemorySecretStore())
+    state = server._WorkspaceState(keyring=_MemorySecretStorePort())
     state.session_key = _SESSION_KEY
     state.service_instance_id = _SERVICE_INSTANCE_ID
     business_payload: dict[str, object] = {
@@ -92,7 +92,7 @@ def test_application_issued_claim_converts_to_mcp_claim_and_dispatches(monkeypat
     )
     application_claim = read_claim_token(token, signing_secret=_SIGNING_SECRET)
     transport = _ClaimSigningTransport(process_instance_id=state.process_instance_id)
-    gateway = MCPGoogleWorkspaceGateway(transport=cast(MCPTransport, transport))
+    gateway = MCPGoogleWorkspaceGateway(transport=cast(MCPClientPort, transport))
     claim_context = gateway.prepare_claim_context(
         claim_payload=application_claim,
         tool_name="gmail_create_draft",
@@ -139,7 +139,7 @@ def test_application_issued_claim_converts_to_mcp_claim_and_dispatches(monkeypat
     assert provider_calls == 1
 
 
-class _MemorySecretStore:
+class _MemorySecretStorePort:
     def set_secret(self, *, service: str, account: str, secret: str) -> None:
         del service, account, secret
 

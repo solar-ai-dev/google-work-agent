@@ -5,12 +5,12 @@ from google_work_agent.adapters.mcp.delivery_gateway import (
 )
 from google_work_agent.adapters.mcp.gateway import MCPGmailUiReadGateway
 from google_work_agent.adapters.mcp.google_workspace_compat import (
-    SubprocessMCPTransport,
+    StdioMCPClientAdapter,
     build_manifest_payload,
 )
 from google_work_agent.adapters.mcp.oauth import MCPGoogleOAuthCredentialProvider
 from google_work_agent.adapters.mcp.stdio_transport import MCPRuntimeStatusProvider
-from google_work_agent.adapters.mcp.transport import (
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     MCPArtifactConfig,
     MCPConnectorDescriptor,
     MCPManifestTool,
@@ -32,7 +32,7 @@ __all__ = [
     "MCPRuntimeStatusProvider",
     "MCPServerManifest",
     "StaticArtifactSignatureVerifier",
-    "SubprocessMCPTransport",
+    "StdioMCPClientAdapter",
     "build_manifest_payload",
     "calculate_file_sha256",
     "normalize_manifest_bytes",

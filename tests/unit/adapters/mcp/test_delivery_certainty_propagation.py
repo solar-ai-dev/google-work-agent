@@ -4,8 +4,8 @@ from google_work_agent.adapters.mcp.delivery_transport import (
 )
 from google_work_agent.ports import (
     DeliveryCertainty,
-    MCPTransportError,
-    MCPTransportErrorCode,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
 )
 
 
@@ -21,8 +21,8 @@ def test_transport_prefers_explicit_sent_response_lost_over_dispatch_boolean() -
 
 
 def test_gateway_preserves_sent_response_lost_exactly() -> None:
-    transport_error = MCPTransportError(
-        code=MCPTransportErrorCode.TOOL_REJECTED,
+    transport_error = MCPClientPortError(
+        code=MCPClientPortErrorCode.TOOL_REJECTED,
         message="REAUTH_REQUIRED",
         delivery_certainty=DeliveryCertainty.SENT_RESPONSE_LOST,
         request_id="req-1",
@@ -35,8 +35,8 @@ def test_gateway_preserves_sent_response_lost_exactly() -> None:
 
 
 def test_gateway_preserves_not_sent_exactly() -> None:
-    transport_error = MCPTransportError(
-        code=MCPTransportErrorCode.TOOL_REJECTED,
+    transport_error = MCPClientPortError(
+        code=MCPClientPortErrorCode.TOOL_REJECTED,
         message="REAUTH_REQUIRED",
         delivery_certainty=DeliveryCertainty.NOT_SENT,
         request_id="req-2",

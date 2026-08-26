@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -14,15 +14,15 @@ from google_work_agent.adapters.mcp import (
     build_manifest_payload,
     calculate_file_sha256,
 )
-from google_work_agent.adapters.mcp.dispatch_contract import DispatchContractMCPTransport
-from google_work_agent.adapters.mcp.manifest_guard import ManifestEnforcedMCPTransport
+from google_work_agent.adapters.mcp.dispatch_contract import DispatchContractMCPClientPort
+from google_work_agent.adapters.mcp.manifest_guard import ManifestEnforcedMCPClientPort
 from google_work_agent.ports import (
     DeliveryCertainty,
     MCPControlResponse,
     MCPRuntimeMetadata,
     MCPToolResponse,
-    MCPTransportError,
-    MCPTransportErrorCode,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
 )
 
 
@@ -88,10 +88,10 @@ class _FakeManifestGuard:
 def test_invalid_input_never_reaches_manifest_delegate(tmp_path: Path) -> None:
     transport, delegate, _ = _transport(tmp_path)
 
-    with pytest.raises(MCPTransportError) as captured:
+    with pytest.raises(MCPClientPortError) as captured:
         transport.call_tool(tool_name="gmail_get_thread", arguments={})
 
-    assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
+    assert captured.value.code is MCPClientPortErrorCode.TOOL_REJECTED
     assert captured.value.delivery_certainty is DeliveryCertainty.NOT_SENT
     assert delegate.tool_calls == []
 
@@ -100,13 +100,13 @@ def test_manifest_mutation_after_startup_rejects_before_delegate(tmp_path: Path)
     transport, delegate, manifest_path = _transport(tmp_path)
     manifest_path.write_text("{}", encoding="utf-8")
 
-    with pytest.raises(MCPTransportError) as captured:
+    with pytest.raises(MCPClientPortError) as captured:
         transport.call_tool(
             tool_name="gmail_get_thread",
             arguments={"thread_id": "thread-1"},
         )
 
-    assert captured.value.code is MCPTransportErrorCode.ARTIFACT_REJECTED
+    assert captured.value.code is MCPClientPortErrorCode.ARTIFACT_REJECTED
     assert captured.value.delivery_certainty is DeliveryCertainty.NOT_SENT
     assert delegate.tool_calls == []
 
@@ -135,13 +135,13 @@ def test_malformed_read_output_is_may_have_been_sent(tmp_path: Path) -> None:
     transport, delegate, _ = _transport(tmp_path)
     delegate.responses["gmail_get_thread"] = {"item": {"resource_id": "thread-1"}}
 
-    with pytest.raises(MCPTransportError) as captured:
+    with pytest.raises(MCPClientPortError) as captured:
         transport.call_tool(
             tool_name="gmail_get_thread",
             arguments={"thread_id": "thread-1"},
         )
 
-    assert captured.value.code is MCPTransportErrorCode.SCHEMA_MISMATCH
+    assert captured.value.code is MCPClientPortErrorCode.SCHEMA_MISMATCH
     assert captured.value.delivery_certainty is DeliveryCertainty.MAY_HAVE_BEEN_SENT
     assert len(delegate.tool_calls) == 1
 
@@ -150,7 +150,7 @@ def test_malformed_write_output_is_sent_response_lost(tmp_path: Path) -> None:
     transport, delegate, _ = _transport(tmp_path)
     delegate.responses["tasks_create_task"] = {"item": {"resource_id": "task-1"}}
 
-    with pytest.raises(MCPTransportError) as captured:
+    with pytest.raises(MCPClientPortError) as captured:
         transport.call_tool(
             tool_name="tasks_create_task",
             arguments={
@@ -160,7 +160,7 @@ def test_malformed_write_output_is_sent_response_lost(tmp_path: Path) -> None:
             },
         )
 
-    assert captured.value.code is MCPTransportErrorCode.SCHEMA_MISMATCH
+    assert captured.value.code is MCPClientPortErrorCode.SCHEMA_MISMATCH
     assert captured.value.delivery_certainty is DeliveryCertainty.SENT_RESPONSE_LOST
     assert captured.value.request_id == "req-1"
     assert len(delegate.tool_calls) == 1
@@ -168,7 +168,7 @@ def test_malformed_write_output_is_sent_response_lost(tmp_path: Path) -> None:
 
 def _transport(
     tmp_path: Path,
-) -> tuple[DispatchContractMCPTransport, _FakeManifestGuard, Path]:
+) -> tuple[DispatchContractMCPClientPort, _FakeManifestGuard, Path]:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(
         json.dumps(build_manifest_payload(), sort_keys=True),
@@ -191,8 +191,8 @@ def _transport(
         )
     )
     delegate = _FakeManifestGuard()
-    transport = DispatchContractMCPTransport(
-        delegate=cast(ManifestEnforcedMCPTransport, delegate),
+    transport = DispatchContractMCPClientPort(
+        delegate=cast(ManifestEnforcedMCPClientPort, delegate),
         descriptor=descriptor,
     )
     return transport, delegate, manifest_path

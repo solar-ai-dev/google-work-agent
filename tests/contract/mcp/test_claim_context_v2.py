@@ -2,7 +2,7 @@
 
 Unlike test_subprocess_transport.py (which drives the read-only fake server),
 this spins up the actual google_work_agent.adapters.connectors.google.mcp.verified_server module as a child
-process and drives it through the real SubprocessMCPTransport / gateway
+process and drives it through the real StdioMCPClientAdapter / gateway
 signing path. No live Google credentials are configured, which lets each
 test distinguish two outcomes by error code alone:
 
@@ -29,7 +29,7 @@ from google_work_agent.adapters.connectors.google_workspace import (
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
     MCPGoogleWorkspaceGateway,
-    SubprocessMCPTransport,
+    StdioMCPClientAdapter,
     build_manifest_payload,
     calculate_file_sha256,
 )
@@ -46,12 +46,12 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _start_transport(tmp_path: Path, *, service_instance_id: str) -> SubprocessMCPTransport:
+def _start_transport(tmp_path: Path, *, service_instance_id: str) -> StdioMCPClientAdapter:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(json.dumps(build_manifest_payload(), sort_keys=True), encoding="utf-8")
     executable = Path(sys.executable).resolve()
     keyring_path = tmp_path / "keyring.json"
-    return SubprocessMCPTransport(
+    return StdioMCPClientAdapter(
         descriptor=build_google_workspace_connector_descriptor(
             MCPArtifactConfig(
                 executable_path=str(executable),

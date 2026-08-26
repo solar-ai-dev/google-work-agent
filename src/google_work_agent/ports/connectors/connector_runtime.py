@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from google_work_agent.ports.mcp_transport import (
+from google_work_agent.ports.connector.mcp_client_port import (
     MCPRuntimeMetadata,
-    MCPTransport,
+    MCPClientPort,
 )
 
 
@@ -21,7 +21,7 @@ class ConnectorRuntimeHandle(Protocol):
     @property
     def connector_id(self) -> str: ...
 
-    def start(self) -> MCPTransport: ...
+    def start(self) -> MCPClientPort: ...
 
     def health(self) -> MCPRuntimeMetadata: ...
 

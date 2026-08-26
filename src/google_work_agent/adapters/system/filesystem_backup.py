@@ -16,7 +16,7 @@ from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.ports import (
     BackupCreateResult,
     BackupManifestRecord,
-    Clock,
+    ClockPort,
     MaintenanceGate,
     RestorePlan,
 )
@@ -32,7 +32,7 @@ class BackupService:
         *,
         database_path: Path,
         backups_dir: Path,
-        clock: Clock,
+        clock: ClockPort,
         maintenance_gate: MaintenanceGate,
         release_version: str,
         domain_contract_version: str,
@@ -194,3 +194,7 @@ def _pragma_single_value(connection: sqlite3.Connection, statement: str) -> str:
     if row is None:
         raise ValueError(f"pragma returned no result: {statement}")
     return str(row[0])
+
+
+# BackupService retains the existing SQLite backup/retention semantics.
+FilesystemBackupAdapter = BackupService

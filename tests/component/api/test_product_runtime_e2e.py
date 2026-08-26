@@ -23,11 +23,11 @@ from tests.integration.langgraph.test_runtime import (
     _sufficiency_output,
     _write_plan_output,
 )
-from tests.support.fakes import DeterministicUUID, FakeClock, FakeGoogleGateway
+from tests.support.fakes import DeterministicUUID, FakeClockPort, FakeGoogleGateway
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 from tests.support.workflow_admission import build_test_admission_callbacks
 
-from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
+from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
 )
@@ -42,7 +42,7 @@ from google_work_agent.adapters.readiness.composite import (
     StaticRuntimeStatusProvider,
 )
 from google_work_agent.adapters.runtime import BuildProfile
-from google_work_agent.adapters.runtime.settings import FileSettingsStore, SettingsService
+from google_work_agent.adapters.system.json_settings import FileSettingsStore, SettingsService
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import build_production_runtime
@@ -301,7 +301,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
     verification_operation: str,
 ) -> None:
     database_path = _seed_product_database(tmp_path)
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
     gateway = FakeGoogleGateway(
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
@@ -354,7 +354,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         connection_factory=connect_sqlite,
         runtime_status_provider=status_provider,
     )
-    publisher = InMemoryRunEventPublisher(service_instance_id="svc-product", capacity_per_run=32)
+    publisher = InMemorySseEventBuffer(service_instance_id="svc-product", capacity_per_run=32)
     coordinator = LocalRunCoordinator(
         query_service=query_service,
         unit_of_work_factory=unit_of_work_factory,

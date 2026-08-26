@@ -15,9 +15,9 @@ from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
-    MCPTransport,
-    MCPTransportError,
-    MCPTransportErrorCode,
+    MCPClientPort,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
     ResourcePage,
     ResourceSnapshot,
     ResourceType,
@@ -34,7 +34,7 @@ class MCPGmailAttachmentGateway:
     adapter used only by the attachment download route.
     """
 
-    def __init__(self, *, transport: MCPTransport) -> None:
+    def __init__(self, *, transport: MCPClientPort) -> None:
         self._transport = transport
 
     def get_gmail_attachment(self, *, message_id: str, attachment_id: str) -> GmailAttachmentBytes:
@@ -43,7 +43,7 @@ class MCPGmailAttachmentGateway:
                 tool_name="gmail_get_attachment",
                 arguments={"message_id": message_id, "attachment_id": attachment_id},
             ).payload
-        except MCPTransportError as error:
+        except MCPClientPortError as error:
             raise _google_error_from_transport(error) from error
         raw_value = str(payload["data_base64url"])
         padding = "=" * (-len(raw_value) % 4)
@@ -59,7 +59,7 @@ class MCPGmailAttachmentGateway:
 class MCPGmailUiReadGateway:
     """UI-only Gmail detail gateway kept outside the Agent tool port."""
 
-    def __init__(self, *, transport: MCPTransport) -> None:
+    def __init__(self, *, transport: MCPClientPort) -> None:
         self._transport = transport
 
     def get_thread_detail(self, *, thread_id: str) -> GmailThreadDetail:
@@ -68,7 +68,7 @@ class MCPGmailUiReadGateway:
                 tool_name="gmail_get_ui_thread_detail",
                 arguments={"thread_id": thread_id},
             ).payload
-        except MCPTransportError as error:
+        except MCPClientPortError as error:
             raise _google_error_from_transport(error) from error
         values = cast(dict[str, object], payload)
         attachments = tuple(
@@ -104,7 +104,7 @@ class MCPGmailUiReadGateway:
 
 
 class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
-    def __init__(self, *, transport: MCPTransport) -> None:
+    def __init__(self, *, transport: MCPClientPort) -> None:
         self._transport = transport
         self._last_request_id: str | None = None
 
@@ -115,7 +115,7 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
         An optional, duck-typed capability (mirrors prepare_claim_context)
         so callers that want to correlate a just-completed read/write with
         its originating MCP request can do so without every
-        ConnectorExecutionPort implementation (including fakes) needing to
+        ConnectorWritePort implementation (including fakes) needing to
         support it.
         """
         return self._last_request_id
@@ -461,7 +461,7 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
     def _call(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, object]:
         try:
             response = self._transport.call_tool(tool_name=tool_name, arguments=arguments)
-        except MCPTransportError as error:
+        except MCPClientPortError as error:
             raise _google_error_from_transport(error) from error
         self._last_request_id = response.request_id
         return cast(dict[str, object], response.payload)
@@ -481,7 +481,7 @@ class MCPGoogleWorkspaceGateway(GoogleWorkspaceGateway):
         )
 
 
-def _google_error_from_transport(error: MCPTransportError) -> GoogleWorkspaceGatewayError:
+def _google_error_from_transport(error: MCPClientPortError) -> GoogleWorkspaceGatewayError:
     tool_error_map = {
         "INVALID_ARGUMENT": GoogleWorkspaceErrorCode.INVALID_ARGUMENT,
         "REAUTH_REQUIRED": GoogleWorkspaceErrorCode.AUTH_EXPIRED,
@@ -495,15 +495,15 @@ def _google_error_from_transport(error: MCPTransportError) -> GoogleWorkspaceGat
         "MCP_UNAVAILABLE": GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
     }
     code_map = {
-        MCPTransportErrorCode.TIMEOUT: GoogleWorkspaceErrorCode.TIMEOUT,
-        MCPTransportErrorCode.CONNECTION_CLOSED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
-        MCPTransportErrorCode.PROCESS_UNAVAILABLE: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
-        MCPTransportErrorCode.NOT_FOUND: GoogleWorkspaceErrorCode.NOT_FOUND,
-        MCPTransportErrorCode.SCHEMA_MISMATCH: GoogleWorkspaceErrorCode.RESPONSE_MALFORMED,
-        MCPTransportErrorCode.MALFORMED_RESPONSE: GoogleWorkspaceErrorCode.RESPONSE_MALFORMED,
-        MCPTransportErrorCode.TOOL_REJECTED: GoogleWorkspaceErrorCode.PERMISSION_DENIED,
-        MCPTransportErrorCode.HANDSHAKE_FAILED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
-        MCPTransportErrorCode.ARTIFACT_REJECTED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
+        MCPClientPortErrorCode.TIMEOUT: GoogleWorkspaceErrorCode.TIMEOUT,
+        MCPClientPortErrorCode.CONNECTION_CLOSED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
+        MCPClientPortErrorCode.PROCESS_UNAVAILABLE: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
+        MCPClientPortErrorCode.NOT_FOUND: GoogleWorkspaceErrorCode.NOT_FOUND,
+        MCPClientPortErrorCode.SCHEMA_MISMATCH: GoogleWorkspaceErrorCode.RESPONSE_MALFORMED,
+        MCPClientPortErrorCode.MALFORMED_RESPONSE: GoogleWorkspaceErrorCode.RESPONSE_MALFORMED,
+        MCPClientPortErrorCode.TOOL_REJECTED: GoogleWorkspaceErrorCode.PERMISSION_DENIED,
+        MCPClientPortErrorCode.HANDSHAKE_FAILED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
+        MCPClientPortErrorCode.ARTIFACT_REJECTED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
     }
     return GoogleWorkspaceGatewayError(
         code=tool_error_map.get(str(error), code_map[error.code]),

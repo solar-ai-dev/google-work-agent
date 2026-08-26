@@ -1,6 +1,6 @@
 """Connector-id keyed execution routing for legacy write-safety services.
 
-The application ``ConnectorExecutionPort`` intentionally contains only provider
+The application ``ConnectorWritePort`` intentionally contains only provider
 mechanics and therefore has no connector-selection argument. Until the legacy
 write services are migrated to a connector-aware command contract, the
 LangGraph adapter binds the already-persisted Action connector identity around
@@ -17,8 +17,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 from google_work_agent.adapters.connectors.connector_registry import ConnectorRegistry
-from google_work_agent.ports.connectors.execution import (
-    ConnectorExecutionPort,
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
     ConnectorWriteRequest,
     PreparedConnectorWrite,
 )
@@ -42,10 +42,10 @@ def bind_execution_connector_id(connector_id: str) -> Iterator[None]:
         _execution_connector_id.reset(token)
 
 
-class ConnectorExecutionRouter(ConnectorExecutionPort):
+class ConnectorExecutionRouter(ConnectorWritePort):
     """Adapt the current execution Port onto explicit connector-registry lookup."""
 
-    def __init__(self, backends: Mapping[str, ConnectorExecutionPort]) -> None:
+    def __init__(self, backends: Mapping[str, ConnectorWritePort]) -> None:
         self._registry = ConnectorRegistry(backends)
 
     @property
@@ -100,7 +100,7 @@ class ConnectorExecutionRouter(ConnectorExecutionPort):
             recovery_fingerprint=recovery_fingerprint,
         )
 
-    def _active_backend(self) -> ConnectorExecutionPort:
+    def _active_backend(self) -> ConnectorWritePort:
         connector_id = _execution_connector_id.get()
         if connector_id is None:
             raise RuntimeError("connector execution attempted without a bound connector id")

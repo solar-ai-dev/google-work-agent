@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
-from google_work_agent.adapters.keyring import OSKeyringSecretStore
+from google_work_agent.adapters.keyring.os_keyring_secret_store import OsKeyringSecretStoreAdapter
 from google_work_agent.adapters.persistence import connect_sqlite
 from google_work_agent.api.container import API_CONTRACT_VERSION
 from google_work_agent.application.connector_registry import ConnectorRegistry
@@ -112,7 +112,7 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
     @staticmethod
     def _keyring_check() -> ReadinessCheckResult:
         try:
-            OSKeyringSecretStore()
+            OsKeyringSecretStoreAdapter()
         except RuntimeError:
             return ReadinessCheckResult(
                 name="keyring_adapter", state=ReadinessState.NOT_READY, detail="KEYRING_UNAVAILABLE"

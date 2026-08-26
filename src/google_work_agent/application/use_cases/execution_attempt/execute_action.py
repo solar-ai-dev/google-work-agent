@@ -7,8 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps, loads
 
-from google_work_agent.ports.connectors.execution import (
-    ConnectorExecutionPort,
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
     ConnectorWriteRequest,
 )
 from google_work_agent.application.write_action_arguments import coerce_int
@@ -55,7 +55,7 @@ class ExecuteActionHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        connector_execution: ConnectorExecutionPort,
+        connector_execution: ConnectorWritePort,
         now_ms: Callable[[], int],
         signing_secret: str,
         service_instance_id: str,

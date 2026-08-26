@@ -249,3 +249,8 @@ def _optional_text(value: object) -> str | None:
 
 def _as_int(value: object) -> int:
     return int(str(value))
+
+
+# The existing service is the only JSON-backed settings implementation; this
+# canonical name is its production boundary binding.
+JsonSettingsAdapter = SettingsService

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import cast
 
 from fastapi.testclient import TestClient
-from tests.support.fakes import DeterministicUUID, FakeClock
+from tests.support.fakes import DeterministicUUID, FakeClockPort
 
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
@@ -45,7 +45,7 @@ from google_work_agent.ports import (
     ProjectionEvent,
     ReadinessReport,
     ReadinessState,
-    RunEventPublisher,
+    SseEventBufferPort,
     RunEventSubscription,
     RuntimeSummary,
     WorkflowCancelRequest,
@@ -259,7 +259,7 @@ def test_static_settings_backup_and_safe_mode_flow(tmp_path: Path) -> None:
     finally:
         connection.close()
 
-    clock = FakeClock(100)
+    clock = FakeClockPort(100)
     settings_store = FileSettingsStore(tmp_path / "settings" / "app-settings.json")
     settings_service = SettingsService(
         store=settings_store,
@@ -309,7 +309,7 @@ def test_static_settings_backup_and_safe_mode_flow(tmp_path: Path) -> None:
         resume_run_service=lambda command: command,
         local_run_coordinator=_CoordinatorStub(),
         workflow_runtime=cast(WorkflowRuntime, _WorkflowRuntimeStub()),
-        event_publisher=cast(RunEventPublisher, _PublisherStub()),
+        event_publisher=cast(SseEventBufferPort, _PublisherStub()),
         readiness_aggregator=StaticReadinessAggregator(
             ReadinessReport(state=ReadinessState.READY, checks=())
         ),

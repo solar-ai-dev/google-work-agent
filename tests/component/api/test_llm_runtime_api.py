@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from tests.support.fakes import (
     DeterministicUUID,
     FakeAPIProviderTransport,
-    FakeClock,
+    FakeClockPort,
     FakeHardwareProbe,
     FakeKeyring,
     FakeOllamaTransport,
@@ -54,7 +54,7 @@ from google_work_agent.ports import (
     ProviderResponsePayload,
     ReadinessReport,
     ReadinessState,
-    RunEventPublisher,
+    SseEventBufferPort,
     RuntimePolicy,
     RuntimeStatusProvider,
     RuntimeSummary,
@@ -147,7 +147,7 @@ class _QueryStub:
 
 
 def test_llm_runtime_routes_mask_secrets_and_project_runtime_state(tmp_path: Path) -> None:
-    clock = FakeClock(1_000)
+    clock = FakeClockPort(1_000)
     keyring = FakeKeyring()
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
@@ -232,7 +232,7 @@ def test_llm_runtime_routes_mask_secrets_and_project_runtime_state(tmp_path: Pat
         resume_run_service=lambda command: command,
         local_run_coordinator=_CoordinatorStub(),
         workflow_runtime=cast(WorkflowRuntime, _WorkflowRuntimeStub()),
-        event_publisher=cast(RunEventPublisher, _PublisherStub()),
+        event_publisher=cast(SseEventBufferPort, _PublisherStub()),
         readiness_aggregator=StaticReadinessAggregator(
             ReadinessReport(state=ReadinessState.READY, checks=())
         ),

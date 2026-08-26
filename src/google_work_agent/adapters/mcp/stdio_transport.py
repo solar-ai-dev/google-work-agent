@@ -6,9 +6,9 @@ from dataclasses import asdict, dataclass
 
 from google_work_agent.ports import (
     GoogleOAuthCredentialProvider,
-    MCPTransport,
-    MCPTransportError,
-    MCPTransportErrorCode,
+    MCPClientPort,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
     RuntimeStatusProvider,
     RuntimeSummary,
 )
@@ -22,17 +22,17 @@ class MCPRuntimeStatusProvider(RuntimeStatusProvider):
     ollama: str
     deployment_profile: str
     runtime: ConnectorRuntimeHandle | None = None
-    transport: MCPTransport | None = None
+    transport: MCPClientPort | None = None
     llm: dict[str, object] | None = None
 
     def get_summary(self) -> RuntimeSummary:
         try:
             connection = self.google_provider.get_connection_status()
-        except MCPTransportError as error:
+        except MCPClientPortError as error:
             connection = None
             google_status = (
                 "NOT_CONFIGURED"
-                if error.code is MCPTransportErrorCode.CONFIGURATION_ERROR
+                if error.code is MCPClientPortErrorCode.CONFIGURATION_ERROR
                 else "ERROR"
             )
             google_connection: dict[str, object] = {

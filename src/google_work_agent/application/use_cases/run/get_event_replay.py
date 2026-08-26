@@ -11,7 +11,7 @@ from google_work_agent.ports import (
     InvalidReplayCursorError,
     ProjectionEvent,
     QueryConnectionFactory,
-    RunEventPublisher,
+    SseEventBufferPort,
     SnapshotRequiredReplayError,
 )
 
@@ -33,14 +33,14 @@ class GetEventReplayResult:
 class GetEventReplayHandler:
     """Own run existence, replay eligibility, and snapshot fallback decision."""
 
-    def __init__(self, *, database_path: Path, connection_factory: QueryConnectionFactory, event_publisher: RunEventPublisher, now_ms: Callable[[], int]) -> None:
+    def __init__(self, *, database_path: Path, connection_factory: QueryConnectionFactory, event_publisher: SseEventBufferPort, now_ms: Callable[[], int]) -> None:
         self._database_path = database_path
         self._connection_factory = connection_factory
         self._event_publisher = event_publisher
         self._now_ms = now_ms
 
     @classmethod
-    def from_legacy_suppliers(cls, *, query_supplier: Callable[[], object], event_publisher_supplier: Callable[[], RunEventPublisher], now_ms: Callable[[], int]) -> "GetEventReplayHandler":
+    def from_legacy_suppliers(cls, *, query_supplier: Callable[[], object], event_publisher_supplier: Callable[[], SseEventBufferPort], now_ms: Callable[[], int]) -> "GetEventReplayHandler":
         query = query_supplier()
         return cls(
             database_path=query._database_path,  # type: ignore[attr-defined]

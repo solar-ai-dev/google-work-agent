@@ -8,11 +8,11 @@ from typing import TypedDict, cast
 
 import pytest
 
-from google_work_agent.adapters.connectors.google_workspace_reader import (
-    GoogleWorkspaceConnectorReader,
+from google_work_agent.adapters.connectors.runtime.mcp_connector_read import (
+    McpConnectorReadAdapter,
 )
 from google_work_agent.ports.observability_events import ObservabilityContext
-from google_work_agent.ports.connectors.read import ConnectorReadRequest
+from google_work_agent.ports.connector.connector_read_port import ConnectorReadRequest
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionRequestV1,
     ApiAcquisitionResult,
@@ -76,7 +76,7 @@ DEFAULT_TEST_RETRIEVAL_BUDGET = RetrievalBudget()
 
 
 def test_connector_reader_rejects_read_outside_frozen_tool_ids() -> None:
-    reader = GoogleWorkspaceConnectorReader(
+    reader = McpConnectorReadAdapter(
         gateway=cast(GoogleWorkspaceGateway, RecordingGoogleGateway())
     )
     request = ConnectorReadRequest(
@@ -1665,7 +1665,7 @@ def _agent(
 ) -> ApiDiscoveryAcquisitionAgent:
     return ApiDiscoveryAcquisitionAgent(
         llm_runtime=runtime,
-        connector_reader=GoogleWorkspaceConnectorReader(gateway=gateway),
+        connector_reader=McpConnectorReadAdapter(gateway=gateway),
         prompt_ref=PROMPT_REF,
         retrieval_budget=retrieval_budget,
         now_ms=(lambda: now_ms) if now_ms is not None else None,

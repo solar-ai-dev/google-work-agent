@@ -9,12 +9,12 @@ from json import loads as _loads
 from tests.integration.persistence.test_write_actions import (
     DeliveryCertainty,
     ExecuteWriteActionService,
-    FakeClock,
+    FakeClockPort,
     FakeGoogleGateway,
     GoogleGatewayFault,
     GoogleGatewayFaultKind,
     GoogleWorkspaceErrorCode,
-    GoogleWorkspaceExecutionBackend,
+    McpConnectorWriteAdapter,
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     MarkWriteActionUnknownResultCommand,
@@ -54,7 +54,7 @@ def test_unknown_task_delete_recovers_from_target_absence_without_redelete(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _insert_task_delete_reference(write_database)
     _prepare_effect_write_plan(
         write_database=write_database,
@@ -123,7 +123,7 @@ def test_unknown_task_delete_with_present_target_requires_reapproval_not_redelet
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _insert_task_delete_reference(write_database)
     _prepare_effect_write_plan(
         write_database=write_database,
@@ -180,7 +180,7 @@ def test_unknown_gmail_send_recovers_by_fingerprint_without_resending(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_effect_write_plan(
         write_database=write_database,
         clock=clock,
@@ -247,7 +247,7 @@ def test_unknown_calendar_delete_recovers_from_target_absence_without_redelete(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _insert_calendar_event_reference(write_database)
     _prepare_effect_write_plan(
         write_database=write_database,
@@ -316,7 +316,7 @@ def test_unknown_calendar_delete_with_present_target_requires_reapproval_not_red
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _insert_calendar_event_reference(write_database)
     _prepare_effect_write_plan(
         write_database=write_database,
@@ -373,7 +373,7 @@ def test_unknown_result_create_recovery_and_retry_flow(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     claimed = _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -463,7 +463,7 @@ def test_unknown_result_mcp_request_id_persists_on_trace_and_audit(
     reaches the persisted WRITE_ACTION_UNKNOWN_RESULT trace and
     WRITE_UNKNOWN_RESULT audit rows.
     """
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     claimed = _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -530,7 +530,7 @@ def test_update_recovery_can_resolve_unknown_as_failed_when_source_is_unchanged(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_update_claimed_action(write_database=write_database, clock=clock, suffix="update")
 
     unknown_service = MarkWriteActionUnknownResultService(
@@ -588,7 +588,7 @@ def test_update_recovery_get_runs_without_sqlite_write_transaction(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_update_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -613,7 +613,7 @@ def test_update_recovery_get_runs_without_sqlite_write_transaction(
     recover_service = RecoverUnknownUpdateActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
-        gateway=GoogleWorkspaceExecutionBackend(
+        gateway=McpConnectorWriteAdapter(
             gateway=cast(
                 GoogleWorkspaceGateway,
                 _TransactionCheckingGateway(

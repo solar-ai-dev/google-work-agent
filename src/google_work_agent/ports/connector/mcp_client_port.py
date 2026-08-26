@@ -41,7 +41,7 @@ class MCPRuntimeMetadata:
     process_instance_id: str | None = None
 
 
-class MCPTransportErrorCode(StrEnum):
+class MCPClientPortErrorCode(StrEnum):
     """Deterministic transport failure codes."""
 
     TIMEOUT = "TIMEOUT"
@@ -56,7 +56,7 @@ class MCPTransportErrorCode(StrEnum):
     CONFIGURATION_ERROR = "CONFIGURATION_ERROR"
 
 
-class MCPTransportError(RuntimeError):
+class MCPClientPortError(RuntimeError):
     """Transport-level failure with exact delivery certainty.
 
     ``dispatch_started`` remains as a compatibility projection. New code must
@@ -67,7 +67,7 @@ class MCPTransportError(RuntimeError):
     def __init__(
         self,
         *,
-        code: MCPTransportErrorCode,
+        code: MCPClientPortErrorCode,
         message: str,
         delivery_certainty: DeliveryCertainty | None = None,
         dispatch_started: bool = False,
@@ -76,15 +76,13 @@ class MCPTransportError(RuntimeError):
         super().__init__(message)
         self.code = code
         self.delivery_certainty = delivery_certainty or (
-            DeliveryCertainty.MAY_HAVE_BEEN_SENT
-            if dispatch_started
-            else DeliveryCertainty.NOT_SENT
+            DeliveryCertainty.MAY_HAVE_BEEN_SENT if dispatch_started else DeliveryCertainty.NOT_SENT
         )
         self.dispatch_started = self.delivery_certainty is not DeliveryCertainty.NOT_SENT
         self.request_id = request_id
 
 
-class MCPTransport(Protocol):
+class MCPClientPort(Protocol):
     """Minimal MCP transport needed by future adapter contract tests."""
 
     def call_tool(self, *, tool_name: str, arguments: dict[str, JsonValue]) -> MCPToolResponse:

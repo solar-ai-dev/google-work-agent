@@ -130,7 +130,7 @@ def test_authorization_code_grant_binds_the_callback_uri_and_reports_only_redact
 def test_callback_consumes_a_flow_before_token_exchange_to_block_code_reuse(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state = _state(_MemorySecretStore({}))
+    state = _state(_MemorySecretStorePort({}))
     server._control_call(state, method="google.oauth.start")
     flow = state.active_flow
     assert flow is not None
@@ -180,7 +180,7 @@ def test_callback_consumes_a_flow_before_token_exchange_to_block_code_reuse(
 def test_callback_exposes_only_redacted_token_exchange_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state = _state(_MemorySecretStore({}))
+    state = _state(_MemorySecretStorePort({}))
     server._control_call(state, method="google.oauth.start")
     flow = state.active_flow
     assert flow is not None
@@ -218,7 +218,7 @@ def test_callback_exposes_only_redacted_token_exchange_diagnostic(
 def test_refresh_grant_rotates_keyring_and_keeps_access_token_in_mcp_memory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store = _MemorySecretStore({"refresh": "stored-value"})
+    store = _MemorySecretStorePort({"refresh": "stored-value"})
     state = _state(store)
     calls: list[tuple[str, str | None, str | None]] = []
 
@@ -247,7 +247,7 @@ def test_ensure_access_token_self_heals_account_email_from_refresh_id_token(
     memory-only, so a restarted MCP process must re-derive account_email on
     its next refresh rather than requiring the user to reconnect."""
 
-    store = _MemorySecretStore({"refresh": "stored-value"})
+    store = _MemorySecretStorePort({"refresh": "stored-value"})
     state = _state(store)
     assert state.account_email is None
 
@@ -271,7 +271,7 @@ def test_ensure_access_token_self_heals_account_email_from_refresh_id_token(
 def test_ensure_access_token_resolves_verified_email_from_userinfo_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
 
     monkeypatch.setattr(
         server,
@@ -296,7 +296,7 @@ def test_ensure_access_token_resolves_verified_email_from_userinfo_fallback(
 def test_valid_access_token_with_resolved_identity_skips_refresh_and_userinfo(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
     state.account_email = "user@example.com"
     state.access_token = "access-value"
     state.access_token_expires_at_ms = server._now_ms() + 10_000
@@ -319,7 +319,7 @@ def test_valid_access_token_with_resolved_identity_skips_refresh_and_userinfo(
 def test_valid_access_token_resolves_missing_identity_without_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
     state.access_token = "access-value"
     state.access_token_expires_at_ms = server._now_ms() + 10_000
     refresh_calls = 0
@@ -349,7 +349,7 @@ def test_valid_access_token_resolves_missing_identity_without_refresh(
 def test_valid_access_token_with_unverified_userinfo_keeps_oauth_connected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
     state.access_token = "access-value"
     state.access_token_expires_at_ms = server._now_ms() + 10_000
     refresh_calls = 0
@@ -381,7 +381,7 @@ def test_valid_access_token_with_unverified_userinfo_keeps_oauth_connected(
 def test_valid_access_token_userinfo_failure_keeps_oauth_connected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
     state.access_token = "access-value"
     state.access_token_expires_at_ms = server._now_ms() + 10_000
     monkeypatch.setattr(
@@ -404,7 +404,7 @@ def test_valid_access_token_userinfo_failure_keeps_oauth_connected(
 def test_valid_token_userinfo_401_refreshes_once_and_retries_userinfo(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
     state.access_token = "old-access-value"
     state.access_token_expires_at_ms = server._now_ms() + 10_000
     refresh_calls = 0
@@ -437,7 +437,7 @@ def test_valid_token_userinfo_401_refreshes_once_and_retries_userinfo(
 def test_userinfo_401_refresh_id_token_email_skips_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
     state.access_token = "old-access-value"
     state.access_token_expires_at_ms = server._now_ms() + 10_000
     userinfo_calls = 0
@@ -463,7 +463,7 @@ def test_userinfo_401_refresh_id_token_email_skips_retry(
 def test_userinfo_401_refresh_failure_requires_reauthentication(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
     state.access_token = "old-access-value"
     state.access_token_expires_at_ms = server._now_ms() + 10_000
     monkeypatch.setattr(
@@ -486,7 +486,7 @@ def test_userinfo_401_refresh_failure_requires_reauthentication(
 def test_userinfo_401_retry_401_does_not_refresh_again(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
     state.access_token = "old-access-value"
     state.access_token_expires_at_ms = server._now_ms() + 10_000
     refresh_calls = 0
@@ -524,7 +524,7 @@ def test_non_401_userinfo_failure_does_not_refresh(
     monkeypatch: pytest.MonkeyPatch,
     resolution: server._UserInfoIdentityResolution,
 ) -> None:
-    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
     state.access_token = "access-value"
     state.access_token_expires_at_ms = server._now_ms() + 10_000
     monkeypatch.setattr(
@@ -543,7 +543,7 @@ def test_non_401_userinfo_failure_does_not_refresh(
 def test_google_connection_provisions_after_valid_token_identity_recovery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
     state.access_token = "access-value"
     state.access_token_expires_at_ms = server._now_ms() + 10_000
     monkeypatch.setattr(
@@ -627,7 +627,7 @@ def test_userinfo_requires_sub_and_verified_email(
 def test_expired_access_token_userinfo_failure_keeps_oauth_connected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
     monkeypatch.setattr(
         server,
         "_refresh_access_token",
@@ -725,7 +725,7 @@ def test_refresh_grant_uses_form_encoded_mcp_only_client_credentials(
 
 
 def test_missing_client_secret_blocks_oauth_before_any_authorization_flow() -> None:
-    state = server._WorkspaceState(keyring=_MemorySecretStore({}))
+    state = server._WorkspaceState(keyring=_MemorySecretStorePort({}))
     state.oauth_settings = GoogleOAuthSettings(google_oauth_client_id="desktop-client")
 
     with pytest.raises(server._OAuthConfigurationError) as error_info:
@@ -736,7 +736,7 @@ def test_missing_client_secret_blocks_oauth_before_any_authorization_flow() -> N
 
 
 def test_concurrent_expired_access_token_refreshes_once(monkeypatch: pytest.MonkeyPatch) -> None:
-    store = _MemorySecretStore({"refresh": "stored-value"})
+    store = _MemorySecretStorePort({"refresh": "stored-value"})
     state = _state(store)
     entered = threading.Barrier(4)
     calls = 0
@@ -767,7 +767,7 @@ def test_concurrent_expired_access_token_refreshes_once(monkeypatch: pytest.Monk
 
 
 def test_invalid_grant_requires_reauthentication(monkeypatch: pytest.MonkeyPatch) -> None:
-    state = _state(_MemorySecretStore({"refresh": "stored-value"}))
+    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
 
     def invalid(
         value: str, client_id: str | None, client_secret: str | None
@@ -785,7 +785,7 @@ def test_disconnect_always_cleans_local_credential_and_memory(
     monkeypatch: pytest.MonkeyPatch,
     revoke_result: bool,
 ) -> None:
-    store = _MemorySecretStore({"refresh": "stored-value"})
+    store = _MemorySecretStorePort({"refresh": "stored-value"})
     state = _state(store)
     state.access_token = "access-value"
     state.access_token_expires_at_ms = server._now_ms() + 10_000
@@ -802,7 +802,7 @@ def test_disconnect_always_cleans_local_credential_and_memory(
     assert store.values == {}
 
 
-def _state(store: _MemorySecretStore) -> server._WorkspaceState:
+def _state(store: _MemorySecretStorePort) -> server._WorkspaceState:
     state = server._WorkspaceState(keyring=store)
     state.oauth_settings = GoogleOAuthSettings(
         google_oauth_client_id="desktop-client",
@@ -811,7 +811,7 @@ def _state(store: _MemorySecretStore) -> server._WorkspaceState:
     return state
 
 
-class _MemorySecretStore:
+class _MemorySecretStorePort:
     def __init__(self, values: dict[str, str]) -> None:
         self.values = values
 

@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol
 
-from google_work_agent.adapters.mcp.transport import MCPConnectorDescriptor
-from google_work_agent.ports import MCPRuntimeMetadata, MCPTransport
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MCPConnectorDescriptor
+from google_work_agent.ports import MCPRuntimeMetadata, MCPClientPort
 
 
-class RestartableMCPTransport(MCPTransport, Protocol):
+class RestartableMCPClientPort(MCPClientPort, Protocol):
     def restart(self) -> MCPRuntimeMetadata: ...
 
 
@@ -20,12 +20,12 @@ class ConnectorMcpRuntime:
         self,
         *,
         descriptor: MCPConnectorDescriptor,
-        transport_factory: Callable[[MCPConnectorDescriptor], RestartableMCPTransport],
+        transport_factory: Callable[[MCPConnectorDescriptor], RestartableMCPClientPort],
     ) -> None:
         self._descriptor = descriptor
         self._transport_factory = transport_factory
-        self._transport: RestartableMCPTransport | None = None
-        self._last_transport: RestartableMCPTransport | None = None
+        self._transport: RestartableMCPClientPort | None = None
+        self._last_transport: RestartableMCPClientPort | None = None
 
     @property
     def connector_id(self) -> str:
@@ -36,19 +36,19 @@ class ConnectorMcpRuntime:
         return self._descriptor
 
     @property
-    def transport(self) -> RestartableMCPTransport:
+    def transport(self) -> RestartableMCPClientPort:
         if self._transport is None:
             raise RuntimeError(f"connector runtime is not started: {self.connector_id}")
         return self._transport
 
     @property
-    def transport_for_diagnostics(self) -> RestartableMCPTransport:
+    def transport_for_diagnostics(self) -> RestartableMCPClientPort:
         transport = self._transport or self._last_transport
         if transport is None:
             raise RuntimeError(f"connector runtime has not started: {self.connector_id}")
         return transport
 
-    def start(self) -> MCPTransport:
+    def start(self) -> MCPClientPort:
         if self._transport is None:
             self._transport = self._transport_factory(self._descriptor)
         return self._transport

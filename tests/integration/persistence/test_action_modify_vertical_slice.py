@@ -51,7 +51,7 @@ from google_work_agent.ports import (
     ResourceSnapshot,
     ResourceType,
 )
-from tests.support.fakes import FakeClock
+from tests.support.fakes import FakeClockPort
 
 _TASK_PAYLOAD = {"title": "Send summary", "notes": "draft notes"}
 
@@ -107,7 +107,7 @@ def modify_database(tmp_path: Path) -> Path:
 
 
 def _save_and_publish_task_action(
-    *, database_path: Path, clock: FakeClock, action_id: str, plan_id: str
+    *, database_path: Path, clock: FakeClockPort, action_id: str, plan_id: str
 ) -> None:
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
     save_service = SaveWritePlanService(
@@ -165,7 +165,7 @@ def _save_and_publish_task_action(
 
 
 def test_proposed_action_modify_applies_patch_and_updates_hash(modify_database: Path) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     _save_and_publish_task_action(
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
@@ -214,7 +214,7 @@ def test_proposed_action_modify_applies_patch_and_updates_hash(modify_database: 
 def test_modify_blocks_approval_until_current_review_generation_passes(
     modify_database: Path,
 ) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     _save_and_publish_task_action(
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
@@ -279,7 +279,7 @@ def test_modify_blocks_approval_until_current_review_generation_passes(
 
 
 def test_second_modify_rejects_first_generation_review_result(modify_database: Path) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     _save_and_publish_task_action(
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
@@ -325,7 +325,7 @@ def test_second_modify_rejects_first_generation_review_result(modify_database: P
 
 
 def test_approved_action_modify_revokes_active_approval(modify_database: Path) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     _save_and_publish_task_action(
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
@@ -449,7 +449,7 @@ def _existing_task(resource_id: str, *, title: str, due: str | None = None) -> R
 def test_task_modify_rechecks_duplicates_and_persists_arguments_with_risk_atomically(
     modify_database: Path,
 ) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     _save_and_publish_task_action(
         database_path=modify_database,
@@ -489,7 +489,7 @@ def test_task_modify_rechecks_duplicates_and_persists_arguments_with_risk_atomic
 def test_task_modify_source_failure_changes_no_action_or_approval(
     modify_database: Path,
 ) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     _save_and_publish_task_action(
         database_path=modify_database,
@@ -545,7 +545,7 @@ def test_task_modify_source_failure_changes_no_action_or_approval(
 
 
 def test_modify_rejects_a_field_the_tool_schema_does_not_allow(modify_database: Path) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     _save_and_publish_task_action(
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
@@ -586,7 +586,7 @@ def test_modify_rejects_a_field_the_tool_schema_does_not_allow(modify_database: 
 
 
 def test_modify_version_conflict_changes_nothing(modify_database: Path) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     _save_and_publish_task_action(
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
@@ -620,7 +620,7 @@ def test_modify_version_conflict_changes_nothing(modify_database: Path) -> None:
 def test_modify_command_replay_returns_the_cached_result_without_reapplying(
     modify_database: Path,
 ) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     _save_and_publish_task_action(
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
@@ -667,7 +667,7 @@ def test_modify_command_replay_returns_the_cached_result_without_reapplying(
 
 
 def test_modify_records_an_action_modified_audit_event(modify_database: Path) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     _save_and_publish_task_action(
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
@@ -699,7 +699,7 @@ def test_modify_records_an_action_modified_audit_event(modify_database: Path) ->
 def test_failed_action_is_not_modifiable_through_this_endpoint(modify_database: Path) -> None:
     """FAILED retries must go through prepare_write_retry, not modify_action."""
 
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     _save_and_publish_task_action(
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
@@ -776,7 +776,7 @@ def test_failed_action_is_not_modifiable_through_this_endpoint(modify_database: 
 
 
 def test_empty_patch_on_proposed_action_applies_nothing(modify_database: Path) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     _save_and_publish_task_action(
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
@@ -815,7 +815,7 @@ def test_empty_patch_on_proposed_action_applies_nothing(modify_database: Path) -
 def test_semantically_identical_patch_on_approved_action_does_not_revoke_approval(
     modify_database: Path,
 ) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     _save_and_publish_task_action(
         database_path=modify_database, clock=clock, action_id="action-1", plan_id="plan-1"
@@ -899,7 +899,7 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
     production WRITE plan path.
     """
 
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
     save_service = SaveWritePlanService(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms

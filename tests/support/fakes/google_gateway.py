@@ -8,10 +8,10 @@ from email.utils import parseaddr
 from enum import StrEnum
 from typing import cast
 
-from google_work_agent.adapters.connectors.google_workspace_execution import (
-    GoogleWorkspaceExecutionBackend,
+from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
+    McpConnectorWriteAdapter,
 )
-from google_work_agent.ports.connectors.execution import (
+from google_work_agent.ports.connector.connector_write_port import (
     ConnectorWriteRequest,
     PreparedConnectorWrite,
 )
@@ -121,8 +121,8 @@ class FakeGoogleGateway:
             recovery_fingerprint=recovery_fingerprint,
         )
 
-    def _execution_backend(self) -> GoogleWorkspaceExecutionBackend:
-        return GoogleWorkspaceExecutionBackend(gateway=cast(GoogleWorkspaceGateway, self))
+    def _execution_backend(self) -> McpConnectorWriteAdapter:
+        return McpConnectorWriteAdapter(gateway=cast(GoogleWorkspaceGateway, self))
 
     def queue_fault(self, *, operation: str, fault: GoogleGatewayFault) -> None:
         """Queue one deterministic fault for an operation."""

@@ -23,12 +23,12 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
 )
 from google_work_agent.ports import (
     ApiAccessGuard,
-    Clock,
-    IdGenerator,
+    ClockPort,
+    UUIDPort,
     LauncherProbeVerifier,
     OperationalLogSink,
     ReadinessAggregator,
-    RunEventPublisher,
+    SseEventBufferPort,
     RuntimeStatusProvider,
     WorkflowRuntime,
 )
@@ -57,12 +57,12 @@ class ApiContainer:
     resume_run_service: Any
     local_run_coordinator: Any
     workflow_runtime: WorkflowRuntime
-    event_publisher: RunEventPublisher
+    event_publisher: SseEventBufferPort
     readiness_aggregator: ReadinessAggregator
     runtime_status_provider: RuntimeStatusProvider
     api_access_guard: ApiAccessGuard
-    clock: Clock
-    id_generator: IdGenerator
+    clock: ClockPort
+    id_generator: UUIDPort
     release_version: str
     environment: str
     service_instance_id: str

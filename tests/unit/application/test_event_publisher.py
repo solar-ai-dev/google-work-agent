@@ -1,10 +1,10 @@
-from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
+from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.application.projections import build_projection_event
 from google_work_agent.ports import InvalidReplayCursorError, SnapshotRequiredReplayError
 
 
 def test_in_memory_event_publisher_assigns_monotonic_ids_and_replays() -> None:
-    publisher = InMemoryRunEventPublisher(service_instance_id="svc-a", capacity_per_run=4)
+    publisher = InMemorySseEventBuffer(service_instance_id="svc-a", capacity_per_run=4)
     first = publisher.publish(
         build_projection_event(
             run_id="run-1",
@@ -28,7 +28,7 @@ def test_in_memory_event_publisher_assigns_monotonic_ids_and_replays() -> None:
 
 
 def test_in_memory_event_publisher_requires_snapshot_after_eviction() -> None:
-    publisher = InMemoryRunEventPublisher(service_instance_id="svc-a", capacity_per_run=2)
+    publisher = InMemorySseEventBuffer(service_instance_id="svc-a", capacity_per_run=2)
     publisher.publish(
         build_projection_event(
             run_id="run-1",

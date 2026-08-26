@@ -11,7 +11,7 @@ import pytest
 from tests.integration.persistence.test_write_actions import _expected_task_projection
 from tests.support.fakes import (
     DeterministicUUID,
-    FakeClock,
+    FakeClockPort,
     FakeGoogleGateway,
     GoogleGatewayFault,
     GoogleGatewayFaultKind,
@@ -27,8 +27,8 @@ from tests.unit.application.workflows.test_api_acquisition import _plan
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 from tests.unit.application.workflows.test_plan_review import _review_output
 
-from google_work_agent.adapters.connectors.google_workspace_execution import (
-    GoogleWorkspaceExecutionBackend,
+from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
+    McpConnectorWriteAdapter,
 )
 from google_work_agent.adapters.langgraph.main.workflow import LangGraphWorkflowRuntime
 from google_work_agent.adapters.langgraph.profiles import (
@@ -975,13 +975,13 @@ def _make_runtime(
     default_calendar_id: str | None = "calendar-primary",
     id_prefix: str = "runtime",
 ) -> LangGraphWorkflowRuntime:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     ids = DeterministicUUID(prefix=id_prefix)
     return LangGraphWorkflowRuntime(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         llm_runtime=_QueuedLLMRuntime(llm_payloads, before_invoke=before_llm_invoke),
         gateway=gateway,
-        connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
+        connector_execution=McpConnectorWriteAdapter(gateway=gateway),
         tool_catalog=_tool_catalog(),
         now_ms=clock.now_ms,
         id_factory=ids.next_id,

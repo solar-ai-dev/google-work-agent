@@ -10,14 +10,14 @@ from fastapi import Depends, Request
 from google_work_agent.api.dependencies.request_context import get_api_container
 from google_work_agent.api.security.bootstrap import BootstrapGrantStore
 from google_work_agent.api.security.sessions import LocalSessionManager
-from google_work_agent.ports import Clock
+from google_work_agent.ports import ClockPort
 
 
 @dataclass(frozen=True, slots=True)
 class SessionRouteDependencies:
     service_instance_id: str
     api_contract_version: str
-    clock: Clock
+    clock: ClockPort
     bootstrap_grant_store: BootstrapGrantStore | None
     local_session_manager: LocalSessionManager | None
 

@@ -17,7 +17,7 @@ from google_work_agent.ports import (
     CommandReceiptRecord,
     CommandReceiptStatus,
     PlanStatus,
-    RunEventPublisher,
+    SseEventBufferPort,
     TraceEventRecord,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -52,7 +52,7 @@ class RejectActionHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        event_publisher: RunEventPublisher | None = None,
+        event_publisher: SseEventBufferPort | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms

@@ -2,10 +2,10 @@ import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from tests.support.fakes import DeterministicUUID, FakeClock, FakeWorkflowRuntime
+from tests.support.fakes import DeterministicUUID, FakeClockPort, FakeWorkflowRuntime
 from tests.support.workflow_admission import build_test_admission_callbacks
 
-from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
+from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
 )
@@ -81,9 +81,9 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
     finally:
         connection.close()
 
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     runtime = FakeWorkflowRuntime()
-    publisher = InMemoryRunEventPublisher(service_instance_id="svc-test", capacity_per_run=8)
+    publisher = InMemorySseEventBuffer(service_instance_id="svc-test", capacity_per_run=8)
     query_service = QueryService(
         database_path=database_path,
         connection_factory=connect_sqlite,

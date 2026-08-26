@@ -38,7 +38,7 @@ from tests.integration.persistence.test_write_action_dependency_persistence impo
     _evidence,
     _task_draft,
 )
-from tests.support.fakes import FakeClock
+from tests.support.fakes import FakeClockPort
 
 
 @pytest.fixture()
@@ -72,14 +72,14 @@ def modify_database(tmp_path: Path) -> Path:
     return database_path
 
 
-def _service(database_path: Path, clock: FakeClock) -> RejectWriteActionService:
+def _service(database_path: Path, clock: FakeClockPort) -> RejectWriteActionService:
     return RejectWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=clock.now_ms,
     )
 
 
-def _approve(database_path: Path, clock: FakeClock, action_id: str) -> None:
+def _approve(database_path: Path, clock: FakeClockPort, action_id: str) -> None:
     response = ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=clock.now_ms,
@@ -103,7 +103,7 @@ def _approve(database_path: Path, clock: FakeClock, action_id: str) -> None:
 def test_reject_allowed_statuses_record_audit_and_finalize_terminal_plan(
     modify_database: Path, starting_status: str
 ) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     _save_and_publish_task_action(
         database_path=modify_database,
         clock=clock,
@@ -165,7 +165,7 @@ def test_reject_allowed_statuses_record_audit_and_finalize_terminal_plan(
 def test_reject_keeps_plan_and_run_active_when_independent_action_is_pending(
     modify_database: Path,
 ) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     factory = sqlite_unit_of_work_factory(modify_database)
     assert SaveWritePlanService(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         SaveWritePlanCommand(
@@ -219,7 +219,7 @@ def test_reject_keeps_plan_and_run_active_when_independent_action_is_pending(
     ["REJECTED", "EXECUTING", "EXECUTED", "VERIFIED", "MISMATCH", "UNKNOWN_RESULT"],
 )
 def test_reject_forbidden_statuses_mutate_nothing(modify_database: Path, status: str) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     _save_and_publish_task_action(
         database_path=modify_database,
         clock=clock,
@@ -251,7 +251,7 @@ def test_reject_forbidden_statuses_mutate_nothing(modify_database: Path, status:
 
 
 def test_reject_receipt_replay_hash_and_version_contract(modify_database: Path) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     _save_and_publish_task_action(
         database_path=modify_database,
         clock=clock,
@@ -298,7 +298,7 @@ def test_reject_receipt_replay_hash_and_version_contract(modify_database: Path) 
 def test_reject_rejects_unsafe_reason_codes_before_receipt(
     modify_database: Path, reason_code: str
 ) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     _save_and_publish_task_action(
         database_path=modify_database,
         clock=clock,
@@ -325,7 +325,7 @@ def test_reject_rejects_unsafe_reason_codes_before_receipt(
 def test_reject_blocks_proposed_direct_dependent_before_claim(
     modify_database: Path,
 ) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     factory = sqlite_unit_of_work_factory(modify_database)
     assert SaveWritePlanService(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         SaveWritePlanCommand(
@@ -391,7 +391,7 @@ def test_reject_blocks_proposed_direct_dependent_before_claim(
 def test_reject_blocks_and_revokes_transitive_pending_dependents(
     modify_database: Path,
 ) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     factory = sqlite_unit_of_work_factory(modify_database)
     saved = SaveWritePlanService(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         SaveWritePlanCommand(
@@ -476,7 +476,7 @@ def test_reject_preserves_verified_actions(
     rejected_action_id: str,
     preserved_action_id: str,
 ) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     factory = sqlite_unit_of_work_factory(modify_database)
     assert SaveWritePlanService(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         SaveWritePlanCommand(
@@ -599,7 +599,7 @@ def _advance_action_for_reject_guard(*, database_path: Path, action_id: str, sta
 
 
 def test_reject_audit_failure_rolls_back_domain_mutation(modify_database: Path) -> None:
-    clock = FakeClock(initial_ms=1_000)
+    clock = FakeClockPort(initial_ms=1_000)
     _save_and_publish_task_action(
         database_path=modify_database,
         clock=clock,

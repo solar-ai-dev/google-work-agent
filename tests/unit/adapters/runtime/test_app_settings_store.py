@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from google_work_agent.adapters.runtime.build_manifest import BuildProfile
-from google_work_agent.adapters.runtime.settings import (
+from google_work_agent.adapters.system.json_settings import (
     FileSettingsStore,
     SettingsPatch,
     SettingsService,

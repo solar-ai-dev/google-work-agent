@@ -7,7 +7,7 @@ from __future__ import annotations
 from tests.integration.persistence.test_write_actions import (
     DeliveryCertainty,
     ExecuteWriteActionService,
-    FakeClock,
+    FakeClockPort,
     FakeGoogleGateway,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
@@ -63,7 +63,7 @@ def test_gmail_send_uses_approval_claim_sent_lookup_and_verification(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_effect_write_plan(
         write_database=write_database,
         clock=clock,
@@ -146,7 +146,7 @@ def test_calendar_delete_uses_preflight_claim_get_absent_and_verification(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _insert_calendar_event_reference(write_database)
     _prepare_effect_write_plan(
         write_database=write_database,
@@ -217,7 +217,7 @@ def test_calendar_delete_preflight_rejects_recurring_series_scope(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _insert_calendar_event_reference(write_database)
     _prepare_effect_write_plan(
         write_database=write_database,
@@ -247,7 +247,7 @@ def test_calendar_delete_preflight_rejects_target_version_change(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _insert_calendar_event_reference(write_database, version="6")
     _prepare_effect_write_plan(
         write_database=write_database,
@@ -273,7 +273,7 @@ def test_task_delete_uses_preflight_claim_get_absent_and_verification(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _insert_task_delete_reference(write_database)
     _prepare_effect_write_plan(
         write_database=write_database,
@@ -344,7 +344,7 @@ def test_task_delete_preflight_rejects_ambiguous_target_without_persisted_refere
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_effect_write_plan(
         write_database=write_database,
         clock=clock,
@@ -372,7 +372,7 @@ def test_task_delete_preflight_rejects_target_version_change(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _insert_task_delete_reference(write_database, version="99")
     _prepare_effect_write_plan(
         write_database=write_database,

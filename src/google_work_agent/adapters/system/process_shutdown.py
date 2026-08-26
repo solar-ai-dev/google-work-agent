@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Protocol
 
-from google_work_agent.ports import Clock, ShutdownReport
+from google_work_agent.ports import ClockPort, ShutdownReport
 
 
 class ShutdownPhase(StrEnum):
@@ -41,7 +41,7 @@ class GracefulShutdownCoordinator:
         persistence: ComponentShutdownPort,
         mcp_transport: ComponentShutdownPort,
         sessions: ComponentShutdownPort,
-        clock: Clock,
+        clock: ClockPort,
     ) -> None:
         self._command_gate = command_gate
         self._coordinator = coordinator
@@ -83,3 +83,6 @@ class GracefulShutdownCoordinator:
             duration_ms=self._clock.now_ms() - started,
             safe_error_codes=tuple(errors),
         )
+
+
+ProcessShutdownAdapter = GracefulShutdownCoordinator

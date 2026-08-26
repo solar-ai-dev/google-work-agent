@@ -19,7 +19,7 @@ from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
     PrepareWriteRetryService,
 )
-from google_work_agent.ports import Clock, IdGenerator, RunEventPublisher, UnitOfWork
+from google_work_agent.ports import ClockPort, UUIDPort, SseEventBufferPort, UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,9 +32,9 @@ class ActionRouteDependencies:
     get_settings_service: Callable[[], GetSettingsService | None]
     unit_of_work_factory: Callable[[], UnitOfWork]
     local_run_coordinator: LocalRunCoordinator
-    event_publisher: Callable[[], RunEventPublisher]
-    clock: Clock
-    id_generator: IdGenerator
+    event_publisher: Callable[[], SseEventBufferPort]
+    clock: ClockPort
+    id_generator: UUIDPort
 
 
 def get_action_route_dependencies(request: Request) -> ActionRouteDependencies:

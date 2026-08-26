@@ -14,7 +14,7 @@ SERVICE_INSTANCE_ID = "svc-recovery-1"
 
 
 def _state() -> server._WorkspaceState:
-    state = server._WorkspaceState(keyring=_MemorySecretStore())
+    state = server._WorkspaceState(keyring=_MemorySecretStorePort())
     state.oauth_settings = GoogleOAuthSettings(
         google_oauth_client_id="desktop-client",
         google_oauth_client_secret="compatibility-client-secret",
@@ -24,7 +24,7 @@ def _state() -> server._WorkspaceState:
     return state
 
 
-class _MemorySecretStore:
+class _MemorySecretStorePort:
     def set_secret(self, *, service: str, account: str, secret: str) -> None:
         del service, account, secret
 

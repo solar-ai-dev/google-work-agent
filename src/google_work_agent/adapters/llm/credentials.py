@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from google_work_agent.ports import CredentialStorageMode, LLMCredentialState, SecretStore
+from google_work_agent.ports import CredentialStorageMode, LLMCredentialState, SecretStorePort
 
 
 class SessionMemorySecretStore:
@@ -29,7 +29,7 @@ class LLMCredentialService:
 
     provider_name: str
     environment: str
-    keyring_store: SecretStore | None
+    keyring_store: SecretStorePort | None
     session_store: SessionMemorySecretStore
 
     def describe_state(self) -> LLMCredentialState:

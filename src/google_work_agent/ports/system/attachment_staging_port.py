@@ -47,7 +47,7 @@ class AttachmentDescriptor:
             raise AttachmentStagingError("ATTACHMENT_DESCRIPTOR_MALFORMED") from error
 
 
-class AttachmentStaging(Protocol):
+class AttachmentStagingPort(Protocol):
     """Stage outbound attachment bytes behind a local storage boundary."""
 
     def stage(self, *, data: bytes, filename: str, mime_type: str) -> AttachmentDescriptor:

@@ -1,6 +1,6 @@
 """Test doubles used by product-core tests."""
 
-from tests.support.fakes.clock import FakeClock
+from tests.support.fakes.clock import FakeClockPort
 from tests.support.fakes.google_gateway import (
     FakeGoogleGateway,
     GoogleGatewayCallRecord,
@@ -17,7 +17,7 @@ from tests.support.fakes.llm import (
     approved_model,
 )
 from tests.support.fakes.mcp_transport import (
-    FakeMCPTransport,
+    FakeMCPClientPort,
     MCPCallRecord,
     QueuedMCPFailure,
 )
@@ -35,14 +35,14 @@ from tests.support.fakes.workflow_runtime import (
 
 __all__ = [
     "DeterministicUUID",
-    "FakeClock",
+    "FakeClockPort",
     "FakeGoogleGateway",
     "FakeHardwareProbe",
     "FakeKeyring",
     "FakeOllamaTransport",
     "FakeSchemaRepairer",
     "FakeAPIProviderTransport",
-    "FakeMCPTransport",
+    "FakeMCPClientPort",
     "FakeWorkflowRuntime",
     "FaultInjectingSQLiteError",
     "GoogleGatewayCallRecord",

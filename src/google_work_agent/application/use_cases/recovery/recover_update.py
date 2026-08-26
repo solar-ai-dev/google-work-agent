@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from json import loads
 from typing import cast
 
-from google_work_agent.ports.connectors.execution import (
-    ConnectorExecutionPort,
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
 )
 from google_work_agent.application.recovery_source_projection import (
     project_source_resource,
@@ -78,7 +78,7 @@ class RecoverUpdateHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        connector_execution: ConnectorExecutionPort,
+        connector_execution: ConnectorWritePort,
         recover_existing_result: Callable[
             [RecoverExistingResultCommand], RecoverExistingResultResult
         ],

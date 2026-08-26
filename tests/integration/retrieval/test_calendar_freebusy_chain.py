@@ -13,8 +13,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from google_work_agent.adapters.connectors.google_workspace_reader import (
-    GoogleWorkspaceConnectorReader,
+from google_work_agent.adapters.connectors.runtime.mcp_connector_read import (
+    McpConnectorReadAdapter,
 )
 from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import ApiAcquisitionResult
@@ -217,7 +217,7 @@ def test_availability_required_request_calls_freebusy_once_and_hands_off_summary
     gateway = _gateway()
     agent = ApiDiscoveryAcquisitionAgent(
         llm_runtime=_FakeLLMRuntime(),
-        connector_reader=GoogleWorkspaceConnectorReader(gateway=gateway),
+        connector_reader=McpConnectorReadAdapter(gateway=gateway),
         prompt_ref=PLAN_PROMPT_REF,
     )
 
@@ -264,7 +264,7 @@ def test_simple_event_listing_does_not_call_freebusy() -> None:
     gateway = _gateway()
     agent = ApiDiscoveryAcquisitionAgent(
         llm_runtime=_FakeLLMRuntime(),
-        connector_reader=GoogleWorkspaceConnectorReader(gateway=gateway),
+        connector_reader=McpConnectorReadAdapter(gateway=gateway),
         prompt_ref=PLAN_PROMPT_REF,
     )
 
@@ -283,7 +283,7 @@ def test_invalid_time_range_skips_freebusy_without_calling_google() -> None:
     gateway = _gateway()
     agent = ApiDiscoveryAcquisitionAgent(
         llm_runtime=_FakeLLMRuntime(),
-        connector_reader=GoogleWorkspaceConnectorReader(gateway=gateway),
+        connector_reader=McpConnectorReadAdapter(gateway=gateway),
         prompt_ref=PLAN_PROMPT_REF,
     )
 

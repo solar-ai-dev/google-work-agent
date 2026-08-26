@@ -26,7 +26,7 @@ class ConnectorWriteRequest:
     execution_arguments_hash: str
 
 
-class ConnectorExecutionPort(Protocol):
+class ConnectorWritePort(Protocol):
     """Provider execution and lookup mechanics without safety policy ownership."""
 
     def prepare_write(

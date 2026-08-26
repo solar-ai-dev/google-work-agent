@@ -63,7 +63,7 @@ class RunEventSubscription(Protocol):
         """Return the next event if available."""
 
 
-class RunEventPublisher(Protocol):
+class SseEventBufferPort(Protocol):
     """Publish and replay run-scoped projection events."""
 
     def publish(self, event: PendingProjectionEvent) -> ProjectionEvent:

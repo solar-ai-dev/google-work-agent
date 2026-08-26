@@ -6,8 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps, loads
 
-from google_work_agent.ports.connectors.execution import (
-    ConnectorExecutionPort,
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
 )
 from google_work_agent.application.use_cases.verification.normalize_snapshot import normalize_snapshot
 from google_work_agent.application.write_action_arguments import dict_argument, required_argument_string
@@ -104,7 +104,7 @@ class VerifyActionHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        connector_execution: ConnectorExecutionPort,
+        connector_execution: ConnectorWritePort,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms

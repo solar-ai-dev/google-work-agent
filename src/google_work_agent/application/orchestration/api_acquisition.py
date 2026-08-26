@@ -14,7 +14,7 @@ from typing import Literal, cast
 import google_work_agent.application.orchestration._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.ports.observability_events import ObservabilityContext
-from google_work_agent.ports.connectors.read import (
+from google_work_agent.ports.connector.connector_read_port import (
     ConnectorReadPort,
     ConnectorReadRequest,
     ConnectorReadResult,
@@ -261,7 +261,7 @@ class ApiDiscoveryAcquisitionAgent:
         # deterministic code's responsibility. Both fall back to safe
         # defaults so existing callers that do not pass them keep working;
         # production wiring (see LangGraphWorkflowRuntime) supplies the real
-        # Clock and AppSettings.timezone.
+        # ClockPort and AppSettings.timezone.
         self._now_ms = now_ms or _default_now_ms
         self._timezone_provider = timezone_provider or (lambda: DEFAULT_TIMEZONE)
 

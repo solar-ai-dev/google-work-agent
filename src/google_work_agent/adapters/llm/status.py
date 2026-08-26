@@ -7,7 +7,7 @@ from typing import cast
 
 from google_work_agent.adapters.llm.api_provider import APIProviderConnectionService
 from google_work_agent.adapters.llm.credentials import LLMCredentialService
-from google_work_agent.adapters.runtime.settings import AppSettings
+from google_work_agent.adapters.system.json_settings import AppSettings
 from google_work_agent.ports import (
     ApprovedModelInfo,
     AvailabilityState,

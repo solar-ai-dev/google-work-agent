@@ -12,8 +12,8 @@ from typing import Any, cast
 
 from langgraph.types import interrupt
 
-from google_work_agent.adapters.connectors.google_workspace_reader import (
-    GoogleWorkspaceConnectorReader,
+from google_work_agent.adapters.connectors.runtime.mcp_connector_read import (
+    McpConnectorReadAdapter,
 )
 from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCoordinator
 from google_work_agent.adapters.langgraph.main.graph import (
@@ -257,8 +257,8 @@ from google_work_agent.ports import (
     WorkflowRuntime,
     WorkflowStartRequest,
 )
-from google_work_agent.ports.connectors.execution import (
-    ConnectorExecutionPort,
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork as CanonicalUnitOfWork
 from google_work_agent.ports.repositories import ActionRecord
@@ -289,7 +289,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         unit_of_work_factory: Callable[[], UnitOfWork],
         llm_runtime: Any,
         gateway: GoogleWorkspaceGateway,
-        connector_execution: ConnectorExecutionPort,
+        connector_execution: ConnectorWritePort,
         tool_catalog: ConnectorToolCatalog,
         now_ms: Callable[[], int],
         id_factory: Callable[[], str],
@@ -363,7 +363,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             manifest_path=prompt_manifest_path,
         )
         self._read_result_cache = RunScopedReadResultCache()
-        connector_reader = GoogleWorkspaceConnectorReader(gateway=gateway)
+        connector_reader = McpConnectorReadAdapter(gateway=gateway)
         self._acquisition = ApiDiscoveryAcquisitionAgent(
             llm_runtime=llm_runtime,
             connector_reader=connector_reader,

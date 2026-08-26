@@ -10,7 +10,7 @@ from tests.integration.persistence.test_write_actions import (
     CalendarWorkHours,
     ClaimWriteActionCommand,
     ClaimWriteActionService,
-    FakeClock,
+    FakeClockPort,
     Path,
     PolicyViolationError,
     PreflightWriteActionService,
@@ -49,7 +49,7 @@ def test_task_duplicate_approval_matrix(
     acknowledged: bool,
     expected_applied: bool,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     matched_ids = () if decision == "NOT_DUPLICATE" else ("existing-task",)
     _prepare_write_plan(
         write_database=write_database,
@@ -90,7 +90,7 @@ def test_task_duplicate_approval_matrix(
 def test_task_duplicate_approval_replay_does_not_duplicate_override_audit(
     write_database: Path,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_write_plan(
         write_database=write_database,
         clock=clock,
@@ -125,7 +125,7 @@ def test_task_duplicate_approval_replay_does_not_duplicate_override_audit(
 def test_task_duplicate_preflight_new_match_revokes_stale_approval(
     write_database: Path,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     suffix = "fresh-new"
     _approve_preflight_action(
         write_database=write_database,
@@ -158,7 +158,7 @@ def test_task_duplicate_preflight_new_match_revokes_stale_approval(
 def test_task_duplicate_preflight_same_acknowledged_match_allows_claim(
     write_database: Path,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     suffix = "fresh-same"
     risk = _duplicate_risk("CLEAR_DUPLICATE", matched_ids=("existing-task",))
     _approve_preflight_action(
@@ -208,7 +208,7 @@ def test_task_duplicate_preflight_same_acknowledged_match_allows_claim(
 def test_task_duplicate_preflight_source_failure_is_fail_closed(
     write_database: Path,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     suffix = "fresh-fail"
     _approve_preflight_action(
         write_database=write_database,
@@ -238,7 +238,7 @@ def test_task_duplicate_preflight_source_failure_is_fail_closed(
 
 
 def test_infeasible_action_cannot_be_approved(write_database: Path) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     suffix = "feasibility-blocked"
     response = _prepare_calendar_feasibility_action(
         write_database=write_database,
@@ -258,7 +258,7 @@ def test_infeasible_action_cannot_be_approved(write_database: Path) -> None:
 def test_feasibility_preflight_change_revokes_approval_before_claim(
     write_database: Path,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     suffix = "feasibility-change"
     assert (
         _prepare_calendar_feasibility_action(
@@ -314,7 +314,7 @@ def test_feasibility_preflight_change_revokes_approval_before_claim(
 
 
 def test_feasibility_preflight_same_snapshot_allows_claim(write_database: Path) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     suffix = "feasibility-same"
     assert (
         _prepare_calendar_feasibility_action(

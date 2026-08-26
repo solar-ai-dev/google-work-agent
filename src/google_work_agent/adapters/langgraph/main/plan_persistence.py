@@ -50,8 +50,8 @@ from google_work_agent.application.write_verification_projection import (
     build_expected_verification_projection,
 )
 from google_work_agent.ports import EvidenceOriginType, ResourceSnapshot, ResourceType
-from google_work_agent.ports.connectors.execution import (
-    ConnectorExecutionPort,
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
 )
 
 
@@ -213,7 +213,7 @@ class PlanPersistenceMixin:
         self,
         *args: Any,
         default_calendar_id_provider: Callable[[], str | None] | None = None,
-        connector_execution_backends: Mapping[str, ConnectorExecutionPort] | None = None,
+        connector_execution_backends: Mapping[str, ConnectorWritePort] | None = None,
         **kwargs: Any,
     ) -> None:
         llm_runtime = kwargs.get("llm_runtime")
@@ -232,7 +232,7 @@ class PlanPersistenceMixin:
                 if legacy_execution is None:
                     raise TypeError("connector_execution is required")
                 execution_router = ConnectorExecutionRouter(
-                    {GOOGLE_WORKSPACE_CONNECTOR_ID: cast(ConnectorExecutionPort, legacy_execution)}
+                    {GOOGLE_WORKSPACE_CONNECTOR_ID: cast(ConnectorWritePort, legacy_execution)}
                 )
         else:
             execution_router = ConnectorExecutionRouter(connector_execution_backends)

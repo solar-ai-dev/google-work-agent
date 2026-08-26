@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import sys
@@ -15,11 +15,11 @@ from google_work_agent.adapters.mcp import (
     calculate_file_sha256,
 )
 from google_work_agent.adapters.mcp.delivery_gateway import _delivery_aware_google_error
-from google_work_agent.adapters.mcp.delivery_transport import DeliveryAwareSubprocessMCPTransport
+from google_work_agent.adapters.mcp.delivery_transport import DeliveryAwareStdioMCPClientAdapter
 from google_work_agent.ports import (
     DeliveryCertainty,
-    MCPTransportError,
-    MCPTransportErrorCode,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
 )
 
 
@@ -37,7 +37,7 @@ def test_delivery_certainty_roundtrips_server_transport_gateway(
 ) -> None:
     transport = _transport(tmp_path)
     try:
-        with pytest.raises(MCPTransportError) as captured:
+        with pytest.raises(MCPClientPortError) as captured:
             transport.call_tool(
                 tool_name="gmail_get_thread",
                 arguments={"__test_delivery_certainty": certainty.value},
@@ -55,7 +55,7 @@ def test_delivery_certainty_roundtrips_server_transport_gateway(
 def test_child_restart_does_not_resend_in_flight_tool_call(tmp_path: Path) -> None:
     transport = _transport(tmp_path)
     try:
-        with pytest.raises(MCPTransportError) as captured:
+        with pytest.raises(MCPClientPortError) as captured:
             transport.call_tool(
                 tool_name="tasks_create_task",
                 arguments={"__test_exit_after_dispatch": True},
@@ -74,8 +74,8 @@ def test_child_restart_does_not_resend_in_flight_tool_call(tmp_path: Path) -> No
 
 
 def test_legacy_dispatch_started_fallback_remains_conservative() -> None:
-    error = MCPTransportError(
-        code=MCPTransportErrorCode.TIMEOUT,
+    error = MCPClientPortError(
+        code=MCPClientPortErrorCode.TIMEOUT,
         message="legacy",
         dispatch_started=True,
     )
@@ -83,7 +83,7 @@ def test_legacy_dispatch_started_fallback_remains_conservative() -> None:
     assert error.delivery_certainty is DeliveryCertainty.MAY_HAVE_BEEN_SENT
 
 
-def _transport(tmp_path: Path) -> DeliveryAwareSubprocessMCPTransport:
+def _transport(tmp_path: Path) -> DeliveryAwareStdioMCPClientAdapter:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(
         json.dumps(build_manifest_payload(), sort_keys=True),
@@ -108,4 +108,4 @@ def _transport(tmp_path: Path) -> DeliveryAwareSubprocessMCPTransport:
             module_name="tests.fakes.mcp_server",
         )
     )
-    return DeliveryAwareSubprocessMCPTransport(descriptor=descriptor)
+    return DeliveryAwareStdioMCPClientAdapter(descriptor=descriptor)

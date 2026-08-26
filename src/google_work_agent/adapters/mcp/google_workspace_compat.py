@@ -7,9 +7,9 @@ from google_work_agent.adapters.mcp.capabilities import (
     build_google_workspace_internal_capabilities,
 )
 from google_work_agent.adapters.mcp.delivery_transport import (
-    DeliveryAwareSubprocessMCPTransport,
+    DeliveryAwareStdioMCPClientAdapter,
 )
-from google_work_agent.adapters.mcp.transport import (
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     MCPArtifactConfig,
     MCPConnectorDescriptor,
     build_manifest_payload_for_registry,
@@ -43,7 +43,7 @@ def build_manifest_payload() -> dict[str, object]:
     return payload
 
 
-class SubprocessMCPTransport(DeliveryAwareSubprocessMCPTransport):
+class StdioMCPClientAdapter(DeliveryAwareStdioMCPClientAdapter):
     """Compatibility constructor with canonical delivery-certainty parsing."""
 
     def __init__(

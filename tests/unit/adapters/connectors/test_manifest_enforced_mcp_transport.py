@@ -17,8 +17,8 @@ from google_work_agent.adapters.mcp.capabilities import (
     INTERNAL_CAPABILITY_REGISTRY_VERSION,
     build_google_workspace_internal_capabilities,
 )
-from google_work_agent.adapters.mcp.manifest_guard import ManifestEnforcedMCPTransport
-from google_work_agent.adapters.mcp.transport import MCPConnectorDescriptor
+from google_work_agent.adapters.mcp.manifest_guard import ManifestEnforcedMCPClientPort
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MCPConnectorDescriptor
 from google_work_agent.domain.google_workspace_tool_contracts import (
     google_workspace_tool_contract,
 )
@@ -29,8 +29,8 @@ from google_work_agent.ports import (
     MCPControlResponse,
     MCPRuntimeMetadata,
     MCPToolResponse,
-    MCPTransportError,
-    MCPTransportErrorCode,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
 )
 
 
@@ -118,10 +118,10 @@ class _FakeVerifiedDelegate:
 def test_unknown_tool_is_rejected_before_delegate_dispatch(tmp_path: Path) -> None:
     guard, delegate = _guard(tmp_path)
 
-    with pytest.raises(MCPTransportError) as captured:
+    with pytest.raises(MCPClientPortError) as captured:
         guard.call_tool(tool_name="hidden_unregistered_tool", arguments={})
 
-    assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
+    assert captured.value.code is MCPClientPortErrorCode.TOOL_REJECTED
     assert captured.value.dispatch_started is False
     assert delegate.tool_calls == []
 
@@ -150,16 +150,16 @@ def test_stale_runtime_registry_version_rejects_before_dispatch(tmp_path: Path) 
         internal_names=_expected_internal_names(),
         runtime_registry_version="stale-version",
     )
-    guard = ManifestEnforcedMCPTransport(
+    guard = ManifestEnforcedMCPClientPort(
         delegate=delegate,
         descriptor=_descriptor(manifest_path),
         expected_internal_capabilities=build_google_workspace_internal_capabilities(),
     )
 
-    with pytest.raises(MCPTransportError) as captured:
+    with pytest.raises(MCPClientPortError) as captured:
         guard.call_tool(tool_name="gmail_get_thread", arguments={"thread_id": "t1"})
 
-    assert captured.value.code is MCPTransportErrorCode.SCHEMA_MISMATCH
+    assert captured.value.code is MCPClientPortErrorCode.SCHEMA_MISMATCH
     assert captured.value.dispatch_started is False
     assert delegate.tool_calls == []
 
@@ -168,10 +168,10 @@ def test_remote_internal_surface_mismatch_fails_closed(tmp_path: Path) -> None:
     manifest_path = _write_manifest(tmp_path)
     delegate = _FakeVerifiedDelegate(internal_names=("gmail_get_attachment",))
 
-    with pytest.raises(MCPTransportError) as captured:
+    with pytest.raises(MCPClientPortError) as captured:
         _build_guard(manifest_path, delegate)
 
-    assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
+    assert captured.value.code is MCPClientPortErrorCode.TOOL_REJECTED
     assert delegate.tool_calls == []
 
 
@@ -182,10 +182,10 @@ def test_remote_internal_registry_version_mismatch_fails_closed(tmp_path: Path) 
         internal_registry_version="stale-version",
     )
 
-    with pytest.raises(MCPTransportError) as captured:
+    with pytest.raises(MCPClientPortError) as captured:
         _build_guard(manifest_path, delegate)
 
-    assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
+    assert captured.value.code is MCPClientPortErrorCode.TOOL_REJECTED
     assert delegate.tool_calls == []
 
 
@@ -196,10 +196,10 @@ def test_remote_schema_hash_mismatch_fails_closed(tmp_path: Path) -> None:
         corrupt_contract_hash_for="tasks_create_task",
     )
 
-    with pytest.raises(MCPTransportError) as captured:
+    with pytest.raises(MCPClientPortError) as captured:
         _build_guard(manifest_path, delegate)
 
-    assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
+    assert captured.value.code is MCPClientPortErrorCode.TOOL_REJECTED
     assert delegate.tool_calls == []
 
 
@@ -214,10 +214,10 @@ def test_stale_internal_manifest_contract_fails_closed(tmp_path: Path) -> None:
     manifest_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     delegate = _FakeVerifiedDelegate(internal_names=_expected_internal_names())
 
-    with pytest.raises(MCPTransportError) as captured:
+    with pytest.raises(MCPClientPortError) as captured:
         _build_guard(manifest_path, delegate)
 
-    assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
+    assert captured.value.code is MCPClientPortErrorCode.TOOL_REJECTED
     assert delegate.tool_calls == []
 
 
@@ -234,10 +234,10 @@ def test_public_manifest_actual_schema_mismatch_fails_closed(tmp_path: Path) -> 
     manifest_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     delegate = _FakeVerifiedDelegate(internal_names=_expected_internal_names())
 
-    with pytest.raises(MCPTransportError) as captured:
+    with pytest.raises(MCPClientPortError) as captured:
         _build_guard(manifest_path, delegate)
 
-    assert captured.value.code is MCPTransportErrorCode.TOOL_REJECTED
+    assert captured.value.code is MCPClientPortErrorCode.TOOL_REJECTED
     assert delegate.tool_calls == []
 
 
@@ -247,19 +247,19 @@ def test_manifest_bytes_changed_after_descriptor_hash_are_rejected(tmp_path: Pat
     manifest_path.write_text("{}", encoding="utf-8")
     delegate = _FakeVerifiedDelegate(internal_names=_expected_internal_names())
 
-    with pytest.raises(MCPTransportError) as captured:
-        ManifestEnforcedMCPTransport(
+    with pytest.raises(MCPClientPortError) as captured:
+        ManifestEnforcedMCPClientPort(
             delegate=delegate,
             descriptor=descriptor,
             expected_internal_capabilities=build_google_workspace_internal_capabilities(),
         )
 
-    assert captured.value.code is MCPTransportErrorCode.ARTIFACT_REJECTED
+    assert captured.value.code is MCPClientPortErrorCode.ARTIFACT_REJECTED
     assert delegate.control_calls == []
     assert delegate.tool_calls == []
 
 
-def _guard(tmp_path: Path) -> tuple[ManifestEnforcedMCPTransport, _FakeVerifiedDelegate]:
+def _guard(tmp_path: Path) -> tuple[ManifestEnforcedMCPClientPort, _FakeVerifiedDelegate]:
     manifest_path = _write_manifest(tmp_path)
     delegate = _FakeVerifiedDelegate(internal_names=_expected_internal_names())
     return _build_guard(manifest_path, delegate), delegate
@@ -268,8 +268,8 @@ def _guard(tmp_path: Path) -> tuple[ManifestEnforcedMCPTransport, _FakeVerifiedD
 def _build_guard(
     manifest_path: Path,
     delegate: _FakeVerifiedDelegate,
-) -> ManifestEnforcedMCPTransport:
-    return ManifestEnforcedMCPTransport(
+) -> ManifestEnforcedMCPClientPort:
+    return ManifestEnforcedMCPClientPort(
         delegate=delegate,
         descriptor=_descriptor(manifest_path),
         expected_internal_capabilities=build_google_workspace_internal_capabilities(),

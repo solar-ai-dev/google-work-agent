@@ -28,7 +28,7 @@ from google_work_agent.application.use_cases.claim.claim_execution import (
 from google_work_agent.application.write_execution_integrity import read_claim_token
 from google_work_agent.domain import ActionStatus, ResultCode
 from tests.integration.persistence.test_write_actions import (
-    FakeClock,
+    FakeClockPort,
     FakeGoogleGateway,
     _prepare_write_plan,
 )
@@ -39,7 +39,7 @@ SIGNING_SECRET = "c2-claim-secret"
 SERVICE_INSTANCE_ID = "c2-write-svc-1"
 
 
-def _approve(*, write_database: Path, clock: FakeClock, suffix: str) -> None:
+def _approve(*, write_database: Path, clock: FakeClockPort, suffix: str) -> None:
     _prepare_write_plan(write_database=write_database, clock=clock, suffix=suffix)
     approved = ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
@@ -61,7 +61,7 @@ def _approve(*, write_database: Path, clock: FakeClock, suffix: str) -> None:
     assert approved.action_status == ActionStatus.APPROVED.value
 
 
-def _handler(write_database: Path, clock: FakeClock) -> ClaimExecutionHandler:
+def _handler(write_database: Path, clock: FakeClockPort) -> ClaimExecutionHandler:
     return ClaimExecutionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
@@ -129,7 +129,7 @@ def test_valid_claim_is_one_atomic_commit_and_replay_is_single_use(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     suffix = "c2-happy"
     _approve(write_database=write_database, clock=clock, suffix=suffix)
     handler = _handler(write_database, clock)
@@ -172,7 +172,7 @@ def test_valid_claim_is_one_atomic_commit_and_replay_is_single_use(
 
 
 def test_receipt_hash_mismatch_does_not_create_second_attempt(write_database: Path) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     suffix = "c2-replay"
     _approve(write_database=write_database, clock=clock, suffix=suffix)
     handler = _handler(write_database, clock)
@@ -206,7 +206,7 @@ def test_hash_mismatch_and_stale_action_version_fail_closed(
     expected_code: ResultCode,
     detail: str,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     suffix = f"c2-{kind}"
     _approve(write_database=write_database, clock=clock, suffix=suffix)
     handler = _handler(write_database, clock)
@@ -242,7 +242,7 @@ def test_hash_mismatch_and_stale_action_version_fail_closed(
 
 
 def test_invalid_approval_is_rejected_without_attempt(write_database: Path) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     suffix = "c2-no-approval"
     _prepare_write_plan(write_database=write_database, clock=clock, suffix=suffix)
 
@@ -262,7 +262,7 @@ def test_active_attempt_guard_fails_before_mutation(
     write_database: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     suffix = "c2-active-attempt"
     _approve(write_database=write_database, clock=clock, suffix=suffix)
     monkeypatch.setattr(
@@ -298,7 +298,7 @@ def test_transaction_failure_rolls_back_claim_children_and_observability(
     monkeypatch: pytest.MonkeyPatch,
     failure_point: str,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     suffix = f"c2-rollback-{failure_point}"
     _approve(write_database=write_database, clock=clock, suffix=suffix)
 

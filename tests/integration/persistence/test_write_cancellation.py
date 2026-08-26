@@ -10,7 +10,7 @@ from tests.integration.persistence.test_write_actions import (
     ClaimWriteActionCommand,
     ClaimWriteActionService,
     ExecuteWriteActionService,
-    FakeClock,
+    FakeClockPort,
     FakeGoogleGateway,
     FinalizeRunCancellationCommand,
     FinalizeRunCancellationService,
@@ -54,7 +54,7 @@ def test_waiting_approval_cancel_revokes_approval_and_finalizes_cancelled(
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
     del fixture_gateway
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_write_plan(write_database=write_database, clock=clock, suffix="cancel")
     approve_service = ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
@@ -168,7 +168,7 @@ def test_cancel_version_and_hash_conflicts_are_atomic_and_replay_is_idempotent(
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
     del fixture_gateway
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_write_plan(write_database=write_database, clock=clock, suffix="atomic-cancel")
     ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
@@ -262,7 +262,7 @@ def test_executing_cancel_waits_for_external_result_without_new_attempt(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     claimed = _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -324,7 +324,7 @@ def test_executed_cancel_moves_run_to_verifying_without_cancelling_result(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     claimed = _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -409,7 +409,7 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     claimed = _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -539,7 +539,7 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
 def test_unknown_result_cancel_enters_recovery_without_blind_retry(
     write_database: Path,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -612,7 +612,7 @@ def test_non_success_terminal_action_with_cancelled_sibling_is_not_partial(
     write_database: Path,
     terminal_status: str,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     suffix = f"cancel-{terminal_status.lower()}"
     _prepare_write_plan(write_database=write_database, clock=clock, suffix=suffix)
     _seed_write_terminal_status(
@@ -655,7 +655,7 @@ def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_doma
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     claimed = _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
@@ -784,7 +784,7 @@ def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_doma
 def test_recovery_without_successful_cancel_marker_cannot_finalize_cancel(
     write_database: Path,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_write_plan(write_database=write_database, clock=clock, suffix="no-cancel-marker")
     connection = connect_sqlite(write_database)
     try:
@@ -822,7 +822,7 @@ def test_recovery_without_successful_cancel_marker_cannot_finalize_cancel(
 def test_failed_cancel_audit_marker_does_not_authorize_verifying_continuation(
     write_database: Path,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_write_plan(write_database=write_database, clock=clock, suffix="failed-marker")
     connection = connect_sqlite(write_database)
     try:
@@ -874,7 +874,7 @@ def test_failed_cancel_audit_marker_does_not_authorize_verifying_continuation(
 def test_cancel_marker_does_not_bypass_current_run_domain_guard(
     write_database: Path,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     _prepare_claimed_action(
         write_database=write_database,
         clock=clock,

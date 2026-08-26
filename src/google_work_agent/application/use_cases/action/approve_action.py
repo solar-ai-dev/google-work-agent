@@ -50,7 +50,7 @@ from google_work_agent.domain import (
 )
 from google_work_agent.ports import (
     ApprovalRecord,
-    IdGenerator,
+    UUIDPort,
     PlanReviewStatus,
     PlanStatus,
     TraceEventRecord,
@@ -96,7 +96,7 @@ class ApproveActionHandler:
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
         local_run_coordinator: LocalRunCoordinator,
-        id_generator: IdGenerator,
+        id_generator: UUIDPort,
     ) -> None:
         self._get_approval_ttl_minutes = get_approval_ttl_minutes
         self._unit_of_work_factory = unit_of_work_factory

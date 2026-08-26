@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import pytest
 
 from google_work_agent.application.connector_registry import ConnectorRegistry
-from google_work_agent.ports import MCPRuntimeMetadata, MCPTransport
+from google_work_agent.ports import MCPRuntimeMetadata, MCPClientPort
 
 
 @dataclass
@@ -11,7 +11,7 @@ class _Connector:
     connector_id: str
     close_count: int = 0
 
-    def start(self) -> MCPTransport:
+    def start(self) -> MCPClientPort:
         raise NotImplementedError
 
     def health(self) -> MCPRuntimeMetadata:

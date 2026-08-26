@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.ports.connectors.read import (
+from google_work_agent.ports.connector.connector_read_port import (
     ConnectorReadPort,
     ConnectorReadRequest,
     ConnectorReadResult,

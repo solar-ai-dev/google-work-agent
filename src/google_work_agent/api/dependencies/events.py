@@ -10,15 +10,15 @@ from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
 from google_work_agent.application.queries import QueryService
-from google_work_agent.ports import Clock, RunEventPublisher
+from google_work_agent.ports import ClockPort, SseEventBufferPort
 
 
 @dataclass(frozen=True, slots=True)
 class EventRouteDependencies:
     api_contract_version: str
     query_service: Callable[[], QueryService]
-    event_publisher: Callable[[], RunEventPublisher]
-    clock: Clock
+    event_publisher: Callable[[], SseEventBufferPort]
+    clock: ClockPort
 
 
 def get_event_route_dependencies(request: Request) -> EventRouteDependencies:

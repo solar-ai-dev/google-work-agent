@@ -6,8 +6,8 @@ import threading
 from collections.abc import Callable
 from json import dumps, loads
 
-from google_work_agent.ports.connectors.execution import (
-    ConnectorExecutionPort,
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
     ConnectorWriteRequest,
 )
 from google_work_agent.application.write_action_arguments import coerce_int as _coerce_int
@@ -47,7 +47,7 @@ class ExecuteWriteActionService:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        gateway: ConnectorExecutionPort,
+        gateway: ConnectorWritePort,
         now_ms: Callable[[], int],
         signing_secret: str,
         service_instance_id: str,

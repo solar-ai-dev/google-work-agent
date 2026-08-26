@@ -6,15 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.adapters.runtime.attachment_staging import (
+from google_work_agent.adapters.system.filesystem_attachment_staging import (
     AttachmentDescriptor,
     AttachmentStagingError,
-    LocalAttachmentStaging,
+    FilesystemAttachmentStagingAdapter,
 )
 
 
-def _staging(tmp_path: Path, *, now_ms: int = 1_000_000) -> LocalAttachmentStaging:
-    return LocalAttachmentStaging(staging_dir=tmp_path / "attachments", now_ms=lambda: now_ms)
+def _staging(tmp_path: Path, *, now_ms: int = 1_000_000) -> FilesystemAttachmentStagingAdapter:
+    return FilesystemAttachmentStagingAdapter(staging_dir=tmp_path / "attachments", now_ms=lambda: now_ms)
 
 
 def test_stage_then_read_verified_round_trips_bytes(tmp_path: Path) -> None:
@@ -40,7 +40,7 @@ def test_stage_rejects_empty_bytes(tmp_path: Path) -> None:
 
 def test_stage_rejects_oversized_bytes(tmp_path: Path) -> None:
     staging = _staging(tmp_path)
-    from google_work_agent.adapters.runtime.attachment_staging import MAX_STAGED_FILE_BYTES
+    from google_work_agent.adapters.system.filesystem_attachment_staging import MAX_STAGED_FILE_BYTES
 
     with pytest.raises(AttachmentStagingError) as exc_info:
         staging.stage(
@@ -74,7 +74,7 @@ def test_read_verified_rejects_unknown_staging_id(tmp_path: Path) -> None:
 
 def test_read_verified_rejects_expired_staging(tmp_path: Path) -> None:
     clock = {"now": 1_000_000}
-    staging = LocalAttachmentStaging(
+    staging = FilesystemAttachmentStagingAdapter(
         staging_dir=tmp_path / "attachments", now_ms=lambda: clock["now"]
     )
     descriptor = staging.stage(data=b"bytes", filename="a.txt", mime_type="text/plain")
@@ -132,7 +132,7 @@ def test_read_verified_rejects_descriptor_mismatch_on_filename(tmp_path: Path) -
 
 def test_cleanup_expired_removes_only_expired_entries(tmp_path: Path) -> None:
     clock = {"now": 1_000_000}
-    staging = LocalAttachmentStaging(
+    staging = FilesystemAttachmentStagingAdapter(
         staging_dir=tmp_path / "attachments", now_ms=lambda: clock["now"]
     )
     stale = staging.stage(data=b"stale", filename="stale.txt", mime_type="text/plain")

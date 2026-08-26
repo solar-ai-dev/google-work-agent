@@ -10,11 +10,11 @@ from google_work_agent.ports import (
     OAuthEnvironment,
     OAuthStartResult,
 )
-from google_work_agent.ports.mcp_transport import MCPTransport
+from google_work_agent.ports.connector.mcp_client_port import MCPClientPort
 
 
 class MCPGoogleOAuthCredentialProvider(GoogleOAuthCredentialProvider):
-    def __init__(self, *, transport: MCPTransport) -> None:
+    def __init__(self, *, transport: MCPClientPort) -> None:
         self._transport = transport
 
     def start_oauth(self) -> OAuthStartResult:

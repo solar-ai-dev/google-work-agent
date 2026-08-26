@@ -14,7 +14,7 @@ from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
 )
-from google_work_agent.ports.mcp_transport import MCPTransportError, MCPTransportErrorCode
+from google_work_agent.ports.connector.mcp_client_port import MCPClientPortError, MCPClientPortErrorCode
 
 
 class ConnectorFailureCode(StrEnum):
@@ -92,8 +92,8 @@ def normalize_attachment_staging_failure(
     )
 
 
-def normalize_mcp_transport_failure(error: MCPTransportError) -> ConnectorOperationFailure:
-    if error.code is MCPTransportErrorCode.CONFIGURATION_ERROR:
+def normalize_mcp_transport_failure(error: MCPClientPortError) -> ConnectorOperationFailure:
+    if error.code is MCPClientPortErrorCode.CONFIGURATION_ERROR:
         detail = str(error)
         if detail not in {
             "GOOGLE_OAUTH_CLIENT_ID_MISSING",

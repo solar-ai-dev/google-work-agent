@@ -1,6 +1,6 @@
 """Runtime infrastructure adapters for packaging and local execution."""
 
-from google_work_agent.adapters.runtime.backup import (
+from google_work_agent.adapters.system.filesystem_backup import (
     BackupCreateResult,
     BackupManifestRecord,
     BackupService,
@@ -37,14 +37,14 @@ from google_work_agent.adapters.runtime.safe_mode import (
     SafeModeController,
     SafeModeState,
 )
-from google_work_agent.adapters.runtime.settings import (
+from google_work_agent.adapters.system.json_settings import (
     AppSettings,
     FileSettingsStore,
     SettingsPatch,
     SettingsService,
     WorkHours,
 )
-from google_work_agent.adapters.runtime.shutdown import (
+from google_work_agent.adapters.system.process_shutdown import (
     ComponentShutdownPort,
     GracefulShutdownCoordinator,
     ShutdownPhase,

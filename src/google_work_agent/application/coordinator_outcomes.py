@@ -9,7 +9,7 @@ from google_work_agent.application.write_actions import WriteRunResponse
 from google_work_agent.domain import RunStatus
 from google_work_agent.ports import (
     PendingProjectionEvent,
-    RunEventPublisher,
+    SseEventBufferPort,
     UnitOfWork,
     WorkflowOutcome,
 )
@@ -22,7 +22,7 @@ class RunOutcomeHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        event_publisher: RunEventPublisher,
+        event_publisher: SseEventBufferPort,
         now_ms: Callable[[], int],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory

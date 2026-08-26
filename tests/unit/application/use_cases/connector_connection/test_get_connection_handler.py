@@ -16,7 +16,7 @@ from google_work_agent.ports import (
     GoogleConnectionStatus,
     OAuthEnvironment,
 )
-from google_work_agent.ports.mcp_transport import MCPTransportError, MCPTransportErrorCode
+from google_work_agent.ports.connector.mcp_client_port import MCPClientPortError, MCPClientPortErrorCode
 
 
 def _status(
@@ -107,8 +107,8 @@ def test_get_connection_handler_provisions_only_when_state_allows(
 
 class _FailingConnectionAccess(_ConnectionAccess):
     def read_connection_status(self) -> GoogleConnectionStatus:
-        raise MCPTransportError(
-            code=MCPTransportErrorCode.TIMEOUT,
+        raise MCPClientPortError(
+            code=MCPClientPortErrorCode.TIMEOUT,
             message="timeout",
         )
 

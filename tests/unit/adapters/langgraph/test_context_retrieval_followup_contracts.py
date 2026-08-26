@@ -34,7 +34,7 @@ from google_work_agent.application.orchestration.source_fetch_plan_builder impor
     SourceFetchPlanBuilder,
 )
 from google_work_agent.ports import WorkflowCorrelationContext, WorkflowStartRequest
-from google_work_agent.ports.connectors.read import ConnectorReadResult
+from google_work_agent.ports.connector.connector_read_port import ConnectorReadResult
 
 
 @dataclass

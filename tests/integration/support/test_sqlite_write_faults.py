@@ -36,7 +36,7 @@ from google_work_agent.application.write_result_persistence import (
 )
 from google_work_agent.ports import EvidenceOriginType
 from tests.support.fakes import (
-    FakeClock,
+    FakeClockPort,
     FakeGoogleGateway,
     SQLiteFaultPlan,
     SQLiteFaultStage,
@@ -92,7 +92,7 @@ def test_store_write_success_fault_rolls_back_receipt_trace_resource_and_action_
     write_fault_database: Path,
     fault_gateway: FakeGoogleGateway,
 ) -> None:
-    clock = FakeClock(1000)
+    clock = FakeClockPort(1000)
     claim_token = _prepare_claimed_write_action(write_fault_database, clock)
     execute_service = ExecuteWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_fault_database),
@@ -160,7 +160,7 @@ def test_store_write_success_fault_rolls_back_receipt_trace_resource_and_action_
         connection.close()
 
 
-def _prepare_claimed_write_action(database_path: Path, clock: FakeClock) -> str:
+def _prepare_claimed_write_action(database_path: Path, clock: FakeClockPort) -> str:
     payload: dict[str, object] = {
         "resource_id": "task-fault",
         "title": "fault",

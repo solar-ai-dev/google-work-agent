@@ -1,7 +1,7 @@
 from dataclasses import replace
 from typing import Any, cast
 
-from tests.support.fakes import FakeClock
+from tests.support.fakes import FakeClockPort
 
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.resource_continuation import OpaqueResourceQueryService
@@ -26,7 +26,7 @@ def _container_with_resource_service(resource_query_service: object) -> ApiConta
         readiness_aggregator=dynamic,
         runtime_status_provider=dynamic,
         api_access_guard=dynamic,
-        clock=FakeClock(1),
+        clock=FakeClockPort(1),
         id_generator=dynamic,
         release_version="test",
         environment="test",

@@ -3,25 +3,25 @@ from json import loads
 
 import pytest
 
-from google_work_agent.adapters.mcp import MCPGoogleWorkspaceGateway, SubprocessMCPTransport
+from google_work_agent.adapters.mcp import MCPGoogleWorkspaceGateway, StdioMCPClientAdapter
 from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.ports import (
     DeliveryCertainty,
     GoogleWorkspaceGatewayError,
-    MCPTransportError,
-    MCPTransportErrorCode,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
 )
-from tests.support.fakes import FakeMCPTransport, QueuedMCPFailure
+from tests.support.fakes import FakeMCPClientPort, QueuedMCPFailure
 
 
 def test_fake_mcp_transport_returns_queued_response_with_copy() -> None:
-    transport = FakeMCPTransport()
+    transport = FakeMCPClientPort()
     transport.queue_response({"schema_version": "v1", "items": [{"id": 1}]})
 
     response = transport.call_tool(tool_name="gmail_search_threads", arguments={"query": "project"})
     response.payload["items"].append({"id": 2})
 
-    replay = FakeMCPTransport()
+    replay = FakeMCPClientPort()
     replay.queue_response({"schema_version": "v1", "items": [{"id": 1}]})
     replay_response = replay.call_tool(
         tool_name="gmail_search_threads", arguments={"query": "project"}
@@ -31,15 +31,15 @@ def test_fake_mcp_transport_returns_queued_response_with_copy() -> None:
 
 
 def test_fake_mcp_transport_returns_queued_failure_without_retry() -> None:
-    transport = FakeMCPTransport()
+    transport = FakeMCPClientPort()
     transport.queue_failure(
-        QueuedMCPFailure(code=MCPTransportErrorCode.CONNECTION_CLOSED, message="connection dropped")
+        QueuedMCPFailure(code=MCPClientPortErrorCode.CONNECTION_CLOSED, message="connection dropped")
     )
 
     try:
         transport.call_tool(tool_name="tasks_list_tasks", arguments={"tasklist_id": "x"})
-    except MCPTransportError as error:
-        assert error.code is MCPTransportErrorCode.CONNECTION_CLOSED
+    except MCPClientPortError as error:
+        assert error.code is MCPClientPortErrorCode.CONNECTION_CLOSED
     else:
         raise AssertionError("expected MCP transport failure")
 
@@ -49,22 +49,22 @@ def test_fake_mcp_transport_returns_queued_failure_without_retry() -> None:
 @pytest.mark.parametrize(
     ("code", "dispatch_started", "expected"),
     [
-        (MCPTransportErrorCode.TIMEOUT, False, DeliveryCertainty.NOT_SENT),
-        (MCPTransportErrorCode.TIMEOUT, True, DeliveryCertainty.MAY_HAVE_BEEN_SENT),
-        (MCPTransportErrorCode.TOOL_REJECTED, True, DeliveryCertainty.MAY_HAVE_BEEN_SENT),
+        (MCPClientPortErrorCode.TIMEOUT, False, DeliveryCertainty.NOT_SENT),
+        (MCPClientPortErrorCode.TIMEOUT, True, DeliveryCertainty.MAY_HAVE_BEEN_SENT),
+        (MCPClientPortErrorCode.TOOL_REJECTED, True, DeliveryCertainty.MAY_HAVE_BEEN_SENT),
         (
-            MCPTransportErrorCode.PROCESS_UNAVAILABLE,
+            MCPClientPortErrorCode.PROCESS_UNAVAILABLE,
             True,
             DeliveryCertainty.MAY_HAVE_BEEN_SENT,
         ),
     ],
 )
 def test_gateway_delivery_certainty_uses_transport_phase_not_exception_name(
-    code: MCPTransportErrorCode,
+    code: MCPClientPortErrorCode,
     dispatch_started: bool,
     expected: DeliveryCertainty,
 ) -> None:
-    transport = FakeMCPTransport()
+    transport = FakeMCPClientPort()
     transport.queue_failure(
         QueuedMCPFailure(
             code=code,
@@ -94,19 +94,19 @@ def test_subprocess_partial_stdin_failure_is_typed_as_uncertain_delivery() -> No
     class Process:
         stdin = BrokenStdin()
 
-    transport = object.__new__(SubprocessMCPTransport)
+    transport = object.__new__(StdioMCPClientAdapter)
     transport._process = Process()  # type: ignore[assignment]
 
-    with pytest.raises(MCPTransportError) as error_info:
+    with pytest.raises(MCPClientPortError) as error_info:
         transport._send_json({"type": "tool_call"})
 
-    assert error_info.value.code is MCPTransportErrorCode.CONNECTION_CLOSED
+    assert error_info.value.code is MCPClientPortErrorCode.CONNECTION_CLOSED
     assert error_info.value.dispatch_started is True
 
 
 def test_mcp_call_tool_response_carries_a_request_id() -> None:
     """C: a real MCP request generates a request_id."""
-    transport = FakeMCPTransport()
+    transport = FakeMCPClientPort()
     transport.queue_response({"schema_version": "v1", "items": []})
 
     response = transport.call_tool(tool_name="gmail_search_threads", arguments={"query": "x"})
@@ -119,7 +119,7 @@ def test_mcp_request_id_populates_observability_context_consistently() -> None:
     ObservabilityContext.mcp_request_id should be populated from, and it
     is stable/consistent for that one call.
     """
-    transport = FakeMCPTransport()
+    transport = FakeMCPClientPort()
     transport.queue_response({"schema_version": "v1", "items": []})
 
     response = transport.call_tool(tool_name="gmail_search_threads", arguments={"query": "x"})
@@ -132,16 +132,16 @@ def test_mcp_request_id_populates_observability_context_consistently() -> None:
 
 @pytest.mark.parametrize(
     "code",
-    [MCPTransportErrorCode.TIMEOUT, MCPTransportErrorCode.CONNECTION_CLOSED],
+    [MCPClientPortErrorCode.TIMEOUT, MCPClientPortErrorCode.CONNECTION_CLOSED],
 )
 def test_mcp_transport_error_carries_a_request_id_for_correlation(
-    code: MCPTransportErrorCode,
+    code: MCPClientPortErrorCode,
 ) -> None:
     """E: MCP error/timeout is still traceable via the same mcp_request_id."""
-    transport = FakeMCPTransport()
+    transport = FakeMCPClientPort()
     transport.queue_failure(QueuedMCPFailure(code=code, message="failed", dispatch_started=True))
 
-    with pytest.raises(MCPTransportError) as error_info:
+    with pytest.raises(MCPClientPortError) as error_info:
         transport.call_tool(tool_name="gmail_search_threads", arguments={"query": "x"})
 
     assert error_info.value.request_id
@@ -157,10 +157,10 @@ def test_google_workspace_gateway_error_preserves_mcp_request_id() -> None:
     field to the shared, provider-agnostic error type (mcp_request_id is
     transport-level correlation metadata, not a Google request id).
     """
-    transport = FakeMCPTransport()
+    transport = FakeMCPClientPort()
     transport.queue_failure(
         QueuedMCPFailure(
-            code=MCPTransportErrorCode.TIMEOUT, message="failed", dispatch_started=True
+            code=MCPClientPortErrorCode.TIMEOUT, message="failed", dispatch_started=True
         )
     )
 
@@ -178,7 +178,7 @@ def test_mcp_gateway_exposes_last_request_id_after_a_successful_call() -> None:
     id, so an Application caller (e.g. VerifyWriteActionService) can read
     it immediately afterwards to correlate its own trace/audit write.
     """
-    transport = FakeMCPTransport()
+    transport = FakeMCPClientPort()
     transport.queue_response(
         {
             "item": {
@@ -225,7 +225,7 @@ def test_each_mcp_call_gets_a_fresh_request_id_while_run_correlation_stays_fixed
     """F: a retry or a new call gets a new MCP request_id, while the
     existing Run/command-level correlation_id is untouched by that churn.
     """
-    transport = FakeMCPTransport()
+    transport = FakeMCPClientPort()
     transport.queue_response({"schema_version": "v1", "items": []})
     transport.queue_response({"schema_version": "v1", "items": []})
 

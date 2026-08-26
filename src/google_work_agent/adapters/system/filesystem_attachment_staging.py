@@ -22,7 +22,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from google_work_agent.ports.attachments import (
+from google_work_agent.ports.system.attachment_staging_port import (
     AttachmentDescriptor,
     AttachmentStagingError,
 )
@@ -37,7 +37,7 @@ def _default_now_ms() -> int:
     return int(time.time() * 1000)
 
 
-class LocalAttachmentStaging:
+class FilesystemAttachmentStagingAdapter:
     """User-scoped, TTL'd, filesystem-backed attachment byte staging area."""
 
     def __init__(

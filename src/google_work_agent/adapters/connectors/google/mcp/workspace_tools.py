@@ -30,16 +30,16 @@ from urllib.parse import parse_qs, quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from google_work_agent.adapters.connectors.google.mcp.oauth_settings import GoogleOAuthSettings
-from google_work_agent.adapters.keyring import OSKeyringSecretStore
-from google_work_agent.adapters.mcp.transport import MANIFEST_MESSAGE_LIMIT_BYTES, PROTOCOL_VERSION
-from google_work_agent.adapters.runtime.attachment_staging import (
+from google_work_agent.adapters.keyring.os_keyring_secret_store import OsKeyringSecretStoreAdapter
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MANIFEST_MESSAGE_LIMIT_BYTES, PROTOCOL_VERSION
+from google_work_agent.adapters.system.filesystem_attachment_staging import (
     ATTACHMENT_STAGING_DIR_ENV,
     AttachmentDescriptor,
     AttachmentStagingError,
-    LocalAttachmentStaging,
+    FilesystemAttachmentStagingAdapter,
 )
 from google_work_agent.domain import build_p0_tool_registry, calculate_canonical_json_hash
-from google_work_agent.ports import CredentialState, OAuthEnvironment, SecretStore, TimeRange
+from google_work_agent.ports import CredentialState, OAuthEnvironment, SecretStorePort, TimeRange
 
 GOOGLE_AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
@@ -147,7 +147,7 @@ class _WorkspaceToolError(RuntimeError):
 
 
 class _WorkspaceState:
-    def __init__(self, *, keyring: SecretStore | None = None) -> None:
+    def __init__(self, *, keyring: SecretStorePort | None = None) -> None:
         self.process_instance_id = f"mcp-{secrets.token_hex(8)}"
         self.service_instance_id: str | None = None
         self.session_key: str | None = None
@@ -838,11 +838,11 @@ def _build_gmail_mime(payload: dict[str, object]) -> bytes:
     return message.as_bytes()
 
 
-def _attachment_staging() -> LocalAttachmentStaging:
+def _attachment_staging() -> FilesystemAttachmentStagingAdapter:
     staging_dir = os.environ.get(ATTACHMENT_STAGING_DIR_ENV)
     if not staging_dir:
         raise _WorkspaceToolError("ATTACHMENT_STAGING_UNAVAILABLE")
-    return LocalAttachmentStaging(staging_dir=Path(staging_dir))
+    return FilesystemAttachmentStagingAdapter(staging_dir=Path(staging_dir))
 
 
 def _attach_staged_files(message: EmailMessage, payload: dict[str, object]) -> None:
@@ -1675,14 +1675,14 @@ def _google_api_post(
     return _google_api_call(state, "POST", url, body=body)
 
 
-def _credential_store_from_environment() -> SecretStore:
+def _credential_store_from_environment() -> SecretStorePort:
     test_keyring_path = os.environ.get("GWA_TEST_KEYRING_PATH")
     if test_keyring_path:
-        return _TestFileSecretStore(Path(test_keyring_path))
-    return OSKeyringSecretStore()
+        return _TestFileSecretStorePort(Path(test_keyring_path))
+    return OsKeyringSecretStoreAdapter()
 
 
-class _TestFileSecretStore(SecretStore):
+class _TestFileSecretStorePort(SecretStorePort):
     """Test-only cross-process store selected by an explicit test environment variable."""
 
     def __init__(self, path: Path) -> None:

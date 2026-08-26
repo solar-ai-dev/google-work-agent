@@ -3,7 +3,7 @@
 from typing import Protocol
 
 
-class IdGenerator(Protocol):
+class UUIDPort(Protocol):
     """Generate deterministic or production identifiers."""
 
     def next_id(self) -> str:

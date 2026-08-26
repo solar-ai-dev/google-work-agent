@@ -1,0 +1,9 @@
+"""Replaceable OS secret-store boundary."""
+
+from typing import Protocol
+
+
+class SecretStorePort(Protocol):
+    def set_secret(self, *, service: str, account: str, secret: str) -> None: ...
+    def get_secret(self, *, service: str, account: str) -> str | None: ...
+    def delete_secret(self, *, service: str, account: str) -> bool: ...

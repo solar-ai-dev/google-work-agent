@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from google_work_agent.ports import SecretStore
+from google_work_agent.ports import SecretStorePort
 
 
-class OSKeyringSecretStore(SecretStore):
+class OsKeyringSecretStoreAdapter(SecretStorePort):
     """Secret store backed by the host OS keyring."""
 
     def __init__(self) -> None:

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from google_work_agent.ports import (
     AttachmentDescriptor,
-    AttachmentStaging,
+    AttachmentStagingPort,
     GmailAttachmentBytes,
     GmailAttachmentGateway,
 )
@@ -26,7 +26,7 @@ class GetGmailAttachmentService:
 class StageAttachmentService:
     """Stage one outbound attachment's bytes and return its descriptor."""
 
-    staging: AttachmentStaging
+    staging: AttachmentStagingPort
 
     def __call__(self, *, data: bytes, filename: str, mime_type: str) -> AttachmentDescriptor:
         return self.staging.stage(data=data, filename=filename, mime_type=mime_type)

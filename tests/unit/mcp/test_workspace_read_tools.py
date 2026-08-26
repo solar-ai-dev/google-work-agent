@@ -4,7 +4,7 @@ import base64
 from typing import cast
 
 import pytest
-from tests.support.fakes.mcp_transport import FakeMCPTransport
+from tests.support.fakes.mcp_transport import FakeMCPClientPort
 
 from google_work_agent.adapters.mcp import MCPGmailUiReadGateway, MCPGoogleWorkspaceGateway
 from google_work_agent.adapters.connectors.google.mcp import workspace_tools as server
@@ -420,7 +420,7 @@ def test_gmail_ui_detail_omits_rfc822_message_id_when_header_is_absent(monkeypat
 
 
 def test_gmail_ui_gateway_maps_the_additive_detail_payload() -> None:
-    transport = FakeMCPTransport()
+    transport = FakeMCPClientPort()
     transport.queue_response(
         {
             "thread_id": "thread-1",
@@ -603,7 +603,7 @@ def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_date
 
 
 def test_gateway_forwards_calendar_event_list_options_to_mcp() -> None:
-    transport = FakeMCPTransport()
+    transport = FakeMCPClientPort()
     transport.queue_response({"items": [], "next_page_token": None})
 
     MCPGoogleWorkspaceGateway(transport=transport).list_calendar_events(
@@ -722,7 +722,7 @@ def test_freebusy_rejects_invalid_range_without_google_request(monkeypatch) -> N
 
 
 def test_gateway_preserves_explicit_freebusy_range_in_mcp_arguments() -> None:
-    transport = FakeMCPTransport()
+    transport = FakeMCPClientPort()
     transport.queue_response({"calendars": []})
 
     MCPGoogleWorkspaceGateway(transport=transport).query_freebusy(
@@ -741,7 +741,7 @@ def test_gateway_preserves_explicit_freebusy_range_in_mcp_arguments() -> None:
 
 
 def _state() -> server._WorkspaceState:
-    state = server._WorkspaceState(keyring=_MemorySecretStore())
+    state = server._WorkspaceState(keyring=_MemorySecretStorePort())
     state.oauth_settings = GoogleOAuthSettings(
         google_oauth_client_id="desktop-client",
         google_oauth_client_secret="compatibility-client-secret",
@@ -749,7 +749,7 @@ def _state() -> server._WorkspaceState:
     return state
 
 
-class _MemorySecretStore:
+class _MemorySecretStorePort:
     def set_secret(self, *, service: str, account: str, secret: str) -> None:
         del service, account, secret
 

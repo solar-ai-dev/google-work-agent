@@ -20,7 +20,7 @@ from google_work_agent.application.write_actions import (
 from google_work_agent.domain import RunStatus, calculate_canonical_json_hash
 from google_work_agent.ports import (
     PendingProjectionEvent,
-    RunEventPublisher,
+    SseEventBufferPort,
     UnitOfWork,
     WorkflowCancelRequest,
     WorkflowCorrelationContext,
@@ -58,7 +58,7 @@ class LocalRunCoordinator:
         query_service: QueryService,
         unit_of_work_factory: Callable[[], UnitOfWork],
         workflow_runtime: WorkflowRuntime,
-        event_publisher: RunEventPublisher,
+        event_publisher: SseEventBufferPort,
         now_ms: Callable[[], int],
         api_contract_version: str,
         capacity: int = 32,

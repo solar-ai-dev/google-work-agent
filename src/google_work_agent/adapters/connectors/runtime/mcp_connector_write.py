@@ -1,7 +1,7 @@
 """Google Workspace connector execution-port composition.
 
 Operation semantics live under adapters/connectors/google/<product>/<resource>/.
-This module only preserves the application ConnectorExecutionPort composition
+This module only preserves the application ConnectorWritePort composition
 until integration rewires the shared composition root to the canonical package.
 """
 
@@ -58,15 +58,15 @@ from google_work_agent.adapters.connectors.google.tasks.tasks.search_tasks impor
 from google_work_agent.adapters.connectors.google.tasks.tasks.update_task import (
     UpdateTaskOperation,
 )
-from google_work_agent.ports.connectors.execution import (
-    ConnectorExecutionPort,
+from google_work_agent.ports import GoogleWorkspaceGateway, ResourceSnapshot
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
     ConnectorWriteRequest,
     PreparedConnectorWrite,
 )
-from google_work_agent.ports import GoogleWorkspaceGateway, ResourceSnapshot
 
 
-class GoogleWorkspaceExecutionBackend(ConnectorExecutionPort):
+class McpConnectorWriteAdapter(ConnectorWritePort):
     """Compose stable tool ids onto canonical operation-per-file authorities."""
 
     def __init__(self, *, gateway: GoogleWorkspaceGateway) -> None:
@@ -162,7 +162,9 @@ class GoogleWorkspaceExecutionBackend(ConnectorExecutionPort):
     ) -> ResourceSnapshot:
         if tool_name in {"gmail_create_draft", "gmail_update_draft"}:
             return GetDraftOperation(gateway=self._gateway).execute(
-                draft_id=str(arguments.get("draft_id") or _required_resource_id(fallback_resource_id))
+                draft_id=str(
+                    arguments.get("draft_id") or _required_resource_id(fallback_resource_id)
+                )
             )
         if tool_name == "gmail_send":
             return GetMessageOperation(gateway=self._gateway).execute(
@@ -171,7 +173,9 @@ class GoogleWorkspaceExecutionBackend(ConnectorExecutionPort):
         if tool_name in {"tasks_create_task", "tasks_update_task", "tasks_delete_task"}:
             return GetTaskOperation(gateway=self._gateway).execute(
                 task_list_id=str(arguments["task_list_id"]),
-                task_id=str(arguments.get("task_id") or _required_resource_id(fallback_resource_id)),
+                task_id=str(
+                    arguments.get("task_id") or _required_resource_id(fallback_resource_id)
+                ),
             )
         if tool_name in {
             "calendar_create_event",
@@ -180,7 +184,9 @@ class GoogleWorkspaceExecutionBackend(ConnectorExecutionPort):
         }:
             return GetEventOperation(gateway=self._gateway).execute(
                 calendar_id=str(arguments["calendar_id"]),
-                event_id=str(arguments.get("event_id") or _required_resource_id(fallback_resource_id)),
+                event_id=str(
+                    arguments.get("event_id") or _required_resource_id(fallback_resource_id)
+                ),
             )
         raise LookupError(f"unsupported verification tool: {tool_name}")
 

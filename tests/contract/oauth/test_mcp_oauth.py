@@ -8,7 +8,7 @@ from google_work_agent.adapters.connectors.google.mcp.oauth_settings import Goog
 
 
 def test_mcp_oauth_flow_uses_google_loopback_authorization_and_no_token_leakage() -> None:
-    state = _WorkspaceState(keyring=_FakeSecretStore())
+    state = _WorkspaceState(keyring=_FakeSecretStorePort())
     state.oauth_settings = GoogleOAuthSettings(
         google_oauth_client_id="test-desktop-client-id",
         google_oauth_client_secret="compatibility-client-secret",
@@ -42,7 +42,7 @@ def test_mcp_oauth_flow_uses_google_loopback_authorization_and_no_token_leakage(
     ]
 
 
-class _FakeSecretStore:
+class _FakeSecretStorePort:
     def __init__(self) -> None:
         self.values: dict[tuple[str, str], str] = {}
 

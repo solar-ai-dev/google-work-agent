@@ -20,11 +20,11 @@ from google_work_agent.domain import SignedToolRegistry
 from google_work_agent.ports import (
     ArtifactSignatureDecision,
     ArtifactSignatureVerifier,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
     MCPControlResponse,
     MCPRuntimeMetadata,
     MCPToolResponse,
-    MCPTransportError,
-    MCPTransportErrorCode,
 )
 
 JsonObject = dict[str, object]
@@ -178,7 +178,7 @@ class StaticArtifactSignatureVerifier(ArtifactSignatureVerifier):
         return self.decision
 
 
-class SubprocessMCPTransport:
+class StdioMCPClientAdapter:
     """Strict stdio client for the local MCP child process."""
 
     def __init__(
@@ -261,8 +261,8 @@ class SubprocessMCPTransport:
         with self._lock:
             if self._restart_count >= self._config.max_restart_count:
                 self._status = MCPProcessStatus.FAILED
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.PROCESS_UNAVAILABLE,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.PROCESS_UNAVAILABLE,
                     message="mcp restart limit exhausted",
                 )
             self.close()
@@ -274,24 +274,24 @@ class SubprocessMCPTransport:
         executable_path = Path(self._config.executable_path)
         manifest_path = Path(self._config.manifest_path)
         if not executable_path.is_absolute() or not manifest_path.is_absolute():
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.ARTIFACT_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.ARTIFACT_REJECTED,
                 message="artifact paths must be absolute",
             )
         if calculate_file_sha256(executable_path) != self._config.expected_binary_sha256:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.ARTIFACT_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.ARTIFACT_REJECTED,
                 message="binary hash mismatch",
             )
         if calculate_file_sha256(manifest_path) != self._config.expected_manifest_sha256:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.ARTIFACT_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.ARTIFACT_REJECTED,
                 message="manifest hash mismatch",
             )
         if self._config.environment.upper() == "PRODUCTION":
             if self._signature_verifier is None:
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.ARTIFACT_REJECTED,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.ARTIFACT_REJECTED,
                     message="production launch requires a signature verifier",
                 )
             decision = self._signature_verifier.verify(
@@ -299,24 +299,24 @@ class SubprocessMCPTransport:
                 expected_binary_sha256=self._config.expected_binary_sha256,
             )
             if not decision.allowed:
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.ARTIFACT_REJECTED,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.ARTIFACT_REJECTED,
                     message=decision.detail or "artifact signature rejected",
                 )
         manifest = MCPServerManifest.load(manifest_path)
         if manifest.manifest_version != self._config.expected_manifest_version:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.SCHEMA_MISMATCH,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
                 message="manifest version mismatch",
             )
         if manifest.protocol_version != self._config.expected_protocol_version:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.SCHEMA_MISMATCH,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
                 message="protocol version mismatch",
             )
         if manifest.tool_registry_version != self._config.expected_tool_registry_version:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.SCHEMA_MISMATCH,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
                 message="tool registry version mismatch",
             )
         self._validate_manifest_tools(manifest)
@@ -327,20 +327,20 @@ class SubprocessMCPTransport:
         expected_names = {entry.tool_name for entry in registry.list_entries()}
         manifest_names = {tool.tool_name for tool in manifest.tools}
         if len(manifest_names) != len(manifest.tools) or manifest_names != expected_names:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.TOOL_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.TOOL_REJECTED,
                 message="manifest tool allowlist mismatch",
             )
         for tool in manifest.tools:
             entry = registry.require(tool.tool_name)
             if tool.effect_type != entry.effect_type.value:
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.TOOL_REJECTED,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.TOOL_REJECTED,
                     message=f"tool effect mismatch: {tool.tool_name}",
                 )
             if tool.required_scope != entry.scope:
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.TOOL_REJECTED,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.TOOL_REJECTED,
                     message=f"tool scope mismatch: {tool.tool_name}",
                 )
             expected_contract = (
@@ -364,8 +364,8 @@ class SubprocessMCPTransport:
                 tool.registry_version,
             )
             if manifest_contract != expected_contract:
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.TOOL_REJECTED,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.TOOL_REJECTED,
                     message=f"tool contract mismatch: {tool.tool_name}",
                 )
 
@@ -410,20 +410,20 @@ class SubprocessMCPTransport:
         remote_manifest_version = str(initialize["manifest_version"])
         remote_protocol = str(initialize["protocol_version"])
         if remote_manifest_version != self._manifest.manifest_version:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.HANDSHAKE_FAILED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.HANDSHAKE_FAILED,
                 message="remote manifest mismatch",
             )
         if remote_protocol != self._manifest.protocol_version:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.HANDSHAKE_FAILED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.HANDSHAKE_FAILED,
                 message="remote protocol mismatch",
             )
         _, remote_tools = self._request(message_type="list_tools", body={})
         tool_names = tuple(str(name) for name in cast(list[object], remote_tools["tool_names"]))
         if tool_names != tuple(sorted(tool.tool_name for tool in self._manifest.tools)):
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.TOOL_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.TOOL_REJECTED,
                 message="remote tool list mismatch",
             )
         self._status = MCPProcessStatus.READY
@@ -452,15 +452,15 @@ class SubprocessMCPTransport:
         with self._lock:
             process = self._process
             if process is None or process.poll() is not None:
-                self._last_safe_error_code = MCPTransportErrorCode.PROCESS_UNAVAILABLE.value
+                self._last_safe_error_code = MCPClientPortErrorCode.PROCESS_UNAVAILABLE.value
                 if self._restart_count < self._config.max_restart_count:
                     self._restart_count += 1
                     self._start_process()
                     process = self._process
                 else:
                     self._status = MCPProcessStatus.FAILED
-                    raise MCPTransportError(
-                        code=MCPTransportErrorCode.PROCESS_UNAVAILABLE,
+                    raise MCPClientPortError(
+                        code=MCPClientPortErrorCode.PROCESS_UNAVAILABLE,
                         message="mcp child process unavailable",
                     )
             # A fresh request_id per call (never reused across restarts or
@@ -472,13 +472,13 @@ class SubprocessMCPTransport:
             self._send_json({"id": request_id, "type": message_type, **body}, request_id=request_id)
             try:
                 payload = self._wait_for_response(request_id=request_id)
-            except MCPTransportError as error:
+            except MCPClientPortError as error:
                 self._last_safe_error_code = error.code.value
                 if (
                     error.code
                     in {
-                        MCPTransportErrorCode.CONNECTION_CLOSED,
-                        MCPTransportErrorCode.PROCESS_UNAVAILABLE,
+                        MCPClientPortErrorCode.CONNECTION_CLOSED,
+                        MCPClientPortErrorCode.PROCESS_UNAVAILABLE,
                     }
                     and self._restart_count < self._config.max_restart_count
                 ):
@@ -490,8 +490,8 @@ class SubprocessMCPTransport:
     def _send_json(self, payload: JsonObject, *, request_id: str | None = None) -> None:
         process = self._process
         if process is None or process.stdin is None:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.PROCESS_UNAVAILABLE,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.PROCESS_UNAVAILABLE,
                 message="mcp child stdin unavailable",
                 request_id=request_id,
             )
@@ -500,8 +500,8 @@ class SubprocessMCPTransport:
             process.stdin.write(line + "\n")
             process.stdin.flush()
         except OSError as error:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.CONNECTION_CLOSED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.CONNECTION_CLOSED,
                 message="mcp child stdin closed during dispatch",
                 dispatch_started=True,
                 request_id=request_id,
@@ -515,16 +515,16 @@ class SubprocessMCPTransport:
             except Empty as error:
                 process = self._process
                 if process is None or process.poll() is not None:
-                    raise MCPTransportError(
-                        code=MCPTransportErrorCode.CONNECTION_CLOSED,
+                    raise MCPClientPortError(
+                        code=MCPClientPortErrorCode.CONNECTION_CLOSED,
                         message="mcp child exited before responding",
                         dispatch_started=True,
                         request_id=request_id,
                     ) from error
                 continue
             if str(message.get("id")) != request_id:
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.MALFORMED_RESPONSE,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.MALFORMED_RESPONSE,
                     message="unexpected response id",
                     dispatch_started=True,
                     request_id=request_id,
@@ -534,8 +534,8 @@ class SubprocessMCPTransport:
                 # A structured error response proves the child process ran the
                 # request and answered; only the server can know whether that
                 # answer came before or after any Google dispatch occurred.
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode(
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode(
                         str(error_payload.get("code", "MALFORMED_RESPONSE"))
                     ),
                     message=str(error_payload.get("message", "mcp request failed")),
@@ -544,8 +544,8 @@ class SubprocessMCPTransport:
                 )
             response_payload = cast(JsonObject, message.get("payload", {}))
             return response_payload
-        raise MCPTransportError(
-            code=MCPTransportErrorCode.TIMEOUT,
+        raise MCPClientPortError(
+            code=MCPClientPortErrorCode.TIMEOUT,
             message="mcp request timed out",
             dispatch_started=True,
             request_id=request_id,
@@ -557,12 +557,12 @@ class SubprocessMCPTransport:
             return
         for line in process.stdout:
             if len(line.encode("utf-8")) > MANIFEST_MESSAGE_LIMIT_BYTES:
-                self._last_safe_error_code = MCPTransportErrorCode.MALFORMED_RESPONSE.value
+                self._last_safe_error_code = MCPClientPortErrorCode.MALFORMED_RESPONSE.value
                 continue
             try:
                 message = cast(JsonObject, json.loads(line))
             except json.JSONDecodeError:
-                self._last_safe_error_code = MCPTransportErrorCode.MALFORMED_RESPONSE.value
+                self._last_safe_error_code = MCPClientPortErrorCode.MALFORMED_RESPONSE.value
                 continue
             self._stdout_queue.put(message)
 

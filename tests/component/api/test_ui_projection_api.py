@@ -3,11 +3,11 @@ import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from tests.support.fakes import DeterministicUUID, FakeClock, FakeGoogleGateway, FakeWorkflowRuntime
+from tests.support.fakes import DeterministicUUID, FakeClockPort, FakeGoogleGateway, FakeWorkflowRuntime
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 from tests.support.workflow_admission import build_test_admission_callbacks
 
-from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
+from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
 )
@@ -113,9 +113,9 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             "completed": "2026-08-13T00:30:00.000Z",
         },
     )
-    clock = FakeClock(1_000)
+    clock = FakeClockPort(1_000)
     runtime = FakeWorkflowRuntime()
-    publisher = InMemoryRunEventPublisher(service_instance_id="svc-ui", capacity_per_run=8)
+    publisher = InMemorySseEventBuffer(service_instance_id="svc-ui", capacity_per_run=8)
     query_service = QueryService(
         database_path=database_path,
         connection_factory=connect_sqlite,

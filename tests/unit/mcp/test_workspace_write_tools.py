@@ -15,7 +15,7 @@ SERVICE_INSTANCE_ID = "svc-test-1"
 
 
 def _state() -> server._WorkspaceState:
-    state = server._WorkspaceState(keyring=_MemorySecretStore())
+    state = server._WorkspaceState(keyring=_MemorySecretStorePort())
     state.oauth_settings = GoogleOAuthSettings(
         google_oauth_client_id="desktop-client",
         google_oauth_client_secret="compatibility-client-secret",
@@ -25,7 +25,7 @@ def _state() -> server._WorkspaceState:
     return state
 
 
-class _MemorySecretStore:
+class _MemorySecretStorePort:
     def set_secret(self, *, service: str, account: str, secret: str) -> None:
         del service, account, secret
 
@@ -456,7 +456,7 @@ def test_nonce_reuse_is_rejected_and_google_is_called_at_most_once(monkeypatch) 
 
 def test_tool_not_available_without_claim_infrastructure(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
-    state = server._WorkspaceState(keyring=_MemorySecretStore())
+    state = server._WorkspaceState(keyring=_MemorySecretStorePort())
     state.oauth_settings = GoogleOAuthSettings(
         google_oauth_client_id="desktop-client",
         google_oauth_client_secret="compatibility-client-secret",

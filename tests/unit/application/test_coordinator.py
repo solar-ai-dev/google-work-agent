@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from threading import Event
 
-from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
+from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.queries import OpenRunRecord, RunExecutionContext
 from google_work_agent.application.write_actions import WriteRunResponse
@@ -176,7 +176,7 @@ def test_recovery_resolution_continues_existing_cancel_intent_to_cancelled() -> 
         )
 
     ids = iter(("finalize-1", "finalize-2"))
-    publisher = InMemoryRunEventPublisher(service_instance_id="service-1", capacity_per_run=8)
+    publisher = InMemorySseEventBuffer(service_instance_id="service-1", capacity_per_run=8)
     coordinator = _coordinator(
         query,
         runtime,
@@ -206,7 +206,7 @@ def _coordinator(
     query: _MutableQueryStub,
     runtime: _BlockingRuntime,
     *,
-    publisher: InMemoryRunEventPublisher | None = None,
+    publisher: InMemorySseEventBuffer | None = None,
     finalize_cancel_service=None,
     id_factory=None,
 ) -> LocalRunCoordinator:
@@ -215,7 +215,7 @@ def _coordinator(
         unit_of_work_factory=lambda: None,  # type: ignore[arg-type,return-value]
         workflow_runtime=runtime,
         event_publisher=publisher
-        or InMemoryRunEventPublisher(service_instance_id="service-1", capacity_per_run=8),
+        or InMemorySseEventBuffer(service_instance_id="service-1", capacity_per_run=8),
         now_ms=lambda: 6000,
         api_contract_version="1",
         finalize_cancel_service=finalize_cancel_service,

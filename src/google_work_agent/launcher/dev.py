@@ -9,8 +9,6 @@ import os
 import secrets
 import sqlite3
 import sys
-import time
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,11 +16,11 @@ from typing import Any, NoReturn, cast
 
 from fastapi import FastAPI
 
-from google_work_agent.adapters.connectors.google_workspace_execution import (
-    GoogleWorkspaceExecutionBackend,
+from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
+    McpConnectorWriteAdapter,
 )
-from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
-from google_work_agent.adapters.keyring import OSKeyringSecretStore
+from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
+from google_work_agent.adapters.keyring.os_keyring_secret_store import OsKeyringSecretStoreAdapter
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
 )
@@ -58,10 +56,12 @@ from google_work_agent.adapters.runtime import (
     SafeModeController,
     SettingsService,
 )
-from google_work_agent.adapters.runtime.attachment_staging import (
-    LocalAttachmentStaging,
+from google_work_agent.adapters.system.filesystem_attachment_staging import (
+    FilesystemAttachmentStagingAdapter,
 )
+from google_work_agent.adapters.system.system_clock import SystemClockAdapter
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
+from google_work_agent.adapters.system.uuid4 import Uuid4Adapter
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import (
     build_production_runtime,
@@ -146,7 +146,7 @@ from google_work_agent.ports import (
     WorkflowResumeRequest,
     WorkflowStartRequest,
 )
-from google_work_agent.ports.mcp_transport import MCPTransportError
+from google_work_agent.ports.connector.mcp_client_port import MCPClientPortError
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     ConfirmationResumeControlV1,
@@ -163,18 +163,6 @@ RELEASE_VERSION = "0.1.0-dev"
 # pulls or downloads anything; override via env var if a different model is
 # installed locally.
 DEFAULT_DEV_OLLAMA_MODEL_ID = os.environ.get("GWA_DEV_APPROVED_OLLAMA_MODEL", "qwen2.5:3b")
-
-
-@dataclass(frozen=True, slots=True)
-class SystemClock:
-    def now_ms(self) -> int:
-        return time.time_ns() // 1_000_000
-
-
-@dataclass(frozen=True, slots=True)
-class UUIDIdGenerator:
-    def next_id(self) -> str:
-        return str(uuid.uuid4())
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,8 +324,8 @@ class _DeferredApiContainer:
         self.create_conversation_handler: Any = None
         self.list_conversations_handler: Any = None
         self.get_conversation_history_handler: Any = None
-        self.clock = SystemClock()
-        self.id_generator = UUIDIdGenerator()
+        self.clock = SystemClockAdapter()
+        self.id_generator = Uuid4Adapter()
         self.release_version = RELEASE_VERSION
         self.environment = "DEVELOPMENT"
         self.service_instance_id = service_instance_id
@@ -480,11 +468,11 @@ def build_container(
     database_path = root / "google-work-agent.sqlite3"
     mcp_manifest_path = _write_mcp_manifest(root)
     prompt_manifest_path = default_prompt_manifest_path()
-    clock = SystemClock()
-    id_generator = UUIDIdGenerator()
+    clock = SystemClockAdapter()
+    id_generator = Uuid4Adapter()
     service_instance_id = service_instance_id or f"dev-{uuid.uuid4()}"
     attachment_staging_dir = root / "attachments" / "staging"
-    attachment_staging = LocalAttachmentStaging(
+    attachment_staging = FilesystemAttachmentStagingAdapter(
         staging_dir=attachment_staging_dir,
         now_ms=clock.now_ms,
     )
@@ -504,7 +492,7 @@ def build_container(
             python_executable=Path(sys.executable).resolve(),
             working_directory=PROJECT_ROOT,
         )
-    except MCPTransportError as error:
+    except MCPClientPortError as error:
         raise CoreInitializationError("MCP_HANDSHAKE_FAILED") from error
     connector_registry = connector_bundle.registry
     google_connector = connector_bundle.google_connector
@@ -538,7 +526,7 @@ def build_container(
             unit_of_work_factory=unit_of_work_factory,
             llm_runtime=llm_runtime,
             gateway=gateway,
-            connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
+            connector_execution=McpConnectorWriteAdapter(gateway=gateway),
             tool_catalog=connector_bundle.tool_catalog,
             now_ms=clock.now_ms,
             id_factory=id_generator.next_id,
@@ -560,7 +548,7 @@ def build_container(
     except InactivePromptArtifactError:
         prompt_active = False
         workflow_runtime = _PromptInactiveWorkflowRuntime()
-    event_publisher = InMemoryRunEventPublisher(service_instance_id=service_instance_id)
+    event_publisher = InMemorySseEventBuffer(service_instance_id=service_instance_id)
     request_cancel_service = RequestRunCancellationService(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=clock.now_ms,
@@ -951,7 +939,7 @@ def _build_llm_runtime(
     credential_service = LLMCredentialService(
         provider_name="gemini",
         environment="DEVELOPMENT",
-        keyring_store=OSKeyringSecretStore(),
+        keyring_store=OsKeyringSecretStoreAdapter(),
         session_store=SessionMemorySecretStore(),
     )
     ollama_transport = OllamaHTTPClient()

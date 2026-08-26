@@ -1,0 +1,9 @@
+"""Run-scoped retrieval continuation cache boundary."""
+
+from typing import Protocol
+
+
+class RunRetrievalCachePort(Protocol):
+    def get(self, key: str) -> object | None: ...
+    def put(self, key: str, value: object) -> None: ...
+    def delete(self, key: str) -> None: ...

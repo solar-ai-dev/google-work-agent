@@ -17,7 +17,7 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
-from google_work_agent.ports import Clock, IdGenerator, UnitOfWork, WorkflowRuntime
+from google_work_agent.ports import ClockPort, UUIDPort, UnitOfWork, WorkflowRuntime
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -37,8 +37,8 @@ class RunRouteDependencies:
     resolve_resume_authority: Callable[..., Mapping[str, object] | None]
     resolve_pending_confirmation: Callable[[str], Mapping[str, object] | None]
     resume_target_registry: object
-    clock: Clock
-    id_generator: IdGenerator
+    clock: ClockPort
+    id_generator: UUIDPort
     resolve_selection_handle: ResolveSelectionHandle
     resource_connector_id: str
     current_account_id: Callable[[], str | None]

@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
-from tests.support.fakes import DeterministicUUID, FakeClock
+from tests.support.fakes import DeterministicUUID, FakeClockPort
 
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
@@ -144,7 +144,7 @@ def _build_container(guard: _AllowGuard | _DenyGuard) -> tuple[ApiContainer, _Co
             )
         ),
         api_access_guard=guard,
-        clock=FakeClock(100),
+        clock=FakeClockPort(100),
         id_generator=DeterministicUUID(prefix="req"),
         release_version="test",
         environment="test",

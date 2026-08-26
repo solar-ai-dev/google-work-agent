@@ -12,8 +12,8 @@ from google_work_agent.ports import (
     DeliveryCertainty,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
-    MCPTransportError,
-    MCPTransportErrorCode,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
 )
 
 
@@ -23,13 +23,13 @@ class DeliveryAwareMCPGoogleWorkspaceGateway(_CompatibilityGateway):
     def _call(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, object]:
         try:
             response = self._transport.call_tool(tool_name=tool_name, arguments=arguments)
-        except MCPTransportError as error:
+        except MCPClientPortError as error:
             raise _delivery_aware_google_error(error) from error
         self._last_request_id = response.request_id
         return cast(dict[str, object], response.payload)
 
 
-def _delivery_aware_google_error(error: MCPTransportError) -> GoogleWorkspaceGatewayError:
+def _delivery_aware_google_error(error: MCPClientPortError) -> GoogleWorkspaceGatewayError:
     tool_error_map = {
         "INVALID_ARGUMENT": GoogleWorkspaceErrorCode.INVALID_ARGUMENT,
         "REAUTH_REQUIRED": GoogleWorkspaceErrorCode.AUTH_EXPIRED,
@@ -43,16 +43,16 @@ def _delivery_aware_google_error(error: MCPTransportError) -> GoogleWorkspaceGat
         "MCP_UNAVAILABLE": GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
     }
     code_map = {
-        MCPTransportErrorCode.TIMEOUT: GoogleWorkspaceErrorCode.TIMEOUT,
-        MCPTransportErrorCode.CONNECTION_CLOSED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
-        MCPTransportErrorCode.PROCESS_UNAVAILABLE: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
-        MCPTransportErrorCode.NOT_FOUND: GoogleWorkspaceErrorCode.NOT_FOUND,
-        MCPTransportErrorCode.SCHEMA_MISMATCH: GoogleWorkspaceErrorCode.RESPONSE_MALFORMED,
-        MCPTransportErrorCode.MALFORMED_RESPONSE: GoogleWorkspaceErrorCode.RESPONSE_MALFORMED,
-        MCPTransportErrorCode.TOOL_REJECTED: GoogleWorkspaceErrorCode.PERMISSION_DENIED,
-        MCPTransportErrorCode.HANDSHAKE_FAILED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
-        MCPTransportErrorCode.ARTIFACT_REJECTED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
-        MCPTransportErrorCode.CONFIGURATION_ERROR: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
+        MCPClientPortErrorCode.TIMEOUT: GoogleWorkspaceErrorCode.TIMEOUT,
+        MCPClientPortErrorCode.CONNECTION_CLOSED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
+        MCPClientPortErrorCode.PROCESS_UNAVAILABLE: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
+        MCPClientPortErrorCode.NOT_FOUND: GoogleWorkspaceErrorCode.NOT_FOUND,
+        MCPClientPortErrorCode.SCHEMA_MISMATCH: GoogleWorkspaceErrorCode.RESPONSE_MALFORMED,
+        MCPClientPortErrorCode.MALFORMED_RESPONSE: GoogleWorkspaceErrorCode.RESPONSE_MALFORMED,
+        MCPClientPortErrorCode.TOOL_REJECTED: GoogleWorkspaceErrorCode.PERMISSION_DENIED,
+        MCPClientPortErrorCode.HANDSHAKE_FAILED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
+        MCPClientPortErrorCode.ARTIFACT_REJECTED: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
+        MCPClientPortErrorCode.CONFIGURATION_ERROR: GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
     }
     certainty = error.delivery_certainty
     return GoogleWorkspaceGatewayError(

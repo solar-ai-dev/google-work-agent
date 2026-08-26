@@ -8,7 +8,6 @@ from queue import Empty, Queue
 from threading import Lock
 from typing import cast
 
-from google_work_agent.ports.observability_events import sanitize_event_attributes
 from google_work_agent.ports import (
     BufferStatus,
     InvalidReplayCursorError,
@@ -17,6 +16,7 @@ from google_work_agent.ports import (
     RunEventSubscription,
     SnapshotRequiredReplayError,
 )
+from google_work_agent.ports.observability_events import sanitize_event_attributes
 
 
 @dataclass(slots=True)
@@ -30,7 +30,7 @@ class _QueueSubscription:
             return None
 
 
-class InMemoryRunEventPublisher:
+class InMemorySseEventBuffer:
     """Run-scoped event buffer with monotonic ids and replay support."""
 
     def __init__(

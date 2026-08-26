@@ -6,15 +6,15 @@ import time
 from queue import Empty
 from typing import cast
 
-from google_work_agent.adapters.mcp.transport import JsonObject, SubprocessMCPTransport
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import JsonObject, StdioMCPClientAdapter
 from google_work_agent.ports import (
     DeliveryCertainty,
-    MCPTransportError,
-    MCPTransportErrorCode,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
 )
 
 
-class DeliveryAwareSubprocessMCPTransport(SubprocessMCPTransport):
+class DeliveryAwareStdioMCPClientAdapter(StdioMCPClientAdapter):
     """Preserve the canonical three-state delivery signal from MCP errors.
 
     Older child processes that only expose ``dispatch_started`` remain
@@ -30,16 +30,16 @@ class DeliveryAwareSubprocessMCPTransport(SubprocessMCPTransport):
             except Empty as error:
                 process = self._process
                 if process is None or process.poll() is not None:
-                    raise MCPTransportError(
-                        code=MCPTransportErrorCode.CONNECTION_CLOSED,
+                    raise MCPClientPortError(
+                        code=MCPClientPortErrorCode.CONNECTION_CLOSED,
                         message="mcp child exited before responding",
                         delivery_certainty=DeliveryCertainty.MAY_HAVE_BEEN_SENT,
                         request_id=request_id,
                     ) from error
                 continue
             if str(message.get("id")) != request_id:
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.MALFORMED_RESPONSE,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.MALFORMED_RESPONSE,
                     message="unexpected response id",
                     delivery_certainty=DeliveryCertainty.MAY_HAVE_BEEN_SENT,
                     request_id=request_id,
@@ -47,8 +47,8 @@ class DeliveryAwareSubprocessMCPTransport(SubprocessMCPTransport):
             if "error" in message:
                 error_payload = cast(dict[str, object], message["error"])
                 certainty = _delivery_certainty_from_error_payload(error_payload)
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode(
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode(
                         str(error_payload.get("code", "MALFORMED_RESPONSE"))
                     ),
                     message=str(error_payload.get("message", "mcp request failed")),
@@ -56,8 +56,8 @@ class DeliveryAwareSubprocessMCPTransport(SubprocessMCPTransport):
                     request_id=request_id,
                 )
             return cast(JsonObject, message.get("payload", {}))
-        raise MCPTransportError(
-            code=MCPTransportErrorCode.TIMEOUT,
+        raise MCPClientPortError(
+            code=MCPClientPortErrorCode.TIMEOUT,
             message="mcp request timed out",
             delivery_certainty=DeliveryCertainty.MAY_HAVE_BEEN_SENT,
             request_id=request_id,
@@ -72,8 +72,8 @@ def _delivery_certainty_from_error_payload(
         try:
             return DeliveryCertainty(str(raw))
         except ValueError as error:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.MALFORMED_RESPONSE,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.MALFORMED_RESPONSE,
                 message="invalid MCP delivery certainty",
                 delivery_certainty=DeliveryCertainty.MAY_HAVE_BEEN_SENT,
             ) from error

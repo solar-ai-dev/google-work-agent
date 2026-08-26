@@ -4,15 +4,15 @@ from google_work_agent.adapters.mcp import MCPRuntimeStatusProvider
 from google_work_agent.ports import (
     DeliveryCertainty,
     MCPRuntimeMetadata,
-    MCPTransportError,
-    MCPTransportErrorCode,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
 )
 
 
 class _MissingOAuthProvider:
     def get_connection_status(self):  # type: ignore[no-untyped-def]
-        raise MCPTransportError(
-            code=MCPTransportErrorCode.CONFIGURATION_ERROR,
+        raise MCPClientPortError(
+            code=MCPClientPortErrorCode.CONFIGURATION_ERROR,
             message="GOOGLE_OAUTH_CLIENT_ID_MISSING",
             delivery_certainty=DeliveryCertainty.NOT_SENT,
         )

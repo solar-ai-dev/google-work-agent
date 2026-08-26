@@ -6,8 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import loads
 
-from google_work_agent.ports.connectors.execution import (
-    ConnectorExecutionPort,
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
 )
 from google_work_agent.application.use_cases.recovery.recover_existing_result import (
     RecoverExistingResultCommand,
@@ -72,7 +72,7 @@ class RecoverDeleteHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        connector_execution: ConnectorExecutionPort,
+        connector_execution: ConnectorWritePort,
         recover_existing_result: Callable[
             [RecoverExistingResultCommand], RecoverExistingResultResult
         ],

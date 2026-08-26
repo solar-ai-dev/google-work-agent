@@ -1,15 +1,15 @@
-from tests.support.fakes import FakeClock
+from tests.support.fakes import FakeClockPort
 
 
 def test_fake_clock_returns_same_initial_value() -> None:
-    clock = FakeClock(initial_ms=100)
+    clock = FakeClockPort(initial_ms=100)
 
     assert clock.now_ms() == 100
     assert clock.now_ms() == 100
 
 
 def test_fake_clock_advance_and_set_are_explicit() -> None:
-    clock = FakeClock(initial_ms=10)
+    clock = FakeClockPort(initial_ms=10)
 
     assert clock.advance_ms(5) == 15
     assert clock.set_ms(99) == 99
@@ -17,7 +17,7 @@ def test_fake_clock_advance_and_set_are_explicit() -> None:
 
 
 def test_fake_clock_rejects_negative_values() -> None:
-    clock = FakeClock()
+    clock = FakeClockPort()
 
     try:
         clock.advance_ms(-1)

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import sys
@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlparse
 from urllib.request import HTTPRedirectHandler, build_opener
 
 from fastapi.testclient import TestClient
-from tests.support.fakes import DeterministicUUID, FakeClock
+from tests.support.fakes import DeterministicUUID, FakeClockPort
 
 from google_work_agent.adapters.connectors.google_workspace import (
     build_google_workspace_connector_descriptor,
@@ -16,7 +16,7 @@ from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
     MCPGoogleOAuthCredentialProvider,
     MCPRuntimeStatusProvider,
-    SubprocessMCPTransport,
+    StdioMCPClientAdapter,
     build_manifest_payload,
     calculate_file_sha256,
 )
@@ -61,7 +61,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
         Path(__file__).resolve().parents[2] / "fixtures" / "product" / "manifest.json"
     )
     executable = Path(sys.executable).resolve()
-    transport = SubprocessMCPTransport(
+    transport = StdioMCPClientAdapter(
         descriptor=build_google_workspace_connector_descriptor(
             MCPArtifactConfig(
                 executable_path=str(executable),
@@ -94,7 +94,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
         ollama="NOT_AVAILABLE",
         deployment_profile="test",
     )
-    clock = FakeClock(100)
+    clock = FakeClockPort(100)
     bootstrap_store = InMemoryBootstrapGrantStore()
     bootstrap_store.provision(
         secret="bootstrap-secret",

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from fastapi import FastAPI
 from starlette.requests import Request
-from tests.support.fakes import FakeClock
+from tests.support.fakes import FakeClockPort
 
 from google_work_agent.api.dependencies.runs import get_run_route_dependencies
 
@@ -25,7 +25,7 @@ def _request_with_run_composition() -> tuple[Request, object]:
         schedule_run_execution=object(),
         local_run_coordinator=object(),
         workflow_runtime=object(),
-        clock=FakeClock(1),
+        clock=FakeClockPort(1),
         id_generator=object(),
         resolve_selection_handle=object(),
         resource_connector_id="google-workspace",

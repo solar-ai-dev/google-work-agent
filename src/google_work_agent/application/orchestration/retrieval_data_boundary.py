@@ -14,7 +14,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Any, cast
 
-from google_work_agent.ports.connectors.read import ConnectorReadResult
+from google_work_agent.ports.connector.connector_read_port import ConnectorReadResult
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
     MaterializedRetrievalRead,

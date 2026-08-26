@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from google_work_agent.adapters.connectors.connector_mcp_runtime import (
     ConnectorMcpRuntime,
-    RestartableMCPTransport,
+    RestartableMCPClientPort,
 )
 from google_work_agent.adapters.mcp.capabilities import (
     build_google_workspace_internal_capabilities,
@@ -15,20 +15,20 @@ from google_work_agent.adapters.mcp.delivery_gateway import (
     DeliveryAwareMCPGoogleWorkspaceGateway,
 )
 from google_work_agent.adapters.mcp.delivery_transport import (
-    DeliveryAwareSubprocessMCPTransport,
+    DeliveryAwareStdioMCPClientAdapter,
 )
-from google_work_agent.adapters.mcp.dispatch_contract import DispatchContractMCPTransport
+from google_work_agent.adapters.mcp.dispatch_contract import DispatchContractMCPClientPort
 from google_work_agent.adapters.mcp.gateway import (
     MCPGmailAttachmentGateway,
     MCPGmailUiReadGateway,
     MCPGoogleWorkspaceGateway,
 )
 from google_work_agent.adapters.mcp.manifest_guard import (
-    ManifestEnforcedMCPTransport,
+    ManifestEnforcedMCPClientPort,
     RestartableManifestDelegate,
 )
 from google_work_agent.adapters.mcp.oauth import MCPGoogleOAuthCredentialProvider
-from google_work_agent.adapters.mcp.transport import (
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     MCPArtifactConfig,
     MCPConnectorDescriptor,
 )
@@ -36,7 +36,7 @@ from google_work_agent.domain.google_workspace_tool_registry import (
     build_google_workspace_tool_registry,
 )
 from google_work_agent.domain.tool_registry import SignedToolRegistry
-from google_work_agent.ports import MCPRuntimeMetadata, MCPTransport
+from google_work_agent.ports import MCPRuntimeMetadata, MCPClientPort
 
 GOOGLE_WORKSPACE_CONNECTOR_ID = "google_workspace"
 _VERIFIED_MCP_MODULE_NAME = "google_work_agent.adapters.connectors.google.mcp.verified_server"
@@ -57,23 +57,23 @@ def build_google_workspace_connector_descriptor(
 def _default_transport_factory(
     descriptor: MCPConnectorDescriptor,
 ) -> RestartableManifestDelegate:
-    return DeliveryAwareSubprocessMCPTransport(descriptor=descriptor)
+    return DeliveryAwareStdioMCPClientAdapter(descriptor=descriptor)
 
 
 def _guarded_transport_factory(
     base_factory: Callable[[MCPConnectorDescriptor], RestartableManifestDelegate],
-) -> Callable[[MCPConnectorDescriptor], RestartableMCPTransport]:
+) -> Callable[[MCPConnectorDescriptor], RestartableMCPClientPort]:
     """Wrap every connector transport in immutable-manifest and schema guards."""
 
-    def build(descriptor: MCPConnectorDescriptor) -> RestartableMCPTransport:
+    def build(descriptor: MCPConnectorDescriptor) -> RestartableMCPClientPort:
         raw_delegate = base_factory(descriptor)
         try:
-            manifest_guard = ManifestEnforcedMCPTransport(
+            manifest_guard = ManifestEnforcedMCPClientPort(
                 delegate=raw_delegate,
                 descriptor=descriptor,
                 expected_internal_capabilities=build_google_workspace_internal_capabilities(),
             )
-            return DispatchContractMCPTransport(
+            return DispatchContractMCPClientPort(
                 delegate=manifest_guard,
                 descriptor=descriptor,
             )
@@ -114,7 +114,7 @@ class GoogleWorkspaceConnector:
         return self._runtime.descriptor
 
     @property
-    def transport(self) -> MCPTransport:
+    def transport(self) -> MCPClientPort:
         return self._runtime.transport_for_diagnostics
 
     @property
@@ -141,7 +141,7 @@ class GoogleWorkspaceConnector:
             raise RuntimeError("Google Workspace connector is not started")
         return self._gmail_attachment_gateway
 
-    def start(self) -> MCPTransport:
+    def start(self) -> MCPClientPort:
         transport = self._runtime.start()
         if self._gateway is None:
             self._gateway = DeliveryAwareMCPGoogleWorkspaceGateway(transport=transport)

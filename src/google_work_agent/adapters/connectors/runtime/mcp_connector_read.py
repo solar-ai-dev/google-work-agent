@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-from google_work_agent.ports.connectors.read import (
-    ConnectorReadPort,
-    ConnectorReadRequest,
-    ConnectorReadResult,
-)
 from google_work_agent.application.orchestration.handoff_contracts import (
     SourceFetchPlanV1,
 )
@@ -20,9 +15,14 @@ from google_work_agent.ports import (
     SelectedResourceRef,
     TimeRange,
 )
+from google_work_agent.ports.connector.connector_read_port import (
+    ConnectorReadPort,
+    ConnectorReadRequest,
+    ConnectorReadResult,
+)
 
 
-class GoogleWorkspaceConnectorReader(ConnectorReadPort):
+class McpConnectorReadAdapter(ConnectorReadPort):
     """Adapt the existing Google gateway to the acquisition read capability."""
 
     def __init__(self, *, gateway: GoogleWorkspaceGateway) -> None:
@@ -47,7 +47,8 @@ class GoogleWorkspaceConnectorReader(ConnectorReadPort):
                 gateway=self._gateway,
                 plan=plan,
                 remaining=remaining,
-                allowed=allowed, page_token=request.page_token,
+                allowed=allowed,
+                page_token=request.page_token,
             )
             return ConnectorReadResult(snapshots=tuple(snapshots), next_page_token=next_page_token)
         if plan["source"] == "TASKS":
@@ -55,7 +56,8 @@ class GoogleWorkspaceConnectorReader(ConnectorReadPort):
                 gateway=self._gateway,
                 plan=plan,
                 remaining=remaining,
-                allowed=allowed, page_token=request.page_token,
+                allowed=allowed,
+                page_token=request.page_token,
             )
             return ConnectorReadResult(snapshots=tuple(snapshots), next_page_token=next_page_token)
         snapshots, error_code, next_page_token = _acquire_calendar(
@@ -64,7 +66,8 @@ class GoogleWorkspaceConnectorReader(ConnectorReadPort):
             remaining=remaining,
             now_ms=request.now_ms,
             timezone=request.timezone,
-            allowed=allowed, page_token=request.page_token,
+            allowed=allowed,
+            page_token=request.page_token,
         )
         return ConnectorReadResult(
             snapshots=tuple(snapshots), error_code=error_code, next_page_token=next_page_token

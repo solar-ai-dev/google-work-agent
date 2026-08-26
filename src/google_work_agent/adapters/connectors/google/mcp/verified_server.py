@@ -18,7 +18,7 @@ from google_work_agent.adapters.mcp.capabilities import (
     INTERNAL_CAPABILITY_REGISTRY_VERSION,
     build_google_workspace_internal_capabilities,
 )
-from google_work_agent.adapters.mcp.transport import PROTOCOL_VERSION
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import PROTOCOL_VERSION
 from google_work_agent.domain import build_p0_tool_registry
 from google_work_agent.domain.claim_contract import CLAIM_CONTEXT_MAX_TTL_MS
 from google_work_agent.domain.google_workspace_tool_contracts import (

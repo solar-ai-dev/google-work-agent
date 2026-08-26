@@ -13,7 +13,7 @@ from urllib.request import urlopen
 from fastapi.testclient import TestClient
 from uvicorn import Config, Server
 
-from google_work_agent.adapters.runtime.attachment_staging import ATTACHMENT_STAGING_DIR_ENV
+from google_work_agent.adapters.system.filesystem_attachment_staging import ATTACHMENT_STAGING_DIR_ENV
 from google_work_agent.api.app import create_app
 from google_work_agent.launcher.dev import DevelopmentReadinessAggregator, build_container
 
@@ -35,9 +35,9 @@ def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path
     )
     staging_dir = runtime_root / "attachments" / "staging"
     assert (staging_dir / f"{descriptor.staged_attachment_id}.bin").is_file()
-    # connector.transport is now DispatchContractMCPTransport wrapping
-    # ManifestEnforcedMCPTransport wrapping the actual
-    # DeliveryAwareSubprocessMCPTransport that owns _config (Task 7's MCP
+    # connector.transport is now DispatchContractMCPClientPort wrapping
+    # ManifestEnforcedMCPClientPort wrapping the actual
+    # DeliveryAwareStdioMCPClientAdapter that owns _config (Task 7's MCP
     # manifest/schema/dispatch contract guards -- see
     # adapters/connectors/google_workspace.py:_guarded_transport_factory).
     base_transport = container.readiness_aggregator.transport._delegate._delegate  # noqa: SLF001

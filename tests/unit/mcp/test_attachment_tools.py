@@ -8,9 +8,9 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.adapters.runtime.attachment_staging import (
+from google_work_agent.adapters.system.filesystem_attachment_staging import (
     AttachmentDescriptor,
-    LocalAttachmentStaging,
+    FilesystemAttachmentStagingAdapter,
 )
 from google_work_agent.adapters.connectors.google.mcp import workspace_tools as server
 from google_work_agent.adapters.connectors.google.mcp.oauth_settings import GoogleOAuthSettings
@@ -20,7 +20,7 @@ SERVICE_INSTANCE_ID = "svc-attachment-1"
 
 
 def _state() -> server._WorkspaceState:
-    state = server._WorkspaceState(keyring=_MemorySecretStore())
+    state = server._WorkspaceState(keyring=_MemorySecretStorePort())
     state.oauth_settings = GoogleOAuthSettings(
         google_oauth_client_id="desktop-client",
         google_oauth_client_secret="compatibility-client-secret",
@@ -30,7 +30,7 @@ def _state() -> server._WorkspaceState:
     return state
 
 
-class _MemorySecretStore:
+class _MemorySecretStorePort:
     def set_secret(self, *, service: str, account: str, secret: str) -> None:
         del service, account, secret
 
@@ -139,15 +139,15 @@ def test_gmail_get_attachment_never_leaves_the_read_tool_boundary(monkeypatch) -
 
 
 @pytest.fixture
-def staging(tmp_path: Path, monkeypatch) -> LocalAttachmentStaging:  # type: ignore[no-untyped-def]
+def staging(tmp_path: Path, monkeypatch) -> FilesystemAttachmentStagingAdapter:  # type: ignore[no-untyped-def]
     staging_dir = tmp_path / "attachments"
     monkeypatch.setenv(server.ATTACHMENT_STAGING_DIR_ENV, str(staging_dir))
-    return LocalAttachmentStaging(staging_dir=staging_dir)
+    return FilesystemAttachmentStagingAdapter(staging_dir=staging_dir)
 
 
 def test_gmail_create_draft_embeds_a_verified_staged_attachment(
     monkeypatch,
-    staging: LocalAttachmentStaging,  # type: ignore[no-untyped-def]
+    staging: FilesystemAttachmentStagingAdapter,  # type: ignore[no-untyped-def]
 ) -> None:
     descriptor = staging.stage(
         data=b"report bytes", filename="report.pdf", mime_type="application/pdf"
@@ -193,7 +193,7 @@ def test_gmail_create_draft_embeds_a_verified_staged_attachment(
 
 def test_gmail_create_draft_rejects_missing_staged_attachment(
     monkeypatch,
-    staging: LocalAttachmentStaging,  # type: ignore[no-untyped-def]
+    staging: FilesystemAttachmentStagingAdapter,  # type: ignore[no-untyped-def]
 ) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
     state = _state()
@@ -227,7 +227,7 @@ def test_gmail_create_draft_rejects_missing_staged_attachment(
 
 def test_gmail_create_draft_rejects_hash_mismatched_staged_attachment(
     monkeypatch,
-    staging: LocalAttachmentStaging,  # type: ignore[no-untyped-def]
+    staging: FilesystemAttachmentStagingAdapter,  # type: ignore[no-untyped-def]
 ) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
     real_descriptor = staging.stage(data=b"real bytes", filename="a.txt", mime_type="text/plain")
@@ -264,7 +264,7 @@ def test_gmail_create_draft_rejects_expired_staged_attachment(monkeypatch, tmp_p
     clock = {"now": 1_000_000}
     staging_dir = tmp_path / "attachments"
     monkeypatch.setenv(server.ATTACHMENT_STAGING_DIR_ENV, str(staging_dir))
-    expiring_staging = LocalAttachmentStaging(staging_dir=staging_dir, now_ms=lambda: clock["now"])
+    expiring_staging = FilesystemAttachmentStagingAdapter(staging_dir=staging_dir, now_ms=lambda: clock["now"])
     descriptor = expiring_staging.stage(data=b"bytes", filename="a.txt", mime_type="text/plain")
     clock["now"] += 20 * 60 * 1000  # advance past the 15 minute TTL
 

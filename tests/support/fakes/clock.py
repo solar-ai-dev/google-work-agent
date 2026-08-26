@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-class FakeClock:
+class FakeClockPort:
     """Deterministic millisecond clock with explicit mutation only."""
 
     def __init__(self, initial_ms: int = 0) -> None:

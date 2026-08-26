@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from tests.support.fakes import DeterministicUUID, FakeClock
+from tests.support.fakes import DeterministicUUID, FakeClockPort
 
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
@@ -42,7 +42,7 @@ class _QueryStub:
 
 
 def _build_client(*, with_probe: bool = True) -> TestClient:
-    clock = FakeClock(100)
+    clock = FakeClockPort(100)
     bind_host = "127.0.0.1"
     bind_port = 8765
     session_manager = InMemoryLocalSessionManager()

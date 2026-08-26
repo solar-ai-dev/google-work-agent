@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Protocol, cast
 
 from google_work_agent.adapters.mcp.capabilities import MCPInternalCapability
-from google_work_agent.adapters.mcp.transport import MCPConnectorDescriptor
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MCPConnectorDescriptor
 from google_work_agent.domain.google_workspace_tool_contracts import (
     google_workspace_tool_contract,
 )
@@ -22,13 +22,13 @@ from google_work_agent.ports import (
     MCPControlResponse,
     MCPRuntimeMetadata,
     MCPToolResponse,
-    MCPTransport,
-    MCPTransportError,
-    MCPTransportErrorCode,
+    MCPClientPort,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
 )
 
 
-class RestartableManifestDelegate(MCPTransport, Protocol):
+class RestartableManifestDelegate(MCPClientPort, Protocol):
     @property
     def service_instance_id(self) -> str: ...
 
@@ -40,7 +40,7 @@ class RestartableManifestDelegate(MCPTransport, Protocol):
     def restart(self) -> MCPRuntimeMetadata: ...
 
 
-class ManifestEnforcedMCPTransport:
+class ManifestEnforcedMCPClientPort:
     """Guard one verified connector transport with an explicit callable surface."""
 
     def __init__(
@@ -97,8 +97,8 @@ class ManifestEnforcedMCPTransport:
 
     def _require_current_callable(self, tool_name: str) -> None:
         if tool_name not in self._verified_callable_names:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.TOOL_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.TOOL_REJECTED,
                 message=f"tool is outside verified connector capability surface: {tool_name}",
                 dispatch_started=False,
             )
@@ -109,8 +109,8 @@ class ManifestEnforcedMCPTransport:
             or metadata.protocol_version != config.expected_protocol_version
             or metadata.tool_registry_version != config.expected_tool_registry_version
         ):
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.SCHEMA_MISMATCH,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
                 message="MCP negotiated manifest/registry version is stale",
                 dispatch_started=False,
             )
@@ -119,16 +119,16 @@ class ManifestEnforcedMCPTransport:
         manifest_path = Path(self._descriptor.artifact_config.manifest_path)
         raw = manifest_path.read_bytes()
         if sha256(raw).hexdigest() != self._descriptor.artifact_config.expected_manifest_sha256:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.ARTIFACT_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.ARTIFACT_REJECTED,
                 message="manifest changed after transport verification",
             )
         payload = cast(dict[str, object], json.loads(raw.decode("utf-8")))
         public_names = self._verify_public_manifest_tools(payload)
         internal_names = self._verify_internal_manifest_capabilities(payload)
         if public_names & internal_names:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.TOOL_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.TOOL_REJECTED,
                 message="public and internal MCP capability surfaces overlap",
             )
         return public_names | internal_names
@@ -136,8 +136,8 @@ class ManifestEnforcedMCPTransport:
     def _verify_public_manifest_tools(self, payload: dict[str, object]) -> frozenset[str]:
         raw_tools = payload.get("tools")
         if not isinstance(raw_tools, list):
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.SCHEMA_MISMATCH,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
                 message="manifest public tool surface is missing",
             )
         expected_names = tuple(
@@ -146,8 +146,8 @@ class ManifestEnforcedMCPTransport:
         actual_names: list[str] = []
         for raw_item in raw_tools:
             if not isinstance(raw_item, dict):
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.SCHEMA_MISMATCH,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
                     message="manifest public tool entry is malformed",
                 )
             item = cast(dict[str, object], raw_item)
@@ -157,8 +157,8 @@ class ManifestEnforcedMCPTransport:
                 registry_entry = self._descriptor.expected_tool_registry.require(tool_name)
                 contract = google_workspace_tool_contract(tool_name)
             except (KeyError, LookupError) as error:
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.TOOL_REJECTED,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.TOOL_REJECTED,
                     message=f"manifest public tool is not registered: {tool_name}",
                 ) from error
             if (
@@ -169,14 +169,14 @@ class ManifestEnforcedMCPTransport:
                 or item.get("input_schema") != contract.input_schema
                 or item.get("output_schema") != contract.output_schema
             ):
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.TOOL_REJECTED,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.TOOL_REJECTED,
                     message=f"manifest public tool schema mismatch: {tool_name}",
                 )
         no_duplicates = len(actual_names) == len(set(actual_names))
         if tuple(sorted(actual_names)) != expected_names or not no_duplicates:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.TOOL_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.TOOL_REJECTED,
                 message="manifest public tool surface mismatch",
             )
         return frozenset(actual_names)
@@ -186,14 +186,14 @@ class ManifestEnforcedMCPTransport:
         payload: dict[str, object],
     ) -> frozenset[str]:
         if payload.get("internal_capability_registry_version") != self._internal_registry_version:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.TOOL_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.TOOL_REJECTED,
                 message="manifest internal capability registry version mismatch",
             )
         raw_internal = payload.get("internal_capabilities")
         if not isinstance(raw_internal, list):
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.SCHEMA_MISMATCH,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
                 message="manifest internal capability surface is missing",
             )
         expected = {
@@ -203,21 +203,21 @@ class ManifestEnforcedMCPTransport:
         actual_names: list[str] = []
         for raw_item in raw_internal:
             if not isinstance(raw_item, dict):
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.SCHEMA_MISMATCH,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
                     message="manifest internal capability entry is malformed",
                 )
             item = cast(dict[str, object], raw_item)
             tool_name = str(item.get("tool_name", ""))
             actual_names.append(tool_name)
             if expected.get(tool_name) != item:
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.TOOL_REJECTED,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.TOOL_REJECTED,
                     message=f"manifest internal capability mismatch: {tool_name}",
                 )
         if len(actual_names) != len(set(actual_names)) or set(actual_names) != set(expected):
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.TOOL_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.TOOL_REJECTED,
                 message="manifest internal capability surface mismatch",
             )
         return frozenset(actual_names)
@@ -230,14 +230,14 @@ class ManifestEnforcedMCPTransport:
         if response.payload.get("internal_capability_registry_version") != (
             self._internal_registry_version
         ):
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.TOOL_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.TOOL_REJECTED,
                 message="remote internal capability registry version mismatch",
             )
         raw_names = response.payload.get("internal_capability_names")
         if not isinstance(raw_names, list):
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.HANDSHAKE_FAILED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.HANDSHAKE_FAILED,
                 message="remote internal capability list is missing",
             )
         remote_names = tuple(sorted(str(name) for name in raw_names))
@@ -245,8 +245,8 @@ class ManifestEnforcedMCPTransport:
             sorted(capability.tool_name for capability in self._expected_internal_capabilities)
         )
         if remote_names != expected_names:
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.TOOL_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.TOOL_REJECTED,
                 message="remote internal capability surface mismatch",
             )
 
@@ -257,16 +257,16 @@ class ManifestEnforcedMCPTransport:
         )
         raw_contracts = response.payload.get("contracts")
         if not isinstance(raw_contracts, list):
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.HANDSHAKE_FAILED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.HANDSHAKE_FAILED,
                 message="remote MCP capability contract list is missing",
             )
         expected = self._expected_contract_descriptors()
         actual: list[tuple[str, str, str, str, str]] = []
         for raw_item in raw_contracts:
             if not isinstance(raw_item, dict):
-                raise MCPTransportError(
-                    code=MCPTransportErrorCode.SCHEMA_MISMATCH,
+                raise MCPClientPortError(
+                    code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
                     message="remote MCP capability contract is malformed",
                 )
             item = cast(dict[str, object], raw_item)
@@ -280,8 +280,8 @@ class ManifestEnforcedMCPTransport:
                 )
             )
         if tuple(sorted(actual)) != expected or len(actual) != len(set(actual)):
-            raise MCPTransportError(
-                code=MCPTransportErrorCode.TOOL_REJECTED,
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.TOOL_REJECTED,
                 message="remote MCP capability schema surface mismatch",
             )
 
